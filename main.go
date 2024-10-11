@@ -16,8 +16,11 @@ import (
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=0240930"
+var v = "?t=241011"
 
+func Includes(str, substr string) bool {
+	return strings.Contains(str, substr)
+}
 func getFreePort() int {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -134,25 +137,26 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				if host == "channels.weixin.qq.com" && path == "/web/pages/feed" {
 					// Conn.Response.Header.Add("wx-channel-video-download", "1")
 					script := `<script>
+				function __wx_channels_copy(text) {
+					const textArea = document.createElement("textarea");
+					textArea.value = text;
+					textArea.style.cssText = "position: absolute; top: -999px; left: -999px;";
+					document.body.appendChild(textArea);
+					textArea.select();
+					document.execCommand("copy");
+					document.body.removeChild(textArea);
+				}
 				function __wx_channels_download(data, filename) {
 					const blob = new Blob(data, { type: 'application/octet-stream' });
 					const url = URL.createObjectURL(blob);
-					const a = document.createElement('a');
-					a.href = url;
-					a.download = filename + '.mp4';
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
+					console.log(url);
+					__wx_channels_copy(url);
+					alert("下载连接已复制，请到浏览器中打开下载");
 				}
 				function __wx_channels_download2(url, filename) {
-					const a = document.createElement('a');
-					a.href = url;
-					a.download = filename + '.mp4';
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
+					console.log(url);
+					__wx_channels_copy(url);
+					alert("下载连接已复制，请到浏览器中打开下载");
 				}
 				var __wx_channels_store__ = {
 					profile: null,
@@ -162,19 +166,20 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				__wx_channels_video_download_btn__.innerHTML = '<div data-v-6548f11a data-v-a0727f21 class="click-box op-item item-gap-combine" role="button" aria-label="下载" style="padding: 4px 8px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-a0727f21 class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div>';
 				__wx_channels_video_download_btn__ = __wx_channels_video_download_btn__.firstChild;
 				__wx_channels_video_download_btn__.onclick = () => {
-					console.log(__wx_channels_store__.buffers);
 					var profile = __wx_channels_store__.profile;
+					if (!profile) {
+						alert("检测不到视频，请将本工具更新到最新版");
+						return;
+					}
+					console.log(__wx_channels_store__.buffers);
 					var filename = (() => {
-						if (!profile) {
-							return new Date().valueOf() / 1000;
-						}
 						if (profile.title) {
 							return profile.title;
 						}
 						if (profile.id) {
 							return profile.id;
 						}
-						return new Date().valueOf() / 1000;
+						return new Date().valueOf();
 					})();
 					if (profile && __wx_channels_store__.buffers.length === 0) {
 						__wx_channels_download2(profile.url);
@@ -211,7 +216,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				content = import_reg.ReplaceAllString(content, `import"$1.js`+v+`"`)
 				Conn.Response.Header.Set("__debug", "replace_script")
 
-				if path == "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register.publishCW_8c6X5.js" {
+				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
 					regex := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async`)
 					replaceStr := `async finderGetCommentDetail($1) {
 					var feedResult = await$2;
@@ -240,7 +245,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
-				if path == "/t/wx_fed/finder/web/web-finder/res/js/index.publishBWnoWtFy.js" {
+				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
 					regex := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(o\),`)
 					replaceStr := `(() => {
 console.log(u);
