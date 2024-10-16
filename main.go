@@ -16,7 +16,7 @@ import (
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241011"
+var v = "?t=241016"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -149,14 +149,16 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				function __wx_channels_download(data, filename) {
 					const blob = new Blob(data, { type: 'application/octet-stream' });
 					const url = URL.createObjectURL(blob);
-					console.log(url);
-					__wx_channels_copy(url);
-					alert("下载连接已复制，请到浏览器中打开下载");
+					__wx_channels_download2(url, filename);
 				}
 				function __wx_channels_download2(url, filename) {
-					console.log(url);
-					__wx_channels_copy(url);
-					alert("下载连接已复制，请到浏览器中打开下载");
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = filename + '.mp4';
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+					URL.revokeObjectURL(url);
 				}
 				var __wx_channels_store__ = {
 					profile: null,
@@ -171,7 +173,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						alert("检测不到视频，请将本工具更新到最新版");
 						return;
 					}
-					console.log(__wx_channels_store__.buffers);
+					console.log(__wx_channels_store__);
 					var filename = (() => {
 						if (profile.title) {
 							return profile.title;
@@ -182,7 +184,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						return new Date().valueOf();
 					})();
 					if (profile && __wx_channels_store__.buffers.length === 0) {
-						__wx_channels_download2(profile.url);
+						__wx_channels_download2(profile.url, filename);
 						return;
 					}
 					__wx_channels_download(__wx_channels_store__.buffers, filename);
