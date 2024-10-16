@@ -55,7 +55,11 @@
 
 ## 打包
 
+```bash
+go build -o wx_video_download.exe main.go
+```
 
+打包后可以使用 `upx` 压缩，体积可以从 17MB 压缩到 5MB。
 
 ## 其他
 
