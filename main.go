@@ -16,7 +16,7 @@ import (
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241016"
+var v = "?t=241022"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -165,7 +165,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					buffers: [],
 				};
 				var __wx_channels_video_download_btn__ = document.createElement("div");
-				__wx_channels_video_download_btn__.innerHTML = '<div data-v-6548f11a data-v-a0727f21 class="click-box op-item item-gap-combine" role="button" aria-label="下载" style="padding: 4px 8px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-a0727f21 class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div>';
+				__wx_channels_video_download_btn__.innerHTML = '<div data-v-6548f11a data-v-c2373d00 class="click-box op-item item-gap-combine" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-c2373d00 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div>';
 				__wx_channels_video_download_btn__ = __wx_channels_video_download_btn__.firstChild;
 				__wx_channels_video_download_btn__.onclick = () => {
 					var profile = __wx_channels_store__.profile;
@@ -189,7 +189,14 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					}
 					__wx_channels_download(__wx_channels_store__.buffers, filename);
 				};
+				var count = 0;
 				var __timer = setInterval(() => {
+					count += 1;
+					if (count >= 10) {
+						clearInterval(__timer);
+						__timer = null;
+						return;
+					}
 					const $wrap = document.getElementsByClassName("full-opr-wrp layout-row")[0];
 					if (!$wrap) {
 						return;
@@ -223,6 +230,9 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					replaceStr := `async finderGetCommentDetail($1) {
 					var feedResult = await$2;
 					var data_object = feedResult.data.object;
+					if (!data_object.objectDesc) {
+						return feedResult;
+					}
 					var media = data_object.objectDesc.media[0];
 					var profile = {
 						duration: media.spec[0].durationMs,
