@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ import (
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241022"
+var v = "?t=241030"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -77,6 +78,29 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 	if Conn.Type == public.HttpSendRequest {
 		// Conn.Request.Header.Set("Cache-Control", "no-cache")
 		Conn.Request.Header.Del("Accept-Encoding")
+		if Includes(path, "jszip") {
+			data, err := os.ReadFile("./lib/jszip.min.js")
+			if err != nil {
+				fmt.Printf("read file failed, because %v\n", err.Error())
+				return
+			}
+			headers := http.Header{}
+			headers.Set("Content-Type", "application/javascript")
+			headers.Set("__debug", "local_file")
+			Conn.StopRequest(200, data, headers)
+			return
+		}
+		if Includes(path, "FileSaver.min") {
+			data, err := os.ReadFile("./lib/FileSaver.min.js")
+			if err != nil {
+				return
+			}
+			headers := http.Header{}
+			headers.Set("Content-Type", "application/javascript")
+			headers.Set("__debug", "local_file")
+			Conn.StopRequest(200, data, headers)
+			return
+		}
 		// 查找主机的 IP 地址
 		// _, err := net.LookupHost(host)
 		// if err != nil {
@@ -160,6 +184,32 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					document.body.removeChild(a);
 					URL.revokeObjectURL(url);
 				}
+				async function __wx_channels_download3(profile, filename) {
+					const files = profile.files;
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js");
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+					const zip = new JSZip();
+					zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
+					const folder = zip.folder("images");
+					const fetchPromises = files.map((f) => f.url).map(async (url, index) => {
+						const response = await fetch(url);
+						const blob = await response.blob();
+						folder.file((index + 1) + ".png", blob);
+					});
+					await Promise.all(fetchPromises);
+					const content = await zip.generateAsync({ type: "blob" });
+					saveAs(content, filename + ".zip");
+				}
+				function __wx_load_script(src) {
+					return new Promise((resolve, reject) => {
+						const script = document.createElement('script');
+						script.type = 'text/javascript';
+						script.src = src;
+						script.onload = resolve;
+						script.onerror = reject;
+						document.head.appendChild(script);
+					});
+				}
 				var __wx_channels_store__ = {
 					profile: null,
 					buffers: [],
@@ -183,6 +233,10 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						}
 						return new Date().valueOf();
 					})();
+					if (profile && profile.type === "picture") {
+						__wx_channels_download3(profile, filename);
+						return;
+					}
 					if (profile && __wx_channels_store__.buffers.length === 0) {
 						__wx_channels_download2(profile.url, filename);
 						return;
@@ -234,7 +288,14 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						return feedResult;
 					}
 					var media = data_object.objectDesc.media[0];
-					var profile = {
+					var profile = media.videoType === 0 ? {
+						type: "picture",
+						id: data_object.id,
+						title: data_object.objectDesc.description,
+						files: data_object.objectDesc.media,
+						contact: data_object.contact
+					} : {
+						type: "media",
 						duration: media.spec[0].durationMs,
 						title: data_object.objectDesc.description,
 						url: media.url+media.urlToken,
@@ -244,7 +305,8 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						nonce_id: data_object.objectNonceId,
 						nickname: data_object.nickname,
 						createtime: data_object.createtime,
-						fileFormat: media.spec.map(o => o.fileFormat)
+						fileFormat: media.spec.map(o => o.fileFormat),
+						contact: data_object.contact
 					};
 					__wx_channels_store__.profile = profile;
 					return feedResult;
