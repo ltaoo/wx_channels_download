@@ -17,7 +17,7 @@ import (
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241030"
+var v = "?t=241031"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -170,21 +170,31 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					document.execCommand("copy");
 					document.body.removeChild(textArea);
 				}
-				function __wx_channels_download(data, filename) {
+				async function __wx_channels_download(profile, filename) {
+					// console.log("__wx_channels_download");
+					const data = profile.data;
 					const blob = new Blob(data, { type: 'application/octet-stream' });
-					const url = URL.createObjectURL(blob);
-					__wx_channels_download2(url, filename);
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js");
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+					const zip = new JSZip();
+					zip.file(filename + ".mp4", blob);
+					const content = await zip.generateAsync({ type: "blob" });
+					saveAs(content, filename + ".zip");
 				}
-				function __wx_channels_download2(url, filename) {
-					const a = document.createElement('a');
-					a.href = url;
-					a.download = filename + '.mp4';
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
+				async function __wx_channels_download2(profile, filename) {
+					const url = profile.url;
+					// console.log("__wx_channels_download2", url);
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js");
+					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+					const zip = new JSZip();
+					const response = await fetch(url);
+					const blob = await response.blob();
+					zip.file(filename + ".mp4", blob);
+					const content = await zip.generateAsync({ type: "blob" });
+					saveAs(content, filename + ".zip");
 				}
 				async function __wx_channels_download3(profile, filename) {
+					// console.log("__wx_channels_download3");
 					const files = profile.files;
 					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js");
 					await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
@@ -238,10 +248,11 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 						return;
 					}
 					if (profile && __wx_channels_store__.buffers.length === 0) {
-						__wx_channels_download2(profile.url, filename);
+						__wx_channels_download2(profile, filename);
 						return;
 					}
-					__wx_channels_download(__wx_channels_store__.buffers, filename);
+					profile.data = __wx_channels_store__.buffers;
+					__wx_channels_download(profile, filename);
 				};
 				var count = 0;
 				var __timer = setInterval(() => {
@@ -320,13 +331,12 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 					return
 				}
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
-					regex := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(o\),`)
+					regex := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
 					replaceStr := `(() => {
-console.log(u);
 if (__wx_channels_store__) {
-	__wx_channels_store__.buffers.push(o);
+	__wx_channels_store__.buffers.push(l);
 }
-})(),this.sourceBuffer.appendBuffer(o),`
+})(),this.sourceBuffer.appendBuffer(l),`
 					hookBody := regex.ReplaceAllString(content, replaceStr)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(hookBody)))
 					return
