@@ -2,22 +2,29 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"os/signal"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/briandowns/spinner"
+	"github.com/fatih/color"
 	"github.com/qtgolang/SunnyNet/SunnyNet"
 	"github.com/qtgolang/SunnyNet/public"
 )
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241031"
+var v = "?t=241101"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -31,17 +38,155 @@ func getFreePort() int {
 	addr := listener.Addr().(*net.TCPAddr)
 	return addr.Port
 }
+
+//go:embed certs/SunnyRoot.cer
+var cert_data []byte
+
+type Subject struct {
+	CN string
+	OU string
+	O  string
+	L  string
+	S  string
+	C  string
+}
+type Certificate struct {
+	Thumbprint string
+	Subject    Subject
+}
+
+func fetchCertificates() ([]Certificate, error) {
+	// 获取指定 store 所有证书
+	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root")
+	ps := exec.Command("powershell.exe", "-Command", cmd)
+	output, err2 := ps.CombinedOutput()
+	if err2 != nil {
+		return nil, errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", err2.Error()))
+	}
+	var certificates []Certificate
+	lines := strings.Split(string(output), "\n")
+	// 跳过前两行（列名）
+	for i := 2; i < len(lines)-1; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, " ")
+		if len(parts) >= 2 {
+			subject := Subject{}
+			for _, part := range parts[1:] {
+				part = strings.Replace(part, ",", "", 1)
+				kv := strings.Split(part, "=")
+				if len(kv) == 2 {
+					key := strings.TrimSpace(kv[0])
+					value := strings.TrimSpace(kv[1])
+					switch key {
+					case "CN":
+						subject.CN = value
+					case "OU":
+						subject.OU = value
+					case "O":
+						subject.O = value
+					case "L":
+						subject.L = value
+					case "S":
+						subject.S = value
+					case "C":
+						subject.C = value
+					}
+				}
+			}
+			certificates = append(certificates, Certificate{
+				Thumbprint: parts[0],
+				Subject:    subject,
+			})
+		}
+	}
+	return certificates, nil
+}
+func checkCertificate(cert_name string) (bool, error) {
+	certificates, err := fetchCertificates()
+	if err != nil {
+		return false, err
+	}
+	for _, cert := range certificates {
+		if cert.Subject.CN == cert_name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func removeCertificate() {
+	// 删除指定证书
+	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"
+}
+func installCertificate() error {
+	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
+	if err != nil {
+		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
+	}
+	defer os.Remove(cert_file.Name())
+	if _, err := cert_file.Write(cert_data); err != nil {
+		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
+	}
+	if err := cert_file.Close(); err != nil {
+		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
+	}
+	cmd := fmt.Sprintf("Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root", cert_file.Name())
+	ps := exec.Command("powershell.exe", "-Command", cmd)
+	_, err2 := ps.CombinedOutput()
+	if err2 != nil {
+		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", err2.Error()))
+	}
+	return nil
+}
+
+func clear_terminal() {
+	cmd := exec.Command("clear")
+	if os.Getenv("OS") == "Windows_NT" {
+		cmd = exec.Command("cls")
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
 func main() {
+	signalChan := make(chan os.Signal, 1)
+	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-signalChan
+		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
+		os.Exit(0)
+	}()
+
+	existing, err1 := checkCertificate("SunnyNet")
+	if err1 != nil {
+		fmt.Printf("ERROR %v\v", err1.Error())
+		return
+	}
+	if existing == false {
+		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+		s.Start()
+		fmt.Println("\n\n正在安装证书...")
+		err := installCertificate()
+		time.Sleep(3 * time.Second)
+		s.Stop()
+		if err != nil {
+			fmt.Printf("ERROR %v\n", err.Error())
+			return
+		}
+	}
 	port := 2023
 	Sunny.SetPort(port)
 	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
 	err := Sunny.Start().Error
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Printf("ERROR %v\n", err.Error())
 		return
 	}
 	sunny_site := fmt.Sprintf("127.0.0.1:%v", port)
-	fmt.Println(fmt.Sprintf("\nServer is running at port %v", port))
+	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(&url.URL{
@@ -54,7 +199,7 @@ func main() {
 	if err3 == nil {
 		ok := Sunny.StartProcess()
 		if !ok {
-			fmt.Println("启动进程代理失败")
+			fmt.Println("ERROR 启动进程代理失败")
 			return
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
@@ -62,13 +207,7 @@ func main() {
 		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", sunny_site))
 	}
 
-	// bold := color.New(color.FgGreen).SprintFunc()
-	fmt.Println(fmt.Sprintf("\n\n此程序由 ltaoo 制作"))
-	fmt.Println(fmt.Sprintf("https://www.zhihu.com/people/ltaoo-46\n\n"))
-
-	fmt.Println(fmt.Sprintf("\n另外此程序大部分参考自以下项目代码"))
-	fmt.Println(fmt.Sprintf("https://github.com/kanadeblisst00/WechatVideoSniffer2.0"))
-	fmt.Println(fmt.Sprintf("https://github.com/qtgolang/SunnyNet"))
+	color.White(fmt.Sprintf("\n\n此程序由 ltaoo 制作"))
 	time.Sleep(24 * time.Hour)
 }
 
