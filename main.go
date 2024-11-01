@@ -42,6 +42,12 @@ func getFreePort() int {
 //go:embed certs/SunnyRoot.cer
 var cert_data []byte
 
+//go:embed lib/FileSaver.min.js
+var file_saver_js []byte
+
+//go:embed lib/jszip.min.js
+var zip_js []byte
+
 type Subject struct {
 	CN string
 	OU string
@@ -218,26 +224,26 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 		// Conn.Request.Header.Set("Cache-Control", "no-cache")
 		Conn.Request.Header.Del("Accept-Encoding")
 		if Includes(path, "jszip") {
-			data, err := os.ReadFile("./lib/jszip.min.js")
-			if err != nil {
-				fmt.Printf("read file failed, because %v\n", err.Error())
-				return
-			}
+			// data, err := os.ReadFile("./lib/jszip.min.js")
+			// if err != nil {
+			// 	fmt.Printf("read file failed, because %v\n", err.Error())
+			// 	return
+			// }
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/javascript")
 			headers.Set("__debug", "local_file")
-			Conn.StopRequest(200, data, headers)
+			Conn.StopRequest(200, zip_js, headers)
 			return
 		}
 		if Includes(path, "FileSaver.min") {
-			data, err := os.ReadFile("./lib/FileSaver.min.js")
-			if err != nil {
-				return
-			}
+			// data, err := os.ReadFile("./lib/FileSaver.min.js")
+			// if err != nil {
+			// 	return
+			// }
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/javascript")
 			headers.Set("__debug", "local_file")
-			Conn.StopRequest(200, data, headers)
+			Conn.StopRequest(200, file_saver_js, headers)
 			return
 		}
 		// 查找主机的 IP 地址
