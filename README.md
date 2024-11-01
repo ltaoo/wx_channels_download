@@ -7,6 +7,8 @@
 ## 241101 更新
 
 现在无需手动下载证书并安装了。
+<br>
+修复了下载时提示找不到 `lib/jszip.min.js` 的问题。
 
 <details><summary>点击查看更多</summary>
 
