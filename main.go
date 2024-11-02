@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=24110202"
+var v = "?t=24110203"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -352,7 +352,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
 					replaceStr1 := `(() => {
-if (__wx_channels_store__ && !__wx_channels_store__.completed) {
+if (__wx_channels_store__) {
 	__wx_channels_store__.buffers.push(l);
 }
 })(),this.sourceBuffer.appendBuffer(l),`
