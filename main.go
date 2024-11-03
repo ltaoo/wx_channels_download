@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=24110203"
+var v = "?t=241103"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -169,11 +169,11 @@ func main() {
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
 		os.Exit(0)
 	}()
-
 	existing, err1 := checkCertificate("SunnyNet")
 	if err1 != nil {
 		fmt.Printf("ERROR %v\v", err1.Error())
-		return
+		fmt.Println("按 Ctrl+C 退出...")
+		select {}
 	}
 	if existing == false {
 		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
@@ -184,7 +184,8 @@ func main() {
 		s.Stop()
 		if err != nil {
 			fmt.Printf("ERROR %v\n", err.Error())
-			return
+			fmt.Println("按 Ctrl+C 退出...")
+			select {}
 		}
 	}
 	port := 2023
@@ -193,7 +194,8 @@ func main() {
 	err := Sunny.Start().Error
 	if err != nil {
 		fmt.Printf("ERROR %v\n", err.Error())
-		return
+		fmt.Println("按 Ctrl+C 退出...")
+		select {}
 	}
 	sunny_site := fmt.Sprintf("127.0.0.1:%v", port)
 	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
@@ -210,13 +212,15 @@ func main() {
 		ok := Sunny.StartProcess()
 		if !ok {
 			fmt.Println("ERROR 启动进程代理失败")
-			return
+			fmt.Println("按 Ctrl+C 退出...")
+			select {}
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
 	} else {
 		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", sunny_site))
 	}
-	time.Sleep(24 * time.Hour)
+	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
+	select {}
 }
 
 type ChannelProfile struct {
@@ -440,7 +444,7 @@ const S={`
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regex2 := regexp.MustCompile(`u.default={dialog`)
-					replaceStr2 := `u.default=__wx_channels_tip__={dialog`
+					replaceStr2 := `u.default=window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
 					// hookBody = strings.Replace(hookBody, "js/index.publishBWnoWtFy.js", "js/index.publishBWnoWtFy.js?t="+now, 1)
 					// Conn.Response.Header.Set("Cache-Control", "no-cache,no-store,max-age=0")

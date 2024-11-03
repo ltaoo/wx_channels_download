@@ -73,8 +73,8 @@ function __wx_load_script(src) {
 }
 function __wx_channels_handle_copy__() {
   __wx_channels_copy(location.href);
-  if (__wx_channels_tip__.toast) {
-    __wx_channels_tip__.toast("复制成功", 1e3);
+  if (window.__wx_channels_tip__ && window.__wx_channels_tip__.toast) {
+    window.__wx_channels_tip__.toast("复制成功", 1e3);
   }
 }
 async function __wx_channels_handle_log__() {
@@ -137,31 +137,11 @@ fetch("/__wx_channels_api/tip", {
 });
 var __timer = setInterval(() => {
   count += 1;
-  const $wrap1 = document.getElementsByClassName("feed-card-wrap")[0];
-  const $wrap2 = document.getElementsByClassName(
-    "operate-row transition-show"
-  )[0];
+  // const $wrap1 = document.getElementsByClassName("feed-card-wrap")[0];
+  // const $wrap2 = document.getElementsByClassName(
+  //   "operate-row transition-show"
+  // )[0];
   const $wrap3 = document.getElementsByClassName("full-opr-wrp layout-row")[0];
-  fetch("/__wx_channels_api/tip", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      msg: (() => {
-        if ($wrap3) {
-          return "wrap3 ok";
-        }
-        if ($wrap2) {
-          return "wrap2 ok";
-        }
-        if ($wrap1) {
-          return "wrap1 ok";
-        }
-        return "等待注入下载按钮";
-      })(),
-    }),
-  });
   if (!$wrap3) {
     if (count >= 5) {
       clearInterval(__timer);
