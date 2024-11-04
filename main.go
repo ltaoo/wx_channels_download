@@ -356,7 +356,9 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
 					replaceStr1 := `(() => {
+if (window.__wx_channels_store__) {
 window.__wx_channels_store__.buffers.push(l);
+}
 })(),this.sourceBuffer.appendBuffer(l),`
 					if regexp1.MatchString(content) {
 						fmt.Println("2. 视频播放 js 修改成功")
@@ -365,7 +367,7 @@ window.__wx_channels_store__.buffers.push(l);
 					regexp2 := regexp.MustCompile(`if\(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
 					replaceStr2 := `if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
 	// console.log(h);
-	if (!window.__wx_channels_store__.decryptor_array) {
+	if (window.__wx_channels_store__ && !window.__wx_channels_store__.decryptor_array) {
 	window.__wx_channels_store__.decryptor_array=h.decryptor_array;
 	}
 }
@@ -412,7 +414,9 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						},
 						body: JSON.stringify(profile)
 					});
+					if (window.__wx_channels_store__) {
 					__wx_channels_store__.profile = profile;
+					}
 					return feedResult;
 				}async`
 					if regexp1.MatchString(content) {
@@ -420,7 +424,7 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regex2 := regexp.MustCompile(`u.default={dialog`)
-					replaceStr2 := `u.default=window.__wx_channels_tip__={dialog`
+					replaceStr2 := `u.default=window.window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
@@ -428,7 +432,7 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					regex := regexp.MustCompile(`,"投诉"\)]`)
 					replaceStr := `,"投诉"),...(() => {
-					if (window.__wx_channels_store__.profile) {
+					if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
 						return window.__wx_channels_store__.profile.spec.map((sp) => {
 							return p("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
