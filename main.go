@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241103"
+var v = "?t=241104"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -197,13 +197,13 @@ func main() {
 		fmt.Println("按 Ctrl+C 退出...")
 		select {}
 	}
-	sunny_site := fmt.Sprintf("127.0.0.1:%v", port)
+	proxy_server := fmt.Sprintf("127.0.0.1:%v", port)
 	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(&url.URL{
 				Scheme: "http",
-				Host:   sunny_site,
+				Host:   proxy_server,
 			}),
 		},
 	}
@@ -217,7 +217,7 @@ func main() {
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
 	} else {
-		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", sunny_site))
+		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", proxy_server))
 	}
 	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
 	select {}
@@ -356,47 +356,21 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
 					replaceStr1 := `(() => {
-if (__wx_channels_store__) {
-	__wx_channels_store__.buffers.push(l);
-}
+window.__wx_channels_store__.buffers.push(l);
 })(),this.sourceBuffer.appendBuffer(l),`
 					if regexp1.MatchString(content) {
 						fmt.Println("2. 视频播放 js 修改成功")
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regexp2 := regexp.MustCompile(`if\(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
-					replaceStr2 := `console.log(h);
-if (h.cmd === "ON_REQUEST_SUCCESS" && h.respHeaders) {
-	const range = h.respHeaders['content-range'];
-	if (range) {
-	const re = /([0-9]{1,})-([0-9]{1,})\/([0-9]{1,})/;
-		const matched = range.match(re);
-			if (matched) {
-				const [m, start, end, total] = matched;
-				const diff = Math.abs(Number(total) - Number(end));
-				console.log("download completed, the diff is", diff);
-				if (diff < 10) {
-					__wx_channels_store__.completed = true;
-				}
-			}
-		}
+					replaceStr2 := `if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
+	// console.log(h);
+	if (!window.__wx_channels_store__.decryptor_array) {
+	window.__wx_channels_store__.decryptor_array=h.decryptor_array;
 	}
+}
 if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					content = regexp2.ReplaceAllString(content, replaceStr2)
-					regexp3 := regexp.MustCompile(`const S={`)
-					replaceStr3 := `this.options.logConfig={
-	openDebugLog:false,
-	openTimeLog:false
-};
-this.options.cacheConfig={
-	lruCacheSize:0,
-	useLruCache:false
-};
-const S={`
-					content = regexp3.ReplaceAllString(content, replaceStr3)
-					regexp4 := regexp.MustCompile(`this._appendMediaSegment\(l`)
-					replaceStr4 := `__wx_channels_store__.buffers2.push(l),this._appendMediaSegment(l`
-					content = regexp4.ReplaceAllString(content, replaceStr4)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
@@ -409,15 +383,17 @@ const S={`
 						return feedResult;
 					}
 					var media = data_object.objectDesc.media[0];
-					var profile = media.videoType === 0 ? {
+					var profile = media.mediaType !== 4 ? {
 						type: "picture",
 						id: data_object.id,
 						title: data_object.objectDesc.description,
 						files: data_object.objectDesc.media,
+						spec: [],
 						contact: data_object.contact
 					} : {
 						type: "media",
 						duration: media.spec[0].durationMs,
+						spec: media.spec,
 						title: data_object.objectDesc.description,
 						url: media.url+media.urlToken,
 						size: media.fileSize,
@@ -446,17 +422,26 @@ const S={`
 					regex2 := regexp.MustCompile(`u.default={dialog`)
 					replaceStr2 := `u.default=window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
-					// hookBody = strings.Replace(hookBody, "js/index.publishBWnoWtFy.js", "js/index.publishBWnoWtFy.js?t="+now, 1)
-					// Conn.Response.Header.Set("Cache-Control", "no-cache,no-store,max-age=0")
-					// Conn.Response.Header.Set("Expires", "0")
-					// Conn.Response.Header.Set("Pragma", "no-cache")
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					regex := regexp.MustCompile(`,"投诉"\)]`)
-					replaceStr := `,"投诉"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_click_download__},"下载视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_log__},"下载日志")]`
-					content := regex.ReplaceAllString(content, replaceStr)
+					replaceStr := `,"投诉"),...(() => {
+					if (window.__wx_channels_store__.profile) {
+						return window.__wx_channels_store__.profile.spec.map((sp) => {
+							return p("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
+						});
+					}
+					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_log__},"下载日志")]`
+					content = regex.ReplaceAllString(content, replaceStr)
+					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+					return
+				}
+				if Includes(path, "worker_release") {
+					regex := regexp.MustCompile(`fmp4Index:p.fmp4Index`)
+					replaceStr := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
+					content = regex.ReplaceAllString(content, replaceStr)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}

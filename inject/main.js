@@ -7,43 +7,37 @@ function __wx_channels_copy(text) {
   document.execCommand("copy");
   document.body.removeChild(textArea);
 }
+function __wx_channels_video_decrypt(t, e, p) {
+  for (
+    var r = new Uint8Array(t), n = 0;
+    n < t.byteLength && e + n < p.decryptor_array.length;
+    n++
+  )
+    r[n] ^= p.decryptor_array[n];
+  return r;
+}
 async function __wx_channels_download(profile, filename) {
-  // console.log("__wx_channels_download");
+  console.log("__wx_channels_download", profile.data);
   const data = profile.data;
-  const blob = new Blob(data, { type: "application/octet-stream" });
-  await __wx_load_script(
-    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
-  );
+  const blob = new Blob(data, { type: "video/mp4" });
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
-  //   const zip = new JSZip();
-  //   zip.file(filename + ".mp4", blob);
-  //   const content = await zip.generateAsync({ type: "blob" });
   saveAs(blob, filename + ".mp4");
 }
 async function __wx_channels_download2(profile, filename) {
+  console.log("__wx_channels_download2");
   const url = profile.url;
-  // console.log("__wx_channels_download2", url);
-  await __wx_load_script(
-    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
-  );
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
-  //   const zip = new JSZip();
   const response = await fetch(url);
   const blob = await response.blob();
-  //   zip.file(filename + ".mp4", blob);
-  //   const content = await zip.generateAsync({ type: "blob" });
   saveAs(blob, filename + ".mp4");
 }
 async function __wx_channels_download3(profile, filename) {
-  // console.log("__wx_channels_download3");
+  console.log("__wx_channels_download3");
   const files = profile.files;
-  await __wx_load_script(
-    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
-  );
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
@@ -60,6 +54,33 @@ async function __wx_channels_download3(profile, filename) {
   await Promise.all(fetchPromises);
   const content = await zip.generateAsync({ type: "blob" });
   saveAs(content, filename + ".zip");
+}
+async function __wx_channels_download4(profile, filename) {
+  const url = profile.url;
+  console.log("__wx_channels_download4", url);
+  fetch("/__wx_channels_api/tip", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      msg: `${filename}
+${url}`,
+    }),
+  });
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
+  const ins = window.__wx_channels_tip__.loading("下载中");
+  const response = await fetch(url);
+  const blob = await response.blob();
+  let array = new Uint8Array(await blob.arrayBuffer());
+  if (profile.decryptor_array) {
+    array = __wx_channels_video_decrypt(array, 0, profile);
+  }
+  ins.hide();
+  const result = new Blob([array], { type: "video/mp4" });
+  saveAs(result, filename + ".mp4");
 }
 function __wx_load_script(src) {
   return new Promise((resolve, reject) => {
@@ -85,7 +106,7 @@ async function __wx_channels_handle_log__() {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   saveAs(blob, "log.txt");
 }
-function __wx_channels_handle_click_download__() {
+function __wx_channels_handle_click_download__(spec) {
   var profile = __wx_channels_store__.profile;
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
@@ -110,7 +131,15 @@ function __wx_channels_handle_click_download__() {
     return;
   }
   profile.data = __wx_channels_store__.buffers;
-  __wx_channels_download(profile, filename);
+  profile.decryptor_array = __wx_channels_store__.decryptor_array;
+  const _profile = {
+    ...profile,
+  };
+  if (spec) {
+    _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
+    filename = filename + "_" + spec.fileFormat;
+  }
+  __wx_channels_download4(_profile, filename);
 }
 var __wx_channels_tip__ = {};
 var __wx_channels_store__ = {
@@ -123,8 +152,14 @@ var $icon = document.createElement("div");
 $icon.innerHTML =
   '<div data-v-6548f11a data-v-c2373d00 class="click-box op-item item-gap-combine" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-c2373d00 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div>';
 var __wx_channels_video_download_btn__ = $icon.firstChild;
-__wx_channels_video_download_btn__.onclick =
-  __wx_channels_handle_click_download__;
+__wx_channels_video_download_btn__.onclick = () => {
+  if (!window.__wx_channels_store__.profile) {
+    return;
+  }
+  __wx_channels_handle_click_download__(
+    window.__wx_channels_store__.profile.spec[0]
+  );
+};
 var count = 0;
 fetch("/__wx_channels_api/tip", {
   method: "POST",
