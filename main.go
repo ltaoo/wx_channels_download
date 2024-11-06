@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241104"
+var v = "?t=241106"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -353,7 +353,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				content = import_reg.ReplaceAllString(content, `import"$1.js`+v+`"`)
 				Conn.Response.Header.Set("__debug", "replace_script")
 
-				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index") {
+				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
 					replaceStr1 := `(() => {
 if (window.__wx_channels_store__) {
@@ -366,9 +366,11 @@ window.__wx_channels_store__.buffers.push(l);
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regexp2 := regexp.MustCompile(`if\(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
 					replaceStr2 := `if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
-	// console.log(h);
-	if (window.__wx_channels_store__ && !window.__wx_channels_store__.decryptor_array) {
-	window.__wx_channels_store__.decryptor_array=h.decryptor_array;
+}
+if(h.cmd==="CUT"){
+	console.log(h);
+	if (window.__wx_channels_store__) {
+	window.__wx_channels_store__.keys[h.seed]=h.decryptor_array;
 	}
 }
 if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
@@ -426,6 +428,46 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					regex2 := regexp.MustCompile(`u.default={dialog`)
 					replaceStr2 := `u.default=window.window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
+					// regex3 := regexp.MustCompile(`const u=this.storage.getSession`)
+					// replaceStr3 := `return;const u = this.storage.getSession`
+					// content = regex3.ReplaceAllString(content, replaceStr3)
+					// regex4 := regexp.MustCompile(`return this.storage.getSession`)
+					// replaceStr4 := `return null;return this.storage.getSession`
+					// content = regex4.ReplaceAllString(content, replaceStr4)
+					regex5 := regexp.MustCompile(`this.updateDetail\(o\)`)
+					replaceStr5 := `(() => {
+					if (Object.keys(o).length===0){
+					return;
+					}
+					var data_object = o;
+					var media = data_object.objectDesc.media[0];
+					var profile = media.mediaType !== 4 ? {
+						type: "picture",
+						id: data_object.id,
+						title: data_object.objectDesc.description,
+						files: data_object.objectDesc.media,
+						spec: [],
+						contact: data_object.contact
+					} : {
+						type: "media",
+						duration: media.spec[0].durationMs,
+						spec: media.spec,
+						title: data_object.objectDesc.description,
+						url: media.url+media.urlToken,
+						size: media.fileSize,
+						key: media.decodeKey,
+						id: data_object.id,
+						nonce_id: data_object.objectNonceId,
+						nickname: data_object.nickname,
+						createtime: data_object.createtime,
+						fileFormat: media.spec.map(o => o.fileFormat),
+						contact: data_object.contact
+					};
+					if (window.__wx_channels_store__) {
+window.__wx_channels_store__.profiles.push(profile);
+					}
+					})(),this.updateDetail(o)`
+					content = regex5.ReplaceAllString(content, replaceStr5)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
@@ -437,7 +479,7 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 							return p("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
 					}
-					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_log__},"下载日志")]`
+					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_log__},"下载日志")]`
 					content = regex.ReplaceAllString(content, replaceStr)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return

@@ -108,6 +108,7 @@ async function __wx_channels_handle_log__() {
 }
 function __wx_channels_handle_click_download__(spec) {
   var profile = __wx_channels_store__.profile;
+  profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
@@ -131,7 +132,20 @@ function __wx_channels_handle_click_download__(spec) {
     return;
   }
   profile.data = __wx_channels_store__.buffers;
-  profile.decryptor_array = __wx_channels_store__.decryptor_array;
+  profile.decryptor_array = __wx_channels_store__.keys[profile.key];
+  if (!profile.decryptor_array) {
+    fetch("/__wx_channels_api/tip", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        msg: `解密失败，停止下载`,
+      }),
+    });
+    alert("解密失败，停止下载");
+    return;
+  }
   const _profile = {
     ...profile,
   };
@@ -141,12 +155,34 @@ function __wx_channels_handle_click_download__(spec) {
   }
   __wx_channels_download4(_profile, filename);
 }
+function __wx_channels_download_cur__() {
+  var profile = __wx_channels_store__.profile;
+  if (!profile) {
+    alert("检测不到视频，请将本工具更新到最新版");
+    return;
+  }
+  if (__wx_channels_store__.buffers.length === 0) {
+    alert("没有可下载的内容");
+    return;
+  }
+  var filename = (() => {
+    if (profile.title) {
+      return profile.title;
+    }
+    if (profile.id) {
+      return profile.id;
+    }
+    return new Date().valueOf();
+  })();
+  profile.data = __wx_channels_store__.buffers;
+  __wx_channels_download(profile, filename);
+}
 var __wx_channels_tip__ = {};
 var __wx_channels_store__ = {
   profile: null,
-  completed: false,
+  profiles: [],
+  keys: {},
   buffers: [],
-  buffers2: [],
 };
 var $icon = document.createElement("div");
 $icon.innerHTML =
