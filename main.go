@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241106"
+var v = "?t=241107"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -418,6 +418,7 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					});
 					if (window.__wx_channels_store__) {
 					__wx_channels_store__.profile = profile;
+					window.__wx_channels_store__.profiles.push(profile);
 					}
 					return feedResult;
 				}async`
@@ -428,12 +429,12 @@ if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					regex2 := regexp.MustCompile(`u.default={dialog`)
 					replaceStr2 := `u.default=window.window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
-					// regex3 := regexp.MustCompile(`const u=this.storage.getSession`)
-					// replaceStr3 := `return;const u = this.storage.getSession`
-					// content = regex3.ReplaceAllString(content, replaceStr3)
-					// regex4 := regexp.MustCompile(`return this.storage.getSession`)
-					// replaceStr4 := `return null;return this.storage.getSession`
-					// content = regex4.ReplaceAllString(content, replaceStr4)
+					regex3 := regexp.MustCompile(`const u=this.storage.getSession`)
+					replaceStr3 := `return;const u = this.storage.getSession`
+					content = regex3.ReplaceAllString(content, replaceStr3)
+					regex4 := regexp.MustCompile(`return this.storage.getSession`)
+					replaceStr4 := `return null;return this.storage.getSession`
+					content = regex4.ReplaceAllString(content, replaceStr4)
 					regex5 := regexp.MustCompile(`this.updateDetail\(o\)`)
 					replaceStr5 := `(() => {
 					if (Object.keys(o).length===0){
