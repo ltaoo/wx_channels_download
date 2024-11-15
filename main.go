@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241107"
+var v = "?t=241115"
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -198,7 +198,6 @@ func main() {
 		select {}
 	}
 	proxy_server := fmt.Sprintf("127.0.0.1:%v", port)
-	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(&url.URL{
@@ -216,6 +215,8 @@ func main() {
 			select {}
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
+		color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
+		fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues")
 	} else {
 		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", proxy_server))
 	}
@@ -354,26 +355,26 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				Conn.Response.Header.Set("__debug", "replace_script")
 
 				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
-					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(l\),`)
+					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(h\),`)
 					replaceStr1 := `(() => {
 if (window.__wx_channels_store__) {
-window.__wx_channels_store__.buffers.push(l);
+window.__wx_channels_store__.buffers.push(h);
 }
-})(),this.sourceBuffer.appendBuffer(l),`
+})(),this.sourceBuffer.appendBuffer(h),`
 					if regexp1.MatchString(content) {
 						fmt.Println("2. 视频播放 js 修改成功")
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
-					regexp2 := regexp.MustCompile(`if\(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
-					replaceStr2 := `if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
+					regexp2 := regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
+					replaceStr2 := `if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
 }
-if(h.cmd==="CUT"){
-	console.log(h);
+if(f.cmd==="CUT"){
+	console.log(f);
 	if (window.__wx_channels_store__) {
-	window.__wx_channels_store__.keys[h.seed]=h.decryptor_array;
+	window.__wx_channels_store__.keys[f.seed]=f.decryptor_array;
 	}
 }
-if(h.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
+if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					content = regexp2.ReplaceAllString(content, replaceStr2)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
