@@ -37,7 +37,8 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var v = "?t=241115"
+var version = "24111501"
+var v = "?t=" + version
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -169,22 +170,24 @@ func main() {
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
 		os.Exit(0)
 	}()
+	fmt.Printf("\nv" + version)
+	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues")
 	existing, err1 := checkCertificate("SunnyNet")
 	if err1 != nil {
-		fmt.Printf("ERROR %v\v", err1.Error())
-		fmt.Println("按 Ctrl+C 退出...")
+		fmt.Printf("\nERROR %v\v", err1.Error())
+		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
 	if existing == false {
 		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
 		s.Start()
-		fmt.Println("\n\n正在安装证书...")
+		fmt.Printf("\n\n正在安装证书...\n")
 		err := installCertificate()
 		time.Sleep(3 * time.Second)
 		s.Stop()
 		if err != nil {
-			fmt.Printf("ERROR %v\n", err.Error())
-			fmt.Println("按 Ctrl+C 退出...")
+			fmt.Printf("\nERROR %v\n", err.Error())
+			fmt.Printf("按 Ctrl+C 退出...\n")
 			select {}
 		}
 	}
@@ -193,8 +196,8 @@ func main() {
 	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
 	err := Sunny.Start().Error
 	if err != nil {
-		fmt.Printf("ERROR %v\n", err.Error())
-		fmt.Println("按 Ctrl+C 退出...")
+		fmt.Printf("\nERROR %v\n", err.Error())
+		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
 	proxy_server := fmt.Sprintf("127.0.0.1:%v", port)
@@ -210,13 +213,12 @@ func main() {
 	if err3 == nil {
 		ok := Sunny.StartProcess()
 		if !ok {
-			fmt.Println("ERROR 启动进程代理失败")
-			fmt.Println("按 Ctrl+C 退出...")
+			fmt.Printf("\nERROR 启动进程代理失败\n")
+			fmt.Printf("按 Ctrl+C 退出...\n")
 			select {}
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
 		color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
-		fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues")
 	} else {
 		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", proxy_server))
 	}
@@ -427,8 +429,8 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						fmt.Println("3. 视频详情页 js 修改成功")
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
-					regex2 := regexp.MustCompile(`u.default={dialog`)
-					replaceStr2 := `u.default=window.window.__wx_channels_tip__={dialog`
+					regex2 := regexp.MustCompile(`r.default={dialog`)
+					replaceStr2 := `r.default=window.window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
 					regex3 := regexp.MustCompile(`const u=this.storage.getSession`)
 					replaceStr3 := `return;const u = this.storage.getSession`

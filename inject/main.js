@@ -71,14 +71,19 @@ ${url}`,
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
-  const ins = window.__wx_channels_tip__.loading("下载中");
+  let ins = null;
+  if (window.__wx_channels_tip__) {
+    ins = window.__wx_channels_tip__.loading("下载中");
+  }
   const response = await fetch(url);
   const blob = await response.blob();
   let array = new Uint8Array(await blob.arrayBuffer());
   if (profile.decryptor_array) {
     array = __wx_channels_video_decrypt(array, 0, profile);
   }
-  ins.hide();
+  if (ins) {
+    ins.hide();
+  }
   const result = new Blob([array], { type: "video/mp4" });
   saveAs(result, filename + ".mp4");
 }
