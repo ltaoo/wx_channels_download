@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -37,7 +38,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "24111501"
+var version = "241211"
 var v = "?t=" + version
 
 func Includes(str, substr string) bool {
@@ -66,13 +67,13 @@ type Certificate struct {
 	Subject    Subject
 }
 
-func fetchCertificates() ([]Certificate, error) {
+func fetchCertificatesInWindows() ([]Certificate, error) {
 	// 获取指定 store 所有证书
 	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root")
 	ps := exec.Command("powershell.exe", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", err2.Error()))
+		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
 	}
 	var certificates []Certificate
 	lines := strings.Split(string(output), "\n")
@@ -115,6 +116,63 @@ func fetchCertificates() ([]Certificate, error) {
 	}
 	return certificates, nil
 }
+func fetchCertificatesInMacOS() ([]Certificate, error) {
+	cmd := exec.Command("security", "find-certificate", "-a")
+	output, err2 := cmd.Output()
+	if err2 != nil {
+		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
+	}
+	var certificates []Certificate
+	lines := strings.Split(string(output), "\n")
+	for i := 0; i < len(lines)-1; i += 13 {
+		if lines[i] == "" {
+			continue
+		}
+		// if i > len(lines)-1 {
+		// 	continue
+		// }
+		cenc := lines[i+5]
+		ctyp := lines[i+6]
+		hpky := lines[i+7]
+		labl := lines[i+9]
+		subj := lines[i+12]
+		re := regexp.MustCompile(`="([^"]{1,})"`)
+		// 找到匹配的字符串
+		matches := re.FindStringSubmatch(labl)
+		if len(matches) < 1 {
+			continue
+		}
+		label := matches[1]
+		certificates = append(certificates, Certificate{
+			Thumbprint: "",
+			Subject: Subject{
+				CN: label,
+				OU: cenc,
+				O:  ctyp,
+				L:  hpky,
+				S:  subj,
+				C:  cenc,
+			},
+		})
+	}
+	return certificates, nil
+}
+
+func fetchCertificates() ([]Certificate, error) {
+	os_env := runtime.GOOS
+	switch os_env {
+	case "linux":
+		fmt.Println("Running on Linux")
+	case "darwin":
+		return fetchCertificatesInMacOS()
+	case "windows":
+		return fetchCertificatesInWindows()
+	default:
+		fmt.Printf("Running on %s\n", os_env)
+	}
+	return nil, errors.New(fmt.Sprintf("unknown OS\n"))
+
+}
 func checkCertificate(cert_name string) (bool, error) {
 	certificates, err := fetchCertificates()
 	if err != nil {
@@ -131,7 +189,7 @@ func removeCertificate() {
 	// 删除指定证书
 	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"
 }
-func installCertificate() error {
+func installCertificateInWindows() error {
 	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
 	if err != nil {
 		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
@@ -151,6 +209,68 @@ func installCertificate() error {
 	}
 	return nil
 }
+func installCertificateInMacOS() error {
+	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
+	if err != nil {
+		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
+	}
+	defer os.Remove(cert_file.Name())
+	if _, err := cert_file.Write(cert_data); err != nil {
+		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
+	}
+	if err := cert_file.Close(); err != nil {
+		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
+	}
+	cmd := fmt.Sprintf("security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '%s'", cert_file.Name())
+	ps := exec.Command("bash", "-c", cmd)
+	output, err2 := ps.CombinedOutput()
+	if err2 != nil {
+		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", output))
+	}
+	return nil
+}
+
+func installCertificate() error {
+	os_env := runtime.GOOS
+	switch os_env {
+	case "linux":
+		fmt.Println("Running on Linux")
+	case "darwin":
+		return installCertificateInMacOS()
+	case "windows":
+		return installCertificateInWindows()
+	default:
+		fmt.Printf("Running on %s\n", os_env)
+	}
+	return errors.New(fmt.Sprintf("unknown OS\n"))
+}
+
+func enableProxyInMacOS() error {
+	cmd1 := exec.Command("networksetup", "-setwebproxy", "Wi-Fi", "127.0.0.1", "2023")
+	_, err1 := cmd1.Output()
+	if err1 != nil {
+		return errors.New(fmt.Sprintf("设置 HTTP 代理失败，%v\n", err1.Error()))
+	}
+	cmd2 := exec.Command("networksetup", "-setsecurewebproxy", "Wi-Fi", "127.0.0.1", "2023")
+	_, err2 := cmd2.Output()
+	if err2 != nil {
+		return errors.New(fmt.Sprintf("设置 HTTPS 代理失败，%v\n", err2.Error()))
+	}
+	return nil
+}
+func disableProxyInMacOS() error {
+	cmd1 := exec.Command("networksetup", "-setwebproxystate", "Wi-Fi", "off")
+	_, err1 := cmd1.Output()
+	if err1 != nil {
+		return errors.New(fmt.Sprintf("禁用 HTTP 代理失败，%v\n", err1.Error()))
+	}
+	cmd2 := exec.Command("networksetup", "-setsecurewebproxystate", "Wi-Fi", "off")
+	_, err2 := cmd2.Output()
+	if err2 != nil {
+		return errors.New(fmt.Sprintf("禁用 HTTPS 代理失败，%v\n", err2.Error()))
+	}
+	return nil
+}
 
 func clear_terminal() {
 	cmd := exec.Command("clear")
@@ -162,16 +282,20 @@ func clear_terminal() {
 }
 
 func main() {
+	os_env := runtime.GOOS
 	signalChan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-signalChan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
+		if os_env == "darwin" {
+			disableProxyInMacOS()
+		}
 		os.Exit(0)
 	}()
 	fmt.Printf("\nv" + version)
-	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues")
+	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
 	existing, err1 := checkCertificate("SunnyNet")
 	if err1 != nil {
 		fmt.Printf("\nERROR %v\v", err1.Error())
@@ -211,13 +335,23 @@ func main() {
 	}
 	_, err3 := client.Get("https://sunny.io/")
 	if err3 == nil {
-		ok := Sunny.StartProcess()
-		if !ok {
-			fmt.Printf("\nERROR 启动进程代理失败\n")
-			fmt.Printf("按 Ctrl+C 退出...\n")
-			select {}
+		if os_env == "windows" {
+			ok := Sunny.StartProcess()
+			if !ok {
+				fmt.Printf("\nERROR 启动进程代理失败\n")
+				fmt.Printf("按 Ctrl+C 退出...\n")
+				select {}
+			}
+			Sunny.ProcessAddName("WeChatAppEx.exe")
 		}
-		Sunny.ProcessAddName("WeChatAppEx.exe")
+		if os_env == "darwin" {
+			err := enableProxyInMacOS()
+			if err != nil {
+				fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
+				fmt.Printf("按 Ctrl+C 退出...\n")
+				select {}
+			}
+		}
 		color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	} else {
 		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", proxy_server))
