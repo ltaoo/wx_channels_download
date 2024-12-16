@@ -38,7 +38,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "241211"
+var version = "241216"
 var v = "?t=" + version
 
 func Includes(str, substr string) bool {
@@ -466,11 +466,43 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
 				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
 				Conn.Response.Header.Set("__debug", "append_script")
+				script2 := ""
+				// script2 := `<script src="https://debug.funzm.com/target.js"></script>`
+				// 				script2 := `<script
+				//       crossorigin="anonymous"
+				//       src="https://pagespy.jikejishu.com/page-spy/index.min.js"
+				//     ></script>
+				//     <script
+				//       crossorigin="anonymous"
+				//       src="https://pagespy.jikejishu.com/plugin/data-harbor/index.min.js"
+				//     ></script>
+				//     <script
+				//       crossorigin="anonymous"
+				//       src="https://pagespy.jikejishu.com/plugin/rrweb/index.min.js"
+				//     ></script>
+				//     <!-- 使用第二步：实例化 PageSpy -->
+				//     <script>
+				//       window.$harbor = new DataHarborPlugin();
+				//       window.$rrweb = new RRWebPlugin();
+				//       [window.$harbor, window.$rrweb].forEach((p) => {
+				//         PageSpy.registerPlugin(p);
+				//       });
 
-				if host == "channels.weixin.qq.com" && path == "/web/pages/feed" {
+				//       // 实例化的参数都是可选的
+				//       window.$pageSpy = new PageSpy({
+				//         api: "pagespy.jikejishu.com",
+				//         clientOrigin: "https://pagespy.jikejishu.com",
+				//         project: "React 演示",
+				//         autoRender: true,
+				//         title: "PageSpy 🤝 React",
+				//       });
+				//       // 之后即可使用 PageSpy，前往 https://pagespy.jikejishu.com 体验
+				//     </script>`
+
+				if host == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
 					// Conn.Response.Header.Add("wx-channel-video-download", "1")
 					script := fmt.Sprintf(`<script>%s</script>`, main_js)
-					html = strings.Replace(html, "<head>", "<head>\n"+script, 1)
+					html = strings.Replace(html, "<head>", "<head>\n"+script+script2, 1)
 					fmt.Println("1. 视频详情页 html 注入 js 成功")
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(html)))
 					return

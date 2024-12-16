@@ -28,11 +28,28 @@ async function __wx_channels_download(profile, filename) {
 async function __wx_channels_download2(profile, filename) {
   console.log("__wx_channels_download2");
   const url = profile.url;
+  fetch("/__wx_channels_api/tip", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      msg: `${filename}
+${url}`,
+    }),
+  });
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
+  let ins = null;
+  if (window.__wx_channels_tip__) {
+    ins = window.__wx_channels_tip__.loading("下载中");
+  }
   const response = await fetch(url);
   const blob = await response.blob();
+  if (ins) {
+    ins.hide();
+  }
   saveAs(blob, filename + ".mp4");
 }
 async function __wx_channels_download3(profile, filename) {
