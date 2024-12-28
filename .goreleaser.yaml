@@ -19,7 +19,7 @@ builds:
   - env:
       - CGO_ENABLED=0
     goos:
-      # - windows
+      - windows
       - darwin
     main: ./main.go
     binary: wx_video_download

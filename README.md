@@ -154,3 +154,10 @@ https://github.com/kanadeblisst00/WechatVideoSniffer2.0
 此程序的核心实现依赖以下库
 <br>
 https://github.com/qtgolang/SunnyNet
+
+## 我的赞赏码
+
+如果我的项目对你有所帮助，可以请我喝杯咖啡 ☕️
+
+![](assets/reward.png)
+
