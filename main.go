@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"github.com/qtgolang/SunnyNet/SunnyNet"
 	"github.com/qtgolang/SunnyNet/public"
@@ -303,12 +302,9 @@ func main() {
 		select {}
 	}
 	if existing == false {
-		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-		s.Start()
 		fmt.Printf("\n\n正在安装证书...\n")
 		err := installCertificate()
 		time.Sleep(3 * time.Second)
-		s.Stop()
 		if err != nil {
 			fmt.Printf("\nERROR %v\n", err.Error())
 			fmt.Printf("按 Ctrl+C 退出...\n")
