@@ -152,6 +152,4 @@ https://github.com/qtgolang/SunnyNet
 
 如果我的项目对你有所帮助，可以请我喝杯咖啡 ☕️
 
-![](assets/reward.png)
-
-<img src='/assets/sponsors.svg' alt="" />
+![My Sponsors](https://sponsorkit-iota.vercel.app/api/sponsors)
