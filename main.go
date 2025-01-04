@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "241216"
+var version = "250104"
 var v = "?t=" + version
 
 func Includes(str, substr string) bool {
@@ -530,10 +530,14 @@ window.__wx_channels_store__.buffers.push(h);
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regexp2 := regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
-					replaceStr2 := `if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
+					replaceStr2 := `console.log(f);if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
+	console.log("AUTO_CUT", f);
+	if (window.__wx_channels_store__) {
+	window.__wx_channels_store__.keys[f.seed]=f.decryptor_array;
+	}
 }
 if(f.cmd==="CUT"){
-	console.log(f);
+	console.log("CUT", f);
 	if (window.__wx_channels_store__) {
 	window.__wx_channels_store__.keys[f.seed]=f.decryptor_array;
 	}
