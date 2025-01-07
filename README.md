@@ -18,15 +18,14 @@ sudo ./wx_video_download_drawin_xxx
 ```
 
 此时会提示文件不能打开，需要到系统设置中允许，然后重新执行 `sudo ./wx_video_download_drawin_xxx`。
-
 <br/>
-
 在安装证书的过程中会申请权限，同意即可。后续打开无需使用 `sudo`，只需要双击运行
-
 <br/>
 关闭 `macOS` 终端时请使用 `Command + c` 的方式，否则可能会出现系统代理未取消，导致网络无法访问的问题
 <br/>
 当出现网络无法访问时请检查系统代理并手动取消即可。
+
+<br/>
 
 <details><summary>点击查看更多</summary>
 
