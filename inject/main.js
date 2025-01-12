@@ -1,3 +1,32 @@
+const defaultRandomAlphabet =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+function __wx_uid__() {
+  return random_string(12);
+}
+/**
+ * 返回一个指定长度的随机字符串
+ * @param length
+ * @returns
+ */
+function random_string(length) {
+  return random_string_with_alphabet(length, defaultRandomAlphabet);
+}
+function random_string_with_alphabet(length, alphabet) {
+  let b = new Array(length);
+  let max = alphabet.length;
+  for (let i = 0; i < b.length; i++) {
+    let n = Math.floor(Math.random() * max);
+    b[i] = alphabet[n];
+  }
+  return b.join("");
+}
+function sleep() {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, 1000);
+  });
+}
 function __wx_channels_copy(text) {
   const textArea = document.createElement("textarea");
   textArea.value = text;
@@ -6,6 +35,15 @@ function __wx_channels_copy(text) {
   textArea.select();
   document.execCommand("copy");
   document.body.removeChild(textArea);
+}
+function __wx_log(msg) {
+  fetch("/__wx_channels_api/tip", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(msg),
+  });
 }
 function __wx_channels_video_decrypt(t, e, p) {
   for (
@@ -16,8 +54,46 @@ function __wx_channels_video_decrypt(t, e, p) {
     r[n] ^= p.decryptor_array[n];
   return r;
 }
+window.VTS_WASM_URL =
+  "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.wasm";
+window.MAX_HEAP_SIZE = 33554432;
+var decryptor_array;
+let decryptor;
+/** t 是要解码的视频内容长度    e 是 decryptor_array 的长度 */
+function wasm_isaac_generate(t, e) {
+  decryptor_array = new Uint8Array(e);
+  var r = new Uint8Array(Module.HEAPU8.buffer, t, e);
+  decryptor_array.set(r.reverse());
+  if (decryptor) {
+    decryptor.delete();
+  }
+}
+let loaded = false;
+/** 获取 decrypt_array */
+async function __wx_channels_decrypt(seed) {
+  if (!loaded) {
+    await __wx_load_script(
+      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js"
+    );
+    loaded = true;
+  }
+  await sleep();
+  __wx_log({
+    msg: `[]__wx_channels_decrypt - ${typeof Module.WxIsaac64}`,
+  });
+  decryptor = new Module.WxIsaac64(seed);
+  // 调用该方法时，会调用 wasm_isaac_generate 方法
+  // 131072 是 decryptor_array 的长度
+  decryptor.generate(131072);
+  // decryptor.delete();
+  // const r = Uint8ArrayToBase64(decryptor_array);
+  // decryptor_array = undefined;
+  return decryptor_array;
+}
+
+/** 用于下载已经播放的视频内容 */
 async function __wx_channels_download(profile, filename) {
-  console.log("__wx_channels_download", profile.data);
+  console.log("__wx_channels_download");
   const data = profile.data;
   const blob = new Blob(data, { type: "video/mp4" });
   await __wx_load_script(
@@ -25,19 +101,15 @@ async function __wx_channels_download(profile, filename) {
   );
   saveAs(blob, filename + ".mp4");
 }
+/** 下载非加密视频 */
 async function __wx_channels_download2(profile, filename) {
   console.log("__wx_channels_download2");
   const url = profile.url;
-  fetch("/__wx_channels_api/tip", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      msg: `${filename}
-${url}`,
-    }),
-  });
+  //   __wx_log({
+  //     msg: `${filename}
+  // ${url}
+  // ${profile.key}`,
+  //   });
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
@@ -52,6 +124,7 @@ ${url}`,
   }
   saveAs(blob, filename + ".mp4");
 }
+/** 下载图片视频 */
 async function __wx_channels_download3(profile, filename) {
   console.log("__wx_channels_download3");
   const files = profile.files;
@@ -72,19 +145,15 @@ async function __wx_channels_download3(profile, filename) {
   const content = await zip.generateAsync({ type: "blob" });
   saveAs(content, filename + ".zip");
 }
+/** 下载加密视频 */
 async function __wx_channels_download4(profile, filename) {
+  console.log("__wx_channels_download4");
   const url = profile.url;
-  console.log("__wx_channels_download4", url);
-  fetch("/__wx_channels_api/tip", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      msg: `${filename}
-${url}`,
-    }),
-  });
+  //   console.log("__wx_channels_download4", url);
+  //   __wx_log({
+  //     msg: `${filename}
+  // ${url}`,
+  //   });
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
@@ -128,14 +197,14 @@ async function __wx_channels_handle_log__() {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   saveAs(blob, "log.txt");
 }
-function __wx_channels_handle_click_download__(spec) {
+async function __wx_channels_handle_click_download__(spec) {
   var profile = __wx_channels_store__.profile;
-  profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
+  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
   }
-  console.log(__wx_channels_store__);
+  // console.log(__wx_channels_store__);
   var filename = (() => {
     if (profile.title) {
       return profile.title;
@@ -145,35 +214,41 @@ function __wx_channels_handle_click_download__(spec) {
     }
     return new Date().valueOf();
   })();
-  if (profile && profile.type === "picture") {
-    __wx_channels_download3(profile, filename);
-    return;
-  }
-  if (profile && __wx_channels_store__.buffers.length === 0) {
-    __wx_channels_download2(profile, filename);
-    return;
-  }
-  profile.data = __wx_channels_store__.buffers;
-  profile.decryptor_array = __wx_channels_store__.keys[profile.key];
-  if (!profile.decryptor_array) {
-    fetch("/__wx_channels_api/tip", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        msg: `解密失败，停止下载`,
-      }),
-    });
-    alert("解密失败，停止下载");
-    return;
-  }
   const _profile = {
     ...profile,
   };
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
     filename = filename + "_" + spec.fileFormat;
+  }
+  // console.log("__wx_channels_handle_click_download__", url);
+  __wx_log({
+    msg: `${filename}
+${_profile.url}
+${_profile.key}`,
+  });
+  if (_profile.type === "picture") {
+    __wx_channels_download3(_profile, filename);
+    return;
+  }
+  if (!_profile.key) {
+    __wx_channels_download2(_profile, filename);
+    return;
+  }
+  _profile.data = __wx_channels_store__.buffers;
+  _profile.decryptor_array = __wx_channels_store__.keys[_profile.key];
+  if (!_profile.decryptor_array) {
+    try {
+      const r = await __wx_channels_decrypt(_profile.key);
+      // console.log("[]after __wx_channels_decrypt", r);
+      _profile.decryptor_array = r;
+    } catch (err) {
+      __wx_log({
+        msg: `解密失败，停止下载`,
+      });
+      alert("解密失败，停止下载");
+      return;
+    }
   }
   __wx_channels_download4(_profile, filename);
 }

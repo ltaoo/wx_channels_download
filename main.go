@@ -37,7 +37,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "250104"
+var version = "250112"
 var v = "?t=" + version
 
 func Includes(str, substr string) bool {
@@ -391,7 +391,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 			if err != nil {
 				fmt.Println(err.Error())
 			}
-			fmt.Printf("\n%s\n", data.Title)
+			fmt.Printf("\n打开了视频\n%s\n", data.Title)
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/json")
 			headers.Set("__debug", "fake_resp")
@@ -530,16 +530,10 @@ window.__wx_channels_store__.buffers.push(h);
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
 					regexp2 := regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
-					replaceStr2 := `console.log(f);if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT) {
-	console.log("AUTO_CUT", f);
+					replaceStr2 := `if(f.cmd==="CUT"){
 	if (window.__wx_channels_store__) {
-	window.__wx_channels_store__.keys[f.seed]=f.decryptor_array;
-	}
-}
-if(f.cmd==="CUT"){
-	console.log("CUT", f);
-	if (window.__wx_channels_store__) {
-	window.__wx_channels_store__.keys[f.seed]=f.decryptor_array;
+	console.log("CUT", f, __wx_channels_store__.profile.key);
+	window.__wx_channels_store__.keys[__wx_channels_store__.profile.key]=f.decryptor_array;
 	}
 }
 if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
