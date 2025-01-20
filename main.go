@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -39,6 +40,7 @@ var main_js []byte
 var Sunny = SunnyNet.NewSunny()
 var version = "250112"
 var v = "?t=" + version
+var port = 2023
 
 func Includes(str, substr string) bool {
 	return strings.Contains(str, substr)
@@ -244,26 +246,26 @@ func installCertificate() error {
 	return errors.New(fmt.Sprintf("unknown OS\n"))
 }
 
-func enableProxyInMacOS() error {
-	cmd1 := exec.Command("networksetup", "-setwebproxy", "Wi-Fi", "127.0.0.1", "2023")
+func enableProxyInMacOS(mArgs Map) error {
+	cmd1 := exec.Command("networksetup", "-setwebproxy", mArgs["dev"], "127.0.0.1", mArgs["port"])
 	_, err1 := cmd1.Output()
 	if err1 != nil {
 		return errors.New(fmt.Sprintf("设置 HTTP 代理失败，%v\n", err1.Error()))
 	}
-	cmd2 := exec.Command("networksetup", "-setsecurewebproxy", "Wi-Fi", "127.0.0.1", "2023")
+	cmd2 := exec.Command("networksetup", "-setsecurewebproxy", mArgs["dev"], "127.0.0.1", mArgs["port"])
 	_, err2 := cmd2.Output()
 	if err2 != nil {
 		return errors.New(fmt.Sprintf("设置 HTTPS 代理失败，%v\n", err2.Error()))
 	}
 	return nil
 }
-func disableProxyInMacOS() error {
-	cmd1 := exec.Command("networksetup", "-setwebproxystate", "Wi-Fi", "off")
+func disableProxyInMacOS(mArgs Map) error {
+	cmd1 := exec.Command("networksetup", "-setwebproxystate", mArgs["dev"], "off")
 	_, err1 := cmd1.Output()
 	if err1 != nil {
 		return errors.New(fmt.Sprintf("禁用 HTTP 代理失败，%v\n", err1.Error()))
 	}
-	cmd2 := exec.Command("networksetup", "-setsecurewebproxystate", "Wi-Fi", "off")
+	cmd2 := exec.Command("networksetup", "-setsecurewebproxystate", mArgs["dev"], "off")
 	_, err2 := cmd2.Output()
 	if err2 != nil {
 		return errors.New(fmt.Sprintf("禁用 HTTPS 代理失败，%v\n", err2.Error()))
@@ -280,8 +282,102 @@ func clear_terminal() {
 	cmd.Run()
 }
 
+// https://github.com/levicook/argmapper/blob/master/argmapper.go
+type Map map[string]string
+
+func argsToMap(args []string) (m Map) {
+	m = make(Map)
+	if len(args) == 0 { return }
+
+nextopt:
+	for i, s := range args {
+		// does s look like an option?
+		if len(s) > 1 && s[0] == '-' {
+			k := ""
+			v := ""
+
+			num_minuses := 1
+			if s[1] == '-' { num_minuses++ }
+
+			k = s[num_minuses:]
+			if len(k) == 0 || k[0] == '-' || k[0] == '=' { continue nextopt }
+
+			for i := 1; i < len(k); i++ { // equals cannot be first
+				if k[i] == '=' {
+					v = k[i+1:]
+					k = k[0:i]
+					break
+				}
+			}
+
+			// It must have a value, which might be the next arg, assuming the next arg isn't an option too.
+			remaining := args[i+1:]
+			if v == "" && len(remaining) > 0 && remaining[0][0] != '-' { v = remaining[0] } 	// value is the next arg
+			m[k] = v
+		}
+	}
+	return m
+}
+
+// 解析参数
+func argsParser(args []string) (m Map) {
+	m = argsToMap(os.Args)							// 分解参数列表为Map
+	if v, ok := m["help"]; ok { printUsage(v) }		// 存在help则输出帮助信息并退出主程序
+	if v, ok := m["v"]; ok {						// 存在v则输出版本信息并退出主程序
+		fmt.Printf("v%s %.0s\n", version, v)
+		os.Exit(0)
+	}
+	if v, ok := m["version"]; ok {					// 存在version则输出版本信息并退出主程序
+		fmt.Printf("v%s %.0s\n", version, v)
+		os.Exit(0)
+	}
+	
+	// 设置参数默认值
+	m["dev"]  = argsValue(m, "Wi-Fi", "d", "dev")
+	m["port"] = argsValue(m, "",  "p", "port")
+	iport, errstr := strconv.Atoi(m["port"])
+	if errstr != nil {
+		m["port"] = strconv.Itoa(port)				// 用户自定义值解析失败则使用默认端口
+	} else { port = iport }
+	
+	delete(m, "p")	// 删除冗余的参数p
+	delete(m, "d")	// 删除冗余的参数d
+	
+	// 输出用户参数
+	fmt.Printf("User parameters: ")
+	for k,v := range m{
+        fmt.Printf("%s=%s ", k, v)
+	}
+	return m
+}
+
+// 获取指定参数名的值,获取失败返回默认值(多个参数名则返回最先找到的值)
+func argsValue(margs Map, def string, keys ...string) (value string) {
+	value = def									// 默认值
+	for _, key := range keys {
+		if v, ok := margs[key]; ok && v != "" { // 找到参数
+			value = v 							// 存储该值
+			break
+		}
+	}
+	return value
+}
+
+// 打印帮助信息
+func printUsage(help string) {
+	fmt.Printf("Usage: wx_video_download [OPTION...]\n")
+	fmt.Printf("Download weChat video.\n\n")
+	fmt.Printf("      --help                 display this help and exit\n")
+	fmt.Printf("  -v, --version              output version information and exit\n")
+	fmt.Printf("  -p, --port                 set proxy server network port\n")
+	fmt.Printf("  -d, --dev                  set proxy server network device\n")
+	os.Exit(0)
+}
+
 func main() {
 	os_env := runtime.GOOS
+	mArgs := argsParser(os.Args)		// 解析参数
+
 	signalChan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
@@ -289,7 +385,7 @@ func main() {
 		sig := <-signalChan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
 		if os_env == "darwin" {
-			disableProxyInMacOS()
+			disableProxyInMacOS(mArgs)
 		}
 		os.Exit(0)
 	}()
@@ -311,7 +407,6 @@ func main() {
 			select {}
 		}
 	}
-	port := 2023
 	Sunny.SetPort(port)
 	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
 	err := Sunny.Start().Error
@@ -341,7 +436,7 @@ func main() {
 			Sunny.ProcessAddName("WeChatAppEx.exe")
 		}
 		if os_env == "darwin" {
-			err := enableProxyInMacOS()
+			err := enableProxyInMacOS(mArgs)
 			if err != nil {
 				fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
 				fmt.Printf("按 Ctrl+C 退出...\n")
