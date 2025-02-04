@@ -4,25 +4,27 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"regexp"
 	"runtime"
-	"strings"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/qtgolang/SunnyNet/SunnyNet"
 	"github.com/qtgolang/SunnyNet/public"
+
+	"wx_channel/pkg/argv"
+	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/proxy"
+	"wx_channel/pkg/util"
 )
 
 //go:embed certs/SunnyRoot.cer
@@ -38,335 +40,14 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "250112"
+var version = "250204"
 var v = "?t=" + version
 var port = 2023
 
-func Includes(str, substr string) bool {
-	return strings.Contains(str, substr)
-}
-func getFreePort() int {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return 0
-	}
-	defer listener.Close()
-	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port
-}
-
-type Subject struct {
-	CN string
-	OU string
-	O  string
-	L  string
-	S  string
-	C  string
-}
-type Certificate struct {
-	Thumbprint string
-	Subject    Subject
-}
-
-func fetchCertificatesInWindows() ([]Certificate, error) {
-	// 获取指定 store 所有证书
-	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root")
-	ps := exec.Command("powershell.exe", "-Command", cmd)
-	output, err2 := ps.CombinedOutput()
-	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
-	}
-	var certificates []Certificate
-	lines := strings.Split(string(output), "\n")
-	// 跳过前两行（列名）
-	for i := 2; i < len(lines)-1; i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, " ")
-		if len(parts) >= 2 {
-			subject := Subject{}
-			for _, part := range parts[1:] {
-				part = strings.Replace(part, ",", "", 1)
-				kv := strings.Split(part, "=")
-				if len(kv) == 2 {
-					key := strings.TrimSpace(kv[0])
-					value := strings.TrimSpace(kv[1])
-					switch key {
-					case "CN":
-						subject.CN = value
-					case "OU":
-						subject.OU = value
-					case "O":
-						subject.O = value
-					case "L":
-						subject.L = value
-					case "S":
-						subject.S = value
-					case "C":
-						subject.C = value
-					}
-				}
-			}
-			certificates = append(certificates, Certificate{
-				Thumbprint: parts[0],
-				Subject:    subject,
-			})
-		}
-	}
-	return certificates, nil
-}
-func fetchCertificatesInMacOS() ([]Certificate, error) {
-	cmd := exec.Command("security", "find-certificate", "-a")
-	output, err2 := cmd.Output()
-	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
-	}
-	var certificates []Certificate
-	lines := strings.Split(string(output), "\n")
-	for i := 0; i < len(lines)-1; i += 13 {
-		if lines[i] == "" {
-			continue
-		}
-		// if i > len(lines)-1 {
-		// 	continue
-		// }
-		cenc := lines[i+5]
-		ctyp := lines[i+6]
-		hpky := lines[i+7]
-		labl := lines[i+9]
-		subj := lines[i+12]
-		re := regexp.MustCompile(`="([^"]{1,})"`)
-		// 找到匹配的字符串
-		matches := re.FindStringSubmatch(labl)
-		if len(matches) < 1 {
-			continue
-		}
-		label := matches[1]
-		certificates = append(certificates, Certificate{
-			Thumbprint: "",
-			Subject: Subject{
-				CN: label,
-				OU: cenc,
-				O:  ctyp,
-				L:  hpky,
-				S:  subj,
-				C:  cenc,
-			},
-		})
-	}
-	return certificates, nil
-}
-
-func fetchCertificates() ([]Certificate, error) {
-	os_env := runtime.GOOS
-	switch os_env {
-	case "linux":
-		fmt.Println("Running on Linux")
-	case "darwin":
-		return fetchCertificatesInMacOS()
-	case "windows":
-		return fetchCertificatesInWindows()
-	default:
-		fmt.Printf("Running on %s\n", os_env)
-	}
-	return nil, errors.New(fmt.Sprintf("unknown OS\n"))
-
-}
-func checkCertificate(cert_name string) (bool, error) {
-	certificates, err := fetchCertificates()
-	if err != nil {
-		return false, err
-	}
-	for _, cert := range certificates {
-		if cert.Subject.CN == cert_name {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-func removeCertificate() {
-	// 删除指定证书
-	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"
-}
-func installCertificateInWindows() error {
-	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
-	if err != nil {
-		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
-	}
-	defer os.Remove(cert_file.Name())
-	if _, err := cert_file.Write(cert_data); err != nil {
-		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
-	}
-	if err := cert_file.Close(); err != nil {
-		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
-	}
-	cmd := fmt.Sprintf("Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root", cert_file.Name())
-	ps := exec.Command("powershell.exe", "-Command", cmd)
-	_, err2 := ps.CombinedOutput()
-	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", err2.Error()))
-	}
-	return nil
-}
-func installCertificateInMacOS() error {
-	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
-	if err != nil {
-		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
-	}
-	defer os.Remove(cert_file.Name())
-	if _, err := cert_file.Write(cert_data); err != nil {
-		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
-	}
-	if err := cert_file.Close(); err != nil {
-		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
-	}
-	cmd := fmt.Sprintf("security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '%s'", cert_file.Name())
-	ps := exec.Command("bash", "-c", cmd)
-	output, err2 := ps.CombinedOutput()
-	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", output))
-	}
-	return nil
-}
-
-func installCertificate() error {
-	os_env := runtime.GOOS
-	switch os_env {
-	case "linux":
-		fmt.Println("Running on Linux")
-	case "darwin":
-		return installCertificateInMacOS()
-	case "windows":
-		return installCertificateInWindows()
-	default:
-		fmt.Printf("Running on %s\n", os_env)
-	}
-	return errors.New(fmt.Sprintf("unknown OS\n"))
-}
-
-func enableProxyInMacOS(mArgs Map) error {
-	cmd1 := exec.Command("networksetup", "-setwebproxy", mArgs["dev"], "127.0.0.1", mArgs["port"])
-	_, err1 := cmd1.Output()
-	if err1 != nil {
-		return errors.New(fmt.Sprintf("设置 HTTP 代理失败，%v\n", err1.Error()))
-	}
-	cmd2 := exec.Command("networksetup", "-setsecurewebproxy", mArgs["dev"], "127.0.0.1", mArgs["port"])
-	_, err2 := cmd2.Output()
-	if err2 != nil {
-		return errors.New(fmt.Sprintf("设置 HTTPS 代理失败，%v\n", err2.Error()))
-	}
-	return nil
-}
-func disableProxyInMacOS(mArgs Map) error {
-	cmd1 := exec.Command("networksetup", "-setwebproxystate", mArgs["dev"], "off")
-	_, err1 := cmd1.Output()
-	if err1 != nil {
-		return errors.New(fmt.Sprintf("禁用 HTTP 代理失败，%v\n", err1.Error()))
-	}
-	cmd2 := exec.Command("networksetup", "-setsecurewebproxystate", mArgs["dev"], "off")
-	_, err2 := cmd2.Output()
-	if err2 != nil {
-		return errors.New(fmt.Sprintf("禁用 HTTPS 代理失败，%v\n", err2.Error()))
-	}
-	return nil
-}
-
-func clear_terminal() {
-	cmd := exec.Command("clear")
-	if os.Getenv("OS") == "Windows_NT" {
-		cmd = exec.Command("cls")
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Run()
-}
-
-// https://github.com/levicook/argmapper/blob/master/argmapper.go
-type Map map[string]string
-
-func argsToMap(args []string) (m Map) {
-	m = make(Map)
-	if len(args) == 0 { return }
-
-nextopt:
-	for i, s := range args {
-		// does s look like an option?
-		if len(s) > 1 && s[0] == '-' {
-			k := ""
-			v := ""
-
-			num_minuses := 1
-			if s[1] == '-' { num_minuses++ }
-
-			k = s[num_minuses:]
-			if len(k) == 0 || k[0] == '-' || k[0] == '=' { continue nextopt }
-
-			for i := 1; i < len(k); i++ { // equals cannot be first
-				if k[i] == '=' {
-					v = k[i+1:]
-					k = k[0:i]
-					break
-				}
-			}
-
-			// It must have a value, which might be the next arg, assuming the next arg isn't an option too.
-			remaining := args[i+1:]
-			if v == "" && len(remaining) > 0 && remaining[0][0] != '-' { v = remaining[0] } 	// value is the next arg
-			m[k] = v
-		}
-	}
-	return m
-}
-
-// 解析参数
-func argsParser(args []string) (m Map) {
-	m = argsToMap(os.Args)							// 分解参数列表为Map
-	if v, ok := m["help"]; ok { printUsage(v) }		// 存在help则输出帮助信息并退出主程序
-	if v, ok := m["v"]; ok {						// 存在v则输出版本信息并退出主程序
-		fmt.Printf("v%s %.0s\n", version, v)
-		os.Exit(0)
-	}
-	if v, ok := m["version"]; ok {					// 存在version则输出版本信息并退出主程序
-		fmt.Printf("v%s %.0s\n", version, v)
-		os.Exit(0)
-	}
-	
-	// 设置参数默认值
-	m["dev"]  = argsValue(m, "Wi-Fi", "d", "dev")
-	m["port"] = argsValue(m, "",  "p", "port")
-	iport, errstr := strconv.Atoi(m["port"])
-	if errstr != nil {
-		m["port"] = strconv.Itoa(port)				// 用户自定义值解析失败则使用默认端口
-	} else { port = iport }
-	
-	delete(m, "p")	// 删除冗余的参数p
-	delete(m, "d")	// 删除冗余的参数d
-	
-	// 输出用户参数
-	fmt.Printf("User parameters: ")
-	for k,v := range m{
-        fmt.Printf("%s=%s ", k, v)
-	}
-	return m
-}
-
-// 获取指定参数名的值,获取失败返回默认值(多个参数名则返回最先找到的值)
-func argsValue(margs Map, def string, keys ...string) (value string) {
-	value = def									// 默认值
-	for _, key := range keys {
-		if v, ok := margs[key]; ok && v != "" { // 找到参数
-			value = v 							// 存储该值
-			break
-		}
-	}
-	return value
-}
-
 // 打印帮助信息
-func printUsage(help string) {
+func print_usage() {
 	fmt.Printf("Usage: wx_video_download [OPTION...]\n")
-	fmt.Printf("Download weChat video.\n\n")
+	fmt.Printf("Download WeChat video.\n\n")
 	fmt.Printf("      --help                 display this help and exit\n")
 	fmt.Printf("  -v, --version              output version information and exit\n")
 	fmt.Printf("  -p, --port                 set proxy server network port\n")
@@ -376,7 +57,30 @@ func printUsage(help string) {
 
 func main() {
 	os_env := runtime.GOOS
-	mArgs := argsParser(os.Args)		// 解析参数
+	args := argv.ArgsToMap(os.Args) // 分解参数列表为Map
+	if _, ok := args["help"]; ok {
+		print_usage()
+	} // 存在help则输出帮助信息并退出主程序
+	if v, ok := args["v"]; ok { // 存在v则输出版本信息并退出主程序
+		fmt.Printf("v%s %.0s\n", version, v)
+		os.Exit(0)
+	}
+	if v, ok := args["version"]; ok { // 存在version则输出版本信息并退出主程序
+		fmt.Printf("v%s %.0s\n", version, v)
+		os.Exit(0)
+	}
+	// 设置参数默认值
+	args["dev"] = argv.ArgsValue(args, "", "d", "dev")
+	args["port"] = argv.ArgsValue(args, "", "p", "port")
+	iport, errstr := strconv.Atoi(args["port"])
+	if errstr != nil {
+		args["port"] = strconv.Itoa(port) // 用户自定义值解析失败则使用默认端口
+	} else {
+		port = iport
+	}
+
+	delete(args, "p") // 删除冗余的参数p
+	delete(args, "d") // 删除冗余的参数d
 
 	signalChan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
@@ -385,21 +89,25 @@ func main() {
 		sig := <-signalChan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
 		if os_env == "darwin" {
-			disableProxyInMacOS(mArgs)
+			proxy.DisableProxyInMacOS(proxy.ProxySettings{
+				Device:   args["dev"],
+				Hostname: "127.0.0.1",
+				Port:     args["port"],
+			})
 		}
 		os.Exit(0)
 	}()
 	fmt.Printf("\nv" + version)
 	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
-	existing, err1 := checkCertificate("SunnyNet")
+	existing, err1 := certificate.CheckCertificate("SunnyNet")
 	if err1 != nil {
 		fmt.Printf("\nERROR %v\v", err1.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
-	if existing == false {
+	if !existing {
 		fmt.Printf("\n\n正在安装证书...\n")
-		err := installCertificate()
+		err := certificate.InstallCertificate(cert_data)
 		time.Sleep(3 * time.Second)
 		if err != nil {
 			fmt.Printf("\nERROR %v\n", err.Error())
@@ -436,7 +144,11 @@ func main() {
 			Sunny.ProcessAddName("WeChatAppEx.exe")
 		}
 		if os_env == "darwin" {
-			err := enableProxyInMacOS(mArgs)
+			err := proxy.EnableProxyInMacOS(proxy.ProxySettings{
+				Device:   args["dev"],
+				Hostname: "127.0.0.1",
+				Port:     args["port"],
+			})
 			if err != nil {
 				fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
 				fmt.Printf("按 Ctrl+C 退出...\n")
@@ -464,14 +176,14 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 	if Conn.Type == public.HttpSendRequest {
 		// Conn.Request.Header.Set("Cache-Control", "no-cache")
 		Conn.Request.Header.Del("Accept-Encoding")
-		if Includes(path, "jszip") {
+		if util.Includes(path, "jszip") {
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/javascript")
 			headers.Set("__debug", "local_file")
 			Conn.StopRequest(200, zip_js, headers)
 			return
 		}
-		if Includes(path, "FileSaver.min") {
+		if util.Includes(path, "FileSaver.min") {
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/javascript")
 			headers.Set("__debug", "local_file")
@@ -613,7 +325,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				content = import_reg.ReplaceAllString(content, `import"$1.js`+v+`"`)
 				Conn.Response.Header.Set("__debug", "replace_script")
 
-				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
+				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(h\),`)
 					replaceStr1 := `(() => {
 if (window.__wx_channels_store__) {
@@ -636,7 +348,7 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
-				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
+				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
 					regexp1 := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async`)
 					replaceStr1 := `async finderGetCommentDetail($1) {
 					var feedResult = await$2;
@@ -730,7 +442,7 @@ window.__wx_channels_store__.profiles.push(profile);
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
-				if Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
+				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					regex := regexp.MustCompile(`,"投诉"\)]`)
 					replaceStr := `,"投诉"),...(() => {
 					if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
@@ -743,7 +455,7 @@ window.__wx_channels_store__.profiles.push(profile);
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
 				}
-				if Includes(path, "worker_release") {
+				if util.Includes(path, "worker_release") {
 					regex := regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 					replaceStr := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
 					content = regex.ReplaceAllString(content, replaceStr)
@@ -763,29 +475,5 @@ window.__wx_channels_store__.profiles.push(profile);
 		// Conn.Response = &http.Response{
 		// 	Body: io.NopCloser(bytes.NewBuffer(Body)),
 		// }
-	}
-}
-func WSCallback(Conn *SunnyNet.WsConn) {
-	//捕获到数据可以修改,修改空数据,取消发送/接收
-	fmt.Println("WSCallback", Conn.Url)
-}
-func TcpCallback(Conn *SunnyNet.TcpConn) {
-	fmt.Println("TcpCallback", Conn.Type)
-	//捕获到数据可以修改,修改空数据,取消发送/接收
-	fmt.Println(Conn.Pid, Conn.LocalAddr, Conn.RemoteAddr, Conn.Type, Conn.GetBodyLen())
-}
-func UdpCallback(Conn *SunnyNet.UDPConn) {
-	fmt.Println("UdpCallback", Conn.Type)
-	//在 Windows 捕获UDP需要加载驱动,并且设置进程名
-	//其他情况需要设置Socket5代理,才能捕获到UDP
-	//捕获到数据可以修改,修改空数据,取消发送/接收
-	if public.SunnyNetUDPTypeReceive == Conn.Type {
-		fmt.Println("接收UDP", Conn.LocalAddress, Conn.RemoteAddress, len(Conn.Data))
-	}
-	if public.SunnyNetUDPTypeSend == Conn.Type {
-		fmt.Println("发送UDP", Conn.LocalAddress, Conn.RemoteAddress, len(Conn.Data))
-	}
-	if public.SunnyNetUDPTypeClosed == Conn.Type {
-		fmt.Println("关闭UDP", Conn.LocalAddress, Conn.RemoteAddress)
 	}
 }
