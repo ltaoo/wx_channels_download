@@ -159,9 +159,9 @@ func installCertificateInWindows(cert_data []byte) error {
 	}
 	cmd := fmt.Sprintf("Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root", cert_file.Name())
 	ps := exec.Command("powershell.exe", "-Command", cmd)
-	_, err2 := ps.CombinedOutput()
+	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", err2.Error()))
+		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", output))
 	}
 	return nil
 }

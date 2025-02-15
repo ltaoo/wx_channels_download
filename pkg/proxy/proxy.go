@@ -44,9 +44,9 @@ func EnableProxyInMacOS(args ProxySettings) error {
 		return fmt.Errorf("设置 HTTP 代理失败，%v", err1.Error())
 	}
 	cmd2 := exec.Command("networksetup", "-setsecurewebproxy", args.Device, args.Hostname, args.Port)
-	_, err2 := cmd2.Output()
+	output, err2 := cmd2.Output()
 	if err2 != nil {
-		return fmt.Errorf("设置 HTTPS 代理失败，%v", err2.Error())
+		return fmt.Errorf("设置 HTTPS 代理失败，%v", output)
 	}
 	return nil
 }
