@@ -399,7 +399,9 @@ var __timer = setInterval(() => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ msg: "没有找到操作栏，注入下载按钮失败" }),
+        body: JSON.stringify({
+          msg: "没有找到操作栏，注入下载按钮失败\n请在「更多」菜单中下载",
+        }),
       });
     }
     return;
