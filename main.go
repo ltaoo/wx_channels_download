@@ -40,7 +40,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "250204"
+var version = "25021501"
 var v = "?t=" + version
 var port = 2023
 
@@ -261,8 +261,8 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 			// fmt.Println("HttpCallback", Conn.Type, host, path)
 			// fmt.Println("Response ContentType is", content_type)
 			if content_type == "text/html; charset=utf-8" {
-				fmt.Println("\n\n检测到页面打开")
-				fmt.Println(path)
+				// fmt.Println("\n\n检测到页面打开")
+				// fmt.Println(path)
 				html := string(Body)
 				script_reg1 := regexp.MustCompile(`src="([^"]{1,})\.js"`)
 				html = script_reg1.ReplaceAllString(html, `src="$1.js`+v+`"`)
@@ -369,6 +369,7 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						duration: media.spec[0].durationMs,
 						spec: media.spec,
 						title: data_object.objectDesc.description,
+						coverUrl: media.coverUrl,
 						url: media.url+media.urlToken,
 						size: media.fileSize,
 						key: media.decodeKey,
@@ -450,7 +451,7 @@ window.__wx_channels_store__.profiles.push(profile);
 							return p("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
 					}
-					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_log__},"下载日志")]`
+					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接")]`
 					content = regex.ReplaceAllString(content, replaceStr)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
