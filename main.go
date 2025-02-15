@@ -40,7 +40,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "25021501"
+var version = "250215"
 var v = "?t=" + version
 var port = 2023
 
