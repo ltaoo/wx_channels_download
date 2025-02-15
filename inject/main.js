@@ -90,7 +90,38 @@ async function __wx_channels_decrypt(seed) {
   // decryptor_array = undefined;
   return decryptor_array;
 }
-
+async function show_progress_or_loaded_size(response) {
+  const content_length = response.headers.get("Content-Length");
+  const chunks = [];
+  const total_size = content_length ? parseInt(content_length, 10) : 0;
+  if (total_size) {
+    __wx_log({
+      msg: `${total_size} Bytes`,
+    });
+  }
+  let loaded_size = 0;
+  const reader = response.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+    loaded_size += value.length;
+    if (total_size) {
+      const progress = (loaded_size / total_size) * 100;
+      __wx_log({
+        msg: `${progress.toFixed(2)}%`,
+      });
+    } else {
+      __wx_log({
+        msg: `${loaded_size} Bytes`,
+      });
+    }
+  }
+  const blob = new Blob(chunks);
+  return blob;
+}
 /** 用于下载已经播放的视频内容 */
 async function __wx_channels_download(profile, filename) {
   console.log("__wx_channels_download");
@@ -118,7 +149,10 @@ async function __wx_channels_download2(profile, filename) {
     ins = window.__wx_channels_tip__.loading("下载中");
   }
   const response = await fetch(url);
-  const blob = await response.blob();
+  const blob = await show_progress_or_loaded_size(response);
+  __wx_log({
+    msg: "下载完成",
+  });
   if (ins) {
     ins.hide();
   }
@@ -162,7 +196,10 @@ async function __wx_channels_download4(profile, filename) {
     ins = window.__wx_channels_tip__.loading("下载中");
   }
   const response = await fetch(url);
-  const blob = await response.blob();
+  const blob = await show_progress_or_loaded_size(response);
+  __wx_log({
+    msg: "下载完成，开始解密",
+  });
   let array = new Uint8Array(await blob.arrayBuffer());
   if (profile.decryptor_array) {
     array = __wx_channels_video_decrypt(array, 0, profile);
@@ -224,8 +261,9 @@ async function __wx_channels_handle_click_download__(spec) {
   // console.log("__wx_channels_handle_click_download__", url);
   __wx_log({
     msg: `${filename}
+${location.href}
 ${_profile.url}
-${_profile.key}`,
+${_profile.key || ""}`,
   });
   if (_profile.type === "picture") {
     __wx_channels_download3(_profile, filename);
@@ -273,6 +311,48 @@ function __wx_channels_download_cur__() {
   })();
   profile.data = __wx_channels_store__.buffers;
   __wx_channels_download(profile, filename);
+}
+async function __wx_channels_handle_download_cover() {
+  var profile = __wx_channels_store__.profile;
+  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
+  if (!profile) {
+    alert("检测不到视频，请将本工具更新到最新版");
+    return;
+  }
+  // console.log(__wx_channels_store__);
+  var filename = (() => {
+    if (profile.title) {
+      return profile.title;
+    }
+    if (profile.id) {
+      return profile.id;
+    }
+    return new Date().valueOf();
+  })();
+  const _profile = {
+    ...profile,
+  };
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
+  __wx_log({
+    msg: `下载封面\n${_profile.coverUrl}`,
+  });
+  let ins = null;
+  if (window.__wx_channels_tip__) {
+    ins = window.__wx_channels_tip__.loading("下载中");
+  }
+  try {
+    const url = _profile.coverUrl.replace(/^http/, "https");
+    const response = await fetch(url);
+    const blob = await response.blob();
+    saveAs(blob, filename + ".jpg");
+  } catch (err) {
+    alert(err.message);
+  }
+  if (ins) {
+    ins.hide();
+  }
 }
 var __wx_channels_tip__ = {};
 var __wx_channels_store__ = {
