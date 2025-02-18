@@ -117,7 +117,7 @@ sudo ./wx_video_download_drawin_xxx
 
 ## 使用说明
 
-下载二进制文件，**以管理员身份运行**，首次打开会自动安装证书，然后启动服务。
+[下载](https://github.com/ltaoo/wx_channels_download/releases)二进制文件，**以管理员身份运行**，首次打开会自动安装证书，然后启动服务。
 
 当终端提示「服务已正确启动」就说明可以使用了。
 
