@@ -40,7 +40,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "250215"
+var version = "250424"
 var v = "?t=" + version
 var port = 2023
 
@@ -137,7 +137,7 @@ func main() {
 		if os_env == "windows" {
 			ok := Sunny.StartProcess()
 			if !ok {
-				fmt.Printf("\nERROR 启动进程代理失败\n")
+				fmt.Printf("\nERROR 启动进程代理失败，检查是否以管理员身份运行\n")
 				fmt.Printf("按 Ctrl+C 退出...\n")
 				select {}
 			}
@@ -445,13 +445,13 @@ window.__wx_channels_store__.profiles.push(profile);
 				}
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					regex := regexp.MustCompile(`,"投诉"\)]`)
-					replaceStr := `,"投诉"),...(() => {
+					replaceStr := `,"投诉_update"),...(() => {
 					if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
 						return window.__wx_channels_store__.profile.spec.map((sp) => {
-							return p("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
+							return f("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
 					}
-					})(),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),p("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),p("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制链接")]`
+					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
 					content = regex.ReplaceAllString(content, replaceStr)
 					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
 					return
