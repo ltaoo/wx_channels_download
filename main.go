@@ -40,7 +40,7 @@ var zip_js []byte
 var main_js []byte
 
 var Sunny = SunnyNet.NewSunny()
-var version = "250424"
+var version = "250425"
 var v = "?t=" + version
 var port = 2023
 
@@ -397,15 +397,9 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						fmt.Println("3. 视频详情页 js 修改成功")
 					}
 					content = regexp1.ReplaceAllString(content, replaceStr1)
-					regex2 := regexp.MustCompile(`r.default={dialog`)
-					replaceStr2 := `r.default=window.window.__wx_channels_tip__={dialog`
+					regex2 := regexp.MustCompile(`i.default={dialog`)
+					replaceStr2 := `i.default=window.window.__wx_channels_tip__={dialog`
 					content = regex2.ReplaceAllString(content, replaceStr2)
-					regex3 := regexp.MustCompile(`const u=this.storage.getSession`)
-					replaceStr3 := `return;const u = this.storage.getSession`
-					content = regex3.ReplaceAllString(content, replaceStr3)
-					regex4 := regexp.MustCompile(`return this.storage.getSession`)
-					replaceStr4 := `return null;return this.storage.getSession`
-					content = regex4.ReplaceAllString(content, replaceStr4)
 					regex5 := regexp.MustCompile(`this.updateDetail\(o\)`)
 					replaceStr5 := `(() => {
 					if (Object.keys(o).length===0){
