@@ -269,19 +269,16 @@ ${_profile.key || ""}`,
     return;
   }
   _profile.data = __wx_channels_store__.buffers;
-  _profile.decryptor_array = __wx_channels_store__.keys[_profile.key];
-  if (!_profile.decryptor_array) {
-    try {
-      const r = await __wx_channels_decrypt(_profile.key);
-      // console.log("[]after __wx_channels_decrypt", r);
-      _profile.decryptor_array = r;
-    } catch (err) {
-      __wx_log({
-        msg: `解密失败，停止下载`,
-      });
-      alert("解密失败，停止下载");
-      return;
-    }
+  try {
+    const r = await __wx_channels_decrypt(_profile.key);
+    // console.log("[]after __wx_channels_decrypt", r);
+    _profile.decryptor_array = r;
+  } catch (err) {
+    __wx_log({
+      msg: `解密失败，停止下载`,
+    });
+    alert("解密失败，停止下载");
+    return;
   }
   __wx_channels_download4(_profile, filename);
 }
