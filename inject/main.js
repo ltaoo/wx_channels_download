@@ -165,9 +165,13 @@ async function __wx_channels_download3(profile, filename) {
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
+  );
   const zip = new JSZip();
   zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
   const folder = zip.folder("images");
+  console.log("files", files)
   const fetchPromises = files
     .map((f) => f.url)
     .map(async (url, index) => {
@@ -175,9 +179,17 @@ async function __wx_channels_download3(profile, filename) {
       const blob = await response.blob();
       folder.file(index + 1 + ".png", blob);
     });
-  await Promise.all(fetchPromises);
-  const content = await zip.generateAsync({ type: "blob" });
-  saveAs(content, filename + ".zip");
+  const ins = __wx_channel_loading();
+  try {
+    await Promise.all(fetchPromises);
+    const content = await zip.generateAsync({ type: "blob" });
+    ins.hide();
+    saveAs(content, filename + ".zip");
+  } catch (err) {
+    __wx_log({
+      msg: "下载失败\n" + err.message,
+    });
+  }
 }
 /** 下载加密视频 */
 async function __wx_channels_download4(profile, filename) {
