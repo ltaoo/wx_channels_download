@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -19,7 +18,8 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/qtgolang/SunnyNet/SunnyNet"
-	"github.com/qtgolang/SunnyNet/public"
+	"github.com/qtgolang/SunnyNet/src/http"
+	"github.com/qtgolang/SunnyNet/src/public"
 
 	"wx_channel/pkg/argv"
 	"wx_channel/pkg/certificate"
@@ -39,7 +39,6 @@ var zip_js []byte
 //go:embed inject/main.js
 var main_js []byte
 
-var Sunny = SunnyNet.NewSunny()
 var version = "250514"
 var v = "?t=" + version
 var port = 2023
@@ -115,50 +114,37 @@ func main() {
 			select {}
 		}
 	}
-	Sunny.SetPort(port)
+	var Sunny = SunnyNet.NewSunny()
 	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
-	err := Sunny.Start().Error
+	Sunny.SetPort(port).Start()
+	err := Sunny.Error
 	if err != nil {
 		fmt.Printf("\nERROR %v\n", err.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
-	proxy_server := fmt.Sprintf("127.0.0.1:%v", port)
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(&url.URL{
-				Scheme: "http",
-				Host:   proxy_server,
-			}),
-		},
-	}
-	_, err3 := client.Get("https://sunny.io/")
-	if err3 == nil {
-		if os_env == "windows" {
-			ok := Sunny.StartProcess()
-			if !ok {
-				fmt.Printf("\nERROR 启动进程代理失败，检查是否以管理员身份运行\n")
-				fmt.Printf("按 Ctrl+C 退出...\n")
-				select {}
-			}
-			Sunny.ProcessAddName("WeChatAppEx.exe")
+	if os_env == "windows" {
+		ok := Sunny.OpenDrive(true)
+		if !ok {
+			fmt.Printf("\nERROR 启动进程代理失败，检查是否以管理员身份运行\n")
+			fmt.Printf("按 Ctrl+C 退出...\n")
+			select {}
 		}
-		if os_env == "darwin" {
-			err := proxy.EnableProxyInMacOS(proxy.ProxySettings{
-				Device:   args["dev"],
-				Hostname: "127.0.0.1",
-				Port:     args["port"],
-			})
-			if err != nil {
-				fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
-				fmt.Printf("按 Ctrl+C 退出...\n")
-				select {}
-			}
-		}
-		color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
-	} else {
-		fmt.Println(fmt.Sprintf("\n\n您还未安装证书，请在浏览器打开 http://%v 并根据说明安装证书\n在安装完成后重新启动此程序即可\n", proxy_server))
+		Sunny.ProcessAddName("WeChatAppEx.exe")
 	}
+	if os_env == "darwin" {
+		err := proxy.EnableProxyInMacOS(proxy.ProxySettings{
+			Device:   args["dev"],
+			Hostname: "127.0.0.1",
+			Port:     args["port"],
+		})
+		if err != nil {
+			fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
+			fmt.Printf("按 Ctrl+C 退出...\n")
+			select {}
+		}
+	}
+	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
 	select {}
 }
@@ -170,12 +156,17 @@ type FrontendTip struct {
 	Msg string `json:"msg"`
 }
 
-func HttpCallback(Conn *SunnyNet.HttpConn) {
-	host := Conn.Request.URL.Hostname()
-	path := Conn.Request.URL.Path
-	if Conn.Type == public.HttpSendRequest {
-		// Conn.Request.Header.Set("Cache-Control", "no-cache")
-		Conn.Request.Header.Del("Accept-Encoding")
+func HttpCallback(Conn SunnyNet.ConnHTTP) {
+	u := Conn.URL()
+	parsed_url, err := url.Parse(u)
+	if err != nil {
+		fmt.Printf("URL解析失败: %v\n", err)
+		return
+	}
+	hostname := parsed_url.Hostname()
+	path := parsed_url.Path
+	if Conn.Type() == public.HttpSendRequest {
+		Conn.GetRequestHeader().Del("Accept-Encoding")
 		if util.Includes(path, "jszip") {
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/javascript")
@@ -192,9 +183,8 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 		}
 		if path == "/__wx_channels_api/profile" {
 			var data ChannelProfile
-			body, _ := io.ReadAll(Conn.Request.Body)
-			_ = Conn.Request.Body.Close()
-			err := json.Unmarshal(body, &data)
+			request_body := Conn.GetRequestBody()
+			err := json.Unmarshal(request_body, &data)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
@@ -207,9 +197,8 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 		}
 		if path == "/__wx_channels_api/tip" {
 			var data FrontendTip
-			body, _ := io.ReadAll(Conn.Request.Body)
-			_ = Conn.Request.Body.Close()
-			err := json.Unmarshal(body, &data)
+			request_body := Conn.GetRequestBody()
+			err := json.Unmarshal(request_body, &data)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
@@ -221,11 +210,10 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 			return
 		}
 	}
-	if Conn.Type == public.HttpResponseOK {
-		content_type := strings.ToLower(Conn.Response.Header.Get("content-type"))
-		if Conn.Response.Body != nil {
-			Body, _ := io.ReadAll(Conn.Response.Body)
-			_ = Conn.Response.Body.Close()
+	if Conn.Type() == public.HttpResponseOK {
+		content_type := strings.ToLower(Conn.GetResponseHeader().Get("Content-Type"))
+		if Conn.GetResponseBody() != nil {
+			request_body := Conn.GetResponseBody()
 			// if content_type == "text/css" {
 			// 	Conn.Response.Body = io.NopCloser(bytes.NewBuffer(Body))
 			// 	return
@@ -263,12 +251,12 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 			if content_type == "text/html; charset=utf-8" {
 				// fmt.Println("\n\n检测到页面打开")
 				// fmt.Println(path)
-				html := string(Body)
+				html := string(request_body)
 				script_reg1 := regexp.MustCompile(`src="([^"]{1,})\.js"`)
 				html = script_reg1.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
 				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
-				Conn.Response.Header.Set("__debug", "append_script")
+				Conn.GetResponseHeader().Set("__debug", "append_script")
 				script2 := ""
 				// script2 := `<script src="https://debug.funzm.com/target.js"></script>`
 				// 				script2 := `<script
@@ -301,20 +289,18 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				//       });
 				//       // 之后即可使用 PageSpy，前往 https://pagespy.jikejishu.com 体验
 				//     </script>`
-
-				if host == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
-					// Conn.Response.Header.Add("wx-channel-video-download", "1")
+				if hostname == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
 					script := fmt.Sprintf(`<script>%s</script>`, main_js)
 					html = strings.Replace(html, "<head>", "<head>\n"+script+script2, 1)
 					fmt.Println("1. 视频详情页 html 注入 js 成功")
-					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(html)))
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(html))))
 					return
 				}
-				Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(html)))
+				Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(html))))
 				return
 			}
 			if content_type == "application/javascript" {
-				content := string(Body)
+				content := string(request_body)
 				dep_reg := regexp.MustCompile(`"js/([^"]{1,})\.js"`)
 				from_reg := regexp.MustCompile(`from {0,1}"([^"]{1,})\.js"`)
 				lazy_import_reg := regexp.MustCompile(`import\("([^"]{1,})\.js"\)`)
@@ -323,7 +309,7 @@ func HttpCallback(Conn *SunnyNet.HttpConn) {
 				content = dep_reg.ReplaceAllString(content, `"js/$1.js`+v+`"`)
 				content = lazy_import_reg.ReplaceAllString(content, `import("$1.js`+v+`")`)
 				content = import_reg.ReplaceAllString(content, `import"$1.js`+v+`"`)
-				Conn.Response.Header.Set("__debug", "replace_script")
+				Conn.GetResponseHeader().Set("__debug", "replace_script")
 
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(h\),`)
@@ -345,7 +331,7 @@ window.__wx_channels_store__.buffers.push(h);
 }
 if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 					content = regexp2.ReplaceAllString(content, replaceStr2)
-					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
@@ -434,7 +420,7 @@ window.__wx_channels_store__.profiles.push(profile);
 					}
 					})(),this.updateDetail(o)`
 					content = regex5.ReplaceAllString(content, replaceStr5)
-					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
@@ -447,24 +433,24 @@ window.__wx_channels_store__.profiles.push(profile);
 					}
 					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
 					content = regex.ReplaceAllString(content, replaceStr)
-					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
 				if util.Includes(path, "worker_release") {
 					regex := regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 					replaceStr := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
 					content = regex.ReplaceAllString(content, replaceStr)
-					Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
-				Conn.Response.Body = io.NopCloser(bytes.NewBuffer([]byte(content)))
+				Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 				return
 			}
-			Conn.Response.Body = io.NopCloser(bytes.NewBuffer(Body))
+			Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(request_body))))
 		}
 
 	}
-	if Conn.Type == public.HttpRequestFail {
+	if Conn.Type() == public.HttpRequestFail {
 		//请求错误
 		// Body := []byte("Hello Sunny Response")
 		// Conn.Response = &http.Response{
