@@ -186,11 +186,20 @@ sudo ./wx_video_download_drawin_xxx
 
 ## 打包
 
+# windows
+
 ```bash
 go build -o wx_video_download.exe main.go
 ```
 
 打包后可以使用 `upx` 压缩，体积可以从 17MB 压缩到 5MB。
+
+# macOS
+
+```bash
+CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -o wx_video_download
+```
+
 
 ## 其他
 
