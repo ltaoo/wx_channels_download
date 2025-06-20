@@ -116,14 +116,20 @@ async function show_progress_or_loaded_size(response) {
     if (total_size) {
       const progress = (loaded_size / total_size) * 100;
       __wx_log({
+        replace: 1,
         msg: `${progress.toFixed(2)}%`,
       });
     } else {
       __wx_log({
+        replace: 1,
         msg: `${loaded_size} Bytes`,
       });
     }
   }
+  __wx_log({
+    end: 1,
+    msg: "",
+  });
   const blob = new Blob(chunks);
   return blob;
 }
@@ -269,8 +275,9 @@ async function __wx_channels_handle_click_download__(spec) {
   __wx_log({
     msg: `${filename}
 ${location.href}
+
 ${_profile.url}
-${_profile.key || ""}`,
+${_profile.key || "该视频未加密"}`,
   });
   if (_profile.type === "picture") {
     __wx_channels_download3(_profile, filename);
@@ -315,6 +322,44 @@ function __wx_channels_download_cur__() {
   })();
   profile.data = __wx_channels_store__.buffers;
   __wx_channels_download(profile, filename);
+}
+function __wx_channels_handle_print_download_command() {
+  var profile = __wx_channels_store__.profile;
+  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
+  if (!profile) {
+    alert("检测不到视频，请将本工具更新到最新版");
+    return;
+  }
+  // console.log(__wx_channels_store__);
+  var filename = (() => {
+    if (profile.title) {
+      return profile.title;
+    }
+    if (profile.id) {
+      return profile.id;
+    }
+    return new Date().valueOf();
+  })();
+  var _profile = {
+    ...profile,
+  };
+  var spec = profile.spec[0]
+  if (spec) {
+    _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
+    filename = filename + "_" + spec.fileFormat;
+  }
+  // console.log("__wx_channels_handle_click_download__", url);
+  var command = `download --url "${_profile.url}"`;
+  if (_profile.key) {
+    command += ` --key ${_profile.key}`
+  }
+  command += ` --filename "${filename}.mp4"`
+  __wx_log({
+    msg: command,
+  });
+  if (window.__wx_channels_tip__ && window.__wx_channels_tip__.toast) {
+    window.__wx_channels_tip__.toast("请在终端查看下载命令", 1e3);
+  }
 }
 async function __wx_channels_handle_download_cover() {
   var profile = __wx_channels_store__.profile;

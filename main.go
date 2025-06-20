@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -20,9 +21,10 @@ import (
 	"github.com/qtgolang/SunnyNet/SunnyNet"
 	"github.com/qtgolang/SunnyNet/src/http"
 	"github.com/qtgolang/SunnyNet/src/public"
+	"github.com/spf13/cobra"
 
-	"wx_channel/pkg/argv"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/proxy"
 	"wx_channel/pkg/util"
 )
@@ -39,59 +41,106 @@ var zip_js []byte
 //go:embed inject/main.js
 var main_js []byte
 
-var version = "250514"
+var version = "250621"
 var v = "?t=" + version
-var port = 2023
-
-// 打印帮助信息
-func print_usage() {
-	fmt.Printf("Usage: wx_video_download [OPTION...]\n")
-	fmt.Printf("Download WeChat video.\n\n")
-	fmt.Printf("      --help                 display this help and exit\n")
-	fmt.Printf("  -v, --version              output version information and exit\n")
-	fmt.Printf("  -p, --port                 set proxy server network port\n")
-	fmt.Printf("  -d, --dev                  set proxy server network device\n")
-	os.Exit(0)
-}
+var DefaultPort = 2023
 
 func main() {
+	var (
+		device string
+		port   int
+	)
+	root_cmd := &cobra.Command{
+		Use:   "./wx_video_download",
+		Short: "启动下载程序",
+		Long:  "启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
+		Run: func(cmd *cobra.Command, args []string) {
+			root_command(RootCommandArg{
+				Device: device,
+				Port:   port,
+			})
+		},
+	}
+	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
+	root_cmd.Flags().IntVar(&port, "port", DefaultPort, "代理服务器端口")
+	var (
+		video_url         string
+		filename          string
+		video_decrypt_key int
+	)
+	download_cmd := &cobra.Command{
+		Use:   "download",
+		Short: "下载视频",
+		Long:  "从指定URL下载视频文件",
+		Run: func(cmd *cobra.Command, args []string) {
+			command := cmd.Name()
+			if command != "download" {
+				return
+			}
+			download_command(DownloadCommandArgs{
+				URL:        video_url,
+				DecryptKey: video_decrypt_key,
+				Filename:   filename,
+			})
+		},
+	}
+	now := int(time.Now().Unix())
+	download_cmd.Flags().StringVar(&video_url, "url", "", "视频URL（必需）")
+	download_cmd.Flags().IntVar(&video_decrypt_key, "key", 0, "解密密钥（未加密的视频不用传该参数）")
+	download_cmd.Flags().StringVar(&filename, "filename", strconv.Itoa(now)+".mp4", "下载后的文件名")
+	download_cmd.MarkFlagRequired("url")
+
+	var (
+		filepath           string
+		video_decrypt_key2 int
+	)
+	decrypt_cmd := &cobra.Command{
+		Use:   "decrypt",
+		Short: "解密视频",
+		Long:  "使用 key 对本地加密视频进行解密",
+		Run: func(cmd *cobra.Command, args []string) {
+			command := cmd.Name()
+			if command != "decrypt" {
+				return
+			}
+			decrypt_command(DecryptCOmmandArgs{
+				Filepath:   video_url,
+				DecryptKey: video_decrypt_key,
+			})
+		},
+	}
+	decrypt_cmd.Flags().StringVar(&filepath, "filepath", "", "视频地址（必需）")
+	decrypt_cmd.Flags().IntVar(&video_decrypt_key2, "key", 0, "解密密钥（必需）")
+	decrypt_cmd.MarkFlagRequired("filepath")
+
+	root_cmd.AddCommand(download_cmd)
+	root_cmd.AddCommand(decrypt_cmd)
+	if err := root_cmd.Execute(); err != nil {
+		fmt.Printf("初始化失败 %v", err.Error())
+		fmt.Printf("按 Ctrl+C 退出...\n")
+		select {}
+	}
+}
+
+type RootCommandArg struct {
+	Device string
+	Port   int
+}
+
+func root_command(args RootCommandArg) {
 	os_env := runtime.GOOS
-	args := argv.ArgsToMap(os.Args) // 分解参数列表为Map
-	if _, ok := args["help"]; ok {
-		print_usage()
-	} // 存在help则输出帮助信息并退出主程序
-	if v, ok := args["v"]; ok { // 存在v则输出版本信息并退出主程序
-		fmt.Printf("v%s %.0s\n", version, v)
-		os.Exit(0)
-	}
-	if v, ok := args["version"]; ok { // 存在version则输出版本信息并退出主程序
-		fmt.Printf("v%s %.0s\n", version, v)
-		os.Exit(0)
-	}
-	// 设置参数默认值
-	args["dev"] = argv.ArgsValue(args, "", "d", "dev")
-	args["port"] = argv.ArgsValue(args, "", "p", "port")
-	iport, errstr := strconv.Atoi(args["port"])
-	if errstr != nil {
-		args["port"] = strconv.Itoa(port) // 用户自定义值解析失败则使用默认端口
-	} else {
-		port = iport
-	}
 
-	delete(args, "p") // 删除冗余的参数p
-	delete(args, "d") // 删除冗余的参数d
-
-	signalChan := make(chan os.Signal, 1)
+	signal_chan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		sig := <-signalChan
+		sig := <-signal_chan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
 		if os_env == "darwin" {
 			proxy.DisableProxyInMacOS(proxy.ProxySettings{
-				Device:   args["dev"],
+				Device:   args.Device,
 				Hostname: "127.0.0.1",
-				Port:     args["port"],
+				Port:     strconv.Itoa(args.Port),
 			})
 		}
 		os.Exit(0)
@@ -116,7 +165,7 @@ func main() {
 	}
 	var Sunny = SunnyNet.NewSunny()
 	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
-	Sunny.SetPort(port).Start()
+	Sunny.SetPort(args.Port).Start()
 	err := Sunny.Error
 	if err != nil {
 		fmt.Printf("\nERROR %v\n", err.Error())
@@ -134,9 +183,9 @@ func main() {
 	}
 	if os_env == "darwin" {
 		err := proxy.EnableProxyInMacOS(proxy.ProxySettings{
-			Device:   args["dev"],
+			Device:   args.Device,
 			Hostname: "127.0.0.1",
-			Port:     args["port"],
+			Port:     strconv.Itoa(args.Port),
 		})
 		if err != nil {
 			fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
@@ -149,11 +198,141 @@ func main() {
 	select {}
 }
 
+type DownloadCommandArgs struct {
+	URL        string
+	Filename   string
+	DecryptKey int
+}
+
+func download_command(args DownloadCommandArgs) {
+	resp, err := http.Get(args.URL)
+	if err != nil {
+		fmt.Printf("[ERROR]下载失败 %v\n", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("[ERROR]获取下载路径失败 %v\n", err.Error())
+		return
+	}
+	tmp_filename := "wx_" + strconv.Itoa(int(time.Now().Unix()))
+	tmp_dest_filepath := path.Join(homedir, "Downloads", tmp_filename)
+	dest_filepath := path.Join(homedir, "Downloads", args.Filename)
+	file, err := os.Create(tmp_dest_filepath)
+	if err != nil {
+		fmt.Printf("[ERROR]下载文件失败 %v\n", err.Error())
+		os.Exit(0)
+		return
+	}
+	defer file.Close()
+	content_length := resp.Header.Get("Content-Length")
+	total_size := int64(-1)
+	if content_length != "" {
+		total_size, _ = strconv.ParseInt(content_length, 10, 64)
+	}
+	buf := make([]byte, 32*1024) // 32KB buffer
+	var downloaded int64 = 0
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			_, werr := file.Write(buf[:n])
+			if werr != nil {
+				fmt.Printf("[ERROR]写入文件失败 %v\n", werr.Error())
+				return
+			}
+			downloaded += int64(n)
+			if total_size > 0 {
+				percent := float64(downloaded) / float64(total_size) * 100
+				fmt.Printf("\r\033[K已下载: %d/%d 字节 (%.2f%%)", downloaded, total_size, percent)
+			} else {
+				fmt.Printf("\r\033[K已下载: %d 字节", downloaded)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Printf("[ERROR]下载文件失败2 %v\n", err.Error())
+			return
+		}
+	}
+	fmt.Println()
+	if args.DecryptKey != 0 {
+		fmt.Printf("开始对文件解密 %s", tmp_dest_filepath)
+		length := uint32(131072)
+		enclen_str := resp.Header.Get("X-enclen")
+		if enclen_str != "" {
+			v, err := strconv.ParseUint(enclen_str, 10, 32)
+			if err == nil {
+				length = uint32(v)
+			}
+		}
+		key := uint64(args.DecryptKey)
+		data, err := os.ReadFile(tmp_dest_filepath)
+		if err != nil {
+			fmt.Printf("[ERROR]读取已下载的文件失败 %v\n", err.Error())
+			return
+		}
+		decrypt.DecryptData(data, length, key)
+		err = os.WriteFile(dest_filepath, data, 0644)
+		if err != nil {
+			fmt.Printf("[ERROR]写入文件失败 %v\n", err.Error())
+			return
+		}
+		file.Close()
+		err = os.Remove(tmp_dest_filepath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Println("[ERROR]临时文件不存在")
+			} else if os.IsPermission(err) {
+				fmt.Println("[ERROR]没有权限删除临时文件")
+			} else {
+				fmt.Printf("[ERROR]临时文件删除失败 %v\n", err.Error())
+			}
+		}
+		fmt.Printf("解密完成，文件路径为 %s\n", dest_filepath)
+		return
+	}
+	file.Close()
+	err = os.Rename(tmp_dest_filepath, dest_filepath)
+	if err != nil {
+		fmt.Printf("[ERROR]重命名文件失败 %v\n", err.Error())
+		return
+	}
+	fmt.Printf("下载完成，件路径为 %s\n", dest_filepath)
+}
+
+type DecryptCOmmandArgs struct {
+	Filepath   string
+	DecryptKey int
+}
+
+func decrypt_command(args DecryptCOmmandArgs) {
+	fmt.Printf("开始对文件解密 %s", args.Filepath)
+	length := uint32(131072)
+	key := uint64(args.DecryptKey)
+	data, err := os.ReadFile(args.Filepath)
+	if err != nil {
+		fmt.Printf("[ERROR]读取已下载的文件失败 %v\n", err.Error())
+		return
+	}
+	decrypt.DecryptData(data, length, key)
+	err = os.WriteFile(args.Filepath, data, 0644)
+	if err != nil {
+		fmt.Printf("[ERROR]写入文件失败 %v\n", err.Error())
+		return
+	}
+	fmt.Printf("解密完成 %s", args.Filepath)
+}
+
 type ChannelProfile struct {
 	Title string `json:"title"`
 }
 type FrontendTip struct {
-	Msg string `json:"msg"`
+	End     int    `json:"end"`
+	Replace int    `json:"replace"`
+	Msg     string `json:"msg"`
 }
 
 func HttpCallback(Conn SunnyNet.ConnHTTP) {
@@ -202,7 +381,13 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 			if err != nil {
 				fmt.Println(err.Error())
 			}
-			fmt.Printf("[FRONTEND]%s\n", data.Msg)
+			if data.End == 1 {
+				fmt.Println()
+			} else if data.Replace == 1 {
+				fmt.Printf("\r\033[K[FRONTEND]%s", data.Msg)
+			} else {
+				fmt.Printf("[FRONTEND]%s\n", data.Msg)
+			}
 			headers := http.Header{}
 			headers.Set("Content-Type", "application/json")
 			headers.Set("__debug", "fake_resp")
@@ -431,7 +616,7 @@ window.__wx_channels_store__.profiles.push(profile);
 							return f("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
 					}
-					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
+					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_print_download_command},"打印下载命令"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
 					content = regex.ReplaceAllString(content, replaceStr)
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
