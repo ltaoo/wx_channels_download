@@ -2,6 +2,25 @@
 
 体积小、使用简单、支持 macOS 和 Windows 系统。
 
+## 250621 更新
+
+1、优化下载时的「进度」展示效果
+<br/>
+2、增加 `download` 命令，可在终端下载视频及解密。超过1G的视频建议使用该方式下载
+<br/>
+
+```bash
+# 使用方式
+./wx_video_download_xx download --url "视频地址" --key 解密key --filename "文件名"
+# 视频地址、文件名参数需要双引号包裹。解密key不用双引号
+# 将会下载视频到 `Downloads` 目录，然后解密
+```
+3、视频号「更多」菜单中增加「打印下载命令」按钮
+<br/>
+4、修复安装证书时有些错误提示不是中文的问题
+
+<details><summary>点击查看更多更新内容</summary>
+
 ## 250514 更新
 
 1、修复无法下载图片视频的问题
@@ -10,7 +29,6 @@
 
 1、修复了下载的视频无法播放的问题
 
-<details><summary>点击查看更多更新内容</summary>
 
 ## 250425 更新
 
@@ -216,3 +234,12 @@ https://github.com/qtgolang/SunnyNet
 如果我的项目对你有所帮助，可以请我喝杯咖啡 ☕️
 
 [![Sponsors](https://sponsorkit-iota.vercel.app/api/sponsors)](https://sponsorkit-iota.vercel.app/api/sponsors)
+
+
+```text
+                 本项目为开源项目
+            仅用于技术交流学习和研究的目的
+          请遵守法律法规,请勿用作任何非法用途
+               否则造成一切后果自负
+           若您下载并使用即视为您知晓并同意
+```

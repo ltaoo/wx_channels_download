@@ -161,7 +161,7 @@ func installCertificateInWindows(cert_data []byte) error {
 	ps := exec.Command("powershell.exe", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", output))
+		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", string(output)))
 	}
 	return nil
 }
@@ -181,7 +181,7 @@ func installCertificateInMacOS(cert_data []byte) error {
 	ps := exec.Command("bash", "-c", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", output))
+		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", string(output)))
 	}
 	return nil
 }
