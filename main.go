@@ -46,12 +46,13 @@ var v = "?t=" + version
 var DefaultPort = 2023
 
 func main() {
+	cobra.MousetrapHelpText = ""
 	var (
 		device string
 		port   int
 	)
 	root_cmd := &cobra.Command{
-		Use:   "./wx_video_download",
+		Use:   "wx_video_download",
 		Short: "启动下载程序",
 		Long:  "启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
 		Run: func(cmd *cobra.Command, args []string) {
