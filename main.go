@@ -41,7 +41,7 @@ var zip_js []byte
 //go:embed inject/main.js
 var main_js []byte
 
-var version = "250621"
+var version = "250808"
 var v = "?t=" + version
 var DefaultPort = 2023
 
@@ -444,8 +444,7 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
 				Conn.GetResponseHeader().Set("__debug", "append_script")
 				script2 := ""
-				// script2 := `<script src="https://debug.funzm.com/target.js"></script>`
-				// 				script2 := `<script
+				// script2 := `<script
 				//       crossorigin="anonymous"
 				//       src="https://pagespy.jikejishu.com/page-spy/index.min.js"
 				//     ></script>
