@@ -177,7 +177,7 @@ async function __wx_channels_download3(profile, filename) {
   const zip = new JSZip();
   zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
   const folder = zip.folder("images");
-  console.log("files", files)
+  // console.log("files", files);
   const fetchPromises = files
     .map((f) => f.url)
     .map(async (url, index) => {
@@ -343,7 +343,7 @@ function __wx_channels_handle_print_download_command() {
   var _profile = {
     ...profile,
   };
-  var spec = profile.spec[0]
+  var spec = profile.spec[0];
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
     filename = filename + "_" + spec.fileFormat;
@@ -351,9 +351,9 @@ function __wx_channels_handle_print_download_command() {
   // console.log("__wx_channels_handle_click_download__", url);
   var command = `download --url "${_profile.url}"`;
   if (_profile.key) {
-    command += ` --key ${_profile.key}`
+    command += ` --key ${_profile.key}`;
   }
-  command += ` --filename "${filename}.mp4"`
+  command += ` --filename "${filename}.mp4"`;
   __wx_log({
     msg: command,
   });
@@ -434,7 +434,8 @@ var __timer = setInterval(() => {
   //   "operate-row transition-show"
   // )[0];
   const $wrap3 = document.getElementsByClassName("full-opr-wrp layout-row")[0];
-  if (!$wrap3) {
+  const $wrap4 = document.getElementsByClassName("full-opr-wrp layout-col")[0];
+  if (!$wrap3 && !$wrap4) {
     if (count >= 5) {
       clearInterval(__timer);
       __timer = null;
@@ -452,24 +453,59 @@ var __timer = setInterval(() => {
   }
   clearInterval(__timer);
   __timer = null;
-  const relative_node = $wrap3.children[$wrap3.children.length - 1];
-  if (!relative_node) {
+  if ($wrap3) {
+    const relative_node = $wrap3.children[$wrap3.children.length - 1];
+    if (!relative_node) {
+      fetch("/__wx_channels_api/tip", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ msg: "注入下载按钮成功1!" }),
+      });
+      $wrap3.appendChild(__wx_channels_video_download_btn__);
+      return;
+    }
     fetch("/__wx_channels_api/tip", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ msg: "注入下载按钮成功1!" }),
+      body: JSON.stringify({ msg: "注入下载按钮成功2!" }),
     });
-    $wrap3.appendChild(__wx_channels_video_download_btn__);
-    return;
+    $wrap3.insertBefore(__wx_channels_video_download_btn__, relative_node);
   }
-  fetch("/__wx_channels_api/tip", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ msg: "注入下载按钮成功2!" }),
-  });
-  $wrap3.insertBefore(__wx_channels_video_download_btn__, relative_node);
+  if ($wrap4) {
+    $icon.innerHTML =
+      '<div data-v-132dee25 class="context-menu__wrp item-gap-combine op-more-btn"><div class="context-menu__target"><div data-v-6548f11a data-v-132dee25 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div></div></div>';
+    __wx_channels_video_download_btn__ = $icon.firstChild;
+    __wx_channels_video_download_btn__.onclick = () => {
+      if (!window.__wx_channels_store__.profile) {
+        return;
+      }
+      __wx_channels_handle_click_download__(
+        window.__wx_channels_store__.profile.spec[0]
+      );
+    };
+    const relative_node = $wrap4.children[$wrap4.children.length - 1];
+    if (!relative_node) {
+      fetch("/__wx_channels_api/tip", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ msg: "注入下载按钮成功3!" }),
+      });
+      $wrap4.appendChild(__wx_channels_video_download_btn__);
+      return;
+    }
+    fetch("/__wx_channels_api/tip", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ msg: "注入下载按钮成功4!" }),
+    });
+    $wrap4.insertBefore(__wx_channels_video_download_btn__, relative_node);
+  }
 }, 1000);
