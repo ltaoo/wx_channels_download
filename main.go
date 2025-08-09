@@ -44,13 +44,14 @@ var main_js []byte
 var version = "250808"
 var v = "?t=" + version
 var DefaultPort = 2023
-
+var uninstallFlag bool
 func main() {
 	cobra.MousetrapHelpText = ""
 	var (
 		device string
 		port   int
 	)
+
 	root_cmd := &cobra.Command{
 		Use:   "wx_video_download",
 		Short: "启动下载程序",
@@ -62,6 +63,7 @@ func main() {
 			})
 		},
 	}
+	root_cmd.PersistentFlags().BoolVar(&uninstallFlag, "uninstall", false, "卸载 WeChatAppEx_CA 根证书（仅限 Linux）")
 	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
 	root_cmd.Flags().IntVar(&port, "port", DefaultPort, "代理服务器端口")
 	var (
@@ -134,18 +136,37 @@ func root_command(args RootCommandArg) {
 	signal_chan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
+	// go func() {
+	// 	sig := <-signal_chan
+	// 	fmt.Printf("\n正在关闭服务...%v\n\n", sig)
+	// 	if os_env == "darwin" {
+	// 		proxy.DisableProxyInMacOS(proxy.ProxySettings{
+	// 			Device:   args.Device,
+	// 			Hostname: "127.0.0.1",
+	// 			Port:     strconv.Itoa(args.Port),
+	// 		})
+	// 	}
+	// 	os.Exit(0)
+	// }()
 	go func() {
 		sig := <-signal_chan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
-		if os_env == "darwin" {
+		switch os_env {
+		case "darwin":
 			proxy.DisableProxyInMacOS(proxy.ProxySettings{
-				Device:   args.Device,
-				Hostname: "127.0.0.1",
-				Port:     strconv.Itoa(args.Port),
-			})
+							Device:   args.Device,
+							Hostname: "127.0.0.1",
+							Port:     strconv.Itoa(args.Port),
+						})
+		case "linux":
+			err := proxy.DisableProxyInLinux()
+			if err != nil {
+				fmt.Printf("⚠️ 关闭 Linux 系统代理失败: %v\n", err)
+			}
 		}
 		os.Exit(0)
 	}()
+	
 	fmt.Printf("\nv" + version)
 	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
 	existing, err1 := certificate.CheckCertificate("SunnyNet")
@@ -194,6 +215,35 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 	}
+	if os_env == "linux" {
+        if uninstallFlag {
+            err := certificate.UninstallCertificateInLinux()
+            if err != nil {
+                fmt.Printf("证书卸载失败: %v\n", err)
+                os.Exit(1)
+            }
+            fmt.Println("✅ 证书卸载成功")
+            os.Exit(0)
+        } else {
+            err := certificate.InstallCertificateInLinux(cert_data)
+            if err != nil {
+                fmt.Printf("证书安装失败: %v\n", err)
+                os.Exit(1)
+            }
+        }
+
+        err := proxy.EnableProxyInLinux(proxy.ProxySettings{
+            Hostname: "127.0.0.1",
+            Port:     strconv.Itoa(args.Port),
+        })
+        if err != nil {
+            fmt.Printf("设置系统代理失败: %v\n", err)
+            os.Exit(1)
+        }
+
+        Sunny.ProcessAddName("WeChatAppEx")
+    }
+	
 	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
 	select {}
