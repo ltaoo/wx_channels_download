@@ -119,6 +119,8 @@ func fetchCertificates() ([]Certificate, error) {
 	switch os_env {
 	case "linux":
 		fmt.Println("Running on Linux")
+		return FetchCertificatesInLinux()
+	
 	case "darwin":
 		return fetchCertificatesInMacOS()
 	case "windows":
@@ -129,6 +131,23 @@ func fetchCertificates() ([]Certificate, error) {
 	return nil, errors.New(fmt.Sprintf("unknown OS\n"))
 
 }
+// func FetchCertificates() ([]Certificate, error) {
+//     osEnv := runtime.GOOS
+//     switch osEnv {
+//     case "linux":
+//         fmt.Println("Running on Linux")
+//         return FetchCertificatesInLinux()
+//     case "darwin":
+//         fmt.Println("Running on macOS")
+//         return nil, fmt.Errorf("macOS 不支持")
+//     case "windows":
+//         fmt.Println("Running on Windows")
+//         return nil, fmt.Errorf("Windows 不支持")
+//     default:
+//         fmt.Printf("Running on unsupported OS: %s\n", osEnv)
+//         return nil, fmt.Errorf("unsupported OS: %s", osEnv)
+//     }
+// }
 func CheckCertificate(cert_name string) (bool, error) {
 	certificates, err := fetchCertificates()
 	if err != nil {
