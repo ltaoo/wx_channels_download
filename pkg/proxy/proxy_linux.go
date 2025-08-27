@@ -1,3 +1,5 @@
+//go:build linux
+
 package proxy
 
 import (
@@ -8,9 +10,8 @@ import (
 	"strings"
 )
 
-
 // EnableProxyInLinux sets GNOME / Deepin proxy with correct user context
-func EnableProxyInLinux(ps ProxySettings) error {
+func enableProxy(ps ProxySettings) error {
 	if ps.Hostname == "" {
 		ps.Hostname = "127.0.0.1"
 	}
@@ -75,7 +76,7 @@ func EnableProxyInLinux(ps ProxySettings) error {
 }
 
 // DisableProxyInLinux 关闭 GNOME / Deepin 的系统代理
-func DisableProxyInLinux() error {
+func disableProxy() error {
 	loginUserBytes, err := exec.Command("logname").Output()
 	if err != nil {
 		return fmt.Errorf("获取登录用户失败（logname）: %v", err)
