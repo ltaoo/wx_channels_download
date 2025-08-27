@@ -44,7 +44,8 @@ var main_js []byte
 var version = "250808"
 var v = "?t=" + version
 var DefaultPort = 2023
-var uninstallFlag bool
+var RootCertificateName = "SunnyNet"
+
 func main() {
 	cobra.MousetrapHelpText = ""
 	var (
@@ -63,9 +64,22 @@ func main() {
 			})
 		},
 	}
-	root_cmd.PersistentFlags().BoolVar(&uninstallFlag, "uninstall", false, "卸载 WeChatAppEx_CA 根证书（仅限 Linux）")
 	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
 	root_cmd.Flags().IntVar(&port, "port", DefaultPort, "代理服务器端口")
+
+	uninstall_certificate_cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "删除证书",
+		Long:  "删除初始化时自动安装的证书",
+		Run: func(cmd *cobra.Command, args []string) {
+			command := cmd.Name()
+			if command != "uninstall" {
+				return
+			}
+			uninstall_certificate_command(UninstallCertificateCommandArgs{})
+		},
+	}
+
 	var (
 		video_url         string
 		filename          string
@@ -116,6 +130,7 @@ func main() {
 	decrypt_cmd.Flags().IntVar(&video_decrypt_key2, "key", 0, "解密密钥（必需）")
 	decrypt_cmd.MarkFlagRequired("filepath")
 
+	root_cmd.AddCommand(uninstall_certificate_cmd)
 	root_cmd.AddCommand(download_cmd)
 	root_cmd.AddCommand(decrypt_cmd)
 	if err := root_cmd.Execute(); err != nil {
@@ -136,40 +151,24 @@ func root_command(args RootCommandArg) {
 	signal_chan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
-	// go func() {
-	// 	sig := <-signal_chan
-	// 	fmt.Printf("\n正在关闭服务...%v\n\n", sig)
-	// 	if os_env == "darwin" {
-	// 		proxy.DisableProxyInMacOS(proxy.ProxySettings{
-	// 			Device:   args.Device,
-	// 			Hostname: "127.0.0.1",
-	// 			Port:     strconv.Itoa(args.Port),
-	// 		})
-	// 	}
-	// 	os.Exit(0)
-	// }()
 	go func() {
 		sig := <-signal_chan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
-		switch os_env {
-		case "darwin":
-			proxy.DisableProxyInMacOS(proxy.ProxySettings{
-							Device:   args.Device,
-							Hostname: "127.0.0.1",
-							Port:     strconv.Itoa(args.Port),
-						})
-		case "linux":
-			err := proxy.DisableProxyInLinux()
-			if err != nil {
-				fmt.Printf("⚠️ 关闭 Linux 系统代理失败: %v\n", err)
-			}
+		arg := proxy.ProxySettings{
+			Device:   args.Device,
+			Hostname: "127.0.0.1",
+			Port:     strconv.Itoa(args.Port),
+		}
+		err := proxy.DisableProxy(arg)
+		if err != nil {
+			fmt.Printf("⚠️ 关闭系统代理失败: %v\n", err)
 		}
 		os.Exit(0)
 	}()
-	
+
 	fmt.Printf("\nv" + version)
 	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
-	existing, err1 := certificate.CheckCertificate("SunnyNet")
+	existing, err1 := certificate.CheckHasCertificate(RootCertificateName)
 	if err1 != nil {
 		fmt.Printf("\nERROR %v\v", err1.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
@@ -202,9 +201,8 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 		Sunny.ProcessAddName("WeChatAppEx.exe")
-	}
-	if os_env == "darwin" {
-		err := proxy.EnableProxyInMacOS(proxy.ProxySettings{
+	} else {
+		err = proxy.EnableProxy(proxy.ProxySettings{
 			Device:   args.Device,
 			Hostname: "127.0.0.1",
 			Port:     strconv.Itoa(args.Port),
@@ -215,38 +213,25 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 	}
-	if os_env == "linux" {
-        if uninstallFlag {
-            err := certificate.UninstallCertificateInLinux()
-            if err != nil {
-                fmt.Printf("证书卸载失败: %v\n", err)
-                os.Exit(1)
-            }
-            fmt.Println("✅ 证书卸载成功")
-            os.Exit(0)
-        } else {
-            err := certificate.InstallCertificateInLinux(cert_data)
-            if err != nil {
-                fmt.Printf("证书安装失败: %v\n", err)
-                os.Exit(1)
-            }
-        }
-
-        err := proxy.EnableProxyInLinux(proxy.ProxySettings{
-            Hostname: "127.0.0.1",
-            Port:     strconv.Itoa(args.Port),
-        })
-        if err != nil {
-            fmt.Printf("设置系统代理失败: %v\n", err)
-            os.Exit(1)
-        }
-
-        Sunny.ProcessAddName("WeChatAppEx")
-    }
-	
 	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
 	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
 	select {}
+}
+
+type UninstallCertificateCommandArgs struct {
+}
+
+func uninstall_certificate_command(args UninstallCertificateCommandArgs) {
+	settings := proxy.ProxySettings{}
+	if err := proxy.DisableProxy(settings); err != nil {
+		fmt.Printf("\nERROR 取消代理失败 %v\n", err.Error())
+		return
+	}
+	if err := certificate.UninstallCertificate(RootCertificateName); err != nil {
+		fmt.Printf("\nERROR 删除根证书失败 %v\n", err.Error())
+		return
+	}
+	color.Green(fmt.Sprintf("\n\n删除根证书 '%v' 成功\n", RootCertificateName))
 }
 
 type DownloadCommandArgs struct {
@@ -377,8 +362,39 @@ func decrypt_command(args DecryptCOmmandArgs) {
 	fmt.Printf("解密完成 %s", args.Filepath)
 }
 
-type ChannelProfile struct {
-	Title string `json:"title"`
+type ChannelMediaSpec struct {
+	FileFormat       string  `json:"file_format"`
+	FirstLoadBytes   int     `json:"first_load_bytes"`
+	BitRate          int     `json:"bit_rate"`
+	CodingFormat     string  `json:"coding_format"`
+	DynamicRangeType int     `json:"dynamic_range_type"`
+	Vfps             int     `json:"vfps"`
+	Width            int     `json:"width"`
+	Height           int     `json:"height"`
+	DurationMs       int     `json:"duration_ms"`
+	QualityScore     float64 `json:"quality_score"`
+	VideoBitrate     int     `json:"video_bitrate"`
+	AudioBitrate     int     `json:"audio_bitrate"`
+	LevelOrder       int     `json:"level_order"`
+	Bypass           string  `json:"bypass"`
+	Is3az            int     `json:"is3az"`
+}
+type ChannelContact struct {
+	Username string `json:"username"`
+	Nickname string `json:"nickname"`
+	HeadURL  string `json:"head_url"`
+}
+type ChannelMediaProfile struct {
+	Title    string             `json:"title"`
+	CoverURL string             `json:"cover_url"`
+	URL      string             `json:"url"`
+	Size     int                `json:"size"`
+	Key      string             `json:"key"`
+	NonceId  string             `json:"nonce_id"`
+	Nickname string             `json:"nickname"`
+	Type     string             `json:"type"`
+	Contact  ChannelContact     `json:"contact"`
+	Spec     []ChannelMediaSpec `json:"spec"`
 }
 type FrontendTip struct {
 	End     int    `json:"end"`
@@ -412,7 +428,7 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 			return
 		}
 		if path == "/__wx_channels_api/profile" {
-			var data ChannelProfile
+			var data ChannelMediaProfile
 			request_body := Conn.GetRequestBody()
 			err := json.Unmarshal(request_body, &data)
 			if err != nil {
@@ -494,36 +510,23 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
 				Conn.GetResponseHeader().Set("__debug", "append_script")
 				script2 := ""
-				// script2 := `<script
-				//       crossorigin="anonymous"
-				//       src="https://pagespy.jikejishu.com/page-spy/index.min.js"
-				//     ></script>
-				//     <script
-				//       crossorigin="anonymous"
-				//       src="https://pagespy.jikejishu.com/plugin/data-harbor/index.min.js"
-				//     ></script>
-				//     <script
-				//       crossorigin="anonymous"
-				//       src="https://pagespy.jikejishu.com/plugin/rrweb/index.min.js"
-				//     ></script>
-				//     <!-- 使用第二步：实例化 PageSpy -->
-				//     <script>
-				//       window.$harbor = new DataHarborPlugin();
-				//       window.$rrweb = new RRWebPlugin();
-				//       [window.$harbor, window.$rrweb].forEach((p) => {
-				//         PageSpy.registerPlugin(p);
-				//       });
-
-				//       // 实例化的参数都是可选的
-				//       window.$pageSpy = new PageSpy({
-				//         api: "pagespy.jikejishu.com",
-				//         clientOrigin: "https://pagespy.jikejishu.com",
-				//         project: "React 演示",
-				//         autoRender: true,
-				//         title: "PageSpy 🤝 React",
-				//       });
-				//       // 之后即可使用 PageSpy，前往 https://pagespy.jikejishu.com 体验
-				//     </script>`
+				// 				script2 := `<script crossorigin="anonymous" src="https://pagespy.jikejishu.com/page-spy/index.min.js"></script>
+				// <script crossorigin="anonymous" src="https://pagespy.jikejishu.com/plugin/data-harbor/index.min.js"></script>
+				// <script crossorigin="anonymous" src="https://pagespy.jikejishu.com/plugin/rrweb/index.min.js"></script>
+				// <script>
+				// 	window.$harbor = new DataHarborPlugin();
+				// 	window.$rrweb = new RRWebPlugin();
+				// 	[window.$harbor, window.$rrweb].forEach((p) => {
+				// 		PageSpy.registerPlugin(p);
+				// 	});
+				// 	window.$pageSpy = new PageSpy({
+				// 		api: "pagespy.jikejishu.com",
+				// 		clientOrigin: "https://pagespy.jikejishu.com",
+				// 		project: "React 演示",
+				// 		autoRender: true,
+				// 		title: "PageSpy 🤝 React"
+				// 	});
+				// </script>`
 				if hostname == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
 					script := fmt.Sprintf(`<script>%s</script>`, main_js)
 					html = strings.Replace(html, "<head>", "<head>\n"+script+script2, 1)
@@ -651,7 +654,7 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						contact: data_object.contact
 					};
 					if (window.__wx_channels_store__) {
-window.__wx_channels_store__.profiles.push(profile);
+						window.__wx_channels_store__.profiles.push(profile);
 					}
 					})(),this.updateDetail(o)`
 					content = regex5.ReplaceAllString(content, replaceStr5)

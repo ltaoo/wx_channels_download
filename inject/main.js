@@ -1,4 +1,4 @@
-const defaultRandomAlphabet =
+var defaultRandomAlphabet =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 function __wx_uid__() {
   return random_string(12);
@@ -28,7 +28,7 @@ function sleep() {
   });
 }
 function __wx_channels_copy(text) {
-  const textArea = document.createElement("textarea");
+  var textArea = document.createElement("textarea");
   textArea.value = text;
   textArea.style.cssText = "position: absolute; top: -999px; left: -999px;";
   document.body.appendChild(textArea);
@@ -96,25 +96,25 @@ async function __wx_channels_decrypt(seed) {
   return decryptor_array;
 }
 async function show_progress_or_loaded_size(response) {
-  const content_length = response.headers.get("Content-Length");
-  const chunks = [];
-  const total_size = content_length ? parseInt(content_length, 10) : 0;
+  var content_length = response.headers.get("Content-Length");
+  var chunks = [];
+  var total_size = content_length ? parseInt(content_length, 10) : 0;
   if (total_size) {
     __wx_log({
       msg: `${total_size} Bytes`,
     });
   }
-  let loaded_size = 0;
-  const reader = response.body.getReader();
+  var loaded_size = 0;
+  var reader = response.body.getReader();
   while (true) {
-    const { done, value } = await reader.read();
+    var { done, value } = await reader.read();
     if (done) {
       break;
     }
     chunks.push(value);
     loaded_size += value.length;
     if (total_size) {
-      const progress = (loaded_size / total_size) * 100;
+      var progress = (loaded_size / total_size) * 100;
       __wx_log({
         replace: 1,
         msg: `${progress.toFixed(2)}%`,
@@ -130,7 +130,7 @@ async function show_progress_or_loaded_size(response) {
     end: 1,
     msg: "",
   });
-  const blob = new Blob(chunks);
+  var blob = new Blob(chunks);
   return blob;
 }
 /** 用于下载已经播放的视频内容 */
@@ -213,7 +213,7 @@ async function __wx_channels_download4(profile, filename) {
   const response = await fetch(url);
   const blob = await show_progress_or_loaded_size(response);
   __wx_log({
-    msg: "下载完成，开始解密",
+    msg: "\n下载完成，开始解密",
   });
   let array = new Uint8Array(await blob.arrayBuffer());
   if (profile.decryptor_array) {
@@ -417,65 +417,76 @@ __wx_channels_video_download_btn__.onclick = () => {
     window.__wx_channels_store__.profile.spec[0]
   );
 };
-var count = 0;
-fetch("/__wx_channels_api/tip", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    msg: "等待注入下载按钮",
-  }),
+function findElm(selector) {
+  return new Promise((resolve) => {
+    var __count = 0;
+    var __timer = setInterval(() => {
+      __count += 1;
+      var $elm = selector();
+      if (!$elm) {
+        if (__count >= 5) {
+          clearInterval(__timer);
+          __timer = null;
+          resolve(null);
+        }
+        return;
+      }
+      resolve($elm);
+      return;
+    }, 1000);
+  });
+}
+
+__wx_log({
+  msg: "等待注入下载按钮",
 });
-var __timer = setInterval(() => {
-  count += 1;
-  // const $wrap1 = document.getElementsByClassName("feed-card-wrap")[0];
-  // const $wrap2 = document.getElementsByClassName(
-  //   "operate-row transition-show"
-  // )[0];
-  const $wrap3 = document.getElementsByClassName("full-opr-wrp layout-row")[0];
-  const $wrap4 = document.getElementsByClassName("full-opr-wrp layout-col")[0];
-  if (!$wrap3 && !$wrap4) {
-    if (count >= 5) {
-      clearInterval(__timer);
-      __timer = null;
-      fetch("/__wx_channels_api/tip", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          msg: "没有找到操作栏，注入下载按钮失败\n请在「更多」菜单中下载",
-        }),
+document.body.onload = async function () {
+  var $elm3 = await findElm(function () {
+    return document.getElementsByClassName("click-box op-item")[0];
+  });
+  if ($elm3) {
+    const $parent = $elm3.parentElement;
+    if ($parent) {
+      var $svg = `<svg t="1756186284041" class="op-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2614" fill="currentColor" width="28" height="28"><path d="M537 139c165.23 0 302.183 121.067 326.991 279.332C922.626 466.753 960 540.012 960 622c0 145.803-118.197 264-264 264H348c-156.942-0.542-284-127.933-284-285 0-115.73 68.98-215.348 168.067-259.984C282.35 222.296 399.947 139 537 139z m0 64c-108.247 0-204.502 64.996-246.001 162.976l-6.113 14.433a24 24 0 0 1-12.242 12.522l-14.291 6.438C179.66 434.817 128 513.188 128 601c0 120.513 96.481 218.546 216.474 220.956l3.643 0.044H696c110.457 0 200-89.543 200-200 0-60.52-26.962-116.498-72.761-154.32l-11.698-9.66a24 24 0 0 1-8.428-14.79l-2.35-14.987C780.558 299.34 668.927 203 537 203z m-25 191c17.673 0 32 14.327 32 32v176.285l46.485-46.025c12.56-12.434 32.82-12.333 45.255 0.225 12.31 12.434 12.334 32.416 0.148 44.88l-0.373 0.375-85.444 84.598c-20.908 20.7-54.484 20.824-75.543 0.434l-0.635-0.624-84.52-84.52c-12.497-12.497-12.497-32.759 0-45.255C401.744 544 421.726 543.877 434.25 556l0.377 0.372L480 601.745V426c0-17.673 14.327-32 32-32z" p-id="2615"></path></svg>`;
+      $icon.innerHTML = `<div class=""><div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${$svg}<div data-v-1fe2ed37 class="op-text">下载</div></div></div>`;
+      __wx_channels_video_download_btn__ = $icon.firstChild;
+      __wx_channels_video_download_btn__.onclick = () => {
+        if (!window.__wx_channels_store__.profile) {
+          return;
+        }
+        __wx_channels_handle_click_download__(
+          window.__wx_channels_store__.profile.spec[0]
+        );
+      };
+      $parent.appendChild(__wx_channels_video_download_btn__);
+      __wx_log({
+        msg: "注入下载按钮成功!",
       });
-    }
-    return;
-  }
-  clearInterval(__timer);
-  __timer = null;
-  if ($wrap3) {
-    const relative_node = $wrap3.children[$wrap3.children.length - 1];
-    if (!relative_node) {
-      fetch("/__wx_channels_api/tip", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ msg: "注入下载按钮成功1!" }),
-      });
-      $wrap3.appendChild(__wx_channels_video_download_btn__);
       return;
     }
-    fetch("/__wx_channels_api/tip", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ msg: "注入下载按钮成功2!" }),
-    });
-    $wrap3.insertBefore(__wx_channels_video_download_btn__, relative_node);
   }
-  if ($wrap4) {
+  var $elm1 = await findElm(function () {
+    return document.getElementsByClassName("full-opr-wrp layout-row")[0];
+  });
+  if ($elm1) {
+    var relative_node = $elm1.children[$elm1.children.length - 1];
+    if (!relative_node) {
+      __wx_log({
+        msg: "注入下载按钮成功1!",
+      });
+      $elm1.appendChild(__wx_channels_video_download_btn__);
+      return;
+    }
+    __wx_log({
+      msg: "注入下载按钮成功2!",
+    });
+    $elm1.insertBefore(__wx_channels_video_download_btn__, relative_node);
+    return;
+  }
+  var $elm2 = await findElm(function () {
+    return document.getElementsByClassName("full-opr-wrp layout-col")[0];
+  });
+  if ($elm2) {
     $icon.innerHTML =
       '<div data-v-132dee25 class="context-menu__wrp item-gap-combine op-more-btn"><div class="context-menu__target"><div data-v-6548f11a data-v-132dee25 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;"><svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg></div></div></div>';
     __wx_channels_video_download_btn__ = $icon.firstChild;
@@ -487,25 +498,22 @@ var __timer = setInterval(() => {
         window.__wx_channels_store__.profile.spec[0]
       );
     };
-    const relative_node = $wrap4.children[$wrap4.children.length - 1];
+    var relative_node = $elm2.children[$wrap4.children.length - 1];
     if (!relative_node) {
-      fetch("/__wx_channels_api/tip", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ msg: "注入下载按钮成功3!" }),
+      __wx_log({
+        msg: "注入下载按钮成功3!",
       });
-      $wrap4.appendChild(__wx_channels_video_download_btn__);
+      $elm2.appendChild(__wx_channels_video_download_btn__);
       return;
     }
-    fetch("/__wx_channels_api/tip", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ msg: "注入下载按钮成功4!" }),
+    __wx_log({
+      msg: "注入下载按钮成功4!",
     });
-    $wrap4.insertBefore(__wx_channels_video_download_btn__, relative_node);
+    $elm2.insertBefore(__wx_channels_video_download_btn__, relative_node);
+    return;
   }
-}, 1000);
+  __wx_log({
+    msg: "没有找到操作栏，注入下载按钮失败\n",
+    // 请使用命令行方式下载\n参考 https://github.com/ltaoo/wx_channels_download/issues/129
+  });
+};

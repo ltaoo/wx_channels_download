@@ -218,7 +218,8 @@ go build -o wx_video_download.exe main.go
 # macOS
 
 ```bash
-CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -o wx_video_download
+# GOARCH=amd64 
+CGO_ENABLED=1 GOOS=darwin SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -trimpath -ldflags="-s -w" -o wx_video_download
 ```
 
 ## 其他
