@@ -81,15 +81,28 @@ func installCertificate(cert_data []byte) error {
 	return nil
 }
 
-func uninstallCertificate() error {
+func uninstallCertificate(name string) error {
+	fmt.Println(name)
 	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"
 	certificates, err := fetchCertificates()
 	if err != nil {
 		return err
 	}
-	// var matched Certificate
+	var matched *Certificate
 	for _, cert := range certificates {
-		fmt.Println(cert)
+		if cert.Subject.CN == name {
+			matched = &cert
+			break
+		}
 	}
-	return errors.New("Windows 平台暂不支持")
+	if matched == nil {
+		return errors.New("没有找到要删除的证书")
+	}
+	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root\\%v | Remove-Item", matched.Thumbprint)
+	ps := exec.Command("powershell.exe", "-Command", cmd)
+	output, err2 := ps.CombinedOutput()
+	if err2 != nil {
+		return errors.New(fmt.Sprintf("删除证书时发生错误，%v\n", string(output)))
+	}
+	return nil
 }
