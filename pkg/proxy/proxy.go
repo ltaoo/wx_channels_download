@@ -13,9 +13,9 @@ type HardwarePort struct {
 }
 
 func EnableProxy(arg ProxySettings) error {
-	return enableProxy(arg)
+	return nil
 }
 
 func DisableProxy(arg ProxySettings) error {
-	return disableProxy(arg)
+	return nil
 }
