@@ -121,8 +121,8 @@ func main() {
 				return
 			}
 			decrypt_command(DecryptCOmmandArgs{
-				Filepath:   video_url,
-				DecryptKey: video_decrypt_key,
+				Filepath:   filepath,
+				DecryptKey: video_decrypt_key2,
 			})
 		},
 	}
