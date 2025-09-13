@@ -75,7 +75,7 @@ func installCertificate(cert []byte) error {
 	return nil
 }
 
-func uninstallCertificate() error {
+func uninstallCertificate(name string) error {
 	certPath := "/usr/local/share/ca-certificates/WeChatAppEx_CA.crt"
 	_ = os.Remove(certPath)
 	if output, err := exec.Command("update-ca-certificates", "--fresh").CombinedOutput(); err != nil {
