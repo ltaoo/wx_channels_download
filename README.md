@@ -5,7 +5,10 @@
 ## 250913 更新
 
 1、视频号首页增加下载按钮
+<br/>
 2、增加 `uninstall` 命令，可卸载本工具安装的根证书
+<br/>
+3、修复打开长视频页面空白的问题
 
 <details><summary>点击查看更多更新内容</summary>
 
@@ -224,8 +227,11 @@ go build -o wx_video_download.exe main.go
 # macOS
 
 ```bash
-# GOARCH=amd64 
 CGO_ENABLED=1 GOOS=darwin SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -trimpath -ldflags="-s -w" -o wx_video_download
+```
+
+```bash
+CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -trimpath -ldflags="-s -w" -o wx_video_download
 ```
 
 ## 其他

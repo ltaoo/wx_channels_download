@@ -76,7 +76,7 @@ func enableProxy(ps ProxySettings) error {
 }
 
 // DisableProxyInLinux 关闭 GNOME / Deepin 的系统代理
-func disableProxy() error {
+func disableProxy(arg ProxySettings) error {
 	loginUserBytes, err := exec.Command("logname").Output()
 	if err != nil {
 		return fmt.Errorf("获取登录用户失败（logname）: %v", err)
