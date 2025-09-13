@@ -213,7 +213,10 @@ async function __wx_channels_download4(profile, filename) {
   const response = await fetch(url);
   const blob = await show_progress_or_loaded_size(response);
   __wx_log({
-    msg: "\n下载完成，开始解密",
+    msg: "",
+  });
+  __wx_log({
+    msg: "下载完成，开始解密",
   });
   let array = new Uint8Array(await blob.arrayBuffer());
   if (profile.decryptor_array) {
@@ -433,38 +436,62 @@ function findElm(selector) {
       }
       resolve($elm);
       return;
-    }, 1000);
+    }, 200);
   });
 }
-
-__wx_log({
-  msg: "等待注入下载按钮",
-});
-document.body.onload = async function () {
-  var $elm3 = await findElm(function () {
-    return document.getElementsByClassName("click-box op-item")[0];
+async function __insert_download_btn_to_home_page() {
+  var $container = await findElm(function () {
+    return document.querySelector(".slides-scroll");
   });
-  if ($elm3) {
-    const $parent = $elm3.parentElement;
-    if ($parent) {
-      var $svg = `<svg t="1756186284041" class="op-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2614" fill="currentColor" width="28" height="28"><path d="M537 139c165.23 0 302.183 121.067 326.991 279.332C922.626 466.753 960 540.012 960 622c0 145.803-118.197 264-264 264H348c-156.942-0.542-284-127.933-284-285 0-115.73 68.98-215.348 168.067-259.984C282.35 222.296 399.947 139 537 139z m0 64c-108.247 0-204.502 64.996-246.001 162.976l-6.113 14.433a24 24 0 0 1-12.242 12.522l-14.291 6.438C179.66 434.817 128 513.188 128 601c0 120.513 96.481 218.546 216.474 220.956l3.643 0.044H696c110.457 0 200-89.543 200-200 0-60.52-26.962-116.498-72.761-154.32l-11.698-9.66a24 24 0 0 1-8.428-14.79l-2.35-14.987C780.558 299.34 668.927 203 537 203z m-25 191c17.673 0 32 14.327 32 32v176.285l46.485-46.025c12.56-12.434 32.82-12.333 45.255 0.225 12.31 12.434 12.334 32.416 0.148 44.88l-0.373 0.375-85.444 84.598c-20.908 20.7-54.484 20.824-75.543 0.434l-0.635-0.624-84.52-84.52c-12.497-12.497-12.497-32.759 0-45.255C401.744 544 421.726 543.877 434.25 556l0.377 0.372L480 601.745V426c0-17.673 14.327-32 32-32z" p-id="2615"></path></svg>`;
-      $icon.innerHTML = `<div class=""><div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${$svg}<div data-v-1fe2ed37 class="op-text">下载</div></div></div>`;
-      __wx_channels_video_download_btn__ = $icon.firstChild;
-      __wx_channels_video_download_btn__.onclick = () => {
-        if (!window.__wx_channels_store__.profile) {
-          return;
-        }
-        __wx_channels_handle_click_download__(
-          window.__wx_channels_store__.profile.spec[0]
-        );
-      };
-      $parent.appendChild(__wx_channels_video_download_btn__);
-      __wx_log({
-        msg: "注入下载按钮成功!",
-      });
-      return;
-    }
+  if (!$container) {
+    return;
   }
+  var cssText = $container.style.cssText;
+  var re = /translate3d\([0-9]{1,}px, {0,1}-{0,1}([0-9]{1,})%/;
+  var matched = cssText.match(re);
+  var idx = matched ? Number(matched[1]) / 100 : 0;
+  console.log('[]idx', idx);
+  var $item = document.querySelectorAll(".slides-item")[idx];
+  var $existing_download_btn = $item.querySelector(".download-icon");
+  if ($existing_download_btn) {
+    return;
+  }
+  var $elm3 = await findElm(function () {
+    return $item.getElementsByClassName("click-box op-item")[0];
+  });
+  if (!$elm3) {
+    return;
+  }
+  const $parent = $elm3.parentElement;
+  if ($parent) {
+    var icon_url =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAAB9ElEQVR4AeyVa3LCMAwGk16scDLCyaAnc3ddy2PnzTDDrzIW8UP6VhIh+Ro+/PkHbjY8pXTZPNw5ON1SAdijWELTOcs8Jr4n9g7HKWARe6AWVT2ZhzEdbnzdih/T7XEILCIKCriO4zi3EfkrdseEWj3T9bELbGHjH0joQomzJ2ZLhQ7E2Y2FnxubQIJsn5UNiFmB/ruGX0AvxDtf+K8Cca4wInLWXE+NArUTOdl50AIIzMxsidB7EZjHnVqjpUbn2wFxEGZmZujN4boLcIGffwmTcrlm0RW1uvMOyEl2oCphQtlaHYvMWy/ijdUWv2UFknVUE9m1Gi/PgXqjCfWvUhOsQBSjugCz9faI5LO2ai3QdTg478wOYI6aLQtbxiXVvTaIKq1Qq+cZSETdaANmcwPdam+WmB/GByMDSyaKffu1ZsWn7UBAjv46P61eBpYNKwiRstVfgPr7ttAjmAK5CGLVH1pgzoTSFdVx1QicsBi7vmhZgJZhClYgCgZ70N3GOr1hcXfmYtSpQBdYtMsniQmw9fqwMswbyuq6tndAqrTCgFopcSnDU0r5rX5w1VeQtoCZegd0A2j+jZgLNgEDbc0Z01czzsfjhE43FsA4LWCD4o3uo+rQiHMYJzTk6nUTWD2YoOAb/ZThvjtOAXcVXjz8OPAXAAD//5jl7kwAAAAGSURBVAMA8H8MSLsb1AoAAAAASUVORK5CYII=";
+    var $svg = `<div class="op-icon download-icon" data-v-1fe2ed37 style="background-image: url('${icon_url}');"></div>`;
+    $icon.innerHTML = `<div class=""><div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${$svg}<div data-v-1fe2ed37 class="op-text">下载</div></div></div>`;
+    __wx_channels_video_download_btn__ = $icon.firstChild;
+    __wx_channels_video_download_btn__.onclick = () => {
+      if (!window.__wx_channels_store__.profile) {
+        __wx_log({
+          msg: '没有视频数据',
+        });
+        return;
+      }
+      __wx_channels_handle_click_download__(
+        window.__wx_channels_store__.profile.spec[0]
+      );
+    };
+    $parent.appendChild(__wx_channels_video_download_btn__);
+    __wx_log({
+      msg: "注入下载按钮成功!",
+    });
+    return true;
+  }
+}
+
+async function insert_download_btn() {
+  __wx_log({
+    msg: "等待注入下载按钮",
+  });
   var $elm1 = await findElm(function () {
     return document.getElementsByClassName("full-opr-wrp layout-row")[0];
   });
@@ -498,7 +525,7 @@ document.body.onload = async function () {
         window.__wx_channels_store__.profile.spec[0]
       );
     };
-    var relative_node = $elm2.children[$wrap4.children.length - 1];
+    var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {
       __wx_log({
         msg: "注入下载按钮成功3!",
@@ -512,8 +539,15 @@ document.body.onload = async function () {
     $elm2.insertBefore(__wx_channels_video_download_btn__, relative_node);
     return;
   }
+  var success = await __insert_download_btn_to_home_page();
+  if (success) {
+    return;
+  }
   __wx_log({
     msg: "没有找到操作栏，注入下载按钮失败\n",
     // 请使用命令行方式下载\n参考 https://github.com/ltaoo/wx_channels_download/issues/129
   });
-};
+}
+setTimeout(async () => {
+  insert_download_btn();
+}, 800);

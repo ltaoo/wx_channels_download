@@ -38,10 +38,19 @@ var file_saver_js []byte
 //go:embed lib/jszip.min.js
 var zip_js []byte
 
+//go:embed inject/error.js
+var error_js []byte
+
 //go:embed inject/main.js
 var main_js []byte
 
-var version = "250808"
+//go:embed inject/pagespy.min.js
+var pagespy_js []byte
+
+//go:embed inject/pagespy.js
+var pagespy_js2 []byte
+
+var version = "250913"
 var v = "?t=" + version
 var DefaultPort = 2023
 var RootCertificateName = "SunnyNet"
@@ -51,6 +60,7 @@ func main() {
 	var (
 		device string
 		port   int
+		debug  bool
 	)
 
 	root_cmd := &cobra.Command{
@@ -61,11 +71,13 @@ func main() {
 			root_command(RootCommandArg{
 				Device: device,
 				Port:   port,
+				Debug:  debug,
 			})
 		},
 	}
 	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
 	root_cmd.Flags().IntVar(&port, "port", DefaultPort, "代理服务器端口")
+	root_cmd.Flags().BoolVar(&debug, "debug", false, "是否开启调试")
 
 	uninstall_certificate_cmd := &cobra.Command{
 		Use:   "uninstall",
@@ -143,6 +155,7 @@ func main() {
 type RootCommandArg struct {
 	Device string
 	Port   int
+	Debug  bool
 }
 
 func root_command(args RootCommandArg) {
@@ -185,7 +198,9 @@ func root_command(args RootCommandArg) {
 		}
 	}
 	var Sunny = SunnyNet.NewSunny()
-	Sunny.SetGoCallback(HttpCallback, nil, nil, nil)
+	Sunny.SetGoCallback(func(conn SunnyNet.ConnHTTP) {
+		HandleHttpRequest(args, conn)
+	}, nil, nil, nil)
 	Sunny.SetPort(args.Port).Start()
 	err := Sunny.Error
 	if err != nil {
@@ -402,7 +417,7 @@ type FrontendTip struct {
 	Msg     string `json:"msg"`
 }
 
-func HttpCallback(Conn SunnyNet.ConnHTTP) {
+func HandleHttpRequest(args RootCommandArg, Conn SunnyNet.ConnHTTP) {
 	u := Conn.URL()
 	parsed_url, err := url.Parse(u)
 	if err != nil {
@@ -501,36 +516,33 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 			// fmt.Println("HttpCallback", Conn.Type, host, path)
 			// fmt.Println("Response ContentType is", content_type)
 			if content_type == "text/html; charset=utf-8" {
-				// fmt.Println("\n\n检测到页面打开")
-				// fmt.Println(path)
 				html := string(request_body)
 				script_reg1 := regexp.MustCompile(`src="([^"]{1,})\.js"`)
 				html = script_reg1.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
 				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
 				Conn.GetResponseHeader().Set("__debug", "append_script")
-				script2 := ""
-				// 				script2 := `<script crossorigin="anonymous" src="https://pagespy.jikejishu.com/page-spy/index.min.js"></script>
-				// <script crossorigin="anonymous" src="https://pagespy.jikejishu.com/plugin/data-harbor/index.min.js"></script>
-				// <script crossorigin="anonymous" src="https://pagespy.jikejishu.com/plugin/rrweb/index.min.js"></script>
-				// <script>
-				// 	window.$harbor = new DataHarborPlugin();
-				// 	window.$rrweb = new RRWebPlugin();
-				// 	[window.$harbor, window.$rrweb].forEach((p) => {
-				// 		PageSpy.registerPlugin(p);
-				// 	});
-				// 	window.$pageSpy = new PageSpy({
-				// 		api: "pagespy.jikejishu.com",
-				// 		clientOrigin: "https://pagespy.jikejishu.com",
-				// 		project: "React 演示",
-				// 		autoRender: true,
-				// 		title: "PageSpy 🤝 React"
-				// 	});
-				// </script>`
 				if hostname == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
-					script := fmt.Sprintf(`<script>%s</script>`, main_js)
-					html = strings.Replace(html, "<head>", "<head>\n"+script+script2, 1)
-					fmt.Println("1. 视频详情页 html 注入 js 成功")
+					inserted_scripts := ""
+					if args.Debug {
+						/** 全局错误捕获 */
+						script_error := fmt.Sprintf(`<script>%s</script>`, error_js)
+						inserted_scripts = script_error
+						/** 在线调试 */
+						script_pagespy := fmt.Sprintf(`<script>%s</script>`, pagespy_js)
+						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, pagespy_js2)
+						inserted_scripts += script_pagespy + script_pagespy2
+					}
+					/** 下载逻辑 */
+					script_main := fmt.Sprintf(`<script>%s</script>`, main_js)
+					inserted_scripts += script_main
+					html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+					if path == "/web/pages/home" {
+						fmt.Println("1. 视频号首页 html 注入 js 成功")
+					}
+					if path == "/web/pages/feed" {
+						fmt.Println("1. 视频详情页 html 注入 js 成功")
+					}
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(html))))
 					return
 				}
@@ -551,7 +563,7 @@ func HttpCallback(Conn SunnyNet.ConnHTTP) {
 
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					regexp1 := regexp.MustCompile(`this.sourceBuffer.appendBuffer\(h\),`)
-					replaceStr1 := `(() => {
+					replace_str1 := `(() => {
 if (window.__wx_channels_store__) {
 window.__wx_channels_store__.buffers.push(h);
 }
@@ -559,51 +571,56 @@ window.__wx_channels_store__.buffers.push(h);
 					if regexp1.MatchString(content) {
 						fmt.Println("2. 视频播放 js 修改成功")
 					}
-					content = regexp1.ReplaceAllString(content, replaceStr1)
+					content = regexp1.ReplaceAllString(content, replace_str1)
 					regexp2 := regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
-					replaceStr2 := `if(f.cmd==="CUT"){
-	if (window.__wx_channels_store__) {
+					replace_str2 := `if(f.cmd==="CUT"){
+	if (window.__wx_channels_store__ && __wx_channels_store__.profile) {
 	console.log("CUT", f, __wx_channels_store__.profile.key);
 	window.__wx_channels_store__.keys[__wx_channels_store__.profile.key]=f.decryptor_array;
 	}
 }
 if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
-					content = regexp2.ReplaceAllString(content, replaceStr2)
+					content = regexp2.ReplaceAllString(content, replace_str2)
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
-				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					regexp1 := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async`)
-					replaceStr1 := `async finderGetCommentDetail($1) {
-					var feedResult = await$2;
-					var data_object = feedResult.data.object;
-					if (!data_object.objectDesc) {
-						return feedResult;
+				update_media_profile_text := `var profile = media.mediaType !== 4 ? {
+					type: "picture",
+					id: data_object.id,
+					title: data_object.objectDesc.description,
+					files: data_object.objectDesc.media,
+					spec: [],
+					contact: data_object.contact
+				} : {
+					type: "media",
+					duration: media.spec[0] ? media.spec[0].durationMs : 0,
+					spec: media.spec,
+					title: data_object.objectDesc.description,
+					coverUrl: media.coverUrl,
+					url: media.url+media.urlToken,
+					size: media.fileSize ? Number(media.fileSize) : 0,
+					key: media.decodeKey,
+					id: data_object.id,
+					nonce_id: data_object.objectNonceId,
+					nickname: data_object.nickname,
+					createtime: data_object.createtime,
+					fileFormat: media.spec.map(o => o.fileFormat),
+					contact: data_object.contact
+				};
+				(() => {
+					if (!window.__wx_channels_store__) {
+					return;
 					}
-					var media = data_object.objectDesc.media[0];
-					var profile = media.mediaType !== 4 ? {
-						type: "picture",
-						id: data_object.id,
-						title: data_object.objectDesc.description,
-						files: data_object.objectDesc.media,
-						spec: [],
-						contact: data_object.contact
-					} : {
-						type: "media",
-						duration: media.spec[0].durationMs,
-						spec: media.spec,
-						title: data_object.objectDesc.description,
-						coverUrl: media.coverUrl,
-						url: media.url+media.urlToken,
-						size: media.fileSize,
-						key: media.decodeKey,
-						id: data_object.id,
-						nonce_id: data_object.objectNonceId,
-						nickname: data_object.nickname,
-						createtime: data_object.createtime,
-						fileFormat: media.spec.map(o => o.fileFormat),
-						contact: data_object.contact
-					};
+					if (window.__wx_channels_store__.profiles.length) {
+						var existing = window.__wx_channels_store__.profiles.find(function(v){
+							return v.id === profile.id;
+						});
+						if (existing) {
+							return;
+						}
+					}
+					__wx_channels_store__.profile = profile;
+					window.__wx_channels_store__.profiles.push(profile);
 					fetch("/__wx_channels_api/profile", {
 						method: "POST",
 						headers: {
@@ -611,73 +628,66 @@ if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
 						},
 						body: JSON.stringify(profile)
 					});
-					if (window.__wx_channels_store__) {
-					__wx_channels_store__.profile = profile;
-					window.__wx_channels_store__.profiles.push(profile);
+				})();
+				`
+				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
+					regexp1 := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async`)
+					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
+					var feedResult = await$2;
+					var data_object = feedResult.data.object;
+					if (!data_object.objectDesc) {
+						return feedResult;
 					}
-					return feedResult;
-				}async`
-					if regexp1.MatchString(content) {
-						fmt.Println("3. 视频详情页 js 修改成功")
-					}
-					content = regexp1.ReplaceAllString(content, replaceStr1)
-					regex2 := regexp.MustCompile(`i.default={dialog`)
-					replaceStr2 := `i.default=window.window.__wx_channels_tip__={dialog`
-					content = regex2.ReplaceAllString(content, replaceStr2)
-					regex5 := regexp.MustCompile(`this.updateDetail\(o\)`)
-					replaceStr5 := `(() => {
-					if (Object.keys(o).length===0){
-					return;
-					}
-					var data_object = o;
 					var media = data_object.objectDesc.media[0];
-					var profile = media.mediaType !== 4 ? {
-						type: "picture",
-						id: data_object.id,
-						title: data_object.objectDesc.description,
-						files: data_object.objectDesc.media,
-						spec: [],
-						contact: data_object.contact
-					} : {
-						type: "media",
-						duration: media.spec[0].durationMs,
-						spec: media.spec,
-						title: data_object.objectDesc.description,
-						url: media.url+media.urlToken,
-						size: media.fileSize,
-						key: media.decodeKey,
-						id: data_object.id,
-						nonce_id: data_object.objectNonceId,
-						nickname: data_object.nickname,
-						createtime: data_object.createtime,
-						fileFormat: media.spec.map(o => o.fileFormat),
-						contact: data_object.contact
-					};
-					if (window.__wx_channels_store__) {
-						window.__wx_channels_store__.profiles.push(profile);
+					%v
+					return feedResult;
+				}async`, update_media_profile_text)
+					if regexp1.MatchString(content) {
+						fmt.Println("3.视频读取 js 修改成功")
 					}
-					})(),this.updateDetail(o)`
-					content = regex5.ReplaceAllString(content, replaceStr5)
+					content = regexp1.ReplaceAllString(content, replace_str1)
+					regex2 := regexp.MustCompile(`i.default={dialog`)
+					replace_str2 := `i.default=window.window.__wx_channels_tip__={dialog`
+					content = regex2.ReplaceAllString(content, replace_str2)
+					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
+					return
+				}
+				if util.Includes(path, "vuexStores.publish") {
+					regex1 := regexp.MustCompile(`goToNextFlowFeed:rs`)
+					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
+					await rs(v);
+					setTimeout(() => {
+					var data_object = Zt.value.feed;
+					var media = data_object.objectDesc.media[0];
+					%v
+					if (window.__insert_download_btn_to_home_page) {
+__insert_download_btn_to_home_page();
+					}
+					}, 0);
+					}`, update_media_profile_text)
+					content = regex1.ReplaceAllString(content, replace_str1)
+
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					regex := regexp.MustCompile(`,"投诉"\)]`)
-					replaceStr := `,"投诉_update"),...(() => {
+					replace_str := `,"投诉"),...(() => {
 					if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
 						return window.__wx_channels_store__.profile.spec.map((sp) => {
 							return f("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 						});
 					}
+					return [];
 					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_print_download_command},"打印下载命令"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
-					content = regex.ReplaceAllString(content, replaceStr)
+					content = regex.ReplaceAllString(content, replace_str)
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
 				if util.Includes(path, "worker_release") {
 					regex := regexp.MustCompile(`fmp4Index:p.fmp4Index`)
-					replaceStr := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
-					content = regex.ReplaceAllString(content, replaceStr)
+					replace_str := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
+					content = regex.ReplaceAllString(content, replace_str)
 					Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
 					return
 				}
