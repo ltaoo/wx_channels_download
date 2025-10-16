@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -267,20 +267,22 @@ type DownloadCommandArgs struct {
 }
 
 func download_command(args DownloadCommandArgs) {
-	resp, err := http.Get(args.URL)
-	if err != nil {
-		fmt.Printf("[ERROR]下载失败 %v\n", err.Error())
-		return
-	}
-	defer resp.Body.Close()
+	url := args.URL
 	homedir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Printf("[ERROR]获取下载路径失败 %v\n", err.Error())
 		return
 	}
-	tmp_filename := "wx_" + strconv.Itoa(int(time.Now().Unix()))
-	tmp_dest_filepath := path.Join(homedir, "Downloads", tmp_filename)
-	dest_filepath := path.Join(homedir, "Downloads", args.Filename)
+	tmp_filename := "tmp_wx_" + strconv.Itoa(int(time.Now().Unix()))
+	tmp_dest_filepath := filepath.Join(homedir, "Downloads", tmp_filename)
+	dest_filepath := filepath.Join(homedir, "Downloads", args.Filename)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Printf("[ERROR]下载失败 %v\n", err.Error())
+		return
+	}
+	defer resp.Body.Close()
 	file, err := os.Create(tmp_dest_filepath)
 	if err != nil {
 		fmt.Printf("[ERROR]下载文件失败 %v\n", err.Error())
@@ -319,9 +321,10 @@ func download_command(args DownloadCommandArgs) {
 			return
 		}
 	}
+
 	fmt.Println()
 	if args.DecryptKey != 0 {
-		fmt.Printf("开始对文件解密 %s", tmp_dest_filepath)
+		fmt.Printf("开始对文件解密 %s\n", tmp_dest_filepath)
 		length := uint32(131072)
 		enclen_str := resp.Header.Get("X-enclen")
 		if enclen_str != "" {
@@ -343,8 +346,7 @@ func download_command(args DownloadCommandArgs) {
 			return
 		}
 		file.Close()
-		err = os.Remove(tmp_dest_filepath)
-		if err != nil {
+		if err := os.Remove(tmp_dest_filepath); err != nil {
 			if os.IsNotExist(err) {
 				fmt.Println("[ERROR]临时文件不存在")
 			} else if os.IsPermission(err) {
@@ -356,13 +358,7 @@ func download_command(args DownloadCommandArgs) {
 		fmt.Printf("解密完成，文件路径为 %s\n", dest_filepath)
 		return
 	}
-	file.Close()
-	err = os.Rename(tmp_dest_filepath, dest_filepath)
-	if err != nil {
-		fmt.Printf("[ERROR]重命名文件失败 %v\n", err.Error())
-		return
-	}
-	fmt.Printf("下载完成，件路径为 %s\n", dest_filepath)
+	fmt.Printf("下载完成，文件路径为 %s\n", dest_filepath)
 }
 
 type DecryptCOmmandArgs struct {
@@ -371,7 +367,7 @@ type DecryptCOmmandArgs struct {
 }
 
 func decrypt_command(args DecryptCOmmandArgs) {
-	fmt.Printf("开始对文件解密 %s", args.Filepath)
+	fmt.Printf("开始对文件解密 %s\n", args.Filepath)
 	length := uint32(131072)
 	key := uint64(args.DecryptKey)
 	data, err := os.ReadFile(args.Filepath)
@@ -385,5 +381,5 @@ func decrypt_command(args DecryptCOmmandArgs) {
 		fmt.Printf("[ERROR]写入文件失败 %v\n", err.Error())
 		return
 	}
-	fmt.Printf("解密完成 %s", args.Filepath)
+	fmt.Printf("解密完成 %s\n", args.Filepath)
 }
