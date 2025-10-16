@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=ltaoo&project=wx_channels_download&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 # 微信视频号下载器
 
 体积小、使用简单、支持 macOS 和 Windows 系统。
