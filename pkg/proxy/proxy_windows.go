@@ -8,6 +8,6 @@ func enableProxy(ps ProxySettings) error {
 	return errors.New("Windows 平台暂不支持")
 }
 
-func disableProxy() error {
+func disableProxy(ps ProxySettings) error {
 	return errors.New("Windows 平台暂不支持")
 }
