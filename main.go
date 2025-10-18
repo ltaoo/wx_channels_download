@@ -33,7 +33,7 @@ var js_error []byte
 var js_main []byte
 
 var RootCertificateName = "SunnyNet"
-var AppVer = "250913"
+var AppVer = "251018_01"
 
 func main() {
 	files := &application.BizFiles{

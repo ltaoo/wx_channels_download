@@ -126,10 +126,6 @@ async function show_progress_or_loaded_size(response) {
       });
     }
   }
-  __wx_log({
-    end: 1,
-    msg: "",
-  });
   var blob = new Blob(chunks);
   return blob;
 }
@@ -158,6 +154,10 @@ async function __wx_channels_download2(profile, filename) {
   const ins = __wx_channel_loading();
   const response = await fetch(url);
   const blob = await show_progress_or_loaded_size(response);
+  __wx_log({
+    ignore_prefix: 1,
+    msg: "",
+  });
   __wx_log({
     msg: "下载完成",
   });
@@ -213,6 +213,7 @@ async function __wx_channels_download4(profile, filename) {
   const response = await fetch(url);
   const blob = await show_progress_or_loaded_size(response);
   __wx_log({
+    ignore_prefix: 1,
     msg: "",
   });
   __wx_log({
