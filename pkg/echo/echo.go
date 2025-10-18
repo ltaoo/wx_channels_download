@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/andybalholm/brotli"
 )
 
 type Echo struct {
@@ -42,16 +44,16 @@ func (h *Echo) SetHttpRequestFilter(filter []string) {
 	h.filter = filter
 }
 func (h *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Host, r.URL.Hostname())
-	match_filter := false
-	for _, f := range h.filter {
-		if strings.HasSuffix(r.URL.Hostname(), f) {
-			match_filter = true
-		}
-	}
-	fmt.Println(match_filter)
-	if match_filter {
-	}
+	// fmt.Println(r.URL.Host, r.URL.Hostname())
+	// match_filter := false
+	// for _, f := range h.filter {
+	// 	if strings.HasSuffix(r.URL.Hostname(), f) {
+	// 		match_filter = true
+	// 	}
+	// }
+	// fmt.Println(match_filter)
+	// if match_filter {
+	// }
 	if r.Method == http.MethodConnect {
 		h.handle_https(w, r)
 	} else {
@@ -93,7 +95,7 @@ func (h *Echo) handle_http(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	remove_hop_headers(resp.Header)
+	// remove_hop_headers(resp.Header)
 	copy_header(w.Header(), resp.Header)
 
 	w.WriteHeader(resp.StatusCode)
@@ -123,6 +125,7 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 	// 为目标主机生成证书
 	cert, err := h.generate_cert(r.URL.Hostname())
 	if err != nil {
+		// log.SetOutput()
 		log.Printf("Failed to generate certificate: %v", err)
 		return
 	}
@@ -140,7 +143,7 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 	tls_conn.SetDeadline(time.Now().Add(h.timeout))
 	// 等待TLS握手完成
 	if err := tls_conn.Handshake(); err != nil {
-		log.Printf("TLS handshake error: %v", err)
+		// log.Printf("TLS handshake error: %v", err)
 		return
 	}
 	// 读取客户端请求
@@ -151,47 +154,53 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 		req, err := http.ReadRequest(reader)
 		if err != nil {
 			if err == io.EOF {
-				log.Println("Client closed connection")
+				// log.Println("Client closed connection")
 				return
 			}
 			if net_err, ok := err.(net.Error); ok && net_err.Timeout() {
-				log.Println("Read timeout")
+				// log.Println("Read timeout")
 				return
 			}
 			if strings.Contains(err.Error(), "connection reset by peer") {
-				log.Println("Client reset connection")
+				// log.Println("Client reset connection")
 				return
 			}
-			log.Printf("Error reading request: %v", err)
+			// log.Printf("Error reading request: %v", err)
 			return
 		}
 		// 修改请求以指向正确的目标
 		req.URL.Scheme = "https"
 		req.URL.Host = host_port
 		req.RequestURI = ""
-		remove_hop_headers(req.Header)
+		// remove_hop_headers(req.Header)
 		tls_helper.BindRequest(req)
-		fmt.Println("[LOG][EVENT]before request")
+		// fmt.Println("[LOG][EVENT]before request")
 		// event:before request
 		h.http_handler(tls_helper)
-		fmt.Println("[LOG][HANDLER]after handle request, has_tmp_resp:", tls_helper.direct_resp)
+		// fmt.Println("[LOG][HANDLER]after handle request, has_tmp_resp:", tls_helper.direct_resp)
 		if tls_helper.direct_resp {
 			return
 		}
 		// 转发请求到目标服务器
 		resp, err := http.DefaultTransport.RoundTrip(req)
 		if err != nil {
-			log.Printf("Error forwarding request: %v", err)
+			// log.Printf("Error forwarding request: %v", err)
 			return
 		}
 		tls_helper.BindResponse(resp)
 		tls_helper.step = HttpConnectStepAfterRequest
-		fmt.Println("[LOG][EVENT]after request")
+		// fmt.Println("[LOG][EVENT]after request")
 		// event:after request
 		h.http_handler(tls_helper)
 		remove_hop_headers(resp.Header)
+		// fmt.Println("Before write resp to tls connection")
+		// fmt.Println(req.URL.Path)
+		// fmt.Println("Content-Length", resp.Header.Get("Content-Length"))
+		// fmt.Println()
 		if err := resp.Write(tls_conn); err != nil {
-			log.Printf("Error writing response: %v", err)
+			// log.Printf("Error writing response: %v", err)
+			// fmt.Printf("Error writing response: %v\n", err)
+			// fmt.Println(req.URL.Path)
 			return
 		}
 		// 如果不是keep-alive连接，则退出循环
@@ -297,7 +306,7 @@ func isKeepAlive(req *http.Request, resp *http.Response) bool {
 	return false
 }
 
-func gzipDecode(data []byte) ([]byte, error) {
+func gzip_decode(data []byte) ([]byte, error) {
 	r, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -306,11 +315,50 @@ func gzipDecode(data []byte) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
-func zlibDecode(data []byte) ([]byte, error) {
+func zlib_decode(data []byte) ([]byte, error) {
 	r, err := zlib.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
 	return io.ReadAll(r)
+}
+
+func encode_gzip(data []byte) (io.Reader, error) {
+	var buf bytes.Buffer
+	gz_writer := gzip.NewWriter(&buf)
+
+	if _, err := gz_writer.Write(data); err != nil {
+		return nil, fmt.Errorf("gzip write failed: %v", err)
+	}
+	if err := gz_writer.Close(); err != nil { // 必须 Close() 才能完成压缩
+		return nil, fmt.Errorf("gzip close failed: %v", err)
+	}
+
+	return &buf, nil
+}
+
+func encode_deflate(data []byte) (io.Reader, error) {
+	var buf bytes.Buffer
+	zlib_writer := zlib.NewWriter(&buf)
+	if _, err := zlib_writer.Write(data); err != nil {
+		return nil, fmt.Errorf("deflate write failed: %v", err)
+	}
+	if err := zlib_writer.Close(); err != nil { // 必须 Close() 才能完成压缩
+		return nil, fmt.Errorf("deflate close failed: %v", err)
+	}
+
+	return &buf, nil
+}
+
+func encode_br(data []byte) (io.Reader, error) {
+	var buf bytes.Buffer
+	br_writer := brotli.NewWriter(&buf)
+	if _, err := br_writer.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to encode brotli: %v", err)
+	}
+	if err := br_writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize brotli: %v", err)
+	}
+	return &buf, nil
 }
