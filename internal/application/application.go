@@ -16,17 +16,15 @@ import (
 	"wx_channel/pkg/proxy"
 )
 
-var RootCertificateName = "SunnyNet"
-
 type BizFiles struct {
-	Cert       []byte
-	PrivateKey []byte
-	JSFileSave []byte
-	JSZip      []byte
-	JSPageSpy1 []byte
-	JSPageSpy2 []byte
-	JSError    []byte
-	JSMain     []byte
+	CertFile       []byte
+	PrivateKeyFile []byte
+	JSFileSaver    []byte
+	JSZip          []byte
+	JSPageSpy1     []byte
+	JSPageSpy2     []byte
+	JSError        []byte
+	JSMain         []byte
 }
 
 type Biz struct {
@@ -35,36 +33,27 @@ type Biz struct {
 	Debug   bool
 }
 
-func NewBiz(version string, cert []byte, private_key []byte, js_file_save []byte, js_zip []byte, js_page_spy1 []byte, js_page_spy2 []byte, js_error []byte, js_main []byte) *Biz {
+func NewBiz(version string, files *BizFiles) *Biz {
 	return &Biz{
 		Version: version,
-		Files: &BizFiles{
-			Cert:       cert,
-			PrivateKey: private_key,
-			JSFileSave: js_file_save,
-			JSZip:      js_zip,
-			JSPageSpy1: js_page_spy1,
-			JSPageSpy2: js_page_spy2,
-			JSMain:     js_main,
-			JSError:    js_error,
-		},
+		Files:   files,
 	}
 }
 func (a *Biz) SetDebug(debug bool) {
 	a.Debug = debug
 }
 
-func (a *Biz) UninstallCertificate() {
+func (a *Biz) UninstallCertificate(cert_file_name string) {
 	settings := proxy.ProxySettings{}
 	if err := proxy.DisableProxy(settings); err != nil {
 		fmt.Printf("\nERROR 取消代理失败 %v\n", err.Error())
 		return
 	}
-	if err := certificate.UninstallCertificate(RootCertificateName); err != nil {
+	if err := certificate.UninstallCertificate(cert_file_name); err != nil {
 		fmt.Printf("\nERROR 删除根证书失败 %v\n", err.Error())
 		return
 	}
-	color.Green(fmt.Sprintf("\n\n删除根证书 '%v' 成功\n", RootCertificateName))
+	color.Green(fmt.Sprintf("\n\n删除根证书 '%v' 成功\n", cert_file_name))
 }
 
 type DecryptCOmmandArgs struct {
