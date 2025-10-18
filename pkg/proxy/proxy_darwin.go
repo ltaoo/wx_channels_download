@@ -9,26 +9,8 @@ import (
 	"strings"
 )
 
-func mergeDefaultSettings(p ProxySettings) ProxySettings {
-	if p.Device == "" {
-		p.Device = "Wi-Fi" // 默认使用 Wi-Fi 设备
-		device, err := getNetworkInterfaces()
-		if err == nil {
-			p.Device = device.Port
-		}
-	}
-	if p.Hostname == "" {
-		p.Hostname = "127.0.0.1"
-	}
-	if p.Port == "" {
-		p.Port = "2023"
-	}
-	return p
-
-}
-
-func enableProxy(args ProxySettings) error {
-	args = mergeDefaultSettings(args)
+func enable_proxy(args ProxySettings) error {
+	args = merge_default_settings(args)
 	cmd1 := exec.Command("networksetup", "-setwebproxy", args.Device, args.Hostname, args.Port)
 	_, err1 := cmd1.Output()
 	if err1 != nil {
@@ -42,8 +24,8 @@ func enableProxy(args ProxySettings) error {
 	return nil
 }
 
-func disableProxy(args ProxySettings) error {
-	args = mergeDefaultSettings(args)
+func disable_proxy(args ProxySettings) error {
+	args = merge_default_settings(args)
 	cmd1 := exec.Command("networksetup", "-setwebproxystate", args.Device, "off")
 	_, err1 := cmd1.Output()
 	if err1 != nil {
@@ -57,7 +39,7 @@ func disableProxy(args ProxySettings) error {
 	return nil
 }
 
-func getNetworkInterfaces() (*HardwarePort, error) {
+func get_network_interfaces() (*HardwarePort, error) {
 	// 获取所有硬件端口信息
 	cmd := exec.Command("networksetup", "-listallhardwareports")
 	output, err := cmd.Output()

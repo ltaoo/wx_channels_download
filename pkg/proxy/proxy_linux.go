@@ -3,6 +3,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,7 +12,7 @@ import (
 )
 
 // EnableProxyInLinux sets GNOME / Deepin proxy with correct user context
-func enableProxy(ps ProxySettings) error {
+func enable_proxy(ps ProxySettings) error {
 	if ps.Hostname == "" {
 		ps.Hostname = "127.0.0.1"
 	}
@@ -76,7 +77,7 @@ func enableProxy(ps ProxySettings) error {
 }
 
 // DisableProxyInLinux 关闭 GNOME / Deepin 的系统代理
-func disableProxy(arg ProxySettings) error {
+func disable_proxy(arg ProxySettings) error {
 	loginUserBytes, err := exec.Command("logname").Output()
 	if err != nil {
 		return fmt.Errorf("获取登录用户失败（logname）: %v", err)
@@ -117,4 +118,8 @@ func disableProxy(arg ProxySettings) error {
 
 	fmt.Println("✅ 已关闭系统代理（Linux）")
 	return nil
+}
+
+func get_network_interfaces() (*HardwarePort, error) {
+	return nil, errors.New("not support")
 }
