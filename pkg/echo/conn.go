@@ -62,6 +62,7 @@ func (t *EchoConn) URL() (*url.URL, error) {
 }
 
 func (t *EchoConn) BindRequest(req *http.Request) {
+	t.step = HttpConnectStepBeforeRequest
 	t.req = req
 }
 func (t *EchoConn) GetRequestBody() []byte {
@@ -75,6 +76,7 @@ func (t *EchoConn) GetRequestBody() []byte {
 }
 
 func (t *EchoConn) BindResponse(resp *http.Response) {
+	t.step = HttpConnectStepAfterRequest
 	t.resp = resp
 }
 func (t *EchoConn) GetResponseBody() ([]byte, error) {
