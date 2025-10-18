@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +35,8 @@ var root_cmd = &cobra.Command{
 	Use:   "wx_video_download",
 	Short: "启动下载程序",
 	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
+	PreRun: func(cmd *cobra.Command, args []string) {
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		root_command(RootCommandArg{
 			Device: device,
@@ -46,21 +50,20 @@ func init() {
 	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
 	root_cmd.Flags().IntVar(&port, "port", 2023, "代理服务器端口")
 	root_cmd.Flags().BoolVar(&debug, "debug", false, "是否开启调试")
-
 }
 
-func Initialize(app_ver string, cert_file_name string, files *application.BizFiles) {
+func Initialize(app_ver string, cert_file string, file *application.BizFiles) {
 	version = app_ver
-	cert_file_name = cert_file_name
-	files = files
-}
-func Register(cmd *cobra.Command) {
-	root_cmd.AddCommand(cmd)
+	cert_file_name = cert_file
+	files = file
 }
 func Execute() error {
 	cobra.MousetrapHelpText = ""
 
 	return root_cmd.Execute()
+}
+func Register(cmd *cobra.Command) {
+	root_cmd.AddCommand(cmd)
 }
 
 type RootCommandArg struct {
@@ -118,13 +121,15 @@ func root_command(args RootCommandArg) {
 	echo.SetHTTPHandler(handler.HandleHttpRequestEcho(biz))
 	// Sunny.SetPort(args.Port).Start()
 	go func() {
+		var buf bytes.Buffer
+		// 为了不在终端输出 http server 的日志
+		log.SetOutput(&buf)
 		server := &http.Server{
-			Addr: ":" + strconv.Itoa(port),
+			Addr: "localhost:" + strconv.Itoa(port),
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				echo.ServeHTTP(w, r)
 			}),
 		}
-		fmt.Printf("Proxy server listening on :%v\n", port)
 		err := server.ListenAndServe()
 		if err != nil {
 			fmt.Printf("\nERROR %v\n", err.Error())

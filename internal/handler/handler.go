@@ -35,7 +35,8 @@ type ChannelMediaProfile struct {
 	Spec     []ChannelMediaSpec `json:"spec"`
 }
 type FrontendTip struct {
-	End     int    `json:"end"`
-	Replace int    `json:"replace"`
-	Msg     string `json:"msg"`
+	End          int    `json:"end"`
+	Replace      int    `json:"replace"`
+	IgnorePrefix int    `json:"ignore_prefix"`
+	Msg          string `json:"msg"`
 }
