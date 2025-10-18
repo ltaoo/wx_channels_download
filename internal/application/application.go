@@ -21,10 +21,12 @@ type BizFiles struct {
 	PrivateKeyFile []byte
 	JSFileSaver    []byte
 	JSZip          []byte
-	JSPageSpy1     []byte
-	JSPageSpy2     []byte
+	JSPageSpy      []byte
+	JSDebug        []byte
+	JSUtils        []byte
 	JSError        []byte
 	JSMain         []byte
+	JSLiveMain     []byte
 }
 
 type Biz struct {
