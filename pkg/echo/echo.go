@@ -84,8 +84,8 @@ func (h *Echo) handle_http(w http.ResponseWriter, r *http.Request) {
 	req := r
 	tls_helper := &EchoConn{step: HttpConnectStepBeforeRequest}
 	tls_helper.BindRequest(req)
-	// event:before request
 	h.http_handler(tls_helper)
+	// fmt.Println("after http_handler", tls_helper.direct_resp)
 	if tls_helper.direct_resp {
 		return
 	}
@@ -95,6 +95,10 @@ func (h *Echo) handle_http(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	tls_helper.BindResponse(resp)
+	// fmt.Println("[LOG][EVENT]after request")
+	// event:after request
+	h.http_handler(tls_helper)
 	// remove_hop_headers(resp.Header)
 	copy_header(w.Header(), resp.Header)
 
@@ -138,7 +142,7 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 	// 在客户端和代理之间建立TLS连接
 	tls_conn := tls.Server(client_conn, tls_config)
 	defer tls_conn.Close()
-	tls_helper := &EchoConn{conn: tls_conn, step: HttpConnectStepBeforeRequest}
+	tls_helper := &EchoConn{conn: tls_conn}
 	// 设置超时
 	tls_conn.SetDeadline(time.Now().Add(h.timeout))
 	// 等待TLS握手完成
@@ -177,7 +181,6 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 		// fmt.Println("[LOG][EVENT]before request")
 		// event:before request
 		h.http_handler(tls_helper)
-		// fmt.Println("[LOG][HANDLER]after handle request, has_tmp_resp:", tls_helper.direct_resp)
 		if tls_helper.direct_resp {
 			return
 		}
@@ -188,7 +191,6 @@ func (h *Echo) handle_https(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tls_helper.BindResponse(resp)
-		tls_helper.step = HttpConnectStepAfterRequest
 		// fmt.Println("[LOG][EVENT]after request")
 		// event:after request
 		h.http_handler(tls_helper)

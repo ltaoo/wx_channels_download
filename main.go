@@ -21,19 +21,25 @@ var js_file_saver []byte
 var js_zip []byte
 
 //go:embed inject/pagespy.min.js
-var js_pagespy1 []byte
+var js_pagespy []byte
 
 //go:embed inject/pagespy.js
-var js_pagespy2 []byte
+var js_debug []byte
 
 //go:embed inject/error.js
 var js_error []byte
 
+//go:embed inject/utils.js
+var js_utils []byte
+
 //go:embed inject/main.js
 var js_main []byte
 
+//go:embed inject/live.js
+var js_live_main []byte
+
 var RootCertificateName = "SunnyNet"
-var AppVer = "251018_01"
+var AppVer = "251018_03"
 
 func main() {
 	files := &application.BizFiles{
@@ -41,10 +47,12 @@ func main() {
 		PrivateKeyFile: private_key_file,
 		JSFileSaver:    js_file_saver,
 		JSZip:          js_zip,
-		JSPageSpy1:     js_pagespy1,
-		JSPageSpy2:     js_pagespy2,
-		JSMain:         js_main,
+		JSPageSpy:      js_pagespy,
+		JSDebug:        js_debug,
 		JSError:        js_error,
+		JSUtils:        js_utils,
+		JSMain:         js_main,
+		JSLiveMain:     js_live_main,
 	}
 	cmd.Initialize(AppVer, RootCertificateName, files)
 	if err := cmd.Execute(); err != nil {

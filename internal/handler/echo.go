@@ -13,6 +13,7 @@ import (
 )
 
 func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
+	// biz.Debug = true
 	return func(conn *echo.EchoConn) {
 		parsed_url, err := conn.URL()
 		if err != nil {
@@ -26,7 +27,9 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 		hostname := parsed_url.Hostname()
 		path := parsed_url.Path
 		v := "?t=" + biz.Version
+
 		if conn.IsBeforeRequest() {
+			// @todo js_main 等资源也可以通过这种方式加载，而不是内嵌到 html
 			if util.Includes(path, "jszip") {
 				headers := http.Header{}
 				headers.Set("Content-Type", "application/javascript")
@@ -55,6 +58,50 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 				conn.ResponseWithoutRequest(200, []byte("{}"), headers)
 				return
 			}
+			// if path == "/__wx_channels_api/print_live_download_cmd" {
+			// 	var data ChannelMediaProfile
+			// 	request_body := conn.GetRequestBody()
+			// 	err := json.Unmarshal(request_body, &data)
+			// 	if err != nil {
+			// 		headers := http.Header{}
+			// 		headers.Set("Content-Type", "application/json")
+			// 		conn.ResponseWithoutRequest(200, []byte("{}"), headers)
+			// 		return
+			// 	}
+			// 	client := &http.Client{}
+			// 	req, err := http.NewRequest("GET", data.URL, nil)
+			// 	if err != nil {
+			// 		headers := http.Header{}
+			// 		headers.Set("Content-Type", "application/json")
+			// 		conn.ResponseWithoutRequest(200, []byte("{}"), headers)
+			// 		return
+			// 	}
+			// 	req.Header.Set("Accept", "*/*")
+			// 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+			// 	req.Header.Set("Connection", "keep-alive")
+			// 	req.Header.Set("Origin", "https://channels.weixin.qq.com")
+			// 	req.Header.Set("Referer", "https://channels.weixin.qq.com/web/pages/live?oid=zPvvyeGeCEg&nid=Dr9v5RvmAnE&context_id=32-20-140-W85a177d0482f7f761760811634474&entrance_id=1001&from_access_id=1f20bae4-2440-4e39-a471-e82652dcb554&fpid=FinderHome&flow=2&xlab_enable_finder_home=1&preload_id=14745181588961177549&exportkey=n_ChQIAhIQafHaHhYGPXrg2XCIj5Az7BLvAQIE97dBBAEAAAAAAALtB3VjAeUAAAAOpnltbLcz9gKNyK89dVj0T9YlyG3JBB2wH0VnzPgbxYG8JV9jfT9TZ3lNRXp3rSgTSGabxDtNb6XWOOHcRA9hK5nMPu6tgrhdxngoI%2FL1cuaUYYCbKUioxE3OVixMG%2FOUbXT9C8zmYNhe0hkDMI6%2FmnUDMBVNPCo1mH7bQk2VXQn1ti%2F9O5vOvsWD4D4n6x52uPdBUjU6AMz1OYA9DFj2MkkiYeGcmepsuZp4l22bTVu9QtEe79sOm%2Fd0WpI5JntumWQRHNXGRnRH4IneHI36Hqi5Z8XlAeoS&pass_ticket=lGU32O6zF0o3gbNOsQBKHTVoHWKy6xh8mohYWOoA%2BSWd9pXrAvoV8ql4v2UY%2BnkDF%2BuJVzad94JT0ZXkxU1rbQ%3D%3D&wx_header=0")
+			// 	req.Header.Set("Sec-Fetch-Dest", "empty")
+			// 	req.Header.Set("Sec-Fetch-Mode", "cors")
+			// 	req.Header.Set("Sec-Fetch-Site", "cross-site")
+			// 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) XWEB/8555 Flue")
+			// 	resp, err := client.Do(req)
+			// 	defer resp.Body.Close()
+			// 	stream_url := data.URL
+			// 	if resp.StatusCode == http.StatusFound {
+			// 		location := resp.Header.Get("Location")
+			// 		stream_url = location
+			// 	}
+			// 	now := time.Now()
+			// 	command := fmt.Sprintf(`ffmpeg -i "%v" -c copy -y %v.flv`, stream_url, now.Second())
+			// 	fmt.Println("直播下载命令")
+			// 	fmt.Println(command)
+			// 	headers := http.Header{}
+			// 	headers.Set("Content-Type", "application/json")
+			// 	headers.Set("__debug", "fake_resp")
+			// 	conn.ResponseWithoutRequest(200, []byte("{}"), headers)
+			// 	return
+			// }
 			if path == "/__wx_channels_api/tip" {
 				var data FrontendTip
 				request_body := conn.GetRequestBody()
@@ -78,49 +125,65 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 			}
 		}
 		if conn.IsAfterRequest() {
-			resp_content_type := strings.ToLower(conn.GetResponseHeader().Get("Content-Type"))
-			resp_body, err := conn.GetResponseBody()
-			if err != nil {
-				return
-			}
-			if resp_content_type == "text/html; charset=utf-8" {
-				conn.GetResponseHeader().Set("__debug", "append_script")
+			header := conn.GetResponseHeader()
+			resp_content_type := strings.ToLower(header.Get("Content-Type"))
 
-				html := string(resp_body)
-				script_reg1 := regexp.MustCompile(`src="([^"]{1,})\.js"`)
-				html = script_reg1.ReplaceAllString(html, `src="$1.js`+v+`"`)
-				script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
-				html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
-				if hostname == "channels.weixin.qq.com" && (path == "/web/pages/feed" || path == "/web/pages/home") {
-					inserted_scripts := ""
+			if resp_content_type == "text/html; charset=utf-8" {
+				// fmt.Println(hostname, path)
+				if hostname == "channels.weixin.qq.com" {
+					resp_body, err := conn.GetResponseBody()
+					if err != nil {
+						return
+					}
+					header.Set("__debug", "append_script")
+
+					html := string(resp_body)
+					script_reg1 := regexp.MustCompile(`src="([^"]{1,})\.js"`)
+					html = script_reg1.ReplaceAllString(html, `src="$1.js`+v+`"`)
+					script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
+					html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
+					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSUtils)
 					if biz.Debug {
 						/** 全局错误捕获 */
 						script_error := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSError)
-						inserted_scripts = script_error
+						inserted_scripts += script_error
 						/** 在线调试 */
-						script_pagespy := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSPageSpy1)
-						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSPageSpy2)
+						script_pagespy := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSPageSpy)
+						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSDebug)
 						inserted_scripts += script_pagespy + script_pagespy2
 					}
-					/** 下载逻辑 */
-					script_main := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSMain)
-					inserted_scripts += script_main
-					html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
-					if path == "/web/pages/home" {
-						fmt.Println("1. 视频号首页 html 注入 js 成功")
+					if path == "/web/pages/feed" || path == "/web/pages/home" {
+						/** 下载逻辑 */
+						script_main := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSMain)
+						inserted_scripts += script_main
+						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+						if path == "/web/pages/home" {
+							fmt.Println("1. 视频号首页 html 注入 js 成功")
+						}
+						if path == "/web/pages/feed" {
+							fmt.Println("1. 视频详情页 html 注入 js 成功")
+						}
 					}
-					if path == "/web/pages/feed" {
-						fmt.Println("1. 视频详情页 html 注入 js 成功")
+					if path == "/web/pages/live" {
+						script_live_main := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSLiveMain)
+						inserted_scripts += script_live_main
+						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+						fmt.Println("1. 直播详情页 html 注入 js 成功")
 					}
-					// conn.ModifyResponseBody(io.NopCloser(bytes.NewBuffer([]byte(html))))
 					conn.ModifyResponseBody([]byte(html))
 					return
 				}
-				// conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(html))))
 				return
 			}
 			if resp_content_type == "application/javascript" {
-				conn.GetResponseHeader().Set("__debug", "replace_script")
+				if util.Includes(path, "wasm_video_decode") {
+					return
+				}
+				resp_body, err := conn.GetResponseBody()
+				if err != nil {
+					return
+				}
+				header.Set("__debug", "replace_script")
 
 				js_script := string(resp_body)
 				dep_reg := regexp.MustCompile(`"js/([^"]{1,})\.js"`)
@@ -201,9 +264,11 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 									});
 								})();`
 				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					regexp1 := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{return(.*?)\}async`)
+					regexp1 := regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
-					var feedResult = await$2;
+					var feedResult = await (async () => {
+						$2;
+					})();
 					var data_object = feedResult.data.object;
 					if (!data_object.objectDesc) {
 						return feedResult;
@@ -219,6 +284,32 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 					regex2 := regexp.MustCompile(`i.default={dialog`)
 					replace_str2 := `i.default=window.window.__wx_channels_tip__={dialog`
 					js_script = regex2.ReplaceAllString(js_script, replace_str2)
+
+					regexp3 := regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+					replace_str3 := fmt.Sprintf(`async finderGetLiveInfo($1) {
+					var feedResult = await (async () => {
+						$2;
+					})();
+					var profile = {
+						title: feedResult.data.description || "直播",
+						url: feedResult.data.liveInfo.streamUrl,
+					};
+					if (window.__wx_channels_live_store__) {
+						__wx_channels_live_store__.profile = profile;
+					}
+					fetch("/__wx_channels_api/profile", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json"
+						},
+						body: JSON.stringify(profile)
+					});
+					return feedResult;
+				}async`)
+					if regexp3.MatchString(js_script) {
+						fmt.Println("4.直播读取 js 修改成功")
+					}
+					js_script = regexp3.ReplaceAllString(js_script, replace_str3)
 					conn.ModifyResponseBody([]byte(js_script))
 					return
 				}
