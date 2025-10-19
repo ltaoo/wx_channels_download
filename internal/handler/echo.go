@@ -58,64 +58,25 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 				conn.ResponseWithoutRequest(200, []byte("{}"), headers)
 				return
 			}
-			// if path == "/__wx_channels_api/print_live_download_cmd" {
-			// 	var data ChannelMediaProfile
-			// 	request_body := conn.GetRequestBody()
-			// 	err := json.Unmarshal(request_body, &data)
-			// 	if err != nil {
-			// 		headers := http.Header{}
-			// 		headers.Set("Content-Type", "application/json")
-			// 		conn.ResponseWithoutRequest(200, []byte("{}"), headers)
-			// 		return
-			// 	}
-			// 	client := &http.Client{}
-			// 	req, err := http.NewRequest("GET", data.URL, nil)
-			// 	if err != nil {
-			// 		headers := http.Header{}
-			// 		headers.Set("Content-Type", "application/json")
-			// 		conn.ResponseWithoutRequest(200, []byte("{}"), headers)
-			// 		return
-			// 	}
-			// 	req.Header.Set("Accept", "*/*")
-			// 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-			// 	req.Header.Set("Connection", "keep-alive")
-			// 	req.Header.Set("Origin", "https://channels.weixin.qq.com")
-			// 	req.Header.Set("Referer", "https://channels.weixin.qq.com/web/pages/live?oid=zPvvyeGeCEg&nid=Dr9v5RvmAnE&context_id=32-20-140-W85a177d0482f7f761760811634474&entrance_id=1001&from_access_id=1f20bae4-2440-4e39-a471-e82652dcb554&fpid=FinderHome&flow=2&xlab_enable_finder_home=1&preload_id=14745181588961177549&exportkey=n_ChQIAhIQafHaHhYGPXrg2XCIj5Az7BLvAQIE97dBBAEAAAAAAALtB3VjAeUAAAAOpnltbLcz9gKNyK89dVj0T9YlyG3JBB2wH0VnzPgbxYG8JV9jfT9TZ3lNRXp3rSgTSGabxDtNb6XWOOHcRA9hK5nMPu6tgrhdxngoI%2FL1cuaUYYCbKUioxE3OVixMG%2FOUbXT9C8zmYNhe0hkDMI6%2FmnUDMBVNPCo1mH7bQk2VXQn1ti%2F9O5vOvsWD4D4n6x52uPdBUjU6AMz1OYA9DFj2MkkiYeGcmepsuZp4l22bTVu9QtEe79sOm%2Fd0WpI5JntumWQRHNXGRnRH4IneHI36Hqi5Z8XlAeoS&pass_ticket=lGU32O6zF0o3gbNOsQBKHTVoHWKy6xh8mohYWOoA%2BSWd9pXrAvoV8ql4v2UY%2BnkDF%2BuJVzad94JT0ZXkxU1rbQ%3D%3D&wx_header=0")
-			// 	req.Header.Set("Sec-Fetch-Dest", "empty")
-			// 	req.Header.Set("Sec-Fetch-Mode", "cors")
-			// 	req.Header.Set("Sec-Fetch-Site", "cross-site")
-			// 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) XWEB/8555 Flue")
-			// 	resp, err := client.Do(req)
-			// 	defer resp.Body.Close()
-			// 	stream_url := data.URL
-			// 	if resp.StatusCode == http.StatusFound {
-			// 		location := resp.Header.Get("Location")
-			// 		stream_url = location
-			// 	}
-			// 	now := time.Now()
-			// 	command := fmt.Sprintf(`ffmpeg -i "%v" -c copy -y %v.flv`, stream_url, now.Second())
-			// 	fmt.Println("直播下载命令")
-			// 	fmt.Println(command)
-			// 	headers := http.Header{}
-			// 	headers.Set("Content-Type", "application/json")
-			// 	headers.Set("__debug", "fake_resp")
-			// 	conn.ResponseWithoutRequest(200, []byte("{}"), headers)
-			// 	return
-			// }
 			if path == "/__wx_channels_api/tip" {
 				var data FrontendTip
 				request_body := conn.GetRequestBody()
 				if err := json.Unmarshal(request_body, &data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
+				prefix_text := "[FRONTEND]"
+				prefix := data.Prefix
+				if prefix == nil {
+					prefix = &prefix_text
+				}
 				if data.End == 1 {
 					fmt.Println()
 				} else if data.Replace == 1 {
-					fmt.Printf("\r\033[K[FRONTEND]%s", data.Msg)
+					fmt.Printf("\r\033[K%v%s", *prefix, data.Msg)
 				} else if data.IgnorePrefix == 1 {
 					fmt.Printf("%s\n", data.Msg)
 				} else {
-					fmt.Printf("[FRONTEND]%s\n", data.Msg)
+					fmt.Printf("%v%s\n", *prefix, data.Msg)
 				}
 				headers := http.Header{}
 				headers.Set("Content-Type", "application/json")

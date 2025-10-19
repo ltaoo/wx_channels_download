@@ -11,17 +11,19 @@ function __wx_copy_live_download_command() {
   var _profile = {
     ...profile,
   };
-  var command = `ffmpeg -i "${_profile.url}" -c copy -y "./${filename}.flv"`;
+  var command = `ffmpeg -i "${_profile.url}" -c copy -y "live_${filename}.flv"`;
   __wx_log({
+    prefix: "",
+    msg: "",
+  });
+  __wx_log({
+    prefix: "",
+    msg: "直播下载命令",
+  });
+  __wx_log({
+    prefix: "",
     msg: command,
   });
-//   fetch("/__wx_channels_api/print_live_download_cmd", {
-//     method: "POST",
-//     headers: {
-//       "Content-Type": "application/json"
-//     },
-//     body: JSON.stringify(profile)
-//   });
   if (window.__wx_channels_tip__ && window.__wx_channels_tip__.toast) {
     window.__wx_channels_tip__.toast("请在终端查看下载命令", 1e3);
   }
