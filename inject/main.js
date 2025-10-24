@@ -283,7 +283,7 @@ function __wx_channels_handle_print_download_command() {
   var _profile = {
     ...profile,
   };
-  var spec = profile.spec[0];
+  var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
     filename = filename + "_" + spec.fileFormat;
@@ -351,9 +351,9 @@ __wx_channels_video_download_btn__.onclick = () => {
   if (!window.__wx_channels_store__.profile) {
     return;
   }
-  __wx_channels_handle_click_download__(
-    window.__wx_channels_store__.profile.spec[0]
-  );
+  var profile = window.__wx_channels_store__.profile;
+  var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
+  __wx_channels_handle_click_download__(spec);
 };
 
 async function __insert_download_btn_to_home_page() {
@@ -388,9 +388,9 @@ async function __insert_download_btn_to_home_page() {
         });
         return;
       }
-      __wx_channels_handle_click_download__(
-        window.__wx_channels_store__.profile.spec[0]
-      );
+      var profile = window.__wx_channels_store__.profile;
+      var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
+      __wx_channels_handle_click_download__(spec);
     };
     $parent.appendChild(__wx_channels_video_download_btn__);
     __wx_log({
@@ -413,9 +413,9 @@ async function insert_download_btn() {
       if (!window.__wx_channels_store__.profile) {
         return;
       }
-      __wx_channels_handle_click_download__(
-        window.__wx_channels_store__.profile.spec[0]
-      );
+      var profile = window.__wx_channels_store__.profile;
+      var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
+      __wx_channels_handle_click_download__(spec);
     };
     var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {
