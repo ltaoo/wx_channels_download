@@ -283,7 +283,7 @@ function __wx_channels_handle_print_download_command() {
   var _profile = {
     ...profile,
   };
-  var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
+  var spec = undefined;
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
     filename = filename + "_" + spec.fileFormat;
@@ -351,9 +351,7 @@ __wx_channels_video_download_btn__.onclick = () => {
   if (!window.__wx_channels_store__.profile) {
     return;
   }
-  var profile = window.__wx_channels_store__.profile;
-  var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
-  __wx_channels_handle_click_download__(spec);
+  __wx_channels_handle_click_download__();
 };
 
 async function __insert_download_btn_to_home_page() {
@@ -388,9 +386,7 @@ async function __insert_download_btn_to_home_page() {
         });
         return;
       }
-      var profile = window.__wx_channels_store__.profile;
-      var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
-      __wx_channels_handle_click_download__(spec);
+      __wx_channels_handle_click_download__();
     };
     $parent.appendChild(__wx_channels_video_download_btn__);
     __wx_log({
@@ -413,9 +409,7 @@ async function insert_download_btn() {
       if (!window.__wx_channels_store__.profile) {
         return;
       }
-      var profile = window.__wx_channels_store__.profile;
-      var spec = profile.spec && profile.spec.length > 0 ? profile.spec[profile.spec.length - 1] : null;
-      __wx_channels_handle_click_download__(spec);
+      __wx_channels_handle_click_download__();
     };
     var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {
