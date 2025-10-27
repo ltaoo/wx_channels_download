@@ -2,6 +2,19 @@
 
 体积小、使用简单、支持 macOS 和 Windows 系统。
 
+## 251027 更新
+
+1、优化了文件大小，现在只有8MB了
+<br/>
+2、`download` 命令默认多线程下载
+<br/>
+3、直播详情页增加了下载按钮
+<br/>
+4、默认下载原始规格的视频
+
+
+<details><summary>点击查看更多更新内容</summary>
+
 ## 250913 更新
 
 1、视频号首页增加下载按钮
@@ -10,7 +23,6 @@
 <br/>
 3、修复打开长视频页面空白的问题
 
-<details><summary>点击查看更多更新内容</summary>
 
 ## 250808 更新
 
@@ -219,10 +231,14 @@ sudo ./wx_video_download_darwin_xxx
 # windows
 
 ```bash
-go build -o wx_video_download.exe main.go
+go build -ldflags="-s -w"
 ```
 
-打包后可以使用 `upx` 压缩，体积可以从 17MB 压缩到 5MB。
+打包后可以使用 `upx` 压缩，进一步减小体积
+
+```bash
+upx wx_channel
+```
 
 # macOS
 
