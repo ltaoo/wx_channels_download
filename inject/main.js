@@ -283,11 +283,6 @@ function __wx_channels_handle_print_download_command() {
   var _profile = {
     ...profile,
   };
-  var spec = undefined;
-  if (spec) {
-    _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
-    filename = filename + "_" + spec.fileFormat;
-  }
   // console.log("__wx_channels_handle_click_download__", url);
   var command = `download --url "${_profile.url}"`;
   if (_profile.key) {

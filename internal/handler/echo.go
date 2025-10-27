@@ -20,10 +20,6 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 			fmt.Printf("URL解析失败: %v\n", err)
 			return
 		}
-		if err != nil {
-			fmt.Printf("URL解析失败: %v\n", err)
-			return
-		}
 		hostname := parsed_url.Hostname()
 		path := parsed_url.Path
 		v := "?t=" + biz.Version
