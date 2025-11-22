@@ -211,7 +211,6 @@ async function __wx_channels_handle_click_download__(spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
     filename = filename + "_" + spec.fileFormat;
   }
-  // console.log("__wx_channels_handle_click_download__", url);
   __wx_log({
     msg: `${filename}
 ${location.href}
@@ -283,7 +282,11 @@ function __wx_channels_handle_print_download_command() {
   var _profile = {
     ...profile,
   };
-  // console.log("__wx_channels_handle_click_download__", url);
+  var spec = __wx_channels_config__.defaultHighest ? null : profile.spec[0];
+  if (spec) {
+    _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
+    filename = filename + "_" + spec.fileFormat;
+  }
   var command = `download --url "${_profile.url}"`;
   if (_profile.key) {
     command += ` --key ${_profile.key}`;
@@ -344,9 +347,13 @@ var __wx_channels_store__ = {
 var __wx_channels_video_download_btn__ = icon_download1();
 __wx_channels_video_download_btn__.onclick = () => {
   if (!window.__wx_channels_store__.profile) {
+    __wx_log({
+      msg: "没有视频数据",
+    });
     return;
   }
-  __wx_channels_handle_click_download__();
+  var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+  __wx_channels_handle_click_download__(spec);
 };
 
 async function __insert_download_btn_to_home_page() {
@@ -377,11 +384,12 @@ async function __insert_download_btn_to_home_page() {
     __wx_channels_video_download_btn__.onclick = () => {
       if (!window.__wx_channels_store__.profile) {
         __wx_log({
-          msg: '没有视频数据',
+          msg: "没有视频数据",
         });
         return;
       }
-      __wx_channels_handle_click_download__();
+      var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+      __wx_channels_handle_click_download__(spec);
     };
     $parent.appendChild(__wx_channels_video_download_btn__);
     __wx_log({
@@ -402,9 +410,13 @@ async function insert_download_btn() {
     __wx_channels_video_download_btn__ = icon_download1();
     __wx_channels_video_download_btn__.onclick = () => {
       if (!window.__wx_channels_store__.profile) {
+        __wx_log({
+          msg: "没有视频数据",
+        });
         return;
       }
-      __wx_channels_handle_click_download__();
+      var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+      __wx_channels_handle_click_download__(spec);
     };
     var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {

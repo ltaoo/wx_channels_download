@@ -199,7 +199,7 @@ sudo ./wx_video_download_darwin_xxx
 
 ![视频下载成功](assets/screenshot2.png)
 
-默认会下载原始视频。点开更多，可以下载其他质量的视频（xWT111、xWT126 等）。
+默认会下载下拉菜单中第一个质量视频。点开更多，可以下载其他质量的视频，包括原始视频。
 
 ![下载不同质量的视频](assets/screenshot13.png)
 <br>
