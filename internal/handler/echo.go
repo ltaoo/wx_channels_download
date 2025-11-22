@@ -7,13 +7,13 @@ import (
 	"regexp"
 	"strings"
 
+	"wx_channel/config"
 	"wx_channel/internal/application"
 	"wx_channel/pkg/echo"
 	"wx_channel/pkg/util"
 )
 
-func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
-	// biz.Debug = true
+func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) func(conn *echo.EchoConn) {
 	return func(conn *echo.EchoConn) {
 		parsed_url, err := conn.URL()
 		if err != nil {
@@ -100,6 +100,8 @@ func HandleHttpRequestEcho(biz *application.Biz) func(conn *echo.EchoConn) {
 					script_reg2 := regexp.MustCompile(`href="([^"]{1,})\.js"`)
 					html = script_reg2.ReplaceAllString(html, `href="$1.js`+v+`"`)
 					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSUtils)
+					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = {"defaultHighest":%t};</script>`, cfg.DownloadDefaultHighest)
+					inserted_scripts += script_config
 					if biz.Debug {
 						/** 全局错误捕获 */
 						script_error := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSError)

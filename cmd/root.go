@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
+	"wx_channel/config"
 	"wx_channel/internal/application"
 	"wx_channel/internal/handler"
 	"wx_channel/pkg/certificate"
@@ -23,12 +24,13 @@ import (
 )
 
 var (
+	Version        string
 	device         string
 	port           int
 	debug          bool
-	version        string
 	files          *application.BizFiles
 	cert_file_name string
+	cfg            *config.Config
 )
 
 var root_cmd = &cobra.Command{
@@ -39,23 +41,29 @@ var root_cmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		root_command(RootCommandArg{
-			Device: device,
-			Port:   port,
-			Debug:  debug,
+			Device:         device,
+			Port:           viper.GetInt("proxy.port"),
+			Debug:          debug,
+			SetSystemProxy: viper.GetBool("proxy.system"),
+			cfg:            cfg,
 		})
 	},
 }
 
 func init() {
-	root_cmd.Flags().StringVar(&device, "dev", "", "代理服务器网络设备")
-	root_cmd.Flags().IntVar(&port, "port", 2023, "代理服务器端口")
-	root_cmd.Flags().BoolVar(&debug, "debug", false, "是否开启调试")
+	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "代理服务器网络设备")
+	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
+	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
+
+	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Initialize(app_ver string, cert_file string, file *application.BizFiles) {
-	version = app_ver
+func Initialize(app_ver string, cert_file string, file *application.BizFiles, c *config.Config) {
+	Version = app_ver
 	cert_file_name = cert_file
 	files = file
+	port = c.Port
+	cfg = c
 }
 func Execute() error {
 	cobra.MousetrapHelpText = ""
@@ -67,33 +75,35 @@ func Register(cmd *cobra.Command) {
 }
 
 type RootCommandArg struct {
-	Device string
-	Port   int
-	Debug  bool
+	Device         string
+	Port           int
+	Debug          bool
+	SetSystemProxy bool
+	cfg            *config.Config
 }
 
 func root_command(args RootCommandArg) {
-	os_env := runtime.GOOS
-
 	signal_chan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-signal_chan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
-		arg := proxy.ProxySettings{
-			Device:   args.Device,
-			Hostname: "127.0.0.1",
-			Port:     strconv.Itoa(args.Port),
-		}
-		err := proxy.DisableProxy(arg)
-		if err != nil {
-			fmt.Printf("⚠️ 关闭系统代理失败: %v\n", err)
+		if args.SetSystemProxy {
+			arg := proxy.ProxySettings{
+				Device:   args.Device,
+				Hostname: "127.0.0.1",
+				Port:     strconv.Itoa(args.Port),
+			}
+			err := proxy.DisableProxy(arg)
+			if err != nil {
+				fmt.Printf("⚠️ 关闭系统代理失败: %v\n", err)
+			}
 		}
 		os.Exit(0)
 	}()
 
-	fmt.Printf("\nv" + version)
+	fmt.Printf("\nv" + Version)
 	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
 	existing, err1 := certificate.CheckHasCertificate(cert_file_name)
 	if err1 != nil {
@@ -111,21 +121,21 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 	}
-	biz := application.NewBiz(version, files)
+	biz := application.NewBiz(Version, files)
 	echo, err := echo.NewEcho(files.CertFile, files.PrivateKeyFile)
 	if err != nil {
 		fmt.Printf("\nERROR %v\n", err.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
-	echo.SetHTTPHandler(handler.HandleHttpRequestEcho(biz))
+	echo.SetHTTPHandler(handler.HandleHttpRequestEcho(biz, args.cfg))
 	// Sunny.SetPort(args.Port).Start()
 	go func() {
 		var buf bytes.Buffer
 		// 为了不在终端输出 http server 的日志
 		log.SetOutput(&buf)
 		server := &http.Server{
-			Addr: "localhost:" + strconv.Itoa(port),
+			Addr: "localhost:" + strconv.Itoa(args.Port),
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				echo.ServeHTTP(w, r)
 			}),
@@ -137,25 +147,7 @@ func root_command(args RootCommandArg) {
 		}
 	}()
 
-	if os_env == "windows" {
-		// ok := Sunny.OpenDrive(true)
-		// if !ok {
-		// 	fmt.Printf("\nERROR 启动进程代理失败，检查是否以管理员身份运行\n")
-		// 	fmt.Printf("按 Ctrl+C 退出...\n")
-		// 	select {}
-		// }
-		// Sunny.ProcessAddName("WeChatAppEx.exe")
-		err = proxy.EnableProxy(proxy.ProxySettings{
-			Device:   args.Device,
-			Hostname: "127.0.0.1",
-			Port:     strconv.Itoa(args.Port),
-		})
-		if err != nil {
-			fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
-			fmt.Printf("按 Ctrl+C 退出...\n")
-			select {}
-		}
-	} else {
+	if args.SetSystemProxy {
 		err = proxy.EnableProxy(proxy.ProxySettings{
 			Device:   args.Device,
 			Hostname: "127.0.0.1",
@@ -167,7 +159,12 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 	}
-	color.Green(fmt.Sprintf("\n\n服务已正确启动，请打开需要下载的视频号页面进行下载"))
-	fmt.Println("\n\n服务正在运行，按 Ctrl+C 退出...")
+	proxy_server_url := "http://127.0.0.1:" + strconv.Itoa(args.Port)
+	color.Green(fmt.Sprintf("\n\n服务已正确启动"))
+	if !args.SetSystemProxy {
+		color.Green(fmt.Sprintf("当前未设置系统代理，请通过软件将流量转发至 %v", proxy_server_url))
+	}
+	color.Green(fmt.Sprintf("打开需要下载的视频号页面进行下载"))
+	fmt.Println("\n\n服务运行在 " + proxy_server_url + "，按 Ctrl+C 退出...")
 	select {}
 }
