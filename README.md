@@ -2,6 +2,16 @@
 
 体积小、使用简单、支持 macOS 和 Windows 系统。
 
+## 251122 更新
+
+1、支持通过配置文件 config.yaml 配置是否默认下载最高画质的视频
+<br/>
+2、支持指定是否设置系统代理
+<br/>
+3、支持自动检测是否需要管理员权限并申请
+
+<details><summary>点击查看更多更新内容</summary>
+
 ## 251027 更新
 
 1、优化了文件大小，现在只有8MB了
@@ -255,10 +265,6 @@ CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-p
 此程序大部分参考自以下项目代码
 <br>
 https://github.com/kanadeblisst00/WechatVideoSniffer2.0
-
-此程序的核心实现依赖以下库
-<br>
-https://github.com/qtgolang/SunnyNet
 
 ## 我的赞赏码
 
