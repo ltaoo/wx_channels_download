@@ -3,15 +3,11 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"os"
-	"runtime"
-	"strings"
-	"syscall"
-	"unsafe"
 
 	"wx_channel/cmd"
 	"wx_channel/config"
 	"wx_channel/internal/application"
+	"wx_channel/pkg/platform"
 )
 
 //go:embed certs/SunnyRoot.cer
@@ -47,54 +43,6 @@ var js_live_main []byte
 var RootCertificateName = "SunnyNet"
 var AppVer = "251122"
 
-var (
-	modshell32    = syscall.NewLazyDLL("shell32.dll")
-	shell_execute = modshell32.NewProc("ShellExecuteW")
-)
-
-func isAdmin() bool {
-	if runtime.GOOS != "windows" {
-		return true
-	}
-	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
-	return err == nil
-}
-func needAdminPermission() bool {
-	args := os.Args[1:]
-	os_env := runtime.GOOS
-	if os_env == "windows" {
-		if len(args) == 0 {
-			return true
-		}
-		if strings.Contains(args[0], "--") {
-			return true
-		}
-	}
-	return false
-}
-func requestAdminPermission() bool {
-	exe, _ := os.Executable()
-	verb, _ := syscall.UTF16PtrFromString("runas")
-	file, _ := syscall.UTF16PtrFromString(exe)
-
-	params := ""
-	for _, arg := range os.Args[1:] {
-		params += arg + " "
-	}
-	paramPtr, _ := syscall.UTF16PtrFromString(params)
-
-	ret, _, _ := shell_execute.Call(
-		0,
-		uintptr(unsafe.Pointer(verb)),
-		uintptr(unsafe.Pointer(file)),
-		uintptr(unsafe.Pointer(paramPtr)),
-		0,
-		1,
-	)
-
-	return ret > 32
-}
-
 func main() {
 	files := &application.BizFiles{
 		CertFile:       cert_file,
@@ -113,8 +61,8 @@ func main() {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
 	}
-	if cfg.ProxySystem && needAdminPermission() && !isAdmin() {
-		if !requestAdminPermission() {
+	if cfg.ProxySystem && platform.NeedAdminPermission() && !platform.IsAdmin() {
+		if !platform.RequestAdminPermission() {
 			fmt.Println("启动失败，请右键选择「以管理员身份运行」")
 			return
 		}
