@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/ltaoo/echo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -19,7 +21,6 @@ import (
 	"wx_channel/internal/application"
 	"wx_channel/internal/handler"
 	"wx_channel/pkg/certificate"
-	"wx_channel/pkg/echo"
 	"wx_channel/pkg/proxy"
 )
 
@@ -83,12 +84,15 @@ type RootCommandArg struct {
 }
 
 func root_command(args RootCommandArg) {
+	_, cancel := context.WithCancel(context.Background())
+	var server *http.Server
 	signal_chan := make(chan os.Signal, 1)
 	// Notify the signal channel on SIGINT (Ctrl+C) and SIGTERM
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-signal_chan
 		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
+		signal.Stop(signal_chan)
 		if args.SetSystemProxy {
 			arg := proxy.ProxySettings{
 				Device:   args.Device,
@@ -100,6 +104,21 @@ func root_command(args RootCommandArg) {
 				fmt.Printf("⚠️ 关闭系统代理失败: %v\n", err)
 			}
 		}
+		if server != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer shutdownCancel()
+
+			fmt.Println("正在关闭代理服务器...")
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				fmt.Printf("⚠️ 代理服务器关闭失败: %v\n", err)
+				// 如果优雅关闭失败，强制关闭
+				server.Close()
+			} else {
+				fmt.Println("代理服务器已关闭")
+			}
+		}
+		// 注意：cancel 在信号处理 goroutine 中调用，不需要 defer
+		cancel()
 		os.Exit(0)
 	}()
 
@@ -128,22 +147,25 @@ func root_command(args RootCommandArg) {
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
-	echo.SetHTTPHandler(handler.HandleHttpRequestEcho(biz, args.cfg))
-	// Sunny.SetPort(args.Port).Start()
+	echo.AddPlugin(handler.HandleHttpRequestEcho(biz, args.cfg))
+
+	var buf bytes.Buffer
+	// 为了不在终端输出 http server 的日志
+	log.SetOutput(&buf)
+	server = &http.Server{
+		Addr: "127.0.0.1:" + strconv.Itoa(args.Port),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			echo.ServeHTTP(w, r)
+		}),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	go func() {
-		var buf bytes.Buffer
-		// 为了不在终端输出 http server 的日志
-		log.SetOutput(&buf)
-		server := &http.Server{
-			Addr: "localhost:" + strconv.Itoa(args.Port),
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				echo.ServeHTTP(w, r)
-			}),
-		}
-		err := server.ListenAndServe()
-		if err != nil {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("\nERROR %v\n", err.Error())
 			fmt.Printf("按 Ctrl+C 退出...\n")
+			cancel()
 		}
 	}()
 
