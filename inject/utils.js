@@ -41,7 +41,7 @@ function __wx_channel_loading() {
     return window.__wx_channels_tip__.loading("下载中");
   }
   return {
-    hide() {},
+    hide() { },
   };
 }
 function __wx_log(msg) {
@@ -84,6 +84,46 @@ function __wx_find_elm(selector) {
     }, 200);
   });
 }
+
+/** 构建文件名 */
+function __wx_build_filename(profile, spec, template) {
+  var default_name = (() => {
+    if (profile.title) {
+      return profile.title;
+    }
+    if (profile.id) {
+      return profile.id;
+    }
+    return new Date().valueOf();
+  })();
+  var params = {
+    filename: default_name,
+    id: profile.id,
+    title: profile.title,
+    spec: 'original',
+    created_at: profile.createtime,
+    download_at: (new Date().valueOf() / 1000).toFixed(0),
+  };
+  if (profile.contact) {
+    params.author = profile.contact.nickname;
+  }
+  if (spec) {
+    params.spec = spec.fileFormat;
+  }
+  var filename = template ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) => params[key]) : default_name;
+  if (window.beforeFilename) {
+    return window.beforeFilename(filename, params, profile, spec);
+  }
+  return filename;
+}
+
+// var original_log = console.log;
+// console.log = function (v) {
+//   original_log.apply(console, arguments);
+//   __wx_log({
+//     msg: String(v).slice(0, 20),
+//   });
+// };
 
 function icon_download1() {
   var icon_download_html = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;

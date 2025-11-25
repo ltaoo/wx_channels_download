@@ -187,29 +187,21 @@ async function __wx_channels_handle_log__() {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   saveAs(blob, "log.txt");
 }
+/** 下载指定规格的视频 */
 async function __wx_channels_handle_click_download__(spec) {
   var profile = __wx_channels_store__.profile;
-  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
   }
-  // console.log(__wx_channels_store__);
-  var filename = (() => {
-    if (profile.title) {
-      return profile.title;
-    }
-    if (profile.id) {
-      return profile.id;
-    }
-    return new Date().valueOf();
-  })();
-  const _profile = {
-    ...profile,
-  };
+  const _profile = { ...profile };
+  var filename = __wx_build_filename(profile, spec, __wx_channels_config__.downloadFilenameTemplate);
+  if (!filename) {
+    alert("文件名生成失败");
+    return;
+  }
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
-    filename = filename + "_" + spec.fileFormat;
   }
   __wx_log({
     msg: `${filename}
@@ -250,42 +242,29 @@ function __wx_channels_download_cur__() {
     alert("没有可下载的内容");
     return;
   }
-  var filename = (() => {
-    if (profile.title) {
-      return profile.title;
-    }
-    if (profile.id) {
-      return profile.id;
-    }
-    return new Date().valueOf();
-  })();
+  var filename = __wx_build_filename(profile, null, __wx_channels_config__.downloadFilenameTemplate);
+  if (!filename) {
+    alert("文件名生成失败");
+    return;
+  }
   profile.data = __wx_channels_store__.buffers;
   __wx_channels_download(profile, filename);
 }
 function __wx_channels_handle_print_download_command() {
   var profile = __wx_channels_store__.profile;
-  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
   }
-  // console.log(__wx_channels_store__);
-  var filename = (() => {
-    if (profile.title) {
-      return profile.title;
-    }
-    if (profile.id) {
-      return profile.id;
-    }
-    return new Date().valueOf();
-  })();
-  var _profile = {
-    ...profile,
-  };
-  var spec = __wx_channels_config__.defaultHighest ? null : profile.spec[0];
+  var _profile = { ...profile };
+  var spec = __wx_channels_config__.defaultHighest ? null : _profile.spec[0];
   if (spec) {
     _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
-    filename = filename + "_" + spec.fileFormat;
+  }
+  var filename = __wx_build_filename(_profile, spec, __wx_channels_config__.downloadFilenameTemplate);
+  if (!filename) {
+    alert("文件名生成失败");
+    return;
   }
   var command = `download --url "${_profile.url}"`;
   if (_profile.key) {
@@ -306,19 +285,11 @@ async function __wx_channels_handle_download_cover() {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
   }
-  // console.log(__wx_channels_store__);
-  var filename = (() => {
-    if (profile.title) {
-      return profile.title;
-    }
-    if (profile.id) {
-      return profile.id;
-    }
-    return new Date().valueOf();
-  })();
-  const _profile = {
-    ...profile,
-  };
+  var filename = __wx_build_filename(profile, null, __wx_channels_config__.downloadFilenameTemplate);
+  if (!filename) {
+    alert("文件名生成失败");
+    return;
+  }
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
