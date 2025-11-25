@@ -106,7 +106,11 @@ func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) *plugin.Plu
 					html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 					html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSUtils)
-					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = {"defaultHighest":%t};</script>`, cfg.DownloadDefaultHighest)
+					if cfg.GlobalUserScript != "" {
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.GlobalUserScript)
+					}
+					cfg_byte, _ := json.Marshal(cfg)
+					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
 					inserted_scripts += script_config
 					if biz.Debug {
 						/** 全局错误捕获 */

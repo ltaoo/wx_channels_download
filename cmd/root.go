@@ -14,6 +14,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/ltaoo/echo"
+	"github.com/ltaoo/echo/plugin"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -91,7 +92,7 @@ func root_command(args RootCommandArg) {
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-signal_chan
-		fmt.Printf("\n正在关闭服务...%v\n\n", sig)
+		fmt.Printf("\n正在关闭下载服务...%v\n\n", sig)
 		signal.Stop(signal_chan)
 		if args.SetSystemProxy {
 			arg := proxy.ProxySettings{
@@ -107,14 +108,10 @@ func root_command(args RootCommandArg) {
 		if server != nil {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer shutdownCancel()
-
-			fmt.Println("正在关闭代理服务器...")
 			if err := server.Shutdown(shutdownCtx); err != nil {
 				fmt.Printf("⚠️ 代理服务器关闭失败: %v\n", err)
 				// 如果优雅关闭失败，强制关闭
 				server.Close()
-			} else {
-				fmt.Println("代理服务器已关闭")
 			}
 		}
 		// 注意：cancel 在信号处理 goroutine 中调用，不需要 defer
@@ -122,20 +119,20 @@ func root_command(args RootCommandArg) {
 		os.Exit(0)
 	}()
 
-	fmt.Printf("\nv" + Version)
-	fmt.Printf("\n问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n")
+	fmt.Printf("\nv%v\n", Version)
+	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 	existing, err1 := certificate.CheckHasCertificate(cert_file_name)
 	if err1 != nil {
-		fmt.Printf("\nERROR %v\v", err1.Error())
+		fmt.Printf("ERROR %v\n", err1.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
 	if !existing {
-		fmt.Printf("\n\n正在安装证书...\n")
+		fmt.Printf("正在安装证书...\n")
 		err := certificate.InstallCertificate(files.CertFile)
 		time.Sleep(3 * time.Second)
 		if err != nil {
-			fmt.Printf("\nERROR %v\n", err.Error())
+			fmt.Printf("ERROR %v\n", err.Error())
 			fmt.Printf("按 Ctrl+C 退出...\n")
 			select {}
 		}
@@ -143,11 +140,22 @@ func root_command(args RootCommandArg) {
 	biz := application.NewBiz(Version, files)
 	echo, err := echo.NewEcho(files.CertFile, files.PrivateKeyFile)
 	if err != nil {
-		fmt.Printf("\nERROR %v\n", err.Error())
+		fmt.Printf("ERROR %v\n", err.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
+	biz.SetDebug(args.Debug)
 	echo.AddPlugin(handler.HandleHttpRequestEcho(biz, args.cfg))
+	if args.Debug {
+		echo.AddPlugin(&plugin.Plugin{
+			Match: "debug.weixin.qq.com",
+			Target: &plugin.TargetConfig{
+				Protocol: "http",
+				Host:     "127.0.0.1",
+				Port:     6752,
+			},
+		})
+	}
 
 	var buf bytes.Buffer
 	// 为了不在终端输出 http server 的日志
@@ -163,7 +171,7 @@ func root_command(args RootCommandArg) {
 	}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("\nERROR %v\n", err.Error())
+			fmt.Printf("ERROR %v\n", err.Error())
 			fmt.Printf("按 Ctrl+C 退出...\n")
 			cancel()
 		}
@@ -176,17 +184,20 @@ func root_command(args RootCommandArg) {
 			Port:     strconv.Itoa(args.Port),
 		})
 		if err != nil {
-			fmt.Printf("\nERROR 设置代理失败 %v\n", err.Error())
+			fmt.Printf("ERROR 设置代理失败 %v\n", err.Error())
 			fmt.Printf("按 Ctrl+C 退出...\n")
 			select {}
 		}
 	}
 	proxy_server_url := "http://127.0.0.1:" + strconv.Itoa(args.Port)
-	color.Green(fmt.Sprintf("\n\n服务已正确启动"))
+	color.Green("下载服务启动成功")
 	if !args.SetSystemProxy {
-		color.Green(fmt.Sprintf("当前未设置系统代理，请通过软件将流量转发至 %v", proxy_server_url))
+		color.Red(fmt.Sprintf("当前未设置系统代理，请通过软件将流量转发至 %v", proxy_server_url))
+		color.Red("设置成功后再打开视频号页面下载")
+	} else {
+		color.Green(fmt.Sprintf("已修改系统代理为 %v", proxy_server_url))
+		color.Green("请打开需要下载的视频号页面进行下载")
 	}
-	color.Green(fmt.Sprintf("打开需要下载的视频号页面进行下载"))
-	fmt.Println("\n\n服务运行在 " + proxy_server_url + "，按 Ctrl+C 退出...")
+	fmt.Println("\n\n按 Ctrl+C 退出...")
 	select {}
 }
