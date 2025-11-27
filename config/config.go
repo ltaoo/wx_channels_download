@@ -13,6 +13,7 @@ type Config struct {
 	DownloadDefaultHighest       bool   `json:"defaultHighest"`           // 默认下载最高画质
 	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"` // 下载文件名模板
 	ProxySystem                  bool
+	Hostname                     string
 	Port                         int
 	PageSpyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
 	PageSpyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
@@ -45,6 +46,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("download.filenameTemplate", "{{filename}}-{{spec}}")
 	viper.SetDefault("proxy.system", true)
 	viper.SetDefault("proxy.port", 2023)
+	viper.SetDefault("proxy.hostname", "127.0.0.1")
 	viper.SetDefault("debug.protocol", "https")
 	viper.SetDefault("debug.api", "debug.weixin.qq.com")
 	viper.SetDefault("globalUserScript", "")
@@ -56,6 +58,7 @@ func LoadConfig() (*Config, error) {
 		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
 		ProxySystem:                  viper.GetBool("proxy.system"),
 		Port:                         viper.GetInt("proxy.port"),
+		Hostname:                     viper.GetString("proxy.hostname"),
 		PageSpyServerProtocol:        viper.GetString("debug.protocol"),
 		PageSpyServerAPI:             viper.GetString("debug.api"),
 		GlobalUserScript:             viper.GetString("globalUserScript"),
