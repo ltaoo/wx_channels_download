@@ -30,7 +30,8 @@ var (
 	device         string
 	port           int
 	debug          bool
-	files          *application.BizFiles
+	cert_files     *application.BizFiles
+	channel_files  *handler.ChannelInjectedFiles
 	cert_file_name string
 	cfg            *config.Config
 )
@@ -48,6 +49,8 @@ var root_cmd = &cobra.Command{
 			Debug:          debug,
 			SetSystemProxy: viper.GetBool("proxy.system"),
 			cfg:            cfg,
+			channel_files:  channel_files,
+			cert_files:     cert_files,
 		})
 	},
 }
@@ -58,17 +61,21 @@ func init() {
 	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
 
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
+	viper.BindPFlag("debug", root_cmd.PersistentFlags().Lookup("debug"))
 }
 
-func Initialize(app_ver string, cert_file string, file *application.BizFiles, c *config.Config) {
+func Initialize() {
+
+}
+func Execute(app_ver string, cert_filename string, channel_files *handler.ChannelInjectedFiles, cert_files *application.BizFiles, c *config.Config) error {
+	cobra.MousetrapHelpText = ""
+
 	Version = app_ver
-	cert_file_name = cert_file
-	files = file
+	cert_file_name = cert_filename
+	cert_files = cert_files
+	channel_files = channel_files
 	port = c.Port
 	cfg = c
-}
-func Execute() error {
-	cobra.MousetrapHelpText = ""
 
 	return root_cmd.Execute()
 }
@@ -82,6 +89,8 @@ type RootCommandArg struct {
 	Debug          bool
 	SetSystemProxy bool
 	cfg            *config.Config
+	channel_files  *handler.ChannelInjectedFiles
+	cert_files     *application.BizFiles
 }
 
 func root_command(args RootCommandArg) {
@@ -129,7 +138,7 @@ func root_command(args RootCommandArg) {
 	}
 	if !existing {
 		fmt.Printf("正在安装证书...\n")
-		err := certificate.InstallCertificate(files.CertFile)
+		err := certificate.InstallCertificate(args.cert_files.CertFile)
 		time.Sleep(3 * time.Second)
 		if err != nil {
 			fmt.Printf("ERROR %v\n", err.Error())
@@ -137,15 +146,15 @@ func root_command(args RootCommandArg) {
 			select {}
 		}
 	}
-	biz := application.NewBiz(Version, files)
-	echo, err := echo.NewEcho(files.CertFile, files.PrivateKeyFile)
+	biz := application.NewBiz(Version)
+	echo, err := echo.NewEcho(args.cert_files.CertFile, args.cert_files.PrivateKeyFile)
 	if err != nil {
 		fmt.Printf("ERROR %v\n", err.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
 	}
 	biz.SetDebug(args.Debug)
-	echo.AddPlugin(handler.HandleHttpRequestEcho(biz, args.cfg))
+	echo.AddPlugin(handler.HandleHttpRequestEcho(Version, args.channel_files, args.cfg))
 	if args.Debug {
 		echo.AddPlugin(&plugin.Plugin{
 			Match: "debug.weixin.qq.com",

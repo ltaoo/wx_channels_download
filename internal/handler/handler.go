@@ -1,5 +1,16 @@
 package handler
 
+type ChannelInjectedFiles struct {
+	JSFileSaver []byte
+	JSZip       []byte
+	JSPageSpy   []byte
+	JSDebug     []byte
+	JSUtils     []byte
+	JSError     []byte
+	JSMain      []byte
+	JSLiveMain  []byte
+}
+
 type ChannelMediaSpec struct {
 	FileFormat       string  `json:"file_format"`
 	FirstLoadBytes   int     `json:"first_load_bytes"`

@@ -19,26 +19,17 @@ import (
 type BizFiles struct {
 	CertFile       []byte
 	PrivateKeyFile []byte
-	JSFileSaver    []byte
-	JSZip          []byte
-	JSPageSpy      []byte
-	JSDebug        []byte
-	JSUtils        []byte
-	JSError        []byte
-	JSMain         []byte
-	JSLiveMain     []byte
 }
 
 type Biz struct {
 	Version string
-	Files   *BizFiles
 	Debug   bool
 }
 
-func NewBiz(version string, files *BizFiles) *Biz {
+func NewBiz(version string) *Biz {
 	return &Biz{
 		Version: version,
-		Files:   files,
+		// Files:   files,
 	}
 }
 func (a *Biz) SetDebug(debug bool) {

@@ -7,6 +7,7 @@ import (
 	"wx_channel/cmd"
 	"wx_channel/config"
 	"wx_channel/internal/application"
+	"wx_channel/internal/handler"
 	"wx_channel/pkg/platform"
 )
 
@@ -47,14 +48,16 @@ func main() {
 	files := &application.BizFiles{
 		CertFile:       cert_file,
 		PrivateKeyFile: private_key_file,
-		JSFileSaver:    js_file_saver,
-		JSZip:          js_zip,
-		JSPageSpy:      js_pagespy,
-		JSDebug:        js_debug,
-		JSError:        js_error,
-		JSUtils:        js_utils,
-		JSMain:         js_main,
-		JSLiveMain:     js_live_main,
+	}
+	channel_files := &handler.ChannelInjectedFiles{
+		JSFileSaver: js_file_saver,
+		JSZip:       js_zip,
+		JSPageSpy:   js_pagespy,
+		JSDebug:     js_debug,
+		JSError:     js_error,
+		JSUtils:     js_utils,
+		JSMain:      js_main,
+		JSLiveMain:  js_live_main,
 	}
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -68,8 +71,7 @@ func main() {
 		}
 		return
 	}
-	cmd.Initialize(AppVer, RootCertificateName, files, cfg)
-	if err := cmd.Execute(); err != nil {
+	if err := cmd.Execute(AppVer, RootCertificateName, channel_files, files, cfg); err != nil {
 		fmt.Printf("初始化失败 %v", err.Error())
 		fmt.Printf("按 Ctrl+C 退出...\n")
 		select {}
