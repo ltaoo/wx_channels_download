@@ -6,7 +6,6 @@ import (
 
 	"wx_channel/cmd"
 	"wx_channel/config"
-	"wx_channel/internal/application"
 	"wx_channel/internal/handler"
 	"wx_channel/pkg/platform"
 )
@@ -45,7 +44,7 @@ var RootCertificateName = "SunnyNet"
 var AppVer = "251122"
 
 func main() {
-	files := &application.BizFiles{
+	files := &handler.ServerCertFiles{
 		CertFile:       cert_file,
 		PrivateKeyFile: private_key_file,
 	}
