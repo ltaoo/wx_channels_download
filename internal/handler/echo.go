@@ -9,7 +9,6 @@ import (
 	"github.com/ltaoo/echo/plugin"
 
 	"wx_channel/config"
-	"wx_channel/internal/application"
 	"wx_channel/pkg/util"
 )
 
@@ -36,8 +35,8 @@ var (
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 )
 
-func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) *plugin.Plugin {
-	v := "?t=" + biz.Version
+func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *config.Config) *plugin.Plugin {
+	v := "?t=" + version
 	return &plugin.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx *plugin.Context) {
@@ -46,13 +45,13 @@ func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) *plugin.Plu
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 					"__debug":      "local_file",
-				}, biz.Files.JSZip)
+				}, files.JSZip)
 			}
 			if util.Includes(pathname, "FileSaver.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 					"__debug":      "local_file",
-				}, biz.Files.JSFileSaver)
+				}, files.JSFileSaver)
 			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile
@@ -105,25 +104,28 @@ func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) *plugin.Plu
 					html := string(resp_body)
 					html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 					html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
-					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSUtils)
+					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 					if cfg.GlobalUserScript != "" {
 						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.GlobalUserScript)
 					}
 					cfg_byte, _ := json.Marshal(cfg)
 					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
 					inserted_scripts += script_config
-					if biz.Debug {
+					if cfg.Debug {
 						/** 全局错误捕获 */
-						script_error := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSError)
+						script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
 						inserted_scripts += script_error
 						/** 在线调试 */
-						script_pagespy := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSPageSpy)
-						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSDebug)
+						script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
+						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
 						inserted_scripts += script_pagespy + script_pagespy2
 					}
 					if path == "/web/pages/feed" || path == "/web/pages/home" {
 						/** 下载逻辑 */
-						script_main := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSMain)
+						script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
+						if cfg.InjectExtraScriptAfterJSMain != "" {
+							script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						}
 						inserted_scripts += script_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 						if path == "/web/pages/home" {
@@ -134,7 +136,7 @@ func HandleHttpRequestEcho(biz *application.Biz, cfg *config.Config) *plugin.Plu
 						}
 					}
 					if path == "/web/pages/live" {
-						script_live_main := fmt.Sprintf(`<script>%s</script>`, biz.Files.JSLiveMain)
+						script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveMain)
 						inserted_scripts += script_live_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 						fmt.Println("1. 直播详情页 html 注入 js 成功")
