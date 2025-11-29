@@ -2,7 +2,7 @@
 layout: home
 title: wx_channels_download
 hero:
-  name: 视频号下载工具
+  name: 微信视频号下载器
   tagline: 一键下载视频号内容
   actions:
     - theme: brand

@@ -35,7 +35,7 @@ body:
   - type: textarea
     id: page_screenshot
     attributes:
-      label: 视频号页面截图
+      label: 视频号版本及页面截图
       description: 请对视频号页面进行截图，并拖拽到此区域
       placeholder: |
         尝试通过 wx_video_download --debug 命令启动，并截图
