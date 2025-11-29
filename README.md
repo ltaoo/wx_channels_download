@@ -201,7 +201,7 @@ sudo ./wx_video_download_darwin_xxx
 
 ![视频下载按钮](assets/screenshot1.png)
 
-> 如果没有，可以看看「更多」这里是否有「下载视频」按钮。<br> > ![下载按钮2](assets/screenshot10.png)
+> 如果没有，可以看看「更多」这里是否有「下载视频」按钮。<br/> ![下载按钮2](assets/screenshot10.png)
 
 等待视频开始播放，然后暂停视频，点击下载按扭即可下载视频。下载成功后，会在上方显示已下载的文件，下载文件名最后面会标志该视频质量。
 
@@ -260,15 +260,10 @@ CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-p
 
 ## 其他
 
-此程序大部分参考自以下项目代码
+此程序前端解密部分参考自以下项目代码
 <br>
 https://github.com/kanadeblisst00/WechatVideoSniffer2.0
 
-## 我的赞赏码
-
-如果我的项目对你有所帮助，可以请我喝杯咖啡 ☕️
-
-[![Sponsors](https://sponsorkit-iota.vercel.app/api/sponsors)](https://sponsorkit-iota.vercel.app/api/sponsors)
 
 ```text
                  本项目为开源项目

@@ -1,0 +1,54 @@
+name: 功能建议
+description: 提交新功能或改进的建议
+title: "[Feature] 简洁描述你的需求"
+labels:
+  - enhancement
+body:
+  - type: checkboxes
+    id: confirm_search
+    attributes:
+      label: 提交前确认
+      description: 勾选后方可提交
+      options:
+        - label: 我已搜索过现有 Issues/讨论，未发现类似建议
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: 功能描述
+      description: 详细说明你希望实现的功能与用途
+      placeholder: 例如：支持从某页面下载指定内容
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 背景与动机
+      description: 为什么需要此功能，解决了什么问题
+      placeholder: 例如：当前流程的痛点与改进价值
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 可能的实现方案
+      description: 可选，提出你对实现的思路或伪代码
+      placeholder: 例如：新增命令参数、扩展解析逻辑
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案与权衡
+      description: 是否考虑过其他做法及其优缺点
+      placeholder: 例如：使用外部工具或不同接口方案
+    validations:
+      required: false
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: 其他上下文
+      description: 相关链接、参考资料或截图
+      placeholder: 例如：参考项目链接、API 文档、示例截图
+    validations:
+      required: false
