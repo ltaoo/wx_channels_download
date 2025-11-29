@@ -193,7 +193,7 @@ sudo ./wx_video_download_darwin_xxx
 
 当终端提示「服务已正确启动」就说明可以使用了。
 
-![正常使用](assets/screenshot8.png)
+![正常使用](./docs/assets/app_screenshot1.png)
 
 > 已安装证书会跳过安装证书步骤。
 
