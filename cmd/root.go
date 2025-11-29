@@ -68,13 +68,13 @@ func init() {
 	viper.BindPFlag("debug", root_cmd.PersistentFlags().Lookup("debug"))
 }
 
-func Execute(app_ver string, cert_filename string, channel_files *handler.ChannelInjectedFiles, cert_files *handler.ServerCertFiles, c *config.Config) error {
+func Execute(app_ver string, cert_filename string, files1 *handler.ChannelInjectedFiles, files2 *handler.ServerCertFiles, c *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
 	cert_file_name = cert_filename
-	cert_files = cert_files
-	channel_files = channel_files
+	channel_files = files1
+	cert_files = files2
 	cfg = c
 
 	return root_cmd.Execute()

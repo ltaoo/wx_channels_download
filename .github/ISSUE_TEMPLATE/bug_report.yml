@@ -1,0 +1,84 @@
+name: 故障反馈
+description: 遇到问题时使用此模板提交 Issue
+title: "[Bug] 简洁描述你的问题"
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        在遇到问题前，请先搜索是否已有类似问题；如仍无法解决，请在 Issue 中附上：
+        1. 终端截图
+        2. 视频号页面截图
+        3. 视频号页面地址（若能正常打开视频详情页，「更多」按钮中有复制功能）
+  - type: checkboxes
+    id: confirm_search
+    attributes:
+      label: 提交前确认
+      description: 勾选后方可提交
+      options:
+        - label: 我已搜索过现有 Issues/讨论，未发现类似问题
+          required: true
+  - type: textarea
+    id: terminal
+    attributes:
+      label: 终端截图 / 输出
+      description: 请粘贴相关命令与终端输出，并拖拽截图到此区域
+      placeholder: |
+        例如：运行命令及输出
+        wx_channels_download --version
+        wx_channels_download download <url>
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: 系统代理截图
+      description: 请粘贴系统代理设置截图
+      placeholder: |
+        前往系统代理窗口查看并截图
+    validations:
+      required: true
+  - type: textarea
+    id: page_screenshot
+    attributes:
+      label: 视频号页面截图
+      description: 请在能看到视频详情的页面进行截图，并拖拽到此区域
+    validations:
+      required: true
+  - type: input
+    id: page_url
+    attributes:
+      label: 视频号页面地址
+      description: 若能正常打开视频详情页，「更多」按钮中有复制功能
+      placeholder: https://channels.weixin.qq.com/...
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: 应用版本
+      description: 终端运行 `wx_channels_download --version` 或在应用界面查看
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请提供清晰的复现步骤，以便我们快速定位问题
+      placeholder: |
+        1. 打开...
+        2. 点击...
+        3. 出现...
+    validations:
+      required: false

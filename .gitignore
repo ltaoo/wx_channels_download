@@ -8,3 +8,8 @@ wx_channel*
 
 config.yaml
 global.js
+
+docs/node_modules
+docs/package-lock.json
+docs/.vitepress/cache
+docs/.vitepress/dist
