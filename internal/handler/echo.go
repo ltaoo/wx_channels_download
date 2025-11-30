@@ -105,8 +105,8 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 					html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
-					if cfg.GlobalUserScript != "" {
-						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.GlobalUserScript)
+					if cfg.InjectGlobalScript != "" {
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 					}
 					cfg_byte, _ := json.Marshal(cfg)
 					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
