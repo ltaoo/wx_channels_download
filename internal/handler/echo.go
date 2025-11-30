@@ -25,12 +25,12 @@ var (
 	jsImportReg     = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
 
 	// 特定路径的正则
-	jsSourceBufferReg  = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(h\),`)
+	jsSourceBufferReg  = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
 	jsAutoCutReg       = regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
 	jsCommentDetailReg = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsDialogReg        = regexp.MustCompile(`i.default={dialog`)
 	jsLiveInfoReg      = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:rs`)
+	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 	jsComplaintReg     = regexp.MustCompile(`,"投诉"\)]`)
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 )
@@ -91,9 +91,9 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 		},
 		OnResponse: func(ctx *plugin.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Res.Request.URL.Hostname()
-			path := ctx.Res.Request.URL.Path
-			if resp_content_type == "text/html; charset=utf-8" {
+			hostname := ctx.Req.URL.Hostname()
+			pathname := ctx.Req.URL.Path
+			if strings.Contains(resp_content_type, "text/html") {
 				// fmt.Println(hostname, path)
 				if hostname == "channels.weixin.qq.com" {
 					resp_body, err := ctx.GetResponseBody()
@@ -120,7 +120,7 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
 						inserted_scripts += script_pagespy + script_pagespy2
 					}
-					if path == "/web/pages/feed" || path == "/web/pages/home" {
+					if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 						/** 下载逻辑 */
 						script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
 						if cfg.InjectExtraScriptAfterJSMain != "" {
@@ -128,14 +128,14 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 						}
 						inserted_scripts += script_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
-						if path == "/web/pages/home" {
+						if pathname == "/web/pages/home" {
 							fmt.Println("1. 视频号首页 html 注入 js 成功")
 						}
-						if path == "/web/pages/feed" {
+						if pathname == "/web/pages/feed" {
 							fmt.Println("1. 视频详情页 html 注入 js 成功")
 						}
 					}
-					if path == "/web/pages/live" {
+					if pathname == "/web/pages/live" {
 						script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveMain)
 						inserted_scripts += script_live_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
@@ -145,8 +145,8 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					return
 				}
 			}
-			if resp_content_type == "application/javascript" {
-				if util.Includes(path, "wasm_video_decode") {
+			if strings.Contains(resp_content_type, "application/javascript") {
+				if util.Includes(pathname, "wasm_video_decode") {
 					return
 				}
 				resp_body, err := ctx.GetResponseBody()
@@ -161,12 +161,12 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 				js_script = jsLazyImportReg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
-				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
+				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					replace_str1 := `(() => {
 									if (window.__wx_channels_store__) {
-									window.__wx_channels_store__.buffers.push(h);
+									window.__wx_channels_store__.buffers.push($1);
 									}
-									})(),this.sourceBuffer.appendBuffer(h),`
+									})(),this.sourceBuffer.appendBuffer($1),`
 					if jsSourceBufferReg.MatchString(js_script) {
 						fmt.Println("2. 视频播放 js 修改成功")
 					}
@@ -182,7 +182,7 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				update_media_profile_text := `var profile = media.mediaType !== 4 ? {
+				media_profile_js := `var profile = media.mediaType !== 4 ? {
 									type: "picture",
 									id: data_object.id,
 									title: data_object.objectDesc.description,
@@ -227,7 +227,7 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 										body: JSON.stringify(profile)
 									});
 								})();`
-				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
+				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
 					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
 					var feedResult = await (async () => {
 						$2;
@@ -239,7 +239,7 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					var media = data_object.objectDesc.media[0];
 					%v
 					return feedResult;
-				}async`, update_media_profile_text)
+				}async`, media_profile_js)
 					if jsCommentDetailReg.MatchString(js_script) {
 						fmt.Println("3.视频读取 js 修改成功")
 					}
@@ -273,23 +273,24 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if util.Includes(path, "vuexStores.publish") {
+				if util.Includes(pathname, "connect.publish") {
 					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
-									await rs(v);
+									await $1(v);
 									setTimeout(() => {
-									var data_object = Zt.value.feed;
+									console.log("bingo", Dt, ae);
+									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
 									var media = data_object.objectDesc.media[0];
 									%v
 									if (window.__insert_download_btn_to_home_page) {
 				__insert_download_btn_to_home_page();
 									}
 									}, 0);
-									}`, update_media_profile_text)
+									}`, media_profile_js)
 					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if util.Includes(path, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
+				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
 					replace_str := `,"投诉"),...(() => {
 						if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
 							return window.__wx_channels_store__.profile.spec.map((sp) => {
@@ -303,7 +304,7 @@ func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *con
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if util.Includes(path, "worker_release") {
+				if util.Includes(pathname, "worker_release") {
 					replace_str := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
 					js_script = jsFmp4IndexReg.ReplaceAllString(js_script, replace_str)
 					ctx.SetResponseBody(js_script)

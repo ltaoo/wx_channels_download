@@ -374,6 +374,12 @@ async function insert_download_btn() {
   __wx_log({
     msg: "等待注入下载按钮",
   });
+  if (window.location.pathname.includes("/pages/home")) {
+    var success = await __insert_download_btn_to_home_page();
+    if (success) {
+      return;
+    }
+  }
   var $elm2 = await __wx_find_elm(function () {
     return document.getElementsByClassName("full-opr-wrp layout-col")[0];
   });
@@ -421,13 +427,8 @@ async function insert_download_btn() {
     $elm1.insertBefore(__wx_channels_video_download_btn__, relative_node);
     return;
   }
-  var success = await __insert_download_btn_to_home_page();
-  if (success) {
-    return;
-  }
   __wx_log({
     msg: "没有找到操作栏，注入下载按钮失败\n",
-    // 请使用命令行方式下载\n参考 https://github.com/ltaoo/wx_channels_download/issues/129
   });
 }
 setTimeout(async () => {

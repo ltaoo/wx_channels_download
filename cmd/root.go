@@ -40,6 +40,7 @@ var root_cmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg.Debug = viper.GetBool("debug")
 		root_command(RootCommandArg{
 			HandlerClientPayload: handler.HandlerClientPayload{
 				Version:        Version,
@@ -47,7 +48,7 @@ var root_cmd = &cobra.Command{
 				Device:         device,
 				Hostname:       viper.GetString("proxy.hostname"),
 				Port:           viper.GetInt("proxy.port"),
-				Debug:          viper.GetBool("debug"),
+				Debug:          cfg.Debug,
 				CertFiles:      cert_files,
 				CertFileName:   cert_file_name,
 				ChannelFiles:   channel_files,

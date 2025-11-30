@@ -60,7 +60,6 @@ func NewHandlerClient(payload HandlerClientPayload) (*HandlerClient, error) {
 			},
 		})
 	}
-
 	return &HandlerClient{
 		Version:        payload.Version,
 		SetSystemProxy: payload.SetSystemProxy,
