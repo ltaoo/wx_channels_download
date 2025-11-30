@@ -56,7 +56,7 @@ var FilesChannelScript = &handler.ChannelInjectedFiles{
 }
 
 var RootCertificateName = "SunnyNet"
-var AppVer = "251130"
+var AppVer = "251130_11"
 
 func main() {
 	cfg, err := config.LoadConfig()
