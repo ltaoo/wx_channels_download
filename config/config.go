@@ -17,9 +17,9 @@ type Config struct {
 	Port                         int
 	PageSpyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
 	PageSpyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
-	GlobalUserScript             string // 全局用户脚本
 	Debug                        bool
 	InjectExtraScriptAfterJSMain string // 额外注入的 js
+	InjectGlobalScript           string // 全局用户脚本
 }
 
 func LoadConfig() (*Config, error) {
@@ -49,9 +49,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("proxy.hostname", "127.0.0.1")
 	viper.SetDefault("debug.protocol", "https")
 	viper.SetDefault("debug.api", "debug.weixin.qq.com")
-	viper.SetDefault("globalUserScript", "")
 	viper.SetDefault("debug", false)
 	viper.SetDefault("inject.extraScript.afterJSMain", "")
+	viper.SetDefault("inject.globalScript", "")
 
 	config := &Config{
 		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
@@ -61,9 +61,9 @@ func LoadConfig() (*Config, error) {
 		Hostname:                     viper.GetString("proxy.hostname"),
 		PageSpyServerProtocol:        viper.GetString("debug.protocol"),
 		PageSpyServerAPI:             viper.GetString("debug.api"),
-		GlobalUserScript:             viper.GetString("globalUserScript"),
 		Debug:                        viper.GetBool("debug"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
+		InjectGlobalScript:           viper.GetString("inject.globalScript"),
 	}
 
 	extra_js_filepath := config.InjectExtraScriptAfterJSMain

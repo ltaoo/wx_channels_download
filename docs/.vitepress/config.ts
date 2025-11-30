@@ -9,7 +9,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: 'Releases', link: '/releases' },
+      { text: 'Releases', link: '/releases/251130' },
       { text: 'FAQ', link: '/guide/faq' },
     ],
     sidebar: [
@@ -33,7 +33,8 @@ export default defineConfig({
         text: '配置',
         items: [
           { text: '下载', link: '/guide/config/download' },
-          { text: '代理', link: '/guide/config/proxy' }
+          { text: '代理', link: '/guide/config/proxy' },
+          { text: '脚本', link: '/guide/config/script' }
         ]
       },
       {
@@ -49,6 +50,7 @@ export default defineConfig({
       {
         text: '发布日志',
         items: [
+          { text: '251130', link: '/releases/251130' },
           { text: '251122', link: '/releases/251122' }
         ]
       }
