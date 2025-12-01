@@ -10,5 +10,7 @@ title: 下载mp3
 
 确认 `ffmpeg` 已安装后，需要在 `config.yaml` 中开启 `download.localServer.enabled` 设置为 `true`
 
+参考 [本地下载中转服务](../config/download.md#本地下载中转服务)
+
 最后，在「视频详情页」的「更多」菜单中，有「下载为mp3」菜单，点击即可下载 `mp3` 文件
 
