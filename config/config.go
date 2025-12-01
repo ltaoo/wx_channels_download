@@ -20,14 +20,14 @@ type Config struct {
 	PageSpyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
 	PageSpyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
 	Debug                        bool
+	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain string // 额外注入的 js
 	InjectGlobalScript           string // 全局用户脚本
 }
 
 func LoadConfig() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("./")
+	cwd, _ := os.Getwd()
+	viper.SetConfigFile(filepath.Join(cwd, "config.yaml"))
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -35,7 +35,6 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	cwd, _ := os.Getwd()
 	global_script_path := path.Join(cwd, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
@@ -54,6 +53,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("debug.protocol", "https")
 	viper.SetDefault("debug.api", "debug.weixin.qq.com")
 	viper.SetDefault("debug", false)
+	viper.SetDefault("channel.disableLocationToHome", false)
 	viper.SetDefault("inject.extraScript.afterJSMain", "")
 	viper.SetDefault("inject.globalScript", "")
 
@@ -68,6 +68,7 @@ func LoadConfig() (*Config, error) {
 		PageSpyServerProtocol:        viper.GetString("debug.protocol"),
 		PageSpyServerAPI:             viper.GetString("debug.api"),
 		Debug:                        viper.GetBool("debug"),
+		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScript:           viper.GetString("inject.globalScript"),
 	}

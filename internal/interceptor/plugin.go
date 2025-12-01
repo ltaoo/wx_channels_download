@@ -3,8 +3,12 @@ package interceptor
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ltaoo/echo/plugin"
 
@@ -92,6 +96,39 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req.URL.Hostname()
 			pathname := ctx.Req.URL.Path
+			if cfg.ChannelDisableLocationToHome && pathname == "/web/pages/feed" && ctx.Res.StatusCode == 302 {
+				u := &url.URL{Scheme: "https", Host: ctx.Req.URL.Hostname(), Path: pathname, RawQuery: ctx.Req.URL.RawQuery}
+				q := u.Query()
+				q.Set("flow", "2")
+				q.Set("fpid", "FinderLike")
+				u.RawQuery = q.Encode()
+				req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+				if err == nil {
+					for k, v := range ctx.Req.Header {
+						for _, vv := range v {
+							req.Header.Add(k, vv)
+						}
+					}
+					req.Header.Del("Accept-Encoding")
+					client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second}
+					if resp2, err2 := client.Do(req); err2 == nil {
+						defer resp2.Body.Close()
+						body2, _ := io.ReadAll(resp2.Body)
+						ct := resp2.Header.Get("Content-Type")
+						lct := strings.ToLower(ct)
+						if ct == "" || strings.Contains(lct, "text/html") {
+							ct = "text/html; charset=utf-8"
+						}
+						ctx.Res.StatusCode = 200
+						ctx.Res.Header.Del("Content-Encoding")
+						ctx.Res.Header.Del("Content-Length")
+						ctx.SetResponseHeader("Content-Type", ct)
+						ctx.SetResponseHeader("__debug", "second_fetch")
+						ctx.SetResponseBody(string(body2))
+						resp_content_type = strings.ToLower(ct)
+					}
+				}
+			}
 			if strings.Contains(resp_content_type, "text/html") {
 				// fmt.Println(hostname, path)
 				if hostname == "channels.weixin.qq.com" {

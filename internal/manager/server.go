@@ -65,7 +65,7 @@ func (s *HTTPServer) Start() error {
 		s.status = StatusRunning
 		s.mu.Unlock()
 
-		fmt.Printf("Server %s starting on addr %s\n", s.name, s.addr)
+		// fmt.Printf("Server %s starting on addr %s\n", s.name, s.addr)
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.mu.Lock()
 			s.status = StatusError

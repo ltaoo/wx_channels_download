@@ -96,13 +96,16 @@ func root_command(args RootCommandArg) {
 
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
+	if cf := viper.ConfigFileUsed(); cf != "" {
+		fmt.Printf("配置文件 %s\n", cf)
+	}
 
 	mgr := manager.NewServerManager()
 
 	// 初始化拦截服务
 	interceptorServer, err := interceptor.NewInterceptorServer(args.InterceptorConfig)
 	if err != nil {
-		fmt.Printf("ERROR 初始化拦截服务失败: %v\n", err.Error())
+		fmt.Printf("ERROR 初始化代理服务失败: %v\n", err.Error())
 		os.Exit(1)
 	}
 	mgr.RegisterServer(interceptorServer)
@@ -114,28 +117,30 @@ func root_command(args RootCommandArg) {
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("interceptor"); err != nil {
-			fmt.Printf("⚠️ 关闭拦截服务失败: %v\n", err)
+			fmt.Printf("⚠️ 关闭代理服务失败: %v\n", err)
 		}
 		if err := mgr.StopServer("download"); err != nil {
 			fmt.Printf("⚠️ 关闭下载服务失败: %v\n", err)
 		}
 	}
 
-	// 启动拦截服务
+	if args.Cfg.DownloadLocalServerEnabled {
+		// 启动下载服务
+		if err := mgr.StartServer("download"); err != nil {
+			fmt.Printf("ERROR 启动下载服务失败: %v\n", err.Error())
+			cleanup()
+			os.Exit(1)
+		}
+		color.Green("下载服务启动成功")
+	}
+	// 启动代理服务
 	if err := mgr.StartServer("interceptor"); err != nil {
-		fmt.Printf("ERROR 启动拦截服务失败: %v\n", err.Error())
+		fmt.Printf("ERROR 启动代理服务失败: %v\n", err.Error())
 		cleanup()
 		os.Exit(1)
 	}
+	color.Green("代理服务启动成功")
 
-	// 启动下载服务
-	if err := mgr.StartServer("download"); err != nil {
-		fmt.Printf("ERROR 启动下载服务失败: %v\n", err.Error())
-		cleanup()
-		os.Exit(1)
-	}
-
-	color.Green("下载服务启动成功")
 	if !args.SetSystemProxy {
 		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptorServer.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
