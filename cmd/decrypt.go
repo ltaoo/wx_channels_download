@@ -29,7 +29,7 @@ var decrypt_cmd = &cobra.Command{
 }
 
 func init() {
-	decrypt_cmd.Flags().StringVar(&file_path, "filepath", "", "视频地址（必需）")
+	decrypt_cmd.Flags().StringVar(&file_path, "filepath", "", "视频文件地址（必需）")
 	decrypt_cmd.Flags().IntVar(&video_decrypt_key2, "key", 0, "解密密钥（必需）")
 	decrypt_cmd.MarkFlagRequired("filepath")
 
@@ -42,6 +42,14 @@ type DecryptCOmmandArgs struct {
 }
 
 func decrypt_command(args DecryptCOmmandArgs) {
+	if args.Filepath == "" {
+		fmt.Printf("[ERROR]文件路径不能为空\n")
+		return
+	}
+	if args.DecryptKey == 0 {
+		fmt.Printf("[ERROR]解密密钥不能为空\n")
+		return
+	}
 	fmt.Printf("开始对文件解密 %s\n", args.Filepath)
 	length := uint32(131072)
 	key := uint64(args.DecryptKey)

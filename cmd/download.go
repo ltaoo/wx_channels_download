@@ -63,6 +63,10 @@ func download_command(args DownloadCommandArgs) {
 	tmp_dest_filepath := filepath.Join(homedir, "Downloads", tmp_filename)
 	dest_filepath := filepath.Join(homedir, "Downloads", args.Filename)
 
+	if args.DecryptKey == 0 {
+		tmp_dest_filepath = dest_filepath
+	}
+
 	if err := download.MultiThreadingDownload(url, 4, tmp_dest_filepath, tmp_dest_filepath); err != nil {
 		fmt.Printf("[ERROR]%v\n", err.Error())
 		return
@@ -70,12 +74,12 @@ func download_command(args DownloadCommandArgs) {
 	// elapsed := time.Since(start_time)
 	// speed := float64(file_size) / elapsed.Seconds() / 1024 / 1024
 
-	fmt.Printf("\n临时文件下载完成!\n")
 	// fmt.Printf("文件大小: %.2f MB\n", float64(file_size)/1024/1024)
 	// fmt.Printf("耗时: %.2f 秒\n", elapsed.Seconds())
 	// fmt.Printf("平均速度: %.2f MB/s\n", speed)
-	fmt.Println()
+
 	if args.DecryptKey != 0 {
+		fmt.Printf("下载完成!\n")
 		fmt.Printf("开始对临时文件解密 %s\n", tmp_dest_filepath)
 		length := uint32(131072)
 		key := uint64(args.DecryptKey)
