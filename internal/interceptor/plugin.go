@@ -1,4 +1,4 @@
-package handler
+package interceptor
 
 import (
 	"encoding/json"
@@ -35,7 +35,7 @@ var (
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 )
 
-func HandleHttpRequestEcho(version string, files *ChannelInjectedFiles, cfg *config.Config) *plugin.Plugin {
+func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *plugin.Plugin {
 	v := "?t=" + version
 	return &plugin.Plugin{
 		Match: "qq.com",

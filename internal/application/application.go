@@ -17,11 +17,6 @@ import (
 	"wx_channel/pkg/proxy"
 )
 
-type BizFiles struct {
-	CertFile       []byte
-	PrivateKeyFile []byte
-}
-
 type Biz struct {
 	Version string
 	Debug   bool

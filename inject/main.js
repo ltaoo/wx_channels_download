@@ -146,14 +146,12 @@ async function __wx_channels_download3(profile, filename) {
 async function __wx_channels_download4(profile, filename) {
   console.log("__wx_channels_download4");
   const url = profile.url;
-  //   console.log("__wx_channels_download4", url);
-  //   __wx_log({
-  //     msg: `${filename}
-  // ${url}`,
-  //   });
-  await __wx_load_script(
-    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
-  );
+  if (__wx_channels_config__.downloadWithLocalServer) {
+    const url = `http://127.0.0.1:8080/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${filename}`;
+    window.open(url);
+    return;
+  }
+  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
   const ins = __wx_channel_loading();
   const response = await fetch(url);
   const blob = await show_progress_or_loaded_size(response);
@@ -164,11 +162,25 @@ async function __wx_channels_download4(profile, filename) {
   __wx_log({
     msg: "下载完成，开始解密",
   });
-  let array = new Uint8Array(await blob.arrayBuffer());
-  if (profile.decryptor_array) {
-    array = __wx_channels_video_decrypt(array, 0, profile);
-  }
+  var array = new Uint8Array(await blob.arrayBuffer());
   ins.hide();
+  if (profile.key) {
+    try {
+      const r = await __wx_channels_decrypt(profile.key);
+      // console.log("[]after __wx_channels_decrypt", r);
+      profile.decryptor_array = r;
+      if (profile.decryptor_array) {
+        array = __wx_channels_video_decrypt(array, 0, profile);
+      }
+    } catch (err) {
+      var tip = "解密失败，停止下载";
+      __wx_log({
+        msg: tip,
+      });
+      alert(tip);
+      return;
+    }
+  }
   const result = new Blob([array], { type: "video/mp4" });
   saveAs(result, filename + ".mp4");
 }
@@ -219,17 +231,6 @@ ${_profile.key || "该视频未加密"}`,
     return;
   }
   _profile.data = __wx_channels_store__.buffers;
-  try {
-    const r = await __wx_channels_decrypt(_profile.key);
-    // console.log("[]after __wx_channels_decrypt", r);
-    _profile.decryptor_array = r;
-  } catch (err) {
-    __wx_log({
-      msg: `解密失败，停止下载`,
-    });
-    alert("解密失败，停止下载");
-    return;
-  }
   __wx_channels_download4(_profile, filename);
 }
 function __wx_channels_download_cur__() {

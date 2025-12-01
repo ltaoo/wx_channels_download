@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/viper"
 
 	"wx_channel/config"
-	"wx_channel/internal/handler"
+	"wx_channel/internal/interceptor"
 )
 
 var (
@@ -27,8 +27,8 @@ var (
 	hostname       string
 	port           int
 	debug          bool
-	cert_files     *handler.ServerCertFiles
-	channel_files  *handler.ChannelInjectedFiles
+	cert_files     *interceptor.ServerCertFiles
+	channel_files  *interceptor.ChannelInjectedFiles
 	cert_file_name string
 	cfg            *config.Config
 )
@@ -42,7 +42,7 @@ var root_cmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg.Debug = viper.GetBool("debug")
 		root_command(RootCommandArg{
-			HandlerClientPayload: handler.HandlerClientPayload{
+			InterceptorConfig: interceptor.InterceptorConfig{
 				Version:        Version,
 				SetSystemProxy: viper.GetBool("proxy.system"),
 				Device:         device,
@@ -69,7 +69,7 @@ func init() {
 	viper.BindPFlag("debug", root_cmd.PersistentFlags().Lookup("debug"))
 }
 
-func Execute(app_ver string, cert_filename string, files1 *handler.ChannelInjectedFiles, files2 *handler.ServerCertFiles, c *config.Config) error {
+func Execute(app_ver string, cert_filename string, files1 *interceptor.ChannelInjectedFiles, files2 *interceptor.ServerCertFiles, c *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
@@ -85,7 +85,7 @@ func Register(cmd *cobra.Command) {
 }
 
 type RootCommandArg struct {
-	handler.HandlerClientPayload
+	interceptor.InterceptorConfig
 }
 
 func root_command(args RootCommandArg) {
@@ -101,7 +101,7 @@ func root_command(args RootCommandArg) {
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
-	client, err := handler.NewHandlerClient(args.HandlerClientPayload)
+	client, err := interceptor.NewInterceptor(args.InterceptorConfig)
 	if err != nil {
 		fmt.Printf("ERROR 初始化客户端失败: %v\n", err.Error())
 		os.Exit(1)

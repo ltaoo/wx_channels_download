@@ -6,7 +6,7 @@ import (
 
 	"wx_channel/cmd"
 	"wx_channel/config"
-	"wx_channel/internal/handler"
+	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/platform"
 )
 
@@ -40,11 +40,11 @@ var js_main []byte
 //go:embed inject/live.js
 var js_live_main []byte
 
-var FilesCert = &handler.ServerCertFiles{
+var FilesCert = &interceptor.ServerCertFiles{
 	CertFile:       cert_file,
 	PrivateKeyFile: private_key_file,
 }
-var FilesChannelScript = &handler.ChannelInjectedFiles{
+var FilesChannelScript = &interceptor.ChannelInjectedFiles{
 	JSFileSaver: js_file_saver,
 	JSZip:       js_zip,
 	JSPageSpy:   js_pagespy,
