@@ -9,7 +9,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: 'Releases', link: '/releases/251130' },
+      { text: 'Releases', link: '/releases/251201' },
       { text: 'FAQ', link: '/guide/faq' },
     ],
     sidebar: [
@@ -50,6 +50,7 @@ export default defineConfig({
       {
         text: '发布日志',
         items: [
+          { text: '251201', link: '/releases/251201' },
           { text: '251130', link: '/releases/251130' },
           { text: '251122', link: '/releases/251122' }
         ]

@@ -46,5 +46,17 @@ type params = {
 };
 ```
 
+## 本地下载中转服务
 
+```yaml
+download:
+  localServer:
+    enabled: false
+    addr: "127.0.0.1:8080"
+```
+
+开启 `localServer` 后，将通过本地服务进行下载，从而实现
+
+1、在页面下载长视频不阻塞操作
+2、将视频转换成 `mp3` 并下载
 
