@@ -12,7 +12,7 @@ const (
 
 type Server interface {
 	Name() string
-	Port() int
+	Addr() string
 	Start() error
 	Stop() error
 	Status() ServerStatus

@@ -88,11 +88,6 @@ async function __wx_channels_download(profile, filename) {
 async function __wx_channels_download2(profile, filename) {
   console.log("__wx_channels_download2");
   const url = profile.url;
-  //   __wx_log({
-  //     msg: `${filename}
-  // ${url}
-  // ${profile.key}`,
-  //   });
   await __wx_load_script(
     "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
   );
@@ -145,15 +140,14 @@ async function __wx_channels_download3(profile, filename) {
 /** 下载加密视频 */
 async function __wx_channels_download4(profile, filename) {
   console.log("__wx_channels_download4");
-  const url = profile.url;
-  if (__wx_channels_config__.downloadWithLocalServer) {
-    const url = `http://127.0.0.1:8080/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${filename}`;
+  if (__wx_channels_config__.downloadLocalServerEnabled) {
+    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${filename}.mp4`;
     window.open(url);
     return;
   }
   await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
   const ins = __wx_channel_loading();
-  const response = await fetch(url);
+  const response = await fetch(profile.url);
   const blob = await show_progress_or_loaded_size(response);
   __wx_log({
     ignore_prefix: 1,
@@ -184,6 +178,15 @@ async function __wx_channels_download4(profile, filename) {
   const result = new Blob([array], { type: "video/mp4" });
   saveAs(result, filename + ".mp4");
 }
+async function __wx_channels_download_as_mp3(profile, filename) {
+  console.log("__wx_channels_download_as_mp3");
+  if (!__wx_channels_config__.downloadLocalServerEnabled) {
+    alert("请先开启本地下载服务");
+    return;
+  }
+  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${filename}.mp3`;
+  window.open(url);
+}
 
 function __wx_channels_handle_copy__() {
   __wx_channels_copy(location.href);
@@ -200,7 +203,7 @@ async function __wx_channels_handle_log__() {
   saveAs(blob, "log.txt");
 }
 /** 下载指定规格的视频 */
-async function __wx_channels_handle_click_download__(spec) {
+async function __wx_channels_handle_click_download__(spec, mp3) {
   var profile = __wx_channels_store__.profile;
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
@@ -226,8 +229,8 @@ ${_profile.key || "该视频未加密"}`,
     __wx_channels_download3(_profile, filename);
     return;
   }
-  if (!_profile.key) {
-    __wx_channels_download2(_profile, filename);
+  if (mp3) {
+    __wx_channels_download_as_mp3(_profile, filename);
     return;
   }
   _profile.data = __wx_channels_store__.buffers;

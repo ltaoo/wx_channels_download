@@ -1,24 +1,20 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"wx_channel/config"
+	"wx_channel/internal/download"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/manager"
 )
 
 var (
@@ -101,68 +97,56 @@ func root_command(args RootCommandArg) {
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
-	client, err := interceptor.NewInterceptor(args.InterceptorConfig)
-	if err != nil {
-		fmt.Printf("ERROR 初始化客户端失败: %v\n", err.Error())
-		os.Exit(1)
-	}
-	if err := client.Start(); err != nil {
-		fmt.Printf("ERROR 启动客户端失败: %v\n", err.Error())
-		os.Exit(1)
-	}
-	proxy_server_addr := "127.0.0.1:" + strconv.Itoa(args.Port)
+	mgr := manager.NewServerManager()
 
-	var buf bytes.Buffer
-	// 为了不在终端输出 http server 的日志
-	log.SetOutput(&buf)
-	server := &http.Server{
-		Addr: proxy_server_addr,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			client.ServeHTTP(w, r)
-		}),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	// 初始化拦截服务
+	interceptorServer, err := interceptor.NewInterceptorServer(args.InterceptorConfig)
+	if err != nil {
+		fmt.Printf("ERROR 初始化拦截服务失败: %v\n", err.Error())
+		os.Exit(1)
 	}
+	mgr.RegisterServer(interceptorServer)
+
+	// 初始化下载服务
+	downloadServer := download.NewDownloadServer(cfg.DownloadLocalServerAddr)
+	mgr.RegisterServer(downloadServer)
+
 	cleanup := func() {
-		fmt.Printf("\n正在关闭下载服务...\n")
-		if err := client.Stop(); err != nil {
-			fmt.Printf("⚠️ 关闭客户端失败: %v\n", err)
+		fmt.Printf("\n正在关闭服务...\n")
+		if err := mgr.StopServer("interceptor"); err != nil {
+			fmt.Printf("⚠️ 关闭拦截服务失败: %v\n", err)
 		}
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer shutdownCancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			fmt.Printf("⚠️ 代理服务器关闭失败: %v\n", err)
-			server.Close()
+		if err := mgr.StopServer("download"); err != nil {
+			fmt.Printf("⚠️ 关闭下载服务失败: %v\n", err)
 		}
 	}
 
-	listener, err := net.Listen("tcp", server.Addr)
-	if err != nil {
-		fmt.Printf("ERROR 服务器启动失败: %v\n", err.Error())
+	// 启动拦截服务
+	if err := mgr.StartServer("interceptor"); err != nil {
+		fmt.Printf("ERROR 启动拦截服务失败: %v\n", err.Error())
+		cleanup()
+		os.Exit(1)
+	}
+
+	// 启动下载服务
+	if err := mgr.StartServer("download"); err != nil {
+		fmt.Printf("ERROR 启动下载服务失败: %v\n", err.Error())
 		cleanup()
 		os.Exit(1)
 	}
 
 	color.Green("下载服务启动成功")
 	if !args.SetSystemProxy {
-		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", proxy_server_addr))
+		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptorServer.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
 	} else {
-		color.Green(fmt.Sprintf("已修改系统代理为 %v", proxy_server_addr))
+		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptorServer.Addr()))
 		color.Green("请打开需要下载的视频号页面进行下载")
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")
 
-	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			err_chan <- fmt.Errorf("服务器运行错误: %w", err)
-		}
-	}()
-
 	select {
 	case _ = <-signal_chan:
-		// fmt.Printf("\n收到信号: %v\n", sig)
 		cleanup()
 	case err := <-err_chan:
 		fmt.Printf("ERROR %v\n", err.Error())

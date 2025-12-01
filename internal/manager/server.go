@@ -11,28 +11,19 @@ import (
 // HTTPServer 实现
 type HTTPServer struct {
 	name     string
-	port     int
+	addr     string
 	status   ServerStatus
-	mux      *http.ServeMux
+	mux      http.Handler
 	server   *http.Server
 	mu       sync.RWMutex
 	stopChan chan struct{}
 }
 
-func NewHTTPServer(name string, port int) *HTTPServer {
-	mux := http.NewServeMux()
-
-	// 添加测试路由
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
+func NewHTTPServer(name string, addr string) *HTTPServer {
 	return &HTTPServer{
 		name:     name,
-		port:     port,
+		addr:     addr,
 		status:   StatusStopped,
-		mux:      mux,
 		stopChan: make(chan struct{}),
 	}
 }
@@ -41,8 +32,18 @@ func (s *HTTPServer) Name() string {
 	return s.name
 }
 
-func (s *HTTPServer) Port() int {
-	return s.port
+func (s *HTTPServer) Addr() string {
+	return s.addr
+}
+
+func (s *HTTPServer) SetHandler(handler http.Handler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mux = handler
+}
+
+func (s *HTTPServer) Mux() http.Handler {
+	return s.mux
 }
 
 func (s *HTTPServer) Start() error {
@@ -55,7 +56,7 @@ func (s *HTTPServer) Start() error {
 
 	s.status = StatusStarting
 	s.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.port),
+		Addr:    s.addr,
 		Handler: s.mux,
 	}
 
@@ -64,7 +65,7 @@ func (s *HTTPServer) Start() error {
 		s.status = StatusRunning
 		s.mu.Unlock()
 
-		fmt.Printf("Server %s starting on port %d\n", s.name, s.port)
+		fmt.Printf("Server %s starting on addr %s\n", s.name, s.addr)
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.mu.Lock()
 			s.status = StatusError
@@ -115,7 +116,7 @@ func (s *HTTPServer) HealthCheck() error {
 		return fmt.Errorf("server not running")
 	}
 
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", s.port))
+	resp, err := http.Get(fmt.Sprintf("http://%s/health", s.addr))
 	if err != nil {
 		return err
 	}
