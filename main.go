@@ -72,8 +72,6 @@ func main() {
 		return
 	}
 	if err := cmd.Execute(AppVer, RootCertificateName, FilesChannelScript, FilesCert, cfg); err != nil {
-		fmt.Printf("初始化失败 %v", err.Error())
-		fmt.Printf("按 Ctrl+C 退出...\n")
-		select {}
+		fmt.Printf("初始化失败 %v\n", err.Error())
 	}
 }
