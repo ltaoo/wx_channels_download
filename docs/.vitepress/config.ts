@@ -1,4 +1,37 @@
 import { defineConfig } from 'vitepress'
+import { readdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// 动态读取 releases 目录生成发布日志项
+function getReleaseItems() {
+  const __dirname = dirname(fileURLToPath(import.meta.url))
+  const releasesDir = join(__dirname, '../releases')
+  const files = readdirSync(releasesDir)
+
+  return files
+    .filter((file: string) => file.endsWith('.md'))
+    .map((file: string) => file.replace('.md', ''))
+    .sort((a: string, b: string) => b.localeCompare(a)) // 按日期倒序排列
+    .map((date: string) => ({
+      text: `v${date}`,
+      link: `/releases/${date}`
+    }))
+}
+
+// 获取最新的 release 日期
+function getLatestRelease() {
+  const __dirname = dirname(fileURLToPath(import.meta.url))
+  const releasesDir = join(__dirname, '../releases')
+  const files = readdirSync(releasesDir)
+
+  const dates = files
+    .filter((file: string) => file.endsWith('.md'))
+    .map((file: string) => file.replace('.md', ''))
+    .sort((a: string, b: string) => b.localeCompare(a))
+
+  return dates[0] || '251201' // 如果没有文件，返回默认值
+}
 
 export default defineConfig({
   lang: 'zh-CN',
@@ -9,7 +42,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: 'Releases', link: '/releases/251201' },
+      { text: 'Releases', link: `/releases/${getLatestRelease()}` },
       { text: 'FAQ', link: '/guide/faq' },
     ],
     sidebar: [
@@ -49,11 +82,7 @@ export default defineConfig({
       },
       {
         text: '发布日志',
-        items: [
-          { text: '251201', link: '/releases/251201' },
-          { text: '251130', link: '/releases/251130' },
-          { text: '251122', link: '/releases/251122' }
-        ]
+        items: getReleaseItems()
       }
     ],
     socialLinks: [
