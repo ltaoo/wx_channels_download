@@ -12,7 +12,6 @@ import (
 	"wx_channel/pkg/util"
 )
 
-// 预编译的正则表达式，避免每次请求时重复编译导致内存泄露
 var (
 	// HTML处理相关正则
 	scriptSrcReg  = regexp.MustCompile(`src="([^"]{1,})\.js"`)
@@ -291,14 +290,33 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return
 				}
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
-					replace_str := `,"投诉"),...(() => {
+					buttons := []struct {
+						label   string
+						handler string
+					}{
+						{"原始视频", "__wx_channels_handle_click_download__"},
+						{"当前视频", "__wx_channels_download_cur__"},
+						{"下载为mp3", "() => __wx_channels_handle_click_download__(null, true)"},
+						{"打印下载命令", "__wx_channels_handle_print_download_command"},
+						{"下载封面", "__wx_channels_handle_download_cover"},
+						{"复制页面链接", "__wx_channels_handle_copy__"},
+					}
+					var buttonElements []string
+					for _, btn := range buttons {
+						buttonElements = append(buttonElements, fmt.Sprintf(
+							`f("div",{class:"context-item",role:"button",onClick:%s},"%s")`,
+							btn.handler, btn.label,
+						))
+					}
+					button_html := strings.Join(buttonElements, ",")
+					replace_str := fmt.Sprintf(`,"投诉"),...(() => {
 						if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
 							return window.__wx_channels_store__.profile.spec.map((sp) => {
 								return f("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
 							});
 						}
 					return [];
-					})(),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_click_download__()},"原始视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_download_cur__},"当前视频"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_print_download_command},"打印下载命令"),f("div",{class:"context-item",role:"button",onClick:()=>__wx_channels_handle_download_cover()},"下载封面"),f("div",{class:"context-item",role:"button",onClick:__wx_channels_handle_copy__},"复制页面链接")]`
+					})(),%s]`, button_html)
 
 					js_script = jsComplaintReg.ReplaceAllString(js_script, replace_str)
 					ctx.SetResponseBody(js_script)

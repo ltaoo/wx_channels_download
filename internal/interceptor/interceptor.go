@@ -99,6 +99,7 @@ type Interceptor struct {
 }
 
 func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
+	echo.SetLogEnabled(false)
 	echo, err := echo.NewEcho(payload.CertFiles.CertFile, payload.CertFiles.PrivateKeyFile)
 	if err != nil {
 		return nil, err
@@ -134,14 +135,12 @@ func (c *Interceptor) Start() error {
 	if err != nil {
 		return fmt.Errorf("检查证书失败: %v", err)
 	}
-
 	if !existing {
 		fmt.Printf("正在安装证书...\n")
 		if err := certificate.InstallCertificate(c.CertFile); err != nil {
 			return fmt.Errorf("安装证书失败: %v", err)
 		}
 	}
-
 	if c.SetSystemProxy {
 		if err := proxy.EnableProxy(proxy.ProxySettings{
 			Device:   c.Device,
