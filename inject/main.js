@@ -141,7 +141,7 @@ async function __wx_channels_download3(profile, filename) {
 async function __wx_channels_download4(profile, filename) {
   console.log("__wx_channels_download4");
   if (__wx_channels_config__.downloadLocalServerEnabled) {
-    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${filename}.mp4`;
+    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(filename + '.mp4')}`;
     window.open(url);
     return;
   }
@@ -184,7 +184,7 @@ async function __wx_channels_download_as_mp3(profile, filename) {
     alert("请先开启本地下载服务");
     return;
   }
-  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${filename}.mp3`;
+  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${encodeURIComponent(filename + '.mp3')}`;
   window.open(url);
 }
 
