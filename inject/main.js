@@ -137,11 +137,17 @@ async function __wx_channels_download3(profile, filename) {
 }
 /** 下载加密视频 */
 async function __wx_channels_download4(profile, opt) {
-  const { filename, toMP3 } = opt;
+  var { filename, toMP3 } = opt;
   console.log("__wx_channels_download4");
   if (__wx_channels_config__.downloadLocalServerEnabled) {
-    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(filename + '.mp4')}&mp3=${Number(toMP3)}`;
-    window.open(url);
+    var fullname = filename + (toMP3 ? ".mp3" : ".mp4");
+    var url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(fullname)}&mp3=${Number(toMP3)}`;
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = fullname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     return;
   }
   await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
@@ -180,7 +186,7 @@ async function __wx_channels_download4(profile, opt) {
     audioCtx.decodeAudioData(array.buffer, async function (buffer) {
       await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js");
       var blob = mediaBufferToWav(buffer);
-      var [err, data] = await wavBlobToMP3(blob)
+      var [err, data] = await wavBlobToMP3(blob);
       if (err) {
         alert(err.message);
         return;
@@ -202,7 +208,7 @@ async function __wx_channels_download_as_mp3(profile, filename) {
     alert("请先开启本地下载服务");
     return;
   }
-  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${encodeURIComponent(filename + '.mp3')}`;
+  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${encodeURIComponent(filename + ".mp3")}`;
   window.open(url);
 }
 /** 复制当前页面地址 */

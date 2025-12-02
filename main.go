@@ -60,7 +60,7 @@ var FilesChannelScript = &interceptor.ChannelInjectedFiles{
 }
 
 var RootCertificateName = "SunnyNet"
-var AppVer = "251202_04"
+var AppVer = "251202"
 
 func main() {
 	cfg, err := config.LoadConfig()
