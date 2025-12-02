@@ -22,6 +22,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      
+      - name: Generate Windows resources (.syso)
+        run: |
+          set -e
+          go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch amd64
+          go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch arm64
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

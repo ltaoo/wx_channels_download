@@ -22,7 +22,7 @@ builds:
       - windows
       - darwin
       - linux
-    main: ./main.go
+    main: .
     binary: wx_video_download
     ldflags:
       - -s -w
