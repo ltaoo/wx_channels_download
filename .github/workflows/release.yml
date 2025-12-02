@@ -1,18 +1,15 @@
-name: Manual Release
+name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag name (e.g. v1.0.0)'
-        required: true
-        default: 'v0.0.1'
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  goreleaser:
     name: Release
     runs-on: ubuntu-latest
     steps:
@@ -25,16 +22,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Tag and Push
-        run: |
-          git tag ${{ inputs.tag }}
-          git push origin ${{ inputs.tag }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

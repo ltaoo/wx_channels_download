@@ -21,8 +21,11 @@ builds:
     goos:
       - windows
       - darwin
+      - linux
     main: ./main.go
     binary: wx_video_download
+    ldflags:
+      - -s -w
     ignore:
       - goos: darwin
         goarch: "386"
@@ -31,18 +34,23 @@ builds:
 
 archives:
   - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    name_template: "wx_video_download_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: config.template.yaml
+        dst: config.yaml
+      - src: '!README*.md'
     # use zip for windows archives
     format_overrides:
       - goos: windows
         format: zip
+
+upx:
+  - enabled: true
+    compress: best
+    lzma: true
+
+checksum:
+  name_template: "wx_video_download_{{ .Tag }}_checksums.txt"
 
 changelog:
   sort: asc
