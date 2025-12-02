@@ -35,15 +35,6 @@
 
 仅供参考。
 
-## 常见问题
-
-1、服务启动了，打开视频详情后一直在加载，而且终端没有日志信息。
-<br>
-尝试在终端 `Ctrl+C`，按一次即可。
-
-2、解密失败，停止下载
-<br>
-关闭全部视频页面、窗口。重新打开，就可以下载。
 
 ## 开发说明
 
@@ -51,7 +42,7 @@
 
 ## 打包
 
-# windows
+### windows
 
 ```bash
 go build -ldflags="-s -w"
@@ -63,7 +54,7 @@ go build -ldflags="-s -w"
 upx wx_channel
 ```
 
-# macOS
+### macOS
 
 ```bash
 CGO_ENABLED=1 GOOS=darwin SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build -trimpath -ldflags="-s -w" -o wx_video_download
