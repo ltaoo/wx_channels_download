@@ -13,7 +13,7 @@ title: 用户脚本
 ```js
 // global.js
 function beforeFilename(filename, params) {
-	return filename;
+  return filename;
 }
 ```
 
@@ -22,8 +22,8 @@ function beforeFilename(filename, params) {
 
 ```yaml
 inject:
-	extraScript:
-		afterJSMain: "./extra.js"
+  extraScript:
+    afterJSMain: "./extra.js"
 ```
 
 可以用来自定义额外功能

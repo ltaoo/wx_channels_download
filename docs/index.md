@@ -7,7 +7,7 @@ hero:
   actions:
     - theme: brand
       text: 快速开始
-      link: /guide/
+      link: /guide/start
 features:
   - title: 跨平台
     details: 支持 macOS、Windows

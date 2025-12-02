@@ -22,4 +22,3 @@ wx_video_download download --url "视频URL" --filename "文件名.mp4" --key 12
 
 - 程序会先下载到临时文件，再按需解密为目标文件并删除临时文件。
 - 长视频建议使用命令行下载，稳定性更好。
-

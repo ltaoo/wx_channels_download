@@ -16,11 +16,11 @@ title: 长视频下载
 
 在「视频详情页」的「更多」菜单，如下所示，点击「打印下载命令」
 
-![长视频下载建议](../../assets/faq1.png)
+![长视频下载建议](../assets/faq1.png)
 
 在终端会打印下载命令
 
-![长视频下载建议](../../assets/faq2.png)
+![长视频下载建议](../assets/faq2.png)
 
 其中 `[FRONTEND]download --url "` 即下载命令，从 `download` 开始复制，直到结尾
 

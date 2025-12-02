@@ -16,4 +16,3 @@ wx_video_download decrypt --filepath "/绝对路径/文件名.mp4" --key 123456
 
 - `--filepath` 本地加密视频文件绝对路径（必需）
 - `--key` 解密密钥（必需）
-
