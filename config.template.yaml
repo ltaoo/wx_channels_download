@@ -1,0 +1,17 @@
+debug: false
+
+download:
+  defaultHighest: false
+  filenameTemplate: "{{filename}}_{{spec}}"
+  pauseWhenDownload: false
+  localServer:
+    enabled: false
+    downloadLocalServerAddr: "127.0.0.1:8080"
+
+proxy:
+  system: true
+  hostname: "127.0.0.1"
+  port: 2023
+
+channel:
+  disableLocationToHome: false
