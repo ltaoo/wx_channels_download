@@ -11,4 +11,3 @@ title: 查看版本
 ```sh
 wx_video_download version
 ```
-
