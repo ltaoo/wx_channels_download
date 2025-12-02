@@ -17,7 +17,7 @@ func NewInterceptorServer(config InterceptorConfig) (*InterceptorServer, error) 
 		return nil, err
 	}
 	addr := config.Hostname + ":" + strconv.Itoa(config.Port)
-	srv := manager.NewHTTPServer("interceptor", addr)
+	srv := manager.NewHTTPServer("代理服务", "interceptor", addr)
 	srv.SetHandler(interceptor)
 
 	return &InterceptorServer{

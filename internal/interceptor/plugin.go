@@ -33,6 +33,7 @@ var (
 	jsCommentDetailReg = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsDialogReg        = regexp.MustCompile(`i.default={dialog`)
 	jsLiveInfoReg      = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsGoToPrevFlowReg  = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
 	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 	jsComplaintReg     = regexp.MustCompile(`,"投诉"\)]`)
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
@@ -255,6 +256,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 									}
 									__wx_channels_store__.profile = profile;
 									window.__wx_channels_store__.profiles.push(profile);
+									setTimeout(() => {
+										window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+									},800);
 									fetch("/__wx_channels_api/profile", {
 										method: "POST",
 										headers: {
@@ -313,9 +317,10 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
 									await $1(v);
 									setTimeout(() => {
-									console.log("bingo", Dt, ae);
 									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
+									console.log("handle goto next feed", Dt, data_object);
 									var media = data_object.objectDesc.media[0];
+									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
 									%v
 									if (window.__insert_download_btn_to_home_page) {
 				__insert_download_btn_to_home_page();
@@ -323,6 +328,20 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 									}, 0);
 									}`, media_profile_js)
 					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
+					replace_str2 := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
+									await $1(v);
+									setTimeout(() => {
+									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
+									console.log("handle goto prev feed", Dt, data_object);
+									var media = data_object.objectDesc.media[0];
+									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+									%v
+									if (window.__insert_download_btn_to_home_page) {
+				__insert_download_btn_to_home_page();
+									}
+									}, 0);
+									}`, media_profile_js)
+					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
 					ctx.SetResponseBody(js_script)
 					return
 				}

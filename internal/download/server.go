@@ -9,7 +9,7 @@ type DownloadServer struct {
 }
 
 func NewDownloadServer(addr string) *DownloadServer {
-	srv := manager.NewHTTPServer("download", addr)
+	srv := manager.NewHTTPServer("下载服务", "download", addr)
 	proxy := NewMediaProxyWithDecrypt()
 	srv.SetHandler(withCORS(proxy))
 

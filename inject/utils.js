@@ -36,6 +36,18 @@ function __wx_channels_copy(text) {
   document.execCommand("copy");
   document.body.removeChild(textArea);
 }
+function __wx_channels_play_cur_video() {
+  console.log("__wx_channels_play_cur_video");
+  if (window.__wx_channels_cur_video && typeof window.__wx_channels_cur_video.player.play === "function") {
+    window.__wx_channels_cur_video.player.play();
+  }
+}
+function __wx_channels_pause_cur_video() {
+  console.log("__wx_channels_pause_cur_video");
+  if (window.__wx_channels_cur_video && typeof window.__wx_channels_cur_video.player.pause === "function") {
+    window.__wx_channels_cur_video.player.pause();
+  }
+}
 function __wx_channel_loading() {
   if (window.__wx_channels_tip__ && window.__wx_channels_tip__.loading) {
     return window.__wx_channels_tip__.loading("下载中");

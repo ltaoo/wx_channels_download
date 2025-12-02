@@ -10,7 +10,8 @@ import (
 
 // HTTPServer 实现
 type HTTPServer struct {
-	name     string
+	title    string
+	key      string
 	addr     string
 	status   ServerStatus
 	mux      http.Handler
@@ -19,9 +20,10 @@ type HTTPServer struct {
 	stopChan chan struct{}
 }
 
-func NewHTTPServer(name string, addr string) *HTTPServer {
+func NewHTTPServer(title string, key string, addr string) *HTTPServer {
 	return &HTTPServer{
-		name:     name,
+		title:    title,
+		key:      key,
 		addr:     addr,
 		status:   StatusStopped,
 		stopChan: make(chan struct{}),
@@ -29,7 +31,7 @@ func NewHTTPServer(name string, addr string) *HTTPServer {
 }
 
 func (s *HTTPServer) Name() string {
-	return s.name
+	return s.key
 }
 
 func (s *HTTPServer) Addr() string {
@@ -70,14 +72,14 @@ func (s *HTTPServer) Start() error {
 			s.mu.Lock()
 			s.status = StatusError
 			s.mu.Unlock()
-			fmt.Printf("Server %s error: %v\n", s.name, err)
+			fmt.Printf("%s error: %v\n", s.title, err)
 			return
 		}
 
 		s.mu.Lock()
 		s.status = StatusStopped
 		s.mu.Unlock()
-		fmt.Printf("Server %s stopped\n", s.name)
+		fmt.Printf("%s 已关闭\n", s.title)
 	}()
 
 	// 等待服务器启动
@@ -90,7 +92,7 @@ func (s *HTTPServer) Stop() error {
 	defer s.mu.Unlock()
 
 	if s.status != StatusRunning {
-		return fmt.Errorf("server is not running")
+		return nil
 	}
 
 	s.status = StatusStopping

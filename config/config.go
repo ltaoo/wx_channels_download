@@ -12,6 +12,7 @@ import (
 type Config struct {
 	DownloadDefaultHighest       bool   `json:"defaultHighest"`             // 默认下载最高画质
 	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`   // 下载文件名模板
+	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
 	DownloadLocalServerEnabled   bool   `json:"downloadLocalServerEnabled"` // 下载时是否使用本地服务器
 	DownloadLocalServerAddr      string `json:"downloadLocalServerAddr"`    // 下载时本地服务器地址
 	ProxySystem                  bool
@@ -45,6 +46,7 @@ func LoadConfig() (*Config, error) {
 
 	viper.SetDefault("download.defaultHighest", false)
 	viper.SetDefault("download.filenameTemplate", "{{filename}}_{{spec}}")
+	viper.SetDefault("download.pauseWhenDownload", false)
 	viper.SetDefault("download.localServer.enabled", false)
 	viper.SetDefault("download.localServer.addr", "127.0.0.1:8080")
 	viper.SetDefault("proxy.system", true)
@@ -60,6 +62,7 @@ func LoadConfig() (*Config, error) {
 	config := &Config{
 		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
 		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
+		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
 		DownloadLocalServerEnabled:   viper.GetBool("download.localServer.enabled"),
 		DownloadLocalServerAddr:      viper.GetString("download.localServer.addr"),
 		ProxySystem:                  viper.GetBool("proxy.system"),
