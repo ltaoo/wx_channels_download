@@ -73,9 +73,11 @@ export default defineConfig({
       {
         text: '常见问题',
         items: [
-          { text: '注入下载按钮失败', link: '/guide/faq/button_inject_failed' },
           { text: '长视频下载', link: '/guide/faq/long_video' },
+          { text: 'mp3下载', link: '/guide/faq/mp3' },
           { text: '下载卡住', link: '/guide/faq/download_stuck' },
+          { text: '解密失败', link: '/guide/faq/decrypt_fail' },
+          { text: '注入下载按钮失败', link: '/guide/faq/button_inject_failed' },
           { text: '网络无法访问', link: '/guide/faq/network_failed' },
           { text: 'PowerShell', link: '/guide/faq/powershell' }
         ]

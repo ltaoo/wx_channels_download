@@ -167,12 +167,10 @@ async function __wx_channels_download4(profile, filename) {
         array = __wx_channels_video_decrypt(array, 0, profile);
       }
     } catch (err) {
-      var tip = "解密失败，停止下载";
+      var tip = "前端解密失败，尝试使用 decrypt 命令解密";
       __wx_log({
         msg: tip,
       });
-      alert(tip);
-      return;
     }
   }
   const result = new Blob([array], { type: "video/mp4" });
@@ -284,7 +282,6 @@ function __wx_channels_handle_print_download_command() {
 }
 async function __wx_channels_handle_download_cover() {
   var profile = __wx_channels_store__.profile;
-  // profile = __wx_channels_store__.profiles.find((p) => p.id === profile.id);
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
@@ -294,15 +291,13 @@ async function __wx_channels_handle_download_cover() {
     alert("文件名生成失败");
     return;
   }
-  await __wx_load_script(
-    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
-  );
+  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
   __wx_log({
-    msg: `下载封面\n${_profile.coverUrl}`,
+    msg: `下载封面\n${profile.coverUrl}`,
   });
   const ins = __wx_channel_loading();
   try {
-    const url = _profile.coverUrl.replace(/^http/, "https");
+    const url = profile.coverUrl.replace(/^http/, "https");
     const response = await fetch(url);
     const blob = await response.blob();
     saveAs(blob, filename + ".jpg");
