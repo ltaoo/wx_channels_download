@@ -136,10 +136,11 @@ async function __wx_channels_download3(profile, filename) {
   ins.hide();
 }
 /** 下载加密视频 */
-async function __wx_channels_download4(profile, filename) {
+async function __wx_channels_download4(profile, opt) {
+  const { filename, toMP3 } = opt;
   console.log("__wx_channels_download4");
   if (__wx_channels_config__.downloadLocalServerEnabled) {
-    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(filename + '.mp4')}`;
+    const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(filename + '.mp4')}&mp3=${Number(toMP3)}`;
     window.open(url);
     return;
   }
@@ -174,7 +175,21 @@ async function __wx_channels_download4(profile, filename) {
     }
   }
   const result = new Blob([array], { type: "video/mp4" });
-  saveAs(result, filename + ".mp4");
+  if (toMP3) {
+    var audioCtx = new AudioContext();
+    audioCtx.decodeAudioData(array.buffer, async function (buffer) {
+      await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js");
+      var blob = mediaBufferToWav(buffer);
+      var [err, data] = await wavBlobToMP3(blob)
+      if (err) {
+        alert(err.message);
+        return;
+      }
+      saveAs(data, filename + ".mp3");
+    });
+  } else {
+    saveAs(result, filename + ".mp4");
+  }
   ins.hide();
   if (__wx_channels_config__.downloadPauseWhenDownload) {
     __wx_channels_play_cur_video();
@@ -232,12 +247,8 @@ ${_profile.key || "该视频未加密"}`,
     __wx_channels_download3(_profile, filename);
     return;
   }
-  if (mp3) {
-    __wx_channels_download_as_mp3(_profile, filename);
-    return;
-  }
   _profile.data = __wx_channels_store__.buffers;
-  __wx_channels_download4(_profile, filename);
+  __wx_channels_download4(_profile, { filename, toMP3: mp3 });
 }
 /** 下载已加载的视频 */
 function __wx_channels_download_cur__() {

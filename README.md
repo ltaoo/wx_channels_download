@@ -14,24 +14,24 @@
 
 打开微信 PC 端，点击需要下载的视频，在视频下方的操作按钮一栏，会多出一个下载按钮，如下所示
 
-![视频下载按钮](assets/screenshot1.png)
+![视频下载按钮](./docs/assets/screenshot1.png)
 
-> 如果没有，可以看看「更多」这里是否有「下载视频」按钮。<br/> ![下载按钮2](assets/screenshot10.png)
+> 如果没有，可以看看「更多」这里是否有「下载视频」按钮。<br/> ![下载按钮2](./docs/assets/screenshot10.png)
 
 等待视频开始播放，然后暂停视频，点击下载按扭即可下载视频。下载成功后，会在上方显示已下载的文件，下载文件名最后面会标志该视频质量。
 
-![视频下载成功](assets/screenshot2.png)
+![视频下载成功](./docs/assets/screenshot2.png)
 
 默认会下载下拉菜单中第一个质量视频。点开更多，可以下载其他质量的视频，包括原始视频。
 
-![下载不同质量的视频](assets/screenshot13.png)
+![下载不同质量的视频](./docs/assets/screenshot13.png)
 <br>
 
 不同视频这里显示的选项是不同的，没有找到对 xWT111 具体的说明，属于什么分辨率、尺寸多大等等。
 <br>
 经过测试，如果原始视频有 104MB，这里尺寸最大的是 xWT111 为 17MB，最小的是 xWT98 为 7MB。
 
-![不同质量视频尺寸统计](assets/screenshot14.png)
+![不同质量视频尺寸统计](./docs/assets/screenshot14.png)
 
 仅供参考。
 
