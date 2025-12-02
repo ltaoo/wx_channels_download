@@ -16,6 +16,7 @@ import (
 type ChannelInjectedFiles struct {
 	JSFileSaver []byte
 	JSZip       []byte
+	JSRecorder  []byte
 	JSPageSpy   []byte
 	JSDebug     []byte
 	JSUtils     []byte

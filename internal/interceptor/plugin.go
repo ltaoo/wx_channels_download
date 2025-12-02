@@ -45,7 +45,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 		Match: "qq.com",
 		OnRequest: func(ctx *plugin.Context) {
 			pathname := ctx.Req.URL.Path
-			if util.Includes(pathname, "jszip") {
+			if util.Includes(pathname, "jszip.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 					"__debug":      "local_file",
@@ -56,6 +56,12 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					"Content-Type": "application/javascript",
 					"__debug":      "local_file",
 				}, files.JSFileSaver)
+			}
+			if util.Includes(pathname, "recorder.min") {
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/javascript",
+					"__debug":      "local_file",
+				}, files.JSRecorder)
 			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile

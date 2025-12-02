@@ -16,11 +16,14 @@ var cert_file []byte
 //go:embed certs/private.key
 var private_key_file []byte
 
-//go:embed lib/FileSaver.min.js
+//go:embed inject/lib/FileSaver.min.js
 var js_file_saver []byte
 
-//go:embed lib/jszip.min.js
+//go:embed inject/lib/jszip.min.js
 var js_zip []byte
+
+//go:embed inject/lib/recorder.min.js
+var js_recorder []byte
 
 //go:embed inject/pagespy.min.js
 var js_pagespy []byte
@@ -47,6 +50,7 @@ var FilesCert = &interceptor.ServerCertFiles{
 var FilesChannelScript = &interceptor.ChannelInjectedFiles{
 	JSFileSaver: js_file_saver,
 	JSZip:       js_zip,
+	JSRecorder:  js_recorder,
 	JSPageSpy:   js_pagespy,
 	JSDebug:     js_debug,
 	JSError:     js_error,
@@ -56,7 +60,7 @@ var FilesChannelScript = &interceptor.ChannelInjectedFiles{
 }
 
 var RootCertificateName = "SunnyNet"
-var AppVer = "251202_03"
+var AppVer = "251202_04"
 
 func main() {
 	cfg, err := config.LoadConfig()
