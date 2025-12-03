@@ -1,6 +1,7 @@
 .DS_Store
 *.exe
 *.exe~
+*.syso
 dist/
 
 wx_video_download*
