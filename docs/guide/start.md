@@ -25,11 +25,11 @@ title: 下载
 1. macOS arm64
 选择 darwin_arm64 后缀
 
-2. macOS amd64
-选择 darwin_amd64 后缀
+2. macOS x86_64
+选择 darwin_x86_64 后缀
 
 3. Windows x86_64
-选择 windows_x64 后缀
+选择 windows_x86_64 后缀
 
 ## 启用下载器
 

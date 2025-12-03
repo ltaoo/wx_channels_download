@@ -34,7 +34,7 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: "wx_video_download_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "wx_video_download_{{ .Tag }}_{{ .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else if eq .Arch \"386\" }}x86{{ else }}{{ .Arch }}{{ end }}"
     files:
       - src: config/config.template.yaml
         dst: config.yaml
