@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/ltaoo/echo"
-	"github.com/ltaoo/echo/plugin"
 
 	"wx_channel/config"
 	"wx_channel/pkg/certificate"
@@ -101,15 +100,15 @@ type Interceptor struct {
 
 func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 	echo.SetLogEnabled(false)
-	echo, err := echo.NewEcho(payload.CertFiles.CertFile, payload.CertFiles.PrivateKeyFile)
+	client, err := echo.NewEcho(payload.CertFiles.CertFile, payload.CertFiles.PrivateKeyFile)
 	if err != nil {
 		return nil, err
 	}
-	echo.AddPlugin(CreateChannelInterceptorPlugin(payload.Version, payload.ChannelFiles, payload.Cfg))
+	client.AddPlugin(CreateChannelInterceptorPlugin(payload.Version, payload.ChannelFiles, payload.Cfg))
 	if payload.Debug {
-		echo.AddPlugin(&plugin.Plugin{
+		client.AddPlugin(&echo.Plugin{
 			Match: "debug.weixin.qq.com",
-			Target: &plugin.TargetConfig{
+			Target: &echo.TargetConfig{
 				Protocol: "http",
 				Host:     "127.0.0.1",
 				Port:     6752,
@@ -127,7 +126,7 @@ func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 		CertFileName:   payload.CertFileName,
 		channel_files:  payload.ChannelFiles,
 		cfg:            payload.Cfg,
-		echo:           echo,
+		echo:           client,
 	}, nil
 }
 

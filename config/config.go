@@ -1,15 +1,18 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
+	FilePath                     string // 配置文件路径
 	DownloadDefaultHighest       bool   `json:"defaultHighest"`             // 默认下载最高画质
 	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`   // 下载文件名模板
 	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
@@ -27,16 +30,45 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
-	cwd, _ := os.Getwd()
-	viper.SetConfigFile(filepath.Join(cwd, "config.yaml"))
-
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("error reading config file: %w", err)
+	exe, _ := os.Executable()
+	exe_dir := filepath.Dir(exe)
+	base_dir := exe_dir
+	var candidates []string
+	candidates = append(candidates, exe_dir)
+	if _, caller_file, _, ok := runtime.Caller(1); ok {
+		caller_dir := filepath.Dir(caller_file)
+		candidates = append(candidates, caller_dir)
+	}
+	if _, this_file, _, ok2 := runtime.Caller(0); ok2 {
+		cfg_dir := filepath.Dir(this_file)
+		proj_root := filepath.Dir(cfg_dir)
+		candidates = append(candidates, proj_root)
+	}
+	var config_filepath string
+	var has_config bool
+	for _, dir := range candidates {
+		p := filepath.Join(dir, "config.yaml")
+		if _, err := os.Stat(p); err == nil {
+			base_dir = dir
+			config_filepath = p
+			has_config = true
+			break
+		}
+	}
+	if config_filepath == "" {
+		config_filepath = filepath.Join(base_dir, "config.yaml")
+	}
+	viper.SetConfigFile(config_filepath)
+	if has_config {
+		if err := viper.ReadInConfig(); err != nil {
+			var nf viper.ConfigFileNotFoundError
+			if !(errors.As(err, &nf) || errors.Is(err, os.ErrNotExist)) {
+				return nil, fmt.Errorf("error reading config file: %w", err)
+			}
 		}
 	}
 
-	global_script_path := path.Join(cwd, "global.js")
+	global_script_path := path.Join(base_dir, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
 		if err == nil {
@@ -75,12 +107,15 @@ func LoadConfig() (*Config, error) {
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScript:           viper.GetString("inject.globalScript"),
 	}
+	if has_config {
+		config.FilePath = config_filepath
+	}
 
 	extra_js_filepath := config.InjectExtraScriptAfterJSMain
 	if extra_js_filepath != "" {
 		// If it's a relative path, resolve it against the current working directory
 		if !filepath.IsAbs(extra_js_filepath) {
-			extra_js_filepath = filepath.Join(cwd, extra_js_filepath)
+			extra_js_filepath = filepath.Join(base_dir, extra_js_filepath)
 		}
 		if _, err := os.Stat(extra_js_filepath); err == nil {
 			script_byte, err := os.ReadFile(extra_js_filepath)

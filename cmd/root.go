@@ -96,8 +96,8 @@ func root_command(args RootCommandArg) {
 
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
-	if cf := viper.ConfigFileUsed(); cf != "" {
-		fmt.Printf("配置文件 %s\n", cf)
+	if args.Cfg.FilePath != "" {
+		fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
 	}
 
 	mgr := manager.NewServerManager()

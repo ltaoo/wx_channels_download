@@ -6,14 +6,14 @@ title: 下载配置
 
 通过 `config.yaml` 控制下载行为。
 
-## 默认下载行为
+## 默认下载原始视频
 
 ```yaml
 download:
   defaultHighest: false
 ```
 
-`defaultHighest` 表示是否默认下载原始视频，默认 `false` 表示「否」
+`false` 表示「否」
 
 
 ## 下载时的文件名称
@@ -60,3 +60,11 @@ download:
 1、在页面下载长视频不阻塞操作
 <br />
 2、将视频转换成 `mp3` 并下载
+
+## 是否在下载视频时暂停视频播放
+
+```yaml
+download:
+  pauseVideoWhenDownload: false
+```
+

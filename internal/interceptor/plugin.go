@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ltaoo/echo/plugin"
+	"github.com/ltaoo/echo"
 
 	"wx_channel/config"
 	"wx_channel/pkg/util"
@@ -39,11 +39,11 @@ var (
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
 )
 
-func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *plugin.Plugin {
+func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *echo.Plugin {
 	v := "?t=" + version
-	return &plugin.Plugin{
+	return &echo.Plugin{
 		Match: "qq.com",
-		OnRequest: func(ctx *plugin.Context) {
+		OnRequest: func(ctx *echo.Context) {
 			pathname := ctx.Req.URL.Path
 			if util.Includes(pathname, "jszip.min") {
 				ctx.Mock(200, map[string]string{
@@ -99,7 +99,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}, "{}")
 			}
 		},
-		OnResponse: func(ctx *plugin.Context) {
+		OnResponse: func(ctx *echo.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req.URL.Hostname()
 			pathname := ctx.Req.URL.Path

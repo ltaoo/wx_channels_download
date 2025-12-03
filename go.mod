@@ -1,12 +1,10 @@
 module wx_channel
 
-go 1.24.6
-
-toolchain go1.24.10
+go 1.24.0
 
 require (
 	github.com/fatih/color v1.17.0
-	github.com/ltaoo/echo v0.4.0
+	github.com/ltaoo/echo v0.5.2
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.21.0
 )
