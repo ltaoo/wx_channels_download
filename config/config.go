@@ -29,6 +29,22 @@ type Config struct {
 	InjectGlobalScript           string // 全局用户脚本
 }
 
+func SetDefault() {
+	viper.SetDefault("download.defaultHighest", false)
+	viper.SetDefault("download.filenameTemplate", "{{filename}}_{{spec}}")
+	viper.SetDefault("download.pauseWhenDownload", false)
+	viper.SetDefault("download.localServer.enabled", false)
+	viper.SetDefault("download.localServer.addr", "127.0.0.1:8080")
+	viper.SetDefault("proxy.system", true)
+	viper.SetDefault("proxy.port", 2023)
+	viper.SetDefault("proxy.hostname", "127.0.0.1")
+	viper.SetDefault("debug.protocol", "https")
+	viper.SetDefault("debug.api", "debug.weixin.qq.com")
+	viper.SetDefault("debug", false)
+	viper.SetDefault("channel.disableLocationToHome", false)
+	viper.SetDefault("inject.extraScript.afterJSMain", "")
+	viper.SetDefault("inject.globalScript", "")
+}
 func LoadConfig() (*Config, error) {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
@@ -76,20 +92,7 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	viper.SetDefault("download.defaultHighest", false)
-	viper.SetDefault("download.filenameTemplate", "{{filename}}_{{spec}}")
-	viper.SetDefault("download.pauseWhenDownload", false)
-	viper.SetDefault("download.localServer.enabled", false)
-	viper.SetDefault("download.localServer.addr", "127.0.0.1:8080")
-	viper.SetDefault("proxy.system", true)
-	viper.SetDefault("proxy.port", 2023)
-	viper.SetDefault("proxy.hostname", "127.0.0.1")
-	viper.SetDefault("debug.protocol", "https")
-	viper.SetDefault("debug.api", "debug.weixin.qq.com")
-	viper.SetDefault("debug", false)
-	viper.SetDefault("channel.disableLocationToHome", false)
-	viper.SetDefault("inject.extraScript.afterJSMain", "")
-	viper.SetDefault("inject.globalScript", "")
+	SetDefault()
 
 	config := &Config{
 		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),

@@ -3,6 +3,7 @@
 package certificate
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,51 +12,54 @@ import (
 )
 
 func fetchCertificates() ([]Certificate, error) {
-	// 获取指定 store 所有证书
-	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root")
-	ps := exec.Command("powershell.exe", "-Command", cmd)
+	cmd := "$certs = Get-ChildItem Cert:\\LocalMachine\\Root | Select-Object Thumbprint, Subject; @($certs) | ConvertTo-Json -Compress"
+	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
 		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
 	}
+	type WindowsCert struct {
+		Thumbprint string `json:"Thumbprint"`
+		Subject    string `json:"Subject"`
+	}
+	var raw_arr []WindowsCert
+	if err := json.Unmarshal(output, &raw_arr); err != nil {
+		var one WindowsCert
+		if err2 := json.Unmarshal(output, &one); err2 != nil {
+			return nil, errors.New(fmt.Sprintf("解析证书列表失败，%v\n", err.Error()))
+		}
+		raw_arr = []WindowsCert{one}
+	}
 	var certificates []Certificate
-	lines := strings.Split(string(output), "\n")
-	// 跳过前两行（列名）
-	for i := 2; i < len(lines)-1; i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, " ")
-		if len(parts) >= 2 {
-			subject := CertificateSubject{}
-			for _, part := range parts[1:] {
-				part = strings.Replace(part, ",", "", 1)
-				kv := strings.Split(part, "=")
-				if len(kv) == 2 {
-					key := strings.TrimSpace(kv[0])
-					value := strings.TrimSpace(kv[1])
-					switch key {
-					case "CN":
-						subject.CN = value
-					case "OU":
-						subject.OU = value
-					case "O":
-						subject.O = value
-					case "L":
-						subject.L = value
-					case "S":
-						subject.S = value
-					case "C":
-						subject.C = value
-					}
-				}
+	for _, pc := range raw_arr {
+		subj := CertificateSubject{}
+		pairs := strings.Split(pc.Subject, ",")
+		for _, p := range pairs {
+			kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+			if len(kv) != 2 {
+				continue
 			}
-			certificates = append(certificates, Certificate{
-				Thumbprint: parts[0],
-				Subject:    subject,
-			})
+			key := kv[0]
+			value := kv[1]
+			switch key {
+			case "CN":
+				subj.CN = value
+			case "OU":
+				subj.OU = value
+			case "O":
+				subj.O = value
+			case "L":
+				subj.L = value
+			case "S":
+				subj.S = value
+			case "C":
+				subj.C = value
+			}
 		}
+		certificates = append(certificates, Certificate{
+			Thumbprint: pc.Thumbprint,
+			Subject:    subj,
+		})
 	}
 	return certificates, nil
 }
