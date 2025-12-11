@@ -88,7 +88,7 @@ func LoadConfig() (*Config, error) {
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
 		if err == nil {
-			viper.Set("globalUserScript", string(script_byte))
+			viper.Set("inject.globalScript", string(script_byte))
 		}
 	}
 

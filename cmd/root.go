@@ -99,6 +99,9 @@ func root_command(args RootCommandArg) {
 	if args.Cfg.FilePath != "" {
 		fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
 	}
+	if script_byte := viper.Get("globalUserScript"); script_byte != nil {
+		fmt.Printf("存在全局脚本\n\n")
+	}
 
 	mgr := manager.NewServerManager()
 

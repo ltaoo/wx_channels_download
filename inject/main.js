@@ -435,13 +435,49 @@ const inserted_style = `<style>
 
 document.head.insertAdjacentHTML("beforeend", inserted_style);
 
+function render_extra_menu_items(items, $dropdown) {
+  if (!window.Weui) {
+    return [];
+  }
+  const { MenuItem } = window.Weui;
+  return items
+    .filter((item) => {
+      return item.label && item.onClick;
+    })
+    .map((item) => {
+      return MenuItem({
+        label: item.label,
+        async onClick() {
+          const profile = window.__wx_channels_store__.profile;
+          if (!profile) {
+            alert("检测不到视频，请将本工具更新到最新版");
+            return;
+          }
+          var filename = __wx_build_filename(
+            profile,
+            null,
+            __wx_channels_config__.downloadFilenameTemplate
+          );
+          await item.onClick({
+            profile,
+            filename,
+          });
+          $dropdown.hide();
+        },
+      });
+    });
+}
 function build_dropdown_menu(trigger) {
   if (!window.Weui) {
     return null;
   }
   const { DropdownMenu, Menu, MenuItem } = Weui;
-  MenuItem.setTemplate('<div class="custom-menu-item"><span class="label">{{ label }}</span></div>');
-  MenuItem.setIndicatorTemplate('<span class="custom-menu-item-arrow">›</span>');
+  MenuItem.setTemplate(
+    '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
+  );
+  MenuItem.setIndicatorTemplate(
+    '<span class="custom-menu-item-arrow">›</span>'
+  );
   Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
   const submenu = Menu({
     children: [],
@@ -450,6 +486,16 @@ function build_dropdown_menu(trigger) {
     $trigger: trigger,
     zIndex: 99999,
     children: [
+      ...(() => {
+        if (window.beforeExtraMenuItems) {
+          return render_extra_menu_items(window.beforeExtraMenuItems, {
+            hide() {
+              $dropdown.hide();
+            },
+          });
+        }
+        return [];
+      })(),
       MenuItem({
         label: "更多下载",
         submenu,
@@ -488,6 +534,16 @@ function build_dropdown_menu(trigger) {
           $dropdown.hide();
         },
       }),
+      ...(() => {
+        if (window.postExtraMenuItems) {
+          return render_extra_menu_items(window.postExtraMenuItems, {
+            hide() {
+              $dropdown.hide();
+            },
+          });
+        }
+        return [];
+      })(),
     ],
     onMouseEnter() {
       if (submenu.isOpen) {

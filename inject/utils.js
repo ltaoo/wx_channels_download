@@ -65,6 +65,16 @@ function __wx_log(msg) {
     body: JSON.stringify(msg),
   });
 }
+function __wx_error(msg) {
+  fetch("/__wx_channels_api/error", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(msg),
+  });
+}
+
 
 function __wx_load_script(src) {
   return new Promise((resolve, reject) => {
