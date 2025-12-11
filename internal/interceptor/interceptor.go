@@ -13,15 +13,18 @@ import (
 )
 
 type ChannelInjectedFiles struct {
-	JSFileSaver []byte
-	JSZip       []byte
-	JSRecorder  []byte
-	JSPageSpy   []byte
-	JSDebug     []byte
-	JSUtils     []byte
-	JSError     []byte
-	JSMain      []byte
-	JSLiveMain  []byte
+	JSFileSaver      []byte
+	JSZip            []byte
+	JSRecorder       []byte
+	JSPageSpy        []byte
+	JSFloatingUICore []byte
+	JSFloatingUIDOM  []byte
+	JSWeui           []byte
+	JSDebug          []byte
+	JSUtils          []byte
+	JSError          []byte
+	JSMain           []byte
+	JSLiveMain       []byte
 }
 
 type ChannelMediaSpec struct {

@@ -148,6 +148,97 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 					html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
+					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
+					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
+					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
+					inserted_style := `<style>
+					:root {
+					  --weui-dropdown-bg: #fff;
+					  --weui-dropdown-fg: #111;
+					  --weui-dropdown-border: rgba(0, 0, 0, 0.06);
+					  --weui-dropdown-hover-bg: #f5f5f5;
+					  --weui-dropdown-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+					}
+
+					html.dark,
+					body.dark {
+					  --weui-dropdown-bg: #2b2b2b;
+					  --weui-dropdown-fg: #f5f5f5;
+					  --weui-dropdown-border: transparent;
+					  --weui-dropdown-hover-bg: #383838;
+					  --weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+					}
+
+					@media (prefers-color-scheme: dark) {
+					  :root {
+						--weui-dropdown-bg: #2b2b2b;
+						--weui-dropdown-fg: #f5f5f5;
+						--weui-dropdown-border: transparent;
+						--weui-dropdown-hover-bg: #383838;
+						--weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+					  }
+					}
+
+					body {
+					  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+					  margin: 40px;
+					}
+
+					.weui-dropdown-item:focus {
+					  background: var(--weui-dropdown-hover-bg);
+					}
+
+					.btn {
+					  display: inline-block;
+					  padding: 8px 14px;
+					  border-radius: 8px;
+					  background: #07c160;
+					  color: #fff;
+					  border: none;
+					  cursor: pointer;
+					  font-size: 14px;
+					}
+
+					.custom-item {
+					  display: flex;
+					  align-items: center;
+					  justify-content: space-between;
+					  padding: 8px 14px;
+					  gap: 8px;
+					  cursor: pointer;
+					}
+
+					.custom-item:hover {
+					  background: var(--weui-dropdown-hover-bg);
+					}
+
+					.custom-item .label {
+					  color: var(--weui-dropdown-fg);
+					}
+
+					.custom-item .arrow {
+					  opacity: 0.6;
+					  font-size: 14px;
+					  color: white;
+					}
+
+					.custom-menu {
+					  min-width: 148px;
+					  background: var(--weui-dropdown-bg);
+					  border-radius: 12px;
+					  box-shadow: var(--weui-dropdown-shadow);
+					  border: 0;
+					  padding: 8px;
+					}
+
+					.custom-menu.alt {
+					  border-radius: 8px;
+					  background: #111827;
+					  color: white;
+					}
+					</style>`
+					inserted_scripts = inserted_style + inserted_scripts
+
 					if cfg.InjectGlobalScript != "" {
 						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 					}
@@ -348,39 +439,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 									}, 0);
 									}`, media_profile_js)
 					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
-					ctx.SetResponseBody(js_script)
-					return
-				}
-				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/FeedDetail.publish") {
-					buttons := []struct {
-						label   string
-						handler string
-					}{
-						{"原始视频", "__wx_channels_handle_click_download__"},
-						{"当前视频", "__wx_channels_download_cur__"},
-						{"下载为mp3", "() => __wx_channels_handle_click_download__(null, true)"},
-						{"打印下载命令", "__wx_channels_handle_print_download_command"},
-						{"下载封面", "__wx_channels_handle_download_cover"},
-						{"复制页面链接", "__wx_channels_handle_copy__"},
-					}
-					var buttonElements []string
-					for _, btn := range buttons {
-						buttonElements = append(buttonElements, fmt.Sprintf(
-							`f("div",{class:"context-item",role:"button",onClick:%s},"%s")`,
-							btn.handler, btn.label,
-						))
-					}
-					button_html := strings.Join(buttonElements, ",")
-					replace_str := fmt.Sprintf(`,"投诉"),...(() => {
-						if (window.__wx_channels_store__ && window.__wx_channels_store__.profile) {
-							return window.__wx_channels_store__.profile.spec.map((sp) => {
-								return f("div",{class:"context-item",role:"button",onClick:() => __wx_channels_handle_click_download__(sp)},sp.fileFormat);
-							});
-						}
-					return [];
-					})(),%s]`, button_html)
-
-					js_script = jsComplaintReg.ReplaceAllString(js_script, replace_str)
 					ctx.SetResponseBody(js_script)
 					return
 				}

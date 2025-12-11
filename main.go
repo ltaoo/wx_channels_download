@@ -22,6 +22,15 @@ var js_file_saver []byte
 //go:embed inject/lib/jszip.min.js
 var js_zip []byte
 
+//go:embed inject/lib/floating-ui.core.1.7.4.min.js
+var js_floating_ui_core []byte
+
+//go:embed inject/lib/floating-ui.dom.1.7.4.min.js
+var js_floating_ui_dom []byte
+
+//go:embed inject/lib/weui.umd.js
+var js_weui []byte
+
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
 
@@ -48,19 +57,22 @@ var FilesCert = &interceptor.ServerCertFiles{
 	PrivateKeyFile: private_key_file,
 }
 var FilesChannelScript = &interceptor.ChannelInjectedFiles{
-	JSFileSaver: js_file_saver,
-	JSZip:       js_zip,
-	JSRecorder:  js_recorder,
-	JSPageSpy:   js_pagespy,
-	JSDebug:     js_debug,
-	JSError:     js_error,
-	JSUtils:     js_utils,
-	JSMain:      js_main,
-	JSLiveMain:  js_live_main,
+	JSFileSaver:      js_file_saver,
+	JSZip:            js_zip,
+	JSRecorder:       js_recorder,
+	JSPageSpy:        js_pagespy,
+	JSFloatingUICore: js_floating_ui_core,
+	JSFloatingUIDOM:  js_floating_ui_dom,
+	JSWeui:           js_weui,
+	JSDebug:          js_debug,
+	JSError:          js_error,
+	JSUtils:          js_utils,
+	JSMain:           js_main,
+	JSLiveMain:       js_live_main,
 }
 
 var RootCertificateName = "SunnyNet"
-var AppVer = "251202"
+var AppVer = "251211_02"
 
 func main() {
 	cfg, err := config.LoadConfig()

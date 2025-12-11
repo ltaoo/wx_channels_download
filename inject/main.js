@@ -1,3 +1,22 @@
+// 拦截blur事件
+document.addEventListener(
+  "blur",
+  function (e) {
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  },
+  true
+);
+
+// 拦截mouseleave事件
+document.addEventListener(
+  "mouseleave",
+  function (e) {
+    e.stopPropagation();
+  },
+  true
+);
 function __wx_channels_video_decrypt(t, e, p) {
   for (
     var r = new Uint8Array(t), n = 0;
@@ -79,14 +98,18 @@ async function __wx_channels_download(profile, filename) {
   console.log("__wx_channels_download");
   const data = profile.data;
   const blob = new Blob(data, { type: "video/mp4" });
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
   saveAs(blob, filename + ".mp4");
 }
 /** 下载非加密视频 */
 async function __wx_channels_download2(profile, filename) {
   console.log("__wx_channels_download2");
   const url = profile.url;
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
   const ins = __wx_channel_loading();
   try {
     const response = await fetch(url);
@@ -110,8 +133,12 @@ async function __wx_channels_download2(profile, filename) {
 async function __wx_channels_download3(profile, filename) {
   console.log("__wx_channels_download3");
   const files = profile.files;
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js");
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
+  );
   const zip = new JSZip();
   zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
   const folder = zip.folder("images");
@@ -141,7 +168,11 @@ async function __wx_channels_download4(profile, opt) {
   console.log("__wx_channels_download4");
   if (__wx_channels_config__.downloadLocalServerEnabled) {
     var fullname = filename + (toMP3 ? ".mp3" : ".mp4");
-    var url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&filename=${encodeURIComponent(fullname)}&mp3=${Number(toMP3)}`;
+    var url = `http://${
+      __wx_channels_config__.downloadLocalServerAddr
+    }/download?url=${encodeURIComponent(profile.url)}&key=${
+      profile.key
+    }&filename=${encodeURIComponent(fullname)}&mp3=${Number(toMP3)}`;
     var a = document.createElement("a");
     a.href = url;
     a.download = fullname;
@@ -150,7 +181,9 @@ async function __wx_channels_download4(profile, opt) {
     document.body.removeChild(a);
     return;
   }
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
   if (__wx_channels_config__.downloadPauseWhenDownload) {
     __wx_channels_pause_cur_video();
   }
@@ -184,7 +217,9 @@ async function __wx_channels_download4(profile, opt) {
   if (toMP3) {
     var audioCtx = new AudioContext();
     audioCtx.decodeAudioData(array.buffer, async function (buffer) {
-      await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js");
+      await __wx_load_script(
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js"
+      );
       var blob = mediaBufferToWav(buffer);
       var [err, data] = await wavBlobToMP3(blob);
       if (err) {
@@ -208,7 +243,11 @@ async function __wx_channels_download_as_mp3(profile, filename) {
     alert("请先开启本地下载服务");
     return;
   }
-  const url = `http://${__wx_channels_config__.downloadLocalServerAddr}/download?url=${encodeURIComponent(profile.url)}&key=${profile.key}&mp3=1&filename=${encodeURIComponent(filename + ".mp3")}`;
+  const url = `http://${
+    __wx_channels_config__.downloadLocalServerAddr
+  }/download?url=${encodeURIComponent(profile.url)}&key=${
+    profile.key
+  }&mp3=1&filename=${encodeURIComponent(filename + ".mp3")}`;
   window.open(url);
 }
 /** 复制当前页面地址 */
@@ -234,7 +273,11 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
     return;
   }
   const _profile = { ...profile };
-  var filename = __wx_build_filename(profile, spec, __wx_channels_config__.downloadFilenameTemplate);
+  var filename = __wx_build_filename(
+    profile,
+    spec,
+    __wx_channels_config__.downloadFilenameTemplate
+  );
   if (!filename) {
     alert("文件名生成失败");
     return;
@@ -267,7 +310,11 @@ function __wx_channels_download_cur__() {
     alert("没有可下载的内容");
     return;
   }
-  var filename = __wx_build_filename(profile, null, __wx_channels_config__.downloadFilenameTemplate);
+  var filename = __wx_build_filename(
+    profile,
+    null,
+    __wx_channels_config__.downloadFilenameTemplate
+  );
   if (!filename) {
     alert("文件名生成失败");
     return;
@@ -283,7 +330,11 @@ function __wx_channels_handle_print_download_command() {
     return;
   }
   var _profile = { ...profile };
-  var filename = __wx_build_filename(_profile, null, __wx_channels_config__.downloadFilenameTemplate);
+  var filename = __wx_build_filename(
+    _profile,
+    null,
+    __wx_channels_config__.downloadFilenameTemplate
+  );
   if (!filename) {
     alert("文件名生成失败");
     return;
@@ -301,18 +352,28 @@ function __wx_channels_handle_print_download_command() {
   }
 }
 /** 下载视频封面 */
-async function __wx_channels_handle_download_cover() {
+async function __wx_channels_handle_download_cover(event) {
+  console.log(event.currentTarget);
+  if (event.currentTarget) {
+    console.log(event.currentTarget.parent);
+  }
   var profile = __wx_channels_store__.profile;
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
     return;
   }
-  var filename = __wx_build_filename(profile, null, __wx_channels_config__.downloadFilenameTemplate);
+  var filename = __wx_build_filename(
+    profile,
+    null,
+    __wx_channels_config__.downloadFilenameTemplate
+  );
   if (!filename) {
     alert("文件名生成失败");
     return;
   }
-  await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
+  await __wx_load_script(
+    "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+  );
   __wx_log({
     msg: `下载封面\n${profile.coverUrl}`,
   });
@@ -343,10 +404,107 @@ __wx_channels_video_download_btn__.onclick = () => {
     });
     return;
   }
-  var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+  var spec = __wx_channels_config__.defaultHighest
+    ? null
+    : window.__wx_channels_store__.profile.spec[0];
   __wx_channels_handle_click_download__(spec);
 };
-
+function build_dropdown_menu(trigger) {
+  console.log("build_dropdown_menu", trigger);
+  if (!window.Weui) {
+    return null;
+  }
+  const { DropdownMenu, Menu, MenuItem } = Weui;
+  MenuItem.setTemplate(
+    '<div class="custom-item"><span class="label">{{ label }}</span></div>'
+  );
+  MenuItem.setIndicatorTemplate('<span class="arrow">›</span>');
+  Menu.setTemplate('<div class="custom-menu">{{ list }}</div>');
+  const submenu = Menu({
+    children: [],
+  });
+  const $dropdown = DropdownMenu({
+    $trigger: trigger,
+    children: [
+      MenuItem({
+        label: "下载",
+        submenu,
+        onMouseEnter() {
+          submenu.show();
+        },
+        onMouseLeave() {
+          if (!submenu.isHover) submenu.hide();
+        },
+      }),
+      MenuItem({
+        label: "下载为MP3",
+        onClick() {
+          __wx_channels_handle_click_download__(null, true);
+          $dropdown.hide();
+        },
+      }),
+      MenuItem({
+        label: "下载命令",
+        onClick() {
+          __wx_channels_handle_print_download_command();
+          $dropdown.hide();
+        },
+      }),
+      MenuItem({
+        label: "下载封面",
+        onClick() {
+          __wx_channels_handle_download_cover();
+          $dropdown.hide();
+        },
+      }),
+      MenuItem({
+        label: "复制页面链接",
+        onClick() {
+          __wx_channels_handle_copy__();
+          $dropdown.hide();
+        },
+      }),
+    ],
+    onMouseEnter() {
+      if (submenu.isOpen) {
+        submenu.hide();
+      }
+    },
+  });
+  $dropdown.ui.$trigger.onMouseEnter(() => {
+    const download_menus = [
+      // ...(() => {
+      //   if (window.__wx_channels_store__.profile) {
+      //     return window.__wx_channels_store__.profile.spec.map((item) => ({
+      //       label: item.fileFormat,
+      //       onClick() {
+      //         __wx_channels_handle_click_download__(item);
+      //         $dropdown.hide();
+      //       },
+      //     }));
+      //   }
+      //   return [];
+      // })(),
+      MenuItem({
+        label: "当前视频",
+        onClick() {
+          __wx_channels_download_cur__();
+          $dropdown.hide();
+        },
+      }),
+      MenuItem({
+        label: "原始视频",
+        onClick() {
+          __wx_channels_handle_click_download__();
+          $dropdown.hide();
+        },
+      }),
+    ];
+    submenu.setChildren(download_menus);
+    $dropdown.show();
+  });
+  return $dropdown;
+}
 async function __insert_download_btn_to_home_page() {
   var $container = await __wx_find_elm(function () {
     return document.querySelector(".slides-scroll");
@@ -379,7 +537,9 @@ async function __insert_download_btn_to_home_page() {
         });
         return;
       }
-      var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+      var spec = __wx_channels_config__.defaultHighest
+        ? null
+        : window.__wx_channels_store__.profile.spec[0];
       __wx_channels_handle_click_download__(spec);
     };
     $parent.appendChild(__wx_channels_video_download_btn__);
@@ -412,21 +572,24 @@ async function insert_download_btn() {
         });
         return;
       }
-      var spec = __wx_channels_config__.defaultHighest ? null : window.__wx_channels_store__.profile.spec[0];
+      var spec = __wx_channels_config__.defaultHighest
+        ? null
+        : window.__wx_channels_store__.profile.spec[0];
       __wx_channels_handle_click_download__(spec);
     };
     var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {
       __wx_log({
-        msg: "注入下载按钮成功3!",
+        msg: "注入下载按钮3成功!",
       });
       $elm2.appendChild(__wx_channels_video_download_btn__);
       return;
     }
     __wx_log({
-      msg: "注入下载按钮成功4!",
+      msg: "注入下载按钮4成功!",
     });
     $elm2.insertBefore(__wx_channels_video_download_btn__, relative_node);
+    // build_dropdown_menu(__wx_channels_video_download_btn__);
     return;
   }
   var $elm1 = await __wx_find_elm(function () {
@@ -436,13 +599,13 @@ async function insert_download_btn() {
     var relative_node = $elm1.children[$elm1.children.length - 1];
     if (!relative_node) {
       __wx_log({
-        msg: "注入下载按钮成功1!",
+        msg: "注入下载按钮1成功!",
       });
       $elm1.appendChild(__wx_channels_video_download_btn__);
       return;
     }
     __wx_log({
-      msg: "注入下载按钮成功2!",
+      msg: "注入下载按钮2成功!",
     });
     $elm1.insertBefore(__wx_channels_video_download_btn__, relative_node);
     return;
@@ -454,3 +617,28 @@ async function insert_download_btn() {
 setTimeout(async () => {
   insert_download_btn();
 }, 800);
+
+const $fixed_footer = document.createElement("div");
+$fixed_footer.style.position = "fixed";
+$fixed_footer.style.bottom = "88px";
+$fixed_footer.style.right = "80px";
+$fixed_footer.style.zIndex = "9999";
+$fixed_footer.style.backgroundColor = "rgba(0, 0, 0)";
+$fixed_footer.style.color = "#fff";
+$fixed_footer.style.textAlign = "center";
+$fixed_footer.style.fontSize = "14px";
+$fixed_footer.style.borderRadius = "8px";
+$fixed_footer.style.padding = "10px";
+
+const $tool = document.createElement("div");
+$tool.style.display = "flex";
+$tool.style.justifyContent = "center";
+$tool.style.alignItems = "center";
+$tool.style.gap = "10px";
+$tool.innerHTML = `下载`;
+
+setTimeout(() => {
+  document.body.appendChild($fixed_footer);
+  $fixed_footer.appendChild($tool);
+  build_dropdown_menu($tool);
+}, 300);
