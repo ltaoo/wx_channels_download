@@ -1,22 +1,3 @@
-// 拦截blur事件
-document.addEventListener(
-  "blur",
-  function (e) {
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    e.preventDefault();
-  },
-  true
-);
-
-// 拦截mouseleave事件
-document.addEventListener(
-  "mouseleave",
-  function (e) {
-    e.stopPropagation();
-  },
-  true
-);
 function __wx_channels_video_decrypt(t, e, p) {
   for (
     var r = new Uint8Array(t), n = 0;
@@ -352,11 +333,7 @@ function __wx_channels_handle_print_download_command() {
   }
 }
 /** 下载视频封面 */
-async function __wx_channels_handle_download_cover(event) {
-  console.log(event.currentTarget);
-  if (event.currentTarget) {
-    console.log(event.currentTarget.parent);
-  }
+async function __wx_channels_handle_download_cover() {
   var profile = __wx_channels_store__.profile;
   if (!profile) {
     alert("检测不到视频，请将本工具更新到最新版");
@@ -409,8 +386,97 @@ __wx_channels_video_download_btn__.onclick = () => {
     : window.__wx_channels_store__.profile.spec[0];
   __wx_channels_handle_click_download__(spec);
 };
+const inserted_style = `<style>
+:root {
+  --weui-dropdown-bg: #fff;
+  --weui-dropdown-fg: #111;
+  --weui-dropdown-border: rgba(0, 0, 0, 0.06);
+  --weui-dropdown-hover-bg: #f5f5f5;
+  --weui-dropdown-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+html.dark,
+body.dark {
+  --weui-dropdown-bg: #2b2b2b;
+  --weui-dropdown-fg: #f5f5f5;
+  --weui-dropdown-border: transparent;
+  --weui-dropdown-hover-bg: #383838;
+  --weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+  --weui-dropdown-bg: #2b2b2b;
+  --weui-dropdown-fg: #f5f5f5;
+  --weui-dropdown-border: transparent;
+  --weui-dropdown-hover-bg: #383838;
+  --weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  }
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  margin: 40px;
+}
+
+.weui-dropdown-item:focus {
+  background: var(--weui-dropdown-hover-bg);
+}
+
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #07c160;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.custom-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.custom-item:hover {
+  background: var(--weui-dropdown-hover-bg);
+}
+
+.custom-item .label {
+  color: var(--weui-dropdown-fg);
+  font-size: 12px;
+}
+
+.custom-item .arrow {
+  opacity: 0.6;
+  font-size: 14px;
+  color: white;
+}
+
+.custom-menu {
+  min-width: 148px;
+  background: var(--weui-dropdown-bg);
+  border-radius: 12px;
+  box-shadow: var(--weui-dropdown-shadow);
+  border: 0;
+  padding: 8px;
+}
+
+.custom-menu.alt {
+  border-radius: 8px;
+  background: #111827;
+  color: white;
+}
+</style>`;
+
+document.head.insertAdjacentHTML("beforeend", inserted_style);
+
 function build_dropdown_menu(trigger) {
-  console.log("build_dropdown_menu", trigger);
   if (!window.Weui) {
     return null;
   }
@@ -427,7 +493,7 @@ function build_dropdown_menu(trigger) {
     $trigger: trigger,
     children: [
       MenuItem({
-        label: "下载",
+        label: "更多下载",
         submenu,
         onMouseEnter() {
           submenu.show();
@@ -444,16 +510,16 @@ function build_dropdown_menu(trigger) {
         },
       }),
       MenuItem({
-        label: "下载命令",
+        label: "下载封面",
         onClick() {
-          __wx_channels_handle_print_download_command();
+          __wx_channels_handle_download_cover();
           $dropdown.hide();
         },
       }),
       MenuItem({
-        label: "下载封面",
+        label: "打印下载命令",
         onClick() {
-          __wx_channels_handle_download_cover();
+          __wx_channels_handle_print_download_command();
           $dropdown.hide();
         },
       }),
@@ -473,25 +539,6 @@ function build_dropdown_menu(trigger) {
   });
   $dropdown.ui.$trigger.onMouseEnter(() => {
     const download_menus = [
-      // ...(() => {
-      //   if (window.__wx_channels_store__.profile) {
-      //     return window.__wx_channels_store__.profile.spec.map((item) => ({
-      //       label: item.fileFormat,
-      //       onClick() {
-      //         __wx_channels_handle_click_download__(item);
-      //         $dropdown.hide();
-      //       },
-      //     }));
-      //   }
-      //   return [];
-      // })(),
-      MenuItem({
-        label: "当前视频",
-        onClick() {
-          __wx_channels_download_cur__();
-          $dropdown.hide();
-        },
-      }),
       MenuItem({
         label: "原始视频",
         onClick() {
@@ -499,9 +546,34 @@ function build_dropdown_menu(trigger) {
           $dropdown.hide();
         },
       }),
+      MenuItem({
+        label: "当前视频",
+        onClick() {
+          __wx_channels_download_cur__();
+          $dropdown.hide();
+        },
+      }),
+      ...(() => {
+        if (window.__wx_channels_store__.profile) {
+          return window.__wx_channels_store__.profile.spec.map((item) => ({
+            label: item.fileFormat,
+            onClick() {
+              __wx_channels_handle_click_download__(item);
+              $dropdown.hide();
+            },
+          }));
+        }
+        return [];
+      })(),
     ];
     submenu.setChildren(download_menus);
     $dropdown.show();
+  });
+  $dropdown.ui.$trigger.onMouseLeave(() => {
+    if ($dropdown.isHover) {
+      return;
+    }
+    $dropdown.hide();
   });
   return $dropdown;
 }
@@ -589,7 +661,7 @@ async function insert_download_btn() {
       msg: "注入下载按钮4成功!",
     });
     $elm2.insertBefore(__wx_channels_video_download_btn__, relative_node);
-    // build_dropdown_menu(__wx_channels_video_download_btn__);
+    build_dropdown_menu(__wx_channels_video_download_btn__);
     return;
   }
   var $elm1 = await __wx_find_elm(function () {
@@ -611,34 +683,31 @@ async function insert_download_btn() {
     return;
   }
   __wx_log({
-    msg: "没有找到操作栏，注入下载按钮失败\n",
+    msg: "在页面底部注入下载按钮\n",
   });
+  const $fixed_footer = document.createElement("div");
+  $fixed_footer.style.position = "fixed";
+  $fixed_footer.style.bottom = "68px";
+  $fixed_footer.style.left = "0px";
+  $fixed_footer.style.right = "0px";
+  $fixed_footer.style.zIndex = "999";
+  $fixed_footer.style.backgroundColor = "#171717";
+  $fixed_footer.style.textAlign = "center";
+  $fixed_footer.style.fontSize = "14px";
+  $fixed_footer.style.borderRadius = "8px";
+  $fixed_footer.style.padding = "12px 48px";
+  const $tools = document.createElement("div");
+  $tools.style.display = "flex";
+  $tools.style.alignItems = "center";
+  $tools.style.gap = "8px";
+  const $tool = document.createElement("div");
+  $tool.style.padding = "12px";
+  $tool.innerHTML = "下载";
+  document.body.appendChild($fixed_footer);
+  $fixed_footer.appendChild($tools);
+  $tools.appendChild($tool);
+  build_dropdown_menu($tool);
 }
 setTimeout(async () => {
   insert_download_btn();
 }, 800);
-
-const $fixed_footer = document.createElement("div");
-$fixed_footer.style.position = "fixed";
-$fixed_footer.style.bottom = "88px";
-$fixed_footer.style.right = "80px";
-$fixed_footer.style.zIndex = "9999";
-$fixed_footer.style.backgroundColor = "rgba(0, 0, 0)";
-$fixed_footer.style.color = "#fff";
-$fixed_footer.style.textAlign = "center";
-$fixed_footer.style.fontSize = "14px";
-$fixed_footer.style.borderRadius = "8px";
-$fixed_footer.style.padding = "10px";
-
-const $tool = document.createElement("div");
-$tool.style.display = "flex";
-$tool.style.justifyContent = "center";
-$tool.style.alignItems = "center";
-$tool.style.gap = "10px";
-$tool.innerHTML = `下载`;
-
-setTimeout(() => {
-  document.body.appendChild($fixed_footer);
-  $fixed_footer.appendChild($tool);
-  build_dropdown_menu($tool);
-}, 300);
