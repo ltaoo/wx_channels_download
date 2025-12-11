@@ -387,90 +387,49 @@ __wx_channels_video_download_btn__.onclick = () => {
   __wx_channels_handle_click_download__(spec);
 };
 const inserted_style = `<style>
-:root {
-  --weui-dropdown-bg: #fff;
-  --weui-dropdown-fg: #111;
-  --weui-dropdown-border: rgba(0, 0, 0, 0.06);
-  --weui-dropdown-hover-bg: #f5f5f5;
-  --weui-dropdown-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+.custom-menu {
+  z-index: 99999;
+  background: var(--BG-CONTEXT-MENU);
+  box-shadow: 0 0 6px rgb(0 0 0 / 20%);
+  border-radius: 4px;
+  color: var(--weui-FG-0);
+  padding: 8px;
 }
-
-html.dark,
-body.dark {
-  --weui-dropdown-bg: #2b2b2b;
-  --weui-dropdown-fg: #f5f5f5;
-  --weui-dropdown-border: transparent;
-  --weui-dropdown-hover-bg: #383838;
-  --weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-  --weui-dropdown-bg: #2b2b2b;
-  --weui-dropdown-fg: #f5f5f5;
-  --weui-dropdown-border: transparent;
-  --weui-dropdown-hover-bg: #383838;
-  --weui-dropdown-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-  }
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  margin: 40px;
-}
-
-.weui-dropdown-item:focus {
-  background: var(--weui-dropdown-hover-bg);
-}
-
-.btn {
-  display: inline-block;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: #07c160;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.custom-item {
+.custom-menu-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  gap: 8px;
+  padding: 4px;
+  border-radius: 4px;
   cursor: pointer;
-}
-
-.custom-item:hover {
-  background: var(--weui-dropdown-hover-bg);
-}
-
-.custom-item .label {
-  color: var(--weui-dropdown-fg);
   font-size: 12px;
+  min-width: 6em;
+  transition: background .15s ease-in-out
 }
-
-.custom-item .arrow {
-  opacity: 0.6;
+.custom-menu-item:hover {
+  background: var(--FG-6);
+}
+.custom-menu-item-arrow {
+  position: absolute;
+  right: 4px;
+  top: 5px;
+  font-size: 18px;
+  line-height: 12px;
+}
+.wx-footer {
+  position: fixed;
+  right: 0;
+  bottom: 18px;
+  z-index: 99998;
+  text-align: center;
   font-size: 14px;
-  color: white;
+  padding: 4px 48px;
 }
-
-.custom-menu {
-  min-width: 148px;
-  background: var(--weui-dropdown-bg);
-  border-radius: 12px;
-  box-shadow: var(--weui-dropdown-shadow);
-  border: 0;
-  padding: 8px;
-}
-
-.custom-menu.alt {
-  border-radius: 8px;
-  background: #111827;
-  color: white;
+.wx-footer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>`;
 
@@ -481,16 +440,15 @@ function build_dropdown_menu(trigger) {
     return null;
   }
   const { DropdownMenu, Menu, MenuItem } = Weui;
-  MenuItem.setTemplate(
-    '<div class="custom-item"><span class="label">{{ label }}</span></div>'
-  );
-  MenuItem.setIndicatorTemplate('<span class="arrow">›</span>');
-  Menu.setTemplate('<div class="custom-menu">{{ list }}</div>');
+  MenuItem.setTemplate('<div class="custom-menu-item"><span class="label">{{ label }}</span></div>');
+  MenuItem.setIndicatorTemplate('<span class="custom-menu-item-arrow">›</span>');
+  Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
   const submenu = Menu({
     children: [],
   });
   const $dropdown = DropdownMenu({
     $trigger: trigger,
+    zIndex: 99999,
     children: [
       MenuItem({
         label: "更多下载",
@@ -555,13 +513,15 @@ function build_dropdown_menu(trigger) {
       }),
       ...(() => {
         if (window.__wx_channels_store__.profile) {
-          return window.__wx_channels_store__.profile.spec.map((item) => ({
-            label: item.fileFormat,
-            onClick() {
-              __wx_channels_handle_click_download__(item);
-              $dropdown.hide();
-            },
-          }));
+          return window.__wx_channels_store__.profile.spec.map((item) => {
+            return MenuItem({
+              label: item.fileFormat,
+              onClick() {
+                __wx_channels_handle_click_download__(item);
+                $dropdown.hide();
+              },
+            });
+          });
         }
         return [];
       })(),
@@ -615,6 +575,7 @@ async function __insert_download_btn_to_home_page() {
       __wx_channels_handle_click_download__(spec);
     };
     $parent.appendChild(__wx_channels_video_download_btn__);
+    build_dropdown_menu(__wx_channels_video_download_btn__);
     __wx_log({
       msg: "注入下载按钮成功!",
     });
@@ -685,23 +646,14 @@ async function insert_download_btn() {
   __wx_log({
     msg: "在页面底部注入下载按钮\n",
   });
+}
+function render_footer_tools() {
   const $fixed_footer = document.createElement("div");
-  $fixed_footer.style.position = "fixed";
-  $fixed_footer.style.bottom = "68px";
-  $fixed_footer.style.left = "0px";
-  $fixed_footer.style.right = "0px";
-  $fixed_footer.style.zIndex = "999";
-  $fixed_footer.style.backgroundColor = "#171717";
-  $fixed_footer.style.textAlign = "center";
-  $fixed_footer.style.fontSize = "14px";
-  $fixed_footer.style.borderRadius = "8px";
-  $fixed_footer.style.padding = "12px 48px";
+  $fixed_footer.className = "wx-footer";
   const $tools = document.createElement("div");
-  $tools.style.display = "flex";
-  $tools.style.alignItems = "center";
-  $tools.style.gap = "8px";
+  $tools.className = "wx-footer-tools";
   const $tool = document.createElement("div");
-  $tool.style.padding = "12px";
+  $tool.className = "weui-btn weui-btn_default weui-btn_mini";
   $tool.innerHTML = "下载";
   document.body.appendChild($fixed_footer);
   $fixed_footer.appendChild($tools);
@@ -710,4 +662,5 @@ async function insert_download_btn() {
 }
 setTimeout(async () => {
   insert_download_btn();
+  render_footer_tools();
 }, 800);
