@@ -18,12 +18,13 @@ type Config struct {
 	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
 	DownloadLocalServerEnabled   bool   `json:"downloadLocalServerEnabled"` // 下载时是否使用本地服务器
 	DownloadLocalServerAddr      string `json:"downloadLocalServerAddr"`    // 下载时本地服务器地址
-	ProxySystem                  bool
-	Hostname                     string
-	Port                         int
-	PageSpyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
-	PageSpyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
-	Debug                        bool
+	ProxySetSystem               bool
+	ProxyServerHostname          string
+	ProxyServerPort              int
+	PagespyEnabled               bool   `json:"pagespyEnabled"`        // 是否启用 pagespy
+	PagespyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
+	PagespyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
+	DebugShowError               bool
 	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain string // 额外注入的 js
 	InjectGlobalScript           string // 全局用户脚本
@@ -38,9 +39,10 @@ func SetDefault() {
 	viper.SetDefault("proxy.system", true)
 	viper.SetDefault("proxy.port", 2023)
 	viper.SetDefault("proxy.hostname", "127.0.0.1")
-	viper.SetDefault("debug.protocol", "https")
-	viper.SetDefault("debug.api", "debug.weixin.qq.com")
-	viper.SetDefault("debug", false)
+	viper.SetDefault("debug.pagespy.enabled", false)
+	viper.SetDefault("debug.pagespy.protocol", "https")
+	viper.SetDefault("debug.pagespy.api", "debug.weixin.qq.com")
+	viper.SetDefault("debug.error", false)
 	viper.SetDefault("channel.disableLocationToHome", false)
 	viper.SetDefault("inject.extraScript.afterJSMain", "")
 	viper.SetDefault("inject.globalScript", "")
@@ -74,6 +76,7 @@ func LoadConfig() (*Config, error) {
 	if config_filepath == "" {
 		config_filepath = filepath.Join(base_dir, "config.yaml")
 	}
+	SetDefault()
 	viper.SetConfigFile(config_filepath)
 	if has_config {
 		if err := viper.ReadInConfig(); err != nil {
@@ -83,29 +86,26 @@ func LoadConfig() (*Config, error) {
 			}
 		}
 	}
-
 	global_script_path := path.Join(base_dir, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
 		if err == nil {
-			viper.Set("globalUserScript", string(script_byte))
+			viper.Set("inject.globalScript", string(script_byte))
 		}
 	}
-
-	SetDefault()
-
 	config := &Config{
 		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
 		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
 		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
 		DownloadLocalServerEnabled:   viper.GetBool("download.localServer.enabled"),
 		DownloadLocalServerAddr:      viper.GetString("download.localServer.addr"),
-		ProxySystem:                  viper.GetBool("proxy.system"),
-		Port:                         viper.GetInt("proxy.port"),
-		Hostname:                     viper.GetString("proxy.hostname"),
-		PageSpyServerProtocol:        viper.GetString("debug.protocol"),
-		PageSpyServerAPI:             viper.GetString("debug.api"),
-		Debug:                        viper.GetBool("debug"),
+		ProxySetSystem:               viper.GetBool("proxy.system"),
+		ProxyServerPort:              viper.GetInt("proxy.port"),
+		ProxyServerHostname:          viper.GetString("proxy.hostname"),
+		PagespyEnabled:               viper.GetBool("debug.pagespy.enabled"),
+		PagespyServerProtocol:        viper.GetString("debug.pagespy.protocol"),
+		PagespyServerAPI:             viper.GetString("debug.pagespy.api"),
+		DebugShowError:               viper.GetBool("debug.error"),
 		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScript:           viper.GetString("inject.globalScript"),
@@ -113,7 +113,6 @@ func LoadConfig() (*Config, error) {
 	if has_config {
 		config.FilePath = config_filepath
 	}
-
 	extra_js_filepath := config.InjectExtraScriptAfterJSMain
 	if extra_js_filepath != "" {
 		// If it's a relative path, resolve it against the current working directory
@@ -127,6 +126,5 @@ func LoadConfig() (*Config, error) {
 			}
 		}
 	}
-
 	return config, nil
 }

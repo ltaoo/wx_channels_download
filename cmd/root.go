@@ -23,7 +23,7 @@ var (
 	hostname       string
 	port           int
 	debug          bool
-	cert_files     *interceptor.ServerCertFiles
+	cert_files     *interceptor.ServerCert
 	channel_files  *interceptor.ChannelInjectedFiles
 	cert_file_name string
 	cfg            *config.Config
@@ -36,7 +36,7 @@ var root_cmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg.Debug = viper.GetBool("debug")
+		cfg.DebugShowError = viper.GetBool("debug.error")
 		root_command(RootCommandArg{
 			InterceptorConfig: interceptor.InterceptorConfig{
 				Version:        Version,
@@ -44,9 +44,8 @@ var root_cmd = &cobra.Command{
 				Device:         device,
 				Hostname:       viper.GetString("proxy.hostname"),
 				Port:           viper.GetInt("proxy.port"),
-				Debug:          cfg.Debug,
+				Debug:          cfg.DebugShowError,
 				CertFiles:      cert_files,
-				CertFileName:   cert_file_name,
 				ChannelFiles:   channel_files,
 				Cfg:            cfg,
 			},
@@ -62,16 +61,16 @@ func init() {
 
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
-	viper.BindPFlag("debug", root_cmd.PersistentFlags().Lookup("debug"))
+	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
 }
 
-func Execute(app_ver string, cert_filename string, files1 *interceptor.ChannelInjectedFiles, files2 *interceptor.ServerCertFiles, c *config.Config) error {
+func Execute(app_ver string, assets *interceptor.ChannelInjectedFiles, cert *interceptor.ServerCert, c *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
-	cert_file_name = cert_filename
-	channel_files = files1
-	cert_files = files2
+	cert_file_name = cert.Name
+	channel_files = assets
+	cert_files = cert
 	cfg = c
 
 	return root_cmd.Execute()
@@ -98,6 +97,9 @@ func root_command(args RootCommandArg) {
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 	if args.Cfg.FilePath != "" {
 		fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
+	}
+	if script_byte := viper.Get("globalUserScript"); script_byte != nil {
+		fmt.Printf("存在全局脚本\n\n")
 	}
 
 	mgr := manager.NewServerManager()

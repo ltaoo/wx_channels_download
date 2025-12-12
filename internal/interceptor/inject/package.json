@@ -1,0 +1,13 @@
+{
+  "name": "wx_channels_download",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "lint": "eslint ./internal/interceptor/inject/**/*.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.14.0",
+    "@eslint/js": "^9.14.0",
+    "globals": "^15.12.0"
+  }
+}
