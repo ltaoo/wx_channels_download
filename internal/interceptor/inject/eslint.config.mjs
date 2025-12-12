@@ -3,15 +3,10 @@ import globals from "globals";
 
 export default [
   {
-    ignores: [
-      "internal/interceptor/inject/lib/**",
-      "docs/**",
-      "dist/**",
-      "node_modules/**",
-    ],
+    ignores: ["lib/**", "docs/**", "dist/**", "node_modules/**"],
   },
   {
-    files: ["internal/interceptor/inject/*.js"],
+    files: ["src/**/*.js"],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: "script",
@@ -21,7 +16,6 @@ export default [
         __wx_channels_tip__: "writable",
         __wx_channels_config__: "writable",
         __wx_channels_cur_video: "writable",
-        __wx_eventbus: "writable",
         __wx_download_btn_handler: "writable",
         __wx_channels_decrypt: "writable",
         __wx_channels_video_decrypt: "writable",
@@ -35,10 +29,9 @@ export default [
         __wx_channels_handle_copy__: "writable",
         __wx_channels_live_store__: "writable",
         __wx_channels_live_download_btn__: "writable",
-        ChannelsUtil: "writable",
-        ChannelsEventBus: "writable",
-        ChannelsEvents: "writable",
-        download_with_progress: "writable",
+        WXU: "writable",
+        WXD: "writable",
+        WXE: "writable",
         render_extra_menu_items: "writeable",
         download_icon1: "writable",
         download_icon2: "writable",
@@ -54,6 +47,7 @@ export default [
         JSZip: "readonly",
         PageSpy: "readonly",
         Recorder: "readonly",
+        mitt: "readonly",
         Weui: "readonly",
       },
     },

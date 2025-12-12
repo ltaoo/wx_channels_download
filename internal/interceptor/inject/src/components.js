@@ -142,12 +142,12 @@ function render_extra_menu_items(items, $dropdown) {
       return MenuItem({
         label: item.label,
         async onClick() {
-          const [err, profile] = ChannelsUtil.check_profile_existing();
+          const [err, profile] = WXU.check_profile_existing();
           if (err) return;
-          var filename = __wx_build_filename(
+          var filename = WXU.build_filename(
             profile,
             null,
-            __wx_channels_config__.downloadFilenameTemplate
+            WXD.config.downloadFilenameTemplate
           );
           await item.onClick({
             profile,

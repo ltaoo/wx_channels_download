@@ -1,4 +1,13 @@
 var __wx_channels_tip__ = {};
+function __wx_channels_video_decrypt(t, e, p) {
+  for (
+    var r = new Uint8Array(t), n = 0;
+    n < t.byteLength && e + n < p.decryptor_array.length;
+    n++
+  )
+    r[n] ^= p.decryptor_array[n];
+  return r;
+}
 window.VTS_WASM_URL =
   "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.wasm";
 window.MAX_HEAP_SIZE = 33554432;
@@ -13,16 +22,16 @@ function wasm_isaac_generate(t, e) {
     decryptor.delete();
   }
 }
-let decrypt_js_loaded = false;
+let loaded = false;
 /** 获取 decrypt_array */
 async function __wx_channels_decrypt(seed) {
-  if (!decrypt_js_loaded) {
-    await __wx_load_script(
+  if (!loaded) {
+    await WXU.load_script(
       "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js"
     );
-    decrypt_js_loaded = true;
+    loaded = true;
   }
-  await sleep();
+  await WXU.sleep();
   decryptor = new Module.WxIsaac64(seed);
   // 调用该方法时，会调用 wasm_isaac_generate 方法
   // 131072 是 decryptor_array 的长度
@@ -32,8 +41,7 @@ async function __wx_channels_decrypt(seed) {
   // decryptor_array = undefined;
   return decryptor_array;
 }
-
-var ChannelsUtil = (() => {
+var WXU = (() => {
   var defaultRandomAlphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   function __wx_uid__() {
@@ -108,6 +116,7 @@ var ChannelsUtil = (() => {
    * @param {ErrorMsg} params
    */
   function __wx_error(params) {
+    var _alert = params.alert ?? 1;
     fetch("/__wx_channels_api/error", {
       method: "POST",
       headers: {
@@ -115,10 +124,9 @@ var ChannelsUtil = (() => {
       },
       body: JSON.stringify(params),
     });
-    if (!params.alert) {
-      return;
+    if (_alert) {
+      alert(params.msg);
     }
-    alert(params.msg);
   }
   const script_loaded_map = {};
   function __wx_load_script(src) {
@@ -200,7 +208,33 @@ var ChannelsUtil = (() => {
     }
     return filename;
   }
-
+  function remove_zero(num) {
+    let result = Number(num);
+    if (String(num).indexOf(".") > -1) {
+      result = parseFloat(num.toString().replace(/0+?$/g, ""));
+    }
+    return result;
+  }
+  function bytes_to_size(bytes) {
+    if (!bytes) {
+      return "0KB";
+    }
+    if (bytes === 0) {
+      return "0KB";
+    }
+    const symbols = ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    let exp = Math.floor(Math.log(bytes) / Math.log(1024));
+    if (exp < 1) {
+      return bytes + " " + symbols[0];
+    }
+    bytes = Number((bytes / Math.pow(1024, exp)).toFixed(2));
+    const size = bytes;
+    const unit = symbols[exp];
+    if (Number.isInteger(size)) {
+      return `${size}${unit}`;
+    }
+    return `${remove_zero(size.toFixed(2))}${unit}`;
+  }
   function mediaBufferToWav(abuffer, len) {
     len = len || abuffer.length;
     var num_of_chan = abuffer.numberOfChannels;
@@ -253,7 +287,7 @@ var ChannelsUtil = (() => {
   // https://blog.csdn.net/qq_18643245/article/details/141157149
   function wav2Other(newSet, wavBlob, True, False) {
     const reader = new FileReader();
-    reader.onloadend = function () {
+    reader.onloadend = async function () {
       //检测wav文件头
       const wavView = new Uint8Array(reader.result);
       const eq = function (p, s) {
@@ -323,6 +357,9 @@ var ChannelsUtil = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
+      await __wx_load_script(
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js"
+      );
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);
@@ -345,7 +382,7 @@ var ChannelsUtil = (() => {
       wav2Other(
         set,
         wavBlob,
-        function (blob, duration, rec) {
+        function (blob) {
           resolve([null, blob]);
         },
         function (msg) {
@@ -354,18 +391,11 @@ var ChannelsUtil = (() => {
       );
     });
   }
-  function __wx_channels_video_decrypt(t, e, arr) {
-    for (
-      var r = new Uint8Array(t), n = 0;
-      n < t.byteLength && e + n < arr.length;
-      n++
-    ) {
-      r[n] ^= arr[n];
-    }
-    return r;
-  }
-
-  /** 在终端展示下载进度 */
+  /**
+   * 支持回调的下载
+   * @param {Response} response
+   * @param {{ onStart: (v: { total_size: number }) => void, onProgress: (v: { loaded_size: number, progress: number | null }) => void, onEnd: (v: { blob: Blob }) => void }} handlers
+   */
   async function download_with_progress(response, handlers) {
     var content_length = response.headers.get("Content-Length");
     var chunks = [];
@@ -408,7 +438,7 @@ var ChannelsUtil = (() => {
   function __wx_check_profile_existing(opt) {
     var profile = __wx_channels_store__.profile;
     if (!profile) {
-      ChannelsUtil.error({
+      WXU.error({
         alert: !opt.silence,
         msg: "检测不到视频，请提交 issue 反馈",
       });
@@ -432,6 +462,25 @@ var ChannelsUtil = (() => {
 
   return {
     /**
+     * 视频解密
+     */
+    build_decrypt_arr: __wx_channels_decrypt,
+    video_decrypt: __wx_channels_video_decrypt,
+    async decrypt_video(buf, key) {
+      try {
+        const r = await __wx_channels_decrypt(key);
+        if (r) {
+          buf = __wx_channels_video_decrypt(buf, 0, {
+            decryptor_array: r,
+          });
+          return [null, buf];
+        }
+        return [new Error("前端解密失败"), null];
+      } catch (err) {
+        return [err, null];
+      }
+    },
+    /**
      * 类型转换相关
      */
     async media_buffer_to_wav(...args) {
@@ -441,7 +490,6 @@ var ChannelsUtil = (() => {
       return mediaBufferToWav(...args);
     },
     wav_to_mp3_blob: wavBlobToMP3,
-    build_decrypt_arr: __wx_channels_decrypt,
     async media_to_mp3(buf) {
       var audioCtx = new AudioContext();
       return new Promise((resolve) => {
@@ -455,23 +503,11 @@ var ChannelsUtil = (() => {
         });
       });
     },
-    // decrypt_video: __wx_channels_video_decrypt,
-    async decrypt_video(buf, key) {
-      var tip = "前端解密失败，尝试使用 decrypt 命令解密";
-      try {
-        const r = await __wx_channels_decrypt(key);
-        if (r) {
-          const media_buf = __wx_channels_video_decrypt(buf, 0, r);
-          return [null, media_buf];
-        }
-        return [new Error(tip), null];
-      } catch (err) {
-        return [new Error(tip), null];
-      }
-    },
     download_with_progress,
     /**  */
+    sleep,
     uid: __wx_uid__,
+    bytes_to_size,
     build_filename: __wx_build_filename,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,
@@ -519,3 +555,12 @@ var ChannelsUtil = (() => {
     },
   };
 })();
+var WXD = {
+  /**
+   * @returns {ChannelsConfig}
+   */
+  get config() {
+    /** @type {ChannelsConfig} */
+    return __wx_channels_config__;
+  },
+};

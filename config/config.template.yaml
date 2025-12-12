@@ -1,4 +1,5 @@
-debug: false
+debug:
+  error: false
 
 download:
   defaultHighest: false

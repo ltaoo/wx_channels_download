@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "lint": "eslint ./internal/interceptor/inject/**/*.js"
+    "lint": "eslint \"src/**/*.js\""
   },
   "devDependencies": {
     "eslint": "^9.14.0",

@@ -1,5 +1,27 @@
 package certificate
 
+import (
+	_ "embed"
+)
+
+//go:embed certs/SunnyRoot.cer
+var cert_file []byte
+
+//go:embed certs/private.key
+var private_key_file []byte
+
+type CertFileAndKeyFile struct {
+	Name       string
+	Cert       []byte
+	PrivateKey []byte
+}
+
+var DefaultCertFiles = &CertFileAndKeyFile{
+	Name:       "SunnyNet",
+	Cert:       cert_file,
+	PrivateKey: private_key_file,
+}
+
 type CertificateSubject struct {
 	// label
 	CN string

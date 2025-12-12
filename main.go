@@ -7,20 +7,10 @@ import (
 	"wx_channel/cmd"
 	"wx_channel/config"
 	"wx_channel/internal/interceptor"
+	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 )
 
-//go:embed certs/SunnyRoot.cer
-var cert_file []byte
-
-//go:embed certs/private.key
-var private_key_file []byte
-
-var server_cert = &interceptor.ServerCert{
-	Name:           "SunnyNet",
-	CertFile:       cert_file,
-	PrivateKeyFile: private_key_file,
-}
 var AppVer = "251212_01"
 
 func main() {
@@ -36,7 +26,7 @@ func main() {
 		}
 		return
 	}
-	if err := cmd.Execute(AppVer, interceptor.Assets, server_cert, cfg); err != nil {
+	if err := cmd.Execute(AppVer, interceptor.Assets, certificate.DefaultCertFiles, cfg); err != nil {
 		fmt.Printf("初始化失败 %v\n", err.Error())
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"wx_channel/internal/download"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/manager"
+	"wx_channel/pkg/certificate"
 )
 
 var (
@@ -23,7 +24,7 @@ var (
 	hostname       string
 	port           int
 	debug          bool
-	cert_files     *interceptor.ServerCert
+	cert_files     *certificate.CertFileAndKeyFile
 	channel_files  *interceptor.ChannelInjectedFiles
 	cert_file_name string
 	cfg            *config.Config
@@ -37,13 +38,16 @@ var root_cmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg.DebugShowError = viper.GetBool("debug.error")
+		cfg.ProxySetSystem = viper.GetBool("proxy.system")
+		cfg.ProxyServerHostname = viper.GetString("proxy.hostname")
+		cfg.ProxyServerPort = viper.GetInt("proxy.port")
 		root_command(RootCommandArg{
 			InterceptorConfig: interceptor.InterceptorConfig{
 				Version:        Version,
-				SetSystemProxy: viper.GetBool("proxy.system"),
 				Device:         device,
-				Hostname:       viper.GetString("proxy.hostname"),
-				Port:           viper.GetInt("proxy.port"),
+				SetSystemProxy: cfg.ProxySetSystem,
+				Hostname:       cfg.ProxyServerHostname,
+				Port:           cfg.ProxyServerPort,
 				Debug:          cfg.DebugShowError,
 				CertFiles:      cert_files,
 				ChannelFiles:   channel_files,
@@ -59,12 +63,12 @@ func init() {
 	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
 	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
 
-	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
-	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
 	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
+	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
+	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(app_ver string, assets *interceptor.ChannelInjectedFiles, cert *interceptor.ServerCert, c *config.Config) error {
+func Execute(app_ver string, assets *interceptor.ChannelInjectedFiles, cert *certificate.CertFileAndKeyFile, c *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver

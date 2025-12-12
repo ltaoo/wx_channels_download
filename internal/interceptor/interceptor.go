@@ -76,18 +76,13 @@ type FrontendErrorTip struct {
 	Msg   string `json:"msg"`
 }
 
-type ServerCert struct {
-	Name           string
-	CertFile       []byte
-	PrivateKeyFile []byte
-}
 type InterceptorConfig struct {
 	Version        string
 	SetSystemProxy bool
 	Device         string
 	Hostname       string
 	Port           int
-	CertFiles      *ServerCert
+	CertFiles      *certificate.CertFileAndKeyFile
 	ChannelFiles   *ChannelInjectedFiles
 	Cfg            *config.Config
 	Debug          bool
@@ -110,7 +105,7 @@ type Interceptor struct {
 
 func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 	echo.SetLogEnabled(false)
-	client, err := echo.NewEcho(payload.CertFiles.CertFile, payload.CertFiles.PrivateKeyFile)
+	client, err := echo.NewEcho(payload.CertFiles.Cert, payload.CertFiles.PrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +126,8 @@ func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 		Device:         payload.Device,
 		Port:           payload.Port,
 		Debug:          payload.Debug,
-		CertFile:       payload.CertFiles.CertFile,
-		PrivateKeyFile: payload.CertFiles.PrivateKeyFile,
+		CertFile:       payload.CertFiles.Cert,
+		PrivateKeyFile: payload.CertFiles.PrivateKey,
 		CertFileName:   payload.CertFiles.Name,
 		channel_files:  payload.ChannelFiles,
 		cfg:            payload.Cfg,

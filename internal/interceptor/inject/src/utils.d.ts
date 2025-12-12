@@ -13,6 +13,16 @@ type ErrorMsg = {
   /** 错误消息内容 */
   msg: string;
 };
+type ChannelsConfig = {
+  /** 下载按钮默认下载原始视频 */
+  defaultHighest: boolean;
+  /** 下载文件名的模板，不带后缀 */
+  downloadFilenameTemplate: string;
+  /** 下载时暂停播放 */
+  downloadPauseWhenDownload: boolean;
+  downloadLocalServerEnabled: boolean;
+  downloadLocalServerAddr: string;
+};
 type DropdownMenuItemPayload = {
   label: string;
   onClick: (profile: ChannelsMediaProfile) => void;

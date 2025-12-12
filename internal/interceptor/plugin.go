@@ -78,7 +78,7 @@ var (
 	setTimeout(() => {
 		window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
 	},800);
-	ChannelsEventBus.emit(ChannelsEvents.FeedProfileLoaded, profile);
+	WXE.emit(WXE.Events.FeedProfileLoaded, profile);
 	fetch("/__wx_channels_api/profile", {
 		method: "POST",
 		headers: {
@@ -338,7 +338,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					if (window.__wx_channels_live_store__) {
 						__wx_channels_live_store__.profile = profile;
 					}
-					ChannelsEventBus.emit(ChannelsEvents.LiveProfileLoaded, profile);
+					WXE.emit(WXE.Events.LiveProfileLoaded, profile);
 					fetch("/__wx_channels_api/profile", {
 						method: "POST",
 						headers: {
