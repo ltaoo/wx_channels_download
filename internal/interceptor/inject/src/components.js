@@ -147,7 +147,7 @@ function render_extra_menu_items(items, $dropdown) {
           var filename = WXU.build_filename(
             profile,
             null,
-            WXD.config.downloadFilenameTemplate
+            WXU.config.downloadFilenameTemplate
           );
           await item.onClick({
             profile,

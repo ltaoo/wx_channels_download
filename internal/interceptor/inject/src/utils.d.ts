@@ -27,17 +27,53 @@ type DropdownMenuItemPayload = {
   label: string;
   onClick: (profile: ChannelsMediaProfile) => void;
 };
+
+type ChannelsFeed = {
+  id: string;
+  objectDesc: {
+    mediaType: number;
+    description: string;
+    media: ChannelsMedia[];
+  };
+  objectNonceId: string;
+  objectStatus: number;
+  createtime: number;
+  /** 转发数 */
+  forwardCount: number;
+  /** 点赞数 */
+  likeCount: number;
+  /** 评论数 */
+  commentCount: number;
+  favCount: number;
+};
+type ChannelsMedia = {
+  url: string;
+  coverUrl: string;
+  fileSize: number;
+  decodeKey: string;
+  /** 时长 */
+  videoPlayLen: number;
+  width: number;
+  height: number;
+  spec: ChannelsMediaSpec[];
+};
 type ChannelsMediaSpec = {
   /** 规格值 */
   fileFormat: string;
 };
 type ChannelsMediaProfile = {
+  type: "media" | "picture" | "live";
   id: number;
+  nonce_id: string;
   /** 标题 */
   title: string;
   /** 下载地址 */
   url: string;
-  /** 规格列表 */
-  spec: ChannelsMediaSpec[];
+  key: number;
+  /** 图片列表，类型为 pictures 才有 */
+  files: { url: string }[];
+  cover_url: string;
   createtime: number;
+  /** 规格列表，类型为 media 才有 */
+  spec: ChannelsMediaSpec[];
 };

@@ -1,4 +1,12 @@
 var __wx_channels_tip__ = {};
+/** 全局的存储 */
+var __wx_channels_store__ = {
+  profile: null,
+  buffers: [],
+};
+var __wx_channels_live_store__ = {
+  profile: null,
+};
 function __wx_channels_video_decrypt(t, e, p) {
   for (
     var r = new Uint8Array(t), n = 0;
@@ -71,7 +79,43 @@ var WXU = (() => {
       }, 1000);
     });
   }
-
+  function format_feed(feed) {
+    if (feed.liveInfo) {
+      return {
+        ...feed,
+        type: "live",
+        id: feed.id,
+        title: feed.description || "直播",
+        url: feed.liveInfo.streamUrl,
+      };
+    }
+    var media = feed.objectDesc.media[0];
+    if (media.mediaType === 4) {
+      return {
+        ...feed,
+        type: "media",
+        id: feed.id,
+        nonce_id: feed.objectNonceId,
+        title: feed.objectDesc.description,
+        url: media.url + media.urlToken,
+        key: media.decodeKey,
+        cover_url: media.coverUrl,
+        createtime: feed.createtime,
+        contact: feed.contact,
+        spec: media.spec,
+      };
+    }
+    return {
+      ...feed,
+      type: "picture",
+      id: feed.id,
+      nonce_id: feed.objectNonceId,
+      title: feed.objectDesc.description,
+      files: feed.objectDesc.media,
+      contact: feed.contact,
+      spec: [],
+    };
+  }
   /**
    * @param {string} text
    */
@@ -435,7 +479,7 @@ var WXU = (() => {
    * @param {{ silence: boolean }} opt
    * @returns {[boolean, ChannelsMediaProfile]}
    */
-  function __wx_check_profile_existing(opt) {
+  function __wx_check_profile_existing(opt = {}) {
     var profile = __wx_channels_store__.profile;
     if (!profile) {
       WXU.error({
@@ -459,8 +503,8 @@ var WXU = (() => {
       return [err, null];
     }
   }
-
   return {
+    ...WXE,
     /**
      * 视频解密
      */
@@ -533,6 +577,49 @@ var WXU = (() => {
         hide() {},
       };
     },
+    append_media_buf(buf) {
+      __wx_channels_store__.buffers.push(buf);
+    },
+    set_cur_video() {
+      window.__wx_channels_cur_video = document.querySelector(
+        ".feed-video.video-js"
+      );
+    },
+    /**
+     * @param {ChannelsFeed} feed
+     */
+    set_feed(feed) {
+      var profile = format_feed(feed);
+      fetch("/__wx_channels_api/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+      });
+      __wx_channels_store__.profile = profile;
+    },
+    /**
+     *
+     * @param {ChannelsFeed} feed
+     */
+    set_live_feed(feed) {
+      var profile = format_feed(feed);
+      fetch("/__wx_channels_api/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+      });
+      __wx_channels_live_store__.profile = profile;
+    },
+    /**
+     *
+     * @param {ChannelsFeed} feed
+     * @returns
+     */
+    format_feed,
     get cur_video() {
       return __wx_channels_cur_video;
     },
@@ -553,14 +640,12 @@ var WXU = (() => {
       const zip = new JSZip();
       return zip;
     },
+    /**
+     * @returns {ChannelsConfig}
+     */
+    get config() {
+      /** @type {ChannelsConfig} */
+      return __wx_channels_config__;
+    },
   };
 })();
-var WXD = {
-  /**
-   * @returns {ChannelsConfig}
-   */
-  get config() {
-    /** @type {ChannelsConfig} */
-    return __wx_channels_config__;
-  },
-};

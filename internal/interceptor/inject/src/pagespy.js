@@ -3,12 +3,12 @@ var __wx_defaultConfig = {
   clientOrigin: "https://debug.weixin.qq.com",
 };
 const config = __wx_defaultConfig;
-if (WXD.config.pagespyServerAPI) {
-  config.api = WXD.config.pagespyServerAPI;
+if (WXU.config.pagespyServerAPI) {
+  config.api = WXU.config.pagespyServerAPI;
 }
-if (WXD.config.pagespyServerProtocol) {
+if (WXU.config.pagespyServerProtocol) {
   config.clientOrigin =
-    WXD.config.pagespyServerProtocol + "://" + config.api;
+    WXU.config.pagespyServerProtocol + "://" + config.api;
 }
 try {
   window.$pageSpy = new PageSpy({

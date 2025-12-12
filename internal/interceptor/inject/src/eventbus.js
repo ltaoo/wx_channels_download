@@ -9,6 +9,8 @@ var WXE = (() => {
     WindowLoaded: "WindowLoaded",
     /** 页面卸载完成 */
     WindowUnLoaded: "WindowUnLoaded",
+    /** 首页推荐获取到视频列表 */
+    FeedListLoaded: "OnFeedListLoaded",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 获取到直播详情 */
@@ -21,6 +23,8 @@ var WXE = (() => {
     MediaDownloaded: "MediaDownloaded",
     /** MP3下载完成 */
     MP3Downloaded: "MP3Downloaded",
+    GotoNextFeed: "GotoNextFeed",
+    GotoPrevFeed: "GotoPrevFeed",
   };
   return {
     Events: ChannelsEvents,
@@ -53,18 +57,36 @@ var WXE = (() => {
         eventbus.off(ChannelsEvents.WindowUnLoaded, handler);
       };
     },
+    /**
+     *
+     * @param {(feeds: ChannelsFeed[]) => void} handler
+     */
+    onFeedListLoaded(handler) {
+      eventbus.on(ChannelsEvents.FeedListLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.FeedListLoaded, handler);
+      };
+    },
+    /**
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
     onFetchFeedProfile(handler) {
       eventbus.on(ChannelsEvents.FeedProfileLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.FeedProfileLoaded, handler);
       };
     },
+    /**
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
     onFetchLiveProfile(handler) {
       eventbus.on(ChannelsEvents.LiveProfileLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.LiveProfileLoaded, handler);
       };
     },
+    /**
+     */
     beforeDownloadMedia(handler) {
       eventbus.on(ChannelsEvents.BeforeDownloadMedia, handler);
       return () => {
@@ -87,6 +109,24 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.MP3Downloaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.MP3Downloaded, handler);
+      };
+    },
+    /**
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onGotoNextFeed(handler) {
+      eventbus.on(ChannelsEvents.GotoNextFeed, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.GotoNextFeed, handler);
+      };
+    },
+    /**
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onGotoPrevFeed(handler) {
+      eventbus.on(ChannelsEvents.GotoPrevFeed, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.GotoPrevFeed, handler);
       };
     },
   };

@@ -30,7 +30,6 @@ var (
 
 	// 特定路径的正则
 	jsSourceBufferReg  = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	jsAutoCutReg       = regexp.MustCompile(`if\(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`)
 	jsCommentDetailReg = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsDialogReg        = regexp.MustCompile(`i.default={dialog`)
 	jsLiveInfoReg      = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
@@ -38,55 +37,6 @@ var (
 	jsGoToPrevFlowReg  = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
 	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
-	media_profile_js   = `var profile = media.mediaType !== 4 ? {
-	type: "picture",
-	id: data_object.id,
-	title: data_object.objectDesc.description,
-	files: data_object.objectDesc.media,
-	spec: [],
-	contact: data_object.contact
-} : {
-	type: "media",
-	duration: media.spec[0] ? media.spec[0].durationMs : 0,
-	spec: media.spec,
-	title: data_object.objectDesc.description,
-	coverUrl: media.coverUrl,
-	url: media.url+media.urlToken,
-	size: media.fileSize ? Number(media.fileSize) : 0,
-	key: media.decodeKey,
-	id: data_object.id,
-	nonce_id: data_object.objectNonceId,
-	nickname: data_object.nickname,
-	createtime: data_object.createtime,
-	fileFormat: media.spec.map(o => o.fileFormat),
-	contact: data_object.contact
-};
-(() => {
-	if (!window.__wx_channels_store__) {
-		return;
-	}
-	if (window.__wx_channels_store__.profiles.length) {
-		var existing = window.__wx_channels_store__.profiles.find(function(v){
-			return v.id === profile.id;
-		});
-		if (existing) {
-			return;
-		}
-	}
-	__wx_channels_store__.profile = profile;
-	window.__wx_channels_store__.profiles.push(profile);
-	setTimeout(() => {
-		window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-	},800);
-	WXE.emit(WXE.Events.FeedProfileLoaded, profile);
-	fetch("/__wx_channels_api/profile", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json"
-		},
-		body: JSON.stringify(profile)
-	});
-})();`
 )
 
 func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *echo.Plugin {
@@ -212,6 +162,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
 				inserted_scripts += script_config
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
 					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
@@ -223,13 +176,10 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
 					inserted_scripts += script_pagespy + script_pagespy2
 				}
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
@@ -269,38 +219,24 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 
 				if strings.Contains(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					replace_str1 := `(() => {
-									if (window.__wx_channels_store__) {
-									window.__wx_channels_store__.buffers.push($1);
-									}
-									})(),this.sourceBuffer.appendBuffer($1),`
+					WXU.append_media_buf($1);
+					})(),this.sourceBuffer.appendBuffer($1),`
 					if jsSourceBufferReg.MatchString(js_script) {
 						fmt.Println("2. 视频播放 js 修改成功")
 					}
 					js_script = jsSourceBufferReg.ReplaceAllString(js_script, replace_str1)
-					replace_str2 := `if(f.cmd==="CUT"){
-										if (window.__wx_channels_store__ && __wx_channels_store__.profile) {
-										console.log("CUT", f, __wx_channels_store__.profile.key);
-										window.__wx_channels_store__.keys[__wx_channels_store__.profile.key]=f.decryptor_array;
-										}
-									}
-									if(f.cmd===re.MAIN_THREAD_CMD.AUTO_CUT`
-					js_script = jsAutoCutReg.ReplaceAllString(js_script, replace_str2)
 					ctx.SetResponseBody(js_script)
 					return
 				}
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
-					var feedResult = await (async () => {
+					replace_str1 := `async finderGetCommentDetail($1) {
+					var result = await (async () => {
 						$2;
 					})();
-					var data_object = feedResult.data.object;
-					if (!data_object.objectDesc) {
-						return feedResult;
-					}
-					var media = data_object.objectDesc.media[0];
-					%v
-					return feedResult;
-				}async`, media_profile_js)
+					var feed = feedResult.data.object;
+					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
+					return result;
+				}async`
 					if jsCommentDetailReg.MatchString(js_script) {
 						fmt.Println("3.视频读取 js 修改成功")
 					}
@@ -308,45 +244,26 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					if jsFeedPageReg.MatchString(js_script) {
 						fmt.Println("5.首页 API js 修改成功")
 					}
-					replace_str4 := fmt.Sprintf(`async finderUserPage($1) {
+					replace_str4 := `async finderUserPage($1) {
 					var feedResult = await (async () => {
 						$2;
 					})();
 					var feeds = feedResult.data.object;
-					if (!feeds || feeds.length === 0) {
-						return feedResult;
-					}
-					var data_object = feeds[0];
-					var media = data_object.objectDesc.media[0];
-					if (!home_mounted) {
-					%v
-					}
+					console.log(feedResult.data);
+					WXU.emit(WXU.Events.FeedListLoaded, feeds);
 					return feedResult;
-				}async`, media_profile_js)
+				}async`
 					js_script = jsFeedPageReg.ReplaceAllString(js_script, replace_str4)
 
 					replace_str2 := `i.default=window.__wx_channels_tip__={dialog`
 					js_script = jsDialogReg.ReplaceAllString(js_script, replace_str2)
 					replace_str3 := `async finderGetLiveInfo($1) {
-					var feedResult = await (async () => {
+					var result = await (async () => {
 						$2;
 					})();
-					var profile = {
-						title: feedResult.data.description || "直播",
-						url: feedResult.data.liveInfo.streamUrl,
-					};
-					if (window.__wx_channels_live_store__) {
-						__wx_channels_live_store__.profile = profile;
-					}
-					WXE.emit(WXE.Events.LiveProfileLoaded, profile);
-					fetch("/__wx_channels_api/profile", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json"
-						},
-						body: JSON.stringify(profile)
-					});
-					return feedResult;
+					var live = result.data.object;
+					WXU.emit(WXU.Events.LiveProfileLoaded, live);
+					return result;
 				}async`
 					if pathname == "/web/pages/live" && jsLiveInfoReg.MatchString(js_script) {
 						fmt.Println("4.直播 API js 修改成功")
@@ -356,42 +273,28 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return
 				}
 				if util.Includes(pathname, "connect.publish") {
-					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
-									await $1(v);
-									setTimeout(() => {
-									// 找到 flowTab 对应的值
-									console.log('goToNextFlowFeed', yt);
-									if (!yt || !yt.value.feeds) {
-										return;
-									}
-									var data_object = yt.value.feeds[yt.value.currentFeedIndex];
-									console.log("handle goto next feed", yt, data_object);
-									var media = data_object.objectDesc.media[0];
-									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									%v
-									if (window.__insert_download_btn_to_home_page) {
-				__insert_download_btn_to_home_page();
-									}
-									}, 0);
-									}`, media_profile_js)
+					replace_str1 := `goToNextFlowFeed:async function(v){
+						await $1(v);
+						// yt 来自 flowTab 对应的值
+						console.log('goToNextFlowFeed', yt);
+						if (!yt || !yt.value.feeds) {
+							return;
+						}
+						var feed = yt.value.feeds[yt.value.currentFeedIndex];
+						console.log("handle goto next feed", yt, feed);
+						WXU.emit(WXU.Events.GotoNextFeed, feed);
+					}`
 					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
-					replace_str2 := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
-									await $1(v);
-									setTimeout(() => {
-									console.log('goToPrevFlowFeed', yt);
-									if (!yt || !yt.value.feeds) {
-										return;
-									}
-									var data_object = yt.value.feeds[yt.value.currentFeedIndex];
-									console.log("handle goto prev feed", yt, data_object);
-									var media = data_object.objectDesc.media[0];
-									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									%v
-									if (window.__insert_download_btn_to_home_page) {
-				__insert_download_btn_to_home_page();
-									}
-									}, 0);
-									}`, media_profile_js)
+					replace_str2 := `goToPrevFlowFeed:async function(v){
+						await $1(v);
+						console.log('goToPrevFlowFeed', yt);
+						if (!yt || !yt.value.feeds) {
+							return;
+						}
+						var feed = yt.value.feeds[yt.value.currentFeedIndex];
+						console.log("handle goto prev feed", yt, feed);
+						WXU.emit(WXU.Events.GotoPrevFeed, feed);
+					}`
 					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
 					ctx.SetResponseBody(js_script)
 					return

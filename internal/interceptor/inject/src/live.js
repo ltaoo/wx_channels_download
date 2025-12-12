@@ -40,11 +40,14 @@ async function insert_live_download_btn() {
   WXU.error({ msg: "没有找到操作栏，注入按钮失败\n" });
 }
 
-var timer = setTimeout(() => {
-  WXU.error({ msg: "没有捕获到视频详情" });
-}, 2000);
-WXE.onFetchLiveProfile(() => {
-  clearTimeout(timer);
-  timer = null;
-  insert_live_download_btn();
-});
+(() => {
+  var live_timer = setTimeout(() => {
+    WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
+  }, 5000);
+  WXU.onFetchLiveProfile((feed) => {
+    WXU.set_live_feed(feed);
+    clearTimeout(live_timer);
+    live_timer = null;
+    insert_live_download_btn();
+  });
+})();

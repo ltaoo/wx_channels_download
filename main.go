@@ -11,7 +11,7 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "251212_01"
+var AppVer = "251212_06"
 
 func main() {
 	cfg, err := config.LoadConfig()
