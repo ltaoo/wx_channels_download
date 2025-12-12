@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/ltaoo/echo"
 
 	"wx_channel/config"
@@ -33,10 +34,59 @@ var (
 	jsCommentDetailReg = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsDialogReg        = regexp.MustCompile(`i.default={dialog`)
 	jsLiveInfoReg      = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsFeedPageReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
 	jsGoToPrevFlowReg  = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
 	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
-	jsComplaintReg     = regexp.MustCompile(`,"投诉"\)]`)
 	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
+	media_profile_js   = `var profile = media.mediaType !== 4 ? {
+	type: "picture",
+	id: data_object.id,
+	title: data_object.objectDesc.description,
+	files: data_object.objectDesc.media,
+	spec: [],
+	contact: data_object.contact
+} : {
+	type: "media",
+	duration: media.spec[0] ? media.spec[0].durationMs : 0,
+	spec: media.spec,
+	title: data_object.objectDesc.description,
+	coverUrl: media.coverUrl,
+	url: media.url+media.urlToken,
+	size: media.fileSize ? Number(media.fileSize) : 0,
+	key: media.decodeKey,
+	id: data_object.id,
+	nonce_id: data_object.objectNonceId,
+	nickname: data_object.nickname,
+	createtime: data_object.createtime,
+	fileFormat: media.spec.map(o => o.fileFormat),
+	contact: data_object.contact
+};
+(() => {
+	if (!window.__wx_channels_store__) {
+		return;
+	}
+	if (window.__wx_channels_store__.profiles.length) {
+		var existing = window.__wx_channels_store__.profiles.find(function(v){
+			return v.id === profile.id;
+		});
+		if (existing) {
+			return;
+		}
+	}
+	__wx_channels_store__.profile = profile;
+	window.__wx_channels_store__.profiles.push(profile);
+	setTimeout(() => {
+		window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+	},800);
+	ChannelsEventBus.emit(ChannelsEvents.FeedProfileLoaded, profile);
+	fetch("/__wx_channels_api/profile", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify(profile)
+	});
+})();`
 )
 
 func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *echo.Plugin {
@@ -98,6 +148,18 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					"__debug":      "fake_resp",
 				}, "{}")
 			}
+			if pathname == "/__wx_channels_api/error" {
+				var data FrontendErrorTip
+				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
+					fmt.Println("[ECHO]handler", err.Error())
+				}
+				prefix_text := "[FRONTEND ERROR]"
+				color.Red(fmt.Sprintf("%v%s\n", prefix_text, data.Msg))
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/json",
+					"__debug":      "fake_resp",
+				}, "{}")
+			}
 		},
 		OnResponse: func(ctx *echo.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
@@ -136,63 +198,61 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					}
 				}
 			}
-			if strings.Contains(resp_content_type, "text/html") {
+			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				// fmt.Println(hostname, path)
-				if hostname == "channels.weixin.qq.com" {
-					resp_body, err := ctx.GetResponseBody()
-					if err != nil {
-						return
-					}
-					ctx.SetResponseHeader("__debug", "append_script")
-					html := string(resp_body)
-					html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
-					html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
-					inserted_scripts := fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
-					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
-					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
-					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
-
-					if cfg.InjectGlobalScript != "" {
-						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
-					}
-					cfg_byte, _ := json.Marshal(cfg)
-					script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
-					inserted_scripts += script_config
-					if cfg.Debug {
-						/** 全局错误捕获 */
-						script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
-						inserted_scripts += script_error
-						/** 在线调试 */
-						script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
-						script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
-						inserted_scripts += script_pagespy + script_pagespy2
-					}
-					if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
-						/** 下载逻辑 */
-						script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
-						if cfg.InjectExtraScriptAfterJSMain != "" {
-							script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
-						}
-						inserted_scripts += script_main
-						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
-						if pathname == "/web/pages/home" {
-							fmt.Println("1. 视频号首页 html 注入 js 成功")
-						}
-						if pathname == "/web/pages/feed" {
-							fmt.Println("1. 视频详情页 html 注入 js 成功")
-						}
-					}
-					if pathname == "/web/pages/live" {
-						script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveMain)
-						inserted_scripts += script_live_main
-						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
-						fmt.Println("1. 直播详情页 html 注入 js 成功")
-					}
-					ctx.SetResponseBody(html)
+				resp_body, err := ctx.GetResponseBody()
+				if err != nil {
 					return
 				}
+				ctx.SetResponseHeader("__debug", "append_script")
+				html := string(resp_body)
+				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
+				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
+				inserted_scripts := ""
+				cfg_byte, _ := json.Marshal(cfg)
+				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
+				inserted_scripts += script_config
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
+					inserted_scripts += script_error
+				}
+				if cfg.PagespyEnabled {
+					/** 在线调试 */
+					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
+					script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
+					inserted_scripts += script_pagespy + script_pagespy2
+				}
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
+				if cfg.InjectGlobalScript != "" {
+					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
+				}
+				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
+					/** 下载逻辑 */
+					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
+					if cfg.InjectExtraScriptAfterJSMain != "" {
+						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+					}
+					inserted_scripts += script_main
+				}
+				if pathname == "/web/pages/live" {
+					script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveMain)
+					if cfg.InjectExtraScriptAfterJSMain != "" {
+						script_live_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+					}
+					inserted_scripts += script_live_main
+				}
+				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+				ctx.SetResponseBody(html)
+				return
 			}
-			if strings.Contains(resp_content_type, "application/javascript") {
+			if hostname == "res.wx.qq.com" && strings.Contains(resp_content_type, "application/javascript") {
 				if util.Includes(pathname, "wasm_video_decode") {
 					return
 				}
@@ -201,14 +261,13 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return
 				}
 				ctx.SetResponseHeader("__debug", "replace_script")
-
 				js_script := string(resp_body)
 				js_script = jsFromReg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
 				js_script = jsDepReg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
 				js_script = jsLazyImportReg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
-				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
+				if strings.Contains(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
 					replace_str1 := `(() => {
 									if (window.__wx_channels_store__) {
 									window.__wx_channels_store__.buffers.push($1);
@@ -229,54 +288,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				media_profile_js := `var profile = media.mediaType !== 4 ? {
-									type: "picture",
-									id: data_object.id,
-									title: data_object.objectDesc.description,
-									files: data_object.objectDesc.media,
-									spec: [],
-									contact: data_object.contact
-								} : {
-									type: "media",
-									duration: media.spec[0] ? media.spec[0].durationMs : 0,
-									spec: media.spec,
-									title: data_object.objectDesc.description,
-									coverUrl: media.coverUrl,
-									url: media.url+media.urlToken,
-									size: media.fileSize ? Number(media.fileSize) : 0,
-									key: media.decodeKey,
-									id: data_object.id,
-									nonce_id: data_object.objectNonceId,
-									nickname: data_object.nickname,
-									createtime: data_object.createtime,
-									fileFormat: media.spec.map(o => o.fileFormat),
-									contact: data_object.contact
-								};
-								(() => {
-									if (!window.__wx_channels_store__) {
-									return;
-									}
-									if (window.__wx_channels_store__.profiles.length) {
-										var existing = window.__wx_channels_store__.profiles.find(function(v){
-											return v.id === profile.id;
-										});
-										if (existing) {
-											return;
-										}
-									}
-									__wx_channels_store__.profile = profile;
-									window.__wx_channels_store__.profiles.push(profile);
-									setTimeout(() => {
-										window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									},800);
-									fetch("/__wx_channels_api/profile", {
-										method: "POST",
-										headers: {
-											"Content-Type": "application/json"
-										},
-										body: JSON.stringify(profile)
-									});
-								})();`
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
 					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
 					var feedResult = await (async () => {
@@ -294,9 +305,29 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						fmt.Println("3.视频读取 js 修改成功")
 					}
 					js_script = jsCommentDetailReg.ReplaceAllString(js_script, replace_str1)
-					replace_str2 := `i.default=window.window.__wx_channels_tip__={dialog`
+					if jsFeedPageReg.MatchString(js_script) {
+						fmt.Println("5.首页 API js 修改成功")
+					}
+					replace_str4 := fmt.Sprintf(`async finderUserPage($1) {
+					var feedResult = await (async () => {
+						$2;
+					})();
+					var feeds = feedResult.data.object;
+					if (!feeds || feeds.length === 0) {
+						return feedResult;
+					}
+					var data_object = feeds[0];
+					var media = data_object.objectDesc.media[0];
+					if (!home_mounted) {
+					%v
+					}
+					return feedResult;
+				}async`, media_profile_js)
+					js_script = jsFeedPageReg.ReplaceAllString(js_script, replace_str4)
+
+					replace_str2 := `i.default=window.__wx_channels_tip__={dialog`
 					js_script = jsDialogReg.ReplaceAllString(js_script, replace_str2)
-					replace_str3 := fmt.Sprintf(`async finderGetLiveInfo($1) {
+					replace_str3 := `async finderGetLiveInfo($1) {
 					var feedResult = await (async () => {
 						$2;
 					})();
@@ -307,6 +338,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					if (window.__wx_channels_live_store__) {
 						__wx_channels_live_store__.profile = profile;
 					}
+					ChannelsEventBus.emit(ChannelsEvents.LiveProfileLoaded, profile);
 					fetch("/__wx_channels_api/profile", {
 						method: "POST",
 						headers: {
@@ -315,9 +347,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						body: JSON.stringify(profile)
 					});
 					return feedResult;
-				}async`)
-					if jsLiveInfoReg.MatchString(js_script) {
-						fmt.Println("4.直播读取 js 修改成功")
+				}async`
+					if pathname == "/web/pages/live" && jsLiveInfoReg.MatchString(js_script) {
+						fmt.Println("4.直播 API js 修改成功")
 					}
 					js_script = jsLiveInfoReg.ReplaceAllString(js_script, replace_str3)
 					ctx.SetResponseBody(js_script)
@@ -327,8 +359,13 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
 									await $1(v);
 									setTimeout(() => {
-									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
-									console.log("handle goto next feed", Dt, data_object);
+									// 找到 flowTab 对应的值
+									console.log('goToNextFlowFeed', yt);
+									if (!yt || !yt.value.feeds) {
+										return;
+									}
+									var data_object = yt.value.feeds[yt.value.currentFeedIndex];
+									console.log("handle goto next feed", yt, data_object);
 									var media = data_object.objectDesc.media[0];
 									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
 									%v
@@ -341,8 +378,12 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					replace_str2 := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
 									await $1(v);
 									setTimeout(() => {
-									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
-									console.log("handle goto prev feed", Dt, data_object);
+									console.log('goToPrevFlowFeed', yt);
+									if (!yt || !yt.value.feeds) {
+										return;
+									}
+									var data_object = yt.value.feeds[yt.value.currentFeedIndex];
+									console.log("handle goto prev feed", yt, data_object);
 									var media = data_object.objectDesc.media[0];
 									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
 									%v

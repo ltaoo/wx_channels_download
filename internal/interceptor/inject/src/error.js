@@ -1,7 +1,7 @@
 class ErrorModal {
-  mounted = false;
-  constructor() {}
-
+  constructor() {
+    this.mounted = false;
+  }
   insertElements() {
     // 创建样式
     var style = document.createElement("style");

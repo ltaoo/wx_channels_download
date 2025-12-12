@@ -20,7 +20,10 @@ type ChannelInjectedFiles struct {
 	JSFloatingUICore []byte
 	JSFloatingUIDOM  []byte
 	JSWeui           []byte
+	JSMitt           []byte
 	JSDebug          []byte
+	JSEventBus       []byte
+	JSComponents     []byte
 	JSUtils          []byte
 	JSError          []byte
 	JSMain           []byte
@@ -68,8 +71,13 @@ type FrontendTip struct {
 	Prefix       *string `json:"prefix"`
 	Msg          string  `json:"msg"`
 }
+type FrontendErrorTip struct {
+	Alert int    `json:"alert"`
+	Msg   string `json:"msg"`
+}
 
-type ServerCertFiles struct {
+type ServerCert struct {
+	Name           string
 	CertFile       []byte
 	PrivateKeyFile []byte
 }
@@ -79,8 +87,7 @@ type InterceptorConfig struct {
 	Device         string
 	Hostname       string
 	Port           int
-	CertFiles      *ServerCertFiles
-	CertFileName   string
+	CertFiles      *ServerCert
 	ChannelFiles   *ChannelInjectedFiles
 	Cfg            *config.Config
 	Debug          bool
@@ -126,7 +133,7 @@ func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 		Debug:          payload.Debug,
 		CertFile:       payload.CertFiles.CertFile,
 		PrivateKeyFile: payload.CertFiles.PrivateKeyFile,
-		CertFileName:   payload.CertFileName,
+		CertFileName:   payload.CertFiles.Name,
 		channel_files:  payload.ChannelFiles,
 		cfg:            payload.Cfg,
 		echo:           client,
