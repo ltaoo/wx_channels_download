@@ -16,11 +16,11 @@ before:
     - go generate ./...
 
 builds:
-  - env:
+  - id: cross
+    env:
       - CGO_ENABLED=0
     goos:
       - windows
-      - darwin
       - linux
     main: .
     binary: wx_video_download
@@ -32,20 +32,41 @@ builds:
       - goos: windows
         goarch: "386"
 
+  - id: macos
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: .
+    binary: wx_video_download
+    ldflags:
+      - -s -w
+    hooks:
+      post:
+        - rcodesign sign --p12-file {{ .Env.MAC_CERT_P12_FILE }} --p12-password {{ .Env.MAC_CERT_PASSWORD }} --code-signature-flags runtime "{{ .Path }}"
+
 archives:
-  - format: tar.gz
+  - id: default
+    format: tar.gz
     name_template: "wx_video_download_{{ .Tag }}_{{ .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else if eq .Arch \"386\" }}x86{{ else }}{{ .Arch }}{{ end }}"
     files:
       - src: config/config.template.yaml
         dst: config.yaml
+      - src: LICENSE
       - src: '!README*.md'
-    # use zip for windows archives
     format_overrides:
       - goos: windows
+        format: zip
+      - goos: darwin
         format: zip
 
 upx:
   - enabled: true
+    ids:
+      - cross
     compress: best
     lzma: true
 
@@ -60,6 +81,7 @@ changelog:
       - "^test:"
 
 release:
+  draft: true
   footer: >-
 
     ---

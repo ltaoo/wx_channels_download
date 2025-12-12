@@ -12,6 +12,12 @@ jobs:
   goreleaser:
     name: Release
     runs-on: ubuntu-latest
+    env:
+      MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      NOTARY_PRIVATE_KEY: ${{ secrets.NOTARY_PRIVATE_KEY }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,18 +28,65 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-      
+
+
       - name: Generate Windows resources (.syso)
         run: |
           set -e
           go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch amd64
           go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch arm64
 
-      - name: Run GoReleaser
+      - name: Install rcodesign
+        run: |
+          set -e
+          curl -L -o rcodesign.tar.gz https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
+          tar -xvf rcodesign.tar.gz
+          mv apple-codesign-0.22.0-x86_64-unknown-linux-musl/rcodesign /usr/local/bin/
+          rm -rf rcodesign.tar.gz apple-codesign-0.22.0-x86_64-unknown-linux-musl
+
+      - name: Prepare secrets
+        run: |
+          set -e
+          echo "${{ secrets.MAC_CERT_P12 }}" | base64 --decode > cert.p12
+          echo "${{ secrets.NOTARY_PRIVATE_KEY }}" | base64 --decode > AuthKey.p8
+
+      - name: Build with GoReleaser (skip publish & validate)
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --draft
+          args: release --skip=publish,validate --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAC_CERT_P12_FILE: cert.p12
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      - name: Create API key JSON for notarization
+        run: |
+          rcodesign encode-app-store-connect-api-key \
+            "${{ secrets.NOTARY_ISSUER_ID }}" \
+            "${{ secrets.NOTARY_KEY_ID }}" \
+            AuthKey.p8 \
+            > api-key.json
+
+      - name: Notarize macOS archives
+        run: |
+          set -e
+          for file in dist/*darwin*.zip; do
+            if [ -f "$file" ]; then
+              echo "Notarizing $file..."
+              rcodesign notary-submit \
+                --api-key-path api-key.json \
+                --wait \
+                "$file"
+            fi
+          done
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*checksums.txt

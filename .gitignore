@@ -2,6 +2,8 @@
 *.exe
 *.exe~
 *.syso
+*.p8
+*.p12
 dist/
 
 wx_video_download*

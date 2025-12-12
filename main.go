@@ -21,7 +21,7 @@ var server_cert = &interceptor.ServerCert{
 	CertFile:       cert_file,
 	PrivateKeyFile: private_key_file,
 }
-var AppVer = "251211_18"
+var AppVer = "251212_01"
 
 func main() {
 	cfg, err := config.LoadConfig()
