@@ -4,6 +4,15 @@ title: macOS 启用
 
 # macOS 启用
 
+## 251213更新
+
+自 251213 之后，会对 `wx_video_download` 进行签名和公证，以避免 macOS 提示「文件不能打开」。但由于无法对二进制文件「钉证」，双击打开还会触发 `Gatekeeper` 保护，需要手动确认才能运行。
+
+但是通过命令行运行就完全不会触发任何的校验
+
+如果有问题，仍按照下面步骤进行
+
+
 ## 赋予执行权限
 
 ```sh
@@ -15,6 +24,7 @@ chmod +x ./wx_video_download
 ```sh
 sudo ./wx_video_download
 ```
+
 
 ## 允许来自未知来源的应用
 
