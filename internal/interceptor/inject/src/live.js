@@ -19,14 +19,12 @@ function __wx_copy_live_download_command() {
 }
 
 async function insert_live_download_btn() {
-  WXU.log({ msg: "等待注入按钮" });
   var $elm1 = await WXU.find_elm(function () {
     return document.querySelector(".host__info .extra");
   });
   if ($elm1) {
     var relative_node = $elm1.children[0];
     if (!relative_node) {
-      WXU.error({ msg: "注入按钮失败!" });
       return;
     }
     var __wx_channels_live_download_btn__ = download_btn4();
@@ -34,10 +32,8 @@ async function insert_live_download_btn() {
       __wx_copy_live_download_command();
     };
     $elm1.insertBefore(__wx_channels_live_download_btn__, relative_node);
-    WXU.log({ msg: "注入下载按钮成功!" });
     return;
   }
-  WXU.error({ msg: "没有找到操作栏，注入按钮失败\n" });
 }
 
 (() => {
@@ -45,9 +41,10 @@ async function insert_live_download_btn() {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
   WXU.onFetchLiveProfile((feed) => {
-    WXU.set_live_feed(feed);
+    console.log("[live.js]onFetchLiveProfile", feed);
     clearTimeout(live_timer);
     live_timer = null;
+    WXU.set_live_feed(feed);
     insert_live_download_btn();
   });
 })();

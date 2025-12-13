@@ -153,7 +153,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 				inserted_scripts := ""
 				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s;</script>`, string(cfg_byte))
+				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
@@ -262,7 +262,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					var result = await (async () => {
 						$2;
 					})();
-					var live = result.data.object;
+					var live = result.data;
 					console.log("before LiveProfileLoaded", result.data);
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
 					return result;

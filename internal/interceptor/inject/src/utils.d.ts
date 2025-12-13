@@ -25,9 +25,10 @@ type ChannelsConfig = {
 };
 type DropdownMenuItemPayload = {
   label: string;
-  onClick: (profile: ChannelsMediaProfile) => void;
+  onClick: (event: { feed: FeedProfile; href: string }) => void;
 };
 
+/** 视频号原始的视频数据 */
 type ChannelsFeed = {
   id: string;
   objectDesc: {
@@ -46,6 +47,27 @@ type ChannelsFeed = {
   /** 评论数 */
   commentCount: number;
   favCount: number;
+  /** 发布者 */
+  contact: {
+    username: string;
+    headUrl: string;
+    nickname: string;
+    signature: string;
+  };
+  liveCover?: {
+    imgUrl: string;
+    imgUrlToken: string;
+  };
+  liveInfo?: {
+    streamUrl: string;
+  };
+  anchorContact?: {
+    username: string;
+    nickname: string;
+    headUrl: string;
+    signature: string;
+    liveCoverImgUrl: string;
+  };
 };
 /** 视频号原始的 media */
 type ChannelsMedia = {
@@ -63,7 +85,11 @@ type ChannelsMediaSpec = {
   /** 规格值 */
   fileFormat: string;
 };
-type ChannelsMediaProfile = {
+/**
+ * 对原始 feed 做了一些提取后的
+ * 调用 WXU.check_profile_existing 获取到的就是这个类型的数据
+ */
+type FeedProfile = {
   type: "media" | "picture" | "live";
   id: number;
   nonce_id: string;
@@ -72,10 +98,41 @@ type ChannelsMediaProfile = {
   /** 下载地址 */
   url: string;
   key: number;
-  /** 图片列表，类型为 pictures 才有 */
-  files: { url: string }[];
+  /** 封面地址 */
   cover_url: string;
+  /** 视频发布时间 */
   createtime: number;
+  /** 文件大小 */
+  size?: number;
+  /** 视频时长 */
+  duration?: number;
+  /** 图片列表，类型为 pictures 才有 */
+  files?: { url: string }[];
   /** 规格列表，类型为 media 才有 */
-  spec: ChannelsMediaSpec[];
+  spec?: ChannelsMediaSpec[];
+  /** 发布者 */
+  contact: {
+    id: string;
+    avatar_url: string;
+    nickname: string;
+  };
+};
+
+/**
+ * 对 FeedProfile 又增加了用于下载的一些字段
+ */
+type FeedProfilePayload = FeedProfile & {
+  /** 文件名 */
+  filename: string;
+  /** 原始 URL */
+  original_url: string;
+  /** 添加了 规格 后缀的视频下载地址 */
+  url: string;
+  /** 目标规格 */
+  target_spec?: ChannelsMediaSpec;
+  /** 源 URL */
+  source_url: string;
+  /** 已播放的视频内容（用于下载当前视频） */
+  data?: ArrayBuffer;
+  mp3: boolean;
 };

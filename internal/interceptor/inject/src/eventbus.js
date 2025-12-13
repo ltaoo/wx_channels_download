@@ -13,6 +13,8 @@ var WXE = (() => {
     PCFlowLoaded: "PCFlowLoaded",
     RecommendFeedsLoaded: "RecommendFeedsLoaded",
     UserFeedsLoaded: "UserFeedsLoaded",
+    GotoNextFeed: "GotoNextFeed",
+    GotoPrevFeed: "GotoPrevFeed",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 获取到直播详情 */
@@ -25,8 +27,8 @@ var WXE = (() => {
     MediaDownloaded: "MediaDownloaded",
     /** MP3下载完成 */
     MP3Downloaded: "MP3Downloaded",
-    GotoNextFeed: "GotoNextFeed",
-    GotoPrevFeed: "GotoPrevFeed",
+    /** 加载了 feed */
+    Feed: "Feed",
   };
   return {
     Events: ChannelsEvents,
@@ -60,6 +62,7 @@ var WXE = (() => {
       };
     },
     /**
+     * 首页获取到视频列表
      * @param {(feeds: ChannelsFeed[]) => void} handler
      */
     onPCFlowLoaded(handler) {
@@ -69,68 +72,7 @@ var WXE = (() => {
       };
     },
     /**
-     * @param {(feeds: ChannelsFeed[]) => void} handler
-     */
-    onRecommendFeedsLoaded(handler) {
-      eventbus.on(ChannelsEvents.RecommendFeedsLoaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.RecommendFeedsLoaded, handler);
-      };
-    },
-    /**
-     * @param {(feeds: ChannelsFeed[]) => void} handler
-     */
-    onUserFeedsLoaded(handler) {
-      eventbus.on(ChannelsEvents.UserFeedsLoaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.UserFeedsLoaded, handler);
-      };
-    },
-    /**
-     * @param {(feed: ChannelsFeed) => void} handler
-     */
-    onFetchFeedProfile(handler) {
-      eventbus.on(ChannelsEvents.FeedProfileLoaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.FeedProfileLoaded, handler);
-      };
-    },
-    /**
-     * @param {(feed: ChannelsFeed) => void} handler
-     */
-    onFetchLiveProfile(handler) {
-      eventbus.on(ChannelsEvents.LiveProfileLoaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.LiveProfileLoaded, handler);
-      };
-    },
-    /**
-     */
-    beforeDownloadMedia(handler) {
-      eventbus.on(ChannelsEvents.BeforeDownloadMedia, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.BeforeDownloadMedia, handler);
-      };
-    },
-    beforeDownloadCover(handler) {
-      eventbus.on(ChannelsEvents.BeforeDownloadCover, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.BeforeDownloadCover, handler);
-      };
-    },
-    onMediaDownloaded(handler) {
-      eventbus.on(ChannelsEvents.MediaDownloaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.MediaDownloaded, handler);
-      };
-    },
-    onMP3Downloaded(handler) {
-      eventbus.on(ChannelsEvents.MP3Downloaded, handler);
-      return () => {
-        eventbus.off(ChannelsEvents.MP3Downloaded, handler);
-      };
-    },
-    /**
+     * 首页推荐 切换到下一个视频
      * @param {(feed: ChannelsFeed) => void} handler
      */
     onGotoNextFeed(handler) {
@@ -140,12 +82,104 @@ var WXE = (() => {
       };
     },
     /**
+     * 首页推荐 切换到上一个视频
      * @param {(feed: ChannelsFeed) => void} handler
      */
     onGotoPrevFeed(handler) {
       eventbus.on(ChannelsEvents.GotoPrevFeed, handler);
       return () => {
         eventbus.off(ChannelsEvents.GotoPrevFeed, handler);
+      };
+    },
+    /**
+     * 获取到推荐列表
+     * @param {(feeds: ChannelsFeed[]) => void} handler
+     */
+    onRecommendFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.RecommendFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.RecommendFeedsLoaded, handler);
+      };
+    },
+    /**
+     * 获取到指定用户的部分视频列表
+     * @param {(feeds: ChannelsFeed[]) => void} handler
+     */
+    onUserFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.UserFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.UserFeedsLoaded, handler);
+      };
+    },
+    /**
+     * 获取到视频详情
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onFetchFeedProfile(handler) {
+      eventbus.on(ChannelsEvents.FeedProfileLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.FeedProfileLoaded, handler);
+      };
+    },
+    /**
+     * 获取到直播详情
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onFetchLiveProfile(handler) {
+      eventbus.on(ChannelsEvents.LiveProfileLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.LiveProfileLoaded, handler);
+      };
+    },
+    /**
+     * 下载视频前
+     * @param {(media: FeedProfilePayload) => void} handler
+     */
+    beforeDownloadMedia(handler) {
+      eventbus.on(ChannelsEvents.BeforeDownloadMedia, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.BeforeDownloadMedia, handler);
+      };
+    },
+    /**
+     * 下载封面前
+     * @param {(media: FeedProfilePayload) => void} handler
+     */
+    beforeDownloadCover(handler) {
+      eventbus.on(ChannelsEvents.BeforeDownloadCover, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.BeforeDownloadCover, handler);
+      };
+    },
+    /**
+     * 视频下载完成
+     * @param {(media: FeedProfilePayload) => void} handler
+     */
+    onMediaDownloaded(handler) {
+      eventbus.on(ChannelsEvents.MediaDownloaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.MediaDownloaded, handler);
+      };
+    },
+    /**
+     * mp3 下载完成
+     * @param {(media: FeedProfilePayload) => void} handler
+     */
+    onMP3Downloaded(handler) {
+      eventbus.on(ChannelsEvents.MP3Downloaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.MP3Downloaded, handler);
+      };
+    },
+    /**
+     * 加载了 feed。包括首页推荐、上一个下一个；视频详情页；直播详情页 都会触发该事件
+     * 可用于记录访问过的视频
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onFeed(handler) {
+      eventbus.on(ChannelsEvents.Feed, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.Feed, handler);
       };
     },
   };
@@ -172,4 +206,22 @@ window.addEventListener("unload", function () {
   WXE.emit(WXE.Events.WindowUnLoaded, {
     href: window.location.href,
   });
+});
+
+WXE.onGotoNextFeed((feed) => {
+  console.log("[eventbus.js]onGotoNextFeed", feed);
+  WXE.emit(WXE.Events.Feed, feed);
+});
+WXE.onGotoPrevFeed((feed) => {
+  console.log("[eventbus.js]onGotoPrevFeed", feed);
+  WXE.emit(WXE.Events.Feed, feed);
+});
+console.log("[eventbus.js]before onFetchFeedProfile");
+WXE.onFetchFeedProfile((feed) => {
+  console.log("[eventbus.js]onFetchFeedProfile", feed);
+  WXE.emit(WXE.Events.Feed, feed);
+});
+WXE.onPCFlowLoaded((feeds) => {
+  console.log("[eventbus.js]onPCFlowLoaded", feeds);
+  WXE.emit(WXE.Events.Feed, feeds[0]);
 });

@@ -1,6 +1,6 @@
 /**
  * 用于下载已经播放的视频内容
- * @param {ChannelsMediaProfile} profile 视频信息
+ * @param {FeedProfile} profile 视频信息
  */
 async function __wx_channels_download(profile) {
   console.log("__wx_channels_download");
@@ -10,7 +10,7 @@ async function __wx_channels_download(profile) {
 }
 /**
  * 下载图片视频
- * @param {ChannelsMediaProfile} profile 视频信息
+ * @param {FeedProfile} profile 视频信息
  */
 async function __wx_channels_download3(profile) {
   console.log("__wx_channels_download3");
@@ -37,7 +37,7 @@ async function __wx_channels_download3(profile) {
 }
 /**
  * 下载加密视频
- * @param {ChannelsMediaProfile} profile 视频信息
+ * @param {FeedProfile} profile 视频信息
  * @param {object} opt 选项
  * @param {boolean} opt.toMP3 是否转换为 MP3
  */
@@ -126,11 +126,11 @@ function __wx_channels_handle_copy__() {
  * @param {boolean} mp3 是否转换为 MP3
  */
 async function __wx_channels_handle_click_download__(spec, mp3) {
-  const [err, profile] = WXU.check_profile_existing();
+  const [err, feed] = WXU.check_feed_existing();
   if (err) return;
-  const _profile = { ...profile };
+  const payload = { ...feed };
   var filename = WXU.build_filename(
-    profile,
+    feed,
     spec,
     WXU.config.downloadFilenameTemplate
   );
@@ -138,34 +138,35 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
     WXU.error({ msg: "文件名生成失败" });
     return;
   }
-  _profile.filename = filename;
-  _profile.original_url = profile.url;
-  _profile.target_spec = null;
+  payload.mp3 = !!mp3;
+  payload.filename = filename;
+  payload.original_url = feed.url;
+  payload.target_spec = null;
   if (spec) {
-    _profile.target_spec = spec;
-    _profile.url = profile.url + "&X-snsvideoflag=" + spec.fileFormat;
+    payload.target_spec = spec;
+    payload.url = feed.url + "&X-snsvideoflag=" + spec.fileFormat;
   }
-  _profile.source_url = location.href;
+  payload.source_url = location.href;
   WXU.log({
-    msg: `${_profile.source_url}
-${_profile.url}
-${_profile.key || "该视频未加密"}
-${_profile.filename}`,
+    msg: `${payload.source_url}
+${payload.url}
+${payload.key || "该视频未加密"}
+${payload.filename}`,
   });
-  WXU.emit(WXU.Events.BeforeDownloadMedia, _profile);
-  if (_profile.type === "picture") {
-    __wx_channels_download3(_profile);
+  WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
+  if (payload.type === "picture") {
+    __wx_channels_download3(payload);
     return;
   }
-  _profile.data = __wx_channels_store__.buffers;
-  __wx_channels_download4(_profile, { toMP3: mp3 });
+  payload.data = __wx_channels_store__.buffers;
+  __wx_channels_download4(payload, { toMP3: mp3 });
 }
 /** 下载已加载的视频 */
 function __wx_channels_download_cur__() {
-  const [err, profile] = WXU.check_profile_existing();
+  const [err, profile] = WXU.check_feed_existing();
   if (err) return;
   if (__wx_channels_store__.buffers.length === 0) {
-    alert("没有可下载的内容");
+    WXU.error({ msg: "没有可下载的内容" });
     return;
   }
   var filename = WXU.build_filename(
@@ -174,7 +175,7 @@ function __wx_channels_download_cur__() {
     WXU.config.downloadFilenameTemplate
   );
   if (!filename) {
-    alert("文件名生成失败");
+    WXU.error({ msg: "文件名生成失败" });
     return;
   }
   profile.filename = filename;
@@ -183,7 +184,7 @@ function __wx_channels_download_cur__() {
 }
 /** 打印下载原始文件命令 */
 function __wx_channels_handle_print_download_command() {
-  const [err, profile] = WXU.check_profile_existing();
+  const [err, profile] = WXU.check_feed_existing();
   if (err) return;
   var _profile = { ...profile };
   var filename = WXU.build_filename(
@@ -205,7 +206,7 @@ function __wx_channels_handle_print_download_command() {
 }
 /** 下载视频封面 */
 async function __wx_channels_handle_download_cover() {
-  var [err, profile] = WXU.check_profile_existing();
+  var [err, profile] = WXU.check_feed_existing();
   if (err) return;
   var filename = WXU.build_filename(
     profile,
@@ -252,8 +253,8 @@ function attach_download_dropdown_menu(trigger) {
     zIndex: 99999,
     children: [
       ...(() => {
-        if (window.beforeExtraMenuItems) {
-          return render_extra_menu_items(window.beforeExtraMenuItems, {
+        if (WXU.before_menu_items) {
+          return render_extra_menu_items(WXU.before_menu_items, {
             hide() {
               $dropdown.hide();
             },
@@ -302,8 +303,8 @@ function attach_download_dropdown_menu(trigger) {
         },
       }),
       ...(() => {
-        if (window.postExtraMenuItems) {
-          return render_extra_menu_items(window.postExtraMenuItems, {
+        if (WXU.after_menu_items) {
+          return render_extra_menu_items(WXU.after_menu_items, {
             hide() {
               $dropdown.hide();
             },
@@ -335,13 +336,13 @@ function attach_download_dropdown_menu(trigger) {
         },
       }),
       ...(() => {
-        const [err, profile] = WXU.check_profile_existing({
+        const [err, profile] = WXU.check_feed_existing({
           silence: true,
         });
         if (err) {
           return [];
         }
-        console.log("[main.js]before profile.spec.map", profile);
+        // console.log("[main.js]before profile.spec.map", profile);
         return profile.spec.map((spec) => {
           return MenuItem({
             label: spec.fileFormat,
@@ -365,7 +366,7 @@ function attach_download_dropdown_menu(trigger) {
   return $dropdown;
 }
 function __wx_download_btn_handler() {
-  const [err, profile] = WXU.check_profile_existing();
+  const [err, profile] = WXU.check_feed_existing();
   if (err) return;
   var spec = WXU.config.defaultHighest ? null : profile.spec[0];
   __wx_channels_handle_click_download__(spec);
@@ -495,32 +496,27 @@ function render_sider_tools() {
     home_mounted = true;
     clearTimeout(profile_timer);
     profile_timer = null;
-    if (feeds.length) {
-      WXU.set_feed(feeds[0]);
-    }
     insert_download_btn_to_home_page();
   });
   WXU.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
     clearTimeout(profile_timer);
     profile_timer = null;
+    WXU.set_cur_video();
     insert_download_btn();
   });
   WXU.onGotoNextFeed((feed) => {
     console.log("[main.js]WXU.onGotoNextFeed", feed);
-    WXU.set_feed(feed);
     WXU.set_cur_video();
     insert_download_btn_to_home_page();
   });
   WXU.onGotoPrevFeed((feed) => {
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
-    WXU.set_feed(feed);
     WXU.set_cur_video();
     insert_download_btn_to_home_page();
   });
-  WXU.onFetchFeedProfile((feed) => {
-    console.log("[main.js]WXU.onFetchFeedProfile", feed);
+  WXU.onFeed((feed) => {
+    console.log("[main.js]WXU.onFeed", feed);
     WXU.set_feed(feed);
-    WXU.set_cur_video();
   });
 })();

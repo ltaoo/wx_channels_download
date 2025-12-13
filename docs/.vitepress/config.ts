@@ -61,6 +61,8 @@ export default defineConfig({
           { text: "指定文件名", link: "/feature/filename" },
           { text: "mp3下载", link: "/feature/mp3" },
           { text: "直播下载", link: "/feature/live" },
+          { text: "自定义菜单", link: "/feature/custom-menu" },
+          { text: "监听事件", link: "/feature/event" },
         ],
       },
       {

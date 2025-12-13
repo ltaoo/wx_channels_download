@@ -125,9 +125,8 @@ function download_btn4() {
 }
 
 /**
- * @param {MenuItem[]} items
- * @param {HTMLDivElement} $dropdown
- * @returns {MenuItem[]}
+ * @param {DropdownMenuItemPayload[]} items
+ * @param {{ hide: () => void }} $dropdown
  */
 function render_extra_menu_items(items, $dropdown) {
   if (!window.Weui) {
@@ -141,18 +140,8 @@ function render_extra_menu_items(items, $dropdown) {
     .map((item) => {
       return MenuItem({
         label: item.label,
-        async onClick() {
-          const [err, profile] = WXU.check_profile_existing();
-          if (err) return;
-          var filename = WXU.build_filename(
-            profile,
-            null,
-            WXU.config.downloadFilenameTemplate
-          );
-          await item.onClick({
-            profile,
-            filename,
-          });
+        async onClick(event) {
+          await item.onClick(event);
           $dropdown.hide();
         },
       });

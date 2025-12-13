@@ -39,9 +39,9 @@ type ChannelPicture struct {
 	URL string `json:"url"`
 }
 type ChannelContact struct {
-	Username string `json:"username"`
-	Nickname string `json:"nickname"`
-	HeadURL  string `json:"head_url"`
+	Id        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	AvatarURL string `json:"avatar_url"`
 }
 type ChannelMediaProfile struct {
 	Type     string             `json:"type"` // media | picture | live
