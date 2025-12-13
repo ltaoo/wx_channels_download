@@ -10,7 +10,9 @@ var WXE = (() => {
     /** 页面卸载完成 */
     WindowUnLoaded: "WindowUnLoaded",
     /** 首页推荐获取到视频列表 */
-    FeedListLoaded: "OnFeedListLoaded",
+    PCFlowLoaded: "PCFlowLoaded",
+    RecommendFeedsLoaded: "RecommendFeedsLoaded",
+    UserFeedsLoaded: "UserFeedsLoaded",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 获取到直播详情 */
@@ -58,13 +60,30 @@ var WXE = (() => {
       };
     },
     /**
-     *
      * @param {(feeds: ChannelsFeed[]) => void} handler
      */
-    onFeedListLoaded(handler) {
-      eventbus.on(ChannelsEvents.FeedListLoaded, handler);
+    onPCFlowLoaded(handler) {
+      eventbus.on(ChannelsEvents.PCFlowLoaded, handler);
       return () => {
-        eventbus.off(ChannelsEvents.FeedListLoaded, handler);
+        eventbus.off(ChannelsEvents.PCFlowLoaded, handler);
+      };
+    },
+    /**
+     * @param {(feeds: ChannelsFeed[]) => void} handler
+     */
+    onRecommendFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.RecommendFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.RecommendFeedsLoaded, handler);
+      };
+    },
+    /**
+     * @param {(feeds: ChannelsFeed[]) => void} handler
+     */
+    onUserFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.UserFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.UserFeedsLoaded, handler);
       };
     },
     /**

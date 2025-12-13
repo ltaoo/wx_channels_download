@@ -46,8 +46,8 @@ const inserted_style = `<style>
 .wx-sider {
   position: relative;
   position: fixed;
-  right: 24px;
-  top: 60%;
+  right: 27px;
+  top: 50%;
   z-index: 99998;
   text-align: center;
   font-size: 14px;

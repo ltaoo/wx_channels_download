@@ -110,6 +110,7 @@ var WXU = (() => {
       type: "picture",
       id: feed.id,
       nonce_id: feed.objectNonceId,
+      cover_url: media.coverUrl,
       title: feed.objectDesc.description,
       files: feed.objectDesc.media,
       contact: feed.contact,
@@ -581,9 +582,11 @@ var WXU = (() => {
       __wx_channels_store__.buffers.push(buf);
     },
     set_cur_video() {
-      window.__wx_channels_cur_video = document.querySelector(
-        ".feed-video.video-js"
-      );
+      setTimeout(() => {
+        window.__wx_channels_cur_video = document.querySelector(
+          ".feed-video.video-js"
+        );
+      }, 800);
     },
     /**
      * @param {ChannelsFeed} feed

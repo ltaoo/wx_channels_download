@@ -147,11 +147,10 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   }
   _profile.source_url = location.href;
   WXU.log({
-    msg: `${_profile.filename}
-${_profile.source_url}
-
+    msg: `${_profile.source_url}
 ${_profile.url}
-${_profile.key || "该视频未加密"}`,
+${_profile.key || "该视频未加密"}
+${_profile.filename}`,
   });
   WXU.emit(WXU.Events.BeforeDownloadMedia, _profile);
   if (_profile.type === "picture") {
@@ -217,9 +216,9 @@ async function __wx_channels_handle_download_cover() {
     WXU.error({ msg: "文件名生成失败" });
     return;
   }
-  WXU.log({ msg: `下载封面\n${profile.coverUrl}` });
+  WXU.log({ msg: `下载封面\n${profile.cover_url}` });
   const ins = WXU.loading();
-  const url = profile.coverUrl.replace(/^http:/, "https:");
+  const url = profile.cover_url.replace(/^http:/, "https:");
   var [err, response] = await WXU.fetch(url);
   ins.hide();
   if (err) {
@@ -409,11 +408,9 @@ async function insert_download_btn_to_home_page() {
 }
 
 async function insert_download_btn() {
-  WXU.log({ msg: "等待注入下载按钮" });
   if (window.location.pathname.includes("/pages/home")) {
     const success = await insert_download_btn_to_home_page();
     if (success) {
-      WXU.log({ msg: "注入下载按钮成功!" });
       return;
     }
     return;
@@ -427,11 +424,9 @@ async function insert_download_btn() {
   if ($elm2) {
     var relative_node = $elm2.children[$elm2.children.length - 1];
     if (!relative_node) {
-      WXU.log({ msg: "注入下载按钮3成功!" });
       $elm2.appendChild($btn);
       return;
     }
-    WXU.log({ msg: "注入下载按钮4成功!" });
     $elm2.insertBefore($btn, relative_node);
     return;
   }
@@ -441,11 +436,9 @@ async function insert_download_btn() {
   if ($elm1) {
     var relative_node = $elm1.children[$elm1.children.length - 1];
     if (!relative_node) {
-      WXU.log({ msg: "注入下载按钮1成功!" });
       $elm1.appendChild($btn);
       return;
     }
-    WXU.log({ msg: "注入下载按钮2成功!" });
     $elm1.insertBefore($btn, relative_node);
     return;
   }
@@ -494,9 +487,8 @@ function render_sider_tools() {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
   var home_mounted = false;
-  WXU.onFeedListLoaded((feeds) => {
-    console.log("[main.js]WXU.onFeedListLoaded", feeds);
-    // 首页推荐才会触发这里？
+  WXU.onPCFlowLoaded((feeds) => {
+    console.log("[main.js]WXU.onPCFlowLoaded", feeds);
     if (home_mounted) {
       return;
     }
@@ -504,13 +496,12 @@ function render_sider_tools() {
     clearTimeout(profile_timer);
     profile_timer = null;
     if (feeds.length) {
-      WXU.set_feed(feeds.find((f) => f.showOriginal) || feeds[0]);
+      WXU.set_feed(feeds[0]);
     }
-    insert_download_btn();
+    insert_download_btn_to_home_page();
   });
   WXU.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
-    // 首页推荐切换上一个下一个，以及 详情页，都会触发这里
     clearTimeout(profile_timer);
     profile_timer = null;
     insert_download_btn();
@@ -530,8 +521,6 @@ function render_sider_tools() {
   WXU.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile", feed);
     WXU.set_feed(feed);
-    setTimeout(() => {
-      WXU.set_cur_video();
-    }, 800);
+    WXU.set_cur_video();
   });
 })();

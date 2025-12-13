@@ -29,14 +29,15 @@ var (
 	jsImportReg     = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
 
 	// 特定路径的正则
-	jsSourceBufferReg  = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	jsCommentDetailReg = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	jsDialogReg        = regexp.MustCompile(`i.default={dialog`)
-	jsLiveInfoReg      = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	jsFeedPageReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
-	jsGoToPrevFlowReg  = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
-	jsGoToNextFlowReg  = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
-	jsFmp4IndexReg     = regexp.MustCompile(`fmp4Index:p.fmp4Index`)
+	jsSourceBufferReg   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	jsDialogReg         = regexp.MustCompile(`i.default={dialog`)
+	jsPCFlowReg         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsRecommendFeedsReg = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
+	jsUserFeedsReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	jsGoToPrevFlowReg   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
+	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
 
 func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *echo.Plugin {
@@ -48,19 +49,16 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 			if util.Includes(pathname, "jszip.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-					"__debug":      "local_file",
 				}, files.JSZip)
 			}
 			if util.Includes(pathname, "FileSaver.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-					"__debug":      "local_file",
 				}, files.JSFileSaver)
 			}
 			if util.Includes(pathname, "recorder.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-					"__debug":      "local_file",
 				}, files.JSRecorder)
 			}
 			if pathname == "/__wx_channels_api/profile" {
@@ -71,7 +69,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
-					"__debug":      "fake_resp",
 				}, "{}")
 			}
 			if pathname == "/__wx_channels_api/tip" {
@@ -95,7 +92,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
-					"__debug":      "fake_resp",
 				}, "{}")
 			}
 			if pathname == "/__wx_channels_api/error" {
@@ -107,7 +103,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				color.Red(fmt.Sprintf("%v%s\n", prefix_text, data.Msg))
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
-					"__debug":      "fake_resp",
 				}, "{}")
 			}
 		},
@@ -142,7 +137,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						ctx.Res.Header.Del("Content-Encoding")
 						ctx.Res.Header.Del("Content-Length")
 						ctx.SetResponseHeader("Content-Type", ct)
-						ctx.SetResponseHeader("__debug", "second_fetch")
 						ctx.SetResponseBody(string(body2))
 						resp_content_type = strings.ToLower(ct)
 					}
@@ -154,7 +148,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				if err != nil {
 					return
 				}
-				ctx.SetResponseHeader("__debug", "append_script")
 				html := string(resp_body)
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
@@ -184,7 +177,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
-					/** 下载逻辑 */
+					/** 核心逻辑 */
 					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
@@ -210,7 +203,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				if err != nil {
 					return
 				}
-				ctx.SetResponseHeader("__debug", "replace_script")
 				js_script := string(resp_body)
 				js_script = jsFromReg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
 				js_script = jsDepReg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
@@ -221,54 +213,64 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					replace_str1 := `(() => {
 					WXU.append_media_buf($1);
 					})(),this.sourceBuffer.appendBuffer($1),`
-					if jsSourceBufferReg.MatchString(js_script) {
-						fmt.Println("2. 视频播放 js 修改成功")
-					}
 					js_script = jsSourceBufferReg.ReplaceAllString(js_script, replace_str1)
 					ctx.SetResponseBody(js_script)
 					return
 				}
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					replace_str1 := `async finderGetCommentDetail($1) {
+					pc_flow_content := `async finderPcFlow($1) {
 					var result = await (async () => {
 						$2;
 					})();
-					var feed = feedResult.data.object;
+					var feeds = result.data.object;
+					console.log("before PCFlowLoaded", result.data);
+					WXU.emit(WXU.Events.PCFlowLoaded, feeds);
+					return result;
+				}async`
+					js_script = jsPCFlowReg.ReplaceAllString(js_script, pc_flow_content)
+					recommend_feeds_content := `async finderGetRecommend($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					var feeds = result.data.object;
+					// console.log("before RecommendFeedsLoaded", result.data);
+					WXU.emit(WXU.Events.RecommendFeedsLoaded, feeds);
+					return result;
+				}async`
+					js_script = jsRecommendFeedsReg.ReplaceAllString(js_script, recommend_feeds_content)
+					feed_profile_content := `async finderGetCommentDetail($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					var feed = result.data.object;
+					console.log("before FeedProfileLoaded", result.data);
 					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
 					return result;
 				}async`
-					if jsCommentDetailReg.MatchString(js_script) {
-						fmt.Println("3.视频读取 js 修改成功")
-					}
-					js_script = jsCommentDetailReg.ReplaceAllString(js_script, replace_str1)
-					if jsFeedPageReg.MatchString(js_script) {
-						fmt.Println("5.首页 API js 修改成功")
-					}
-					replace_str4 := `async finderUserPage($1) {
-					var feedResult = await (async () => {
+					js_script = jsFeedProfileReg.ReplaceAllString(js_script, feed_profile_content)
+					user_feeds_content := `async finderUserPage($1) {
+					var result = await (async () => {
 						$2;
 					})();
-					var feeds = feedResult.data.object;
-					console.log(feedResult.data);
-					WXU.emit(WXU.Events.FeedListLoaded, feeds);
-					return feedResult;
+					var feeds = result.data.object;
+					// console.log("before UserFeedsLoaded", result.data);
+					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
+					return result;
 				}async`
-					js_script = jsFeedPageReg.ReplaceAllString(js_script, replace_str4)
-
-					replace_str2 := `i.default=window.__wx_channels_tip__={dialog`
-					js_script = jsDialogReg.ReplaceAllString(js_script, replace_str2)
-					replace_str3 := `async finderGetLiveInfo($1) {
+					js_script = jsUserFeedsReg.ReplaceAllString(js_script, user_feeds_content)
+					live_profile_content := `async finderGetLiveInfo($1) {
 					var result = await (async () => {
 						$2;
 					})();
 					var live = result.data.object;
+					console.log("before LiveProfileLoaded", result.data);
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
 					return result;
 				}async`
-					if pathname == "/web/pages/live" && jsLiveInfoReg.MatchString(js_script) {
-						fmt.Println("4.直播 API js 修改成功")
-					}
-					js_script = jsLiveInfoReg.ReplaceAllString(js_script, replace_str3)
+					js_script = jsLiveInfoReg.ReplaceAllString(js_script, live_profile_content)
+					// 之后还是换成自己实现的吧，就用到了 loading 和 toast 两个方法
+					wx_toast_content := `i.default=window.__wx_channels_tip__={dialog`
+					js_script = jsDialogReg.ReplaceAllString(js_script, wx_toast_content)
 					ctx.SetResponseBody(js_script)
 					return
 				}
@@ -281,7 +283,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 							return;
 						}
 						var feed = yt.value.feeds[yt.value.currentFeedIndex];
-						console.log("handle goto next feed", yt, feed);
+						console.log("before GotoNextFeed", yt, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
 					}`
 					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
@@ -292,16 +294,10 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 							return;
 						}
 						var feed = yt.value.feeds[yt.value.currentFeedIndex];
-						console.log("handle goto prev feed", yt, feed);
+						console.log("before GotoPrevFeed", yt, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
 					}`
 					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
-					ctx.SetResponseBody(js_script)
-					return
-				}
-				if util.Includes(pathname, "worker_release") {
-					replace_str := `decryptor_array:p.decryptor_array,fmp4Index:p.fmp4Index`
-					js_script = jsFmp4IndexReg.ReplaceAllString(js_script, replace_str)
 					ctx.SetResponseBody(js_script)
 					return
 				}

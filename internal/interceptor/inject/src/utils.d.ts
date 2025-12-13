@@ -31,6 +31,7 @@ type DropdownMenuItemPayload = {
 type ChannelsFeed = {
   id: string;
   objectDesc: {
+    /** 4视频 9直播 */
     mediaType: number;
     description: string;
     media: ChannelsMedia[];
@@ -46,6 +47,7 @@ type ChannelsFeed = {
   commentCount: number;
   favCount: number;
 };
+/** 视频号原始的 media */
 type ChannelsMedia = {
   url: string;
   coverUrl: string;
