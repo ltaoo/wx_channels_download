@@ -1,6 +1,9 @@
 debug:
   error: false
 
+pagespy:
+  enabled: false
+
 download:
   defaultHighest: false
   filenameTemplate: "{{filename}}_{{spec}}"

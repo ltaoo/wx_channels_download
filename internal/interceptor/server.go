@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"wx_channel/internal/manager"
+	"wx_channel/pkg/certificate"
 )
 
 type InterceptorServer struct {
@@ -11,19 +12,16 @@ type InterceptorServer struct {
 	interceptor *Interceptor
 }
 
-func NewInterceptorServer(config InterceptorConfig) (*InterceptorServer, error) {
-	interceptor, err := NewInterceptor(config)
-	if err != nil {
-		return nil, err
-	}
-	addr := config.Hostname + ":" + strconv.Itoa(config.Port)
+func NewInterceptorServer(settings *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *InterceptorServer {
+	interceptor := NewInterceptor(settings, cert)
+	addr := settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort)
 	srv := manager.NewHTTPServer("代理服务", "interceptor", addr)
 	srv.SetHandler(interceptor)
 
 	return &InterceptorServer{
 		HTTPServer:  srv,
 		interceptor: interceptor,
-	}, nil
+	}
 }
 
 func (s *InterceptorServer) Start() error {

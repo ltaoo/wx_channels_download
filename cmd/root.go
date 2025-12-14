@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"wx_channel/config"
 	"wx_channel/internal/download"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/manager"
@@ -19,15 +18,13 @@ import (
 )
 
 var (
-	Version        string
-	device         string
-	hostname       string
-	port           int
-	debug          bool
-	cert_files     *certificate.CertFileAndKeyFile
-	channel_files  *interceptor.ChannelInjectedFiles
-	cert_file_name string
-	cfg            *config.Config
+	Version   string
+	device    string
+	hostname  string
+	port      int
+	debug     bool
+	CertFiles *certificate.CertFileAndKeyFile
+	Settings  *interceptor.InterceptorSettings
 )
 
 var root_cmd = &cobra.Command{
@@ -37,23 +34,12 @@ var root_cmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg.DebugShowError = viper.GetBool("debug.error")
-		cfg.ProxySetSystem = viper.GetBool("proxy.system")
-		cfg.ProxyServerHostname = viper.GetString("proxy.hostname")
-		cfg.ProxyServerPort = viper.GetInt("proxy.port")
-		root_command(RootCommandArg{
-			InterceptorConfig: interceptor.InterceptorConfig{
-				Version:        Version,
-				Device:         device,
-				SetSystemProxy: cfg.ProxySetSystem,
-				Hostname:       cfg.ProxyServerHostname,
-				Port:           cfg.ProxyServerPort,
-				Debug:          cfg.DebugShowError,
-				CertFiles:      cert_files,
-				ChannelFiles:   channel_files,
-				Cfg:            cfg,
-			},
-		})
+		Settings.Version = Version
+		Settings.DebugShowError = viper.GetBool("debug.error")
+		Settings.ProxySetSystem = viper.GetBool("proxy.system")
+		Settings.ProxyServerHostname = viper.GetString("proxy.hostname")
+		Settings.ProxyServerPort = viper.GetInt("proxy.port")
+		root_command(Settings)
 	},
 }
 
@@ -68,14 +54,12 @@ func init() {
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(app_ver string, assets *interceptor.ChannelInjectedFiles, cert *certificate.CertFileAndKeyFile, c *config.Config) error {
+func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, settings *interceptor.InterceptorSettings) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
-	cert_file_name = cert.Name
-	channel_files = assets
-	cert_files = cert
-	cfg = c
+	CertFiles = cert
+	Settings = settings
 
 	return root_cmd.Execute()
 }
@@ -84,40 +68,25 @@ func Register(cmd *cobra.Command) {
 }
 
 type RootCommandArg struct {
-	interceptor.InterceptorConfig
 }
 
-func root_command(args RootCommandArg) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	signal_chan := make(chan os.Signal, 1)
-	err_chan := make(chan error, 1)
-
-	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(signal_chan)
+func root_command(args *interceptor.InterceptorSettings) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
-	if args.Cfg.FilePath != "" {
-		fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
+	if args.FilePath != "" {
+		fmt.Printf("配置文件 %s\n", args.FilePath)
 	}
 	if script_byte := viper.Get("globalUserScript"); script_byte != nil {
 		fmt.Printf("存在全局脚本\n\n")
 	}
-
 	mgr := manager.NewServerManager()
 
-	// 初始化拦截服务
-	interceptorServer, err := interceptor.NewInterceptorServer(args.InterceptorConfig)
-	if err != nil {
-		fmt.Printf("ERROR 初始化代理服务失败: %v\n", err.Error())
-		os.Exit(1)
-	}
+	interceptorServer := interceptor.NewInterceptorServer(args, CertFiles)
 	mgr.RegisterServer(interceptorServer)
-
-	// 初始化下载服务
-	downloadServer := download.NewDownloadServer(cfg.DownloadLocalServerAddr)
+	downloadServer := download.NewDownloadServer(Settings.DownloadLocalServerAddr)
 	mgr.RegisterServer(downloadServer)
 
 	cleanup := func() {
@@ -128,10 +97,9 @@ func root_command(args RootCommandArg) {
 		if err := mgr.StopServer("download"); err != nil {
 			fmt.Printf("⚠️ 关闭下载服务失败: %v\n", err)
 		}
+		color.Green("服务已关闭")
 	}
-
-	if args.Cfg.DownloadLocalServerEnabled {
-		// 启动下载服务
+	if args.DownloadLocalServerEnabled {
 		if err := mgr.StartServer("download"); err != nil {
 			fmt.Printf("ERROR 启动下载服务失败: %v\n", err.Error())
 			cleanup()
@@ -139,7 +107,6 @@ func root_command(args RootCommandArg) {
 		}
 		color.Green("下载服务启动成功")
 	}
-	// 启动代理服务
 	if err := mgr.StartServer("interceptor"); err != nil {
 		fmt.Printf("ERROR 启动代理服务失败: %v\n", err.Error())
 		cleanup()
@@ -147,7 +114,7 @@ func root_command(args RootCommandArg) {
 	}
 	color.Green("代理服务启动成功")
 
-	if !args.SetSystemProxy {
+	if !args.ProxySetSystem {
 		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptorServer.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
 	} else {
@@ -155,15 +122,6 @@ func root_command(args RootCommandArg) {
 		color.Green("请打开需要下载的视频号页面进行下载")
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")
-
-	select {
-	case _ = <-signal_chan:
-		cleanup()
-	case err := <-err_chan:
-		fmt.Printf("ERROR %v\n", err.Error())
-		cleanup()
-		os.Exit(1)
-	case <-ctx.Done():
-		cleanup()
-	}
+	<-ctx.Done()
+	cleanup()
 }

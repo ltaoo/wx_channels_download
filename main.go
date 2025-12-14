@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"wx_channel/cmd"
-	"wx_channel/config"
 	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
@@ -14,7 +13,7 @@ import (
 var AppVer = "251213"
 
 func main() {
-	cfg, err := config.LoadConfig()
+	cfg, err := interceptor.NewInterceptorSettings()
 	if err != nil {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
@@ -26,7 +25,7 @@ func main() {
 		}
 		return
 	}
-	if err := cmd.Execute(AppVer, interceptor.Assets, certificate.DefaultCertFiles, cfg); err != nil {
+	if err := cmd.Execute(AppVer, certificate.DefaultCertFiles, cfg); err != nil {
 		fmt.Printf("初始化失败 %v\n", err.Error())
 	}
 }

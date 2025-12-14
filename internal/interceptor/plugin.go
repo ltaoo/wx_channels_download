@@ -13,7 +13,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/ltaoo/echo"
 
-	"wx_channel/config"
 	"wx_channel/pkg/util"
 )
 
@@ -40,7 +39,7 @@ var (
 	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *config.Config) *echo.Plugin {
+func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *InterceptorSettings) *echo.Plugin {
 	v := "?t=" + version
 	return &echo.Plugin{
 		Match: "qq.com",

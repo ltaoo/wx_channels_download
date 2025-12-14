@@ -4,50 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	FilePath                     string // 配置文件路径
-	DownloadDefaultHighest       bool   `json:"defaultHighest"`             // 默认下载最高画质
-	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`   // 下载文件名模板
-	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
-	DownloadLocalServerEnabled   bool   `json:"downloadLocalServerEnabled"` // 下载时是否使用本地服务器
-	DownloadLocalServerAddr      string `json:"downloadLocalServerAddr"`    // 下载时本地服务器地址
-	ProxySetSystem               bool
-	ProxyServerHostname          string
-	ProxyServerPort              int
-	PagespyEnabled               bool   `json:"pagespyEnabled"`        // 是否启用 pagespy
-	PagespyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
-	PagespyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
-	DebugShowError               bool
-	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
-	InjectExtraScriptAfterJSMain string // 额外注入的 js
-	InjectGlobalScript           string // 全局用户脚本
+	BaseDir  string
+	Filename string
+	FullPath string
+	Existing bool
+	Error    error
+	Debug    bool
 }
 
-func SetDefault() {
-	viper.SetDefault("download.defaultHighest", false)
-	viper.SetDefault("download.filenameTemplate", "{{filename}}_{{spec}}")
-	viper.SetDefault("download.pauseWhenDownload", false)
-	viper.SetDefault("download.localServer.enabled", false)
-	viper.SetDefault("download.localServer.addr", "127.0.0.1:8080")
-	viper.SetDefault("proxy.system", true)
-	viper.SetDefault("proxy.port", 2023)
-	viper.SetDefault("proxy.hostname", "127.0.0.1")
-	viper.SetDefault("debug.pagespy.enabled", false)
-	viper.SetDefault("debug.pagespy.protocol", "https")
-	viper.SetDefault("debug.pagespy.api", "debug.weixin.qq.com")
-	viper.SetDefault("debug.error", false)
-	viper.SetDefault("channel.disableLocationToHome", false)
-	viper.SetDefault("inject.extraScript.afterJSMain", "")
-	viper.SetDefault("inject.globalScript", "")
-}
-func LoadConfig() (*Config, error) {
+func New() (*Config, error) {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -73,58 +46,86 @@ func LoadConfig() (*Config, error) {
 			break
 		}
 	}
+	filename := "config.yaml"
 	if config_filepath == "" {
-		config_filepath = filepath.Join(base_dir, "config.yaml")
+		config_filepath = filepath.Join(base_dir, filename)
 	}
-	SetDefault()
 	viper.SetConfigFile(config_filepath)
-	if has_config {
+	c := &Config{
+		BaseDir:  base_dir,
+		Filename: filename,
+		FullPath: config_filepath,
+		Existing: has_config,
+	}
+	return c, nil
+}
+
+func (c *Config) LoadConfig() error {
+	if c.Existing {
+		// config.FilePath = config_filepath
 		if err := viper.ReadInConfig(); err != nil {
 			var nf viper.ConfigFileNotFoundError
 			if !(errors.As(err, &nf) || errors.Is(err, os.ErrNotExist)) {
-				return nil, fmt.Errorf("error reading config file: %w", err)
+				c.Error = err
+				return err
 			}
 		}
 	}
-	global_script_path := path.Join(base_dir, "global.js")
-	if _, err := os.Stat(global_script_path); err == nil {
-		script_byte, err := os.ReadFile(global_script_path)
-		if err == nil {
-			viper.Set("inject.globalScript", string(script_byte))
-		}
+	return nil
+}
+
+// GetDebugInfo returns debug information about how the base directory was determined
+func (c *Config) GetDebugInfo() map[string]string {
+	exe, _ := os.Executable()
+	exe_dir := filepath.Dir(exe)
+
+	info := map[string]string{
+		"executable":    exe,
+		"exe_dir":       exe_dir,
+		"base_dir":      c.BaseDir,
+		"config_path":   c.FullPath,
+		"config_exists": fmt.Sprintf("%v", c.Existing),
 	}
-	config := &Config{
-		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
-		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
-		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
-		DownloadLocalServerEnabled:   viper.GetBool("download.localServer.enabled"),
-		DownloadLocalServerAddr:      viper.GetString("download.localServer.addr"),
-		ProxySetSystem:               viper.GetBool("proxy.system"),
-		ProxyServerPort:              viper.GetInt("proxy.port"),
-		ProxyServerHostname:          viper.GetString("proxy.hostname"),
-		PagespyEnabled:               viper.GetBool("debug.pagespy.enabled"),
-		PagespyServerProtocol:        viper.GetString("debug.pagespy.protocol"),
-		PagespyServerAPI:             viper.GetString("debug.pagespy.api"),
-		DebugShowError:               viper.GetBool("debug.error"),
-		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
-		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
-		InjectGlobalScript:           viper.GetString("inject.globalScript"),
+
+	// Determine run mode
+	if filepath.Base(exe_dir) == "exe" || strings.Contains(exe, "go-build") {
+		info["run_mode"] = "go run (development)"
+	} else {
+		info["run_mode"] = "compiled binary"
 	}
-	if has_config {
-		config.FilePath = config_filepath
+
+	return info
+}
+
+func (c *Config) Update(key string, value interface{}) {
+	viper.Set(key, value)
+}
+
+func (c *Config) Save() error {
+	return viper.WriteConfigAs(c.FullPath)
+}
+
+func (c *Config) GetAll() map[string]interface{} {
+	return viper.AllSettings()
+}
+
+func (c *Config) Get(key string) interface{} {
+	return viper.Get(key)
+}
+
+// Typed getters with dotted path support, e.g. "a.b.c"
+func (c *Config) GetString(path string) string   { return viper.GetString(path) }
+func (c *Config) GetInt(path string) int         { return viper.GetInt(path) }
+func (c *Config) GetBool(path string) bool       { return viper.GetBool(path) }
+func (c *Config) GetFloat64(path string) float64 { return viper.GetFloat64(path) }
+
+func EnsureDirIfMissing(path string) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		return nil
 	}
-	extra_js_filepath := config.InjectExtraScriptAfterJSMain
-	if extra_js_filepath != "" {
-		// If it's a relative path, resolve it against the current working directory
-		if !filepath.IsAbs(extra_js_filepath) {
-			extra_js_filepath = filepath.Join(base_dir, extra_js_filepath)
-		}
-		if _, err := os.Stat(extra_js_filepath); err == nil {
-			script_byte, err := os.ReadFile(extra_js_filepath)
-			if err == nil {
-				config.InjectExtraScriptAfterJSMain = string(script_byte)
-			}
-		}
+	if os.IsNotExist(err) {
+		return os.MkdirAll(path, 0755)
 	}
-	return config, nil
+	return err
 }

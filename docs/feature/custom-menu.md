@@ -4,12 +4,12 @@ title: 自定义菜单
 
 # 自定义菜单
 
-可以在现有「下载菜单」的悬浮菜单中，增加自己的功能
+可以在现有「下载按钮」的悬浮菜单中，增加自己的功能
 
 
 ## 增加「下载视频和封面」
 
-在和 `wx_channel_download` 相同目录下增加一个 `global.js` 文件，内容如下
+在和 `wx_video_download.exe` 相同目录下增加一个 `global.js` 文件，内容如下
 
 ```js
 // global.js
@@ -53,11 +53,11 @@ WXU.unshiftMenuItems([
           });
         },
       });
+      var media_buf = new Uint8Array(await media_blob.arrayBuffer());
       if (feed.key) {
         WXU.log({
           msg: "下载完成，开始解密",
         });
-        var media_buf = new Uint8Array(await media_blob.arrayBuffer());
         var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
         if (err) {
           WXU.error({ msg: "解密失败，" + err.message, alert: 0 });
