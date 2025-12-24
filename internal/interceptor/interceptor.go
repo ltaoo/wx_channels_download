@@ -54,7 +54,6 @@ func (c *Interceptor) Start() error {
 	}
 	if len(c.PostPlugins) != 0 {
 		for _, plugin := range c.PostPlugins {
-			fmt.Println("add plugin")
 			client.AddPlugin(plugin)
 		}
 	}

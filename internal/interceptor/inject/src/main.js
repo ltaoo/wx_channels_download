@@ -233,7 +233,7 @@ async function __wx_channels_handle_download_cover() {
  * 为指定按钮添加额外的下载选项菜单
  * @param {HTMLElement} trigger
  */
-function attach_download_dropdown_menu(trigger) {
+function __wx_attach_download_dropdown_menu(trigger) {
   if (typeof window.Weui === "undefined") {
     return null;
   }
@@ -374,7 +374,7 @@ function __wx_download_btn_handler() {
 /**
  * 为「首页/推荐」添加下载按钮
  */
-async function insert_download_btn_to_home_page() {
+async function __wx_insert_download_btn_to_home_page() {
   var $container = await WXU.find_elm(function () {
     return document.querySelector(".slides-scroll");
   });
@@ -399,25 +399,25 @@ async function insert_download_btn_to_home_page() {
   const $parent = $elm3.parentElement;
   if ($parent) {
     const $btn = download_btn2();
-    attach_download_dropdown_menu($btn);
+    __wx_attach_download_dropdown_menu($btn);
     $btn.onclick = __wx_download_btn_handler;
     $parent.appendChild($btn);
     return true;
   }
-  render_sider_tools();
+  __wx_render_sider_tools();
   return false;
 }
 
-async function insert_download_btn() {
+async function __wx_insert_download_btn() {
   if (window.location.pathname.includes("/pages/home")) {
-    const success = await insert_download_btn_to_home_page();
+    const success = await __wx_insert_download_btn_to_home_page();
     if (success) {
       return;
     }
     return;
   }
   const $btn = download_btn1();
-  attach_download_dropdown_menu($btn);
+  __wx_attach_download_dropdown_menu($btn);
   $btn.onclick = __wx_download_btn_handler;
   var $elm2 = await WXU.find_elm(function () {
     return document.getElementsByClassName("full-opr-wrp layout-col")[0];
@@ -443,12 +443,12 @@ async function insert_download_btn() {
     $elm1.insertBefore($btn, relative_node);
     return;
   }
-  render_footer_tools();
+  __wx_render_footer_tools();
 }
 /**
  * 在视频详情页底部添加悬浮下载按钮
  */
-function render_footer_tools() {
+function __wx_render_footer_tools() {
   const $fixed_footer = document.createElement("div");
   $fixed_footer.className = "wx-footer";
   const $tools = document.createElement("div");
@@ -457,7 +457,7 @@ function render_footer_tools() {
   $btn.className = "weui-btn weui-btn_default weui-btn_mini";
   $btn.innerHTML = "下载";
   $btn.onclick = __wx_download_btn_handler;
-  attach_download_dropdown_menu($btn);
+  __wx_attach_download_dropdown_menu($btn);
   document.body.appendChild($fixed_footer);
   $fixed_footer.appendChild($tools);
   $tools.appendChild($btn);
@@ -465,7 +465,7 @@ function render_footer_tools() {
 /**
  * 在首页右侧添加悬浮下载按钮
  */
-function render_sider_tools() {
+function __wx_render_sider_tools() {
   const $fixed_sider = document.createElement("div");
   $fixed_sider.className = "wx-sider";
   const $sider_bg = document.createElement("div");
@@ -476,7 +476,7 @@ function render_sider_tools() {
   $btn.className = "wx-sider-tools-btn";
   $btn.innerHTML = download_icon1;
   $btn.onclick = __wx_download_btn_handler;
-  attach_download_dropdown_menu($btn);
+  __wx_attach_download_dropdown_menu($btn);
   document.body.appendChild($fixed_sider);
   $fixed_sider.appendChild($sider_bg);
   $fixed_sider.appendChild($tools);
@@ -484,36 +484,41 @@ function render_sider_tools() {
 }
 
 (() => {
-  var profile_timer = setTimeout(() => {
-    WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
+  var error_tip_timer = setTimeout(() => {
+    WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);
-  var home_mounted = false;
+  var home_page_mounted = false;
   WXU.onPCFlowLoaded((feeds) => {
     console.log("[main.js]WXU.onPCFlowLoaded", feeds);
-    if (home_mounted) {
+    if (home_page_mounted) {
       return;
     }
-    home_mounted = true;
-    clearTimeout(profile_timer);
-    profile_timer = null;
-    insert_download_btn_to_home_page();
+    home_page_mounted = true;
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
+    __wx_insert_download_btn_to_home_page();
   });
+  var profile_page_mounted = false;
   WXU.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
-    clearTimeout(profile_timer);
-    profile_timer = null;
+    if (profile_page_mounted) {
+      return;
+    }
+    profile_page_mounted = true;
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
     WXU.set_cur_video();
-    insert_download_btn();
+    __wx_insert_download_btn();
   });
   WXU.onGotoNextFeed((feed) => {
     console.log("[main.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
-    insert_download_btn_to_home_page();
+    __wx_insert_download_btn_to_home_page();
   });
   WXU.onGotoPrevFeed((feed) => {
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
-    insert_download_btn_to_home_page();
+    __wx_insert_download_btn_to_home_page();
   });
   WXU.onFeed((feed) => {
     console.log("[main.js]WXU.onFeed", feed);

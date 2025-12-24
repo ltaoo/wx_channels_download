@@ -18,7 +18,7 @@ function __wx_copy_live_download_command() {
   WXU.toast("请在终端查看下载命令");
 }
 
-async function insert_live_download_btn() {
+async function __wx_insert_live_download_btn() {
   var $elm1 = await WXU.find_elm(function () {
     return document.querySelector(".host__info .extra");
   });
@@ -37,14 +37,19 @@ async function insert_live_download_btn() {
 }
 
 (() => {
-  var live_timer = setTimeout(() => {
+  var error_tip_timer = setTimeout(() => {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
+  var live_page_mounted = false;
   WXU.onFetchLiveProfile((feed) => {
     console.log("[live.js]onFetchLiveProfile", feed);
-    clearTimeout(live_timer);
-    live_timer = null;
+    if (live_page_mounted) {
+      return;
+    }
+    live_page_mounted = true;
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
     WXU.set_live_feed(feed);
-    insert_live_download_btn();
+    __wx_insert_live_download_btn();
   });
 })();

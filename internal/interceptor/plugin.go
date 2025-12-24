@@ -28,9 +28,9 @@ var (
 	jsImportReg     = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
 
 	// 特定路径的正则
+	jsDialogReg         = regexp.MustCompile(`i.default={dialog`)
 	jsSourceBufferReg   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
 	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	jsDialogReg         = regexp.MustCompile(`i.default={dialog`)
 	jsPCFlowReg         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
 	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
 	jsRecommendFeedsReg = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)

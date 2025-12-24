@@ -71,12 +71,6 @@ func download_command(args DownloadCommandArgs) {
 		fmt.Printf("[ERROR]%v\n", err.Error())
 		return
 	}
-	// elapsed := time.Since(start_time)
-	// speed := float64(file_size) / elapsed.Seconds() / 1024 / 1024
-
-	// fmt.Printf("文件大小: %.2f MB\n", float64(file_size)/1024/1024)
-	// fmt.Printf("耗时: %.2f 秒\n", elapsed.Seconds())
-	// fmt.Printf("平均速度: %.2f MB/s\n", speed)
 
 	if args.DecryptKey != 0 {
 		fmt.Printf("下载完成!\n")
