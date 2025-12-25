@@ -40,8 +40,9 @@
     });
     return sum;
   }
-  function render() {
-    const tbody = document.getElementById("tbody");
+  function render(selector) {
+    const tbody = document.querySelector(selector);
+    if (!tbody) return;
     tbody.innerHTML = "";
     Array.from(tasks.values()).forEach((t) => {
       const tr = document.createElement("tr");
@@ -57,9 +58,9 @@
           </td>`;
       tbody.appendChild(tr);
     });
-    document.getElementById("totalSpeed").textContent = format_speed(
-      total_speed()
-    );
+    // document.getElementById("totalSpeed").textContent = format_speed(
+    //   total_speed()
+    // );
   }
 
   function upsert(task) {
@@ -67,10 +68,10 @@
     tasks.set(task.id, task);
   }
 
-  function connect() {
+  function connect(selector) {
     const ws = new WebSocket(
       (location.protocol === "https:" ? "wss://" : "ws://") +
-        location.host +
+        "api.channels.qq.com" +
         "/ws"
     );
     ws.onmessage = (ev) => {
@@ -79,29 +80,49 @@
         if (Array.isArray(msg.data)) {
           msg.data.forEach(upsert);
         }
-        render();
-      } else if (msg.type === "event") {
+        render(selector);
+        return;
+      }
+      if (msg.type === "event") {
         const evt = msg && msg.data ? msg.data : null;
         const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
         if (task) {
           upsert(task);
         }
-        render();
+        render(selector);
       }
     };
+
+    document.addEventListener("click", async (e) => {
+      if (e.target && e.target.classList.contains("start-btn")) {
+        const id = e.target.getAttribute("data-id");
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: "https://api.channels.qq.com/api/task/start",
+          body: { id },
+        });
+        if (err) {
+          WXU.error({
+            msg: err.message,
+          });
+          return;
+        }
+        console.log(data);
+      }
+    });
   }
 
   function insert_downloader() {
     var $button = download_btn5();
+    var $download_panel = document.createElement("div");
+    $download_panel.innerHTML = `<table style="width: 460px;">
+  <thead>
+    <tr><th>ID</th><th>Name</th><th>Status</th><th>Speed</th><th>Progress</th></tr>
+  </thead>
+  <tbody id="downloader_container" style="min-width: 200px;">
+</table>`;
     Weui.Popover($button, {
-      content: `
-        <div style="min-width: 200px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 16px;">Popover Title</h3>
-          <p style="margin: 0; color: #666;">
-            This is <b>HTML</b> content with <span style="color: blue;">styles</span>.
-          </p>
-        </div>
-      `,
+      content: $download_panel.innerHTML,
       placement: "bottom-end", // Default is now bottom-start (arrow on left)
       closeOnClickOutside: true,
     });
@@ -109,6 +130,16 @@
     var $box = $header.children[$header.children.length - 1];
     var $btn_wrap = $box.children[0];
     $btn_wrap.insertBefore($button, $btn_wrap.firstChild);
+
+    // var $absolute = document.createElement("div");
+    // $absolute.style.position = "absolute";
+    // $absolute.style.top = "50px";
+    // $absolute.style.left = "50px";
+    // $absolute.style.zIndex = 9999;
+    // document.body.appendChild($absolute);
+    // $absolute.appendChild($download_panel);
+
+    connect("#downloader_container");
   }
 
   setTimeout(() => {

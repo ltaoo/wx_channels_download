@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
+	"github.com/ltaoo/echo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -97,6 +98,14 @@ func root_command(args *interceptor.InterceptorSettings) {
 	mgr := manager.NewServerManager()
 
 	interceptor_srv := interceptor.NewInterceptorServer(args, CertFiles)
+	interceptor_srv.Interceptor.AddPostPlugin(&echo.Plugin{
+		Match: "api.channels.qq.com",
+		Target: &echo.TargetConfig{
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     2022,
+		},
+	})
 	mgr.RegisterServer(interceptor_srv)
 
 	api_settings := api.NewAPISettings(Cfg)
@@ -118,7 +127,7 @@ func root_command(args *interceptor.InterceptorSettings) {
 		cleanup()
 		os.Exit(1)
 	}
-	color.Green("API服务启动成功")
+	color.Green(fmt.Sprintf("API服务启动成功, 地址: %v", api_srv.Addr()))
 	if err := mgr.StartServer("interceptor"); err != nil {
 		fmt.Printf("ERROR 启动代理服务失败: %v\n", err.Error())
 		cleanup()

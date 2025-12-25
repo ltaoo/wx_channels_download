@@ -1,9 +1,9 @@
 package api
 
 import (
-	"github.com/adrg/xdg"
-
 	"wx_channel/config"
+
+	"github.com/adrg/xdg"
 )
 
 type APISettings struct {
@@ -15,10 +15,22 @@ type APISettings struct {
 
 func SetDefaultSettings(cfg *config.Config) {
 	config.Register(config.ConfigItem{
-		Key:         "api.defaultDownloadDir",
+		Key:         "download.defaultDownloadDir",
 		Type:        config.ConfigTypeString,
 		Default:     xdg.UserDirs.Download,
-		Description: "默认下载目录",
+		Description: "下载目录",
+	})
+	config.Register(config.ConfigItem{
+		Key:         "download.maxRunning",
+		Type:        config.ConfigTypeInt,
+		Default:     4,
+		Description: "最大同时下载任务数",
+	})
+	config.Register(config.ConfigItem{
+		Key:         "api.addr",
+		Type:        config.ConfigTypeString,
+		Default:     "127.0.0.1:2022",
+		Description: "服务地址",
 	})
 }
 func NewAPISettings(c *config.Config) *APISettings {

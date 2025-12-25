@@ -59,20 +59,12 @@ func SetDefaultSettings(cfg *config.Config) {
 		Group:       "Download",
 	})
 	config.Register(config.ConfigItem{
-		Key:         "download.localServer.enabled",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "是否开启本地服务器",
-		Title:       "本地服务器",
-		Group:       "Download",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "download.localServer.addr",
+		Key:         "api.addr",
 		Type:        config.ConfigTypeString,
-		Default:     "127.0.0.1:8080",
-		Description: "本地服务器地址",
-		Title:       "本地服务器地址",
-		Group:       "Download",
+		Default:     "127.0.0.1:2022",
+		Description: "API 服务器地址",
+		Title:       "API 服务器地址",
+		Group:       "API",
 	})
 	config.Register(config.ConfigItem{
 		Key:         "proxy.system",

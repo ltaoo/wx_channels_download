@@ -59,16 +59,17 @@
           return;
         }
         AllFeedsOfContact.push(...r.data.object);
-        if (
-          !r.data.lastBuffer ||
-          r.data.object.length < 15 ||
-          r.data.object.length === 0
-        ) {
-          console.log("All feeds", AllFeedsOfContact);
-          has_more = false;
-          return;
-        }
-        next_marker = r.data.lastBuffer;
+        has_more = false;
+        // if (
+        //   !r.data.lastBuffer ||
+        //   r.data.object.length < 15 ||
+        //   r.data.object.length === 0
+        // ) {
+        //   console.log("All feeds", AllFeedsOfContact);
+        //   has_more = false;
+        //   return;
+        // }
+        // next_marker = r.data.lastBuffer;
       }
     };
     $operation.appendChild($btn);
