@@ -2,6 +2,90 @@
  * @file 下载管理
  */
 (() => {
+  // Styles
+  const style = document.createElement("style");
+  style.textContent = `
+    .download-list {
+      width: 400px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .download-item {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+    }
+    .download-item:hover {
+      background: #f9f9f9;
+    }
+    .download-icon {
+      width: 32px;
+      height: 32px;
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f5f5;
+      border-radius: 4px;
+      color: #666;
+    }
+    .download-info {
+      flex: 1;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .download-title {
+      font-size: 14px;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .download-meta {
+      font-size: 12px;
+      color: #999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .download-action {
+      margin-left: 10px;
+      cursor: pointer;
+      color: #555;
+      padding: 6px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .download-action:hover {
+      background: #eee;
+    }
+    .download-progress-bar {
+      height: 3px;
+      background: #eee;
+      border-radius: 1.5px;
+      width: 100%;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .download-progress-inner {
+      height: 100%;
+      background: #07c160;
+      transition: width 0.3s;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Icons
+  const FileIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`;
+  const FolderIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+
   const tasks = new Map();
   function format_speed(bps) {
     const kb = 1024,
@@ -41,26 +125,80 @@
     return sum;
   }
   function render(selector) {
-    const tbody = document.querySelector(selector);
-    if (!tbody) return;
-    tbody.innerHTML = "";
-    Array.from(tasks.values()).forEach((t) => {
-      const tr = document.createElement("tr");
+    const container = document.querySelector(selector);
+    if (!container) return;
+    container.innerHTML = "";
+
+    const list = Array.from(tasks.values()).reverse(); // Newest first
+
+    if (list.length === 0) {
+      container.innerHTML = `<div style="padding: 20px; text-align: center; color: #999; font-size: 14px;">暂无下载任务</div>`;
+      return;
+    }
+
+    list.forEach((t) => {
+      const item = document.createElement("div");
+      item.className = "download-item";
+      
       const pr = percent(t);
-      tr.innerHTML = `
-          <td>${t.id}</td>
-          <td>${name_of(t)}</td>
-          <td>${t.status}</td>
-          <td>${format_speed(t.progress ? t.progress.speed : 0)}</td>
-          <td>
-            <div class="bar"><div style="width:${pr}%"></div></div>
-            ${pr}%
-          </td>`;
-      tbody.appendChild(tr);
+      const isCompleted = t.status === "completed" || t.status === "success" || (t.status === "finished") || (pr === 100 && t.status !== "running");
+
+      let statusText = t.status;
+      let progressDisplay = "";
+      
+      if (t.status === "running") {
+         const speed = format_speed(t.progress ? t.progress.speed : 0);
+         statusText = `${speed} • ${pr}%`;
+         progressDisplay = `<div class="download-progress-bar"><div class="download-progress-inner" style="width:${pr}%"></div></div>`;
+      } else if (isCompleted) {
+          statusText = "已完成";
+          // Calculate size
+          const total = t.meta && t.meta.res ? t.meta.res.size : 0;
+          if (total) {
+              const mb = 1024 * 1024;
+              statusText = (total / mb).toFixed(2) + " MB";
+          }
+      } else if (t.status === "failed") {
+          statusText = "下载失败";
+      } else if (t.status === "pending") {
+          statusText = "等待中...";
+      }
+
+      const actionHtml = isCompleted
+        ? `<div class="download-action" title="打开文件夹" data-id="${t.id}" data-action="open">${FolderIcon}</div>` 
+        : "";
+
+      item.innerHTML = `
+          <div class="download-icon">${FileIcon}</div>
+          <div class="download-info">
+            <div class="download-title" title="${name_of(t)}">${name_of(t)}</div>
+            <div class="download-meta">
+                <span>${statusText}</span>
+            </div>
+            ${progressDisplay}
+          </div>
+          ${actionHtml}
+      `;
+      container.appendChild(item);
     });
-    // document.getElementById("totalSpeed").textContent = format_speed(
-    //   total_speed()
-    // );
+
+    // Bind events
+    container.querySelectorAll('[data-action="open"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-id');
+            console.log("Open task", id);
+             // Attempt to call open API if it existed, for now just log
+             // Maybe we can try to request /api/task/open just in case the user adds it later
+             /*
+             var [err, data] = await WXU.request({
+                method: "POST",
+                url: "https://api.channels.qq.com/api/task/open",
+                body: { id },
+              });
+             */
+        });
+    });
   }
 
   function upsert(task) {
@@ -115,12 +253,9 @@
   function insert_downloader() {
     var $button = download_btn5();
     var $download_panel = document.createElement("div");
-    $download_panel.innerHTML = `<table style="width: 460px;">
-  <thead>
-    <tr><th>ID</th><th>Name</th><th>Status</th><th>Speed</th><th>Progress</th></tr>
-  </thead>
-  <tbody id="downloader_container" style="min-width: 200px;">
-</table>`;
+    // Change to div container
+    $download_panel.innerHTML = `<div id="downloader_container" class="download-list"></div>`;
+    
     Weui.Popover($button, {
       content: $download_panel.innerHTML,
       placement: "bottom-end", // Default is now bottom-start (arrow on left)
@@ -130,14 +265,6 @@
     var $box = $header.children[$header.children.length - 1];
     var $btn_wrap = $box.children[0];
     $btn_wrap.insertBefore($button, $btn_wrap.firstChild);
-
-    // var $absolute = document.createElement("div");
-    // $absolute.style.position = "absolute";
-    // $absolute.style.top = "50px";
-    // $absolute.style.left = "50px";
-    // $absolute.style.zIndex = 9999;
-    // document.body.appendChild($absolute);
-    // $absolute.appendChild($download_panel);
 
     connect("#downloader_container");
   }
