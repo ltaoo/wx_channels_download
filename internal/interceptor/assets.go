@@ -43,6 +43,9 @@ var js_components []byte
 //go:embed inject/src/utils.js
 var js_utils []byte
 
+//go:embed inject/src/downloader.js
+var js_downloader []byte
+
 //go:embed inject/src/main.js
 var js_feed_profile_or_recommand_page []byte
 
@@ -66,6 +69,7 @@ var Assets = &ChannelInjectedFiles{
 	JSEventBus:       js_eventbus,
 	JSComponents:     js_components,
 	JSUtils:          js_utils,
+	JSDownloader:     js_downloader,
 	JSMain:           js_feed_profile_or_recommand_page,
 	JSLiveMain:       js_live_profile_page,
 	JSContactMain:    js_contact_profile_page,

@@ -1,4 +1,8 @@
 /**
+ * @file 视频详情页 and 首页推荐
+ */
+
+/**
  * 用于下载已经播放的视频内容
  * @param {FeedProfile} profile 视频信息
  */

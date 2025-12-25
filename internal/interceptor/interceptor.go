@@ -3,6 +3,7 @@ package interceptor
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -111,5 +112,27 @@ func (c *Interceptor) SetLog(writer io.Writer) {
 	c.log = &l
 }
 func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		host = h
+	}
+	isLocal := false
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		isLocal = true
+	}
+	if host == "localhost" || host == c.Settings.ProxyServerHostname {
+		isLocal = true
+	}
+	if isLocal && r.URL.Path == "/cert" {
+		w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+		w.Header().Set("Content-Disposition", "attachment; filename=\"SunnyNet.cer\"")
+		w.Write(c.Cert.Cert)
+		return
+	}
+	if isLocal && (r.URL.Path == "/" || r.URL.Path == "") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<html><head><title>wx_channels_download</title></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
+		return
+	}
 	c.echo.ServeHTTP(w, r)
 }

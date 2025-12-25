@@ -11,7 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"wx_channel/internal/download"
+	"wx_channel/config"
+	"wx_channel/internal/api"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/manager"
 	"wx_channel/pkg/certificate"
@@ -25,6 +26,7 @@ var (
 	debug     bool
 	CertFiles *certificate.CertFileAndKeyFile
 	Settings  *interceptor.InterceptorSettings
+	Cfg       *config.Config
 )
 
 var root_cmd = &cobra.Command{
@@ -54,12 +56,13 @@ func init() {
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, settings *interceptor.InterceptorSettings) error {
+func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, cfg *config.Config, settings *interceptor.InterceptorSettings) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
 	CertFiles = cert
 	Settings = settings
+	Cfg = cfg
 
 	return root_cmd.Execute()
 }
@@ -71,6 +74,15 @@ type RootCommandArg struct {
 }
 
 func root_command(args *interceptor.InterceptorSettings) {
+	c, err := config.New()
+	if err != nil {
+		return
+	}
+	interceptor.SetDefaultSettings(c)
+	err = c.LoadConfig()
+	if err != nil {
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -84,29 +96,29 @@ func root_command(args *interceptor.InterceptorSettings) {
 	}
 	mgr := manager.NewServerManager()
 
-	interceptorServer := interceptor.NewInterceptorServer(args, CertFiles)
-	mgr.RegisterServer(interceptorServer)
-	downloadServer := download.NewDownloadServer(Settings.DownloadLocalServerAddr)
-	mgr.RegisterServer(downloadServer)
+	interceptor_srv := interceptor.NewInterceptorServer(args, CertFiles)
+	mgr.RegisterServer(interceptor_srv)
+
+	api_settings := api.NewAPISettings(Cfg)
+	api_srv := api.NewAPIServer(api_settings)
+	mgr.RegisterServer(api_srv)
 
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("interceptor"); err != nil {
 			fmt.Printf("⚠️ 关闭代理服务失败: %v\n", err)
 		}
-		if err := mgr.StopServer("download"); err != nil {
-			fmt.Printf("⚠️ 关闭下载服务失败: %v\n", err)
+		if err := mgr.StopServer("api"); err != nil {
+			fmt.Printf("⚠️ 关闭API服务失败: %v\n", err)
 		}
 		color.Green("服务已关闭")
 	}
-	if args.DownloadLocalServerEnabled {
-		if err := mgr.StartServer("download"); err != nil {
-			fmt.Printf("ERROR 启动下载服务失败: %v\n", err.Error())
-			cleanup()
-			os.Exit(1)
-		}
-		color.Green("下载服务启动成功")
+	if err := mgr.StartServer("api"); err != nil {
+		fmt.Printf("ERROR 启动API服务失败: %v\n", err.Error())
+		cleanup()
+		os.Exit(1)
 	}
+	color.Green("API服务启动成功")
 	if err := mgr.StartServer("interceptor"); err != nil {
 		fmt.Printf("ERROR 启动代理服务失败: %v\n", err.Error())
 		cleanup()
@@ -115,10 +127,10 @@ func root_command(args *interceptor.InterceptorSettings) {
 	color.Green("代理服务启动成功")
 
 	if !args.ProxySetSystem {
-		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptorServer.Addr()))
+		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
 	} else {
-		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptorServer.Addr()))
+		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptor_srv.Addr()))
 		color.Green("请打开需要下载的视频号页面进行下载")
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")

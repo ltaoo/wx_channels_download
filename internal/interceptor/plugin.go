@@ -175,6 +175,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}

@@ -1,3 +1,6 @@
+/**
+ * @file 所有的工具函数 + API + 事件总线
+ */
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */

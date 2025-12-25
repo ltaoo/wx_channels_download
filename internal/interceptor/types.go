@@ -12,6 +12,7 @@ type ChannelInjectedFiles struct {
 	JSDebug          []byte
 	JSEventBus       []byte
 	JSComponents     []byte
+	JSDownloader     []byte
 	JSUtils          []byte
 	JSError          []byte
 	JSMain           []byte

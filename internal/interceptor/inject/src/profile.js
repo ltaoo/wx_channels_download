@@ -1,3 +1,6 @@
+/**
+ * @file 用户主页
+ */
 (() => {
   var my_username = "";
   function __wx_insert_batch_download_btn() {
