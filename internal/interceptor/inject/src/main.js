@@ -488,7 +488,7 @@ function __wx_render_sider_tools() {
     WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);
   var home_page_mounted = false;
-  WXU.onPCFlowLoaded((feeds) => {
+  WXE.onPCFlowLoaded((feeds) => {
     console.log("[main.js]WXU.onPCFlowLoaded", feeds);
     if (home_page_mounted) {
       return;
@@ -499,7 +499,7 @@ function __wx_render_sider_tools() {
     __wx_insert_download_btn_to_home_page();
   });
   var profile_page_mounted = false;
-  WXU.onFetchFeedProfile((feed) => {
+  WXE.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
     if (profile_page_mounted) {
       return;
@@ -510,17 +510,17 @@ function __wx_render_sider_tools() {
     WXU.set_cur_video();
     __wx_insert_download_btn();
   });
-  WXU.onGotoNextFeed((feed) => {
+  WXE.onGotoNextFeed((feed) => {
     console.log("[main.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
     __wx_insert_download_btn_to_home_page();
   });
-  WXU.onGotoPrevFeed((feed) => {
+  WXE.onGotoPrevFeed((feed) => {
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
     __wx_insert_download_btn_to_home_page();
   });
-  WXU.onFeed((feed) => {
+  WXE.onFeed((feed) => {
     console.log("[main.js]WXU.onFeed", feed);
     WXU.set_feed(feed);
   });

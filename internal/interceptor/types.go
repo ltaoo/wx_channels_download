@@ -16,6 +16,7 @@ type ChannelInjectedFiles struct {
 	JSError          []byte
 	JSMain           []byte
 	JSLiveMain       []byte
+	JSContactMain    []byte
 }
 
 type ChannelMediaSpec struct {

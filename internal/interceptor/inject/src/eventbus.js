@@ -9,6 +9,9 @@ var WXE = (() => {
     WindowLoaded: "WindowLoaded",
     /** 页面卸载完成 */
     WindowUnLoaded: "WindowUnLoaded",
+    APILoaded: "APILoaded",
+    UtilsLoaded: "UtilsLoaded",
+    Init: "Init",
     /** 首页推荐获取到视频列表 */
     PCFlowLoaded: "PCFlowLoaded",
     RecommendFeedsLoaded: "RecommendFeedsLoaded",
@@ -59,6 +62,24 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.WindowUnLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.WindowUnLoaded, handler);
+      };
+    },
+    onAPILoaded(handler) {
+      eventbus.on(ChannelsEvents.APILoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.APILoaded, handler);
+      };
+    },
+    onUtilsLoaded(handler) {
+      eventbus.on(ChannelsEvents.UtilsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.UtilsLoaded, handler);
+      };
+    },
+    onInit(handler) {
+      eventbus.on(ChannelsEvents.Init, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.Init, handler);
       };
     },
     /**

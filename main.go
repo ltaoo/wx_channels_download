@@ -10,7 +10,7 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "251213"
+var AppVer = "25122607"
 
 func main() {
 	cfg, err := interceptor.NewInterceptorSettings()

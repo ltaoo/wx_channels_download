@@ -310,6 +310,26 @@ var WXU = (() => {
     }
     return `${remove_zero(size.toFixed(2))}${unit}`;
   }
+  function get_queries(href) {
+    var [pathname, search] = decodeURIComponent(href).split("?");
+    var queries = decodeURIComponent(search)
+      .split("&")
+      .map((item) => {
+        const [key, value] = item.split("=");
+        return {
+          [key]: value,
+        };
+      })
+      .reduce(
+        (prev, cur) => ({
+          ...prev,
+          ...cur,
+        }),
+        {}
+      );
+    return queries;
+  }
+
   function mediaBufferToWav(abuffer, len) {
     len = len || abuffer.length;
     var num_of_chan = abuffer.numberOfChannels;
@@ -539,9 +559,33 @@ var WXU = (() => {
   var after_menus_items = [];
   var before_level2_menus_items = [];
   var after_level2_menus_items = [];
+  var WXAPI = {};
 
+  WXE.onAPILoaded((api_methods) => {
+    const keys = Object.keys(api_methods);
+    for (let i = 0; i < keys.length; i++) {
+      (() => {
+        const key = keys[i];
+        const methods = api_methods[key];
+        if (typeof methods.finderGetCommentDetail === "function") {
+          WXAPI = methods;
+          return;
+        }
+        if (typeof methods.finderSearch === "function") {
+          WXAPI.finderSearch = methods.finderSearch;
+          return;
+        }
+      })();
+    }
+  });
+  WXE.onUtilsLoaded((methods) => {
+    Object.assign(WXAPI, methods);
+  });
   return {
     ...WXE,
+    get API() {
+      return WXAPI;
+    },
     /**
      * 视频解密
      */
@@ -592,6 +636,7 @@ var WXU = (() => {
     build_filename: __wx_build_filename,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,
+    get_queries,
     /**
      * 提示相关
      */

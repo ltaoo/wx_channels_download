@@ -22,14 +22,17 @@ var (
 	scriptHrefReg = regexp.MustCompile(`href="([^"]{1,})\.js"`)
 
 	// JavaScript处理相关正则
-	jsDepReg        = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
-	jsFromReg       = regexp.MustCompile(`from {0,1}"([^"]{1,})\.js"`)
-	jsLazyImportReg = regexp.MustCompile(`import\("([^"]{1,})\.js"\)`)
-	jsImportReg     = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
+	jsDepReg         = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
+	jsFromReg        = regexp.MustCompile(`from {0,1}"([^"]{1,})\.js"`)
+	jsLazyImportReg  = regexp.MustCompile(`import\("([^"]{1,})\.js"\)`)
+	jsImportReg      = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
+	jsExportReg      = regexp.MustCompile(`exports?\s*\{`)
+	jsExportBlockReg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// 特定路径的正则
 	jsDialogReg         = regexp.MustCompile(`i.default={dialog`)
 	jsSourceBufferReg   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	jsInitReg           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
 	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsPCFlowReg         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
 	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
@@ -190,6 +193,13 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					}
 					inserted_scripts += script_live_main
 				}
+				if pathname == "/web/pages/profile" {
+					script_contact_main := fmt.Sprintf(`<script>%s</script>`, files.JSContactMain)
+					if cfg.InjectExtraScriptAfterJSMain != "" {
+						script_contact_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+					}
+					inserted_scripts += script_contact_main
+				}
 				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 				ctx.SetResponseBody(html)
 				return
@@ -217,6 +227,16 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return
 				}
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
+					init_content := `async finderInit() {
+					var result = await (async () => {
+						$1;
+					})();
+					var data = result.data;
+					console.log("before Init", data);
+					WXU.emit(WXU.Events.Init, data);
+					return result;
+				}async`
+					js_script = jsInitReg.ReplaceAllString(js_script, init_content)
 					pc_flow_content := `async finderPcFlow($1) {
 					var result = await (async () => {
 						$2;
@@ -252,7 +272,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						$2;
 					})();
 					var feeds = result.data.object;
-					// console.log("before UserFeedsLoaded", result.data);
+					console.log("before UserFeedsLoaded", result.data, $1);
 					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
 					return result;
 				}async`
@@ -267,6 +287,31 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return result;
 				}async`
 					js_script = jsLiveInfoReg.ReplaceAllString(js_script, live_profile_content)
+					api_methods := "{}"
+					if m := jsExportBlockReg.FindStringSubmatch(js_script); len(m) >= 2 {
+						items := strings.Split(m[1], ",")
+						locals := make([]string, 0, len(items))
+						for _, it := range items {
+							p := strings.TrimSpace(it)
+							if p == "" {
+								continue
+							}
+							idx := strings.Index(p, " as ")
+							local := p
+							if idx != -1 {
+								local = strings.TrimSpace(p[:idx])
+							}
+							if local != "" && local != " " {
+								locals = append(locals, local)
+							}
+						}
+						if len(locals) > 0 {
+							api_methods = "{" + strings.Join(locals, ",") + "}"
+						}
+					}
+					api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
+					wxapi_str := ";WXU.emit(WXU.Events.APILoaded," + api_methods_escaped + ");export{"
+					js_script = jsExportReg.ReplaceAllString(js_script, wxapi_str)
 					// 之后还是换成自己实现的吧，就用到了 loading 和 toast 两个方法
 					wx_toast_content := `i.default=window.__wx_channels_tip__={dialog`
 					js_script = jsDialogReg.ReplaceAllString(js_script, wx_toast_content)
@@ -297,6 +342,8 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
 					}`
 					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
+					wxutil_str := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String});export{"
+					js_script = jsExportReg.ReplaceAllString(js_script, wxutil_str)
 					ctx.SetResponseBody(js_script)
 					return
 				}
