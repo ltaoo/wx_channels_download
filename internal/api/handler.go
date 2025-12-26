@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,18 +16,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func writeJSON(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 func handleDownload(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	targetURL := q.Get("url")
 	if targetURL == "" {
-		http.Error(w, "missing targetURL", http.StatusBadRequest)
+		writeErrorResponse(w, 400, "missing targetURL")
 		return
 	}
 	if !strings.HasPrefix(targetURL, "http") {
 		targetURL = "https://" + targetURL
 	}
 	if _, err := url.Parse(targetURL); err != nil {
-		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		writeErrorResponse(w, 400, "Invalid URL")
 		return
 	}
 	filename := q.Get("filename")
@@ -46,7 +53,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 	if decryptKeyStr != "" {
 		decryptKey, err := strconv.ParseUint(decryptKeyStr, 0, 64)
 		if err != nil {
-			http.Error(w, "invalid decryptKey", http.StatusBadRequest)
+			writeErrorResponse(w, 400, "invalid decryptKey")
 			return
 		}
 		if toMP3 == "1" {
@@ -63,14 +70,14 @@ func handlePlay(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	targetURL := q.Get("url")
 	if targetURL == "" {
-		http.Error(w, "missing targetURL", http.StatusBadRequest)
+		writeErrorResponse(w, 400, "missing targetURL")
 		return
 	}
 	if !strings.HasPrefix(targetURL, "http") {
 		targetURL = "https://" + targetURL
 	}
 	if _, err := url.Parse(targetURL); err != nil {
-		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		writeErrorResponse(w, 400, "Invalid URL")
 		return
 	}
 	decryptKeyStr := q.Get("key")
@@ -78,7 +85,7 @@ func handlePlay(w http.ResponseWriter, r *http.Request) {
 	if decryptKeyStr != "" {
 		decryptKey, err := strconv.ParseUint(decryptKeyStr, 0, 64)
 		if err != nil {
-			http.Error(w, "invalid decryptKey", http.StatusBadRequest)
+			writeErrorResponse(w, 400, "invalid decryptKey")
 			return
 		}
 		mp.decryptOnlyInline(w, r, targetURL, decryptKey, 131072)
@@ -94,18 +101,18 @@ type OpenFolderAndHighlightFileBody struct {
 func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 	var body OpenFolderAndHighlightFileBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": err.Error()})
 		return
 	}
 	fmt.Println(body)
 	if body.FilePath == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Missing the `filepath`"})
+		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": "Missing the `filepath`"})
 		return
 	}
 	full_filepath := filepath.Join(body.FilePath)
 	_, err := os.Stat(full_filepath)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": err.Error()})
 		return
 	}
 	var cmd *exec.Cmd
@@ -117,14 +124,14 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 	case "linux":
 		cmd = exec.Command("xdg-open", full_filepath)
 	default:
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Unsupported operating system"})
+		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": "Unsupported operating system"})
 		return
 	}
 	err = cmd.Start()
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": err.Error()})
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"message": "Success"})
+	ctx.JSON(http.StatusOK, gin.H{"code": 0, "message": "Success"})
 	return
 }

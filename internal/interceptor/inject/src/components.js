@@ -138,10 +138,10 @@ function download_btn5() {
  * @param {{ hide: () => void }} $dropdown
  */
 function render_extra_menu_items(items, $dropdown) {
-  if (!window.Weui) {
+  if (!window.WUI) {
     return [];
   }
-  const { MenuItem } = window.Weui;
+  const { MenuItem } = window.WUI;
   return items
     .filter((item) => {
       return item.label && item.onClick;
@@ -156,3 +156,46 @@ function render_extra_menu_items(items, $dropdown) {
       });
     });
 }
+
+/** 增强下载面板的样式，遵循现有主题变量与暗黑模式 */
+(function () {
+  var style = document.createElement("style");
+  style.innerHTML = `
+    .custom-menu .weui-cells {
+      margin: 0;
+      background: transparent;
+    }
+    .custom-menu .weui-cell {
+      align-items: center;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .custom-menu .weui-cell:hover {
+      background: var(--FG-6);
+    }
+    .custom-menu .weui-cell__bd p {
+      color: var(--weui-FG-0);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .custom-menu .wx-download-item-open {
+      display: none;
+      margin-left: 8px;
+    }
+    .custom-menu .weui-cell:hover .wx-download-item-open {
+      display: inline-flex;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+(() => {
+  var { DropdownMenu, Menu, MenuItem } = WUI;
+  MenuItem.setTemplate(
+    '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
+  );
+  MenuItem.setIndicatorTemplate(
+    '<span class="custom-menu-item-arrow">›</span>'
+  );
+  Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
+})();

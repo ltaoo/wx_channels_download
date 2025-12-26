@@ -12,7 +12,7 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "25122607"
+var AppVer = "25122608"
 
 func main() {
 	cfg, err := config.New()

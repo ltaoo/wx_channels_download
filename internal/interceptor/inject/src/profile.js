@@ -85,10 +85,9 @@
             }),
           },
         });
-        if (err) {
+        if (err || data?.code !== 0) {
           WXU.error({
-            msg: err.message,
-            alert: 0,
+            msg: err?.message || data?.msg || "未知错误",
           });
           has_more = false;
           return;

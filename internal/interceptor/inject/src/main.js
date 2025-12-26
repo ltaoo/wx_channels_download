@@ -238,21 +238,11 @@ async function __wx_channels_handle_download_cover() {
  * @param {HTMLElement} trigger
  */
 function __wx_attach_download_dropdown_menu(trigger) {
-  if (typeof window.Weui === "undefined") {
-    return null;
-  }
-  const { DropdownMenu, Menu, MenuItem } = Weui;
-  MenuItem.setTemplate(
-    '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
-  );
-  MenuItem.setIndicatorTemplate(
-    '<span class="custom-menu-item-arrow">›</span>'
-  );
-  Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
-  const submenu = Menu({
+  const { DropdownMenu, Menu, MenuItem } = WUI;
+  const submenu$ = Menu({
     children: [],
   });
-  const $dropdown = DropdownMenu({
+  const dropdown$ = DropdownMenu({
     $trigger: trigger,
     zIndex: 99999,
     children: [
@@ -260,7 +250,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
         if (WXU.before_menu_items) {
           return render_extra_menu_items(WXU.before_menu_items, {
             hide() {
-              $dropdown.hide();
+              dropdown$.hide();
             },
           });
         }
@@ -268,13 +258,13 @@ function __wx_attach_download_dropdown_menu(trigger) {
       })(),
       MenuItem({
         label: "更多下载",
-        submenu,
+        submenu: submenu$,
         onMouseEnter() {
-          submenu.show();
+          submenu$.show();
         },
         onMouseLeave() {
-          if (!submenu.isHover) {
-            submenu.hide();
+          if (!submenu$.isHover) {
+            submenu$.hide();
           }
         },
       }),
@@ -282,35 +272,35 @@ function __wx_attach_download_dropdown_menu(trigger) {
         label: "下载为MP3",
         onClick() {
           __wx_channels_handle_click_download__(null, true);
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       MenuItem({
         label: "下载封面",
         onClick() {
           __wx_channels_handle_download_cover();
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       MenuItem({
         label: "打印下载命令",
         onClick() {
           __wx_channels_handle_print_download_command();
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       MenuItem({
         label: "复制页面链接",
         onClick() {
           __wx_channels_handle_copy__();
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       ...(() => {
         if (WXU.after_menu_items) {
           return render_extra_menu_items(WXU.after_menu_items, {
             hide() {
-              $dropdown.hide();
+              dropdown$.hide();
             },
           });
         }
@@ -318,25 +308,25 @@ function __wx_attach_download_dropdown_menu(trigger) {
       })(),
     ],
     onMouseEnter() {
-      if (submenu.isOpen) {
-        submenu.hide();
+      if (submenu$.isOpen) {
+        submenu$.hide();
       }
     },
   });
-  $dropdown.ui.$trigger.onMouseEnter(() => {
+  dropdown$.ui.$trigger.onMouseEnter(() => {
     const download_menus = [
       MenuItem({
         label: "原始视频",
         onClick() {
           __wx_channels_handle_click_download__(null);
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       MenuItem({
         label: "当前视频",
         onClick() {
           __wx_channels_download_cur__();
-          $dropdown.hide();
+          dropdown$.hide();
         },
       }),
       ...(() => {
@@ -352,22 +342,22 @@ function __wx_attach_download_dropdown_menu(trigger) {
             label: spec.fileFormat,
             onClick() {
               __wx_channels_handle_click_download__(spec);
-              $dropdown.hide();
+              dropdown$.hide();
             },
           });
         });
       })(),
     ];
-    submenu.setChildren(download_menus);
-    $dropdown.show();
+    submenu$.setChildren(download_menus);
+    dropdown$.show();
   });
-  $dropdown.ui.$trigger.onMouseLeave(() => {
-    if ($dropdown.isHover) {
+  dropdown$.ui.$trigger.onMouseLeave(() => {
+    if (dropdown$.isHover) {
       return;
     }
-    $dropdown.hide();
+    dropdown$.hide();
   });
-  return $dropdown;
+  return dropdown$;
 }
 function __wx_download_btn_handler() {
   const [err, profile] = WXU.check_feed_existing();

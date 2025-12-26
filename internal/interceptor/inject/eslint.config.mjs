@@ -41,6 +41,7 @@ export default [
         download_btn2: "writable",
         download_btn3: "writable",
         download_btn4: "writable",
+        download_btn5: "writable",
         EventBus: "writable",
         Module: "readonly",
         saveAs: "readonly",
@@ -49,6 +50,8 @@ export default [
         Recorder: "readonly",
         mitt: "readonly",
         Weui: "readonly",
+        weui: "readonly",
+        WUI: "readonly",
       },
     },
     rules: {

@@ -203,7 +203,7 @@ var WXU = (() => {
       body: JSON.stringify(params),
     });
     if (_alert) {
-      alert(params.msg);
+      weui.topTips(params.msg);
     }
   }
   const script_loaded_map = {};
@@ -652,20 +652,10 @@ var WXU = (() => {
     log: __wx_log,
     error: __wx_error,
     loading() {
-      if (typeof __wx_channels_tip__.loading === "function") {
-        return window.__wx_channels_tip__.loading("下载中");
-      }
-      return {
-        hide() {},
-      };
+      return weui.loading();
     },
     toast(text) {
-      if (typeof __wx_channels_tip__.toast === "function") {
-        return window.__wx_channels_tip__.toast(text, 1e3);
-      }
-      return {
-        hide() {},
-      };
+      return weui.toast(text);
     },
     append_media_buf(buf) {
       __wx_channels_store__.buffers.push(buf);
