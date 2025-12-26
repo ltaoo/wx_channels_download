@@ -17,3 +17,19 @@ features:
     details: 直接在视频号页面下载，只需点击一下
 ---
 
+<script setup>
+import { useData } from 'vitepress'
+import { computed } from 'vue'
+
+const { isDark } = useData()
+const sponsorsUrl = computed(() => {
+  return `https://sponsorkit-iota.vercel.app/api/sponsors?theme=${isDark.value ? 'dark' : 'light'}`
+})
+</script>
+
+<p align="center">
+  <a :href="sponsorsUrl">
+    <img :src="sponsorsUrl" alt="Sponsors" />
+  </a>
+</p>
+
