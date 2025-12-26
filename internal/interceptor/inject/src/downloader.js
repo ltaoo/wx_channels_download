@@ -100,7 +100,7 @@
       // Action Buttons Logic
       let actionButtons = "";
       const btnStyle =
-        "color: #FFFFFF; opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
+        "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
 
       if (isCompleted) {
         actionButtons += `
@@ -141,10 +141,7 @@
       var filename = name_of(t);
 
       // Custom dark theme styles inline for specific elements, plus classes
-      item.setAttribute(
-        "style",
-        "padding: 16px; background-color: #191919; border-radius: 8px; margin-bottom: 8px; align-items: center;"
-      );
+      item.className = "weui-cell wx-dl-item";
 
       // File Icon size increase
       // We wrap the icon in a slightly larger container
@@ -165,7 +162,7 @@
         iconInner = `
         <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
              <svg width="50" height="50" style="position: absolute; top: 0; left: 0; transform: rotate(-90deg);">
-                <circle cx="25" cy="25" r="${radius}" stroke="rgba(255,255,255,0.1)" stroke-width="3" fill="none"></circle>
+                <circle cx="25" cy="25" r="${radius}" stroke="var(--FG-3)" stroke-width="3" fill="none"></circle>
                 <circle cx="25" cy="25" r="${radius}" stroke="${strokeColor}" stroke-width="3" fill="none" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
              </svg>
              <div style="position: relative; z-index: 1; display: flex;">
@@ -176,15 +173,15 @@
       }
 
       item.innerHTML = `
-          <div class="weui-cell__hd" aria-hidden="true" style="position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
+          <div class="weui-cell__hd" aria-hidden="true" style="position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);">
             ${iconInner}
           </div>
           <div class="weui-cell__bd" style="min-width:0;">
-            <p class="weui-ellipsis" style="color: #FFFFFF; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
-            <div class="weui-cell__desc" style="margin-top: 4px; color: #AAAAAA; font-size: 12px;">${statusText}</div>
+            <p class="weui-ellipsis" style="color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
+            <div class="weui-cell__desc" style="margin-top: 4px; color: var(--FG-1); font-size: 12px;">${statusText}</div>
             ${
               typeof pr === "number" && !isCompleted
-                ? `<div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
+                ? `<div style="height: 4px; background: var(--FG-3); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
                 : ""
             }
             ${progressDisplay}
@@ -334,34 +331,35 @@
           .wx-dl-panel-container { 
             width: 400px; 
             max-height: 450px; 
-            background-color: #252525; 
+            background-color: var(--BG-CONTEXT-MENU); 
             border-radius: 8px; 
             display: flex; 
             flex-direction: column; 
             padding: 12px; 
             box-sizing: border-box;
+            color: var(--weui-FG-0);
+            box-shadow: 0 0 6px rgb(0 0 0 / 20%);
           }
           .wx-dl-dark-scroll::-webkit-scrollbar { width: 6px; }
           .wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent; }
-          .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+          .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background-color: var(--FG-3); border-radius: 3px; }
           
           /* Custom Menu Styles */
-          .wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-          .wx-dl-title { font-size: 16px; font-weight: 600; color: #fff; }
-          .wx-dl-more-btn { color: #fff; cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
-          .wx-dl-more-btn:hover { opacity: 1; background-color: rgba(255,255,255,0.1); }
+          .wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; border-bottom: 1px solid var(--FG-3); }
+          .wx-dl-title { font-size: 16px; font-weight: 600; color: var(--weui-FG-0); }
+          .wx-dl-more-btn { color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
+          .wx-dl-more-btn:hover { opacity: 1; background-color: var(--FG-6); }
           
           .wx-dl-dropdown { 
             position: absolute; top: 100%; right: 0; 
-            background-color: #333; border-radius: 8px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
+            background-color: var(--BG-CONTEXT-MENU); border-radius: 8px; 
+            box-shadow: 0 0 6px rgb(0 0 0 / 20%);
             width: 160px; z-index: 1000;
             display: none; flex-direction: column; overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
           }
           .wx-dl-dropdown.show { display: flex; }
-          .wx-dl-menu-item { padding: 10px 16px; color: #ddd; font-size: 14px; cursor: pointer; transition: background 0.2s; text-decoration: none; display: flex; align-items: center; }
-          .wx-dl-menu-item:hover { background-color: rgba(255,255,255,0.1); color: #fff; }
+          .wx-dl-menu-item { padding: 10px 16px; color: var(--weui-FG-0); font-size: 14px; cursor: pointer; transition: background 0.2s; text-decoration: none; display: flex; align-items: center; }
+          .wx-dl-menu-item:hover { background-color: var(--FG-6); }
           .wx-dl-menu-item svg { margin-right: 8px; fill: currentColor; }
 
           .wx-dl-list {
@@ -371,6 +369,14 @@
           }
           .wx-dl-list .weui-cells:before, .wx-dl-list .weui-cells:after { display: none; }
           .wx-dl-list .weui-cell:before { display: none; }
+
+          .wx-dl-item {
+            padding: 16px;
+            background-color: var(--BG-0);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+          }
         `;
       document.head.appendChild(style);
     }

@@ -1,8 +1,9 @@
 package main
 
 import (
-	_ "embed"
 	"fmt"
+
+	"github.com/gin-gonic/gin"
 
 	"wx_channel/cmd"
 	"wx_channel/config"
@@ -13,8 +14,12 @@ import (
 )
 
 var AppVer = "251226"
+var Mode = "debug"
 
 func main() {
+	if Mode == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	cfg, err := config.New()
 	if err != nil {
 		fmt.Printf("加载配置文件失败 %v", err.Error())

@@ -26,6 +26,7 @@ builds:
     binary: wx_video_download
     ldflags:
       - -s -w
+      - -X main.Mode=release
     ignore:
       - goos: darwin
         goarch: "386"
@@ -44,6 +45,7 @@ builds:
     binary: wx_video_download
     ldflags:
       - -s -w
+      - -X main.Mode=release
     hooks:
       post:
         - rcodesign sign --p12-file {{ .Env.MAC_CERT_P12_FILE }} --p12-password {{ .Env.MAC_CERT_PASSWORD }} --code-signature-flags runtime "{{ .Path }}"
