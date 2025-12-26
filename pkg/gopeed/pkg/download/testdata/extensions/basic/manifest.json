@@ -1,0 +1,23 @@
+{
+  "name": "basic",
+  "title": "gopeed extension basic test",
+  "version": "0.0.1",
+  "scripts": [
+    {
+      "event": "onResolve",
+      "match": {
+        "urls": [
+          "*://github.com/*"
+        ]
+      },
+      "entry": "index.js"
+    }
+  ],
+  "settings": [
+    {
+      "name": "ua",
+      "title": "User-Agent",
+      "type": "string"
+    }
+  ]
+}

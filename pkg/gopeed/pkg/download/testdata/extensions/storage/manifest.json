@@ -1,0 +1,23 @@
+{
+  "name": "storage",
+  "title": "gopeed extension storage test",
+  "version": "0.0.1",
+  "scripts": [
+    {
+      "event": "onResolve",
+      "match": {
+        "urls": [
+          "*://*/*"
+        ]
+      },
+      "entry": "index.js"
+    }
+  ],
+  "settings": [
+    {
+      "name": "ua",
+      "title": "User-Agent",
+      "type": "string"
+    }
+  ]
+}
