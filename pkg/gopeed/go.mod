@@ -5,7 +5,6 @@ go 1.23.0
 toolchain go1.23.1
 
 require (
-	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/rs/zerolog v1.31.0
