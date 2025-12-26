@@ -41,8 +41,9 @@ var (
 	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *InterceptorSettings) *echo.Plugin {
+func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, interceptor *Interceptor) *echo.Plugin {
 	v := "?t=" + version
+	cfg := interceptor.Settings
 	return &echo.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx *echo.Context) {
@@ -156,6 +157,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
+				variable_byte, _ := json.Marshal(interceptor.FrontendVariables)
+				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
+				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)

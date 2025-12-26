@@ -27,6 +27,7 @@ func (s *APIServer) Start() error {
 }
 
 func (s *APIServer) Stop() error {
+	s.client.downloader.Pause(nil)
 	if err := s.client.Stop(); err != nil {
 		return err
 	}

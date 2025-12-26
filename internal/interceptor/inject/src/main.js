@@ -43,23 +43,17 @@ async function __wx_channels_download3(profile) {
  * 下载加密视频
  * @param {FeedProfile} profile 视频信息
  * @param {object} opt 选项
+ * @param {string} opt.spec 规格
  * @param {boolean} opt.toMP3 是否转换为 MP3
  */
 async function __wx_channels_download4(profile, opt) {
   console.log("__wx_channels_download4");
-  if (WXU.config.downloadLocalServerEnabled) {
-    var fullname = profile.filename + (opt.toMP3 ? ".mp3" : ".mp4");
-    var url = `http://${
-      WXU.config.downloadLocalServerAddr
-    }/download?url=${encodeURIComponent(profile.url)}&key=${
-      profile.key
-    }&filename=${encodeURIComponent(fullname)}&mp3=${Number(opt.toMP3)}`;
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = fullname;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  if (!opt.toMP3 && !WXU.config.downloadInFrontend) {
+    var [err, data] = await WXU.downloader.create(profile, opt.spec);
+    if (err) {
+      WXU.error({ msg: err.message });
+      return;
+    }
     return;
   }
   if (WXU.config.downloadPauseWhenDownload) {
@@ -126,7 +120,7 @@ function __wx_channels_handle_copy__() {
 /**
  * 所有下载功能统一先调用该方法
  * 由该方法分发到具体的 download 方法中
- * @param {ChannelsMediaSpec | null} spec 规格信息
+ * @param {string | null} spec 规格信息
  * @param {boolean} mp3 是否转换为 MP3
  */
 async function __wx_channels_handle_click_download__(spec, mp3) {
@@ -148,7 +142,7 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   payload.target_spec = null;
   if (spec) {
     payload.target_spec = spec;
-    payload.url = feed.url + "&X-snsvideoflag=" + spec.fileFormat;
+    payload.url = feed.url + "&X-snsvideoflag=" + spec;
   }
   payload.source_url = location.href;
   WXU.log({
@@ -163,7 +157,7 @@ ${payload.filename}`,
     return;
   }
   payload.data = __wx_channels_store__.buffers;
-  __wx_channels_download4(payload, { toMP3: mp3 });
+  __wx_channels_download4(payload, { spec, toMP3: mp3 });
 }
 /** 下载已加载的视频 */
 function __wx_channels_download_cur__() {
@@ -322,13 +316,6 @@ function __wx_attach_download_dropdown_menu(trigger) {
           dropdown$.hide();
         },
       }),
-      MenuItem({
-        label: "当前视频",
-        onClick() {
-          __wx_channels_download_cur__();
-          dropdown$.hide();
-        },
-      }),
       ...(() => {
         const [err, profile] = WXU.check_feed_existing({
           silence: true,
@@ -336,12 +323,11 @@ function __wx_attach_download_dropdown_menu(trigger) {
         if (err) {
           return [];
         }
-        // console.log("[main.js]before profile.spec.map", profile);
         return profile.spec.map((spec) => {
           return MenuItem({
             label: spec.fileFormat,
             onClick() {
-              __wx_channels_handle_click_download__(spec);
+              __wx_channels_handle_click_download__(spec.fileFormat);
               dropdown$.hide();
             },
           });
@@ -362,7 +348,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
 function __wx_download_btn_handler() {
   const [err, profile] = WXU.check_feed_existing();
   if (err) return;
-  var spec = WXU.config.defaultHighest ? null : profile.spec[0];
+  var spec = WXU.config.defaultHighest ? null : profile.spec[0]?.fileFormat;
   __wx_channels_handle_click_download__(spec);
 }
 /**

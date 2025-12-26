@@ -2,18 +2,17 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"wx_channel/pkg/system"
 )
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -104,7 +103,6 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": err.Error()})
 		return
 	}
-	fmt.Println(body)
 	if body.FilePath == "" {
 		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": "Missing the `filepath`"})
 		return
@@ -115,20 +113,7 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": err.Error()})
 		return
 	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer", "/select,", full_filepath)
-	case "darwin":
-		cmd = exec.Command("open", "-R", full_filepath)
-	case "linux":
-		cmd = exec.Command("xdg-open", full_filepath)
-	default:
-		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": "Unsupported operating system"})
-		return
-	}
-	err = cmd.Start()
-	if err != nil {
+	if err := system.ShowInExplorer(full_filepath); err != nil {
 		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": err.Error()})
 		return
 	}

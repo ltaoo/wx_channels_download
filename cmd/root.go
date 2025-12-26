@@ -96,21 +96,21 @@ func root_command(args *interceptor.InterceptorSettings) {
 		fmt.Printf("存在全局脚本\n\n")
 	}
 	mgr := manager.NewServerManager()
-
 	interceptor_srv := interceptor.NewInterceptorServer(args, CertFiles)
 	interceptor_srv.Interceptor.AddPostPlugin(&echo.Plugin{
 		Match: "api.channels.qq.com",
 		Target: &echo.TargetConfig{
 			Protocol: "http",
-			Host:     "127.0.0.1",
-			Port:     2022,
+			Host:     args.APIServerHostname,
+			Port:     args.APIServerPort,
 		},
 	})
 	mgr.RegisterServer(interceptor_srv)
-
 	api_settings := api.NewAPISettings(Cfg)
 	api_srv := api.NewAPIServer(api_settings)
 	mgr.RegisterServer(api_srv)
+	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_settings.MaxRunning
+	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_settings.DownloadDir
 
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")

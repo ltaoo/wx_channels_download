@@ -5,21 +5,22 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"wx_channel/internal/interceptor"
-	"wx_channel/pkg/decrypt"
-	"wx_channel/pkg/util"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+
+	"wx_channel/internal/assets"
+	"wx_channel/internal/interceptor"
+	"wx_channel/pkg/decrypt"
+	"wx_channel/pkg/system"
+	"wx_channel/pkg/util"
 )
 
 type APIClient struct {
@@ -128,6 +129,7 @@ func (c *APIClient) Start() error {
 			Data: evt,
 		})
 		if evt.Key == downloadpkg.EventKeyDone {
+			assets.PlayDoneAudio()
 			task := c.downloader.GetTask(evt.Task.ID)
 			k := task.Meta.Req.Labels["key"]
 			key, err := strconv.Atoi(k)
@@ -162,7 +164,7 @@ func (c *APIClient) Stop() error {
 		delete(c.ws_clients, conn)
 	}
 	c.ws_mu.Unlock()
-	return c.downloader.Close()
+	return nil
 }
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -232,23 +234,12 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 		}
 		return string(defaultData)
 	}
-
 	html := readAsset("inject/index.html", interceptor.Assets.IndexHTML)
 	files := interceptor.Assets
-
-	// Inject CSS
 	css := readAsset("inject/lib/weui.min.css", files.CSSWeui)
 	html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
-
-	// Inject JS
 	var inserted_scripts string
-
-	// Inject Config
-	// mock config
-	config := map[string]interface{}{
-		"apiServerAddr": "127.0.0.1:2022",
-	}
-	cfg_byte, _ := json.Marshal(config)
+	cfg_byte, _ := json.Marshal(c.cfg)
 	inserted_scripts += fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "local";</script>`, string(cfg_byte))
 
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, readAsset("inject/lib/mitt.umd.js", files.JSMitt))
@@ -281,8 +272,6 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, id string) bo
 			continue
 		}
 		if t.Meta.Req.Labels["id"] == id {
-			fmt.Println("find matched feed", id)
-			fmt.Println(t.Meta.Req.Labels)
 			return true
 		}
 	}
@@ -291,23 +280,22 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, id string) bo
 func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	var body CreateTaskReq
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	if body.Id == "" {
-		c.jsonError(ctx, 400, "missing task id")
+		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
 	tasks := c.downloader.GetTasks()
-	fmt.Println(len(tasks))
 	existing := c.check_existing_feed(tasks, body.Id)
 	if existing {
-		ctx.JSON(http.StatusOK, Response{Code: 409, Msg: "feed already exists", Data: body})
+		ctx.JSON(http.StatusOK, Response{Code: 409, Msg: "已存在该下载内容", Data: body})
 		return
 	}
 	filename, _, err := c.formatter.ProcessFilename(body.Filename)
 	if err != nil {
-		c.jsonError(ctx, 409, "invalid filename")
+		c.jsonError(ctx, 409, "不合法的文件名")
 		return
 	}
 	id, err := c.downloader.CreateDirect(
@@ -324,7 +312,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		},
 	)
 	if err != nil {
-		c.jsonError(ctx, 500, "create failed")
+		c.jsonError(ctx, 500, "下载失败")
 		return
 	}
 	c.broadcast(DownloaderWSMessage{
@@ -339,7 +327,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		Feeds []CreateTaskReq `json:"feeds"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	tasks := c.downloader.GetTasks()
@@ -369,7 +357,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	}
 	ids, err := c.downloader.CreateDirectBatch(&task)
 	if err != nil {
-		c.jsonError(ctx, 500, "create failed")
+		c.jsonError(ctx, 500, "创建失败")
 		return
 	}
 	c.broadcast(DownloaderWSMessage{
@@ -384,11 +372,11 @@ func (c *APIClient) handleStartTask(ctx *gin.Context) {
 		Id string `json:"id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	if body.Id == "" {
-		c.jsonError(ctx, 400, "missing task id")
+		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
 	c.downloader.Continue(&downloadpkg.TaskFilter{
@@ -402,11 +390,11 @@ func (c *APIClient) handlePauseTask(ctx *gin.Context) {
 		Id string `json:"id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	if body.Id == "" {
-		c.jsonError(ctx, 400, "missing task id")
+		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
 	c.downloader.Pause(&downloadpkg.TaskFilter{
@@ -420,11 +408,11 @@ func (c *APIClient) handleResumeTask(ctx *gin.Context) {
 		Id string `json:"id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	if body.Id == "" {
-		c.jsonError(ctx, 400, "missing task id")
+		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
 	c.downloader.Continue(&downloadpkg.TaskFilter{
@@ -438,23 +426,31 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 		Id string `json:"id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.jsonError(ctx, 400, "invalid json")
+		c.jsonError(ctx, 400, "不合法的参数")
 		return
 	}
 	if body.Id == "" {
-		c.jsonError(ctx, 400, "missing task id")
+		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
+	task := c.downloader.GetTask(body.Id)
 	c.downloader.Delete(&downloadpkg.TaskFilter{
 		IDs: []string{body.Id},
 	}, true)
+	c.broadcast(DownloaderWSMessage{
+		Type: "event",
+		Data: map[string]any{
+			"Type": "delete",
+			"Task": task,
+		},
+	})
 	c.jsonSuccess(ctx, gin.H{"id": body.Id})
 }
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	c.downloader.Delete(nil, true)
 	c.broadcast(DownloaderWSMessage{
-		Type: "tasks",
+		Type: "clear",
 		Data: c.downloader.GetTasks(),
 	})
 	c.jsonSuccess(ctx, nil)
@@ -462,19 +458,7 @@ func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 
 func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
 	dir := c.cfg.DownloadDir
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer", dir)
-	case "darwin":
-		cmd = exec.Command("open", dir)
-	case "linux":
-		cmd = exec.Command("xdg-open", dir)
-	default:
-		c.jsonError(ctx, 500, "Unsupported operating system")
-		return
-	}
-	if err := cmd.Start(); err != nil {
+	if err := system.Open(dir); err != nil {
 		c.jsonError(ctx, 500, err.Error())
 		return
 	}

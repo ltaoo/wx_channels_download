@@ -15,24 +15,26 @@ import (
 )
 
 type Interceptor struct {
-	Version     string
-	Debug       bool
-	Settings    *InterceptorSettings
-	Cert        *certificate.CertFileAndKeyFile
-	echo        *echo.Echo
-	PostPlugins []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo
-	log         *zerolog.Logger
+	Version           string
+	Debug             bool
+	Settings          *InterceptorSettings
+	Cert              *certificate.CertFileAndKeyFile
+	echo              *echo.Echo
+	PostPlugins       []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo
+	FrontendVariables map[string]any // 前端额外的全局变量
+	log               *zerolog.Logger
 }
 
 func NewInterceptor(payload *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *Interceptor {
 	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", payload.Version).Logger()
 	return &Interceptor{
-		Version:  payload.Version,
-		Debug:    payload.DebugShowError,
-		Settings: payload,
-		Cert:     cert,
-		log:      &log,
-		echo:     nil,
+		Version:           payload.Version,
+		Debug:             payload.DebugShowError,
+		Settings:          payload,
+		FrontendVariables: make(map[string]any),
+		Cert:              cert,
+		log:               &log,
+		echo:              nil,
 	}
 }
 
@@ -42,7 +44,7 @@ func (c *Interceptor) Start() error {
 	if err != nil {
 		return err
 	}
-	client.AddPlugin(CreateChannelInterceptorPlugin(c.Version, Assets, c.Settings))
+	client.AddPlugin(CreateChannelInterceptorPlugin(c.Version, Assets, c))
 	if c.Debug {
 		client.AddPlugin(&echo.Plugin{
 			Match: "debug.weixin.qq.com",

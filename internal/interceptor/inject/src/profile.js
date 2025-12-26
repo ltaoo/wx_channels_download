@@ -12,96 +12,88 @@
     $btn.className = "button h-7 ml-2 weui-btn weui-btn_default weui-btn_mini";
     $btn.innerText = "批量下载";
     $btn.onclick = async () => {
-      if (!WXU.API.finderUserPage) {
-        WXU.error({
-          msg: "API 未完成初始化",
-        });
+      if ($btn.classList.contains("weui-btn_loading")) {
         return;
       }
-      if (!my_username) {
-        WXU.error({
-          msg: "数据未完成初始化",
-        });
-        return;
-      }
-      var { href } = window.location;
-      if (!href) {
-        WXU.error({
-          msg: "当前 URL 为空",
-        });
-        return;
-      }
-      const queries = WXU.get_queries(href);
-      if (!queries.username) {
-        WXU.error({
-          msg: "username 不能为空",
-        });
-        return;
-      }
-      let next_marker = "";
-      let has_more = true;
-      while (has_more) {
-        var payload = {
-          username: queries.username,
-          finderUsername: my_username,
-          lastBuffer: next_marker,
-          needFansCount: 0,
-          objectId: "0",
-        };
-        var r = await WXU.API.finderUserPage(payload);
-        if (r.errCode !== 0) {
+      $btn.classList.add("weui-btn_loading");
+      const $loading = document.createElement("i");
+      $loading.className = "weui-loading";
+      $btn.prepend($loading);
+
+      const stopLoading = () => {
+        $btn.classList.remove("weui-btn_loading");
+        $loading.remove();
+      };
+
+      try {
+        if (!WXU.API.finderUserPage) {
           WXU.error({
-            msg: r.errMsg,
-            alert: 0,
+            msg: "API 未完成初始化",
           });
-          has_more = false;
           return;
         }
-        const feeds = r.data.object.map((obj) => {
-          return WXU.format_feed(obj);
-        });
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: "https://api.channels.qq.com/api/task/create_batch",
-          body: {
-            feeds: feeds.map((feed) => {
-              const filename = WXU.build_filename(
-                feed,
-                (() => {
-                  if (feed.spec) {
-                    return feed.spec[0];
-                  }
-                  return null;
-                })(),
-                WXU.config.downloadFilenameTemplate
-              );
-              return {
-                id: feed.id,
-                url: feed.url,
-                title: feed.title,
-                key: Number(feed.key),
-                filename,
-              };
-            }),
-          },
-        });
-        if (err || data?.code !== 0) {
+        if (!my_username) {
           WXU.error({
-            msg: err?.message || data?.msg || "未知错误",
+            msg: "数据未完成初始化",
           });
-          has_more = false;
           return;
         }
-        WXU.downloader.show();
-        if (
-          !r.data.lastBuffer ||
-          r.data.object.length < 15 ||
-          r.data.object.length === 0
-        ) {
-          has_more = false;
+        var { href } = window.location;
+        if (!href) {
+          WXU.error({
+            msg: "当前 URL 为空",
+          });
           return;
         }
-        next_marker = r.data.lastBuffer;
+        const queries = WXU.get_queries(href);
+        if (!queries.username) {
+          WXU.error({
+            msg: "username 不能为空",
+          });
+          return;
+        }
+        let next_marker = "";
+        let has_more = true;
+        while (has_more) {
+          var payload = {
+            username: queries.username,
+            finderUsername: my_username,
+            lastBuffer: next_marker,
+            needFansCount: 0,
+            objectId: "0",
+          };
+          var r = await WXU.API.finderUserPage(payload);
+          if (r.errCode !== 0) {
+            WXU.error({
+              msg: r.errMsg,
+              alert: 0,
+            });
+            has_more = false;
+            return;
+          }
+          const feeds = r.data.object.map((obj) => {
+            return WXU.format_feed(obj);
+          });
+          var [err, data] = await WXU.downloader.create_batch(feeds, null);
+          if (err) {
+            WXU.error({
+              msg: err.message,
+            });
+            has_more = false;
+            return;
+          }
+          if (
+            !r.data.lastBuffer ||
+            r.data.object.length < 15 ||
+            r.data.object.length === 0
+          ) {
+            has_more = false;
+            return;
+          }
+          next_marker = r.data.lastBuffer;
+        }
+      } finally {
+        stopLoading();
       }
     };
     $operation.appendChild($btn);
@@ -110,16 +102,7 @@
   WXU.onInit((data) => {
     my_username = data.mainFinderUsername;
   });
-  setTimeout(() => {
-    if (window.location.pathname !== "/web/pages/profile") {
-      return;
-    }
-    const success = __wx_insert_batch_download_btn();
-    if (success) {
-      return;
-    }
-    WXU.error({
-      msg: "插入下载按钮失败",
-    });
-  }, 3000);
+  WXU.observe_node(".opr-area", () => {
+    __wx_insert_batch_download_btn();
+  });
 })();

@@ -54,6 +54,7 @@
     container.innerHTML = "";
 
     const list = Array.from(tasks.values()).reverse(); // Newest first
+    const runningCount = list.filter((t) => t.status === "running").length;
 
     if (list.length === 0) {
       container.innerHTML = `<div class="weui-loadmore weui-loadmore_line"><span class="weui-loadmore__tips">暂无下载任务</span></div>`;
@@ -119,11 +120,14 @@
               `;
         } else if (isPaused || t.status === "failed") {
           // Allow resume if paused or failed
-          actionButtons += `
+          var MaxRunning = WXU.config.DownloadMaxRunning;
+          if (runningCount < MaxRunning) {
+            actionButtons += `
                 <a href="javascript:" class="wx-download-item-resume" aria-label="继续" title="继续" data-id="${t.id}" data-action="resume" style="${btnStyle}">
                   ${PlayIcon}
                 </a>
               `;
+          }
         }
         actionButtons += `
              <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">
@@ -178,10 +182,11 @@
           <div class="weui-cell__bd" style="min-width:0;">
             <p class="weui-ellipsis" style="color: #FFFFFF; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
             <div class="weui-cell__desc" style="margin-top: 4px; color: #AAAAAA; font-size: 12px;">${statusText}</div>
-            ${typeof pr === "number" && !isCompleted
-          ? `<div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
-          : ""
-        }
+            ${
+              typeof pr === "number" && !isCompleted
+                ? `<div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
+                : ""
+            }
             ${progressDisplay}
           </div>
           ${actionHtml}
@@ -206,11 +211,11 @@
   }
 
   function connect(selector) {
-    const ws = new WebSocket(
-      (location.protocol === "https:" ? "wss://" : "ws://") +
-      "127.0.0.1:2022" +
-      "/ws"
-    );
+    const protocol = location.protocol === "https:" ? "wss://" : "ws://";
+    const pathname = WXU.env.isChannels
+      ? "api.channels.qq.com"
+      : WXU.config.apiServerAddr;
+    const ws = new WebSocket(protocol + pathname + "/ws");
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "tasks") {
@@ -220,11 +225,20 @@
         render(selector);
         return;
       }
+      if (msg.type === "clear") {
+        tasks.clear();
+        render(selector);
+        return;
+      }
       if (msg.type === "event") {
         const evt = msg && msg.data ? msg.data : null;
         const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
         if (task) {
-          upsert(task);
+          if (evt.Type === "delete") {
+            tasks.delete(task.id);
+          } else {
+            upsert(task);
+          }
         }
         render(selector);
       }
@@ -271,13 +285,13 @@
         }
 
         let url = "";
-        if (action === "pause")
+        if (action === "pause") {
           url = "https://api.channels.qq.com/api/task/pause";
-        else if (action === "resume")
+        } else if (action === "resume") {
           url = "https://api.channels.qq.com/api/task/resume";
-        else if (action === "delete")
+        } else if (action === "delete") {
           url = "https://api.channels.qq.com/api/task/delete";
-
+        }
         if (url) {
           var [err, data] = await WXU.request({
             method: "POST",
@@ -295,7 +309,19 @@
     });
   }
 
+  var mounted = false;
   function insert_downloader() {
+    var $header = document.querySelector(".home-header");
+    console.log("[DOWNLOADER]insert_downloader", mounted, $header);
+    if (mounted) {
+      return;
+    }
+    if (!$header) return;
+    var $box = $header.children[$header.children.length - 1];
+    if (!$box) return;
+    var $btn_wrap = $box.children[0];
+    if (!$btn_wrap) return;
+
     var $button = download_btn5();
     var $download_panel = document.createElement("div");
 
@@ -383,11 +409,11 @@
         MenuItem({
           label: "清空记录",
           onClick: async () => {
+            moredropdown$.hide();
             await WXU.request({
               method: "POST",
               url: "https://api.channels.qq.com/api/task/clear",
             });
-            // moredropdown$.hide();
           },
         }),
       ],
@@ -410,10 +436,9 @@
     $button.addEventListener("mouseenter", () => {
       setTimeout(mountMoreIntoHeader, 0);
     });
-    var $header = document.querySelector(".home-header");
-    var $box = $header.children[$header.children.length - 1];
-    var $btn_wrap = $box.children[0];
+
     $btn_wrap.insertBefore($button, $btn_wrap.firstChild);
+    mounted = true;
 
     WXU.downloader.show = function () {
       popover$.open();
@@ -428,6 +453,7 @@
     };
     connect("#downloader_container");
   }
-
-  insert_downloader();
+  WXU.observe_node(".home-header", () => {
+    insert_downloader();
+  });
 })();

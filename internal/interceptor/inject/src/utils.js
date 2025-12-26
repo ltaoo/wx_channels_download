@@ -251,7 +251,7 @@ var WXU = (() => {
   /**
    * 构建文件名
    * @param {FeedProfile} profile
-   * @param {ChannelsMediaSpec} spec
+   * @param {string} spec
    * @param {string} template
    */
   function __wx_build_filename(profile, spec, template) {
@@ -276,7 +276,10 @@ var WXU = (() => {
       params.author = profile.contact.nickname;
     }
     if (spec) {
-      params.spec = spec.fileFormat;
+      var matched = profile.spec.find((item) => item.fileFormat === spec);
+      if (matched) {
+        params.spec = matched.fileFormat;
+      }
     }
     var filename = template
       ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) => params[key])
@@ -593,6 +596,76 @@ var WXU = (() => {
       show() {},
       hide() {},
       toggle() {},
+      /**
+       *
+       * @param {FeedProfile} feed
+       * @param {string} spec
+       * @returns
+       */
+      async create(feed, spec) {
+        var filename = WXU.build_filename(
+          feed,
+          spec,
+          WXU.config.downloadFilenameTemplate
+        );
+        if (!filename) {
+          return [new Error("filename 为空"), null];
+        }
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: "https://api.channels.qq.com/api/task/create",
+          body: {
+            id: feed.id,
+            url: feed.url,
+            title: feed.title,
+            filename: filename,
+            key: Number(feed.key),
+          },
+        });
+        if (err) {
+          return [err, null];
+        }
+        WXU.downloader.show();
+        return [null, data];
+      },
+      /**
+       *
+       * @param {FeedProfile[]} feeds
+       * @param {string} spec
+       * @returns
+       */
+      async create_batch(feeds, spec) {
+        var body = {
+          feeds: [],
+        };
+        for (let i = 0; i < feeds.length; i += 1) {
+          var feed = feeds[i];
+          var filename = WXU.build_filename(
+            feed,
+            spec,
+            WXU.config.downloadFilenameTemplate
+          );
+          if (filename) {
+            body.feeds.push({
+              id: feed.id,
+              url: feed.url,
+              title: feed.title,
+              key: Number(feed.key),
+              filename,
+            });
+          }
+        }
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: "https://api.channels.qq.com/api/task/create_batch",
+          body,
+        });
+        if (err) {
+          return [err, null];
+        }
+        WXU.downloader.show();
+        return [null, data];
+      },
     },
     /**
      * 视频解密
@@ -715,31 +788,61 @@ var WXU = (() => {
     play_cur_video: __wx_channels_play_cur_video,
     check_feed_existing: __wx_check_feed_existing,
     fetch: __wx_fetch,
+    observe_node(selector, cb) {
+      var $existing = document.querySelector(selector);
+      if ($existing) {
+        cb();
+        return;
+      }
+      var observer = new MutationObserver((mutations, obs) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === "childList") {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === 1) {
+                if (node.matches(selector) || node.querySelector(selector)) {
+                  cb();
+                  if (document.querySelector(selector)) {
+                    obs.disconnect();
+                  }
+                }
+              }
+            });
+          }
+        });
+      });
+      WXU.onWindowLoaded(() => {
+        observer.observe(document.getElementById("app"), {
+          childList: true,
+          subtree: true,
+        });
+      });
+    },
     /**
      * @param {{ url: string; method: 'GET' | 'POST'; body?: any }} opt
      */
     async request(opt) {
-      try {
-        const r = await new Promise((resolve, reject) => {
-          var xhr = new XMLHttpRequest();
-          xhr.open(opt.method, opt.url);
-          xhr.setRequestHeader("Content-Type", "application/json");
-          xhr.onload = function () {
-            resolve({
-              status: xhr.status,
-              ok: xhr.status >= 200 && xhr.status < 300,
-              text: xhr.responseText,
-            });
-          };
-          xhr.onerror = function () {
-            reject(new Error("Network Error"));
-          };
-          xhr.send(JSON.stringify(opt.body));
-        });
-        return [null, r];
-      } catch (e) {
-        return [e, null];
-      }
+      return new Promise((resolve, reject) => {
+        var xhr = new XMLHttpRequest();
+        xhr.open(opt.method, opt.url);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.onload = async function () {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data.code !== 0) {
+              resolve([new Error(data.msg), null]);
+              return;
+            }
+            resolve([null, data.data]);
+          } catch (e) {
+            // ignore
+          }
+          resolve([null, xhr.responseText]);
+        };
+        xhr.onerror = function (err) {
+          reject([err, null]);
+        };
+        xhr.send(JSON.stringify(opt.body));
+      });
     },
     async save(blob, filename) {
       await __wx_load_script(
@@ -779,10 +882,18 @@ var WXU = (() => {
      */
     get config() {
       /** @type {ChannelsConfig} */
-      return __wx_channels_config__;
+      return {
+        ...(window.__wx_channels_config__ || {}),
+        ...(window.WXVariable || {}),
+      };
     },
     get version() {
       return __wx_channels_version__;
+    },
+    env: {
+      get isChannels() {
+        return window.location.href.includes("weixin.qq.com");
+      },
     },
   };
 })();
