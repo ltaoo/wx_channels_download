@@ -589,6 +589,11 @@ var WXU = (() => {
     get API() {
       return WXAPI;
     },
+    downloader: {
+      show() {},
+      hide() {},
+      toggle() {},
+    },
     /**
      * 视频解密
      */

@@ -139,39 +139,43 @@
     list.forEach((t) => {
       const item = document.createElement("div");
       item.className = "download-item";
-      
+
       const pr = percent(t);
-      const isCompleted = t.status === "completed" || t.status === "success" || (t.status === "finished") || (pr === 100 && t.status !== "running");
+      const isCompleted =
+        t.status === "completed" ||
+        t.status === "success" ||
+        t.status === "finished" ||
+        (pr === 100 && t.status !== "running");
 
       let statusText = t.status;
       let progressDisplay = "";
-      
+
       if (t.status === "running") {
-         const speed = format_speed(t.progress ? t.progress.speed : 0);
-         statusText = `${speed} • ${pr}%`;
-         progressDisplay = `<div class="download-progress-bar"><div class="download-progress-inner" style="width:${pr}%"></div></div>`;
+        const speed = format_speed(t.progress ? t.progress.speed : 0);
+        statusText = `${speed} • ${pr}%`;
+        progressDisplay = `<div class="download-progress-bar"><div class="download-progress-inner" style="width:${pr}%"></div></div>`;
       } else if (isCompleted) {
-          statusText = "已完成";
-          // Calculate size
-          const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-          if (total) {
-              const mb = 1024 * 1024;
-              statusText = (total / mb).toFixed(2) + " MB";
-          }
+        statusText = "已完成";
+        // Calculate size
+        const total = t.meta && t.meta.res ? t.meta.res.size : 0;
+        if (total) {
+          const mb = 1024 * 1024;
+          statusText = (total / mb).toFixed(2) + " MB";
+        }
       } else if (t.status === "failed") {
-          statusText = "下载失败";
+        statusText = "下载失败";
       } else if (t.status === "pending") {
-          statusText = "等待中...";
+        statusText = "等待中...";
       }
 
       const actionHtml = isCompleted
-        ? `<div class="download-action" title="打开文件夹" data-id="${t.id}" data-action="open">${FolderIcon}</div>` 
+        ? `<div class="download-action" title="打开文件夹" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open">${FolderIcon}</div>`
         : "";
-
+      var filename = name_of(t);
       item.innerHTML = `
           <div class="download-icon">${FileIcon}</div>
           <div class="download-info">
-            <div class="download-title" title="${name_of(t)}">${name_of(t)}</div>
+            <div class="download-title" title="${filename}">${filename}</div>
             <div class="download-meta">
                 <span>${statusText}</span>
             </div>
@@ -182,28 +186,20 @@
       container.appendChild(item);
     });
 
-    // Bind events
-    container.querySelectorAll('[data-action="open"]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const id = btn.getAttribute('data-id');
-            console.log("Open task", id);
-             // Attempt to call open API if it existed, for now just log
-             // Maybe we can try to request /api/task/open just in case the user adds it later
-             /*
-             var [err, data] = await WXU.request({
-                method: "POST",
-                url: "https://api.channels.qq.com/api/task/open",
-                body: { id },
-              });
-             */
-        });
-    });
+    // Bind events - Removed in favor of delegation
   }
 
   function upsert(task) {
     if (!task || !task.id) return;
-    tasks.set(task.id, task);
+    tasks.set(task.id, {
+      ...task,
+      filepath: (() => {
+        if (task.meta.opts) {
+          return `${task.meta.opts.path}/${task.meta.opts.name}`;
+        }
+        return "";
+      })(),
+    });
   }
 
   function connect(selector) {
@@ -247,6 +243,27 @@
         }
         console.log(data);
       }
+
+      const openBtn = e.target.closest('[data-action="open"]');
+      if (openBtn) {
+        e.stopPropagation();
+        const id = openBtn.getAttribute("data-id");
+        const filepath = openBtn.getAttribute("data-filepath");
+        if (!filepath) {
+          return;
+        }
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: "https://api.channels.qq.com/api/show_file",
+          body: { filepath, id },
+        });
+        if (err) {
+          WXU.error({
+            msg: err.message,
+          });
+          return;
+        }
+      }
     });
   }
 
@@ -255,8 +272,8 @@
     var $download_panel = document.createElement("div");
     // Change to div container
     $download_panel.innerHTML = `<div id="downloader_container" class="download-list"></div>`;
-    
-    Weui.Popover($button, {
+
+    var popover$ = Weui.Popover($button, {
       content: $download_panel.innerHTML,
       placement: "bottom-end", // Default is now bottom-start (arrow on left)
       closeOnClickOutside: true,
@@ -266,6 +283,15 @@
     var $btn_wrap = $box.children[0];
     $btn_wrap.insertBefore($button, $btn_wrap.firstChild);
 
+    WXU.downloader.show = function () {
+      popover$.open();
+    };
+    WXU.downloader.hide = function () {
+      popover$.close();
+    };
+    WXU.downloader.toggle = function () {
+      popover$.toggle();
+    };
     connect("#downloader_container");
   }
 

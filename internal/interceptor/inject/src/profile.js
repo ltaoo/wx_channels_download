@@ -38,7 +38,6 @@
         });
         return;
       }
-      const AllFeedsOfContact = [];
       let next_marker = "";
       let has_more = true;
       while (has_more) {
@@ -58,18 +57,52 @@
           has_more = false;
           return;
         }
-        AllFeedsOfContact.push(...r.data.object);
-        has_more = false;
-        // if (
-        //   !r.data.lastBuffer ||
-        //   r.data.object.length < 15 ||
-        //   r.data.object.length === 0
-        // ) {
-        //   console.log("All feeds", AllFeedsOfContact);
-        //   has_more = false;
-        //   return;
-        // }
-        // next_marker = r.data.lastBuffer;
+        const feeds = r.data.object.map((obj) => {
+          return WXU.format_feed(obj);
+        });
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: "https://api.channels.qq.com/api/task/create_batch",
+          body: {
+            feeds: feeds.map((feed) => {
+              const filename = WXU.build_filename(
+                feed,
+                (() => {
+                  if (feed.spec) {
+                    return feed.spec[0];
+                  }
+                  return null;
+                })(),
+                WXU.config.downloadFilenameTemplate
+              );
+              return {
+                id: feed.id,
+                url: feed.url,
+                title: feed.title,
+                key: Number(feed.key),
+                filename,
+              };
+            }),
+          },
+        });
+        if (err) {
+          WXU.error({
+            msg: err.message,
+            alert: 0,
+          });
+          has_more = false;
+          return;
+        }
+        WXU.downloader.show();
+        if (
+          !r.data.lastBuffer ||
+          r.data.object.length < 15 ||
+          r.data.object.length === 0
+        ) {
+          has_more = false;
+          return;
+        }
+        next_marker = r.data.lastBuffer;
       }
     };
     $operation.appendChild($btn);

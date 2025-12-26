@@ -3,8 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"time"
+	"wx_channel/pkg/decrypt"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
@@ -26,7 +29,7 @@ func NewAPIClient(cfg *APISettings) *APIClient {
 	data_dir := cfg.RootDir
 	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 		RefreshInterval: 360,
-		Storage:         downloadpkg.NewMemStorage(),
+		Storage:         downloadpkg.NewBoltStorage(data_dir),
 		StorageDir:      data_dir,
 	})
 	client := &APIClient{
@@ -63,7 +66,9 @@ func (c *APIClient) setupRoutes() {
 
 	c.engine.GET("/ws", c.handleWS)
 	c.engine.POST("/api/task/create", c.handleCreateTask)
+	c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
 	c.engine.POST("/api/task/start", c.handleStartTask)
+	c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
 		c.decryptor.ServeHTTP(ctx.Writer, ctx.Request)
@@ -107,6 +112,29 @@ func (c *APIClient) Start() error {
 			Type: "event",
 			Data: evt,
 		})
+		if evt.Key == downloadpkg.EventKeyDone {
+			task := c.downloader.GetTask(evt.Task.ID)
+			k := task.Meta.Req.Labels["key"]
+			key, err := strconv.Atoi(k)
+			if err != nil {
+				return
+			}
+			if key == 0 {
+				return
+			}
+			file_path := task.Meta.SingleFilepath()
+			go func() {
+				data, err := os.ReadFile(file_path)
+				if err != nil {
+					return
+				}
+				length := uint32(131072)
+				_key := uint64(key)
+				decrypt.DecryptData(data, length, _key)
+				_ = os.WriteFile(file_path, data, 0644)
+			}()
+
+		}
 	})
 	return nil
 }
@@ -158,27 +186,50 @@ func (c *APIClient) handleWS(ctx *gin.Context) {
 }
 
 type CreateTaskReq struct {
+	Id       string `json:"id"`
 	URL      string `json:"url"`
 	Title    string `json:"title"`
 	Filename string `json:"filename"`
-	Key      string `json:"key"`
-	// Meta     string `json:"meta"`
+	Key      int    `json:"key"`
 }
 
+func (c *APIClient) check_existing_feed(id string) bool {
+	for _, t := range c.downloader.GetTasks() {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		if t.Meta.Req.Labels["id"] == id {
+			return true
+		}
+	}
+	return false
+}
 func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	var body CreateTaskReq
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 		return
 	}
+	if body.Id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "missing task id"})
+		return
+	}
+	existing := c.check_existing_feed(body.Id)
+	if existing {
+		ctx.JSON(http.StatusConflict, gin.H{"error": "feed already exists"})
+		return
+	}
 	id, err := c.downloader.CreateDirect(
-		&base.Request{URL: body.URL},
+		&base.Request{
+			URL: body.URL,
+			Labels: map[string]string{
+				"id":    body.Id,
+				"title": body.Title,
+				"key":   strconv.Itoa(body.Key),
+			},
+		},
 		&base.Options{
 			Name: body.Filename + ".mp4",
-			Path: c.cfg.DownloadDir,
-			Extra: map[string]any{
-				"key": body.Key,
-			},
 		},
 	)
 	if err != nil {
@@ -191,6 +242,49 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	})
 	ctx.JSON(http.StatusOK, gin.H{
 		"id": id,
+	})
+}
+
+func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
+	var body struct {
+		Feeds []CreateTaskReq `json:"feeds"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+		return
+	}
+
+	task := base.CreateTaskBatch{}
+	for _, req := range body.Feeds {
+		existing := c.check_existing_feed(req.Id)
+		if existing {
+			continue
+		}
+		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
+			Req: &base.Request{
+				URL: req.URL,
+				Labels: map[string]string{
+					"id":    req.Id,
+					"title": req.Title,
+					"key":   strconv.Itoa(req.Key),
+				},
+			},
+			Opts: &base.Options{
+				Name: req.Filename + ".mp4",
+			},
+		})
+	}
+	ids, err := c.downloader.CreateDirectBatch(&task)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "create failed"})
+		return
+	}
+	c.broadcast(DownloaderWSMessage{
+		Type: "tasks",
+		Data: c.downloader.GetTasks(),
+	})
+	ctx.JSON(http.StatusOK, gin.H{
+		"ids": ids,
 	})
 }
 
