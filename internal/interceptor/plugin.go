@@ -30,7 +30,6 @@ var (
 	jsExportBlockReg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// 特定路径的正则
-	jsDialogReg         = regexp.MustCompile(`i.default={dialog`)
 	jsSourceBufferReg   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
 	jsInitReg           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
 	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
@@ -42,8 +41,9 @@ var (
 	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, cfg *InterceptorSettings) *echo.Plugin {
+func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, interceptor *Interceptor) *echo.Plugin {
 	v := "?t=" + version
+	cfg := interceptor.Settings
 	return &echo.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx *echo.Context) {
@@ -157,6 +157,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
+				variable_byte, _ := json.Marshal(interceptor.FrontendVariables)
+				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
+				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
@@ -173,8 +176,11 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
+				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
@@ -312,9 +318,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
 					wxapi_str := ";WXU.emit(WXU.Events.APILoaded," + api_methods_escaped + ");export{"
 					js_script = jsExportReg.ReplaceAllString(js_script, wxapi_str)
-					// 之后还是换成自己实现的吧，就用到了 loading 和 toast 两个方法
-					wx_toast_content := `i.default=window.__wx_channels_tip__={dialog`
-					js_script = jsDialogReg.ReplaceAllString(js_script, wx_toast_content)
 					ctx.SetResponseBody(js_script)
 					return
 				}

@@ -20,8 +20,10 @@ type ChannelsConfig = {
   downloadFilenameTemplate: string;
   /** 下载时暂停播放 */
   downloadPauseWhenDownload: boolean;
-  downloadLocalServerEnabled: boolean;
-  downloadLocalServerAddr: string;
+  /** 在前端下载 */
+  downloadInFrontend: boolean;
+  /** API 服务地址 */
+  apiServerAddr: string;
 };
 type DropdownMenuItemPayload = {
   label: string;

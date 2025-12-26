@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/viper"
 
@@ -13,11 +14,13 @@ import (
 type InterceptorSettings struct {
 	Version                      string `json:"version"`
 	FilePath                     string // 配置文件路径
-	DownloadDefaultHighest       bool   `json:"defaultHighest"`             // 默认下载最高画质
-	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`   // 下载文件名模板
-	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
-	DownloadLocalServerEnabled   bool   `json:"downloadLocalServerEnabled"` // 下载时是否使用本地服务器
-	DownloadLocalServerAddr      string `json:"downloadLocalServerAddr"`    // 下载时本地服务器地址
+	DownloadDefaultHighest       bool   `json:"defaultHighest"`            // 默认下载最高画质
+	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`  // 下载文件名模板
+	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"` // 下载时暂停播放
+	DownloadInFrontend           bool   `json:"downloadInFrontend"`        // 在前端下载
+	APIServerHostname            string `json:"apiServerHostname"`         // API服务器主机名
+	APIServerPort                int    `json:"apiServerPort"`             // API服务器端口
+	APIServerAddr                string `json:"apiServerAddr"`
 	ProxyDevice                  string
 	ProxySetSystem               bool
 	ProxyServerHostname          string
@@ -34,7 +37,7 @@ type InterceptorSettings struct {
 	t *config.Config
 }
 
-func SetDefault(cfg *config.Config) {
+func SetDefaultSettings(cfg *config.Config) {
 	config.Register(config.ConfigItem{
 		Key:         "download.defaultHighest",
 		Type:        config.ConfigTypeBool,
@@ -60,20 +63,28 @@ func SetDefault(cfg *config.Config) {
 		Group:       "Download",
 	})
 	config.Register(config.ConfigItem{
-		Key:         "download.localServer.enabled",
+		Key:         "download.inFrontend",
 		Type:        config.ConfigTypeBool,
 		Default:     false,
-		Description: "是否开启本地服务器",
-		Title:       "本地服务器",
+		Description: "在前端下载",
+		Title:       "前端下载",
 		Group:       "Download",
 	})
 	config.Register(config.ConfigItem{
-		Key:         "download.localServer.addr",
+		Key:         "api.hostname",
 		Type:        config.ConfigTypeString,
-		Default:     "127.0.0.1:8080",
-		Description: "本地服务器地址",
-		Title:       "本地服务器地址",
-		Group:       "Download",
+		Default:     "127.0.0.1",
+		Description: "API 服务主机名",
+		Title:       "API 服务主机",
+		Group:       "API",
+	})
+	config.Register(config.ConfigItem{
+		Key:         "api.port",
+		Type:        config.ConfigTypeInt,
+		Default:     2022,
+		Description: "API 服务端口",
+		Title:       "API 服务端口",
+		Group:       "API",
 	})
 	config.Register(config.ConfigItem{
 		Key:         "proxy.system",
@@ -158,36 +169,28 @@ func SetDefault(cfg *config.Config) {
 	})
 }
 
-func NewInterceptorSettings() (*InterceptorSettings, error) {
-	c, err := config.New()
-	if err != nil {
-		return nil, err
-	}
-	SetDefault(c)
-	err = c.LoadConfig()
-	if err != nil {
-		return nil, err
-	}
+func NewInterceptorSettings(c *config.Config) *InterceptorSettings {
 	settings := &InterceptorSettings{
-		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
-		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
-		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
-		DownloadLocalServerEnabled:   viper.GetBool("download.localServer.enabled"),
-		DownloadLocalServerAddr:      viper.GetString("download.localServer.addr"),
-		ProxySetSystem:               viper.GetBool("proxy.system"),
-		ProxyServerPort:              viper.GetInt("proxy.port"),
-		ProxyServerHostname:          viper.GetString("proxy.hostname"),
+		DebugShowError:               viper.GetBool("debug.error"),
 		PagespyEnabled:               viper.GetBool("pagespy.enabled"),
 		PageppyServerProtocol:        viper.GetString("pagespy.protocol"),
 		PageppyServerAPI:             viper.GetString("pagespy.api"),
-		DebugShowError:               viper.GetBool("debug.error"),
 		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
+		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
+		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
+		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
+		DownloadInFrontend:           viper.GetBool("download.frontend"),
+		APIServerHostname:            viper.GetString("api.hostname"),
+		APIServerPort:                viper.GetInt("api.port"),
+		APIServerAddr:                viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		ProxySetSystem:               viper.GetBool("proxy.system"),
+		ProxyServerPort:              viper.GetInt("proxy.port"),
+		ProxyServerHostname:          viper.GetString("proxy.hostname"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScript:           viper.GetString("inject.globalScript"),
-		// CertFiles:                    cert,
-		t: c,
+		t:                            c,
 	}
-	global_script_path := path.Join(c.BaseDir, "global.js")
+	global_script_path := path.Join(c.RootDir, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
 		if err == nil {
@@ -198,7 +201,7 @@ func NewInterceptorSettings() (*InterceptorSettings, error) {
 	if extra_js_filepath != "" {
 		// If it's a relative path, resolve it against the current working directory
 		if !filepath.IsAbs(extra_js_filepath) {
-			extra_js_filepath = filepath.Join(c.BaseDir, extra_js_filepath)
+			extra_js_filepath = filepath.Join(c.RootDir, extra_js_filepath)
 		}
 		if _, err := os.Stat(extra_js_filepath); err == nil {
 			script_byte, err := os.ReadFile(extra_js_filepath)
@@ -207,5 +210,5 @@ func NewInterceptorSettings() (*InterceptorSettings, error) {
 			}
 		}
 	}
-	return settings, nil
+	return settings
 }

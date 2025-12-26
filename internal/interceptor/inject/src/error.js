@@ -1,3 +1,6 @@
+/**
+ * @file 错误捕获
+ */
 class ErrorModal {
   constructor() {
     this.mounted = false;

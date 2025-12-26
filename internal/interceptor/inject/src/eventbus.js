@@ -1,3 +1,6 @@
+/**
+ * @file 事件总线
+ */
 var WXE = (() => {
   var eventbus = mitt();
   var ChannelsEvents = {

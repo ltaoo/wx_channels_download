@@ -12,10 +12,10 @@ import (
 )
 
 type Config struct {
-	BaseDir  string
-	Filename string
-	FullPath string
-	Existing bool
+	RootDir  string // 二进制文件所在目录
+	Filename string // 配置文件名
+	FullPath string // 配置文件完整路径
+	Existing bool   // 配置文件是否存在
 	Error    error
 	Debug    bool
 }
@@ -52,7 +52,7 @@ func New() (*Config, error) {
 	}
 	viper.SetConfigFile(config_filepath)
 	c := &Config{
-		BaseDir:  base_dir,
+		RootDir:  base_dir,
 		Filename: filename,
 		FullPath: config_filepath,
 		Existing: has_config,
@@ -82,7 +82,7 @@ func (c *Config) GetDebugInfo() map[string]string {
 	info := map[string]string{
 		"executable":    exe,
 		"exe_dir":       exe_dir,
-		"base_dir":      c.BaseDir,
+		"base_dir":      c.RootDir,
 		"config_path":   c.FullPath,
 		"config_exists": fmt.Sprintf("%v", c.Existing),
 	}

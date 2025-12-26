@@ -19,8 +19,14 @@ var js_floating_ui_dom []byte
 //go:embed inject/lib/mitt.umd.js
 var js_mitt []byte
 
-//go:embed inject/lib/weui.umd.js
+//go:embed inject/lib/weui.min.css
+var css_weui []byte
+
+//go:embed inject/lib/weui.min.js
 var js_weui []byte
+
+//go:embed inject/lib/wui.umd.js
+var js_wui []byte
 
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
@@ -43,6 +49,9 @@ var js_components []byte
 //go:embed inject/src/utils.js
 var js_utils []byte
 
+//go:embed inject/src/downloader.js
+var js_downloader []byte
+
 //go:embed inject/src/main.js
 var js_feed_profile_or_recommand_page []byte
 
@@ -60,12 +69,15 @@ var Assets = &ChannelInjectedFiles{
 	JSFloatingUICore: js_floating_ui_core,
 	JSFloatingUIDOM:  js_floating_ui_dom,
 	JSWeui:           js_weui,
+	CSSWeui:          css_weui,
+	JSWui:            js_wui,
 	JSMitt:           js_mitt,
 	JSDebug:          js_debug,
 	JSError:          js_error,
 	JSEventBus:       js_eventbus,
 	JSComponents:     js_components,
 	JSUtils:          js_utils,
+	JSDownloader:     js_downloader,
 	JSMain:           js_feed_profile_or_recommand_page,
 	JSLiveMain:       js_live_profile_page,
 	JSContactMain:    js_contact_profile_page,
