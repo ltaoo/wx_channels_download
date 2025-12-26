@@ -115,9 +115,8 @@ func (c *APIClient) Start() error {
 				"userAgent":   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			},
 		},
-		Extra:   map[string]any{},
-		Proxy:   &base.DownloaderProxyConfig{},
-		Webhook: &base.WebhookConfig{},
+		Extra: map[string]any{},
+		Proxy: &base.DownloaderProxyConfig{},
 	})
 
 	c.downloader.Listener(func(evt *downloadpkg.Event) {

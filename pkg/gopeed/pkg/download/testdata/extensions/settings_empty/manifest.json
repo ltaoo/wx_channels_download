@@ -1,0 +1,16 @@
+{
+  "name": "settings-empty",
+  "title": "gopeed extension settings empty test",
+  "version": "0.0.1",
+  "scripts": [
+    {
+      "event": "onResolve",
+      "match": {
+        "urls": [
+          "*://*/*"
+        ]
+      },
+      "entry": "index.js"
+    }
+  ]
+}
