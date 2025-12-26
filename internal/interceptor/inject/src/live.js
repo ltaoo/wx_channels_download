@@ -1,3 +1,6 @@
+/**
+ * @file 直播页
+ */
 window.__wx_channels_live_store__ = {};
 function __wx_copy_live_download_command() {
   var profile = __wx_channels_live_store__.profile;

@@ -9,7 +9,7 @@ import (
 
 type InterceptorServer struct {
 	*manager.HTTPServer
-	interceptor *Interceptor
+	Interceptor *Interceptor
 }
 
 func NewInterceptorServer(settings *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *InterceptorServer {
@@ -20,12 +20,12 @@ func NewInterceptorServer(settings *InterceptorSettings, cert *certificate.CertF
 
 	return &InterceptorServer{
 		HTTPServer:  srv,
-		interceptor: interceptor,
+		Interceptor: interceptor,
 	}
 }
 
 func (s *InterceptorServer) Start() error {
-	if err := s.interceptor.Start(); err != nil {
+	if err := s.Interceptor.Start(); err != nil {
 		return fmt.Errorf("failed to start interceptor: %v", err)
 	}
 	return s.HTTPServer.Start()
@@ -33,7 +33,7 @@ func (s *InterceptorServer) Start() error {
 
 func (s *InterceptorServer) Stop() error {
 	// 先关闭代理设置，防止新流量进入
-	if err := s.interceptor.Stop(); err != nil {
+	if err := s.Interceptor.Stop(); err != nil {
 		return fmt.Errorf("failed to stop interceptor: %v", err)
 	}
 	return s.HTTPServer.Stop()

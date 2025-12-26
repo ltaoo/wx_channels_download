@@ -3,6 +3,7 @@ package interceptor
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -14,24 +15,26 @@ import (
 )
 
 type Interceptor struct {
-	Version     string
-	Debug       bool
-	Settings    *InterceptorSettings
-	Cert        *certificate.CertFileAndKeyFile
-	echo        *echo.Echo
-	PostPlugins []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo
-	log         *zerolog.Logger
+	Version           string
+	Debug             bool
+	Settings          *InterceptorSettings
+	Cert              *certificate.CertFileAndKeyFile
+	echo              *echo.Echo
+	PostPlugins       []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo
+	FrontendVariables map[string]any // 前端额外的全局变量
+	log               *zerolog.Logger
 }
 
 func NewInterceptor(payload *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *Interceptor {
 	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", payload.Version).Logger()
 	return &Interceptor{
-		Version:  payload.Version,
-		Debug:    payload.DebugShowError,
-		Settings: payload,
-		Cert:     cert,
-		log:      &log,
-		echo:     nil,
+		Version:           payload.Version,
+		Debug:             payload.DebugShowError,
+		Settings:          payload,
+		FrontendVariables: make(map[string]any),
+		Cert:              cert,
+		log:               &log,
+		echo:              nil,
 	}
 }
 
@@ -41,7 +44,7 @@ func (c *Interceptor) Start() error {
 	if err != nil {
 		return err
 	}
-	client.AddPlugin(CreateChannelInterceptorPlugin(c.Version, Assets, c.Settings))
+	client.AddPlugin(CreateChannelInterceptorPlugin(c.Version, Assets, c))
 	if c.Debug {
 		client.AddPlugin(&echo.Plugin{
 			Match: "debug.weixin.qq.com",
@@ -111,5 +114,27 @@ func (c *Interceptor) SetLog(writer io.Writer) {
 	c.log = &l
 }
 func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		host = h
+	}
+	isLocal := false
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		isLocal = true
+	}
+	if host == "localhost" || host == c.Settings.ProxyServerHostname {
+		isLocal = true
+	}
+	if isLocal && r.URL.Path == "/cert" {
+		w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+		w.Header().Set("Content-Disposition", "attachment; filename=\"SunnyNet.cer\"")
+		w.Write(c.Cert.Cert)
+		return
+	}
+	if isLocal && (r.URL.Path == "/" || r.URL.Path == "") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<html><head><title>wx_channels_download</title></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
+		return
+	}
 	c.echo.ServeHTTP(w, r)
 }

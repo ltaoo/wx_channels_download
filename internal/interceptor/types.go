@@ -8,15 +8,19 @@ type ChannelInjectedFiles struct {
 	JSFloatingUICore []byte
 	JSFloatingUIDOM  []byte
 	JSWeui           []byte
+	CSSWeui          []byte
+	JSWui            []byte
 	JSMitt           []byte
 	JSDebug          []byte
 	JSEventBus       []byte
 	JSComponents     []byte
+	JSDownloader     []byte
 	JSUtils          []byte
 	JSError          []byte
 	JSMain           []byte
 	JSLiveMain       []byte
 	JSContactMain    []byte
+	IndexHTML        []byte
 }
 
 type ChannelMediaSpec struct {
