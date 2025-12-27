@@ -2,20 +2,22 @@ package assets
 
 import (
 	_ "embed"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
+	"bytes"
+	"io"
 	"sync"
 	"time"
+	"github.com/faiface/beep"
+	"github.com/faiface/beep/speaker"
+	"github.com/faiface/beep/wav"
 )
 
-//go:embed done.mp3
-var doneMp3 []byte
+//go:embed done.wav
+var doneWav []byte
 
 var (
-	lastPlayed time.Time
-	mu         sync.Mutex
+	lastPlayed  time.Time
+	mu          sync.Mutex
+	speakerOnce sync.Once
 )
 
 // PlayDoneAudio plays the done.mp3 sound effect.
@@ -29,22 +31,20 @@ func PlayDoneAudio() error {
 	lastPlayed = time.Now()
 	mu.Unlock()
 
-	// Only support macOS for now
-	if runtime.GOOS != "darwin" {
-		return nil
-	}
-
-	tmpFile := filepath.Join(os.TempDir(), "wx_channels_download_done.mp3")
-	// Always write to ensure the file exists and is up to date
-	if err := os.WriteFile(tmpFile, doneMp3, 0644); err != nil {
+	reader := io.NopCloser(bytes.NewReader(doneWav))
+	streamer, format, err := wav.Decode(reader)
+	if err != nil {
 		return err
 	}
-
-	// Play in background to avoid blocking
-	go func() {
-		cmd := exec.Command("afplay", tmpFile)
-		_ = cmd.Run()
-	}()
-
+	var initErr error
+	speakerOnce.Do(func() {
+		initErr = speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	})
+	if initErr != nil {
+		return initErr
+	}
+	done := make(chan struct{})
+	speaker.Play(beep.Seq(streamer, beep.Callback(func() { close(done) })))
+	<-done
 	return nil
 }
