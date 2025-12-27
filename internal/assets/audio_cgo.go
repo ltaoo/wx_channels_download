@@ -1,11 +1,15 @@
+//go:build cgo
+// +build cgo
+
 package assets
 
 import (
-	_ "embed"
 	"bytes"
+	_ "embed"
 	"io"
 	"sync"
 	"time"
+
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/speaker"
 	"github.com/faiface/beep/wav"
