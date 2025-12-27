@@ -129,7 +129,7 @@ func (c *APIClient) Start() error {
 			Data: evt,
 		})
 		if evt.Key == downloadpkg.EventKeyDone {
-			assets.PlayDoneAudio()
+			go assets.PlayDoneAudio()
 			task := c.downloader.GetTask(evt.Task.ID)
 			file_path := task.Meta.SingleFilepath()
 			go func() {

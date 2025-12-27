@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/GopeedLab/gopeed v1.8.3
 	github.com/adrg/xdg v0.5.3
+	github.com/faiface/beep v1.1.0
 	github.com/fatih/color v1.17.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/gorilla/websocket v1.5.3
@@ -30,6 +31,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/hajimehoshi/oto v0.7.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
@@ -61,6 +63,9 @@ require (
 	golang.org/x/arch v0.20.0 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
+	golang.org/x/exp/shiny v0.0.0-20251219203646-944ab1f22d93 // indirect
+	golang.org/x/image v0.34.0 // indirect
+	golang.org/x/mobile v0.0.0-20251126181937-5c265dc024c4 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
