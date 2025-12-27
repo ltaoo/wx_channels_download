@@ -58,9 +58,9 @@ export default defineConfig({
         text: "功能",
         items: [
           { text: "长视频下载", link: "/feature/long_video" },
-          { text: "指定文件名", link: "/feature/filename" },
           { text: "mp3下载", link: "/feature/mp3" },
           { text: "直播下载", link: "/feature/live" },
+          { text: "指定文件名", link: "/feature/filename" },
           { text: "自定义菜单", link: "/feature/custom-menu" },
           { text: "监听事件", link: "/feature/event" },
         ],
@@ -78,8 +78,9 @@ export default defineConfig({
       {
         text: "配置",
         items: [
-          { text: "下载", link: "/config/download" },
           { text: "代理", link: "/config/proxy" },
+          { text: "api", link: "/config/api" },
+          { text: "下载", link: "/config/download" },
           { text: "脚本", link: "/config/script" },
           { text: "视频号", link: "/config/channel" },
         ],
