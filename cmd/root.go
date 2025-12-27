@@ -26,7 +26,6 @@ var (
 	port      int
 	debug     bool
 	CertFiles *certificate.CertFileAndKeyFile
-	Settings  *interceptor.InterceptorSettings
 	Cfg       *config.Config
 )
 
@@ -37,12 +36,7 @@ var root_cmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		Settings.Version = Version
-		Settings.DebugShowError = viper.GetBool("debug.error")
-		Settings.ProxySetSystem = viper.GetBool("proxy.system")
-		Settings.ProxyServerHostname = viper.GetString("proxy.hostname")
-		Settings.ProxyServerPort = viper.GetInt("proxy.port")
-		root_command(Settings)
+		root_command(Cfg)
 	},
 }
 
@@ -57,12 +51,11 @@ func init() {
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, cfg *config.Config, settings *interceptor.InterceptorSettings) error {
+func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, cfg *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
 	CertFiles = cert
-	Settings = settings
 	Cfg = cfg
 
 	return root_cmd.Execute()
@@ -74,39 +67,33 @@ func Register(cmd *cobra.Command) {
 type RootCommandArg struct {
 }
 
-func root_command(args *interceptor.InterceptorSettings) {
-	c, err := config.New()
-	if err != nil {
-		return
-	}
-	interceptor.SetDefaultSettings(c)
-	err = c.LoadConfig()
-	if err != nil {
-		return
-	}
+func root_command(cfg *config.Config) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	fmt.Printf("\nv%v\n", Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
-	if args.FilePath != "" {
-		fmt.Printf("配置文件 %s\n", args.FilePath)
+
+	interceptor_settings := interceptor.NewInterceptorSettings(cfg)
+	if cfg.FullPath != "" {
+		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
-	if script_byte := viper.Get("globalUserScript"); script_byte != nil {
-		fmt.Printf("存在全局脚本\n\n")
+	if script_byte := interceptor_settings.InjectGlobalScript; script_byte != "" {
+		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_settings.InjectGlobalScriptFilepath))
 	}
 	mgr := manager.NewServerManager()
-	interceptor_srv := interceptor.NewInterceptorServer(args, CertFiles)
+	interceptor_srv := interceptor.NewInterceptorServer(interceptor_settings, CertFiles)
 	interceptor_srv.Interceptor.AddPostPlugin(&echo.Plugin{
 		Match: "api.channels.qq.com",
 		Target: &echo.TargetConfig{
 			Protocol: "http",
-			Host:     args.APIServerHostname,
-			Port:     args.APIServerPort,
+			Host:     interceptor_settings.APIServerHostname,
+			Port:     interceptor_settings.APIServerPort,
 		},
 	})
 	mgr.RegisterServer(interceptor_srv)
 	api_settings := api.NewAPISettings(Cfg)
+	fmt.Printf("下载目录 %s\n", color.New(color.Underline).Sprint(api_settings.DownloadDir))
 	api_srv := api.NewAPIServer(api_settings)
 	api_srv.APIClient.Interceptor = interceptor_srv.Interceptor
 	mgr.RegisterServer(api_srv)
@@ -136,7 +123,7 @@ func root_command(args *interceptor.InterceptorSettings) {
 	}
 	color.Green("代理服务启动成功")
 
-	if !args.ProxySetSystem {
+	if !interceptor_settings.ProxySetSystem {
 		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
 	} else {

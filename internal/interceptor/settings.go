@@ -31,13 +31,14 @@ type InterceptorSettings struct {
 	DebugShowError               bool
 	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain string // 额外注入的 js
+	InjectGlobalScriptFilepath   string // 全局脚本路径
 	InjectGlobalScript           string // 全局用户脚本
 
 	// CertFiles *certificate.CertFileAndKeyFile
 	t *config.Config
 }
 
-func SetDefaultSettings(cfg *config.Config) {
+func RegisterSettings(cfg *config.Config) {
 	config.Register(config.ConfigItem{
 		Key:         "download.defaultHighest",
 		Type:        config.ConfigTypeBool,
@@ -162,7 +163,7 @@ func SetDefaultSettings(cfg *config.Config) {
 	config.Register(config.ConfigItem{
 		Key:         "inject.globalScript",
 		Type:        config.ConfigTypeString,
-		Default:     "",
+		Default:     "global.js",
 		Description: "全局用户脚本",
 		Title:       "全局脚本",
 		Group:       "Inject",
@@ -187,13 +188,14 @@ func NewInterceptorSettings(c *config.Config) *InterceptorSettings {
 		ProxyServerPort:              viper.GetInt("proxy.port"),
 		ProxyServerHostname:          viper.GetString("proxy.hostname"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
-		InjectGlobalScript:           viper.GetString("inject.globalScript"),
+		InjectGlobalScriptFilepath:   viper.GetString("inject.globalScript"),
 		t:                            c,
 	}
 	global_script_path := path.Join(c.RootDir, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {
 		script_byte, err := os.ReadFile(global_script_path)
 		if err == nil {
+			settings.InjectGlobalScriptFilepath = global_script_path
 			settings.InjectGlobalScript = string(script_byte)
 		}
 	}

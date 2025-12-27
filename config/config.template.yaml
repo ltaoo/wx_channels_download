@@ -7,6 +7,7 @@ pagespy:
 download:
   defaultHighest: false
   filenameTemplate: "{{filename}}_{{spec}}"
+  dir: "%UserDownloads%"
   pauseWhenDownload: false
   frontend: false
 

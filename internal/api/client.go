@@ -314,7 +314,9 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, Response{Code: 409, Msg: "已存在该下载内容", Data: body})
 		return
 	}
-	filename, _, err := c.formatter.ProcessFilename(body.Filename)
+	fmt.Print("before ProcessFilename", body.Filename)
+	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
+	fmt.Print("after ProcessFilename", filename, dir)
 	if err != nil {
 		c.jsonError(ctx, 409, "不合法的文件名")
 		return
@@ -333,6 +335,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		},
 		&base.Options{
 			Name: filename + body.Suffix,
+			Path: filepath.Join(c.cfg.DownloadDir, dir),
 			Extra: &gopeedhttp.OptsExtra{
 				Connections: connections,
 			},
@@ -358,35 +361,58 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		return
 	}
 	tasks := c.downloader.GetTasks()
-	task := base.CreateTaskBatch{}
+	var items []map[string]string
 	for _, req := range body.Feeds {
-		existing := c.check_existing_feed(tasks, &req)
-		if existing {
+		if c.check_existing_feed(tasks, &req) {
 			continue
 		}
-		filename, _, err := c.formatter.ProcessFilename(req.Filename)
-		if err != nil {
-			continue
-		}
-		connections := c.resolveConnections(req.URL)
+		items = append(items, map[string]string{
+			"name":   req.Filename,
+			"id":     req.Id,
+			"url":    req.URL,
+			"title":  req.Title,
+			"key":    strconv.Itoa(req.Key),
+			"suffix": req.Suffix,
+		})
+	}
+	if len(items) == 0 {
+		c.jsonSuccess(ctx, gin.H{"ids": []string{}})
+		return
+	}
+	processed_reqs, err := util.ProcessFilenames(items, c.cfg.DownloadDir)
+	if err != nil {
+		c.jsonError(ctx, 500, "文件名处理失败: "+err.Error())
+		return
+	}
+	task := base.CreateTaskBatch{}
+	for _, item := range processed_reqs {
+		url := item["url"]
+		fullPath := item["full_path"]
+		// 从 full_path 中提取目录
+		relDir := filepath.Dir(fullPath)
+
+		connections := c.resolveConnections(url)
+
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
-				URL: req.URL,
+				URL: url,
 				Labels: map[string]string{
-					"id":     req.Id,
-					"title":  req.Title,
-					"key":    strconv.Itoa(req.Key),
-					"suffix": req.Suffix,
+					"id":     item["id"],
+					"title":  item["title"],
+					"key":    item["key"],
+					"suffix": item["suffix"],
 				},
 			},
 			Opts: &base.Options{
-				Name: filename + req.Suffix,
+				Name: item["name"] + item["suffix"],
+				Path: filepath.Join(c.cfg.DownloadDir, relDir),
 				Extra: &gopeedhttp.OptsExtra{
 					Connections: connections,
 				},
 			},
 		})
 	}
+
 	ids, err := c.downloader.CreateDirectBatch(&task)
 	if err != nil {
 		c.jsonError(ctx, 500, "创建失败")

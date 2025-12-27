@@ -1,9 +1,16 @@
 package api
 
 import (
-	"wx_channel/config"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/adrg/xdg"
+	"github.com/spf13/viper"
+
+	"wx_channel/config"
 )
 
 type APISettings struct {
@@ -13,32 +20,39 @@ type APISettings struct {
 	Addr        string
 }
 
-func SetDefaultSettings(cfg *config.Config) {
+func RegisterSettings(cfg *config.Config) {
 	config.Register(config.ConfigItem{
-		Key:         "download.defaultDownloadDir",
+		Key:         "download.dir",
 		Type:        config.ConfigTypeString,
-		Default:     xdg.UserDirs.Download,
+		Default:     "%UserDownloads%",
 		Description: "下载目录",
 	})
 	config.Register(config.ConfigItem{
 		Key:         "download.maxRunning",
 		Type:        config.ConfigTypeInt,
-		Default:     4,
+		Default:     3,
 		Description: "最大同时下载任务数",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "api.addr",
-		Type:        config.ConfigTypeString,
-		Default:     "127.0.0.1:2022",
-		Description: "服务地址",
 	})
 }
 func NewAPISettings(c *config.Config) *APISettings {
+	dir := viper.GetString("download.dir")
+	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
+	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
+	dir = filepath.Clean(dir)
+
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(c.RootDir, dir)
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
+	}
+
 	api_settings := &APISettings{
 		RootDir:     c.RootDir,
-		DownloadDir: c.GetString("download.defaultDownloadDir"),
-		MaxRunning:  c.GetInt("download.maxRunning"),
-		Addr:        c.GetString("api.addr"),
+		DownloadDir: dir,
+		MaxRunning:  viper.GetInt("download.maxRunning"),
+		Addr:        viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
 	}
 	return api_settings
 }
