@@ -257,7 +257,7 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 	if exists {
 		fp.usedFilenames[path_key] = 0
 	}
-	return clean_name, full_path, nil
+	return clean_name, dir, nil
 }
 
 // 主处理函数
@@ -288,7 +288,7 @@ func ProcessFilenames(items []map[string]string, baseDir string) ([]map[string]s
 		}
 
 		// 处理文件名
-		finalName, fullPath, err := processor.ProcessFilename(name)
+		finalName, dir, err := processor.ProcessFilename(name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process filename for item %v: %v", item, err)
 		}
@@ -296,7 +296,7 @@ func ProcessFilenames(items []map[string]string, baseDir string) ([]map[string]s
 		// 更新结果
 		result["name"] = finalName
 		result["original_name"] = name
-		result["full_path"] = fullPath
+		result["full_path"] = filepath.Join(dir, finalName)
 
 		results = append(results, result)
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 
 	"wx_channel/cmd"
 	"wx_channel/config"
@@ -25,21 +26,20 @@ func main() {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
 	}
-	interceptor.SetDefaultSettings(cfg)
-	api.SetDefaultSettings(cfg)
+	interceptor.RegisterSettings(cfg)
+	api.RegisterSettings(cfg)
 	if err := cfg.LoadConfig(); err != nil {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
 	}
-	interceptor_settings := interceptor.NewInterceptorSettings(cfg)
-	if interceptor_settings.ProxySetSystem && platform.NeedAdminPermission() && !platform.IsAdmin() {
+	if viper.GetBool("proxy.system") && platform.NeedAdminPermission() && !platform.IsAdmin() {
 		if !platform.RequestAdminPermission() {
 			fmt.Println("启动失败，请右键选择「以管理员身份运行」")
 			return
 		}
 		return
 	}
-	if err := cmd.Execute(AppVer, certificate.DefaultCertFiles, cfg, interceptor_settings); err != nil {
+	if err := cmd.Execute(AppVer, certificate.DefaultCertFiles, cfg); err != nil {
 		fmt.Printf("初始化失败 %v\n", err.Error())
 	}
 }

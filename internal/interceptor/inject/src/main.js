@@ -211,6 +211,7 @@ async function __wx_channels_handle_download_cover() {
         url,
         title: profile.title,
         spec: profile.spec,
+        contact: profile.contact,
       },
       {
         suffix: ".jpg",

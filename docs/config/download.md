@@ -45,6 +45,17 @@ type params = {
 };
 ```
 
+如果存在 `/` 符号，例如 `{{author}}/{{filename}}_{{spec}}`，这样下载的文件会放在以作者名为目录的目录中
+
+## 下载目录
+
+```yaml
+download:
+  dir: ./downloads
+```
+
+指定下载目录，默认当前目录 `./downloads`
+
 ## 前端下载
 
 ```yaml
