@@ -13,6 +13,83 @@
             apiServerAddr: window.location.host
         };
     </script>
+    <style>
+        :root {
+            --background: #ededed;
+            --foreground: #171717;
+            --weui-BG-0: #ffffff;
+            --weui-BG-1: #f7f7f7;
+            --weui-BG-2: #fff;
+            --weui-BG-3: #f7f7f7;
+            --weui-BG-4: #4c4c4c;
+            --weui-BG-5: #fff;
+            --weui-FG-0: rgba(0, 0, 0, 0.9);
+            --weui-FG-0_5: rgba(0, 0, 0, 0.9);
+            --weui-FG-1: rgba(0, 0, 0, 0.55);
+            --weui-FG-2: rgba(0, 0, 0, 0.3);
+            --weui-FG-3: rgba(0, 0, 0, 0.1);
+            --weui-FG-4: rgba(0, 0, 0, 0.15);
+            --weui-FG-5: rgba(0, 0, 0, 0.05);
+            --weui-BG-COLOR-ACTIVE: #ececec;
+            --weui-RED: #fa5151;
+            --weui-GREEN: #07c160;
+            --border: oklch(92.2% 0 0);
+            --hh: 100vh;
+        }
+
+        [data-theme="dark"] {
+            --background: #111;
+            --foreground: #f3f4f6;
+            --weui-BG-0: #111;
+            --weui-BG-1: #1e1e1e;
+            --weui-BG-2: #191919;
+            --weui-BG-3: #202020;
+            --weui-BG-4: #404040;
+            --weui-BG-5: #2c2c2c;
+            --weui-FG-0: rgba(255, 255, 255, 0.8);
+            --weui-FG-0_5: rgba(255, 255, 255, 0.6);
+            --weui-FG-1: rgba(255, 255, 255, 0.5);
+            --weui-FG-2: rgba(255, 255, 255, 0.3);
+            --weui-FG-3: rgba(255, 255, 255, 0.1);
+            --weui-FG-4: rgba(255, 255, 255, 0.15);
+            --weui-FG-5: rgba(255, 255, 255, 0.1);
+            --weui-BG-COLOR-ACTIVE: #373737;
+            --weui-RED: #fa5151;
+            --weui-GREEN: #07c160;
+            --border: oklch(100% 0 0/.1);
+        }
+
+        html,
+        body {
+            overscroll-behavior: none;
+            -ms-text-size-adjust: 100%;
+            -webkit-text-size-adjust: 100%;
+            margin: 0;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            font-family: system-ui, -apple-system, "Helvetica Neue";
+        }
+
+        [data-theme="light"] body {
+            background-color: #ededed;
+        }
+
+        [data-theme="dark"] body {
+            background-color: #111111;
+        }
+
+        img {
+            -webkit-user-drag: none;
+        }
+
+        video {
+            max-height: 100%;
+            height: unset;
+        }
+    </style>
 </head>
 
 <body>

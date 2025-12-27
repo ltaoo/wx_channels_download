@@ -254,7 +254,7 @@ var WXU = (() => {
    * @param {string} spec
    * @param {string} template
    */
-  function __wx_build_filename(profile, spec, template) {
+  function build_filename(profile, spec, template) {
     var default_name = (() => {
       if (profile.title) {
         return profile.title;
@@ -597,12 +597,23 @@ var WXU = (() => {
       hide() {},
       toggle() {},
       /**
-       *
+       * 提交下载任务
        * @param {FeedProfile} feed
-       * @param {string} spec
+       * @param {object} opt 配置
+       * @param {string} opt.spec 规格
+       * @param {string} opt.suffix 后缀
        * @returns
        */
-      async create(feed, spec) {
+      async create(feed, opt = {}) {
+        var spec = (() => {
+          if (opt.spec) {
+            return opt.spec;
+          }
+          if (WXU.config.defaultHighest) {
+            return "original";
+          }
+          return feed.spec[0]?.fileFormat ?? "original";
+        })();
         var filename = WXU.build_filename(
           feed,
           spec,
@@ -610,6 +621,9 @@ var WXU = (() => {
         );
         if (!filename) {
           return [new Error("filename 为空"), null];
+        }
+        if (opt.suffix !== ".jpg") {
+          feed.url = feed.url + "&X-snsvideoflag=" + spec;
         }
         var [err, data] = await WXU.request({
           method: "POST",
@@ -620,6 +634,8 @@ var WXU = (() => {
             title: feed.title,
             filename: filename,
             key: Number(feed.key),
+            spec,
+            suffix: opt.suffix,
           },
         });
         if (err) {
@@ -629,29 +645,45 @@ var WXU = (() => {
         return [null, data];
       },
       /**
-       *
+       * 批量提交下载任务
        * @param {FeedProfile[]} feeds
-       * @param {string} spec
+       * @param {object} opt 配置
+       * @param {string} opt.spec 规格
+       * @param {string} opt.suffix 后缀
        * @returns
        */
-      async create_batch(feeds, spec) {
+      async create_batch(feeds, opt = {}) {
         var body = {
           feeds: [],
         };
         for (let i = 0; i < feeds.length; i += 1) {
           var feed = feeds[i];
+          var spec = (() => {
+            if (opt.spec) {
+              return opt.spec;
+            }
+            if (WXU.config.defaultHighest) {
+              return "original";
+            }
+            return feed.spec[0]?.fileFormat;
+          })();
           var filename = WXU.build_filename(
             feed,
             spec,
             WXU.config.downloadFilenameTemplate
           );
           if (filename) {
+            if (opt.suffix !== ".jpg") {
+              feed.url = feed.url + "&X-snsvideoflag=" + spec;
+            }
             body.feeds.push({
               id: feed.id,
               url: feed.url,
               title: feed.title,
               key: Number(feed.key),
               filename,
+              spec,
+              suffix: opt.suffix,
             });
           }
         }
@@ -714,7 +746,7 @@ var WXU = (() => {
     sleep,
     uid: __wx_uid__,
     bytes_to_size,
-    build_filename: __wx_build_filename,
+    build_filename,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,
     get_queries,

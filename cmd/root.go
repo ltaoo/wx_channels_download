@@ -108,6 +108,7 @@ func root_command(args *interceptor.InterceptorSettings) {
 	mgr.RegisterServer(interceptor_srv)
 	api_settings := api.NewAPISettings(Cfg)
 	api_srv := api.NewAPIServer(api_settings)
+	api_srv.APIClient.Interceptor = interceptor_srv.Interceptor
 	mgr.RegisterServer(api_srv)
 	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_settings.MaxRunning
 	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_settings.DownloadDir

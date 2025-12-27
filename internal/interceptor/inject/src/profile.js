@@ -74,7 +74,9 @@
           const feeds = r.data.object.map((obj) => {
             return WXU.format_feed(obj);
           });
-          var [err, data] = await WXU.downloader.create_batch(feeds, null);
+          var [err, data] = await WXU.downloader.create_batch(feeds, {
+            suffix: ".mp4",
+          });
           if (err) {
             WXU.error({
               msg: err.message,
