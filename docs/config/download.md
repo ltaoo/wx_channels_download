@@ -45,7 +45,7 @@ type params = {
 };
 ```
 
-如果存在 `/` 符号，例如 `{{author}}/{{filename}}_{{spec}}`，这样下载的文件会放在以作者名为目录的目录中
+如果存在 `/` 符号，例如 <code v-pre>{{author}}/{{filename}}_{{spec}}</code>，这样下载的文件会放在以作者名为目录的目录中
 
 ## 下载目录
 
