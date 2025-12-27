@@ -18,6 +18,7 @@ type Interceptor struct {
 	Version           string
 	Debug             bool
 	Settings          *InterceptorSettings
+	Headers           map[string]string
 	Cert              *certificate.CertFileAndKeyFile
 	echo              *echo.Echo
 	PostPlugins       []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo

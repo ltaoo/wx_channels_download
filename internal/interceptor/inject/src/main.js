@@ -41,26 +41,38 @@ async function __wx_channels_download3(profile) {
 }
 /**
  * 下载加密视频
- * @param {FeedProfile} profile 视频信息
+ * @param {FeedProfile} feed 视频信息
  * @param {object} opt 选项
  * @param {string} opt.spec 规格
- * @param {boolean} opt.toMP3 是否转换为 MP3
+ * @param {string} opt.suffix 后缀
  */
-async function __wx_channels_download4(profile, opt) {
+async function __wx_channels_download4(feed, opt) {
   console.log("__wx_channels_download4");
-  if (!opt.toMP3 && !WXU.config.downloadInFrontend) {
-    var [err, data] = await WXU.downloader.create(profile, opt.spec);
+  if (!WXU.config.downloadInFrontend) {
+    var [err, data] = await WXU.downloader.create(feed, opt);
     if (err) {
       WXU.error({ msg: err.message });
       return;
     }
     return;
   }
+  var filename = WXU.build_filename(
+    feed,
+    opt.spec,
+    WXU.config.downloadFilenameTemplate
+  );
+  if (!filename) {
+    WXU.error({ msg: "文件名生成失败" });
+    return;
+  }
+  if (opt.spec) {
+    feed.url = feed.url + "&X-snsvideoflag=" + opt.spec;
+  }
   if (WXU.config.downloadPauseWhenDownload) {
     WXU.pause_cur_video();
   }
   const ins = WXU.loading();
-  var [err, response] = await WXU.fetch(profile.url);
+  var [err, response] = await WXU.fetch(feed.url);
   if (err) {
     WXU.error({ msg: err.message });
     return;
@@ -83,9 +95,9 @@ async function __wx_channels_download4(profile, opt) {
   });
   WXU.log({ ignore_prefix: 1, msg: "" });
   var media_buf = new Uint8Array(await media_blob.arrayBuffer());
-  if (profile.key) {
+  if (feed.key) {
     WXU.log({ msg: "下载完成，开始解密" });
-    var [err, data] = await WXU.decrypt_video(media_buf, profile.key);
+    var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
     if (err) {
       WXU.error({ msg: "解密失败，" + err.message, alert: 0 });
       WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0 });
@@ -94,18 +106,18 @@ async function __wx_channels_download4(profile, opt) {
       media_buf = data;
     }
   }
-  if (opt.toMP3) {
+  if (opt.suffix === ".mp3") {
     const [err, mp3_blob] = await WXU.media_to_mp3(media_buf.buffer);
     if (err) {
       WXU.error({ msg: err.message });
       return;
     }
-    WXU.emit(WXU.Events.MP3Downloaded, profile);
-    WXU.save(mp3_blob, profile.filename + ".mp3");
+    WXU.emit(WXU.Events.MP3Downloaded, feed);
+    WXU.save(mp3_blob, feed.filename + opt.suffix);
   } else {
-    WXU.emit(WXU.Events.MediaDownloaded, profile);
+    WXU.emit(WXU.Events.MediaDownloaded, feed);
     const result = new Blob([media_buf], { type: "video/mp4" });
-    WXU.save(result, profile.filename + ".mp4");
+    WXU.save(result, feed.filename + opt.suffix);
   }
   ins.hide();
   if (WXU.config.downloadPauseWhenDownload) {
@@ -127,37 +139,22 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   const [err, feed] = WXU.check_feed_existing();
   if (err) return;
   const payload = { ...feed };
-  var filename = WXU.build_filename(
-    feed,
-    spec,
-    WXU.config.downloadFilenameTemplate
-  );
-  if (!filename) {
-    WXU.error({ msg: "文件名生成失败" });
-    return;
-  }
   payload.mp3 = !!mp3;
-  payload.filename = filename;
   payload.original_url = feed.url;
   payload.target_spec = null;
-  if (spec) {
-    payload.target_spec = spec;
-    payload.url = feed.url + "&X-snsvideoflag=" + spec;
-  }
   payload.source_url = location.href;
   WXU.log({
     msg: `${payload.source_url}
 ${payload.url}
-${payload.key || "该视频未加密"}
-${payload.filename}`,
+${payload.key || "该视频未加密"}`,
   });
   WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
   if (payload.type === "picture") {
+    // 图片视频
     __wx_channels_download3(payload);
     return;
   }
-  payload.data = __wx_channels_store__.buffers;
-  __wx_channels_download4(payload, { spec, toMP3: mp3 });
+  __wx_channels_download4(payload, { spec, suffix: mp3 ? ".mp3" : ".mp4" });
 }
 /** 下载已加载的视频 */
 function __wx_channels_download_cur__() {
@@ -206,6 +203,25 @@ function __wx_channels_handle_print_download_command() {
 async function __wx_channels_handle_download_cover() {
   var [err, profile] = WXU.check_feed_existing();
   if (err) return;
+  var url = profile.cover_url.replace(/^http:/, "https:");
+  if (!WXU.config.downloadInFrontend) {
+    var [err, data] = await WXU.downloader.create(
+      {
+        id: profile.id,
+        url,
+        title: profile.title,
+        spec: profile.spec,
+      },
+      {
+        suffix: ".jpg",
+      }
+    );
+    if (err) {
+      WXU.error({ msg: err.message });
+      return;
+    }
+    return;
+  }
   var filename = WXU.build_filename(
     profile,
     null,
@@ -215,9 +231,8 @@ async function __wx_channels_handle_download_cover() {
     WXU.error({ msg: "文件名生成失败" });
     return;
   }
-  WXU.log({ msg: `下载封面\n${profile.cover_url}` });
+  WXU.log({ msg: `下载封面\n${url}` });
   const ins = WXU.loading();
-  const url = profile.cover_url.replace(/^http:/, "https:");
   var [err, response] = await WXU.fetch(url);
   ins.hide();
   if (err) {
@@ -345,12 +360,15 @@ function __wx_attach_download_dropdown_menu(trigger) {
   });
   return dropdown$;
 }
+
+/** 下载图标 按钮，点击时的处理函数 */
 function __wx_download_btn_handler() {
   const [err, profile] = WXU.check_feed_existing();
   if (err) return;
   var spec = WXU.config.defaultHighest ? null : profile.spec[0]?.fileFormat;
   __wx_channels_handle_click_download__(spec);
 }
+
 /**
  * 为「首页/推荐」添加下载按钮
  */

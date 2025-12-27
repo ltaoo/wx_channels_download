@@ -145,6 +145,13 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+				// 保存请求头以供模拟
+				headers := make(map[string]string)
+				for k, v := range ctx.Req.Header {
+					headers[k] = strings.Join(v, "; ")
+				}
+				headers["Request-URL"] = ctx.Req.URL.String()
+				interceptor.Headers = headers
 				// fmt.Println(hostname, path)
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {

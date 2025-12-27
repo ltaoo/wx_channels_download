@@ -13,6 +13,7 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
+	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
@@ -26,6 +27,7 @@ import (
 type APIClient struct {
 	decryptor   *ChannelsVideoDecryptor
 	downloader  *downloadpkg.Downloader
+	Interceptor *interceptor.Interceptor
 	formatter   *util.FilenameProcessor
 	cfg         *APISettings
 	ws_upgrader websocket.Upgrader
@@ -112,7 +114,6 @@ func (c *APIClient) Start() error {
 		ProtocolConfig: map[string]any{
 			"http": map[string]any{
 				"connections": 4,
-				"userAgent":   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			},
 		},
 		Extra: map[string]any{},
@@ -130,26 +131,35 @@ func (c *APIClient) Start() error {
 		if evt.Key == downloadpkg.EventKeyDone {
 			assets.PlayDoneAudio()
 			task := c.downloader.GetTask(evt.Task.ID)
-			k := task.Meta.Req.Labels["key"]
-			key, err := strconv.Atoi(k)
-			if err != nil {
-				return
-			}
-			if key == 0 {
-				return
-			}
 			file_path := task.Meta.SingleFilepath()
 			go func() {
-				data, err := os.ReadFile(file_path)
-				if err != nil {
-					return
+				k := task.Meta.Req.Labels["key"]
+				if k != "" {
+					key, err := strconv.Atoi(k)
+					if err == nil {
+						if key != 0 {
+							data, err := os.ReadFile(file_path)
+							if err == nil {
+								length := uint32(131072)
+								_key := uint64(key)
+								decrypt.DecryptData(data, length, _key)
+								_ = os.WriteFile(file_path, data, 0644)
+							}
+						}
+					}
 				}
-				length := uint32(131072)
-				_key := uint64(key)
-				decrypt.DecryptData(data, length, _key)
-				_ = os.WriteFile(file_path, data, 0644)
+				suffix := task.Meta.Req.Labels["suffix"]
+				if suffix == ".mp3" {
+					temp_path := file_path + ".temp"
+					if err := os.Rename(file_path, temp_path); err == nil {
+						if err := system.RunCommand("ffmpeg", "-i", temp_path, "-vn", "-acodec", "libmp3lame", "-ab", "192k", "-f", "mp3", file_path); err == nil {
+							_ = os.Remove(temp_path)
+						} else {
+							_ = os.Rename(temp_path, file_path)
+						}
+					}
+				}
 			}()
-
 		}
 	})
 	return nil
@@ -256,28 +266,33 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
 	ctx.String(http.StatusOK, html)
 }
-
-type CreateTaskReq struct {
-	Id       string `json:"id"`
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	Filename string `json:"filename"`
-	Key      int    `json:"key"`
-}
-
-func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, id string) bool {
+func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
 			continue
 		}
-		if t.Meta.Req.Labels["id"] == id {
+		same_id := t.Meta.Req.Labels["id"] == body.Id
+		same_spec := t.Meta.Req.Labels["spec"] == body.Spec
+		same_suffix := t.Meta.Req.Labels["suffix"] == body.Suffix
+		if same_id && same_spec && same_suffix {
 			return true
 		}
 	}
 	return false
 }
+
+type FeedDownloadTaskBody struct {
+	Id       string `json:"id"`
+	URL      string `json:"url"`
+	Title    string `json:"title"`
+	Filename string `json:"filename"`
+	Key      int    `json:"key"`
+	Spec     string `json:"spec"`
+	Suffix   string `json:"suffix"`
+}
+
 func (c *APIClient) handleCreateTask(ctx *gin.Context) {
-	var body CreateTaskReq
+	var body FeedDownloadTaskBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.jsonError(ctx, 400, "不合法的参数")
 		return
@@ -286,8 +301,15 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		c.jsonError(ctx, 400, "缺少 feed id 参数")
 		return
 	}
+	if body.Suffix == ".mp3" {
+		has_ffmpeg := system.ExistingCommand("ffmpeg")
+		if !has_ffmpeg {
+			c.jsonError(ctx, 400, "下载 mp3 需要支持 ffmpeg 命令")
+			return
+		}
+	}
 	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, body.Id)
+	existing := c.check_existing_feed(tasks, &body)
 	if existing {
 		ctx.JSON(http.StatusOK, Response{Code: 409, Msg: "已存在该下载内容", Data: body})
 		return
@@ -297,17 +319,23 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		c.jsonError(ctx, 409, "不合法的文件名")
 		return
 	}
+	connections := c.resolveConnections(body.URL)
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL: body.URL,
 			Labels: map[string]string{
-				"id":    body.Id,
-				"title": body.Title,
-				"key":   strconv.Itoa(body.Key),
+				"id":     body.Id,
+				"title":  body.Title,
+				"key":    strconv.Itoa(body.Key),
+				"spec":   body.Spec,
+				"suffix": body.Suffix,
 			},
 		},
 		&base.Options{
-			Name: filename + ".mp4",
+			Name: filename + body.Suffix,
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: connections,
+			},
 		},
 	)
 	if err != nil {
@@ -323,7 +351,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 
 func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	var body struct {
-		Feeds []CreateTaskReq `json:"feeds"`
+		Feeds []FeedDownloadTaskBody `json:"feeds"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.jsonError(ctx, 400, "不合法的参数")
@@ -332,7 +360,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	tasks := c.downloader.GetTasks()
 	task := base.CreateTaskBatch{}
 	for _, req := range body.Feeds {
-		existing := c.check_existing_feed(tasks, req.Id)
+		existing := c.check_existing_feed(tasks, &req)
 		if existing {
 			continue
 		}
@@ -340,17 +368,22 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		if err != nil {
 			continue
 		}
+		connections := c.resolveConnections(req.URL)
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
 				URL: req.URL,
 				Labels: map[string]string{
-					"id":    req.Id,
-					"title": req.Title,
-					"key":   strconv.Itoa(req.Key),
+					"id":     req.Id,
+					"title":  req.Title,
+					"key":    strconv.Itoa(req.Key),
+					"suffix": req.Suffix,
 				},
 			},
 			Opts: &base.Options{
-				Name: filename + ".mp4",
+				Name: filename + req.Suffix,
+				Extra: &gopeedhttp.OptsExtra{
+					Connections: connections,
+				},
 			},
 		})
 	}
@@ -453,6 +486,22 @@ func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 		Data: c.downloader.GetTasks(),
 	})
 	c.jsonSuccess(ctx, nil)
+}
+
+func (c *APIClient) resolveConnections(url string) int {
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Head(url)
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.ContentLength > 0 && resp.ContentLength < 1024*1024 {
+		return 1
+	}
+	return 4
 }
 
 func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {

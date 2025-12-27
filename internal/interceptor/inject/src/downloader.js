@@ -5,6 +5,9 @@
   var { DropdownMenu, MenuItem } = WUI;
   // Icons
   const FileIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`;
+  const MP3Icon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 13.5c0 1.38-1.12 2.5-2.5 2.5S11 16.88 11 15.5 12.12 13 13.5 13c.57 0 1.08.19 1.5.51V9h3v2h-2v4.5z"/></svg>`;
+  const MP4Icon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM10 15V9l5 3-5 3z"/></svg>`;
+  const ImageIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`;
   const FolderIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
   const PauseIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
   const PlayIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
@@ -77,6 +80,7 @@
 
       let statusText = t.status;
       let progressDisplay = "";
+      let statusColor = "var(--FG-1)";
 
       if (isRunning) {
         const speed = format_speed(t.progress ? t.progress.speed : 0);
@@ -86,11 +90,11 @@
         // Calculate size
         const total = t.meta && t.meta.res ? t.meta.res.size : 0;
         if (total) {
-          const mb = 1024 * 1024;
-          statusText = (total / mb).toFixed(2) + " MB";
+          statusText = WXU.bytes_to_size(total);
         }
-      } else if (t.status === "failed") {
+      } else if (t.status === "failed" || t.status === "error") {
         statusText = "下载失败";
+        statusColor = "#FA5151";
       } else if (t.status === "pending") {
         statusText = "等待中...";
       } else if (isPaused) {
@@ -148,10 +152,21 @@
       const iconSize = "50px";
 
       // Icon preparation
-      let iconInner = FileIcon.replace('width="20"', 'width="32"').replace(
-        'height="20"',
-        'height="32"'
-      );
+      let selectedIcon = FileIcon;
+      if (filename) {
+        const ext = filename.split(".").pop().toLowerCase();
+        if (ext === "mp3") {
+          selectedIcon = MP3Icon;
+        } else if (ext === "mp4") {
+          selectedIcon = MP4Icon;
+        } else if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
+          selectedIcon = ImageIcon;
+        }
+      }
+
+      let iconInner = selectedIcon
+        .replace('width="20"', 'width="32"')
+        .replace('height="20"', 'height="32"');
 
       if (isRunning || isPaused) {
         const radius = 22;
@@ -178,7 +193,7 @@
           </div>
           <div class="weui-cell__bd" style="min-width:0;">
             <p class="weui-ellipsis" style="color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
-            <div class="weui-cell__desc" style="margin-top: 4px; color: var(--FG-1); font-size: 12px;">${statusText}</div>
+            <div class="weui-cell__desc" style="margin-top: 4px; color: ${statusColor}; font-size: 12px;">${statusText}</div>
             ${
               typeof pr === "number" && !isCompleted
                 ? `<div style="height: 4px; background: var(--FG-3); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
@@ -208,45 +223,113 @@
   }
 
   function connect(selector) {
-    const protocol = location.protocol === "https:" ? "wss://" : "ws://";
-    const pathname = WXU.env.isChannels
-      ? "api.channels.qq.com"
-      : WXU.config.apiServerAddr;
-    const ws = new WebSocket(protocol + pathname + "/ws");
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === "tasks") {
-        if (Array.isArray(msg.data)) {
-          msg.data.forEach(upsert);
-        }
-        render(selector);
-        return;
-      }
-      if (msg.type === "clear") {
-        tasks.clear();
-        render(selector);
-        return;
-      }
-      if (msg.type === "event") {
-        const evt = msg && msg.data ? msg.data : null;
-        const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
-        if (task) {
-          if (evt.Type === "delete") {
-            tasks.delete(task.id);
-          } else {
-            upsert(task);
-          }
-        }
-        render(selector);
-      }
-    };
+    return new Promise((resolve, reject) => {
+      const protocol = location.protocol === "https:" ? "wss://" : "ws://";
+      const pathname = WXU.env.isChannels
+        ? "api.channels.qq.com"
+        : WXU.config.apiServerAddr;
+      const ws = new WebSocket(protocol + pathname + "/ws");
 
-    document.addEventListener("click", async (e) => {
-      if (e.target && e.target.classList.contains("start-btn")) {
-        const id = e.target.getAttribute("data-id");
+      ws.onopen = () => {
+        if (WXU.downloader) WXU.downloader.status = "connected";
+        resolve(true);
+      };
+
+      ws.onclose = () => {
+        WXU.error({
+          msg: "ws连接已关闭，请刷新页面",
+        });
+        if (WXU.downloader) WXU.downloader.status = "disconnected";
+      };
+
+      ws.onerror = (e) => {
+        if (WXU.downloader && WXU.downloader.status !== "connected") {
+          reject(e);
+        }
+      };
+
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === "tasks") {
+          if (Array.isArray(msg.data)) {
+            msg.data.forEach(upsert);
+          }
+          render(selector);
+          return;
+        }
+        if (msg.type === "clear") {
+          tasks.clear();
+          render(selector);
+          return;
+        }
+        if (msg.type === "event") {
+          const evt = msg && msg.data ? msg.data : null;
+          const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
+          if (task) {
+            if (evt.Type === "delete") {
+              tasks.delete(task.id);
+            } else {
+              upsert(task);
+            }
+          }
+          render(selector);
+        }
+      };
+    });
+  }
+
+  document.addEventListener("click", async (e) => {
+    if (e.target && e.target.classList.contains("start-btn")) {
+      const id = e.target.getAttribute("data-id");
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: "https://api.channels.qq.com/api/task/start",
+        body: { id },
+      });
+      if (err) {
+        WXU.error({
+          msg: err.message,
+        });
+        return;
+      }
+      console.log(data);
+    }
+
+    // Handle Action Buttons (Pause, Resume, Delete)
+    const actionBtn = e.target.closest("[data-action]");
+    if (actionBtn) {
+      e.stopPropagation();
+      const action = actionBtn.getAttribute("data-action");
+      const id = actionBtn.getAttribute("data-id");
+
+      if (action === "open") {
+        const filepath = actionBtn.getAttribute("data-filepath");
+        if (!filepath) return;
         var [err, data] = await WXU.request({
           method: "POST",
-          url: "https://api.channels.qq.com/api/task/start",
+          url: "https://api.channels.qq.com/api/show_file",
+          body: { filepath, id },
+        });
+        if (err) {
+          WXU.error({
+            msg: err.message,
+          });
+        }
+        return;
+      }
+
+      let url = "";
+      if (action === "pause") {
+        url = "https://api.channels.qq.com/api/task/pause";
+      } else if (action === "resume") {
+        url = "https://api.channels.qq.com/api/task/resume";
+      } else if (action === "delete") {
+        url = "https://api.channels.qq.com/api/task/delete";
+      }
+      if (url) {
+        var [err, data] = await WXU.request({
+          method: "POST",
+          url: url,
           body: { id },
         });
         if (err) {
@@ -255,56 +338,9 @@
           });
           return;
         }
-        console.log(data);
       }
-
-      // Handle Action Buttons (Pause, Resume, Delete)
-      const actionBtn = e.target.closest("[data-action]");
-      if (actionBtn) {
-        e.stopPropagation();
-        const action = actionBtn.getAttribute("data-action");
-        const id = actionBtn.getAttribute("data-id");
-
-        if (action === "open") {
-          const filepath = actionBtn.getAttribute("data-filepath");
-          if (!filepath) return;
-          var [err, data] = await WXU.request({
-            method: "POST",
-            url: "https://api.channels.qq.com/api/show_file",
-            body: { filepath, id },
-          });
-          if (err) {
-            WXU.error({
-              msg: err.message,
-            });
-          }
-          return;
-        }
-
-        let url = "";
-        if (action === "pause") {
-          url = "https://api.channels.qq.com/api/task/pause";
-        } else if (action === "resume") {
-          url = "https://api.channels.qq.com/api/task/resume";
-        } else if (action === "delete") {
-          url = "https://api.channels.qq.com/api/task/delete";
-        }
-        if (url) {
-          var [err, data] = await WXU.request({
-            method: "POST",
-            url: url,
-            body: { id },
-          });
-          if (err) {
-            WXU.error({
-              msg: err.message,
-            });
-            return;
-          }
-        }
-      }
-    });
-  }
+    }
+  });
 
   var mounted = false;
   function insert_downloader() {
@@ -345,7 +381,7 @@
           .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background-color: var(--FG-3); border-radius: 3px; }
           
           /* Custom Menu Styles */
-          .wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; border-bottom: 1px solid var(--FG-3); }
+          .wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; }
           .wx-dl-title { font-size: 16px; font-weight: 600; color: var(--weui-FG-0); }
           .wx-dl-more-btn { color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
           .wx-dl-more-btn:hover { opacity: 1; background-color: var(--FG-6); }
@@ -457,7 +493,26 @@
       popover$.toggle();
       setTimeout(mountMoreIntoHeader, 0);
     };
-    connect("#downloader_container");
+
+    WXU.downloader.status = "disconnected";
+    WXU.downloader.reconnect = async function () {
+      if (WXU.downloader.status === "connected") return true;
+      const selector = "#downloader_container";
+      for (let i = 0; i < 3; i++) {
+        try {
+          await connect(selector);
+          return true;
+        } catch (e) {
+          console.warn("Reconnect attempt " + (i + 1) + " failed");
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      return false;
+    };
+
+    connect("#downloader_container").catch((e) =>
+      WXU.error({ msg: "建立ws连接失败" })
+    );
   }
   WXU.observe_node(".home-header", () => {
     insert_downloader();
