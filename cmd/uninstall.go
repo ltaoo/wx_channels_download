@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"wx_channel/pkg/certificate"
-	"wx_channel/pkg/proxy"
+	"wx_channel/pkg/system"
 )
 
 var uninstall_certificate_cmd = &cobra.Command{
@@ -34,8 +34,8 @@ type UninstallCertificateCommandArgs struct {
 }
 
 func uninstall_certificate_command(args *UninstallCertificateCommandArgs) {
-	settings := proxy.ProxySettings{}
-	if err := proxy.DisableProxy(settings); err != nil {
+	settings := system.ProxySettings{}
+	if err := system.DisableProxy(settings); err != nil {
 		fmt.Printf("\nERROR 取消代理失败 %v\n", err.Error())
 		return
 	}

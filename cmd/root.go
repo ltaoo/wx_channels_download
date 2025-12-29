@@ -8,13 +8,13 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
-	"github.com/ltaoo/echo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"wx_channel/config"
 	"wx_channel/internal/api"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
 	"wx_channel/pkg/certificate"
 )
@@ -83,9 +83,9 @@ func root_command(cfg *config.Config) {
 	}
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_settings, CertFiles)
-	interceptor_srv.Interceptor.AddPostPlugin(&echo.Plugin{
+	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 		Match: "api.channels.qq.com",
-		Target: &echo.TargetConfig{
+		Target: &proxy.TargetConfig{
 			Protocol: "http",
 			Host:     interceptor_settings.APIServerHostname,
 			Port:     interceptor_settings.APIServerPort,

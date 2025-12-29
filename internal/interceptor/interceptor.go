@@ -10,8 +10,9 @@ import (
 	"github.com/ltaoo/echo"
 	"github.com/rs/zerolog"
 
+	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/certificate"
-	"wx_channel/pkg/proxy"
+	"wx_channel/pkg/system"
 )
 
 type Interceptor struct {
@@ -20,8 +21,8 @@ type Interceptor struct {
 	Settings          *InterceptorSettings
 	Headers           map[string]string
 	Cert              *certificate.CertFileAndKeyFile
-	echo              *echo.Echo
-	PostPlugins       []*echo.Plugin // echo 的插件，将在 echo 初始化后传给 echo
+	proxy             proxy.InnerProxy
+	PostPlugins       []interface{}  // echo 的插件，将在 echo 初始化后传给 echo
 	FrontendVariables map[string]any // 前端额外的全局变量
 	log               *zerolog.Logger
 }
@@ -35,21 +36,21 @@ func NewInterceptor(payload *InterceptorSettings, cert *certificate.CertFileAndK
 		FrontendVariables: make(map[string]any),
 		Cert:              cert,
 		log:               &log,
-		echo:              nil,
+		proxy:             nil,
 	}
 }
 
 func (c *Interceptor) Start() error {
 	echo.SetLogEnabled(false)
-	client, err := echo.NewEcho(c.Cert.Cert, c.Cert.PrivateKey)
+	client, err := proxy.NewProxy(c.Cert.Cert, c.Cert.PrivateKey)
 	if err != nil {
 		return err
 	}
-	client.AddPlugin(CreateChannelInterceptorPlugin(c.Version, Assets, c))
+	client.AddPlugin(CreateChannelInterceptorPlugin(c, Assets))
 	if c.Debug {
-		client.AddPlugin(&echo.Plugin{
+		client.AddPlugin(&proxy.Plugin{
 			Match: "debug.weixin.qq.com",
-			Target: &echo.TargetConfig{
+			Target: &proxy.TargetConfig{
 				Protocol: "http",
 				Host:     "127.0.0.1",
 				Port:     6752,
@@ -61,7 +62,7 @@ func (c *Interceptor) Start() error {
 			client.AddPlugin(plugin)
 		}
 	}
-	c.echo = client
+	c.proxy = client
 	existing, err := certificate.CheckHasCertificate(c.Cert.Name)
 	if err != nil {
 		return fmt.Errorf("检查证书失败: %v", err)
@@ -73,7 +74,7 @@ func (c *Interceptor) Start() error {
 		}
 	}
 	if c.Settings.ProxySetSystem {
-		if err := proxy.EnableProxy(proxy.ProxySettings{
+		if err := system.EnableProxy(system.ProxySettings{
 			Device:   c.Settings.ProxyDevice,
 			Hostname: c.Settings.ProxyServerHostname,
 			Port:     strconv.Itoa(c.Settings.ProxyServerPort),
@@ -81,17 +82,18 @@ func (c *Interceptor) Start() error {
 			return fmt.Errorf("设置代理失败: %v", err)
 		}
 	}
+	client.Start(c.Settings.ProxyServerPort)
 	return nil
 }
 
 func (c *Interceptor) Stop() error {
 	if c.Settings.ProxySetSystem {
-		arg := proxy.ProxySettings{
+		arg := system.ProxySettings{
 			Device:   c.Settings.ProxyDevice,
 			Hostname: c.Settings.ProxyServerHostname,
 			Port:     strconv.Itoa(c.Settings.ProxyServerPort),
 		}
-		err := proxy.DisableProxy(arg)
+		err := system.DisableProxy(arg)
 		if err != nil {
 			return fmt.Errorf("关闭系统代理失败: %v", err)
 		}
@@ -102,12 +104,12 @@ func (c *Interceptor) Stop() error {
 func (c *Interceptor) SetVersion(v string) {
 	c.Version = v
 }
-func (c *Interceptor) AddPostPlugin(plugin *echo.Plugin) {
+func (c *Interceptor) AddPostPlugin(plugin interface{}) {
 	c.PostPlugins = append(c.PostPlugins, plugin)
 }
-func (c *Interceptor) AddPlugin(plugin *echo.Plugin) {
-	if c.echo != nil {
-		c.echo.AddPlugin(plugin)
+func (c *Interceptor) AddPlugin(plugin interface{}) {
+	if c.proxy != nil {
+		c.proxy.AddPlugin(plugin)
 	}
 }
 func (c *Interceptor) SetLog(writer io.Writer) {
@@ -137,5 +139,5 @@ func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<html><head><title>wx_channels_download</title></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
 		return
 	}
-	c.echo.ServeHTTP(w, r)
+	c.proxy.ServeHTTP(w, r)
 }

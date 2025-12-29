@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/ltaoo/echo"
 
+	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/util"
 )
 
@@ -41,31 +41,33 @@ var (
 	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles, interceptor *Interceptor) *echo.Plugin {
-	v := "?t=" + version
+func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
+	version := interceptor.Version
 	cfg := interceptor.Settings
-	return &echo.Plugin{
+	variables := interceptor.FrontendVariables
+	v := "?t=" + version
+	return &proxy.Plugin{
 		Match: "qq.com",
-		OnRequest: func(ctx *echo.Context) {
-			pathname := ctx.Req.URL.Path
+		OnRequest: func(ctx proxy.Context) {
+			pathname := ctx.Req().URL.Path
 			if util.Includes(pathname, "jszip.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-				}, files.JSZip)
+				}, string(files.JSZip))
 			}
 			if util.Includes(pathname, "FileSaver.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-				}, files.JSFileSaver)
+				}, string(files.JSFileSaver))
 			}
 			if util.Includes(pathname, "recorder.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
-				}, files.JSRecorder)
+				}, string(files.JSRecorder))
 			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile
-				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
+				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
@@ -75,7 +77,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 			}
 			if pathname == "/__wx_channels_api/tip" {
 				var data FrontendTip
-				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
+				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
 				prefix_text := "[FRONTEND]"
@@ -98,7 +100,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 			}
 			if pathname == "/__wx_channels_api/error" {
 				var data FrontendErrorTip
-				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
+				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
 				prefix_text := "[FRONTEND ERROR]"
@@ -108,19 +110,20 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}, "{}")
 			}
 		},
-		OnResponse: func(ctx *echo.Context) {
+		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Req.URL.Hostname()
-			pathname := ctx.Req.URL.Path
-			if cfg.ChannelDisableLocationToHome && pathname == "/web/pages/feed" && ctx.Res.StatusCode == 302 {
-				u := &url.URL{Scheme: "https", Host: ctx.Req.URL.Hostname(), Path: pathname, RawQuery: ctx.Req.URL.RawQuery}
+			hostname := ctx.Req().URL.Hostname()
+			pathname := ctx.Req().URL.Path
+			// fmt.Println("response", hostname, pathname, resp_content_type)
+			if cfg.ChannelDisableLocationToHome && pathname == "/web/pages/feed" && ctx.Res().StatusCode == 302 {
+				u := &url.URL{Scheme: "https", Host: ctx.Req().URL.Hostname(), Path: pathname, RawQuery: ctx.Req().URL.RawQuery}
 				q := u.Query()
 				q.Set("flow", "2")
 				q.Set("fpid", "FinderLike")
 				u.RawQuery = q.Encode()
 				req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 				if err == nil {
-					for k, v := range ctx.Req.Header {
+					for k, v := range ctx.Req().Header {
 						for _, vv := range v {
 							req.Header.Add(k, vv)
 						}
@@ -135,9 +138,9 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						if ct == "" || strings.Contains(lct, "text/html") {
 							ct = "text/html; charset=utf-8"
 						}
-						ctx.Res.StatusCode = 200
-						ctx.Res.Header.Del("Content-Encoding")
-						ctx.Res.Header.Del("Content-Length")
+						ctx.Res().StatusCode = 200
+						ctx.Res().Header.Del("Content-Encoding")
+						ctx.Res().Header.Del("Content-Length")
 						ctx.SetResponseHeader("Content-Type", ct)
 						ctx.SetResponseBody(string(body2))
 						resp_content_type = strings.ToLower(ct)
@@ -145,14 +148,6 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
-				// 保存请求头以供模拟
-				headers := make(map[string]string)
-				for k, v := range ctx.Req.Header {
-					headers[k] = strings.Join(v, "; ")
-				}
-				headers["Request-URL"] = ctx.Req.URL.String()
-				interceptor.Headers = headers
-				// fmt.Println(hostname, path)
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
 					return
@@ -164,7 +159,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
-				variable_byte, _ := json.Marshal(interceptor.FrontendVariables)
+				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
 				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
