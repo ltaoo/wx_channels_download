@@ -41,8 +41,7 @@ func (p *SunnyNetProxy) Start(port int) error {
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		// 使用 NetFilter 驱动
-		success := p.Sunny.OpenDrive(1)
+		success := p.Sunny.OpenDrive(0)
 		if success {
 			fmt.Println("进程代理驱动启动成功")
 			p.Sunny.ProcessAddName("WeChatAppEx.exe")
@@ -119,7 +118,12 @@ func toSunnyPlugin(p *Plugin) *SunnyNetPlugin {
 }
 
 func (p *SunnyNetProxy) HandleWS(Conn SunnyNet.ConnWebSocket) {
-	// 由 HTTP 阶段通过 UpdateURL 完成重定向与升级，WS 阶段不再执行重定向
+	switch Conn.Type() {
+	case public.WebsocketUserSend:
+		_ = Conn.SendToServer(Conn.MessageType(), Conn.Body())
+	case public.WebsocketServerSend:
+		_ = Conn.SendToClient(Conn.MessageType(), Conn.Body())
+	}
 }
 
 func toSunnyTarget(t *TargetConfig) *SunnyNetTargetConfig {

@@ -84,7 +84,7 @@ func root_command(cfg *config.Config) {
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_settings, CertFiles)
 	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-		Match: "api.channels.qq.com",
+		Match: "api.weixin.qq.com",
 		Target: &proxy.TargetConfig{
 			Protocol: "http",
 			Host:     interceptor_settings.APIServerHostname,

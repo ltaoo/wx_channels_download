@@ -32,7 +32,8 @@ func main() {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
 	}
-	if viper.GetBool("proxy.system") && platform.NeedAdminPermission() && !platform.IsAdmin() {
+	need_admin_for_proxy := viper.GetBool("proxy.system") || interceptor.UsingSunnyNet
+	if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
 		if !platform.RequestAdminPermission() {
 			fmt.Println("启动失败，请右键选择「以管理员身份运行」")
 			return

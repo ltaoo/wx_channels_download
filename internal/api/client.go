@@ -83,9 +83,10 @@ func (c *APIClient) setupRoutes() {
 	c.engine.POST("/api/task/pause", c.handlePauseTask)
 	c.engine.POST("/api/task/resume", c.handleResumeTask)
 	c.engine.POST("/api/task/delete", c.handleDeleteTask)
-	c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
+	c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 	c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
+	c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
 		c.handleIndex(ctx)
@@ -531,6 +532,14 @@ func (c *APIClient) resolveConnections(url string) int {
 }
 
 func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
+	dir := c.cfg.DownloadDir
+	if err := system.Open(dir); err != nil {
+		c.jsonError(ctx, 500, err.Error())
+		return
+	}
+	c.jsonSuccess(ctx, nil)
+}
+func (c *APIClient) handleTest(ctx *gin.Context) {
 	dir := c.cfg.DownloadDir
 	if err := system.Open(dir); err != nil {
 		c.jsonError(ctx, 500, err.Error())

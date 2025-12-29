@@ -108,7 +108,7 @@
 
       if (isCompleted) {
         actionButtons += `
-             <a href="javascript:" class="wx-download-item-open" aria-label="打开文件夹" title="打开文件夹" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
+             <a href="javascript:" class="wx-download-item-open" aria-label="打开文件夹" title="打开文件夹" data-path="${t.path}" data-name="${t.name}" data-id="${t.id}" data-action="open" style="${btnStyle}">
                ${FolderIcon}
              </a>
              <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">
@@ -213,9 +213,15 @@
     if (!task || !task.id) return;
     tasks.set(task.id, {
       ...task,
-      filepath: (() => {
+      path: (() => {
         if (task.meta.opts) {
-          return `${task.meta.opts.path}/${task.meta.opts.name}`;
+          return task.meta.opts.path;
+        }
+        return "";
+      })(),
+      name: (() => {
+        if (task.meta.opts) {
+          return task.meta.opts.name;
         }
         return "";
       })(),
@@ -226,7 +232,7 @@
     return new Promise((resolve, reject) => {
       const protocol = location.protocol === "https:" ? "wss://" : "ws://";
       const pathname = WXU.env.isChannels
-        ? "api.channels.qq.com"
+        ? FakeAPIServerAddr
         : WXU.config.apiServerAddr;
       const ws = new WebSocket(protocol + pathname + "/ws");
 
@@ -283,7 +289,7 @@
       const id = e.target.getAttribute("data-id");
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://api.channels.qq.com/api/task/start",
+        url: "https://" + FakeAPIServerAddr + "/api/task/start",
         body: { id },
       });
       if (err) {
@@ -303,12 +309,18 @@
       const id = actionBtn.getAttribute("data-id");
 
       if (action === "open") {
-        const filepath = actionBtn.getAttribute("data-filepath");
-        if (!filepath) return;
+        const path = actionBtn.getAttribute("data-path");
+        const name = actionBtn.getAttribute("data-name");
+        if (!path || !name) {
+          WXU.error({
+            msg: "path or name is empty",
+          });
+          return;
+        }
         var [err, data] = await WXU.request({
           method: "POST",
-          url: "https://api.channels.qq.com/api/show_file",
-          body: { filepath, id },
+          url: "https://" + FakeAPIServerAddr + "/api/show_file",
+          body: { path, name, id },
         });
         if (err) {
           WXU.error({
@@ -320,11 +332,11 @@
 
       let url = "";
       if (action === "pause") {
-        url = "https://api.channels.qq.com/api/task/pause";
+        url = "https://" + FakeAPIServerAddr + "/api/task/pause";
       } else if (action === "resume") {
-        url = "https://api.channels.qq.com/api/task/resume";
+        url = "https://" + FakeAPIServerAddr + "/api/task/resume";
       } else if (action === "delete") {
-        url = "https://api.channels.qq.com/api/task/delete";
+        url = "https://" + FakeAPIServerAddr + "/api/task/delete";
       }
       if (url) {
         var [err, data] = await WXU.request({
@@ -443,7 +455,7 @@
           onClick: async () => {
             await WXU.request({
               method: "POST",
-              url: "https://api.channels.qq.com/api/open_download_dir",
+              url: "https://" + FakeAPIServerAddr + "/api/open_download_dir",
             });
             moredropdown$.hide();
           },
@@ -454,7 +466,7 @@
             moredropdown$.hide();
             await WXU.request({
               method: "POST",
-              url: "https://api.channels.qq.com/api/task/clear",
+              url: "https://" + FakeAPIServerAddr + "/api/task/clear",
             });
           },
         }),

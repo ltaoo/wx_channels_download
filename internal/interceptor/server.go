@@ -16,7 +16,7 @@ func NewInterceptorServer(settings *InterceptorSettings, cert *certificate.CertF
 	interceptor := NewInterceptor(settings, cert)
 	addr := settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort)
 	srv := manager.NewHTTPServer("代理服务", "interceptor", addr)
-	if using_sunnynet {
+	if UsingSunnyNet {
 		srv.Disable()
 	}
 	srv.SetHandler(interceptor)

@@ -1,6 +1,7 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
+var FakeAPIServerAddr = "api.weixin.qq.com";
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
@@ -627,7 +628,7 @@ var WXU = (() => {
         }
         var [err, data] = await WXU.request({
           method: "POST",
-          url: "https://api.channels.qq.com/api/task/create",
+          url: "https://" + FakeAPIServerAddr + "/api/task/create",
           body: {
             id: feed.id,
             url: feed.url,
@@ -689,7 +690,7 @@ var WXU = (() => {
         }
         var [err, data] = await WXU.request({
           method: "POST",
-          url: "https://api.channels.qq.com/api/task/create_batch",
+          url: "https://" + FakeAPIServerAddr + "/api/task/create_batch",
           body,
         });
         if (err) {
