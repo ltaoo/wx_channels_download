@@ -16,6 +16,7 @@ type HTTPServer struct {
 	status   ServerStatus
 	mux      http.Handler
 	server   *http.Server
+	disabled bool
 	mu       sync.RWMutex
 	stopChan chan struct{}
 }
@@ -44,11 +45,18 @@ func (s *HTTPServer) SetHandler(handler http.Handler) {
 	s.mux = handler
 }
 
+func (s *HTTPServer) Disable() {
+	s.disabled = true
+}
+
 func (s *HTTPServer) Mux() http.Handler {
 	return s.mux
 }
 
 func (s *HTTPServer) Start() error {
+	if s.disabled {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

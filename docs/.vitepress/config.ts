@@ -60,6 +60,7 @@ export default defineConfig({
           { text: "长视频下载", link: "/feature/long_video" },
           { text: "mp3下载", link: "/feature/mp3" },
           { text: "直播下载", link: "/feature/live" },
+          { text: "批量下载", link: "/feature/batch" },
           { text: "指定文件名", link: "/feature/filename" },
           { text: "自定义菜单", link: "/feature/custom-menu" },
           { text: "监听事件", link: "/feature/event" },

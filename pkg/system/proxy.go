@@ -1,4 +1,4 @@
-package proxy
+package system
 
 type ProxySettings struct {
 	Device   string

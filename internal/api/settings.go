@@ -27,12 +27,6 @@ func RegisterSettings(cfg *config.Config) {
 		Default:     "%UserDownloads%",
 		Description: "下载目录",
 	})
-	config.Register(config.ConfigItem{
-		Key:         "download.maxRunning",
-		Type:        config.ConfigTypeInt,
-		Default:     3,
-		Description: "最大同时下载任务数",
-	})
 }
 func NewAPISettings(c *config.Config) *APISettings {
 	dir := viper.GetString("download.dir")
@@ -51,7 +45,7 @@ func NewAPISettings(c *config.Config) *APISettings {
 	api_settings := &APISettings{
 		RootDir:     c.RootDir,
 		DownloadDir: dir,
-		MaxRunning:  viper.GetInt("download.maxRunning"),
+		MaxRunning:  3,
 		Addr:        viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
 	}
 	return api_settings

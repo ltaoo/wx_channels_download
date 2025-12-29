@@ -13,7 +13,7 @@ download:
   defaultHighest: false
 ```
 
-`false` 表示「否」
+点击下载图标按钮时，是否下载原始视频，默认 `false`，下载的是最低画质，也是视频号默认播放的视频画质，兼顾了体积和画面
 
 ## 下载时的文件名称
 
@@ -22,7 +22,7 @@ download:
   filenameTemplate: "{{filename}}_{{spec}}"
 ```
 
-`filenameTemplate` 通过模板语法指定下载时的文件名称，默认「文件名+视频质量」
+下载时的文件名称，默认「文件名_视频质量」。`.mp4` 后缀由下载器添加，不支持手动设置后缀
 
 目前支持如下变量
 
@@ -45,16 +45,16 @@ type params = {
 };
 ```
 
-如果存在 `/` 符号，例如 <code v-pre>{{author}}/{{filename}}_{{spec}}</code>，这样下载的文件会放在以作者名为目录的目录中
+如果存在 `/` 符号，例如 <code v-pre>{{author}}/{{filename}}_{{spec}}</code>，这样下载的文件会放在以作者名为目录的目录中，该能力仅在后台下载时生效
 
 ## 下载目录
 
 ```yaml
 download:
-  dir: ./downloads
+  dir: %UserDownloads%
 ```
 
-指定下载目录，默认当前目录 `./downloads`
+指定下载目录，默认用户下载目录。仅在后台下载时生效
 
 ## 前端下载
 
@@ -63,11 +63,16 @@ download:
   frontend: false
 ```
 
-开启后将恢复旧版的下载行为
+是否使用前端下载，默认 `false`
 
-## 是否在下载视频时暂停视频播放
+设置为 `true` 后，会在前端进行下载、解密，下载长视频大概率会有问题。并且「下载目录」会失效；下载文件名不支持 `/` 字符来创建目录。
+
+## 下载视频时暂停视频播放
 
 ```yaml
 download:
   pauseVideoWhenDownload: false
 ```
+
+是否在前端下载时暂停视频播放，默认 `false`
+

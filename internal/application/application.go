@@ -14,7 +14,7 @@ import (
 
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/decrypt"
-	"wx_channel/pkg/proxy"
+	"wx_channel/pkg/system"
 )
 
 type Biz struct {
@@ -33,8 +33,8 @@ func (a *Biz) SetDebug(debug bool) {
 }
 
 func (a *Biz) UninstallCertificate(cert_file_name string) {
-	settings := proxy.ProxySettings{}
-	if err := proxy.DisableProxy(settings); err != nil {
+	settings := system.ProxySettings{}
+	if err := system.DisableProxy(settings); err != nil {
 		fmt.Printf("\nERROR 取消代理失败 %v\n", err.Error())
 		return
 	}

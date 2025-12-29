@@ -1,6 +1,6 @@
 //go:build linux
 
-package proxy
+package system
 
 import (
 	"errors"
