@@ -2,4 +2,4 @@
 
 package interceptor
 
-const using_sunnynet = false
+const UsingSunnyNet = false

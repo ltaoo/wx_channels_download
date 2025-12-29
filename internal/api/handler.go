@@ -94,7 +94,8 @@ func handlePlay(w http.ResponseWriter, r *http.Request) {
 }
 
 type OpenFolderAndHighlightFileBody struct {
-	FilePath string `json:"filepath"`
+	Path string `json:"path"`
+	Name string `json:"name"`
 }
 
 func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
@@ -103,11 +104,11 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": err.Error()})
 		return
 	}
-	if body.FilePath == "" {
-		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": "Missing the `filepath`"})
+	if body.Path == "" || body.Name == "" {
+		ctx.JSON(http.StatusOK, gin.H{"code": 400, "error": "Missing the `path` or `name`"})
 		return
 	}
-	full_filepath := filepath.Join(body.FilePath)
+	full_filepath := filepath.Join(body.Path, body.Name)
 	_, err := os.Stat(full_filepath)
 	if err != nil {
 		ctx.JSON(http.StatusOK, gin.H{"code": 500, "error": err.Error()})
