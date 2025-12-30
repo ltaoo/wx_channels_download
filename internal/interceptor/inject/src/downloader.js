@@ -267,7 +267,7 @@ async function __wx_handle_api_call(msg, socket) {
   if (key === "/api/contact/search") {
     var payload = {
       query: data.keyword,
-      scene: 19,
+      scene: 13,
       requestId: String(new Date().valueOf()),
     };
     var r = await WXU.API2.finderSearch(payload);
