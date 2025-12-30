@@ -567,8 +567,8 @@ var WXU = (() => {
   var before_level2_menus_items = [];
   var after_level2_menus_items = [];
   var WXAPI = {};
+  var WXAPI2 = {};
 
-  var finder_search_idx = 1;
   WXE.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
     for (let i = 0; i < keys.length; i++) {
@@ -580,8 +580,7 @@ var WXU = (() => {
           return;
         }
         if (typeof methods.finderSearch === "function") {
-          var k = "finderSearch";
-          WXAPI[k] = methods.finderSearch;
+          WXAPI2 = methods;
           return;
         }
       })();
@@ -594,6 +593,9 @@ var WXU = (() => {
     ...WXE,
     get API() {
       return WXAPI;
+    },
+    get API2() {
+      return WXAPI2;
     },
     downloader: {
       show() {},

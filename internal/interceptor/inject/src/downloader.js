@@ -270,7 +270,7 @@ async function __wx_handle_api_call(msg, socket) {
       scene: 19,
       requestId: String(new Date().valueOf()),
     };
-    var r = await WXU.API.finderSearch(payload);
+    var r = await WXU.API2.finderSearch(payload);
     console.log("[DOWNLOADER]finderSearch", r);
     /** @type {SearchResp} */
     var { infoList, objectList } = r.data;

@@ -176,14 +176,14 @@ type ChannelsContactSearchResp struct {
 	ErrCode int    `json:"errCode"`
 	ErrMsg  string `json:"errMsg"`
 	Data    struct {
-		BaseResponse    BaseResponse     `json:"BaseResponse"`
-		InfoList        []InfoListItem   `json:"infoList"`
-		ContinueFlag    int              `json:"continueFlag"`
-		ObjectList      []ChannelsObject `json:"objectList"`
-		LastBuff        string           `json:"lastBuff"`
-		TopicInfoList   []any            `json:"topicInfoList"`
-		MusicInfoList   []any            `json:"musicInfoList"`
-		MultiFeedStream []any            `json:"multiFeedStream"`
+		BaseResponse    BaseResponse   `json:"BaseResponse"`
+		InfoList        []InfoListItem `json:"infoList"`
+		ContinueFlag    int            `json:"continueFlag"`
+		LastBuff        string         `json:"lastBuff"`
+		TopicInfoList   []any          `json:"topicInfoList"`
+		MusicInfoList   []any          `json:"musicInfoList"`
+		MultiFeedStream []any          `json:"multiFeedStream"`
+		// ObjectList      []ChannelsObject `json:"objectList"`
 	} `json:"data"`
 	Payload struct {
 		Query     string `json:"query"`
@@ -327,6 +327,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) *ChannelsFeedProfile
 		return nil
 	}
 	media := feed.ObjectDesc.Media[0]
+	// file_size, _ := strconv.Atoi(media.FileSize)
 	prof := &ChannelsFeedProfile{
 		ObjectId:    feed.ID,
 		NonceId:     feed.ObjectNonceId,
