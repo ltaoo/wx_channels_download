@@ -568,18 +568,20 @@ var WXU = (() => {
   var after_level2_menus_items = [];
   var WXAPI = {};
 
-  WXE.onAPILoaded((api_methods) => {
-    const keys = Object.keys(api_methods);
+  var finder_search_idx = 1;
+  WXE.onAPILoaded((variables) => {
+    const keys = Object.keys(variables);
     for (let i = 0; i < keys.length; i++) {
       (() => {
-        const key = keys[i];
-        const methods = api_methods[key];
+        const variable = keys[i];
+        const methods = variables[variable];
         if (typeof methods.finderGetCommentDetail === "function") {
           WXAPI = methods;
           return;
         }
         if (typeof methods.finderSearch === "function") {
-          WXAPI.finderSearch = methods.finderSearch;
+          var k = "finderSearch";
+          WXAPI[k] = methods.finderSearch;
           return;
         }
       })();
@@ -745,6 +747,19 @@ var WXU = (() => {
     download_with_progress,
     /**  */
     sleep,
+    resultify(fn) {
+      return (...args) => {
+        return new Promise((resolve) => {
+          fn(...args)
+            .then((data) => {
+              resolve([null, data]);
+            })
+            .catch((err) => {
+              resolve([err, null]);
+            });
+        });
+      };
+    },
     uid: __wx_uid__,
     bytes_to_size,
     build_filename,

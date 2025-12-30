@@ -172,6 +172,7 @@ func RegisterSettings(cfg *config.Config) {
 
 func NewInterceptorSettings(c *config.Config) *InterceptorSettings {
 	settings := &InterceptorSettings{
+		Version:                      c.Version,
 		DebugShowError:               viper.GetBool("debug.error"),
 		PagespyEnabled:               viper.GetBool("pagespy.enabled"),
 		PageppyServerProtocol:        viper.GetString("pagespy.protocol"),

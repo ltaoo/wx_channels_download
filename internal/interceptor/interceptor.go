@@ -27,12 +27,12 @@ type Interceptor struct {
 	log               *zerolog.Logger
 }
 
-func NewInterceptor(payload *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *Interceptor {
-	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", payload.Version).Logger()
+func NewInterceptor(cfg *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *Interceptor {
+	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", cfg.Version).Logger()
 	return &Interceptor{
-		Version:           payload.Version,
-		Debug:             payload.DebugShowError,
-		Settings:          payload,
+		Version:           cfg.Version,
+		Debug:             cfg.DebugShowError,
+		Settings:          cfg,
 		FrontendVariables: make(map[string]any),
 		Cert:              cert,
 		log:               &log,

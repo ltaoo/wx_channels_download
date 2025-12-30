@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,12 +18,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
+	"wx_channel/internal/api/types"
 	"wx_channel/internal/assets"
 	"wx_channel/internal/interceptor"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
+
+var ws_upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
 
 type APIClient struct {
 	decryptor   *ChannelsVideoDecryptor
@@ -34,6 +45,9 @@ type APIClient struct {
 	ws_clients  map[*websocket.Conn]struct{}
 	ws_mu       sync.RWMutex
 	engine      *gin.Engine
+	requests    map[string]chan ChannelsWSResponse
+	requests_mu sync.RWMutex
+	cache       *cache.Cache
 }
 
 func NewAPIClient(cfg *APISettings) *APIClient {
@@ -48,15 +62,10 @@ func NewAPIClient(cfg *APISettings) *APIClient {
 		downloader: downloader,
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
-		ws_upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		},
 		ws_clients: make(map[*websocket.Conn]struct{}),
+		requests:   make(map[string]chan ChannelsWSResponse),
 		engine:     gin.Default(),
+		cache:      cache.New(),
 	}
 	client.setupRoutes()
 	return client
@@ -86,6 +95,9 @@ func (c *APIClient) setupRoutes() {
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
 	c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 	c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
+	c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
+	c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
+	c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
 	c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
@@ -94,7 +106,7 @@ func (c *APIClient) setupRoutes() {
 	})
 }
 
-type DownloaderWSMessage struct {
+type APIClientWSMessage struct {
 	Type  string      `json:"type"`
 	Data  interface{} `json:"data"`
 	Error string      `json:"error"`
@@ -125,7 +137,7 @@ func (c *APIClient) Start() error {
 		if evt == nil || evt.Task == nil || evt.Task.ID == "" {
 			return
 		}
-		c.broadcast(DownloaderWSMessage{
+		c.broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: evt,
 		})
@@ -182,57 +194,192 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *APIClient) handleWS(ctx *gin.Context) {
-	conn, err := c.ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+	conn, err := ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return
 	}
 	c.ws_mu.Lock()
 	c.ws_clients[conn] = struct{}{}
-	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_ = conn.WriteJSON(DownloaderWSMessage{Type: "tasks", Data: c.downloader.GetTasks()})
+	_ = conn.WriteJSON(APIClientWSMessage{Type: "tasks", Data: c.downloader.GetTasks()})
 	c.ws_mu.Unlock()
-
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				c.ws_mu.Lock()
-				if _, ok := c.ws_clients[conn]; !ok {
-					c.ws_mu.Unlock()
-					return
-				}
-				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-					c.ws_mu.Unlock()
-					return
-				}
-				c.ws_mu.Unlock()
+	defer func() {
+		c.ws_mu.Lock()
+		delete(c.ws_clients, conn)
+		c.ws_mu.Unlock()
+		_ = conn.Close()
+	}()
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var resp ChannelsWSResponse
+		if err := json.Unmarshal(message, &resp); err == nil && resp.Id != "" {
+			c.requests_mu.RLock()
+			ch, ok := c.requests[resp.Id]
+			c.requests_mu.RUnlock()
+			if ok {
+				ch <- resp
 			}
 		}
-	}()
+	}
+}
 
-	go func() {
-		defer func() {
-			c.ws_mu.Lock()
-			delete(c.ws_clients, conn)
-			c.ws_mu.Unlock()
-			_ = conn.Close()
-		}()
-		conn.SetReadLimit(1024)
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-			return nil
-		})
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
-		}
+func (wc *APIClient) Validate() error {
+	// wc.clientsMu.Lock()
+	// defer wc.clientsMu.Unlock()
+	if len(wc.ws_clients) == 0 {
+		return errors.New("请先初始化客户端 socket 连接")
+	}
+	return nil
+}
+
+type ChannelsWSRequestBody struct {
+	ID   string      `json:"id"`
+	Key  string      `json:"key"`
+	Body interface{} `json:"data"`
+}
+type ChannelsWSResponse struct {
+	Id string `json:"id"`
+	// 调用 wx api 原始响应
+	Data json.RawMessage `json:"data"`
+}
+
+func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.Duration) (*ChannelsWSResponse, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("%d", time.Now().UnixNano())
+	req := ChannelsWSRequestBody{
+		ID:   id,
+		Key:  endpoint,
+		Body: body,
+	}
+	msg := APIClientWSMessage{
+		Type: "api_call",
+		Data: req,
+	}
+	resp_chan := make(chan ChannelsWSResponse, 1)
+	c.requests_mu.Lock()
+	c.requests[id] = resp_chan
+	c.requests_mu.Unlock()
+	defer func() {
+		c.requests_mu.Lock()
+		delete(c.requests, id)
+		c.requests_mu.Unlock()
 	}()
+	c.ws_mu.Lock()
+	var client *websocket.Conn
+	for conn := range c.ws_clients {
+		client = conn
+		break
+	}
+	if client == nil {
+		c.ws_mu.Unlock()
+		return nil, errors.New("没有可用的客户端")
+	}
+	_ = client.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	err := client.WriteJSON(msg)
+	c.ws_mu.Unlock()
+	if err != nil {
+		fmt.Println("WriteMessage:", err)
+		return nil, errors.New("发送请求失败，" + err.Error())
+	}
+	select {
+	case resp := <-resp_chan:
+		return &resp, nil
+	case <-time.After(timeout):
+		return nil, errors.New("请求超时")
+	}
+}
+
+func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
+	// cache_key := "search:" + keyword
+	// if val, found := c.cache.Get(cache_key); found {
+	// 	if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
+	// 		return resp, nil
+	// 	}
+	// }
+	resp, err := c.RequestAPI("/api/contact/search", types.ChannelsAccountSearchBody{Keyword: keyword}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsContactSearchResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
+func (c *APIClient) FetchChannelsFeedListOfContact(username string) (*types.ChannelsFeedListOfAccountResp, error) {
+	fmt.Println("[API]fetch feed list of contact", username)
+	// cache_key := "feed:" + username
+	// if val, found := c.cache.Get(cache_key); found {
+	// 	if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+	// 		return resp, nil
+	// 	}
+	// }
+	resp, err := c.RequestAPI("/api/contact/feed/list", types.ChannelsFeedListBody{Username: username}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
+func (c *APIClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
+	fmt.Println("[API]fetch feed profile", oid, uid)
+	// cache_key := "feed:" + username
+	// if val, found := c.cache.Get(cache_key); found {
+	// 	if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
+	// 		return resp, nil
+	// 	}
+	// }
+	resp, err := c.RequestAPI("/api/feed/profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsFeedProfileResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
+func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
+	keyword := ctx.Query("keyword")
+	resp, err := c.SearchChannelsContact(keyword)
+	if err != nil {
+		c.jsonError(ctx, 400, err.Error())
+		return
+	}
+	c.jsonSuccess(ctx, resp)
+}
+func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
+	username := ctx.Query("username")
+	resp, err := c.FetchChannelsFeedListOfContact(username)
+	if err != nil {
+		c.jsonError(ctx, 400, err.Error())
+		return
+	}
+	c.jsonSuccess(ctx, resp)
+}
+func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
+	oid := ctx.Query("oid")
+	uid := ctx.Query("nid")
+	url := ctx.Query("url")
+	resp, err := c.FetchChannelsFeedProfile(oid, uid, url)
+	if err != nil {
+		c.jsonError(ctx, 400, err.Error())
+		return
+	}
+	c.jsonSuccess(ctx, resp)
 }
 
 func (c *APIClient) handleIndex(ctx *gin.Context) {
@@ -346,7 +493,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		c.jsonError(ctx, 500, "下载失败")
 		return
 	}
-	c.broadcast(DownloaderWSMessage{
+	c.broadcast(APIClientWSMessage{
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
 	})
@@ -419,7 +566,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		c.jsonError(ctx, 500, "创建失败")
 		return
 	}
-	c.broadcast(DownloaderWSMessage{
+	c.broadcast(APIClientWSMessage{
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
 	})
@@ -496,7 +643,7 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 	c.downloader.Delete(&downloadpkg.TaskFilter{
 		IDs: []string{body.Id},
 	}, true)
-	c.broadcast(DownloaderWSMessage{
+	c.broadcast(APIClientWSMessage{
 		Type: "event",
 		Data: map[string]any{
 			"Type": "delete",
@@ -508,7 +655,7 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	c.downloader.Delete(nil, true)
-	c.broadcast(DownloaderWSMessage{
+	c.broadcast(APIClientWSMessage{
 		Type: "clear",
 		Data: c.downloader.GetTasks(),
 	})

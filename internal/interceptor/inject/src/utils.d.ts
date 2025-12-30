@@ -138,3 +138,22 @@ type FeedProfilePayload = FeedProfile & {
   data?: ArrayBuffer;
   mp3: boolean;
 };
+
+type ChannelsAPIResp = {
+  errCode: number;
+  errMsg: string;
+  data: {
+    err: {
+      base_resp: {
+        err_msg: string;
+        ret: number;
+      };
+      err_msg: string;
+      jsapi_resp: {
+        error_msg: string;
+        resp_json: null;
+        ret: number;
+      };
+    };
+  };
+};
