@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
@@ -35,6 +36,51 @@ var ws_upgrader = websocket.Upgrader{
 	},
 }
 
+type Client struct {
+	hub  *APIClient
+	conn *websocket.Conn
+	send chan []byte
+}
+
+func (c *Client) writePump() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Add queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
+}
+
 type APIClient struct {
 	decryptor   *ChannelsVideoDecryptor
 	downloader  *downloadpkg.Downloader
@@ -42,12 +88,13 @@ type APIClient struct {
 	formatter   *util.FilenameProcessor
 	cfg         *APISettings
 	ws_upgrader websocket.Upgrader
-	ws_clients  map[*websocket.Conn]struct{}
+	ws_clients  map[*Client]bool
 	ws_mu       sync.RWMutex
 	engine      *gin.Engine
 	requests    map[string]chan ChannelsWSResponse
 	requests_mu sync.RWMutex
 	cache       *cache.Cache
+	req_seq     uint64
 }
 
 func NewAPIClient(cfg *APISettings) *APIClient {
@@ -62,29 +109,17 @@ func NewAPIClient(cfg *APISettings) *APIClient {
 		downloader: downloader,
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
-		ws_clients: make(map[*websocket.Conn]struct{}),
+		ws_clients: make(map[*Client]bool),
 		requests:   make(map[string]chan ChannelsWSResponse),
 		engine:     gin.Default(),
 		cache:      cache.New(),
+		req_seq:    uint64(time.Now().UnixNano()),
 	}
 	client.setupRoutes()
 	return client
 }
 
 func (c *APIClient) setupRoutes() {
-	c.engine.Use(func(ctx *gin.Context) {
-		ctx.Header("Access-Control-Allow-Origin", "*")
-		ctx.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		ctx.Header("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Access-Control-Request-Private-Network")
-		ctx.Header("Access-Control-Allow-Private-Network", "true")
-
-		if ctx.Request.Method == http.MethodOptions {
-			ctx.AbortWithStatus(http.StatusOK)
-			return
-		}
-		ctx.Next()
-	})
-
 	c.engine.GET("/ws", c.handleWS)
 	c.engine.POST("/api/task/create", c.handleCreateTask)
 	c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
@@ -180,10 +215,9 @@ func (c *APIClient) Start() error {
 
 func (c *APIClient) Stop() error {
 	c.ws_mu.Lock()
-	for conn := range c.ws_clients {
-		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(1*time.Second))
-		_ = conn.Close()
-		delete(c.ws_clients, conn)
+	for client := range c.ws_clients {
+		close(client.send)
+		delete(c.ws_clients, client)
 	}
 	c.ws_mu.Unlock()
 	return nil
@@ -199,20 +233,33 @@ func (c *APIClient) handleWS(ctx *gin.Context) {
 		return
 	}
 	c.ws_mu.Lock()
-	c.ws_clients[conn] = struct{}{}
-	_ = conn.WriteJSON(APIClientWSMessage{Type: "tasks", Data: c.downloader.GetTasks()})
+	client := &Client{hub: c, conn: conn, send: make(chan []byte, 256)}
+	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
+
+	go client.writePump()
+
+	// Initial tasks
+	tasks := c.downloader.GetTasks()
+	if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
+		client.send <- data
+	}
+
 	defer func() {
 		c.ws_mu.Lock()
-		delete(c.ws_clients, conn)
+		if _, ok := c.ws_clients[client]; ok {
+			delete(c.ws_clients, client)
+			close(client.send)
+		}
 		c.ws_mu.Unlock()
-		_ = conn.Close()
+		conn.Close()
 	}()
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			return
 		}
+		// 前端「响应」给 ws api 请求的响应值
 		var resp ChannelsWSResponse
 		if err := json.Unmarshal(message, &resp); err == nil && resp.Id != "" {
 			c.requests_mu.RLock()
@@ -249,7 +296,7 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
-	id := fmt.Sprintf("%d", time.Now().UnixNano())
+	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
 	req := ChannelsWSRequestBody{
 		ID:   id,
 		Key:  endpoint,
@@ -269,22 +316,29 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 		c.requests_mu.Unlock()
 	}()
 	c.ws_mu.Lock()
-	var client *websocket.Conn
-	for conn := range c.ws_clients {
-		client = conn
+	var client *Client
+	for c := range c.ws_clients {
+		client = c
 		break
 	}
 	if client == nil {
 		c.ws_mu.Unlock()
 		return nil, errors.New("没有可用的客户端")
 	}
-	_ = client.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	err := client.WriteJSON(msg)
-	c.ws_mu.Unlock()
+
+	data, err := json.Marshal(msg)
 	if err != nil {
-		fmt.Println("WriteMessage:", err)
-		return nil, errors.New("发送请求失败，" + err.Error())
+		c.ws_mu.Unlock()
+		return nil, err
 	}
+
+	select {
+	case client.send <- data:
+	default:
+		c.ws_mu.Unlock()
+		return nil, errors.New("发送缓冲区已满")
+	}
+	c.ws_mu.Unlock()
 	select {
 	case resp := <-resp_chan:
 		return &resp, nil
@@ -294,13 +348,13 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 }
 
 func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
-	// cache_key := "search:" + keyword
-	// if val, found := c.cache.Get(cache_key); found {
-	// 	if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
-	// 		return resp, nil
-	// 	}
-	// }
-	resp, err := c.RequestAPI("/api/contact/search", types.ChannelsAccountSearchBody{Keyword: keyword}, 10*time.Second)
+	cache_key := "search:" + keyword
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
+			return resp, nil
+		}
+	}
+	resp, err := c.RequestAPI("/api/contact/search", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +362,7 @@ func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContac
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
-	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	c.cache.Set(cache_key, &r, 5*time.Minute)
 	return &r, nil
 }
 
@@ -702,11 +756,12 @@ func (c *APIClient) broadcast(v interface{}) {
 	}
 	c.ws_mu.Lock()
 	defer c.ws_mu.Unlock()
-	for conn := range c.ws_clients {
-		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			_ = conn.Close()
-			delete(c.ws_clients, conn)
+	for client := range c.ws_clients {
+		select {
+		case client.send <- data:
+		default:
+			close(client.send)
+			delete(c.ws_clients, client)
 		}
 	}
 }
