@@ -18,9 +18,10 @@ type Config struct {
 	Existing bool   // 配置文件是否存在
 	Error    error
 	Debug    bool
+	Version  string
 }
 
-func New() (*Config, error) {
+func New(ver string) (*Config, error) {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -56,6 +57,7 @@ func New() (*Config, error) {
 		Filename: filename,
 		FullPath: config_filepath,
 		Existing: has_config,
+		Version:  ver,
 	}
 	return c, nil
 }

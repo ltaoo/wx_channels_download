@@ -37,6 +37,8 @@ var (
 	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
 	jsRecommendFeedsReg = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
 	jsUserFeedsReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	jsFinderPCSearchReg = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
+	jsFinderSearchReg   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
 	jsGoToPrevFlowReg   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
 	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
 )
@@ -227,15 +229,17 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
 				if strings.Contains(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
-					replace_str1 := `(() => {
+					// 已经废弃了
+					buffer_js := `(() => {
 					WXU.append_media_buf($1);
 					})(),this.sourceBuffer.appendBuffer($1),`
-					js_script = jsSourceBufferReg.ReplaceAllString(js_script, replace_str1)
+					js_script = jsSourceBufferReg.ReplaceAllString(js_script, buffer_js)
 					ctx.SetResponseBody(js_script)
 					return
 				}
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					init_content := `async finderInit() {
+					{
+						js_init := `async finderInit() {
 					var result = await (async () => {
 						$1;
 					})();
@@ -244,8 +248,10 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.Init, data);
 					return result;
 				}async`
-					js_script = jsInitReg.ReplaceAllString(js_script, init_content)
-					pc_flow_content := `async finderPcFlow($1) {
+						js_script = jsInitReg.ReplaceAllString(js_script, js_init)
+					}
+					{
+						js_pc_flow := `async finderPcFlow($1) {
 					var result = await (async () => {
 						$2;
 					})();
@@ -254,8 +260,10 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.PCFlowLoaded, feeds);
 					return result;
 				}async`
-					js_script = jsPCFlowReg.ReplaceAllString(js_script, pc_flow_content)
-					recommend_feeds_content := `async finderGetRecommend($1) {
+						js_script = jsPCFlowReg.ReplaceAllString(js_script, js_pc_flow)
+					}
+					{
+						js_recommend_feeds := `async finderGetRecommend($1) {
 					var result = await (async () => {
 						$2;
 					})();
@@ -264,8 +272,10 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.RecommendFeedsLoaded, feeds);
 					return result;
 				}async`
-					js_script = jsRecommendFeedsReg.ReplaceAllString(js_script, recommend_feeds_content)
-					feed_profile_content := `async finderGetCommentDetail($1) {
+						js_script = jsRecommendFeedsReg.ReplaceAllString(js_script, js_recommend_feeds)
+					}
+					{
+						js_feed_profile := `async finderGetCommentDetail($1) {
 					var result = await (async () => {
 						$2;
 					})();
@@ -274,8 +284,30 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
 					return result;
 				}async`
-					js_script = jsFeedProfileReg.ReplaceAllString(js_script, feed_profile_content)
-					user_feeds_content := `async finderUserPage($1) {
+						js_script = jsFeedProfileReg.ReplaceAllString(js_script, js_feed_profile)
+					}
+					{
+						js_finder_pc_search := `async finderPCSearch($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					console.log("before finderPCSearch", result, $1);
+					return result;
+				}async`
+						js_script = jsFinderPCSearchReg.ReplaceAllString(js_script, js_finder_pc_search)
+					}
+					{
+						js_finder_search := `async finderSearch($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					console.log("before finderSearch", result, $1);
+					return result;
+				}async`
+						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
+					}
+					{
+						js_user_feed := `async finderUserPage($1) {
 					var result = await (async () => {
 						$2;
 					})();
@@ -284,8 +316,10 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
 					return result;
 				}async`
-					js_script = jsUserFeedsReg.ReplaceAllString(js_script, user_feeds_content)
-					live_profile_content := `async finderGetLiveInfo($1) {
+						js_script = jsUserFeedsReg.ReplaceAllString(js_script, js_user_feed)
+					}
+					{
+						js_live_profile := `async finderGetLiveInfo($1) {
 					var result = await (async () => {
 						$2;
 					})();
@@ -294,37 +328,42 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
 					return result;
 				}async`
-					js_script = jsLiveInfoReg.ReplaceAllString(js_script, live_profile_content)
-					api_methods := "{}"
-					if m := jsExportBlockReg.FindStringSubmatch(js_script); len(m) >= 2 {
-						items := strings.Split(m[1], ",")
-						locals := make([]string, 0, len(items))
-						for _, it := range items {
-							p := strings.TrimSpace(it)
-							if p == "" {
-								continue
-							}
-							idx := strings.Index(p, " as ")
-							local := p
-							if idx != -1 {
-								local = strings.TrimSpace(p[:idx])
-							}
-							if local != "" && local != " " {
-								locals = append(locals, local)
-							}
-						}
-						if len(locals) > 0 {
-							api_methods = "{" + strings.Join(locals, ",") + "}"
-						}
+						js_script = jsLiveInfoReg.ReplaceAllString(js_script, js_live_profile)
 					}
-					api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
-					wxapi_str := ";WXU.emit(WXU.Events.APILoaded," + api_methods_escaped + ");export{"
-					js_script = jsExportReg.ReplaceAllString(js_script, wxapi_str)
+					{
+
+						api_methods := "{}"
+						if m := jsExportBlockReg.FindStringSubmatch(js_script); len(m) >= 2 {
+							items := strings.Split(m[1], ",")
+							locals := make([]string, 0, len(items))
+							for _, it := range items {
+								p := strings.TrimSpace(it)
+								if p == "" {
+									continue
+								}
+								idx := strings.Index(p, " as ")
+								local := p
+								if idx != -1 {
+									local = strings.TrimSpace(p[:idx])
+								}
+								if local != "" && local != " " {
+									locals = append(locals, local)
+								}
+							}
+							if len(locals) > 0 {
+								api_methods = "{" + strings.Join(locals, ",") + "}"
+							}
+						}
+						api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
+						js_wxapi := ";WXU.emit(WXU.Events.APILoaded," + api_methods_escaped + ");export{"
+						js_script = jsExportReg.ReplaceAllString(js_script, js_wxapi)
+					}
 					ctx.SetResponseBody(js_script)
 					return
 				}
 				if util.Includes(pathname, "connect.publish") {
-					replace_str1 := `goToNextFlowFeed:async function(v){
+					{
+						js_go_next_feed := `goToNextFlowFeed:async function(v){
 						await $1(v);
 						// yt 来自 flowTab 对应的值
 						console.log('goToNextFlowFeed', yt);
@@ -335,8 +374,10 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						console.log("before GotoNextFeed", yt, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
 					}`
-					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
-					replace_str2 := `goToPrevFlowFeed:async function(v){
+						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
+					}
+					{
+						js_go_prev_feed := `goToPrevFlowFeed:async function(v){
 						await $1(v);
 						console.log('goToPrevFlowFeed', yt);
 						if (!yt || !yt.value.feeds) {
@@ -346,9 +387,12 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						console.log("before GotoPrevFeed", yt, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
 					}`
-					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
-					wxutil_str := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String});export{"
-					js_script = jsExportReg.ReplaceAllString(js_script, wxutil_str)
+						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)
+					}
+					{
+						js_wxutil := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String});export{"
+						js_script = jsExportReg.ReplaceAllString(js_script, js_wxutil)
+					}
 					ctx.SetResponseBody(js_script)
 					return
 				}

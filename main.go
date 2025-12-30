@@ -14,14 +14,14 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "251226"
+var AppVer = "25123003"
 var Mode = "debug"
 
 func main() {
 	if Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	cfg, err := config.New()
+	cfg, err := config.New(AppVer)
 	if err != nil {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
