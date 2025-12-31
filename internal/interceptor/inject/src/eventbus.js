@@ -240,12 +240,16 @@ WXE.onGotoPrevFeed((feed) => {
   console.log("[eventbus.js]onGotoPrevFeed", feed);
   WXE.emit(WXE.Events.Feed, feed);
 });
-console.log("[eventbus.js]before onFetchFeedProfile");
 WXE.onFetchFeedProfile((feed) => {
   console.log("[eventbus.js]onFetchFeedProfile", feed);
   WXE.emit(WXE.Events.Feed, feed);
 });
+var home_recommend_mounted = false;
 WXE.onPCFlowLoaded((feeds) => {
+  if (home_recommend_mounted) {
+    return;
+  }
+  home_recommend_mounted = true;
   console.log("[eventbus.js]onPCFlowLoaded", feeds);
   WXE.emit(WXE.Events.Feed, feeds[0]);
 });
