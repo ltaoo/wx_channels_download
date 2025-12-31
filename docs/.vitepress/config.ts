@@ -57,6 +57,7 @@ export default defineConfig({
       {
         text: "功能",
         items: [
+          { text: "API", link: "/feature/api" },
           { text: "长视频下载", link: "/feature/long_video" },
           { text: "mp3下载", link: "/feature/mp3" },
           { text: "直播下载", link: "/feature/live" },
