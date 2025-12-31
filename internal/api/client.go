@@ -63,12 +63,6 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Add queued chat messages to the current websocket message.
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write(<-c.send)
-			}
-
 			if err := w.Close(); err != nil {
 				return
 			}
@@ -367,7 +361,7 @@ func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContac
 }
 
 func (c *APIClient) FetchChannelsFeedListOfContact(username string) (*types.ChannelsFeedListOfAccountResp, error) {
-	fmt.Println("[API]fetch feed list of contact", username)
+	// fmt.Println("[API]fetch feed list of contact", username)
 	// cache_key := "feed:" + username
 	// if val, found := c.cache.Get(cache_key); found {
 	// 	if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
@@ -387,7 +381,7 @@ func (c *APIClient) FetchChannelsFeedListOfContact(username string) (*types.Chan
 }
 
 func (c *APIClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
-	fmt.Println("[API]fetch feed profile", oid, uid)
+	// fmt.Println("[API]fetch feed profile", oid, uid)
 	// cache_key := "feed:" + username
 	// if val, found := c.cache.Get(cache_key); found {
 	// 	if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
@@ -516,9 +510,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, Response{Code: 409, Msg: "已存在该下载内容", Data: body})
 		return
 	}
-	fmt.Print("before ProcessFilename", body.Filename)
 	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
-	fmt.Print("after ProcessFilename", filename, dir)
 	if err != nil {
 		c.jsonError(ctx, 409, "不合法的文件名")
 		return
