@@ -764,6 +764,14 @@ var WXU = (() => {
     },
     uid: __wx_uid__,
     bytes_to_size,
+    parseJSON(v) {
+      try {
+        var r = JSON.parse(v);
+        return [null, r];
+      } catch (err) {
+        return [err, null];
+      }
+    },
     build_filename,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,

@@ -342,7 +342,7 @@ function __wx_refresh_downloader(selector, tasks) {
 
     if (isCompleted) {
       actionButtons += `
-             <a href="javascript:" class="wx-download-item-open" aria-label="打开文件夹" title="打开文件夹" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
+             <a href="javascript:" class="wx-download-item-open" aria-label="打开文件夹" title="打开文件夹" data-name="${t.name}" data-path="${t.path}" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
                ${FolderIcon}
              </a>
              <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">

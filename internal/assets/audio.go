@@ -8,7 +8,6 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"errors"
-	"io"
 	"sync"
 	"time"
 
@@ -22,6 +21,9 @@ var (
 	last_played time.Time
 	mu          sync.Mutex
 	oto_once    sync.Once
+	otoCtx      *oto.Context
+	player      *oto.Player
+	init_err    error
 )
 
 type WavMeta struct {
@@ -84,16 +86,13 @@ func PlayDoneAudio() error {
 	last_played = time.Now()
 	mu.Unlock()
 
-	meta, err := parse_wav(done_wav)
-	if err != nil {
-		return err
-	}
-	var (
-		otoCtx   *oto.Context
-		readyCh  <-chan struct{}
-		init_err error
-	)
 	oto_once.Do(func() {
+		meta, err := parse_wav(done_wav)
+		if err != nil {
+			init_err = err
+			return
+		}
+
 		op := &oto.NewContextOptions{}
 		op.SampleRate = meta.sample_rate
 		op.ChannelCount = meta.channels
@@ -103,22 +102,38 @@ func PlayDoneAudio() error {
 			init_err = errors.New("unsupported bitsPerSample")
 			return
 		}
+		var readyCh <-chan struct{}
 		otoCtx, readyCh, init_err = oto.NewContext(op)
+		if init_err != nil {
+			return
+		}
+		if readyCh != nil {
+			<-readyCh
+		}
+
+		start := meta.data_offset
+		end := start + meta.data_size
+		if end > len(done_wav) {
+			end = len(done_wav)
+		}
+		// Use bytes.NewReader directly to support Seeking (required for reuse)
+		// io.NopCloser hides the Seek method
+		reader := bytes.NewReader(done_wav[start:end])
+		player = otoCtx.NewPlayer(reader)
 	})
 	if init_err != nil {
 		return init_err
 	}
-	if readyCh != nil {
-		<-readyCh
+
+	mu.Lock()
+	_, err := player.Seek(0, 0)
+	if err != nil {
+		mu.Unlock()
+		return err
 	}
-	start := meta.data_offset
-	end := start + meta.data_size
-	if end > len(done_wav) {
-		end = len(done_wav)
-	}
-	data_reader := io.NopCloser(bytes.NewReader(done_wav[start:end]))
-	player := otoCtx.NewPlayer(data_reader)
 	player.Play()
+	mu.Unlock()
+
 	for player.IsPlaying() {
 		time.Sleep(time.Millisecond * 10)
 	}

@@ -2,24 +2,29 @@
  * @file 下载管理
  */
 var __wx_username;
-
+var ua = navigator.userAgent || navigator.platform || "";
+var isWin = /Windows|Win/i.test(ua);
 (() => {
   const tasks = new Map();
   function upsert(task) {
     if (!task || !task.id) return;
     tasks.set(task.id, {
       ...task,
-      path: (() => {
-        if (task.meta.opts) {
-          return task.meta.opts.path;
+      ...(() => {
+        if (!task.meta.opts) {
+          return {};
         }
-        return "";
-      })(),
-      name: (() => {
-        if (task.meta.opts) {
-          return task.meta.opts.name;
+        var p = task.meta.opts.path || "";
+        var n = task.meta.opts.name || "";
+        var sep = isWin ? "\\" : "/";
+        if (!p || !n) {
+          return {};
         }
-        return "";
+        return {
+          path: p,
+          name: n,
+          filepath: p.endsWith(sep) ? p + n : p + sep + n,
+        };
       })(),
     });
   }
@@ -47,7 +52,10 @@ var __wx_username;
         }
       };
       ws.onmessage = (ev) => {
-        const msg = JSON.parse(ev.data);
+        const [err, msg] = WXU.parseJSON(ev.data);
+        if (err) {
+          return;
+        }
         if (msg.type === "tasks") {
           if (Array.isArray(msg.data)) {
             msg.data.forEach(upsert);
