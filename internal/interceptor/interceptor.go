@@ -18,7 +18,7 @@ import (
 type Interceptor struct {
 	Version           string
 	Debug             bool
-	Settings          *InterceptorSettings
+	Settings          *InterceptorConfig
 	Headers           map[string]string
 	Cert              *certificate.CertFileAndKeyFile
 	proxy             proxy.InnerProxy
@@ -27,7 +27,7 @@ type Interceptor struct {
 	log               *zerolog.Logger
 }
 
-func NewInterceptor(cfg *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *Interceptor {
+func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *Interceptor {
 	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", cfg.Version).Logger()
 	return &Interceptor{
 		Version:           cfg.Version,

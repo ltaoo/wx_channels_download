@@ -29,9 +29,9 @@ func NewChannelsVideoDecryptor() *ChannelsVideoDecryptor {
 	}
 }
 
-func (mp *ChannelsVideoDecryptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	handleDownload(w, r)
-}
+// func (mp *ChannelsVideoDecryptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	handleDownload(w, r)
+// }
 
 func (mp *ChannelsVideoDecryptor) convertWithDecrypt(w http.ResponseWriter, targetURL string, key uint64, encLimit uint64, filename string) {
 	req, err := mp.prepareRequest(http.MethodGet, targetURL, nil)

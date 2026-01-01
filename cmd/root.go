@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"wx_channel/config"
 	"wx_channel/internal/api"
+	"wx_channel/internal/config"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
