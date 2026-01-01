@@ -10,17 +10,17 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/spf13/viper"
 
-	"wx_channel/config"
+	"wx_channel/internal/config"
 )
 
-type APISettings struct {
+type APIConfig struct {
 	RootDir     string
 	DownloadDir string
 	MaxRunning  int // 最多同时下载的任务数
 	Addr        string
 }
 
-func RegisterSettings(cfg *config.Config) {
+func SetupConfig(cfg *config.Config) {
 	config.Register(config.ConfigItem{
 		Key:         "download.dir",
 		Type:        config.ConfigTypeString,
@@ -28,7 +28,7 @@ func RegisterSettings(cfg *config.Config) {
 		Description: "下载目录",
 	})
 }
-func NewAPISettings(c *config.Config) *APISettings {
+func NewAPISettings(c *config.Config) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
 	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
@@ -42,7 +42,7 @@ func NewAPISettings(c *config.Config) *APISettings {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
 	}
 
-	api_settings := &APISettings{
+	api_settings := &APIConfig{
 		RootDir:     c.RootDir,
 		DownloadDir: dir,
 		MaxRunning:  3,

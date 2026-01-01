@@ -9,7 +9,7 @@ type APIServer struct {
 	APIClient *APIClient
 }
 
-func NewAPIServer(cfg *APISettings) *APIServer {
+func NewAPIServer(cfg *APIConfig) *APIServer {
 	srv := manager.NewHTTPServer("API服务", "api", cfg.Addr)
 	client := NewAPIClient(cfg)
 	srv.SetHandler(withCORS(client))

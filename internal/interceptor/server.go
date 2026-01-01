@@ -12,7 +12,7 @@ type InterceptorServer struct {
 	Interceptor *Interceptor
 }
 
-func NewInterceptorServer(settings *InterceptorSettings, cert *certificate.CertFileAndKeyFile) *InterceptorServer {
+func NewInterceptorServer(settings *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *InterceptorServer {
 	interceptor := NewInterceptor(settings, cert)
 	addr := settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort)
 	srv := manager.NewHTTPServer("代理服务", "interceptor", addr)

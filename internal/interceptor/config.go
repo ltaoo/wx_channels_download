@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/viper"
 
-	"wx_channel/config"
+	"wx_channel/internal/config"
 )
 
-type InterceptorSettings struct {
+type InterceptorConfig struct {
 	Version                      string `json:"version"`
 	FilePath                     string // 配置文件路径
 	DownloadDefaultHighest       bool   `json:"defaultHighest"`            // 默认下载最高画质
@@ -38,7 +38,7 @@ type InterceptorSettings struct {
 	t *config.Config
 }
 
-func RegisterSettings(cfg *config.Config) {
+func SetupConfig(cfg *config.Config) {
 	config.Register(config.ConfigItem{
 		Key:         "download.defaultHighest",
 		Type:        config.ConfigTypeBool,
@@ -170,8 +170,8 @@ func RegisterSettings(cfg *config.Config) {
 	})
 }
 
-func NewInterceptorSettings(c *config.Config) *InterceptorSettings {
-	settings := &InterceptorSettings{
+func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
+	settings := &InterceptorConfig{
 		Version:                      c.Version,
 		DebugShowError:               viper.GetBool("debug.error"),
 		PagespyEnabled:               viper.GetBool("pagespy.enabled"),
