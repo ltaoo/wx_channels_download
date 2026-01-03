@@ -9,6 +9,7 @@ import (
 	"compress/zlib"
 	"fmt"
 	"io"
+	"net"
 	h "net/http"
 	"net/url"
 	"runtime"
@@ -34,9 +35,14 @@ func NewProxy(cert []byte, private_key []byte) (InnerProxy, error) {
 }
 
 func (p *SunnyNetProxy) Start(port int) error {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return fmt.Errorf("启动代理服务失败，端口 %d 被占用", port)
+	}
+	l.Close()
 	p.Sunny.SetGoCallback(p.HandleHTTPRequest, nil, p.HandleWS, nil)
 	p.Sunny.SetPort(port).Start()
-	err := p.Sunny.Error
+	err = p.Sunny.Error
 	if err != nil {
 		return err
 	}

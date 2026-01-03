@@ -1,6 +1,9 @@
 package api
 
 import (
+	"fmt"
+	"net"
+
 	"wx_channel/internal/manager"
 )
 
@@ -20,6 +23,11 @@ func NewAPIServer(cfg *APIConfig) *APIServer {
 }
 
 func (s *APIServer) Start() error {
+	l, err := net.Listen("tcp", s.HTTPServer.Addr())
+	if err != nil {
+		return fmt.Errorf("启动API服务失败，端口被占用: %v", err)
+	}
+	l.Close()
 	if err := s.APIClient.Start(); err != nil {
 		return err
 	}

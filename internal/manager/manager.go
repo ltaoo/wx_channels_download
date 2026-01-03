@@ -26,7 +26,6 @@ func (sm *ServerManager) StartServer(name string) error {
 	sm.mu.RLock()
 	server, exists := sm.servers[name]
 	sm.mu.RUnlock()
-
 	if !exists {
 		return fmt.Errorf("server %s not found", name)
 	}

@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -63,20 +64,19 @@ func (s *HTTPServer) Start() error {
 	if s.status == StatusRunning || s.status == StatusStarting {
 		return fmt.Errorf("server is already %s", s.status)
 	}
-
-	s.status = StatusStarting
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
+	s.status = StatusRunning
 	s.server = &http.Server{
 		Addr:    s.addr,
 		Handler: s.mux,
 	}
 
 	go func() {
-		s.mu.Lock()
-		s.status = StatusRunning
-		s.mu.Unlock()
-
 		// fmt.Printf("Server %s starting on addr %s\n", s.name, s.addr)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			s.mu.Lock()
 			s.status = StatusError
 			s.mu.Unlock()
@@ -90,8 +90,6 @@ func (s *HTTPServer) Start() error {
 		fmt.Printf("%s 已关闭\n", s.title)
 	}()
 
-	// 等待服务器启动
-	time.Sleep(100 * time.Millisecond)
 	return nil
 }
 
