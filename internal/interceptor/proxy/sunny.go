@@ -81,6 +81,7 @@ type SunnyNetContext struct {
 	SetResponseHeader func(key, val string)
 	SetResponseBody   func(body string)
 	GetResponseBody   func() ([]byte, error)
+	SetStatusCode     func(code int)
 }
 
 type SunnyNetContextReq struct {
@@ -198,6 +199,12 @@ func (c *sunnyBridgeContext) SetResponseHeader(key, val string) {
 func (c *sunnyBridgeContext) SetResponseBody(body string) {
 	if c.impl != nil && c.impl.SetResponseBody != nil {
 		c.impl.SetResponseBody(body)
+	}
+}
+
+func (c *sunnyBridgeContext) SetStatusCode(code int) {
+	if c.impl != nil && c.impl.SetStatusCode != nil {
+		c.impl.SetStatusCode(code)
 	}
 }
 

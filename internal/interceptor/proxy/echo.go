@@ -81,15 +81,15 @@ func (ctx *EchoContext) Req() *ContextReq {
 			RawQuery: c.Req.URL.RawQuery,
 		},
 		Body:   c.Req.Body,
-		Header: nil,
+		Header: c.Req.Header,
 	}
 }
 
 func (ctx *EchoContext) Res() *ContextRes {
 	return &ContextRes{
-		Body:       nil,
-		Header:     nil,
-		StatusCode: 0,
+		Body:       ctx.impl.Res.Body,
+		Header:     ctx.impl.Res.Header,
+		StatusCode: ctx.impl.Res.StatusCode,
 	}
 }
 
@@ -112,4 +112,8 @@ func (ctx *EchoContext) SetResponseBody(body string) {
 func (ctx *EchoContext) GetResponseBody() ([]byte, error) {
 	body, err := ctx.impl.GetResponseBody()
 	return []byte(body), err
+}
+
+func (ctx *EchoContext) SetStatusCode(code int) {
+	ctx.impl.Res.StatusCode = code
 }
