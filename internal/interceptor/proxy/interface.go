@@ -32,6 +32,7 @@ type Context interface {
 	SetResponseHeader(key, val string)
 	SetResponseBody(body string)
 	GetResponseBody() ([]byte, error)
+	SetStatusCode(code int)
 }
 
 type contextImpl struct {
@@ -50,7 +51,7 @@ type ContextURL struct {
 	RawQuery string
 }
 type ContextRes struct {
-	Body       io.Writer
+	Body       io.ReadCloser
 	Header     http.Header
 	StatusCode int
 }

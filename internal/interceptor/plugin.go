@@ -20,7 +20,7 @@ var (
 	// HTML处理相关正则
 	scriptSrcReg  = regexp.MustCompile(`src="([^"]{1,})\.js"`)
 	scriptHrefReg = regexp.MustCompile(`href="([^"]{1,})\.js"`)
-	cspNonceReg         = regexp.MustCompile(`'nonce-([^']+)'`)
+	cspNonceReg   = regexp.MustCompile(`'nonce-([^']+)'`)
 
 	// JavaScript处理相关正则
 	jsDepReg         = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
@@ -118,16 +118,20 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
-			// fmt.Println("response", hostname, pathname, resp_content_type)
+			// fmt.Println("response", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 			if cfg.ChannelDisableLocationToHome && pathname == "/web/pages/feed" && ctx.Res().StatusCode == 302 {
-				u := &url.URL{Scheme: "https", Host: ctx.Req().URL.Hostname(), Path: pathname, RawQuery: ctx.Req().URL.RawQuery}
+				original_req := ctx.Req()
+				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
 				q := u.Query()
 				q.Set("flow", "2")
 				q.Set("fpid", "FinderLike")
+				q.Set("bus", util.NowSecondsStr())
+				q.Set("entrance_id", "1002")
+				q.Set("wx_header", "0")
 				u.RawQuery = q.Encode()
-				req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+				req, err := http.NewRequest(http.MethodGet, u.String(), original_req.Body)
 				if err == nil {
-					for k, v := range ctx.Req().Header {
+					for k, v := range original_req.Header {
 						for _, vv := range v {
 							req.Header.Add(k, vv)
 						}
@@ -142,7 +146,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						if ct == "" || strings.Contains(lct, "text/html") {
 							ct = "text/html; charset=utf-8"
 						}
-						ctx.Res().StatusCode = 200
+						ctx.SetStatusCode(200)
 						ctx.Res().Header.Del("Content-Encoding")
 						ctx.Res().Header.Del("Content-Length")
 						ctx.SetResponseHeader("Content-Type", ct)

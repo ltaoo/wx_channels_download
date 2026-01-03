@@ -168,7 +168,7 @@ var isWin = /Windows|Win/i.test(ua);
         <div class="wx-dl-header">
            <div class="wx-dl-title">Downloads</div>
         </div>
-        <div id="downloader_container" class="wx-dl-list wx-dl-dark-scroll weui-cells" style="background-color: transparent; margin-top: 0;"></div>
+        <div id="downloader_container" class="wx-dl-list wx-dl-dark-scroll" style="background-color: transparent; margin-top: 0;"></div>
       </div>
     `;
     var download_popover$ = WUI.Popover($download_panel_button, {
