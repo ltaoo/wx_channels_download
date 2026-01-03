@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -93,7 +94,14 @@ func root_command(cfg *config.Config) {
 	})
 	mgr.RegisterServer(interceptor_srv)
 	api_settings := api.NewAPISettings(Cfg)
-	fmt.Printf("下载目录 %s\n", color.New(color.Underline).Sprint(api_settings.DownloadDir))
+	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_settings.DownloadDir))
+	l, err := net.Listen("tcp", api_settings.Addr)
+	if err != nil {
+		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_settings.Addr))
+		os.Exit(0)
+		return
+	}
+	l.Close()
 	api_srv := api.NewAPIServer(api_settings)
 	api_srv.APIClient.Interceptor = interceptor_srv.Interceptor
 	mgr.RegisterServer(api_srv)
@@ -103,23 +111,24 @@ func root_command(cfg *config.Config) {
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("interceptor"); err != nil {
-			fmt.Printf("⚠️ 关闭代理服务失败: %v\n", err)
+			color.Red(fmt.Sprintf("⚠️ 关闭代理服务失败: %v\n", err))
 		}
 		if err := mgr.StopServer("api"); err != nil {
-			fmt.Printf("⚠️ 关闭API服务失败: %v\n", err)
+			color.Red(fmt.Sprintf("⚠️ 关闭API服务失败: %v\n", err))
 		}
 		color.Green("服务已关闭")
 	}
+
 	if err := mgr.StartServer("api"); err != nil {
-		fmt.Printf("ERROR 启动API服务失败: %v\n", err.Error())
+		color.Red(fmt.Sprintf("ERROR 启动API服务失败: %v\n", err.Error()))
 		cleanup()
-		os.Exit(1)
+		os.Exit(0)
 	}
 	color.Green(fmt.Sprintf("API服务启动成功, 地址: %v", api_srv.Addr()))
 	if err := mgr.StartServer("interceptor"); err != nil {
-		fmt.Printf("ERROR 启动代理服务失败: %v\n", err.Error())
+		color.Red(fmt.Sprintf("ERROR 启动代理服务失败: %v\n", err.Error()))
 		cleanup()
-		os.Exit(1)
+		os.Exit(0)
 	}
 	color.Green("代理服务启动成功")
 

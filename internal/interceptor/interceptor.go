@@ -82,7 +82,9 @@ func (c *Interceptor) Start() error {
 			return fmt.Errorf("设置代理失败: %v", err)
 		}
 	}
-	client.Start(c.Settings.ProxyServerPort)
+	if err := client.Start(c.Settings.ProxyServerPort); err != nil {
+		return err
+	}
 	return nil
 }
 
