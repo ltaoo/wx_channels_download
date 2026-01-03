@@ -20,6 +20,7 @@ var (
 	// HTML处理相关正则
 	scriptSrcReg  = regexp.MustCompile(`src="([^"]{1,})\.js"`)
 	scriptHrefReg = regexp.MustCompile(`href="([^"]{1,})\.js"`)
+	cspNonceReg         = regexp.MustCompile(`'nonce-([^']+)'`)
 
 	// JavaScript处理相关正则
 	jsDepReg         = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
@@ -35,6 +36,7 @@ var (
 	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	jsPCFlowReg         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
 	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsJoinLiveReg       = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
 	jsRecommendFeedsReg = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
 	jsUserFeedsReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
 	jsFinderPCSearchReg = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
@@ -148,6 +150,43 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						resp_content_type = strings.ToLower(ct)
 					}
 				}
+			}
+			if hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+				resp_body, err := ctx.GetResponseBody()
+				if err != nil {
+					return
+				}
+				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+				scriptAttr := ""
+				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
+					scriptAttr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
+				}
+				html := string(resp_body)
+				inserted_scripts := ""
+				cfg_byte, _ := json.Marshal(cfg)
+				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, scriptAttr, string(cfg_byte), version)
+				inserted_scripts += script_config
+				variable_byte, _ := json.Marshal(variables)
+				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, scriptAttr, string(variable_byte))
+				inserted_scripts += script_variable
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSUtils)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSWechatOfficialAccount)
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSError)
+					inserted_scripts += script_error
+				}
+				if cfg.PagespyEnabled {
+					/** 在线调试 */
+					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSPageSpy)
+					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSDebug)
+					inserted_scripts += script_pagespy + script_pagespy2
+				}
+				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
+				ctx.SetResponseBody(html)
+				return
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				resp_body, err := ctx.GetResponseBody()
@@ -331,6 +370,18 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						js_script = jsLiveInfoReg.ReplaceAllString(js_script, js_live_profile)
 					}
 					{
+						js_join_live := `async joinLive($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					var data = result.data;
+					console.log("before JoinLive", data);
+					WXU.emit(WXU.Events.JoinLive, data);
+					return result;
+				}async`
+						js_script = jsJoinLiveReg.ReplaceAllString(js_script, js_join_live)
+					}
+					{
 
 						api_methods := "{}"
 						if m := jsExportBlockReg.FindStringSubmatch(js_script); len(m) >= 2 {
@@ -390,7 +441,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
 					{
-						js_wxutil := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String});export{"
+						js_wxutil := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{"
 						js_script = jsExportReg.ReplaceAllString(js_script, js_wxutil)
 					}
 					ctx.SetResponseBody(js_script)

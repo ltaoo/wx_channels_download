@@ -1,28 +1,5 @@
 package interceptor
 
-type ChannelInjectedFiles struct {
-	JSFileSaver      []byte
-	JSZip            []byte
-	JSRecorder       []byte
-	JSPageSpy        []byte
-	JSFloatingUICore []byte
-	JSFloatingUIDOM  []byte
-	JSWeui           []byte
-	CSSWeui          []byte
-	JSWui            []byte
-	JSMitt           []byte
-	JSDebug          []byte
-	JSEventBus       []byte
-	JSComponents     []byte
-	JSDownloader     []byte
-	JSUtils          []byte
-	JSError          []byte
-	JSMain           []byte
-	JSLiveMain       []byte
-	JSContactMain    []byte
-	IndexHTML        []byte
-}
-
 type ChannelMediaSpec struct {
 	FileFormat       string  `json:"file_format"`
 	FirstLoadBytes   int     `json:"first_load_bytes"`

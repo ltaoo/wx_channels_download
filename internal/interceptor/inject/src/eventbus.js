@@ -12,6 +12,7 @@ var WXE = (() => {
     WindowLoaded: "WindowLoaded",
     /** 页面卸载完成 */
     WindowUnLoaded: "WindowUnLoaded",
+    OfficialAccountLoaded: "OfficialAccountLoaded",
     APILoaded: "APILoaded",
     UtilsLoaded: "UtilsLoaded",
     Init: "Init",
@@ -25,6 +26,7 @@ var WXE = (() => {
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 获取到直播详情 */
     LiveProfileLoaded: "OnLiveProfileLoaded",
+    JoinLive: "JoinLive",
     /** 视频下载之前 */
     BeforeDownloadMedia: "BeforeDownloadMedia",
     /** 封面下载之前 */
@@ -153,6 +155,16 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.LiveProfileLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.LiveProfileLoaded, handler);
+      };
+    },
+    /**
+     * 加入直播
+     * @param {(data: JoinLivePayload) => void} handler
+     */
+    onJoinLive(handler) {
+      eventbus.on(ChannelsEvents.JoinLive, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.JoinLive, handler);
       };
     },
     /**

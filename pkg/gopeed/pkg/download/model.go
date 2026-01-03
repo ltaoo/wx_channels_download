@@ -8,6 +8,7 @@ import (
 	"github.com/GopeedLab/gopeed/internal/controller"
 	"github.com/GopeedLab/gopeed/internal/fetcher"
 	"github.com/GopeedLab/gopeed/internal/protocol/http"
+	"github.com/GopeedLab/gopeed/internal/protocol/stream"
 	"github.com/GopeedLab/gopeed/pkg/base"
 	"github.com/GopeedLab/gopeed/pkg/util"
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -154,6 +155,7 @@ func (cfg *DownloaderConfig) Init() *DownloaderConfig {
 	if len(cfg.FetchManagers) == 0 {
 		cfg.FetchManagers = []fetcher.FetcherManager{
 			new(http.FetcherManager),
+			new(stream.FetcherManager),
 		}
 	}
 	if cfg.RefreshInterval == 0 {

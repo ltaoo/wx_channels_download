@@ -52,6 +52,9 @@ var js_utils []byte
 //go:embed inject/src/downloader.js
 var js_downloader []byte
 
+//go:embed inject/src/wechat_official_account.js
+var js_wechat_official_account []byte
+
 //go:embed inject/src/main.js
 var js_feed_profile_or_recommand_page []byte
 
@@ -61,24 +64,49 @@ var js_live_profile_page []byte
 //go:embed inject/src/profile.js
 var js_contact_profile_page []byte
 
+type ChannelInjectedFiles struct {
+	JSFileSaver             []byte
+	JSZip                   []byte
+	JSRecorder              []byte
+	JSPageSpy               []byte
+	JSFloatingUICore        []byte
+	JSFloatingUIDOM         []byte
+	JSWeui                  []byte
+	CSSWeui                 []byte
+	JSWui                   []byte
+	JSMitt                  []byte
+	JSDebug                 []byte
+	JSEventBus              []byte
+	JSComponents            []byte
+	JSDownloader            []byte
+	JSUtils                 []byte
+	JSError                 []byte
+	JSMain                  []byte
+	JSLiveMain              []byte
+	JSContactMain           []byte
+	IndexHTML               []byte
+	JSWechatOfficialAccount []byte
+}
+
 var Assets = &ChannelInjectedFiles{
-	JSFileSaver:      js_file_saver,
-	JSZip:            js_zip,
-	JSRecorder:       js_recorder,
-	JSPageSpy:        js_pagespy,
-	JSFloatingUICore: js_floating_ui_core,
-	JSFloatingUIDOM:  js_floating_ui_dom,
-	JSWeui:           js_weui,
-	CSSWeui:          css_weui,
-	JSWui:            js_wui,
-	JSMitt:           js_mitt,
-	JSDebug:          js_debug,
-	JSError:          js_error,
-	JSEventBus:       js_eventbus,
-	JSComponents:     js_components,
-	JSUtils:          js_utils,
-	JSDownloader:     js_downloader,
-	JSMain:           js_feed_profile_or_recommand_page,
-	JSLiveMain:       js_live_profile_page,
-	JSContactMain:    js_contact_profile_page,
+	JSFileSaver:             js_file_saver,
+	JSZip:                   js_zip,
+	JSRecorder:              js_recorder,
+	JSPageSpy:               js_pagespy,
+	JSFloatingUICore:        js_floating_ui_core,
+	JSFloatingUIDOM:         js_floating_ui_dom,
+	JSWeui:                  js_weui,
+	CSSWeui:                 css_weui,
+	JSWui:                   js_wui,
+	JSMitt:                  js_mitt,
+	JSDebug:                 js_debug,
+	JSError:                 js_error,
+	JSEventBus:              js_eventbus,
+	JSComponents:            js_components,
+	JSUtils:                 js_utils,
+	JSDownloader:            js_downloader,
+	JSMain:                  js_feed_profile_or_recommand_page,
+	JSLiveMain:              js_live_profile_page,
+	JSContactMain:           js_contact_profile_page,
+	JSWechatOfficialAccount: js_wechat_official_account,
 }
