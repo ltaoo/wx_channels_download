@@ -32,7 +32,7 @@ var isWin = /Windows|Win/i.test(ua);
     return new Promise((resolve, reject) => {
       const protocol = "ws://";
       const pathname = WXU.config.apiServerAddr;
-      const ws = new WebSocket(protocol + pathname + "/ws");
+      const ws = new WebSocket(protocol + pathname + "/ws/channels");
 
       ws.onopen = () => {
         if (WXU.downloader) {

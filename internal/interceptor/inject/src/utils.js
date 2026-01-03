@@ -413,7 +413,7 @@ var WXU = (() => {
           var bitRate = wavView[34] + (wavView[35] << 8);
           //搜索data块的位置
           var dataPos = 0; // 44 或有更多块
-          for (var i = 12, iL = wavView.length - 8; i < iL; ) {
+          for (var i = 12, iL = wavView.length - 8; i < iL;) {
             if (
               wavView[i] == 100 &&
               wavView[i + 1] == 97 &&
@@ -598,9 +598,9 @@ var WXU = (() => {
       return WXAPI2;
     },
     downloader: {
-      show() {},
-      hide() {},
-      toggle() {},
+      show() { },
+      hide() { },
+      toggle() { },
       /**
        * 提交下载任务
        * @param {FeedProfile} feed

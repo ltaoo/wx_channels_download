@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,10 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
+	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/interceptor"
@@ -37,13 +40,130 @@ func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 }
 func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	username := ctx.Query("username")
-	resp, err := c.FetchChannelsFeedListOfContact(username)
+	nextMarker := ctx.Query("next_marker")
+	resp, err := c.FetchChannelsFeedListOfContact(username, nextMarker)
 	if err != nil {
 		c.jsonError(ctx, 400, err.Error())
 		return
 	}
 	c.jsonSuccess(ctx, resp)
 }
+
+type AtomAuthor struct {
+	Name string `xml:"name"`
+}
+
+type AtomLink struct {
+	Rel  string `xml:"rel,attr"`
+	Href string `xml:"href,attr"`
+}
+
+type AtomContent struct {
+	Type string `xml:"type,attr"`
+	Body string `xml:",chardata"`
+}
+
+type AtomEntry struct {
+	Title     string      `xml:"title"`
+	ID        string      `xml:"id"`
+	Updated   string      `xml:"updated"`
+	Published string      `xml:"published"`
+	Link      []AtomLink  `xml:"link"`
+	Content   AtomContent `xml:"content"`
+	Author    AtomAuthor  `xml:"author"`
+}
+
+type AtomFeed struct {
+	XMLName xml.Name    `xml:"http://www.w3.org/2005/Atom feed"`
+	Title   string      `xml:"title"`
+	ID      string      `xml:"id"`
+	Updated string      `xml:"updated"`
+	Link    []AtomLink  `xml:"link"`
+	Author  AtomAuthor  `xml:"author"`
+	Entry   []AtomEntry `xml:"entry"`
+}
+
+func (c *APIClient) handleFetchFeedListOfContactRSS(ctx *gin.Context) {
+	username := ctx.Query("username")
+	nextMarker := ctx.Query("next_marker")
+	resp, err := c.FetchChannelsFeedListOfContact(username, nextMarker)
+	if err != nil {
+		c.jsonError(ctx, 400, err.Error())
+		return
+	}
+
+	entries := make([]AtomEntry, 0, len(resp.Data.Object))
+	for _, obj := range resp.Data.Object {
+		var mediaURL, coverURL string
+		if len(obj.ObjectDesc.Media) > 0 {
+			m := obj.ObjectDesc.Media[0]
+			video_url := m.URL + m.URLToken
+			mediaURL = "http://" + c.cfg.Addr + "/play?url=" + url.QueryEscape(video_url) + "&key=" + m.DecodeKey
+			coverURL = m.CoverUrl
+		}
+
+		desc := obj.ObjectDesc.Description
+		if coverURL != "" && mediaURL != "" {
+			desc = fmt.Sprintf(`<img src="%s" style="display: none;" /><video controls poster="%s"><source src="%s" type="video/mp4"></video><br/>%s`, coverURL, coverURL, mediaURL, desc)
+		} else if coverURL != "" {
+			desc = fmt.Sprintf(`<img src="%s" /><br/>%s`, coverURL, desc)
+		}
+
+		pubDate := time.Unix(int64(obj.CreateTime), 0).Format(time.RFC3339)
+
+		entries = append(entries, AtomEntry{
+			Title:     obj.ObjectDesc.Description,
+			ID:        obj.ID,
+			Updated:   pubDate,
+			Published: pubDate,
+			Link: []AtomLink{
+				{Rel: "alternate", Href: mediaURL},
+			},
+			Content: AtomContent{
+				Type: "html",
+				Body: desc,
+			},
+			Author: AtomAuthor{
+				Name: obj.Contact.Nickname,
+			},
+		})
+	}
+
+	// feedLink := "https://channels.weixin.qq.com"
+	if len(resp.Data.Object) > 0 {
+		// Use the first object's contact info for the feed (assuming all are from same contact if username was provided)
+		// Or just use the response contact info
+	}
+
+	links := []AtomLink{
+		{Rel: "self", Href: "http://" + ctx.Request.Host + ctx.Request.RequestURI},
+		{Rel: "alternate", Href: "https://channels.weixin.qq.com"},
+	}
+
+	if resp.Data.ContinueFlag != 0 && resp.Data.LastBuffer != "" {
+		u := ctx.Request.URL
+		q := u.Query()
+		q.Set("next_marker", resp.Data.LastBuffer)
+		u.RawQuery = q.Encode()
+		nextLink := "http://" + ctx.Request.Host + u.String()
+		links = append(links, AtomLink{Rel: "next", Href: nextLink})
+	}
+
+	atom := AtomFeed{
+		Title:   resp.Data.Contact.Nickname,
+		ID:      resp.Data.Contact.Username, // Using username as ID
+		Updated: time.Now().Format(time.RFC3339),
+		Link:    links,
+		Author: AtomAuthor{
+			Name: resp.Data.Contact.Nickname,
+		},
+		Entry: entries,
+	}
+
+	ctx.Header("Content-Type", "application/atom+xml; charset=utf-8")
+	ctx.XML(http.StatusOK, atom)
+}
+
 func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	uid := ctx.Query("nid")
@@ -118,6 +238,74 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		c.jsonError(ctx, 500, "下载失败")
 		return
 	}
+	c.broadcast(APIClientWSMessage{
+		Type: "tasks",
+		Data: c.downloader.GetTasks(),
+	})
+	c.jsonSuccess(ctx, gin.H{"id": id})
+}
+
+type LiveDownloadTaskBody struct {
+	Url       string            `json:"url"`
+	Name      string            `json:"name"`
+	UserAgent string            `json:"userAgent"`
+	Headers   map[string]string `json:"headers"`
+}
+
+func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
+	var body LiveDownloadTaskBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		c.jsonError(ctx, 400, "不合法的参数")
+		return
+	}
+	if body.Url == "" {
+		c.jsonError(ctx, 400, "缺少 url 参数")
+		return
+	}
+	
+	name := body.Name
+	if name == "" {
+		// Try to parse from URL or use timestamp
+		u, _ := url.Parse(body.Url)
+		if u != nil {
+			name = filepath.Base(u.Path)
+		}
+		if name == "" || name == "." || name == "/" {
+			name = fmt.Sprintf("live_%d.mp4", time.Now().Unix())
+		}
+	}
+	if !strings.HasSuffix(name, ".mp4") && !strings.HasSuffix(name, ".ts") && !strings.HasSuffix(name, ".flv") && !strings.HasSuffix(name, ".mkv") {
+		name += ".mp4"
+	}
+	
+	reqExtra := &gopeedstream.ReqExtra{
+		Header: make(map[string]string),
+	}
+	if body.UserAgent != "" {
+		reqExtra.Header["User-Agent"] = body.UserAgent
+	}
+	for k, v := range body.Headers {
+		reqExtra.Header[k] = v
+	}
+	
+	id, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: body.Url,
+			Extra: reqExtra,
+			Labels: map[string]string{
+				"type": "live",
+			},
+		},
+		&base.Options{
+			Name: name,
+			Path: c.cfg.DownloadDir,
+		},
+	)
+	if err != nil {
+		c.jsonError(ctx, 500, "创建任务失败: "+err.Error())
+		return
+	}
+	
 	c.broadcast(APIClientWSMessage{
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
