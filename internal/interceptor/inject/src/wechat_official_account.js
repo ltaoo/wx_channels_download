@@ -272,6 +272,9 @@
       action: "home",
       __biz: params.biz,
       scene: 124,
+      // uin: _AccountCredentials.uin,
+      // key: _AccountCredentials.key,
+      // pass_ticket: _AccountCredentials.pass_ticket,
     };
     var endpoint =
       window.location.origin +
@@ -282,10 +285,38 @@
     WXU.log({
       msg: endpoint,
     });
-    var resp = await fetch(endpoint, {
-      credentials: "include",
-    });
-    console.log("fetchAccountHome res", resp.data);
-    return resp;
+    window.location.href = endpoint;
+    return "ok";
+    // var $iframe = document.getElementById("__wx_channels_iframe__");
+    // if ($iframe) {
+    //   $iframe.remove();
+    // }
+    // $iframe = document.createElement("iframe");
+    // $iframe.id = "__wx_channels_iframe__";
+    // $iframe.style.position = "fixed";
+    // $iframe.style.bottom = "0";
+    // $iframe.style.left = "0";
+    // $iframe.style.width = "100%";
+    // $iframe.style.height = "50%";
+    // $iframe.style.zIndex = "9999";
+    // $iframe.style.backgroundColor = "#fff";
+    // $iframe.style.borderTop = "1px solid #ccc";
+    // $iframe.src = endpoint;
+    // document.body.appendChild($iframe);
+
+    // return new Promise((resolve) => {
+    //   $iframe.onload = () => {
+    //     console.log("iframe loaded");
+    //     try {
+    //       var win = $iframe.contentWindow;
+    //       window.wx_iframe_window = win; // Expose to global for debugging/access
+    //       console.log("iframe window", win);
+    //       resolve({ msg: "iframe loaded", href: win.location.href });
+    //     } catch (e) {
+    //       console.error("iframe access error", e);
+    //       resolve({ msg: "iframe loaded but access failed" });
+    //     }
+    //   };
+    // });
   }
 })();

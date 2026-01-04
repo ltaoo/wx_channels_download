@@ -25,6 +25,7 @@ type Interceptor struct {
 	PostPlugins       []interface{}  // echo 的插件，将在 echo 初始化后传给 echo
 	FrontendVariables map[string]any // 前端额外的全局变量
 	log               *zerolog.Logger
+	OnCookies         func([]*http.Cookie) // 捕获到 cookie 时的回调
 }
 
 func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *Interceptor {

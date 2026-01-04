@@ -64,6 +64,7 @@ type APIClient struct {
 	downloader  *downloadpkg.Downloader
 	Interceptor *interceptor.Interceptor
 	formatter   *util.FilenameProcessor
+	Cookies     []*http.Cookie
 	cfg         *APIConfig
 	ws_clients  map[*Client]bool
 	ws_mu       sync.RWMutex
@@ -94,6 +95,10 @@ func NewAPIClient(cfg *APIConfig) *APIClient {
 	}
 	client.setupRoutes()
 	return client
+}
+
+func (c *APIClient) SetCookies(cookies []*http.Cookie) {
+	c.Cookies = cookies
 }
 
 type APIClientWSMessage struct {

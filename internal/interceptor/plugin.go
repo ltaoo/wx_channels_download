@@ -113,6 +113,14 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					"Content-Type": "application/json",
 				}, "{}")
 			}
+
+			hostname := ctx.Req().URL.Hostname()
+			req_content_type := strings.ToLower(ctx.Req().Header.Get("Content-Type"))
+			if hostname == "mp.weixin.qq.com" && strings.Contains(req_content_type, "text/html") {
+				if interceptor.OnCookies != nil {
+					interceptor.OnCookies(ctx.Req().Cookies)
+				}
+			}
 		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
@@ -173,21 +181,28 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, scriptAttr, string(variable_byte))
 				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSWechatOfficialAccount)
-				if cfg.DebugShowError {
-					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSError)
-					inserted_scripts += script_error
+				cookie_headers := ctx.Res().Header.Values("Set-Cookie")
+				if len(cookie_headers) > 0 {
+					if interceptor.OnCookies != nil {
+						dummy_resp := &http.Response{Header: ctx.Res().Header}
+						interceptor.OnCookies(dummy_resp.Cookies())
+					}
 				}
-				if cfg.PagespyEnabled {
-					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
-				}
+				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSMitt)
+				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSEventBus)
+				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSUtils)
+				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSWechatOfficialAccount)
+				// if cfg.DebugShowError {
+				// 	/** 全局错误捕获并展示弹窗 */
+				// 	script_error := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSError)
+				// 	inserted_scripts += script_error
+				// }
+				// if cfg.PagespyEnabled {
+				// 	/** 在线调试 */
+				// 	script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSPageSpy)
+				// 	script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSDebug)
+				// 	inserted_scripts += script_pagespy + script_pagespy2
+				// }
 				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
 				ctx.SetResponseBody(html)
 				return

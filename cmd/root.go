@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -107,6 +108,9 @@ func root_command(cfg *config.Config) {
 	mgr.RegisterServer(api_srv)
 	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_settings.MaxRunning
 	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_settings.DownloadDir
+	interceptor_srv.Interceptor.OnCookies = func(cookies []*http.Cookie) {
+		api_srv.APIClient.SetCookies(cookies)
+	}
 
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
