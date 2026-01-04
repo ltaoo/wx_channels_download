@@ -262,7 +262,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 		c.jsonError(ctx, 400, "缺少 url 参数")
 		return
 	}
-	
+
 	name := body.Name
 	if name == "" {
 		// Try to parse from URL or use timestamp
@@ -277,7 +277,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	if !strings.HasSuffix(name, ".mp4") && !strings.HasSuffix(name, ".ts") && !strings.HasSuffix(name, ".flv") && !strings.HasSuffix(name, ".mkv") {
 		name += ".mp4"
 	}
-	
+
 	reqExtra := &gopeedstream.ReqExtra{
 		Header: make(map[string]string),
 	}
@@ -287,10 +287,10 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	for k, v := range body.Headers {
 		reqExtra.Header[k] = v
 	}
-	
+
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
-			URL: body.Url,
+			URL:   body.Url,
 			Extra: reqExtra,
 			Labels: map[string]string{
 				"type": "live",
@@ -305,7 +305,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 		c.jsonError(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
-	
+
 	c.broadcast(APIClientWSMessage{
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
