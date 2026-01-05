@@ -119,15 +119,6 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				}, "{}")
 				return
 			}
-			// hostname := ctx.Req().URL.Hostname()
-			// req_content_type := strings.ToLower(ctx.Req().Header.Get("Content-Type"))
-			// fmt.Println("request", hostname, pathname, req_content_type)
-			// if hostname == "mp.weixin.qq.com" && strings.Contains(req_content_type, "text/html") {
-			// 	if interceptor.OnCookies != nil {
-			// 		fmt.Println("before onCookies in Request")
-			// 		interceptor.OnCookies(hostname+pathname, ctx.Req().Cookies)
-			// 	}
-			// }
 		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
@@ -175,40 +166,26 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				if err != nil {
 					return
 				}
-				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
-				scriptAttr := ""
-				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
-					scriptAttr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
-				}
 				html := string(resp_body)
-				inserted_scripts := ""
-				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, scriptAttr, string(cfg_byte), version)
-				inserted_scripts += script_config
-				variable_byte, _ := json.Marshal(variables)
-				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, scriptAttr, string(variable_byte))
-				inserted_scripts += script_variable
-				cookie_headers := ctx.Res().Header.Values("Set-Cookie")
-				if len(cookie_headers) > 0 {
-					if interceptor.OnCookies != nil {
-						dummy_resp := &http.Response{Header: ctx.Res().Header}
-						fmt.Println("before onCookies in Response")
-						interceptor.OnCookies(hostname+pathname, dummy_resp.Cookies())
-					}
+				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+				script_attr := ""
+				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
+					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
 				}
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSWechatOfficialAccount)
+				inserted_scripts := ""
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSError)
+					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
 					inserted_scripts += script_error
 				}
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSDebug)
+					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
+					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDebug)
 					inserted_scripts += script_pagespy + script_pagespy2
 				}
 				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)

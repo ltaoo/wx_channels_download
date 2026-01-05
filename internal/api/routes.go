@@ -18,6 +18,7 @@ func (c *APIClient) setupRoutes() {
 	c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
 	c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
 	c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
+	c.engine.POST("/api/official_account/list", c.handleFetchOfficialAccountList)
 	c.engine.POST("/api/official_account/msg/list", c.handleFetchOfficialAccountMsgList)
 	c.engine.POST("/api/official_account/home", c.handleFetchOfficialAccountHome)
 	c.engine.POST("/api/official_account/monitoring", c.handleMonitoringOfficialAccount)
