@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -253,13 +254,14 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 		Entry     []AtomEntry    `xml:"entry"`
 	}
 	buildEntry := func(title, digest, contentURL, cover, author string, fileid int, pub_date string, authors ...string) AtomEntry {
-		u := buildURL(contentURL)
+		u := buildURL(html.UnescapeString(contentURL))
 		if need_proxy == "1" && b.ServerAddr != "" {
 			u = fmt.Sprintf("http://%s/official_account/proxy?url=%s", b.ServerAddr, url.QueryEscape(u))
 		}
 		desc := digest
 		var thumb *MediaThumbnail
 		if cover != "" {
+			// cover = html.UnescapeString(cover)
 			desc = fmt.Sprintf(`<img src="%s" /><br/>%s`, cover, digest)
 			thumb = &MediaThumbnail{
 				XMLNSMedia: "http://search.yahoo.com/mrss/",
@@ -372,9 +374,9 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 		return
 	}
 	// 尝试进行一次 URL 解码，防止传入的是双重编码的 URL
-	if decoded, err := url.QueryUnescape(targetURL); err == nil {
-		targetURL = decoded
-	}
+	// if decoded, err := url.QueryUnescape(targetURL); err == nil {
+	// 	targetURL = decoded
+	// }
 	// 处理 HTML 实体编码，例如 &amp; 转为 &
 	targetURL = strings.ReplaceAll(targetURL, "&amp;", "&")
 	fmt.Println("[Proxy] Requesting:", targetURL)
@@ -428,7 +430,8 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 		re := regexp.MustCompile(`https?://mmbiz\.qpic\.cn/(?:[a-zA-Z0-9_]+/)*[a-zA-Z0-9_]+/[^\s"']+`)
 		bodyString = re.ReplaceAllStringFunc(bodyString, func(match string) string {
 			// 构造代理链接
-			return fmt.Sprintf("http://%s/official_account/proxy?url=%s", b.ServerAddr, url.QueryEscape(match))
+			u := html.UnescapeString(match)
+			return fmt.Sprintf("http://%s/official_account/proxy?url=%s", b.ServerAddr, url.QueryEscape(u))
 		})
 		ctx.Writer.Write([]byte(bodyString))
 	} else {
