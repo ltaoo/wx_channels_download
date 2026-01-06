@@ -15,6 +15,7 @@ import (
 
 	"wx_channel/internal/assets"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
@@ -63,6 +64,7 @@ type APIClient struct {
 	decryptor   *ChannelsVideoDecryptor
 	downloader  *downloadpkg.Downloader
 	Interceptor *interceptor.Interceptor
+	official    *officialaccount.OfficialAccountBrowser
 	formatter   *util.FilenameProcessor
 	Cookies     []*http.Cookie
 	cfg         *APIConfig
@@ -85,6 +87,7 @@ func NewAPIClient(cfg *APIConfig) *APIClient {
 	client := &APIClient{
 		decryptor:  NewChannelsVideoDecryptor(),
 		downloader: downloader,
+		official:   officialaccount.NewOfficialAccountBrowser(cfg.Addr),
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
 		ws_clients: make(map[*Client]bool),

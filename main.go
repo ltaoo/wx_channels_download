@@ -21,11 +21,7 @@ func main() {
 	if Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	cfg, err := config.New(AppVer)
-	if err != nil {
-		fmt.Printf("加载配置文件失败 %v", err.Error())
-		return
-	}
+	cfg := config.New(AppVer, Mode)
 	interceptor.SetupConfig(cfg)
 	api.SetupConfig(cfg)
 	if err := cfg.LoadConfig(); err != nil {

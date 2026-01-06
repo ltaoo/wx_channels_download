@@ -12,7 +12,7 @@ var WXE = (() => {
     WindowLoaded: "WindowLoaded",
     /** 页面卸载完成 */
     WindowUnLoaded: "WindowUnLoaded",
-    OfficialAccountLoaded: "OfficialAccountLoaded",
+    OfficialAccountRefresh: "OfficialAccountRefresh",
     APILoaded: "APILoaded",
     UtilsLoaded: "UtilsLoaded",
     Init: "Init",

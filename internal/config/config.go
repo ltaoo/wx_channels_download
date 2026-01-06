@@ -21,7 +21,7 @@ type Config struct {
 	Version  string
 }
 
-func New(ver string) (*Config, error) {
+func New(ver string, mode string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -59,7 +59,7 @@ func New(ver string) (*Config, error) {
 		Existing: has_config,
 		Version:  ver,
 	}
-	return c, nil
+	return c
 }
 
 func (c *Config) LoadConfig() error {

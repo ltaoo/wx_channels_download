@@ -85,13 +85,12 @@ type AtomFeed struct {
 
 func (c *APIClient) handleFetchFeedListOfContactRSS(ctx *gin.Context) {
 	username := ctx.Query("username")
-	nextMarker := ctx.Query("next_marker")
-	resp, err := c.FetchChannelsFeedListOfContact(username, nextMarker)
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.FetchChannelsFeedListOfContact(username, next_marker)
 	if err != nil {
 		c.jsonError(ctx, 400, err.Error())
 		return
 	}
-
 	entries := make([]AtomEntry, 0, len(resp.Data.Object))
 	for _, obj := range resp.Data.Object {
 		var mediaURL, coverURL string

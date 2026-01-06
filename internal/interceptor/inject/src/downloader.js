@@ -30,8 +30,8 @@ var isWin = /Windows|Win/i.test(ua);
   }
   function connect(selector) {
     return new Promise((resolve, reject) => {
-      const protocol = "ws://";
-      const pathname = WXU.config.apiServerAddr;
+      const protocol = "wss://";
+      const pathname = "api.weixin.qq.com";
       const ws = new WebSocket(protocol + pathname + "/ws/channels");
 
       ws.onopen = () => {
