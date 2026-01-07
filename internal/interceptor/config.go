@@ -12,185 +12,70 @@ import (
 )
 
 type InterceptorConfig struct {
-	Version                      string `json:"version"`
-	FilePath                     string // 配置文件路径
-	DownloadDefaultHighest       bool   `json:"defaultHighest"`            // 默认下载最高画质
-	DownloadFilenameTemplate     string `json:"downloadFilenameTemplate"`  // 下载文件名模板
-	DownloadPauseWhenDownload    bool   `json:"downloadPauseWhenDownload"` // 下载时暂停播放
-	DownloadInFrontend           bool   `json:"downloadInFrontend"`        // 在前端下载
-	APIServerHostname            string `json:"apiServerHostname"`         // API服务器主机名
-	APIServerPort                int    `json:"apiServerPort"`             // API服务器端口
-	APIServerAddr                string `json:"apiServerAddr"`
-	ProxyDevice                  string
-	ProxySetSystem               bool
-	ProxyServerHostname          string
-	ProxyServerPort              int
-	PagespyEnabled               bool
-	PageppyServerProtocol        string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
-	PageppyServerAPI             string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
-	DebugShowError               bool
-	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
-	InjectExtraScriptAfterJSMain string // 额外注入的 js
-	InjectGlobalScriptFilepath   string // 全局脚本路径
-	InjectGlobalScript           string // 全局用户脚本
+	Version                             string `json:"version"`
+	FilePath                            string // 配置文件路径
+	DownloadDefaultHighest              bool   `json:"defaultHighest"`            // 默认下载最高画质
+	DownloadFilenameTemplate            string `json:"downloadFilenameTemplate"`  // 下载文件名模板
+	DownloadPauseWhenDownload           bool   `json:"downloadPauseWhenDownload"` // 下载时暂停播放
+	DownloadInFrontend                  bool   `json:"downloadInFrontend"`        // 在前端下载
+	APIServerProtocol                   string `json:"apiServerProtocol"`         // API服务器主机名
+	APIServerHostname                   string `json:"apiServerHostname"`         // API服务器主机名
+	APIServerPort                       int    `json:"apiServerPort"`             // API服务器端口
+	APIServerAddr                       string `json:"apiServerAddr"`
+	OfficialAccountServerRefreshToken   string `json:"officialServerRefreshToken"`
+	OfficialAccountServerDisabled       bool   `json:"officialServerDisabled"`
+	OfficialAccountRemoteServerProtocol string `json:"officialRemoteServerProtocol"`
+	OfficialAccountRemoteServerHostname string `json:"officialRemoteServerHostname"`
+	OfficialAccountRemoteServerPort     int    `json:"officialRemoteServerPort"`
+	ProxyDevice                         string
+	ProxySetSystem                      bool
+	ProxyServerHostname                 string
+	ProxyServerPort                     int
+	PagespyEnabled                      bool
+	PageppyServerProtocol               string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
+	PageppyServerAPI                    string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
+	DebugShowError                      bool
+	ChannelsDisableLocationToHome       bool   // 禁止从feed重定向到home
+	InjectExtraScriptAfterJSMain        string // 额外注入的 js
+	InjectGlobalScriptFilepath          string // 全局脚本路径
+	InjectGlobalScript                  string // 全局用户脚本
 
 	// CertFiles *certificate.CertFileAndKeyFile
 	t *config.Config
 }
 
-func SetupConfig(cfg *config.Config) {
-	config.Register(config.ConfigItem{
-		Key:         "download.defaultHighest",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "默认下载原始视频",
-		Title:       "原始视频",
-		Group:       "Download",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "download.filenameTemplate",
-		Type:        config.ConfigTypeString,
-		Default:     "{{filename}}_{{spec}}",
-		Description: "下载文件名模板，支持 {{filename}} 和 {{spec}} 变量",
-		Title:       "文件名模板",
-		Group:       "Download",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "download.pauseWhenDownload",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "下载时暂停播放",
-		Title:       "暂停播放",
-		Group:       "Download",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "download.inFrontend",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "在前端下载",
-		Title:       "前端下载",
-		Group:       "Download",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "api.hostname",
-		Type:        config.ConfigTypeString,
-		Default:     "127.0.0.1",
-		Description: "API 服务主机名",
-		Title:       "API 服务主机",
-		Group:       "API",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "api.port",
-		Type:        config.ConfigTypeInt,
-		Default:     2022,
-		Description: "API 服务端口",
-		Title:       "API 服务端口",
-		Group:       "API",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "proxy.system",
-		Type:        config.ConfigTypeBool,
-		Default:     true,
-		Description: "是否设置系统代理",
-		Title:       "系统代理",
-		Group:       "Proxy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "proxy.hostname",
-		Type:        config.ConfigTypeString,
-		Default:     "127.0.0.1",
-		Description: "代理主机名",
-		Title:       "代理主机",
-		Group:       "Proxy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "proxy.port",
-		Type:        config.ConfigTypeInt,
-		Default:     2080,
-		Description: "代理端口",
-		Title:       "代理端口",
-		Group:       "Proxy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "pagespy.enabled",
-		Type:        config.ConfigTypeSelect,
-		Default:     false,
-		Description: "是否开启 PageSpy",
-		Title:       "启用",
-		Group:       "Pagespy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "pagespy.protocol",
-		Type:        config.ConfigTypeSelect,
-		Default:     "https",
-		Options:     []string{"http", "https"},
-		Description: "PageSpy 调试协议",
-		Title:       "协议头",
-		Group:       "Pagespy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "pagespy.api",
-		Type:        config.ConfigTypeString,
-		Default:     "debug.weixin.qq.com",
-		Description: "PageSpy 调试 API 地址",
-		Title:       "API 地址",
-		Group:       "Pagespy",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "debug.error",
-		Type:        config.ConfigTypeBool,
-		Default:     true,
-		Description: "在弹窗展示错误信息",
-		Title:       "错误展示",
-		Group:       "Debug",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "channel.disableLocationToHome",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "禁止从 Feed 重定向到 Home",
-		Title:       "禁止重定向",
-		Group:       "Channel",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "inject.extraScript.afterJSMain",
-		Type:        config.ConfigTypeString,
-		Default:     "",
-		Description: "额外注入的 JS 脚本路径",
-		Title:       "注入脚本",
-		Group:       "Inject",
-	})
-	config.Register(config.ConfigItem{
-		Key:         "inject.globalScript",
-		Type:        config.ConfigTypeString,
-		Default:     "global.js",
-		Description: "全局用户脚本",
-		Title:       "全局脚本",
-		Group:       "Inject",
-	})
-}
-
 func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 	settings := &InterceptorConfig{
-		Version:                      c.Version,
-		DebugShowError:               viper.GetBool("debug.error"),
-		PagespyEnabled:               viper.GetBool("pagespy.enabled"),
-		PageppyServerProtocol:        viper.GetString("pagespy.protocol"),
-		PageppyServerAPI:             viper.GetString("pagespy.api"),
-		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
-		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
-		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
-		DownloadPauseWhenDownload:    viper.GetBool("download.pauseWhenDownload"),
-		DownloadInFrontend:           viper.GetBool("download.frontend"),
-		APIServerHostname:            viper.GetString("api.hostname"),
-		APIServerPort:                viper.GetInt("api.port"),
-		APIServerAddr:                viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
-		ProxySetSystem:               viper.GetBool("proxy.system"),
-		ProxyServerPort:              viper.GetInt("proxy.port"),
-		ProxyServerHostname:          viper.GetString("proxy.hostname"),
-		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
-		InjectGlobalScriptFilepath:   viper.GetString("inject.globalScript"),
-		t:                            c,
+		Version:                             c.Version,
+		DebugShowError:                      viper.GetBool("debug.error"),
+		PagespyEnabled:                      viper.GetBool("pagespy.enabled"),
+		PageppyServerProtocol:               viper.GetString("pagespy.protocol"),
+		PageppyServerAPI:                    viper.GetString("pagespy.api"),
+		ChannelsDisableLocationToHome:       viper.GetBool("channel.disableLocationToHome"),
+		DownloadDefaultHighest:              viper.GetBool("download.defaultHighest"),
+		DownloadFilenameTemplate:            viper.GetString("download.filenameTemplate"),
+		DownloadPauseWhenDownload:           viper.GetBool("download.pauseWhenDownload"),
+		DownloadInFrontend:                  viper.GetBool("download.frontend"),
+		APIServerProtocol:                   viper.GetString("api.protocol"),
+		APIServerHostname:                   viper.GetString("api.hostname"),
+		APIServerPort:                       viper.GetInt("api.port"),
+		APIServerAddr:                       viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
+		OfficialAccountServerDisabled:       viper.GetBool("mp.disabled"),
+		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
+		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
+		OfficialAccountRemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
+		ProxySetSystem:                      viper.GetBool("proxy.system"),
+		ProxyServerPort:                     viper.GetInt("proxy.port"),
+		ProxyServerHostname:                 viper.GetString("proxy.hostname"),
+		InjectExtraScriptAfterJSMain:        viper.GetString("inject.extraScript.afterJSMain"),
+		InjectGlobalScriptFilepath:          viper.GetString("inject.globalScript"),
+		t:                                   c,
+	}
+	if viper.GetBool("channels.disableLocationToHome") {
+		// channels.disableLocationToHome 是新的写法，之前 channel.disableLocationToHome 不对
+		// 所以这里做个兼容，保证旧的配置项仍然有效
+		settings.ChannelsDisableLocationToHome = true
 	}
 	global_script_path := path.Join(c.RootDir, "global.js")
 	if _, err := os.Stat(global_script_path); err == nil {

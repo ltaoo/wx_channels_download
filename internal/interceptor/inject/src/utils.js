@@ -2,6 +2,7 @@
  * @file 所有的工具函数 + API + 事件总线
  */
 var FakeAPIServerAddr = "api.weixin.qq.com";
+var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
@@ -183,6 +184,7 @@ var WXU = (() => {
    * @param {LogMsg} params
    */
   function __wx_log(params) {
+    console.log("[log]", params);
     fetch("/__wx_channels_api/tip", {
       method: "POST",
       headers: {
@@ -413,7 +415,7 @@ var WXU = (() => {
           var bitRate = wavView[34] + (wavView[35] << 8);
           //搜索data块的位置
           var dataPos = 0; // 44 或有更多块
-          for (var i = 12, iL = wavView.length - 8; i < iL;) {
+          for (var i = 12, iL = wavView.length - 8; i < iL; ) {
             if (
               wavView[i] == 100 &&
               wavView[i + 1] == 97 &&
@@ -598,9 +600,9 @@ var WXU = (() => {
       return WXAPI2;
     },
     downloader: {
-      show() { },
-      hide() { },
-      toggle() { },
+      show() {},
+      hide() {},
+      toggle() {},
       /**
        * 提交下载任务
        * @param {FeedProfile} feed
@@ -849,7 +851,7 @@ var WXU = (() => {
     observe_node(selector, cb) {
       var $existing = document.querySelector(selector);
       if ($existing) {
-        cb();
+        cb($existing);
         return;
       }
       var observer = new MutationObserver((mutations, obs) => {
@@ -858,7 +860,9 @@ var WXU = (() => {
             mutation.addedNodes.forEach((node) => {
               if (node.nodeType === 1) {
                 if (node.matches(selector) || node.querySelector(selector)) {
-                  cb();
+                  cb(
+                    node.matches(selector) ? node : node.querySelector(selector)
+                  );
                   if (document.querySelector(selector)) {
                     obs.disconnect();
                   }

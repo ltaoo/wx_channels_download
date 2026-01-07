@@ -29,6 +29,30 @@ const inserted_style = `<style>
   font-size: 18px;
   line-height: 12px;
 }
+.custom-menu .weui-cells {
+  margin: 0;
+  background: transparent;
+}
+.custom-menu .weui-cell {
+  align-items: center;
+  padding: 8px;
+  border-radius: 4px;
+}
+.custom-menu .weui-cell:hover {
+  background: var(--FG-6);
+}
+.custom-menu .weui-cell__bd p {
+  color: var(--weui-FG-0);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.custom-menu .wx-download-item-open {
+  display: none;
+  margin-left: 8px;
+}
+.custom-menu .weui-cell:hover .wx-download-item-open {
+  display: inline-flex;
+}
 .wx-footer {
   position: fixed;
   right: 0;
@@ -129,7 +153,9 @@ const inserted_style = `<style>
 }
 </style>`;
 
-document.head.insertAdjacentHTML("beforeend", inserted_style);
+function insert_channels_style() {
+  document.head.insertAdjacentHTML("beforeend", inserted_style);
+}
 
 var download_icon1 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;
 var download_icon2 =
@@ -145,6 +171,7 @@ var PauseIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 var PlayIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 var DeleteIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
 var MoreIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`;
+var RSSIcon = `<svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em"><path d="M204.8 938.666667 204.8 938.666667C140.8 938.666667 85.333333 883.2 85.333333 819.2L85.333333 819.2C85.333333 755.2 140.8 699.733333 204.8 699.733333L204.8 699.733333C268.8 699.733333 324.266667 755.2 324.266667 819.2L324.266667 819.2C324.266667 883.2 273.066667 938.666667 204.8 938.666667M85.333333 85.333333 85.333333 213.333333C486.4 213.333333 810.666667 537.6 810.666667 938.666667L938.666667 938.666667C938.666667 467.2 556.8 85.333333 85.333333 85.333333M85.333333 345.6 85.333333 473.6C341.333333 473.6 550.4 682.666667 550.4 938.666667L678.4 938.666667C678.4 610.133333 413.866667 345.6 85.333333 345.6Z" fill="currentColor"></path></svg>`;
 
 /**
  * @returns {HTMLDivElement}
@@ -216,38 +243,6 @@ function render_extra_menu_items(items, $dropdown) {
       });
     });
 }
-
-/** 增强下载面板的样式，遵循现有主题变量与暗黑模式 */
-(function () {
-  var style = document.createElement("style");
-  style.innerHTML = `
-    .custom-menu .weui-cells {
-      margin: 0;
-      background: transparent;
-    }
-    .custom-menu .weui-cell {
-      align-items: center;
-      padding: 8px;
-      border-radius: 4px;
-    }
-    .custom-menu .weui-cell:hover {
-      background: var(--FG-6);
-    }
-    .custom-menu .weui-cell__bd p {
-      color: var(--weui-FG-0);
-      font-size: 14px;
-      line-height: 1.4;
-    }
-    .custom-menu .wx-download-item-open {
-      display: none;
-      margin-left: 8px;
-    }
-    .custom-menu .weui-cell:hover .wx-download-item-open {
-      display: inline-flex;
-    }
-  `;
-  document.head.appendChild(style);
-})();
 
 function format_download_speed(bps) {
   const kb = 1024,
@@ -445,18 +440,15 @@ function __wx_refresh_downloader(selector, tasks) {
     const footer = document.createElement("div");
     footer.className = "weui-loadmore weui-loadmore_line";
     footer.style.marginTop = "20px";
-    footer.innerHTML = '<span class="weui-loadmore__tips">没有更多内容了</span>';
+    footer.innerHTML =
+      '<span class="weui-loadmore__tips">没有更多内容了</span>';
     container.appendChild(footer);
   }
 }
 
-(() => {
-  var { Menu, MenuItem } = WUI;
-  MenuItem.setTemplate(
-    '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
-  );
-  MenuItem.setIndicatorTemplate(
-    '<span class="custom-menu-item-arrow">›</span>'
-  );
-  Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
-})();
+var { Menu, MenuItem } = WUI;
+MenuItem.setTemplate(
+  '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
+);
+MenuItem.setIndicatorTemplate('<span class="custom-menu-item-arrow">›</span>');
+Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');

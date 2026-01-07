@@ -17,17 +17,18 @@ import (
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
+	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/certificate"
 )
 
 var (
 	Version   string
+	Cfg       *config.Config
+	CertFiles *certificate.CertFileAndKeyFile
 	device    string
 	hostname  string
 	port      int
 	debug     bool
-	CertFiles *certificate.CertFileAndKeyFile
-	Cfg       *config.Config
 )
 
 var root_cmd = &cobra.Command{
@@ -52,10 +53,10 @@ func init() {
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(app_ver string, cert *certificate.CertFileAndKeyFile, cfg *config.Config) error {
+func Execute(cert *certificate.CertFileAndKeyFile, cfg *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
-	Version = app_ver
+	Version = cfg.Version
 	CertFiles = cert
 	Cfg = cfg
 
@@ -72,41 +73,54 @@ func root_command(cfg *config.Config) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	fmt.Printf("\nv%v\n", Version)
+	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
-	interceptor_settings := interceptor.NewInterceptorSettings(cfg)
+	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
-	if script_byte := interceptor_settings.InjectGlobalScript; script_byte != "" {
-		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_settings.InjectGlobalScriptFilepath))
+	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
+		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	mgr := manager.NewServerManager()
-	interceptor_srv := interceptor.NewInterceptorServer(interceptor_settings, CertFiles)
+	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 		Match: "api.weixin.qq.com",
 		Target: &proxy.TargetConfig{
 			Protocol: "http",
-			Host:     interceptor_settings.APIServerHostname,
-			Port:     interceptor_settings.APIServerPort,
+			Host:     interceptor_cfg.APIServerHostname,
+			Port:     interceptor_cfg.APIServerPort,
+		},
+	})
+	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
+	fmt.Println("offcial", official_cfg.RemoteServerHostname)
+	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+		Match: "official.weixin.qq.com",
+		Target: &proxy.TargetConfig{
+			Protocol: official_cfg.RemoteServerProtocol,
+			Host:     official_cfg.RemoteServerHostname,
+			Port:     official_cfg.RemoteServerPort,
 		},
 	})
 	mgr.RegisterServer(interceptor_srv)
-	api_settings := api.NewAPISettings(Cfg)
-	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_settings.DownloadDir))
-	l, err := net.Listen("tcp", api_settings.Addr)
+	api_cfg := api.NewAPIConfig(Cfg, false)
+	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
+	mp_token_filepath, err := officialaccount.ValidateTokenFilepath(api_cfg.OfficialAccountTokenFilepath, cfg.RootDir)
+	if mp_token_filepath != "" && err == nil {
+		fmt.Printf("公众号远端授权凭证文件 %s\n", color.New(color.Underline).Sprint(mp_token_filepath))
+	}
+	l, err := net.Listen("tcp", api_cfg.Addr)
 	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_settings.Addr))
+		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_cfg.Addr))
 		os.Exit(0)
 		return
 	}
 	l.Close()
-	api_srv := api.NewAPIServer(api_settings)
-	api_srv.APIClient.Interceptor = interceptor_srv.Interceptor
+	api_srv := api.NewAPIServer(api_cfg)
 	mgr.RegisterServer(api_srv)
-	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_settings.MaxRunning
-	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_settings.DownloadDir
+	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_cfg.MaxRunning
+	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_cfg.DownloadDir
 
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
@@ -132,7 +146,7 @@ func root_command(cfg *config.Config) {
 	}
 	color.Green("代理服务启动成功")
 
-	if !interceptor_settings.ProxySetSystem {
+	if !interceptor_cfg.ProxySetSystem {
 		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
 		color.Red("设置成功后再打开视频号页面下载")
 	} else {

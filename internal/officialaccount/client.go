@@ -1,14 +1,15 @@
 package officialaccount
 
 import (
+	"bufio"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"wx_channel/internal/util"
+	result "wx_channel/internal/util"
 )
 
 var accounts = make(map[string]*OfficialAccount)
@@ -33,19 +34,21 @@ var official_ws_upgrader = websocket.Upgrader{
 	},
 }
 
-type OfficialAccountBrowser struct {
-	ServerAddr  string
-	Cookies     []*http.Cookie
-	Accounts    []*OfficialAccount
-	ws_clients  map[*Client]bool
-	ws_mu       sync.RWMutex
-	engine      *gin.Engine
-	requests    map[string]chan ClientWebsocketResponse
-	requests_mu sync.RWMutex
+type OfficialAccountClient struct {
+	ServerAddr   string
+	RefreshToken string
+	RemoteMode   bool
+	Tokens       []string
+	Cookies      []*http.Cookie
+	ws_clients   map[*Client]bool
+	ws_mu        sync.RWMutex
+	engine       *gin.Engine
+	requests     map[string]chan ClientWebsocketResponse
+	requests_mu  sync.RWMutex
 	// cache       *cache.Cache
-	req_seq           uint64
-	officialWaitChans map[string]chan *OfficialAccount
-	official_wait_mu  sync.Mutex
+	req_seq       uint64
+	wait_chan_map map[string]chan *OfficialAccount
+	wait_mu       sync.Mutex
 }
 type OfficialAccountBody struct {
 	Biz string `json:"biz"`
@@ -60,37 +63,67 @@ type OfficialAccount struct {
 	AppmsgToken string `json:"appmsg_token"`
 }
 
-func NewOfficialAccountBrowser(addr string) *OfficialAccountBrowser {
-	return &OfficialAccountBrowser{
-		ServerAddr: addr,
-		ws_clients: make(map[*Client]bool),
-		requests:   make(map[string]chan ClientWebsocketResponse),
+func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient {
+	c := &OfficialAccountClient{
+		ServerAddr:   cfg.Addr,
+		RemoteMode:   cfg.RemoteMode,
+		RefreshToken: cfg.RefreshToken,
+		Tokens:       make([]string, 0),
+		ws_clients:   make(map[*Client]bool),
+		requests:     make(map[string]chan ClientWebsocketResponse),
 		// engine:     gin.Default(),
 		// cache:      cache.New(),
-		req_seq:           uint64(time.Now().UnixNano()),
-		officialWaitChans: make(map[string]chan *OfficialAccount),
+		req_seq:       uint64(time.Now().UnixNano()),
+		wait_chan_map: make(map[string]chan *OfficialAccount),
 	}
+	if strings.TrimSpace(cfg.TokenFilepath) != "" {
+		read_tokens := func() {
+			f, err := os.Open(cfg.TokenFilepath)
+			if err != nil {
+				return
+			}
+			defer f.Close()
+			var tokens []string
+			sc := bufio.NewScanner(f)
+			for sc.Scan() {
+				t := strings.TrimSpace(sc.Text())
+				if t != "" {
+					tokens = append(tokens, t)
+				}
+			}
+			c.Tokens = tokens
+		}
+		read_tokens()
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				read_tokens()
+			}
+		}()
+	}
+	return c
 }
 
-func (b *OfficialAccountBrowser) HandleWebsocket(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 	conn, err := official_ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return
 	}
-	b.ws_mu.Lock()
-	client := &Client{hub: b, conn: conn, send: make(chan []byte, 256)}
-	b.ws_clients[client] = true
-	b.ws_mu.Unlock()
+	c.ws_mu.Lock()
+	client := &Client{hub: c, conn: conn, send: make(chan []byte, 256)}
+	c.ws_clients[client] = true
+	c.ws_mu.Unlock()
 
 	go client.writePump()
 
 	defer func() {
-		b.ws_mu.Lock()
-		if _, ok := b.ws_clients[client]; ok {
-			delete(b.ws_clients, client)
+		c.ws_mu.Lock()
+		if _, ok := c.ws_clients[client]; ok {
+			delete(c.ws_clients, client)
 			close(client.send)
 		}
-		b.ws_mu.Unlock()
+		c.ws_mu.Unlock()
 		conn.Close()
 	}()
 	for {
@@ -101,9 +134,9 @@ func (b *OfficialAccountBrowser) HandleWebsocket(ctx *gin.Context) {
 		// 前端「响应」给 ws api 请求的响应值
 		var resp ClientWebsocketResponse
 		if err := json.Unmarshal(message, &resp); err == nil && resp.Id != "" {
-			b.requests_mu.RLock()
-			ch, ok := b.requests[resp.Id]
-			b.requests_mu.RUnlock()
+			c.requests_mu.RLock()
+			ch, ok := c.requests[resp.Id]
+			c.requests_mu.RUnlock()
 			if ok {
 				ch <- resp
 			}
@@ -111,69 +144,105 @@ func (b *OfficialAccountBrowser) HandleWebsocket(ctx *gin.Context) {
 	}
 }
 
+func (c *OfficialAccountClient) ValidateToken(t string) bool {
+	if len(c.Tokens) == 0 {
+		return true
+	}
+	if t == "" {
+		return false
+	}
+	for _, v := range c.Tokens {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 // 获取公众号推送列表
-func (c *OfficialAccountBrowser) HandleFetchOfficialAccountMsgList(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleFetchOfficialAccountMsgList(ctx *gin.Context) {
 	biz := ctx.Query("biz")
 	offset := ctx.Query("offset")
+	token := ctx.Query("token")
+	if valid := c.ValidateToken(token); !valid {
+		result.Err(ctx, 1002, "incorrect token")
+		return
+	}
 	_offset, err := strconv.Atoi(offset)
 	if err != nil {
 		_offset = 0
 	}
 	data, err := c.FetchAccountMsgList(biz, _offset)
 	if err != nil {
-		util.Err(ctx, 1002, err.Error())
+		result.Err(ctx, 1002, err.Error())
 		return
 	}
-	util.Ok(ctx, data)
+	result.Ok(ctx, data)
 }
 
 // 获取已添加到公众号列表
-func (c *OfficialAccountBrowser) HandleFetchOfficialAccountList(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleFetchOfficialAccountList(ctx *gin.Context) {
+	token := ctx.Query("token")
+	if valid := c.ValidateToken(token); !valid {
+		result.Err(ctx, 1002, "incorrect token")
+		return
+	}
 	var list []*OfficialAccount
 	acct_mu.RLock()
 	for _, acct := range accounts {
 		list = append(list, acct)
 	}
 	acct_mu.RUnlock()
-	util.Ok(ctx, gin.H{
+	result.Ok(ctx, gin.H{
 		"list": list,
 	})
 }
 
 // 接收 刷新账号凭证 事件
-func (b *OfficialAccountBrowser) HandleRefreshOfficialAccount(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleRefreshOfficialAccount(ctx *gin.Context) {
+	token := ctx.Query("token")
+	if token != c.RefreshToken {
+		result.Err(ctx, 400, "incorrect refresh token")
+		return
+	}
 	var body OfficialAccount
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
 	if body.Biz == "" || body.Key == "" {
-		util.Err(ctx, 400, "Missing the biz parameter")
+		result.Err(ctx, 400, "Missing the biz parameter")
 		return
 	}
 	accounts[body.Biz] = &body
-	b.official_wait_mu.Lock()
-	if ch, ok := b.officialWaitChans[body.Biz]; ok {
+	c.wait_mu.Lock()
+	if ch, ok := c.wait_chan_map[body.Biz]; ok {
 		select {
 		case ch <- &body:
 		default:
 		}
 	}
-	b.official_wait_mu.Unlock()
-	util.Ok(ctx, nil)
+	c.wait_mu.Unlock()
+	result.Ok(ctx, nil)
 }
 
-func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.Context) {
 	biz := ctx.Query("biz")
 	offset := ctx.Query("offset")
+	need_content := ctx.Query("content")
 	need_proxy := ctx.Query("proxy")
+	token := ctx.Query("token")
+	if valid := c.ValidateToken(token); !valid {
+		result.Err(ctx, 401, "incorrect token")
+		return
+	}
 	_offset, err := strconv.Atoi(offset)
 	if err != nil {
 		_offset = 0
 	}
-	data, err := b.FetchAccountMsgList(biz, _offset)
+	data, err := c.FetchAccountMsgList(biz, _offset)
 	if err != nil {
-		util.Err(ctx, 1002, err.Error())
+		result.Err(ctx, 1002, err.Error())
 		return
 	}
 	var list struct {
@@ -181,7 +250,7 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 	}
 	err = json.Unmarshal([]byte(data.MsgList), &list)
 	if err != nil {
-		util.Err(ctx, 1002, err.Error())
+		result.Err(ctx, 1002, err.Error())
 		return
 	}
 	var acct *OfficialAccount
@@ -191,7 +260,7 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 	}
 	acct_mu.RUnlock()
 	if acct == nil {
-		util.Err(ctx, 1002, "Can't find matched account")
+		result.Err(ctx, 1002, "Can't find matched account")
 		return
 	}
 	feed_title := acct.Nickname
@@ -208,55 +277,11 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 		}
 		return "https://mp.weixin.qq.com" + u
 	}
-	type AtomAuthor struct {
-		Name string `xml:"name"`
-		URI  string `xml:"uri"`
-	}
-	type AtomLink struct {
-		Rel  string `xml:"rel,attr"`
-		Href string `xml:"href,attr"`
-	}
-	type AtomContent struct {
-		Type string `xml:"type,attr"`
-		Body string `xml:",chardata"`
-	}
-	type MediaThumbnail struct {
-		XMLName    xml.Name `xml:"media:thumbnail"`
-		XMLNSMedia string   `xml:"xmlns:media,attr"`
-		URL        string   `xml:"url,attr"`
-		Width      int      `xml:"width,attr,omitempty"`
-		Height     int      `xml:"height,attr,omitempty"`
-	}
-	type AtomEntry struct {
-		ID             string          `xml:"id"`
-		Title          string          `xml:"title"`
-		Updated        string          `xml:"updated"`
-		Published      string          `xml:"published"`
-		Author         AtomAuthor      `xml:"author"`
-		Link           []AtomLink      `xml:"link"`
-		Content        AtomContent     `xml:"content"`
-		Summary        AtomContent     `xml:"summary"`
-		MediaThumbnail *MediaThumbnail `xml:"media:thumbnail"`
-	}
-	type AtomCategory struct {
-		Term string `xml:"term,attr"`
-	}
-	type AtomFeed struct {
-		XMLName   xml.Name       `xml:"http://www.w3.org/2005/Atom feed"`
-		Title     string         `xml:"title"`
-		ID        string         `xml:"id"`
-		Updated   string         `xml:"updated"`
-		Generator string         `xml:"generator"`
-		Icon      string         `xml:"icon"`
-		Category  []AtomCategory `xml:"category"`
-		Link      []AtomLink     `xml:"link"`
-		Author    AtomAuthor     `xml:"author"`
-		Entry     []AtomEntry    `xml:"entry"`
-	}
+
 	buildEntry := func(title, digest, contentURL, cover, author string, fileid int, pub_date string, authors ...string) AtomEntry {
 		u := buildURL(html.UnescapeString(contentURL))
-		if need_proxy == "1" && b.ServerAddr != "" {
-			u = fmt.Sprintf("http://%s/official_account/proxy?url=%s", b.ServerAddr, url.QueryEscape(u))
+		if need_proxy == "1" && c.ServerAddr != "" {
+			u = fmt.Sprintf("http://%s/official_account/proxy?url=%s", c.ServerAddr, url.QueryEscape(u))
 		}
 		desc := digest
 		var thumb *MediaThumbnail
@@ -349,6 +374,30 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 		next_link := "http://" + ctx.Request.Host + u.String()
 		links = append(links, AtomLink{Rel: "next", Href: next_link})
 	}
+	if need_content == "1" {
+		var wg sync.WaitGroup
+		for i := range entries {
+			var u string
+			for _, l := range entries[i].Link {
+				if l.Rel == "alternate" {
+					u = l.Href
+					break
+				}
+			}
+			if u == "" {
+				continue
+			}
+			wg.Add(1)
+			go func(idx int, href string) {
+				defer wg.Done()
+				content := fetch_full_content(href)
+				if content != "" {
+					entries[idx].Content.Body = content
+				}
+			}(i, u)
+		}
+		wg.Wait()
+	}
 	atom := AtomFeed{
 		ID:        biz,
 		Title:     feed_title,
@@ -367,10 +416,15 @@ func (b *OfficialAccountBrowser) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin
 	ctx.XML(http.StatusOK, atom)
 }
 
-func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	targetURL := ctx.Query("url")
+	token := ctx.Query("token")
+	if valid := c.ValidateToken(token); !valid {
+		result.Err(ctx, 401, "incorrect token")
+		return
+	}
 	if targetURL == "" {
-		ctx.String(http.StatusBadRequest, "Missing url parameter")
+		result.Err(ctx, 400, "Missing url parameter")
 		return
 	}
 	// 尝试进行一次 URL 解码，防止传入的是双重编码的 URL
@@ -384,7 +438,8 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
-		ctx.String(http.StatusInternalServerError, err.Error())
+		result.Err(ctx, 2000, err.Error())
+		// ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
@@ -401,7 +456,8 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
 	resp, err := client.Do(req)
 	if err != nil {
-		ctx.String(http.StatusBadGateway, err.Error())
+		result.Err(ctx, 2001, err.Error())
+		// ctx.String(http.StatusBadGateway, err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -423,7 +479,6 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 			return
 		}
 		bodyString := string(bodyBytes)
-
 		// 使用正则替换 mmbiz_png/jpg/gif 等链接为代理链接
 		// 匹配模式：https://mmbiz.qpic.cn/mmbiz_xxx/ 或 https://mmbiz.qpic.cn/sz_mmbiz_xxx/ 后接非引号和非空白字符
 		// 兼容 http 和 https，以及不同的图片格式后缀和路径前缀
@@ -431,7 +486,7 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 		bodyString = re.ReplaceAllStringFunc(bodyString, func(match string) string {
 			// 构造代理链接
 			u := html.UnescapeString(match)
-			return fmt.Sprintf("http://%s/official_account/proxy?url=%s", b.ServerAddr, url.QueryEscape(u))
+			return fmt.Sprintf("http://%s/official_account/proxy?url=%s", c.ServerAddr, url.QueryEscape(u))
 		})
 		ctx.Writer.Write([]byte(bodyString))
 	} else {
@@ -439,15 +494,18 @@ func (b *OfficialAccountBrowser) HandleOfficialAccountProxy(ctx *gin.Context) {
 	}
 }
 
-func (c *OfficialAccountBrowser) Validate() error {
+func (c *OfficialAccountClient) Validate() error {
 	// wc.clientsMu.Lock()
 	// defer wc.clientsMu.Unlock()
+	if c.RemoteMode {
+		return nil
+	}
 	if len(c.ws_clients) == 0 {
 		return errors.New("请先初始化客户端 socket 连接")
 	}
 	return nil
 }
-func (c *OfficialAccountBrowser) RequestAPI(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+func (c *OfficialAccountClient) RequestAPI(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -501,7 +559,7 @@ func (c *OfficialAccountBrowser) RequestAPI(endpoint string, body interface{}, t
 	}
 }
 
-func (b *OfficialAccountBrowser) BuildURL(uu string, params map[string]string) string {
+func (c *OfficialAccountClient) BuildURL(uu string, params map[string]string) string {
 	u, _ := url.Parse(uu)
 	q := u.Query()
 	for k, v := range params {
@@ -512,7 +570,7 @@ func (b *OfficialAccountBrowser) BuildURL(uu string, params map[string]string) s
 	return target_url
 }
 
-func (b *OfficialAccountBrowser) Fetch(target_url string) (*http.Response, error) {
+func (c *OfficialAccountClient) Fetch(target_url string) (*http.Response, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", target_url, nil)
 	if err != nil {
@@ -532,7 +590,7 @@ func (b *OfficialAccountBrowser) Fetch(target_url string) (*http.Response, error
 	}
 	// defer resp.Body.Close()
 	cookies := resp.Cookies()
-	b.Cookies = cookies
+	c.Cookies = cookies
 	// resp_bytes, err := io.ReadAll(resp.Body)
 	// if err != nil {
 	// 	return nil, err
@@ -541,13 +599,13 @@ func (b *OfficialAccountBrowser) Fetch(target_url string) (*http.Response, error
 }
 
 // 刷新指定公众号的凭证信息
-func (b *OfficialAccountBrowser) RefreshAccount(body *OfficialAccountBody) (*OfficialAccount, error) {
+func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*OfficialAccount, error) {
 	if body.Biz == "" {
 		return nil, errors.New("Missing the biz parameter")
 	}
-	b.official_wait_mu.Lock()
-	if ch, ok := b.officialWaitChans[body.Biz]; ok {
-		b.official_wait_mu.Unlock()
+	c.wait_mu.Lock()
+	if ch, ok := c.wait_chan_map[body.Biz]; ok {
+		c.wait_mu.Unlock()
 		select {
 		case acct := <-ch:
 			return acct, nil
@@ -556,27 +614,27 @@ func (b *OfficialAccountBrowser) RefreshAccount(body *OfficialAccountBody) (*Off
 		}
 	}
 	ch := make(chan *OfficialAccount, 1)
-	b.officialWaitChans[body.Biz] = ch
-	b.official_wait_mu.Unlock()
-	_, _ = b.RequestAPI("/api/official_account/fetch_account_home", struct {
+	c.wait_chan_map[body.Biz] = ch
+	c.wait_mu.Unlock()
+	_, _ = c.RequestAPI("/api/official_account/fetch_account_home", struct {
 		Biz string `json:"biz"`
 	}{Biz: body.Biz}, 15*time.Second)
 	select {
 	case acct := <-ch:
-		b.official_wait_mu.Lock()
-		delete(b.officialWaitChans, body.Biz)
-		b.official_wait_mu.Unlock()
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
 		accounts[acct.Biz] = acct
 		return acct, nil
 	case <-time.After(20 * time.Second):
-		b.official_wait_mu.Lock()
-		delete(b.officialWaitChans, body.Biz)
-		b.official_wait_mu.Unlock()
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
 		return nil, errors.New("request timeout")
 	}
 }
 
-func (b *OfficialAccountBrowser) BuildMsgListURL(acct *OfficialAccount) string {
+func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount) string {
 	u := "https://mp.weixin.qq.com/mp/profile_ext"
 	query := map[string]string{
 		"action":       "getmsg",
@@ -591,13 +649,13 @@ func (b *OfficialAccountBrowser) BuildMsgListURL(acct *OfficialAccount) string {
 		"offset":       "0",
 		"f":            "json",
 	}
-	target_url := b.BuildURL(u, query)
+	target_url := c.BuildURL(u, query)
 	return target_url
 }
 
 // 获取指定公众号的推送列表
-func (b *OfficialAccountBrowser) FetchAccountMsgList(biz string, offset int) (*OfficialMsgListResp, error) {
-	err := b.Validate()
+func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*OfficialMsgListResp, error) {
+	err := c.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -608,9 +666,9 @@ func (b *OfficialAccountBrowser) FetchAccountMsgList(biz string, offset int) (*O
 		existing = data
 	}
 	acct_mu.RUnlock()
-	if existing == nil {
+	if existing == nil && !c.RemoteMode {
 		fmt.Println("there is no existing account, refresh the account with frontend")
-		r, err := b.RefreshAccount(&OfficialAccountBody{
+		r, err := c.RefreshAccount(&OfficialAccountBody{
 			Biz: biz,
 		})
 		if err != nil {
@@ -618,9 +676,12 @@ func (b *OfficialAccountBrowser) FetchAccountMsgList(biz string, offset int) (*O
 		}
 		existing = r
 	}
-	target_url := b.BuildMsgListURL(existing)
+	if existing == nil {
+		return nil, errors.New("Please adding Credentials first")
+	}
+	target_url := c.BuildMsgListURL(existing)
 	fmt.Println("[API]fetch account msg list1", target_url)
-	resp, err := b.Fetch(target_url)
+	resp, err := c.Fetch(target_url)
 	if err != nil {
 		return nil, err
 	}
@@ -633,15 +694,15 @@ func (b *OfficialAccountBrowser) FetchAccountMsgList(biz string, offset int) (*O
 	}
 	if data.Ret != 0 {
 		if data.Ret == -3 {
-			acct, err := b.RefreshAccount(&OfficialAccountBody{
+			acct, err := c.RefreshAccount(&OfficialAccountBody{
 				Biz: biz,
 			})
 			if err != nil {
 				return nil, err
 			}
-			target_url := b.BuildMsgListURL(acct)
+			target_url := c.BuildMsgListURL(acct)
 			fmt.Println("[API]fetch account msg list2", target_url)
-			resp, err = b.Fetch(target_url)
+			resp, err = c.Fetch(target_url)
 			if err != nil {
 				return nil, err
 			}
@@ -660,10 +721,49 @@ func (b *OfficialAccountBrowser) FetchAccountMsgList(biz string, offset int) (*O
 	return &data, nil
 }
 
-func (b *OfficialAccountBrowser) CookiesToString() string {
+func (c *OfficialAccountClient) CookiesToString() string {
 	var cookie_parts []string
-	for _, cookie := range b.Cookies {
+	for _, cookie := range c.Cookies {
 		cookie_parts = append(cookie_parts, fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
 	}
 	return strings.Join(cookie_parts, "; ")
+}
+func (c *OfficialAccountClient) Stop() {
+	c.ws_mu.Lock()
+	for client := range c.ws_clients {
+		close(client.send)
+		delete(c.ws_clients, client)
+	}
+	c.ws_mu.Unlock()
+}
+
+func fetch_full_content(u string) string {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("accept-language", "zh-CN,zh;q=0.9")
+	req.Header.Set("upgrade-insecure-requests", "1")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	s := string(bodyBytes)
+	re := regexp.MustCompile(`(?s)<div[^>]*id="js_content"[^>]*>(.*?)</div>`)
+	m := re.FindStringSubmatch(s)
+	if len(m) >= 2 {
+		content := m[1]
+		content = regexp.MustCompile(`\sdata-src="([^"]+)"`).ReplaceAllString(content, ` src="$1"`)
+		content = strings.ReplaceAll(content, `src="//`, `src="https://`)
+		return content
+	}
+	return s
 }

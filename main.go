@@ -7,14 +7,13 @@ import (
 	"github.com/spf13/viper"
 
 	"wx_channel/cmd"
-	"wx_channel/internal/api"
 	"wx_channel/internal/config"
 	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "26010301"
+var AppVer = "260107"
 var Mode = "debug"
 
 func main() {
@@ -22,8 +21,6 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	cfg := config.New(AppVer, Mode)
-	interceptor.SetupConfig(cfg)
-	api.SetupConfig(cfg)
 	if err := cfg.LoadConfig(); err != nil {
 		fmt.Printf("加载配置文件失败 %v", err.Error())
 		return
@@ -36,7 +33,7 @@ func main() {
 		}
 		return
 	}
-	if err := cmd.Execute(AppVer, certificate.DefaultCertFiles, cfg); err != nil {
+	if err := cmd.Execute(certificate.DefaultCertFiles, cfg); err != nil {
 		fmt.Printf("初始化失败 %v\n", err.Error())
 	}
 }

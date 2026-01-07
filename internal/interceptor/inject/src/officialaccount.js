@@ -1,3 +1,12 @@
+var _OfficialAccountCredentials = {
+  nickname: window.nickname,
+  avatar_url: window.headimg,
+  biz: window.biz || window.__biz,
+  uin: window.uin,
+  key: window.key,
+  pass_ticket: window.pass_ticket,
+  appmsg_token: window.appmsg_token,
+};
 (() => {
   var style = document.createElement("style");
   style.textContent = `
@@ -49,21 +58,27 @@
   `;
   document.head.appendChild(style);
 
-  var _AccountCredentials = {
-    nickname: window.nickname,
-    avatar_url: window.headimg,
-    biz: window.biz || window.__biz,
-    uin: window.uin,
-    key: window.key,
-    pass_ticket: window.pass_ticket,
-    appmsg_token: window.appmsg_token,
-  };
-  WXU.emit(WXU.Events.OfficialAccountRefresh, _AccountCredentials);
-  WXU.request({
-    method: "POST",
-    url: "https://api.weixin.qq.com/api/official_account/refresh",
-    body: _AccountCredentials,
-  });
+  WXU.emit(WXU.Events.OfficialAccountRefresh, _OfficialAccountCredentials);
+  (async () => {
+    console.log("before refresh", FakeOfficialAccountServerAddr);
+    var origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
+    if (WXU.config.officialRemoteServerPort != 80) {
+      origin += `:${WXU.config.officialRemoteServerPort}`;
+    }
+    var [err, res] = await WXU.request({
+      method: "POST",
+      url: `${origin}/api/official_account/refresh?token=${
+        WXU.config.officialServerRefreshToken ?? ""
+      }`,
+      body: _OfficialAccountCredentials,
+    });
+    if (err) {
+      WXU.error({
+        msg: err.message,
+      });
+      return;
+    }
+  })();
 
   // function insert_credential_button($container) {
   //   var credentials_text = JSON.stringify(_AccountCredentials);
@@ -153,8 +168,7 @@
   function connect() {
     return new Promise((resolve, reject) => {
       const protocol = "wss://";
-      const pathname = "api.weixin.qq.com";
-      const ws = new WebSocket(protocol + pathname + "/ws/mp");
+      const ws = new WebSocket(protocol + FakeAPIServerAddr + "/ws/mp");
       ws.onopen = () => {
         WXU.log({
           msg: "ws/mp connected",
@@ -185,10 +199,10 @@
       action: "getmsg",
       __biz: params.biz,
       uin: params.uin,
-      key: _AccountCredentials.key,
-      pass_ticket: _AccountCredentials.pass_ticket,
+      key: _OfficialAccountCredentials.key,
+      pass_ticket: _OfficialAccountCredentials.pass_ticket,
       wxtoken: "",
-      appmsg_token: _AccountCredentials.appmsg_token,
+      appmsg_token: _OfficialAccountCredentials.appmsg_token,
       x5: 0,
       count: params.count ?? 10,
       offset: params.offset ?? 0,
@@ -230,8 +244,39 @@
       resolve([null, endpoint]);
     });
   }
+  function render_rss_button() {
+    var $btn = document.createElement("div");
+    $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; cursor: pointer;`;
+    $btn.innerHTML = RSSIcon;
+    $btn.onclick = function () {
+      var origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
+      if (WXU.config.officialRemoteServerPort != 80) {
+        origin += `:${WXU.config.officialRemoteServerPort}`;
+      }
+      var url = `${origin}/rss/mp?biz=${_OfficialAccountCredentials.biz}`;
+      WXU.copy(url);
+      WXU.toast("RSS 地址已复制");
+    };
+    return $btn;
+  }
+  function insert_rss_button() {
+    var $wraps = document.querySelectorAll(".wx_follow_media");
+    var $container = $wraps[$wraps.length - 1];
+    console.log("$container", $container);
+    var $btn = render_rss_button();
+    $container.appendChild($btn);
+  }
   async function main() {
-    await connect();
+    if (!WXU.config.officialServerDisabled) {
+      connect();
+    }
+    if (location.pathname === "/s") {
+      WXU.observe_node(".wx_follow_media", () => {
+        setTimeout(() => {
+          insert_rss_button();
+        }, 1200);
+      });
+    }
   }
   main();
 })();

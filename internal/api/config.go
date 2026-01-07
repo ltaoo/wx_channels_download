@@ -14,39 +14,38 @@ import (
 )
 
 type APIConfig struct {
-	RootDir     string
-	DownloadDir string
-	MaxRunning  int // 最多同时下载的任务数
-	Addr        string
+	Original                     *config.Config
+	RootDir                      string
+	DownloadDir                  string
+	MaxRunning                   int // 最多同时下载的任务数
+	Addr                         string
+	OfficialAccountRemote        bool // 是否为公众号远端服务模式
+	OfficialAccountRefreshToken  string
+	OfficialAccountTokenFilepath string
 }
 
-func SetupConfig(cfg *config.Config) {
-	config.Register(config.ConfigItem{
-		Key:         "download.dir",
-		Type:        config.ConfigTypeString,
-		Default:     "%UserDownloads%",
-		Description: "下载目录",
-	})
-}
-func NewAPISettings(c *config.Config) *APIConfig {
+func NewAPIConfig(c *config.Config, mp_remote_mode bool) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
 	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
 	dir = filepath.Clean(dir)
-
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(c.RootDir, dir)
 	}
-
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
 	}
-
-	api_settings := &APIConfig{
-		RootDir:     c.RootDir,
-		DownloadDir: dir,
-		MaxRunning:  3,
-		Addr:        viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+	mp_refresh_token := viper.GetString("mp.refreshToken")
+	mp_token_filepath := viper.GetString("mp.tokenFilepath")
+	api_cfg := &APIConfig{
+		Original:                     c,
+		RootDir:                      c.RootDir,
+		DownloadDir:                  dir,
+		MaxRunning:                   3,
+		Addr:                         viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		OfficialAccountRemote:        mp_remote_mode,
+		OfficialAccountTokenFilepath: mp_token_filepath,
+		OfficialAccountRefreshToken:  mp_refresh_token,
 	}
-	return api_settings
+	return api_cfg
 }

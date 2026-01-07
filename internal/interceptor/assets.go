@@ -52,7 +52,7 @@ var js_utils []byte
 //go:embed inject/src/downloader.js
 var js_downloader []byte
 
-//go:embed inject/src/wechat_official_account.js
+//go:embed inject/src/officialaccount.js
 var js_wechat_official_account []byte
 
 //go:embed inject/src/main.js

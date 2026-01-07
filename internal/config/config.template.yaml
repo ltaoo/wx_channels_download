@@ -12,6 +12,7 @@ download:
   frontend: false
 
 api:
+  protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
 
@@ -20,5 +21,13 @@ proxy:
   hostname: "127.0.0.1"
   port: 2023
 
-channel:
+channels:
   disableLocationToHome: false
+
+mp:
+  remoteServer:
+    protocol: "http"
+    hostname: "127.0.0.1"
+    port: 2022
+  refreshToken: ""
+  tokenFilepath: ""

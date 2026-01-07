@@ -2,13 +2,15 @@ package officialaccount
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type Client struct {
-	hub  *OfficialAccountBrowser
+	hub  *OfficialAccountClient
 	conn *websocket.Conn
 	send chan []byte
 }
@@ -43,6 +45,25 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func ValidateTokenFilepath(file_path string, root_dir string) (string, error) {
+	token_filepath := file_path
+	if file_path == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(file_path) {
+		token_filepath = filepath.Join(root_dir, file_path)
+	}
+	if _, err := os.Stat(token_filepath); err != nil {
+		return "", err
+	}
+	// script_byte, err := os.ReadFile(token_filepath)
+	// if err != nil {
+	// 	return err
+	// }
+	// settings.InjectExtraScriptAfterJSMain = string(script_byte)
+	return token_filepath, nil
 }
 
 type APIClientWSMessage struct {

@@ -9,7 +9,8 @@ import (
 
 type APIServer struct {
 	*manager.HTTPServer
-	APIClient *APIClient
+	APIClient           *APIClient
+	OfficialAccountOnly bool
 }
 
 func NewAPIServer(cfg *APIConfig) *APIServer {
@@ -17,8 +18,8 @@ func NewAPIServer(cfg *APIConfig) *APIServer {
 	client := NewAPIClient(cfg)
 	srv.SetHandler(withCORS(client))
 	return &APIServer{
-		APIClient:  client,
 		HTTPServer: srv,
+		APIClient:  client,
 	}
 }
 
@@ -35,7 +36,6 @@ func (s *APIServer) Start() error {
 }
 
 func (s *APIServer) Stop() error {
-	s.APIClient.downloader.Pause(nil)
 	if err := s.APIClient.Stop(); err != nil {
 		return err
 	}

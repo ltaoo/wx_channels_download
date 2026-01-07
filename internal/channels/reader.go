@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"encoding/binary"
