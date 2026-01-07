@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	result "wx_channel/internal/util"
+	"wx_channel/pkg/cache"
 )
 
 var accounts = make(map[string]*OfficialAccount)
@@ -83,10 +84,10 @@ type OfficialAccountClient struct {
 	engine               *gin.Engine
 	requests             map[string]chan ClientWebsocketResponse
 	requests_mu          sync.RWMutex
-	// cache       *cache.Cache
-	req_seq       uint64
-	wait_chan_map map[string]chan *OfficialAccount
-	wait_mu       sync.Mutex
+	cache                *cache.Cache
+	req_seq              uint64
+	wait_chan_map        map[string]chan *OfficialAccount
+	wait_mu              sync.Mutex
 }
 type OfficialAccountBody struct {
 	Biz string `json:"biz"`
@@ -114,7 +115,7 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		ws_clients:           make(map[*Client]bool),
 		requests:             make(map[string]chan ClientWebsocketResponse),
 		// engine:     gin.Default(),
-		// cache:      cache.New(),
+		cache:         cache.New(),
 		req_seq:       uint64(time.Now().UnixNano()),
 		wait_chan_map: make(map[string]chan *OfficialAccount),
 	}
@@ -299,6 +300,16 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 	offset := ctx.Query("offset")
 	need_content := ctx.Query("content")
 	need_proxy := ctx.Query("proxy")
+
+	cache_key := fmt.Sprintf("rss:%s:%s:%s", biz, need_proxy, need_content)
+	if val, found := c.cache.Get(cache_key); found {
+		if atom, ok := val.(AtomFeed); ok {
+			ctx.Header("Content-Type", "application/atom+xml; charset=utf-8")
+			ctx.XML(http.StatusOK, atom)
+			return
+		}
+	}
+
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
 		result.Err(ctx, 401, "incorrect token")
@@ -355,6 +366,9 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 		var thumb *MediaThumbnail
 		if cover != "" {
 			// cover = html.UnescapeString(cover)
+			if need_proxy == "1" && c.RemoteServerAddr != "" {
+				cover = fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(cover))
+			}
 			desc = fmt.Sprintf(`<img src="%s" /><br/>%s`, cover, digest)
 			thumb = &MediaThumbnail{
 				XMLNSMedia: "http://search.yahoo.com/mrss/",
@@ -480,6 +494,7 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 		},
 		Entry: entries,
 	}
+	c.cache.Set(cache_key, atom, 30*time.Minute)
 	ctx.Header("Content-Type", "application/atom+xml; charset=utf-8")
 	ctx.XML(http.StatusOK, atom)
 }
@@ -671,6 +686,16 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 	if body.Biz == "" {
 		return nil, errors.New("Missing the biz parameter")
 	}
+
+	acct_mu.RLock()
+	if acct, ok := accounts[body.Biz]; ok {
+		// 如果 update_time 相隔 5 分钟内，直接返回
+		if time.Now().Unix()-acct.UpdateTime < 5*60 {
+			acct_mu.RUnlock()
+			return acct, nil
+		}
+	}
+	acct_mu.RUnlock()
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}

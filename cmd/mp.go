@@ -11,13 +11,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+
 	"wx_channel/internal/api"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/system"
-
-	"github.com/fatih/color"
-	"github.com/spf13/cobra"
 )
 
 var (
