@@ -72,7 +72,6 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		RemoteServerProtocol: cfg.RemoteServerProtocol,
 		RemoteServerHostname: cfg.RemoteServerHostname,
 		RemoteServerPort:     cfg.RemoteServerPort,
-		RemoteServerAddr:     cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname + strconv.Itoa(cfg.RemoteServerPort),
 		RefreshToken:         cfg.RefreshToken,
 		Tokens:               make([]string, 0),
 		ws_clients:           make(map[*Client]bool),
@@ -82,6 +81,11 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		req_seq:       uint64(time.Now().UnixNano()),
 		wait_chan_map: make(map[string]chan *OfficialAccount),
 	}
+	origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
+	if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
+		origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
+	}
+	c.RemoteServerAddr = origin
 	if strings.TrimSpace(cfg.TokenFilepath) != "" {
 		read_tokens := func() {
 			f, err := os.Open(cfg.TokenFilepath)
@@ -109,10 +113,6 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		}()
 	}
 	if cfg.RemoteMode {
-		origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
-		if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
-			origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
-		}
 		refresh_the_accounts_in_remote_server := func() {
 			u := origin + "/api/official_account/list"
 			client := &http.Client{Timeout: 15 * time.Second}

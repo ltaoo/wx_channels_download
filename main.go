@@ -22,7 +22,7 @@ func main() {
 	}
 	cfg := config.New(AppVer, Mode)
 	if err := cfg.LoadConfig(); err != nil {
-		fmt.Printf("加载配置文件失败 %v", err.Error())
+		fmt.Printf("加载配置文件失败 %v\n", err.Error())
 		return
 	}
 	need_admin_for_proxy := viper.GetBool("proxy.system") || interceptor.UsingSunnyNet
