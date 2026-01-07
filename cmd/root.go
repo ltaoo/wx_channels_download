@@ -94,7 +94,6 @@ func root_command(cfg *config.Config) {
 		},
 	})
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
-	fmt.Println("offcial", official_cfg.RemoteServerHostname)
 	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 		Match: "official.weixin.qq.com",
 		Target: &proxy.TargetConfig{
@@ -106,10 +105,6 @@ func root_command(cfg *config.Config) {
 	mgr.RegisterServer(interceptor_srv)
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
-	mp_token_filepath, err := officialaccount.ValidateTokenFilepath(api_cfg.OfficialAccountTokenFilepath, cfg.RootDir)
-	if mp_token_filepath != "" && err == nil {
-		fmt.Printf("公众号远端授权凭证文件 %s\n", color.New(color.Underline).Sprint(mp_token_filepath))
-	}
 	l, err := net.Listen("tcp", api_cfg.Addr)
 	if err != nil {
 		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_cfg.Addr))

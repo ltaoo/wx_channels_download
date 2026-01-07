@@ -9,8 +9,7 @@ import (
 
 type APIServer struct {
 	*manager.HTTPServer
-	APIClient           *APIClient
-	OfficialAccountOnly bool
+	APIClient *APIClient
 }
 
 func NewAPIServer(cfg *APIConfig) *APIServer {

@@ -17,7 +17,7 @@ title: 公众号
 curl http://localhost:2022/api/official_account/msg/list?biz=MzI2NDk5NzA0Mw==
 ```
 
-通过 `offset` 获取到指定页的消息列表
+通过 `offset` 指定偏移量，可以获取到更多的消息记录
 
 ```bash
 curl http://localhost:2022/api/official_account/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
@@ -29,9 +29,11 @@ curl http://localhost:2022/api/official_account/msg/list?biz=MzI2NDk5NzA0Mw==&of
 curl http://localhost:2022/api/official_account/list
 ```
 
-> 不一定可请求，凭证可能过期，但不会从列表移除
+返回公众号昵称、头像和「授权凭证」。授权凭证用来请求「推送消息列表」，凭证有效期大概是半小时，需要定时刷新凭证
 
-## 生成指定公众号的 RSS 链接
+> 不一定可请求，凭证如果过期，不会从列表移除
+
+## 公众号 RSS
 
 ```bash
 curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
@@ -43,27 +45,26 @@ curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
 
 ### proxy
 
-如果阅读器提供获取全文能力，但是无法正确获取到内容，可以指定 `proxy=1`，那么返回的 `XML` 内容中的所有文章列表，都会添加 `/official_account/proxy` 前缀，当打开文章时，其实是打开我们自己服务，再由我们自己服务请求微信公众号，返回正文内容
-
+如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 `{ServiceAddr}/official_account/proxy` 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容
 
 ### content
 
-如果希望直接获取到正文，可以指定 `proxy=1`，那么请求订阅接口时，就会同时获取正文。但是缺点就是列表接口会比较慢（因为要依次请求到正文）
+如果希望直接获取到正文，可以指定 `content=1`，那么请求 `RSS` 接口时，就会同时获取正文。但是缺点就是列表接口会比较慢（因为要依次请求到正文）
 
 
 ## 远端服务模式
 
-由于大部分服务器都是 `Linux`，本下载器依赖微信应用本体，导致无法使用。所以增加远端服务模式，可以在 `Linux` 服务器上部署该服务，提供 API 和 RSS 服务
+本下载器依赖微信应用本体，导致无法在 `linux` 服务器上部署。所以额外增加「远端服务」模式，同时配合 本地+远端，可以在 `linux` 服务器上部署 `API` 和 `RSS` 服务
 
-
-**但是仍需要 macOS 或 Windows 机器同步「公众号授权凭证」到远端服务**
+**仍需要 macOS 或 Windows 机器，用于同步「公众号授权凭证」到远端服务**
 
 
 ### 部署说明
 
-下载构建包到 `Linux` 服务，修改配置文件
+下载构建包到 `linux` 服务器，修改配置文件
 
 ```yaml
+# config.yaml
 api:
   protocol: "http"
   hostname: "127.0.0.1"
@@ -77,18 +78,20 @@ mp:
   tokenFilepath: ""
 ```
 
-其中 `refreshToken` 指定外部向运行在 `Linux` 上的服务提交「公众号授权凭证」时的校验信息（避免被外部恶意修改内容）
+其中 `refreshToken` 用于「本地」向「远端服务」提交「公众号授权凭证」时的校验，可以避免被无授权的人修改公众号授权凭证，导致服务不可用
 
-`tokenFilepath` 指定调用 `API` 或 `RSS` 时的授权凭证文件，可以留空。或者指定一个 `./token.txt`，那么会读取该文件，每行作为一个 `token`，调用接口时必须传入 `&token=aaa`，否则会拒绝访问。
+`tokenFilepath` 指定调用 `API` 或 `RSS` 时的授权凭证文件，可以留空。或者指定一个 `./token.txt`，那么会读取该文件，每行作为一个 `token`，调用接口时必须传入 `&token=`，否则会拒绝访问。
 
-添加权限后，使用命令 `./wx_video_download mp` 启动，该命令仅运行公众号相关的功能
+使用 `chmod +x ./wx_video_download` 给二进制文件添加权限，然后运行命令 `./wx_video_download mp -d` 启动，该命令仅运行公众号相关的功能，且作为守护进程运行
 
-运行好之后，调用「获取可请求的公众号列表」会返回空列表。调用「获取指定公众号消息列表」会提示 `Please adding Credentials first`
+运行成功之后，调用「获取可请求的公众号列表」会返回空列表。调用「获取指定公众号消息列表」会提示 `Please adding Credentials first`
 
+表示「远端服务」部署成功，接下来运行「本地」服务
 
-此时还不可以正常使用。在任意 `macOS` 或 `Windows` 机器上，同样下载构建包，修改配置文件
+在任意 `macOS` 或 `Windows` 机器上，下载对应平台构建包，修改配置文件
 
 ```yaml
+# config.yaml
 mp:
   remoteServer:
     protocol: "https"
@@ -98,14 +101,16 @@ mp:
   tokenFilepath: ""
 ```
 
-内容和上面的配置保持相同。然后，通过命令 `./wx_video_download` 启动，**打开任意公众号文章页面**，会自动向 Linux 服务提交该公众号的授权凭证
+内容和「远端服务」的配置文件保持相同。然后，通过命令 `./wx_video_download` 启动，**打开任意公众号文章页面**，会自动向「远端服务」提交该公众号的授权凭证
 
-然后，再调用「获取可请求的公众号列表」，可以看到刚刚打开的公众号信息。以及在账号名称旁会出现 RSS 图标，点击会复制 `RSS` 订阅链接
+同时，在打开的公众号文章页面，账号名称旁会出现 RSS 图标，点击会复制 `RSS` 订阅链接
 
 ![RSS按钮](../assets/official_account_rss.png)
 
 内容类似 `https://rss.example.com/rss/mp?biz=MzI2NDk5NzA0Mw==`，可以在浏览器打开该链接，验证服务是否正常
 
-到此，公众号RSS 服务就可以正常使用了。保持在 `macOS` 或 `Windows` 上的服务不要关闭，会定时获取在列表中的公众号，刷新凭证，保持 `Linux` 服务器上的 `RSS` 服务一直可用
+调用「获取可请求的公众号列表」，也可以看到刚刚打开的公众号信息
+
+到此，公众号RSS 服务就可以正常使用了。本地 `macOS` 或 `Windows` 上的服务不要关闭，会定时获取在列表中的公众号，刷新凭证，保持「远端服务」的 `RSS` 服务一直可用
 
 
