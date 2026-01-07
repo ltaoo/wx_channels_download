@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 
 var accounts = make(map[string]*OfficialAccount)
 var acct_mu sync.RWMutex
+var mp_json_filepath = "mp.json"
 var official_timer_once sync.Once
 var official_ws_upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -32,6 +34,39 @@ var official_ws_upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+}
+
+func save_accounts() {
+	acct_mu.RLock()
+	defer acct_mu.RUnlock()
+
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		fmt.Println("saveAccounts marshal err:", err)
+		return
+	}
+
+	err = os.WriteFile(mp_json_filepath, data, 0644)
+	if err != nil {
+		fmt.Println("saveAccounts write err:", err)
+	}
+}
+func load_accounts() {
+	data, err := os.ReadFile(mp_json_filepath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Println("loadAccounts read err:", err)
+		}
+		return
+	}
+
+	acct_mu.Lock()
+	defer acct_mu.Unlock()
+
+	err = json.Unmarshal(data, &accounts)
+	if err != nil {
+		fmt.Println("loadAccounts unmarshal err:", err)
+	}
 }
 
 type OfficialAccountClient struct {
@@ -64,6 +99,8 @@ type OfficialAccount struct {
 	Key         string `json:"key"`
 	PassTicket  string `json:"pass_ticket"`
 	AppmsgToken string `json:"appmsg_token"`
+	IsEffective bool   `json:"is_effective"`
+	UpdateTime  int64  `json:"update_time"`
 }
 
 func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient {
@@ -81,6 +118,10 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		req_seq:       uint64(time.Now().UnixNano()),
 		wait_chan_map: make(map[string]chan *OfficialAccount),
 	}
+	if cfg.RootDir != "" {
+		mp_json_filepath = filepath.Join(cfg.RootDir, "mp.json")
+	}
+	load_accounts()
 	origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
 	if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
 		origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
@@ -231,7 +272,12 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccount(ctx *gin.Context) {
 		result.Err(ctx, 400, "Missing the biz parameter")
 		return
 	}
+	body.IsEffective = true
+	body.UpdateTime = time.Now().Unix()
+	acct_mu.Lock()
 	accounts[body.Biz] = &body
+	acct_mu.Unlock()
+	save_accounts()
 	c.wait_mu.Lock()
 	if ch, ok := c.wait_chan_map[body.Biz]; ok {
 		select {
@@ -649,7 +695,12 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 		c.wait_mu.Lock()
 		delete(c.wait_chan_map, body.Biz)
 		c.wait_mu.Unlock()
+		acct.IsEffective = true
+		acct.UpdateTime = time.Now().Unix()
+		acct_mu.Lock()
 		accounts[acct.Biz] = acct
+		acct_mu.Unlock()
+		save_accounts()
 		return acct, nil
 	case <-time.After(20 * time.Second):
 		c.wait_mu.Lock()

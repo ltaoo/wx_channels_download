@@ -70,6 +70,7 @@ CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 SDKROOT=$(xcrun --sdk macosx --show-sdk-p
 
 ```bash
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o wx_video_download
+upx --best --lzma wx_video_download
 ```
 
 ```bash
