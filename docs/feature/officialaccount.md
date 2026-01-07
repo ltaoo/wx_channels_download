@@ -14,24 +14,24 @@ title: 公众号
 ## 获取指定公众号消息列表
 
 ```bash
-curl http://localhost:2022/api/official_account/msg/list?biz=MzI2NDk5NzA0Mw==
+curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==
 ```
 
 通过 `offset` 指定偏移量，可以获取到更多的消息记录
 
 ```bash
-curl http://localhost:2022/api/official_account/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
+curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
 ```
 
 ## 获取可请求的公众号列表
 
 ```bash
-curl http://localhost:2022/api/official_account/list
+curl http://localhost:2022/api/mp/list
 ```
 
 返回公众号昵称、头像和「授权凭证」。授权凭证用来请求「推送消息列表」，凭证有效期大概是半小时，需要定时刷新凭证
 
-> 不一定可请求，凭证如果过期，不会从列表移除
+> 凭证如果过期，不会从列表移除
 
 ## 公众号 RSS
 

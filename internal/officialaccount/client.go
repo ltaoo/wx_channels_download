@@ -112,56 +112,13 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 			}
 		}()
 	}
-	if cfg.RemoteMode {
-		refresh_the_accounts_in_remote_server := func() {
-			u := origin + "/api/official_account/list"
-			client := &http.Client{Timeout: 15 * time.Second}
-			req, err := http.NewRequest("GET", u, nil)
-			if err != nil {
-				return
-			}
-			resp, err := client.Do(req)
-			if err != nil {
-				return
-			}
-			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return
-			}
-			var out struct {
-				Data struct {
-					List []struct {
-						Biz string `json:"biz"`
-					} `json:"list"`
-				} `json:"data"`
-				List []struct {
-					Biz string `json:"biz"`
-				} `json:"list"`
-			}
-			if err := json.Unmarshal(body, &out); err != nil {
-				return
-			}
-			items := out.Data.List
-			if len(items) == 0 && len(out.List) > 0 {
-				items = out.List
-			}
-			for _, item := range items {
-				if item.Biz == "" {
-					continue
-				}
-				_, _ = c.RefreshAccount(&OfficialAccountBody{Biz: item.Biz})
-			}
+	go func() {
+		ticker := time.NewTicker(20 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			c.RefreshAllRemoteOfficialAccount()
 		}
-		go func() {
-			refresh_the_accounts_in_remote_server()
-			ticker := time.NewTicker(20 * time.Minute)
-			defer ticker.Stop()
-			for range ticker.C {
-				refresh_the_accounts_in_remote_server()
-			}
-		}()
-	}
+	}()
 	return c
 }
 
@@ -283,6 +240,11 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccount(ctx *gin.Context) {
 		}
 	}
 	c.wait_mu.Unlock()
+	result.Ok(ctx, nil)
+}
+
+func (c *OfficialAccountClient) HandleRefreshAllRemoteOfficialAccount(ctx *gin.Context) {
+	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
 	result.Ok(ctx, nil)
 }
 
@@ -663,6 +625,9 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 	if body.Biz == "" {
 		return nil, errors.New("Missing the biz parameter")
 	}
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
 	c.wait_mu.Lock()
 	if ch, ok := c.wait_chan_map[body.Biz]; ok {
 		c.wait_mu.Unlock()
@@ -676,7 +641,7 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 	ch := make(chan *OfficialAccount, 1)
 	c.wait_chan_map[body.Biz] = ch
 	c.wait_mu.Unlock()
-	_, _ = c.RequestAPI("/api/official_account/fetch_account_home", struct {
+	_, _ = c.RequestAPI("/api/mp/fetch_account_home", struct {
 		Biz string `json:"biz"`
 	}{Biz: body.Biz}, 15*time.Second)
 	select {
@@ -691,6 +656,52 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 		delete(c.wait_chan_map, body.Biz)
 		c.wait_mu.Unlock()
 		return nil, errors.New("request timeout")
+	}
+}
+func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() {
+	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
+}
+func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) {
+	fmt.Println("[]refresh_the_accounts_in_remote_server")
+	u := origin + "/api/mp/list"
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		fmt.Println("refresh_the_accounts_in_remote_server: NewRequest err:", err)
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("refresh_the_accounts_in_remote_server: Do err:", err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	var out struct {
+		Data struct {
+			List []struct {
+				Nickname string `json:"nickname"`
+				Biz      string `json:"biz"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		fmt.Println("refresh_the_accounts_in_remote_server: Unmarshal err:", err)
+		return
+	}
+	items := out.Data.List
+	for _, item := range items {
+		fmt.Println("refresh_the_accounts_in_remote_server: item:", item.Biz)
+		if item.Biz == "" {
+			continue
+		}
+		_, err = c.RefreshAccount(&OfficialAccountBody{Biz: item.Biz})
+		if err != nil {
+			fmt.Println("refresh_the_accounts_in_remote_server: RefreshAccount err:", err)
+		}
 	}
 }
 

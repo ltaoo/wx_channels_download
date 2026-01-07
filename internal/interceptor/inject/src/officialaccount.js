@@ -66,7 +66,7 @@ var _OfficialAccountCredentials = {
     }
     var [err, res] = await WXU.request({
       method: "POST",
-      url: `${origin}/api/official_account/refresh?token=${
+      url: `${origin}/api/mp/refresh?token=${
         WXU.config.officialServerRefreshToken ?? ""
       }`,
       body: _OfficialAccountCredentials,
@@ -143,7 +143,7 @@ var _OfficialAccountCredentials = {
         })
       );
     }
-    if (key === "/api/official_account/fetch_account_home") {
+    if (key === "/api/mp/fetch_account_home") {
       var [error, res] = await fetchAccountHome(data);
       if (error) {
         resp({
