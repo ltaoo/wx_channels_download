@@ -10,11 +10,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 	"wx_channel/internal/api"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
+	"wx_channel/pkg/system"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -53,7 +53,7 @@ func init() {
 }
 
 func mp_command() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), system.Signals()...)
 	defer stop()
 
 	cfg := Cfg
@@ -119,7 +119,7 @@ func mp_start_daemon() {
 	c := exec.Command(exe, "mp", "--daemon-child")
 	c.Stdout = log_file
 	c.Stderr = log_file
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	c.SysProcAttr = system.SetSysProcAttrForDaemon()
 	if err := c.Start(); err != nil {
 		color.Red(fmt.Sprintf("ERROR 启动守护进程失败: %v\n", err))
 		return
@@ -172,7 +172,7 @@ var mp_status_cmd = &cobra.Command{
 			color.Red("未发现守护进程")
 			return
 		}
-		running := process_running(pid)
+		running := system.IsProcessRunning(pid)
 		if !running {
 			color.Red(fmt.Sprintf("进程未运行, PID: %d", pid))
 			_ = remove_mp_pidfile()
@@ -199,19 +199,19 @@ var mp_stop_cmd = &cobra.Command{
 			color.Red("未发现守护进程")
 			return
 		}
-		if !process_running(pid) {
+		if !system.IsProcessRunning(pid) {
 			color.Green("进程已停止")
 			_ = remove_mp_pidfile()
 			return
 		}
-		_ = syscall.Kill(pid, syscall.SIGTERM)
+		_ = system.TerminateProcess(pid)
 		expire := time.After(8 * time.Second)
 		tick := time.NewTicker(200 * time.Millisecond)
 		defer tick.Stop()
 		for {
 			select {
 			case <-tick.C:
-				if !process_running(pid) {
+				if !system.IsProcessRunning(pid) {
 					_ = remove_mp_pidfile()
 					color.Green("服务已关闭")
 					return
@@ -222,14 +222,6 @@ var mp_stop_cmd = &cobra.Command{
 			}
 		}
 	},
-}
-
-func process_running(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, syscall.Signal(0))
-	return err == nil
 }
 
 func port_listening(addr string) bool {
