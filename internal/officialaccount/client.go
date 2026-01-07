@@ -35,16 +35,19 @@ var official_ws_upgrader = websocket.Upgrader{
 }
 
 type OfficialAccountClient struct {
-	ServerAddr   string
-	RefreshToken string
-	RemoteMode   bool
-	Tokens       []string
-	Cookies      []*http.Cookie
-	ws_clients   map[*Client]bool
-	ws_mu        sync.RWMutex
-	engine       *gin.Engine
-	requests     map[string]chan ClientWebsocketResponse
-	requests_mu  sync.RWMutex
+	RemoteServerAddr     string
+	RefreshToken         string
+	RemoteMode           bool
+	RemoteServerProtocol string
+	RemoteServerHostname string
+	RemoteServerPort     int
+	Tokens               []string
+	Cookies              []*http.Cookie
+	ws_clients           map[*Client]bool
+	ws_mu                sync.RWMutex
+	engine               *gin.Engine
+	requests             map[string]chan ClientWebsocketResponse
+	requests_mu          sync.RWMutex
 	// cache       *cache.Cache
 	req_seq       uint64
 	wait_chan_map map[string]chan *OfficialAccount
@@ -65,12 +68,15 @@ type OfficialAccount struct {
 
 func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient {
 	c := &OfficialAccountClient{
-		ServerAddr:   cfg.Addr,
-		RemoteMode:   cfg.RemoteMode,
-		RefreshToken: cfg.RefreshToken,
-		Tokens:       make([]string, 0),
-		ws_clients:   make(map[*Client]bool),
-		requests:     make(map[string]chan ClientWebsocketResponse),
+		RemoteMode:           cfg.RemoteMode,
+		RemoteServerProtocol: cfg.RemoteServerProtocol,
+		RemoteServerHostname: cfg.RemoteServerHostname,
+		RemoteServerPort:     cfg.RemoteServerPort,
+		RemoteServerAddr:     cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname + strconv.Itoa(cfg.RemoteServerPort),
+		RefreshToken:         cfg.RefreshToken,
+		Tokens:               make([]string, 0),
+		ws_clients:           make(map[*Client]bool),
+		requests:             make(map[string]chan ClientWebsocketResponse),
 		// engine:     gin.Default(),
 		// cache:      cache.New(),
 		req_seq:       uint64(time.Now().UnixNano()),
@@ -99,6 +105,60 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 			defer ticker.Stop()
 			for range ticker.C {
 				read_tokens()
+			}
+		}()
+	}
+	if cfg.RemoteMode {
+		origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
+		if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
+			origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
+		}
+		refresh_the_accounts_in_remote_server := func() {
+			u := origin + "/api/official_account/list"
+			client := &http.Client{Timeout: 15 * time.Second}
+			req, err := http.NewRequest("GET", u, nil)
+			if err != nil {
+				return
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return
+			}
+			var out struct {
+				Data struct {
+					List []struct {
+						Biz string `json:"biz"`
+					} `json:"list"`
+				} `json:"data"`
+				List []struct {
+					Biz string `json:"biz"`
+				} `json:"list"`
+			}
+			if err := json.Unmarshal(body, &out); err != nil {
+				return
+			}
+			items := out.Data.List
+			if len(items) == 0 && len(out.List) > 0 {
+				items = out.List
+			}
+			for _, item := range items {
+				if item.Biz == "" {
+					continue
+				}
+				_, _ = c.RefreshAccount(&OfficialAccountBody{Biz: item.Biz})
+			}
+		}
+		go func() {
+			refresh_the_accounts_in_remote_server()
+			ticker := time.NewTicker(20 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				refresh_the_accounts_in_remote_server()
 			}
 		}()
 	}
@@ -280,8 +340,8 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 
 	buildEntry := func(title, digest, contentURL, cover, author string, fileid int, pub_date string, authors ...string) AtomEntry {
 		u := buildURL(html.UnescapeString(contentURL))
-		if need_proxy == "1" && c.ServerAddr != "" {
-			u = fmt.Sprintf("http://%s/official_account/proxy?url=%s", c.ServerAddr, url.QueryEscape(u))
+		if need_proxy == "1" && c.RemoteServerAddr != "" {
+			u = fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
 		}
 		desc := digest
 		var thumb *MediaThumbnail
@@ -486,7 +546,7 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 		bodyString = re.ReplaceAllStringFunc(bodyString, func(match string) string {
 			// 构造代理链接
 			u := html.UnescapeString(match)
-			return fmt.Sprintf("http://%s/official_account/proxy?url=%s", c.ServerAddr, url.QueryEscape(u))
+			return fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
 		})
 		ctx.Writer.Write([]byte(bodyString))
 	} else {

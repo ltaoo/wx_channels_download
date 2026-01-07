@@ -60,7 +60,6 @@ var _OfficialAccountCredentials = {
 
   WXU.emit(WXU.Events.OfficialAccountRefresh, _OfficialAccountCredentials);
   (async () => {
-    console.log("before refresh", FakeOfficialAccountServerAddr);
     var origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
     if (WXU.config.officialRemoteServerPort != 80) {
       origin += `:${WXU.config.officialRemoteServerPort}`;
