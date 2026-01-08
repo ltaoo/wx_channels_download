@@ -272,7 +272,7 @@ async function __wx_handle_api_call(msg, socket) {
       })
     );
   }
-  if (key === "/api/contact/search") {
+  if (key === "key:channels:contact_list") {
     var payload = {
       query: data.keyword,
       scene: 13,
@@ -288,7 +288,7 @@ async function __wx_handle_api_call(msg, socket) {
     });
     return;
   }
-  if (key === "/api/contact/feed/list") {
+  if (key === "key:channels:feed_list") {
     var payload = {
       username: data.username,
       finderUsername: __wx_username,
@@ -306,7 +306,7 @@ async function __wx_handle_api_call(msg, socket) {
     });
     return;
   }
-  if (key === "/api/feed/profile") {
+  if (key === "key:channels:feed_profile") {
     console.log("before finderGetCommentProfile", data.oid, data.nid);
     try {
       if (data.url) {

@@ -122,7 +122,7 @@ func (wc *ChannelsClient) Validate() error {
 	}
 	return nil
 }
-func (c *ChannelsClient) RequestAPI(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -155,7 +155,6 @@ func (c *ChannelsClient) RequestAPI(endpoint string, body interface{}, timeout t
 		c.ws_mu.Unlock()
 		return nil, errors.New("没有可用的客户端")
 	}
-
 	data, err := json.Marshal(msg)
 	if err != nil {
 		c.ws_mu.Unlock()
@@ -184,7 +183,7 @@ func (c *ChannelsClient) SearchChannelsContact(keyword string) (*types.ChannelsC
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestAPI("/api/contact/search", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
+	resp, err := c.RequestFrontend("key:channels:contact_list", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +203,7 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 	// 		return resp, nil
 	// 	}
 	// }
-	resp, err := c.RequestAPI("/api/contact/feed/list", types.ChannelsFeedListBody{Username: username, NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_list", types.ChannelsFeedListBody{Username: username, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +223,7 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.
 	// 		return resp, nil
 	// 	}
 	// }
-	resp, err := c.RequestAPI("/api/feed/profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
