@@ -1,0 +1,23 @@
+{
+  "name": "official-account-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for Official Account API - Simplified Node.js version",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "wechat",
+    "official-account",
+    "api"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

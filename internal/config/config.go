@@ -272,6 +272,70 @@ func (c *Config) LoadConfig() error {
 		Title:       "刷新跳过时间（分钟）",
 		Group:       "OfficialAccount",
 	})
+	Register(ConfigItem{
+		Key:         "cloudflare.authToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare Worker 认证 Token",
+		Title:       "Auth Token",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.refreshToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare Worker 刷新 Token",
+		Title:       "Refresh Token",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.accountId",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare Account ID",
+		Title:       "Account ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.kv.accounts",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare KV Namespace ID for Accounts",
+		Title:       "KV Accounts ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.kv.messages",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare KV Namespace ID for Messages",
+		Title:       "KV Messages ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.kv.accounts_preview",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare KV Namespace Preview ID for Accounts",
+		Title:       "KV Accounts Preview ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.kv.messages_preview",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare KV Namespace Preview ID for Messages",
+		Title:       "KV Messages Preview ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.worker_name",
+		Type:        ConfigTypeString,
+		Default:     "official-account-api",
+		Description: "Cloudflare Worker Name",
+		Title:       "Worker Name",
+		Group:       "Cloudflare",
+	})
 
 	if c.Existing {
 		// config.FilePath = config_filepath

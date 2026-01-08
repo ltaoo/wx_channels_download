@@ -158,15 +158,15 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 			}
 		}()
 	}
-	// if !cfg.RemoteMode {
-	// 	go func() {
-	// 		ticker := time.NewTicker(20 * time.Minute)
-	// 		defer ticker.Stop()
-	// 		for range ticker.C {
-	// 			c.RefreshAllRemoteOfficialAccount()
-	// 		}
-	// 	}()
-	// }
+	if !cfg.RemoteMode {
+		go func() {
+			ticker := time.NewTicker(20 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				c.RefreshAllRemoteOfficialAccount()
+			}
+		}()
+	}
 	return c
 }
 
@@ -306,13 +306,18 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountEvent(ctx *gin.Conte
 	acct_mu.Unlock()
 	save_accounts()
 	c.wait_mu.Lock()
-	if ch, ok := c.wait_chan_map[body.Biz]; ok {
+	ch, ok := c.wait_chan_map[body.Biz]
+	if ok {
 		select {
 		case ch <- &body:
 		default:
 		}
 	}
 	c.wait_mu.Unlock()
+	if !ok && !c.RemoteMode {
+		// 这里是直接手动刷新页面时，主动向远端服务推送凭证。所以如果是远端服务，不能向自己推，就循环了
+		go c.PushCredentialToRemoteServer(&body)
+	}
 	result.Ok(ctx, nil)
 }
 
@@ -997,7 +1002,7 @@ func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() error {
 func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) error {
 	fmt.Println("[]refresh_the_accounts_in_remote_server")
 	u := origin + "/api/mp/list"
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		fmt.Println("refresh_the_accounts_in_remote_server: NewRequest err:", err)
@@ -1014,6 +1019,8 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 		return err
 	}
 	var out struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
 		Data struct {
 			List []struct {
 				Nickname string `json:"nickname"`
@@ -1024,6 +1031,9 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 	if err := json.Unmarshal(body, &out); err != nil {
 		fmt.Println("refresh_the_accounts_in_remote_server: Unmarshal err:", err)
 		return err
+	}
+	if out.Code != 0 {
+		return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
 	}
 	items := out.Data.List
 	clients := c.ListClients()
@@ -1130,31 +1140,41 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *Officia
 	}
 	b, err := json.Marshal(credential)
 	if err != nil {
+		fmt.Println("PushCredentialToRemoteServer: Marshal err:", err)
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("POST", u, bytes.NewReader(b))
 	if err != nil {
+		fmt.Println("PushCredentialToRemoteServer: NewRequest err:", err)
 		return err
 	}
-	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	// Add User-Agent to avoid being blocked by Cloudflare
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Println("PushCredentialToRemoteServer: Do err:", err)
 		return err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Println("PushCredentialToRemoteServer: ReadAll err:", err)
 		return err
 	}
 	var out struct {
-		Code int `json:"code"`
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
+		fmt.Println("PushCredentialToRemoteServer: Unmarshal err:", err)
+		fmt.Println("PushCredentialToRemoteServer: Body:", string(body))
 		return err
 	}
 	if out.Code != 0 {
-		return fmt.Errorf("%s (code: %d)", result.GetMsg(result.CodeRemotePushFailed), out.Code)
+		fmt.Printf("PushCredentialToRemoteServer: Remote error: %d %s\n", out.Code, out.Msg)
+		return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
 	}
 	return nil
 }
