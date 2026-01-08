@@ -607,18 +607,37 @@ func (c *OfficialAccountClient) ValidateToken(t string) bool {
 }
 
 func (c *OfficialAccountClient) Validate() error {
-	// wc.clientsMu.Lock()
-	// defer wc.clientsMu.Unlock()
 	if c.RemoteMode {
 		return nil
 	}
-	if len(c.ws_clients) == 0 {
+	c.ws_mu.RLock()
+	empty := len(c.ws_clients) == 0
+	c.ws_mu.RUnlock()
+	if empty {
 		return errors.New("请先初始化客户端 socket 连接")
 	}
 	return nil
 }
+func (c *OfficialAccountClient) EnsureFrontendReady(timeout time.Duration) error {
+	if c.RemoteMode {
+		return nil
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		c.ws_mu.RLock()
+		ready := len(c.ws_clients) > 0
+		c.ws_mu.RUnlock()
+		if ready {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("请先初始化客户端 socket 连接")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
 func (c *OfficialAccountClient) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
-	if err := c.Validate(); err != nil {
+	if err := c.EnsureFrontendReady(3 * time.Second); err != nil {
 		return nil, err
 	}
 	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
@@ -719,7 +738,7 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 	if body.Biz == "" {
 		return nil, errors.New("Missing the biz parameter")
 	}
-	if err := c.Validate(); err != nil {
+	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
 		return nil, err
 	}
 	// acct_mu.RLock()
@@ -771,7 +790,9 @@ func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
-	return c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
+	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
+	fmt.Println("All remote server is refreshed")
+	return nil
 }
 func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) error {
 	fmt.Println("[]refresh_the_accounts_in_remote_server")
