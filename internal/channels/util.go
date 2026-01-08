@@ -8,7 +8,6 @@ import (
 )
 
 type Client struct {
-	hub  *ChannelsClient
 	conn *websocket.Conn
 	send chan []byte
 }

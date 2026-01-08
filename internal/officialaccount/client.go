@@ -97,12 +97,13 @@ type OfficialAccount struct {
 	Nickname    string `json:"nickname"`
 	AvatarURL   string `json:"avatar_url"`
 	Biz         string `json:"biz"`
-	Uin         string `json:"uin"`
+	Uin         string
 	Key         string `json:"key"`
 	PassTicket  string `json:"pass_ticket"`
 	AppmsgToken string `json:"appmsg_token"`
 	IsEffective bool   `json:"is_effective"`
 	UpdateTime  int64  `json:"update_time"`
+	Error       string `json:"error"`
 }
 
 func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient {
@@ -173,7 +174,7 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 		return
 	}
 	c.ws_mu.Lock()
-	client := &Client{hub: c, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{conn: conn, send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
@@ -201,6 +202,22 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 			c.requests_mu.RUnlock()
 			if ok {
 				ch <- resp
+			}
+			continue
+		}
+		var msg ClientWSMessage
+		if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
+			switch msg.Type {
+			case "ping":
+				c.ws_mu.Lock()
+				if _, ok := c.ws_clients[client]; ok {
+					client.available = true
+					client.last_ping = time.Now().Unix()
+					if msg.Data != "" {
+						client.title = msg.Data
+					}
+				}
+				c.ws_mu.Unlock()
 			}
 		}
 	}
@@ -591,6 +608,42 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	}
 }
 
+func (c *OfficialAccountClient) HandleOfficialAccountManagerHome(ctx *gin.Context) {
+	ctx.Header("Content-Type", "text/html; charset=utf-8")
+	html := string(manager_html)
+	remote := c.RemoteServerAddr
+	var token string
+	if len(c.Tokens) > 0 {
+		token = c.Tokens[0]
+	}
+	mode := "0"
+	if c.RemoteMode {
+		mode = "1"
+	}
+	html = strings.ReplaceAll(html, "%%REMOTE_SERVER%%", remote)
+	html = strings.ReplaceAll(html, "%%TOKEN%%", token)
+	html = strings.ReplaceAll(html, "%%REMOTE_MODE%%", mode)
+	ctx.String(http.StatusOK, html)
+}
+
+func (c *OfficialAccountClient) HandleFetchOfficialAccountClients(ctx *gin.Context) {
+	var list []gin.H
+	now := time.Now().Unix()
+	c.ws_mu.RLock()
+	for cl := range c.ws_clients {
+		healthy := cl.available && (now-cl.last_ping) <= 65
+		list = append(list, gin.H{
+			"title":     cl.title,
+			"available": healthy,
+			"last_ping": cl.last_ping,
+		})
+	}
+	c.ws_mu.RUnlock()
+	result.Ok(ctx, gin.H{
+		"list": list,
+	})
+}
+
 func (c *OfficialAccountClient) ValidateToken(t string) bool {
 	if len(c.Tokens) == 0 {
 		return true
@@ -659,29 +712,95 @@ func (c *OfficialAccountClient) RequestFrontend(endpoint string, body interface{
 		delete(c.requests, id)
 		c.requests_mu.Unlock()
 	}()
-	c.ws_mu.Lock()
+	c.ws_mu.RLock()
 	var client *Client
-	for c := range c.ws_clients {
-		client = c
+	for cl := range c.ws_clients {
+		client = cl
 		break
 	}
+	c.ws_mu.RUnlock()
 	if client == nil {
-		c.ws_mu.Unlock()
 		return nil, errors.New("没有可用的客户端")
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
-		c.ws_mu.Unlock()
 		return nil, err
 	}
-
-	select {
-	case client.send <- data:
-	default:
-		c.ws_mu.Unlock()
-		return nil, errors.New("发送缓冲区已满")
+	end := time.Now().Add(2 * time.Second)
+	for {
+		select {
+		case client.send <- data:
+			goto WAIT_RESP
+		default:
+			if time.Now().After(end) {
+				return nil, errors.New("发送缓冲区已满")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
-	c.ws_mu.Unlock()
+WAIT_RESP:
+	select {
+	case resp := <-resp_chan:
+		return &resp, nil
+	case <-time.After(timeout):
+		return nil, errors.New("请求超时")
+	}
+}
+func (c *OfficialAccountClient) ListClients() []*Client {
+	c.ws_mu.RLock()
+	clients := make([]*Client, 0, len(c.ws_clients))
+	for cl := range c.ws_clients {
+		clients = append(clients, cl)
+	}
+	c.ws_mu.RUnlock()
+	return clients
+}
+func (c *OfficialAccountClient) RequestFrontendOn(ws *Client, endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+	if err := c.EnsureFrontendReady(3 * time.Second); err != nil {
+		return nil, err
+	}
+	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
+	req := ClientWebsocketRequestBody{
+		ID:   id,
+		Key:  endpoint,
+		Body: body,
+	}
+	msg := APIClientWSMessage{
+		Type: "api_call",
+		Data: req,
+	}
+	resp_chan := make(chan ClientWebsocketResponse, 1)
+	c.requests_mu.Lock()
+	c.requests[id] = resp_chan
+	c.requests_mu.Unlock()
+	defer func() {
+		c.requests_mu.Lock()
+		delete(c.requests, id)
+		c.requests_mu.Unlock()
+	}()
+	c.ws_mu.RLock()
+	_, ok := c.ws_clients[ws]
+	c.ws_mu.RUnlock()
+	if !ok {
+		return nil, errors.New("没有可用的客户端")
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	end := time.Now().Add(2 * time.Second)
+	for {
+		select {
+		case ws.send <- data:
+			goto WAIT_RESP_ON
+		default:
+			if time.Now().After(end) {
+				return nil, errors.New("发送缓冲区已满")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+WAIT_RESP_ON:
 	select {
 	case resp := <-resp_chan:
 		return &resp, nil
@@ -763,9 +882,14 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 	ch := make(chan *OfficialAccount, 1)
 	c.wait_chan_map[body.Biz] = ch
 	c.wait_mu.Unlock()
-	_, _ = c.RequestFrontend("key:fetch_account_home", struct {
+	if _, err := c.RequestFrontend("key:fetch_account_home", struct {
 		Biz string `json:"biz"`
-	}{Biz: body.Biz}, 15*time.Second)
+	}{Biz: body.Biz}, 15*time.Second); err != nil {
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
+		return nil, err
+	}
 	select {
 	case acct := <-ch:
 		c.wait_mu.Lock()
@@ -773,6 +897,60 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 		c.wait_mu.Unlock()
 		acct.IsEffective = true
 		acct.UpdateTime = time.Now().Unix()
+		acct.Error = ""
+		acct_mu.Lock()
+		accounts[acct.Biz] = acct
+		acct_mu.Unlock()
+		save_accounts()
+		go c.PushCredentialToRemoteServer(c.RemoteServerAddr, acct)
+		return acct, nil
+	case <-time.After(20 * time.Second):
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
+		return nil, errors.New("request timeout")
+	}
+}
+func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *OfficialAccountBody, ws *Client) (*OfficialAccount, error) {
+	start := time.Now()
+	defer func() {
+		fmt.Printf("RefreshAccount %s cost: %v\n", body.Biz, time.Since(start))
+	}()
+	if body.Biz == "" {
+		return nil, errors.New("Missing the biz parameter")
+	}
+	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
+		return nil, err
+	}
+	c.wait_mu.Lock()
+	if ch, ok := c.wait_chan_map[body.Biz]; ok {
+		c.wait_mu.Unlock()
+		select {
+		case acct := <-ch:
+			return acct, nil
+		case <-time.After(20 * time.Second):
+			return nil, errors.New("request timeout")
+		}
+	}
+	ch := make(chan *OfficialAccount, 1)
+	c.wait_chan_map[body.Biz] = ch
+	c.wait_mu.Unlock()
+	if _, err := c.RequestFrontendOn(ws, "key:fetch_account_home", struct {
+		Biz string `json:"biz"`
+	}{Biz: body.Biz}, 15*time.Second); err != nil {
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
+		return nil, err
+	}
+	select {
+	case acct := <-ch:
+		c.wait_mu.Lock()
+		delete(c.wait_chan_map, body.Biz)
+		c.wait_mu.Unlock()
+		acct.IsEffective = true
+		acct.UpdateTime = time.Now().Unix()
+		acct.Error = ""
 		acct_mu.Lock()
 		accounts[acct.Biz] = acct
 		acct_mu.Unlock()
@@ -826,14 +1004,83 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 		return err
 	}
 	items := out.Data.List
+	clients := c.ListClients()
+	if len(clients) == 0 {
+		return errors.New("没有可用的客户端")
+	}
+	total := 0
 	for _, item := range items {
-		fmt.Println("refresh_the_accounts_in_remote_server: item:", item.Biz)
-		if item.Biz == "" {
-			continue
+		if item.Biz != "" {
+			total++
 		}
-		_, err = c.RefreshAccountWithFrontend(&OfficialAccountBody{Biz: item.Biz})
-		if err != nil {
-			fmt.Println("refresh_the_accounts_in_remote_server: RefreshAccount err:", err)
+	}
+	fmt.Printf("refresh_the_accounts_in_remote_server: origin=%s, out_list_count=%d\n", origin, total)
+	jobs := make(chan string, len(items))
+	for _, item := range items {
+		if item.Biz != "" {
+			jobs <- item.Biz
+		}
+	}
+	close(jobs)
+	var wg sync.WaitGroup
+	processed := make([]int64, len(clients))
+	var success int64
+	failures := make(map[string]string)
+	var failures_mu sync.Mutex
+	for i, ws := range clients {
+		wg.Add(1)
+		go func(idx int, ws *Client) {
+			defer wg.Done()
+			for biz := range jobs {
+				_, err := c.RefreshAccountWithFrontendOnClient(&OfficialAccountBody{Biz: biz}, ws)
+				if err != nil {
+					_, err2 := c.RefreshAccountWithFrontend(&OfficialAccountBody{Biz: biz})
+					if err2 != nil {
+						failures_mu.Lock()
+						failures[biz] = err2.Error()
+						failures_mu.Unlock()
+						acct_mu.Lock()
+						existing := accounts[biz]
+						if existing == nil {
+							existing = &OfficialAccount{Biz: biz, IsEffective: true}
+						}
+						existing.Error = err2.Error()
+						existing.UpdateTime = time.Now().Unix()
+						accounts[biz] = existing
+						acct_mu.Unlock()
+						save_accounts()
+					} else {
+						atomic.AddInt64(&success, 1)
+						acct_mu.Lock()
+						if acct, ok := accounts[biz]; ok && acct != nil {
+							acct.Error = ""
+							accounts[biz] = acct
+						}
+						acct_mu.Unlock()
+					}
+				} else {
+					atomic.AddInt64(&success, 1)
+					acct_mu.Lock()
+					if acct, ok := accounts[biz]; ok && acct != nil {
+						acct.Error = ""
+						accounts[biz] = acct
+					}
+					acct_mu.Unlock()
+				}
+				atomic.AddInt64(&processed[idx], 1)
+			}
+		}(i, ws)
+	}
+	wg.Wait()
+	for i := range clients {
+		fmt.Printf("refresh_the_accounts_in_remote_server: client[%d] processed=%d\n", i, processed[i])
+	}
+	if int(success) == total {
+		fmt.Println("refresh_the_accounts_in_remote_server: all OfficialAccount refreshed completed")
+	} else {
+		fmt.Printf("refresh_the_accounts_in_remote_server: failed=%d\n", len(failures))
+		for biz, err := range failures {
+			fmt.Printf("refresh_the_accounts_in_remote_server: failed %s: %s\n", biz, err)
 		}
 	}
 	return nil

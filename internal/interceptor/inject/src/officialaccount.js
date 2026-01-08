@@ -58,24 +58,6 @@ var _OfficialAccountCredentials = {
   `;
   document.head.appendChild(style);
 
-  WXU.emit(WXU.Events.OfficialAccountRefresh, _OfficialAccountCredentials);
-  (async () => {
-    var origin = `https://${FakeAPIServerAddr}`;
-    var [err, res] = await WXU.request({
-      method: "POST",
-      url: `${origin}/api/mp/refresh?token=${
-        WXU.config.officialServerRefreshToken ?? ""
-      }`,
-      body: _OfficialAccountCredentials,
-    });
-    if (err) {
-      WXU.error({
-        msg: err.message,
-      });
-      return;
-    }
-  })();
-
   async function handle_api_call(msg, socket) {
     var { id, key, data } = msg;
     function resp(body) {
@@ -111,14 +93,68 @@ var _OfficialAccountCredentials = {
     return new Promise((resolve, reject) => {
       const protocol = "wss://";
       const ws = new WebSocket(protocol + FakeAPIServerAddr + "/ws/mp");
+      let ping_timer = null;
       ws.onopen = () => {
         WXU.log({
           msg: "ws/mp connected",
         });
+        WXU.emit(
+          WXU.Events.OfficialAccountRefresh,
+          _OfficialAccountCredentials
+        );
+        (async () => {
+          var origin = `https://${FakeAPIServerAddr}`;
+          var [err, res] = await WXU.request({
+            method: "POST",
+            url: `${origin}/api/mp/refresh?token=${
+              WXU.config.officialServerRefreshToken ?? ""
+            }`,
+            body: _OfficialAccountCredentials,
+          });
+          if (err) {
+            WXU.error({
+              msg: err.message,
+            });
+            return;
+          }
+        })();
+        var page_title =
+          document.title ||
+          _OfficialAccountCredentials.nickname ||
+          "公众号页面";
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "ping",
+              data: page_title,
+            })
+          );
+        } catch (e) {
+          // ...
+        }
+        ping_timer = setInterval(() => {
+          console.log("[]ping");
+          if (ws.readyState === 1) {
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "ping",
+                  data: page_title,
+                })
+              );
+            } catch (e) {
+              // ...
+            }
+          }
+        }, 5 * 1000);
         resolve(true);
       };
       ws.onclose = () => {
         console.log("ws/mp disconnected");
+        if (ping_timer) {
+          clearInterval(ping_timer);
+          ping_timer = null;
+        }
       };
       ws.onerror = (e) => {
         console.error("ws/mp error", e);

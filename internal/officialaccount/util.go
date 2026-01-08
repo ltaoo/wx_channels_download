@@ -10,9 +10,11 @@ import (
 )
 
 type Client struct {
-	hub  *OfficialAccountClient
-	conn *websocket.Conn
-	send chan []byte
+	conn      *websocket.Conn
+	send      chan []byte
+	title     string
+	available bool
+	last_ping int64
 }
 
 func (c *Client) write_pump() {

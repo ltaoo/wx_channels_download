@@ -31,6 +31,7 @@ func (c *APIClient) setupRoutes() {
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 		c.engine.GET("/api/mp/refresh_remote", c.official.HandleRefreshAllRemoteOfficialAccount)
 		c.engine.GET("/api/mp/refresh_account_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
+		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
 	}
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchOfficialAccountList)
@@ -38,6 +39,7 @@ func (c *APIClient) setupRoutes() {
 	c.engine.POST("/api/mp/refresh", c.official.HandleRefreshOfficialAccountEvent)
 	c.engine.GET("/rss/mp", c.official.HandleFetchMsgListOfOfficialAccountRSS)
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
+	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他
 	// c.engine.GET("/api/test", c.handleTest)
 

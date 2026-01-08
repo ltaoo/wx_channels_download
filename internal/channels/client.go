@@ -58,7 +58,7 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		return
 	}
 	c.ws_mu.Lock()
-	client := &Client{hub: c, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{conn: conn, send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 

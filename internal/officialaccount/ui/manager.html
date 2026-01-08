@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>公众号RSS管理</title>
+  <style>
+    :root {
+      color-scheme: dark light
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #0b0c0f;
+      color: #e6e6e6
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px
+    }
+    .whitespace-nowrap {
+      white-space: nowrap;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 22px
+    }
+
+    section {
+      background: #14171f;
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .25)
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px
+    }
+
+    th,
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      text-align: left
+    }
+
+    th {
+      color: #a8b3cf;
+      font-weight: 600
+    }
+
+    a {
+      color: #8ab4f8;
+      text-decoration: none
+    }
+
+    a:hover {
+      text-decoration: underline
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px
+    }
+
+    .ok {
+      background: #19361a;
+      color: #8fce95
+    }
+
+    .bad {
+      background: #3a1919;
+      color: #f28b82
+    }
+
+    .warn {
+      background: #332b12;
+      color: #fdd663
+    }
+
+    .muted {
+      color: #9aa0a6
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 12px
+    }
+
+    .footer {
+      margin-top: 8px;
+      color: #9aa0a6;
+      font-size: 12px
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: #1b1f2a;
+      color: #e6e6e6;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #222836 }
+    .btn:disabled { opacity: .6; cursor: not-allowed }
+    .btn-primary {
+      border-color: rgba(138, 180, 248, .3);
+      background: #223049;
+      color: #cfe1ff;
+    }
+    .btn-sm { height: 24px; padding: 0 8px; font-size: 12px }
+
+    .nowrap {
+      white-space: nowrap
+    }
+    .col-title {
+      min-width: 160px
+    }
+    .error-text {
+      margin-top: 4px;
+      color: #f28b82;
+      font-size: 12px;
+      word-break: break-word;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #222836;
+      object-fit: cover;
+      flex: 0 0 auto;
+    }
+  </style>
+  <script>
+    const REMOTE_SERVER = "%%REMOTE_SERVER%%";
+    const TOKEN = "%%TOKEN%%";
+    const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
+    function proxy(u) {
+      if (!u) return "";
+      const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
+      return "/mp/proxy?url=" + encodeURIComponent(u) + t;
+    }
+    function fmtTime(ts) {
+      if (!ts) return "-";
+      const d = new Date(ts * 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const y = d.getFullYear();
+      const m = pad(d.getMonth() + 1);
+      const day = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mm = pad(d.getMinutes());
+      const ss = pad(d.getSeconds());
+      return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+    }
+    function timeSince(ts) {
+      if (!ts) return "-";
+      const diff = Math.floor(Date.now() / 1000 - ts);
+      if (diff < 60) return diff + "s";
+      const m = Math.floor(diff / 60);
+      if (m < 60) return m + "m";
+      const h = Math.floor(m / 60);
+      return h + "h";
+    }
+    async function loadAccounts() {
+      try {
+        const url = "/api/mp/list" + (TOKEN ? ("?token=" + encodeURIComponent(TOKEN)) : "");
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.code !== 0) {
+          alert(j.msg || "接口错误");
+          return;
+        }
+        const list = (j.data && j.data.list) || [];
+        const tbody = document.querySelector("#accounts tbody");
+        tbody.innerHTML = "";
+        list.sort((a, b) => (b.update_time || 0) - (a.update_time || 0));
+        for (const it of list) {
+          const rss = REMOTE_SERVER ? `${REMOTE_SERVER}/rss/mp?biz=${encodeURIComponent(it.biz)}${TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ''}` : "-";
+          const tr = document.createElement("tr");
+          const eff = it.is_effective ? '<span class="pill ok">有效</span>' : '<span class="pill bad">失效</span>';
+          const errPill = it.error ? '<span class="pill bad">出错</span>' : '<span class="pill ok">正常</span>';
+          const errText = it.error ? `<div class="error-text">${it.error}</div>` : '';
+          const available = (it.is_effective && !it.error) ? '<span class="pill ok">可用</span>' : '<span class="pill warn">不可用</span>';
+          const avatar = it.avatar_url ? `<img class="avatar" src="${proxy(it.avatar_url)}" alt="">` : '';
+          const colName = `
+             <div class="row">
+               ${avatar}
+               <div>
+                 <div class="nowrap">${it.nickname || ""}</div>
+                 <div class="muted">${fmtTime(it.update_time || 0)} <span>(${timeSince(it.update_time || 0)} ago)</span></div>
+               </div>
+             </div>
+          `;
+          const colId = `
+             <div class="nowrap">${it.biz || ""}</div>
+             ${REMOTE_MODE ? '' : `<div><a href="${rss}" target="_blank">${rss}</a></div>`}
+          `;
+          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${errPill}${errText}`;
+          const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm whitespace-nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
+          tr.innerHTML = `
+           <td>${colName}</td>
+           <td>${colId}</td>
+           <td>${colStatus}</td>
+           ${REMOTE_MODE ? '' : `<td>${colRefresh}</td>`}
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        console.error(e);
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    async function refreshAll() {
+      try {
+        const r = await fetch("/api/mp/refresh_remote");
+        const j = await r.json().catch(() => ({}));
+        if (j && j.code !== undefined && j.code !== 0) {
+          alert(j.msg || "接口错误");
+        }
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+      loadAccounts();
+      loadWsPool();
+    }
+    async function refreshOne(btn, biz) {
+      if (!biz) return;
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = "刷新中";
+      try {
+        const url = "/api/mp/refresh_account_with_frontend?biz=" + encodeURIComponent(biz);
+        const r = await fetch(url);
+        const j = await r.json().catch(() => ({}));
+        if (j && j.code !== undefined && j.code !== 0) {
+          alert(j.msg || "接口错误");
+        }
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+      btn.disabled = false;
+      btn.textContent = old;
+      loadAccounts();
+    }
+    async function loadWsPool() {
+      try {
+        const r = await fetch("/api/mp/ws_pool");
+        const j = await r.json();
+        if (j.code !== 0) {
+          alert(j.msg || "接口错误");
+          return;
+        }
+        const list = (j.data && j.data.list) || [];
+        const tbody = document.querySelector("#ws tbody");
+        tbody.innerHTML = "";
+        for (const it of list) {
+          const healthy = (Math.floor(Date.now() / 1000) - (it.last_ping || 0)) <= 15 && it.available;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="col-title nowrap">${it.title || ""}</td>
+            <td class="nowrap">
+              ${healthy ? '<span class="pill ok">可用</span>' : '<span class="pill warn">不可用</span>'}
+              <span class="muted">${fmtTime(it.last_ping || 0)} (${timeSince(it.last_ping || 0)} ago)</span>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        console.error(e);
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    function bootstrap() {
+      loadAccounts();
+      if (!REMOTE_MODE) {
+        loadWsPool();
+      }
+      const grid = document.querySelector(".grid");
+      const toolbar = document.querySelector("#accounts .toolbar");
+      if (toolbar) {
+        toolbar.style.display = REMOTE_MODE ? "none" : "";
+      }
+      const wsSection = document.querySelector("#ws");
+      if (wsSection) {
+        wsSection.style.display = REMOTE_MODE ? "none" : "";
+      }
+      if (grid) {
+        grid.style.gridTemplateColumns = REMOTE_MODE ? "1fr" : "1fr 360px";
+      }
+      const theadRow = document.querySelector("#accounts thead tr");
+      if (theadRow && REMOTE_MODE) {
+        theadRow.innerHTML = `
+          <th>昵称 / 最近更新时间</th>
+          <th>ID</th>
+          <th>是否可用</th>
+        `;
+      }
+    }
+    document.addEventListener("DOMContentLoaded", bootstrap);
+  </script>
+</head>
+
+<body>
+  <div class="container">
+    <h1>公众号管理</h1>
+    <div class="grid">
+      <section id="accounts">
+        <h2>账号列表</h2>
+        <div class="toolbar">
+          <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>昵称 / 最近更新时间</th>
+              <th>ID / RSS 链接</th>
+              <th>状态</th>
+              <th>刷新</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section id="ws">
+        <h2>WebSocket 池</h2>
+        <table>
+          <thead>
+            <tr>
+              <th class="col-title">标题</th>
+              <th>是否可用 / 最近心跳</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+</body>
+
+</html>
