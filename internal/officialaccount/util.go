@@ -15,7 +15,7 @@ type Client struct {
 	send chan []byte
 }
 
-func (c *Client) writePump() {
+func (c *Client) write_pump() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer func() {
 		ticker.Stop()

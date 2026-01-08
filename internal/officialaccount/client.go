@@ -154,13 +154,15 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 			}
 		}()
 	}
-	go func() {
-		ticker := time.NewTicker(20 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			c.RefreshAllRemoteOfficialAccount()
-		}
-	}()
+	if !cfg.RemoteMode {
+		go func() {
+			ticker := time.NewTicker(20 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				c.RefreshAllRemoteOfficialAccount()
+			}
+		}()
+	}
 	return c
 }
 
@@ -174,7 +176,7 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
-	go client.writePump()
+	go client.write_pump()
 
 	defer func() {
 		c.ws_mu.Lock()
@@ -201,21 +203,6 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 			}
 		}
 	}
-}
-
-func (c *OfficialAccountClient) ValidateToken(t string) bool {
-	if len(c.Tokens) == 0 {
-		return true
-	}
-	if t == "" {
-		return false
-	}
-	for _, v := range c.Tokens {
-		if v == t {
-			return true
-		}
-	}
-	return false
 }
 
 // 获取公众号推送列表
@@ -291,6 +278,10 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccount(ctx *gin.Context) {
 }
 
 func (c *OfficialAccountClient) HandleRefreshAllRemoteOfficialAccount(ctx *gin.Context) {
+	if err := c.Validate(); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
 	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
 	result.Ok(ctx, nil)
 }
@@ -577,6 +568,21 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	}
 }
 
+func (c *OfficialAccountClient) ValidateToken(t string) bool {
+	if len(c.Tokens) == 0 {
+		return true
+	}
+	if t == "" {
+		return false
+	}
+	for _, v := range c.Tokens {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *OfficialAccountClient) Validate() error {
 	// wc.clientsMu.Lock()
 	// defer wc.clientsMu.Unlock()
@@ -735,6 +741,9 @@ func (c *OfficialAccountClient) RefreshAccount(body *OfficialAccountBody) (*Offi
 	}
 }
 func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() {
+	if err := c.Validate(); err != nil {
+		return
+	}
 	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
 }
 func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) {
@@ -813,18 +822,19 @@ func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*Of
 		existing = data
 	}
 	acct_mu.RUnlock()
-	if existing == nil && !c.RemoteMode {
-		fmt.Println("there is no existing account, refresh the account with frontend")
-		r, err := c.RefreshAccount(&OfficialAccountBody{
-			Biz: biz,
-		})
-		if err != nil {
-			return nil, err
-		}
-		existing = r
-	}
 	if existing == nil {
-		return nil, errors.New("Please adding Credentials first")
+		if !c.RemoteMode {
+			fmt.Println("there is no existing account, refresh the account with frontend")
+			r, err := c.RefreshAccount(&OfficialAccountBody{
+				Biz: biz,
+			})
+			if err != nil {
+				return nil, err
+			}
+			existing = r
+		} else {
+			return nil, errors.New("Please adding Credentials first")
+		}
 	}
 	target_url := c.BuildMsgListURL(existing)
 	fmt.Println("[API]fetch account msg list1", target_url)
@@ -841,26 +851,33 @@ func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*Of
 	}
 	if data.Ret != 0 {
 		if data.Ret == -3 {
-			acct, err := c.RefreshAccount(&OfficialAccountBody{
-				Biz: biz,
-			})
-			if err != nil {
-				return nil, err
-			}
-			target_url := c.BuildMsgListURL(acct)
-			fmt.Println("[API]fetch account msg list2", target_url)
-			resp, err = c.Fetch(target_url)
-			if err != nil {
-				return nil, err
-			}
-			defer resp.Body.Close()
-			resp_bytes, err := io.ReadAll(resp.Body)
-			err = json.Unmarshal(resp_bytes, &data)
-			if err != nil {
-				return nil, err
-			}
-			if data.Ret == 0 {
-				return &data, nil
+			if !c.RemoteMode {
+				acct, err := c.RefreshAccount(&OfficialAccountBody{
+					Biz: biz,
+				})
+				if err != nil {
+					return nil, err
+				}
+				target_url := c.BuildMsgListURL(acct)
+				fmt.Println("[API]fetch account msg list2", target_url)
+				resp, err = c.Fetch(target_url)
+				if err != nil {
+					return nil, err
+				}
+				defer resp.Body.Close()
+				resp_bytes, err := io.ReadAll(resp.Body)
+				err = json.Unmarshal(resp_bytes, &data)
+				if err != nil {
+					return nil, err
+				}
+				if data.Ret == 0 {
+					return &data, nil
+				}
+			} else {
+				existing.IsEffective = false
+				existing.UpdateTime = time.Now().Unix()
+				save_accounts()
+				return nil, errors.New("the Account is expired")
 			}
 		}
 		return nil, errors.New(data.ErrMsg)

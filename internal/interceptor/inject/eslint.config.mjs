@@ -36,6 +36,7 @@ export default [
         render_extra_menu_items: "writable",
         FakeAPIServerAddr: "writeable",
         FakeOfficialAccountServerAddr: "writeable",
+        insert_channels_style: "writeable",
         MoreIcon: "writable",
         download_icon1: "writable",
         download_icon2: "writable",

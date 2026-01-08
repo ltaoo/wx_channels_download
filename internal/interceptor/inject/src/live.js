@@ -69,6 +69,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
 }
 
 (() => {
+  insert_channels_style();
   var error_tip_timer = setTimeout(() => {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
