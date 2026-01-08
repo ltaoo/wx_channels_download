@@ -78,6 +78,7 @@ type OfficialAccountClient struct {
 	RemoteServerProtocol string
 	RemoteServerHostname string
 	RemoteServerPort     int
+	RefreshSkipMinutes   int
 	Tokens               []string
 	Cookies              []*http.Cookie
 	ws_clients           map[*Client]bool
@@ -97,7 +98,7 @@ type OfficialAccount struct {
 	Nickname    string `json:"nickname"`
 	AvatarURL   string `json:"avatar_url"`
 	Biz         string `json:"biz"`
-	Uin         string
+	Uin         string `json:"uin"`
 	Key         string `json:"key"`
 	PassTicket  string `json:"pass_ticket"`
 	AppmsgToken string `json:"appmsg_token"`
@@ -112,6 +113,7 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient
 		RemoteServerProtocol: cfg.RemoteServerProtocol,
 		RemoteServerHostname: cfg.RemoteServerHostname,
 		RemoteServerPort:     cfg.RemoteServerPort,
+		RefreshSkipMinutes:   cfg.RefreshSkipMinutes,
 		RefreshToken:         cfg.RefreshToken,
 		Tokens:               make([]string, 0),
 		ws_clients:           make(map[*Client]bool),
@@ -229,16 +231,16 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountMsgList(ctx *gin.Conte
 	offset := ctx.Query("offset")
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
-		result.Err(ctx, 1002, "incorrect token")
+		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
 	_offset, err := strconv.Atoi(offset)
 	if err != nil {
 		_offset = 0
 	}
-	data, err := c.FetchAccountMsgList(biz, _offset)
+	data, err := c.FetchMsgList(biz, _offset)
 	if err != nil {
-		result.Err(ctx, 1002, err.Error())
+		result.ErrCode(ctx, result.CodeFetchMsgFailed)
 		return
 	}
 	result.Ok(ctx, data)
@@ -248,15 +250,34 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountMsgList(ctx *gin.Conte
 func (c *OfficialAccountClient) HandleFetchOfficialAccountList(ctx *gin.Context) {
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
-		result.Err(ctx, 1002, "incorrect token")
+		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
-	var list []*OfficialAccount
-	acct_mu.RLock()
-	for _, acct := range accounts {
-		list = append(list, acct)
+	type SafeOfficialAccount struct {
+		*OfficialAccount
+		Uin *string `json:"uin,omitempty"`
 	}
-	acct_mu.RUnlock()
+	var list []SafeOfficialAccount
+	now := time.Now().Unix()
+	changed := false
+	acct_mu.Lock()
+	for _, acct := range accounts {
+		if acct != nil && acct.UpdateTime > 0 {
+			if now-acct.UpdateTime > 30*60 {
+				if acct.IsEffective {
+					changed = true
+				}
+				acct.IsEffective = false
+			}
+		}
+		list = append(list, SafeOfficialAccount{
+			OfficialAccount: acct,
+		})
+	}
+	acct_mu.Unlock()
+	if changed {
+		save_accounts()
+	}
 	result.Ok(ctx, gin.H{
 		"list": list,
 	})
@@ -266,16 +287,16 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountList(ctx *gin.Context)
 func (c *OfficialAccountClient) HandleRefreshOfficialAccountEvent(ctx *gin.Context) {
 	token := ctx.Query("token")
 	if token != c.RefreshToken {
-		result.Err(ctx, 401, "Incorrect token")
+		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
 	var body OfficialAccount
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
+		result.ErrCode(ctx, result.CodeInvalidParams)
 		return
 	}
 	if body.Biz == "" || body.Key == "" {
-		result.Err(ctx, 400, "Missing the biz parameter")
+		result.ErrCode(ctx, result.CodeMissingBiz)
 		return
 	}
 	body.IsEffective = true
@@ -297,27 +318,27 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountEvent(ctx *gin.Conte
 
 func (c *OfficialAccountClient) HandleRefreshAllRemoteOfficialAccount(ctx *gin.Context) {
 	if err := c.Validate(); err != nil {
-		result.Err(ctx, 500, err.Error())
+		result.ErrCode(ctx, result.CodeClientNotReady)
 		return
 	}
-	go c.RefreshAllRemoteOfficialAccount()
+	c.RefreshAllRemoteOfficialAccount()
 	result.Ok(ctx, nil)
 }
 func (c *OfficialAccountClient) HandleRefreshRemoteOfficialAccount(ctx *gin.Context) {
 	if err := c.Validate(); err != nil {
-		result.Err(ctx, 500, err.Error())
+		result.ErrCode(ctx, result.CodeClientNotReady)
 		return
 	}
 	result.Ok(ctx, nil)
 }
 func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gin.Context) {
 	if err := c.Validate(); err != nil {
-		result.Err(ctx, 500, err.Error())
+		result.ErrCode(ctx, result.CodeClientNotReady)
 		return
 	}
 	biz := ctx.Query("biz")
 	if biz == "" {
-		result.Err(ctx, 400, "Missing the biz")
+		result.ErrCode(ctx, result.CodeMissingBiz)
 		return
 	}
 	c.RefreshAccountWithFrontend(&OfficialAccountBody{
@@ -343,16 +364,16 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
-		result.Err(ctx, 401, "incorrect token")
+		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
 	_offset, err := strconv.Atoi(offset)
 	if err != nil {
 		_offset = 0
 	}
-	data, err := c.FetchAccountMsgList(biz, _offset)
+	data, err := c.FetchMsgList(biz, _offset)
 	if err != nil {
-		result.Err(ctx, 1002, err.Error())
+		result.ErrCode(ctx, result.CodeFetchMsgFailed)
 		return
 	}
 	var list struct {
@@ -360,7 +381,7 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 	}
 	err = json.Unmarshal([]byte(data.MsgList), &list)
 	if err != nil {
-		result.Err(ctx, 1002, err.Error())
+		result.ErrCode(ctx, result.CodeDataParseFailed)
 		return
 	}
 	var acct *OfficialAccount
@@ -370,7 +391,7 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 	}
 	acct_mu.RUnlock()
 	if acct == nil {
-		result.Err(ctx, 1002, "Can't find matched account")
+		result.ErrCode(ctx, result.CodeAccountNotFound)
 		return
 	}
 	feed_title := acct.Nickname
@@ -534,11 +555,11 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	targetURL := ctx.Query("url")
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
-		result.Err(ctx, 401, "incorrect token")
+		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
 	if targetURL == "" {
-		result.Err(ctx, 400, "Missing url parameter")
+		result.ErrCode(ctx, result.CodeMissingUrl)
 		return
 	}
 	// 尝试进行一次 URL 解码，防止传入的是双重编码的 URL
@@ -552,7 +573,7 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
-		result.Err(ctx, 2000, err.Error())
+		result.ErrCode(ctx, result.CodeProxyRequestErr)
 		// ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -570,7 +591,7 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
 	resp, err := client.Do(req)
 	if err != nil {
-		result.Err(ctx, 2001, err.Error())
+		result.ErrCode(ctx, result.CodeProxyDispatchErr)
 		// ctx.String(http.StatusBadGateway, err.Error())
 		return
 	}
@@ -667,7 +688,7 @@ func (c *OfficialAccountClient) Validate() error {
 	empty := len(c.ws_clients) == 0
 	c.ws_mu.RUnlock()
 	if empty {
-		return errors.New("请先初始化客户端 socket 连接")
+		return errors.New(result.GetMsg(result.CodeClientNotReady))
 	}
 	return nil
 }
@@ -684,7 +705,7 @@ func (c *OfficialAccountClient) EnsureFrontendReady(timeout time.Duration) error
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return errors.New("请先初始化客户端 socket 连接")
+			return errors.New(result.GetMsg(result.CodeClientNotReady))
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -720,7 +741,7 @@ func (c *OfficialAccountClient) RequestFrontend(endpoint string, body interface{
 	}
 	c.ws_mu.RUnlock()
 	if client == nil {
-		return nil, errors.New("没有可用的客户端")
+		return nil, errors.New(result.GetMsg(result.CodeClientNotReady))
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -733,7 +754,7 @@ func (c *OfficialAccountClient) RequestFrontend(endpoint string, body interface{
 			goto WAIT_RESP
 		default:
 			if time.Now().After(end) {
-				return nil, errors.New("发送缓冲区已满")
+				return nil, errors.New(result.GetMsg(result.CodeClientBusy))
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -743,7 +764,7 @@ WAIT_RESP:
 	case resp := <-resp_chan:
 		return &resp, nil
 	case <-time.After(timeout):
-		return nil, errors.New("请求超时")
+		return nil, errors.New(result.GetMsg(result.CodeTimeout))
 	}
 }
 func (c *OfficialAccountClient) ListClients() []*Client {
@@ -855,20 +876,21 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 		fmt.Printf("RefreshAccount %s cost: %v\n", body.Biz, time.Since(start))
 	}()
 	if body.Biz == "" {
-		return nil, errors.New("Missing the biz parameter")
+		return nil, errors.New(result.GetMsg(result.CodeMissingBiz))
 	}
 	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
 		return nil, err
 	}
-	// acct_mu.RLock()
-	// if acct, ok := accounts[body.Biz]; ok {
-	// 	fmt.Println("[]RefreshAccountWithFrontend", acct.UpdateTime, time.Now().Unix()-acct.UpdateTime)
-	// 	if time.Now().Unix()-acct.UpdateTime < 5*60 {
-	// 		acct_mu.RUnlock()
-	// 		return acct, nil
-	// 	}
-	// }
-	// acct_mu.RUnlock()
+	acct_mu.RLock()
+	if acct, ok := accounts[body.Biz]; ok {
+		fmt.Println("[]RefreshAccountWithFrontend", acct.UpdateTime, time.Now().Unix()-acct.UpdateTime)
+		if time.Now().Unix()-acct.UpdateTime < 5*60 {
+			acct_mu.RUnlock()
+			go c.PushCredentialToRemoteServer(acct)
+			return acct, nil
+		}
+	}
+	acct_mu.RUnlock()
 	c.wait_mu.Lock()
 	if ch, ok := c.wait_chan_map[body.Biz]; ok {
 		c.wait_mu.Unlock()
@@ -876,7 +898,7 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 		case acct := <-ch:
 			return acct, nil
 		case <-time.After(20 * time.Second):
-			return nil, errors.New("request timeout")
+			return nil, errors.New(result.GetMsg(result.CodeTimeout))
 		}
 	}
 	ch := make(chan *OfficialAccount, 1)
@@ -902,13 +924,13 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 		accounts[acct.Biz] = acct
 		acct_mu.Unlock()
 		save_accounts()
-		go c.PushCredentialToRemoteServer(c.RemoteServerAddr, acct)
+		go c.PushCredentialToRemoteServer(acct)
 		return acct, nil
 	case <-time.After(20 * time.Second):
 		c.wait_mu.Lock()
 		delete(c.wait_chan_map, body.Biz)
 		c.wait_mu.Unlock()
-		return nil, errors.New("request timeout")
+		return nil, errors.New(result.GetMsg(result.CodeTimeout))
 	}
 }
 func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *OfficialAccountBody, ws *Client) (*OfficialAccount, error) {
@@ -917,7 +939,7 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *Officia
 		fmt.Printf("RefreshAccount %s cost: %v\n", body.Biz, time.Since(start))
 	}()
 	if body.Biz == "" {
-		return nil, errors.New("Missing the biz parameter")
+		return nil, errors.New(result.GetMsg(result.CodeMissingBiz))
 	}
 	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
 		return nil, err
@@ -929,7 +951,7 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *Officia
 		case acct := <-ch:
 			return acct, nil
 		case <-time.After(20 * time.Second):
-			return nil, errors.New("request timeout")
+			return nil, errors.New(result.GetMsg(result.CodeTimeout))
 		}
 	}
 	ch := make(chan *OfficialAccount, 1)
@@ -955,13 +977,13 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *Officia
 		accounts[acct.Biz] = acct
 		acct_mu.Unlock()
 		save_accounts()
-		go c.PushCredentialToRemoteServer(c.RemoteServerAddr, acct)
+		go c.PushCredentialToRemoteServer(acct)
 		return acct, nil
 	case <-time.After(20 * time.Second):
 		c.wait_mu.Lock()
 		delete(c.wait_chan_map, body.Biz)
 		c.wait_mu.Unlock()
-		return nil, errors.New("request timeout")
+		return nil, errors.New(result.GetMsg(result.CodeTimeout))
 	}
 }
 func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() error {
@@ -1006,20 +1028,31 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 	items := out.Data.List
 	clients := c.ListClients()
 	if len(clients) == 0 {
-		return errors.New("没有可用的客户端")
+		return errors.New(result.GetMsg(result.CodeClientNotReady))
 	}
+	skip_minutes := c.RefreshSkipMinutes
+	skip_seconds := int64(skip_minutes) * 60
+	now := time.Now().Unix()
 	total := 0
-	for _, item := range items {
-		if item.Biz != "" {
-			total++
-		}
-	}
-	fmt.Printf("refresh_the_accounts_in_remote_server: origin=%s, out_list_count=%d\n", origin, total)
+	fmt.Printf("refresh_the_accounts_in_remote_server: origin=%s, skip_threshold=%dmin\n", origin, skip_minutes)
 	jobs := make(chan string, len(items))
 	for _, item := range items {
-		if item.Biz != "" {
-			jobs <- item.Biz
+		if item.Biz == "" {
+			continue
 		}
+		should_skip := false
+		acct_mu.RLock()
+		if acct, ok := accounts[item.Biz]; ok && acct != nil {
+			if acct.UpdateTime > 0 && now-acct.UpdateTime <= skip_seconds {
+				should_skip = true
+			}
+		}
+		acct_mu.RUnlock()
+		if should_skip {
+			continue
+		}
+		jobs <- item.Biz
+		total++
 	}
 	close(jobs)
 	var wg sync.WaitGroup
@@ -1086,7 +1119,8 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 	return nil
 }
 
-func (c *OfficialAccountClient) PushCredentialToRemoteServer(server string, credential *OfficialAccount) error {
+func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *OfficialAccount) error {
+	server := c.RemoteServerAddr
 	if server == "" || credential == nil {
 		return errors.New("server or credential is empty")
 	}
@@ -1120,7 +1154,7 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(server string, cred
 		return err
 	}
 	if out.Code != 0 {
-		return fmt.Errorf("PushCredentialToRemoteServer failed, code: %d", out.Code)
+		return fmt.Errorf("%s (code: %d)", result.GetMsg(result.CodeRemotePushFailed), out.Code)
 	}
 	return nil
 }
@@ -1128,28 +1162,23 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(server string, cred
 func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount) string {
 	u := "https://mp.weixin.qq.com/mp/profile_ext"
 	query := map[string]string{
-		"action":       "getmsg",
-		"__biz":        acct.Biz,
-		"uin":          acct.Uin,
-		"key":          acct.Key,
-		"pass_ticket":  acct.PassTicket,
-		"wxtoken":      "",
-		"appmsg_token": acct.AppmsgToken,
-		"x5":           "0",
-		"count":        "10",
-		"offset":       "0",
-		"f":            "json",
+		"action":      "getmsg",
+		"__biz":       acct.Biz,
+		"uin":         acct.Uin,
+		"key":         acct.Key,
+		"pass_ticket": acct.PassTicket,
+		"wxtoken":     "",
+		"x5":          "0",
+		"count":       "10",
+		"offset":      "0",
+		"f":           "json",
 	}
 	target_url := c.BuildURL(u, query)
 	return target_url
 }
 
 // 获取指定公众号的推送列表
-func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*OfficialMsgListResp, error) {
-	err := c.Validate()
-	if err != nil {
-		return nil, err
-	}
+func (c *OfficialAccountClient) FetchMsgList(biz string, offset int) (*OfficialMsgListResp, error) {
 	var existing *OfficialAccount
 	acct_mu.RLock()
 	if _, ok := accounts[biz]; ok {
@@ -1158,10 +1187,10 @@ func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*Of
 	}
 	acct_mu.RUnlock()
 	if existing == nil {
-		return nil, errors.New("Please adding Credentials first")
+		return nil, errors.New(result.GetMsg(result.CodeAccountNotFound))
 	}
 	target_url := c.BuildMsgListURL(existing)
-	fmt.Println("[API]fetch account msg list1", target_url)
+	// fmt.Println("[API]fetch account msg list1", target_url)
 	resp, err := c.Fetch(target_url)
 	if err != nil {
 		return nil, err
@@ -1177,7 +1206,7 @@ func (c *OfficialAccountClient) FetchAccountMsgList(biz string, offset int) (*Of
 		if data.Ret == -3 {
 			existing.IsEffective = false
 			save_accounts()
-			return nil, errors.New("the Account is expired")
+			return nil, errors.New(result.GetMsg(result.CodeAccountExpired))
 		}
 		return nil, errors.New(data.ErrMsg)
 	}
@@ -1198,6 +1227,22 @@ func (c *OfficialAccountClient) Stop() {
 		delete(c.ws_clients, client)
 	}
 	c.ws_mu.Unlock()
+}
+
+func friendlyErrMsg(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch err.Error() {
+	case "Please adding Credentials first":
+		return "请先添加凭证"
+	case "the Account is expired":
+		return "账号凭证已过期"
+	case "request timeout":
+		return "请求超时"
+	default:
+		return err.Error()
+	}
 }
 
 func fetch_full_content(u string) string {
