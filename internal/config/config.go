@@ -297,43 +297,19 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 	})
 	Register(ConfigItem{
-		Key:         "cloudflare.kv.accounts",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Cloudflare KV Namespace ID for Accounts",
-		Title:       "KV Accounts ID",
-		Group:       "Cloudflare",
-	})
-	Register(ConfigItem{
-		Key:         "cloudflare.kv.messages",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Cloudflare KV Namespace ID for Messages",
-		Title:       "KV Messages ID",
-		Group:       "Cloudflare",
-	})
-	Register(ConfigItem{
-		Key:         "cloudflare.kv.accounts_preview",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Cloudflare KV Namespace Preview ID for Accounts",
-		Title:       "KV Accounts Preview ID",
-		Group:       "Cloudflare",
-	})
-	Register(ConfigItem{
-		Key:         "cloudflare.kv.messages_preview",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Cloudflare KV Namespace Preview ID for Messages",
-		Title:       "KV Messages Preview ID",
-		Group:       "Cloudflare",
-	})
-	Register(ConfigItem{
-		Key:         "cloudflare.worker_name",
+		Key:         "cloudflare.workerName",
 		Type:        ConfigTypeString,
 		Default:     "official-account-api",
 		Description: "Cloudflare Worker Name",
 		Title:       "Worker Name",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.d1.databaseId",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare D1 Database ID",
+		Title:       "D1 Database ID",
 		Group:       "Cloudflare",
 	})
 

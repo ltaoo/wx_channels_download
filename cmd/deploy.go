@@ -9,14 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"wx_channel/pkg/cloudflare/worker"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"wx_channel/pkg/cloudflare/worker"
 )
 
-var deployCmd = &cobra.Command{
+var deploy_cmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "部署 Cloudflare Worker",
 	Long:  "读取配置文件中的 Cloudflare 配置，通过 Cloudflare REST API 直接部署 Worker",
@@ -26,79 +27,79 @@ var deployCmd = &cobra.Command{
 }
 
 func init() {
-	Register(deployCmd)
+	Register(deploy_cmd)
 }
 
 func deploy() {
 	fmt.Println(color.GreenString("开始部署 Cloudflare Worker (REST API)..."))
 
 	// 1. 获取配置
-	accountID := viper.GetString("cloudflare.accountId")
-	authToken := viper.GetString("cloudflare.authToken")
-	workerName := viper.GetString("cloudflare.worker_name")
-	d1DatabaseID := viper.GetString("cloudflare.d1.database_id")
-	refreshToken := viper.GetString("cloudflare.refreshToken")
-	remoteServer := viper.GetString("mp.remoteServer.hostname")
+	account_id := viper.GetString("cloudflare.accountId")
+	auth_token := viper.GetString("cloudflare.authToken")
+	worker_name := viper.GetString("cloudflare.workerName")
+	d1_database_id := viper.GetString("cloudflare.d1.databaseId")
+	refresh_token := viper.GetString("cloudflare.refreshToken")
+	remote_server_hostname := viper.GetString("mp.remoteServer.hostname")
 
-	if authToken == "" || accountID == "" {
+	if auth_token == "" || account_id == "" {
 		fmt.Println(color.RedString("错误: 未配置 Cloudflare Auth Token 或 Account ID"))
 		return
 	}
-	if d1DatabaseID == "" {
-		fmt.Println(color.RedString("错误: 未配置 D1 Database ID (cloudflare.d1.database_id)"))
+	if d1_database_id == "" {
+		fmt.Println(color.RedString("错误: 未配置 D1 Database ID (cloudflare.d1.databaseId)"))
 		return
 	}
 
 	// 1.5 执行数据库初始化 (直接调用 API)
 	fmt.Println(color.GreenString("正在验证 D1 数据库连接..."))
-	if err := verifyD1Database(accountID, authToken, d1DatabaseID); err != nil {
+	if err := verify_d1_database(account_id, auth_token, d1_database_id); err != nil {
 		fmt.Println(color.RedString("D1 数据库验证失败: %v", err))
 		return
 	}
 
-	workerDir := filepath.Join(Cfg.RootDir, "internal", "officialaccount", "worker")
+	worker_dir := filepath.Join(Cfg.RootDir, "internal", "officialaccount", "worker")
 
 	// 1.6 执行数据库迁移
 	fmt.Println(color.GreenString("正在检查并执行数据库迁移..."))
 
-	if err := runMigrations(accountID, authToken, d1DatabaseID, filepath.Join(workerDir, "migrations")); err != nil {
+	if err := run_migrations(account_id, auth_token, d1_database_id, filepath.Join(worker_dir, "migrations")); err != nil {
 		fmt.Println(color.RedString("数据库迁移失败: %v", err))
 	}
-	scriptPath := filepath.Join(workerDir, "index.js")
-	scriptContent, err := os.ReadFile(scriptPath)
+	script_path := filepath.Join(worker_dir, "index.js")
+	script_content, err := os.ReadFile(script_path)
 	if err != nil {
 		fmt.Println(color.RedString("读取 Worker 脚本失败: %v", err))
 		return
 	}
 
 	// 3. 构造部署参数
-	deployBody := worker.DeployBody{
-		AccountID:         accountID,
-		AuthToken:         authToken,
-		WorkerName:        workerName,
-		ScriptContent:     scriptContent,
+	deploy_body := worker.DeployBody{
+		AccountID:         account_id,
+		AuthToken:         auth_token,
+		WorkerName:        worker_name,
+		ScriptContent:     script_content,
 		CompatibilityDate: "2024-01-01",
 		Bindings: []worker.Binding{
-			{Type: "d1", Name: "DB", ID: d1DatabaseID},
-			{Type: "plain_text", Name: "AUTH_TOKEN", Text: authToken},
-			{Type: "plain_text", Name: "REFRESH_TOKEN", Text: refreshToken},
-			{Type: "plain_text", Name: "REMOTE_SERVER", Text: remoteServer},
+			{Type: "d1", Name: "DB", ID: d1_database_id},
+			{Type: "plain_text", Name: "AUTH_TOKEN", Text: auth_token},
+			{Type: "plain_text", Name: "REFRESH_TOKEN", Text: refresh_token},
+			{Type: "plain_text", Name: "REMOTE_SERVER", Text: remote_server_hostname},
 		},
 	}
 
 	// 4. 执行部署
-	fmt.Printf("正在部署到 Cloudflare (Account: %s, Worker: %s)...\n", accountID, workerName)
-	workerID, err := worker.Deploy(deployBody)
+	fmt.Printf("正在部署到 Cloudflare (Account: %s, Worker: %s)...\n", account_id, worker_name)
+	worker_id, err := worker.Deploy(deploy_body)
 	if err != nil {
 		fmt.Println(color.RedString("部署失败: %v", err))
 		return
 	}
 
 	fmt.Println(color.GreenString("部署成功!"))
-	fmt.Printf("Worker ID: %s\n", workerID)
+	fmt.Printf("Worker ID: %s\n", worker_id)
 }
 
-func verifyD1Database(accountID, authToken, databaseID string) error {
+func verify_d1_database(accountID, authToken, databaseID string) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s", accountID, databaseID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -121,9 +122,9 @@ func verifyD1Database(accountID, authToken, databaseID string) error {
 	return nil
 }
 
-func runMigrations(accountID, authToken, databaseID, migrationsDir string) error {
+func run_migrations(accountID, authToken, databaseID, migrationsDir string) error {
 	// 1. Ensure migrations table exists
-	_, err := queryD1(accountID, authToken, databaseID, `CREATE TABLE IF NOT EXISTS d1_migrations (
+	_, err := query_d1(accountID, authToken, databaseID, `CREATE TABLE IF NOT EXISTS d1_migrations (
 		id INTEGER PRIMARY KEY,
 		name TEXT,
 		applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -133,7 +134,7 @@ func runMigrations(accountID, authToken, databaseID, migrationsDir string) error
 	}
 
 	// 2. Get applied migrations
-	resp, err := queryD1(accountID, authToken, databaseID, "SELECT id FROM d1_migrations", nil)
+	resp, err := query_d1(accountID, authToken, databaseID, "SELECT id FROM d1_migrations", nil)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %v", err)
 	}
@@ -179,7 +180,7 @@ func runMigrations(accountID, authToken, databaseID, migrationsDir string) error
 		// We append the INSERT statement to ensure atomicity.
 		fullSQL := string(content) + fmt.Sprintf("\nINSERT INTO d1_migrations (id, name) VALUES (%d, '%s');", id, file.Name())
 
-		if _, err := queryD1(accountID, authToken, databaseID, fullSQL, nil); err != nil {
+		if _, err := query_d1(accountID, authToken, databaseID, fullSQL, nil); err != nil {
 			return fmt.Errorf("failed to execute migration %s: %v", file.Name(), err)
 		}
 		fmt.Printf("Migration %s applied successfully\n", file.Name())
@@ -206,22 +207,22 @@ type D1Response struct {
 	} `json:"errors"`
 }
 
-func queryD1(accountID, authToken, databaseID, sqlStr string, params []any) (*D1Response, error) {
-	reqBody := map[string]any{
+func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D1Response, error) {
+	req_body := map[string]any{
 		"sql":    sqlStr,
 		"params": params,
 	}
-	if reqBody["params"] == nil {
-		reqBody["params"] = []any{}
+	if req_body["params"] == nil {
+		req_body["params"] = []any{}
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
+	json_body, err := json.Marshal(req_body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s/query", accountID, databaseID)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json_body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -259,14 +260,14 @@ func queryD1(accountID, authToken, databaseID, sqlStr string, params []any) (*D1
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	var d1Resp D1Response
-	if err := json.Unmarshal(body, &d1Resp); err != nil {
+	var d1_resp D1Response
+	if err := json.Unmarshal(body, &d1_resp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %v, body: %s", err, string(body))
 	}
 
-	if !d1Resp.Success {
+	if !d1_resp.Success {
 		var sb strings.Builder
-		for _, e := range d1Resp.Errors {
+		for _, e := range d1_resp.Errors {
 			sb.WriteString(fmt.Sprintf("[%d] %s; ", e.Code, e.Message))
 			if strings.Contains(e.Message, "SQLITE_AUTH") {
 				sb.WriteString(fmt.Sprintf(" (Hint: Check if Token has 'D1:Edit' permission, and AccountID '%s' matches DatabaseID '%s')", accountID, databaseID))
@@ -275,5 +276,5 @@ func queryD1(accountID, authToken, databaseID, sqlStr string, params []any) (*D1
 		return nil, fmt.Errorf("D1 API error: %s", sb.String())
 	}
 
-	return &d1Resp, nil
+	return &d1_resp, nil
 }

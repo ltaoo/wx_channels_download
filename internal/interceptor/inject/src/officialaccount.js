@@ -1,12 +1,3 @@
-var _OfficialAccountCredentials = {
-  nickname: window.nickname,
-  avatar_url: window.headimg,
-  biz: window.biz || window.__biz,
-  uin: window.uin,
-  key: window.key,
-  pass_ticket: window.pass_ticket,
-  appmsg_token: window.appmsg_token,
-};
 (() => {
   var style = document.createElement("style");
   style.textContent = `
@@ -89,6 +80,15 @@ var _OfficialAccountCredentials = {
       payload: msg,
     });
   }
+  var _OfficialAccountCredentials = {
+    nickname: window.nickname,
+    avatar_url: window.headimg || window.head_img || window.round_head_img,
+    biz: window.biz || window.__biz,
+    uin: window.uin,
+    key: window.key,
+    pass_ticket: window.pass_ticket,
+    appmsg_token: window.appmsg_token,
+  };
   function connect() {
     return new Promise((resolve, reject) => {
       const protocol = "wss://";
