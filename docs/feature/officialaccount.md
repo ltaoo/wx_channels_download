@@ -45,7 +45,7 @@ curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
 
 ### proxy
 
-如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 `{ServiceAddr}/official_account/proxy` 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容
+如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 `{ServiceAddr}/mp/proxy` 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容
 
 ### content
 

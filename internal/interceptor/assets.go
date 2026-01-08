@@ -53,7 +53,7 @@ var js_utils []byte
 var js_downloader []byte
 
 //go:embed inject/src/officialaccount.js
-var js_wechat_official_account []byte
+var js_wechat_officialaccount []byte
 
 //go:embed inject/src/main.js
 var js_feed_profile_or_recommand_page []byte
@@ -108,5 +108,5 @@ var Assets = &ChannelInjectedFiles{
 	JSMain:                  js_feed_profile_or_recommand_page,
 	JSLiveMain:              js_live_profile_page,
 	JSContactMain:           js_contact_profile_page,
-	JSWechatOfficialAccount: js_wechat_official_account,
+	JSWechatOfficialAccount: js_wechat_officialaccount,
 }

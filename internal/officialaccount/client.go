@@ -417,14 +417,14 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 	buildEntry := func(title, digest, contentURL, cover, author string, fileid int, pub_date string, authors ...string) AtomEntry {
 		u := buildURL(html.UnescapeString(contentURL))
 		if need_proxy == "1" && c.RemoteServerAddr != "" {
-			u = fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
+			u = fmt.Sprintf("%s/mp/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
 		}
 		desc := digest
 		var thumb *MediaThumbnail
 		if cover != "" {
 			// cover = html.UnescapeString(cover)
 			if need_proxy == "1" && c.RemoteServerAddr != "" {
-				cover = fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(cover))
+				cover = fmt.Sprintf("%s/mp/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(cover))
 			}
 			desc = fmt.Sprintf(`<img src="%s" /><br/>%s`, cover, digest)
 			thumb = &MediaThumbnail{
@@ -626,7 +626,7 @@ func (c *OfficialAccountClient) HandleOfficialAccountProxy(ctx *gin.Context) {
 		bodyString = re.ReplaceAllStringFunc(bodyString, func(match string) string {
 			// 构造代理链接
 			u := html.UnescapeString(match)
-			return fmt.Sprintf("%s/official_account/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
+			return fmt.Sprintf("%s/mp/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(u))
 		})
 		ctx.Writer.Write([]byte(bodyString))
 	} else {
