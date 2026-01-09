@@ -318,7 +318,7 @@
     const TOKEN = "%%TOKEN%%";
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
     let ACCOUNTS_CACHE = [];
-    let LIST_STATE = { page: 1, pageSize: 10, keyword: "" };
+    let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
     let MISSING_REFRESH_REQ_ID = 0;
     const MISSING_REFRESH_CACHE = new Map();
     function invalidateMissingRefreshCache() {
@@ -403,6 +403,8 @@
     function syncControlsFromState() {
       const kw = document.getElementById("account-keyword");
       if (kw && kw.value !== LIST_STATE.keyword) kw.value = LIST_STATE.keyword || "";
+      const eff = document.getElementById("account-is-effective");
+      if (eff && eff.value !== LIST_STATE.isEffective) eff.value = LIST_STATE.isEffective || "";
       const ps = document.getElementById("page-size");
       if (ps && String(ps.value) !== String(LIST_STATE.pageSize)) ps.value = String(LIST_STATE.pageSize);
     }
@@ -423,6 +425,7 @@
         LIST_STATE.pageSize = Number(LIST_STATE.pageSize);
         LIST_STATE.page = Number(LIST_STATE.page);
         LIST_STATE.keyword = String(LIST_STATE.keyword || "").trim();
+        LIST_STATE.isEffective = String(LIST_STATE.isEffective || "");
         syncControlsFromState();
 
         const data = await fetchAccountPage(LIST_STATE);
@@ -736,7 +739,7 @@
   <div class="container">
     <div class="grid">
       <section id="accounts">
-        <h2>账号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
+        <h2>公众号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
         <div class="toolbar">
           <div class="toolbar-left" id="toolbar-actions">
             <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
@@ -744,6 +747,11 @@
             <span id="missing-refresh-count" class="muted" style="align-self: center;"></span>
           </div>
           <div class="toolbar-right">
+            <select id="account-is-effective" class="select" style="width: 100px;">
+              <option value="">全部状态</option>
+              <option value="1">有效</option>
+              <option value="0">无效</option>
+            </select>
             <input id="account-keyword" class="input" style="width: 220px" placeholder="搜索昵称 / biz" />
             <button class="btn" onclick="applySearch()">搜索</button>
             <button class="btn" onclick="clearSearch()">清空</button>

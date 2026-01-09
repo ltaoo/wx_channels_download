@@ -108,6 +108,63 @@ type OfficialAccountClient struct {
 	req_seq              uint64
 	wait_chan_map        map[string]chan *OfficialAccount
 	wait_mu              sync.Mutex
+	refresh_mu           sync.Mutex
+	is_refreshing        bool
+}
+
+var refresh_log_filepath = "refresh_log.json"
+
+type FailureDetail struct {
+	Biz      string `json:"biz"`
+	Nickname string `json:"nickname"`
+	Error    string `json:"error"`
+}
+
+type RefreshReport struct {
+	StartTime string          `json:"start_time"`
+	EndTime   string          `json:"end_time"`
+	Duration  string          `json:"duration"`
+	Total     int             `json:"total"`
+	Success   int             `json:"success"`
+	Failed    int             `json:"failed"`
+	Failures  []FailureDetail `json:"failures"`
+}
+
+func (c *OfficialAccountClient) save_refresh_log(report *RefreshReport) {
+	if report == nil {
+		return
+	}
+	var logs []*RefreshReport
+	if c.RefreshToken != "" {
+		// Try to load existing logs
+		// Assuming we save to refresh_log.json in the same dir as mp.json
+		fp := refresh_log_filepath
+		if filepath.IsAbs(mp_json_filepath) {
+			fp = filepath.Join(filepath.Dir(mp_json_filepath), "refresh_log.json")
+		}
+
+		data, err := os.ReadFile(fp)
+		if err == nil {
+			_ = json.Unmarshal(data, &logs)
+		}
+
+		// Keep last 100 logs to avoid file growing too large
+		if len(logs) > 100 {
+			logs = logs[len(logs)-100:]
+		}
+		logs = append(logs, report)
+
+		data, err = json.MarshalIndent(logs, "", "  ")
+		if err != nil {
+			c.logger.Error().Err(err).Msg("save refresh log: marshal failed")
+			return
+		}
+
+		err = os.WriteFile(fp, data, 0644)
+		if err != nil {
+			c.logger.Error().Err(err).Msg("save refresh log: write failed")
+		}
+	}
 }
 
 func (c *OfficialAccountClient) next_trace_id(prefix string) string {
@@ -382,6 +439,8 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 	}
 	keyword := strings.TrimSpace(ctx.Query("keyword"))
 	keywordLower := strings.ToLower(keyword)
+	is_effective_filter := ctx.Query("is_effective")
+
 	type SafeOfficialAccount struct {
 		Biz         string `json:"biz"`
 		Nickname    string `json:"nickname"`
@@ -417,6 +476,14 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 		if !c.RemoteMode {
 			summary.RefreshUri = acct.RefreshUri
 		}
+
+		if is_effective_filter != "" {
+			filterVal := is_effective_filter == "1" || is_effective_filter == "true"
+			if summary.IsEffective != filterVal {
+				continue
+			}
+		}
+
 		if keywordLower == "" {
 			list = append(list, summary)
 		} else {
@@ -1314,6 +1381,19 @@ func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() error {
 }
 
 func (c *OfficialAccountClient) refreshAllRemoteOfficialAccount(run_id string) error {
+	c.refresh_mu.Lock()
+	if c.is_refreshing {
+		c.refresh_mu.Unlock()
+		return errors.New("refreshing is already in progress")
+	}
+	c.is_refreshing = true
+	c.refresh_mu.Unlock()
+	defer func() {
+		c.refresh_mu.Lock()
+		c.is_refreshing = false
+		c.refresh_mu.Unlock()
+	}()
+
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -1322,16 +1402,19 @@ func (c *OfficialAccountClient) refreshAllRemoteOfficialAccount(run_id string) e
 		Str("origin", c.RemoteServerAddr).
 		Logger()
 	logger.Info().Msg("refresh all remote official accounts: start")
-	if err := c.refreshRemoteOfficialAccount(logger, c.RemoteServerAddr); err != nil {
+	report, err := c.refreshRemoteOfficialAccount(logger, c.RemoteServerAddr)
+	if err != nil {
 		return err
 	}
+	c.save_refresh_log(report)
 	logger.Info().Msg("refresh all remote official accounts: completed")
 	return nil
 }
 func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) error {
 	run_id := c.next_trace_id("refresh_remote")
 	logger := c.logger.With().Str("run_id", run_id).Str("origin", origin).Logger()
-	return c.refreshRemoteOfficialAccount(logger, origin)
+	_, err := c.refreshRemoteOfficialAccount(logger, origin)
+	return err
 }
 
 type remoteOfficialAccountJob struct {
@@ -1339,7 +1422,11 @@ type remoteOfficialAccountJob struct {
 	Nickname string
 }
 
-func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logger, origin string) error {
+func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logger, origin string) (*RefreshReport, error) {
+	start_time := time.Now()
+	report := &RefreshReport{
+		StartTime: start_time.Format("2006-01-02 15:04:05"),
+	}
 	logger.Info().Msg("refresh remote official accounts: start")
 	client := &http.Client{Timeout: 30 * time.Second}
 	// var token string
@@ -1357,7 +1444,7 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 		baseURL, err := url.Parse(origin + "/api/mp/list")
 		if err != nil {
 			logger.Error().Err(err).Msg("refresh remote official accounts: parse request url failed")
-			return err
+			return nil, err
 		}
 		q := baseURL.Query()
 		if c.RefreshToken != "" {
@@ -1369,18 +1456,18 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 		req, err := http.NewRequest("GET", baseURL.String(), nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("refresh remote official accounts: build request failed")
-			return err
+			return nil, err
 		}
 		resp, err := client.Do(req)
 		if err != nil {
 			logger.Error().Err(err).Msg("refresh remote official accounts: request failed")
-			return err
+			return nil, err
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			logger.Error().Err(err).Msg("refresh remote official accounts: read response failed")
-			return err
+			return nil, err
 		}
 		var out struct {
 			Code int    `json:"code"`
@@ -1398,11 +1485,11 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 		}
 		if err := json.Unmarshal(body, &out); err != nil {
 			logger.Error().Err(err).Msg("refresh remote official accounts: decode response failed")
-			return err
+			return nil, err
 		}
 		if out.Code != 0 {
 			logger.Error().Int("code", out.Code).Str("msg", out.Msg).Msg("refresh remote official accounts: remote error")
-			return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
+			return nil, fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
 		}
 		if page == 1 && out.Data.Total == 0 && out.Data.Page == 0 && out.Data.PageSize == 0 {
 			items = out.Data.List
@@ -1430,7 +1517,7 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 	clients := c.ListClients()
 	if len(clients) == 0 {
 		logger.Error().Msg("refresh remote official accounts: no frontend clients")
-		return errors.New(result.GetMsg(result.CodeClientNotReady))
+		return nil, errors.New(result.GetMsg(result.CodeClientNotReady))
 	}
 	skip_minutes := c.RefreshSkipMinutes
 	skip_seconds := int64(skip_minutes) * 60
@@ -1484,13 +1571,16 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 	close(jobs)
 	if total == 0 {
 		logger.Info().Msg("refresh remote official accounts: no jobs to process")
-		return nil
+		endTime := time.Now()
+		report.EndTime = endTime.Format("2006-01-02 15:04:05")
+		report.Duration = endTime.Sub(start_time).String()
+		return report, nil
 	}
 	var wg sync.WaitGroup
 	processed := make([]int64, len(clients))
 	var success int64
 	var processed_total int64
-	failures := make(map[string]string)
+	failures := make([]FailureDetail, 0)
 	var failures_mu sync.Mutex
 
 	c.BroadcastProgress(total, 0, 0, 0)
@@ -1522,7 +1612,7 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 					if pickErr != nil {
 						err2 := pickErr
 						failures_mu.Lock()
-						failures[biz] = err2.Error()
+						failures = append(failures, FailureDetail{Biz: biz, Nickname: job.Nickname, Error: err2.Error()})
 						failures_mu.Unlock()
 						jobLogger.Error().Err(err2).Msg("refresh job: failed")
 						acct_mu.Lock()
@@ -1552,7 +1642,7 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 					_, err2 := c.refresh_credential_from_frontend(fallbackLogger, &OfficialAccountBody{Biz: biz}, fallbackWS)
 					if err2 != nil {
 						failures_mu.Lock()
-						failures[biz] = err2.Error()
+						failures = append(failures, FailureDetail{Biz: biz, Nickname: job.Nickname, Error: err2.Error()})
 						failures_mu.Unlock()
 						jobLogger.Error().Err(err2).Msg("refresh job: failed")
 						acct_mu.Lock()
@@ -1610,11 +1700,18 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 			Int64("success", success).
 			Int("failed", len(failures)).
 			Msg("refresh remote official accounts: completed with failures")
-		for biz, err := range failures {
-			logger.Error().Str("biz", biz).Str("error", err).Msg("refresh remote official accounts: failure detail")
+		for _, f := range failures {
+			logger.Error().Str("biz", f.Biz).Str("nickname", f.Nickname).Str("error", f.Error).Msg("refresh remote official accounts: failure detail")
 		}
 	}
-	return nil
+	endTime := time.Now()
+	report.EndTime = endTime.Format("2006-01-02 15:04:05")
+	report.Duration = endTime.Sub(start_time).String()
+	report.Total = total
+	report.Success = int(success)
+	report.Failed = len(failures)
+	report.Failures = failures
+	return report, nil
 }
 
 func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *OfficialAccount) error {
