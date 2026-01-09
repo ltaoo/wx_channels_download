@@ -193,6 +193,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 	})
 	Register(ConfigItem{
+		Key:         "download.playDoneAudio",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "下载完成时是否播放完成音效",
+		Title:       "播放完成音效",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
 		Key:         "api.protocol",
 		Type:        ConfigTypeString,
 		Default:     "http",

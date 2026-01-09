@@ -36,8 +36,8 @@ func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 }
 func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	username := ctx.Query("username")
-	nextMarker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsFeedListOfContact(username, nextMarker)
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsFeedListOfContact(username, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -194,7 +194,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	if body.Suffix == ".mp3" {
 		has_ffmpeg := system.ExistingCommand("ffmpeg")
 		if !has_ffmpeg {
-			result.Err(ctx, 400, "下载 mp3 需要支持 ffmpeg 命令")
+			result.Err(ctx, 3001, "下载 mp3 需要支持 ffmpeg 命令")
 			return
 		}
 	}
@@ -210,7 +210,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		result.Err(ctx, 409, "不合法的文件名")
 		return
 	}
-	connections := c.resolveConnections(body.URL)
+	connections := c.resolve_connections(body.URL)
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL: body.URL,
@@ -347,7 +347,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		// 从 full_path 中提取目录
 		rel_dir := filepath.Dir(full_path)
 
-		connections := c.resolveConnections(url)
+		connections := c.resolve_connections(url)
 
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
@@ -478,10 +478,10 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 		}
 		return string(defaultData)
 	}
-	html := read_asset("inject/index.html", interceptor.Assets.IndexHTML)
+	// html := read_asset("inject/index.html", files.HTMLHome)
 	files := interceptor.Assets
-	css := read_asset("inject/lib/weui.min.css", files.CSSWeui)
-	html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
+	// css := read_asset("inject/lib/weui.min.css", files.CSSWeui)
+	// html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
 	var inserted_scripts string
 	cfg_byte, _ := json.Marshal(c.cfg)
 	inserted_scripts += fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "local";</script>`, string(cfg_byte))
@@ -495,27 +495,10 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", files.JSComponents))
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", files.JSDownloader))
 
-	html = strings.Replace(html, "<!-- INJECT_JS -->", inserted_scripts, 1)
+	// html = strings.Replace(html, "<!-- INJECT_JS -->", inserted_scripts, 1)
 
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, html)
-}
-
-func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
-	dir := c.cfg.DownloadDir
-	if err := system.Open(dir); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
-}
-func (c *APIClient) handleTest(ctx *gin.Context) {
-	dir := c.cfg.DownloadDir
-	if err := system.Open(dir); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
+	ctx.String(http.StatusOK, "<html><body><div id=\"app\"></div></body></html>")
 }
 
 func (c *APIClient) handlePlay(ctx *gin.Context) {
@@ -545,6 +528,15 @@ func (c *APIClient) handlePlay(ctx *gin.Context) {
 	decryptor.SimpleProxy(target_url, ctx.Writer, ctx.Request)
 }
 
+func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
+	dir := c.cfg.DownloadDir
+	if err := system.Open(dir); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
+}
+
 type OpenFolderAndHighlightFileBody struct {
 	Path string `json:"path"`
 	Name string `json:"name"`
@@ -564,10 +556,19 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 	full_filepath := filepath.Join(body.Path, body.Name)
 	_, err := os.Stat(full_filepath)
 	if err != nil {
-		result.Err(ctx, 500, err.Error())
+		result.Err(ctx, 500, "找不到文件")
 		return
 	}
 	if err := system.ShowInExplorer(full_filepath); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
+}
+
+func (c *APIClient) handleTest(ctx *gin.Context) {
+	dir := c.cfg.DownloadDir
+	if err := system.Open(dir); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}

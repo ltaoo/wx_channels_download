@@ -166,7 +166,7 @@ var isWin = /Windows|Win/i.test(ua);
     $download_panel.innerHTML = `
       <div class="wx-dl-panel-container">
         <div class="wx-dl-header">
-           <div class="wx-dl-title">Downloads</div>
+           <div class="wx-dl-title">Downloads <span id="wx-dl-count"></span></div>
         </div>
         <div id="downloader_container" class="wx-dl-list wx-dl-dark-scroll" style="background-color: transparent; margin-top: 0;"></div>
       </div>
@@ -175,6 +175,7 @@ var isWin = /Windows|Win/i.test(ua);
       content: $download_panel.innerHTML,
       placement: "bottom-end",
       closeOnClickOutside: true,
+      offset: { mainAxis: -4, crossAxis: 20 },
     });
     var $more = document.createElement("div");
     $more.innerHTML = `<div class="wx-dl-more-btn" id="wx_dl_more_btn">${MoreIcon}</div>`;

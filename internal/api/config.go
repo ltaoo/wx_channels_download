@@ -17,6 +17,7 @@ type APIConfig struct {
 	Original                     *config.Config
 	RootDir                      string
 	DownloadDir                  string
+	PlayDoneAudio                bool
 	MaxRunning                   int // 最多同时下载的任务数
 	Addr                         string
 	OfficialAccountRemote        bool // 是否为公众号远端服务模式
@@ -41,6 +42,7 @@ func NewAPIConfig(c *config.Config, mp_remote_mode bool) *APIConfig {
 		Original:                     c,
 		RootDir:                      c.RootDir,
 		DownloadDir:                  dir,
+		PlayDoneAudio:                viper.GetBool("download.playDoneAudio"),
 		MaxRunning:                   3,
 		Addr:                         viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
 		OfficialAccountRemote:        mp_remote_mode,

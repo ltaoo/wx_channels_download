@@ -100,6 +100,8 @@ type OfficialAccountClient struct {
 	Cookies              []*http.Cookie
 	ws_clients           map[*Client]bool
 	ws_mu                sync.RWMutex
+	manage_ws_clients    map[*Client]bool
+	manage_ws_mu         sync.RWMutex
 	requests             map[string]chan ClientWebsocketResponse
 	requests_mu          sync.RWMutex
 	cache                *cache.Cache
@@ -126,6 +128,7 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 		RefreshToken:         cfg.RefreshToken,
 		Tokens:               make([]string, 0),
 		ws_clients:           make(map[*Client]bool),
+		manage_ws_clients:    make(map[*Client]bool),
 		requests:             make(map[string]chan ClientWebsocketResponse),
 		cache:                cache.New(),
 		req_seq:              uint64(time.Now().UnixNano()),
@@ -236,6 +239,84 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 				}
 				c.ws_mu.Unlock()
 			}
+		}
+	}
+}
+
+func (c *OfficialAccountClient) HandleManageWebsocket(ctx *gin.Context) {
+	conn, err := official_ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+	if err != nil {
+		return
+	}
+	c.manage_ws_mu.Lock()
+	client := &Client{conn: conn, send: make(chan []byte, 256)}
+	c.manage_ws_clients[client] = true
+	c.manage_ws_mu.Unlock()
+
+	go client.write_pump()
+
+	defer func() {
+		c.manage_ws_mu.Lock()
+		if _, ok := c.manage_ws_clients[client]; ok {
+			delete(c.manage_ws_clients, client)
+			close(client.send)
+		}
+		c.manage_ws_mu.Unlock()
+		conn.Close()
+	}()
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var msg ClientWSMessage
+		if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
+			switch msg.Type {
+			case "ping":
+				c.manage_ws_mu.Lock()
+				if _, ok := c.manage_ws_clients[client]; ok {
+					client.available = true
+					client.last_ping = time.Now().Unix()
+					if msg.Data != "" {
+						client.title = msg.Data
+					}
+				}
+				c.manage_ws_mu.Unlock()
+			}
+		}
+	}
+}
+
+func (c *OfficialAccountClient) BroadcastProgress(total, current, success, failed int) {
+	percent := 0
+	if total > 0 {
+		percent = int(float64(current) / float64(total) * 100)
+	}
+
+	data := map[string]int{
+		"total":   total,
+		"current": current,
+		"success": success,
+		"failed":  failed,
+		"percent": percent,
+	}
+
+	msg := APIClientWSMessage{
+		Type: "refresh_progress",
+		Data: data,
+	}
+
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
+	c.manage_ws_mu.RLock()
+	defer c.manage_ws_mu.RUnlock()
+	for client := range c.manage_ws_clients {
+		select {
+		case client.send <- bytes:
+		default:
 		}
 	}
 }
@@ -1408,8 +1489,12 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 	var wg sync.WaitGroup
 	processed := make([]int64, len(clients))
 	var success int64
+	var processed_total int64
 	failures := make(map[string]string)
 	var failures_mu sync.Mutex
+
+	c.BroadcastProgress(total, 0, 0, 0)
+
 	for i, ws := range clients {
 		clientTitle := ""
 		if ws != nil {
@@ -1451,6 +1536,13 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 						acct_mu.Unlock()
 						save_accounts()
 						atomic.AddInt64(&processed[idx], 1)
+
+						curr := atomic.AddInt64(&processed_total, 1)
+						succ := atomic.LoadInt64(&success)
+						failures_mu.Lock()
+						fail := len(failures)
+						failures_mu.Unlock()
+						c.BroadcastProgress(total, int(curr), int(succ), fail)
 						continue
 					}
 					fallbackLogger := jobLogger
@@ -1494,11 +1586,19 @@ func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logg
 					acct_mu.Unlock()
 				}
 				atomic.AddInt64(&processed[idx], 1)
+
+				curr := atomic.AddInt64(&processed_total, 1)
+				succ := atomic.LoadInt64(&success)
+				failures_mu.Lock()
+				fail := len(failures)
+				failures_mu.Unlock()
+				c.BroadcastProgress(total, int(curr), int(succ), fail)
 			}
 			workerLogger.Info().Int64("processed", processed[idx]).Msg("refresh worker: completed")
 		}(i, ws)
 	}
 	wg.Wait()
+	c.BroadcastProgress(total, total, int(success), len(failures))
 	if int(success) == total {
 		logger.Info().
 			Int("total", total).

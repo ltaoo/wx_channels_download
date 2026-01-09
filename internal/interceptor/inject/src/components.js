@@ -1,7 +1,21 @@
 const inserted_style = `<style>
+:root {
+  --popup-bg-color: #f6f6f6;
+  --popup-content-bg-color: #e7e7e7;
+}
+body[data-weui-theme=dark] {
+  --popup-bg-color: #272727;
+  --popup-content-bg-color: #323232;
+}
+@media (prefers-color-scheme: dark) {
+  body:not([data-weui-theme=light]) {
+    --popup-bg-color: #272727;
+    --popup-content-bg-color: #323232;
+  }
+}
 .custom-menu {
   z-index: 99999;
-  background: var(--weui-BG-2);
+  background: var(--popup-bg-color);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
   border-radius: 4px;
   color: var(--weui-FG-0);
@@ -20,7 +34,7 @@ const inserted_style = `<style>
   transition: background .15s ease-in-out
 }
 .custom-menu-item:hover {
-  background: var(--weui-BG-COLOR-ACTIVE);
+  background: var(--popup-content-bg-color);
 }
 .custom-menu-item-arrow {
   position: absolute;
@@ -104,7 +118,7 @@ const inserted_style = `<style>
 .wx-dl-panel-container { 
   width: 400px; 
   max-height: 450px; 
-  background-color: var(--weui-BG-2); 
+  background-color: var(--popup-bg-color); 
   border-radius: 8px; 
   display: flex; 
   flex-direction: column; 
@@ -146,7 +160,7 @@ const inserted_style = `<style>
 
 .wx-dl-item {
   padding: 16px;
-  background-color: var(--weui-BG-0);
+  background-color: var(--popup-content-bg-color);
   border-radius: 8px;
   margin-bottom: 8px;
   align-items: center;
@@ -288,6 +302,11 @@ function __wx_refresh_downloader(selector, tasks) {
 
   const list = Array.from(tasks.values()).reverse(); // Newest first
   const runningCount = list.filter((t) => t.status === "running").length;
+
+  const countEl = document.getElementById("wx-dl-count");
+  if (countEl) {
+    countEl.innerText = list.length > 0 ? `(${list.length})` : "";
+  }
 
   if (list.length === 0) {
     container.innerHTML = `<div class="weui-loadmore weui-loadmore_line"><span class="weui-loadmore__tips">暂无下载任务</span></div>`;

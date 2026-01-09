@@ -84,7 +84,6 @@ type ChannelInjectedFiles struct {
 	JSMain                  []byte
 	JSLiveMain              []byte
 	JSContactMain           []byte
-	IndexHTML               []byte
 	JSWechatOfficialAccount []byte
 }
 

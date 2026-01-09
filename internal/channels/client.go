@@ -39,6 +39,7 @@ type ChannelsClient struct {
 	requests_mu sync.RWMutex
 	cache       *cache.Cache
 	req_seq     uint64
+	OnConnected func(client *Client)
 }
 
 func NewChannelsClient(addr string) *ChannelsClient {
@@ -58,17 +59,21 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		return
 	}
 	c.ws_mu.Lock()
-	client := &Client{conn: conn, send: make(chan []byte, 256)}
+	client := &Client{Conn: conn, Send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
 	go client.writePump()
 
+	if c.OnConnected != nil {
+		c.OnConnected(client)
+	}
+
 	defer func() {
 		c.ws_mu.Lock()
 		if _, ok := c.ws_clients[client]; ok {
 			delete(c.ws_clients, client)
-			close(client.send)
+			close(client.Send)
 		}
 		c.ws_mu.Unlock()
 		conn.Close()
@@ -93,7 +98,7 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 func (c *ChannelsClient) Stop() {
 	c.ws_mu.Lock()
 	for client := range c.ws_clients {
-		close(client.send)
+		close(client.Send)
 		delete(c.ws_clients, client)
 	}
 	c.ws_mu.Unlock()
@@ -107,9 +112,9 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
 	defer c.ws_mu.Unlock()
 	for client := range c.ws_clients {
 		select {
-		case client.send <- data:
+		case client.Send <- data:
 		default:
-			close(client.send)
+			close(client.Send)
 			delete(c.ws_clients, client)
 		}
 	}
@@ -162,7 +167,7 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	}
 
 	select {
-	case client.send <- data:
+	case client.Send <- data:
 	default:
 		c.ws_mu.Unlock()
 		return nil, errors.New("发送缓冲区已满")

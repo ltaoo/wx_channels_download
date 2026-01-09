@@ -43,6 +43,13 @@ func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
 			StorageDir:      data_dir,
 		})
 		channels_client = channels.NewChannelsClient(cfg.Addr)
+		channels_client.OnConnected = func(client *channels.Client) {
+			// Initial tasks
+			tasks := downloader.GetTasks()
+			if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
+				client.Send <- data
+			}
+		}
 	}
 	client := &APIClient{
 		downloader: downloader,
@@ -53,7 +60,7 @@ func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
 		engine:     gin.Default(),
 		logger:     logger,
 	}
-	client.setupRoutes()
+	client.SetupRoutes()
 	return client
 }
 
@@ -105,7 +112,9 @@ func (c *APIClient) Start() error {
 			Data: evt,
 		})
 		if evt.Key == downloadpkg.EventKeyDone {
-			go assets.PlayDoneAudio()
+			if c.cfg.PlayDoneAudio {
+				go assets.PlayDoneAudio()
+			}
 			task := c.downloader.GetTask(evt.Task.ID)
 			file_path := task.Meta.SingleFilepath()
 			go func() {
@@ -155,7 +164,7 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.engine.ServeHTTP(w, r)
 }
 
-func (c *APIClient) resolveConnections(url string) int {
+func (c *APIClient) resolve_connections(url string) int {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}

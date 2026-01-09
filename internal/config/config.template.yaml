@@ -9,6 +9,7 @@ download:
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"
   pauseWhenDownload: false
+  playDoneAudio: true
   frontend: false
 
 api:

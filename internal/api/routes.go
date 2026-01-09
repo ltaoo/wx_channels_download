@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (c *APIClient) setupRoutes() {
+func (c *APIClient) SetupRoutes() {
 	// 只在本地有的接口
 	if !c.cfg.OfficialAccountRemote {
 		// 下载任务接口
@@ -29,14 +29,15 @@ func (c *APIClient) setupRoutes() {
 		c.engine.GET("/play", c.handlePlay)
 		// 公众号接口 本地服务
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
+		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.GET("/api/mp/refresh_remote", c.official.HandleRefreshAllRemoteOfficialAccount)
 		c.engine.GET("/api/mp/refresh_account_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
 	}
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
-	c.engine.POST("/api/mp/delete", c.official.HandleDelete)
 	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)
+	c.engine.POST("/api/mp/delete", c.official.HandleDelete)
 	c.engine.POST("/api/mp/refresh", c.official.HandleRefreshEvent)
 	c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)

@@ -240,6 +240,78 @@
     .row-missing td {
       background: rgba(253, 214, 99, .06);
     }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      visibility: hidden;
+      opacity: 0;
+      transition: all 0.2s;
+    }
+    .modal-overlay.visible {
+      visibility: visible;
+      opacity: 1;
+    }
+    .modal {
+      background: #1b1f2a;
+      border-radius: 12px;
+      padding: 24px;
+      width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .modal-header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .progress-bar-bg {
+      height: 8px;
+      background: #2a2f3e;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #8ab4f8;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #9aa0a6;
+    }
+    .text-success { color: #8fce95; }
+    .text-error { color: #f28b82; }
   </style>
   <script>
     const REMOTE_SERVER = "%%REMOTE_SERVER%%";
@@ -479,7 +551,78 @@
         alert(String(e && e.message ? e.message : e));
       }
     }
+    function closeProgressModal() {
+      const modal = document.getElementById("progress-modal");
+      if (modal) modal.classList.remove("visible");
+    }
+
+    let manageWs = null;
+    function initManageWebSocket() {
+      if (manageWs) return;
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const url = proto + "//" + window.location.host + "/ws/manage";
+      manageWs = new WebSocket(url);
+      manageWs.onopen = () => {
+        console.log("Manage WS connected");
+        // Send a ping every 30s to keep alive
+        setInterval(() => {
+          if (manageWs.readyState === WebSocket.OPEN) {
+            manageWs.send(JSON.stringify({ type: "ping", data: "manager" }));
+          }
+        }, 30000);
+      };
+      manageWs.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "refresh_progress") {
+             updateProgressModal(msg.data);
+          }
+        } catch (e) {
+          console.error("WS message error", e);
+        }
+      };
+      manageWs.onclose = () => {
+        console.log("Manage WS closed, retrying in 5s...");
+        manageWs = null;
+        setTimeout(initManageWebSocket, 5000);
+      };
+    }
+
+    function updateProgressModal(data) {
+      const modal = document.getElementById("progress-modal");
+      if (!modal || !modal.classList.contains("visible")) return;
+
+      const total = data.total || 0;
+      const current = data.current || 0;
+      const success = data.success || 0;
+      const failed = data.failed || 0;
+      const percent = data.percent || 0;
+
+      document.getElementById("prog-success").textContent = success;
+      document.getElementById("prog-failed").textContent = failed;
+      document.getElementById("prog-fill").style.width = percent + "%";
+      document.getElementById("prog-percent").textContent = percent + "%";
+      document.getElementById("prog-text").textContent = `正在处理: ${current} / ${total}`;
+
+      if (current >= total && total > 0) {
+        document.getElementById("prog-text").textContent = "处理完成";
+        document.getElementById("modal-close-btn").style.visibility = "visible";
+      }
+    }
+
     async function refreshAll(btn) {
+      // Show modal
+      const modal = document.getElementById("progress-modal");
+      if (modal) {
+        modal.classList.add("visible");
+        document.getElementById("prog-success").textContent = "0";
+        document.getElementById("prog-failed").textContent = "0";
+        document.getElementById("prog-fill").style.width = "0%";
+        document.getElementById("prog-percent").textContent = "0%";
+        document.getElementById("prog-text").textContent = "正在请求任务...";
+        document.getElementById("modal-close-btn").style.visibility = "hidden";
+      }
+
       if (btn) {
         btn.disabled = true;
         var old = btn.textContent;
@@ -490,9 +633,11 @@
         const j = await r.json().catch(() => ({}));
         if (j && j.code !== undefined && j.code !== 0) {
           alert(j.msg || "接口错误");
+          closeProgressModal();
         }
       } catch (e) {
         alert(String(e && e.message ? e.message : e));
+        closeProgressModal();
       } finally {
         if (btn) {
           btn.disabled = false;
@@ -555,6 +700,7 @@
       loadAccounts();
       if (!REMOTE_MODE) {
         loadWsPool();
+        initManageWebSocket();
       }
       const grid = document.querySelector(".grid");
       const toolbar = document.querySelector("#accounts .toolbar");
@@ -637,6 +783,31 @@
           <tbody></tbody>
         </table>
       </section>
+    </div>
+  </div>
+  <div id="progress-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <span>刷新进度</span>
+        <button class="btn btn-sm" onclick="closeProgressModal()" id="modal-close-btn" style="visibility: hidden;">关闭</button>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-val text-success" id="prog-success">0</div>
+          <div class="stat-label">成功</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val text-error" id="prog-failed">0</div>
+          <div class="stat-label">失败</div>
+        </div>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="prog-fill"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #9aa0a6;">
+        <span id="prog-text">准备中...</span>
+        <span id="prog-percent">0%</span>
+      </div>
     </div>
   </div>
 </body>
