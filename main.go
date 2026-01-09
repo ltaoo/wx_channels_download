@@ -34,6 +34,6 @@ func main() {
 		return
 	}
 	if err := cmd.Execute(certificate.DefaultCertFiles, cfg); err != nil {
-		fmt.Printf("初始化失败 %v\n", err.Error())
+		fmt.Printf("启动失败 %v\n", err.Error())
 	}
 }

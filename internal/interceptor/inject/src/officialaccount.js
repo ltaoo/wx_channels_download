@@ -47,7 +47,29 @@
       }
     }
   `;
-  document.head.appendChild(style);
+  function insert_style() {
+    document.head.appendChild(style);
+  }
+  async function submit_credential(acct) {
+    if (!acct.biz || !acct.key) {
+      return;
+    }
+    WXU.emit(WXU.Events.OfficialAccountRefresh, acct);
+    var origin = `https://${FakeAPIServerAddr}`;
+    var [err, res] = await WXU.request({
+      method: "POST",
+      url: `${origin}/api/mp/refresh?token=${
+        WXU.config.officialServerRefreshToken ?? ""
+      }`,
+      body: acct,
+    });
+    if (err) {
+      WXU.error({
+        msg: err.message,
+      });
+      return;
+    }
+  }
 
   async function handle_api_call(msg, socket) {
     var { id, key, data } = msg;
@@ -80,16 +102,7 @@
       payload: msg,
     });
   }
-  var _OfficialAccountCredentials = {
-    nickname: window.nickname,
-    avatar_url: window.headimg || window.head_img || window.round_head_img,
-    biz: window.biz || window.__biz,
-    uin: window.uin,
-    key: window.key,
-    pass_ticket: window.pass_ticket,
-    appmsg_token: window.appmsg_token,
-  };
-  function connect() {
+  function connect(acct) {
     return new Promise((resolve, reject) => {
       const protocol = "wss://";
       const ws = new WebSocket(protocol + FakeAPIServerAddr + "/ws/mp");
@@ -98,30 +111,8 @@
         WXU.log({
           msg: "ws/mp connected",
         });
-        WXU.emit(
-          WXU.Events.OfficialAccountRefresh,
-          _OfficialAccountCredentials
-        );
-        (async () => {
-          var origin = `https://${FakeAPIServerAddr}`;
-          var [err, res] = await WXU.request({
-            method: "POST",
-            url: `${origin}/api/mp/refresh?token=${
-              WXU.config.officialServerRefreshToken ?? ""
-            }`,
-            body: _OfficialAccountCredentials,
-          });
-          if (err) {
-            WXU.error({
-              msg: err.message,
-            });
-            return;
-          }
-        })();
-        var page_title =
-          document.title ||
-          _OfficialAccountCredentials.nickname ||
-          "公众号页面";
+        submit_credential(acct);
+        var page_title = document.title || acct.nickname || "公众号页面";
         try {
           ws.send(
             JSON.stringify({
@@ -172,26 +163,13 @@
     });
   }
   async function fetchAccountHome(params) {
+    console.log('[]fetchAccountHome', params);
     return new Promise((resolve) => {
-      var query = {
-        action: "home",
-        __biz: params.biz,
-        scene: 124,
-      };
-      var endpoint =
-        window.location.origin +
-        "/mp/profile_ext?" +
-        Object.keys(query)
-          .map((key) => `${key}=${query[key]}`)
-          .join("&");
-      WXU.log({
-        msg: endpoint,
-      });
-      window.location.href = endpoint;
-      resolve([null, endpoint]);
+      window.location.href = params.refresh_uri;
+      resolve([null, params.refresh_uri]);
     });
   }
-  function render_rss_button() {
+  function render_rss_button(acct) {
     var $btn = document.createElement("div");
     $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; cursor: pointer;`;
     $btn.innerHTML = RSSIcon;
@@ -200,30 +178,89 @@
       if (WXU.config.officialRemoteServerPort != 80) {
         origin += `:${WXU.config.officialRemoteServerPort}`;
       }
-      var url = `${origin}/rss/mp?biz=${_OfficialAccountCredentials.biz}`;
+      var url = `${origin}/rss/mp?biz=${acct.biz}`;
       WXU.copy(url);
       WXU.toast("RSS 地址已复制");
     };
     return $btn;
   }
-  function insert_rss_button() {
+  function insert_rss_button(acct) {
+    if (!acct.biz || !acct.key) {
+      return;
+    }
     var $wraps = document.querySelectorAll(".wx_follow_media");
     var $container = $wraps[$wraps.length - 1];
     console.log("$container", $container);
-    var $btn = render_rss_button();
+    var $btn = render_rss_button(acct);
     $container.appendChild($btn);
   }
-  async function main() {
-    if (!WXU.config.officialServerDisabled) {
-      connect();
+  insert_style();
+  WXU.onWindowLoaded(() => {
+    async function main() {
+      if (location.pathname === "/s") {
+        var _OfficialAccountCredentials = {
+          nickname: (() => {
+            if (window.nickname) {
+              return window.nickname;
+            }
+            if (window.cgiData) {
+              if (window.cgiData.nick_name) {
+                return window.cgiData.nick_name;
+              }
+            }
+            if (window.cgiDataNew) {
+              if (window.cgiDataNew.nick_name) {
+                return window.cgiDataNew.nick_name;
+              }
+            }
+            return "";
+          })(),
+          avatar_url: (() => {
+            if (window.headimg) {
+              return window.headimg;
+            }
+            if (window.cgiData) {
+              if (window.cgiData.round_head_img) {
+                return window.cgiData.round_head_img;
+              }
+              if (window.cgiData.hd_head_img) {
+                return window.cgiData.hd_head_img;
+              }
+            }
+            if (window.cgiDataNew) {
+              if (window.cgiDataNew.round_head_img) {
+                return window.cgiDataNew.round_head_img;
+              }
+              if (window.cgiDataNew.hd_head_img) {
+                return window.cgiDataNew.hd_head_img;
+              }
+            }
+            return "";
+          })(),
+          biz: window.biz || window.__biz,
+          uin: window.uin,
+          key: window.key,
+          refresh_uri: (() => {
+            const params = new URLSearchParams(window.location.search);
+            const biz = params.get("__biz");
+            const mid = params.get("mid");
+            const idx = params.get("idx");
+            const sn = params.get("sn");
+            return `https://mp.weixin.qq.com/s?__biz=${biz}&mid=${mid}&idx=${idx}&sn=${sn}`;
+          })(),
+          pass_ticket: window.pass_ticket,
+          appmsg_token: window.appmsg_token,
+        };
+        if (!WXU.config.officialServerDisabled) {
+          connect(_OfficialAccountCredentials);
+        }
+        WXU.observe_node(".wx_follow_media", () => {
+          setTimeout(() => {
+            insert_rss_button(_OfficialAccountCredentials);
+          }, 1200);
+        });
+      }
     }
-    if (location.pathname === "/s") {
-      WXU.observe_node(".wx_follow_media", () => {
-        setTimeout(() => {
-          insert_rss_button();
-        }, 1200);
-      });
-    }
-  }
-  main();
+    main();
+  });
 })();

@@ -79,15 +79,32 @@ function generateRSS(officialAccount, messages) {
 async function handleFetchOfficialAccountList(request, env) {
   const url = new URL(request.url);
   const token = url.searchParams.get('token');
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  let pageSize = parseInt(url.searchParams.get('page_size') || '10', 10) || 10;
+  if (pageSize <= 0) pageSize = 10;
+  if (pageSize > 200) pageSize = 200;
+  const keyword = (url.searchParams.get('keyword') || '').trim();
   
   if (!validateToken(token, env)) {
     return errorResponse(1001, 'Invalid token');
   }
 
   try {
-    const { results } = await env.DB.prepare(
-      "SELECT * FROM accounts"
-    ).all();
+    const where = keyword ? "WHERE (LOWER(nickname) LIKE ? OR LOWER(biz) LIKE ?)" : "";
+    const kw = keyword ? `%${keyword.toLowerCase()}%` : "";
+    const countStmt = env.DB.prepare(`SELECT COUNT(*) as total FROM accounts ${where}`);
+    const countRow = keyword
+      ? await countStmt.bind(kw, kw).first()
+      : await countStmt.first();
+    const total = countRow ? (countRow.total || 0) : 0;
+
+    const offset = (page - 1) * pageSize;
+    const listStmt = env.DB.prepare(
+      `SELECT * FROM accounts ${where} ORDER BY update_time DESC LIMIT ? OFFSET ?`
+    );
+    const { results } = keyword
+      ? await listStmt.bind(kw, kw, pageSize, offset).all()
+      : await listStmt.bind(pageSize, offset).all();
     
     // Filter effective accounts and format response
     const now = Math.floor(Date.now() / 1000);
@@ -102,7 +119,7 @@ async function handleFetchOfficialAccountList(request, env) {
       };
     });
 
-    return successResponse({ list });
+    return successResponse({ list, total, page, page_size: pageSize, keyword });
   } catch (error) {
     console.error('Error fetching account list:', error);
     return errorResponse(500, 'Internal server error');

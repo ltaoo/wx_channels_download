@@ -34,10 +34,11 @@ func (c *APIClient) setupRoutes() {
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
 	}
 	// 公众号接口 远端和本地都有的接口
-	c.engine.GET("/api/mp/list", c.official.HandleFetchOfficialAccountList)
-	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchOfficialAccountMsgList)
-	c.engine.POST("/api/mp/refresh", c.official.HandleRefreshOfficialAccountEvent)
-	c.engine.GET("/rss/mp", c.official.HandleFetchMsgListOfOfficialAccountRSS)
+	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
+	c.engine.POST("/api/mp/delete", c.official.HandleDelete)
+	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)
+	c.engine.POST("/api/mp/refresh", c.official.HandleRefreshEvent)
+	c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他

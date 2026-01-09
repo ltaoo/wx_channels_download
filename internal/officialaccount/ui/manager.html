@@ -106,7 +106,28 @@
       display: flex;
       gap: 8px;
       margin-bottom: 8px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
     }
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input, .select {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: #1b1f2a;
+      color: #e6e6e6;
+      font-size: 12px;
+      outline: none;
+    }
+    .input::placeholder { color: rgba(230, 230, 230, .45) }
+    .select { padding-right: 26px; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -129,7 +150,7 @@
     }
     .btn-sm { height: 24px; padding: 0 8px; font-size: 12px }
     .btn-fixed-width { min-width: 60px; }
-    .col-action { width: 80px; }
+    .col-action { width: 180px; }
 
     .nowrap {
       white-space: nowrap
@@ -163,11 +184,16 @@
       object-fit: cover;
       display: block;
     }
+    .row-missing td {
+      background: rgba(253, 214, 99, .06);
+    }
   </style>
   <script>
     const REMOTE_SERVER = "%%REMOTE_SERVER%%";
     const TOKEN = "%%TOKEN%%";
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
+    let ACCOUNTS_CACHE = [];
+    let LIST_STATE = { page: 1, pageSize: 10, keyword: "" };
     function proxy(u) {
       if (!u) return "";
       const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
@@ -194,26 +220,79 @@
       const h = Math.floor(m / 60);
       return h + "h";
     }
-    async function loadAccounts() {
+    function buildListUrl(params) {
+      const sp = new URLSearchParams();
+      if (TOKEN) sp.set("token", TOKEN);
+      sp.set("page", String(params.page || 1));
+      sp.set("page_size", String(params.pageSize || 10));
+      if (params.keyword && String(params.keyword).trim()) {
+        sp.set("keyword", String(params.keyword).trim());
+      }
+      return "/api/mp/list?" + sp.toString();
+    }
+    async function fetchAccountPage(params) {
+      const r = await fetch(buildListUrl(params));
+      const j = await r.json();
+      if (j.code !== 0) {
+        throw new Error(j.msg || "接口错误");
+      }
+      const data = j.data || {};
+      const list = (data && data.list) || [];
+      return {
+        list: Array.isArray(list) ? list : [],
+        total: Number.isFinite(Number(data.total)) ? Number(data.total) : 0,
+        page: Number.isFinite(Number(data.page)) ? Number(data.page) : (params.page || 1),
+        pageSize: Number.isFinite(Number(data.page_size)) ? Number(data.page_size) : (params.pageSize || 10),
+        keyword: (data && typeof data.keyword === "string") ? data.keyword : (params.keyword || ""),
+      };
+    }
+    function syncControlsFromState() {
+      const kw = document.getElementById("account-keyword");
+      if (kw && kw.value !== LIST_STATE.keyword) kw.value = LIST_STATE.keyword || "";
+      const ps = document.getElementById("page-size");
+      if (ps && String(ps.value) !== String(LIST_STATE.pageSize)) ps.value = String(LIST_STATE.pageSize);
+    }
+    function setPaginationInfo(page, pageSize, total) {
+      const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 10)));
+      const info = document.getElementById("page-info");
+      if (info) info.textContent = `第 ${page} / ${totalPages} 页`;
+      const prev = document.getElementById("btn-prev");
+      const next = document.getElementById("btn-next");
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= totalPages;
+    }
+    async function loadAccounts(partial) {
       try {
-        const url = "/api/mp/list" + (TOKEN ? ("?token=" + encodeURIComponent(TOKEN)) : "");
-        const r = await fetch(url);
-        const j = await r.json();
-        if (j.code !== 0) {
-          alert(j.msg || "接口错误");
-          return;
+        LIST_STATE = Object.assign({}, LIST_STATE, partial || {});
+        if (!Number.isFinite(Number(LIST_STATE.page)) || LIST_STATE.page < 1) LIST_STATE.page = 1;
+        if (!Number.isFinite(Number(LIST_STATE.pageSize)) || LIST_STATE.pageSize <= 0) LIST_STATE.pageSize = 10;
+        LIST_STATE.pageSize = Number(LIST_STATE.pageSize);
+        LIST_STATE.page = Number(LIST_STATE.page);
+        LIST_STATE.keyword = String(LIST_STATE.keyword || "").trim();
+        syncControlsFromState();
+
+        const data = await fetchAccountPage(LIST_STATE);
+        ACCOUNTS_CACHE = data.list;
+        if (!REMOTE_MODE) {
+          const missing = ACCOUNTS_CACHE.filter((it) => !(it && it.refresh_uri && String(it.refresh_uri).trim())).length;
+          const missingEl = document.getElementById("missing-refresh-count");
+          if (missingEl) missingEl.textContent = `缺 refresh_uri（当前页）：${missing}`;
         }
-        const list = (j.data && j.data.list) || [];
+        const countEl = document.getElementById("account-count");
+        if (countEl) countEl.textContent = `(${data.total})`;
+        setPaginationInfo(data.page, data.pageSize, data.total);
         const tbody = document.querySelector("#accounts tbody");
         tbody.innerHTML = "";
-        list.sort((a, b) => (b.update_time || 0) - (a.update_time || 0));
-        for (const it of list) {
+        for (const it of data.list) {
           const rss = REMOTE_SERVER ? `${REMOTE_SERVER}/rss/mp?biz=${encodeURIComponent(it.biz)}${TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ''}` : "-";
           const tr = document.createElement("tr");
+          const hasRefreshUri = !!(it && it.refresh_uri && String(it.refresh_uri).trim());
+          if (!REMOTE_MODE && !hasRefreshUri) tr.className = "row-missing";
           const eff = it.is_effective ? '<span class="pill ok">有效</span>' : '<span class="pill bad">失效</span>';
           const errPill = it.error ? '<span class="pill bad">出错</span>' : '<span class="pill ok">正常</span>';
           const errText = it.error ? `<div class="error-text">${it.error}</div>` : '';
           const available = (it.is_effective && !it.error) ? '<span class="pill ok">可用</span>' : '<span class="pill warn">不可用</span>';
+          const missingPill = (!REMOTE_MODE && !hasRefreshUri) ? '<span class="pill warn">无 refresh_uri</span>' : '';
           const avatar = `<div class="avatar">${it.avatar_url ? `<img src="${proxy(it.avatar_url)}" alt="" onerror="this.remove()">` : ''}</div>`;
           const colName = `
              <div class="row">
@@ -228,18 +307,83 @@
              <div class="nowrap">${it.biz || ""}</div>
              ${rss && rss !== "-" ? `<div><a href="${rss}" target="_blank">${rss}</a></div>` : ""}
           `;
-          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${errPill}${errText}`;
+          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${errPill} ${missingPill}${errText}`;
           const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm whitespace-nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
+          const colDelete = REMOTE_MODE ? '' : `<button class="btn btn-sm whitespace-nowrap" style="margin-left: 4px; border-color: rgba(242, 139, 130, .3); color: #f28b82;" onclick="deleteAccount(this, '${it.biz || ""}')">删除</button>`;
           tr.innerHTML = `
            <td>${colName}</td>
            <td>${colId}</td>
            <td>${colStatus}</td>
-           ${REMOTE_MODE ? '' : `<td class="col-action">${colRefresh}</td>`}
+           ${REMOTE_MODE ? '' : `<td class="col-action">${colRefresh}${colDelete}</td>`}
           `;
           tbody.appendChild(tr);
         }
       } catch (e) {
         console.error(e);
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    function applySearch() {
+      const kw = document.getElementById("account-keyword");
+      const keyword = kw ? String(kw.value || "").trim() : "";
+      loadAccounts({ page: 1, keyword });
+    }
+    function clearSearch() {
+      const kw = document.getElementById("account-keyword");
+      if (kw) kw.value = "";
+      loadAccounts({ page: 1, keyword: "" });
+    }
+    function changePageSize(v) {
+      const next = parseInt(String(v || "10"), 10);
+      loadAccounts({ page: 1, pageSize: Number.isFinite(next) && next > 0 ? next : 10 });
+    }
+    function prevPage() {
+      loadAccounts({ page: Math.max(1, (LIST_STATE.page || 1) - 1) });
+    }
+    function nextPage() {
+      loadAccounts({ page: (LIST_STATE.page || 1) + 1 });
+    }
+    async function copyRefreshLinks(btn) {
+      if (REMOTE_MODE) return;
+      let links = [];
+      try {
+        const data = await fetchAccountPage({ page: 1, pageSize: 5, keyword: LIST_STATE.keyword || "" });
+        links = (data.list || [])
+          .map((it) => (it && it.refresh_uri ? String(it.refresh_uri).trim() : ""))
+          .filter(Boolean);
+      } catch (e) {
+        links = (Array.isArray(ACCOUNTS_CACHE) ? ACCOUNTS_CACHE : [])
+          .map((it) => (it && it.refresh_uri ? String(it.refresh_uri).trim() : ""))
+          .filter(Boolean)
+          .slice(0, 5);
+      }
+      if (!links.length) {
+        alert("列表中没有可复制的 refresh_uri");
+        return;
+      }
+      const text = links.join("\n");
+      const old = btn ? btn.textContent : "";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          ta.style.top = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          if (!ok) throw new Error("复制失败");
+        }
+        if (btn) btn.textContent = "已复制";
+        setTimeout(() => {
+          if (btn) btn.textContent = old;
+        }, 1200);
+      } catch (e) {
         alert(String(e && e.message ? e.message : e));
       }
     }
@@ -320,9 +464,8 @@
       }
       const grid = document.querySelector(".grid");
       const toolbar = document.querySelector("#accounts .toolbar");
-      if (toolbar) {
-        toolbar.style.display = REMOTE_MODE ? "none" : "";
-      }
+      const actions = document.getElementById("toolbar-actions");
+      if (actions) actions.style.display = REMOTE_MODE ? "none" : "";
       const wsSection = document.querySelector("#ws");
       if (wsSection) {
         wsSection.style.display = REMOTE_MODE ? "none" : "";
@@ -338,6 +481,12 @@
           <th>是否可用</th>
         `;
       }
+      const kw = document.getElementById("account-keyword");
+      if (kw) {
+        kw.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") applySearch();
+        });
+      }
     }
     document.addEventListener("DOMContentLoaded", bootstrap);
   </script>
@@ -348,9 +497,28 @@
     <h1>公众号管理</h1>
     <div class="grid">
       <section id="accounts">
-        <h2>账号列表</h2>
+        <h2>账号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
         <div class="toolbar">
-          <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
+          <div class="toolbar-left" id="toolbar-actions">
+            <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
+            <button class="btn" onclick="copyRefreshLinks(this)">复制刷新链接</button>
+            <span id="missing-refresh-count" class="muted" style="align-self: center;"></span>
+          </div>
+          <div class="toolbar-right">
+            <input id="account-keyword" class="input" style="width: 220px" placeholder="搜索昵称 / biz" />
+            <button class="btn" onclick="applySearch()">搜索</button>
+            <button class="btn" onclick="clearSearch()">清空</button>
+            <select id="page-size" class="select" onchange="changePageSize(this.value)">
+              <option value="10">10/页</option>
+              <option value="20">20/页</option>
+              <option value="50">50/页</option>
+              <option value="100">100/页</option>
+              <option value="200">200/页</option>
+            </select>
+            <button id="btn-prev" class="btn btn-sm btn-fixed-width" onclick="prevPage()">上一页</button>
+            <span id="page-info" class="muted" style="align-self: center;"></span>
+            <button id="btn-next" class="btn btn-sm btn-fixed-width" onclick="nextPage()">下一页</button>
+          </div>
         </div>
         <table>
           <thead>

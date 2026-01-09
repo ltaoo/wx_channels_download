@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog"
 
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/cache"
@@ -28,7 +32,6 @@ import (
 
 var accounts = make(map[string]*OfficialAccount)
 var acct_mu sync.RWMutex
-var mp_json_filepath = "mp.json"
 var official_timer_once sync.Once
 var official_ws_upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -38,40 +41,53 @@ var official_ws_upgrader = websocket.Upgrader{
 	},
 }
 
-func save_accounts() {
-	acct_mu.RLock()
-	defer acct_mu.RUnlock()
-
-	data, err := json.MarshalIndent(accounts, "", "  ")
-	if err != nil {
-		fmt.Println("saveAccounts marshal err:", err)
-		return
-	}
-
-	err = os.WriteFile(mp_json_filepath, data, 0644)
-	if err != nil {
-		fmt.Println("saveAccounts write err:", err)
-	}
+type OfficialAccountBody struct {
+	Biz string `json:"biz"`
 }
-func load_accounts() {
-	data, err := os.ReadFile(mp_json_filepath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			fmt.Println("loadAccounts read err:", err)
-		}
-		return
+type OfficialAccount struct {
+	Biz         string `json:"biz"`
+	Nickname    string `json:"nickname"`
+	AvatarURL   string `json:"avatar_url"`
+	Uin         string `json:"uin"`
+	Key         string `json:"key"`
+	PassTicket  string `json:"pass_ticket"`
+	AppmsgToken string `json:"appmsg_token"`
+	RefreshUri  string `json:"refresh_uri"`
+	IsEffective bool   `json:"is_effective"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdateTime  int64  `json:"update_time"`
+	Error       string `json:"error"`
+}
+
+func (acct *OfficialAccount) MergeFrom(source *OfficialAccount) {
+	if source.Nickname != "" {
+		acct.Nickname = source.Nickname
 	}
-
-	acct_mu.Lock()
-	defer acct_mu.Unlock()
-
-	err = json.Unmarshal(data, &accounts)
-	if err != nil {
-		fmt.Println("loadAccounts unmarshal err:", err)
+	if source.AvatarURL != "" {
+		acct.AvatarURL = source.AvatarURL
+	}
+	if source.Uin != "" {
+		acct.Uin = source.Uin
+	}
+	if source.Key != "" {
+		acct.Key = source.Key
+	}
+	if source.PassTicket != "" {
+		acct.PassTicket = source.PassTicket
+	}
+	if source.AppmsgToken != "" {
+		acct.AppmsgToken = source.AppmsgToken
+	}
+	if source.RefreshUri != "" {
+		acct.RefreshUri = source.RefreshUri
+	}
+	if source.Error != "" {
+		acct.Error = source.Error
 	}
 }
 
 type OfficialAccountClient struct {
+	logger               *zerolog.Logger
 	RemoteServerAddr     string
 	RefreshToken         string
 	RemoteMode           bool
@@ -79,11 +95,11 @@ type OfficialAccountClient struct {
 	RemoteServerHostname string
 	RemoteServerPort     int
 	RefreshSkipMinutes   int
+	MaxWebsocketClients  int
 	Tokens               []string
 	Cookies              []*http.Cookie
 	ws_clients           map[*Client]bool
 	ws_mu                sync.RWMutex
-	engine               *gin.Engine
 	requests             map[string]chan ClientWebsocketResponse
 	requests_mu          sync.RWMutex
 	cache                *cache.Cache
@@ -91,37 +107,29 @@ type OfficialAccountClient struct {
 	wait_chan_map        map[string]chan *OfficialAccount
 	wait_mu              sync.Mutex
 }
-type OfficialAccountBody struct {
-	Biz string `json:"biz"`
-}
-type OfficialAccount struct {
-	Nickname    string `json:"nickname"`
-	AvatarURL   string `json:"avatar_url"`
-	Biz         string `json:"biz"`
-	Uin         string `json:"uin"`
-	Key         string `json:"key"`
-	PassTicket  string `json:"pass_ticket"`
-	AppmsgToken string `json:"appmsg_token"`
-	IsEffective bool   `json:"is_effective"`
-	UpdateTime  int64  `json:"update_time"`
-	Error       string `json:"error"`
+
+func (c *OfficialAccountClient) next_trace_id(prefix string) string {
+	n := atomic.AddUint64(&c.req_seq, 1)
+	return fmt.Sprintf("%s-%d", prefix, n)
 }
 
-func NewOfficialAccountClient(cfg *OfficialAccountConfig) *OfficialAccountClient {
+func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog.Logger) *OfficialAccountClient {
+	logger := parent_logger.With().Str("service", "OfficialAccountClient").Logger()
 	c := &OfficialAccountClient{
+		logger:               &logger,
 		RemoteMode:           cfg.RemoteMode,
 		RemoteServerProtocol: cfg.RemoteServerProtocol,
 		RemoteServerHostname: cfg.RemoteServerHostname,
 		RemoteServerPort:     cfg.RemoteServerPort,
 		RefreshSkipMinutes:   cfg.RefreshSkipMinutes,
+		MaxWebsocketClients:  5,
 		RefreshToken:         cfg.RefreshToken,
 		Tokens:               make([]string, 0),
 		ws_clients:           make(map[*Client]bool),
 		requests:             make(map[string]chan ClientWebsocketResponse),
-		// engine:     gin.Default(),
-		cache:         cache.New(),
-		req_seq:       uint64(time.Now().UnixNano()),
-		wait_chan_map: make(map[string]chan *OfficialAccount),
+		cache:                cache.New(),
+		req_seq:              uint64(time.Now().UnixNano()),
+		wait_chan_map:        make(map[string]chan *OfficialAccount),
 	}
 	if cfg.RootDir != "" {
 		mp_json_filepath = filepath.Join(cfg.RootDir, "mp.json")
@@ -176,6 +184,13 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 		return
 	}
 	c.ws_mu.Lock()
+	if c.MaxWebsocketClients > 0 && len(c.ws_clients) >= c.MaxWebsocketClients {
+		c.ws_mu.Unlock()
+		c.logger.Warn().Msg("websocket client limit reached, closing connection")
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "server busy"))
+		conn.Close()
+		return
+	}
 	client := &Client{conn: conn, send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
@@ -226,7 +241,7 @@ func (c *OfficialAccountClient) HandleWebsocket(ctx *gin.Context) {
 }
 
 // 获取公众号推送列表
-func (c *OfficialAccountClient) HandleFetchOfficialAccountMsgList(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleFetchMsgList(ctx *gin.Context) {
 	biz := ctx.Query("biz")
 	offset := ctx.Query("offset")
 	token := ctx.Query("token")
@@ -238,24 +253,63 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountMsgList(ctx *gin.Conte
 	if err != nil {
 		_offset = 0
 	}
-	data, err := c.FetchMsgList(biz, _offset)
+	trace_id := c.next_trace_id("fetch_msg_list")
+	logger := c.logger.With().
+		Str("trace_id", trace_id).
+		Str("biz", biz).
+		Int("offset", _offset).
+		Logger()
+	data, err := c.fetchMsgList(logger, biz, _offset)
 	if err != nil {
-		result.ErrCode(ctx, result.CodeFetchMsgFailed)
+		code := result.CodeFetchMsgFailed
+		msg := result.GetMsg(code)
+		loc := ""
+		if c, m, l, ok := codedErrorOf(err); ok {
+			code = c
+			msg = m
+			loc = l
+		}
+		logger.Error().
+			Int("resp_code", code).
+			Str("resp_msg", msg).
+			Str("err", safeLogErr(err)).
+			Str("location", loc).
+			Msg("fetch msg list: failed")
+		result.Err(ctx, code, fmt.Sprintf("%s (loc=%s, trace_id=%s)", msg, loc, trace_id))
 		return
 	}
 	result.Ok(ctx, data)
 }
 
 // 获取已添加到公众号列表
-func (c *OfficialAccountClient) HandleFetchOfficialAccountList(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
 		result.ErrCode(ctx, result.CodeTokenInvalid)
 		return
 	}
+	page, err := strconv.Atoi(ctx.Query("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	pageSize, err := strconv.Atoi(ctx.Query("page_size"))
+	if err != nil || pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	keyword := strings.TrimSpace(ctx.Query("keyword"))
+	keywordLower := strings.ToLower(keyword)
 	type SafeOfficialAccount struct {
-		*OfficialAccount
-		Uin *string `json:"uin,omitempty"`
+		Biz         string `json:"biz"`
+		Nickname    string `json:"nickname"`
+		AvatarURL   string `json:"avatar_url"`
+		IsEffective bool   `json:"is_effective"`
+		CreatedAt   int64  `json:"created_at"`
+		UpdateTime  int64  `json:"update_time"`
+		Error       string `json:"error"`
+		RefreshUri  string `json:"refresh_uri,omitempty"`
 	}
 	var list []SafeOfficialAccount
 	now := time.Now().Unix()
@@ -270,21 +324,99 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountList(ctx *gin.Context)
 				acct.IsEffective = false
 			}
 		}
-		list = append(list, SafeOfficialAccount{
-			OfficialAccount: acct,
-		})
+		summary := SafeOfficialAccount{
+			Biz:         acct.Biz,
+			Nickname:    acct.Nickname,
+			AvatarURL:   acct.AvatarURL,
+			IsEffective: acct.IsEffective,
+			CreatedAt:   acct.CreatedAt,
+			UpdateTime:  acct.UpdateTime,
+			Error:       acct.Error,
+		}
+		if !c.RemoteMode {
+			summary.RefreshUri = acct.RefreshUri
+		}
+		if keywordLower == "" {
+			list = append(list, summary)
+		} else {
+			bizLower := strings.ToLower(summary.Biz)
+			nicknameLower := strings.ToLower(summary.Nickname)
+			if strings.Contains(bizLower, keywordLower) || strings.Contains(nicknameLower, keywordLower) {
+				list = append(list, summary)
+			}
+		}
 	}
 	acct_mu.Unlock()
 	if changed {
 		save_accounts()
 	}
+	sort.Slice(list, func(i, j int) bool {
+		a := list[i]
+		b := list[j]
+		if a.CreatedAt != b.CreatedAt {
+			return a.CreatedAt > b.CreatedAt
+		}
+		if a.UpdateTime != b.UpdateTime {
+			return a.UpdateTime > b.UpdateTime
+		}
+		if a.Nickname != b.Nickname {
+			return a.Nickname > b.Nickname
+		}
+		return a.Biz > b.Biz
+	})
+	total := len(list)
+	if total == 0 {
+		page = 1
+	} else {
+		totalPages := (total + pageSize - 1) / pageSize
+		if page > totalPages {
+			page = totalPages
+		}
+	}
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	paged := list[start:end]
 	result.Ok(ctx, gin.H{
-		"list": list,
+		"list":      paged,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+		"keyword":   keyword,
 	})
 }
 
+func (c *OfficialAccountClient) HandleDelete(ctx *gin.Context) {
+	token := ctx.Query("token")
+	if token != c.RefreshToken {
+		result.ErrCode(ctx, result.CodeTokenInvalid)
+		return
+	}
+	var body OfficialAccountBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.ErrCode(ctx, result.CodeInvalidParams)
+		return
+	}
+	if body.Biz == "" {
+		result.ErrCode(ctx, result.CodeMissingBiz)
+		return
+	}
+
+	acct_mu.Lock()
+	delete(accounts, body.Biz)
+	acct_mu.Unlock()
+
+	save_accounts()
+	result.Ok(ctx, nil)
+}
+
 // 接收 刷新账号凭证 事件（假定收到的凭证一定是最新的）
-func (c *OfficialAccountClient) HandleRefreshOfficialAccountEvent(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 	token := ctx.Query("token")
 	if token != c.RefreshToken {
 		result.ErrCode(ctx, result.CodeTokenInvalid)
@@ -295,28 +427,63 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountEvent(ctx *gin.Conte
 		result.ErrCode(ctx, result.CodeInvalidParams)
 		return
 	}
-	if body.Biz == "" || body.Key == "" {
+	if body.Biz == "" {
 		result.ErrCode(ctx, result.CodeMissingBiz)
 		return
 	}
-	body.IsEffective = true
-	body.UpdateTime = time.Now().Unix()
+	if body.Key == "" {
+		result.ErrCode(ctx, result.CodeMissingBiz)
+		return
+	}
+	trace_id := c.next_trace_id("refresh_event")
+	logger := c.logger.With().
+		Str("trace_id", trace_id).
+		Str("biz", body.Biz).
+		Str("nickname", body.Nickname).
+		Logger()
+	logger.Info().Msg("refresh official account event: received")
+	now := time.Now().Unix()
 	acct_mu.Lock()
-	accounts[body.Biz] = &body
+	var target_acct *OfficialAccount
+	if old, exists := accounts[body.Biz]; exists {
+		// copy old account to avoid data race on reading fields
+		new_acct := *old
+		new_acct.MergeFrom(&body)
+		new_acct.IsEffective = true
+		if new_acct.CreatedAt == 0 {
+			new_acct.CreatedAt = now
+		}
+		new_acct.UpdateTime = now
+		new_acct.Error = ""
+		target_acct = &new_acct
+		accounts[body.Biz] = target_acct
+	} else {
+		body.IsEffective = true
+		if body.CreatedAt == 0 {
+			body.CreatedAt = now
+		}
+		body.UpdateTime = now
+		target_acct = &body
+		accounts[body.Biz] = target_acct
+	}
 	acct_mu.Unlock()
 	save_accounts()
 	c.wait_mu.Lock()
 	ch, ok := c.wait_chan_map[body.Biz]
 	if ok {
 		select {
-		case ch <- &body:
+		case ch <- target_acct:
 		default:
 		}
 	}
 	c.wait_mu.Unlock()
+	logger.Info().
+		Bool("has_waiter", ok).
+		Bool("remote_mode", c.RemoteMode).
+		Msg("refresh official account event: stored and notified")
 	if !ok && !c.RemoteMode {
 		// 这里是直接手动刷新页面时，主动向远端服务推送凭证。所以如果是远端服务，不能向自己推，就循环了
-		go c.PushCredentialToRemoteServer(&body)
+		go c.pushCredentialToRemoteServer(logger, target_acct)
 	}
 	result.Ok(ctx, nil)
 }
@@ -326,7 +493,25 @@ func (c *OfficialAccountClient) HandleRefreshAllRemoteOfficialAccount(ctx *gin.C
 		result.ErrCode(ctx, result.CodeClientNotReady)
 		return
 	}
-	c.RefreshAllRemoteOfficialAccount()
+	run_id := c.next_trace_id("refresh_all_remote")
+	c.logger.Info().
+		Str("run_id", run_id).
+		Str("origin", c.RemoteServerAddr).
+		Int("refresh_skip_minutes", c.RefreshSkipMinutes).
+		Bool("remote_mode", c.RemoteMode).
+		Msg("refresh all remote official accounts: start")
+	err := c.refreshAllRemoteOfficialAccount(run_id)
+	if err != nil {
+		c.logger.Error().
+			Str("run_id", run_id).
+			Err(err).
+			Msg("refresh all remote official accounts: failed")
+		result.Err(ctx, 1001, "refresh failed")
+		return
+	}
+	c.logger.Info().
+		Str("run_id", run_id).
+		Msg("refresh all remote official accounts: completed")
 	result.Ok(ctx, nil)
 }
 func (c *OfficialAccountClient) HandleRefreshRemoteOfficialAccount(ctx *gin.Context) {
@@ -336,6 +521,8 @@ func (c *OfficialAccountClient) HandleRefreshRemoteOfficialAccount(ctx *gin.Cont
 	}
 	result.Ok(ctx, nil)
 }
+
+// 在本地前端，手动刷新指定公众号
 func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gin.Context) {
 	if err := c.Validate(); err != nil {
 		result.ErrCode(ctx, result.CodeClientNotReady)
@@ -352,7 +539,7 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 	result.Ok(ctx, nil)
 }
 
-func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.Context) {
+func (c *OfficialAccountClient) HandleOfficialAccountRSS(ctx *gin.Context) {
 	biz := ctx.Query("biz")
 	offset := ctx.Query("offset")
 	need_content := ctx.Query("content")
@@ -366,7 +553,6 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 			return
 		}
 	}
-
 	token := ctx.Query("token")
 	if valid := c.ValidateToken(token); !valid {
 		result.ErrCode(ctx, result.CodeTokenInvalid)
@@ -376,9 +562,29 @@ func (c *OfficialAccountClient) HandleFetchMsgListOfOfficialAccountRSS(ctx *gin.
 	if err != nil {
 		_offset = 0
 	}
-	data, err := c.FetchMsgList(biz, _offset)
+	trace_id := c.next_trace_id("fetch_msg_list")
+	logger := c.logger.With().
+		Str("trace_id", trace_id).
+		Str("biz", biz).
+		Int("offset", _offset).
+		Logger()
+	data, err := c.fetchMsgList(logger, biz, _offset)
 	if err != nil {
-		result.ErrCode(ctx, result.CodeFetchMsgFailed)
+		code := result.CodeFetchMsgFailed
+		msg := result.GetMsg(code)
+		loc := ""
+		if c, m, l, ok := codedErrorOf(err); ok {
+			code = c
+			msg = m
+			loc = l
+		}
+		logger.Error().
+			Int("resp_code", code).
+			Str("resp_msg", msg).
+			Str("err", safeLogErr(err)).
+			Str("location", loc).
+			Msg("fetch msg list: failed")
+		result.Err(ctx, code, fmt.Sprintf("%s (loc=%s, trace_id=%s)", msg, loc, trace_id))
 		return
 	}
 	var list struct {
@@ -781,6 +987,17 @@ func (c *OfficialAccountClient) ListClients() []*Client {
 	c.ws_mu.RUnlock()
 	return clients
 }
+
+func (c *OfficialAccountClient) firstClient() (*Client, error) {
+	c.ws_mu.RLock()
+	defer c.ws_mu.RUnlock()
+	for cl := range c.ws_clients {
+		if cl != nil {
+			return cl, nil
+		}
+	}
+	return nil, errors.New(result.GetMsg(result.CodeClientNotReady))
+}
 func (c *OfficialAccountClient) RequestFrontendOn(ws *Client, endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.EnsureFrontendReady(3 * time.Second); err != nil {
 		return nil, err
@@ -847,7 +1064,7 @@ func (c *OfficialAccountClient) BuildURL(uu string, params map[string]string) st
 }
 
 func (c *OfficialAccountClient) Fetch(target_url string) (*http.Response, error) {
-	client := &http.Client{}
+	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", target_url, nil)
 	if err != nil {
 		return nil, err
@@ -876,212 +1093,372 @@ func (c *OfficialAccountClient) Fetch(target_url string) (*http.Response, error)
 
 // 调用前端刷新指定公众号的凭证信息
 func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccountBody) (*OfficialAccount, error) {
+	trace_id := c.next_trace_id("refresh_account_frontend")
+	logger := c.logger.With().
+		Str("trace_id", trace_id).
+		Str("biz", body.Biz).
+		Logger()
 	start := time.Now()
-	defer func() {
-		fmt.Printf("RefreshAccount %s cost: %v\n", body.Biz, time.Since(start))
-	}()
 	if body.Biz == "" {
+		logger.Error().Msg("refresh official account via frontend: missing biz")
 		return nil, errors.New(result.GetMsg(result.CodeMissingBiz))
 	}
 	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
+		logger.Error().Err(err).Msg("refresh official account via frontend: frontend not ready")
 		return nil, err
 	}
 	acct_mu.RLock()
-	if acct, ok := accounts[body.Biz]; ok {
-		fmt.Println("[]RefreshAccountWithFrontend", acct.UpdateTime, time.Now().Unix()-acct.UpdateTime)
-		if time.Now().Unix()-acct.UpdateTime < 5*60 {
-			acct_mu.RUnlock()
-			go c.PushCredentialToRemoteServer(acct)
-			return acct, nil
-		}
+	acct, ok := accounts[body.Biz]
+	if !ok {
+		acct_mu.RUnlock()
+		return nil, errors.New(result.GetMsg(result.CodeAccountNotFound))
+	}
+	if strings.TrimSpace(acct.RefreshUri) == "" {
+		acct_mu.RUnlock()
+		return nil, errors.New("缺少 refresh_uri")
+	}
+	if time.Now().Unix()-acct.UpdateTime < 5*60 {
+		age := time.Now().Unix() - acct.UpdateTime
+		logger.Info().
+			Int64("acct_update_time", acct.UpdateTime).
+			Int64("acct_update_age_sec", age).
+			Msg("refresh official account via frontend: skip (recent update)")
+		acct_mu.RUnlock()
+		go c.pushCredentialToRemoteServer(logger, acct)
+		logger.Info().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: completed (skipped)")
+		return acct, nil
 	}
 	acct_mu.RUnlock()
-	c.wait_mu.Lock()
-	if ch, ok := c.wait_chan_map[body.Biz]; ok {
-		c.wait_mu.Unlock()
-		select {
-		case acct := <-ch:
-			return acct, nil
-		case <-time.After(20 * time.Second):
-			return nil, errors.New(result.GetMsg(result.CodeTimeout))
-		}
-	}
-	ch := make(chan *OfficialAccount, 1)
-	c.wait_chan_map[body.Biz] = ch
-	c.wait_mu.Unlock()
-	if _, err := c.RequestFrontend("key:fetch_account_home", struct {
-		Biz string `json:"biz"`
-	}{Biz: body.Biz}, 15*time.Second); err != nil {
-		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
-		c.wait_mu.Unlock()
+	ws, err := c.firstClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("refresh official account via frontend: no available client")
 		return nil, err
 	}
-	select {
-	case acct := <-ch:
-		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
-		c.wait_mu.Unlock()
-		acct.IsEffective = true
-		acct.UpdateTime = time.Now().Unix()
-		acct.Error = ""
-		acct_mu.Lock()
-		accounts[acct.Biz] = acct
-		acct_mu.Unlock()
-		save_accounts()
-		go c.PushCredentialToRemoteServer(acct)
-		return acct, nil
-	case <-time.After(20 * time.Second):
-		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
-		c.wait_mu.Unlock()
-		return nil, errors.New(result.GetMsg(result.CodeTimeout))
+	if ws != nil {
+		logger = logger.With().Str("client_title", ws.title).Logger()
 	}
+	return c.refresh_credential_from_frontend(logger, body, ws)
 }
-func (c *OfficialAccountClient) RefreshAccountWithFrontendOnClient(body *OfficialAccountBody, ws *Client) (*OfficialAccount, error) {
+
+func (c *OfficialAccountClient) refresh_credential_from_frontend(logger zerolog.Logger, body *OfficialAccountBody, ws *Client) (*OfficialAccount, error) {
 	start := time.Now()
-	defer func() {
-		fmt.Printf("RefreshAccount %s cost: %v\n", body.Biz, time.Since(start))
-	}()
+	logger.Info().Msg("refresh official account via frontend: start")
 	if body.Biz == "" {
+		logger.Error().Msg("refresh official account via frontend: missing biz")
 		return nil, errors.New(result.GetMsg(result.CodeMissingBiz))
 	}
 	if err := c.EnsureFrontendReady(5 * time.Second); err != nil {
+		logger.Error().Err(err).Msg("refresh official account via frontend: frontend not ready")
 		return nil, err
 	}
+	if ws == nil {
+		return nil, errors.New(result.GetMsg(result.CodeClientNotReady))
+	}
+	acct_mu.RLock()
+	acct, ok := accounts[body.Biz]
+	if !ok {
+		acct_mu.RUnlock()
+		return nil, errors.New(result.GetMsg(result.CodeAccountNotFound))
+	}
+	if strings.TrimSpace(acct.RefreshUri) == "" {
+		acct_mu.RUnlock()
+		return nil, errors.New("缺少 refresh_uri")
+	}
+	acct_mu.RUnlock()
 	c.wait_mu.Lock()
-	if ch, ok := c.wait_chan_map[body.Biz]; ok {
+	if ch, ok := c.wait_chan_map[acct.Biz]; ok {
 		c.wait_mu.Unlock()
+		logger.Debug().Msg("refresh official account via frontend: wait channel exists, waiting")
 		select {
-		case acct := <-ch:
-			return acct, nil
+		case cur_acct := <-ch:
+			logger.Info().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: completed (shared result)")
+			return cur_acct, nil
 		case <-time.After(20 * time.Second):
+			logger.Error().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: timeout (shared wait)")
 			return nil, errors.New(result.GetMsg(result.CodeTimeout))
 		}
 	}
 	ch := make(chan *OfficialAccount, 1)
-	c.wait_chan_map[body.Biz] = ch
+	c.wait_chan_map[acct.Biz] = ch
 	c.wait_mu.Unlock()
-	if _, err := c.RequestFrontendOn(ws, "key:fetch_account_home", struct {
-		Biz string `json:"biz"`
-	}{Biz: body.Biz}, 15*time.Second); err != nil {
+
+	logger.Info().Msg("refresh official account via frontend: request frontend fetch_account_home")
+
+	reqBody := struct {
+		Biz        string `json:"biz"`
+		RefreshUri string `json:"refresh_uri"`
+	}{Biz: acct.Biz, RefreshUri: acct.RefreshUri}
+
+	if _, err := c.RequestFrontendOn(ws, "key:fetch_account_home", reqBody, 15*time.Second); err != nil {
 		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
+		delete(c.wait_chan_map, acct.Biz)
 		c.wait_mu.Unlock()
+		logger.Error().Err(err).Dur("cost", time.Since(start)).Msg("refresh official account via frontend: request failed")
 		return nil, err
 	}
 	select {
-	case acct := <-ch:
+	case cur_acct := <-ch:
 		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
+		delete(c.wait_chan_map, acct.Biz)
 		c.wait_mu.Unlock()
-		acct.IsEffective = true
-		acct.UpdateTime = time.Now().Unix()
-		acct.Error = ""
+		cur_acct.IsEffective = true
+		cur_acct.UpdateTime = time.Now().Unix()
+		cur_acct.Error = ""
 		acct_mu.Lock()
-		accounts[acct.Biz] = acct
+		accounts[cur_acct.Biz] = cur_acct
 		acct_mu.Unlock()
 		save_accounts()
-		go c.PushCredentialToRemoteServer(acct)
-		return acct, nil
+		logger.Info().
+			Str("nickname", cur_acct.Nickname).
+			Int64("acct_update_time", cur_acct.UpdateTime).
+			Msg("refresh official account via frontend: credential updated")
+		go c.pushCredentialToRemoteServer(logger, cur_acct)
+		logger.Info().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: completed")
+		return cur_acct, nil
 	case <-time.After(20 * time.Second):
 		c.wait_mu.Lock()
-		delete(c.wait_chan_map, body.Biz)
+		delete(c.wait_chan_map, acct.Biz)
 		c.wait_mu.Unlock()
+		logger.Error().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: timeout")
 		return nil, errors.New(result.GetMsg(result.CodeTimeout))
 	}
 }
 func (c *OfficialAccountClient) RefreshAllRemoteOfficialAccount() error {
+	run_id := c.next_trace_id("refresh_all_remote")
+	return c.refreshAllRemoteOfficialAccount(run_id)
+}
+
+func (c *OfficialAccountClient) refreshAllRemoteOfficialAccount(run_id string) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
-	c.RefreshRemoteOfficialAccount(c.RemoteServerAddr)
-	fmt.Println("All remote server is refreshed")
+	logger := c.logger.With().
+		Str("run_id", run_id).
+		Str("origin", c.RemoteServerAddr).
+		Logger()
+	logger.Info().Msg("refresh all remote official accounts: start")
+	if err := c.refreshRemoteOfficialAccount(logger, c.RemoteServerAddr); err != nil {
+		return err
+	}
+	logger.Info().Msg("refresh all remote official accounts: completed")
 	return nil
 }
 func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) error {
-	fmt.Println("[]refresh_the_accounts_in_remote_server")
-	u := origin + "/api/mp/list"
+	run_id := c.next_trace_id("refresh_remote")
+	logger := c.logger.With().Str("run_id", run_id).Str("origin", origin).Logger()
+	return c.refreshRemoteOfficialAccount(logger, origin)
+}
+
+type remoteOfficialAccountJob struct {
+	Biz      string
+	Nickname string
+}
+
+func (c *OfficialAccountClient) refreshRemoteOfficialAccount(logger zerolog.Logger, origin string) error {
+	logger.Info().Msg("refresh remote official accounts: start")
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", u, nil)
-	if err != nil {
-		fmt.Println("refresh_the_accounts_in_remote_server: NewRequest err:", err)
-		return err
+	// var token string
+	// if len(c.Tokens) > 0 {
+	// 	token = c.Tokens[0]
+	// }
+	page := 1
+	page_size := 200
+	var items []struct {
+		Nickname string `json:"nickname"`
+		Biz      string `json:"biz"`
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("refresh_the_accounts_in_remote_server: Do err:", err)
-		return err
+	remote_total := 0
+	for {
+		baseURL, err := url.Parse(origin + "/api/mp/list")
+		if err != nil {
+			logger.Error().Err(err).Msg("refresh remote official accounts: parse request url failed")
+			return err
+		}
+		q := baseURL.Query()
+		if c.RefreshToken != "" {
+			q.Set("token", c.RefreshToken)
+		}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("page_size", strconv.Itoa(page_size))
+		baseURL.RawQuery = q.Encode()
+		req, err := http.NewRequest("GET", baseURL.String(), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("refresh remote official accounts: build request failed")
+			return err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Error().Err(err).Msg("refresh remote official accounts: request failed")
+			return err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			logger.Error().Err(err).Msg("refresh remote official accounts: read response failed")
+			return err
+		}
+		var out struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+			Data struct {
+				List []struct {
+					Nickname string `json:"nickname"`
+					Biz      string `json:"biz"`
+				} `json:"list"`
+				Total    int    `json:"total"`
+				Page     int    `json:"page"`
+				PageSize int    `json:"page_size"`
+				Keyword  string `json:"keyword"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &out); err != nil {
+			logger.Error().Err(err).Msg("refresh remote official accounts: decode response failed")
+			return err
+		}
+		if out.Code != 0 {
+			logger.Error().Int("code", out.Code).Str("msg", out.Msg).Msg("refresh remote official accounts: remote error")
+			return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
+		}
+		if page == 1 && out.Data.Total == 0 && out.Data.Page == 0 && out.Data.PageSize == 0 {
+			items = out.Data.List
+			break
+		}
+
+		if out.Data.Total > 0 {
+			remote_total = out.Data.Total
+		}
+		items = append(items, out.Data.List...)
+		if len(out.Data.List) == 0 {
+			break
+		}
+		if remote_total > 0 && len(items) >= remote_total {
+			break
+		}
+		if len(out.Data.List) < page_size {
+			break
+		}
+		page++
+		if page > 1000 {
+			break
+		}
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	var out struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-		Data struct {
-			List []struct {
-				Nickname string `json:"nickname"`
-				Biz      string `json:"biz"`
-			} `json:"list"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		fmt.Println("refresh_the_accounts_in_remote_server: Unmarshal err:", err)
-		return err
-	}
-	if out.Code != 0 {
-		return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
-	}
-	items := out.Data.List
 	clients := c.ListClients()
 	if len(clients) == 0 {
+		logger.Error().Msg("refresh remote official accounts: no frontend clients")
 		return errors.New(result.GetMsg(result.CodeClientNotReady))
 	}
 	skip_minutes := c.RefreshSkipMinutes
 	skip_seconds := int64(skip_minutes) * 60
 	now := time.Now().Unix()
 	total := 0
-	fmt.Printf("refresh_the_accounts_in_remote_server: origin=%s, skip_threshold=%dmin\n", origin, skip_minutes)
-	jobs := make(chan string, len(items))
+	logger.Info().
+		Int("remote_list_count", len(items)).
+		Int("client_count", len(clients)).
+		Int("skip_threshold_minutes", skip_minutes).
+		Msg("refresh remote official accounts: fetched remote list")
+	jobs := make(chan remoteOfficialAccountJob, len(items))
 	for _, item := range items {
 		if item.Biz == "" {
+			logger.Warn().Str("nickname", item.Nickname).Msg("refresh remote official accounts: skip item (missing biz)")
 			continue
 		}
 		should_skip := false
+		var updateTime int64
 		acct_mu.RLock()
-		if acct, ok := accounts[item.Biz]; ok && acct != nil {
+		acct, ok := accounts[item.Biz]
+		if !ok || acct == nil {
+			should_skip = true
+		} else {
+			updateTime = acct.UpdateTime
 			if acct.UpdateTime > 0 && now-acct.UpdateTime <= skip_seconds {
+				should_skip = true
+			}
+			if acct.RefreshUri == "" {
 				should_skip = true
 			}
 		}
 		acct_mu.RUnlock()
 		if should_skip {
+			logger.Info().
+				Str("biz", item.Biz).
+				Str("nickname", item.Nickname).
+				Int64("acct_update_time", updateTime).
+				Int64("acct_update_age_sec", now-updateTime).
+				Msg("refresh remote official accounts: skip (missing local refresh_uri or within refresh skip threshold)")
 			continue
 		}
-		jobs <- item.Biz
+		logger.Info().
+			Str("biz", item.Biz).
+			Str("nickname", item.Nickname).
+			Int64("acct_update_time", updateTime).
+			Int64("acct_update_age_sec", now-updateTime).
+			Msg("refresh remote official accounts: enqueue")
+		jobs <- remoteOfficialAccountJob{Biz: item.Biz, Nickname: item.Nickname}
 		total++
 	}
 	close(jobs)
+	if total == 0 {
+		logger.Info().Msg("refresh remote official accounts: no jobs to process")
+		return nil
+	}
 	var wg sync.WaitGroup
 	processed := make([]int64, len(clients))
 	var success int64
 	failures := make(map[string]string)
 	var failures_mu sync.Mutex
 	for i, ws := range clients {
+		clientTitle := ""
+		if ws != nil {
+			clientTitle = ws.title
+		}
 		wg.Add(1)
 		go func(idx int, ws *Client) {
 			defer wg.Done()
-			for biz := range jobs {
-				_, err := c.RefreshAccountWithFrontendOnClient(&OfficialAccountBody{Biz: biz}, ws)
+			workerLogger := logger.With().
+				Int("worker_idx", idx).
+				Str("client_title", clientTitle).
+				Logger()
+			workerLogger.Info().Msg("refresh worker: started")
+			for job := range jobs {
+				biz := job.Biz
+				jobLogger := workerLogger.With().
+					Str("biz", biz).
+					Str("nickname", job.Nickname).
+					Logger()
+				jobLogger.Info().Msg("refresh job: start")
+				_, err := c.refresh_credential_from_frontend(jobLogger, &OfficialAccountBody{Biz: biz}, ws)
 				if err != nil {
-					_, err2 := c.RefreshAccountWithFrontend(&OfficialAccountBody{Biz: biz})
+					jobLogger.Warn().Err(err).Msg("refresh job: on client failed, fallback to any client")
+					fallbackWS, pickErr := c.firstClient()
+					if pickErr != nil {
+						err2 := pickErr
+						failures_mu.Lock()
+						failures[biz] = err2.Error()
+						failures_mu.Unlock()
+						jobLogger.Error().Err(err2).Msg("refresh job: failed")
+						acct_mu.Lock()
+						existing := accounts[biz]
+						if existing == nil {
+							existing = &OfficialAccount{Biz: biz, IsEffective: true}
+						}
+						existing.Error = err2.Error()
+						existing.UpdateTime = time.Now().Unix()
+						accounts[biz] = existing
+						acct_mu.Unlock()
+						save_accounts()
+						atomic.AddInt64(&processed[idx], 1)
+						continue
+					}
+					fallbackLogger := jobLogger
+					if fallbackWS != nil {
+						fallbackLogger = fallbackLogger.With().Str("client_title", fallbackWS.title).Logger()
+					}
+					_, err2 := c.refresh_credential_from_frontend(fallbackLogger, &OfficialAccountBody{Biz: biz}, fallbackWS)
 					if err2 != nil {
 						failures_mu.Lock()
 						failures[biz] = err2.Error()
 						failures_mu.Unlock()
+						jobLogger.Error().Err(err2).Msg("refresh job: failed")
 						acct_mu.Lock()
 						existing := accounts[biz]
 						if existing == nil {
@@ -1094,6 +1471,7 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 						save_accounts()
 					} else {
 						atomic.AddInt64(&success, 1)
+						jobLogger.Info().Msg("refresh job: success (fallback)")
 						acct_mu.Lock()
 						if acct, ok := accounts[biz]; ok && acct != nil {
 							acct.Error = ""
@@ -1103,6 +1481,7 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 					}
 				} else {
 					atomic.AddInt64(&success, 1)
+					jobLogger.Info().Msg("refresh job: success")
 					acct_mu.Lock()
 					if acct, ok := accounts[biz]; ok && acct != nil {
 						acct.Error = ""
@@ -1112,41 +1491,64 @@ func (c *OfficialAccountClient) RefreshRemoteOfficialAccount(origin string) erro
 				}
 				atomic.AddInt64(&processed[idx], 1)
 			}
+			workerLogger.Info().Int64("processed", processed[idx]).Msg("refresh worker: completed")
 		}(i, ws)
 	}
 	wg.Wait()
-	for i := range clients {
-		fmt.Printf("refresh_the_accounts_in_remote_server: client[%d] processed=%d\n", i, processed[i])
-	}
 	if int(success) == total {
-		fmt.Println("refresh_the_accounts_in_remote_server: all OfficialAccount refreshed completed")
+		logger.Info().
+			Int("total", total).
+			Int64("success", success).
+			Msg("refresh remote official accounts: completed")
 	} else {
-		fmt.Printf("refresh_the_accounts_in_remote_server: failed=%d\n", len(failures))
+		logger.Warn().
+			Int("total", total).
+			Int64("success", success).
+			Int("failed", len(failures)).
+			Msg("refresh remote official accounts: completed with failures")
 		for biz, err := range failures {
-			fmt.Printf("refresh_the_accounts_in_remote_server: failed %s: %s\n", biz, err)
+			logger.Error().Str("biz", biz).Str("error", err).Msg("refresh remote official accounts: failure detail")
 		}
 	}
 	return nil
 }
 
 func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *OfficialAccount) error {
+	logger := c.logger.With().
+		Str("biz", func() string {
+			if credential == nil {
+				return ""
+			}
+			return credential.Biz
+		}()).
+		Logger()
+	return c.pushCredentialToRemoteServer(logger, credential)
+}
+
+func (c *OfficialAccountClient) pushCredentialToRemoteServer(logger zerolog.Logger, credential *OfficialAccount) error {
 	server := c.RemoteServerAddr
 	if server == "" || credential == nil {
+		logger.Error().Msg("push credential to remote server: server or credential is empty")
 		return errors.New("server or credential is empty")
 	}
+	logger.Info().
+		Str("server", server).
+		Bool("has_token", c.RefreshToken != "").
+		Str("nickname", credential.Nickname).
+		Msg("push credential to remote server: start")
 	u := server + "/api/mp/refresh"
 	if c.RefreshToken != "" {
 		u = c.BuildURL(u, map[string]string{"token": c.RefreshToken})
 	}
 	b, err := json.Marshal(credential)
 	if err != nil {
-		fmt.Println("PushCredentialToRemoteServer: Marshal err:", err)
+		logger.Error().Err(err).Msg("push credential to remote server: marshal failed")
 		return err
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("POST", u, bytes.NewReader(b))
 	if err != nil {
-		fmt.Println("PushCredentialToRemoteServer: NewRequest err:", err)
+		logger.Error().Err(err).Msg("push credential to remote server: build request failed")
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -1154,13 +1556,13 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *Officia
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("PushCredentialToRemoteServer: Do err:", err)
+		logger.Error().Err(err).Msg("push credential to remote server: request failed")
 		return err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("PushCredentialToRemoteServer: ReadAll err:", err)
+		logger.Error().Err(err).Msg("push credential to remote server: read response failed")
 		return err
 	}
 	var out struct {
@@ -1168,18 +1570,18 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *Officia
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
-		fmt.Println("PushCredentialToRemoteServer: Unmarshal err:", err)
-		fmt.Println("PushCredentialToRemoteServer: Body:", string(body))
+		logger.Error().Err(err).Msg("push credential to remote server: decode response failed")
 		return err
 	}
 	if out.Code != 0 {
-		fmt.Printf("PushCredentialToRemoteServer: Remote error: %d %s\n", out.Code, out.Msg)
+		logger.Error().Int("code", out.Code).Str("msg", out.Msg).Msg("push credential to remote server: remote error")
 		return fmt.Errorf("remote error: %s (code: %d)", out.Msg, out.Code)
 	}
+	logger.Info().Msg("push credential to remote server: completed")
 	return nil
 }
 
-func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount) string {
+func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount, offset int) string {
 	u := "https://mp.weixin.qq.com/mp/profile_ext"
 	query := map[string]string{
 		"action":      "getmsg",
@@ -1190,7 +1592,7 @@ func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount) string {
 		"wxtoken":     "",
 		"x5":          "0",
 		"count":       "10",
-		"offset":      "0",
+		"offset":      strconv.Itoa(offset),
 		"f":           "json",
 	}
 	target_url := c.BuildURL(u, query)
@@ -1199,6 +1601,94 @@ func (c *OfficialAccountClient) BuildMsgListURL(acct *OfficialAccount) string {
 
 // 获取指定公众号的推送列表
 func (c *OfficialAccountClient) FetchMsgList(biz string, offset int) (*OfficialMsgListResp, error) {
+	logger := c.logger.With().
+		Str("biz", biz).
+		Int("offset", offset).
+		Logger()
+	return c.fetchMsgList(logger, biz, offset)
+}
+
+type codedError struct {
+	code     int
+	msg      string
+	err      error
+	location string
+}
+
+func (e *codedError) Error() string {
+	return e.msg
+}
+
+func (e *codedError) Unwrap() error {
+	return e.err
+}
+
+func newCodedError(code int, msg string, err error) *codedError {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	return &codedError{
+		code:     code,
+		msg:      msg,
+		err:      err,
+		location: fmt.Sprintf("%s:%d:%s", filepath.Base(file), line, filepath.Base(funcName)),
+	}
+}
+
+func codedErrorOf(err error) (int, string, string, bool) {
+	var ce *codedError
+	if errors.As(err, &ce) {
+		return ce.code, ce.msg, ce.location, true
+	}
+	return 0, "", "", false
+}
+
+func safeLogErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	in := err.Error()
+	re := regexp.MustCompile(`https?://[^\s]+`)
+	return re.ReplaceAllStringFunc(in, func(m string) string {
+		u, parseErr := url.Parse(m)
+		if parseErr != nil {
+			return m
+		}
+		q := u.Query()
+		if len(q) == 0 {
+			return m
+		}
+		for _, k := range []string{"uin", "key", "pass_ticket", "appmsg_token"} {
+			if q.Has(k) {
+				q.Set(k, "REDACTED")
+			}
+		}
+		u.RawQuery = q.Encode()
+		return u.String()
+	})
+}
+
+func safeNetReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return result.GetMsg(result.CodeTimeout)
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if strings.Contains(strings.ToLower(opErr.Err.Error()), "refused") {
+			return "连接被拒绝"
+		}
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "no such host") {
+		return "DNS 解析失败"
+	}
+	return "网络请求失败"
+}
+
+func (c *OfficialAccountClient) fetchMsgList(logger zerolog.Logger, biz string, offset int) (*OfficialMsgListResp, error) {
+	logger.Info().Msg("fetch msg list: start")
 	var existing *OfficialAccount
 	acct_mu.RLock()
 	if _, ok := accounts[biz]; ok {
@@ -1207,29 +1697,53 @@ func (c *OfficialAccountClient) FetchMsgList(biz string, offset int) (*OfficialM
 	}
 	acct_mu.RUnlock()
 	if existing == nil {
-		return nil, errors.New(result.GetMsg(result.CodeAccountNotFound))
+		return nil, newCodedError(result.CodeAccountNotFound, result.GetMsg(result.CodeAccountNotFound), nil)
 	}
-	target_url := c.BuildMsgListURL(existing)
-	// fmt.Println("[API]fetch account msg list1", target_url)
+	target_url := c.BuildMsgListURL(existing, offset)
 	resp, err := c.Fetch(target_url)
 	if err != nil {
-		return nil, err
+		fmt.Printf("c.Fetch msg list: error: %s\n", err.Error())
+		code := result.CodeFetchMsgFailed
+		msg := result.GetMsg(code)
+		reason := safeNetReason(err)
+		if reason == result.GetMsg(result.CodeTimeout) {
+			code = result.CodeTimeout
+			msg = reason
+		} else if reason != "" {
+			msg = fmt.Sprintf("%s: %s", msg, reason)
+		}
+		return nil, newCodedError(code, msg, err)
 	}
 	defer resp.Body.Close()
 	resp_bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, newCodedError(result.CodeFetchMsgFailed, "读取响应失败", err)
+	}
 	var data OfficialMsgListResp
 	err = json.Unmarshal(resp_bytes, &data)
 	if err != nil {
-		return nil, err
+		fmt.Printf("json.Unmarshal msg list: error: %s\n", err.Error())
+		return nil, newCodedError(result.CodeDataParseFailed, result.GetMsg(result.CodeDataParseFailed), err)
 	}
 	if data.Ret != 0 {
+		fmt.Printf("data.Ret != 0 msg list: error: %s\n", string(resp_bytes))
 		if data.Ret == -3 {
 			existing.IsEffective = false
 			save_accounts()
-			return nil, errors.New(result.GetMsg(result.CodeAccountExpired))
+			return nil, newCodedError(result.CodeAccountExpired, result.GetMsg(result.CodeAccountExpired), nil)
 		}
-		return nil, errors.New(data.ErrMsg)
+		if data.Ret == -6 {
+			existing.IsEffective = false
+			save_accounts()
+			return nil, newCodedError(result.CodeAccountBanned, result.GetMsg(result.CodeAccountBanned), nil)
+		}
+		msg := data.ErrMsg
+		if strings.TrimSpace(msg) == "" {
+			msg = result.GetMsg(result.CodeFetchMsgFailed)
+		}
+		return nil, newCodedError(result.CodeFetchMsgFailed, msg, nil)
 	}
+	logger.Info().Int("ret", data.Ret).Msg("fetch msg list: completed")
 	return &data, nil
 }
 
@@ -1294,4 +1808,39 @@ func fetch_full_content(u string) string {
 		return content
 	}
 	return s
+}
+
+var mp_json_filepath = "mp.json"
+
+func save_accounts() {
+	acct_mu.RLock()
+	defer acct_mu.RUnlock()
+
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		fmt.Println("saveAccounts marshal err:", err)
+		return
+	}
+
+	err = os.WriteFile(mp_json_filepath, data, 0644)
+	if err != nil {
+		fmt.Println("saveAccounts write err:", err)
+	}
+}
+func load_accounts() {
+	data, err := os.ReadFile(mp_json_filepath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Println("loadAccounts read err:", err)
+		}
+		return
+	}
+
+	acct_mu.Lock()
+	defer acct_mu.Unlock()
+
+	err = json.Unmarshal(data, &accounts)
+	if err != nil {
+		fmt.Println("loadAccounts unmarshal err:", err)
+	}
 }

@@ -267,7 +267,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "mp.refreshSkipMinutes",
 		Type:        ConfigTypeInt,
-		Default:     5,
+		Default:     20,
 		Description: "刷新时若账号在最近 N 分钟已更新则跳过",
 		Title:       "刷新跳过时间（分钟）",
 		Group:       "OfficialAccount",

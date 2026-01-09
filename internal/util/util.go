@@ -13,9 +13,11 @@ const (
 	CodeInvalidParams    = 400
 	CodeMissingBiz       = 4001
 	CodeMissingUrl       = 4002
+	CodeMissingKey       = 4003
 	CodeTokenInvalid     = 1002 // 统一 Token 无效错误码
 	CodeAccountNotFound  = 1003
 	CodeAccountExpired   = 1004
+	CodeAccountBanned    = 1005
 	CodeClientNotReady   = 5001
 	CodeFetchMsgFailed   = 2002
 	CodeDataParseFailed  = 2003
@@ -32,9 +34,11 @@ var errMsgMap = map[int][2]string{
 	CodeInvalidParams:    {"Invalid parameters", "参数错误"},
 	CodeMissingBiz:       {"Missing biz parameter", "缺少参数：biz"},
 	CodeMissingUrl:       {"Missing url parameter", "缺少参数：url"},
+	CodeMissingKey:       {"Missing key parameter", "缺少参数：key"},
 	CodeTokenInvalid:     {"Invalid token", "令牌无效"},
 	CodeAccountNotFound:  {"Account not found", "未找到匹配的公众号"},
 	CodeAccountExpired:   {"Account expired", "公众号凭证已失效"},
+	CodeAccountBanned:    {"Account banned", "账号被封禁"},
 	CodeClientNotReady:   {"Client not ready", "客户端未就绪"},
 	CodeFetchMsgFailed:   {"Fetch message list failed", "获取消息列表失败"},
 	CodeDataParseFailed:  {"Data parse error", "数据解析失败"},

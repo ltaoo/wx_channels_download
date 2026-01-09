@@ -6,9 +6,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -76,6 +80,22 @@ func root_command(cfg *config.Config) {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+	log_filepath := filepath.Join(cfg.RootDir, "app.log")
+	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		color.Red(fmt.Sprintf("创建日志文件失败，%s\n\n", err))
+		return
+	}
+	defer log_file.Close()
+	logger := zerolog.New(log_file).With().Timestamp().Logger()
+	log.Logger = log.Output(os.Stderr)
+	log.Logger = log.With().
+		Str("service", "WechatHelper").
+		Str("version", cfg.Version).
+		Logger()
+
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
@@ -112,7 +132,7 @@ func root_command(cfg *config.Config) {
 		return
 	}
 	l.Close()
-	api_srv := api.NewAPIServer(api_cfg)
+	api_srv := api.NewAPIServer(api_cfg, &logger)
 	mgr.RegisterServer(api_srv)
 	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_cfg.MaxRunning
 	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_cfg.DownloadDir

@@ -150,7 +150,7 @@ func print_bucket_result(result BucketResult) {
 			fmt.Println(f.Path, f.SizeInBytes)
 		}
 	}
-	fmt.Println("================\n")
+	fmt.Println("================")
 }
 
 type UploadPayload struct {

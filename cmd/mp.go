@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
 	"wx_channel/internal/api"
@@ -61,6 +62,15 @@ func mp_command() {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
+	log_filepath := filepath.Join(cfg.RootDir, "app.log")
+	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		color.Red(fmt.Sprintf("创建日志文件失败，%s\n\n", err))
+		return
+	}
+	defer log_file.Close()
+	logger := zerolog.New(log_file).With().Timestamp().Logger()
+
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
@@ -77,7 +87,7 @@ func mp_command() {
 		return
 	}
 	l.Close()
-	api_srv := api.NewAPIServer(api_cfg)
+	api_srv := api.NewAPIServer(api_cfg, &logger)
 	mgr.RegisterServer(api_srv)
 	if mp_daemon_child {
 		_ = write_mp_pidfile(os.Getpid())

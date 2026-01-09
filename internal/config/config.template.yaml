@@ -31,3 +31,5 @@ mp:
     port: 2022
   refreshToken: ""
   tokenFilepath: ""
+  refreshSkipMinutes: 20
+  maxWebsocketClients: 5

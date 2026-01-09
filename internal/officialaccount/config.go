@@ -22,6 +22,7 @@ type OfficialAccountConfig struct {
 	RefreshToken         string
 	TokenFilepath        string
 	RefreshSkipMinutes   int
+	MaxWebsocketClients  int
 }
 
 func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccountConfig {
@@ -41,6 +42,7 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		RemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
 		RemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
 		RefreshSkipMinutes:   viper.GetInt("mp.refreshSkipMinutes"),
+		MaxWebsocketClients:  viper.GetInt("mp.maxWebsocketClients"),
 	}
 	return cfg
 }

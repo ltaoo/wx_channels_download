@@ -10,6 +10,7 @@ import (
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
@@ -26,14 +27,15 @@ type APIClient struct {
 	formatter  *util.FilenameProcessor
 	cfg        *APIConfig
 	engine     *gin.Engine
+	logger     *zerolog.Logger
 }
 
-func NewAPIClient(cfg *APIConfig) *APIClient {
+func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
 	data_dir := cfg.RootDir
 	var downloader *downloadpkg.Downloader
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.OfficialAccountRemote)
-	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg)
+	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, logger)
 	if !cfg.OfficialAccountRemote {
 		downloader = downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 			RefreshInterval: 360,
@@ -49,6 +51,7 @@ func NewAPIClient(cfg *APIConfig) *APIClient {
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
 		engine:     gin.Default(),
+		logger:     logger,
 	}
 	client.setupRoutes()
 	return client

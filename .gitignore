@@ -17,3 +17,4 @@ docs/.vitepress/cache
 docs/.vitepress/dist
 gopeed.db
 mp.json
+*.log
