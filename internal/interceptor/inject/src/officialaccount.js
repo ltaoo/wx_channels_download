@@ -163,7 +163,7 @@
     });
   }
   async function fetchAccountHome(params) {
-    console.log('[]fetchAccountHome', params);
+    console.log("[]fetchAccountHome", params);
     return new Promise((resolve) => {
       window.location.href = params.refresh_uri;
       resolve([null, params.refresh_uri]);
@@ -171,7 +171,7 @@
   }
   function render_rss_button(acct) {
     var $btn = document.createElement("div");
-    $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; cursor: pointer;`;
+    $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; margin-left: 6px; cursor: pointer;`;
     $btn.innerHTML = RSSIcon;
     $btn.onclick = function () {
       var origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;

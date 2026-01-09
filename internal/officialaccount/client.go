@@ -533,9 +533,12 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 		result.ErrCode(ctx, result.CodeMissingBiz)
 		return
 	}
-	c.RefreshAccountWithFrontend(&OfficialAccountBody{
+	if _, err := c.RefreshAccountWithFrontend(&OfficialAccountBody{
 		Biz: biz,
-	})
+	}); err != nil {
+		result.ErrCode(ctx, result.CodeMissingKey)
+		return
+	}
 	result.Ok(ctx, nil)
 }
 
@@ -1115,9 +1118,9 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 	}
 	if strings.TrimSpace(acct.RefreshUri) == "" {
 		acct_mu.RUnlock()
-		return nil, errors.New("缺少 refresh_uri")
+		return nil, errors.New(result.GetMsg(result.CodeMissingRefreshUri))
 	}
-	if time.Now().Unix()-acct.UpdateTime < 5*60 {
+	if time.Now().Unix()-acct.UpdateTime < 20*60 {
 		age := time.Now().Unix() - acct.UpdateTime
 		logger.Info().
 			Int64("acct_update_time", acct.UpdateTime).

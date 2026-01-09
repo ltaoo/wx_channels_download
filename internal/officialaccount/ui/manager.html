@@ -22,9 +22,7 @@
       margin: 24px auto;
       padding: 0 16px
     }
-    .whitespace-nowrap {
-      white-space: nowrap;
-    }
+
     h1 {
       margin: 0 0 12px;
       font-size: 22px
@@ -65,11 +63,29 @@
       text-decoration: underline
     }
 
+    .w-80 {
+      width: 80px;
+    }
+
+    .w-120 {
+      width: 120px;
+    }
+
+    .w-160 {
+      width: 160px;
+    }
+
     .pill {
       display: inline-block;
       padding: 2px 8px;
-      border-radius: 999px;
+      border-radius: 8px;
       font-size: 12px
+    }
+
+    .ellipsis {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .ok {
@@ -102,6 +118,7 @@
       color: #9aa0a6;
       font-size: 12px
     }
+
     .toolbar {
       display: flex;
       gap: 8px;
@@ -110,24 +127,35 @@
       justify-content: space-between;
       flex-wrap: wrap;
     }
-    .toolbar-left, .toolbar-right {
+
+    .toolbar-left,
+    .toolbar-right {
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
     }
-    .input, .select {
+
+    .input,
+    .select {
       height: 28px;
       padding: 0 10px;
       border-radius: 6px;
-      border: 1px solid rgba(255,255,255,.14);
+      border: 1px solid rgba(255, 255, 255, .14);
       background: #1b1f2a;
       color: #e6e6e6;
       font-size: 12px;
       outline: none;
     }
-    .input::placeholder { color: rgba(230, 230, 230, .45) }
-    .select { padding-right: 26px; }
+
+    .input::placeholder {
+      color: rgba(230, 230, 230, .45)
+    }
+
+    .select {
+      padding-right: 26px;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -135,40 +163,63 @@
       height: 28px;
       padding: 0 10px;
       border-radius: 6px;
-      border: 1px solid rgba(255,255,255,.14);
+      border: 1px solid rgba(255, 255, 255, .14);
       background: #1b1f2a;
       color: #e6e6e6;
       font-size: 12px;
       cursor: pointer;
     }
-    .btn:hover { background: #222836 }
-    .btn:disabled { opacity: .6; cursor: not-allowed }
+
+    .btn:hover {
+      background: #222836
+    }
+
+    .btn:disabled {
+      opacity: .6;
+      cursor: not-allowed
+    }
+
     .btn-primary {
       border-color: rgba(138, 180, 248, .3);
       background: #223049;
       color: #cfe1ff;
     }
-    .btn-sm { height: 24px; padding: 0 8px; font-size: 12px }
-    .btn-fixed-width { min-width: 60px; }
-    .col-action { width: 180px; }
+
+    .btn-sm {
+      height: 24px;
+      padding: 0 8px;
+      font-size: 12px
+    }
+
+    .btn-fixed-width {
+      min-width: 60px;
+    }
+
+    .col-action {
+      width: 180px;
+    }
 
     .nowrap {
       white-space: nowrap
     }
+
     .col-title {
       min-width: 160px
     }
+
     .error-text {
       margin-top: 4px;
       color: #f28b82;
       font-size: 12px;
       word-break: break-word;
     }
+
     .row {
       display: flex;
       align-items: center;
       gap: 8px;
     }
+
     .avatar {
       width: 24px;
       height: 24px;
@@ -177,6 +228,7 @@
       object-fit: cover;
       flex: 0 0 auto;
     }
+
     .avatar img {
       width: 100%;
       height: 100%;
@@ -184,6 +236,7 @@
       object-fit: cover;
       display: block;
     }
+
     .row-missing td {
       background: rgba(253, 214, 99, .06);
     }
@@ -194,6 +247,11 @@
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
     let ACCOUNTS_CACHE = [];
     let LIST_STATE = { page: 1, pageSize: 10, keyword: "" };
+    let MISSING_REFRESH_REQ_ID = 0;
+    const MISSING_REFRESH_CACHE = new Map();
+    function invalidateMissingRefreshCache() {
+      MISSING_REFRESH_CACHE.clear();
+    }
     function proxy(u) {
       if (!u) return "";
       const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
@@ -246,6 +304,30 @@
         keyword: (data && typeof data.keyword === "string") ? data.keyword : (params.keyword || ""),
       };
     }
+    async function fetchMissingRefreshUriTotal(keyword) {
+      const kw = String(keyword || "").trim();
+      const cacheKey = kw;
+      const cached = MISSING_REFRESH_CACHE.get(cacheKey);
+      if (cached && (Date.now() - cached.ts) < 15000) return cached.missing;
+
+      let missing = 0;
+      let total = 0;
+      let fetched = 0;
+      const pageSize = 200;
+      for (let page = 1; page <= 1000; page++) {
+        const data = await fetchAccountPage({ page, pageSize, keyword: kw });
+        if (page === 1) total = Number(data.total) || 0;
+        const list = Array.isArray(data.list) ? data.list : [];
+        for (const it of list) {
+          if (!(it && it.refresh_uri && String(it.refresh_uri).trim())) missing += 1;
+        }
+        fetched += list.length;
+        if (!list.length) break;
+        if (total > 0 && fetched >= total) break;
+      }
+      MISSING_REFRESH_CACHE.set(cacheKey, { missing, ts: Date.now() });
+      return missing;
+    }
     function syncControlsFromState() {
       const kw = document.getElementById("account-keyword");
       if (kw && kw.value !== LIST_STATE.keyword) kw.value = LIST_STATE.keyword || "";
@@ -274,9 +356,18 @@
         const data = await fetchAccountPage(LIST_STATE);
         ACCOUNTS_CACHE = data.list;
         if (!REMOTE_MODE) {
-          const missing = ACCOUNTS_CACHE.filter((it) => !(it && it.refresh_uri && String(it.refresh_uri).trim())).length;
           const missingEl = document.getElementById("missing-refresh-count");
-          if (missingEl) missingEl.textContent = `缺 refresh_uri（当前页）：${missing}`;
+          const reqId = ++MISSING_REFRESH_REQ_ID;
+          if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：计算中...`;
+          fetchMissingRefreshUriTotal(LIST_STATE.keyword)
+            .then((missingTotal) => {
+              if (reqId !== MISSING_REFRESH_REQ_ID) return;
+              if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：${missingTotal}`;
+            })
+            .catch(() => {
+              if (reqId !== MISSING_REFRESH_REQ_ID) return;
+              if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：计算失败`;
+            });
         }
         const countEl = document.getElementById("account-count");
         if (countEl) countEl.textContent = `(${data.total})`;
@@ -288,18 +379,19 @@
           const tr = document.createElement("tr");
           const hasRefreshUri = !!(it && it.refresh_uri && String(it.refresh_uri).trim());
           if (!REMOTE_MODE && !hasRefreshUri) tr.className = "row-missing";
-          const eff = it.is_effective ? '<span class="pill ok">有效</span>' : '<span class="pill bad">失效</span>';
-          const errPill = it.error ? '<span class="pill bad">出错</span>' : '<span class="pill ok">正常</span>';
-          const errText = it.error ? `<div class="error-text">${it.error}</div>` : '';
-          const available = (it.is_effective && !it.error) ? '<span class="pill ok">可用</span>' : '<span class="pill warn">不可用</span>';
-          const missingPill = (!REMOTE_MODE && !hasRefreshUri) ? '<span class="pill warn">无 refresh_uri</span>' : '';
+          const eff = it.is_effective ? '<span class="pill ok nowrap">有效</span>' : '<span class="pill bad nowrap">失效</span>';
+          const errMsg = String(it.error || "").trim();
+          // const errPill = errMsg ? '<span class="pill bad">出错</span>' : '<span class="pill ok">正常</span>';
+          const errText = errMsg ? `<div class="error-text nowrap">${errMsg}</div>` : '';
+          const available = (it.is_effective && !it.error) ? '<span class="pill ok nowrap">可用</span>' : '<span class="pill warn nowrap">不可用</span>';
+          const missingPill = (!REMOTE_MODE && !hasRefreshUri) ? '<span class="pill warn nowrap">无 refresh_uri</span>' : '';
           const avatar = `<div class="avatar">${it.avatar_url ? `<img src="${proxy(it.avatar_url)}" alt="" onerror="this.remove()">` : ''}</div>`;
           const colName = `
              <div class="row">
                ${avatar}
                <div>
                  <div class="nowrap">${it.nickname || ""}</div>
-                 <div class="muted">${fmtTime(it.update_time || 0)} <span>(${timeSince(it.update_time || 0)} ago)</span></div>
+                 <div class="muted"><div>${timeSince(it.update_time || 0)} ago</div><div class="nowrap">${fmtTime(it.created_at || 0)}</div></div>
                </div>
              </div>
           `;
@@ -307,9 +399,9 @@
              <div class="nowrap">${it.biz || ""}</div>
              ${rss && rss !== "-" ? `<div><a href="${rss}" target="_blank">${rss}</a></div>` : ""}
           `;
-          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${errPill} ${missingPill}${errText}`;
-          const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm whitespace-nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
-          const colDelete = REMOTE_MODE ? '' : `<button class="btn btn-sm whitespace-nowrap" style="margin-left: 4px; border-color: rgba(242, 139, 130, .3); color: #f28b82;" onclick="deleteAccount(this, '${it.biz || ""}')">删除</button>`;
+          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${missingPill}${errText}`;
+          const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
+          const colDelete = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" style="margin-left: 4px; border-color: rgba(242, 139, 130, .3); color: #f28b82;" onclick="deleteAccount(this, '${it.biz || ""}')">删除</button>`;
           tr.innerHTML = `
            <td>${colName}</td>
            <td>${colId}</td>
@@ -407,6 +499,7 @@
           btn.textContent = old;
         }
       }
+      invalidateMissingRefreshCache();
       loadAccounts();
       loadWsPool();
     }
@@ -427,6 +520,7 @@
       }
       btn.disabled = false;
       btn.textContent = old;
+      invalidateMissingRefreshCache();
       loadAccounts();
     }
     async function loadWsPool() {
@@ -444,9 +538,9 @@
           const healthy = (Math.floor(Date.now() / 1000) - (it.last_ping || 0)) <= 15 && it.available;
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td class="col-title nowrap">${it.title || ""}</td>
+            <td class=""><div class="w-80 ellipsis">${it.title || ""}</div></td>
             <td class="nowrap">
-              ${healthy ? '<div class="pill ok">可用</div>' : '<div class="pill warn">不可用</div>'}
+              ${healthy ? '<div class="pill ok nowrap">可用</div>' : '<div class="pill warn nowrap">不可用</div>'}
               <div class="muted">${fmtTime(it.last_ping || 0)} (${timeSince(it.last_ping || 0)} ago)</div>
             </td>
           `;
@@ -476,8 +570,8 @@
       const theadRow = document.querySelector("#accounts thead tr");
       if (theadRow && REMOTE_MODE) {
         theadRow.innerHTML = `
-          <th>昵称 / 最近更新时间</th>
-          <th>ID / RSS 链接</th>
+          <th>公众号</th>
+          <th>ID</th>
           <th>是否可用</th>
         `;
       }
@@ -494,7 +588,6 @@
 
 <body>
   <div class="container">
-    <h1>公众号管理</h1>
     <div class="grid">
       <section id="accounts">
         <h2>账号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
@@ -523,10 +616,10 @@
         <table>
           <thead>
             <tr>
-              <th>昵称 / 最近更新时间</th>
-              <th>ID / RSS 链接</th>
-              <th>状态</th>
-              <th class="col-action">操作</th>
+              <th>公众号</th>
+              <th>ID</th>
+              <th class="w-120">状态</th>
+              <th class="w-160">操作</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -537,7 +630,7 @@
         <table>
           <thead>
             <tr>
-              <th class="col-title">标题</th>
+              <th class="w-80">标题</th>
               <th>是否可用 / 最近心跳</th>
             </tr>
           </thead>

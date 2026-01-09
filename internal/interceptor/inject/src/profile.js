@@ -21,7 +21,7 @@
       $loading.className = "weui-loading";
       $btn.prepend($loading);
 
-      const stopLoading = () => {
+      const stop_loading = () => {
         $btn.classList.remove("weui-btn_loading");
         $loading.remove();
       };
@@ -53,6 +53,7 @@
           });
           return;
         }
+        WXU.downloader.show();
         let next_marker = "";
         let has_more = true;
         while (has_more) {
@@ -96,7 +97,7 @@
           next_marker = r.data.lastBuffer;
         }
       } finally {
-        stopLoading();
+        stop_loading();
       }
     };
     $operation.appendChild($btn);
