@@ -1066,7 +1066,7 @@ func (c *OfficialAccountClient) BuildURL(uu string, params map[string]string) st
 	return target_url
 }
 
-func (c *OfficialAccountClient) Fetch(target_url string) (*http.Response, error) {
+func (c *OfficialAccountClient) Fetch(target_url string, referer string) (*http.Response, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", target_url, nil)
 	if err != nil {
@@ -1076,6 +1076,7 @@ func (c *OfficialAccountClient) Fetch(target_url string) (*http.Response, error)
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("accept-language", "en-US,en;q=0.9")
 	req.Header.Set("priority", "u=1, i")
+	req.Header.Set("referer", referer)
 	req.Header.Set("sec-fetch-dest", "empty")
 	req.Header.Set("sec-fetch-mode", "cors")
 	req.Header.Set("sec-fetch-site", "same-origin")
@@ -1120,7 +1121,7 @@ func (c *OfficialAccountClient) RefreshAccountWithFrontend(body *OfficialAccount
 		acct_mu.RUnlock()
 		return nil, errors.New(result.GetMsg(result.CodeMissingRefreshUri))
 	}
-	if time.Now().Unix()-acct.UpdateTime < 20*60 {
+	if acct.IsEffective && time.Now().Unix()-acct.UpdateTime < 20*60 {
 		age := time.Now().Unix() - acct.UpdateTime
 		logger.Info().
 			Int64("acct_update_time", acct.UpdateTime).
@@ -1703,7 +1704,20 @@ func (c *OfficialAccountClient) fetchMsgList(logger zerolog.Logger, biz string, 
 		return nil, newCodedError(result.CodeAccountNotFound, result.GetMsg(result.CodeAccountNotFound), nil)
 	}
 	target_url := c.BuildMsgListURL(existing, offset)
-	resp, err := c.Fetch(target_url)
+	params := url.Values{}
+	params.Add("action", "home")
+	params.Add("__biz", existing.Biz)
+	params.Add("scene", "124")
+	params.Add("uin", existing.Uin)
+	params.Add("key", existing.Key)
+	params.Add("devicetype", "UnifiedPCWindows")
+	params.Add("version", "f2541022")
+	params.Add("lang", "zh_CN")
+	params.Add("a8scene", "1")
+	params.Add("acctmode", "0")
+	params.Add("pass_ticket", existing.PassTicket)
+	referer := `https://mp.weixin.qq.com/mp/profile_ext?${refererParams.toString()}`
+	resp, err := c.Fetch(target_url, referer)
 	if err != nil {
 		fmt.Printf("c.Fetch msg list: error: %s\n", err.Error())
 		code := result.CodeFetchMsgFailed
