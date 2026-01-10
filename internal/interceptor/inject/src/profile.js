@@ -33,12 +33,12 @@
           });
           return;
         }
-        if (!my_username) {
-          WXU.error({
-            msg: "数据未完成初始化",
-          });
-          return;
-        }
+        // if (!my_username) {
+        //   WXU.error({
+        //     msg: "数据未完成初始化",
+        //   });
+        //   return;
+        // }
         var { href } = window.location;
         if (!href) {
           WXU.error({
@@ -59,7 +59,7 @@
         while (has_more) {
           var payload = {
             username: queries.username,
-            finderUsername: my_username,
+            finderUsername: my_username || queries.username,
             lastBuffer: next_marker,
             needFansCount: 0,
             objectId: "0",
