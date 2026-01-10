@@ -112,61 +112,6 @@ type OfficialAccountClient struct {
 	is_refreshing        bool
 }
 
-var refresh_log_filepath = "refresh_log.json"
-
-type FailureDetail struct {
-	Biz      string `json:"biz"`
-	Nickname string `json:"nickname"`
-	Error    string `json:"error"`
-}
-
-type RefreshReport struct {
-	StartTime string          `json:"start_time"`
-	EndTime   string          `json:"end_time"`
-	Duration  string          `json:"duration"`
-	Total     int             `json:"total"`
-	Success   int             `json:"success"`
-	Failed    int             `json:"failed"`
-	Failures  []FailureDetail `json:"failures"`
-}
-
-func (c *OfficialAccountClient) save_refresh_log(report *RefreshReport) {
-	if report == nil {
-		return
-	}
-	var logs []*RefreshReport
-	if c.RefreshToken != "" {
-		// Try to load existing logs
-		// Assuming we save to refresh_log.json in the same dir as mp.json
-		fp := refresh_log_filepath
-		if filepath.IsAbs(mp_json_filepath) {
-			fp = filepath.Join(filepath.Dir(mp_json_filepath), "refresh_log.json")
-		}
-
-		data, err := os.ReadFile(fp)
-		if err == nil {
-			_ = json.Unmarshal(data, &logs)
-		}
-
-		// Keep last 100 logs to avoid file growing too large
-		if len(logs) > 100 {
-			logs = logs[len(logs)-100:]
-		}
-		logs = append(logs, report)
-
-		data, err = json.MarshalIndent(logs, "", "  ")
-		if err != nil {
-			c.logger.Error().Err(err).Msg("save refresh log: marshal failed")
-			return
-		}
-
-		err = os.WriteFile(fp, data, 0644)
-		if err != nil {
-			c.logger.Error().Err(err).Msg("save refresh log: write failed")
-		}
-	}
-}
-
 func (c *OfficialAccountClient) next_trace_id(prefix string) string {
 	n := atomic.AddUint64(&c.req_seq, 1)
 	return fmt.Sprintf("%s-%d", prefix, n)
@@ -195,11 +140,13 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 		mp_json_filepath = filepath.Join(cfg.RootDir, "mp.json")
 	}
 	load_accounts()
-	origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
-	if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
-		origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
+	if cfg.RemoteServerHostname != "" {
+		origin := cfg.RemoteServerProtocol + "://" + cfg.RemoteServerHostname
+		if cfg.RemoteServerPort != 80 && cfg.RemoteServerPort > 0 {
+			origin += ":" + strconv.Itoa(cfg.RemoteServerPort)
+		}
+		c.RemoteServerAddr = origin
 	}
-	c.RemoteServerAddr = origin
 	if strings.TrimSpace(cfg.TokenFilepath) != "" {
 		read_tokens := func() {
 			f, err := os.Open(cfg.TokenFilepath)
@@ -634,7 +581,7 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		Bool("remote_mode", c.RemoteMode).
 		Msg("refresh official account event: stored and notified")
 	if !ok && !c.RemoteMode {
-		// 这里是直接手动刷新页面时，主动向远端服务推送凭证。所以如果是远端服务，不能向自己推，就循环了
+		// 这里是手动刷新页面时，主动向远端服务推送凭证。所以如果是远端服务，不能向自己推，就循环了
 		go c.pushCredentialToRemoteServer(logger, target_acct)
 	}
 	result.Ok(ctx, nil)
@@ -1732,17 +1679,17 @@ func (c *OfficialAccountClient) PushCredentialToRemoteServer(credential *Officia
 }
 
 func (c *OfficialAccountClient) pushCredentialToRemoteServer(logger zerolog.Logger, credential *OfficialAccount) error {
-	server := c.RemoteServerAddr
-	if server == "" || credential == nil {
+	server_addr := c.RemoteServerAddr
+	if server_addr == "" || credential == nil {
 		logger.Error().Msg("push credential to remote server: server or credential is empty")
 		return errors.New("server or credential is empty")
 	}
 	logger.Info().
-		Str("server", server).
+		Str("server", server_addr).
 		Bool("has_token", c.RefreshToken != "").
 		Str("nickname", credential.Nickname).
 		Msg("push credential to remote server: start")
-	u := server + "/api/mp/refresh"
+	u := server_addr + "/api/mp/refresh"
 	if c.RefreshToken != "" {
 		u = c.BuildURL(u, map[string]string{"token": c.RefreshToken})
 	}
@@ -2061,5 +2008,60 @@ func load_accounts() {
 	err = json.Unmarshal(data, &accounts)
 	if err != nil {
 		fmt.Println("loadAccounts unmarshal err:", err)
+	}
+}
+
+var refresh_log_filepath = "refresh_log.json"
+
+type FailureDetail struct {
+	Biz      string `json:"biz"`
+	Nickname string `json:"nickname"`
+	Error    string `json:"error"`
+}
+
+type RefreshReport struct {
+	StartTime string          `json:"start_time"`
+	EndTime   string          `json:"end_time"`
+	Duration  string          `json:"duration"`
+	Total     int             `json:"total"`
+	Success   int             `json:"success"`
+	Failed    int             `json:"failed"`
+	Failures  []FailureDetail `json:"failures"`
+}
+
+func (c *OfficialAccountClient) save_refresh_log(report *RefreshReport) {
+	if report == nil {
+		return
+	}
+	var logs []*RefreshReport
+	if c.RefreshToken != "" {
+		// Try to load existing logs
+		// Assuming we save to refresh_log.json in the same dir as mp.json
+		fp := refresh_log_filepath
+		if filepath.IsAbs(mp_json_filepath) {
+			fp = filepath.Join(filepath.Dir(mp_json_filepath), "refresh_log.json")
+		}
+
+		data, err := os.ReadFile(fp)
+		if err == nil {
+			_ = json.Unmarshal(data, &logs)
+		}
+
+		// Keep last 100 logs to avoid file growing too large
+		if len(logs) > 100 {
+			logs = logs[len(logs)-100:]
+		}
+		logs = append(logs, report)
+
+		data, err = json.MarshalIndent(logs, "", "  ")
+		if err != nil {
+			c.logger.Error().Err(err).Msg("save refresh log: marshal failed")
+			return
+		}
+
+		err = os.WriteFile(fp, data, 0644)
+		if err != nil {
+			c.logger.Error().Err(err).Msg("save refresh log: write failed")
+		}
 	}
 }

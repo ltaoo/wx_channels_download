@@ -227,7 +227,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "mp.disabled",
 		Type:        ConfigTypeBool,
-		Default:     false,
+		Default:     true,
 		Description: "是否禁用公众号本地服务，本地服务会提供接口、RSS 等功能",
 		Title:       "启用本地服务",
 		Group:       "OfficialAccount",
@@ -243,7 +243,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "mp.remoteServer.hostname",
 		Type:        ConfigTypeString,
-		Default:     "127.0.0.1",
+		Default:     "",
 		Description: "公众号远端服务主机名",
 		Title:       "服务主机名",
 		Group:       "OfficialAccount",
@@ -251,7 +251,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "mp.remoteServer.port",
 		Type:        ConfigTypeInt,
-		Default:     2022,
+		Default:     80,
 		Description: "公众号远端服务端口",
 		Title:       "服务端口",
 		Group:       "OfficialAccount",

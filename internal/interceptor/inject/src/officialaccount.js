@@ -174,9 +174,20 @@
     $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; margin-left: 6px; cursor: pointer;`;
     $btn.innerHTML = RSSIcon;
     $btn.onclick = function () {
-      var origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
-      if (WXU.config.officialRemoteServerPort != 80) {
-        origin += `:${WXU.config.officialRemoteServerPort}`;
+      var origin = "";
+      if (WXU.config.officialRemoteServerHostname) {
+        origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
+        if (WXU.config.officialRemoteServerPort != 80) {
+          origin += `:${WXU.config.officialRemoteServerPort}`;
+        }
+      }
+      if (origin === "") {
+        if (WXU.config.apiServerHostname) {
+          origin = `${WXU.config.apiServerProtocol}://${WXU.config.apiServerHostname}`;
+          if (WXU.config.apiServerPort != 80) {
+            origin += `:${WXU.config.apiServerPort}`;
+          }
+        }
       }
       var url = `${origin}/rss/mp?biz=${acct.biz}`;
       WXU.copy(url);
