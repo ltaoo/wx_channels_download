@@ -74,7 +74,7 @@ mp:
 
 点击即可复制该公众号 RSS 订阅链接，在浏览器打开该链接，即可看到 `XML` 格式的订阅内容
 
-> 在浏览器打开时，如果提示 `Account not found`，就是没有提交成功，给终端设置科学上网后，重新启动 `wx_channels_download`、打开公众号文章页面刷新即可
+> 在浏览器打开时，如果提示 `Account not found`，就是没有添加成功，给终端设置科学上网后，重新启动 `wx_channels_download`、打开公众号文章页面刷新即可
 
 > 可以查看本地的 `app.log`，如果出现 `push credential to remote server: request failed` 内容，就是提交到 `cloudflare worker` 失败了
 
@@ -131,15 +131,12 @@ curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==
 curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
 ```
 
-## 获取可请求的公众号列表
+## 获取添加的公众号列表
 
 ```bash
 curl http://localhost:2022/api/mp/list
 ```
 
-返回公众号昵称、头像和「授权凭证」。授权凭证用来请求「推送消息列表」，凭证有效期大概是半小时，需要定时刷新凭证
-
-> 凭证如果过期，不会从列表移除
 
 ## 公众号 RSS
 
@@ -171,6 +168,13 @@ curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
 
 ## 注意事项
 
+### 推送消息列表接口风控
+
 调用推送消息列表接口会有频率限制，所以不能添加太多的公众号。经过测试 300 个公众号，每 20 分钟重新获取授权凭证，3 个小时后帐号被风控，无法获取推送消息列表了，但是微信本身还是可以正常使用，包括公众号功能也是正常的，不影响
 
 基于上面的风险，现在限制只能添加 20 个公众号。可以自己修改源码放开限制，风险自己把控。
+
+### 授权凭证
+
+授权凭证中，只有 `biz` 和 `uin` 是不变的，`biz` 是公众号唯一标记，`uin` 微信用户（你自己）的唯一标记，所以 `mp.remoteServer` 里面不要填非自己的服务，避免别人拿到 `uin`，疯狂调用推送消息列表接口，被微信风控，自己没法用了
+
