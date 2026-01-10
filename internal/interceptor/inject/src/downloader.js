@@ -30,8 +30,8 @@ var isWin = /Windows|Win/i.test(ua);
   }
   function connect(selector) {
     return new Promise((resolve, reject) => {
-      const protocol = "ws://";
-      const pathname = WXU.config.apiServerAddr;
+      const protocol = "wss://";
+      const pathname = FakeAPIServerAddr;
       const ws = new WebSocket(protocol + pathname + "/ws/channels");
 
       ws.onopen = () => {
@@ -166,7 +166,7 @@ var isWin = /Windows|Win/i.test(ua);
     $download_panel.innerHTML = `
       <div class="wx-dl-panel-container">
         <div class="wx-dl-header">
-           <div class="wx-dl-title">Downloads</div>
+           <div class="wx-dl-title">Downloads <span id="wx-dl-count"></span></div>
         </div>
         <div id="downloader_container" class="wx-dl-list wx-dl-dark-scroll" style="background-color: transparent; margin-top: 0;"></div>
       </div>
@@ -175,6 +175,7 @@ var isWin = /Windows|Win/i.test(ua);
       content: $download_panel.innerHTML,
       placement: "bottom-end",
       closeOnClickOutside: true,
+      offset: { mainAxis: -4, crossAxis: 20 },
     });
     var $more = document.createElement("div");
     $more.innerHTML = `<div class="wx-dl-more-btn" id="wx_dl_more_btn">${MoreIcon}</div>`;
@@ -272,7 +273,7 @@ async function __wx_handle_api_call(msg, socket) {
       })
     );
   }
-  if (key === "/api/contact/search") {
+  if (key === "key:channels:contact_list") {
     var payload = {
       query: data.keyword,
       scene: 13,
@@ -288,7 +289,7 @@ async function __wx_handle_api_call(msg, socket) {
     });
     return;
   }
-  if (key === "/api/contact/feed/list") {
+  if (key === "key:channels:feed_list") {
     var payload = {
       username: data.username,
       finderUsername: __wx_username,
@@ -306,13 +307,13 @@ async function __wx_handle_api_call(msg, socket) {
     });
     return;
   }
-  if (key === "/api/feed/profile") {
+  if (key === "key:channels:feed_profile") {
     console.log("before finderGetCommentProfile", data.oid, data.nid);
     try {
       if (data.url) {
         var u = new URL(decodeURIComponent(data.url));
-        data.oid = WXU.API.decodeBase64Uint64(u.searchParams.get("oid"));
-        data.nid = WXU.API.decodeBase64Uint64(u.searchParams.get("nid"));
+        data.oid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("oid"));
+        data.nid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("nid"));
       }
       var payload = {
         needObject: 1,

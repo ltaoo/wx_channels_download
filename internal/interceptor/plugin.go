@@ -54,20 +54,23 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 		Match: "qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if util.Includes(pathname, "jszip.min") {
+			if strings.Contains(pathname, "jszip.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 				}, string(files.JSZip))
+				return
 			}
-			if util.Includes(pathname, "FileSaver.min") {
+			if strings.Contains(pathname, "FileSaver.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 				}, string(files.JSFileSaver))
+				return
 			}
-			if util.Includes(pathname, "recorder.min") {
+			if strings.Contains(pathname, "recorder.min") {
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/javascript",
 				}, string(files.JSRecorder))
+				return
 			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile
@@ -78,6 +81,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
 				}, "{}")
+				return
 			}
 			if pathname == "/__wx_channels_api/tip" {
 				var data FrontendTip
@@ -101,6 +105,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
 				}, "{}")
+				return
 			}
 			if pathname == "/__wx_channels_api/error" {
 				var data FrontendErrorTip
@@ -112,14 +117,53 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
 				}, "{}")
+				return
 			}
 		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
+			if hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+				resp_body, err := ctx.GetResponseBody()
+				if err != nil {
+					return
+				}
+				html := string(resp_body)
+				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+				script_attr := ""
+				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
+					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
+				}
+				inserted_scripts := ""
+				cfg_byte, _ := json.Marshal(cfg)
+				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, script_attr, string(cfg_byte), version)
+				inserted_scripts += script_config
+				variable_byte, _ := json.Marshal(variables)
+				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
+				inserted_scripts += script_variable
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSComponents)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
+					inserted_scripts += script_error
+				}
+				if cfg.PagespyEnabled {
+					/** 在线调试 */
+					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
+					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDebug)
+					inserted_scripts += script_pagespy + script_pagespy2
+				}
+				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
+				ctx.SetResponseBody(html)
+				return
+			}
 			// fmt.Println("response", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
-			if cfg.ChannelDisableLocationToHome && pathname == "/web/pages/feed" && ctx.Res().StatusCode == 302 {
+			if pathname == "/web/pages/feed" && cfg.ChannelsDisableLocationToHome && ctx.Res().StatusCode == 302 {
 				original_req := ctx.Req()
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
 				q := u.Query()
@@ -154,43 +198,6 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						resp_content_type = strings.ToLower(ct)
 					}
 				}
-			}
-			if hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
-				resp_body, err := ctx.GetResponseBody()
-				if err != nil {
-					return
-				}
-				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
-				scriptAttr := ""
-				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
-					scriptAttr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
-				}
-				html := string(resp_body)
-				inserted_scripts := ""
-				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, scriptAttr, string(cfg_byte), version)
-				inserted_scripts += script_config
-				variable_byte, _ := json.Marshal(variables)
-				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, scriptAttr, string(variable_byte))
-				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSWechatOfficialAccount)
-				if cfg.DebugShowError {
-					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSError)
-					inserted_scripts += script_error
-				}
-				if cfg.PagespyEnabled {
-					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, scriptAttr, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
-				}
-				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
-				ctx.SetResponseBody(html)
-				return
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				resp_body, err := ctx.GetResponseBody()

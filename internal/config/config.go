@@ -21,7 +21,7 @@ type Config struct {
 	Version  string
 }
 
-func New(ver string) (*Config, error) {
+func New(ver string, mode string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -59,10 +59,284 @@ func New(ver string) (*Config, error) {
 		Existing: has_config,
 		Version:  ver,
 	}
-	return c, nil
+	return c
 }
 
 func (c *Config) LoadConfig() error {
+	Register(ConfigItem{
+		Key:         "proxy.system",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "是否设置系统代理为代理服务",
+		Title:       "设置系统代理",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "proxy.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "代理服务的主机名",
+		Title:       "代理主机",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "proxy.port",
+		Type:        ConfigTypeInt,
+		Default:     2080,
+		Description: "代理服务的端口",
+		Title:       "代理端口",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "pagespy.enabled",
+		Type:        ConfigTypeSelect,
+		Default:     false,
+		Description: "是否开启 PageSpy",
+		Title:       "启用",
+		Group:       "Pagespy",
+	})
+	Register(ConfigItem{
+		Key:         "pagespy.protocol",
+		Type:        ConfigTypeSelect,
+		Default:     "https",
+		Options:     []string{"http", "https"},
+		Description: "PageSpy 调试协议",
+		Title:       "协议头",
+		Group:       "Pagespy",
+	})
+	Register(ConfigItem{
+		Key:         "pagespy.api",
+		Type:        ConfigTypeString,
+		Default:     "debug.weixin.qq.com",
+		Description: "PageSpy 调试 API 地址",
+		Title:       "API 地址",
+		Group:       "Pagespy",
+	})
+	Register(ConfigItem{
+		Key:         "debug.error",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "是否全局捕获前端错误，出现错误时弹窗展示错误信息",
+		Title:       "错误展示",
+		Group:       "Debug",
+	})
+	Register(ConfigItem{
+		Key:         "channels.disableLocationToHome",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否禁止从视频号详情页重定向到首页（视频号默认行为）",
+		Title:       "禁止重定向",
+		Group:       "Channels",
+	})
+	Register(ConfigItem{
+		Key:         "channel.disableLocationToHome",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否禁止从视频号详情页重定向到首页（视频号默认行为）",
+		Title:       "禁止重定向",
+		Group:       "Channels",
+	})
+	Register(ConfigItem{
+		Key:         "inject.extraScript.afterJSMain",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "额外注入的 JS 脚本路径",
+		Title:       "注入脚本",
+		Group:       "Inject",
+	})
+	Register(ConfigItem{
+		Key:         "inject.globalScript",
+		Type:        ConfigTypeString,
+		Default:     "global.js",
+		Description: "全局用户脚本",
+		Title:       "全局脚本",
+		Group:       "Inject",
+	})
+	Register(ConfigItem{
+		Key:         "download.dir",
+		Type:        ConfigTypeString,
+		Default:     "%UserDownloads%",
+		Description: "指定下载的目录，当 frontend 为 true 时不生效",
+		Title:       "下载目录",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "download.inFrontend",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否通过前端解密、下载，不调用后台下载能力",
+		Title:       "前端下载",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "download.defaultHighest",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "点击下载图标时是否下载原始视频",
+		Title:       "原始视频",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "download.filenameTemplate",
+		Type:        ConfigTypeString,
+		Default:     "{{filename}}_{{spec}}",
+		Description: "用于配置下载文件的名称，支持 {{filename}} 和 {{spec}} 等变量",
+		Title:       "文件名模板",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "download.pauseWhenDownload",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "点击下载时是否暂停播放",
+		Title:       "暂停播放",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "download.playDoneAudio",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "下载完成时是否播放完成音效",
+		Title:       "播放完成音效",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
+		Key:         "api.protocol",
+		Type:        ConfigTypeString,
+		Default:     "http",
+		Description: "指定 API 服务的协议头",
+		Title:       "API 服务协议",
+		Group:       "API",
+	})
+	Register(ConfigItem{
+		Key:         "api.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "指定 API 服务的主机名",
+		Title:       "API 服务主机",
+		Group:       "API",
+	})
+	Register(ConfigItem{
+		Key:         "api.port",
+		Type:        ConfigTypeInt,
+		Default:     2022,
+		Description: "指定 API 服务的端口",
+		Title:       "API 服务端口",
+		Group:       "API",
+	})
+	Register(ConfigItem{
+		Key:         "mp.disabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否禁用公众号本地服务，本地服务会提供接口、RSS 等功能",
+		Title:       "启用本地服务",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.remoteServer.protocol",
+		Type:        ConfigTypeString,
+		Default:     "http",
+		Description: "公众号远端服务协议头",
+		Title:       "服务协议头",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.remoteServer.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "公众号远端服务主机名",
+		Title:       "服务主机名",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.remoteServer.port",
+		Type:        ConfigTypeInt,
+		Default:     2022,
+		Description: "公众号远端服务端口",
+		Title:       "服务端口",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.refreshToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "公众号远端服务刷新凭证",
+		Title:       "刷新凭证",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.tokenFilepath",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "公众号远端服务授权凭证",
+		Title:       "授权凭证",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "mp.refreshSkipMinutes",
+		Type:        ConfigTypeInt,
+		Default:     20,
+		Description: "刷新时若账号在最近 N 分钟已更新则跳过",
+		Title:       "刷新跳过时间（分钟）",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.accountId",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare 帐号 ID",
+		Title:       "Account ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.apiToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare Worker 认证 Token",
+		Title:       "API Token",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.refreshToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "调用 mp-rss 凭证刷新接口所需的 token",
+		Title:       "Refresh Token",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.adminToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "调用 mp-rss 管理员接口所需的凭证",
+		Title:       "Admin Token",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.workerName",
+		Type:        ConfigTypeString,
+		Default:     "official-account-api",
+		Description: "Cloudflare mp-rss Worker 名称",
+		Title:       "Worker Name",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.d1Id",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare mp-rss d1数据库 ID",
+		Title:       "D1 Database ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.d1Name",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare mp-rss d1数据库 Name",
+		Title:       "D1 Database Name",
+		Group:       "Cloudflare",
+	})
+
 	if c.Existing {
 		// config.FilePath = config_filepath
 		if err := viper.ReadInConfig(); err != nil {

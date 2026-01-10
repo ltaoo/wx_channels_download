@@ -5,94 +5,62 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/assets"
-	"wx_channel/internal/interceptor"
-	"wx_channel/pkg/cache"
+	"wx_channel/internal/channels"
+	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
 
-type Client struct {
-	hub  *APIClient
-	conn *websocket.Conn
-	send chan []byte
+type APIClient struct {
+	downloader *downloadpkg.Downloader
+	official   *officialaccount.OfficialAccountClient
+	channels   *channels.ChannelsClient
+	formatter  *util.FilenameProcessor
+	cfg        *APIConfig
+	engine     *gin.Engine
+	logger     *zerolog.Logger
 }
 
-func (c *Client) writePump() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			if err := w.Close(); err != nil {
-				return
-			}
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
+	data_dir := cfg.RootDir
+	var downloader *downloadpkg.Downloader
+	var channels_client *channels.ChannelsClient
+	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.OfficialAccountRemote)
+	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, logger)
+	if !cfg.OfficialAccountRemote {
+		downloader = downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
+			RefreshInterval: 360,
+			Storage:         downloadpkg.NewBoltStorage(data_dir),
+			StorageDir:      data_dir,
+		})
+		channels_client = channels.NewChannelsClient(cfg.Addr)
+		channels_client.OnConnected = func(client *channels.Client) {
+			// Initial tasks
+			tasks := downloader.GetTasks()
+			if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
+				client.Send <- data
 			}
 		}
 	}
-}
-
-type APIClient struct {
-	decryptor   *ChannelsVideoDecryptor
-	downloader  *downloadpkg.Downloader
-	Interceptor *interceptor.Interceptor
-	formatter   *util.FilenameProcessor
-	cfg         *APIConfig
-	ws_clients  map[*Client]bool
-	ws_mu       sync.RWMutex
-	engine      *gin.Engine
-	requests    map[string]chan ClientWebsocketResponse
-	requests_mu sync.RWMutex
-	cache       *cache.Cache
-	req_seq     uint64
-}
-
-func NewAPIClient(cfg *APIConfig) *APIClient {
-	data_dir := cfg.RootDir
-	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
-		RefreshInterval: 360,
-		Storage:         downloadpkg.NewBoltStorage(data_dir),
-		StorageDir:      data_dir,
-	})
 	client := &APIClient{
-		decryptor:  NewChannelsVideoDecryptor(),
 		downloader: downloader,
+		official:   officialaccount_client,
+		channels:   channels_client,
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
-		ws_clients: make(map[*Client]bool),
-		requests:   make(map[string]chan ClientWebsocketResponse),
 		engine:     gin.Default(),
-		cache:      cache.New(),
-		req_seq:    uint64(time.Now().UnixNano()),
+		logger:     logger,
 	}
-	client.setupRoutes()
+	client.SetupRoutes()
 	return client
 }
 
@@ -118,6 +86,9 @@ type ClientWebsocketResponse struct {
 }
 
 func (c *APIClient) Start() error {
+	if c.cfg.OfficialAccountRemote {
+		return nil
+	}
 	if err := c.downloader.Setup(); err != nil {
 		return err
 	}
@@ -132,17 +103,18 @@ func (c *APIClient) Start() error {
 		Extra: map[string]any{},
 		Proxy: &base.DownloaderProxyConfig{},
 	})
-
 	c.downloader.Listener(func(evt *downloadpkg.Event) {
 		if evt == nil || evt.Task == nil || evt.Task.ID == "" {
 			return
 		}
-		c.broadcast(APIClientWSMessage{
+		c.channels.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: evt,
 		})
 		if evt.Key == downloadpkg.EventKeyDone {
-			go assets.PlayDoneAudio()
+			if c.cfg.PlayDoneAudio {
+				go assets.PlayDoneAudio()
+			}
 			task := c.downloader.GetTask(evt.Task.ID)
 			file_path := task.Meta.SingleFilepath()
 			go func() {
@@ -179,12 +151,12 @@ func (c *APIClient) Start() error {
 }
 
 func (c *APIClient) Stop() error {
-	c.ws_mu.Lock()
-	for client := range c.ws_clients {
-		close(client.send)
-		delete(c.ws_clients, client)
+	if c.downloader != nil {
+		c.downloader.Pause(nil)
 	}
-	c.ws_mu.Unlock()
+	if c.channels != nil {
+		c.channels.Stop()
+	}
 	return nil
 }
 
@@ -192,7 +164,7 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.engine.ServeHTTP(w, r)
 }
 
-func (c *APIClient) resolveConnections(url string) int {
+func (c *APIClient) resolve_connections(url string) int {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -208,19 +180,17 @@ func (c *APIClient) resolveConnections(url string) int {
 	return 4
 }
 
-func (c *APIClient) broadcast(v interface{}) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return
-	}
-	c.ws_mu.Lock()
-	defer c.ws_mu.Unlock()
-	for client := range c.ws_clients {
-		select {
-		case client.send <- data:
-		default:
-			close(client.send)
-			delete(c.ws_clients, client)
+func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		same_id := t.Meta.Req.Labels["id"] == body.Id
+		same_spec := t.Meta.Req.Labels["spec"] == body.Spec
+		same_suffix := t.Meta.Req.Labels["suffix"] == body.Suffix
+		if same_id && same_spec && same_suffix {
+			return true
 		}
 	}
+	return false
 }

@@ -11,24 +11,24 @@ import (
 
 // HTTPServer 实现
 type HTTPServer struct {
-	title    string
-	key      string
-	addr     string
-	status   ServerStatus
-	mux      http.Handler
-	server   *http.Server
-	disabled bool
-	mu       sync.RWMutex
-	stopChan chan struct{}
+	title     string
+	key       string
+	addr      string
+	status    ServerStatus
+	mux       http.Handler
+	server    *http.Server
+	disabled  bool
+	mu        sync.RWMutex
+	stop_chan chan struct{}
 }
 
 func NewHTTPServer(title string, key string, addr string) *HTTPServer {
 	return &HTTPServer{
-		title:    title,
-		key:      key,
-		addr:     addr,
-		status:   StatusStopped,
-		stopChan: make(chan struct{}),
+		title:     title,
+		key:       key,
+		addr:      addr,
+		status:    StatusStopped,
+		stop_chan: make(chan struct{}),
 	}
 }
 

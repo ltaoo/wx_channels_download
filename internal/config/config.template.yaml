@@ -9,9 +9,11 @@ download:
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"
   pauseWhenDownload: false
+  playDoneAudio: true
   frontend: false
 
 api:
+  protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
 
@@ -20,5 +22,24 @@ proxy:
   hostname: "127.0.0.1"
   port: 2023
 
-channel:
+channels:
   disableLocationToHome: false
+
+mp:
+  remoteServer:
+    protocol: "http"
+    hostname: "127.0.0.1"
+    port: 2022
+  refreshToken: ""
+  tokenFilepath: ""
+  refreshSkipMinutes: 20
+  maxWebsocketClients: 5
+
+cloudflare:
+  accountId: ""
+  apiToken: ""
+  refreshToken: ""
+  authToken: ""
+  workerName: "mp-rss-api"
+  d1Id: ""
+  d1Name: "mp-rss-db"

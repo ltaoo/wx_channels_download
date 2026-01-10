@@ -2,6 +2,7 @@
  * @file 用户主页
  */
 (() => {
+  insert_channels_style();
   var my_username = "";
   function __wx_insert_batch_download_btn() {
     const $operation = document.querySelector(".opr-area");
@@ -20,7 +21,7 @@
       $loading.className = "weui-loading";
       $btn.prepend($loading);
 
-      const stopLoading = () => {
+      const stop_loading = () => {
         $btn.classList.remove("weui-btn_loading");
         $loading.remove();
       };
@@ -52,6 +53,7 @@
           });
           return;
         }
+        let download_open = false;
         let next_marker = "";
         let has_more = true;
         while (has_more) {
@@ -84,6 +86,16 @@
             has_more = false;
             return;
           }
+          if (data.ids.length === 0) {
+            WXU.toast("没有新的视频可以下载");
+            WXU.downloader.hide();
+            has_more = false;
+            return;
+          }
+          if (!download_open) {
+            download_open = true;
+            WXU.downloader.show();
+          }
           if (
             !r.data.lastBuffer ||
             r.data.object.length < 15 ||
@@ -95,7 +107,7 @@
           next_marker = r.data.lastBuffer;
         }
       } finally {
-        stopLoading();
+        stop_loading();
       }
     };
     $operation.appendChild($btn);
