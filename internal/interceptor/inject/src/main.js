@@ -483,6 +483,7 @@ function __wx_render_sider_tools() {
 }
 
 (() => {
+  insert_channels_style();
   var error_tip_timer = setTimeout(() => {
     WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);

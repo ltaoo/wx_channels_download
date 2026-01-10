@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>公众号RSS管理</title>
+  <style>
+    :root {
+      color-scheme: dark light
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #0b0c0f;
+      color: #e6e6e6
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 22px
+    }
+
+    section {
+      background: #14171f;
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .25)
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px
+    }
+
+    th,
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      text-align: left
+    }
+
+    th {
+      color: #a8b3cf;
+      font-weight: 600
+    }
+
+    a {
+      color: #8ab4f8;
+      text-decoration: none
+    }
+
+    a:hover {
+      text-decoration: underline
+    }
+
+    .w-80 {
+      width: 80px;
+    }
+
+    .w-120 {
+      width: 120px;
+    }
+
+    .w-160 {
+      width: 160px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      font-size: 12px
+    }
+
+    .ellipsis {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ok {
+      background: #19361a;
+      color: #8fce95
+    }
+
+    .bad {
+      background: #3a1919;
+      color: #f28b82
+    }
+
+    .warn {
+      background: #332b12;
+      color: #fdd663
+    }
+
+    .muted {
+      color: #9aa0a6
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 12px
+    }
+
+    .footer {
+      margin-top: 8px;
+      color: #9aa0a6;
+      font-size: 12px
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .input,
+    .select {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      background: #1b1f2a;
+      color: #e6e6e6;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .input::placeholder {
+      color: rgba(230, 230, 230, .45)
+    }
+
+    .select {
+      padding-right: 26px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      background: #1b1f2a;
+      color: #e6e6e6;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background: #222836
+    }
+
+    .btn:disabled {
+      opacity: .6;
+      cursor: not-allowed
+    }
+
+    .btn-primary {
+      border-color: rgba(138, 180, 248, .3);
+      background: #223049;
+      color: #cfe1ff;
+    }
+
+    .btn-sm {
+      height: 24px;
+      padding: 0 8px;
+      font-size: 12px
+    }
+
+    .btn-fixed-width {
+      min-width: 60px;
+    }
+
+    .col-action {
+      width: 180px;
+    }
+
+    .nowrap {
+      white-space: nowrap
+    }
+
+    .col-title {
+      min-width: 160px
+    }
+
+    .error-text {
+      margin-top: 4px;
+      color: #f28b82;
+      font-size: 12px;
+      word-break: break-word;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #222836;
+      object-fit: cover;
+      flex: 0 0 auto;
+    }
+
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .row-missing td {
+      background: rgba(253, 214, 99, .06);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      visibility: hidden;
+      opacity: 0;
+      transition: all 0.2s;
+    }
+    .modal-overlay.visible {
+      visibility: visible;
+      opacity: 1;
+    }
+    .modal {
+      background: #1b1f2a;
+      border-radius: 12px;
+      padding: 24px;
+      width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .modal-header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .progress-bar-bg {
+      height: 8px;
+      background: #2a2f3e;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #8ab4f8;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #9aa0a6;
+    }
+    .text-success { color: #8fce95; }
+    .text-error { color: #f28b82; }
+  </style>
+  <script>
+    const REMOTE_SERVER = "%%REMOTE_SERVER%%";
+    const TOKEN = "%%TOKEN%%";
+    const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
+    let ACCOUNTS_CACHE = [];
+    let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
+    function proxy(u) {
+      if (!u) return "";
+      const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
+      return "/mp/proxy?url=" + encodeURIComponent(u) + t;
+    }
+    function fmtTime(ts) {
+      if (!ts) return "-";
+      const d = new Date(ts * 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const y = d.getFullYear();
+      const m = pad(d.getMonth() + 1);
+      const day = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mm = pad(d.getMinutes());
+      const ss = pad(d.getSeconds());
+      return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+    }
+    function timeSince(ts) {
+      if (!ts) return "-";
+      const diff = Math.floor(Date.now() / 1000 - ts);
+      if (diff < 60) return diff + "s";
+      const m = Math.floor(diff / 60);
+      if (m < 60) return m + "m";
+      const h = Math.floor(m / 60);
+      return h + "h";
+    }
+    function buildListUrl(params) {
+      const sp = new URLSearchParams();
+      if (TOKEN) sp.set("token", TOKEN);
+      sp.set("page", String(params.page || 1));
+      sp.set("page_size", String(params.pageSize || 10));
+      if (params.keyword && String(params.keyword).trim()) {
+        sp.set("keyword", String(params.keyword).trim());
+      }
+      return "/api/mp/list?" + sp.toString();
+    }
+    async function fetchAccountPage(params) {
+      const r = await fetch(buildListUrl(params));
+      const j = await r.json();
+      if (j.code !== 0) {
+        throw new Error(j.msg || "接口错误");
+      }
+      const data = j.data || {};
+      const list = (data && data.list) || [];
+      return {
+        list: Array.isArray(list) ? list : [],
+        total: Number.isFinite(Number(data.total)) ? Number(data.total) : 0,
+        page: Number.isFinite(Number(data.page)) ? Number(data.page) : (params.page || 1),
+        pageSize: Number.isFinite(Number(data.page_size)) ? Number(data.page_size) : (params.pageSize || 10),
+        keyword: (data && typeof data.keyword === "string") ? data.keyword : (params.keyword || ""),
+      };
+    }
+    function syncControlsFromState() {
+      const kw = document.getElementById("account-keyword");
+      if (kw && kw.value !== LIST_STATE.keyword) kw.value = LIST_STATE.keyword || "";
+      const eff = document.getElementById("account-is-effective");
+      if (eff && eff.value !== LIST_STATE.isEffective) eff.value = LIST_STATE.isEffective || "";
+      const ps = document.getElementById("page-size");
+      if (ps && String(ps.value) !== String(LIST_STATE.pageSize)) ps.value = String(LIST_STATE.pageSize);
+    }
+    function setPaginationInfo(page, pageSize, total) {
+      const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 10)));
+      const info = document.getElementById("page-info");
+      if (info) info.textContent = `第 ${page} / ${totalPages} 页`;
+      const prev = document.getElementById("btn-prev");
+      const next = document.getElementById("btn-next");
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= totalPages;
+    }
+    async function loadAccounts(partial) {
+      try {
+        LIST_STATE = Object.assign({}, LIST_STATE, partial || {});
+        if (!Number.isFinite(Number(LIST_STATE.page)) || LIST_STATE.page < 1) LIST_STATE.page = 1;
+        if (!Number.isFinite(Number(LIST_STATE.pageSize)) || LIST_STATE.pageSize <= 0) LIST_STATE.pageSize = 10;
+        LIST_STATE.pageSize = Number(LIST_STATE.pageSize);
+        LIST_STATE.page = Number(LIST_STATE.page);
+        LIST_STATE.keyword = String(LIST_STATE.keyword || "").trim();
+        LIST_STATE.isEffective = String(LIST_STATE.isEffective || "");
+        syncControlsFromState();
+
+        const data = await fetchAccountPage(LIST_STATE);
+        ACCOUNTS_CACHE = data.list;
+        const countEl = document.getElementById("account-count");
+        if (countEl) countEl.textContent = `(${data.total})`;
+        setPaginationInfo(data.page, data.pageSize, data.total);
+        const tbody = document.querySelector("#accounts tbody");
+        tbody.innerHTML = "";
+        for (const it of data.list) {
+          const rss = REMOTE_SERVER ? `${REMOTE_SERVER}/rss/mp?biz=${encodeURIComponent(it.biz)}${TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ''}` : "-";
+          const tr = document.createElement("tr");
+          const hasRefreshUri = !!(it && it.refresh_uri && String(it.refresh_uri).trim());
+          if (!REMOTE_MODE && !hasRefreshUri) tr.className = "row-missing";
+          const eff = it.is_effective ? '<span class="pill ok nowrap">有效</span>' : '<span class="pill bad nowrap">失效</span>';
+          const errMsg = String(it.error || "").trim();
+          // const errPill = errMsg ? '<span class="pill bad">出错</span>' : '<span class="pill ok">正常</span>';
+          const errText = errMsg ? `<div class="error-text nowrap">${errMsg}</div>` : '';
+          const available = (it.is_effective && !it.error) ? '<span class="pill ok nowrap">可用</span>' : '<span class="pill warn nowrap">不可用</span>';
+          const missingPill = (!REMOTE_MODE && !hasRefreshUri) ? '<span class="pill warn nowrap">无 refresh_uri</span>' : '';
+          const avatar = `<div class="avatar">${it.avatar_url ? `<img src="${proxy(it.avatar_url)}" alt="" onerror="this.remove()">` : ''}</div>`;
+          const colName = `
+             <div class="row">
+               ${avatar}
+               <div>
+                 <div class="nowrap">${it.nickname || ""}</div>
+                 <div class="muted"><div>${timeSince(it.update_time || 0)} ago</div><div class="nowrap">${fmtTime(it.created_at || 0)}</div></div>
+               </div>
+             </div>
+          `;
+          const colId = `
+             <div class="nowrap">${it.biz || ""}</div>
+             ${rss && rss !== "-" ? `<div><a href="${rss}" target="_blank">${rss}</a></div>` : ""}
+          `;
+          const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${missingPill}${errText}`;
+          const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
+          const colDelete = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" style="margin-left: 4px; border-color: rgba(242, 139, 130, .3); color: #f28b82;" onclick="deleteAccount(this, '${it.biz || ""}')">删除</button>`;
+          tr.innerHTML = `
+           <td>${colName}</td>
+           <td>${colId}</td>
+           <td>${colStatus}</td>
+           ${REMOTE_MODE ? '' : `<td class="col-action">${colRefresh}${colDelete}</td>`}
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        console.error(e);
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    function applySearch() {
+      const kw = document.getElementById("account-keyword");
+      const keyword = kw ? String(kw.value || "").trim() : "";
+      loadAccounts({ page: 1, keyword });
+    }
+    function clearSearch() {
+      const kw = document.getElementById("account-keyword");
+      if (kw) kw.value = "";
+      loadAccounts({ page: 1, keyword: "" });
+    }
+    function changePageSize(v) {
+      const next = parseInt(String(v || "10"), 10);
+      loadAccounts({ page: 1, pageSize: Number.isFinite(next) && next > 0 ? next : 10 });
+    }
+    function prevPage() {
+      loadAccounts({ page: Math.max(1, (LIST_STATE.page || 1) - 1) });
+    }
+    function nextPage() {
+      loadAccounts({ page: (LIST_STATE.page || 1) + 1 });
+    }
+    async function copyRefreshLinks(btn) {
+      if (REMOTE_MODE) return;
+      let links = [];
+      try {
+        const data = await fetchAccountPage({ page: 1, pageSize: 5, keyword: LIST_STATE.keyword || "" });
+        links = (data.list || [])
+          .map((it) => (it && it.refresh_uri ? String(it.refresh_uri).trim() : ""))
+          .filter(Boolean);
+      } catch (e) {
+        links = (Array.isArray(ACCOUNTS_CACHE) ? ACCOUNTS_CACHE : [])
+          .map((it) => (it && it.refresh_uri ? String(it.refresh_uri).trim() : ""))
+          .filter(Boolean)
+          .slice(0, 5);
+      }
+      if (!links.length) {
+        alert("列表中没有可复制的 refresh_uri");
+        return;
+      }
+      const text = links.join("\n");
+      const old = btn ? btn.textContent : "";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          ta.style.top = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          if (!ok) throw new Error("复制失败");
+        }
+        if (btn) btn.textContent = "已复制";
+        setTimeout(() => {
+          if (btn) btn.textContent = old;
+        }, 1200);
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    function closeProgressModal() {
+      const modal = document.getElementById("progress-modal");
+      if (modal) modal.classList.remove("visible");
+    }
+
+    let manageWs = null;
+    function initManageWebSocket() {
+      if (manageWs) return;
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const url = proto + "//" + window.location.host + "/ws/manage";
+      manageWs = new WebSocket(url);
+      manageWs.onopen = () => {
+        console.log("Manage WS connected");
+        // Send a ping every 30s to keep alive
+        setInterval(() => {
+          if (manageWs.readyState === WebSocket.OPEN) {
+            manageWs.send(JSON.stringify({ type: "ping", data: "manager" }));
+          }
+        }, 30000);
+      };
+      manageWs.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "refresh_progress") {
+             updateProgressModal(msg.data);
+          }
+        } catch (e) {
+          console.error("WS message error", e);
+        }
+      };
+      manageWs.onclose = () => {
+        console.log("Manage WS closed, retrying in 5s...");
+        manageWs = null;
+        setTimeout(initManageWebSocket, 5000);
+      };
+    }
+
+    function updateProgressModal(data) {
+      const modal = document.getElementById("progress-modal");
+      if (!modal || !modal.classList.contains("visible")) return;
+
+      const total = data.total || 0;
+      const current = data.current || 0;
+      const success = data.success || 0;
+      const failed = data.failed || 0;
+      const percent = data.percent || 0;
+
+      document.getElementById("prog-success").textContent = success;
+      document.getElementById("prog-failed").textContent = failed;
+      document.getElementById("prog-fill").style.width = percent + "%";
+      document.getElementById("prog-percent").textContent = percent + "%";
+      document.getElementById("prog-text").textContent = `正在处理: ${current} / ${total}`;
+
+      if (current >= total && total > 0) {
+        document.getElementById("prog-text").textContent = "处理完成";
+        document.getElementById("modal-close-btn").style.visibility = "visible";
+      }
+    }
+
+    async function refreshAll(btn) {
+      // Show modal
+      const modal = document.getElementById("progress-modal");
+      if (modal) {
+        modal.classList.add("visible");
+        document.getElementById("prog-success").textContent = "0";
+        document.getElementById("prog-failed").textContent = "0";
+        document.getElementById("prog-fill").style.width = "0%";
+        document.getElementById("prog-percent").textContent = "0%";
+        document.getElementById("prog-text").textContent = "正在请求任务...";
+        document.getElementById("modal-close-btn").style.visibility = "hidden";
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        var old = btn.textContent;
+        btn.textContent = "刷新中...";
+      }
+      try {
+        const r = await fetch("/api/mp/refresh_remote");
+        const j = await r.json().catch(() => ({}));
+        if (j && j.code !== undefined && j.code !== 0) {
+          alert(j.msg || "接口错误");
+          closeProgressModal();
+        }
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+        closeProgressModal();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+      loadAccounts();
+      loadWsPool();
+    }
+    async function refreshOne(btn, biz) {
+      if (!biz) return;
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = "刷新中";
+      try {
+        const url = "/api/mp/refresh_account_with_frontend?biz=" + encodeURIComponent(biz);
+        const r = await fetch(url);
+        const j = await r.json().catch(() => ({}));
+        if (j && j.code !== undefined && j.code !== 0) {
+          alert(j.msg || "接口错误");
+        }
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+      btn.disabled = false;
+      btn.textContent = old;
+      loadAccounts();
+    }
+    async function loadWsPool() {
+      try {
+        const r = await fetch("/api/mp/ws_pool");
+        const j = await r.json();
+        if (j.code !== 0) {
+          alert(j.msg || "接口错误");
+          return;
+        }
+        const list = (j.data && j.data.list) || [];
+        const tbody = document.querySelector("#ws tbody");
+        tbody.innerHTML = "";
+        for (const it of list) {
+          const healthy = (Math.floor(Date.now() / 1000) - (it.last_ping || 0)) <= 15 && it.available;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class=""><div class="w-80 ellipsis">${it.title || ""}</div></td>
+            <td class="nowrap">
+              ${healthy ? '<div class="pill ok nowrap">可用</div>' : '<div class="pill warn nowrap">不可用</div>'}
+              <div class="muted">${fmtTime(it.last_ping || 0)} (${timeSince(it.last_ping || 0)} ago)</div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        console.error(e);
+        alert(String(e && e.message ? e.message : e));
+      }
+    }
+    function bootstrap() {
+      loadAccounts();
+      if (!REMOTE_MODE) {
+        loadWsPool();
+        initManageWebSocket();
+      }
+      const grid = document.querySelector(".grid");
+      const toolbar = document.querySelector("#accounts .toolbar");
+      const actions = document.getElementById("toolbar-actions");
+      if (actions) actions.style.display = REMOTE_MODE ? "none" : "";
+      const wsSection = document.querySelector("#ws");
+      if (wsSection) {
+        wsSection.style.display = REMOTE_MODE ? "none" : "";
+      }
+      if (grid) {
+        grid.style.gridTemplateColumns = REMOTE_MODE ? "1fr" : "1fr 360px";
+      }
+      const theadRow = document.querySelector("#accounts thead tr");
+      if (theadRow && REMOTE_MODE) {
+        theadRow.innerHTML = `
+          <th>公众号</th>
+          <th>ID</th>
+          <th>是否可用</th>
+        `;
+      }
+      const kw = document.getElementById("account-keyword");
+      if (kw) {
+        kw.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") applySearch();
+        });
+      }
+    }
+    document.addEventListener("DOMContentLoaded", bootstrap);
+  </script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="grid">
+      <section id="accounts">
+        <h2>公众号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
+        <div class="toolbar">
+          <div class="toolbar-left" id="toolbar-actions">
+            <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
+            <button class="btn" onclick="copyRefreshLinks(this)">复制刷新链接</button>
+          </div>
+          <div class="toolbar-right">
+            <select id="account-is-effective" class="select" style="width: 100px;">
+              <option value="">全部状态</option>
+              <option value="1">有效</option>
+              <option value="0">无效</option>
+            </select>
+            <input id="account-keyword" class="input" style="width: 220px" placeholder="搜索昵称 / biz" />
+            <button class="btn" onclick="applySearch()">搜索</button>
+            <button class="btn" onclick="clearSearch()">清空</button>
+            <select id="page-size" class="select" onchange="changePageSize(this.value)">
+              <option value="10">10/页</option>
+              <option value="20">20/页</option>
+              <option value="50">50/页</option>
+              <option value="100">100/页</option>
+              <option value="200">200/页</option>
+            </select>
+            <button id="btn-prev" class="btn btn-sm btn-fixed-width" onclick="prevPage()">上一页</button>
+            <span id="page-info" class="muted" style="align-self: center;"></span>
+            <button id="btn-next" class="btn btn-sm btn-fixed-width" onclick="nextPage()">下一页</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>公众号</th>
+              <th>ID</th>
+              <th class="w-120">状态</th>
+              <th class="w-160">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section id="ws">
+        <h2>WebSocket 池</h2>
+        <table>
+          <thead>
+            <tr>
+              <th class="w-80">标题</th>
+              <th>是否可用 / 最近心跳</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+  <div id="progress-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <span>刷新进度</span>
+        <button class="btn btn-sm" onclick="closeProgressModal()" id="modal-close-btn" style="visibility: hidden;">关闭</button>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-val text-success" id="prog-success">0</div>
+          <div class="stat-label">成功</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val text-error" id="prog-failed">0</div>
+          <div class="stat-label">失败</div>
+        </div>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="prog-fill"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #9aa0a6;">
+        <span id="prog-text">准备中...</span>
+        <span id="prog-percent">0%</span>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

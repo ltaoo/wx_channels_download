@@ -1,0 +1,31 @@
+name = "official-account-api"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[env.production]
+name = "official-account-api-prod"
+
+[env.staging]
+name = "official-account-api-staging"
+
+# [[kv_namespaces]]
+# binding = "OFFICIAL_ACCOUNTS"
+# id = "your_accounts_kv_namespace_id"
+# preview_id = "your_accounts_kv_preview_id"
+
+# [[kv_namespaces]]
+# binding = "OFFICIAL_MESSAGES"
+# id = "your_messages_kv_namespace_id"
+# preview_id = "your_messages_kv_preview_id"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "official_account_db"
+database_id = "your_d1_database_id" # Replace with your D1 database ID
+
+
+[vars]
+# Set these in Cloudflare dashboard or wrangler secrets
+# AUTH_TOKEN = "your_auth_token_here"
+# REFRESH_TOKEN = "your_refresh_token_here"
+# REMOTE_SERVER = "https://your-remote-server.com"

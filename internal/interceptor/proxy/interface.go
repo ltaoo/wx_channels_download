@@ -41,9 +41,10 @@ type contextImpl struct {
 	impl any
 }
 type ContextReq struct {
-	URL    *ContextURL
-	Body   io.Reader
-	Header http.Header
+	URL     *ContextURL
+	Body    io.Reader
+	Header  http.Header
+	Cookies []*http.Cookie
 }
 type ContextURL struct {
 	Path     string

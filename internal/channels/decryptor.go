@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"bufio"
@@ -33,7 +33,7 @@ func NewChannelsVideoDecryptor() *ChannelsVideoDecryptor {
 // 	handleDownload(w, r)
 // }
 
-func (mp *ChannelsVideoDecryptor) convertWithDecrypt(w http.ResponseWriter, targetURL string, key uint64, encLimit uint64, filename string) {
+func (mp *ChannelsVideoDecryptor) ConvertWithDecrypt(w http.ResponseWriter, targetURL string, key uint64, encLimit uint64, filename string) {
 	req, err := mp.prepareRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -84,7 +84,7 @@ func (mp *ChannelsVideoDecryptor) convertWithDecrypt(w http.ResponseWriter, targ
 	_ = cmd.Wait()
 }
 
-func (mp *ChannelsVideoDecryptor) decryptOnly(w http.ResponseWriter, r *http.Request, targetURL string, key uint64, encLimit uint64, filename string) {
+func (mp *ChannelsVideoDecryptor) DecryptOnly(w http.ResponseWriter, r *http.Request, targetURL string, key uint64, encLimit uint64, filename string) {
 	req, err := mp.prepareRequest(r.Method, targetURL, r.Header)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -129,7 +129,7 @@ func (mp *ChannelsVideoDecryptor) decryptOnly(w http.ResponseWriter, r *http.Req
 }
 
 // Inline playback variants (no attachment headers)
-func (mp *ChannelsVideoDecryptor) decryptOnlyInline(w http.ResponseWriter, r *http.Request, targetURL string, key uint64, encLimit uint64) {
+func (mp *ChannelsVideoDecryptor) DecryptOnlyInline(w http.ResponseWriter, r *http.Request, targetURL string, key uint64, encLimit uint64) {
 	req, err := mp.prepareRequest(r.Method, targetURL, r.Header)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -168,7 +168,7 @@ func (mp *ChannelsVideoDecryptor) decryptOnlyInline(w http.ResponseWriter, r *ht
 	io.Copy(w, decryptReader)
 }
 
-func (mp *ChannelsVideoDecryptor) convertWithDecryptInline(w http.ResponseWriter, targetURL string, key uint64, encLimit uint64) {
+func (mp *ChannelsVideoDecryptor) ConvertWithDecryptInline(w http.ResponseWriter, targetURL string, key uint64, encLimit uint64) {
 	req, err := mp.prepareRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -210,9 +210,9 @@ func (mp *ChannelsVideoDecryptor) convertWithDecryptInline(w http.ResponseWriter
 	_ = cmd.Wait()
 }
 
-func (mp *ChannelsVideoDecryptor) convertOnlyInline(targetURL string, w http.ResponseWriter, format string) {
+func (mp *ChannelsVideoDecryptor) ConvertOnlyInline(targetURL string, w http.ResponseWriter, format string) {
 	if format != "mp3" {
-		mp.simpleProxy(targetURL, w, nil)
+		mp.SimpleProxy(targetURL, w, nil)
 		return
 	}
 	req, err := mp.prepareRequest(http.MethodGet, targetURL, nil)
@@ -254,9 +254,9 @@ func (mp *ChannelsVideoDecryptor) convertOnlyInline(targetURL string, w http.Res
 	}
 	_ = cmd.Wait()
 }
-func (mp *ChannelsVideoDecryptor) convertOnly(targetURL string, w http.ResponseWriter, filename string, format string) {
+func (mp *ChannelsVideoDecryptor) ConvertOnly(targetURL string, w http.ResponseWriter, filename string, format string) {
 	if format != "mp3" {
-		mp.simpleProxy(targetURL, w, nil)
+		mp.SimpleProxy(targetURL, w, nil)
 		return
 	}
 	req, err := mp.prepareRequest(http.MethodGet, targetURL, nil)
@@ -322,7 +322,7 @@ func (mp *ChannelsVideoDecryptor) prepareRequest(method, targetURL string, heade
 	return req, nil
 }
 
-func (mp *ChannelsVideoDecryptor) simpleProxy(targetURL string, w http.ResponseWriter, r *http.Request) {
+func (mp *ChannelsVideoDecryptor) SimpleProxy(targetURL string, w http.ResponseWriter, r *http.Request) {
 	var header http.Header
 	method := http.MethodGet
 	if r != nil {

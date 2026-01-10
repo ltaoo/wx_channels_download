@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/rs/zerolog"
+
 	"wx_channel/internal/manager"
 )
 
@@ -12,13 +14,13 @@ type APIServer struct {
 	APIClient *APIClient
 }
 
-func NewAPIServer(cfg *APIConfig) *APIServer {
+func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger) *APIServer {
 	srv := manager.NewHTTPServer("API服务", "api", cfg.Addr)
-	client := NewAPIClient(cfg)
+	client := NewAPIClient(cfg, logger)
 	srv.SetHandler(withCORS(client))
 	return &APIServer{
-		APIClient:  client,
 		HTTPServer: srv,
+		APIClient:  client,
 	}
 }
 
@@ -35,7 +37,6 @@ func (s *APIServer) Start() error {
 }
 
 func (s *APIServer) Stop() error {
-	s.APIClient.downloader.Pause(nil)
 	if err := s.APIClient.Stop(); err != nil {
 		return err
 	}

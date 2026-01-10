@@ -1,18 +1,19 @@
-package api
+package channels
 
 import (
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
 	"wx_channel/internal/api/types"
+	"wx_channel/pkg/cache"
 )
 
 var channels_ws_upgrader = websocket.Upgrader{
@@ -23,29 +24,56 @@ var channels_ws_upgrader = websocket.Upgrader{
 	},
 }
 
-func (c *APIClient) handleChannelsWebsocket(ctx *gin.Context) {
+type ChannelsClient struct {
+	// decryptor   *ChannelsVideoDecryptor
+	// downloader  *downloadpkg.Downloader
+	// Interceptor *interceptor.Interceptor
+	// official    *officialaccount.OfficialAccountBrowser
+	// formatter   *util.FilenameProcessor
+	// Cookies     []*http.Cookie
+	// cfg         *APIConfig
+	ws_clients  map[*Client]bool
+	ws_mu       sync.RWMutex
+	engine      *gin.Engine
+	requests    map[string]chan ClientWebsocketResponse
+	requests_mu sync.RWMutex
+	cache       *cache.Cache
+	req_seq     uint64
+	OnConnected func(client *Client)
+}
+
+func NewChannelsClient(addr string) *ChannelsClient {
+	return &ChannelsClient{
+		// ServerAddr: addr,
+		ws_clients: make(map[*Client]bool),
+		requests:   make(map[string]chan ClientWebsocketResponse),
+		// engine:     gin.Default(),
+		cache:   cache.New(),
+		req_seq: uint64(time.Now().UnixNano()),
+	}
+}
+
+func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	conn, err := channels_ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return
 	}
 	c.ws_mu.Lock()
-	client := &Client{hub: c, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{Conn: conn, Send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
 	go client.writePump()
 
-	// Initial tasks
-	tasks := c.downloader.GetTasks()
-	if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
-		client.send <- data
+	if c.OnConnected != nil {
+		c.OnConnected(client)
 	}
 
 	defer func() {
 		c.ws_mu.Lock()
 		if _, ok := c.ws_clients[client]; ok {
 			delete(c.ws_clients, client)
-			close(client.send)
+			close(client.Send)
 		}
 		c.ws_mu.Unlock()
 		conn.Close()
@@ -67,8 +95,31 @@ func (c *APIClient) handleChannelsWebsocket(ctx *gin.Context) {
 		}
 	}
 }
-
-func (wc *APIClient) Validate() error {
+func (c *ChannelsClient) Stop() {
+	c.ws_mu.Lock()
+	for client := range c.ws_clients {
+		close(client.Send)
+		delete(c.ws_clients, client)
+	}
+	c.ws_mu.Unlock()
+}
+func (c *ChannelsClient) Broadcast(v interface{}) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	c.ws_mu.Lock()
+	defer c.ws_mu.Unlock()
+	for client := range c.ws_clients {
+		select {
+		case client.Send <- data:
+		default:
+			close(client.Send)
+			delete(c.ws_clients, client)
+		}
+	}
+}
+func (wc *ChannelsClient) Validate() error {
 	// wc.clientsMu.Lock()
 	// defer wc.clientsMu.Unlock()
 	if len(wc.ws_clients) == 0 {
@@ -76,7 +127,7 @@ func (wc *APIClient) Validate() error {
 	}
 	return nil
 }
-func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -109,7 +160,6 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 		c.ws_mu.Unlock()
 		return nil, errors.New("没有可用的客户端")
 	}
-
 	data, err := json.Marshal(msg)
 	if err != nil {
 		c.ws_mu.Unlock()
@@ -117,7 +167,7 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 	}
 
 	select {
-	case client.send <- data:
+	case client.Send <- data:
 	default:
 		c.ws_mu.Unlock()
 		return nil, errors.New("发送缓冲区已满")
@@ -131,14 +181,14 @@ func (c *APIClient) RequestAPI(endpoint string, body interface{}, timeout time.D
 	}
 }
 
-func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
+func (c *ChannelsClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
 	cache_key := "search:" + keyword
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestAPI("/api/contact/search", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
+	resp, err := c.RequestFrontend("key:channels:contact_list", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +200,7 @@ func (c *APIClient) SearchChannelsContact(keyword string) (*types.ChannelsContac
 	return &r, nil
 }
 
-func (c *APIClient) FetchChannelsFeedListOfContact(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
 	// fmt.Println("[API]fetch feed list of contact", username)
 	// cache_key := "feed:" + username
 	// if val, found := c.cache.Get(cache_key); found {
@@ -158,7 +208,7 @@ func (c *APIClient) FetchChannelsFeedListOfContact(username, next_marker string)
 	// 		return resp, nil
 	// 	}
 	// }
-	resp, err := c.RequestAPI("/api/contact/feed/list", types.ChannelsFeedListBody{Username: username, NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_list", types.ChannelsFeedListBody{Username: username, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +220,7 @@ func (c *APIClient) FetchChannelsFeedListOfContact(username, next_marker string)
 	return &r, nil
 }
 
-func (c *APIClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	// cache_key := "feed:" + username
 	// if val, found := c.cache.Get(cache_key); found {
@@ -178,7 +228,7 @@ func (c *APIClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.Chann
 	// 		return resp, nil
 	// 	}
 	// }
-	resp, err := c.RequestAPI("/api/feed/profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -188,19 +238,4 @@ func (c *APIClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.Chann
 	}
 	// c.cache.Set(cache_key, &r, 5*time.Minute)
 	return &r, nil
-}
-
-func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
-	for _, t := range tasks {
-		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
-			continue
-		}
-		same_id := t.Meta.Req.Labels["id"] == body.Id
-		same_spec := t.Meta.Req.Labels["spec"] == body.Spec
-		same_suffix := t.Meta.Req.Labels["suffix"] == body.Suffix
-		if same_id && same_spec && same_suffix {
-			return true
-		}
-	}
-	return false
 }

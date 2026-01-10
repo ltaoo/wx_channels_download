@@ -52,8 +52,8 @@ var js_utils []byte
 //go:embed inject/src/downloader.js
 var js_downloader []byte
 
-//go:embed inject/src/wechat_official_account.js
-var js_wechat_official_account []byte
+//go:embed inject/src/officialaccount.js
+var js_wechat_officialaccount []byte
 
 //go:embed inject/src/main.js
 var js_feed_profile_or_recommand_page []byte
@@ -84,7 +84,6 @@ type ChannelInjectedFiles struct {
 	JSMain                  []byte
 	JSLiveMain              []byte
 	JSContactMain           []byte
-	IndexHTML               []byte
 	JSWechatOfficialAccount []byte
 }
 
@@ -108,5 +107,5 @@ var Assets = &ChannelInjectedFiles{
 	JSMain:                  js_feed_profile_or_recommand_page,
 	JSLiveMain:              js_live_profile_page,
 	JSContactMain:           js_contact_profile_page,
-	JSWechatOfficialAccount: js_wechat_official_account,
+	JSWechatOfficialAccount: js_wechat_officialaccount,
 }

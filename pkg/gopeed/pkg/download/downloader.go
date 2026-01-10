@@ -620,17 +620,16 @@ func (d *Downloader) doDelete(task *Task, force bool) (err error) {
 
 func (d *Downloader) Close() error {
 	d.closed.Store(true)
-
-	closeArr := []func() error{
+	close_handler_arr := []func() error{
 		d.pauseAll,
 	}
 	for _, fm := range d.cfg.FetchManagers {
-		closeArr = append(closeArr, fm.Close)
+		close_handler_arr = append(close_handler_arr, fm.Close)
 	}
-	closeArr = append(closeArr, d.storage.Close)
+	close_handler_arr = append(close_handler_arr, d.storage.Close)
 	// Make sure all resources are released, if had error, return the last error
 	var lastErr error
-	for i, close := range closeArr {
+	for i, close := range close_handler_arr {
 		if err := close(); err != nil {
 			lastErr = err
 			d.Logger.Error().Stack().Err(err).Msgf("downloader close failed, index: %d", i)
