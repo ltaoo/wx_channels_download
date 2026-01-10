@@ -26,10 +26,11 @@ channels:
   disableLocationToHome: false
 
 mp:
+  disabled: true
   remoteServer:
     protocol: "http"
-    hostname: "127.0.0.1"
-    port: 2022
+    hostname: ""
+    port: 80
   refreshToken: ""
   tokenFilepath: ""
   refreshSkipMinutes: 20

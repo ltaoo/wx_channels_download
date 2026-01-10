@@ -26,18 +26,18 @@ type OfficialAccountConfig struct {
 }
 
 func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccountConfig {
-	protocol := viper.GetString("mp.protocol")
-	hostname := viper.GetString("mp.hostname")
-	port := viper.GetInt("mp.port")
+	protocol := viper.GetString("api.protocol")
+	hostname := viper.GetString("api.hostname")
+	port := viper.GetInt("api.port")
 	cfg := &OfficialAccountConfig{
 		RootDir:              c.RootDir,
 		Protocol:             protocol,
 		Hostname:             hostname,
 		Port:                 port,
 		Addr:                 hostname + ":" + strconv.Itoa(port),
+		RemoteMode:           remote_mode,
 		RefreshToken:         viper.GetString("mp.refreshToken"),
 		TokenFilepath:        viper.GetString("mp.tokenFilepath"),
-		RemoteMode:           remote_mode,
 		RemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
 		RemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
 		RemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
