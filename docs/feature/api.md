@@ -22,7 +22,7 @@ title: API
 curl http://localhost:2022/api/channels/contact/search?keyword=龙虾
 ```
 
-## 获取视频号账号的视频列表
+## 获取视频号指定账号的视频列表
 
 ```bash
 curl http://localhost:2022/api/channels/contact/feed/list?username=v2_060000231003b20faec8c4e48e1dc3ddcd03ec3cb077bb11b3c6c9a42ee3cea8073a64e6e2bd@finder
@@ -56,4 +56,8 @@ curl -X POST "http://127.0.0.1:2022/api/task/create_channels" \
   -d '{"cover": true, "url": "https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4&context_id=33-9-141-18a2bc728e23eacd62e8fc98e3bbff391768023553823&entrance_id=1002&req_time=1767887337&exportkey=n_ChQIAhIQeQFDxKsyNw296ySx31udbxKMAgIE97dBBAEAAAAAAJtcOgVgeQAAAAAOpnltbLcz9gKNyK89dVj0Z5WHOTv3WqpHc4LJgnpXV6g383YJo8%2BUIOjT2Y9k%2FNCj%2BnAXGPEP5rSwX6eTMFijG9xRV5wJM7F4%2F%2BKked55Q2Ao8WRg7LI05FClrpb0iNlfi%2B4HttbXt0E5o4U3vpzAAb%2F3WXhHUBrbc3DgmXHpxOSHPx3BdgQaE7IotUe9IS5cv%2Bf3BJCBEI1pZHs3e5%2FMs1ZRjV3Crwg0%2FShUoUG%2FqKstXMRHn2KJ0uM4H93DWxIBxtTMnDbk3%2F9CFjCo6n4J73vvGRoIex8nLMUZ%2FC6mW3GYqn%2Fp9hp70GlLg5ScHexjw3HklyQ%3D&pass_ticket=VgBMoEBGN9Dup64gcPQ%2BHeruABRSIVerbzmQp9w1bCZsXDsoZwddjH0M%2Bzaey5yuJsXz02LqYJZrqzgl57DvKw%3D%3D&wx_header=0"}'
 ```
 
-其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。以及支持 `mp3`，表示下载为 `mp3` 文件。传 `cover`，表示下载视频封面。
+其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。
+
+传 `mp3`，表示下载为 `mp3` 文件
+
+传 `cover`，表示下载视频封面

@@ -15,6 +15,7 @@ const (
 	CodeMissingUrl        = 4002
 	CodeMissingKey        = 4003
 	CodeMissingRefreshUri = 4004
+	CodeTooManyAccounts   = 4005
 	CodeTokenInvalid      = 1002 // 统一 Token 无效错误码
 	CodeAccountNotFound   = 1003
 	CodeAccountExpired    = 1004
@@ -37,6 +38,7 @@ var errMsgMap = map[int][2]string{
 	CodeMissingUrl:        {"Missing url parameter", "缺少参数：url"},
 	CodeMissingKey:        {"Missing key parameter", "缺少参数：key"},
 	CodeMissingRefreshUri: {"Missing refresh uri parameter", "缺少参数：refresh_uri"},
+	CodeTooManyAccounts:   {"Too many accounts", "公众号数量已达上限"},
 	CodeTokenInvalid:      {"Invalid token", "令牌无效"},
 	CodeAccountNotFound:   {"Account not found", "未找到匹配的公众号"},
 	CodeAccountExpired:    {"Account expired", "公众号凭证已失效"},

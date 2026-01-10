@@ -319,11 +319,6 @@
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
     let ACCOUNTS_CACHE = [];
     let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
-    let MISSING_REFRESH_REQ_ID = 0;
-    const MISSING_REFRESH_CACHE = new Map();
-    function invalidateMissingRefreshCache() {
-      MISSING_REFRESH_CACHE.clear();
-    }
     function proxy(u) {
       if (!u) return "";
       const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
@@ -376,30 +371,6 @@
         keyword: (data && typeof data.keyword === "string") ? data.keyword : (params.keyword || ""),
       };
     }
-    async function fetchMissingRefreshUriTotal(keyword) {
-      const kw = String(keyword || "").trim();
-      const cacheKey = kw;
-      const cached = MISSING_REFRESH_CACHE.get(cacheKey);
-      if (cached && (Date.now() - cached.ts) < 15000) return cached.missing;
-
-      let missing = 0;
-      let total = 0;
-      let fetched = 0;
-      const pageSize = 200;
-      for (let page = 1; page <= 1000; page++) {
-        const data = await fetchAccountPage({ page, pageSize, keyword: kw });
-        if (page === 1) total = Number(data.total) || 0;
-        const list = Array.isArray(data.list) ? data.list : [];
-        for (const it of list) {
-          if (!(it && it.refresh_uri && String(it.refresh_uri).trim())) missing += 1;
-        }
-        fetched += list.length;
-        if (!list.length) break;
-        if (total > 0 && fetched >= total) break;
-      }
-      MISSING_REFRESH_CACHE.set(cacheKey, { missing, ts: Date.now() });
-      return missing;
-    }
     function syncControlsFromState() {
       const kw = document.getElementById("account-keyword");
       if (kw && kw.value !== LIST_STATE.keyword) kw.value = LIST_STATE.keyword || "";
@@ -430,20 +401,6 @@
 
         const data = await fetchAccountPage(LIST_STATE);
         ACCOUNTS_CACHE = data.list;
-        if (!REMOTE_MODE) {
-          const missingEl = document.getElementById("missing-refresh-count");
-          const reqId = ++MISSING_REFRESH_REQ_ID;
-          if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：计算中...`;
-          fetchMissingRefreshUriTotal(LIST_STATE.keyword)
-            .then((missingTotal) => {
-              if (reqId !== MISSING_REFRESH_REQ_ID) return;
-              if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：${missingTotal}`;
-            })
-            .catch(() => {
-              if (reqId !== MISSING_REFRESH_REQ_ID) return;
-              if (missingEl) missingEl.textContent = `缺 refresh_uri（全部）：计算失败`;
-            });
-        }
         const countEl = document.getElementById("account-count");
         if (countEl) countEl.textContent = `(${data.total})`;
         setPaginationInfo(data.page, data.pageSize, data.total);
@@ -647,7 +604,6 @@
           btn.textContent = old;
         }
       }
-      invalidateMissingRefreshCache();
       loadAccounts();
       loadWsPool();
     }
@@ -668,7 +624,6 @@
       }
       btn.disabled = false;
       btn.textContent = old;
-      invalidateMissingRefreshCache();
       loadAccounts();
     }
     async function loadWsPool() {
@@ -744,7 +699,6 @@
           <div class="toolbar-left" id="toolbar-actions">
             <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
             <button class="btn" onclick="copyRefreshLinks(this)">复制刷新链接</button>
-            <span id="missing-refresh-count" class="muted" style="align-self: center;"></span>
           </div>
           <div class="toolbar-right">
             <select id="account-is-effective" class="select" style="width: 100px;">

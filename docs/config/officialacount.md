@@ -11,12 +11,12 @@ title: 公众号服务
 ```yaml
 mp:
   remoteServer:
-    protocol: "http"
-    hostname: "127.0.0.1"
-    port: 2022
+    protocol: "https"
+    hostname: "rss.example.com"
+    port: 80
 ```
 
-刷新凭证时，是向该服务提交凭证信息。同时，如果 `RSS` 链接指定了 `proxy=1`，添加的代理前缀也是该服务的地址
+在本地打开公众号文章页面，会向该服务提交凭证信息。同时，如果 `RSS` 链接指定了 `proxy=1`，添加的代理前缀也是该服务的地址
 
 如果在本地运行，需要和 `api` 的服务配置相同
 

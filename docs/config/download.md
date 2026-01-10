@@ -76,3 +76,14 @@ download:
 
 是否在前端下载时暂停视频播放，默认 `false`。下载完成后会继续播放。
 
+
+## 完成音效
+
+```yaml
+
+```yaml
+download:
+  playDoneAudio: true
+```
+
+后台下载模式下，下载完成后是否播放完成音效，默认 `true`。

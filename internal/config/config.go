@@ -281,43 +281,59 @@ func (c *Config) LoadConfig() error {
 		Group:       "OfficialAccount",
 	})
 	Register(ConfigItem{
-		Key:         "cloudflare.authToken",
+		Key:         "cloudflare.accountId",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare 帐号 ID",
+		Title:       "Account ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.apiToken",
 		Type:        ConfigTypeString,
 		Default:     "",
 		Description: "Cloudflare Worker 认证 Token",
-		Title:       "Auth Token",
+		Title:       "API Token",
 		Group:       "Cloudflare",
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.refreshToken",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "Cloudflare Worker 刷新 Token",
+		Description: "调用 mp-rss 凭证刷新接口所需的 token",
 		Title:       "Refresh Token",
 		Group:       "Cloudflare",
 	})
 	Register(ConfigItem{
-		Key:         "cloudflare.accountId",
+		Key:         "cloudflare.adminToken",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "Cloudflare Account ID",
-		Title:       "Account ID",
+		Description: "调用 mp-rss 管理员接口所需的凭证",
+		Title:       "Admin Token",
 		Group:       "Cloudflare",
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.workerName",
 		Type:        ConfigTypeString,
 		Default:     "official-account-api",
-		Description: "Cloudflare Worker Name",
+		Description: "Cloudflare mp-rss Worker 名称",
 		Title:       "Worker Name",
 		Group:       "Cloudflare",
 	})
 	Register(ConfigItem{
-		Key:         "cloudflare.d1.databaseId",
+		Key:         "cloudflare.d1Id",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "Cloudflare D1 Database ID",
+		Description: "Cloudflare mp-rss d1数据库 ID",
 		Title:       "D1 Database ID",
+		Group:       "Cloudflare",
+	})
+	Register(ConfigItem{
+		Key:         "cloudflare.d1Name",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Cloudflare mp-rss d1数据库 Name",
+		Title:       "D1 Database Name",
 		Group:       "Cloudflare",
 	})
 

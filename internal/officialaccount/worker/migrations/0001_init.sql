@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   key TEXT,
   pass_ticket TEXT,
   appmsg_token TEXT,
+  refresh_uri TEXT,
   is_effective INTEGER DEFAULT 1, -- 0 or 1 for boolean
+  created_at INTEGER,
   update_time INTEGER,
   error TEXT
 );
@@ -24,4 +26,11 @@ CREATE TABLE IF NOT EXISTS messages (
   create_time INTEGER,
   raw_json TEXT -- Store the full JSON object for flexibility
 );
+
+CREATE TABLE IF NOT EXISTS tokens (
+  token TEXT PRIMARY KEY,
+  description TEXT,
+  created_at INTEGER
+);
+
 

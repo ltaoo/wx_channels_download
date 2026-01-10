@@ -606,6 +606,10 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		target_acct = &new_acct
 		accounts[body.Biz] = target_acct
 	} else {
+		if len(accounts) >= 20 {
+			result.ErrCode(ctx, result.CodeTooManyAccounts)
+			return
+		}
 		body.IsEffective = true
 		if body.CreatedAt == 0 {
 			body.CreatedAt = now

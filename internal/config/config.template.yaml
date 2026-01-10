@@ -34,3 +34,12 @@ mp:
   tokenFilepath: ""
   refreshSkipMinutes: 20
   maxWebsocketClients: 5
+
+cloudflare:
+  accountId: ""
+  apiToken: ""
+  refreshToken: ""
+  authToken: ""
+  workerName: "mp-rss-api"
+  d1Id: ""
+  d1Name: "mp-rss-db"
