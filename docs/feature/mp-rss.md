@@ -93,10 +93,6 @@ mp:
 ```yaml
 # config.yaml
 mp:
-  remoteServer:
-    protocol: "https"
-    hostname: "rss.example.com"
-    port: 80
   refreshToken: "123"
   tokenFilepath: ""
 ```
@@ -118,6 +114,8 @@ mp:
 ```
 
 `linux` 上部署的服务，可以打开 `rss.example.com/mp/home` 查看公众号列表，并且可以查看公众号是否可用。
+
+更多命令可以参考 [命令行工具](../cli/mp.md)
 
 ## API
 
