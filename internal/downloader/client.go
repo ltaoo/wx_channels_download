@@ -1,8 +1,8 @@
 package downloader
 
-type DownloadClient struct {
+type DownloadTaskClient struct {
 }
 
-func NewDownloadClient() *DownloadClient {
-	return &DownloadClient{}
+func NewDownloadClient() *DownloadTaskClient {
+	return &DownloadTaskClient{}
 }

@@ -13,6 +13,9 @@ body[data-weui-theme=dark] {
     --popup-content-bg-color: #323232;
   }
 }
+.flex {
+  display: flex;
+}
 .custom-menu {
   z-index: 99999;
   background: var(--popup-bg-color);
@@ -373,7 +376,7 @@ function __wx_refresh_downloader(selector, tasks) {
               `;
       } else if (isPaused || t.status === "failed") {
         // Allow resume if paused or failed
-        var MaxRunning = WXU.config.DownloadMaxRunning;
+        var MaxRunning = WXU.config.downloadMaxRunning;
         if (runningCount < MaxRunning) {
           actionButtons += `
                 <a href="javascript:" class="wx-download-item-resume" aria-label="继续" title="继续" data-id="${t.id}" data-action="resume" style="${btnStyle}">

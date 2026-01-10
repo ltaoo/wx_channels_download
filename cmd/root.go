@@ -124,6 +124,7 @@ func root_command(cfg *config.Config) {
 	})
 	mgr.RegisterServer(interceptor_srv)
 	api_cfg := api.NewAPIConfig(Cfg, false)
+	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
 	l, err := net.Listen("tcp", api_cfg.Addr)
 	if err != nil {

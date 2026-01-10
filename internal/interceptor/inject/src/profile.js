@@ -53,7 +53,7 @@
           });
           return;
         }
-        WXU.downloader.show();
+        let download_open = false;
         let next_marker = "";
         let has_more = true;
         while (has_more) {
@@ -85,6 +85,16 @@
             });
             has_more = false;
             return;
+          }
+          if (data.ids.length === 0) {
+            WXU.toast("没有新的视频可以下载");
+            WXU.downloader.hide();
+            has_more = false;
+            return;
+          }
+          if (!download_open) {
+            download_open = true;
+            WXU.downloader.show();
           }
           if (
             !r.data.lastBuffer ||

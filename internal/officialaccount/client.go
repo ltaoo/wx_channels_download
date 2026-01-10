@@ -226,15 +226,15 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 			}
 		}()
 	}
-	if !cfg.RemoteMode {
-		go func() {
-			ticker := time.NewTicker(20 * time.Minute)
-			defer ticker.Stop()
-			for range ticker.C {
-				c.RefreshAllRemoteOfficialAccount()
-			}
-		}()
-	}
+	// if !cfg.RemoteMode {
+	// 	go func() {
+	// 		ticker := time.NewTicker(20 * time.Minute)
+	// 		defer ticker.Stop()
+	// 		for range ticker.C {
+	// 			c.RefreshAllRemoteOfficialAccount()
+	// 		}
+	// 	}()
+	// }
 	return c
 }
 
@@ -695,8 +695,9 @@ func (c *OfficialAccountClient) HandleOfficialAccountRSS(ctx *gin.Context) {
 	offset := ctx.Query("offset")
 	need_content := ctx.Query("content")
 	need_proxy := ctx.Query("proxy")
+	only_proxy_cover := ctx.Query("proxy_cover")
 
-	cache_key := fmt.Sprintf("rss:%s:%s:%s", biz, need_proxy, need_content)
+	cache_key := fmt.Sprintf("rss:%s:%s:%s:%s", biz, need_proxy, need_content, only_proxy_cover)
 	if val, found := c.cache.Get(cache_key); found {
 		if atom, ok := val.(AtomFeed); ok {
 			ctx.Header("Content-Type", "application/atom+xml; charset=utf-8")
@@ -780,7 +781,7 @@ func (c *OfficialAccountClient) HandleOfficialAccountRSS(ctx *gin.Context) {
 		var thumb *MediaThumbnail
 		if cover != "" {
 			// cover = html.UnescapeString(cover)
-			if need_proxy == "1" && c.RemoteServerAddr != "" {
+			if (need_proxy == "1" || only_proxy_cover == "1") && c.RemoteServerAddr != "" {
 				cover = fmt.Sprintf("%s/mp/proxy?url=%s", c.RemoteServerAddr, url.QueryEscape(cover))
 			}
 			desc = fmt.Sprintf(`<img src="%s" /><br/>%s`, cover, digest)

@@ -10,7 +10,8 @@ function __wx_copy_live_download_command(url) {
   WXU.log({ prefix: "", msg: "" });
   WXU.log({ prefix: "", msg: "直播下载命令" });
   WXU.log({ prefix: "", msg: command });
-  WXU.toast("请在终端查看下载命令");
+  WXU.copy(command);
+  WXU.toast("直播下载命令已复制到粘贴板");
 }
 
 async function __wx_insert_live_download_btn($btn) {
@@ -39,20 +40,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
   const dropdown$ = DropdownMenu({
     $trigger: trigger,
     zIndex: 99999,
-    children: [
-      MenuItem({
-        label: "更多",
-        submenu: submenu$,
-        onMouseEnter() {
-          submenu$.show();
-        },
-        onMouseLeave() {
-          if (!submenu$.isHover) {
-            submenu$.hide();
-          }
-        },
-      }),
-    ],
+    children: [],
     onMouseEnter() {
       if (submenu$.isOpen) {
         submenu$.hide();
@@ -96,7 +84,6 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       __wx_copy_live_download_command(profile.url);
     };
     var success = await __wx_insert_live_download_btn($btn);
-    console.log("[live.js]insert btn success", success);
     if (!success) {
       return;
     }
@@ -112,22 +99,25 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
         (vv) => vv.url
       );
-      var [dropdown$, submenu$] = __wx_attach_live_download_dropdown_menu($btn);
-      dropdown$.ui.$trigger.onMouseEnter(() => {
-        const download_menus = [
-          ...(() => {
-            return options.map((opt) => {
-              return MenuItem({
-                label: opt.tag_name,
-                onClick() {
-                  __wx_copy_live_download_command(opt.url);
-                  dropdown$.hide();
-                },
-              });
+      var [dropdown$] = __wx_attach_live_download_dropdown_menu($btn);
+      const download_menus = [
+        ...(() => {
+          return options.map((opt) => {
+            var level_desc = opt.video_quality_level_desc
+              ? `<div style="inline-block;margin-left: 4px;">(${opt.video_quality_level_desc})</div>`
+              : "";
+            return MenuItem({
+              label: `<div class="flex"><div style="inline-block;width: 56px;">${opt.tag_name}</div><div style="inline-block;width: 32px;">${opt.rate}</div>${level_desc}</div>`,
+              onClick() {
+                __wx_copy_live_download_command(opt.url);
+                dropdown$.hide();
+              },
             });
-          })(),
-        ];
-        submenu$.setChildren(download_menus);
+          });
+        })(),
+      ];
+      dropdown$.setChildren(download_menus);
+      dropdown$.ui.$trigger.onMouseEnter(() => {
         dropdown$.show();
       });
     }

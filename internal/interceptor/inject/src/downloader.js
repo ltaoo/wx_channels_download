@@ -312,8 +312,8 @@ async function __wx_handle_api_call(msg, socket) {
     try {
       if (data.url) {
         var u = new URL(decodeURIComponent(data.url));
-        data.oid = WXU.API.decodeBase64Uint64(u.searchParams.get("oid"));
-        data.nid = WXU.API.decodeBase64Uint64(u.searchParams.get("nid"));
+        data.oid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("oid"));
+        data.nid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("nid"));
       }
       var payload = {
         needObject: 1,

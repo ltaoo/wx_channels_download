@@ -18,6 +18,7 @@ type InterceptorConfig struct {
 	DownloadFilenameTemplate            string `json:"downloadFilenameTemplate"`  // 下载文件名模板
 	DownloadPauseWhenDownload           bool   `json:"downloadPauseWhenDownload"` // 下载时暂停播放
 	DownloadInFrontend                  bool   `json:"downloadInFrontend"`        // 在前端下载
+	DownloadMaxRunning                  int    `json:"downloadMaxRunning"`        // 最大同时下载数
 	APIServerProtocol                   string `json:"apiServerProtocol"`         // API服务器主机名
 	APIServerHostname                   string `json:"apiServerHostname"`         // API服务器主机名
 	APIServerPort                       int    `json:"apiServerPort"`             // API服务器端口

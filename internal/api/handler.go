@@ -18,6 +18,7 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/api/types"
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
 	result "wx_channel/internal/util"
@@ -308,6 +309,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": id})
 }
 
+// 批量创建下载任务
 func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	var body struct {
 		Feeds []FeedDownloadTaskBody `json:"feeds"`
@@ -317,18 +319,29 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		return
 	}
 	tasks := c.downloader.GetTasks()
+	existing_task_map := make(map[string]struct{})
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		key := fmt.Sprintf("%s|%s|%s", t.Meta.Req.Labels["id"], t.Meta.Req.Labels["spec"], t.Meta.Req.Labels["suffix"])
+		existing_task_map[key] = struct{}{}
+	}
+
 	var items []map[string]string
 	for _, req := range body.Feeds {
-		if c.check_existing_feed(tasks, &req) {
+		key := fmt.Sprintf("%s|%s|%s", req.Id, req.Spec, req.Suffix)
+		if _, exists := existing_task_map[key]; exists {
 			continue
 		}
 		items = append(items, map[string]string{
-			"name":   req.Filename,
 			"id":     req.Id,
-			"url":    req.URL,
 			"title":  req.Title,
 			"key":    strconv.Itoa(req.Key),
+			"spec":   req.Spec,
 			"suffix": req.Suffix,
+			"url":    req.URL,
+			"name":   req.Filename,
 		})
 	}
 	if len(items) == 0 {
@@ -356,6 +369,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 					"id":     item["id"],
 					"title":  item["title"],
 					"key":    item["key"],
+					"spec":   item["spec"],
 					"suffix": item["suffix"],
 				},
 			},
@@ -378,6 +392,149 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		Data: c.downloader.GetTasks(),
 	})
 	result.Ok(ctx, gin.H{"ids": ids})
+}
+
+func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
+	var body struct {
+		Oid   string `json:"oid"`
+		Nid   string `json:"Nid"`
+		URL   string `json:"url"`
+		MP3   bool   `json:"mp3"`   // 是否下载为 mp3
+		Cover bool   `json:"cover"` // 是否下载封面
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+	if body.Oid == "" && body.Nid == "" && body.URL == "" {
+		result.Err(ctx, 400, "缺少参数")
+		return
+	}
+	r, err := c.channels.FetchChannelsFeedProfile(body.Oid, body.Nid, body.URL)
+	if err != nil {
+		result.Err(ctx, 500, "获取详情失败: "+err.Error())
+		return
+	}
+	if r.ErrCode != 0 {
+		result.Err(ctx, 500, "获取详情失败: "+r.ErrMsg)
+		return
+	}
+	if len(r.Data.Object.ObjectDesc.Media) == 0 {
+		result.Err(ctx, 500, "缺少可下载的视频内容")
+		return
+	}
+	media := r.Data.Object.ObjectDesc.Media[0]
+	key, err := strconv.Atoi(media.DecodeKey)
+	if err != nil {
+		result.Err(ctx, 500, "获取详情失败: "+err.Error())
+		return
+	}
+
+	spec := "original"
+	if !c.cfg.Original.GetBool("download.defaultHighest") {
+		if len(media.Spec) > 0 {
+			spec = media.Spec[0].FileFormat
+		}
+	}
+	build_filename := func(feed types.ChannelsObject, spec string) string {
+		default_name := feed.ObjectDesc.Description
+		if default_name == "" {
+			if feed.ID != "" {
+				default_name = feed.ID
+			} else {
+				default_name = util.NowSecondsStr()
+			}
+		}
+		template := c.cfg.Original.GetString("download.filenameTemplate")
+		if template == "" {
+			return default_name
+		}
+		params := map[string]string{
+			"filename":    default_name,
+			"id":          feed.ID,
+			"title":       feed.ObjectDesc.Description,
+			"spec":        spec,
+			"created_at":  strconv.Itoa(feed.CreateTime),
+			"download_at": util.NowSecondsStr(),
+			"author":      feed.Contact.Nickname,
+		}
+
+		result := template
+		for k, v := range params {
+			result = strings.ReplaceAll(result, "{{"+k+"}}", v)
+		}
+		return result
+	}
+	filename := build_filename(r.Data.Object, spec)
+	payload := FeedDownloadTaskBody{
+		Id:       r.Data.Object.ID,
+		Title:    r.Data.Object.ObjectDesc.Description,
+		Key:      key,
+		Spec:     spec,
+		Suffix:   ".mp4",
+		URL:      media.URL + media.URLToken,
+		Filename: filename,
+	}
+	if body.MP3 {
+		payload.Suffix = ".mp3"
+	}
+	if body.Cover {
+		payload.Suffix += ".jpg"
+		cover_url := media.CoverUrl
+		payload.URL = cover_url
+	}
+	if payload.Id == "" {
+		result.Err(ctx, 400, "缺少 feed id 参数")
+		return
+	}
+	if payload.Suffix == ".mp3" {
+		has_ffmpeg := system.ExistingCommand("ffmpeg")
+		if !has_ffmpeg {
+			result.Err(ctx, 3001, "下载 mp3 需要支持 ffmpeg 命令")
+			return
+		}
+	}
+	tasks := c.downloader.GetTasks()
+	existing := c.check_existing_feed(tasks, &payload)
+	if existing {
+		result.Err(ctx, 409, "已存在该下载内容")
+		// ctx.JSON(http.StatusOK, Response{Code: 409, Msg: , Data: body})
+		return
+	}
+	filename, dir, err := c.formatter.ProcessFilename(payload.Filename)
+	if err != nil {
+		result.Err(ctx, 409, "不合法的文件名")
+		return
+	}
+	connections := c.resolve_connections(payload.URL)
+	id, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: payload.URL,
+			Labels: map[string]string{
+				"id":     payload.Id,
+				"title":  payload.Title,
+				"key":    strconv.Itoa(payload.Key),
+				"spec":   payload.Spec,
+				"suffix": payload.Suffix,
+			},
+		},
+		&base.Options{
+			Name: filename + payload.Suffix,
+			Path: filepath.Join(c.cfg.DownloadDir, dir),
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: connections,
+			},
+		},
+	)
+	if err != nil {
+		result.Err(ctx, 500, "下载失败")
+		return
+	}
+	c.channels.Broadcast(APIClientWSMessage{
+		Type: "tasks",
+		Data: c.downloader.GetTasks(),
+	})
+	result.Ok(ctx, gin.H{"id": id})
 }
 
 func (c *APIClient) handleStartTask(ctx *gin.Context) {
