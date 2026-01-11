@@ -1,0 +1,1604 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WeChat Channels Download API",
+    "version": "v260110",
+    "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:2022",
+      "description": "本地服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "视频号",
+      "description": "调用时保持视频号页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开视频号页面即可，如果已经打开，刷新一下。"
+    },
+    {
+      "name": "公众号",
+      "description": "部分接口需要保持任意文章页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开任意公众号文章页面即可，如果已经打开，刷新一下。"
+    },
+    {
+      "name": "下载器",
+      "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
+    }
+  ],
+  "paths": {
+    "/api/channels/contact/search": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "搜索视频号账号",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "搜索关键词"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功响应",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "errCode": 0,
+                        "errMsg": "ok",
+                        "data": {
+                          "BaseResponse": {
+                            "Ret": 0,
+                            "ErrMsg": {
+                              "String": ""
+                            }
+                          },
+                          "infoList": [
+                            {
+                              "contact": {
+                                "username": "v2_060000231003b20faec8c4e48e1dc3ddcd03ec3cb077bb11b3c6c9a42ee3cea8073a64e6e2bd@finder",
+                                "nickname": "我不叫龙虾.",
+                                "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/33icjVbn3Wgiccaq0iamxIenIO3ZucxmE4TtBu1WrSoUm1lnhrv2wmL8S7wxfNkPqrjSsmxcHx7aZFoWYNlNlsoYZFPVX3ichOv49HnS8EHIWY5MQnppdhncQkE5flrIe38F/132",
+                                "signature": "我不叫龙虾🦞",
+                                "coverImgUrl": ""
+                              },
+                              "highlightNickname": "我不叫<em class=\"highlight\">龙虾</em>.",
+                              "highlightSignature": "我不叫<em class=\"highlight\">龙虾</em>🦞",
+                              "friendFollowCount": 0,
+                              "highlightProfession": "国风自媒体",
+                              "reqIndex": 0
+                            },
+                            {
+                              "contact": {
+                                "username": "v2_060000231003b20faec8c4e08c10cad4c707ee37b077c5f14e385655f6f7ed18eaea3cbfe7b7@finder",
+                                "nickname": "辣个龙虾.海鲜老板娘baby洋",
+                                "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/SRnmI6Zgrj53fmHlMEl3gX71hm867zy2GB0iaDxrF8bT3anoKd32XbN4OkQqFNn6CMS0BUkgJcQNXfWiaFIUAA5DPmE9M7HXLaZDxZVE913tFrp1ibLU0xsDTicuxIY3ibiaOR/132",
+                                "signature": "合肥包河区宁国路大宁缤购商业广场停车场入口。辣个龙虾海鲜，订餐电话199 6618 2806",
+                                "coverImgUrl": ""
+                              },
+                              "highlightNickname": "辣个<em class=\"highlight\">龙虾</em>.海鲜老板娘baby洋",
+                              "highlightSignature": "合肥包河区宁国路大宁缤购商业广场停车场入口。辣个<em class=\"highlight\">龙虾</em>海鲜，订餐电话199 6618 2806",
+                              "friendFollowCount": 0,
+                              "highlightProfession": "",
+                              "reqIndex": 1
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "nosocket": {
+                    "summary": "业务异常",
+                    "value": {
+                      "code": 400,
+                      "msg": "请先初始化客户端 socket 连接",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/channels/contact/feed/list": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "获取视频号指定账号的视频列表",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频号 ID，例如 `v2_xxx@finder`"
+          },
+          {
+            "name": "next_marker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "分页标记，用于获取下一页数据"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功响应",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "errCode": 0,
+                        "errMsg": "ok",
+                        "data": {
+                          "BaseResponse": {
+                            "Ret": 0,
+                            "ErrMsg": {
+                              "String": ""
+                            }
+                          },
+                          "object": [
+                            {
+                              "id": "14545102784038246591",
+                              "contact": {
+                                "username": "v2_060000231003b20faec8c4e48e1dc3ddcd03ec3cb077bb11b3c6c9a42ee3cea8073a64e6e2bd@finder",
+                                "nickname": "我不叫龙虾.",
+                                "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/33icjVbn3Wgiccaq0iamxIenIO3ZucxmE4TtBu1WrSoUm1lnhrv2wmL8S7wxfNkPqrjSsmxcHx7aZFoWYNlNlsoYZFPVX3ichOv49HnS8EHIWY5MQnppdhncQkE5flrIe38F/132",
+                                "signature": "我不叫龙虾🦞",
+                                "coverImgUrl": ""
+                              },
+                              "objectDesc": {
+                                "description": "不是我都说要嫁给你啦 你打我干嘛˃̣̣̥᷄⌓˂̣̣̥᷅",
+                                "media": [
+                                  {
+                                    "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewK0tHtibORqcsqchXNh0Gf3YiaX8QrZIfDfbbDuNxCaRrmC3HnECprk1pCZheGG4QmWjUCo7ibnm6KqoRAhibVpLqYY3ibiaUtyqhOZicu5gxbNT6lp9yrfM5DyX0&hy=SZ&idx=1&m=&uzid=2",
+                                    "mediaType": 4,
+                                    "videoPlayLen": 7,
+                                    "width": 1080,
+                                    "height": 1920,
+                                    "fileSize": 11557355,
+                                    "spec": [
+                                      {
+                                        "fileFormat": "xWT111",
+                                        "width": 720,
+                                        "height": 1280,
+                                        "durationMs": 7233
+                                      },
+                                      {
+                                        "fileFormat": "xWT112",
+                                        "width": 576,
+                                        "height": 1024,
+                                        "durationMs": 7233
+                                      },
+                                      {
+                                        "fileFormat": "xWT156",
+                                        "width": 720,
+                                        "height": 1280,
+                                        "durationMs": 7233
+                                      },
+                                      {
+                                        "fileFormat": "xWT113",
+                                        "width": 576,
+                                        "height": 1024,
+                                        "durationMs": 7233
+                                      },
+                                      {
+                                        "fileFormat": "xWT157",
+                                        "width": 576,
+                                        "height": 1024,
+                                        "durationMs": 7233
+                                      },
+                                      {
+                                        "fileFormat": "xWT158",
+                                        "width": 576,
+                                        "height": 1024,
+                                        "durationMs": 7233
+                                      }
+                                    ],
+                                    "coverUrl": "http://wxapp.tc.qq.com/251/20304/stodownload?encfilekey=oibeqyX228riaCwo9STVsGLIBn9G5YG8ZnffcsCiaN8QExibEBAMBrvLTnghut9ib9x6QmLCpPMl6UiaBhVwqlNmwmrDSRFyYp4ibwLWgbEepMk4Ficu4OG5DEhQtJ3wkUt3eCAJ5rbfibz901T4&token=x5Y29zUxcibDHxWfF8R3ao2MN4d8PMDvFN3hfeibV9eVnJ0LMRiana1aLYjJn0L5ibArHq9Tiawf2oW70ibEgD1OnUH94zuRLtn8ETLRBePNMz2RvXKfSMgnVsxTGUUgCBxMB1JKES9txma7xm53spLoUHgguib3g9z7H4v&idx=1&hy=SZ&m=5140e64d871f1f103a4c3a70925ae551&uzid=2&picformat=200",
+                                    "decodeKey": "930220499",
+                                    "urlToken": "&token=x5Y29zUxcibAq37UB3SAO7X1q6BG5zDyLxbI5IB5y0iacyPaShR0NUgpbzP0FSF7nXO2qACJa3dTcicAn8qD5z2MxKdgQoMYOVfGNasxYNxYEPoEUlz9SfgqficN1wE3WI9ntibLp5DgxcNX2B8U5fjXZnKQIRSLxicb7XU5rO2OYmicVA&basedata=CAESABoGeFdUMTExGgZ4V1QxMTIaBnhXVDE1NhoGeFdUMTEzGgZ4V1QxNTcaBnhXVDE1OCIAKgcI4DMQABgC&sign=S0-7BBO9mVW8rfuj3PSfa-2UUvt3UN-tOSZX51LRlpF77cn9CwBeJuUm25Ou4Ij8hTZ_bCjLsqwGu-FwusRrsQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAACTC%2BKXJoVQi%2FN%2B355jaRAAAADnaHZTnGbFfAj9RgZXfw6V32imHd%2F5K9TlTPEvT7Z5OfCO16AgITCPsyqIFL7GmUVzfZzD1wYus10%3D&svrnonce=1768136415"
+                                  }
+                                ],
+                                "mediaType": 4
+                              },
+                              "objectNonceId": "17453311911488030792_0_0_2_33_5217681364151768_78fbb070-eeed-11f0-9e01-614e44bc5b79",
+                              "source_url": "",
+                              "createtime": 1733911369
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "nosocket": {
+                    "summary": "业务异常",
+                    "value": {
+                      "code": 400,
+                      "msg": "请先初始化客户端 socket 连接",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/channels/feed/profile": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "获取视频号指定视频详情",
+        "description": "**注意：必须提供 `oid`+`nid` 或 `url` 其中一种组合。**",
+        "parameters": [
+          {
+            "name": "oid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频唯一 ID (配合 nid 使用)"
+          },
+          {
+            "name": "nid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频唯一 ID (配合 oid 使用)"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频号页面 URL，https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4\n\n传入的地址需要进行编码。\n\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功响应",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "errCode": 0,
+                        "errMsg": "ok",
+                        "data": {
+                          "BaseResponse": {
+                            "Ret": 0,
+                            "ErrMsg": {
+                              "String": ""
+                            }
+                          },
+                          "commentInfo": [],
+                          "object": {
+                            "id": "14819096805414996657",
+                            "contact": {
+                              "username": "v2_060000231003b20faec8cae08f19c0d1c802ee33b07778a2a650b6d670ef63af3f3ac1c51124@finder",
+                              "nickname": "Girls-Talk",
+                              "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/JrkaKTpRhjYlpkDnIicnbhicmYPxsX769yKAMexpa0icN3vBq8eDh2cNl1gQtpOsI4hMz1URF9e8icMNeD3AJR080J5nURCqSedFmic4z5PMLGCTSfU6KibpwM6wTSw549pcyC/132",
+                              "signature": "“女性，她们有思想，有灵魂”",
+                              "coverImgUrl": ""
+                            },
+                            "objectDesc": {
+                              "description": "“被误解是表达者的宿命，不要活在别人的语言里”#陈都灵 #女性力量 #女性成长 #女性智慧",
+                              "media": [
+                                {
+                                  "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewK0tHtibORqcsqchXNh0Gf3sJcaYqC2rQDpwzgf4OvFRdRpHRb1MzrzSdfFPCgFTfk8mrhzsLKe2B1JIDYnE3gQY3qRoGoRjic3p3In1NWtW5hpw1HMG6OVu&bizid=1023&dotrans=0&hy=SH&idx=1&m=&uzid=7a166",
+                                  "mediaType": 4,
+                                  "videoPlayLen": 41,
+                                  "width": 1080,
+                                  "height": 1440,
+                                  "fileSize": 50833261,
+                                  "spec": [
+                                    {
+                                      "fileFormat": "xWT111",
+                                      "width": 720,
+                                      "height": 960,
+                                      "durationMs": 41901
+                                    },
+                                    {
+                                      "fileFormat": "xWT112",
+                                      "width": 720,
+                                      "height": 960,
+                                      "durationMs": 41901
+                                    },
+                                    {
+                                      "fileFormat": "xWT113",
+                                      "width": 576,
+                                      "height": 768,
+                                      "durationMs": 41917
+                                    },
+                                    {
+                                      "fileFormat": "xWT126",
+                                      "width": 720,
+                                      "height": 960,
+                                      "durationMs": 41901
+                                    },
+                                    {
+                                      "fileFormat": "xWT127",
+                                      "width": 720,
+                                      "height": 960,
+                                      "durationMs": 41901
+                                    },
+                                    {
+                                      "fileFormat": "xWT128",
+                                      "width": 576,
+                                      "height": 768,
+                                      "durationMs": 41917
+                                    }
+                                  ],
+                                  "coverUrl": "http://wxapp.tc.qq.com/251/20304/stodownload?encfilekey=rjD5jyTuFrIpZ2ibE8T7YmwgiahniaXswqzGOtP29kPHJ59RtsyZf6v0824RAZdtLQynv4NqUjgD9I8BWbZqqBYDPhibMiayIvppYOpjUGsia85ias3YfIeYUcJeQ&token=x5Y29zUxcibDHxWfF8R3aox1Dqic3uCibRBu4icgTRABiaiaUicKibH4FDwwdebfA9asyAT9balYg6YFFicSLTubJSibAyUOgmGPDVCSwcTR5H1JicuJkYGLRFwut8yxwwCFwkuwMSK0R5w0WibxSYC2DCOJBxL56icn9DNqYDEZQ&idx=1&hy=SH&m=&scene=2&uzid=1&picformat=200",
+                                  "decodeKey": "394253653",
+                                  "urlToken": "&token=x5Y29zUxcibAq37UB3SAO7dZXR9anXy7Wgxcicu3bLjSsZKSTvUnmxjamgZU7ag2npbeZoVUALC0KhiaicdSfdEtWImibjOONu0CawwUCULAvnIdt9Jh1ZExd20azibwqRUzjdAL15SIdsupicNt78C1eErfO04vcEErXvLnQ6RyLyaAPg&basedata=CAESABoDeFYwIgAqBwiLKRAAGAI&sign=ttbnb0qaI_HwA0hbluHgg3lBd4WrdvcMXnfV7UzhS8eIQYJrWc2fCurJNNwqDi28J4ykLreRMQ1WEBeT9KtmTw&ctsc=146&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAACZ3xK%2FuPwmyeBpAppjaRAAAADnaHZTnGbFfAj9RgZXfw6V996Fck4oFO1qxgm3OHC7cAgwlUePFkt0tDtvlNPSpCMbnl54fJ6Crxs%3D&svrnonce=1768135170"
+                                }
+                              ],
+                              "mediaType": 4
+                            },
+                            "objectNonceId": "8609277293449234222_0_146_0_0",
+                            "source_url": "",
+                            "createtime": 1766574001
+                          },
+                          "commentCount": 193,
+                          "nextCheckObjectStatus": 1,
+                          "barrageCommentInfo": [],
+                          "refObjectList": [],
+                          "preloadInfo": {
+                            "preloadStrategyId": 17840794003360850000,
+                            "globalInfo": {
+                              "prevCount": 0,
+                              "nextCount": 5,
+                              "maxBitRate": 150,
+                              "preloadFileSizePercent": 0.25,
+                              "preloadFileMinBytes": 0,
+                              "preloadMaxConcurrentCount": 1,
+                              "megavideoMaxBitRate": 0,
+                              "megavideoPrevCount": 1,
+                              "megavideoNextCount": 2,
+                              "minBufferLength": 10,
+                              "maxBufferLength": 10,
+                              "minCurrentFeedBufferLength": 5,
+                              "minRefreshInterval": 86400,
+                              "preloadFileTimeMs": 30000,
+                              "localserverBufferSize": 524288,
+                              "localserverSendSocketBufferSize": 131072,
+                              "ffmpegTcpRecvSocketBufferSize": 131072,
+                              "lastFeedInfoCount": 12,
+                              "nextFeedInfoCount": 1,
+                              "allowToUseNewSpecMaxPercent": -1,
+                              "isBackendControlFindPagePreload": false,
+                              "isFindPagePreload": false,
+                              "findPagePreloadSecond": 5,
+                              "wcplayerSchedulerType": 2,
+                              "minStartPlayBufferLengthMs": 4000,
+                              "findPageEnableCellularPreload": false,
+                              "holdoutExptParamSet": {
+                                "holdoutItems": [
+                                  {
+                                    "key": "holdout_expt_2",
+                                    "value": "default_test_2",
+                                    "inPriority": false
+                                  },
+                                  {
+                                    "key": "holdout_expt_1",
+                                    "value": "default_test",
+                                    "inPriority": true
+                                  }
+                                ],
+                                "hitHoldoutExpt": 0
+                              },
+                              "flowViewPreload": true,
+                              "bufferingHealthLengthL0": 5,
+                              "bufferingHealthLengthL1": 10,
+                              "bufferingHealthLengthL2": 15,
+                              "loadWithPlaying": [],
+                              "loadWithPlayWait": [],
+                              "findPagePreloadFeedCount": 1
+                            },
+                            "objectInfo": [
+                              {
+                                "feedId": 14819096805414996000,
+                                "interestFactor": 1,
+                                "loadWithPlaying": []
+                              }
+                            ],
+                            "megavideoInfo": []
+                          },
+                          "traceBuffer": "CLGVjJf5wIDUzQE=",
+                          "liveAliasInfo": [],
+                          "descCommentInfo": [],
+                          "userTags": [],
+                          "reportBypass": "{\"client_region\":{\"countryid\":\"cn\",\"ipaddr\":\"183.129.150.86\"}}"
+                        },
+                        "payload": {
+                          "needObject": 1,
+                          "lastBuffer": "",
+                          "scene": 146,
+                          "direction": 2,
+                          "identityScene": 2,
+                          "pullScene": 6,
+                          "objectid": "14819096805414996657",
+                          "objectNonceId": "8609277293449234222",
+                          "encrypted_objectid": ""
+                        }
+                      }
+                    }
+                  },
+                  "nosocket": {
+                    "summary": "业务异常",
+                    "value": {
+                      "code": 400,
+                      "msg": "请先初始化客户端 socket 连接",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rss/channels": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "RSS 订阅",
+        "description": "获取指定视频号的 RSS Feed。",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频号 ID"
+          },
+          {
+            "name": "next_marker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "分页标记"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RSS XML",
+            "content": {
+              "application/xml": {
+                "example": "<feed></feed>"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "视频代理播放",
+        "description": "url 是视频地址，非「视频号页面地址」，同样需要对地址进行编码",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标视频地址"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "解密密钥"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "视频流"
+          }
+        }
+      }
+    },
+    "/api/mp/list": {
+      "get": {
+        "tags": ["公众号"],
+        "summary": "获取公众号列表",
+        "description": "**非微信公众号搜索接口**，获取的是本地已添加的公众号",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "鉴权 Token (开启鉴权时必填)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码，默认 1"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "每页数量，默认 10"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "搜索关键词 (匹配 biz 或 nickname)"
+          },
+          {
+            "name": "is_effective",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "过滤是否有效 (1/true 为有效)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "公众号列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "keyword": "",
+                        "list": [
+                          {
+                            "biz": "Mzg2ODQ1OTExOA==",
+                            "nickname": "字节前端 ByteFE",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/lP9iauFI73z8ujxEen5FiczfdZIN3MFVZT3Nol4FGiahOFuyINzQMHficQlA9fuPaAL9esXmVX3RmJEEu0iaNPaGRGA/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952854,
+                            "update_time": 1767955478,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&mid=2247506133&idx=1&sn=1d4b9ff25a4a5c879eac3d88e2cd0ae2"
+                          },
+                          {
+                            "biz": "MzE5MTEwNjE0Mg==",
+                            "nickname": "熊猫教练工具",
+                            "avatar_url": "/0",
+                            "is_effective": false,
+                            "created_at": 1767952636,
+                            "update_time": 1767955934,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzE5MTEwNjE0Mg==&mid=2247483653&idx=1&sn=1911cf7b599e9a0fea0b662ebd435bcf"
+                          },
+                          {
+                            "biz": "MjM5NzE1NjA0MQ==",
+                            "nickname": "腾讯安全应急响应中心",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/JMH1pEQ7qP5asPR2KQZHIkuvt7d85Nic3JIRVcIMoJa1rEqMEkibSkxEptehGiaffy66vGXWxCrJ4ZbPibVYofAkyw/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952613,
+                            "update_time": 1767952613,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5NzE1NjA0MQ==&mid=2651208056&idx=1&sn=15e1cc43e9d33549f827b4eb5100bc2b"
+                          },
+                          {
+                            "biz": "MjM5OTk2MTMxOQ==",
+                            "nickname": "京东安全应急响应中心",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/Z9MuUwaeeGIlXfXZDFfRBZuzMIeAKzMfMxSjmvm8OnyrJCz9K2bnuL1L3wdTZMh5mibyKD3sbQB0Mia5qZCvxNTw/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952600,
+                            "update_time": 1767952626,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5OTk2MTMxOQ==&mid=2727850303&idx=1&sn=0df59cc37c4235b827c2fe3044ea683e"
+                          },
+                          {
+                            "biz": "MzI3MTQyMDY1NQ==",
+                            "nickname": "postpost space",
+                            "avatar_url": "http://mmbiz.qpic.cn/sz_mmbiz_png/dPvOZcovia3ic4qkD9z3c8h0ueB4TIFhyhOhib9Yic2HVftgXeo6CQ6icjZPVicjjOPJcSuRibnqFbDIDsBeX8eibDBib7g/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952586,
+                            "update_time": 1767952586,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzI3MTQyMDY1NQ==&mid=2247501111&idx=1&sn=732949952b7c940d4e3ea4f47acd5818"
+                          },
+                          {
+                            "biz": "MzA3NTcyNDAxMA==",
+                            "nickname": "饮啖茶食个包",
+                            "avatar_url": "http://mmbiz.qpic.cn/sz_mmbiz_png/A3pq2yTdNscoBsOwU56LAzJmvOBibynqy0G4PFMf5xo0iaq2niafiauwAjGLwsOz74KEGgS5wj24HXhZpuBsxNlNHQ/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952574,
+                            "update_time": 1767952574,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzA3NTcyNDAxMA==&mid=2653511911&idx=1&sn=db15cb86ff216626aef839cdb92423de"
+                          },
+                          {
+                            "biz": "MzI2NzI2OTExNA==",
+                            "nickname": "小米安全中心",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/zabS4D3Aq5icsYoNy1o7fTD2ApBYm3IPcicZEs6B3Oun3DJruX4jnugny5HPH37gYXd2ewlCBRKJLlZhUpzziaiabQ/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952557,
+                            "update_time": 1767952557,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzI2NzI2OTExNA==&mid=2247519910&idx=1&sn=4a273b7a6101af9d703595bf7981414d"
+                          },
+                          {
+                            "biz": "MzA4MDMwMjQ3Mg==",
+                            "nickname": "关注安全技术",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/shVkAyu04IFqXnyF5ib6xds87ICSU2ia2Sayqib8onstk7BMsnq3CkIlUEibL1x3Ut5SzgW084SrIbo4rsMNStCoug/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952546,
+                            "update_time": 1767952546,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzA4MDMwMjQ3Mg==&mid=2651868681&idx=1&sn=dedb0e5490769bce90c99d3d216776d9"
+                          },
+                          {
+                            "biz": "MzU1MjgwNzc4Ng==",
+                            "nickname": "腾讯科恩实验室",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/zZKnUibvoericeibR9Via8lKsXBGe86PNOO29563lc14hN34D4ibbIeAjn8H388NjENBlYQibdA9GCW708MbsgxwqnWA/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952536,
+                            "update_time": 1767952536,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzU1MjgwNzc4Ng==&mid=2247512956&idx=1&sn=c3df8d4f50c2e56f81915ff13b5f39c2"
+                          },
+                          {
+                            "biz": "MjM5NTc2MDYxMw==",
+                            "nickname": "看雪学苑",
+                            "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/1UG7KPNHN8EGLfh77kFmnicd9WOic2ibvhCibFdB4bL4srJCgo2wnvdoXLxpIvAkfCmmcptXZB0qKWMoIP8iaibYN2FA/0?wx_fmt=png",
+                            "is_effective": false,
+                            "created_at": 1767952522,
+                            "update_time": 1767952522,
+                            "error": "",
+                            "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5NTc2MDYxMw==&mid=2458607554&idx=2&sn=938d93225f6b22535124b87b074f2578"
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 10,
+                        "total": 328
+                      }
+                    }
+                  },
+                  "fail": {
+                    "summary": "",
+                    "value": {
+                      "code": 400,
+                      "msg": "",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mp/msg/list": {
+      "get": {
+        "tags": ["公众号"],
+        "summary": "获取公众号消息列表",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "鉴权 Token (开启鉴权时必填)"
+          },
+          {
+            "name": "biz",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "公众号唯一 ID"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "偏移量，默认 0"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "消息列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "ret": 0,
+                        "errmsg": "ok",
+                        "general_msg_list": "{\"list\":[{\"comm_msg_info\":{\"id\":1000000529,\"type\":49,\"datetime\":1765886204,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"豆包-应用生成「一点都不技术」创作派对 · 一起来玩儿！\",\"digest\":\"一场为“不太技术”的创作者准备的派对。看作品、玩工具、遇同好、赢奖品，就等你来！\",\"content\":\"\",\"fileid\":0,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506133&amp;idx=1&amp;sn=1d4b9ff25a4a5c879eac3d88e2cd0ae2&amp;chksm=cfcf64dfde0f6fff2e0075c991565aefef826b6475413bb3e3ff5bc00b0946f70b17b8b45184&amp;scene=27#wechat_redirect\",\"source_url\":\"https://bytedance.larkoffice.com/share/base/form/shrcnslLKcZqdnussYS6u6qMP3e\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73zicNWOicoAUO938HmGqfJJZiaOKaCUOXxadLbxDRFRkctUh9aZQXDcmxovtHdTLjYyWA0N4jAKPJywNg/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包-应用生成\",\"copyright_stat\":11,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000528,\"type\":49,\"datetime\":1764742703,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"AI赋能成长，豆包-应用生成“一点都不技术”挑战赛创作分享第二期来啦！\",\"digest\":\"「得到」AI学习圈特聘导师、公众号木妈AIdea创作者Jenny木妈；挑战赛作品连续三周入选top5的创作者一点一木，双嘉宾硬核分享让AI赋能成长\",\"content\":\"\",\"fileid\":100022472,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506128&amp;idx=1&amp;sn=0b9341c31064697eef8dcccc06272b24&amp;chksm=cf1a6971b691056eebebd74e1f6422c277bcf5853155094f3fff745fc6b6e743f1fd86c3673d&amp;scene=27#wechat_redirect\",\"source_url\":\"http://doubao.com/code/challenge\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z9xdgGmFch7vWkzEyqp95wrHbOxZ6AuorIbf32tWKX7KA2Inxa9nP3icWkQOyvq6z47Uya48Y0Q9Vg/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包-应用生成\",\"copyright_stat\":11,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000527,\"type\":49,\"datetime\":1763564700,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"和“动物塑”创作者面对面！豆包-应用生成“一点都不技术”挑战赛的创作分享来啦\",\"digest\":\"🔥 来直播间与火爆全网的动物塑创作者面对面，掌握打造爆款应用的秘诀\",\"content\":\"\",\"fileid\":100022472,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506123&amp;idx=1&amp;sn=469d203c58b7734f580c0a0fc622e1c3&amp;chksm=cf7778f27c37b5c2660ee3af77c5f4e9754bf20be434e1c5d5c30e3ff9433c2e6bc174742622&amp;scene=27#wechat_redirect\",\"source_url\":\"http://doubao.com/code/challenge?channel=bytefe\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z9eKhyqwdIGuZYEkDtiaJFibKk5bDVDiaGz8dHicOmF37NO39z6TpzLuY7noUQxydnqfEC8mpIGtOz6kg/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包-应用生成\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000526,\"type\":49,\"datetime\":1762833600,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"豆包-应用生成「一点都不技术」创作挑战赛开启，20 万奖池等你解锁！\",\"digest\":\"Make Ideas Real！11 月 10 日起，豆包 - 应用生成联合英特尔正式启动「一点都不技术」创作挑战赛！\",\"content\":\"\",\"fileid\":100022466,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506117&amp;idx=1&amp;sn=12d55f5997d80ba0bd62340d5a678cf7&amp;chksm=cfa473be3dbccc32f10d7631ba8ea347de09fa4c2ca1e48f0d2a7e1c5a0dca60332a7eada823&amp;scene=27#wechat_redirect\",\"source_url\":\"http://doubao.com/code/challenge\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z8RzZgIza9oTf5q9kmibaz4yT1zxCOTFibOdevuhw4azEtZibwaXGPCnG9LqLvJ9KpTsJfMoTKp4kISw/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包-应用生成\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000525,\"type\":49,\"datetime\":1761297234,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"豆包编程升级，新增创作模式，让创意轻松实现\",\"digest\":\"\",\"content\":\"\",\"fileid\":0,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506106&amp;idx=1&amp;sn=7a360d5f7a44c065a4ebc21bacc0a568&amp;chksm=cfcc5090a34266e6ecc46dc5fe946bc8a9a6b7da48de482934207dd1c4afdf684aa63e3567fe&amp;scene=27#wechat_redirect\",\"source_url\":\"https://www.doubao.com/code/chat\",\"cover\":\"https://mmbiz.qpic.cn/sz_mmbiz_jpg/Ge7HwIFw3c1MJzefvO3LQVTYSEWgF3SrZoUB78tichqw0QYRnDlBSwe0mM0Doz7CVwBlDu5VdH5eD69SHojTTIQ/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包\",\"copyright_stat\":201,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000524,\"type\":49,\"datetime\":1758877200,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"免费报名中，到场即有字节周边｜豆包编程Workshop深圳场  - 「一点都不技术」的创作派对\",\"digest\":\"在深圳，你会在现场与豆包编程官方团队深入交流，你会在现场与同伴即兴碰撞。我们把灵感一站直达，通过真实的案例，探寻AI在不同场景的快速落地，来吧！带着你的脑洞和笑声～\",\"content\":\"\",\"fileid\":100022453,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506104&amp;idx=1&amp;sn=31656cdc75c005aa5124784b9298de66&amp;chksm=cf88563eb4d09a7536a4e7698e257826439dc3089c1def6d3ef6856da0c741142af65245360e&amp;scene=27#wechat_redirect\",\"source_url\":\"https://bytedance.larkoffice.com/share/base/form/shrcnwKAAfzORJh7z21y7pHNnhc\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z9yoV2ntKngnIdCrhBLlVfg17YtrAKpohf68eO41oG2p51JpJkpLw1netMknTKUXWFMGJxg7fibX4A/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000523,\"type\":49,\"datetime\":1749787354,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"字节跳动技术副总裁洪定坤：TRAE 想做 AI Development\",\"digest\":\"\",\"content\":\"\",\"fileid\":0,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506097&amp;idx=1&amp;sn=13ce2f9aa6f5a4fd95046953a058bdc9&amp;chksm=cfb91eef95ad8b5c3d47ca59c01d7d27bb694fd5b4d08b217099174d6e6a4ac48da6a248c829&amp;scene=27#wechat_redirect\",\"source_url\":\"\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z9qWK26f3XXfhnVPmHDicmoYUMkaYaibHExYBbnO1oIFGBSWHE53nLSuTN5xoTB3OvUE21Vz0Bxma8g/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000522,\"type\":49,\"datetime\":1749634085,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"豆包AI编程：零门槛的应用创作工具\",\"digest\":\"豆包AI编程作为一款零门槛的应用创作工具，让每位用户无需编程基础，就可以像程序员一样轻松生成可交互应用。\",\"content\":\"\",\"fileid\":0,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506091&amp;idx=1&amp;sn=1d437725945818b8f792f584734e1ed4&amp;chksm=cf8c3a6f634995dbc202cb3ad48740f9607abb88e15d25efac4f10b5126026fae7924feed71d&amp;scene=27#wechat_redirect\",\"source_url\":\"https://www.doubao.com/chat/coding\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z8QQat3CWto38YA42UbBoBRFoqN3icaBhjWspnsq4rKEDcomodxSDNwia0HViba4jic5qrTc9KpPL64HQ/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"豆包AI编程\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000521,\"type\":49,\"datetime\":1741921200,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"Trae x 稀土掘金：与 AI 结伴，编程不孤单，推荐&amp;学习有好礼！\",\"digest\":\"\",\"content\":\"\",\"fileid\":100022434,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506085&amp;idx=1&amp;sn=b3add3c5011dda34f3ab6ba3346eff1a&amp;chksm=cf8faa62194aa5ff8e7d2770f9275b3fd7297d6480cc7ab0737199ae713ba02d99b1e7f4f569&amp;scene=27#wechat_redirect\",\"source_url\":\"https://juejin.cn/trae-x-2025?utm_source=juejin&amp;utm_medium=juejin_trae&amp;utm_campaign=liebian_wechat\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73zicdZORkkkML03xibr8vLeAjSjriaYfgcWIEpcJ7zG9EiakQickqv7uFZbR3HFVVu7GNWK7LibBOGdg8Isw/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}},{\"comm_msg_info\":{\"id\":1000000519,\"type\":49,\"datetime\":1741667400,\"fakeid\":\"3868459118\",\"status\":2,\"content\":\"\"},\"app_msg_ext_info\":{\"title\":\"现在就是最好的时机！AI FOR CODE挑战赛「创意赛道」作品提交指南，用Idea传递无限可能\",\"digest\":\"\",\"content\":\"\",\"fileid\":100022423,\"content_url\":\"http://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&amp;mid=2247506074&amp;idx=1&amp;sn=faf465b3b94df1b1abd5a0976e1cc718&amp;chksm=cf76f4a9d7727fc31f266699dc5b2343a7015b29ef1cc56a59f1161a9c1ba84d803d6e9a6689&amp;scene=27#wechat_redirect\",\"source_url\":\"https://juejin.cn/coding-contest?utm_source=juejin&amp;utm_medium=juejin_trae&amp;utm_campaign=gzh\",\"cover\":\"https://mmbiz.qpic.cn/mmbiz_jpg/lP9iauFI73z9riaCskacaCt1Ktwq0vOrLGnpxg4Hkh1PbYFQcvs2mE1tMzWOnYRnWySTibFveGspemibfAzv1L1uTg/0?wx_fmt=jpeg\",\"subtype\":9,\"is_multi\":0,\"multi_app_msg_item_list\":[],\"author\":\"\",\"copyright_stat\":100,\"duration\":0,\"del_flag\":1,\"item_show_type\":0,\"audio_fileid\":0,\"play_url\":\"\",\"malicious_title_reason_id\":0,\"malicious_content_type\":0}}]}",
+                        "can_msg_continue": 1,
+                        "msg_count": 10,
+                        "next_offset": 10
+                      }
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mp/delete": {
+      "post": {
+        "tags": ["公众号"],
+        "summary": "删除公众号",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "鉴权 Token (开启鉴权时必填)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biz": {
+                    "type": "string",
+                    "description": "公众号唯一 ID"
+                  }
+                },
+                "required": ["biz"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mp/refresh_with_frontend": {
+      "post": {
+        "tags": ["公众号"],
+        "summary": "调用微信页面刷新凭证",
+        "description": "借助已连接的前端（公众号文章页面）批量刷新公众号凭证。该接口会同步等待任务完成（或超时），但只返回操作结果状态，不返回详细的刷新数据。",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biz_list": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "需要刷新的公众号 `biz` ID 列表。如果为空或不传，则刷新所有包含 `refresh_uri` 的公众号。"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mp/refresh": {
+      "post": {
+        "tags": ["公众号"],
+        "summary": "更新凭证",
+        "description": "更新指定公众号的凭证，接收的是有效的凭证信息",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "刷新Token"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biz": {
+                    "type": "string",
+                    "description": "公众号唯一 ID"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "授权 Key"
+                  },
+                  "pass_ticket": {
+                    "type": "string",
+                    "description": "票据"
+                  },
+                  "appmsg_token": {
+                    "type": "string",
+                    "description": "消息 Token"
+                  },
+                  "uin": {
+                    "type": "string",
+                    "description": "用户唯一 ID"
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "description": "昵称"
+                  }
+                },
+                "required": ["biz", "key", "pass_ticket", "appmsg_token", "uin"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rss/mp": {
+      "get": {
+        "tags": ["公众号"],
+        "summary": "RSS 订阅",
+        "description": "同样可以传入 `offset` 指定偏移量，获取到更多消息记录。\n\n还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "鉴权 Token (开启鉴权时必填)"
+          },
+          {
+            "name": "biz",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "公众号唯一 ID"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "偏移量"
+          },
+          {
+            "name": "content",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            },
+            "description": "是否获取正文 (1 为开启)。如果希望直接获取到正文，可以指定 `content=1`，那么请求 `RSS` 接口时，就会同时获取正文。但是缺点就是列表接口会比较慢（因为要依次请求到正文）"
+          },
+          {
+            "name": "proxy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            },
+            "description": "是否使用代理 (1 为开启)。仅在 `linux` 部署的服务上支持。如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 `{{APIServerAddr}}/mp/proxy` 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容"
+          },
+          {
+            "name": "proxy_cover",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            },
+            "description": "是否只代理封面 (1 为开启)。仅在 `linux` 部署的服务上支持。相比 `proxy`，`proxy_cover` 仅代理封面图片，可以用在仅需查看列表，点击跳转到原文的场景"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RSS XML"
+          }
+        }
+      }
+    },
+    "/mp/proxy": {
+      "get": {
+        "tags": ["公众号"],
+        "summary": "公众号内容代理",
+        "description": "用于代理访问公众号文章或图片，解决跨域或防盗链问题。",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标 URL (需 URL 编码)"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "鉴权 Token (开启鉴权时必填)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "代理的内容",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/create_channels": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建视频号下载任务",
+        "description": "其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。\n\n传 `mp3`，表示下载为 `mp3` 文件\n\n传 `cover`，表示下载视频封面",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oid": {
+                    "type": "string",
+                    "description": "视频唯一 ID (配合 nid 使用)"
+                  },
+                  "nid": {
+                    "type": "string",
+                    "description": "视频唯一 ID (配合 oid 使用)"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "视频号页面 URL"
+                  },
+                  "mp3": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否下载为 MP3，默认为 false"
+                  },
+                  "cover": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否下载为封面，默认为 false"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/list": {
+      "get": {
+        "tags": ["下载器"],
+        "summary": "获取下载任务列表",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["all", "ready", "running", "pause", "error", "done"],
+              "default": "all"
+            },
+            "description": "任务状态过滤，可选值：`all` (默认), `ready`, `running`, `pause`, `error`, `done`"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码，默认 1"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "每页数量，默认 20"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "list": [
+                          {
+                            "id": "qOHgEmL1igYFiRFcEmsmu",
+                            "title": "所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。\n\n\n\n\n#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线",
+                            "status": "done",
+                            "filepath": "/Downloads/王同学爱蹦迪/所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线_xWT111.mp4",
+                            "path": "/Downloads/王同学爱蹦迪",
+                            "name": "所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线_xWT111.mp4"
+                          },
+                          {
+                            "id": "Hbi1lWWL8IX4BkL1a2L3y",
+                            "title": "听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐\n\n\n\n\n#蹦迪小姐姐#仙女姐姐\n",
+                            "status": "done",
+                            "filepath": "/Downloads/王同学爱蹦迪/听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐#蹦迪小姐姐#仙女姐姐_xWT111.mp4",
+                            "path": "/Downloads/王同学爱蹦迪",
+                            "name": "听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐#蹦迪小姐姐#仙女姐姐_xWT111.mp4"
+                          },
+                          {
+                            "id": "rCU-iqC7HH5Sj4UXTSG0b",
+                            "title": "我爱你 无论风雨 只要是你 如此！\n\n\n\n\n\n#蹦迪#嗨翻全场#电音#微信派#DJ\n#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组",
+                            "status": "done",
+                            "filepath": "/Downloads/王同学爱蹦迪/我爱你 无论风雨 只要是你 如此！#蹦迪#嗨翻全场#电音#微信派#DJ#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组_xWT111.mp4",
+                            "path": "/Downloads/王同学爱蹦迪",
+                            "name": "我爱你 无论风雨 只要是你 如此！#蹦迪#嗨翻全场#电音#微信派#DJ#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组_xWT111.mp4"
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 20,
+                        "total": 571
+                      }
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/start": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "开始任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "任务 ID"
+                  }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/pause": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "暂停任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "任务 ID"
+                  }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/resume": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "恢复任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "任务 ID"
+                  }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/delete": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "删除任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "任务 ID"
+                  }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/clear": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "清空所有任务",
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/open_download_dir": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "打开下载目录",
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/show_file": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "在文件夹中显示文件",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "文件所在目录绝对路径"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "文件名"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "参数错误",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
