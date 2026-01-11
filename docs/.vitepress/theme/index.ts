@@ -4,6 +4,7 @@ import DefaultTheme from 'vitepress/theme'
 import DownloadButton from '../components/DownloadButton.vue'
 import EnvInfo from '../components/EnvInfo.vue'
 import LatestIssues from '../components/LatestIssues.vue'
+import ScalarApiReference from './components/ScalarApiReference.vue'
 
 export default {
   ...DefaultTheme,
@@ -11,6 +12,7 @@ export default {
     app.component('DownloadButton', DownloadButton)
     app.component('EnvInfo', EnvInfo)
     app.component('LatestIssues', LatestIssues)
+    app.component('ScalarApiReference', ScalarApiReference)
   }
 }
 

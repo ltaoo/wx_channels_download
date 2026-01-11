@@ -1,19 +1,17 @@
 ---
 layout: page
-title: API Reference
+title: API Playground
+sidebar: false
+pageClass: api-page
 ---
 
 <ClientOnly>
   <ScalarApiReference 
     :configuration="{
       theme: 'default',
-      layout: 'classic',
+      layout: 'modern',
       showSidebar: true,
-      hideModels: true,
-      hideTestRequestButton: true,
-      hideDownloadButton: true,
       showDeveloperTools: 'never',
-      hideSearch: true
     }"
   />
 </ClientOnly>

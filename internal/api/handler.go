@@ -248,6 +248,8 @@ type DownloadTaskSummary struct {
 	Title    string      `json:"title"`
 	Status   base.Status `json:"status"`
 	Filepath string      `json:"filepath"`
+	Path     string      `json:"path"`
+	Name     string      `json:"name"`
 }
 
 func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
@@ -288,6 +290,8 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 			ID:       task.ID,
 			Title:    task.Meta.Req.Labels["title"],
 			Status:   task.Status,
+			Path:     file_path,
+			Name:     filename,
 			Filepath: filepath.Join(file_path, filename),
 		})
 	}
