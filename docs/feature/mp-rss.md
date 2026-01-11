@@ -121,52 +121,7 @@ mp:
 
 ## API
 
-### 获取指定公众号消息列表
-
-```bash
-curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==
-```
-
-通过 `offset` 指定偏移量，可以获取到更多的消息记录
-
-```bash
-curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
-```
-
-### 获取添加的公众号列表
-
-```bash
-curl http://localhost:2022/api/mp/list
-```
-
-
-### 公众号 RSS
-
-```bash
-curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
-```
-
-同样可以传入 `offset` 获取到更多消息记录。
-
-还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文
-
-#### proxy
-
-> 仅在 `linux` 部署的服务上支持
-
-如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 <code>{{APIServerAddr}}/mp/proxy</code> 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容
-
-#### proxy_cover
-
-> 仅在 `linux` 部署的服务上支持
-
-相比 `proxy`，`proxy_cover` 仅代理封面图片，可以用在仅需查看列表，点击跳转到原文的场景
-
-#### content
-
-> 仅在 `linux` 部署的服务上支持
-
-如果希望直接获取到正文，可以指定 `content=1`，那么请求 `RSS` 接口时，就会同时获取正文。但是缺点就是列表接口会比较慢（因为要依次请求到正文）
+详见 [API - 公众号接口](./api.md#公众号接口)
 
 ## 注意事项
 
