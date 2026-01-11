@@ -1,0 +1,19 @@
+#!/bin/sh
+# 确保脚本抛出错误时停止执行
+set -e
+
+echo "🔍 Checking for dead links in docs..."
+
+# 切换到 docs 目录
+cd docs
+
+# 检查依赖是否安装
+if [ ! -d "node_modules" ]; then
+  echo "⚠️  Error: node_modules not found in docs/. Please run 'npm install' in docs/ directory."
+  exit 1
+fi
+
+# 运行构建，VitePress 默认会在发现死链时构建失败
+npm run build
+
+echo "✅ Docs check passed!"

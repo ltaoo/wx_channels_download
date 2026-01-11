@@ -21,7 +21,6 @@ function apiResponse(code, msg, data, status = 200) {
   );
 }
 
-
 const Result = {
   Ok(data = {}, msg = "") {
     return apiResponse(0, msg, data, 200);
@@ -55,10 +54,10 @@ async function loadTokens(env) {
 
 // Token validation
 function validateToken(token) {
+  if (TOKEN_CACHE.size === 0) {
+    return true;
+  }
   if (!token) return false;
-  // Check environment variables first (Superuser/Admin tokens)
-  // Initialize cache if needed
-  // Check cache
   return TOKEN_CACHE.has(token);
 }
 
@@ -118,30 +117,50 @@ async function getMsgList(account, offset = 0) {
 }
 
 // Generate RSS feed from messages
-function generateRSS(officialAccount, messages) {
+function generateRSS(officialAccount, messages, options = {}) {
+  const { origin, needProxy, onlyProxyCover } = options;
   const now = new Date().toUTCString();
   let rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>${officialAccount.nickname || officialAccount.biz}</title>
     <link>https://mp.weixin.qq.com/mp/profile_ext?action=home&amp;__biz=${
       officialAccount.biz
     }</link>
-    <description>公众号文章 RSS</description>
+    <description>${
+      officialAccount.nickname || officialAccount.biz
+    } - 微信公众号</description>
     <language>zh-CN</language>
     <lastBuildDate>${now}</lastBuildDate>
-    <generator>WeChat Official Account RSS</generator>`;
+    <generator>wx_channels_download</generator>`;
 
   if (messages && messages.length > 0) {
     messages.forEach((msg) => {
       const pubDate = new Date(msg.create_time * 1000).toUTCString();
+
+      let link = msg.content_url || "#";
+      if (needProxy && origin && link !== "#") {
+        link = `${origin}/mp/proxy?url=${encodeURIComponent(link)}`;
+      }
+
+      let cover = msg.cover;
+      if (cover && (needProxy || onlyProxyCover) && origin) {
+        cover = `${origin}/mp/proxy?url=${encodeURIComponent(cover)}`;
+      }
+
+      let description = msg.digest || "";
+      if (cover) {
+        description = `<img src="${cover}" /><br/>${description}`;
+      }
+
       rss += `
     <item>
       <title><![CDATA[${msg.title || "无标题"}]]></title>
-      <link>${msg.content_url || "#"}</link>
-      <description><![CDATA[${msg.digest || ""}]]></description>
+      <link>${link}</link>
+      <description><![CDATA[${description}]]></description>
       <pubDate>${pubDate}</pubDate>
       <guid>${msg.content_url || msg.id}</guid>
+      ${cover ? `<media:thumbnail url="${cover}" />` : ""}
     </item>`;
     });
   }
@@ -352,6 +371,14 @@ async function handleRefreshOfficialAccountEvent(request, env) {
 async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
   const url = new URL(request.url);
   const biz = url.searchParams.get("biz");
+  const token = url.searchParams.get("token");
+  const needProxy = url.searchParams.get("proxy") === "1";
+  const onlyProxyCover = url.searchParams.get("proxy_cover") === "1";
+  const origin = url.origin;
+
+  if (!validateToken(token)) {
+    return Result.Err(1001, "Invalid token");
+  }
 
   if (!biz) {
     return new Response("Missing biz parameter", { status: 400 });
@@ -418,37 +445,23 @@ async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
           .bind(biz)
           .run();
         console.log(`Account ${biz} expired`);
+        return new Response("Account session expired", { status: 403 });
       } else {
         console.error(`WeChat API error: ${data.errmsg} (ret: ${data.ret})`);
+        return new Response(data.errmsg, { status: 500 });
       }
     } catch (e) {
       console.error("Error fetching from WeChat:", e);
       fetchError = e;
-    }
-
-    // Fallback to DB if no messages fetched or error occurred
-    if (messages.length === 0) {
-      const { results } = await env.DB.prepare(
-        "SELECT raw_json FROM messages WHERE biz = ? ORDER BY create_time DESC LIMIT 20"
-      )
-        .bind(biz)
-        .all();
-
-      const dbMessages = results.map((row) => {
-        try {
-          return JSON.parse(row.raw_json);
-        } catch (e) {
-          return {};
-        }
-      });
-
-      if (dbMessages.length > 0) {
-        messages = dbMessages;
-      }
+      return new Response(e.message, { status: 500 });
     }
 
     // Generate RSS feed
-    const rss = generateRSS(account, messages);
+    const rss = generateRSS(account, messages, {
+      origin,
+      needProxy,
+      onlyProxyCover,
+    });
 
     return new Response(rss, {
       headers: {
@@ -510,6 +523,8 @@ async function handleOfficialAccountProxy(request, env) {
       headers: {
         "Content-Type": response.headers.get("Content-Type") || "text/html",
         "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
       },
     });
   } catch (error) {
@@ -594,7 +609,6 @@ async function handleDeleteToken(request, env) {
     return Result.Err(500, "Internal server error");
   }
 }
-
 
 // Main request handler
 export default {

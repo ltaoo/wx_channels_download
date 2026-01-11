@@ -18,6 +18,8 @@ import (
 	"wx_channel/pkg/cloudflare/worker"
 )
 
+const permissionHint = "提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)"
+
 var deploy_cmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "部署 Cloudflare Worker",
@@ -54,7 +56,8 @@ func deploy() {
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("未配置 Database ID，正在尝试查找名为 '%s' 的 D1 数据库...", d1_database_name))
 		id, err := find_d1_database_by_name(account_id, api_token, d1_database_name)
 		if err != nil {
-			spinner.Fail(fmt.Sprintf("查找数据库失败: %v", err))
+			spinner.Fail(fmt.Sprintf("创建数据库失败: %v", err))
+			pterm.Info.Println(permissionHint)
 			return
 		}
 		if id != "" {
@@ -65,6 +68,7 @@ func deploy() {
 			new_id, err := create_d1_database(account_id, api_token, d1_database_name)
 			if err != nil {
 				spinner.Fail(fmt.Sprintf("创建数据库失败: %v", err))
+				pterm.Info.Println(permissionHint)
 				return
 			}
 			d1_database_id = new_id
@@ -81,6 +85,7 @@ func deploy() {
 	spinner, _ := pterm.DefaultSpinner.Start("正在验证 D1 数据库连接...")
 	if err := verify_d1_database(account_id, api_token, d1_database_id); err != nil {
 		spinner.Fail(fmt.Sprintf("D1 数据库验证失败: %v", err))
+		pterm.Info.Println(permissionHint)
 		return
 	}
 	spinner.Success("D1 数据库连接验证成功")
@@ -123,6 +128,7 @@ func deploy() {
 	worker_id, err := worker.Deploy(deploy_body)
 	if err != nil {
 		spinner.Fail(fmt.Sprintf("部署失败: %v", err))
+		pterm.Info.Println(permissionHint)
 		return
 	}
 	spinner.Success("部署成功!")
@@ -161,16 +167,15 @@ func deploy() {
 		{"GET", "/api/mp/list", "获取公众号列表"},
 		{"GET", "/api/mp/msg/list", "获取公众号消息列表"},
 		{"POST", "/api/mp/refresh", "刷新/同步公众号信息 (需要 Refresh Token)"},
-		{"GET", "/rss/mp", "RSS 订阅地址 (参数: biz)"},
-		{"GET", "/mp/proxy", "微信文章代理 (解决防盗链)"},
 		{"POST", "/admin/token/add", "添加访问 Token (需要 Admin Token)"},
 		{"POST", "/admin/token/delete", "删除访问 Token (需要 Admin Token)"},
+		{"GET", "/rss/mp", "RSS 订阅地址 (参数: biz)"},
 	}
 
 	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 
 	pterm.Println()
-	pterm.Info.Printf("提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)\n")
+	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("✅ 部署成功! 请访问上面的 URL 使用服务")
 }
 
 func verify_d1_database(accountID, authToken, databaseID string) error {

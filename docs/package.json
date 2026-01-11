@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
-    "preview": "vitepress preview"
+    "preview": "vitepress preview",
+    "prepare": "git config core.hooksPath docs/.husky"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "husky": "^9.1.7",
     "vitepress": "^1.0.0"
   },
   "dependencies": {
