@@ -85,7 +85,10 @@ export default defineConfig({
           { text: "api", link: "/config/api" },
           { text: "下载", link: "/config/download" },
           { text: "脚本", link: "/config/script" },
-          { text: "视频号", link: "/config/channel" },
+          { text: "视频号", link: "/config/channels" },
+          { text: "公众号服务", link: "/config/officialacount" },
+          { text: "Cloudflare", link: "/config/cloudflare" },
+          { text: "调试与 PageSpy", link: "/config/debug" },
         ],
       },
       {

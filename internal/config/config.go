@@ -82,7 +82,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "proxy.port",
 		Type:        ConfigTypeInt,
-		Default:     2080,
+		Default:     2023,
 		Description: "代理服务的端口",
 		Title:       "代理端口",
 		Group:       "Proxy",
@@ -161,7 +161,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 	})
 	Register(ConfigItem{
-		Key:         "download.inFrontend",
+		Key:         "download.frontend",
 		Type:        ConfigTypeBool,
 		Default:     false,
 		Description: "是否通过前端解密、下载，不调用后台下载能力",

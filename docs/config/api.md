@@ -8,9 +8,11 @@ title: API 服务
 
 ```yaml
 api:
+  protocol: http
   hostname: 127.0.0.1
   port: 2022
 ```
 
+- `protocol` API 服务协议，默认 `http`
 - `hostname` API 服务主机名
 - `port` API 服务端口

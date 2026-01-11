@@ -8,7 +8,16 @@ title: 用户脚本
 
 ## 全局脚本
 
-在和 `wx_video_download.exe` 同级目录，如果存在 `global.js`，则会将其插入视频号页面。目前可以通过其指定下载时的文件名称
+在和 `wx_video_download.exe` 同级目录，如果存在 `global.js`，则会将其插入视频号页面。目前可以通过其指定下载时的文件名称。
+
+也可以通过配置指定全局脚本的文件名：
+
+```yaml
+inject:
+  globalScript: "global.js"
+```
+
+### 脚本示例
 
 ```js
 // global.js

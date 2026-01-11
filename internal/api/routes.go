@@ -10,11 +10,12 @@ func (c *APIClient) SetupRoutes() {
 	// 只在本地有的接口
 	if !c.cfg.OfficialAccountRemote {
 		// 下载任务接口
+		c.engine.GET("/api/task/list", c.handleFetchTaskList)
 		c.engine.POST("/api/task/create", c.handleCreateTask)
 		c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
-		c.engine.POST("/api/task/start", c.handleStartTask)
 		c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
 		// c.engine.POST("/api/task/create_live", c.handleCreateLiveTask)
+		c.engine.POST("/api/task/start", c.handleStartTask)
 		c.engine.POST("/api/task/pause", c.handlePauseTask)
 		c.engine.POST("/api/task/resume", c.handleResumeTask)
 		c.engine.POST("/api/task/delete", c.handleDeleteTask)

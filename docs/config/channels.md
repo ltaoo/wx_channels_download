@@ -11,7 +11,7 @@ title: 视频号
 从「文件助手」打开视频号时，应该跳转至「视频详情页」，但某些版本会自动重定向到首页。该配置可以用于解决这个问题，不要自动调整到首页
 
 ```yaml
-channel:
+channels:
   disableLocationToHome: false
 ```
 
