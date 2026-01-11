@@ -1996,6 +1996,9 @@ func safeNetReason(err error) string {
 
 func (c *OfficialAccountClient) fetchMsgList(logger zerolog.Logger, biz string, offset int) (*OfficialMsgListResp, error) {
 	logger.Info().Msg("fetch msg list: start")
+	if biz == "" {
+		return nil, newCodedError(result.CodeMissingBiz, result.GetMsg(result.CodeMissingBiz), nil)
+	}
 	var existing *OfficialAccount
 	acct_mu.RLock()
 	if _, ok := accounts[biz]; ok {

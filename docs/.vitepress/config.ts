@@ -43,6 +43,7 @@ export default defineConfig({
     nav: [
       { text: "首页", link: "/" },
       { text: "Releases", link: `/releases/${getLatestRelease()}` },
+      { text: "API Playground", link: "/feature/playground" },
       { text: "FAQ", link: "/faq/button_inject_failed" },
     ],
     sidebar: [
@@ -58,7 +59,7 @@ export default defineConfig({
         text: "功能",
         items: [
           { text: "API", link: "/feature/api" },
-          { text: "公众号RSS", link: "/feature/mp-rss" },
+          { text: "公众号", link: "/feature/mp-rss" },
           { text: "长视频下载", link: "/feature/long-video" },
           { text: "mp3下载", link: "/feature/mp3" },
           { text: "直播下载", link: "/feature/live" },
@@ -82,7 +83,7 @@ export default defineConfig({
         text: "配置",
         items: [
           { text: "代理", link: "/config/proxy" },
-          { text: "api", link: "/config/api" },
+          { text: "api服务", link: "/config/api" },
           { text: "下载", link: "/config/download" },
           { text: "脚本", link: "/config/script" },
           { text: "视频号", link: "/config/channels" },

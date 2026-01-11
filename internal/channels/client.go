@@ -3,8 +3,10 @@ package channels
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,7 +184,11 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 }
 
 func (c *ChannelsClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
-	cache_key := "search:" + keyword
+	if keyword == "" {
+		return nil, errors.New("keyword 不能为空")
+	}
+	clean_keyword := strings.TrimSpace(keyword)
+	cache_key := "channels:contact_list:" + clean_keyword
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
 			return resp, nil
@@ -201,14 +207,17 @@ func (c *ChannelsClient) SearchChannelsContact(keyword string) (*types.ChannelsC
 }
 
 func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
-	// fmt.Println("[API]fetch feed list of contact", username)
-	// cache_key := "feed:" + username
-	// if val, found := c.cache.Get(cache_key); found {
-	// 	if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
-	// 		return resp, nil
-	// 	}
-	// }
-	resp, err := c.RequestFrontend("key:channels:feed_list", types.ChannelsFeedListBody{Username: username, NextMarker: next_marker}, 10*time.Second)
+	clean_name := strings.TrimSpace(username)
+	if !strings.HasSuffix(clean_name, "@finder") {
+		clean_name += "@finder"
+	}
+	cache_key := "channels:feed_list:" + clean_name
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+			return resp, nil
+		}
+	}
+	resp, err := c.RequestFrontend("key:channels:feed_list", types.ChannelsFeedListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -216,18 +225,19 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
-	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	c.cache.Set(cache_key, &r, 5*time.Minute)
 	return &r, nil
 }
 
 func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
-	// cache_key := "feed:" + username
-	// if val, found := c.cache.Get(cache_key); found {
-	// 	if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
-	// 		return resp, nil
-	// 	}
-	// }
+	kk := fmt.Sprintf("%s:%s:%s", oid, uid, url)
+	cache_key := "channels:feed_profile:" + kk
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
+			return resp, nil
+		}
+	}
 	resp, err := c.RequestFrontend("key:channels:feed_profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url}, 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -236,6 +246,6 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
-	// c.cache.Set(cache_key, &r, 5*time.Minute)
+	c.cache.Set(cache_key, &r, 60*time.Minute)
 	return &r, nil
 }
