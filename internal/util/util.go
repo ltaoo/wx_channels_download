@@ -43,7 +43,7 @@ var errMsgMap = map[int][2]string{
 	CodeAccountNotFound:   {"Account not found", "未找到匹配的公众号"},
 	CodeAccountExpired:    {"Account expired", "公众号凭证已失效"},
 	CodeAccountBanned:     {"Account banned", "账号被封禁"},
-	CodeClientNotReady:    {"Client not ready", "客户端未就绪"},
+	CodeClientNotReady:    {"Client not ready", "请先初始化客户端 socket 连接"},
 	CodeFetchMsgFailed:    {"Fetch message list failed", "获取消息列表失败"},
 	CodeDataParseFailed:   {"Data parse error", "数据解析失败"},
 	CodeProxyRequestErr:   {"Proxy request creation failed", "代理请求创建失败"},

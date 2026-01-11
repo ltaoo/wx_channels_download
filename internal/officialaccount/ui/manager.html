@@ -199,6 +199,11 @@
       width: 180px;
     }
 
+    .w-checkbox {
+      width: 40px;
+      text-align: center;
+    }
+
     .nowrap {
       white-space: nowrap
     }
@@ -319,6 +324,29 @@
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
     let ACCOUNTS_CACHE = [];
     let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
+    function updateRefreshBtnState() {
+      const all = Array.from(document.querySelectorAll(".select-row"));
+      const checked = all.filter(c => c.checked);
+      const btn = document.getElementById("btn-refresh-all");
+      if (!btn) return;
+      
+      if (checked.length > 0) {
+        btn.textContent = `刷新 ${checked.length} 个`;
+      } else {
+        btn.textContent = "刷新全部";
+      }
+      
+      const selectAll = document.getElementById("select-all");
+      if (selectAll) {
+        selectAll.checked = all.length > 0 && all.length === checked.length;
+        selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+      }
+    }
+    function toggleSelectAll(source) {
+      const all = document.querySelectorAll(".select-row");
+      all.forEach(c => c.checked = source.checked);
+      updateRefreshBtnState();
+    }
     function proxy(u) {
       if (!u) return "";
       const t = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
@@ -435,6 +463,7 @@
           const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;
           const colDelete = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" style="margin-left: 4px; border-color: rgba(242, 139, 130, .3); color: #f28b82;" onclick="deleteAccount(this, '${it.biz || ""}')">删除</button>`;
           tr.innerHTML = `
+           ${REMOTE_MODE ? '' : `<td><div style="text-align: center;"><input type="checkbox" class="select-row" value="${it.biz || ''}" onclick="updateRefreshBtnState()"></div></td>`}
            <td>${colName}</td>
            <td>${colId}</td>
            <td>${colStatus}</td>
@@ -442,6 +471,7 @@
           `;
           tbody.appendChild(tr);
         }
+        updateRefreshBtnState();
       } catch (e) {
         console.error(e);
         alert(String(e && e.message ? e.message : e));
@@ -571,6 +601,9 @@
     }
 
     async function refreshAll(btn) {
+      const checked = Array.from(document.querySelectorAll(".select-row:checked"));
+      const bizList = checked.map(c => c.value);
+
       // Show modal
       const modal = document.getElementById("progress-modal");
       if (modal) {
@@ -589,7 +622,11 @@
         btn.textContent = "刷新中...";
       }
       try {
-        const r = await fetch("/api/mp/refresh_remote");
+        const r = await fetch("/api/mp/refresh_with_frontend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ biz_list: bizList })
+        });
         const j = await r.json().catch(() => ({}));
         if (j && j.code !== undefined && j.code !== 0) {
           alert(j.msg || "接口错误");
@@ -613,8 +650,11 @@
       const old = btn.textContent;
       btn.textContent = "刷新中";
       try {
-        const url = "/api/mp/refresh_account_with_frontend?biz=" + encodeURIComponent(biz);
-        const r = await fetch(url);
+        const r = await fetch("/api/mp/refresh_with_frontend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ biz_list: [biz] })
+        });
         const j = await r.json().catch(() => ({}));
         if (j && j.code !== undefined && j.code !== 0) {
           alert(j.msg || "接口错误");
@@ -697,7 +737,7 @@
         <h2>公众号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
         <div class="toolbar">
           <div class="toolbar-left" id="toolbar-actions">
-            <button class="btn btn-primary" onclick="refreshAll()">刷新全部</button>
+            <button id="btn-refresh-all" class="btn btn-primary" onclick="refreshAll(this)">刷新全部</button>
             <button class="btn" onclick="copyRefreshLinks(this)">复制刷新链接</button>
           </div>
           <div class="toolbar-right">
@@ -722,16 +762,17 @@
           </div>
         </div>
         <table>
-          <thead>
-            <tr>
-              <th>公众号</th>
-              <th>ID</th>
-              <th class="w-120">状态</th>
-              <th class="w-160">操作</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+            <thead>
+              <tr>
+                <th class="w-checkbox"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                <th>公众号</th>
+                <th>ID</th>
+                <th class="w-120">状态</th>
+                <th class="w-160">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
       </section>
       <section id="ws">
         <h2>WebSocket 池</h2>

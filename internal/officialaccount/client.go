@@ -621,23 +621,177 @@ func (c *OfficialAccountClient) HandleRefreshRemoteOfficialAccount(ctx *gin.Cont
 	result.Ok(ctx, nil)
 }
 
-// 在本地前端，手动刷新指定公众号
+// 在本地前端，手动刷新指定公众号（支持批量）
 func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gin.Context) {
 	if err := c.Validate(); err != nil {
 		result.ErrCode(ctx, result.CodeClientNotReady)
 		return
 	}
-	biz := ctx.Query("biz")
-	if biz == "" {
-		result.ErrCode(ctx, result.CodeMissingBiz)
+
+	var req struct {
+		BizList []string `json:"biz_list"`
+	}
+	// Try to bind JSON, ignore error if body is empty
+	_ = ctx.ShouldBindJSON(&req)
+
+	// Identify targets
+	var targets []*OfficialAccount
+	acct_mu.RLock()
+	if len(req.BizList) == 0 {
+		// All accounts
+		targets = make([]*OfficialAccount, 0, len(accounts))
+		for _, acct := range accounts {
+			if acct != nil {
+				targets = append(targets, acct)
+			}
+		}
+	} else {
+		// Specific accounts
+		targets = make([]*OfficialAccount, 0, len(req.BizList))
+		for _, biz := range req.BizList {
+			if acct, ok := accounts[biz]; ok && acct != nil {
+				targets = append(targets, acct)
+			}
+		}
+	}
+	acct_mu.RUnlock()
+
+	if len(targets) == 0 {
+		result.Ok(ctx, nil)
 		return
 	}
-	if _, err := c.RefreshAccountWithFrontend(&OfficialAccountBody{
-		Biz: biz,
-	}); err != nil {
-		result.ErrCode(ctx, result.CodeMissingKey)
+
+	// Filter targets that have RefreshUri
+	var jobs []remoteOfficialAccountJob
+	for _, t := range targets {
+		if t.RefreshUri != "" {
+			jobs = append(jobs, remoteOfficialAccountJob{Biz: t.Biz, Nickname: t.Nickname})
+		}
+	}
+
+	if len(jobs) == 0 {
+		result.Ok(ctx, nil)
 		return
 	}
+
+	// Check clients
+	clients := c.ListClients()
+	if len(clients) == 0 {
+		result.ErrCode(ctx, result.CodeClientNotReady)
+		return
+	}
+
+	// Prepare worker pool
+	total := len(jobs)
+	jobChan := make(chan remoteOfficialAccountJob, total)
+	for _, j := range jobs {
+		jobChan <- j
+	}
+	close(jobChan)
+
+	var wg sync.WaitGroup
+	processed := make([]int64, len(clients))
+	var success int64
+	var processed_total int64
+	failures := make([]FailureDetail, 0)
+	var failures_mu sync.Mutex
+
+	c.BroadcastProgress(total, 0, 0, 0)
+
+	logger := c.logger.With().Str("action", "refresh_with_frontend_batch").Logger()
+
+	for i, ws := range clients {
+		clientTitle := ""
+		if ws != nil {
+			clientTitle = ws.title
+		}
+		wg.Add(1)
+		go func(idx int, ws *Client) {
+			defer wg.Done()
+			workerLogger := logger.With().
+				Int("worker_idx", idx).
+				Str("client_title", clientTitle).
+				Logger()
+
+			for job := range jobChan {
+				biz := job.Biz
+				jobLogger := workerLogger.With().
+					Str("biz", biz).
+					Str("nickname", job.Nickname).
+					Logger()
+
+				_, err := c.refresh_credential_from_frontend(jobLogger, &OfficialAccountBody{Biz: biz}, ws)
+
+				if err != nil {
+					// Fallback logic
+					jobLogger.Warn().Err(err).Msg("refresh job: on client failed, fallback to any client")
+					fallbackWS, pickErr := c.firstClient()
+					if pickErr != nil {
+						// Fallback failed
+						err2 := pickErr
+						failures_mu.Lock()
+						failures = append(failures, FailureDetail{Biz: biz, Nickname: job.Nickname, Error: err2.Error()})
+						failures_mu.Unlock()
+
+						// Update account error status
+						acct_mu.Lock()
+						if existing, ok := accounts[biz]; ok {
+							existing.Error = err2.Error()
+							existing.UpdateTime = time.Now().Unix()
+						}
+						acct_mu.Unlock()
+						save_accounts()
+					} else {
+						// Retry with fallback client
+						fallbackLogger := jobLogger
+						if fallbackWS != nil {
+							fallbackLogger = fallbackLogger.With().Str("client_title", fallbackWS.title).Logger()
+						}
+						_, err2 := c.refresh_credential_from_frontend(fallbackLogger, &OfficialAccountBody{Biz: biz}, fallbackWS)
+						if err2 != nil {
+							failures_mu.Lock()
+							failures = append(failures, FailureDetail{Biz: biz, Nickname: job.Nickname, Error: err2.Error()})
+							failures_mu.Unlock()
+
+							acct_mu.Lock()
+							if existing, ok := accounts[biz]; ok {
+								existing.Error = err2.Error()
+								existing.UpdateTime = time.Now().Unix()
+							}
+							acct_mu.Unlock()
+							save_accounts()
+						} else {
+							atomic.AddInt64(&success, 1)
+							acct_mu.Lock()
+							if acct, ok := accounts[biz]; ok {
+								acct.Error = ""
+							}
+							acct_mu.Unlock()
+						}
+					}
+				} else {
+					atomic.AddInt64(&success, 1)
+					acct_mu.Lock()
+					if acct, ok := accounts[biz]; ok {
+						acct.Error = ""
+					}
+					acct_mu.Unlock()
+				}
+
+				atomic.AddInt64(&processed[idx], 1)
+				curr := atomic.AddInt64(&processed_total, 1)
+				succ := atomic.LoadInt64(&success)
+				failures_mu.Lock()
+				fail := len(failures)
+				failures_mu.Unlock()
+				c.BroadcastProgress(total, int(curr), int(succ), fail)
+			}
+		}(i, ws)
+	}
+
+	wg.Wait()
+	c.BroadcastProgress(total, total, int(success), len(failures))
+
 	result.Ok(ctx, nil)
 }
 
