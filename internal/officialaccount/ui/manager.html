@@ -18,9 +18,26 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 24px auto;
       padding: 0 16px
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      color: #9aa0a6;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e6e6e6;
     }
 
     h1 {
@@ -322,8 +339,41 @@
     const REMOTE_SERVER = "%%REMOTE_SERVER%%";
     const TOKEN = "%%TOKEN%%";
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
+    const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8fce95" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
     let ACCOUNTS_CACHE = [];
     let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
+
+    async function copyText(text, btn) {
+      if (!text) return;
+      if (window.event) window.event.stopPropagation();
+      
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = CHECK_ICON;
+        setTimeout(() => {
+          btn.innerHTML = oldHtml;
+        }, 1500);
+      } catch (e) {
+        console.error("Copy failed", e);
+        alert("复制失败");
+      }
+    }
+
     function updateRefreshBtnState() {
       const all = Array.from(document.querySelectorAll(".select-row"));
       const checked = all.filter(c => c.checked);
@@ -456,8 +506,15 @@
              </div>
           `;
           const colId = `
-             <div class="nowrap">${it.biz || ""}</div>
-             ${rss && rss !== "-" ? `<div><a href="${rss}" target="_blank">${rss}</a></div>` : ""}
+             <div class="row" style="justify-content: flex-start; gap: 4px;">
+                <div class="nowrap">${it.biz || ""}</div>
+                <div class="icon-btn" onclick="copyText('${it.biz || ""}', this)" title="复制ID">${COPY_ICON}</div>
+             </div>
+             ${rss && rss !== "-" ? `
+             <div class="row" style="justify-content: flex-start; gap: 4px; margin-top: 4px;">
+                <div style="word-break: break-all;"><a href="${rss}" target="_blank">${rss}</a></div>
+                <div class="icon-btn" onclick="copyText('${rss}', this)" title="复制链接">${COPY_ICON}</div>
+             </div>` : ""}
           `;
           const colStatus = REMOTE_MODE ? `${available}` : `${eff} ${missingPill}${errText}`;
           const colRefresh = REMOTE_MODE ? '' : `<button class="btn btn-sm nowrap" onclick="refreshOne(this, '${it.biz || ""}')">刷新</button>`;

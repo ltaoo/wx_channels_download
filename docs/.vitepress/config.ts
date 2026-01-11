@@ -111,5 +111,8 @@ export default defineConfig({
       { icon: "github", link: "https://github.com/ltaoo/wx_channels_download" },
     ],
     outline: "deep",
+    search: {
+      provider: "local",
+    },
   },
 });

@@ -87,29 +87,30 @@ func (acct *OfficialAccount) MergeFrom(source *OfficialAccount) {
 }
 
 type OfficialAccountClient struct {
-	logger               *zerolog.Logger
-	RemoteServerAddr     string
-	RefreshToken         string
-	RemoteMode           bool
-	RemoteServerProtocol string
-	RemoteServerHostname string
-	RemoteServerPort     int
-	RefreshSkipMinutes   int
-	MaxWebsocketClients  int
-	Tokens               []string
-	Cookies              []*http.Cookie
-	ws_clients           map[*Client]bool
-	ws_mu                sync.RWMutex
-	manage_ws_clients    map[*Client]bool
-	manage_ws_mu         sync.RWMutex
-	requests             map[string]chan ClientWebsocketResponse
-	requests_mu          sync.RWMutex
-	cache                *cache.Cache
-	req_seq              uint64
-	wait_chan_map        map[string]chan *OfficialAccount
-	wait_mu              sync.Mutex
-	refresh_mu           sync.Mutex
-	is_refreshing        bool
+	logger                    *zerolog.Logger
+	RemoteServerAddr          string
+	RefreshToken              string
+	RemoteMode                bool
+	RemoteServerProtocol      string
+	RemoteServerHostname      string
+	RemoteServerPort          int
+	RefreshSkipMinutes        int
+	AccountIdsRefreshInterval []string
+	MaxWebsocketClients       int
+	Tokens                    []string
+	Cookies                   []*http.Cookie
+	ws_clients                map[*Client]bool
+	ws_mu                     sync.RWMutex
+	manage_ws_clients         map[*Client]bool
+	manage_ws_mu              sync.RWMutex
+	requests                  map[string]chan ClientWebsocketResponse
+	requests_mu               sync.RWMutex
+	cache                     *cache.Cache
+	req_seq                   uint64
+	wait_chan_map             map[string]chan *OfficialAccount
+	wait_mu                   sync.Mutex
+	refresh_mu                sync.Mutex
+	is_refreshing             bool
 }
 
 func (c *OfficialAccountClient) next_trace_id(prefix string) string {
@@ -120,21 +121,22 @@ func (c *OfficialAccountClient) next_trace_id(prefix string) string {
 func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog.Logger) *OfficialAccountClient {
 	logger := parent_logger.With().Str("service", "OfficialAccountClient").Logger()
 	c := &OfficialAccountClient{
-		logger:               &logger,
-		RemoteMode:           cfg.RemoteMode,
-		RemoteServerProtocol: cfg.RemoteServerProtocol,
-		RemoteServerHostname: cfg.RemoteServerHostname,
-		RemoteServerPort:     cfg.RemoteServerPort,
-		RefreshSkipMinutes:   cfg.RefreshSkipMinutes,
-		MaxWebsocketClients:  5,
-		RefreshToken:         cfg.RefreshToken,
-		Tokens:               make([]string, 0),
-		ws_clients:           make(map[*Client]bool),
-		manage_ws_clients:    make(map[*Client]bool),
-		requests:             make(map[string]chan ClientWebsocketResponse),
-		cache:                cache.New(),
-		req_seq:              uint64(time.Now().UnixNano()),
-		wait_chan_map:        make(map[string]chan *OfficialAccount),
+		logger:                    &logger,
+		RemoteMode:                cfg.RemoteMode,
+		RemoteServerProtocol:      cfg.RemoteServerProtocol,
+		RemoteServerHostname:      cfg.RemoteServerHostname,
+		RemoteServerPort:          cfg.RemoteServerPort,
+		RefreshSkipMinutes:        cfg.RefreshSkipMinutes,
+		AccountIdsRefreshInterval: cfg.AccountIdsRefreshInterval,
+		MaxWebsocketClients:       5,
+		RefreshToken:              cfg.RefreshToken,
+		Tokens:                    make([]string, 0),
+		ws_clients:                make(map[*Client]bool),
+		manage_ws_clients:         make(map[*Client]bool),
+		requests:                  make(map[string]chan ClientWebsocketResponse),
+		cache:                     cache.New(),
+		req_seq:                   uint64(time.Now().UnixNano()),
+		wait_chan_map:             make(map[string]chan *OfficialAccount),
 	}
 	if cfg.RootDir != "" {
 		mp_json_filepath = filepath.Join(cfg.RootDir, "mp.json")
@@ -173,15 +175,26 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 			}
 		}()
 	}
-	// if !cfg.RemoteMode {
-	// 	go func() {
-	// 		ticker := time.NewTicker(20 * time.Minute)
-	// 		defer ticker.Stop()
-	// 		for range ticker.C {
-	// 			c.RefreshAllRemoteOfficialAccount()
-	// 		}
-	// 	}()
-	// }
+	if !cfg.RemoteMode && len(c.AccountIdsRefreshInterval) > 0 {
+		var valid_accounts []string
+		acct_mu.RLock()
+		for _, biz := range c.AccountIdsRefreshInterval {
+			if _, ok := accounts[biz]; ok {
+				valid_accounts = append(valid_accounts, biz)
+			}
+		}
+		acct_mu.RUnlock()
+		c.AccountIdsRefreshInterval = valid_accounts
+		if len(c.AccountIdsRefreshInterval) > 0 {
+			go func() {
+				ticker := time.NewTicker(28 * time.Minute)
+				defer ticker.Stop()
+				for range ticker.C {
+					c.RefreshSpecifiedOfficialAccountList(c.AccountIdsRefreshInterval)
+				}
+			}()
+		}
+	}
 	return c
 }
 
@@ -634,10 +647,27 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 	// Try to bind JSON, ignore error if body is empty
 	_ = ctx.ShouldBindJSON(&req)
 
+	err := c.RefreshSpecifiedOfficialAccountList(req.BizList)
+	if err != nil {
+		if err.Error() == "client not ready" {
+			result.ErrCode(ctx, result.CodeClientNotReady)
+		} else {
+			// For other errors, we might still return OK if some succeeded,
+			// or change behavior. Original code didn't return error for partial failure.
+			// If RefreshSpecifiedOfficialAccountList returns error, it means it couldn't start (e.g. no clients).
+			result.Err(ctx, 1001, err.Error())
+		}
+		return
+	}
+
+	result.Ok(ctx, nil)
+}
+
+func (c *OfficialAccountClient) RefreshSpecifiedOfficialAccountList(biz_list []string) error {
 	// Identify targets
 	var targets []*OfficialAccount
 	acct_mu.RLock()
-	if len(req.BizList) == 0 {
+	if len(biz_list) == 0 {
 		// All accounts
 		targets = make([]*OfficialAccount, 0, len(accounts))
 		for _, acct := range accounts {
@@ -647,8 +677,8 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 		}
 	} else {
 		// Specific accounts
-		targets = make([]*OfficialAccount, 0, len(req.BizList))
-		for _, biz := range req.BizList {
+		targets = make([]*OfficialAccount, 0, len(biz_list))
+		for _, biz := range biz_list {
 			if acct, ok := accounts[biz]; ok && acct != nil {
 				targets = append(targets, acct)
 			}
@@ -657,8 +687,7 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 	acct_mu.RUnlock()
 
 	if len(targets) == 0 {
-		result.Ok(ctx, nil)
-		return
+		return nil
 	}
 
 	// Filter targets that have RefreshUri
@@ -670,15 +699,13 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 	}
 
 	if len(jobs) == 0 {
-		result.Ok(ctx, nil)
-		return
+		return nil
 	}
 
 	// Check clients
 	clients := c.ListClients()
 	if len(clients) == 0 {
-		result.ErrCode(ctx, result.CodeClientNotReady)
-		return
+		return errors.New("client not ready")
 	}
 
 	// Prepare worker pool
@@ -698,7 +725,7 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 
 	c.BroadcastProgress(total, 0, 0, 0)
 
-	logger := c.logger.With().Str("action", "refresh_with_frontend_batch").Logger()
+	logger := c.logger.With().Str("action", "refresh_specified_list").Logger()
 
 	for i, ws := range clients {
 		clientTitle := ""
@@ -792,7 +819,7 @@ func (c *OfficialAccountClient) HandleRefreshOfficialAccountWithFrontend(ctx *gi
 	wg.Wait()
 	c.BroadcastProgress(total, total, int(success), len(failures))
 
-	result.Ok(ctx, nil)
+	return nil
 }
 
 func (c *OfficialAccountClient) HandleOfficialAccountRSS(ctx *gin.Context) {

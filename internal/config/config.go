@@ -281,6 +281,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "OfficialAccount",
 	})
 	Register(ConfigItem{
+		Key:         "mp.accountIdsRefreshInterval",
+		Type:        ConfigTypeString,
+		Default:     []string{},
+		Description: "需要定时刷新的帐号列表",
+		Title:       "定时刷新列表",
+		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
 		Key:         "mp.refreshSkipMinutes",
 		Type:        ConfigTypeInt,
 		Default:     20,
