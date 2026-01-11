@@ -39,9 +39,12 @@ mp:
 ```yaml
 mp:
   refreshToken: "123"
+  refreshSkipMinutes: 20
 ```
 
-同样本地和远端都要配置，本地向远端提交公众号凭证时，通过该 `token` 校验请求是否授权
+同样本地和远端都要配置，本地向远端提交公众号凭证时，通过该 `token` 校验请求是否授权。
+
+`refreshSkipMinutes`: 刷新时若账号在最近 N 分钟已更新则跳过，默认 20 分钟。
 
 ## 请求凭证
 

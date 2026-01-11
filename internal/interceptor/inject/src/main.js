@@ -150,8 +150,8 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   payload.source_url = location.href;
   WXU.log({
     msg: `${payload.source_url}
-${payload.url}
-${payload.key || "该视频未加密"}`,
+${payload.original_url}
+${payload.key || ""}`,
   });
   WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
   var suffix = ".mp4";

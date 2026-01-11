@@ -243,6 +243,62 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": id})
 }
 
+type DownloadTaskSummary struct {
+	ID       string      `json:"id"`
+	Title    string      `json:"title"`
+	Status   base.Status `json:"status"`
+	Filepath string      `json:"filepath"`
+}
+
+func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
+	status := ctx.Query("status")
+	page_str := ctx.Query("page")
+	page_size_str := ctx.Query("page_size")
+
+	filter := &downloadpkg.TaskFilter{}
+	if status != "" && status != "all" {
+		filter.Statuses = []base.Status{base.Status(status)}
+	}
+	list := c.downloader.GetTasksByFilter(filter)
+	total := len(list)
+	page_num, err := strconv.Atoi(page_str)
+	if err != nil {
+		page_num = 1
+	}
+	page_size_num, err := strconv.Atoi(page_size_str)
+	if err != nil {
+		page_size_num = 20
+	}
+	start := (page_num - 1) * page_size_num
+	if start > total {
+		start = total
+	}
+	end := start + page_size_num
+	if end > total {
+		end = total
+	}
+	summaries := make([]DownloadTaskSummary, 0, end-start)
+	for _, task := range list[start:end] {
+		filename := task.Meta.Opts.Name
+		file_path := task.Meta.Opts.Path
+		if filename == "" {
+			filename = task.ID
+		}
+		summaries = append(summaries, DownloadTaskSummary{
+			ID:       task.ID,
+			Title:    task.Meta.Req.Labels["title"],
+			Status:   task.Status,
+			Filepath: filepath.Join(file_path, filename),
+		})
+	}
+	result.Ok(ctx, gin.H{
+		"list":      summaries,
+		"total":     total,
+		"page":      page_num,
+		"page_size": page_size_num,
+	})
+}
+
 type LiveDownloadTaskBody struct {
 	Url       string            `json:"url"`
 	Name      string            `json:"name"`

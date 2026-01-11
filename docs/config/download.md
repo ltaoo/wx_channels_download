@@ -71,7 +71,7 @@ download:
 
 ```yaml
 download:
-  pauseVideoWhenDownload: false
+  pauseWhenDownload: false
 ```
 
 是否在前端下载时暂停视频播放，默认 `false`。下载完成后会继续播放。
@@ -80,10 +80,17 @@ download:
 ## 完成音效
 
 ```yaml
-
-```yaml
 download:
   playDoneAudio: true
 ```
 
 后台下载模式下，下载完成后是否播放完成音效，默认 `true`。
+
+## 批量下载检查
+
+```yaml
+download:
+  forceCheckAllFeeds: false
+```
+
+批量下载时是否强制检查所有视频，默认 `false`。

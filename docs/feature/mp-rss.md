@@ -59,6 +59,7 @@ https://dash.cloudflare.com/profile/api-tokens
 
 ```yaml
 mp:
+  disabled: false
   remoteServer:
     protocol: "https"
     hostname: "mp-rss-api.xx.workers.dev" # 这里填部署好的 cloudflare worker 访问域名
@@ -106,6 +107,7 @@ mp:
 ```yaml
 # config.yaml
 mp:
+  disabled: false
   remoteServer:
     protocol: "https"
     hostname: "rss.example.com"
@@ -115,11 +117,11 @@ mp:
 
 `linux` 上部署的服务，可以打开 `rss.example.com/mp/home` 查看公众号列表，并且可以查看公众号是否可用。
 
-更多命令可以参考 [命令行工具](../cli/mp.md)
+更多命令可以参考 [公众号远端模式](../cli/mp.md)
 
 ## API
 
-## 获取指定公众号消息列表
+### 获取指定公众号消息列表
 
 ```bash
 curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==
@@ -131,14 +133,14 @@ curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==
 curl http://localhost:2022/api/mp/msg/list?biz=MzI2NDk5NzA0Mw==&offset=10
 ```
 
-## 获取添加的公众号列表
+### 获取添加的公众号列表
 
 ```bash
 curl http://localhost:2022/api/mp/list
 ```
 
 
-## 公众号 RSS
+### 公众号 RSS
 
 ```bash
 curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
@@ -148,19 +150,19 @@ curl http://localhost:2022/rss/mp?biz=MzI2NDk5NzA0Mw==
 
 还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文
 
-### proxy
+#### proxy
 
 > 仅在 `linux` 部署的服务上支持
 
 如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 <code>{{APIServerAddr}}/mp/proxy</code> 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容
 
-### proxy_cover
+#### proxy_cover
 
 > 仅在 `linux` 部署的服务上支持
 
 相比 `proxy`，`proxy_cover` 仅代理封面图片，可以用在仅需查看列表，点击跳转到原文的场景
 
-### content
+#### content
 
 > 仅在 `linux` 部署的服务上支持
 
