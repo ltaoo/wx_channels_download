@@ -185,6 +185,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 	})
 	Register(ConfigItem{
+		Key:         "download.forceCheckAllFeeds",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "批量下载时是否强制检查所有视频",
+		Title:       "检查所有视频",
+		Group:       "Download",
+	})
+	Register(ConfigItem{
 		Key:         "download.pauseWhenDownload",
 		Type:        ConfigTypeBool,
 		Default:     false,

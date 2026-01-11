@@ -65,6 +65,11 @@ async function __wx_channels_download4(feed, opt) {
     WXU.error({ msg: "文件名生成失败" });
     return;
   }
+  feed.filename = filename;
+  if (feed.type === "picture") {
+    __wx_channels_download3(feed);
+    return;
+  }
   if (opt.spec) {
     feed.url = feed.url + "&X-snsvideoflag=" + opt.spec;
   }
@@ -149,12 +154,14 @@ ${payload.url}
 ${payload.key || "该视频未加密"}`,
   });
   WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
-  if (payload.type === "picture") {
-    // 图片视频
-    __wx_channels_download3(payload);
-    return;
+  var suffix = ".mp4";
+  if (mp3) {
+    suffix = ".mp3";
   }
-  __wx_channels_download4(payload, { spec, suffix: mp3 ? ".mp3" : ".mp4" });
+  if (payload.type === "picture") {
+    suffix = ".zip";
+  }
+  __wx_channels_download4(payload, { spec, suffix });
 }
 /** 下载已加载的视频 */
 function __wx_channels_download_cur__() {

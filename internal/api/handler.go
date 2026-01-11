@@ -232,7 +232,8 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		},
 	)
 	if err != nil {
-		result.Err(ctx, 500, "下载失败")
+		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
+		result.Err(ctx, 500, "创建任务失败："+err.Error())
 		return
 	}
 	c.channels.Broadcast(APIClientWSMessage{
@@ -359,9 +360,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		full_path := item["full_path"]
 		// 从 full_path 中提取目录
 		rel_dir := filepath.Dir(full_path)
-
-		connections := c.resolve_connections(url)
-
+		// connections := c.resolve_connections(url)
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
 				URL: url,
@@ -376,15 +375,13 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 			Opts: &base.Options{
 				Name: item["name"] + item["suffix"],
 				Path: filepath.Join(c.cfg.DownloadDir, rel_dir),
-				Extra: &gopeedhttp.OptsExtra{
-					Connections: connections,
-				},
 			},
 		})
 	}
 	ids, err := c.downloader.CreateDirectBatch(&task)
 	if err != nil {
-		result.Err(ctx, 500, "创建失败")
+		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
+		result.Err(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
 	c.channels.Broadcast(APIClientWSMessage{
@@ -424,12 +421,15 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		return
 	}
 	media := r.Data.Object.ObjectDesc.Media[0]
-	key, err := strconv.Atoi(media.DecodeKey)
-	if err != nil {
-		result.Err(ctx, 500, "获取详情失败: "+err.Error())
-		return
+	key := 0
+	if media.DecodeKey != "" {
+		k, err := strconv.Atoi(media.DecodeKey)
+		if err != nil {
+			result.Err(ctx, 500, "获取详情失败: "+err.Error())
+			return
+		}
+		key = k
 	}
-
 	spec := "original"
 	if !c.cfg.Original.GetBool("download.defaultHighest") {
 		if len(media.Spec) > 0 {
@@ -483,6 +483,20 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		cover_url := media.CoverUrl
 		payload.URL = cover_url
 	}
+
+	if r.Data.Object.ObjectDesc.MediaType == 2 {
+		payload.Suffix = ".zip"
+		var files []map[string]string
+		for i, m := range r.Data.Object.ObjectDesc.Media {
+			files = append(files, map[string]string{
+				"url":      m.URL + m.URLToken,
+				"filename": fmt.Sprintf("%d.jpg", i+1),
+			})
+		}
+		data, _ := json.Marshal(files)
+		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
+	}
+
 	if payload.Id == "" {
 		result.Err(ctx, 400, "缺少 feed id 参数")
 		return
