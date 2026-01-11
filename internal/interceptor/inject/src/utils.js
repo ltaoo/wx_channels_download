@@ -115,6 +115,24 @@ var WXU = (() => {
       return null;
     }
     var media = feed.objectDesc.media[0];
+    if (type === 2) {
+      // 图片视频
+      return {
+        ...feed,
+        type: "picture",
+        id: feed.id,
+        nonce_id: feed.objectNonceId,
+        cover_url: media.coverUrl,
+        title: feed.objectDesc.description,
+        files: feed.objectDesc.media,
+        spec: [],
+        contact: {
+          id: feed.contact.username,
+          avatar_url: feed.contact.headUrl,
+          nickname: feed.contact.nickname,
+        },
+      };
+    }
     if (type === 4) {
       return {
         ...feed,
@@ -136,21 +154,7 @@ var WXU = (() => {
         },
       };
     }
-    return {
-      ...feed,
-      type: "picture",
-      id: feed.id,
-      nonce_id: feed.objectNonceId,
-      cover_url: media.coverUrl,
-      title: feed.objectDesc.description,
-      files: feed.objectDesc.media,
-      spec: [],
-      contact: {
-        id: feed.contact.username,
-        avatar_url: feed.contact.headUrl,
-        nickname: feed.contact.nickname,
-      },
-    };
+    return null;
   }
   /**
    * @param {string} text
@@ -629,6 +633,20 @@ var WXU = (() => {
         if (!filename) {
           return [new Error("filename 为空"), null];
         }
+        if (feed.type === "picture") {
+          opt.suffix = ".zip";
+          feed.url = `zip://weixin.qq.com?files=${encodeURIComponent(
+            JSON.stringify(
+              feed.files.map((f, idx) => {
+                return {
+                  url: f.url,
+                  filename: `${idx + 1}.jpg`,
+                };
+              })
+            )
+          )}`;
+          console.log("[]feed.url", feed.url);
+        }
         if (opt.suffix !== ".jpg") {
           feed.url = feed.url + "&X-snsvideoflag=" + spec;
         }
@@ -680,6 +698,19 @@ var WXU = (() => {
             WXU.config.downloadFilenameTemplate
           );
           if (filename) {
+            if (feed.type === "picture") {
+              opt.suffix = ".zip";
+              feed.url = `zip://weixin.qq.com?files=${encodeURIComponent(
+                JSON.stringify(
+                  feed.files.map((f, idx) => {
+                    return {
+                      url: f.url,
+                      filename: `${idx + 1}.jpg`,
+                    };
+                  })
+                )
+              )}`;
+            }
             if (opt.suffix !== ".jpg") {
               feed.url = feed.url + "&X-snsvideoflag=" + spec;
             }

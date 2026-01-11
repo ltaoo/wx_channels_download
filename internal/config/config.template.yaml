@@ -11,6 +11,7 @@ download:
   pauseWhenDownload: false
   playDoneAudio: true
   frontend: false
+  forceCheckAllFeeds: false
 
 api:
   protocol: "http"
@@ -31,7 +32,7 @@ mp:
     protocol: "http"
     hostname: ""
     port: 80
-  refreshToken: ""
+  refreshToken: "wx_channels_download"
   tokenFilepath: ""
   refreshSkipMinutes: 20
   maxWebsocketClients: 5
@@ -39,8 +40,7 @@ mp:
 cloudflare:
   accountId: ""
   apiToken: ""
-  refreshToken: ""
-  authToken: ""
+  refreshToken: "wx_channels_download"
+  adminToken: ""
   workerName: "mp-rss-api"
-  d1Id: ""
   d1Name: "mp-rss-db"

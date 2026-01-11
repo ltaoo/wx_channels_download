@@ -2,11 +2,12 @@ package download
 
 import (
 	"encoding/json"
-	"go.etcd.io/bbolt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
+
+	"go.etcd.io/bbolt"
 )
 
 type Storage interface {

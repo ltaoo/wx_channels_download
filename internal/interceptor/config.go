@@ -14,14 +14,15 @@ import (
 type InterceptorConfig struct {
 	Version                             string `json:"version"`
 	FilePath                            string // 配置文件路径
-	DownloadDefaultHighest              bool   `json:"defaultHighest"`            // 默认下载最高画质
-	DownloadFilenameTemplate            string `json:"downloadFilenameTemplate"`  // 下载文件名模板
-	DownloadPauseWhenDownload           bool   `json:"downloadPauseWhenDownload"` // 下载时暂停播放
-	DownloadInFrontend                  bool   `json:"downloadInFrontend"`        // 在前端下载
-	DownloadMaxRunning                  int    `json:"downloadMaxRunning"`        // 最大同时下载数
-	APIServerProtocol                   string `json:"apiServerProtocol"`         // API服务器主机名
-	APIServerHostname                   string `json:"apiServerHostname"`         // API服务器主机名
-	APIServerPort                       int    `json:"apiServerPort"`             // API服务器端口
+	DownloadDefaultHighest              bool   `json:"defaultHighest"`             // 默认下载最高画质
+	DownloadFilenameTemplate            string `json:"downloadFilenameTemplate"`   // 下载文件名模板
+	DownloadPauseWhenDownload           bool   `json:"downloadPauseWhenDownload"`  // 下载时暂停播放
+	DownloadInFrontend                  bool   `json:"downloadInFrontend"`         // 在前端下载
+	DownloadMaxRunning                  int    `json:"downloadMaxRunning"`         // 最大同时下载数
+	DownloadForceCheckAllFeeds          bool   `json:"downloadForceCheckAllFeeds"` // 批量下载时是否强制检查所有视频
+	APIServerProtocol                   string `json:"apiServerProtocol"`          // API服务器主机名
+	APIServerHostname                   string `json:"apiServerHostname"`          // API服务器主机名
+	APIServerPort                       int    `json:"apiServerPort"`              // API服务器端口
 	APIServerAddr                       string `json:"apiServerAddr"`
 	OfficialAccountServerRefreshToken   string `json:"officialServerRefreshToken"`
 	OfficialAccountServerDisabled       bool   `json:"officialServerDisabled"`
@@ -57,6 +58,8 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		DownloadFilenameTemplate:            viper.GetString("download.filenameTemplate"),
 		DownloadPauseWhenDownload:           viper.GetBool("download.pauseWhenDownload"),
 		DownloadInFrontend:                  viper.GetBool("download.frontend"),
+		DownloadMaxRunning:                  viper.GetInt("download.maxRunning"),
+		DownloadForceCheckAllFeeds:          viper.GetBool("download.forceCheckAllFeeds"),
 		APIServerProtocol:                   viper.GetString("api.protocol"),
 		APIServerHostname:                   viper.GetString("api.hostname"),
 		APIServerPort:                       viper.GetInt("api.port"),

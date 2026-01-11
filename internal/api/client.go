@@ -30,12 +30,12 @@ type APIClient struct {
 	logger     *zerolog.Logger
 }
 
-func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	data_dir := cfg.RootDir
 	var downloader *downloadpkg.Downloader
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.OfficialAccountRemote)
-	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, logger)
+	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	if !cfg.OfficialAccountRemote {
 		downloader = downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 			RefreshInterval: 360,
@@ -51,6 +51,7 @@ func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
 			}
 		}
 	}
+	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	client := &APIClient{
 		downloader: downloader,
 		official:   officialaccount_client,
@@ -58,7 +59,7 @@ func NewAPIClient(cfg *APIConfig, logger *zerolog.Logger) *APIClient {
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
 		cfg:        cfg,
 		engine:     gin.Default(),
-		logger:     logger,
+		logger:     &logger,
 	}
 	client.SetupRoutes()
 	return client

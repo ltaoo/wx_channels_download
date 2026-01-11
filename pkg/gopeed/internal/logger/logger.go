@@ -1,11 +1,12 @@
 package logger
 
 import (
-	"github.com/GopeedLab/gopeed/pkg/util"
-	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/GopeedLab/gopeed/pkg/util"
+	"github.com/rs/zerolog"
 )
 
 type Logger struct {
