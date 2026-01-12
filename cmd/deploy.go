@@ -51,12 +51,12 @@ func deploy() {
 		return
 	}
 
-	// 1.2 如果未配置 Database ID 但配置了 Name，尝试查找或创建
-	if d1_database_id == "" && d1_database_name != "" {
-		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("未配置 Database ID，正在尝试查找名为 '%s' 的 D1 数据库...", d1_database_name))
+	// 1.2 优先使用 Database Name 查找或创建 (如果配置了 Name)
+	if d1_database_name != "" {
+		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("正在根据名称查找 D1 数据库: '%s' ...", d1_database_name))
 		id, err := find_d1_database_by_name(account_id, api_token, d1_database_name)
 		if err != nil {
-			spinner.Fail(fmt.Sprintf("创建数据库失败: %v", err))
+			spinner.Fail(fmt.Sprintf("查找数据库失败: %v", err))
 			pterm.Info.Println(permissionHint)
 			return
 		}
@@ -124,8 +124,13 @@ func deploy() {
 	}
 
 	// 4. 执行部署
-	spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("正在部署到 Cloudflare (Account: %s, Worker: %s)...", account_id, worker_name))
-	worker_id, err := worker.Deploy(deploy_body)
+	// 截断 Account ID 以防止终端换行导致 Spinner 渲染问题
+	shortAccountID := account_id
+	if len(shortAccountID) > 6 {
+		shortAccountID = shortAccountID[:6] + "..."
+	}
+	spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("正在部署到 Cloudflare (Worker: %s)...", worker_name))
+	_, err = worker.Deploy(deploy_body)
 	if err != nil {
 		spinner.Fail(fmt.Sprintf("部署失败: %v", err))
 		pterm.Info.Println(permissionHint)
@@ -152,7 +157,7 @@ func deploy() {
 		{{Data: pterm.DefaultBox.WithTitle("Worker Info").Sprint(
 			pterm.Sprintf("%s: %s\n%s: %s\n%s: %s",
 				pterm.Bold.Sprint("Worker Name"), pterm.Cyan(worker_name),
-				pterm.Bold.Sprint("Worker ID"), pterm.Cyan(worker_id),
+				// pterm.Bold.Sprint("Worker ID"), pterm.Cyan(worker_id),
 				pterm.Bold.Sprint("URL"), pterm.LightGreen(workerUrl),
 			),
 		)}},
@@ -241,7 +246,7 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 		// Simple parsing: name should start with ID (e.g., 0001_init.sql)
 		var id int
 		if _, err := fmt.Sscanf(file.Name(), "%d_", &id); err != nil {
-			fmt.Printf("Skipping invalid migration file: %s\n", file.Name())
+			// fmt.Printf("Skipping invalid migration file: %s\n", file.Name())
 			continue
 		}
 
@@ -249,7 +254,7 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 			continue
 		}
 
-		fmt.Printf("Applying migration: %s\n", file.Name())
+		// fmt.Printf("Applying migration: %s\n", file.Name())
 		content, err := os.ReadFile(filepath.Join(migrationsDir, file.Name()))
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %v", file.Name(), err)
@@ -262,7 +267,7 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 		if _, err := query_d1(accountID, authToken, databaseID, fullSQL, nil); err != nil {
 			return fmt.Errorf("failed to execute migration %s: %v", file.Name(), err)
 		}
-		fmt.Printf("Migration %s applied successfully\n", file.Name())
+		// fmt.Printf("Migration %s applied successfully\n", file.Name())
 	}
 
 	return nil
