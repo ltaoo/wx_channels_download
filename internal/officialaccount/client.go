@@ -567,7 +567,8 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		accounts[body.Biz] = target_acct
 	} else {
 		if len(accounts) >= 20 {
-			result.ErrCode(ctx, result.CodeTooManyAccounts)
+			// result.ErrCode(ctx, result.CodeTooManyAccounts)
+			result.Ok(ctx, nil)
 			return
 		}
 		body.IsEffective = true

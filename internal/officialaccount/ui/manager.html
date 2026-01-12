@@ -91,7 +91,12 @@
     .w-160 {
       width: 160px;
     }
-
+    .mt-0 {
+      margin-top: 0;
+    }
+    .text-12 {
+      font-size: 12px;
+    }
     .pill {
       display: inline-block;
       padding: 2px 8px;
@@ -339,11 +344,43 @@
     const REMOTE_SERVER = "%%REMOTE_SERVER%%";
     const TOKEN = "%%TOKEN%%";
     const REMOTE_MODE = "%%REMOTE_MODE%%" === "1";
+    const WS_POOL_HEARTBEAT_OK_SECONDS = 60;
     const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
     const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8fce95" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
 
     let ACCOUNTS_CACHE = [];
     let LIST_STATE = { page: 1, pageSize: 10, keyword: "", isEffective: "" };
+
+    function parseListStateFromUrl() {
+      const sp = new URLSearchParams(window.location.search || "");
+      const page = parseInt(sp.get("page") || "", 10);
+      const pageSize = parseInt(sp.get("page_size") || "", 10);
+      const keyword = sp.get("keyword");
+      const isEffective = sp.get("is_effective");
+      return {
+        page: Number.isFinite(page) && page > 0 ? page : null,
+        pageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : null,
+        keyword: typeof keyword === "string" ? keyword : null,
+        isEffective: typeof isEffective === "string" ? isEffective : null,
+      };
+    }
+    function writeListStateToUrl(state) {
+      const sp = new URLSearchParams(window.location.search || "");
+      sp.set("page", String(state.page || 1));
+      sp.set("page_size", String(state.pageSize || 10));
+      const kw = String(state.keyword || "").trim();
+      if (kw) sp.set("keyword", kw);
+      else sp.delete("keyword");
+      const eff = String(state.isEffective || "");
+      if (eff !== "") sp.set("is_effective", eff);
+      else sp.delete("is_effective");
+      const qs = sp.toString();
+      const next = window.location.pathname + (qs ? "?" + qs : "") + (window.location.hash || "");
+      const cur = window.location.pathname + window.location.search + window.location.hash;
+      if (next !== cur) {
+        window.history.replaceState(null, "", next);
+      }
+    }
 
     async function copyText(text, btn) {
       if (!text) return;
@@ -479,8 +516,14 @@
         LIST_STATE.keyword = String(LIST_STATE.keyword || "").trim();
         LIST_STATE.isEffective = String(LIST_STATE.isEffective || "");
         syncControlsFromState();
+        writeListStateToUrl(LIST_STATE);
 
         const data = await fetchAccountPage(LIST_STATE);
+        LIST_STATE.page = data.page;
+        LIST_STATE.pageSize = data.pageSize;
+        LIST_STATE.keyword = String(data.keyword || "").trim();
+        syncControlsFromState();
+        writeListStateToUrl(LIST_STATE);
         ACCOUNTS_CACHE = data.list;
         const countEl = document.getElementById("account-count");
         if (countEl) countEl.textContent = `(${data.total})`;
@@ -743,7 +786,7 @@
         const tbody = document.querySelector("#ws tbody");
         tbody.innerHTML = "";
         for (const it of list) {
-          const healthy = (Math.floor(Date.now() / 1000) - (it.last_ping || 0)) <= 15 && it.available;
+          const healthy = (Math.floor(Date.now() / 1000) - (it.last_ping || 0)) <= WS_POOL_HEARTBEAT_OK_SECONDS && it.available;
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td class=""><div class="w-80 ellipsis">${it.title || ""}</div></td>
@@ -760,6 +803,13 @@
       }
     }
     function bootstrap() {
+      const init = parseListStateFromUrl();
+      if (init.keyword !== null) LIST_STATE.keyword = String(init.keyword || "").trim();
+      if (init.isEffective !== null) LIST_STATE.isEffective = String(init.isEffective || "");
+      if (init.page !== null) LIST_STATE.page = init.page;
+      if (init.pageSize !== null) LIST_STATE.pageSize = init.pageSize;
+      syncControlsFromState();
+      writeListStateToUrl(LIST_STATE);
       loadAccounts();
       if (!REMOTE_MODE) {
         loadWsPool();
@@ -799,7 +849,7 @@
   <div class="container">
     <div class="grid">
       <section id="accounts">
-        <h2>公众号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
+        <h2 class="mt-0">公众号列表 <span id="account-count" style="font-size: 14px; color: #9aa0a6; margin-left: 8px;"></span></h2>
         <div class="toolbar">
           <div class="toolbar-left" id="toolbar-actions">
             <button id="btn-refresh-all" class="btn btn-primary" onclick="refreshAll(this)">刷新全部</button>
@@ -822,7 +872,7 @@
               <option value="200">200/页</option>
             </select>
             <button id="btn-prev" class="btn btn-sm btn-fixed-width" onclick="prevPage()">上一页</button>
-            <span id="page-info" class="muted" style="align-self: center;"></span>
+            <span id="page-info" class="muted text-12" style="align-self: center;"></span>
             <button id="btn-next" class="btn btn-sm btn-fixed-width" onclick="nextPage()">下一页</button>
           </div>
         </div>
@@ -840,7 +890,7 @@
           </table>
       </section>
       <section id="ws">
-        <h2>WebSocket 池</h2>
+        <h2 class="mt-0">WebSocket 池</h2>
         <table>
           <thead>
             <tr>
