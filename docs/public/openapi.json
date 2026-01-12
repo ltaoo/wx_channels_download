@@ -1122,7 +1122,7 @@
       "post": {
         "tags": ["下载器"],
         "summary": "创建视频号下载任务",
-        "description": "其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。\n\n传 `mp3`，表示下载为 `mp3` 文件\n\n传 `cover`，表示下载视频封面",
+        "description": "其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。",
         "requestBody": {
           "required": true,
           "content": {

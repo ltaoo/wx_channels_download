@@ -31,8 +31,8 @@ title: 下载
 3. Windows x86_64
 选择 windows_x86_64 后缀
 
-## 启用下载器
+## 运行下载器
 
 在 `Windows` 平台，解压后双击直接运行 `wx_video_download.exe` 即可，首次使用会自动安装证书并设置系统代理。
 
-`macOS` 平台请参考 [macOS 启用](./macos.md)
+`macOS` 平台请参考 [macOS 运行](./macos.md)

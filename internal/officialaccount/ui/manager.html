@@ -431,6 +431,9 @@
       if (params.keyword && String(params.keyword).trim()) {
         sp.set("keyword", String(params.keyword).trim());
       }
+      if (params.isEffective !== "") {
+        sp.set("is_effective", params.isEffective);
+      }
       return "/api/mp/list?" + sp.toString();
     }
     async function fetchAccountPage(params) {
@@ -538,6 +541,11 @@
       const kw = document.getElementById("account-keyword");
       const keyword = kw ? String(kw.value || "").trim() : "";
       loadAccounts({ page: 1, keyword });
+    }
+    function applyFilter() {
+      const eff = document.getElementById("account-is-effective");
+      const isEffective = eff ? eff.value : "";
+      loadAccounts({ page: 1, isEffective });
     }
     function clearSearch() {
       const kw = document.getElementById("account-keyword");
@@ -798,7 +806,7 @@
             <button class="btn" onclick="copyRefreshLinks(this)">复制刷新链接</button>
           </div>
           <div class="toolbar-right">
-            <select id="account-is-effective" class="select" style="width: 100px;">
+            <select id="account-is-effective" class="select" style="width: 100px;" onchange="applyFilter()">
               <option value="">全部状态</option>
               <option value="1">有效</option>
               <option value="0">无效</option>

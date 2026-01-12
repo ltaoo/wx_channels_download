@@ -28,12 +28,12 @@ func main() {
 	need_admin_for_proxy := viper.GetBool("proxy.system") || interceptor.UsingSunnyNet
 	if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
 		if !platform.RequestAdminPermission() {
-			fmt.Println("启动失败，请右键选择「以管理员身份运行」")
+			fmt.Println("运行失败，请右键选择「以管理员身份运行」")
 			return
 		}
 		return
 	}
 	if err := cmd.Execute(certificate.DefaultCertFiles, cfg); err != nil {
-		fmt.Printf("启动失败 %v\n", err.Error())
+		fmt.Printf("运行失败 %v\n", err.Error())
 	}
 }

@@ -4,7 +4,7 @@ title: 步骤
 
 # 使用步骤
 
-当下载器启用成功后，终端内容如下
+当下载器运行成功后，终端内容如下
 
 ![enabled](../assets/app_screenshot1.png)
 

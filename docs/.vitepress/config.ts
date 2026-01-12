@@ -50,8 +50,8 @@ export default defineConfig({
       {
         text: "开始使用",
         items: [
-          { text: "下载并启用", link: "/guide/start" },
-          { text: "macOS 启用", link: "/guide/macos" },
+          { text: "下载并运行", link: "/guide/start" },
+          { text: "macOS 运行", link: "/guide/macos" },
           { text: "使用步骤", link: "/guide/step" },
         ],
       },
@@ -83,11 +83,11 @@ export default defineConfig({
         text: "配置",
         items: [
           { text: "代理", link: "/config/proxy" },
-          { text: "api服务", link: "/config/api" },
+          { text: "API 服务", link: "/config/api" },
+          { text: "公众号服务", link: "/config/officialacount" },
           { text: "下载", link: "/config/download" },
           { text: "脚本", link: "/config/script" },
           { text: "视频号", link: "/config/channels" },
-          { text: "公众号服务", link: "/config/officialacount" },
           { text: "Cloudflare", link: "/config/cloudflare" },
           { text: "调试与 PageSpy", link: "/config/debug" },
         ],
