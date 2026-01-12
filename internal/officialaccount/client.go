@@ -1147,7 +1147,7 @@ func (c *OfficialAccountClient) HandleFetchOfficialAccountClients(ctx *gin.Conte
 	now := time.Now().Unix()
 	c.ws_mu.RLock()
 	for cl := range c.ws_clients {
-		healthy := cl.available && (now-cl.last_ping) <= 65
+		healthy := (now - cl.last_ping) <= 60
 		list = append(list, gin.H{
 			"title":     cl.title,
 			"available": healthy,
