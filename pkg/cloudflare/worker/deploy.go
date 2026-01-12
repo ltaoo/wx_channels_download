@@ -121,7 +121,7 @@ func Deploy(deployBody DeployBody) (string, error) {
 
 	// 部署成功后，确保 workers.dev 子域名已启用
 	if err := enableSubdomain(deployBody.AccountID, deployBody.AuthToken, deployBody.WorkerName); err != nil {
-		fmt.Printf("警告: 启用 workers.dev 子域名失败: %v\n", err)
+		// fmt.Printf("警告: 启用 workers.dev 子域名失败: %v\n", err)
 	}
 
 	return result.Result.ID, nil

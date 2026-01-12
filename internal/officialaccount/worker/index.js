@@ -130,6 +130,17 @@ function generateRSS(officialAccount, messages, options = {}) {
     <description>${
       officialAccount.nickname || officialAccount.biz
     } - 微信公众号</description>
+    ${
+      officialAccount.avatar_url
+        ? `<image>
+      <url>${officialAccount.avatar_url}</url>
+      <title>${officialAccount.nickname || officialAccount.biz}</title>
+      <link>https://mp.weixin.qq.com/mp/profile_ext?action=home&amp;__biz=${
+        officialAccount.biz
+      }</link>
+    </image>`
+        : ""
+    }
     <language>zh-CN</language>
     <lastBuildDate>${now}</lastBuildDate>
     <generator>wx_channels_download</generator>`;
@@ -247,9 +258,7 @@ async function handleFetchOfficialAccountMsgList(request, env) {
 
   try {
     // Get account info
-    const account = await env.DB.prepare(
-      "SELECT nickname FROM accounts WHERE biz = ?"
-    )
+    const account = await env.DB.prepare("SELECT * FROM accounts WHERE biz = ?")
       .bind(biz)
       .first();
 
@@ -257,38 +266,33 @@ async function handleFetchOfficialAccountMsgList(request, env) {
       return Result.Err(1003, "Account not found");
     }
 
-    // Get messages count
-    const countResult = await env.DB.prepare(
-      "SELECT COUNT(*) as total FROM messages WHERE biz = ?"
-    )
-      .bind(biz)
-      .first();
-    const total = countResult ? countResult.total : 0;
+    // Fetch messages from WeChat API
+    const data = await getMsgList(account, offset);
 
-    // Get messages for this account
-    const pageSize = 10;
-    const { results } = await env.DB.prepare(
-      "SELECT raw_json FROM messages WHERE biz = ? ORDER BY create_time DESC LIMIT ? OFFSET ?"
-    )
-      .bind(biz, pageSize, offset)
-      .all();
-
-    const paginatedMessages = results.map((row) => {
-      try {
-        return JSON.parse(row.raw_json);
-      } catch (e) {
-        return {};
-      }
-    });
-
-    return Result.Ok({
-      msg_count: total,
-      title: account.nickname,
-      list: paginatedMessages,
-    });
+    if (data.ret === 0) {
+      const listData = JSON.parse(data.general_msg_list);
+      return Result.Ok({
+        msg_count: listData.list ? listData.list.length : 0,
+        title: account.nickname,
+        list: listData.list || [],
+        can_msg_continue: data.can_msg_continue,
+        next_offset: data.next_offset,
+      });
+    } else if (data.ret === -3) {
+      // Session expired, mark as ineffective
+      await env.DB.prepare("UPDATE accounts SET is_effective = 0 WHERE biz = ?")
+        .bind(biz)
+        .run();
+      return Result.Err(403, "Account session expired");
+    } else {
+      return Result.Err(
+        500,
+        `WeChat API error: ${data.errmsg} (ret: ${data.ret})`
+      );
+    }
   } catch (error) {
     console.error("Error fetching message list:", error);
-    return Result.Err(500, "Internal server error");
+    return Result.Err(500, "Internal server error: " + error.message);
   }
 }
 
@@ -377,11 +381,11 @@ async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
   const origin = url.origin;
 
   if (!validateToken(token)) {
-    return Result.Err(1001, "Invalid token");
+    return Result.Err(400, "Invalid token");
   }
 
   if (!biz) {
-    return new Response("Missing biz parameter", { status: 400 });
+    return Result.Err(1002, "Missing biz parameter");
   }
 
   try {
@@ -391,7 +395,7 @@ async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
       .first();
 
     if (!account) {
-      return new Response("Account not found", { status: 404 });
+      return Result.Err(1003, "Account not found");
     }
 
     let messages = [];
@@ -445,15 +449,15 @@ async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
           .bind(biz)
           .run();
         console.log(`Account ${biz} expired`);
-        return new Response("Account session expired", { status: 403 });
+        return Result.Err(403, "Account session expired");
       } else {
         console.error(`WeChat API error: ${data.errmsg} (ret: ${data.ret})`);
-        return new Response(data.errmsg, { status: 500 });
+        return Result.Err(500, data.errmsg);
       }
     } catch (e) {
       console.error("Error fetching from WeChat:", e);
       fetchError = e;
-      return new Response(e.message, { status: 500 });
+      return Result.Err(500, e.message);
     }
 
     // Generate RSS feed
@@ -471,7 +475,7 @@ async function handleFetchMsgListOfOfficialAccountRSS(request, env) {
     });
   } catch (error) {
     console.error("Error generating RSS:", error);
-    return new Response("Internal server error", { status: 500 });
+    return Result.Err(500, "Internal server error");
   }
 }
 
@@ -481,11 +485,11 @@ async function handleOfficialAccountProxy(request, env) {
   const token = url.searchParams.get("token");
 
   if (!validateToken(token)) {
-    return Result.Err(1001, "Invalid token");
+    return Result.Err(400, "Invalid token");
   }
 
   if (!targetURL) {
-    return Result.Err(1002, "Missing url parameter");
+    return Result.Err(400, "Missing url parameter");
   }
 
   try {
@@ -539,7 +543,7 @@ async function handleAddToken(request, env) {
 
   // Only Admin/Auth Token can add new tokens
   if (!token || token !== env.ADMIN_TOKEN) {
-    return Result.Err(1001, "Unauthorized: Only admin can add tokens");
+    return Result.Err(403, "Unauthorized: Only admin can add tokens");
   }
 
   try {
@@ -547,7 +551,7 @@ async function handleAddToken(request, env) {
     const { token, description = "" } = body;
 
     if (!token) {
-      return Result.Err(1002, "Missing token parameter");
+      return Result.Err(400, "Missing token parameter");
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -582,7 +586,7 @@ async function handleDeleteToken(request, env) {
 
   // Only Admin/Auth Token can delete tokens
   if (!token || token !== env.ADMIN_TOKEN) {
-    return Result.Err(1001, "Unauthorized: Only admin can delete tokens");
+    return Result.Err(403, "Unauthorized: Only admin can delete tokens");
   }
 
   try {
@@ -590,7 +594,7 @@ async function handleDeleteToken(request, env) {
     const { token } = body;
 
     if (!token) {
-      return Result.Err(1002, "Missing token parameter");
+      return Result.Err(400, "Missing token parameter");
     }
 
     // Delete from DB
@@ -660,7 +664,7 @@ export default {
       }
 
       // 404 for unmatched routes
-      return Result.Err(404, "Not Found", 404);
+      return Result.Err(404, "API Not Found");
     } catch (error) {
       console.error("Worker error:", error);
       return Result.Err(500, "Internal server error");
