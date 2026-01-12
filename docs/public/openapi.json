@@ -915,7 +915,7 @@
       "post": {
         "tags": ["公众号"],
         "summary": "更新凭证",
-        "description": "更新指定公众号的凭证，接收的是有效的凭证信息",
+        "description": "更新指定公众号的凭证，需提交有效的凭证内容",
         "parameters": [
           {
             "name": "token",
