@@ -93,6 +93,9 @@ type OfficialAccountClient struct {
 	logger                    *zerolog.Logger
 	RemoteServerAddr          string
 	RefreshToken              string
+	APIServerProtocol         string
+	APIServerHostname         string
+	APIServerPort             int
 	RemoteMode                bool
 	RemoteServerProtocol      string
 	RemoteServerHostname      string
@@ -125,6 +128,9 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 	logger := parent_logger.With().Str("service", "OfficialAccountClient").Logger()
 	c := &OfficialAccountClient{
 		logger:                    &logger,
+		APIServerProtocol:         cfg.Protocol,
+		APIServerHostname:         cfg.Hostname,
+		APIServerPort:             cfg.Port,
 		RemoteMode:                cfg.RemoteMode,
 		RemoteServerProtocol:      cfg.RemoteServerProtocol,
 		RemoteServerHostname:      cfg.RemoteServerHostname,
@@ -382,6 +388,20 @@ func (c *OfficialAccountClient) HandleFetchMsgList(ctx *gin.Context) {
 	result.Ok(ctx, data)
 }
 
+func (c *OfficialAccountClient) HandleFetchArticleList(ctx *gin.Context) {
+	biz := ctx.Query("biz")
+	if biz == "" {
+		result.ErrCode(ctx, result.CodeInvalidParams)
+	}
+	data, err := c.fetchArticleList(biz)
+	if err != nil {
+		code := result.CodeFetchMsgFailed
+		result.Err(ctx, code, "fetch article failed")
+		return
+	}
+	result.Ok(ctx, data)
+}
+
 // 获取已添加到公众号列表
 func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 	token := ctx.Query("token")
@@ -404,6 +424,11 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 	keywordLower := strings.ToLower(keyword)
 	is_effective_filter := ctx.Query("is_effective")
 
+	type Link struct {
+		Name string `json:"name"`
+		Uri  string `json:"uri"`
+	}
+
 	type SafeOfficialAccount struct {
 		Biz         string `json:"biz"`
 		Nickname    string `json:"nickname"`
@@ -413,6 +438,7 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 		UpdateTime  int64  `json:"update_time"`
 		Error       string `json:"error"`
 		RefreshUri  string `json:"refresh_uri,omitempty"`
+		Links       []Link `json:"links"`
 	}
 	var list []SafeOfficialAccount
 	now := time.Now().Unix()
@@ -440,6 +466,85 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 			summary.RefreshUri = acct.RefreshUri
 		}
 
+		// Build Links
+		var links []Link
+
+		// 1. author_uri
+		if acct.AuthorId != "" {
+			u := url.URL{
+				Scheme: "https",
+				Host:   "mp.weixin.qq.com",
+				Path:   "/mp/author",
+			}
+			q := u.Query()
+			q.Set("action", "show")
+			q.Set("__biz", acct.Biz)
+			q.Set("idx", "1")
+			q.Set("author_id", acct.AuthorId)
+			q.Set("scene", "142")
+			q.Set("rscene", "128")
+			q.Set("uin", acct.Uin)
+			q.Set("key", acct.Key)
+			q.Set("pass_ticket", acct.PassTicket)
+			q.Set("devicetype", "UnifiedPCMac")
+			q.Set("version", "f2640619")
+			q.Set("lang", "zh_CN")
+			q.Set("ascene", "1")
+			q.Set("acctmode", "0")
+			q.Set("countrycode", "CN")
+			u.RawQuery = q.Encode()
+			links = append(links, Link{Name: "author_uri", Uri: u.String()})
+		}
+
+		// 2. home_uri
+		{
+			u := url.URL{
+				Scheme: "https",
+				Host:   "mp.weixin.qq.com",
+				Path:   "/mp/profile_ext",
+			}
+			q := u.Query()
+			q.Set("action", "home")
+			q.Set("__biz", acct.Biz)
+			q.Set("scene", "124")
+			u.RawQuery = q.Encode()
+			links = append(links, Link{Name: "home_uri", Uri: u.String() + "#wechat_redirect"})
+		}
+
+		origin := c.APIServerProtocol + "://" + c.APIServerHostname
+		if c.APIServerPort > 0 && c.APIServerPort != 80 {
+			origin += fmt.Sprintf(":%d", c.APIServerPort)
+		}
+		// 3. msg api
+		{
+			u := url.URL{
+				Path: origin + "/api/mp/msg/list",
+			}
+			q := u.Query()
+			q.Set("biz", acct.Biz)
+			if token != "" {
+				q.Set("token", token)
+			}
+			u.RawQuery = q.Encode()
+			links = append(links, Link{Name: "msg_api", Uri: u.String()})
+		}
+
+		// 4. article api
+		{
+			u := url.URL{
+				Path: origin + "/api/mp/article/list",
+			}
+			q := u.Query()
+			q.Set("biz", acct.Biz)
+			if token != "" {
+				q.Set("token", token)
+			}
+			u.RawQuery = q.Encode()
+			links = append(links, Link{Name: "article_api", Uri: u.String()})
+		}
+
+		summary.Links = links
+
 		if is_effective_filter != "" {
 			filterVal := is_effective_filter == "1" || is_effective_filter == "true"
 			if summary.IsEffective != filterVal {
@@ -459,7 +564,7 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 	}
 	acct_mu.Unlock()
 	if changed {
-		save_accounts()
+		go save_accounts()
 	}
 	sort.Slice(list, func(i, j int) bool {
 		a := list[i]
@@ -572,11 +677,11 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		target_acct = &new_acct
 		accounts[body.Biz] = target_acct
 	} else {
-		if len(accounts) >= 20 {
-			// result.ErrCode(ctx, result.CodeTooManyAccounts)
-			result.Ok(ctx, nil)
-			return
-		}
+		// if len(accounts) >= 20 {
+		// 	// result.ErrCode(ctx, result.CodeTooManyAccounts)
+		// 	result.Ok(ctx, nil)
+		// 	return
+		// }
 		body.IsEffective = true
 		if body.CreatedAt == 0 {
 			body.CreatedAt = now
@@ -600,7 +705,8 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		Bool("has_waiter", ok).
 		Bool("remote_mode", c.RemoteMode).
 		Msg("refresh official account event: stored and notified")
-	if !ok && !c.RemoteMode {
+	is_manually_refresh := !ok
+	if is_manually_refresh && !c.RemoteMode {
 		// 这里是手动刷新页面时，主动向远端服务推送凭证。所以如果是远端服务，不能向自己推，就循环了
 		go c.pushCredentialToRemoteServer(logger, target_acct)
 	}
@@ -2041,6 +2147,8 @@ type Article struct {
 }
 
 type ArticleListResponse struct {
+	Ret      int       `json:"ret"`
+	ErrMsg   string    `json:"errmsg"`
 	Articles []Article `json:"articles"`
 	BaseResp struct {
 		ExportKeyToken string `json:"exportkey_token"`
@@ -2082,22 +2190,64 @@ func (c *OfficialAccountClient) fetchCookie(acct *OfficialAccount) error {
 	return errors.New("no cookie found")
 }
 
-func (c *OfficialAccountClient) fetchArticleList(acct *OfficialAccount) (*ArticleListResponse, error) {
-	if acct.Cookie == "" || time.Now().Unix() >= acct.CookieExpiration {
-		if err := c.fetchCookie(acct); err != nil {
+func (c *OfficialAccountClient) fetchArticleList(biz string) (*ArticleListResponse, error) {
+	// acct *OfficialAccount
+	var existing *OfficialAccount
+	acct_mu.RLock()
+	if _, ok := accounts[biz]; ok {
+		data := accounts[biz]
+		existing = data
+	}
+	acct_mu.RUnlock()
+	if existing == nil {
+		return nil, newCodedError(result.CodeAccountNotFound, result.GetMsg(result.CodeAccountNotFound), nil)
+	}
+	if existing.Cookie == "" || time.Now().Unix() >= existing.CookieExpiration {
+		fmt.Println("before fetch cookie")
+		if err := c.fetchCookie(existing); err != nil {
 			return nil, err
 		}
 	}
 
 	u := fmt.Sprintf("https://mp.weixin.qq.com/mp/author?action=get_articles&author_id=%s&scene=142&limit=30&version=undefined&appmsg_token=%s&x5=0&f=json&user_article_role=0",
-		acct.AuthorId, acct.AppmsgToken)
+		existing.AuthorId, existing.AppmsgToken)
 
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Cookie", acct.Cookie)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+	referer_params := url.Values{}
+	referer_params.Set("action", "show")
+	referer_params.Set("__biz", existing.Biz)
+	referer_params.Set("idx", "1")
+	referer_params.Set("author_id", existing.AuthorId)
+	referer_params.Set("scene", "142")
+	referer_params.Set("rscene", "128")
+	referer_params.Set("uin", existing.Uin)
+	referer_params.Set("key", existing.Key)
+	referer_params.Set("devicetype", "UnifiedPCMac")
+	referer_params.Set("version", "f2640619")
+	referer_params.Set("lang", "zh_CN")
+	referer_params.Set("ascene", "1")
+	referer_params.Set("acctmode", "0")
+	referer_params.Set("pass_ticket", existing.PassTicket)
+	referer_params.Set("countrycode", "CN")
+
+	referer := "https://mp.weixin.qq.com/mp/author?" + referer_params.Encode()
+	fmt.Println("fetch article list: cookie", existing.Cookie)
+	req.Header.Set("Cookie", existing.Cookie)
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-language", "zh-CN,zh;q=0.9")
+	req.Header.Set("priority", "u=1, i")
+	req.Header.Set("referer", referer)
+	req.Header.Set("sec-ch-ua", `"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-origin")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+	req.Header.Set("x-requested-with", "XMLHttpRequest")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -2105,14 +2255,13 @@ func (c *OfficialAccountClient) fetchArticleList(acct *OfficialAccount) (*Articl
 		return nil, err
 	}
 	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
+	body_bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	var data ArticleListResponse
-	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+	if err := json.Unmarshal(body_bytes, &data); err != nil {
 		return nil, err
 	}
 
