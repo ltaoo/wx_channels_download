@@ -45,18 +45,21 @@ type OfficialAccountBody struct {
 	Biz string `json:"biz"`
 }
 type OfficialAccount struct {
-	Biz         string `json:"biz"`
-	Nickname    string `json:"nickname"`
-	AvatarURL   string `json:"avatar_url"`
-	Uin         string `json:"uin"`
-	Key         string `json:"key"`
-	PassTicket  string `json:"pass_ticket"`
-	AppmsgToken string `json:"appmsg_token"`
-	RefreshUri  string `json:"refresh_uri"`
-	IsEffective bool   `json:"is_effective"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdateTime  int64  `json:"update_time"`
-	Error       string `json:"error"`
+	Biz              string `json:"biz"`
+	Nickname         string `json:"nickname"`
+	AvatarURL        string `json:"avatar_url"`
+	AuthorId         string `json:"author_id"`
+	Uin              string `json:"uin"`
+	Key              string `json:"key"`
+	PassTicket       string `json:"pass_ticket"`
+	AppmsgToken      string `json:"appmsg_token"`
+	Cookie           string `json:"cookie"`
+	CookieExpiration int64  `json:"cookie_expiration"`
+	RefreshUri       string `json:"refresh_uri"`
+	IsEffective      bool   `json:"is_effective"`
+	CreatedAt        int64  `json:"created_at"`
+	UpdateTime       int64  `json:"update_time"`
+	Error            string `json:"error"`
 }
 
 func (acct *OfficialAccount) MergeFrom(source *OfficialAccount) {
@@ -557,6 +560,9 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 		// copy old account to avoid data race on reading fields
 		new_acct := *old
 		new_acct.MergeFrom(&body)
+		if new_acct.AuthorId == "" && body.AuthorId != "" {
+			new_acct.AuthorId = body.AuthorId
+		}
 		new_acct.IsEffective = true
 		if new_acct.CreatedAt == 0 {
 			new_acct.CreatedAt = now
@@ -2020,6 +2026,97 @@ func safeNetReason(err error) string {
 		return "DNS 解析失败"
 	}
 	return "网络请求失败"
+}
+
+type Article struct {
+	Biz            string `json:"__biz"`
+	CoverURL       string `json:"cover_url"`
+	IsPaid         int    `json:"is_paid"`
+	IsPaySubscribe int    `json:"is_pay_subscribe"`
+	ItemShowType   int    `json:"item_show_type"`
+	Mid            string `json:"mid"`
+	PublishTime    int64  `json:"publish_time"`
+	Title          string `json:"title"`
+	URL            string `json:"url"`
+}
+
+type ArticleListResponse struct {
+	Articles []Article `json:"articles"`
+	BaseResp struct {
+		ExportKeyToken string `json:"exportkey_token"`
+		Ret            int    `json:"ret"`
+	} `json:"base_resp"`
+	MaxArticleID string `json:"max_article_id"`
+}
+
+func (c *OfficialAccountClient) fetchCookie(acct *OfficialAccount) error {
+	u := fmt.Sprintf("https://mp.weixin.qq.com/mp/author?action=show&__biz=%s&idx=1&scene=142&rscene=128&uin=%s&key=%s&devicetype=UnifiedPCMac&version=f2640619&lang=zh_CN&ascene=1&acctmode=0&pass_ticket=%s&countrycode=CN",
+		acct.Biz, acct.Uin, acct.Key, acct.PassTicket)
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	cookies := resp.Cookies()
+	if len(cookies) > 0 {
+		var cookieParts []string
+		for _, ck := range cookies {
+			cookieParts = append(cookieParts, fmt.Sprintf("%s=%s", ck.Name, ck.Value))
+		}
+		acct.Cookie = strings.Join(cookieParts, "; ")
+		acct.CookieExpiration = time.Now().Add(24 * time.Hour).Unix()
+		save_accounts()
+		return nil
+	}
+	return errors.New("no cookie found")
+}
+
+func (c *OfficialAccountClient) fetchArticleList(acct *OfficialAccount) (*ArticleListResponse, error) {
+	if acct.Cookie == "" || time.Now().Unix() >= acct.CookieExpiration {
+		if err := c.fetchCookie(acct); err != nil {
+			return nil, err
+		}
+	}
+
+	u := fmt.Sprintf("https://mp.weixin.qq.com/mp/author?action=get_articles&author_id=%s&scene=142&limit=30&version=undefined&appmsg_token=%s&x5=0&f=json&user_article_role=0",
+		acct.AuthorId, acct.AppmsgToken)
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Cookie", acct.Cookie)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var data ArticleListResponse
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		return nil, err
+	}
+
+	return &data, nil
 }
 
 func (c *OfficialAccountClient) fetchMsgList(logger zerolog.Logger, biz string, offset int) (*OfficialMsgListResp, error) {
