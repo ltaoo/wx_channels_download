@@ -10,7 +10,7 @@ import (
 
 type OfficialAccountConfig struct {
 	RootDir                   string
-	Disabled                  bool // 是否禁用公众号服务
+	Disabled                  bool `json:"officialServerDisabled"` // 是否禁用公众号服务
 	DebugShowError            bool
 	PagespyEnabled            bool
 	Protocol                  string
@@ -18,10 +18,10 @@ type OfficialAccountConfig struct {
 	Port                      int
 	Addr                      string
 	RemoteMode                bool
-	RemoteServerProtocol      string
-	RemoteServerHostname      string
-	RemoteServerPort          int
-	RefreshToken              string
+	RemoteServerProtocol      string `json:"officialRemoteServerProtocol"`
+	RemoteServerHostname      string `json:"officialRemoteServerHostname"`
+	RemoteServerPort          int    `json:"officialRemoteServerPort"`
+	RefreshToken              string `json:"officialServerRefreshToken"`
 	TokenFilepath             string
 	RefreshSkipMinutes        int
 	MaxWebsocketClients       int

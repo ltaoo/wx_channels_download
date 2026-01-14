@@ -1,6 +1,7 @@
 package officialaccount
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -30,12 +31,9 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
 				}
 				inserted_scripts := ""
-				// cfg_byte, _ := json.Marshal(cfg)
-				// script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, script_attr, string(cfg_byte), version)
-				// inserted_scripts += script_config
-				// variable_byte, _ := json.Marshal(variables)
-				// script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
-				// inserted_scripts += script_variable
+				cfg_byte, _ := json.Marshal(cfg)
+				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
+				inserted_scripts += script_config
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
