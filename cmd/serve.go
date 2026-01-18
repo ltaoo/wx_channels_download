@@ -80,9 +80,10 @@ func serve_command() {
 	if mp_token_filepath != "" && err == nil {
 		fmt.Printf("公众号授权凭证文件 %s\n", color.New(color.Underline).Sprint(mp_token_filepath))
 	}
-	l, err := net.Listen("tcp", api_cfg.Addr)
+	addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_cfg.Addr))
+		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", addr))
 		os.Exit(0)
 		return
 	}
@@ -189,13 +190,14 @@ var mp_status_cmd = &cobra.Command{
 			_ = remove_mp_pidfile()
 			return
 		}
-		ok := port_listening(api_cfg.Addr)
+		addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
+		ok := port_listening(addr)
 		type Status struct {
 			PID       int    `json:"pid"`
 			Addr      string `json:"addr"`
 			Listening bool   `json:"listening"`
 		}
-		s := Status{PID: pid, Addr: api_cfg.Addr, Listening: ok}
+		s := Status{PID: pid, Addr: addr, Listening: ok}
 		b, _ := json.Marshal(s)
 		fmt.Println(string(b))
 	},

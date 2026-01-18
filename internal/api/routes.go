@@ -36,6 +36,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
+	c.engine.GET("/video", c.handleStreamVideo)
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
 	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)

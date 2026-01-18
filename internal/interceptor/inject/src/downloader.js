@@ -117,15 +117,28 @@ var isWin = /Windows|Win/i.test(ua);
           });
           return;
         }
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: "https://" + FakeAPIServerAddr + "/api/show_file",
-          body: { path, name, id },
-        });
-        if (err) {
-          WXU.error({
-            msg: err.message,
+        if (WXU.config.remoteServerEnabled) {
+          var u =
+            WXU.config.remoteServerProtocol +
+            "://" +
+            WXU.config.remoteServerHostname;
+          if (WXU.config.remoteServerPort !== 80) {
+            u += ":" + WXU.config.remoteServerPort;
+          }
+          u += "/video?id=" + id;
+          window.open(u);
+        } else {
+          // Use original API for local file
+          var [err, data] = await WXU.request({
+            method: "POST",
+            url: "https://" + FakeAPIServerAddr + "/api/show_file",
+            body: { path, name, id },
           });
+          if (err) {
+            WXU.error({
+              msg: err.message,
+            });
+          }
         }
         return;
       }

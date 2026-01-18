@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
@@ -15,7 +16,7 @@ type APIServer struct {
 }
 
 func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger) *APIServer {
-	srv := manager.NewHTTPServer("API服务", "api", cfg.Addr)
+	srv := manager.NewHTTPServer("API服务", "api", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
 	client := NewAPIClient(cfg, logger)
 	srv.SetHandler(withCORS(client))
 	return &APIServer{

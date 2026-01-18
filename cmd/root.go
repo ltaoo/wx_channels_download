@@ -117,6 +117,9 @@ func root_command(cfg *config.Config) {
 			},
 		})
 		interceptor_srv.Interceptor.AddVariable("remoteServerEnabled", api_cfg.RemoteServerEnabled)
+		interceptor_srv.Interceptor.AddVariable("remoteServerProtocol", api_cfg.RemoteServerProtocol)
+		interceptor_srv.Interceptor.AddVariable("remoteServerHostname", api_cfg.RemoteServerHostname)
+		interceptor_srv.Interceptor.AddVariable("remoteServerPort", api_cfg.RemoteServerPort)
 	} else {
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 			Match: "api.weixin.qq.com",
@@ -145,9 +148,10 @@ func root_command(cfg *config.Config) {
 	} else {
 		fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
 	}
-	l, err := net.Listen("tcp", api_cfg.Addr)
+	api_addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
+	l, err := net.Listen("tcp", api_addr)
 	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_cfg.Addr))
+		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_addr))
 		os.Exit(0)
 		return
 	}

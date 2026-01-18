@@ -11,6 +11,7 @@ wx_channel*
 
 config.yaml
 global.js
+downloads
 
 node_modules
 docs/.vitepress/cache
