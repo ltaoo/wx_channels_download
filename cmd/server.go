@@ -28,12 +28,12 @@ var (
 )
 
 var serve_cmd = &cobra.Command{
-	Use:   "serve",
+	Use:   "server",
 	Short: "服务器模式运行",
 	Long:  "仅启用API相关功能",
 	Run: func(cmd *cobra.Command, args []string) {
 		command := cmd.Name()
-		if command != "serve" {
+		if command != "server" {
 			return
 		}
 		if server_daemon {
@@ -50,7 +50,7 @@ func init() {
 	_ = serve_cmd.Flags().MarkHidden("daemon-child")
 
 	root_cmd.AddCommand(serve_cmd)
-	serve_cmd.AddCommand(mp_status_cmd)
+	serve_cmd.AddCommand(server_status_cmd)
 	serve_cmd.AddCommand(mp_stop_cmd)
 }
 
@@ -91,9 +91,9 @@ func serve_command() {
 	api_srv := api.NewAPIServer(api_cfg, &logger)
 	mgr.RegisterServer(api_srv)
 	if daemon_child {
-		_ = write_mp_pidfile(os.Getpid())
+		_ = write_wx_pidfile(os.Getpid())
 		defer func() {
-			_ = remove_mp_pidfile()
+			_ = remove_wx_pidfile()
 		}()
 	}
 	cleanup := func() {
@@ -121,14 +121,14 @@ func start_daemon() {
 		color.Red(fmt.Sprintf("ERROR 获取可执行文件失败: %v\n", err))
 		return
 	}
-	log_fp := filepath.Join(Cfg.RootDir, "mp.log")
+	log_fp := filepath.Join(Cfg.RootDir, "wx.log")
 	log_file, err := os.OpenFile(log_fp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		color.Red(fmt.Sprintf("ERROR 打开日志文件失败: %v\n", err))
 		return
 	}
 	defer log_file.Close()
-	c := exec.Command(exe, "mp", "--daemon-child")
+	c := exec.Command(exe, "server", "--daemon-child")
 	c.Stdout = log_file
 	c.Stderr = log_file
 	c.SysProcAttr = system.SetSysProcAttrForDaemon()
@@ -136,7 +136,7 @@ func start_daemon() {
 		color.Red(fmt.Sprintf("ERROR 启动守护进程失败: %v\n", err))
 		return
 	}
-	if err := write_mp_pidfile(c.Process.Pid); err != nil {
+	if err := write_wx_pidfile(c.Process.Pid); err != nil {
 		color.Red(fmt.Sprintf("ERROR 写入PID文件失败: %v\n", err))
 	} else {
 		color.Green(fmt.Sprintf("守护进程已启动, PID: %d", c.Process.Pid))
@@ -144,17 +144,17 @@ func start_daemon() {
 	fmt.Printf("日志文件 %s\n", color.New(color.Underline).Sprint(log_fp))
 }
 
-func mp_pidfile_path() string {
-	return filepath.Join(Cfg.RootDir, "mp.pid")
+func wx_pidfile_path() string {
+	return filepath.Join(Cfg.RootDir, "wx.pid")
 }
 
-func write_mp_pidfile(pid int) error {
-	fp := mp_pidfile_path()
+func write_wx_pidfile(pid int) error {
+	fp := wx_pidfile_path()
 	return os.WriteFile(fp, []byte(strconv.Itoa(pid)), 0644)
 }
 
-func read_mp_pidfile() (int, error) {
-	fp := mp_pidfile_path()
+func read_wx_pidfile() (int, error) {
+	fp := wx_pidfile_path()
 	data, err := os.ReadFile(fp)
 	if err != nil {
 		return 0, err
@@ -166,20 +166,20 @@ func read_mp_pidfile() (int, error) {
 	return p, nil
 }
 
-func remove_mp_pidfile() error {
-	fp := mp_pidfile_path()
+func remove_wx_pidfile() error {
+	fp := wx_pidfile_path()
 	if _, err := os.Stat(fp); err == nil {
 		return os.Remove(fp)
 	}
 	return nil
 }
 
-var mp_status_cmd = &cobra.Command{
+var server_status_cmd = &cobra.Command{
 	Use:   "status",
 	Short: "查看公众号服务状态",
 	Run: func(cmd *cobra.Command, args []string) {
 		api_cfg := api.NewAPIConfig(Cfg, true)
-		pid, err := read_mp_pidfile()
+		pid, err := read_wx_pidfile()
 		if err != nil || pid == 0 {
 			color.Red("未发现守护进程")
 			return
@@ -187,7 +187,7 @@ var mp_status_cmd = &cobra.Command{
 		running := system.IsProcessRunning(pid)
 		if !running {
 			color.Red(fmt.Sprintf("进程未运行, PID: %d", pid))
-			_ = remove_mp_pidfile()
+			_ = remove_wx_pidfile()
 			return
 		}
 		addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
@@ -207,14 +207,14 @@ var mp_stop_cmd = &cobra.Command{
 	Use:   "stop",
 	Short: "停止公众号服务",
 	Run: func(cmd *cobra.Command, args []string) {
-		pid, err := read_mp_pidfile()
+		pid, err := read_wx_pidfile()
 		if err != nil || pid == 0 {
 			color.Red("未发现守护进程")
 			return
 		}
 		if !system.IsProcessRunning(pid) {
 			color.Green("进程已停止")
-			_ = remove_mp_pidfile()
+			_ = remove_wx_pidfile()
 			return
 		}
 		_ = system.TerminateProcess(pid)
@@ -225,7 +225,7 @@ var mp_stop_cmd = &cobra.Command{
 			select {
 			case <-tick.C:
 				if !system.IsProcessRunning(pid) {
-					_ = remove_mp_pidfile()
+					_ = remove_wx_pidfile()
 					color.Green("服务已关闭")
 					return
 				}
