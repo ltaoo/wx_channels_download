@@ -153,14 +153,14 @@ type FilenameProcessor struct {
 }
 
 // 初始化处理器
-func NewFilenameProcessor(root_dir string) *FilenameProcessor {
+func NewFilenameProcessor(root_dir string, existing_files map[string]int) *FilenameProcessor {
 	// 跨平台的非法字符（Windows最严格）
 	// Windows: <>:"/\|?* 以及控制字符
 	// Unix-like: / 和 null
 	forbiddenPattern := `[<>:"/\\|?*\x00-\x1f]`
 
 	return &FilenameProcessor{
-		usedFilenames:     make(map[string]int),
+		usedFilenames:     existing_files,
 		forbiddenChars:    regexp.MustCompile(forbiddenPattern),
 		maxFilenameLength: 255, // 大多数文件系统的限制
 		baseDir:           root_dir,
@@ -240,7 +240,7 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 		name_without_ext := clean_name[:len(clean_name)-len(ext)]
 		for {
 			count++
-			new_name := fmt.Sprintf("%s_%d%s", name_without_ext, count, ext)
+			new_name := fmt.Sprintf("%s(%d)%s", name_without_ext, count, ext)
 			new_path := filepath.Join(dir, new_name)
 			new_path_key := filepath.Clean(new_path)
 
@@ -261,15 +261,15 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 }
 
 // 主处理函数
-func ProcessFilenames(items []map[string]string, baseDir string) ([]map[string]string, error) {
-	processor := NewFilenameProcessor(baseDir)
+func ProcessFilename(existing_task_map map[string]int, items []map[string]string, base_dir string) ([]map[string]string, error) {
+	processor := NewFilenameProcessor(base_dir, existing_task_map)
 	results := make([]map[string]string, 0, len(items))
 
 	// 第一遍：收集所有原始文件名
-	originalNames := make(map[string][]int) // name -> [ids]
+	original_names := make(map[string][]int) // name -> [ids]
 	for _, item := range items {
 		if name, ok := item["name"]; ok {
-			originalNames[name] = append(originalNames[name], getID(item))
+			original_names[name] = append(original_names[name], get_id(item))
 		}
 	}
 
@@ -288,15 +288,15 @@ func ProcessFilenames(items []map[string]string, baseDir string) ([]map[string]s
 		}
 
 		// 处理文件名
-		finalName, dir, err := processor.ProcessFilename(name)
+		final_name, dir, err := processor.ProcessFilename(name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process filename for item %v: %v", item, err)
 		}
 
 		// 更新结果
-		result["name"] = finalName
+		result["name"] = final_name
 		result["original_name"] = name
-		result["full_path"] = filepath.Join(dir, finalName)
+		result["full_path"] = filepath.Join(dir, final_name)
 
 		results = append(results, result)
 	}
@@ -305,7 +305,7 @@ func ProcessFilenames(items []map[string]string, baseDir string) ([]map[string]s
 }
 
 // 辅助函数：从map中获取ID
-func getID(item map[string]string) int {
+func get_id(item map[string]string) int {
 	// 根据你的实际情况调整
 	// 这里假设id是数字字符串
 	idStr, ok := item["id"]
