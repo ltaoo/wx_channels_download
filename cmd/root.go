@@ -114,6 +114,7 @@ func root_command(cfg *config.Config) {
 		},
 	})
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
+	interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
 	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 		Match: "official.weixin.qq.com",
 		Target: &proxy.TargetConfig{

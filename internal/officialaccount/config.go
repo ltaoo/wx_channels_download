@@ -10,16 +10,18 @@ import (
 
 type OfficialAccountConfig struct {
 	RootDir                   string
-	DisableServer             bool // 本地不启用服务
+	Disabled                  bool `json:"officialServerDisabled"` // 是否禁用公众号服务
+	DebugShowError            bool
+	PagespyEnabled            bool
 	Protocol                  string
 	Hostname                  string
 	Port                      int
 	Addr                      string
 	RemoteMode                bool
-	RemoteServerProtocol      string
-	RemoteServerHostname      string
-	RemoteServerPort          int
-	RefreshToken              string
+	RemoteServerProtocol      string `json:"officialRemoteServerProtocol"`
+	RemoteServerHostname      string `json:"officialRemoteServerHostname"`
+	RemoteServerPort          int    `json:"officialRemoteServerPort"`
+	RefreshToken              string `json:"officialServerRefreshToken"`
 	TokenFilepath             string
 	RefreshSkipMinutes        int
 	MaxWebsocketClients       int
@@ -32,6 +34,8 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 	port := viper.GetInt("api.port")
 	cfg := &OfficialAccountConfig{
 		RootDir:                   c.RootDir,
+		DebugShowError:            viper.GetBool("debug.error"),
+		PagespyEnabled:            viper.GetBool("pagespy.enabled"),
 		Protocol:                  protocol,
 		Hostname:                  hostname,
 		Port:                      port,
@@ -39,6 +43,7 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		RemoteMode:                remote_mode,
 		RefreshToken:              viper.GetString("mp.refreshToken"),
 		TokenFilepath:             viper.GetString("mp.tokenFilepath"),
+		Disabled:                  viper.GetBool("mp.disabled"),
 		RemoteServerProtocol:      viper.GetString("mp.remoteServer.protocol"),
 		RemoteServerHostname:      viper.GetString("mp.remoteServer.hostname"),
 		RemoteServerPort:          viper.GetInt("mp.remoteServer.port"),

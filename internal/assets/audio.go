@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"errors"
+	"math"
 	"sync"
 	"time"
 
@@ -25,6 +26,8 @@ var (
 	player      *oto.Player
 	init_err    error
 )
+
+var doneVolume = 0.4
 
 type WavMeta struct {
 	sample_rate      int
@@ -77,6 +80,34 @@ func parse_wav(b []byte) (*WavMeta, error) {
 	return &meta, nil
 }
 
+func applyVolumeInt16(p []byte, factor float64) {
+	if factor <= 0 {
+		for i := 0; i+1 < len(p); i += 2 {
+			p[i] = 0
+			p[i+1] = 0
+		}
+		return
+	}
+	if factor == 1 {
+		return
+	}
+	for i := 0; i+1 < len(p); i += 2 {
+		sample := int16(binary.LittleEndian.Uint16(p[i:]))
+		scaled := int(float64(sample) * factor)
+		if scaled > math.MaxInt16 {
+			sampled := math.MaxInt16
+			binary.LittleEndian.PutUint16(p[i:], uint16(int16(sampled)))
+			continue
+		}
+		if scaled < math.MinInt16 {
+			sampled := math.MinInt16
+			binary.LittleEndian.PutUint16(p[i:], uint16(int16(sampled)))
+			continue
+		}
+		binary.LittleEndian.PutUint16(p[i:], uint16(int16(scaled)))
+	}
+}
+
 func PlayDoneAudio() error {
 	mu.Lock()
 	if time.Since(last_played) < time.Second {
@@ -116,9 +147,10 @@ func PlayDoneAudio() error {
 		if end > len(done_wav) {
 			end = len(done_wav)
 		}
-		// Use bytes.NewReader directly to support Seeking (required for reuse)
-		// io.NopCloser hides the Seek method
-		reader := bytes.NewReader(done_wav[start:end])
+		data := make([]byte, end-start)
+		copy(data, done_wav[start:end])
+		applyVolumeInt16(data, doneVolume)
+		reader := bytes.NewReader(data)
 		player = otoCtx.NewPlayer(reader)
 	})
 	if init_err != nil {

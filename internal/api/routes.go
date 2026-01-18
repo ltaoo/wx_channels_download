@@ -38,6 +38,7 @@ func (c *APIClient) SetupRoutes() {
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
 	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)
+	c.engine.GET("/api/mp/article/list", c.official.HandleFetchArticleList)
 	c.engine.POST("/api/mp/delete", c.official.HandleDelete)
 	c.engine.POST("/api/mp/refresh", c.official.HandleRefreshEvent)
 	c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)

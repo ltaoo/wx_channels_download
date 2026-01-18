@@ -531,7 +531,10 @@
         const tbody = document.querySelector("#accounts tbody");
         tbody.innerHTML = "";
         for (const it of data.list) {
-          const rss = REMOTE_SERVER ? `${REMOTE_SERVER}/rss/mp?biz=${encodeURIComponent(it.biz)}${TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ''}` : "-";
+          const rss = (() => {
+            const origin = REMOTE_SERVER || window.location.origin;
+            return `${origin}/rss/mp?biz=${encodeURIComponent(it.biz)}${TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ''}`;
+          })();
           const tr = document.createElement("tr");
           const hasRefreshUri = !!(it && it.refresh_uri && String(it.refresh_uri).trim());
           if (!REMOTE_MODE && !hasRefreshUri) tr.className = "row-missing";
