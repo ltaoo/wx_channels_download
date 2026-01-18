@@ -22,7 +22,7 @@ download:
   filenameTemplate: "{{filename}}_{{spec}}"
 ```
 
-下载时的文件名称，默认「文件名_视频质量」。`.mp4` 后缀由下载器添加，不支持手动设置后缀
+下载时的文件名称，默认「文件名\_视频质量」。`.mp4` 后缀由下载器添加，不支持手动设置后缀
 
 目前支持如下变量
 
@@ -45,7 +45,7 @@ type params = {
 };
 ```
 
-如果存在 `/` 符号，例如 <code v-pre>{{author}}/{{filename}}_{{spec}}</code>，这样下载的文件会放在以作者名为目录的目录中，该能力仅在后台下载时生效
+如果存在 `/` 符号，例如 <code v-pre>{{author}}/{{filename}}\_{{spec}}</code>，这样下载的文件会放在以作者名为目录的目录中，该能力仅在后台下载时生效
 
 ## 下载目录
 
@@ -76,7 +76,6 @@ download:
 
 是否在前端下载时暂停视频播放，默认 `false`。下载完成后会继续播放。
 
-
 ## 完成音效
 
 ```yaml
@@ -94,3 +93,16 @@ download:
 ```
 
 批量下载时是否强制检查所有视频，默认 `false`。
+
+## 远程服务
+
+```yaml
+download:
+  remoteServer:
+    enabled: false
+    protocol: "http"
+    hostname: "192.168.1.118"
+    port: 2022
+```
+
+是否启用远程服务下载，默认 `false`
