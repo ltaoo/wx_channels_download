@@ -56,7 +56,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		downloader: downloader,
 		official:   officialaccount_client,
 		channels:   channels_client,
-		formatter:  util.NewFilenameProcessor(cfg.DownloadDir),
+		formatter:  util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:        cfg,
 		engine:     gin.Default(),
 		logger:     &logger,

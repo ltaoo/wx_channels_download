@@ -380,19 +380,42 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		return
 	}
 	tasks := c.downloader.GetTasks()
-	existing_task_map := make(map[string]struct{})
+	existing_task_map := make(map[string]int)
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
 			continue
 		}
 		key := fmt.Sprintf("%s|%s|%s", t.Meta.Req.Labels["id"], t.Meta.Req.Labels["spec"], t.Meta.Req.Labels["suffix"])
-		existing_task_map[key] = struct{}{}
+		existing_task_map[key] = 1
 	}
+	task, err := buildBatchCreateTask(c, existing_task_map, body.Feeds, c.cfg.DownloadDir)
+	if err != nil {
+		result.Err(ctx, 500, "文件名处理失败: "+err.Error())
+		return
+	}
+	if len(task.Reqs) == 0 {
+		result.Ok(ctx, gin.H{"ids": []string{}})
+		return
+	}
+	ids, err := c.downloader.CreateDirectBatch(task)
+	if err != nil {
+		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
+		result.Err(ctx, 500, "创建任务失败: "+err.Error())
+		return
+	}
+	c.channels.Broadcast(APIClientWSMessage{
+		Type: "tasks",
+		Data: c.downloader.GetTasks(),
+	})
+	result.Ok(ctx, gin.H{"ids": ids})
+}
 
+func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds []FeedDownloadTaskBody, download_dir string) (*base.CreateTaskBatch, error) {
 	var items []map[string]string
-	for _, req := range body.Feeds {
+	for _, req := range feeds {
 		key := fmt.Sprintf("%s|%s|%s", req.Id, req.Spec, req.Suffix)
-		if _, exists := existing_task_map[key]; exists {
+		_, exists := existing_task_map[key]
+		if exists {
 			continue
 		}
 		items = append(items, map[string]string{
@@ -406,21 +429,16 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		})
 	}
 	if len(items) == 0 {
-		result.Ok(ctx, gin.H{"ids": []string{}})
-		return
-	}
-	processed_reqs, err := util.ProcessFilenames(items, c.cfg.DownloadDir)
-	if err != nil {
-		result.Err(ctx, 500, "文件名处理失败: "+err.Error())
-		return
+		return &base.CreateTaskBatch{}, nil
 	}
 	task := base.CreateTaskBatch{}
-	for _, item := range processed_reqs {
+	for _, item := range items {
+		filename, dir, err := c.formatter.ProcessFilename(item["name"] + item["suffix"])
+		if err != nil {
+			continue
+		}
+		fmt.Println("before create task", filename, dir)
 		url := item["url"]
-		full_path := item["full_path"]
-		// 从 full_path 中提取目录
-		rel_dir := filepath.Dir(full_path)
-		// connections := c.resolve_connections(url)
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
 				URL: url,
@@ -433,22 +451,12 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 				},
 			},
 			Opts: &base.Options{
-				Name: item["name"] + item["suffix"],
-				Path: filepath.Join(c.cfg.DownloadDir, rel_dir),
+				Name: filename,
+				Path: filepath.Join(download_dir, dir),
 			},
 		})
 	}
-	ids, err := c.downloader.CreateDirectBatch(&task)
-	if err != nil {
-		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
-		result.Err(ctx, 500, "创建任务失败: "+err.Error())
-		return
-	}
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "tasks",
-		Data: c.downloader.GetTasks(),
-	})
-	result.Ok(ctx, gin.H{"ids": ids})
+	return &task, nil
 }
 
 func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {

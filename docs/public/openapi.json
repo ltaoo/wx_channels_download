@@ -1186,6 +1186,168 @@
         }
       }
     },
+    "/api/task/create": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建下载任务",
+        "description": "创建单个下载任务，支持下载视频、音频等文件。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "任务唯一标识 ID"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "下载地址"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "任务标题"
+                  },
+                  "filename": {
+                    "type": "string",
+                    "description": "文件名（不包含扩展名）"
+                  },
+                  "key": {
+                    "type": "integer",
+                    "description": "密钥"
+                  },
+                  "spec": {
+                    "type": "string",
+                    "description": "规格参数"
+                  },
+                  "suffix": {
+                    "type": "string",
+                    "description": "文件扩展名（如 .mp4, .mp3）"
+                  }
+                },
+                "required": ["id", "url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "不合法的参数",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/create_batch": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "批量创建下载任务",
+        "description": "批量创建多个下载任务，支持下载视频、音频等文件。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "feeds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "任务唯一标识 ID"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "下载地址"
+                        },
+                        "title": {
+                          "type": "string",
+                          "description": "任务标题"
+                        },
+                        "filename": {
+                          "type": "string",
+                          "description": "文件名（不包含扩展名）"
+                        },
+                        "key": {
+                          "type": "integer",
+                          "description": "密钥"
+                        },
+                        "spec": {
+                          "type": "string",
+                          "description": "规格参数"
+                        },
+                        "suffix": {
+                          "type": "string",
+                          "description": "文件扩展名（如 .mp4, .mp3）"
+                        }
+                      },
+                      "required": ["id", "url"]
+                    },
+                    "description": "下载任务列表"
+                  }
+                },
+                "required": ["feeds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "批量任务创建成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "ids": ["task_id_1", "task_id_2", "task_id_3"]
+                      }
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "不合法的参数",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/task/list": {
       "get": {
         "tags": ["下载器"],
