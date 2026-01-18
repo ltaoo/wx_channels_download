@@ -9,7 +9,7 @@ title: 服务器模式
 ## 用法
 
 ```sh
-wx_video_download serve start
+wx_video_download server start
 ```
 
 ## 参数
@@ -20,11 +20,11 @@ wx_video_download serve start
 ### 查看服务状态
 
 ```sh
-wx_video_download serve status
+wx_video_download server status
 ```
 
 ### 停止服务
 
 ```sh
-wx_video_download serve stop
+wx_video_download server stop
 ```

@@ -195,16 +195,19 @@ var isWin = /Windows|Win/i.test(ua);
     var moredropdown$ = WUI.DropdownMenu($more, {
       zIndex: 99999,
       children: [
-        WUI.MenuItem({
-          label: "打开目录",
-          onClick: async () => {
-            await WXU.request({
-              method: "POST",
-              url: "https://" + FakeAPIServerAddr + "/api/open_download_dir",
-            });
-            moredropdown$.hide();
-          },
-        }),
+        !WXU.config.remoteServerEnabled
+          ? WUI.MenuItem({
+              label: "打开目录",
+              onClick: async () => {
+                await WXU.request({
+                  method: "POST",
+                  url:
+                    "https://" + FakeAPIServerAddr + "/api/open_download_dir",
+                });
+                moredropdown$.hide();
+              },
+            })
+          : null,
         WUI.MenuItem({
           label: "清空记录",
           onClick: async () => {
@@ -215,7 +218,7 @@ var isWin = /Windows|Win/i.test(ua);
             });
           },
         }),
-      ],
+      ].filter(Boolean),
     });
     moredropdown$.ui.$trigger.onMouseEnter(() => {
       moredropdown$.show();
