@@ -3,9 +3,9 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"runtime"
-	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -24,14 +24,9 @@ func is_admin() bool {
 }
 func need_admin_permission() bool {
 	args := os.Args[1:]
-	os_env := runtime.GOOS
-	if os_env == "windows" {
-		if len(args) == 0 {
-			return true
-		}
-		if strings.Contains(args[0], "--") {
-			return true
-		}
+	fmt.Println(args)
+	if len(args) == 0 {
+		return true
 	}
 	return false
 }
