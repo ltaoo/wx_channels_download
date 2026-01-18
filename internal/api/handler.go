@@ -94,7 +94,11 @@ func (c *APIClient) handleFetchFeedListOfContactRSS(ctx *gin.Context) {
 		if len(obj.ObjectDesc.Media) > 0 {
 			m := obj.ObjectDesc.Media[0]
 			video_url := m.URL + m.URLToken
-			mediaURL = "http://" + c.cfg.Addr + "/play?url=" + url.QueryEscape(video_url) + "&key=" + m.DecodeKey
+			addr := c.cfg.Protocol + "://" + c.cfg.Hostname
+			if c.cfg.Port != 80 {
+				addr += ":" + strconv.Itoa(c.cfg.Port)
+			}
+			mediaURL = addr + "/play?url=" + url.QueryEscape(video_url) + "&key=" + m.DecodeKey
 			coverURL = m.CoverUrl
 		}
 
@@ -806,6 +810,49 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, nil)
+}
+
+// 根据任务ID流式返回视频
+func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
+	task_id := ctx.Query("id")
+	if task_id == "" {
+		result.Err(ctx, 400, "missing task id")
+		return
+	}
+	task := c.downloader.GetTask(task_id)
+	if task == nil {
+		result.Err(ctx, 404, "task not found")
+		return
+	}
+	if task.Meta == nil || task.Meta.Req == nil {
+		result.Err(ctx, 400, "invalid task meta")
+		return
+	}
+	path := task.Meta.Opts.Path
+	name := task.Meta.Opts.Name
+	video_filepath := filepath.Join(path, name)
+	_, err := os.Stat(video_filepath)
+	if err != nil {
+		result.Err(ctx, 500, "找不到文件")
+		return
+	}
+	ctx.File(video_filepath)
+}
+
+func (c *APIClient) handleGetFileURL(ctx *gin.Context) {
+	id := ctx.Query("id")
+	if id == "" {
+		result.Err(ctx, 400, "missing id")
+		return
+	}
+	url := c.cfg.Protocol + "://" + c.cfg.Hostname
+	if c.cfg.Port != 80 {
+		url += ":" + strconv.Itoa(c.cfg.Port)
+	}
+	url += "/video?id=" + id
+	result.Ok(ctx, gin.H{
+		"url": url,
+	})
 }
 
 func (c *APIClient) handleTest(ctx *gin.Context) {

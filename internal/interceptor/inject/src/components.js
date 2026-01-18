@@ -184,6 +184,7 @@ var MP3Icon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColo
 var MP4Icon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM10 15V9l5 3-5 3z"/></svg>`;
 var ImageIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`;
 var FolderIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+var ExternalLinkIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>`;
 var PauseIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
 var PlayIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 var DeleteIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
@@ -359,9 +360,12 @@ function __wx_refresh_downloader(selector, tasks) {
       "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
 
     if (isCompleted) {
+      const isOpenExternal = WXU.config.remoteServerEnabled;
+      const openIcon = isOpenExternal ? ExternalLinkIcon : FolderIcon;
+      const openTitle = isOpenExternal ? "打开外部链接" : "打开文件夹";
       actionButtons += `
-             <a href="javascript:" class="wx-download-item-open" aria-label="打开文件夹" title="打开文件夹" data-name="${t.name}" data-path="${t.path}" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
-               ${FolderIcon}
+             <a href="javascript:" class="wx-download-item-open" aria-label="${openTitle}" title="${openTitle}" data-name="${t.name}" data-path="${t.path}" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
+               ${openIcon}
              </a>
              <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">
                ${DeleteIcon}

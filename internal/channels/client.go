@@ -44,9 +44,8 @@ type ChannelsClient struct {
 	OnConnected func(client *Client)
 }
 
-func NewChannelsClient(addr string) *ChannelsClient {
+func NewChannelsClient() *ChannelsClient {
 	return &ChannelsClient{
-		// ServerAddr: addr,
 		ws_clients: make(map[*Client]bool),
 		requests:   make(map[string]chan ClientWebsocketResponse),
 		// engine:     gin.Default(),

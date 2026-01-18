@@ -40,7 +40,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
-	channels_client = channels.NewChannelsClient(cfg.Addr)
+	channels_client = channels.NewChannelsClient()
 	channels_client.OnConnected = func(client *channels.Client) {
 		// Initial tasks
 		tasks := downloader.GetTasks()

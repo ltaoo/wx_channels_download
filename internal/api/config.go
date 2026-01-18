@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/adrg/xdg"
@@ -19,7 +18,9 @@ type APIConfig struct {
 	DownloadDir                  string
 	PlayDoneAudio                bool
 	MaxRunning                   int // 最多同时下载的任务数
-	Addr                         string
+	Protocol                     string
+	Hostname                     string
+	Port                         int
 	RemoteServerEnabled          bool
 	RemoteServerProtocol         string
 	RemoteServerHostname         string
@@ -48,7 +49,9 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		DownloadDir:                  dir,
 		PlayDoneAudio:                viper.GetBool("download.playDoneAudio"),
 		MaxRunning:                   3,
-		Addr:                         viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		Protocol:                     viper.GetString("api.protocol"),
+		Hostname:                     viper.GetString("api.hostname"),
+		Port:                         viper.GetInt("api.port"),
 		RemoteServerEnabled:          viper.GetBool("download.remoteServer.enabled"),
 		RemoteServerProtocol:         viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:         viper.GetString("download.remoteServer.hostname"),
