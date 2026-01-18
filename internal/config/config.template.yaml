@@ -12,6 +12,11 @@ download:
   playDoneAudio: true
   frontend: false
   forceCheckAllFeeds: false
+  remoteServer:
+    enabled: false
+    protocol: "http"
+    hostname: "192.168.1.2"
+    port: 2022
 
 api:
   protocol: "http"

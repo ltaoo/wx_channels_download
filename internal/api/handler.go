@@ -212,6 +212,10 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		return
 	}
 	connections := c.resolve_connections(body.URL)
+	if c.downloader == nil {
+		result.Err(ctx, 500, "请先初始化 downloader")
+		return
+	}
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL: body.URL,
@@ -437,7 +441,6 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 		if err != nil {
 			continue
 		}
-		fmt.Println("before create task", filename, dir)
 		url := item["url"]
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
