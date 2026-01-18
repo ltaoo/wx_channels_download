@@ -115,6 +115,10 @@ func (c *Interceptor) AddPlugin(plugin interface{}) {
 		c.proxy.AddPlugin(plugin)
 	}
 }
+func (c *Interceptor) AddVariable(key string, value any) {
+	c.FrontendVariables[key] = value
+}
+
 func (c *Interceptor) SetLog(writer io.Writer) {
 	l := zerolog.New(writer).With().Timestamp().Str("component", "interceptor").Str("version", c.Version).Logger()
 	c.log = &l

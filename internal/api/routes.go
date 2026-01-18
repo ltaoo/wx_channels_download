@@ -8,33 +8,34 @@ import (
 
 func (c *APIClient) SetupRoutes() {
 	// 只在本地有的接口
-	if !c.cfg.OfficialAccountRemote {
-		// 下载任务接口
-		c.engine.GET("/api/task/list", c.handleFetchTaskList)
-		c.engine.POST("/api/task/create", c.handleCreateTask)
-		c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
-		c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
-		// c.engine.POST("/api/task/create_live", c.handleCreateLiveTask)
-		c.engine.POST("/api/task/start", c.handleStartTask)
-		c.engine.POST("/api/task/pause", c.handlePauseTask)
-		c.engine.POST("/api/task/resume", c.handleResumeTask)
-		c.engine.POST("/api/task/delete", c.handleDeleteTask)
-		c.engine.POST("/api/task/clear", c.handleClearTasks)
+	if !c.cfg.RemoteServerMode {
 		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 		// 视频号接口
-		c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 		c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
 		c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
 		c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
-		c.engine.GET("/play", c.handlePlay)
 		// 公众号接口 本地服务
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
 	}
+	// 下载任务接口
+	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
+	c.engine.GET("/api/task/list", c.handleFetchTaskList)
+	c.engine.POST("/api/task/create", c.handleCreateTask)
+	c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
+	c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
+	// c.engine.POST("/api/task/create_live", c.handleCreateLiveTask)
+	c.engine.POST("/api/task/start", c.handleStartTask)
+	c.engine.POST("/api/task/pause", c.handlePauseTask)
+	c.engine.POST("/api/task/resume", c.handleResumeTask)
+	c.engine.POST("/api/task/delete", c.handleDeleteTask)
+	c.engine.POST("/api/task/clear", c.handleClearTasks)
+	// 文件操作
+	c.engine.GET("/play", c.handlePlay)
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
 	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)

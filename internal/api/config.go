@@ -20,12 +20,16 @@ type APIConfig struct {
 	PlayDoneAudio                bool
 	MaxRunning                   int // 最多同时下载的任务数
 	Addr                         string
-	OfficialAccountRemote        bool // 是否为公众号远端服务模式
+	RemoteServerEnabled          bool
+	RemoteServerProtocol         string
+	RemoteServerHostname         string
+	RemoteServerPort             int
+	RemoteServerMode             bool // 是否为服务器模式
 	OfficialAccountRefreshToken  string
 	OfficialAccountTokenFilepath string
 }
 
-func NewAPIConfig(c *config.Config, mp_remote_mode bool) *APIConfig {
+func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
 	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
@@ -45,7 +49,11 @@ func NewAPIConfig(c *config.Config, mp_remote_mode bool) *APIConfig {
 		PlayDoneAudio:                viper.GetBool("download.playDoneAudio"),
 		MaxRunning:                   3,
 		Addr:                         viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
-		OfficialAccountRemote:        mp_remote_mode,
+		RemoteServerEnabled:          viper.GetBool("download.remoteServer.enabled"),
+		RemoteServerProtocol:         viper.GetString("download.remoteServer.protocol"),
+		RemoteServerHostname:         viper.GetString("download.remoteServer.hostname"),
+		RemoteServerPort:             viper.GetInt("download.remoteServer.port"),
+		RemoteServerMode:             remote_mode,
 		OfficialAccountTokenFilepath: mp_token_filepath,
 		OfficialAccountRefreshToken:  mp_refresh_token,
 	}

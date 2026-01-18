@@ -32,23 +32,20 @@ type APIClient struct {
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	data_dir := cfg.RootDir
-	var downloader *downloadpkg.Downloader
+	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
+		RefreshInterval: 360,
+		Storage:         downloadpkg.NewBoltStorage(data_dir),
+		StorageDir:      data_dir,
+	})
 	var channels_client *channels.ChannelsClient
-	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.OfficialAccountRemote)
+	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
-	if !cfg.OfficialAccountRemote {
-		downloader = downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
-			RefreshInterval: 360,
-			Storage:         downloadpkg.NewBoltStorage(data_dir),
-			StorageDir:      data_dir,
-		})
-		channels_client = channels.NewChannelsClient(cfg.Addr)
-		channels_client.OnConnected = func(client *channels.Client) {
-			// Initial tasks
-			tasks := downloader.GetTasks()
-			if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
-				client.Send <- data
-			}
+	channels_client = channels.NewChannelsClient(cfg.Addr)
+	channels_client.OnConnected = func(client *channels.Client) {
+		// Initial tasks
+		tasks := downloader.GetTasks()
+		if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
+			client.Send <- data
 		}
 	}
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
@@ -87,9 +84,6 @@ type ClientWebsocketResponse struct {
 }
 
 func (c *APIClient) Start() error {
-	if c.cfg.OfficialAccountRemote {
-		return nil
-	}
 	if err := c.downloader.Setup(); err != nil {
 		return err
 	}

@@ -23,38 +23,38 @@ import (
 )
 
 var (
-	mp_daemon       bool
-	mp_daemon_child bool
+	server_daemon bool
+	daemon_child  bool
 )
 
-var mp_cmd = &cobra.Command{
-	Use:   "mp",
-	Short: "公众号服务",
-	Long:  "仅启用公众号相关功能",
+var serve_cmd = &cobra.Command{
+	Use:   "serve",
+	Short: "服务器模式运行",
+	Long:  "仅启用API相关功能",
 	Run: func(cmd *cobra.Command, args []string) {
 		command := cmd.Name()
-		if command != "mp" {
+		if command != "serve" {
 			return
 		}
-		if mp_daemon {
-			mp_start_daemon()
+		if server_daemon {
+			start_daemon()
 			return
 		}
-		mp_command()
+		serve_command()
 	},
 }
 
 func init() {
-	mp_cmd.Flags().BoolVarP(&mp_daemon, "daemon", "d", false, "以守护进程运行")
-	mp_cmd.Flags().BoolVar(&mp_daemon_child, "daemon-child", false, "内部参数")
-	_ = mp_cmd.Flags().MarkHidden("daemon-child")
+	serve_cmd.Flags().BoolVarP(&server_daemon, "daemon", "d", false, "以守护进程运行")
+	serve_cmd.Flags().BoolVar(&daemon_child, "daemon-child", false, "内部参数")
+	_ = serve_cmd.Flags().MarkHidden("daemon-child")
 
-	root_cmd.AddCommand(mp_cmd)
-	mp_cmd.AddCommand(mp_status_cmd)
-	mp_cmd.AddCommand(mp_stop_cmd)
+	root_cmd.AddCommand(serve_cmd)
+	serve_cmd.AddCommand(mp_status_cmd)
+	serve_cmd.AddCommand(mp_stop_cmd)
 }
 
-func mp_command() {
+func serve_command() {
 	ctx, stop := signal.NotifyContext(context.Background(), system.Signals()...)
 	defer stop()
 
@@ -89,7 +89,7 @@ func mp_command() {
 	l.Close()
 	api_srv := api.NewAPIServer(api_cfg, &logger)
 	mgr.RegisterServer(api_srv)
-	if mp_daemon_child {
+	if daemon_child {
 		_ = write_mp_pidfile(os.Getpid())
 		defer func() {
 			_ = remove_mp_pidfile()
@@ -114,7 +114,7 @@ func mp_command() {
 	cleanup()
 }
 
-func mp_start_daemon() {
+func start_daemon() {
 	exe, err := os.Executable()
 	if err != nil {
 		color.Red(fmt.Sprintf("ERROR 获取可执行文件失败: %v\n", err))

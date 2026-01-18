@@ -616,6 +616,7 @@ var WXU = (() => {
        * @returns
        */
       async create(feed, opt = {}) {
+        console.log("[downloader.create]create", feed);
         var spec = (() => {
           if (opt.spec) {
             return opt.spec;
@@ -650,6 +651,7 @@ var WXU = (() => {
         if (opt.suffix !== ".jpg") {
           feed.url = feed.url + "&X-snsvideoflag=" + spec;
         }
+        // console.log("[downloader.create]before WXU.request");
         var [err, data] = await WXU.request({
           method: "POST",
           url: "https://" + FakeAPIServerAddr + "/api/task/create",
@@ -664,7 +666,7 @@ var WXU = (() => {
           },
         });
         if (err) {
-          console.log("downloader.create failed", err);
+          // console.log("downloader.create failed", err);
           return [err, null];
         }
         WXU.downloader.show();
@@ -920,6 +922,7 @@ var WXU = (() => {
         xhr.open(opt.method, opt.url);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.onload = async function () {
+          // console.log("[request]xhr.responseText", xhr.responseText);
           try {
             var data = JSON.parse(xhr.responseText);
             if (data.code !== 0) {
@@ -933,7 +936,8 @@ var WXU = (() => {
           resolve([null, xhr.responseText]);
         };
         xhr.onerror = function (err) {
-          reject([err, null]);
+          // console.log("[request]xhr.onerror", err);
+          resolve([new Error(err.type), null]);
         };
         xhr.send(JSON.stringify(opt.body));
       });

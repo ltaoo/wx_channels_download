@@ -96,37 +96,55 @@ func root_command(cfg *config.Config) {
 		Str("version", cfg.Version).
 		Logger()
 
-	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
+	api_cfg := api.NewAPIConfig(Cfg, false)
+	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
+	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
 	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
-	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-		Match: "api.weixin.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: "http",
-			Host:     interceptor_cfg.APIServerHostname,
-			Port:     interceptor_cfg.APIServerPort,
-		},
-	})
-	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
-	interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
-	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-		Match: "official.weixin.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: official_cfg.RemoteServerProtocol,
-			Host:     official_cfg.RemoteServerHostname,
-			Port:     official_cfg.RemoteServerPort,
-		},
-	})
+	if api_cfg.RemoteServerEnabled {
+		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+			Match: "api.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: api_cfg.RemoteServerProtocol,
+				Host:     api_cfg.RemoteServerHostname,
+				Port:     api_cfg.RemoteServerPort,
+			},
+		})
+		interceptor_srv.Interceptor.AddVariable("remoteServerEnabled", api_cfg.RemoteServerEnabled)
+	} else {
+		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+			Match: "api.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: interceptor_cfg.APIServerProtocol,
+				Host:     interceptor_cfg.APIServerHostname,
+				Port:     interceptor_cfg.APIServerPort,
+			},
+		})
+	}
+	if !official_cfg.Disabled {
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
+		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+			Match: "official.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: official_cfg.RemoteServerProtocol,
+				Host:     official_cfg.RemoteServerHostname,
+				Port:     official_cfg.RemoteServerPort,
+			},
+		})
+	}
 	mgr.RegisterServer(interceptor_srv)
-	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
-	fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
+	if api_cfg.RemoteServerEnabled {
+		fmt.Printf("启用了远端服务，视频将下载至远端服务器目录\n\n")
+	} else {
+		fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
+	}
 	l, err := net.Listen("tcp", api_cfg.Addr)
 	if err != nil {
 		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_cfg.Addr))
@@ -136,8 +154,8 @@ func root_command(cfg *config.Config) {
 	l.Close()
 	api_srv := api.NewAPIServer(api_cfg, &logger)
 	mgr.RegisterServer(api_srv)
-	interceptor_srv.Interceptor.FrontendVariables["downloadMaxRunning"] = api_cfg.MaxRunning
-	interceptor_srv.Interceptor.FrontendVariables["downloadDir"] = api_cfg.DownloadDir
+	interceptor_srv.Interceptor.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
+	interceptor_srv.Interceptor.AddVariable("downloadDir", api_cfg.DownloadDir)
 
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
