@@ -228,14 +228,12 @@ var isWin = /Windows|Win/i.test(ua);
 
     WXU.downloader.show = function () {
       download_popover$.open();
-      setTimeout(mountMoreIntoHeader, 0);
     };
     WXU.downloader.hide = function () {
       download_popover$.close();
     };
     WXU.downloader.toggle = function () {
       download_popover$.toggle();
-      setTimeout(mountMoreIntoHeader, 0);
     };
 
     WXU.downloader.status = "disconnected";

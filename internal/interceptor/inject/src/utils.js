@@ -664,6 +664,7 @@ var WXU = (() => {
           },
         });
         if (err) {
+          console.log("downloader.create failed", err);
           return [err, null];
         }
         WXU.downloader.show();
