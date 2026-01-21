@@ -98,12 +98,29 @@ var WXU = (() => {
         // id: feed.id,
         title: feed.description || "直播",
         url: feed.liveInfo.streamUrl,
-        cover_url: feed.anchorContact.liveCoverImgUrl,
-        contact: {
-          id: feed.anchorContact.username,
-          avatar_url: feed.anchorContact.headUrl,
-          nickname: feed.anchorContact.nickname,
-        },
+        cover_url: (() => {
+          if (feed.anchorContact) {
+            return feed.anchorContact.liveCoverImgUrl;
+          }
+          if (feed.objectDesc) {
+            return feed.objectDesc.media[0]?.coverUrl;
+          }
+          return "";
+        })(),
+        contact: (() => {
+          if (feed.anchorContact) {
+            return {
+              id: feed.anchorContact.username,
+              avatar_url: feed.anchorContact.headUrl,
+              nickname: feed.anchorContact.nickname,
+            };
+          }
+          return {
+            id: feed.contact.username,
+            nickname: feed.contact.nickname,
+            avatar_url: feed.contact.headUrl,
+          };
+        })(),
       };
     }
     if (!feed.objectDesc) {
@@ -283,7 +300,7 @@ var WXU = (() => {
       params.author = profile.contact.nickname;
     }
     if (spec) {
-      var matched = profile.spec.find((item) => item.fileFormat === spec);
+      var matched = profile.spec?.find((item) => item.fileFormat === spec);
       if (matched) {
         params.spec = matched.fileFormat;
       }
