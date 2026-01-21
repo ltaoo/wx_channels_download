@@ -3,7 +3,6 @@
 package platform
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"syscall"
@@ -24,7 +23,6 @@ func is_admin() bool {
 }
 func need_admin_permission() bool {
 	args := os.Args[1:]
-	fmt.Println(args)
 	if len(args) == 0 {
 		return true
 	}
