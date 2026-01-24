@@ -30,18 +30,21 @@ var (
 	jsExportBlockReg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// 特定路径的正则
-	jsSourceBufferReg   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	jsInitReg           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
-	jsFeedProfileReg    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	jsPCFlowReg         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
-	jsLiveInfoReg       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	jsJoinLiveReg       = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
-	jsRecommendFeedsReg = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
-	jsUserFeedsReg      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
-	jsFinderPCSearchReg = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
-	jsFinderSearchReg   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
-	jsGoToPrevFlowReg   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
-	jsGoToNextFlowReg   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
+	jsSourceBufferReg      = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	jsInitReg              = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
+	jsFeedProfileReg       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	jsPCFlowReg            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	jsLiveInfoReg          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsJoinLiveReg          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
+	jsRecommendFeedsReg    = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
+	jsUserFeedsReg         = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	jsFinderPCSearchReg    = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
+	jsFinderSearchReg      = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
+	jsGoToPrevFlowReg      = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
+	jsGoToNextFlowReg      = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
+	jsFlowTabReg           = regexp.MustCompile(`flowTab:([a-zA-Z]{1,})`)
+	jsLocalFlowTabReg      = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
+	jsLoadLocalPlaylistReg = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
 func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
@@ -385,36 +388,56 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					return
 				}
 				if util.Includes(pathname, "connect.publish") {
+					flow_list_variable_name := "yt"
+					if m := jsFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
+						flow_list_variable_name = m[1]
+					}
 					{
-						js_go_next_feed := `goToNextFlowFeed:async function(v){
+
+						js_go_next_feed := fmt.Sprintf(`goToNextFlowFeed:async function(v){
 						await $1(v);
-						// yt 来自 flowTab 对应的值
-						console.log('goToNextFlowFeed', yt);
-						if (!yt || !yt.value.feeds) {
+						console.log('goToNextFlowFeed', %[1]s);
+						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
-						var feed = yt.value.feeds[yt.value.currentFeedIndex];
-						console.log("before GotoNextFeed", yt, feed);
+						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
+						console.log("before GotoNextFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
-					}`
+					}`, flow_list_variable_name)
 						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
 					}
 					{
-						js_go_prev_feed := `goToPrevFlowFeed:async function(v){
+						js_go_prev_feed := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
 						await $1(v);
-						console.log('goToPrevFlowFeed', yt);
-						if (!yt || !yt.value.feeds) {
+						console.log('goToPrevFlowFeed', %[1]s);
+						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
-						var feed = yt.value.feeds[yt.value.currentFeedIndex];
-						console.log("before GotoPrevFeed", yt, feed);
+						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
+						console.log("before GotoPrevFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
-					}`
+					}`, flow_list_variable_name)
 						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
 					{
 						js_wxutil := ";WXU.emit(WXU.Events.UtilsLoaded,{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{"
 						js_script = jsExportReg.ReplaceAllString(js_script, js_wxutil)
+					}
+					{
+						local_feed_list_variable_name := "vn"
+						if m := jsLocalFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
+							local_feed_list_variable_name = m[1]
+						}
+						js_load_local := fmt.Sprintf(`loadLocalPlaylist:async function(...args){
+						await $1(...args);
+						console.log('loadLocalPlaylist', %[1]s);
+						if (!%[1]s || !%[1]s.value || !%[1]s.value.feeds) {
+							return;
+						}
+						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
+						WXU.emit(WXU.Events.HomeFeedChanged, feed);
+					}`, local_feed_list_variable_name)
+						js_script = jsLoadLocalPlaylistReg.ReplaceAllString(js_script, js_load_local)
 					}
 					ctx.SetResponseBody(js_script)
 					return

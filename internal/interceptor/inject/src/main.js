@@ -527,6 +527,11 @@ function __wx_render_sider_tools() {
     WXU.set_cur_video();
     __wx_insert_download_btn_to_home_page();
   });
+  WXE.onHomeFeedChanged((feed) => {
+    console.log("[main.js]WXU.onHomeFeedChanged", feed);
+    WXU.set_cur_video();
+    __wx_insert_download_btn_to_home_page();
+  });
   WXE.onFeed((feed) => {
     console.log("[main.js]WXU.onFeed", feed);
     WXU.set_feed(feed);

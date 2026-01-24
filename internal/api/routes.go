@@ -25,6 +25,7 @@ func (c *APIClient) SetupRoutes() {
 	// 下载任务接口
 	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 	c.engine.GET("/api/task/list", c.handleFetchTaskList)
+	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
 	c.engine.POST("/api/task/create", c.handleCreateTask)
 	c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
 	c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
@@ -34,9 +35,11 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/task/resume", c.handleResumeTask)
 	c.engine.POST("/api/task/delete", c.handleDeleteTask)
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
+	c.engine.GET("/api/file", c.handleFetchFile)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
-	c.engine.GET("/video", c.handleStreamVideo)
+	c.engine.GET("/file", c.handleStreamVideo)
+	c.engine.GET("/preview", c.handlePreviewFile)
 	// 公众号接口 远端和本地都有的接口
 	c.engine.GET("/api/mp/list", c.official.HandleFetchList)
 	c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)

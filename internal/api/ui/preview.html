@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>File Preview</title>
+<style>
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; }
+    h2 { text-align: center; color: #333; padding: 15px; margin: 0; flex-shrink: 0; background: #fff; border-bottom: 1px solid #ddd; z-index: 10; }
+    
+    #content { flex: 1; overflow: auto; position: relative; display: flex; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; width: 100%; }
+
+    /* Video styles */
+    .video-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); outline: none; }
+
+    /* Gallery (General) */
+    .gallery { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%; }
+    
+    /* Single Image View */
+    .gallery.single-view { height: 100%; align-items: center; }
+    .gallery.single-view .img-container { background: transparent; padding: 0; box-shadow: none; max-width: 100%; max-height: 100%; display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; }
+    .gallery.single-view .img-container img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer; border-radius: 4px; }
+
+    /* Multi Image / Zip View */
+    .img-container { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; max-width: 300px; }
+    .img-container img { max-width: 100%; max-height: 200px; object-fit: contain; cursor: pointer; border-radius: 4px; display: block; margin: 0 auto; }
+    .img-name { margin-bottom: 8px; font-size: 14px; color: #666; word-break: break-all; }
+
+    /* Overlay */
+    .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; }
+    .overlay img { max-width: 90%; max-height: 90%; object-fit: contain; }
+    .close-btn { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }
+</style>
+<script>
+async function init() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (!id) {
+        document.body.innerHTML = '<h3>Missing task id</h3>';
+        return;
+    }
+
+    try {
+        // 1. Get task profile
+        const profileResp = await fetch(`/api/task/profile?id=${id}`);
+        if (!profileResp.ok) throw new Error('Failed to fetch task profile');
+        const profile = await profileResp.json();
+        if (profile.code !== 0) throw new Error(profile.msg || 'Error fetching profile');
+        
+        const { path, name } = profile.data;
+        
+        // Construct full path
+        let fullPath = path;
+        // Simple join logic for path and name
+        if (fullPath && !fullPath.endsWith('/') && !fullPath.endsWith('\\')) {
+            // Check if it looks like Windows path
+            if (fullPath.includes('\\')) {
+                fullPath += '\\';
+            } else {
+                fullPath += '/';
+            }
+        }
+        fullPath += name;
+
+        // 2. Call /api/file
+        const fileResp = await fetch(`/api/file?path=${encodeURIComponent(fullPath)}`);
+        if (!fileResp.ok) throw new Error('Failed to fetch file info');
+        const fileInfo = await fileResp.json();
+        if (fileInfo.code !== 0) throw new Error(fileInfo.msg || 'Error fetching file info');
+
+        render(fileInfo.data, name);
+
+    } catch (e) {
+        console.error(e);
+        document.body.innerHTML = `<h3>Error: ${e.message}</h3>`;
+    }
+}
+
+function render(data, filename) {
+    const container = document.getElementById('content');
+    document.getElementById('title').innerText = filename;
+    document.title = filename; // Set document title
+
+    if (data.type === 'video') {
+        container.innerHTML = `
+            <div class="video-container">
+                <video controls autoplay>
+                    <source src="${data.url}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        `;
+    } else if (data.type === 'image') {
+        container.innerHTML = `
+             <div class="gallery single-view">
+                <div class="img-container">
+                    <img src="${data.url}" alt="${filename}" onclick="showFull(this.src)">
+                </div>
+            </div>
+        `;
+    } else if (data.type === 'zip') {
+        if (!data.images || data.images.length === 0) {
+             container.innerHTML = '<h3>No images found in zip</h3>';
+             return;
+        }
+        const html = data.images.map(img => `
+            <div class="img-container">
+                <div class="img-name">${img.name || ''}</div>
+                <img src="${img.url}" alt="${img.name}" onclick="showFull(this.src)">
+            </div>
+        `).join('');
+        container.innerHTML = `<div class="gallery">${html}</div>`;
+    } else {
+        container.innerHTML = '<h3>Unsupported file type or format</h3>';
+    }
+}
+
+function showFull(src) {
+	document.getElementById('overlay-img').src = src;
+	document.getElementById('overlay').style.display = 'flex';
+}
+function closeOverlay() {
+	document.getElementById('overlay').style.display = 'none';
+}
+
+window.onload = init;
+</script>
+</head>
+<body>
+<h2 id="title">Loading...</h2>
+<div id="content"></div>
+<div id="overlay" class="overlay" onclick="closeOverlay()">
+	<span class="close-btn">&times;</span>
+	<img id="overlay-img" src="">
+</div>
+</body>
+</html>

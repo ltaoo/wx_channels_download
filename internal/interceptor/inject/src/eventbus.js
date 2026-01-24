@@ -22,6 +22,7 @@ var WXE = (() => {
     UserFeedsLoaded: "UserFeedsLoaded",
     GotoNextFeed: "GotoNextFeed",
     GotoPrevFeed: "GotoPrevFeed",
+    HomeFeedChanged: "HomeFeedChanged",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 获取到直播详情 */
@@ -115,6 +116,16 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.GotoPrevFeed, handler);
       return () => {
         eventbus.off(ChannelsEvents.GotoPrevFeed, handler);
+      };
+    },
+    /**
+     * 首页推荐 切换到指定视频
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onHomeFeedChanged(handler) {
+      eventbus.on(ChannelsEvents.HomeFeedChanged, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.HomeFeedChanged, handler);
       };
     },
     /**
@@ -250,6 +261,10 @@ WXE.onGotoNextFeed((feed) => {
 });
 WXE.onGotoPrevFeed((feed) => {
   console.log("[eventbus.js]onGotoPrevFeed", feed);
+  WXE.emit(WXE.Events.Feed, feed);
+});
+WXE.onHomeFeedChanged((feed) => {
+  console.log("[eventbus.js]onHomeFeedChanged", feed);
   WXE.emit(WXE.Events.Feed, feed);
 });
 WXE.onFetchFeedProfile((feed) => {
