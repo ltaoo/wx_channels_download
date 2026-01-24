@@ -1,9 +1,12 @@
 package api
 
 import (
+	"archive/zip"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -692,17 +695,9 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "缺少 feed id 参数")
 		return
 	}
-	task := c.downloader.GetTask(body.Id)
 	c.downloader.Delete(&downloadpkg.TaskFilter{
 		IDs: []string{body.Id},
 	}, true)
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "event",
-		Data: map[string]any{
-			"Type": "delete",
-			"Task": task,
-		},
-	})
 	result.Ok(ctx, gin.H{"id": body.Id})
 }
 
@@ -814,12 +809,47 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 
 // 根据任务ID流式返回视频
 func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
-	task_id := ctx.Query("id")
-	if task_id == "" {
+	path := ctx.Query("path")
+	if path == "" {
+		task_id := ctx.Query("id")
+		if task_id != "" {
+			task := c.downloader.GetTask(task_id)
+			if task != nil && task.Meta != nil && task.Meta.Opts != nil {
+				path = filepath.Join(task.Meta.Opts.Path, task.Meta.Opts.Name)
+			}
+		}
+	}
+
+	if path == "" {
+		result.Err(ctx, 400, "missing path or id")
+		return
+	}
+
+	_, err := os.Stat(path)
+	if err != nil {
+		result.Err(ctx, 404, "file not found")
+		return
+	}
+	ctx.File(path)
+}
+
+func (c *APIClient) handleStreamImage(ctx *gin.Context) {
+	c.handleStreamVideo(ctx)
+}
+
+func (c *APIClient) handlePreviewFile(ctx *gin.Context) {
+	content := files.HTMLPreview
+	ctx.Header("Content-Type", "text/html; charset=utf-8")
+	ctx.String(200, string(content))
+}
+
+func (c *APIClient) handleFetchTaskProfile(ctx *gin.Context) {
+	id := ctx.Query("id")
+	if id == "" {
 		result.Err(ctx, 400, "missing task id")
 		return
 	}
-	task := c.downloader.GetTask(task_id)
+	task := c.downloader.GetTask(id)
 	if task == nil {
 		result.Err(ctx, 404, "task not found")
 		return
@@ -828,15 +858,124 @@ func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
 		result.Err(ctx, 400, "invalid task meta")
 		return
 	}
-	path := task.Meta.Opts.Path
-	name := task.Meta.Opts.Name
-	video_filepath := filepath.Join(path, name)
-	_, err := os.Stat(video_filepath)
-	if err != nil {
-		result.Err(ctx, 500, "找不到文件")
+	result.Ok(ctx, gin.H{
+		"path": task.Meta.Opts.Path,
+		"name": task.Meta.Opts.Name,
+	})
+}
+
+func (c *APIClient) handleFetchFile(ctx *gin.Context) {
+	path := ctx.Query("path")
+	if path == "" {
+		result.Err(ctx, 400, "missing path")
 		return
 	}
-	ctx.File(video_filepath)
+	// Check if file exists
+	fi, err := os.Stat(path)
+	if err != nil {
+		result.Err(ctx, 404, "file not found")
+		return
+	}
+	if fi.IsDir() {
+		result.Err(ctx, 400, "path is a directory")
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	if c.isImage(ext) {
+		result.Ok(ctx, gin.H{
+			"type": "image",
+			"url":  "/file?path=" + url.QueryEscape(path),
+		})
+		return
+	}
+
+	if ext == ".mp3" || (c.isVideoOrImage(ext) && !c.isImage(ext)) {
+		result.Ok(ctx, gin.H{
+			"type": "video",
+			"url":  "/file?path=" + url.QueryEscape(path),
+		})
+		return
+	}
+
+	if ext == ".zip" {
+		r, err := zip.OpenReader(path)
+		if err != nil {
+			result.Err(ctx, 500, fmt.Sprintf("failed to open zip: %v", err))
+			return
+		}
+		defer r.Close()
+
+		var images []map[string]string
+		for _, f := range r.File {
+			fExt := strings.ToLower(filepath.Ext(f.Name))
+			if c.isImage(fExt) {
+				rc, err := f.Open()
+				if err != nil {
+					continue
+				}
+				if f.FileInfo().Size() > 10*1024*1024 { // 10MB limit
+					rc.Close()
+					continue
+				}
+				data, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					continue
+				}
+
+				base64Str := base64.StdEncoding.EncodeToString(data)
+				mimeType := c.getMimeType(fExt)
+				imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
+				images = append(images, map[string]string{
+					"name": f.Name,
+					"url":  imgSrc,
+				})
+			}
+		}
+		result.Ok(ctx, gin.H{
+			"type":   "zip",
+			"images": images,
+		})
+		return
+	}
+
+	result.Err(ctx, 400, "unsupported file type")
+}
+
+func (c *APIClient) isVideoOrImage(ext string) bool {
+	if c.isImage(ext) {
+		return true
+	}
+	switch ext {
+	case ".mp4", ".mkv", ".avi", ".mov", ".webm":
+		return true
+	}
+	return false
+}
+
+func (c *APIClient) isImage(ext string) bool {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
+		return true
+	}
+	return false
+}
+
+func (c *APIClient) getMimeType(ext string) string {
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	}
+	return "image/jpeg"
 }
 
 func (c *APIClient) handleGetFileURL(ctx *gin.Context) {

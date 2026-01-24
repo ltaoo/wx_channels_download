@@ -72,11 +72,7 @@ var isWin = /Windows|Win/i.test(ua);
           const evt = msg && msg.data ? msg.data : null;
           const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
           if (task) {
-            if (evt.Type === "delete") {
-              tasks.delete(task.id);
-            } else {
-              upsert(task);
-            }
+            upsert(task);
           }
           __wx_refresh_downloader(selector, tasks);
           return;
@@ -102,6 +98,11 @@ var isWin = /Windows|Win/i.test(ua);
         });
         return;
       }
+      const t = tasks.get(id);
+      if (t) {
+        tasks.set(id, { ...t, status: "running" });
+        __wx_refresh_downloader("#downloader_container", tasks);
+      }
     }
     const $task_action_btn = e.target.closest("[data-action]");
     if ($task_action_btn) {
@@ -125,7 +126,7 @@ var isWin = /Windows|Win/i.test(ua);
           if (WXU.config.remoteServerPort !== 80) {
             u += ":" + WXU.config.remoteServerPort;
           }
-          u += "/video?id=" + id;
+          u += "/preview?id=" + id;
           window.open(u);
         } else {
           // Use original API for local file
@@ -158,6 +159,22 @@ var isWin = /Windows|Win/i.test(ua);
           msg: err.message,
         });
         return;
+      }
+      if (action === "delete") {
+        tasks.delete(id);
+        __wx_refresh_downloader("#downloader_container", tasks);
+      } else if (action === "pause") {
+        const t = tasks.get(id);
+        if (t) {
+          tasks.set(id, { ...t, status: "paused" });
+          __wx_refresh_downloader("#downloader_container", tasks);
+        }
+      } else if (action === "resume") {
+        const t = tasks.get(id);
+        if (t) {
+          tasks.set(id, { ...t, status: "running" });
+          __wx_refresh_downloader("#downloader_container", tasks);
+        }
       }
     }
   });
@@ -216,6 +233,8 @@ var isWin = /Windows|Win/i.test(ua);
               method: "POST",
               url: "https://" + FakeAPIServerAddr + "/api/task/clear",
             });
+            tasks.clear();
+            __wx_refresh_downloader("#downloader_container", tasks);
           },
         }),
       ].filter(Boolean),
