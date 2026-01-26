@@ -77,7 +77,7 @@ func installCertificate(cert_data []byte) error {
 		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
 	}
 	cmd := fmt.Sprintf("Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root", cert_file.Name())
-	ps := exec.Command("powershell.exe", "-Command", cmd)
+	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
 		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", string(output)))
@@ -103,7 +103,7 @@ func uninstallCertificate(name string) error {
 		return errors.New("没有找到要删除的证书")
 	}
 	cmd := fmt.Sprintf("Get-ChildItem Cert:\\LocalMachine\\Root\\%v | Remove-Item", matched.Thumbprint)
-	ps := exec.Command("powershell.exe", "-Command", cmd)
+	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
 		return errors.New(fmt.Sprintf("删除证书时发生错误，%v\n", string(output)))

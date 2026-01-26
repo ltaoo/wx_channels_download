@@ -408,12 +408,17 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		result.Ok(ctx, gin.H{"ids": []string{}})
 		return
 	}
+	// start := time.Now()
 	ids, err := c.downloader.CreateDirectBatch(task)
 	if err != nil {
 		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
 		result.Err(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
+	// c.logger.Info().
+	// 	Int("count", len(task.Reqs)).
+	// 	Dur("cost", time.Since(start)).
+	// 	Msg("批量创建任务完成")
 	c.channels.Broadcast(APIClientWSMessage{
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
