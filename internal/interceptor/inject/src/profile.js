@@ -93,7 +93,12 @@
             .map((obj) => {
               return WXU.format_feed(obj);
             })
-            .filter(Boolean);
+            .filter((feed) => {
+              if (feed.type === "live") {
+                return false;
+              }
+              return true;
+            });
           var [err, data] = await WXU.downloader.create_batch(feeds, {
             suffix: ".mp4",
           });
