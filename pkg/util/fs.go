@@ -162,21 +162,38 @@ func NewFilenameProcessor(root_dir string, existing_files map[string]int) *Filen
 	return &FilenameProcessor{
 		usedFilenames:     existing_files,
 		forbiddenChars:    regexp.MustCompile(forbiddenPattern),
-		maxFilenameLength: 255, // 大多数文件系统的限制
+		maxFilenameLength: 235, // 大多数文件系统的限制
 		baseDir:           root_dir,
 	}
 }
 
+// 辅助函数：按字节截取字符串，保持UTF-8完整性
+func (fp *FilenameProcessor) truncateString(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	// 确保不截断UTF-8字符
+	for len(s) > 0 {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if r == utf8.RuneError && size == 1 {
+			s = s[:len(s)-1]
+		} else {
+			break
+		}
+	}
+	return s
+}
+
 // 验证和清理文件名
 func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
+	fmt.Println("SanitizeFilename", filename)
 	if filename == "" {
 		return "", fmt.Errorf("filename cannot be empty")
 	}
 
 	// 检查长度
-	if utf8.RuneCountInString(filename) > fp.maxFilenameLength {
-		filename = string([]rune(filename)[:fp.maxFilenameLength])
-	}
+	filename = fp.truncateString(filename, fp.maxFilenameLength)
 
 	// 移除非法字符
 	filename = fp.forbiddenChars.ReplaceAllString(filename, "")
@@ -209,6 +226,7 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 
 // 处理单个文件名，考虑文件夹
 func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string, error) {
+	input_name = strings.ReplaceAll(input_name, "/", "_")
 	// 分离目录和文件名
 	dir, filename := filepath.Split(input_name)
 	// 清理文件名部分
@@ -220,14 +238,16 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, string(filepath.Separator))
 		dir_components := strings.Split(dir, string(filepath.Separator))
-		for i, comp := range dir_components {
-			cleanComp, err := fp.SanitizeFilename(comp)
+		valid_dirs := []string{}
+		for _, comp := range dir_components {
+			valid_dir, err := fp.SanitizeFilename(comp)
 			if err != nil {
-				return "", "", fmt.Errorf("invalid directory name '%s' in path: %v", comp, err)
+				continue
+				// return "", "", fmt.Errorf("invalid directory name '%s' in path: %v", comp, err)
 			}
-			dir_components[i] = cleanComp
+			valid_dirs = append(valid_dirs, valid_dir)
 		}
-		dir = filepath.Join(dir_components...)
+		dir = filepath.Join(valid_dirs...)
 	}
 	// 组合完整路径
 	full_path := filepath.Join(dir, clean_name)
