@@ -215,7 +215,7 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 	}
 	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
 	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名")
+		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
 	}
 	connections := c.resolve_connections(body.URL)
@@ -600,7 +600,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	filename, dir, err := c.formatter.ProcessFilename(payload.Filename)
 	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名")
+		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
 	}
 	connections := c.resolve_connections(payload.URL)
