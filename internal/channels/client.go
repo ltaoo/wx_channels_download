@@ -210,7 +210,7 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
 	}
-	cache_key := "channels:feed_list:" + clean_name
+	cache_key := "channels:feed_list:" + clean_name + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
 			return resp, nil
