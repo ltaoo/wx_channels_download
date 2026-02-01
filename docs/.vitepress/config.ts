@@ -53,6 +53,7 @@ export default defineConfig({
           { text: "下载并运行", link: "/guide/start" },
           { text: "macOS 运行", link: "/guide/macos" },
           { text: "使用步骤", link: "/guide/step" },
+          { text: "手动安装根证书", link: "/guide/certificate" },
         ],
       },
       {
@@ -83,6 +84,7 @@ export default defineConfig({
         text: "配置",
         items: [
           { text: "代理", link: "/config/proxy" },
+          { text: "根证书", link: "/config/cert" },
           { text: "API 服务", link: "/config/api" },
           { text: "公众号服务", link: "/config/officialacount" },
           { text: "下载", link: "/config/download" },

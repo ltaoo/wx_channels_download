@@ -9,7 +9,6 @@ import (
 	"wx_channel/cmd"
 	"wx_channel/internal/config"
 	"wx_channel/internal/interceptor"
-	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 )
 
@@ -33,7 +32,8 @@ func main() {
 		}
 		return
 	}
-	if err := cmd.Execute(certificate.DefaultCertFiles, cfg); err != nil {
+	cert := config.LoadCertFiles()
+	if err := cmd.Execute(cert, cfg); err != nil {
 		fmt.Printf("运行失败 %v\n", err.Error())
 	}
 }
