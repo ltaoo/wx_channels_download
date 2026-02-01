@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"wx_channel/pkg/certificate"
 )
 
 type Config struct {
@@ -85,6 +87,30 @@ func (c *Config) LoadConfig() error {
 		Default:     2023,
 		Description: "代理服务的端口",
 		Title:       "代理端口",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "cert.file",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "自定义证书文件绝对路径",
+		Title:       "证书文件",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "cert.key",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "自定义私钥文件绝对路径",
+		Title:       "私钥文件",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "cert.name",
+		Type:        ConfigTypeString,
+		Default:     "Echo",
+		Description: "自定义证书名称",
+		Title:       "证书名称",
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
@@ -420,4 +446,23 @@ func EnsureDirIfMissing(path string) error {
 		return os.MkdirAll(path, 0755)
 	}
 	return err
+}
+
+func LoadCertFiles() *certificate.CertFileAndKeyFile {
+	cert := certificate.DefaultCertFiles
+	cert_filepath := viper.GetString("cert.file")
+	certkey_filepath := viper.GetString("cert.key")
+	if cert_filepath != "" && certkey_filepath != "" {
+		if cert_bytes, err := os.ReadFile(cert_filepath); err == nil {
+			if certkey_bytes, err2 := os.ReadFile(certkey_filepath); err2 == nil {
+				certname := viper.GetString("cert.name")
+				cert = &certificate.CertFileAndKeyFile{
+					Name:       certname,
+					Cert:       cert_bytes,
+					PrivateKey: certkey_bytes,
+				}
+			}
+		}
+	}
+	return cert
 }
