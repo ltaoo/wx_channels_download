@@ -228,6 +228,48 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 	return &r, nil
 }
 
+func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+	clean_name := strings.TrimSpace(username)
+	if !strings.HasSuffix(clean_name, "@finder") {
+		clean_name += "@finder"
+	}
+	cache_key := "channels:live_replay_list:" + clean_name + ":" + next_marker
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+			return resp, nil
+		}
+	}
+	resp, err := c.RequestFrontend("key:channels:live_replay_list", types.ChannelsLiveReplayListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
+func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+	cache_key := "channels:interactioned_list:" + flag + ":" + next_marker
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+			return resp, nil
+		}
+	}
+	resp, err := c.RequestFrontend("key:channels:interactioned_list", types.ChannelsInteractionedFeedListBody{Flag: flag, NextMarker: next_marker}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
 func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url string) (*types.ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s", oid, uid, url)

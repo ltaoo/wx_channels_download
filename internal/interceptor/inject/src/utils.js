@@ -591,6 +591,8 @@ var WXU = (() => {
   var after_level2_menus_items = [];
   var WXAPI = {};
   var WXAPI2 = {};
+  var WXAPI3 = {};
+  var WXAPI4 = {};
 
   WXE.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
@@ -598,12 +600,26 @@ var WXU = (() => {
       (() => {
         const variable = keys[i];
         const methods = variables[variable];
+        console.log("variable", {
+          "api": typeof methods.finderGetCommentDetail,
+          "api2": typeof methods.finderSearch,
+          "api3": typeof methods.finderLiveUserPage,
+          "api4": typeof methods.finderGetFollowList,
+        });
+        if (typeof methods.finderGetFollowList === "function") {
+          WXAPI4 = methods;
+          return;
+        }
         if (typeof methods.finderGetCommentDetail === "function") {
           WXAPI = methods;
           return;
         }
         if (typeof methods.finderSearch === "function") {
           WXAPI2 = methods;
+          return;
+        }
+        if (typeof methods.finderLiveUserPage === "function") {
+          WXAPI3 = methods;
           return;
         }
       })();
@@ -619,6 +635,12 @@ var WXU = (() => {
     },
     get API2() {
       return WXAPI2;
+    },
+    get API3() {
+      return WXAPI3;
+    },
+    get API4() {
+      return WXAPI4;
     },
     downloader: {
       show() {},

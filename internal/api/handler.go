@@ -49,6 +49,28 @@ func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+func (c *APIClient) handleFetchLiveReplayList(ctx *gin.Context) {
+	username := ctx.Query("username")
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsLiveReplayList(username, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
+func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
+	flag := ctx.Query("flag")
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsInteractionedFeedList(flag, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
 type AtomAuthor struct {
 	Name string `xml:"name"`
 }

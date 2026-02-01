@@ -340,6 +340,35 @@ async function __wx_handle_api_call(msg, socket) {
     });
     return;
   }
+  if (key === "key:channels:live_replay_list") {
+    var payload = {
+      username: data.username,
+      finderUsername: __wx_username || data.username,
+      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
+      needFansCount: 0,
+      objectId: "0",
+    };
+    var r = await WXU.API3.finderLiveUserPage(payload);
+    console.log("[DOWNLOADER]finderLiveUserPage", r);
+    resp({
+      ...r,
+      payload,
+    });
+    return;
+  }
+  if (key === "key:channels:interactioned_list") {
+    var payload = {
+      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
+      tabFlag: data.flag ? Number(data.flag) : 7,
+    };
+    var r = await WXU.API4.finderGetInteractionedFeedList(payload);
+    console.log("[DOWNLOADER]finderGetInteractionedFeedList", r);
+    resp({
+      ...r,
+      payload,
+    });
+    return;
+  }
   if (key === "key:channels:feed_profile") {
     console.log("before finderGetCommentProfile", data.oid, data.nid);
     try {

@@ -15,6 +15,8 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
 		c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
 		c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
+		c.engine.GET("/api/channels/live/replay/list", c.handleFetchLiveReplayList)
+		c.engine.GET("/api/channels/interactioned/list", c.handleFetchInteractionedFeedList)
 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
 		// 公众号接口 本地服务
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
