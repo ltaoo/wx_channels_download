@@ -19,6 +19,10 @@ var WXE = (() => {
     /** 首页推荐获取到视频列表 */
     PCFlowLoaded: "PCFlowLoaded",
     RecommendFeedsLoaded: "RecommendFeedsLoaded",
+    /** 个人中心 赞和喜欢 列表 */
+    InteractionedFeedsLoaded: "InteractionedFeedsLoaded",
+    /** 直播回放 */
+    LiveUserFeedsLoaded: "LiveUserFeedsLoaded",
     UserFeedsLoaded: "UserFeedsLoaded",
     GotoNextFeed: "GotoNextFeed",
     GotoPrevFeed: "GotoPrevFeed",
@@ -136,6 +140,18 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.RecommendFeedsLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.RecommendFeedsLoaded, handler);
+      };
+    },
+    onInteractionedFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.InteractionedFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.InteractionedFeedsLoaded, handler);
+      };
+    },
+    onLiveUserFeedsLoaded(handler) {
+      eventbus.on(ChannelsEvents.LiveUserFeedsLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.LiveUserFeedsLoaded, handler);
       };
     },
     /**

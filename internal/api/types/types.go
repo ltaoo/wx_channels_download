@@ -282,6 +282,14 @@ type ChannelsFeedListBody struct {
 	Username   string `json:"username"`
 	NextMarker string `json:"next_marker"`
 }
+type ChannelsLiveReplayListBody struct {
+	Username   string `json:"username"`
+	NextMarker string `json:"next_marker"`
+}
+type ChannelsInteractionedFeedListBody struct {
+	Flag       string `json:"flag"`
+	NextMarker string `json:"next_marker"`
+}
 type ChannelsFeedProfileBody struct {
 	URL      string `json:"url"`
 	ObjectId string `json:"oid"`

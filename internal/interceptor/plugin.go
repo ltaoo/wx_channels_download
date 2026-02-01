@@ -30,21 +30,23 @@ var (
 	jsExportBlockReg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// 特定路径的正则
-	jsSourceBufferReg      = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	jsInitReg              = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
-	jsFeedProfileReg       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	jsPCFlowReg            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
-	jsLiveInfoReg          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	jsJoinLiveReg          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
-	jsRecommendFeedsReg    = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
-	jsUserFeedsReg         = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
-	jsFinderPCSearchReg    = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
-	jsFinderSearchReg      = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
-	jsGoToPrevFlowReg      = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
-	jsGoToNextFlowReg      = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
-	jsFlowTabReg           = regexp.MustCompile(`flowTab:([a-zA-Z]{1,})`)
-	jsLocalFlowTabReg      = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
-	jsLoadLocalPlaylistReg = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
+	jsSourceBufferReg                   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	jsInitReg                           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
+	jsFeedProfileReg                    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	jsPCFlowReg                         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	jsLiveInfoReg                       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	jsLiveFeedListReg                   = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
+	jsJoinLiveReg                       = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
+	jsRecommendFeedsReg                 = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
+	jsUserFeedsReg                      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	jsFinderPCSearchReg                 = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
+	jsFinderSearchReg                   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
+	jsFinderGetInteractionedFeedListReg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
+	jsGoToPrevFlowReg                   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z]{1,})`)
+	jsGoToNextFlowReg                   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z]{1,})`)
+	jsFlowTabReg                        = regexp.MustCompile(`flowTab:([a-zA-Z]{1,})`)
+	jsLocalFlowTabReg                   = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
+	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
 func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
@@ -321,6 +323,18 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
 					}
 					{
+						js_finder_interactioned := `async finderGetInteractionedFeedList($1) {
+						var result = await (async () => {
+							$2;
+						})();
+						var feeds = result.data.object;
+						console.log("before finderGetInteractionedFeedList", result, $1);
+						WXU.emit(WXU.Events.InteractionedFeedsLoaded, feeds);
+						return result;
+					}}const`
+						js_script = jsFinderGetInteractionedFeedListReg.ReplaceAllString(js_script, js_finder_interactioned)
+					}
+					{
 						js_user_feed := `async finderUserPage($1) {
 					var result = await (async () => {
 						$2;
@@ -331,6 +345,18 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					return result;
 				}async`
 						js_script = jsUserFeedsReg.ReplaceAllString(js_script, js_user_feed)
+					}
+					{
+						js_live_feed_list := `async finderLiveUserPage($1) {
+						var result = await (async () => {
+							$2;
+						})();
+						var feeds = result.data.object;
+						console.log("before LiveUserFeedsLoaded", result.data, $1);
+						WXU.emit(WXU.Events.LiveUserFeedsLoaded, feeds);
+						return result;
+					}async`
+						js_script = jsLiveFeedListReg.ReplaceAllString(js_script, js_live_feed_list)
 					}
 					{
 						js_live_profile := `async finderGetLiveInfo($1) {
