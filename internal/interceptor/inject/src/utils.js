@@ -41,7 +41,7 @@ let loaded = false;
 async function __wx_channels_decrypt(seed) {
   if (!loaded) {
     await WXU.load_script(
-      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js"
+      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js",
     );
     loaded = true;
   }
@@ -102,8 +102,12 @@ var WXU = (() => {
           if (feed.anchorContact) {
             return feed.anchorContact.liveCoverImgUrl;
           }
-          if (feed.objectDesc) {
-            return feed.objectDesc.media[0]?.coverUrl;
+          if (
+            feed.objectDesc &&
+            feed.objectDesc.media &&
+            feed.objectDesc.media[0]
+          ) {
+            return feed.objectDesc.media[0].coverUrl;
           }
           return "";
         })(),
@@ -299,8 +303,8 @@ var WXU = (() => {
     if (profile.contact) {
       params.author = profile.contact.nickname;
     }
-    if (spec) {
-      var matched = profile.spec?.find((item) => item.fileFormat === spec);
+    if (spec && profile.spec) {
+      var matched = profile.spec.find((item) => item.fileFormat === spec);
       if (matched) {
         params.spec = matched.fileFormat;
       }
@@ -355,7 +359,7 @@ var WXU = (() => {
           ...prev,
           ...cur,
         }),
-        {}
+        {},
       );
     return queries;
   }
@@ -483,7 +487,7 @@ var WXU = (() => {
         return;
       }
       await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js"
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js",
       );
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
@@ -512,7 +516,7 @@ var WXU = (() => {
         },
         function (msg) {
           resolve([new Error(msg || "Conversion failed"), null]);
-        }
+        },
       );
     });
   }
@@ -601,10 +605,10 @@ var WXU = (() => {
         const variable = keys[i];
         const methods = variables[variable];
         console.log("variable", {
-          "api": typeof methods.finderGetCommentDetail,
-          "api2": typeof methods.finderSearch,
-          "api3": typeof methods.finderLiveUserPage,
-          "api4": typeof methods.finderGetFollowList,
+          api: typeof methods.finderGetCommentDetail,
+          api2: typeof methods.finderSearch,
+          api3: typeof methods.finderLiveUserPage,
+          api4: typeof methods.finderGetFollowList,
         });
         if (typeof methods.finderGetFollowList === "function") {
           WXAPI4 = methods;
@@ -660,15 +664,18 @@ var WXU = (() => {
           if (opt.spec) {
             return opt.spec;
           }
-          if (WXU.config.defaultHighest) {
+          if (WXU.config.defaultHighest || opt.spec === null) {
             return "original";
           }
-          return feed.spec[0]?.fileFormat ?? "original";
+          if (feed.spec[0]) {
+            return feed.spec[0].fileFormat;
+          }
+          return "original";
         })();
         var filename = WXU.build_filename(
           feed,
           spec,
-          WXU.config.downloadFilenameTemplate
+          WXU.config.downloadFilenameTemplate,
         );
         if (!filename) {
           return [new Error("filename 为空"), null];
@@ -682,8 +689,8 @@ var WXU = (() => {
                   url: f.url,
                   filename: `${idx + 1}.jpg`,
                 };
-              })
-            )
+              }),
+            ),
           )}`;
           console.log("[]feed.url", feed.url);
         }
@@ -729,15 +736,18 @@ var WXU = (() => {
             if (opt.spec) {
               return opt.spec;
             }
-            if (WXU.config.defaultHighest) {
+            if (WXU.config.defaultHighest || opt.spec === null) {
               return "original";
             }
-            return feed.spec[0]?.fileFormat;
+            if (feed.spec[0]) {
+              return feed.spec[0].fileFormat;
+            }
+            return "original";
           })();
           var filename = WXU.build_filename(
             feed,
             spec,
-            WXU.config.downloadFilenameTemplate
+            WXU.config.downloadFilenameTemplate,
           );
           if (filename) {
             if (feed.type === "picture") {
@@ -749,8 +759,8 @@ var WXU = (() => {
                       url: f.url,
                       filename: `${idx + 1}.jpg`,
                     };
-                  })
-                )
+                  }),
+                ),
               )}`;
             }
             if (opt.suffix !== ".jpg") {
@@ -803,7 +813,7 @@ var WXU = (() => {
      */
     async media_buffer_to_wav(...args) {
       await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js"
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js",
       );
       return mediaBufferToWav(...args);
     },
@@ -869,7 +879,7 @@ var WXU = (() => {
     set_cur_video() {
       setTimeout(() => {
         window.__wx_channels_cur_video = document.querySelector(
-          ".feed-video.video-js"
+          ".feed-video.video-js",
         );
       }, 800);
     },
@@ -934,7 +944,9 @@ var WXU = (() => {
               if (node.nodeType === 1) {
                 if (node.matches(selector) || node.querySelector(selector)) {
                   cb(
-                    node.matches(selector) ? node : node.querySelector(selector)
+                    node.matches(selector)
+                      ? node
+                      : node.querySelector(selector),
                   );
                   if (document.querySelector(selector)) {
                     obs.disconnect();
@@ -983,13 +995,13 @@ var WXU = (() => {
     },
     async save(blob, filename) {
       await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js"
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js",
       );
       saveAs(blob, filename);
     },
     async Zip() {
       await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js"
+        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js",
       );
       const zip = new JSZip();
       return zip;
