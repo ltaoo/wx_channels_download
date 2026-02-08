@@ -59,7 +59,7 @@ async function __wx_channels_download4(feed, opt) {
   var filename = WXU.build_filename(
     feed,
     opt.spec,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -146,7 +146,7 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   const payload = { ...feed };
   payload.mp3 = !!mp3;
   payload.original_url = feed.url;
-  payload.target_spec = null;
+  payload.target_spec = spec;
   payload.source_url = location.href;
   WXU.log({
     msg: `${payload.source_url}
@@ -174,7 +174,7 @@ function __wx_channels_download_cur__() {
   var filename = WXU.build_filename(
     profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -192,7 +192,7 @@ function __wx_channels_handle_print_download_command() {
   var filename = WXU.build_filename(
     _profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     alert("文件名生成失败");
@@ -222,7 +222,7 @@ async function __wx_channels_handle_download_cover() {
       },
       {
         suffix: ".jpg",
-      }
+      },
     );
     if (err) {
       WXU.error({ msg: err.message });
@@ -233,7 +233,7 @@ async function __wx_channels_handle_download_cover() {
   var filename = WXU.build_filename(
     profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -373,7 +373,15 @@ function __wx_attach_download_dropdown_menu(trigger) {
 function __wx_download_btn_handler() {
   const [err, profile] = WXU.check_feed_existing();
   if (err) return;
-  var spec = WXU.config.defaultHighest ? null : profile.spec[0]?.fileFormat;
+  var spec = (() => {
+    if (WXU.config.defaultHighest) {
+      return null;
+    }
+    if (profile.spec[0]) {
+      return profile.spec[0].fileFormat;
+    }
+    return null;
+  })();
   __wx_channels_handle_click_download__(spec);
 }
 
@@ -397,7 +405,7 @@ async function __wx_insert_download_btn_to_home_page() {
     return false;
   }
   var $elm3 = await WXU.find_elm(
-    () => $item.getElementsByClassName("click-box op-item")[0]
+    () => $item.getElementsByClassName("click-box op-item")[0],
   );
   if (!$elm3) {
     return false;
