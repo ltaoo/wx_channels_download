@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeChat Channels Download API",
-    "version": "v260110",
+    "version": "v260201",
     "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
   },
   "servers": [

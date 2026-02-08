@@ -22,6 +22,9 @@ var js_mitt []byte
 //go:embed inject/lib/weui.min.css
 var css_weui []byte
 
+//go:embed inject/lib/boxui.umd.min.js
+var js_box []byte
+
 //go:embed inject/lib/weui.min.js
 var js_weui []byte
 
@@ -74,6 +77,7 @@ type ChannelInjectedFiles struct {
 	JSWeui                  []byte
 	CSSWeui                 []byte
 	JSWui                   []byte
+	JSBox                   []byte
 	JSMitt                  []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
@@ -96,6 +100,7 @@ var Assets = &ChannelInjectedFiles{
 	JSFloatingUIDOM:         js_floating_ui_dom,
 	JSWeui:                  js_weui,
 	CSSWeui:                 css_weui,
+	JSBox:                   js_box,
 	JSWui:                   js_wui,
 	JSMitt:                  js_mitt,
 	JSDebug:                 js_debug,
