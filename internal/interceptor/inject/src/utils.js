@@ -604,12 +604,12 @@ var WXU = (() => {
       (() => {
         const variable = keys[i];
         const methods = variables[variable];
-        console.log("variable", {
-          api: typeof methods.finderGetCommentDetail,
-          api2: typeof methods.finderSearch,
-          api3: typeof methods.finderLiveUserPage,
-          api4: typeof methods.finderGetFollowList,
-        });
+        // console.log("variable", {
+        //   api: typeof methods.finderGetCommentDetail,
+        //   api2: typeof methods.finderSearch,
+        //   api3: typeof methods.finderLiveUserPage,
+        //   api4: typeof methods.finderGetFollowList,
+        // });
         if (typeof methods.finderGetFollowList === "function") {
           WXAPI4 = methods;
           return;
