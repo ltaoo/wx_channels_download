@@ -3,7 +3,6 @@
 package certificate
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,28 +11,30 @@ import (
 )
 
 func fetchCertificates() ([]Certificate, error) {
-	cmd := "$certs = Get-ChildItem Cert:\\LocalMachine\\Root | Select-Object Thumbprint, Subject; @($certs) | ConvertTo-Json -Compress"
+	// PowerShell 2.0 compatible command
+	cmd := "Get-ChildItem Cert:\\LocalMachine\\Root | ForEach-Object { $_.Thumbprint + \"###\" + $_.Subject }"
 	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
+		return nil, fmt.Errorf("获取证书时发生错误，%v\n", err2.Error())
 	}
-	type WindowsCert struct {
-		Thumbprint string `json:"Thumbprint"`
-		Subject    string `json:"Subject"`
-	}
-	var raw_arr []WindowsCert
-	if err := json.Unmarshal(output, &raw_arr); err != nil {
-		var one WindowsCert
-		if err2 := json.Unmarshal(output, &one); err2 != nil {
-			return nil, errors.New(fmt.Sprintf("解析证书列表失败，%v\n", err.Error()))
-		}
-		raw_arr = []WindowsCert{one}
-	}
+
 	var certificates []Certificate
-	for _, pc := range raw_arr {
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "###", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		thumbprint := parts[0]
+		subject_str := parts[1]
+
 		subj := CertificateSubject{}
-		pairs := strings.Split(pc.Subject, ",")
+		pairs := strings.Split(subject_str, ",")
 		for _, p := range pairs {
 			kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
 			if len(kv) != 2 {
@@ -57,7 +58,7 @@ func fetchCertificates() ([]Certificate, error) {
 			}
 		}
 		certificates = append(certificates, Certificate{
-			Thumbprint: pc.Thumbprint,
+			Thumbprint: thumbprint,
 			Subject:    subj,
 		})
 	}
@@ -67,20 +68,20 @@ func fetchCertificates() ([]Certificate, error) {
 func installCertificate(cert_data []byte) error {
 	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
 	if err != nil {
-		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
+		return fmt.Errorf("没有创建证书的权限，%v\n", err.Error())
 	}
 	defer os.Remove(cert_file.Name())
 	if _, err := cert_file.Write(cert_data); err != nil {
-		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
+		return fmt.Errorf("获取证书失败，%v\n", err.Error())
 	}
 	if err := cert_file.Close(); err != nil {
-		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
+		return fmt.Errorf("生成证书失败，%v\n", err.Error())
 	}
-	cmd := fmt.Sprintf("Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root", cert_file.Name())
-	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
-	output, err2 := ps.CombinedOutput()
+	// Use certutil for Windows 7 compatibility
+	cmd := exec.Command("certutil", "-addstore", "Root", cert_file.Name())
+	output, err2 := cmd.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", string(output)))
+		return fmt.Errorf("安装证书时发生错误，%v\n", string(output))
 	}
 	return nil
 }
@@ -106,7 +107,7 @@ func uninstallCertificate(name string) error {
 	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("删除证书时发生错误，%v\n", string(output)))
+		return fmt.Errorf("删除证书时发生错误，%v\n", string(output))
 	}
 	return nil
 }
