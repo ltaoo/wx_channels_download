@@ -7,7 +7,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime/debug"
+
+	//"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -1075,14 +1076,16 @@ func (d *Downloader) doPause(task *Task) (err error) {
 
 // redirect stderr to log file, when panic happened log it
 func logPanic(logDir string) {
-	if err := util.CreateDirIfNotExist(logDir); err != nil {
-		return
-	}
-	f, err := os.Create(filepath.Join(logDir, "crash.log"))
-	if err != nil {
-		return
-	}
-	debug.SetCrashOutput(f, debug.CrashOptions{})
+	/*
+		if err := util.CreateDirIfNotExist(logDir); err != nil {
+			return
+		}
+		f, err := os.Create(filepath.Join(logDir, "crash.log"))
+		if err != nil {
+			return
+		}
+		debug.SetCrashOutput(f, debug.CrashOptions{})
+	*/
 }
 
 func (d *Downloader) assignFetcherManager(task *Task) error {
