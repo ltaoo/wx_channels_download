@@ -200,11 +200,16 @@
     };
     return $btn;
   }
-  function render_download_button() {
+  function render_download_button(opt) {
     var $btn = document.createElement("div");
     // $btn.className = "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link";
     $btn.style.cssText = `display: flex; align-items: center; margin-left: 16px; font-size: 14px; cursor: pointer;`;
-    $btn.innerHTML = `<span style="position: relative; top: -6px; width: 24px; height: 24px; font-size: 24px;">${DownloadIcon8}</span><span class="sns_opr_gap" style="margin-left: 1px">下载</span>`;
+    var text = `<span class="sns_opr_gap" style="margin-left: 1px">下载</span>`;
+    if (opt.type === 2) {
+      $btn.style.cssText = `display: flex; align-items: center; flex-direction: column; margin-left: 4px; font-size: 14px; cursor: pointer;`;
+      var text = `<span class="" style="width: 39px; text-align: center; font-size: 12px;">下载</span>`;
+    }
+    $btn.innerHTML = `<span style="position: relative; top: -6px; width: 24px; height: 24px; font-size: 24px;">${DownloadIcon8}</span>${text}`;
     $btn.onclick = async function () {
       var [err, data] = await WXU.request({
         method: "POST",
@@ -237,10 +242,13 @@
   function insert_download_button() {
     var $wraps = document.querySelectorAll(".interaction_bar");
     var $container = $wraps[$wraps.length - 1];
+    if (window.cgiDataNew.page_type === 2) {
+      $container = $wraps[0];
+    }
     if (!$container || !$container.lastElementChild) {
       return;
     }
-    var $btn = render_download_button();
+    var $btn = render_download_button({ type: window.cgiDataNew.page_type });
     $container.insertBefore($btn, $container.lastElementChild);
   }
   async function main() {
