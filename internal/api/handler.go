@@ -211,7 +211,7 @@ type FeedDownloadTaskBody struct {
 	Suffix   string `json:"suffix"`
 }
 
-func (c *APIClient) handleCreateTask(ctx *gin.Context) {
+func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	var body FeedDownloadTaskBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
@@ -273,6 +273,39 @@ func (c *APIClient) handleCreateTask(ctx *gin.Context) {
 		Type: "tasks",
 		Data: c.downloader.GetTasks(),
 	})
+	result.Ok(ctx, gin.H{"id": id})
+}
+
+type DownloadTaskPayload struct {
+	URL      string
+	Filename string
+	Dir      string
+	Extra    map[string]string
+}
+
+func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
+	var body DownloadTaskPayload
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+	id, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL:    body.URL,
+			Labels: body.Extra,
+		},
+		&base.Options{
+			Name: body.Filename,
+			Path: filepath.Join(c.cfg.DownloadDir, body.Dir),
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: 1,
+			},
+		},
+	)
+	if err != nil {
+		result.Err(ctx, 500, "创建任务失败："+err.Error())
+		return
+	}
 	result.Ok(ctx, gin.H{"id": id})
 }
 

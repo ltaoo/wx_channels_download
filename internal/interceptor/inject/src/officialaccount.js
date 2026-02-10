@@ -78,7 +78,7 @@
         JSON.stringify({
           id,
           data: body,
-        })
+        }),
       );
     }
     if (key === "key:fetch_account_home") {
@@ -118,7 +118,7 @@
             JSON.stringify({
               type: "ping",
               data: page_title,
-            })
+            }),
           );
         } catch (e) {
           // ...
@@ -131,7 +131,7 @@
                 JSON.stringify({
                   type: "ping",
                   data: page_title,
-                })
+                }),
               );
             } catch (e) {
               // ...
@@ -200,6 +200,30 @@
     };
     return $btn;
   }
+  function render_download_button() {
+    var $btn = document.createElement("div");
+    // $btn.className = "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link";
+    $btn.style.cssText = `display: flex; align-items: center; margin-left: 16px; font-size: 14px; cursor: pointer;`;
+    $btn.innerHTML = `<span style="position: relative; top: -6px; width: 24px; height: 24px; font-size: 24px;">${DownloadIcon8}</span><span class="sns_opr_gap" style="margin-left: 1px">下载</span>`;
+    $btn.onclick = async function () {
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: "https://" + FakeAPIServerAddr + "/api/task/create2",
+        body: {
+          url: `officialaccount://${window.location.href}`,
+          // filename: document.title,
+        },
+      });
+      if (err) {
+        WXU.error({
+          msg: err.message,
+        });
+        return;
+      }
+      WXU.toast("开始下载");
+    };
+    return $btn;
+  }
   function insert_rss_button(acct) {
     if (!acct.biz || !acct.key) {
       return;
@@ -210,72 +234,82 @@
     var $btn = render_rss_button(acct);
     $container.appendChild($btn);
   }
-  insert_style();
+  function insert_download_button() {
+    var $wraps = document.querySelectorAll(".interaction_bar");
+    var $container = $wraps[$wraps.length - 1];
+    if (!$container || !$container.lastElementChild) {
+      return;
+    }
+    var $btn = render_download_button();
+    $container.insertBefore($btn, $container.lastElementChild);
+  }
+  async function main() {
+    if (location.pathname === "/s") {
+      var _OfficialAccountCredentials = {
+        nickname: (() => {
+          if (window.nickname) {
+            return window.nickname;
+          }
+          if (window.cgiData) {
+            if (window.cgiData.nick_name) {
+              return window.cgiData.nick_name;
+            }
+          }
+          if (window.cgiDataNew) {
+            if (window.cgiDataNew.nick_name) {
+              return window.cgiDataNew.nick_name;
+            }
+          }
+          return "";
+        })(),
+        avatar_url: (() => {
+          if (window.headimg) {
+            return window.headimg;
+          }
+          if (window.cgiData) {
+            if (window.cgiData.round_head_img) {
+              return window.cgiData.round_head_img;
+            }
+            if (window.cgiData.hd_head_img) {
+              return window.cgiData.hd_head_img;
+            }
+          }
+          if (window.cgiDataNew) {
+            if (window.cgiDataNew.round_head_img) {
+              return window.cgiDataNew.round_head_img;
+            }
+            if (window.cgiDataNew.hd_head_img) {
+              return window.cgiDataNew.hd_head_img;
+            }
+          }
+          return "";
+        })(),
+        biz: window.biz || window.__biz,
+        uin: window.uin,
+        key: window.key,
+        refresh_uri: (() => {
+          const params = new URLSearchParams(window.location.search);
+          const biz = params.get("__biz");
+          const mid = params.get("mid");
+          const idx = params.get("idx");
+          const sn = params.get("sn");
+          return `https://mp.weixin.qq.com/s?__biz=${biz}&mid=${mid}&idx=${idx}&sn=${sn}`;
+        })(),
+        pass_ticket: window.pass_ticket,
+        appmsg_token: window.appmsg_token,
+      };
+      WXU.observe_node(".wx_follow_media", () => {
+        setTimeout(() => {
+          insert_style();
+          // insert_rss_button(_OfficialAccountCredentials);
+          insert_download_button();
+        }, 800);
+      });
+    }
+  }
   WXU.onWindowLoaded(() => {
-    async function main() {
-      if (location.pathname === "/s") {
-        var _OfficialAccountCredentials = {
-          nickname: (() => {
-            if (window.nickname) {
-              return window.nickname;
-            }
-            if (window.cgiData) {
-              if (window.cgiData.nick_name) {
-                return window.cgiData.nick_name;
-              }
-            }
-            if (window.cgiDataNew) {
-              if (window.cgiDataNew.nick_name) {
-                return window.cgiDataNew.nick_name;
-              }
-            }
-            return "";
-          })(),
-          avatar_url: (() => {
-            if (window.headimg) {
-              return window.headimg;
-            }
-            if (window.cgiData) {
-              if (window.cgiData.round_head_img) {
-                return window.cgiData.round_head_img;
-              }
-              if (window.cgiData.hd_head_img) {
-                return window.cgiData.hd_head_img;
-              }
-            }
-            if (window.cgiDataNew) {
-              if (window.cgiDataNew.round_head_img) {
-                return window.cgiDataNew.round_head_img;
-              }
-              if (window.cgiDataNew.hd_head_img) {
-                return window.cgiDataNew.hd_head_img;
-              }
-            }
-            return "";
-          })(),
-          biz: window.biz || window.__biz,
-          uin: window.uin,
-          key: window.key,
-          refresh_uri: (() => {
-            const params = new URLSearchParams(window.location.search);
-            const biz = params.get("__biz");
-            const mid = params.get("mid");
-            const idx = params.get("idx");
-            const sn = params.get("sn");
-            return `https://mp.weixin.qq.com/s?__biz=${biz}&mid=${mid}&idx=${idx}&sn=${sn}`;
-          })(),
-          pass_ticket: window.pass_ticket,
-          appmsg_token: window.appmsg_token,
-        };
-        if (!WXU.config.officialServerDisabled) {
-          connect(_OfficialAccountCredentials);
-        }
-        WXU.observe_node(".wx_follow_media", () => {
-          setTimeout(() => {
-            insert_rss_button(_OfficialAccountCredentials);
-          }, 1200);
-        });
-      }
+    if (WXU.config.officialServerDisabled) {
+      return;
     }
     main();
   });
