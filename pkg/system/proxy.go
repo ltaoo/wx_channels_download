@@ -37,3 +37,7 @@ func EnableProxy(arg ProxySettings) error {
 func DisableProxy(arg ProxySettings) error {
 	return disable_proxy(arg)
 }
+
+func FetchCurProxy(arg ProxySettings) (*ProxySettings, error) {
+	return fetch_cur_proxy(arg)
+}
