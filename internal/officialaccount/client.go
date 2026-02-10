@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net"
 	"net/http"
@@ -25,6 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
+	"golang.org/x/net/html"
 
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/cache"
@@ -184,26 +184,26 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 			}
 		}()
 	}
-	if !cfg.RemoteMode && len(c.AccountIdsRefreshInterval) > 0 {
-		var valid_accounts []string
-		acct_mu.RLock()
-		for _, biz := range c.AccountIdsRefreshInterval {
-			if _, ok := accounts[biz]; ok {
-				valid_accounts = append(valid_accounts, biz)
-			}
-		}
-		acct_mu.RUnlock()
-		c.AccountIdsRefreshInterval = valid_accounts
-		if len(c.AccountIdsRefreshInterval) > 0 {
-			go func() {
-				ticker := time.NewTicker(28 * time.Minute)
-				defer ticker.Stop()
-				for range ticker.C {
-					c.RefreshSpecifiedOfficialAccountList(c.AccountIdsRefreshInterval)
-				}
-			}()
-		}
-	}
+	// if !cfg.RemoteMode && len(c.AccountIdsRefreshInterval) > 0 {
+	// 	var valid_accounts []string
+	// 	acct_mu.RLock()
+	// 	for _, biz := range c.AccountIdsRefreshInterval {
+	// 		if _, ok := accounts[biz]; ok {
+	// 			valid_accounts = append(valid_accounts, biz)
+	// 		}
+	// 	}
+	// 	acct_mu.RUnlock()
+	// 	c.AccountIdsRefreshInterval = valid_accounts
+	// 	if len(c.AccountIdsRefreshInterval) > 0 {
+	// 		go func() {
+	// 			ticker := time.NewTicker(28 * time.Minute)
+	// 			defer ticker.Stop()
+	// 			for range ticker.C {
+	// 				c.RefreshSpecifiedOfficialAccountList(c.AccountIdsRefreshInterval)
+	// 			}
+	// 		}()
+	// 	}
+	// }
 	return c
 }
 

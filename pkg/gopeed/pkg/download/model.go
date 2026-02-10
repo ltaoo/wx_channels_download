@@ -8,6 +8,7 @@ import (
 	"github.com/GopeedLab/gopeed/internal/controller"
 	"github.com/GopeedLab/gopeed/internal/fetcher"
 	"github.com/GopeedLab/gopeed/internal/protocol/http"
+	officialaccountdownload "github.com/GopeedLab/gopeed/internal/protocol/officialaccount"
 	"github.com/GopeedLab/gopeed/internal/protocol/stream"
 	"github.com/GopeedLab/gopeed/internal/protocol/zip"
 	"github.com/GopeedLab/gopeed/pkg/base"
@@ -158,6 +159,7 @@ func (cfg *DownloaderConfig) Init() *DownloaderConfig {
 			new(http.FetcherManager),
 			new(stream.FetcherManager),
 			new(zip.FetcherManager),
+			new(officialaccountdownload.FetcherManager),
 		}
 	}
 	if cfg.RefreshInterval == 0 {
