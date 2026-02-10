@@ -23,6 +23,7 @@ import (
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/system"
 )
 
 var (
@@ -191,6 +192,31 @@ func root_command(cfg *config.Config) {
 	} else {
 		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptor_srv.Addr()))
 		color.Green("请打开需要下载的视频号页面进行下载")
+		has_changed := false
+		expected_addr := interceptor_srv.Addr()
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					cur, err := system.FetchCurProxy(system.ProxySettings{})
+					if err != nil {
+						continue
+					}
+					cur_addr := cur.Hostname + ":" + cur.Port
+					changed := cur == nil || cur_addr != expected_addr
+					if changed {
+						if !has_changed {
+							color.Red("\n系统代理已被修改，请重新启动下载器")
+						}
+						has_changed = true
+					}
+				}
+			}
+		}()
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")
 	<-ctx.Done()

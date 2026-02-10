@@ -120,6 +120,78 @@ func disable_proxy(arg ProxySettings) error {
 	return nil
 }
 
+func fetch_cur_proxy(arg ProxySettings) (*ProxySettings, error) {
+	loginUserBytes, err := exec.Command("logname").Output()
+	if err != nil {
+		return nil, fmt.Errorf("获取登录用户失败（logname）: %v", err)
+	}
+	loginUser := strings.TrimSpace(string(loginUserBytes))
+	uidBytes, err := exec.Command("id", "-u", loginUser).Output()
+	if err != nil {
+		return nil, fmt.Errorf("获取 UID 失败: %v", err)
+	}
+	uid := strings.TrimSpace(string(uidBytes))
+	dbusEnv := "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + uid + "/bus"
+	mode, err := read_gsettings(loginUser, dbusEnv, "org.gnome.system.proxy", "mode")
+	if err != nil {
+		return nil, err
+	}
+	mode = strings.Trim(mode, "\"'")
+	if mode != "manual" {
+		return nil, nil
+	}
+	host, port, err := read_proxy_host_port(loginUser, dbusEnv, "org.gnome.system.proxy.http")
+	if err != nil {
+		return nil, err
+	}
+	if host == "" || port == "" || port == "0" {
+		host, port, err = read_proxy_host_port(loginUser, dbusEnv, "org.gnome.system.proxy.https")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if host == "" || port == "" || port == "0" {
+		return nil, nil
+	}
+	return &ProxySettings{
+		Hostname: host,
+		Port:     port,
+	}, nil
+}
+
 func get_network_interfaces() (*HardwarePort, error) {
 	return nil, errors.New("not support")
+}
+
+func read_proxy_host_port(loginUser string, dbusEnv string, schema string) (string, string, error) {
+	host, err := read_gsettings(loginUser, dbusEnv, schema, "host")
+	if err != nil {
+		return "", "", err
+	}
+	host = strings.Trim(host, "\"'")
+	portValue, err := read_gsettings(loginUser, dbusEnv, schema, "port")
+	if err != nil {
+		return "", "", err
+	}
+	portValue = strings.Trim(portValue, "\"'")
+	if host == "" {
+		return "", "", nil
+	}
+	if portValue == "" {
+		return "", "", nil
+	}
+	if _, err := strconv.Atoi(portValue); err != nil {
+		return "", "", nil
+	}
+	return host, portValue, nil
+}
+
+func read_gsettings(loginUser string, dbusEnv string, schema string, key string) (string, error) {
+	fullCmd := []string{"-u", loginUser, "env", dbusEnv, "gsettings", "get", schema, key}
+	cmd := exec.Command("sudo", fullCmd...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("读取系统代理失败: sudo %s\n错误: %v\n输出: %s", strings.Join(fullCmd, " "), err, string(output))
+	}
+	return strings.TrimSpace(string(output)), nil
 }

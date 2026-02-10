@@ -39,6 +39,77 @@ func disable_proxy(args ProxySettings) error {
 	return nil
 }
 
+func fetch_cur_proxy(args ProxySettings) (*ProxySettings, error) {
+	device := args.Device
+	if device == "" {
+		if port, err := get_network_interfaces(); err == nil && port != nil {
+			device = port.Port
+		}
+	}
+	if device == "" {
+		device = "Wi-Fi"
+	}
+	webProxy, err := read_network_proxy(device, false)
+	if err != nil {
+		return nil, err
+	}
+	if webProxy.Enabled && webProxy.Server != "" && webProxy.Port != "" {
+		return &ProxySettings{
+			Device:   device,
+			Hostname: webProxy.Server,
+			Port:     webProxy.Port,
+		}, nil
+	}
+	secureProxy, err := read_network_proxy(device, true)
+	if err != nil {
+		return nil, err
+	}
+	if secureProxy.Enabled && secureProxy.Server != "" && secureProxy.Port != "" {
+		return &ProxySettings{
+			Device:   device,
+			Hostname: secureProxy.Server,
+			Port:     secureProxy.Port,
+		}, nil
+	}
+	return nil, nil
+}
+
+type network_proxy_info struct {
+	Enabled bool
+	Server  string
+	Port    string
+}
+
+func read_network_proxy(device string, secure bool) (*network_proxy_info, error) {
+	command := "-getwebproxy"
+	if secure {
+		command = "-getsecurewebproxy"
+	}
+	output, err := exec.Command("networksetup", command, device).Output()
+	if err != nil {
+		return nil, fmt.Errorf("读取系统代理失败，%v", err)
+	}
+	info := &network_proxy_info{}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		parts := strings.SplitN(strings.TrimSpace(line), ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		value := strings.TrimSpace(parts[1])
+		switch key {
+		case "enabled":
+			info.Enabled = strings.EqualFold(value, "yes")
+		case "server":
+			info.Server = value
+		case "port":
+			info.Port = value
+		}
+	}
+	return info, nil
+}
+
 func get_network_interfaces() (*HardwarePort, error) {
 	// 获取所有硬件端口信息
 	cmd := exec.Command("networksetup", "-listallhardwareports")
