@@ -5,6 +5,7 @@ import DownloadButton from '../components/DownloadButton.vue'
 import EnvInfo from '../components/EnvInfo.vue'
 import LatestIssues from '../components/LatestIssues.vue'
 import ScalarApiReference from './components/ScalarApiReference.vue'
+import SponsorList from '../components/SponsorList.vue'
 
 export default {
   ...DefaultTheme,
@@ -13,6 +14,7 @@ export default {
     app.component('EnvInfo', EnvInfo)
     app.component('LatestIssues', LatestIssues)
     app.component('ScalarApiReference', ScalarApiReference)
+    app.component('SponsorList', SponsorList)
   }
 }
 

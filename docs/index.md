@@ -17,9 +17,5 @@ features:
     details: 直接在视频号页面下载，只需点击一下
 ---
 
-<p align="center" style="margin-top: 24px;">
-  <a href="https://github.com/ltaoo">
-    <img src="https://sponsorkit-iota.vercel.app/api/sponsors" alt="Sponsors" />
-  </a>
-</p>
+<SponsorList />
 
