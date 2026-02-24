@@ -18,13 +18,48 @@
           :key="index"
           class="sponsor-card"
         >
-          <div class="card-header">
-            <span class="name" :title="item.text">{{
-              item.text || "匿名"
-            }}</span>
-            <span class="amount">¥{{ item.amount }}</span>
+          <div class="card-body">
+            <div class="avatar-container">
+              <img
+                :src="formatAvatar(item.image)"
+                class="avatar"
+                alt="Avatar"
+              />
+            </div>
+            <div class="info-container">
+              <div class="card-header">
+                <span class="name" :title="item.text">{{
+                  item.text || "匿名"
+                }}</span>
+                <span class="amount">¥{{ item.amount }}</span>
+              </div>
+              <div class="time">{{ formatDate(item.time) }}</div>
+            </div>
           </div>
-          <div class="time">{{ formatDate(item.time) }}</div>
+        </div>
+      </div>
+
+      <div class="top-sponsors-section" v-if="topSponsors.length > 0">
+        <h3 class="section-title">✨ 赞赏最多 ✨</h3>
+        <div class="section-body top-sponsors-grid">
+          <div
+            v-for="item in topSponsors"
+            :key="item.id"
+            :class="['top-sponsor-card', `rank-${item.rank}`]"
+          >
+            <div class="rank-badge">{{ item.rank }}</div>
+            <div class="avatar-container">
+              <img
+                :src="formatAvatar(item.image)"
+                class="avatar"
+                alt="Avatar"
+              />
+            </div>
+            <div class="top-info">
+              <div class="name" :title="item.text">{{ item.text || "匿名" }}</div>
+              <div class="amount">¥{{ item.amount }}</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -167,6 +202,19 @@
         </div>
       </div>
     </div>
+    <div class="footer-section">
+      <p class="powered-by">
+        该赞赏列表由
+        <a
+          href="https://github.com/ltaoo/sponsorkit"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="sponsor-link"
+          >sponsorkit</a
+        >
+        驱动
+      </p>
+    </div>
   </div>
 </template>
 
@@ -189,6 +237,54 @@ const totalAmount = computed(() => {
 const maxAmount = computed(() => {
   return Math.max(...sponsors.value.map((item) => Number(item.amount || 0)), 0);
 });
+
+const topSponsors = computed(() => {
+  if (sponsors.value.length === 0) return [];
+
+  const sponsorMap = new Map();
+
+  sponsors.value.forEach((item) => {
+    // 优先使用 id 作为唯一标识，如果没有则使用 text（昵称）
+    const id = item.id || item.text || "anonymous";
+    const currentAmount = Number(item.amount || 0);
+
+    if (sponsorMap.has(id)) {
+      const existing = sponsorMap.get(id);
+      existing.amount += currentAmount;
+      // 保持最新的信息（如头像、昵称、最后一次赞赏时间）
+      if (!existing.time || new Date(item.time) > new Date(existing.time)) {
+        existing.text = item.text || existing.text;
+        existing.image = item.image || existing.image;
+        existing.time = item.time;
+      }
+    } else {
+      sponsorMap.set(id, {
+        id,
+        text: item.text,
+        image: item.image,
+        amount: currentAmount,
+        time: item.time,
+      });
+    }
+  });
+
+  return Array.from(sponsorMap.values())
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+});
+
+const formatAvatar = (url) => {
+  if (typeof window === "undefined") {
+    return url;
+  }
+  const prefix = window.location.href.replace(/\/$/, '');
+  if (!url) {
+    
+    return `${prefix}/sponsors/wechat.svg`;
+  }
+  return `${prefix}${url}`;
+};
 
 // Chart Computed Properties
 const chartData = computed(() => {
@@ -366,9 +462,6 @@ onMounted(() => {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   transition:
     transform 0.2s,
     box-shadow 0.2s;
@@ -379,11 +472,35 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
+.card-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar-container {
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--vp-c-divider);
+  object-fit: cover;
+}
+
+.info-container {
+  flex: 1;
+  min-width: 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-weight: 600;
+  margin-bottom: 4px;
 }
 
 .name {
@@ -395,14 +512,17 @@ onMounted(() => {
 }
 
 .amount {
-  color: var(--vp-c-brand);
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #ffd700 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
   white-space: nowrap;
+  font-size: 1.1em;
 }
 
 .time {
   font-size: 0.8em;
   color: var(--vp-c-text-2);
-  text-align: right;
 }
 
 .content-wrapper {
@@ -416,6 +536,163 @@ onMounted(() => {
   height: 1px;
   background-color: var(--vp-c-divider);
   width: 100%;
+}
+
+.top-sponsors-section {
+  margin-top: 24px;
+}
+
+.top-sponsors-grid {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 16px;
+  margin-top: 48px !important;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 640px) {
+  .top-sponsors-grid {
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .top-sponsor-card,
+  .top-sponsor-card.rank-1 {
+    order: unset;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+.top-sponsor-card {
+  position: relative;
+  background-color: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: transform 0.2s;
+  flex: 1;
+  max-width: 200px;
+}
+
+.top-sponsor-card.rank-1 {
+  order: 1;
+  padding: 48px 24px;
+  z-index: 2;
+  border-width: 2px;
+  max-width: 240px;
+}
+
+.top-sponsor-card.rank-2 {
+  order: 0;
+  z-index: 1;
+  padding: 36px 20px;
+}
+
+.top-sponsor-card.rank-3 {
+  order: 2;
+  z-index: 1;
+  padding: 24px 16px;
+}
+
+.top-sponsor-card .avatar {
+  width: 60px;
+  height: 60px;
+}
+
+.top-sponsor-card.rank-1 .avatar {
+  width: 96px;
+  height: 96px;
+  border-width: 3px;
+}
+
+.top-sponsor-card.rank-2 .avatar {
+  width: 72px;
+  height: 72px;
+}
+
+.top-sponsor-card:hover {
+  transform: translateY(-8px);
+}
+
+.rank-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  background-color: var(--vp-c-brand);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.rank-1 {
+  border-color: #ffd700;
+  background: linear-gradient(
+    to bottom right,
+    var(--vp-c-bg-soft),
+    rgba(255, 215, 0, 0.05)
+  );
+}
+.rank-1 .rank-badge {
+  background-color: #ffd700;
+  color: #8b4513;
+}
+.rank-2 {
+  border-color: #c0c0c0;
+  background: linear-gradient(
+    to bottom right,
+    var(--vp-c-bg-soft),
+    rgba(192, 192, 192, 0.05)
+  );
+}
+.rank-2 .rank-badge {
+  background-color: #c0c0c0;
+  color: #4a4a4a;
+}
+.rank-3 {
+  border-color: #cd7f32;
+  background: linear-gradient(
+    to bottom right,
+    var(--vp-c-bg-soft),
+    rgba(205, 127, 50, 0.05)
+  );
+}
+.rank-3 .rank-badge {
+  background-color: #cd7f32;
+  color: white;
+}
+
+.top-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-info .name {
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+.top-info .amount {
+  font-size: 1.3em;
+  font-weight: 800;
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #ffd700 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .stats-section {
@@ -456,8 +733,10 @@ onMounted(() => {
 
 .stat-value {
   font-size: 1.4em;
-  font-weight: bold;
-  color: var(--vp-c-brand);
+  font-weight: 800;
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #ffd700 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .chart-container {
@@ -496,5 +775,31 @@ onMounted(() => {
 .points circle:hover {
   r: 6;
   stroke-width: 3;
+}
+
+.footer-section {
+  margin-top: 48px;
+  padding-bottom: 24px;
+  text-align: center;
+  width: 100%;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.powered-by {
+  margin-top: 24px;
+  font-size: 0.9em;
+  color: var(--vp-c-text-2);
+}
+
+.sponsor-link {
+  color: var(--vp-c-brand);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.sponsor-link:hover {
+  color: var(--vp-c-brand-dark);
+  text-decoration: underline;
 }
 </style>
