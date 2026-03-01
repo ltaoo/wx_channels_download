@@ -1,7 +1,8 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
-var FakeAPIServerAddr = "api.weixin.qq.com";
+var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
+var FakeRemoteAPIServerAddr = "remoteapi.weixin.qq.com";
 var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
@@ -1046,3 +1047,7 @@ var WXU = (() => {
     },
   };
 })();
+
+var FakeAPIServerAddr = WXU.config.remoteServerEnabled
+  ? FakeRemoteAPIServerAddr
+  : FakeLocalAPIServerAddr;

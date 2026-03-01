@@ -110,7 +110,7 @@ func root_command(cfg *config.Config) {
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	if api_cfg.RemoteServerEnabled {
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "api.weixin.qq.com",
+			Match: "remoteapi.weixin.qq.com",
 			Target: &proxy.TargetConfig{
 				Protocol: api_cfg.RemoteServerProtocol,
 				Host:     api_cfg.RemoteServerHostname,
@@ -121,16 +121,16 @@ func root_command(cfg *config.Config) {
 		interceptor_srv.Interceptor.AddVariable("remoteServerProtocol", api_cfg.RemoteServerProtocol)
 		interceptor_srv.Interceptor.AddVariable("remoteServerHostname", api_cfg.RemoteServerHostname)
 		interceptor_srv.Interceptor.AddVariable("remoteServerPort", api_cfg.RemoteServerPort)
-	} else {
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "api.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: interceptor_cfg.APIServerProtocol,
-				Host:     interceptor_cfg.APIServerHostname,
-				Port:     interceptor_cfg.APIServerPort,
-			},
-		})
 	}
+	// 本地 websocket 需要
+	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+		Match: "localapi.weixin.qq.com",
+		Target: &proxy.TargetConfig{
+			Protocol: interceptor_cfg.APIServerProtocol,
+			Host:     interceptor_cfg.APIServerHostname,
+			Port:     interceptor_cfg.APIServerPort,
+		},
+	})
 	if !official_cfg.Disabled {
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
