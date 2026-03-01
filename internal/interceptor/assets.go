@@ -31,6 +31,12 @@ var js_weui []byte
 //go:embed inject/lib/wui.umd.js
 var js_wui []byte
 
+//go:embed inject/lib/timeless.reactive.umd.min.js
+var js_timeless_reactive []byte
+
+//go:embed inject/lib/timeless.headless.umd.min.js
+var js_timeless_headless []byte
+
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
 
@@ -81,6 +87,8 @@ type ChannelInjectedFiles struct {
 	JSMitt                  []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
+	JSTimelessReactive      []byte
+	JSTimelessHeadless      []byte
 	JSComponents            []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
@@ -106,6 +114,8 @@ var Assets = &ChannelInjectedFiles{
 	JSDebug:                 js_debug,
 	JSError:                 js_error,
 	JSEventBus:              js_eventbus,
+	JSTimelessReactive:      js_timeless_reactive,
+	JSTimelessHeadless:      js_timeless_headless,
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
 	JSDownloader:            js_downloader,

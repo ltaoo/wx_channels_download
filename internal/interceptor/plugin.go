@@ -182,6 +182,8 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */

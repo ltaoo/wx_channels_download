@@ -31,7 +31,7 @@ var isWin = /Windows|Win/i.test(ua);
   function connect(selector) {
     return new Promise((resolve, reject) => {
       const protocol = "wss://";
-      const pathname = FakeAPIServerAddr;
+      const pathname = FakeLocalAPIServerAddr;
       const ws = new WebSocket(protocol + pathname + "/ws/channels");
 
       ws.onopen = () => {
@@ -286,9 +286,9 @@ var isWin = /Windows|Win/i.test(ua);
       }
       return false;
     };
-    connect("#downloader_container").catch((e) =>
-      WXU.error({ msg: "建立ws连接失败" })
-    );
+    connect("#downloader_container").catch((e) => {
+      WXU.error({ msg: "建立ws连接失败" });
+    });
   }
   WXU.observe_node(".home-header", () => {
     insert_downloader();
@@ -303,7 +303,7 @@ async function __wx_handle_api_call(msg, socket) {
       JSON.stringify({
         id,
         data: body,
-      })
+      }),
     );
   }
   if (key === "key:channels:contact_list") {
@@ -375,10 +375,10 @@ async function __wx_handle_api_call(msg, socket) {
       if (data.url) {
         var u = new URL(decodeURIComponent(data.url));
         data.oid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("oid")
+          u.searchParams.get("oid"),
         );
         data.nid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("nid")
+          u.searchParams.get("nid"),
         );
       }
       var payload = {

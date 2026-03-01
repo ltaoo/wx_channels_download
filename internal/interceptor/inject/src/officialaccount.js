@@ -225,7 +225,7 @@
         });
         return;
       }
-      WXU.toast("开始下载");
+      WXU.toast("开始下载，请在下载面板查看进度");
     };
     return $btn;
   }
@@ -249,6 +249,50 @@
       return;
     }
     var $btn = render_download_button({ type: window.cgiDataNew.page_type });
+    const { DropdownMenu, Menu, MenuItem } = WUI;
+    const dropdown$ = DropdownMenu({
+      $trigger: $btn,
+      zIndex: 99999,
+      children: [
+        // MenuItem({
+        //   label: "下载markdown",
+        //   onClick() {
+        //     dropdown$.hide();
+        //   },
+        // }),
+        MenuItem({
+          label: "复制文章HTML",
+          onClick() {
+            const content = window.cgiDataNew.content_noencode;
+            if (!content) {
+              WXU.toast("文章HTML为空，请使用「复制页面HTML」");
+              return;
+            }
+            WXU.copy(content);
+            WXU.toast("复制成功");
+            dropdown$.hide();
+          },
+        }),
+        MenuItem({
+          label: "复制页面HTML",
+          onClick() {
+            const content = window.body.innerHTML;
+            WXU.copy(content);
+            WXU.toast("复制成功");
+            dropdown$.hide();
+          },
+        }),
+      ],
+    });
+    dropdown$.ui.$trigger.onMouseEnter(() => {
+      dropdown$.show();
+    });
+    dropdown$.ui.$trigger.onMouseLeave(() => {
+      if (dropdown$.isHover) {
+        return;
+      }
+      dropdown$.hide();
+    });
     $container.insertBefore($btn, $container.lastElementChild);
   }
   async function main() {
@@ -315,6 +359,7 @@
       });
     }
   }
+  insert_channels_style();
   WXU.onWindowLoaded(() => {
     if (WXU.config.officialServerDisabled) {
       return;
