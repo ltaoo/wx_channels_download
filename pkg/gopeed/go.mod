@@ -5,7 +5,6 @@ go 1.24.0
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/chai2010/webp v1.4.0
 	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/mattn/go-ieproxy v0.0.12
