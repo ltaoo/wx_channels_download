@@ -34,6 +34,27 @@ var isWin = /Windows|Win/i.test(ua);
       })(),
     });
   }
+  function connect_local_ws() {
+    const protocol = "wss://";
+    const ws = new WebSocket(
+      protocol + FakeLocalAPIServerAddr + "/ws/channels",
+    );
+    ws.onclose = () => {
+      WXU.error({ msg: "本地ws连接已关闭" });
+    };
+    ws.onerror = (e) => {
+      WXU.error({ msg: "本地ws连接发生错误" });
+    };
+    ws.onmessage = (ev) => {
+      const [err, msg] = WXU.parseJSON(ev.data);
+      if (err) {
+        return;
+      }
+      if (msg.type === "api_call") {
+        __wx_handle_api_call(msg.data, ws);
+      }
+    };
+  }
   function connect(selector) {
     console.log(
       "[]download connect websocket",
@@ -118,24 +139,7 @@ var isWin = /Windows|Win/i.test(ua);
       };
       if (WXU.config.remoteServerEnabled) {
         // 额外再连接本地ws用于API调用
-        const lws = new WebSocket(
-          protocol + FakeLocalAPIServerAddr + "/ws/channels",
-        );
-        lws.onclose = () => {
-          WXU.error({ msg: "本地ws连接已关闭" });
-        };
-        lws.onerror = (e) => {
-          WXU.error({ msg: "本地ws连接发生错误" });
-        };
-        lws.onmessage = (ev) => {
-          const [err, msg] = WXU.parseJSON(ev.data);
-          if (err) {
-            return;
-          }
-          if (msg.type === "api_call") {
-            __wx_handle_api_call(msg.data, lws);
-          }
-        };
+        connect_local_ws();
       }
     });
   }
@@ -346,6 +350,10 @@ var isWin = /Windows|Win/i.test(ua);
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
+  // console.log("[]check is wxwork", window.ua.includes("wxwork"), window.ua);
+  if (window.ua.includes("wxwork")) {
+    connect_local_ws();
+  }
 
   // document.addEventListener(
   //   "scroll",
@@ -451,7 +459,7 @@ async function __wx_handle_api_call(msg, socket) {
     return;
   }
   if (key === "key:channels:feed_profile") {
-    console.log("before finderGetCommentProfile", data.oid, data.nid);
+    console.log("before finderGetCommentProfile", data.oid, data.nid, data.eid);
     try {
       if (data.url) {
         var u = new URL(decodeURIComponent(data.url));
@@ -465,19 +473,25 @@ async function __wx_handle_api_call(msg, socket) {
       var payload = {
         needObject: 1,
         lastBuffer: "",
-        scene: 146,
+        scene: data.eid ? 141 : 146,
         direction: 2,
         identityScene: 2,
         pullScene: 6,
         objectid: (() => {
+          if (data.eid) {
+            return undefined;
+          }
           if (data.oid.includes("_")) {
             return data.oid.split("_")[0];
           }
           return data.oid;
         })(),
-        objectNonceId: data.nid,
-        encrypted_objectid: "",
+        objectNonceId: data.eid ? undefined : data.nid,
+        encrypted_objectid: data.eid || "",
       };
+      if (data.eid) {
+        payload.traceBuffer = undefined;
+      }
       var r = await WXU.API.finderGetCommentDetail(payload);
       /** @type {MediaProfileResp} */
       var { object } = r.data;
