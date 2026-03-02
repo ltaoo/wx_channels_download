@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/chai2010/webp"
 	"github.com/dop251/goja"
 	"golang.org/x/image/draw"
 )
@@ -152,7 +152,7 @@ func compressImage(data []byte) ([]byte, string, error) {
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
-	maxWidth := 640 // Reduced from 800 to 640
+	maxWidth := 640
 
 	var newImg image.Image = img
 	if width > maxWidth {
@@ -162,29 +162,16 @@ func compressImage(data []byte) ([]byte, string, error) {
 		newImg = dst
 	}
 
-	// Encode to WebP
+	// Always encode to JPEG with a white background to handle alpha
+	bg := image.NewRGBA(newImg.Bounds())
+	draw.Draw(bg, bg.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(bg, bg.Bounds(), newImg, newImg.Bounds().Min, draw.Over)
+
 	var buf bytes.Buffer
-	// Quality 50 provides a good balance between size and visual quality for web usage
-	err = webp.Encode(&buf, newImg, &webp.Options{Lossless: false, Quality: 50})
-	if err != nil {
-		// Fallback to JPEG if WebP encoding fails (though unlikely)
-		fmt.Printf("WebP encoding failed, falling back to JPEG: %v\n", err)
-		buf.Reset()
-
-		// Create white background for JPEG
-		bg := image.NewRGBA(newImg.Bounds())
-		draw.Draw(bg, bg.Bounds(), &image.Uniform{image.White}, image.Point{}, draw.Src)
-		draw.Draw(bg, bg.Bounds(), newImg, newImg.Bounds().Min, draw.Over)
-		finalImg := bg
-
-		err = jpeg.Encode(&buf, finalImg, &jpeg.Options{Quality: 40})
-		if err != nil {
-			return nil, "", err
-		}
-		return buf.Bytes(), "image/jpeg", nil
+	if err := jpeg.Encode(&buf, bg, &jpeg.Options{Quality: 60}); err != nil {
+		return nil, "", err
 	}
-
-	return buf.Bytes(), "image/webp", nil
+	return buf.Bytes(), "image/jpeg", nil
 }
 
 func downloadImageBytes(imgURL string) ([]byte, string, error) {
