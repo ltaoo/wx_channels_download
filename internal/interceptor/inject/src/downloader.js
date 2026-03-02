@@ -29,9 +29,11 @@ var isWin = /Windows|Win/i.test(ua);
     });
   }
   function connect(selector) {
+    console.log('[]download connect websocket', FakeAPIServerAddr, WXU.config.remoteServerEnabled);
     return new Promise((resolve, reject) => {
+      // 在注入场景下始终使用 wss 与 fake 域名通信，由代理层降级/转发到后端
       const protocol = "wss://";
-      const pathname = FakeLocalAPIServerAddr;
+      const pathname = FakeAPIServerAddr;
       const ws = new WebSocket(protocol + pathname + "/ws/channels");
 
       ws.onopen = () => {
@@ -56,6 +58,7 @@ var isWin = /Windows|Win/i.test(ua);
         if (err) {
           return;
         }
+        console.log('[]remote ws event', msg);
         if (msg.type === "tasks") {
           if (Array.isArray(msg.data)) {
             msg.data.forEach(upsert);
@@ -81,6 +84,27 @@ var isWin = /Windows|Win/i.test(ua);
           __wx_handle_api_call(msg.data, ws);
         }
       };
+      if (WXU.config.remoteServerEnabled) {
+        // 额外再连接本地ws用于API调用
+        // const lws = new WebSocket(
+        //   protocol + FakeLocalAPIServerAddr + "/ws/channels",
+        // );
+        // lws.onclose = () => {
+        //   WXU.error({ msg: "本地ws连接已关闭" });
+        // };
+        // lws.onerror = (e) => {
+        //   WXU.error({ msg: "本地ws连接发生错误" });
+        // };
+        // lws.onmessage = (ev) => {
+        //   const [err, msg] = WXU.parseJSON(ev.data);
+        //   if (err) {
+        //     return;
+        //   }
+        //   if (msg.type === "api_call") {
+        //     __wx_handle_api_call(msg.data, lws);
+        //   }
+        // };
+      }
     });
   }
 
@@ -229,12 +253,8 @@ var isWin = /Windows|Win/i.test(ua);
           label: "清空记录",
           onClick: async () => {
             moredropdown$.hide();
-            await WXU.request({
-              method: "POST",
-              url: "https://" + FakeAPIServerAddr + "/api/task/clear",
-            });
-            tasks.clear();
-            __wx_refresh_downloader("#downloader_container", tasks);
+            
+            // methods
           },
         }),
       ].filter(Boolean),
