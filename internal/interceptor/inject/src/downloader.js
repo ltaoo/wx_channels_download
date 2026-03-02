@@ -6,6 +6,12 @@ var ua = navigator.userAgent || navigator.platform || "";
 var isWin = /Windows|Win/i.test(ua);
 (() => {
   const tasks = new Map();
+  let ws_conn = null;
+  let cur_page = 1;
+  let is_loading = false;
+  let has_more = true;
+  let total_count = 0;
+
   function upsert(task) {
     if (!task || !task.id) return;
     tasks.set(task.id, {
@@ -29,17 +35,24 @@ var isWin = /Windows|Win/i.test(ua);
     });
   }
   function connect(selector) {
-    console.log('[]download connect websocket', FakeAPIServerAddr, WXU.config.remoteServerEnabled);
+    console.log(
+      "[]download connect websocket",
+      FakeAPIServerAddr,
+      WXU.config.remoteServerEnabled,
+    );
     return new Promise((resolve, reject) => {
-      // 在注入场景下始终使用 wss 与 fake 域名通信，由代理层降级/转发到后端
       const protocol = "wss://";
       const pathname = FakeAPIServerAddr;
       const ws = new WebSocket(protocol + pathname + "/ws/channels");
+      ws_conn = ws;
 
       ws.onopen = () => {
         if (WXU.downloader) {
           WXU.downloader.status = "connected";
         }
+        cur_page = 1;
+        has_more = true;
+        is_loading = false;
         resolve(true);
       };
       ws.onclose = () => {
@@ -47,6 +60,7 @@ var isWin = /Windows|Win/i.test(ua);
         if (WXU.downloader) {
           WXU.downloader.status = "disconnected";
         }
+        ws_conn = null;
       };
       ws.onerror = (e) => {
         if (WXU.downloader && WXU.downloader.status !== "connected") {
@@ -58,26 +72,44 @@ var isWin = /Windows|Win/i.test(ua);
         if (err) {
           return;
         }
-        console.log('[]remote ws event', msg);
+        console.log("[]remote ws event", msg);
         if (msg.type === "tasks") {
-          if (Array.isArray(msg.data)) {
-            msg.data.forEach(upsert);
+          let list = msg.data;
+          if (msg.data && msg.data.list) {
+            list = msg.data.list;
+            total_count = msg.data.total;
           }
-          __wx_refresh_downloader(selector, tasks);
+          if (Array.isArray(list)) {
+            list.reverse().forEach(upsert);
+            if (list.length < 50) {
+              has_more = false;
+            }
+          } else {
+            has_more = false;
+          }
+          if (is_loading) {
+            is_loading = false;
+            cur_page++;
+          }
+          __wx_refresh_downloader(selector, tasks, total_count);
           return;
         }
         if (msg.type === "clear") {
           tasks.clear();
-          __wx_refresh_downloader(selector, tasks);
+          total_count = 0;
+          __wx_refresh_downloader(selector, tasks, total_count);
           return;
         }
         if (msg.type === "event") {
           const evt = msg && msg.data ? msg.data : null;
           const task = evt ? evt.Task || evt.task : null; // 兼容大小写字段
           if (task) {
+            if (!tasks.has(task.id)) {
+              total_count++;
+            }
             upsert(task);
           }
-          __wx_refresh_downloader(selector, tasks);
+          __wx_refresh_downloader(selector, tasks, total_count);
           return;
         }
         if (msg.type === "api_call") {
@@ -86,24 +118,24 @@ var isWin = /Windows|Win/i.test(ua);
       };
       if (WXU.config.remoteServerEnabled) {
         // 额外再连接本地ws用于API调用
-        // const lws = new WebSocket(
-        //   protocol + FakeLocalAPIServerAddr + "/ws/channels",
-        // );
-        // lws.onclose = () => {
-        //   WXU.error({ msg: "本地ws连接已关闭" });
-        // };
-        // lws.onerror = (e) => {
-        //   WXU.error({ msg: "本地ws连接发生错误" });
-        // };
-        // lws.onmessage = (ev) => {
-        //   const [err, msg] = WXU.parseJSON(ev.data);
-        //   if (err) {
-        //     return;
-        //   }
-        //   if (msg.type === "api_call") {
-        //     __wx_handle_api_call(msg.data, lws);
-        //   }
-        // };
+        const lws = new WebSocket(
+          protocol + FakeLocalAPIServerAddr + "/ws/channels",
+        );
+        lws.onclose = () => {
+          WXU.error({ msg: "本地ws连接已关闭" });
+        };
+        lws.onerror = (e) => {
+          WXU.error({ msg: "本地ws连接发生错误" });
+        };
+        lws.onmessage = (ev) => {
+          const [err, msg] = WXU.parseJSON(ev.data);
+          if (err) {
+            return;
+          }
+          if (msg.type === "api_call") {
+            __wx_handle_api_call(msg.data, lws);
+          }
+        };
       }
     });
   }
@@ -125,7 +157,7 @@ var isWin = /Windows|Win/i.test(ua);
       const t = tasks.get(id);
       if (t) {
         tasks.set(id, { ...t, status: "running" });
-        __wx_refresh_downloader("#downloader_container", tasks);
+        __wx_refresh_downloader("#downloader_container", tasks, total_count);
       }
     }
     const $task_action_btn = e.target.closest("[data-action]");
@@ -186,18 +218,19 @@ var isWin = /Windows|Win/i.test(ua);
       }
       if (action === "delete") {
         tasks.delete(id);
-        __wx_refresh_downloader("#downloader_container", tasks);
+        if (total_count > 0) total_count--;
+        __wx_refresh_downloader("#downloader_container", tasks, total_count);
       } else if (action === "pause") {
         const t = tasks.get(id);
         if (t) {
           tasks.set(id, { ...t, status: "paused" });
-          __wx_refresh_downloader("#downloader_container", tasks);
+          __wx_refresh_downloader("#downloader_container", tasks, total_count);
         }
       } else if (action === "resume") {
         const t = tasks.get(id);
         if (t) {
           tasks.set(id, { ...t, status: "running" });
-          __wx_refresh_downloader("#downloader_container", tasks);
+          __wx_refresh_downloader("#downloader_container", tasks, total_count);
         }
       }
     }
@@ -253,7 +286,7 @@ var isWin = /Windows|Win/i.test(ua);
           label: "清空记录",
           onClick: async () => {
             moredropdown$.hide();
-            
+
             // methods
           },
         }),
@@ -313,6 +346,34 @@ var isWin = /Windows|Win/i.test(ua);
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
+
+  // document.addEventListener(
+  //   "scroll",
+  //   (e) => {
+  //     if (e.target && e.target.id === "downloader_container") {
+  //       const el = e.target;
+  //       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+  //         if (
+  //           !is_loading &&
+  //           has_more &&
+  //           ws_conn &&
+  //           ws_conn.readyState === WebSocket.OPEN
+  //         ) {
+  //           is_loading = true;
+  //           console.log("[]fetching next page", cur_page + 1);
+  //           ws_conn.send(
+  //             JSON.stringify({
+  //               type: "fetch_tasks",
+  //               page: cur_page + 1,
+  //               limit: 50,
+  //             }),
+  //           );
+  //         }
+  //       }
+  //     }
+  //   },
+  //   true,
+  // );
 })();
 
 async function __wx_handle_api_call(msg, socket) {

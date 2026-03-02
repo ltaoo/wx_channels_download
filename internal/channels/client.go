@@ -42,6 +42,7 @@ type ChannelsClient struct {
 	cache       *cache.Cache
 	req_seq     uint64
 	OnConnected func(client *Client)
+	OnMessage   func(client *Client, message []byte)
 }
 
 func NewChannelsClient() *ChannelsClient {
@@ -92,7 +93,12 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 			c.requests_mu.RUnlock()
 			if ok {
 				ch <- resp
+				continue
 			}
+		}
+
+		if c.OnMessage != nil {
+			c.OnMessage(client, message)
 		}
 	}
 }

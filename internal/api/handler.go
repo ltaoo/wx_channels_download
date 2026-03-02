@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -269,10 +270,15 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "创建任务失败："+err.Error())
 		return
 	}
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "tasks",
-		Data: c.downloader.GetTasks(),
-	})
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
 	result.Ok(ctx, gin.H{"id": id})
 }
 
@@ -328,6 +334,9 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 		filter.Statuses = []base.Status{base.Status(status)}
 	}
 	list := c.downloader.GetTasksByFilter(filter)
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.After(list[j].CreatedAt)
+	})
 	total := len(list)
 	page_num, err := strconv.Atoi(page_str)
 	if err != nil {
@@ -429,10 +438,15 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "tasks",
-		Data: c.downloader.GetTasks(),
-	})
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
 	result.Ok(ctx, gin.H{"id": id})
 }
 
@@ -474,10 +488,17 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	// 	Int("count", len(task.Reqs)).
 	// 	Dur("cost", time.Since(start)).
 	// 	Msg("批量创建任务完成")
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "tasks",
-		Data: c.downloader.GetTasks(),
-	})
+	for _, id := range ids {
+		task := c.downloader.GetTask(id)
+		if task != nil {
+			c.channels.Broadcast(APIClientWSMessage{
+				Type: "event",
+				Data: map[string]interface{}{
+					"task": task,
+				},
+			})
+		}
+	}
 	result.Ok(ctx, gin.H{"ids": ids})
 }
 
@@ -682,10 +703,15 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "下载失败")
 		return
 	}
-	c.channels.Broadcast(APIClientWSMessage{
-		Type: "tasks",
-		Data: c.downloader.GetTasks(),
-	})
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
 	result.Ok(ctx, gin.H{"id": id})
 }
 

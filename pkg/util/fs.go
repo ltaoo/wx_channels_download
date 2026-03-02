@@ -187,7 +187,7 @@ func (fp *FilenameProcessor) truncateString(s string, maxBytes int) string {
 
 // 验证和清理文件名
 func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
-	fmt.Println("SanitizeFilename", filename)
+	// fmt.Println("SanitizeFilename", filename)
 	if filename == "" {
 		return "", fmt.Errorf("filename cannot be empty")
 	}
