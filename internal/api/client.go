@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -41,11 +42,67 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	channels_client = channels.NewChannelsClient()
+
+	get_sorted_tasks := func() []*downloadpkg.Task {
+		tasks := downloader.GetTasks()
+		sort.Slice(tasks, func(i, j int) bool {
+			return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+		})
+		return tasks
+	}
+
 	channels_client.OnConnected = func(client *channels.Client) {
 		// Initial tasks
-		tasks := downloader.GetTasks()
-		if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: tasks}); err == nil {
+		all_tasks := get_sorted_tasks()
+		limit := 50
+		if limit > len(all_tasks) {
+			limit = len(all_tasks)
+		}
+		tasks := all_tasks[:limit]
+		if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
+			"list":  tasks,
+			"total": len(all_tasks),
+		}}); err == nil {
 			client.Send <- data
+		}
+	}
+
+	channels_client.OnMessage = func(client *channels.Client, message []byte) {
+		var req struct {
+			Type  string `json:"type"`
+			Page  int    `json:"page"`
+			Limit int    `json:"limit"`
+		}
+		if err := json.Unmarshal(message, &req); err == nil && req.Type == "fetch_tasks" {
+			allTasks := get_sorted_tasks()
+			start := (req.Page - 1) * req.Limit
+			if start < 0 {
+				start = 0
+			}
+			if req.Limit <= 0 {
+				req.Limit = 50
+			}
+
+			if start >= len(allTasks) {
+				if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
+					"list":  []*downloadpkg.Task{},
+					"total": len(allTasks),
+				}}); err == nil {
+					client.Send <- data
+				}
+				return
+			}
+			end := start + req.Limit
+			if end > len(allTasks) {
+				end = len(allTasks)
+			}
+			tasks := allTasks[start:end]
+			if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
+				"list":  tasks,
+				"total": len(allTasks),
+			}}); err == nil {
+				client.Send <- data
+			}
 		}
 	}
 	logger := parent_logger.With().Str("Client", "api_client").Logger()

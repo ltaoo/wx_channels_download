@@ -52,6 +52,7 @@ func init() {
 	root_cmd.AddCommand(serve_cmd)
 	serve_cmd.AddCommand(server_status_cmd)
 	serve_cmd.AddCommand(mp_stop_cmd)
+	serve_cmd.AddCommand(mp_restart_cmd)
 }
 
 func serve_command() {
@@ -207,34 +208,47 @@ var mp_stop_cmd = &cobra.Command{
 	Use:   "stop",
 	Short: "停止公众号服务",
 	Run: func(cmd *cobra.Command, args []string) {
-		pid, err := read_wx_pidfile()
-		if err != nil || pid == 0 {
-			color.Red("未发现守护进程")
-			return
-		}
-		if !system.IsProcessRunning(pid) {
-			color.Green("进程已停止")
-			_ = remove_wx_pidfile()
-			return
-		}
-		_ = system.TerminateProcess(pid)
-		expire := time.After(8 * time.Second)
-		tick := time.NewTicker(200 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			select {
-			case <-tick.C:
-				if !system.IsProcessRunning(pid) {
-					_ = remove_wx_pidfile()
-					color.Green("服务已关闭")
-					return
-				}
-			case <-expire:
-				color.Red("关闭超时")
+		stop_daemon()
+	},
+}
+
+var mp_restart_cmd = &cobra.Command{
+	Use:   "restart",
+	Short: "重启公众号服务",
+	Run: func(cmd *cobra.Command, args []string) {
+		stop_daemon()
+		start_daemon()
+	},
+}
+
+func stop_daemon() {
+	pid, err := read_wx_pidfile()
+	if err != nil || pid == 0 {
+		color.Red("未发现守护进程")
+		return
+	}
+	if !system.IsProcessRunning(pid) {
+		color.Green("进程已停止")
+		_ = remove_wx_pidfile()
+		return
+	}
+	_ = system.TerminateProcess(pid)
+	expire := time.After(8 * time.Second)
+	tick := time.NewTicker(200 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			if !system.IsProcessRunning(pid) {
+				_ = remove_wx_pidfile()
+				color.Green("服务已关闭")
 				return
 			}
+		case <-expire:
+			color.Red("关闭超时")
+			return
 		}
-	},
+	}
 }
 
 func port_listening(addr string) bool {

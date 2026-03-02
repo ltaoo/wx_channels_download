@@ -171,8 +171,9 @@ async function __wx_handle_api_call(msg, socket) {
 function GopeedDownloaderPanel() {
   const tasks = [];
   const tasks_ = ref(tasks);
-  const task_count_ = computed(tasks_, (t) => {
-    return t.length;
+  const total_ = ref(0);
+  const task_count_ = computed(total_, (t) => {
+    return t > 0 ? t : tasks_.value.length;
   });
   const runningCount_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
@@ -235,7 +236,13 @@ function GopeedDownloaderPanel() {
             return;
           }
           if (msg.type === "tasks") {
-            tasks_.value = msg.data;
+            if (Array.isArray(msg.data)) {
+                tasks_.value = msg.data;
+                total_.value = msg.data.length;
+            } else if (msg.data.list) {
+                tasks_.value = msg.data.list;
+                total_.value = msg.data.total;
+            }
             return;
           }
           if (msg.type === "clear") {

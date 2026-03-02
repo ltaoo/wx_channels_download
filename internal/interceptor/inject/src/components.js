@@ -303,7 +303,7 @@ function total_speed(tasks) {
   return sum;
 }
 
-function __wx_refresh_downloader(selector, tasks) {
+function __wx_refresh_downloader(selector, tasks, total) {
   const container = document.querySelector(selector);
   if (!container) return;
   container.innerHTML = "";
@@ -313,7 +313,8 @@ function __wx_refresh_downloader(selector, tasks) {
 
   const countEl = document.getElementById("wx-dl-count");
   if (countEl) {
-    countEl.innerText = list.length > 0 ? `(${list.length})` : "";
+    const count = total !== undefined ? total : list.length;
+    countEl.innerText = count > 0 ? `(${count})` : "";
   }
 
   if (list.length === 0) {
@@ -470,12 +471,12 @@ function __wx_refresh_downloader(selector, tasks) {
   });
 
   if (list.length > 0) {
-    const footer = document.createElement("div");
-    footer.className = "weui-loadmore weui-loadmore_line";
-    footer.style.marginTop = "20px";
-    footer.innerHTML =
-      '<span class="weui-loadmore__tips">没有更多内容了</span>';
-    container.appendChild(footer);
+    // const footer = document.createElement("div");
+    // footer.className = "weui-loadmore weui-loadmore_line";
+    // footer.style.marginTop = "20px";
+    // footer.innerHTML =
+    //   '<span class="weui-loadmore__tips">没有更多内容了</span>';
+    // container.appendChild(footer);
   }
 }
 
