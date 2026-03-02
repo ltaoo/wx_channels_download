@@ -13,10 +13,15 @@
     <div v-else-if="sponsors.length === 0" class="empty">暂无赞赏数据</div>
     <div v-else class="content-wrapper">
       <div class="sponsor-grid">
-        <div
+        <component
+          :is="item.href ? 'a' : 'div'"
           v-for="(item, index) in sponsors"
           :key="index"
           class="sponsor-card"
+          :href="item.href"
+          :target="item.href ? '_blank' : undefined"
+          :rel="item.href ? 'noopener noreferrer' : undefined"
+          :class="{ 'clickable': item.href }"
         >
           <div class="card-body">
             <div class="avatar-container">
@@ -36,16 +41,20 @@
               <div class="time">{{ formatDate(item.time) }}</div>
             </div>
           </div>
-        </div>
+        </component>
       </div>
 
       <div class="top-sponsors-section" v-if="topSponsors.length > 0">
         <h3 class="section-title">✨ 赞赏最多 ✨</h3>
         <div class="section-body top-sponsors-grid">
-          <div
+          <component
+            :is="item.href ? 'a' : 'div'"
             v-for="item in topSponsors"
             :key="item.id"
-            :class="['top-sponsor-card', `rank-${item.rank}`]"
+            :class="['top-sponsor-card', `rank-${item.rank}`, { 'clickable': item.href }]"
+            :href="item.href"
+            :target="item.href ? '_blank' : undefined"
+            :rel="item.href ? 'noopener noreferrer' : undefined"
           >
             <div class="rank-badge">{{ item.rank }}</div>
             <div class="avatar-container">
@@ -59,7 +68,7 @@
               <div class="name" :title="item.text">{{ item.text || "匿名" }}</div>
               <div class="amount">¥{{ item.amount }}</div>
             </div>
-          </div>
+          </component>
         </div>
       </div>
 
@@ -251,10 +260,11 @@ const topSponsors = computed(() => {
     if (sponsorMap.has(id)) {
       const existing = sponsorMap.get(id);
       existing.amount += currentAmount;
-      // 保持最新的信息（如头像、昵称、最后一次赞赏时间）
+      // 保持最新的信息（如头像、昵称、最后一次赞赏时间、链接）
       if (!existing.time || new Date(item.time) > new Date(existing.time)) {
         existing.text = item.text || existing.text;
         existing.image = item.image || existing.image;
+        existing.href = item.href || existing.href;
         existing.time = item.time;
       }
     } else {
@@ -262,6 +272,7 @@ const topSponsors = computed(() => {
         id,
         text: item.text,
         image: item.image,
+        href: item.href,
         amount: currentAmount,
         time: item.time,
       });
@@ -465,11 +476,19 @@ onMounted(() => {
   transition:
     transform 0.2s,
     box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.sponsor-card.clickable {
+  cursor: pointer;
 }
 
 .sponsor-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: var(--vp-c-brand);
 }
 
 .card-body {
@@ -578,6 +597,12 @@ onMounted(() => {
   transition: transform 0.2s;
   flex: 1;
   max-width: 200px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.top-sponsor-card.clickable {
+  cursor: pointer;
 }
 
 .top-sponsor-card.rank-1 {
@@ -618,6 +643,7 @@ onMounted(() => {
 
 .top-sponsor-card:hover {
   transform: translateY(-8px);
+  border-color: var(--vp-c-brand);
 }
 
 .rank-badge {
