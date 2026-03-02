@@ -291,9 +291,10 @@ type ChannelsInteractionedFeedListBody struct {
 	NextMarker string `json:"next_marker"`
 }
 type ChannelsFeedProfileBody struct {
-	URL      string `json:"url"`
-	ObjectId string `json:"oid"`
-	NonceId  string `json:"nid"`
+	URL               string `json:"url"`
+	ObjectId          string `json:"oid"`
+	NonceId           string `json:"nid"`
+	EncryptedObjectId string `json:"eid"`
 }
 type ChannelsFeedList struct {
 	List       []ChannelsFeedProfile `json:"list"`

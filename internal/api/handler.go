@@ -194,7 +194,8 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	uid := ctx.Query("nid")
 	url := ctx.Query("url")
-	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, url)
+	eid := ctx.Query("eid")
+	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, url, eid)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -553,7 +554,8 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	var body struct {
 		Oid   string `json:"oid"`
-		Nid   string `json:"Nid"`
+		Nid   string `json:"nid"`
+		Eid   string `json:"eid"`
 		URL   string `json:"url"`
 		MP3   bool   `json:"mp3"`   // 是否下载为 mp3
 		Cover bool   `json:"cover"` // 是否下载封面
@@ -562,11 +564,11 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
-	if body.Oid == "" && body.Nid == "" && body.URL == "" {
+	if body.Oid == "" && body.Nid == "" && body.URL == "" && body.Eid == "" {
 		result.Err(ctx, 400, "缺少参数")
 		return
 	}
-	r, err := c.channels.FetchChannelsFeedProfile(body.Oid, body.Nid, body.URL)
+	r, err := c.channels.FetchChannelsFeedProfile(body.Oid, body.Nid, body.URL, body.Eid)
 	if err != nil {
 		result.Err(ctx, 500, "获取详情失败: "+err.Error())
 		return
