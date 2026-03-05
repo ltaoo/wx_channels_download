@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	//"runtime/debug"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -1102,16 +1102,19 @@ func (d *Downloader) doPause(task *Task) (err error) {
 
 // redirect stderr to log file, when panic happened log it
 func logPanic(logDir string) {
-	/*
-		if err := util.CreateDirIfNotExist(logDir); err != nil {
-			return
-		}
-		f, err := os.Create(filepath.Join(logDir, "crash.log"))
-		if err != nil {
-			return
-		}
-		debug.SetCrashOutput(f, debug.CrashOptions{})
-	*/
+	if err := util.CreateDirIfNotExist(logDir); err != nil {
+		return
+	}
+
+	// 将 stderr 重定向到崩溃日志文件，兼容 Go 1.20
+	logFile := filepath.Join(logDir, "crash.log")
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	// 注意：不要关闭文件，让它在程序整个生命周期保持打开
+	// 这样 panic 时才能写入
+	os.Stderr = f
 }
 
 func (d *Downloader) assignFetcherManager(task *Task) error {
