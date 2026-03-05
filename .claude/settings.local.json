@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(/Users/mayfair/Documents/other/wx_channels_download/docs/faq/task_create_crash_fix.md:*)",
+      "Bash(git reset:*)"
+    ]
+  }
+}
