@@ -6,7 +6,8 @@
       "Bash(git reset:*)",
       "Bash(go mod:*)",
       "Bash(mise use:*)",
-      "Bash(go version:*)"
+      "Bash(go version:*)",
+      "Bash(rm:*)"
     ]
   }
 }
