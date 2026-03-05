@@ -56,6 +56,12 @@ go build -ldflags="-s -w"
 upx wx_channel
 ```
 
+#### macOS 交叉编译 Windows
+
+```bash
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o wx_video_download_windows_x86_64.exe
+```
+
 ### macOS
 
 ```bash
