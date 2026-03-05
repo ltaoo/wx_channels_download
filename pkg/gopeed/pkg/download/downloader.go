@@ -763,6 +763,9 @@ func (d *Downloader) watch(task *Task) {
 	}
 
 	defer func() {
+		if r := recover(); r != nil {
+			d.Logger.Error().Interface("panic", r).Str("stack", string(debug.Stack())).Msgf("watch task panic, task id: %s", task.ID)
+		}
 		d.watchedTasks.Delete(task.ID)
 	}()
 
@@ -770,6 +773,11 @@ func (d *Downloader) watch(task *Task) {
 	if task.Uploading {
 		if uploader, ok := task.fetcher.(fetcher.Uploader); ok {
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						d.Logger.Error().Interface("panic", r).Str("stack", string(debug.Stack())).Msgf("wait upload panic, task id: %s", task.ID)
+					}
+				}()
 				err := uploader.WaitUpload()
 				if err != nil {
 					d.Logger.Warn().Err(err).Msgf("task wait upload failed, task id: %s", task.ID)
@@ -790,6 +798,12 @@ func (d *Downloader) watch(task *Task) {
 		return
 	}
 
+	// Check if fetcher is nil before calling Wait
+	if task.fetcher == nil {
+		d.Logger.Error().Msgf("task fetcher is nil, task id: %s", task.ID)
+		return
+	}
+
 	err := task.fetcher.Wait()
 	if err != nil {
 		d.doOnError(task, err)
@@ -803,7 +817,9 @@ func (d *Downloader) watch(task *Task) {
 
 	task.Progress.Used = task.timer.Used()
 	if task.Meta.Res.Size == 0 {
-		task.Meta.Res.Size = task.fetcher.Progress().TotalDownloaded()
+		if task.fetcher != nil {
+			task.Meta.Res.Size = task.fetcher.Progress().TotalDownloaded()
+		}
 	}
 	used := task.Progress.Used / int64(time.Second)
 	if used == 0 {
@@ -1023,6 +1039,11 @@ func (d *Downloader) doStart(task *Task) (err error) {
 		return nil
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				d.Logger.Error().Interface("panic", r).Str("stack", string(debug.Stack())).Msgf("start task handler panic, task id: %s", task.ID)
+			}
+		}()
 		if err := handler(); err != nil {
 			d.doOnError(task, err)
 		}
@@ -1066,6 +1087,11 @@ func (d *Downloader) doPause(task *Task) (err error) {
 		return nil
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				d.Logger.Error().Interface("panic", r).Str("stack", string(debug.Stack())).Msgf("pause task handler panic, task id: %s", task.ID)
+			}
+		}()
 		if err := handler(); err != nil {
 			d.Logger.Error().Stack().Err(err).Msgf("pause task handle failed, task id: %s", task.ID)
 		}
