@@ -10,12 +10,17 @@ var html_home []byte
 //go:embed ui/preview.html
 var preview_home []byte
 
+//go:embed ui/filehelper.html
+var filehelper_home []byte
+
 type Assets struct {
-	HTMLHome    []byte
-	HTMLPreview []byte
+	HTMLHome       []byte
+	HTMLPreview    []byte
+	HTMLFilehelper []byte
 }
 
 var files = &Assets{
-	HTMLHome:    html_home,
-	HTMLPreview: preview_home,
+	HTMLHome:       html_home,
+	HTMLPreview:    preview_home,
+	HTMLFilehelper: filehelper_home,
 }

@@ -2,14 +2,19 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
+	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 
@@ -22,13 +27,14 @@ import (
 )
 
 type APIClient struct {
-	downloader *downloadpkg.Downloader
-	official   *officialaccount.OfficialAccountClient
-	channels   *channels.ChannelsClient
-	formatter  *util.FilenameProcessor
-	cfg        *APIConfig
-	engine     *gin.Engine
-	logger     *zerolog.Logger
+	downloader  *downloadpkg.Downloader
+	official    *officialaccount.OfficialAccountClient
+	channels    *channels.ChannelsClient
+	filehelper  *FileHelperHandler
+	formatter   *util.FilenameProcessor
+	cfg         *APIConfig
+	engine      *gin.Engine
+	logger      *zerolog.Logger
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
@@ -110,11 +116,16 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		downloader: downloader,
 		official:   officialaccount_client,
 		channels:   channels_client,
+		filehelper: NewFileHelperHandler(),
 		formatter:  util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:        cfg,
 		engine:     gin.Default(),
 		logger:     &logger,
 	}
+
+	// 设置文件传输助手视频号自动下载回调
+	client.filehelper.SetFinderAutoDownloadCallback(client.autoCreateChannelsTask)
+
 	client.SetupRoutes()
 	return client
 }
@@ -245,4 +256,160 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDow
 		}
 	}
 	return false
+}
+
+// autoCreateChannelsTask 根据视频号消息自动创建下载任务
+func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error {
+	c.logger.Info().
+		Str("objectID", objectID).
+		Str("objectNonceID", objectNonceID).
+		Msg("收到视频号消息，开始自动创建下载任务")
+
+	// 获取视频详情
+	r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
+	if err != nil {
+		c.logger.Error().Err(err).Msg("获取视频号详情失败")
+		return fmt.Errorf("获取详情失败: %w", err)
+	}
+	if r.ErrCode != 0 {
+		c.logger.Error().Str("errMsg", r.ErrMsg).Msg("获取视频号详情失败")
+		return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+	}
+	if len(r.Data.Object.ObjectDesc.Media) == 0 {
+		c.logger.Warn().Msg("缺少可下载的视频内容")
+		return fmt.Errorf("缺少可下载的视频内容")
+	}
+
+	media := r.Data.Object.ObjectDesc.Media[0]
+	key := 0
+	if media.DecodeKey != "" {
+		k, err := strconv.Atoi(media.DecodeKey)
+		if err != nil {
+			c.logger.Error().Err(err).Msg("解析 DecodeKey 失败")
+			return fmt.Errorf("解析 DecodeKey 失败: %w", err)
+		}
+		key = k
+	}
+
+	spec := "original"
+	if !c.cfg.Original.GetBool("download.defaultHighest") {
+		if len(media.Spec) > 0 {
+			spec = media.Spec[0].FileFormat
+		}
+	}
+
+	// 构建文件名
+	feed := r.Data.Object
+	defaultName := feed.ObjectDesc.Description
+	if defaultName == "" {
+		if feed.ID != "" {
+			defaultName = feed.ID
+		} else {
+			defaultName = util.NowSecondsStr()
+		}
+	}
+	template := c.cfg.Original.GetString("download.filenameTemplate")
+	filename := defaultName
+	if template != "" {
+		params := map[string]string{
+			"filename":    defaultName,
+			"id":          feed.ID,
+			"title":       feed.ObjectDesc.Description,
+			"spec":        spec,
+			"created_at":  strconv.Itoa(feed.CreateTime),
+			"download_at": util.NowSecondsStr(),
+			"author":      feed.Contact.Nickname,
+		}
+		filename = template
+		for k, v := range params {
+			filename = strings.ReplaceAll(filename, "{{"+k+"}}", v)
+		}
+	}
+
+	payload := FeedDownloadTaskBody{
+		Id:       feed.ID,
+		Title:    feed.ObjectDesc.Description,
+		Key:      key,
+		Spec:     spec,
+		Suffix:   ".mp4",
+		URL:      media.URL + media.URLToken,
+		Filename: filename,
+	}
+
+	// 处理图集类型
+	if feed.ObjectDesc.MediaType == 2 {
+		payload.Suffix = ".zip"
+		var files []map[string]string
+		for i, m := range feed.ObjectDesc.Media {
+			files = append(files, map[string]string{
+				"url":      m.URL + m.URLToken,
+				"filename": fmt.Sprintf("%d.jpg", i+1),
+			})
+		}
+		data, _ := json.Marshal(files)
+		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
+	}
+
+	if payload.Id == "" {
+		return fmt.Errorf("缺少 feed id")
+	}
+
+	// 检查是否已存在相同任务
+	tasks := c.downloader.GetTasks()
+	if c.check_existing_feed(tasks, &payload) {
+		c.logger.Info().Str("id", payload.Id).Msg("任务已存在，跳过创建")
+		return nil
+	}
+
+	// 处理文件名
+	connections := c.resolve_connections(payload.URL)
+	processedFilename, dir, err := c.formatter.ProcessFilename(payload.Filename + payload.Suffix)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("处理文件名失败")
+		return fmt.Errorf("处理文件名失败: %w", err)
+	}
+
+	// 创建下载任务
+	req := &base.Request{
+		URL: payload.URL,
+		Labels: map[string]string{
+			"id":     payload.Id,
+			"title":  payload.Title,
+			"key":    strconv.Itoa(payload.Key),
+			"spec":   payload.Spec,
+			"suffix": payload.Suffix,
+		},
+	}
+	opt := &base.Options{
+		Name: processedFilename,
+		Path: filepath.Join(c.cfg.DownloadDir, dir),
+		Extra: &gopeedhttp.OptsExtra{
+			Connections: connections,
+		},
+	}
+
+	id, err := c.downloader.CreateDirect(req, opt)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("创建下载任务失败")
+		return fmt.Errorf("创建下载任务失败: %w", err)
+	}
+
+	// 广播新任务事件
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+
+	c.logger.Info().
+		Str("id", payload.Id).
+		Str("taskId", id).
+		Str("filename", processedFilename).
+		Msg("自动创建下载任务成功")
+
+	return nil
 }
