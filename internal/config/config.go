@@ -378,6 +378,31 @@ func (c *Config) LoadConfig() error {
 		Title:       "D1 Database Name",
 		Group:       "Cloudflare",
 	})
+	// FileHelper 微信文件传输助手配置
+	Register(ConfigItem{
+		Key:         "filehelper.enabled",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "是否开启文件传输助手自动下载视频号功能",
+		Title:       "自动下载",
+		Group:       "FileHelper",
+	})
+	Register(ConfigItem{
+		Key:         "filehelper.callbackUrl",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "文件传输助手消息回调地址",
+		Title:       "回调地址",
+		Group:       "FileHelper",
+	})
+	Register(ConfigItem{
+		Key:         "filehelper.syncInterval",
+		Type:        ConfigTypeInt,
+		Default:     5,
+		Description: "消息同步间隔（秒）",
+		Title:       "同步间隔",
+		Group:       "FileHelper",
+	})
 
 	if c.Existing {
 		// config.FilePath = config_filepath

@@ -7,7 +7,13 @@
       "Bash(go mod:*)",
       "Bash(mise use:*)",
       "Bash(go version:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(gofmt:*)",
+      "Bash(go get:*)",
+      "Bash(go list:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

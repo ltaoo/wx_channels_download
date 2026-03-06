@@ -14,10 +14,12 @@ import (
 	"strings"
 	"time"
 
-	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
 )
+
+var md_convert = htmltomarkdown.NewConverter("", true, nil)
 
 type OfficialAccountDownload struct {
 	article *WechatOfficialArticle
@@ -165,7 +167,7 @@ func (c *OfficialAccountDownload) ConvertHtmlToMarkdown(article *WechatOfficialA
 	newHTML = strings.ReplaceAll(newHTML, "<br>", brPlaceholder)
 	newHTML = strings.ReplaceAll(newHTML, "<br />", brPlaceholder)
 
-	markdown, err := htmltomarkdown.ConvertString(newHTML)
+	markdown, err := md_convert.ConvertString(newHTML)
 	if err != nil {
 		return err
 	}

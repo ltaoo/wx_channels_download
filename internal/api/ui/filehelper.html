@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信文件传输助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --wechat-green: #07c160;
+            --wechat-green-dark: #06ad56;
+            --bg-primary: #ededed;
+            --bg-secondary: #f7f7f7;
+            --bg-white: #ffffff;
+            --text-primary: #191919;
+            --text-secondary: #888888;
+            --border-color: #e5e5e5;
+            --bubble-self: #95ec69;
+            --bubble-other: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            height: 100vh;
+            max-height: 800px;
+            background-color: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background-color: var(--bg-white);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-title {
+            font-size: 17px;
+            font-weight: 500;
+        }
+
+        .header-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .header-status.online {
+            color: var(--wechat-green);
+        }
+
+        .login-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            background-color: var(--bg-white);
+        }
+
+        .login-title {
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 30px;
+            color: var(--text-primary);
+        }
+
+        .qrcode-container {
+            width: 200px;
+            height: 200px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--bg-white);
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .qrcode-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .qrcode-loading {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .qrcode-expired {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .qrcode-expired-text {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .qrcode-refresh-btn {
+            background-color: var(--wechat-green);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .qrcode-refresh-btn:hover {
+            background-color: var(--wechat-green-dark);
+        }
+
+        .login-tip {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .scanned-user {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .scanned-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+
+        .scanned-tip {
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .chat-section {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+        }
+
+        .chat-section.active {
+            display: flex;
+        }
+
+        .login-section.hidden {
+            display: none;
+        }
+
+        .message-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message-item {
+            display: flex;
+            gap: 8px;
+            max-width: 80%;
+        }
+
+        .message-item.self {
+            flex-direction: row-reverse;
+            align-self: flex-end;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            background-color: var(--wechat-green);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .message-bubble {
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-size: 15px;
+            line-height: 1.5;
+            word-break: break-word;
+            background-color: var(--bubble-other);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .message-item.self .message-bubble {
+            background-color: var(--bubble-self);
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        .message-item.self .message-time {
+            text-align: left;
+        }
+
+        .message-file {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+            cursor: pointer;
+        }
+
+        .file-icon {
+            width: 40px;
+            height: 40px;
+            background-color: #4a90d9;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-name {
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* 视频号卡片样式 */
+        .finder-card {
+            width: 240px;
+            background: var(--bg-white);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .finder-cover {
+            width: 100%;
+            height: 135px;
+            object-fit: cover;
+            background-color: #f0f0f0;
+        }
+
+        .finder-content {
+            padding: 10px;
+        }
+
+        .finder-desc {
+            font-size: 14px;
+            line-height: 1.4;
+            color: var(--text-primary);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .finder-author {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .finder-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .finder-nickname {
+            font-size: 12px;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .finder-badge {
+            font-size: 10px;
+            color: var(--wechat-green);
+            background-color: rgba(7, 193, 96, 0.1);
+            padding: 2px 4px;
+            border-radius: 2px;
+            margin-left: auto;
+        }
+
+        .input-area {
+            background-color: var(--bg-white);
+            padding: 10px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            background-color: var(--bg-secondary);
+            border-radius: 4px;
+            padding: 8px 12px;
+        }
+
+        .input-wrapper textarea {
+            width: 100%;
+            border: none;
+            background: none;
+            resize: none;
+            font-size: 15px;
+            line-height: 1.4;
+            max-height: 100px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .send-btn {
+            background-color: var(--wechat-green);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .send-btn:hover {
+            background-color: var(--wechat-green-dark);
+        }
+
+        .send-btn:disabled {
+            background-color: #c4c4c4;
+            cursor: not-allowed;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 10px;
+        }
+
+        .toolbar-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        .toolbar-btn:hover {
+            background-color: var(--bg-secondary);
+        }
+
+        .toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        }
+
+        .toast.show {
+            display: block;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--wechat-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            gap: 8px;
+        }
+
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            opacity: 0.5;
+        }
+
+        .hidden-input {
+            display: none;
+        }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+
+        .logout-btn:hover {
+            color: #fa5151;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div></div>
+            <div class="header-title">文件传输助手</div>
+            <div>
+                <span class="header-status" id="status">未登录</span>
+                <button class="logout-btn" id="logoutBtn" style="display: none;" onclick="handleLogout()">退出</button>
+            </div>
+        </div>
+
+        <div class="login-section" id="loginSection">
+            <div class="login-title">微信登录</div>
+            <div class="qrcode-container" id="qrcodeContainer">
+                <div class="qrcode-loading" id="qrcodeLoading">
+                    <div class="loading-spinner"></div>
+                </div>
+                <img id="qrcodeImg" style="display: none;" alt="登录二维码">
+                <div class="qrcode-expired" id="qrcodeExpired" style="display: none;">
+                    <span class="qrcode-expired-text">二维码已过期</span>
+                    <button class="qrcode-refresh-btn" onclick="refreshQRCode()">刷新二维码</button>
+                </div>
+            </div>
+            <div class="scanned-user" id="scannedUser" style="display: none;">
+                <img class="scanned-avatar" id="scannedAvatar" alt="用户头像">
+                <span class="scanned-tip">请在手机上确认登录</span>
+            </div>
+            <p class="login-tip" id="loginTip">请使用微信扫描二维码登录<br>登录后可同步接收和发送消息</p>
+        </div>
+
+        <div class="chat-section" id="chatSection">
+            <div class="message-list" id="messageList">
+                <div class="empty-state" id="emptyState">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>暂无消息</span>
+                    <span>发送的文件将同步到手机微信</span>
+                </div>
+            </div>
+            <div class="input-area">
+                <div style="width: 100%;">
+                    <div class="toolbar">
+                        <button class="toolbar-btn" title="发送图片" onclick="sendImage()">🖼️</button>
+                        <button class="toolbar-btn" title="发送文件" onclick="sendFile()">📎</button>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div class="input-wrapper">
+                            <textarea id="messageInput" rows="1" placeholder="输入消息..." onkeydown="handleKeyDown(event)"></textarea>
+                        </div>
+                        <button class="send-btn" id="sendBtn" onclick="sendMessage()">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <input type="file" id="imageInput" class="hidden-input" accept="image/*" onchange="handleImageSelect(event)">
+        <input type="file" id="fileInput" class="hidden-input" onchange="handleFileSelect(event)">
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let messages = [];
+        let polling = false;
+        let syncCheckPolling = false;
+
+        function showToast(msg, duration = 2000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), duration);
+        }
+
+        function showLoginSection() {
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('chatSection').classList.remove('active');
+            document.getElementById('status').textContent = '未登录';
+            document.getElementById('status').classList.remove('online');
+            document.getElementById('logoutBtn').style.display = 'none';
+        }
+
+        function showChatSection() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('chatSection').classList.add('active');
+            document.getElementById('status').textContent = '已连接';
+            document.getElementById('status').classList.add('online');
+            document.getElementById('logoutBtn').style.display = 'inline';
+            // 开始同步检查
+            startSyncCheckPolling();
+        }
+
+        async function refreshQRCode() {
+            document.getElementById('qrcodeExpired').style.display = 'none';
+            document.getElementById('scannedUser').style.display = 'none';
+            document.getElementById('qrcodeLoading').style.display = 'flex';
+            document.getElementById('qrcodeImg').style.display = 'none';
+            document.getElementById('loginTip').innerHTML = '请使用微信扫描二维码登录<br>登录后可同步接收和发送消息';
+
+            try {
+                const resp = await fetch(`${API_BASE}/api/filehelper/qrcode`);
+                const result = await resp.json();
+                if (result.code === 0) {
+                    document.getElementById('qrcodeImg').src = result.data.qrcode_url;
+                    document.getElementById('qrcodeImg').style.display = 'block';
+                    document.getElementById('qrcodeLoading').style.display = 'none';
+                    startWaitLogin();
+                } else {
+                    showToast('获取二维码失败: ' + result.msg);
+                }
+            } catch (e) {
+                showToast('网络错误: ' + e.message);
+            }
+        }
+
+        async function startWaitLogin() {
+            if (polling) return;
+            polling = true;
+
+            while (polling) {
+                try {
+                    const resp = await fetch(`${API_BASE}/api/filehelper/login/wait`);
+                    const result = await resp.json();
+
+                    if (result.code !== 0) {
+                        await sleep(1000);
+                        continue;
+                    }
+
+                    const status = result.data?.status;
+
+                    switch (status) {
+                        case 'waiting':
+                            document.getElementById('qrcodeExpired').style.display = 'none';
+                            await sleep(2000);
+                            continue;
+
+                        case 'scanned':
+                            document.getElementById('qrcodeImg').style.display = 'none';
+                            document.getElementById('scannedUser').style.display = 'flex';
+                            document.getElementById('scannedAvatar').src = result.data.user_avatar;
+                            document.getElementById('loginTip').textContent = '请在手机上确认登录';
+                            await sleep(2000);
+                            continue;
+
+                        case 'expired':
+                            document.getElementById('qrcodeExpired').style.display = 'flex';
+                            polling = false;
+                            break;
+
+                        case 'logged_in':
+                            showToast('登录成功');
+                            polling = false;
+                            showChatSection();
+                            break;
+
+                        default:
+                            await sleep(2000);
+                    }
+                } catch (e) {
+                    console.error('等待登录失败:', e);
+                    await sleep(2000);
+                }
+            }
+        }
+
+        // 同步检查轮询（阻塞式）
+        async function startSyncCheckPolling() {
+            if (syncCheckPolling) return;
+            syncCheckPolling = true;
+
+            while (syncCheckPolling) {
+                try {
+                    const resp = await fetch(`${API_BASE}/api/filehelper/synccheck`);
+                    const result = await resp.json();
+
+                    if (result.code === 401) {
+                        // 未登录
+                        syncCheckPolling = false;
+                        showLoginSection();
+                        refreshQRCode();
+                        break;
+                    }
+
+                    if (result.code !== 0) {
+                        await sleep(2000);
+                        continue;
+                    }
+
+                    const status = result.data?.status;
+
+                    if (status === 'hasMsg') {
+                        // 有新消息，获取消息
+                        await fetchAndRenderMessages();
+                    } else if (status === 'logout') {
+                        // 已登出
+                        syncCheckPolling = false;
+                        showToast('登录已过期');
+                        showLoginSection();
+                        refreshQRCode();
+                        break;
+                    }
+                    // status === 'wait' 继续轮询（接口本身就是阻塞的）
+                } catch (e) {
+                    console.error('同步检查失败:', e);
+                    await sleep(2000);
+                }
+            }
+        }
+
+        // 获取消息并渲染
+        async function fetchAndRenderMessages() {
+            try {
+                const resp = await fetch(`${API_BASE}/api/filehelper/sync`);
+                const data = await resp.json();
+
+                if (data.BaseResponse?.Ret !== 0) {
+                    console.error('同步消息失败:', data);
+                    return;
+                }
+
+                const addMsgList = data.AddMsgList || [];
+                if (addMsgList.length === 0) return;
+
+                // 处理新消息
+                for (const msg of addMsgList) {
+                    // 只处理文件传输助手的消息
+                    if (msg.FromUserName !== 'filehelper' && msg.ToUserName !== 'filehelper') {
+                        continue;
+                    }
+
+                    // 忽略 AppMsgType === 0 的消息
+                    if (msg.AppMsgType === 0) {
+                        continue;
+                    }
+
+                    // 检查是否已存在
+                    const exists = messages.some(m => m.MsgId === msg.MsgId);
+                    if (exists) continue;
+
+                    // 标准化消息
+                    const isMine = msg.FromUserName !== 'filehelper';
+                    let text = msg.Content || '';
+                    let type = 'text';
+                    let finderData = null;
+
+                    switch (msg.MsgType) {
+                        case 1:
+                            type = 'text';
+                            break;
+                        case 3:
+                            type = 'image';
+                            text = '[图片]';
+                            break;
+                        case 49:
+                            if (msg.AppMsgType === 6) {
+                                type = 'file';
+                                text = `[文件: ${msg.FileName || '未知文件'}]`;
+                            } else {
+                                // 尝试解析视频号消息
+                                finderData = parseFinderFeed(msg.Content);
+                                if (finderData && finderData.nickname) {
+                                    type = 'finder';
+                                    text = finderData.desc || '[视频号]';
+                                } else {
+                                    type = 'app';
+                                    text = '[应用消息]';
+                                }
+                            }
+                            break;
+                        default:
+                            type = 'unknown';
+                            text = '[未知消息]';
+                    }
+
+                    messages.push({
+                        ...msg,
+                        isMine,
+                        type,
+                        text,
+                        finderData
+                    });
+                }
+
+                // 只保留最近 200 条
+                if (messages.length > 200) {
+                    messages = messages.slice(-200);
+                }
+
+                renderMessages();
+            } catch (e) {
+                console.error('获取消息失败:', e);
+            }
+        }
+
+        function renderMessages() {
+            const list = document.getElementById('messageList');
+            const emptyState = document.getElementById('emptyState');
+
+            if (messages.length === 0) {
+                emptyState.style.display = 'flex';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            const html = messages.map(msg => {
+                const time = msg.CreateTime ? new Date(msg.CreateTime * 1000).toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }) : '';
+
+                let bubbleContent = '';
+
+                if (msg.type === 'finder' && msg.finderData) {
+                    const fd = msg.finderData;
+                    const coverImg = fd.coverUrl || fd.thumbUrl || '';
+                    bubbleContent = `
+                        <div class="finder-card">
+                            ${coverImg ? `<img class="finder-cover" src="${escapeHtml(coverImg)}" alt="封面" onerror="this.style.display='none'">` : ''}
+                            <div class="finder-content">
+                                <div class="finder-desc">${escapeHtml(fd.desc || '[视频号]')}</div>
+                                <div class="finder-author">
+                                    ${fd.avatar ? `<img class="finder-avatar" src="${escapeHtml(fd.avatar)}" alt="头像" onerror="this.style.display='none'">` : ''}
+                                    <span class="finder-nickname">${escapeHtml(fd.nickname)}</span>
+                                    <span class="finder-badge">视频号</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    bubbleContent = `<div class="message-bubble">${escapeHtml(msg.text)}</div>`;
+                }
+
+                return `
+                    <div class="message-item ${msg.isMine ? 'self' : ''}">
+                        <div class="message-avatar">${msg.isMine ? '我' : '文'}</div>
+                        <div>
+                            ${bubbleContent}
+                            ${time ? `<div class="message-time">${time}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            list.innerHTML = html + '<div class="empty-state" id="emptyState" style="display:none;"></div>';
+            list.scrollTop = list.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 解码 HTML 实体并清理 XML 内容
+        function decodeAndCleanXml(content) {
+            if (!content) return '';
+            // 解码 HTML 实体
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = content;
+            let decoded = textarea.value;
+            // 移除 <br/> 标签
+            decoded = decoded.replace(/<br\s*\/?>/gi, '');
+            // 替换 &amp; 为 &
+            decoded = decoded.replace(/&amp;/g, '&');
+            return decoded;
+        }
+
+        // 解析视频号 XML 消息
+        function parseFinderFeed(content) {
+            try {
+                const xml = decodeAndCleanXml(content);
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(xml, 'text/xml');
+
+                // 检查是否解析成功
+                if (doc.querySelector('parsererror')) {
+                    console.error('XML 解析失败:', xml.substring(0, 200));
+                    return null;
+                }
+
+                const finderFeed = doc.querySelector('finderFeed');
+                if (!finderFeed) return null;
+
+                const getTextContent = (selector) => {
+                    const el = finderFeed.querySelector(selector);
+                    return el ? el.textContent.trim() : '';
+                };
+
+                const media = finderFeed.querySelector('mediaList media');
+
+                return {
+                    nickname: getTextContent('nickname'),
+                    avatar: getTextContent('avatar'),
+                    desc: getTextContent('desc'),
+                    coverUrl: media ? (media.querySelector('coverUrl')?.textContent.trim() || '') : '',
+                    thumbUrl: media ? (media.querySelector('thumbUrl')?.textContent.trim() || '') : '',
+                    videoUrl: media ? (media.querySelector('url')?.textContent.trim() || '') : '',
+                    duration: media ? (media.querySelector('videoPlayDuration')?.textContent.trim() || '0') : '0',
+                };
+            } catch (e) {
+                console.error('解析视频号消息失败:', e);
+                return null;
+            }
+        }
+
+        // 格式化视频时长
+        function formatDuration(seconds) {
+            const s = parseInt(seconds) || 0;
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${m}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            try {
+                const resp = await fetch(`${API_BASE}/api/filehelper/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const result = await resp.json();
+                if (result.code === 0) {
+                    input.value = '';
+                    // 添加到本地消息列表
+                    messages.push({
+                        MsgId: Date.now().toString(),
+                        type: 'text',
+                        text: text,
+                        isMine: true,
+                        CreateTime: Math.floor(Date.now() / 1000)
+                    });
+                    renderMessages();
+                } else {
+                    showToast('发送失败: ' + result.msg);
+                }
+            } catch (e) {
+                showToast('发送失败: ' + e.message);
+            }
+        }
+
+        function sendImage() {
+            document.getElementById('imageInput').click();
+        }
+
+        function sendFile() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showToast('图片发送功能开发中...');
+            event.target.value = '';
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showToast('文件发送功能开发中...');
+            event.target.value = '';
+        }
+
+        async function handleLogout() {
+            if (!confirm('确定要退出登录吗？')) return;
+
+            try {
+                await fetch(`${API_BASE}/api/filehelper/logout`, { method: 'POST' });
+                polling = false;
+                syncCheckPolling = false;
+                messages = [];
+                showLoginSection();
+                refreshQRCode();
+            } catch (e) {
+                showToast('退出失败: ' + e.message);
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const resp = await fetch(`${API_BASE}/api/filehelper/status`);
+                const result = await resp.json();
+                if (result.code === 0 && result.data?.logged_in) {
+                    showChatSection();
+                } else {
+                    refreshQRCode();
+                }
+            } catch (e) {
+                refreshQRCode();
+            }
+        }
+
+        checkStatus();
+    </script>
+</body>
+
+</html>
