@@ -163,6 +163,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Channels",
 	})
 	Register(ConfigItem{
+		Key:         "channels.refreshInterval",
+		Type:        ConfigTypeInt,
+		Default:     0,
+		Description: "视频号页面定时刷新时间间隔（秒），0 为不刷新",
+		Title:       "定时刷新间隔",
+		Group:       "Channels",
+	})
+	Register(ConfigItem{
 		Key:         "inject.extraScript.afterJSMain",
 		Type:        ConfigTypeString,
 		Default:     "",

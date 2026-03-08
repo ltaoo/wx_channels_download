@@ -28,6 +28,7 @@ type APIConfig struct {
 	RemoteServerMode             bool // 是否为服务器模式
 	OfficialAccountRefreshToken  string
 	OfficialAccountTokenFilepath string
+	ChannelsRefreshInterval      int
 }
 
 func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
@@ -59,6 +60,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		RemoteServerMode:             remote_mode,
 		OfficialAccountTokenFilepath: mp_token_filepath,
 		OfficialAccountRefreshToken:  mp_refresh_token,
+		ChannelsRefreshInterval:      viper.GetInt("channels.refreshInterval"),
 	}
 	return api_cfg
 }
