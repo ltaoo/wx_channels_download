@@ -66,6 +66,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他
+	c.engine.GET("/api/status", c.handleStatus)
 	// c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
@@ -78,4 +79,25 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 	ctx.Header("Content-Type", "image/png")
 	ctx.Header("Cache-Control", "public, max-age=86400")
 	ctx.File("winres/icon.png")
+}
+
+func (c *APIClient) handleStatus(ctx *gin.Context) {
+	err := c.channels.Validate()
+	if err != nil {
+		ctx.JSON(200, gin.H{
+			"code": 1,
+			"msg":  err.Error(),
+			"data": gin.H{
+				"available": false,
+			},
+		})
+		return
+	}
+	ctx.JSON(200, gin.H{
+		"code": 0,
+		"msg":  "ok",
+		"data": gin.H{
+			"available": true,
+		},
+	})
 }

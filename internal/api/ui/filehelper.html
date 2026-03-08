@@ -488,6 +488,7 @@
             <div></div>
             <div class="header-title">文件传输助手</div>
             <div>
+                <span class="header-status" id="channelsStatus" style="display: none; margin-right: 12px; font-size: 12px;">视频号API: <span id="channelsStatusText">检测中...</span></span>
                 <span class="header-status" id="status">未登录</span>
                 <button class="logout-btn" id="logoutBtn" style="display: none;" onclick="handleLogout()">退出</button>
             </div>
@@ -552,6 +553,27 @@
         let polling = false;
         let syncCheckPolling = false;
 
+        async function checkChannelsStatus() {
+            const statusEl = document.getElementById('channelsStatus');
+            const textEl = document.getElementById('channelsStatusText');
+            statusEl.style.display = 'inline-block';
+            
+            try {
+                const resp = await fetch(`${API_BASE}/api/status`);
+                const result = await resp.json();
+                if (result.code === 0 && result.data.available) {
+                    textEl.textContent = '可用';
+                    textEl.style.color = 'var(--wechat-green)';
+                } else {
+                    textEl.textContent = '不可用';
+                    textEl.style.color = '#fa5151';
+                }
+            } catch (e) {
+                textEl.textContent = '检测失败';
+                textEl.style.color = '#fa5151';
+            }
+        }
+
         function showToast(msg, duration = 2000) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
@@ -565,6 +587,7 @@
             document.getElementById('status').textContent = '未登录';
             document.getElementById('status').classList.remove('online');
             document.getElementById('logoutBtn').style.display = 'none';
+            document.getElementById('channelsStatus').style.display = 'none';
         }
 
         function showChatSection() {
@@ -573,6 +596,10 @@
             document.getElementById('status').textContent = '已连接';
             document.getElementById('status').classList.add('online');
             document.getElementById('logoutBtn').style.display = 'inline';
+            
+            // 检查视频号API状态
+            checkChannelsStatus();
+
             // 开始同步检查
             startSyncCheckPolling();
         }

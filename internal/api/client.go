@@ -1,12 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
-	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 
@@ -258,26 +258,17 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDow
 	return false
 }
 
-// autoCreateChannelsTask 根据视频号消息自动创建下载任务
-func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error {
-	c.logger.Info().
-		Str("objectID", objectID).
-		Str("objectNonceID", objectNonceID).
-		Msg("收到视频号消息，开始自动创建下载任务")
-
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool) (*FeedDownloadTaskBody, error) {
 	// 获取视频详情
-	r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
+	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
-		c.logger.Error().Err(err).Msg("获取视频号详情失败")
-		return fmt.Errorf("获取详情失败: %w", err)
+		return nil, fmt.Errorf("获取详情失败: %w", err)
 	}
 	if r.ErrCode != 0 {
-		c.logger.Error().Str("errMsg", r.ErrMsg).Msg("获取视频号详情失败")
-		return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+		return nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
 	}
 	if len(r.Data.Object.ObjectDesc.Media) == 0 {
-		c.logger.Warn().Msg("缺少可下载的视频内容")
-		return fmt.Errorf("缺少可下载的视频内容")
+		return nil, fmt.Errorf("缺少可下载的视频内容")
 	}
 
 	media := r.Data.Object.ObjectDesc.Media[0]
@@ -285,8 +276,7 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 	if media.DecodeKey != "" {
 		k, err := strconv.Atoi(media.DecodeKey)
 		if err != nil {
-			c.logger.Error().Err(err).Msg("解析 DecodeKey 失败")
-			return fmt.Errorf("解析 DecodeKey 失败: %w", err)
+			return nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
 		}
 		key = k
 	}
@@ -326,7 +316,7 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		}
 	}
 
-	payload := FeedDownloadTaskBody{
+	payload := &FeedDownloadTaskBody{
 		Id:       feed.ID,
 		Title:    feed.ObjectDesc.Description,
 		Key:      key,
@@ -334,6 +324,14 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Suffix:   ".mp4",
 		URL:      media.URL + media.URLToken,
 		Filename: filename,
+	}
+
+	if isMp3 {
+		payload.Suffix = ".mp3"
+	}
+	if isCover {
+		payload.Suffix += ".jpg"
+		payload.URL = media.CoverUrl
 	}
 
 	// 处理图集类型
@@ -350,66 +348,69 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}
 
+	return payload, nil
+}
+
+// autoCreateChannelsTask 根据视频号消息自动创建下载任务
+func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error {
+	c.logger.Info().
+		Str("objectID", objectID).
+		Str("objectNonceID", objectNonceID).
+		Msg("收到视频号消息，开始自动创建下载任务")
+
+	payload, err := c.createFeedTaskBody(objectID, objectNonceID, "", "", false, false)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("构建下载任务失败")
+		return err
+	}
+
 	if payload.Id == "" {
 		return fmt.Errorf("缺少 feed id")
 	}
 
-	// 检查是否已存在相同任务
-	tasks := c.downloader.GetTasks()
-	if c.check_existing_feed(tasks, &payload) {
-		c.logger.Info().Str("id", payload.Id).Msg("任务已存在，跳过创建")
-		return nil
+	// 发送创建任务请求
+	var targetURL string
+	if c.cfg.RemoteServerEnabled {
+		protocol := c.cfg.RemoteServerProtocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
+	} else {
+		protocol := c.cfg.Protocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		hostname := c.cfg.Hostname
+		if hostname == "0.0.0.0" {
+			hostname = "127.0.0.1"
+		}
+		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, hostname, c.cfg.Port)
 	}
 
-	// 处理文件名
-	connections := c.resolve_connections(payload.URL)
-	processedFilename, dir, err := c.formatter.ProcessFilename(payload.Filename + payload.Suffix)
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		c.logger.Error().Err(err).Msg("处理文件名失败")
-		return fmt.Errorf("处理文件名失败: %w", err)
+		c.logger.Error().Err(err).Msg("序列化请求参数失败")
+		return fmt.Errorf("序列化请求参数失败: %w", err)
 	}
 
-	// 创建下载任务
-	req := &base.Request{
-		URL: payload.URL,
-		Labels: map[string]string{
-			"id":     payload.Id,
-			"title":  payload.Title,
-			"key":    strconv.Itoa(payload.Key),
-			"spec":   payload.Spec,
-			"suffix": payload.Suffix,
-		},
-	}
-	opt := &base.Options{
-		Name: processedFilename,
-		Path: filepath.Join(c.cfg.DownloadDir, dir),
-		Extra: &gopeedhttp.OptsExtra{
-			Connections: connections,
-		},
-	}
-
-	id, err := c.downloader.CreateDirect(req, opt)
+	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		c.logger.Error().Err(err).Msg("创建下载任务失败")
-		return fmt.Errorf("创建下载任务失败: %w", err)
+		c.logger.Error().Err(err).Str("url", targetURL).Msg("请求创建任务接口失败")
+		return fmt.Errorf("请求创建任务接口失败: %w", err)
 	}
+	defer resp.Body.Close()
 
-	// 广播新任务事件
-	task := c.downloader.GetTask(id)
-	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
-			Type: "event",
-			Data: map[string]interface{}{
-				"task": task,
-			},
-		})
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		c.logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("创建任务失败")
+		return fmt.Errorf("创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	c.logger.Info().
 		Str("id", payload.Id).
-		Str("taskId", id).
-		Str("filename", processedFilename).
-		Msg("自动创建下载任务成功")
+		Str("url", targetURL).
+		Msg("自动创建下载任务请求发送成功")
 
 	return nil
 }
