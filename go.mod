@@ -55,8 +55,6 @@ require (
 
 replace github.com/GopeedLab/gopeed => ./pkg/gopeed
 
-replace github.com/ltaoo/echo => ../echo
-
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
 
 require (

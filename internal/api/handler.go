@@ -22,14 +22,11 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/api/types"
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
-	"wx_channel/pkg/util"
 )
-
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
 	resp, err := c.channels.SearchChannelsContact(keyword)
@@ -568,94 +565,11 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "缺少参数")
 		return
 	}
-	r, err := c.channels.FetchChannelsFeedProfile(body.Oid, body.Nid, body.URL, body.Eid)
+
+	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
 	if err != nil {
-		result.Err(ctx, 500, "获取详情失败: "+err.Error())
+		result.Err(ctx, 500, err.Error())
 		return
-	}
-	if r.ErrCode != 0 {
-		result.Err(ctx, 500, "获取详情失败: "+r.ErrMsg)
-		return
-	}
-	if len(r.Data.Object.ObjectDesc.Media) == 0 {
-		result.Err(ctx, 500, "缺少可下载的视频内容")
-		return
-	}
-	media := r.Data.Object.ObjectDesc.Media[0]
-	key := 0
-	if media.DecodeKey != "" {
-		k, err := strconv.Atoi(media.DecodeKey)
-		if err != nil {
-			result.Err(ctx, 500, "获取详情失败: "+err.Error())
-			return
-		}
-		key = k
-	}
-	spec := "original"
-	if !c.cfg.Original.GetBool("download.defaultHighest") {
-		if len(media.Spec) > 0 {
-			spec = media.Spec[0].FileFormat
-		}
-	}
-	build_filename := func(feed types.ChannelsObject, spec string) string {
-		default_name := feed.ObjectDesc.Description
-		if default_name == "" {
-			if feed.ID != "" {
-				default_name = feed.ID
-			} else {
-				default_name = util.NowSecondsStr()
-			}
-		}
-		template := c.cfg.Original.GetString("download.filenameTemplate")
-		if template == "" {
-			return default_name
-		}
-		params := map[string]string{
-			"filename":    default_name,
-			"id":          feed.ID,
-			"title":       feed.ObjectDesc.Description,
-			"spec":        spec,
-			"created_at":  strconv.Itoa(feed.CreateTime),
-			"download_at": util.NowSecondsStr(),
-			"author":      feed.Contact.Nickname,
-		}
-
-		result := template
-		for k, v := range params {
-			result = strings.ReplaceAll(result, "{{"+k+"}}", v)
-		}
-		return result
-	}
-	filename := build_filename(r.Data.Object, spec)
-	payload := FeedDownloadTaskBody{
-		Id:       r.Data.Object.ID,
-		Title:    r.Data.Object.ObjectDesc.Description,
-		Key:      key,
-		Spec:     spec,
-		Suffix:   ".mp4",
-		URL:      media.URL + media.URLToken,
-		Filename: filename,
-	}
-	if body.MP3 {
-		payload.Suffix = ".mp3"
-	}
-	if body.Cover {
-		payload.Suffix += ".jpg"
-		cover_url := media.CoverUrl
-		payload.URL = cover_url
-	}
-
-	if r.Data.Object.ObjectDesc.MediaType == 2 {
-		payload.Suffix = ".zip"
-		var files []map[string]string
-		for i, m := range r.Data.Object.ObjectDesc.Media {
-			files = append(files, map[string]string{
-				"url":      m.URL + m.URLToken,
-				"filename": fmt.Sprintf("%d.jpg", i+1),
-			})
-		}
-		data, _ := json.Marshal(files)
-		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}
 
 	if payload.Id == "" {
@@ -670,7 +584,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		}
 	}
 	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, &payload)
+	existing := c.check_existing_feed(tasks, payload)
 	if existing {
 		result.Err(ctx, 409, "已存在该下载内容")
 		// ctx.JSON(http.StatusOK, Response{Code: 409, Msg: , Data: body})
