@@ -65,12 +65,12 @@ builds:
 
   - id: windows_sunnynet
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
     goos:
       - windows
     goarch:
       - amd64
-      - arm64
     main: .
     binary: wx_video_download
     ldflags:
