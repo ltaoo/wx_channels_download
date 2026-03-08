@@ -29,6 +29,11 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Install cross-compiler for windows
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64
+
 
       - name: Generate Windows resources (.syso)
         run: |
