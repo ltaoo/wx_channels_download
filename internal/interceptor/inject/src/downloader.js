@@ -509,6 +509,16 @@ async function __wx_handle_api_call(msg, socket) {
       return;
     }
   }
+  if (key === "key:channels:reload") {
+    console.log("[DOWNLOADER]reloading page");
+    resp({
+      msg: "reloading",
+    });
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+    return;
+  }
   resp({
     errCode: 1000,
     errMsg: "未匹配的key",

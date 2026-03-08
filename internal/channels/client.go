@@ -34,24 +34,26 @@ type ChannelsClient struct {
 	// formatter   *util.FilenameProcessor
 	// Cookies     []*http.Cookie
 	// cfg         *APIConfig
-	ws_clients  map[*Client]bool
-	ws_mu       sync.RWMutex
-	engine      *gin.Engine
-	requests    map[string]chan ClientWebsocketResponse
-	requests_mu sync.RWMutex
-	cache       *cache.Cache
-	req_seq     uint64
-	OnConnected func(client *Client)
-	OnMessage   func(client *Client, message []byte)
+	ws_clients      map[*Client]bool
+	ws_mu           sync.RWMutex
+	engine          *gin.Engine
+	requests        map[string]chan ClientWebsocketResponse
+	requests_mu     sync.RWMutex
+	cache           *cache.Cache
+	req_seq         uint64
+	refreshInterval int
+	OnConnected     func(client *Client)
+	OnMessage       func(client *Client, message []byte)
 }
 
-func NewChannelsClient() *ChannelsClient {
+func NewChannelsClient(refreshInterval int) *ChannelsClient {
 	return &ChannelsClient{
 		ws_clients: make(map[*Client]bool),
 		requests:   make(map[string]chan ClientWebsocketResponse),
 		// engine:     gin.Default(),
-		cache:   cache.New(),
-		req_seq: uint64(time.Now().UnixNano()),
+		cache:           cache.New(),
+		req_seq:         uint64(time.Now().UnixNano()),
+		refreshInterval: refreshInterval,
 	}
 }
 
@@ -69,6 +71,27 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 
 	if c.OnConnected != nil {
 		c.OnConnected(client)
+	}
+
+	// 定时刷新逻辑
+	refreshInterval := c.refreshInterval
+	if c.refreshInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(refreshInterval) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					c.ws_mu.RLock()
+					if _, ok := c.ws_clients[client]; !ok {
+						c.ws_mu.RUnlock()
+						return
+					}
+					c.ws_mu.RUnlock()
+					c.ReloadChannels()
+				}
+			}
+		}()
 	}
 
 	defer func() {
@@ -295,4 +318,9 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*t
 	}
 	c.cache.Set(cache_key, &r, 60*time.Minute)
 	return &r, nil
+}
+
+func (c *ChannelsClient) ReloadChannels() error {
+	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
+	return err
 }

@@ -27,14 +27,14 @@ import (
 )
 
 type APIClient struct {
-	downloader  *downloadpkg.Downloader
-	official    *officialaccount.OfficialAccountClient
-	channels    *channels.ChannelsClient
-	filehelper  *FileHelperHandler
-	formatter   *util.FilenameProcessor
-	cfg         *APIConfig
-	engine      *gin.Engine
-	logger      *zerolog.Logger
+	downloader *downloadpkg.Downloader
+	official   *officialaccount.OfficialAccountClient
+	channels   *channels.ChannelsClient
+	filehelper *FileHelperHandler
+	formatter  *util.FilenameProcessor
+	cfg        *APIConfig
+	engine     *gin.Engine
+	logger     *zerolog.Logger
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
@@ -47,7 +47,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
-	channels_client = channels.NewChannelsClient()
+	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
 
 	get_sorted_tasks := func() []*downloadpkg.Task {
 		tasks := downloader.GetTasks()
