@@ -12,6 +12,7 @@ wx_channel*
 config.yaml
 global.js
 downloads
+temp_sunnynet
 
 node_modules
 docs/.vitepress/cache
