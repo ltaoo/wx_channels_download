@@ -79,6 +79,7 @@ builds:
     ldflags:
       - -s -w
       - -X main.Mode=release
+      - -extldflags '-static'
     tags:
       - sunnynet
 
