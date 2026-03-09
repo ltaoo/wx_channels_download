@@ -36,7 +36,6 @@ jobs:
 
       - name: Patch SunnyNet for MinGW
         run: |
-          go mod tidy
           go mod vendor
           SUNNYNET_DIR="vendor/github.com/qtgolang/SunnyNet"
 
