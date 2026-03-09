@@ -32,7 +32,7 @@ jobs:
       - name: Install cross-compiler for windows
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64
+          sudo apt-get install -y gcc-mingw-w64 g++-mingw-w64
 
       - name: Patch SunnyNet for MinGW
         run: |
