@@ -13,7 +13,10 @@
       "Bash(gofmt:*)",
       "Bash(go get:*)",
       "Bash(go list:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(brew list:*)",
+      "Bash(brew install:*)",
+      "Bash(CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build:*)"
     ]
   }
 }
