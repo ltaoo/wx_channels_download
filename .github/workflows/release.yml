@@ -39,6 +39,10 @@ jobs:
           go mod tidy
           go mod vendor
           SUNNYNET_DIR="vendor/github.com/qtgolang/SunnyNet"
+
+          # Fix case-sensitive filename issue (Linux is case-sensitive)
+          mv $SUNNYNET_DIR/src/ProcessDrv/Proxifier/proxifier.hpp $SUNNYNET_DIR/src/ProcessDrv/Proxifier/Proxifier.hpp
+
           # Patch header file - rename structs and types to avoid MinGW conflicts
           sed -i 's/typedef struct _MIB_TCPROW2 {/typedef struct _MIB_TCPROW2_CUSTOM {/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.h
           sed -i 's/} MIB_TCPROW2, \*PMIB_TCPROW2;/} MIB_TCPROW2_CUSTOM, *PMIB_TCPROW2_CUSTOM;/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.h
@@ -46,13 +50,16 @@ jobs:
           sed -i 's/MIB_TCPROW2 table\[ANY_SIZE\];/MIB_TCPROW2_CUSTOM table[ANY_SIZE];/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.h
           sed -i 's/} MIB_TCPTABLE2, \*PMIB_TCPTABLE2;/} MIB_TCPTABLE2_CUSTOM, *PMIB_TCPTABLE2_CUSTOM;/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.h
           sed -i 's/typedef DWORD (WINAPI \* GetTcpTable2)(PMIB_TCPTABLE2 TcpTable, PULONG SizePointer, BOOL Order);/typedef DWORD (WINAPI * GetTcpTable2_CUSTOM)(PMIB_TCPTABLE2_CUSTOM TcpTable, PULONG SizePointer, BOOL Order);/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.h
+
           # Patch C file - use renamed types everywhere
           sed -i 's/GetTcpTable2 pGetTcpTable2;/GetTcpTable2_CUSTOM pGetTcpTable2;/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
           sed -i 's/(GetTcpTable2)/(GetTcpTable2_CUSTOM)/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
+          sed -i 's/(PMIB_TCPTABLE2)/(PMIB_TCPTABLE2_CUSTOM)/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
           sed -i 's/PMIB_TCPTABLE2 pTcpTable;/PMIB_TCPTABLE2_CUSTOM pTcpTable;/' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
           sed -i 's/PMIB_TCPTABLE2 tcpTable/PMIB_TCPTABLE2_CUSTOM tcpTable/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
           sed -i 's/pTcpTable = (MIB_TCPTABLE2\*)/pTcpTable = (MIB_TCPTABLE2_CUSTOM*)/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
           sed -i 's/tcpTable = (MIB_TCPTABLE2\*)/tcpTable = (MIB_TCPTABLE2_CUSTOM*)/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
+          sed -i 's/MIB_TCPROW2 \*row/MIB_TCPROW2_CUSTOM *row/g' $SUNNYNET_DIR/src/iphlpapi/c_iphlpapi_tcp.c
 
 
       - name: Generate Windows resources (.syso)
