@@ -57,6 +57,17 @@ replace github.com/GopeedLab/gopeed => ./pkg/gopeed
 
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
 
+// Downgrade golang.org/x/* to versions compatible with Go 1.20
+replace (
+	golang.org/x/exp => golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/image => golang.org/x/image v0.14.0
+	golang.org/x/net => golang.org/x/net v0.17.0
+	golang.org/x/sync => golang.org/x/sync v0.5.0
+	golang.org/x/sys => golang.org/x/sys v0.14.0
+	golang.org/x/term => golang.org/x/term v0.14.0
+	golang.org/x/text => golang.org/x/text v0.14.0
+)
+
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
@@ -128,7 +139,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
