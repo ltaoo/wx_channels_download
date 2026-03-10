@@ -3,6 +3,8 @@ package interceptor
 import (
 	"fmt"
 	"strconv"
+
+	"wx_channel/internal/buildtags"
 	"wx_channel/internal/manager"
 	"wx_channel/pkg/certificate"
 )
@@ -16,7 +18,7 @@ func NewInterceptorServer(settings *InterceptorConfig, cert *certificate.CertFil
 	interceptor := NewInterceptor(settings, cert)
 	addr := settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort)
 	srv := manager.NewHTTPServer("代理服务", "interceptor", addr)
-	if UsingSunnyNet {
+	if buildtags.UsingSunnyNet {
 		srv.Disable()
 	}
 	srv.SetHandler(interceptor)

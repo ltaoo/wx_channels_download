@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 代理测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .control-panel { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        .input-group { margin-bottom: 10px; }
+        .input-group label { display: inline-block; width: 100px; font-weight: bold; }
+        .input-group input { width: 300px; padding: 5px; }
+        button { padding: 5px 15px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 3px; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        #log { height: 400px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; background-color: #fff; font-family: monospace; }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+        .log-time { color: #888; font-size: 0.8em; margin-right: 10px; }
+        .log-type-sent { color: #006600; font-weight: bold; }
+        .log-type-received { color: #0000cc; font-weight: bold; }
+        .log-type-error { color: #cc0000; font-weight: bold; }
+        .log-type-info { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket 代理测试</h1>
+    
+    <div class="control-panel">
+        <div class="input-group">
+            <label for="wsUrl">WebSocket URL:</label>
+            <input type="text" id="wsUrl" value="wss://api.channels.qq.com/ws/channels">
+        </div>
+        <div class="input-group">
+            <button id="connectBtn">连接</button>
+            <button id="disconnectBtn" disabled>断开</button>
+            <button id="clearBtn" style="background-color: #6c757d;">清空日志</button>
+        </div>
+        <div class="input-group" style="margin-top: 15px;">
+            <label for="messageInput">消息内容:</label>
+            <input type="text" id="messageInput" placeholder="输入要发送的消息">
+            <button id="sendBtn" disabled>发送</button>
+        </div>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        const logDiv = document.getElementById('log');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const messageInput = document.getElementById('messageInput');
+        const wsUrlInput = document.getElementById('wsUrl');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span><span class="log-type-${type}">${message}</span>`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        connectBtn.addEventListener('click', () => {
+            const url = wsUrlInput.value;
+            if (!url) {
+                log('请输入有效的 WebSocket URL', 'error');
+                return;
+            }
+
+            try {
+                log(`正在连接到 ${url}...`, 'info');
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    log('连接已建立', 'info');
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = false;
+                    wsUrlInput.disabled = true;
+                };
+
+                ws.onmessage = (event) => {
+                    log(`收到消息: ${event.data}`, 'received');
+                };
+
+                ws.onclose = (event) => {
+                    log(`连接已关闭 (Code: ${event.code}, Reason: ${event.reason})`, 'info');
+                    cleanup();
+                };
+
+                ws.onerror = (error) => {
+                    log('发生错误', 'error');
+                    console.error('WebSocket Error:', error);
+                };
+
+            } catch (e) {
+                log(`连接失败: ${e.message}`, 'error');
+            }
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+                log(`发送消息: ${message}`, 'sent');
+                messageInput.value = '';
+            } else {
+                log('连接未开启', 'error');
+            }
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            logDiv.innerHTML = '';
+        });
+
+        function cleanup() {
+            ws = null;
+            connectBtn.disabled = false;
+            disconnectBtn.disabled = true;
+            sendBtn.disabled = true;
+            wsUrlInput.disabled = false;
+        }
+    </script>
+</body>
+</html>

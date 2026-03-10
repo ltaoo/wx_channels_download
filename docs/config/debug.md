@@ -22,8 +22,8 @@ PageSpy 是一个用于调试移动端网页的工具。
 ```yaml
 pagespy:
   enabled: false
-  protocol: "https"
-  api: "debug.weixin.qq.com"
+  protocol: "http"
+  api: "127.0.0.1:6752"
 ```
 
 - `enabled`: 是否开启 PageSpy，默认 `false`。

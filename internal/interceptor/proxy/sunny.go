@@ -9,10 +9,12 @@ import (
 	"compress/zlib"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	h "net/http"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -65,7 +67,6 @@ func (p *SunnyNetProxy) AddPlugin(plugin interface{}) {
 	case *Plugin:
 		p.plugins = append(p.plugins, toSunnyPlugin(pl))
 	}
-
 }
 
 type SunnyNetPlugin struct {
@@ -125,6 +126,7 @@ func toSunnyPlugin(p *Plugin) *SunnyNetPlugin {
 }
 
 func (p *SunnyNetProxy) HandleWS(Conn SunnyNet.ConnWebSocket) {
+	// fmt.Println(Conn.URL())
 	switch Conn.Type() {
 	case public.WebsocketUserSend:
 		_ = Conn.SendToServer(Conn.MessageType(), Conn.Body())
@@ -273,11 +275,14 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 		if parsed != nil {
 			host = parsed.Hostname()
 		}
+		log.Printf("[SunnyNet] Request: %s, Host: %s, Type: %d\n", u, host, Conn.Type())
 		for _, plugin := range p.plugins {
 			switch pl := plugin.(type) {
 			case *SunnyNetPlugin:
 				if hostMatches(host, pl.Match) {
+					log.Printf("[SunnyNet] Match host: %s, pattern: %s\n", host, pl.Match)
 					if pl.Target != nil {
+						log.Printf("[SunnyNet] Target found: %+v\n", pl.Target)
 						targetProto := strings.ToLower(pl.Target.Protocol)
 						if targetProto == "" {
 							targetProto = "http"
@@ -287,11 +292,11 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 						}
 						if targetProto == "wss" {
 							targetProto = "https"
-						}
+						}				
 						targetHost := pl.Target.Host
 						targetPort := pl.Target.Port
 						if targetPort <= 0 {
-							if targetProto == "https" {
+							if targetProto == "https" || targetProto == "wss" {
 								targetPort = 443
 							} else {
 								targetPort = 80
@@ -309,7 +314,9 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 						if rawQuery != "" {
 							targetURL = targetURL + "?" + rawQuery
 						}
+						log.Printf("[SunnyNet] Redirecting %s to %s\n", u, targetURL)
 						Conn.UpdateURL(targetURL)
+						// Conn.SetAgent(fmt.Sprintf("%s:%d", targetHost, targetPort))
 						return
 					}
 					pl.OnRequest(ctx)
@@ -396,11 +403,15 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 				}
 				return &res
 			},
+			SetResponseHeader: func(key, val string) {
+				Conn.GetResponseHeader().Set(key, val)
+			},
 			SetResponseBody: func(content string) {
 				hdr := Conn.GetResponseHeader()
 				hdr.Del("Content-Encoding")
-				hdr.Del("Content-Length")
-				Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer([]byte(content))))
+				b := []byte(content)
+				hdr.Set("Content-Length", strconv.Itoa(len(b)))
+				Conn.SetResponseBodyIO(io.NopCloser(bytes.NewBuffer(b)))
 			},
 		}
 		u := Conn.URL()
