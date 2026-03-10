@@ -14,7 +14,9 @@ type EchoProxy struct {
 }
 
 func NewProxy(cert []byte, private_key []byte) (InnerProxy, error) {
-	e, err := echo.NewEcho(cert, private_key)
+	e, err := echo.NewEchoWithOptions(cert, private_key, &echo.Options{
+		EnableBuiltinBypass: true,
+	})
 	if err != nil {
 		return nil, err
 	}
