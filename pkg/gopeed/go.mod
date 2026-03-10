@@ -1,8 +1,6 @@
 module github.com/GopeedLab/gopeed
 
-go 1.22
-
-toolchain go1.24.0
+go 1.20
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.4.1
