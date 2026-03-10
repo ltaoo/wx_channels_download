@@ -1,6 +1,24 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
+var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
+var FakeRemoteAPIServerAddr = "remoteapi.weixin.qq.com";
+var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
+var FakeAPIServerAddr = WXU.config.remoteServerEnabled
+  ? FakeRemoteAPIServerAddr
+  : FakeLocalAPIServerAddr;
+
+var FakeRemoteAPIServerProtocol = "https";
+var FakeLocalAPIServerProtocol = "https";
+// var RemoteAPIServerProtocol = WXU.config.remoteServerProtocol;
+// var LocalAPIServerProtocol = WXU.config.apiServerProtocol;
+
+var APIServerProtocol = WXU.config.remoteServerEnabled
+  ? FakeRemoteAPIServerProtocol
+  : FakeLocalAPIServerProtocol;
+
+var WSServerProtocol = APIServerProtocol === "https" ? 'wss' : 'ws';
+
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
@@ -1047,28 +1065,3 @@ var WXU = (() => {
     },
   };
 })();
-
-var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
-// var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
-var FakeRemoteAPIServerAddr = "kf.qq.com";
-var FakeLocalAPIServerAddr = WXU.config.apiServerHostname + ":" + WXU.config.apiServerPort;
-// var FakeRemoteAPIServerAddr = WXU.config.remoteServerHostname + ":" + WXU.config.remoteServerPort;
-var FakeAPIServerAddr = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerAddr
-  : FakeLocalAPIServerAddr;
-
-// var apiServerProtocol = "https"
-var remoteServerProtocol = "https"
-var apiServerProtocol = WXU.config.apiServerProtocol;
-var LocalApiServerProtocol = "ws";
-// var remoteServerProtocol = WXU.config.remoteServerProtocol;
-
-var APIServerProtocol = WXU.config.remoteServerEnabled
-  ? remoteServerProtocol
-  : apiServerProtocol;
-
-
-var APIWSServerProtocol = APIServerProtocol === "https" ? 'wss' : 'ws';
-
-// alert(APIWSServerProtocol + "://" + FakeAPIServerAddr);
-// alert(FakeLocalAPIServerAddr);

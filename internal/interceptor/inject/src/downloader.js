@@ -35,9 +35,9 @@ var isWin = /Windows|Win/i.test(ua);
     });
   }
   function connect_local_ws() {
-    const ws = new WebSocket(
-      LocalApiServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels",
-    );
+    const ws_url =
+      WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
+    const ws = new WebSocket(ws_url);
     ws.onclose = (e) => {
       WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
     };
@@ -62,7 +62,7 @@ var isWin = /Windows|Win/i.test(ua);
     );
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(
-        APIWSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+        WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
       );
       ws_conn = ws;
 
@@ -76,7 +76,9 @@ var isWin = /Windows|Win/i.test(ua);
         resolve(true);
       };
       ws.onclose = (e) => {
-        WXU.error({ msg: "ws连接已关闭，请刷新页面，Code: " + e.code + ", Reason: " + e.reason + ", Clean: " + e.wasClean });
+        WXU.error({
+          msg: "ws连接已关闭，请刷新页面，Code: " + e.code,
+        });
         if (WXU.downloader) {
           WXU.downloader.status = "disconnected";
         }
@@ -136,10 +138,6 @@ var isWin = /Windows|Win/i.test(ua);
           __wx_handle_api_call(msg.data, ws);
         }
       };
-      if (WXU.config.remoteServerEnabled) {
-        // 额外再连接本地ws用于API调用
-        connect_local_ws();
-      }
     });
   }
 
@@ -178,13 +176,15 @@ var isWin = /Windows|Win/i.test(ua);
           return;
         }
         if (WXU.config.remoteServerEnabled) {
-          var u = APIServerProtocol + "://" + FakeAPIServerAddr + "/preview?id=" + id;
+          var u =
+            APIServerProtocol + "://" + FakeAPIServerAddr + "/preview?id=" + id;
           window.open(u);
         } else {
           // Use original API for local file
           var [err, data] = await WXU.request({
             method: "POST",
-            url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/show_file",
+            url:
+              APIServerProtocol + "://" + FakeAPIServerAddr + "/api/show_file",
             body: { path, name, id },
           });
           if (err) {
@@ -195,11 +195,14 @@ var isWin = /Windows|Win/i.test(ua);
         }
         return;
       }
-      let url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/pause";
+      let url =
+        APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/pause";
       if (action === "resume") {
-        url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/resume";
+        url =
+          APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/resume";
       } else if (action === "delete") {
-        url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/delete";
+        url =
+          APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/delete";
       }
       var [err, data] = await WXU.request({
         method: "POST",
@@ -271,7 +274,11 @@ var isWin = /Windows|Win/i.test(ua);
               onClick: async () => {
                 await WXU.request({
                   method: "POST",
-                  url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/open_download_dir",
+                  url:
+                    APIServerProtocol +
+                    "://" +
+                    FakeAPIServerAddr +
+                    "/api/open_download_dir",
                 });
                 moredropdown$.hide();
               },
@@ -341,10 +348,15 @@ var isWin = /Windows|Win/i.test(ua);
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
-  // console.log("[]check is wxwork", window.ua.includes("wxwork"), window.ua);
-  if (WXU.config.remoteServerEnabled) {
-    connect_local_ws();
-  }
+  console.log(
+    "[]check is wxwork",
+    window.ua.includes("wxwork"),
+    window.ua,
+    WXU.config.remoteServerEnabled,
+  );
+  // if (window.ua.includes("wxwork") || WXU.config.remoteServerEnabled) {
+  connect_local_ws();
+  // }
 
   // document.addEventListener(
   //   "scroll",

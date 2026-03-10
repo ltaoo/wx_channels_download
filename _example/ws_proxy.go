@@ -1,5 +1,3 @@
-//go:build sunnynet
-
 package main
 
 import (
@@ -18,9 +16,9 @@ import (
 // 完全模拟真实环境下的插件加载逻辑
 
 const (
-	sourceHost = "remoteapi.weixin.qq.com"
-	webHost    = "channels.qq.com"
-	targetHost = "192.168.1.118"
+	sourceHost = "kf.qq.com"
+	webHost    = "channels.weixin.qq.com"
+	targetHost = "127.0.0.1"
 	targetPort = 2022
 	proxyPort  = 2024
 	webPort    = 8080
@@ -94,7 +92,8 @@ func main() {
 	// 7. 启动代理服务
 	go func() {
 		fmt.Printf("WebSocket 代理服务正在启动，监听端口: %d\n", proxyPort)
-		if err := p.Start(proxyPort); err != nil {
+		// 使用 http.ListenAndServe 启动服务，将请求转发给 proxy
+		if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", proxyPort), http.HandlerFunc(p.ServeHTTP)); err != nil {
 			fmt.Printf("启动代理服务失败: %v\n", err)
 			os.Exit(1)
 		}
