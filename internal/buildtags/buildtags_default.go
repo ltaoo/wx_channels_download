@@ -1,5 +1,5 @@
 //go:build !sunnynet
 
-package interceptor
+package buildtags
 
 const UsingSunnyNet = false

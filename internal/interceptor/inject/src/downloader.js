@@ -35,15 +35,14 @@ var isWin = /Windows|Win/i.test(ua);
     });
   }
   function connect_local_ws() {
-    const protocol = "wss://";
     const ws = new WebSocket(
-      protocol + FakeLocalAPIServerAddr + "/ws/channels",
+      LocalApiServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels",
     );
-    ws.onclose = () => {
-      WXU.error({ msg: "本地ws连接已关闭" });
+    ws.onclose = (e) => {
+      WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
     };
     ws.onerror = (e) => {
-      WXU.error({ msg: "本地ws连接发生错误" });
+      WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
     };
     ws.onmessage = (ev) => {
       const [err, msg] = WXU.parseJSON(ev.data);
@@ -62,9 +61,9 @@ var isWin = /Windows|Win/i.test(ua);
       WXU.config.remoteServerEnabled,
     );
     return new Promise((resolve, reject) => {
-      const protocol = "wss://";
-      const pathname = FakeAPIServerAddr;
-      const ws = new WebSocket(protocol + pathname + "/ws/channels");
+      const ws = new WebSocket(
+        APIWSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+      );
       ws_conn = ws;
 
       ws.onopen = () => {
@@ -76,8 +75,8 @@ var isWin = /Windows|Win/i.test(ua);
         is_loading = false;
         resolve(true);
       };
-      ws.onclose = () => {
-        WXU.error({ msg: "ws连接已关闭，请刷新页面" });
+      ws.onclose = (e) => {
+        WXU.error({ msg: "ws连接已关闭，请刷新页面，Code: " + e.code + ", Reason: " + e.reason + ", Clean: " + e.wasClean });
         if (WXU.downloader) {
           WXU.downloader.status = "disconnected";
         }
@@ -149,7 +148,7 @@ var isWin = /Windows|Win/i.test(ua);
       const id = e.target.getAttribute("data-id");
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/start",
+        url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/start",
         body: { id },
       });
       if (err) {
@@ -179,20 +178,13 @@ var isWin = /Windows|Win/i.test(ua);
           return;
         }
         if (WXU.config.remoteServerEnabled) {
-          var u =
-            WXU.config.remoteServerProtocol +
-            "://" +
-            WXU.config.remoteServerHostname;
-          if (WXU.config.remoteServerPort !== 80) {
-            u += ":" + WXU.config.remoteServerPort;
-          }
-          u += "/preview?id=" + id;
+          var u = APIServerProtocol + "://" + FakeAPIServerAddr + "/preview?id=" + id;
           window.open(u);
         } else {
           // Use original API for local file
           var [err, data] = await WXU.request({
             method: "POST",
-            url: "https://" + FakeAPIServerAddr + "/api/show_file",
+            url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/show_file",
             body: { path, name, id },
           });
           if (err) {
@@ -203,11 +195,11 @@ var isWin = /Windows|Win/i.test(ua);
         }
         return;
       }
-      let url = "https://" + FakeAPIServerAddr + "/api/task/pause";
+      let url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/pause";
       if (action === "resume") {
-        url = "https://" + FakeAPIServerAddr + "/api/task/resume";
+        url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/resume";
       } else if (action === "delete") {
-        url = "https://" + FakeAPIServerAddr + "/api/task/delete";
+        url = APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/delete";
       }
       var [err, data] = await WXU.request({
         method: "POST",
@@ -279,8 +271,7 @@ var isWin = /Windows|Win/i.test(ua);
               onClick: async () => {
                 await WXU.request({
                   method: "POST",
-                  url:
-                    "https://" + FakeAPIServerAddr + "/api/open_download_dir",
+                  url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/open_download_dir",
                 });
                 moredropdown$.hide();
               },
@@ -344,14 +335,14 @@ var isWin = /Windows|Win/i.test(ua);
       return false;
     };
     connect("#downloader_container").catch((e) => {
-      WXU.error({ msg: "建立ws连接失败" });
+      WXU.error({ msg: "建立ws连接失败，" + JSON.stringify(e) });
     });
   }
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
   // console.log("[]check is wxwork", window.ua.includes("wxwork"), window.ua);
-  if (window.ua.includes("wxwork")) {
+  if (WXU.config.remoteServerEnabled) {
     connect_local_ws();
   }
 

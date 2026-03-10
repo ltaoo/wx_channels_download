@@ -7,12 +7,12 @@ import (
 	"github.com/spf13/viper"
 
 	"wx_channel/cmd"
+	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
-	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "260308"
+var AppVer = "260310"
 var Mode = "debug"
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 		fmt.Printf("加载配置文件失败 %v\n", err.Error())
 		return
 	}
-	need_admin_for_proxy := viper.GetBool("proxy.system") || interceptor.UsingSunnyNet
+	need_admin_for_proxy := viper.GetBool("proxy.system") || buildtags.UsingSunnyNet
 	if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
 		if !platform.RequestAdminPermission() {
 			fmt.Println("运行失败，请右键选择「以管理员身份运行」")

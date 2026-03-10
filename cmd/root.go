@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/viper"
 
 	"wx_channel/internal/api"
+	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
@@ -108,29 +109,6 @@ func root_command(cfg *config.Config) {
 	}
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
-	if api_cfg.RemoteServerEnabled {
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "remoteapi.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: api_cfg.RemoteServerProtocol,
-				Host:     api_cfg.RemoteServerHostname,
-				Port:     api_cfg.RemoteServerPort,
-			},
-		})
-		interceptor_srv.Interceptor.AddVariable("remoteServerEnabled", api_cfg.RemoteServerEnabled)
-		interceptor_srv.Interceptor.AddVariable("remoteServerProtocol", api_cfg.RemoteServerProtocol)
-		interceptor_srv.Interceptor.AddVariable("remoteServerHostname", api_cfg.RemoteServerHostname)
-		interceptor_srv.Interceptor.AddVariable("remoteServerPort", api_cfg.RemoteServerPort)
-	}
-	// 本地 websocket 需要
-	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-		Match: "localapi.weixin.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: interceptor_cfg.APIServerProtocol,
-			Host:     interceptor_cfg.APIServerHostname,
-			Port:     interceptor_cfg.APIServerPort,
-		},
-	})
 	if !official_cfg.Disabled {
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
@@ -186,37 +164,39 @@ func root_command(cfg *config.Config) {
 	}
 	color.Green("代理服务启动成功")
 
-	if !interceptor_cfg.ProxySetSystem {
-		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
-		color.Red("设置成功后再打开视频号页面下载")
-	} else {
-		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptor_srv.Addr()))
-		color.Green("请打开需要下载的视频号页面进行下载")
-		has_changed := false
-		expected_addr := interceptor_srv.Addr()
-		go func() {
-			ticker := time.NewTicker(10 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					cur, err := system.FetchCurProxy(system.ProxySettings{})
-					if err != nil {
-						continue
-					}
-					cur_addr := cur.Hostname + ":" + cur.Port
-					changed := cur == nil || cur_addr != expected_addr
-					if changed {
-						if !has_changed {
-							color.Red("\n系统代理已被修改，请重新启动下载器")
+	if !buildtags.UsingSunnyNet {
+		if !interceptor_cfg.ProxySetSystem {
+			color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
+			color.Red("设置成功后再打开视频号页面下载")
+		} else {
+			color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptor_srv.Addr()))
+			color.Green("请打开需要下载的视频号页面进行下载")
+			has_changed := false
+			expected_addr := interceptor_srv.Addr()
+			go func() {
+				ticker := time.NewTicker(10 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						cur, err := system.FetchCurProxy(system.ProxySettings{})
+						if err != nil {
+							continue
 						}
-						has_changed = true
+						cur_addr := cur.Hostname + ":" + cur.Port
+						changed := cur == nil || cur_addr != expected_addr
+						if changed {
+							if !has_changed {
+								color.Red("\n系统代理已被修改，请重新启动下载器")
+							}
+							has_changed = true
+						}
 					}
 				}
-			}
-		}()
+			}()
+		}
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")
 	<-ctx.Done()

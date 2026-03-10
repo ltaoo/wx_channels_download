@@ -10,6 +10,7 @@ import (
 	"github.com/ltaoo/echo"
 	"github.com/rs/zerolog"
 
+	"wx_channel/internal/buildtags"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
@@ -47,7 +48,11 @@ func (c *Interceptor) Start() error {
 	if err != nil {
 		return err
 	}
-	client.AddPlugin(CreateChannelInterceptorPlugin(c, Assets))
+	if len(c.PostPlugins) != 0 {
+		for _, plugin := range c.PostPlugins {
+			client.AddPlugin(plugin)
+		}
+	}
 	if c.Debug {
 		client.AddPlugin(&proxy.Plugin{
 			Match: "debug.weixin.qq.com",
@@ -58,10 +63,19 @@ func (c *Interceptor) Start() error {
 			},
 		})
 	}
-	if len(c.PostPlugins) != 0 {
-		for _, plugin := range c.PostPlugins {
-			client.AddPlugin(plugin)
-		}
+	if c.Settings.RemoteServerEnabled {
+		client.AddPlugin(&proxy.Plugin{
+			Match: "kf.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: c.Settings.RemoteServerProtocol,
+				Host:     c.Settings.RemoteServerHostname,
+				Port:     c.Settings.RemoteServerPort,
+			},
+		})
+	}
+	plugins := CreateChannelInterceptorPlugins(c, Assets)
+	for _, plugin := range plugins {
+		client.AddPlugin(plugin)
 	}
 	c.proxy = client
 	existing, err := certificate.CheckHasCertificate(c.Cert.Name)
@@ -74,7 +88,7 @@ func (c *Interceptor) Start() error {
 			return fmt.Errorf("安装证书失败: %v", err)
 		}
 	}
-	if c.Settings.ProxySetSystem {
+	if !buildtags.UsingSunnyNet && c.Settings.ProxySetSystem {
 		if err := system.EnableProxy(system.ProxySettings{
 			Device:   c.Settings.ProxyDevice,
 			Hostname: c.Settings.ProxyServerHostname,
@@ -90,7 +104,7 @@ func (c *Interceptor) Start() error {
 }
 
 func (c *Interceptor) Stop() error {
-	if c.Settings.ProxySetSystem {
+	if !buildtags.UsingSunnyNet && c.Settings.ProxySetSystem {
 		arg := system.ProxySettings{
 			Device:   c.Settings.ProxyDevice,
 			Hostname: c.Settings.ProxyServerHostname,

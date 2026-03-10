@@ -10,8 +10,8 @@ version: 2
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
+    # go mod tidy is handled by release.yml before goreleaser runs
+    # to preserve the patched vendor directory for SunnyNet builds
     # you may remove this if you don't need go generate
     - go generate ./...
 
@@ -67,6 +67,7 @@ builds:
     env:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
     flags:
       - -mod=vendor
     goos:
@@ -78,6 +79,7 @@ builds:
     ldflags:
       - -s -w
       - -X main.Mode=release
+      - -extldflags '-static'
     tags:
       - sunnynet
 

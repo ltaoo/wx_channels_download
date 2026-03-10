@@ -49,13 +49,13 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
+func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInjectedFiles) []*proxy.Plugin {
 	version := interceptor.Version
 	cfg := interceptor.Settings
 	variables := interceptor.FrontendVariables
 	v := "?t=" + version
-	return &proxy.Plugin{
-		Match: "qq.com",
+	plugin1 := &proxy.Plugin{
+		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
 			if strings.Contains(pathname, "jszip.min") {
@@ -128,7 +128,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
-			// fmt.Println("response", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
+			// fmt.Println("response1", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 			if pathname == "/web/pages/feed" && cfg.ChannelsDisableLocationToHome && ctx.Res().StatusCode == 302 {
 				original_req := ctx.Req()
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
@@ -233,21 +233,31 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 				ctx.SetResponseBody(html)
 				return
 			}
+		},
+	}
+	plugin2 := &proxy.Plugin{
+		Match: "res.wx.qq.com",
+		OnResponse: func(ctx proxy.Context) {
+			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
+			hostname := ctx.Req().URL.Hostname()
+			pathname := ctx.Req().URL.Path
 			if hostname == "res.wx.qq.com" && strings.Contains(resp_content_type, "application/javascript") {
 				if util.Includes(pathname, "wasm_video_decode") {
 					return
 				}
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
+					fmt.Println("[error]GetResponseBody error", err)
 					return
 				}
+			// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 				js_script := string(resp_body)
 				js_script = jsFromReg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
 				js_script = jsDepReg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
 				js_script = jsLazyImportReg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
-				if strings.Contains(pathname, "/t/wx_fed/finder/web/web-finder/res/js/index.publish") {
+				if strings.Contains(pathname, "index.publish") {
 					// 已经废弃了
 					buffer_js := `(() => {
 					WXU.append_media_buf($1);
@@ -256,7 +266,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
+				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
 					{
 						js_init := `async finderInit() {
 					var result = await (async () => {
@@ -416,7 +426,7 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if util.Includes(pathname, "connect.publish") {
+				if strings.Contains(pathname, "connect.publish") {
 					flow_list_variable_name := "yt"
 					if m := jsFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
 						flow_list_variable_name = m[1]
@@ -475,4 +485,39 @@ func CreateChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInje
 			}
 		},
 	}
+	return []*proxy.Plugin{plugin1, plugin2}
 }
+
+func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
+	version := interceptor.Version
+	v := "?t=" + version
+	return &proxy.Plugin{
+		Match: "qq.com",
+		OnResponse: func(ctx proxy.Context) {
+			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
+			hostname := ctx.Req().URL.Hostname()
+			pathname := ctx.Req().URL.Path
+			// fmt.Println("response", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
+			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+				resp_body, err := ctx.GetResponseBody()
+				if err != nil {
+					return
+				}
+				html := string(resp_body)
+				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
+				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
+				inserted_scripts := ""
+				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
+					/** 核心逻辑 */
+					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
+					inserted_scripts += script_main
+				}
+				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+				ctx.SetResponseBody(html)
+				return
+			}
+		},
+	}
+}
+
+

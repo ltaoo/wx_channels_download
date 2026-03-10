@@ -24,6 +24,10 @@ type InterceptorConfig struct {
 	APIServerHostname                   string `json:"apiServerHostname"`          // API服务器主机名
 	APIServerPort                       int    `json:"apiServerPort"`              // API服务器端口
 	APIServerAddr                       string `json:"apiServerAddr"`
+	RemoteServerEnabled  		    bool   `json:"remoteServerEnabled"`
+	RemoteServerProtocol string  `json:"remoteServerProtocol"`
+	RemoteServerHostname string  `json:"remoteServerHostname"`
+	RemoteServerPort     int     `json:"remoteServerPort"`
 	OfficialAccountServerRefreshToken   string `json:"officialServerRefreshToken"`
 	OfficialAccountServerDisabled       bool   `json:"officialServerDisabled"`
 	OfficialAccountRemoteServerProtocol string `json:"officialRemoteServerProtocol"`
@@ -64,6 +68,10 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		APIServerHostname:                   viper.GetString("api.hostname"),
 		APIServerPort:                       viper.GetInt("api.port"),
 		APIServerAddr:                       viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		RemoteServerEnabled:                viper.GetBool("download.remoteServer.enabled"),
+		RemoteServerProtocol:               viper.GetString("download.remoteServer.protocol"),
+		RemoteServerHostname:               viper.GetString("download.remoteServer.hostname"),
+		RemoteServerPort:                   viper.GetInt("download.remoteServer.port"),
 		OfficialAccountServerDisabled:       viper.GetBool("mp.disabled"),
 		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
 		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
