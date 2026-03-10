@@ -63,25 +63,26 @@ builds:
     ldflags:
       - -X main.Mode=release
 
-  - id: windows_sunnynet
-    env:
-      - CGO_ENABLED=1
-      - CC=x86_64-w64-mingw32-gcc
-      - CXX=x86_64-w64-mingw32-g++
-    flags:
-      - -mod=vendor
-    goos:
-      - windows
-    goarch:
-      - amd64
-    main: .
-    binary: wx_video_download
-    ldflags:
-      - -s -w
-      - -X main.Mode=release
-      - -extldflags '-static'
-    tags:
-      - sunnynet
+  # TODO: Temporarily disabled SunnyNet build
+  # - id: windows_sunnynet
+  #   env:
+  #     - CGO_ENABLED=1
+  #     - CC=x86_64-w64-mingw32-gcc
+  #     - CXX=x86_64-w64-mingw32-g++
+  #   flags:
+  #     - -mod=vendor
+  #   goos:
+  #     - windows
+  #   goarch:
+  #     - amd64
+  #   main: .
+  #   binary: wx_video_download
+  #   ldflags:
+  #     - -s -w
+  #     - -X main.Mode=release
+  #     - -extldflags '-static'
+  #   tags:
+  #     - sunnynet
 
 archives:
   - id: default
@@ -110,16 +111,17 @@ archives:
         dst: config.yaml
       - src: LICENSE
       - src: '!README*.md'
-  - id: windows_sunnynet
-    ids:
-      - windows_sunnynet
-    format: zip
-    name_template: "wx_video_download_sunnynet_{{ .Tag }}_{{ .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else if eq .Arch \"386\" }}x86{{ else }}{{ .Arch }}{{ end }}"
-    files:
-      - src: internal/config/config.template.yaml
-        dst: config.yaml
-      - src: LICENSE
-      - src: '!README*.md'
+  # TODO: Temporarily disabled SunnyNet build
+  # - id: windows_sunnynet
+  #   ids:
+  #     - windows_sunnynet
+  #   format: zip
+  #   name_template: "wx_video_download_sunnynet_{{ .Tag }}_{{ .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else if eq .Arch \"386\" }}x86{{ else }}{{ .Arch }}{{ end }}"
+  #   files:
+  #     - src: internal/config/config.template.yaml
+  #       dst: config.yaml
+  #     - src: LICENSE
+  #     - src: '!README*.md'
 
 upx:
   - enabled: true
