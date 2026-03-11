@@ -55,11 +55,7 @@ var isWin = /Windows|Win/i.test(ua);
     };
   }
   function connect(selector) {
-    console.log(
-      "[]download connect websocket",
-      FakeAPIServerAddr,
-      WXU.config.remoteServerEnabled,
-    );
+    console.log("[]download connect websocket", FakeAPIServerAddr);
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(
         WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
@@ -350,6 +346,7 @@ var isWin = /Windows|Win/i.test(ua);
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
+<<<<<<< HEAD
   console.log(
     "[]check is wxwork",
     window.ua.includes("wxwork"),
@@ -357,6 +354,7 @@ var isWin = /Windows|Win/i.test(ua);
     WXU.config.remoteServerEnabled,
   );
   if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
+  // console.log("[]check is wxwork", window.ua.includes("wxwork"), window.ua);
     connect_local_ws();
   }
 

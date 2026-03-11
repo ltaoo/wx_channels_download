@@ -498,46 +498,58 @@ function __wx_render_sider_tools() {
 }
 
 (() => {
+  const isHomePage = window.location.href.includes("/web/pages/home");
+  const isProfilePage = window.location.href.includes("/web/pages/feed");
   insert_channels_style();
   var error_tip_timer = setTimeout(() => {
     WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);
+  var prev_feed = null;
   var home_page_mounted = false;
-  WXE.onPCFlowLoaded((feeds) => {
+  WXU.onPCFlowLoaded((feeds) => {
     console.log("[main.js]WXU.onPCFlowLoaded", feeds);
-    if (home_page_mounted) {
+    if (home_page_mounted || feed_loaded_on_profile_callback) {
       return;
     }
     home_page_mounted = true;
+    WXU.set_cur_video();
+    WXU.set_feed(feeds[0]);
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
     __wx_insert_download_btn_to_home_page();
   });
-  var profile_page_mounted = false;
-  WXE.onFetchFeedProfile((feed) => {
+  var feed_loaded_on_profile_callback = false;
+  WXU.onFetchFeedProfile((feed) => {
     console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
-    if (profile_page_mounted) {
+    WXU.set_cur_video();
+    if (!prev_feed || prev_feed.id !== feed.id) {
+      WXU.set_feed(feed);
+    }
+    prev_feed = feed;
+    if (feed_loaded_on_profile_callback) {
       return;
     }
-    profile_page_mounted = true;
+    feed_loaded_on_profile_callback = true;
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
-    WXU.set_cur_video();
     __wx_insert_download_btn();
   });
-  WXE.onGotoNextFeed((feed) => {
+  WXU.onGotoNextFeed((feed) => {
     console.log("[main.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
+    WXU.set_feed(feed);
     __wx_insert_download_btn_to_home_page();
   });
-  WXE.onGotoPrevFeed((feed) => {
+  WXU.onGotoPrevFeed((feed) => {
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
+    WXU.set_feed(feed);
     __wx_insert_download_btn_to_home_page();
   });
-  WXE.onHomeFeedChanged((feed) => {
+  WXU.onHomeFeedChanged((feed) => {
     console.log("[main.js]WXU.onHomeFeedChanged", feed);
     WXU.set_cur_video();
+    WXU.set_feed(feed);
     __wx_insert_download_btn_to_home_page();
   });
   WXE.onFeed((feed) => {
