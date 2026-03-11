@@ -270,29 +270,3 @@ window.addEventListener("unload", function () {
     href: window.location.href,
   });
 });
-
-WXE.onGotoNextFeed((feed) => {
-  console.log("[eventbus.js]onGotoNextFeed", feed);
-  WXE.emit(WXE.Events.Feed, feed);
-});
-WXE.onGotoPrevFeed((feed) => {
-  console.log("[eventbus.js]onGotoPrevFeed", feed);
-  WXE.emit(WXE.Events.Feed, feed);
-});
-WXE.onHomeFeedChanged((feed) => {
-  console.log("[eventbus.js]onHomeFeedChanged", feed);
-  WXE.emit(WXE.Events.Feed, feed);
-});
-WXE.onFetchFeedProfile((feed) => {
-  console.log("[eventbus.js]onFetchFeedProfile", feed);
-  WXE.emit(WXE.Events.Feed, feed);
-});
-var home_recommend_mounted = false;
-WXE.onPCFlowLoaded((feeds) => {
-  if (home_recommend_mounted) {
-    return;
-  }
-  home_recommend_mounted = true;
-  console.log("[eventbus.js]onPCFlowLoaded", feeds);
-  WXE.emit(WXE.Events.Feed, feeds[0]);
-});
