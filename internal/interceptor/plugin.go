@@ -128,7 +128,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
-			// fmt.Println("response1", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
+			// fmt.Println("response1", hostname, pathname)
 			if pathname == "/web/pages/feed" && cfg.ChannelsDisableLocationToHome && ctx.Res().StatusCode == 302 {
 				original_req := ctx.Req()
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
@@ -168,6 +168,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
+					fmt.Println("[error]get response body failed,", err)
 					return
 				}
 				html := string(resp_body)
@@ -250,7 +251,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					fmt.Println("[error]GetResponseBody error", err)
 					return
 				}
-			// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
+				// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 				js_script := string(resp_body)
 				js_script = jsFromReg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
 				js_script = jsDepReg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
@@ -519,5 +520,3 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 		},
 	}
 }
-
-

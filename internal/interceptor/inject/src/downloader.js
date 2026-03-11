@@ -246,7 +246,9 @@ var isWin = /Windows|Win/i.test(ua);
     var $box = $header.children[$header.children.length - 1];
     if (!$box) return;
     var $btn_wrap = $box.children[0];
-    if (!$btn_wrap) return;
+    if (!$btn_wrap) {
+      $btn_wrap = $box;
+    }
     var $download_panel_button = download_btn5();
     var $download_panel = document.createElement("div");
     $download_panel.innerHTML = `
@@ -354,9 +356,9 @@ var isWin = /Windows|Win/i.test(ua);
     window.ua,
     WXU.config.remoteServerEnabled,
   );
-  // if (window.ua.includes("wxwork") || WXU.config.remoteServerEnabled) {
-  connect_local_ws();
-  // }
+  if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
+    connect_local_ws();
+  }
 
   // document.addEventListener(
   //   "scroll",

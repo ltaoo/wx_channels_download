@@ -4,20 +4,9 @@
 var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
 var FakeRemoteAPIServerAddr = "remoteapi.weixin.qq.com";
 var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
-var FakeAPIServerAddr = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerAddr
-  : FakeLocalAPIServerAddr;
-
 var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
-// var RemoteAPIServerProtocol = WXU.config.remoteServerProtocol;
-// var LocalAPIServerProtocol = WXU.config.apiServerProtocol;
-
-var APIServerProtocol = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerProtocol
-  : FakeLocalAPIServerProtocol;
-
-var WSServerProtocol = APIServerProtocol === "https" ? 'wss' : 'ws';
+var WSServerProtocol = "wss";
 
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
@@ -716,7 +705,8 @@ var WXU = (() => {
         // console.log("[downloader.create]before WXU.request");
         var [err, data] = await WXU.request({
           method: "POST",
-          url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
+          url:
+            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
           body: {
             id: feed.id,
             url: feed.url,
@@ -795,7 +785,11 @@ var WXU = (() => {
         }
         var [err, data] = await WXU.request({
           method: "POST",
-          url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create_batch",
+          url:
+            APIServerProtocol +
+            "://" +
+            FakeAPIServerAddr +
+            "/api/task/create_batch",
           body,
         });
         if (err) {
@@ -1065,3 +1059,10 @@ var WXU = (() => {
     },
   };
 })();
+
+var FakeAPIServerAddr = WXU.config.remoteServerEnabled
+  ? FakeRemoteAPIServerAddr
+  : FakeLocalAPIServerAddr;
+var APIServerProtocol = WXU.config.remoteServerEnabled
+  ? FakeRemoteAPIServerProtocol
+  : FakeLocalAPIServerProtocol;
