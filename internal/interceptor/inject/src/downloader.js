@@ -346,18 +346,9 @@ var isWin = /Windows|Win/i.test(ua);
   WXU.observe_node(".home-header", () => {
     insert_downloader();
   });
-<<<<<<< HEAD
-  console.log(
-    "[]check is wxwork",
-    window.ua.includes("wxwork"),
-    window.ua,
-    WXU.config.remoteServerEnabled,
-  );
   if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
-  // console.log("[]check is wxwork", window.ua.includes("wxwork"), window.ua);
     connect_local_ws();
   }
-
   // document.addEventListener(
   //   "scroll",
   //   (e) => {
