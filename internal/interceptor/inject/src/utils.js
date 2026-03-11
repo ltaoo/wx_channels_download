@@ -4,26 +4,9 @@
 var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
 var FakeRemoteAPIServerAddr = "remoteapi.weixin.qq.com";
 var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
-<<<<<<< HEAD
 var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
 var WSServerProtocol = "wss";
-=======
-var FakeAPIServerAddr = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerAddr
-  : FakeLocalAPIServerAddr;
-
-var FakeRemoteAPIServerProtocol = "https";
-var FakeLocalAPIServerProtocol = "https";
-// var RemoteAPIServerProtocol = WXU.config.remoteServerProtocol;
-// var LocalAPIServerProtocol = WXU.config.apiServerProtocol;
-
-var APIServerProtocol = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerProtocol
-  : FakeLocalAPIServerProtocol;
-
-var WSServerProtocol = APIServerProtocol === "https" ? 'wss' : 'ws';
->>>>>>> 23ccdc0 (stash)
 
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
@@ -1076,7 +1059,6 @@ var WXU = (() => {
     },
   };
 })();
-<<<<<<< HEAD
 
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerAddr
@@ -1084,5 +1066,3 @@ var FakeAPIServerAddr = WXU.config.remoteServerEnabled
 var APIServerProtocol = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerProtocol
   : FakeLocalAPIServerProtocol;
-=======
->>>>>>> 23ccdc0 (stash)
