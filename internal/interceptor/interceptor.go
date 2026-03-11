@@ -65,7 +65,7 @@ func (c *Interceptor) Start() error {
 	}
 	if c.Settings.RemoteServerEnabled {
 		client.AddPlugin(&proxy.Plugin{
-			Match: "kf.qq.com",
+			Match: "remoteapi.weixin.qq.com",
 			Target: &proxy.TargetConfig{
 				Protocol: c.Settings.RemoteServerProtocol,
 				Host:     c.Settings.RemoteServerHostname,
@@ -73,6 +73,14 @@ func (c *Interceptor) Start() error {
 			},
 		})
 	}
+	client.AddPlugin(&proxy.Plugin{
+		Match: "localapi.weixin.qq.com",
+		Target: &proxy.TargetConfig{
+			Protocol: c.Settings.APIServerProtocol,
+			Host:     c.Settings.APIServerHostname,
+			Port:     c.Settings.APIServerPort,
+		},
+	})
 	plugins := CreateChannelInterceptorPlugins(c, Assets)
 	for _, plugin := range plugins {
 		client.AddPlugin(plugin)
