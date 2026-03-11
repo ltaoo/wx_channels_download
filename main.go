@@ -12,7 +12,7 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "260310"
+var AppVer = "260311"
 var Mode = "debug"
 
 func main() {
