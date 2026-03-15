@@ -1060,6 +1060,390 @@ var WXU = (() => {
   };
 })();
 
+/**
+ * 用于下载已经播放的视频内容
+ * @param {FeedProfile} profile 视频信息
+ */
+async function __wx_channels_download(profile) {
+  console.log("__wx_channels_download");
+  const data = profile.data;
+  const blob = new Blob(data, { type: "video/mp4" });
+  WXU.save(blob, profile.filename);
+}
+/**
+ * 下载图片视频
+ * @param {FeedProfile} profile 视频信息
+ */
+async function __wx_channels_download3(profile) {
+  console.log("__wx_channels_download3");
+  const files = profile.files;
+  const zip = await WXU.Zip();
+  zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
+  const folder = zip.folder("images");
+  const fetchPromises = files
+    .map((f) => f.url)
+    .map(async (url, index) => {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      folder.file(index + 1 + ".png", blob);
+    });
+  const ins = WXU.loading();
+  try {
+    await Promise.all(fetchPromises);
+    const content = await zip.generateAsync({ type: "blob" });
+    await WXU.save(content, profile.filename + ".zip");
+  } catch (err) {
+    WXU.error({ msg: "下载失败，" + err.message });
+  }
+  ins.hide();
+}
+/**
+ * 下载加密视频
+ * @param {FeedProfile} feed 视频信息
+ * @param {object} opt 选项
+ * @param {string} opt.spec 规格
+ * @param {string} opt.suffix 后缀
+ */
+async function __wx_channels_download4(feed, opt) {
+  console.log("__wx_channels_download4");
+  if (!WXU.config.downloadInFrontend) {
+    var [err, data] = await WXU.downloader.create(feed, opt);
+    if (err) {
+      WXU.error({ msg: err.message });
+      return;
+    }
+    return;
+  }
+  var filename = WXU.build_filename(
+    feed,
+    opt.spec,
+    WXU.config.downloadFilenameTemplate,
+  );
+  if (!filename) {
+    WXU.error({ msg: "文件名生成失败" });
+    return;
+  }
+  feed.filename = filename;
+  if (feed.type === "picture") {
+    __wx_channels_download3(feed);
+    return;
+  }
+  if (opt.spec) {
+    feed.url = feed.url + "&X-snsvideoflag=" + opt.spec;
+  }
+  if (WXU.config.downloadPauseWhenDownload) {
+    WXU.pause_cur_video();
+  }
+  const ins = WXU.loading();
+  var [err, response] = await WXU.fetch(feed.url);
+  if (err) {
+    WXU.error({ msg: err.message });
+    return;
+  }
+  const media_blob = await WXU.download_with_progress(response, {
+    onStart({ total_size }) {
+      WXU.log({
+        msg: `总大小 ${WXU.bytes_to_size(total_size)}`,
+      });
+    },
+    onProgress({ loaded_size, progress }) {
+      WXU.log({
+        replace: 1,
+        msg:
+          progress === null
+            ? `${WXU.bytes_to_size(loaded_size)}`
+            : `${progress}%`,
+      });
+    },
+  });
+  WXU.log({ ignore_prefix: 1, msg: "" });
+  var media_buf = new Uint8Array(await media_blob.arrayBuffer());
+  if (feed.key) {
+    WXU.log({ msg: "下载完成，开始解密" });
+    var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
+    if (err) {
+      WXU.error({ msg: "解密失败，" + err.message, alert: 0 });
+      WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0 });
+    } else {
+      WXU.log({ msg: "解密成功" });
+      media_buf = data;
+    }
+  }
+  if (opt.suffix === ".mp3") {
+    const [err, mp3_blob] = await WXU.media_to_mp3(media_buf.buffer);
+    if (err) {
+      WXU.error({ msg: err.message });
+      return;
+    }
+    WXU.emit(WXU.Events.MP3Downloaded, feed);
+    WXU.save(mp3_blob, feed.filename + opt.suffix);
+  } else {
+    WXU.emit(WXU.Events.MediaDownloaded, feed);
+    const result = new Blob([media_buf], { type: "video/mp4" });
+    WXU.save(result, feed.filename + opt.suffix);
+  }
+  ins.hide();
+  if (WXU.config.downloadPauseWhenDownload) {
+    WXU.play_cur_video();
+  }
+}
+/** 复制当前页面地址 */
+function __wx_channels_handle_copy__() {
+  WXU.copy(location.href);
+  WXU.toast("复制成功");
+}
+/**
+ * 所有下载功能统一先调用该方法
+ * 由该方法分发到具体的 download 方法中
+ * @param {string | null} spec 规格信息
+ * @param {boolean} mp3 是否转换为 MP3
+ */
+async function __wx_channels_handle_click_download__(spec, mp3) {
+  const [err, feed] = WXU.check_feed_existing();
+  if (err) return;
+  const payload = { ...feed };
+  payload.mp3 = !!mp3;
+  payload.original_url = feed.url;
+  payload.target_spec = spec;
+  payload.source_url = location.href;
+  WXU.log({
+    msg: `${payload.source_url}
+${payload.original_url}
+${payload.key || ""}`,
+  });
+  WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
+  var suffix = ".mp4";
+  if (mp3) {
+    suffix = ".mp3";
+  }
+  if (payload.type === "picture") {
+    suffix = ".zip";
+  }
+  __wx_channels_download4(payload, { spec, suffix });
+}
+/** 下载已加载的视频 */
+function __wx_channels_download_cur__() {
+  const [err, profile] = WXU.check_feed_existing();
+  if (err) return;
+  if (__wx_channels_store__.buffers.length === 0) {
+    WXU.error({ msg: "没有可下载的内容" });
+    return;
+  }
+  var filename = WXU.build_filename(
+    profile,
+    null,
+    WXU.config.downloadFilenameTemplate,
+  );
+  if (!filename) {
+    WXU.error({ msg: "文件名生成失败" });
+    return;
+  }
+  profile.filename = filename;
+  profile.data = __wx_channels_store__.buffers;
+  __wx_channels_download(profile);
+}
+/** 打印下载原始文件命令 */
+function __wx_channels_handle_print_download_command() {
+  const [err, profile] = WXU.check_feed_existing();
+  if (err) return;
+  var _profile = { ...profile };
+  var filename = WXU.build_filename(
+    _profile,
+    null,
+    WXU.config.downloadFilenameTemplate,
+  );
+  if (!filename) {
+    alert("文件名生成失败");
+    return;
+  }
+  var command = `download --url "${_profile.url}"`;
+  if (_profile.key) {
+    command += ` --key ${_profile.key}`;
+  }
+  command += ` --filename "${filename}.mp4"`;
+  WXU.log({ msg: command });
+  WXU.toast("请在终端查看下载命令");
+}
+/** 下载视频封面 */
+async function __wx_channels_handle_download_cover() {
+  var [err, profile] = WXU.check_feed_existing();
+  if (err) return;
+  var url = profile.cover_url.replace(/^http:/, "https:");
+  if (!WXU.config.downloadInFrontend) {
+    var [err, data] = await WXU.downloader.create(
+      {
+        id: profile.id,
+        url,
+        title: profile.title,
+        spec: profile.spec,
+        contact: profile.contact,
+      },
+      {
+        suffix: ".jpg",
+      },
+    );
+    if (err) {
+      WXU.error({ msg: err.message });
+      return;
+    }
+    return;
+  }
+  var filename = WXU.build_filename(
+    profile,
+    null,
+    WXU.config.downloadFilenameTemplate,
+  );
+  if (!filename) {
+    WXU.error({ msg: "文件名生成失败" });
+    return;
+  }
+  WXU.log({ msg: `下载封面\n${url}` });
+  const ins = WXU.loading();
+  var [err, response] = await WXU.fetch(url);
+  ins.hide();
+  if (err) {
+    WXU.error({ msg: err.message });
+    return;
+  }
+  const blob = await response.blob();
+  WXU.save(blob, filename + ".jpg");
+}
+/**
+ * 为指定按钮添加额外的下载选项菜单
+ * @param {HTMLElement} trigger
+ */
+function __wx_attach_download_dropdown_menu(trigger) {
+  const { DropdownMenu, Menu, MenuItem } = WUI;
+  const submenu$ = Menu({
+    children: [],
+  });
+  const dropdown$ = DropdownMenu({
+    $trigger: trigger,
+    zIndex: 99999,
+    children: [
+      ...(() => {
+        if (WXU.before_menu_items) {
+          return render_extra_menu_items(WXU.before_menu_items, {
+            hide() {
+              dropdown$.hide();
+            },
+          });
+        }
+        return [];
+      })(),
+      MenuItem({
+        label: "更多下载",
+        submenu: submenu$,
+        onMouseEnter() {
+          submenu$.show();
+        },
+        onMouseLeave() {
+          if (!submenu$.isHover) {
+            submenu$.hide();
+          }
+        },
+      }),
+      MenuItem({
+        label: "下载为MP3",
+        onClick() {
+          __wx_channels_handle_click_download__(null, true);
+          dropdown$.hide();
+        },
+      }),
+      MenuItem({
+        label: "下载封面",
+        onClick() {
+          __wx_channels_handle_download_cover();
+          dropdown$.hide();
+        },
+      }),
+      MenuItem({
+        label: "打印下载命令",
+        onClick() {
+          __wx_channels_handle_print_download_command();
+          dropdown$.hide();
+        },
+      }),
+      MenuItem({
+        label: "复制页面链接",
+        onClick() {
+          __wx_channels_handle_copy__();
+          dropdown$.hide();
+        },
+      }),
+      ...(() => {
+        if (WXU.after_menu_items) {
+          return render_extra_menu_items(WXU.after_menu_items, {
+            hide() {
+              dropdown$.hide();
+            },
+          });
+        }
+        return [];
+      })(),
+    ],
+    onMouseEnter() {
+      if (submenu$.isOpen) {
+        submenu$.hide();
+      }
+    },
+  });
+  dropdown$.ui.$trigger.onMouseEnter(() => {
+    const download_menus = [
+      MenuItem({
+        label: "原始视频",
+        onClick() {
+          __wx_channels_handle_click_download__(null);
+          dropdown$.hide();
+        },
+      }),
+      ...(() => {
+        const [err, profile] = WXU.check_feed_existing({
+          silence: true,
+        });
+        if (err) {
+          return [];
+        }
+        return profile.spec.map((spec) => {
+          return MenuItem({
+            label: spec.fileFormat,
+            onClick() {
+              __wx_channels_handle_click_download__(spec.fileFormat);
+              dropdown$.hide();
+            },
+          });
+        });
+      })(),
+    ];
+    submenu$.setChildren(download_menus);
+    dropdown$.show();
+  });
+  dropdown$.ui.$trigger.onMouseLeave(() => {
+    if (dropdown$.isHover) {
+      return;
+    }
+    dropdown$.hide();
+  });
+  return dropdown$;
+}
+
+/** 下载图标 按钮，点击时的处理函数 */
+function __wx_download_btn_handler() {
+  const [err, profile] = WXU.check_feed_existing();
+  if (err) return;
+  var spec = (() => {
+    if (WXU.config.defaultHighest) {
+      return null;
+    }
+    if (profile.spec[0]) {
+      return profile.spec[0].fileFormat;
+    }
+    return null;
+  })();
+  __wx_channels_handle_click_download__(spec);
+}
+
+
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerAddr
   : FakeLocalAPIServerAddr;

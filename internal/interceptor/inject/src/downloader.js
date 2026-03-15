@@ -245,7 +245,7 @@ var isWin = /Windows|Win/i.test(ua);
     if (!$btn_wrap) {
       $btn_wrap = $box;
     }
-    var $download_panel_button = download_btn5();
+    var $download_panel_button = download_btn6();
     var $download_panel = document.createElement("div");
     $download_panel.innerHTML = `
       <div class="wx-dl-panel-container">
