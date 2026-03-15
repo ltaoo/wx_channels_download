@@ -64,8 +64,11 @@ var js_downloader []byte
 //go:embed inject/src/officialaccount.js
 var js_wechat_officialaccount []byte
 
-//go:embed inject/src/main.js
-var js_feed_profile_or_recommand_page []byte
+//go:embed inject/src/home.js
+var js_home_page []byte
+
+//go:embed inject/src/feed.js
+var js_feed_profile_page []byte
 
 //go:embed inject/src/live.js
 var js_live_profile_page []byte
@@ -93,9 +96,10 @@ type ChannelInjectedFiles struct {
 	JSDownloader            []byte
 	JSUtils                 []byte
 	JSError                 []byte
-	JSMain                  []byte
-	JSLiveMain              []byte
-	JSContactMain           []byte
+	JSHomePage              []byte
+	JSFeedProfilePage       []byte
+	JSLiveProfilePage       []byte
+	JSContactPage           []byte
 	JSWechatOfficialAccount []byte
 }
 
@@ -119,8 +123,9 @@ var Assets = &ChannelInjectedFiles{
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
 	JSDownloader:            js_downloader,
-	JSMain:                  js_feed_profile_or_recommand_page,
-	JSLiveMain:              js_live_profile_page,
-	JSContactMain:           js_contact_profile_page,
+	JSHomePage:              js_home_page,
+	JSFeedProfilePage:       js_feed_profile_page,
+	JSLiveProfilePage:       js_live_profile_page,
+	JSContactPage:           js_contact_profile_page,
 	JSWechatOfficialAccount: js_wechat_officialaccount,
 }

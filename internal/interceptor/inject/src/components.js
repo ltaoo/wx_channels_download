@@ -238,7 +238,17 @@ function download_btn4() {
 function download_btn5() {
   var icon_download_html = download_icon4;
   var $icon = document.createElement("div");
-  $icon.innerHTML = `<div data-v-bf57a568="" class="mr-4 h-6 w-6 flex-initial flex-shrink-0 text-fg-0 cursor-pointer">${icon_download_html}</div>`;
+  $icon.innerHTML = `<div data-v-bf57a568 class="mr-4 h-6 w-6 flex-initial flex-shrink-0 text-fg-0 cursor-pointer">${icon_download_html}</div>`;
+  return $icon.firstChild;
+}
+
+/**
+ * @returns {HTMLDivElement}
+ */
+function download_btn6() {
+  var icon_download_html = download_icon4;
+  var $icon = document.createElement("div");
+  $icon.innerHTML = `<div data-v-81be080d class="mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer">${icon_download_html}</div>`;
   return $icon.firstChild;
 }
 

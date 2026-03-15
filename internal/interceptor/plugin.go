@@ -208,23 +208,29 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
-				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
-					/** 核心逻辑 */
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
+				if pathname == "/web/pages/home" {
+					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
+					if cfg.InjectExtraScriptAfterJSMain != "" {
+						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+					}
+					inserted_scripts += script_main
+				}
+				if pathname == "/web/pages/feed" {
+					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSFeedProfilePage)
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
 					inserted_scripts += script_main
 				}
 				if pathname == "/web/pages/live" {
-					script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveMain)
+					script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveProfilePage)
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						script_live_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
 					inserted_scripts += script_live_main
 				}
 				if pathname == "/web/pages/profile" {
-					script_contact_main := fmt.Sprintf(`<script>%s</script>`, files.JSContactMain)
+					script_contact_main := fmt.Sprintf(`<script>%s</script>`, files.JSContactPage)
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						script_contact_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
@@ -510,7 +516,7 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 				inserted_scripts := ""
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 					/** 核心逻辑 */
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSMain)
+					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
 					inserted_scripts += script_main
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
