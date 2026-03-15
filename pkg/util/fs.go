@@ -226,7 +226,7 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 
 // 处理单个文件名，考虑文件夹
 func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string, error) {
-	input_name = strings.ReplaceAll(input_name, "/", "_")
+	input_name = strings.ReplaceAll(input_name, "//", "_")
 	// 分离目录和文件名
 	dir, filename := filepath.Split(input_name)
 	// 清理文件名部分

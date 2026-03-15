@@ -182,16 +182,8 @@ function DownloaderPanelViewModel() {
     return t.filter((v) => v.status === "running").length;
   });
   const methods = {
-    upsert(task) {
-      if (!task || !task.id) {
-        return;
-      }
-      const matched = tasks_.find((v) => v.id === task.id);
-      if (!matched) {
-        tasks_.unshift(task);
-        return;
-      }
-      matched.assign({
+    formatTask(task) {
+      return {
         ...task,
         ...(() => {
           if (!task.meta.opts) {
@@ -209,7 +201,18 @@ function DownloaderPanelViewModel() {
             filepath: p.endsWith(sep) ? p + n : p + sep + n,
           };
         })(),
-      });
+      };
+    },
+    upsert(task) {
+      if (!task || !task.id) {
+        return;
+      }
+      const matched = tasks_.find((v) => v.id === task.id);
+      if (!matched) {
+        tasks_.unshift(task);
+        return;
+      }
+      matched.assign(methods.formatTask(task));
     },
     connect() {
       return new Promise((resolve, reject) => {
@@ -240,7 +243,11 @@ function DownloaderPanelViewModel() {
           }
           if (msg.type === "tasks") {
             const { list, total } = msg.data;
-            tasks_.as(list);
+            tasks_.as(
+              list.map((t) => {
+                return methods.formatTask(t);
+              }),
+            );
             task_count_.as(total);
             return;
           }
@@ -295,11 +302,81 @@ function DownloaderPanelViewModel() {
         });
         return;
       }
-      const t = tasks.get(id);
-      if (!t) {
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
         return;
       }
-      tasks.set(id, { ...t, status: "running" });
+      matched.assign({
+        status: "running",
+      });
+    },
+    async pause(task) {
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: APIHostname + "/api/task/pause",
+        body: { id: task.id },
+      });
+      if (err) {
+        WXU.error({
+          msg: err.message,
+        });
+        return;
+      }
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "paused",
+      });
+    },
+    async delete(task) {
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: APIHostname + "/api/task/delete",
+        body: { id: task.id },
+      });
+      if (err) {
+        WXU.error({
+          msg: err.message,
+        });
+        return;
+      }
+      const idx = tasks_.findIndex((t) => t.id === task.id);
+      if (idx === -1) {
+        return;
+      }
+      tasks_.delete(idx);
+    },
+    async resume(task) {
+      if (running_count_.value > WXU.config.MaxRunning) {
+        return;
+      }
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: APIHostname + "/api/task/resume",
+        body: { id: task.id },
+      });
+      if (err) {
+        WXU.error({
+          msg: err.message,
+        });
+        return;
+      }
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "running",
+      });
+    },
+    async clear() {
+      await WXU.request({
+        method: "POST",
+        url: APIHostname + "/api/task/clear",
+      });
+      tasks_.as([]);
     },
     async open(task) {
       const { path, name } = task;
@@ -325,63 +402,6 @@ function DownloaderPanelViewModel() {
           msg: err.message,
         });
       }
-    },
-    async pause(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/pause",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const t = tasks.get(task.id);
-      if (!t) {
-        return;
-      }
-      tasks.set(task.id, { ...t, status: "paused" });
-    },
-    async delete(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/delete",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      tasks.delete(task.id);
-    },
-    async resume(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/resume",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const t = tasks.get(task.id);
-      if (!t) {
-        return;
-      }
-      tasks.set(task.id, { ...t, status: "running" });
-    },
-    async clear() {
-      await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/clear",
-      });
-      tasks.clear();
     },
   };
 
@@ -487,7 +507,7 @@ function DownloaderPanelView(props, children) {
               each: tasks_,
               render(task) {
                 const iconSize = "50px";
-                const state = computed(task, (t) => {
+                const state_ = computed(task, (t) => {
                   // console.log("the task is changed", t.status);
                   const pr = format_download_percent(t);
                   const isCompleted =
@@ -502,7 +522,8 @@ function DownloaderPanelView(props, children) {
 
                   let statusText = t.status;
                   let statusColor = "var(--FG-1)";
-
+                  var isFailed = t.status === "failed" || t.status === "error";
+                  var isPending = t.status === "pending";
                   if (isRunning) {
                     const speed = format_download_speed(
                       t.progress ? t.progress.speed : 0,
@@ -515,10 +536,10 @@ function DownloaderPanelView(props, children) {
                     if (total) {
                       statusText = WXU.bytes_to_size(total);
                     }
-                  } else if (t.status === "failed" || t.status === "error") {
+                  } else if (isFailed) {
                     statusText = "下载失败";
                     statusColor = "#FA5151";
-                  } else if (t.status === "pending") {
+                  } else if (isPending) {
                     statusText = "等待中...";
                   } else if (isPaused) {
                     statusText = `已暂停 • ${pr}%`;
@@ -528,7 +549,8 @@ function DownloaderPanelView(props, children) {
                     isCompleted,
                     isPaused,
                     isRunning,
-                    isFailed: t.status === "failed" || t.status === "error",
+                    isFailed,
+                    canResume: isFailed || isPaused,
                     statusText,
                     statusColor,
                   };
@@ -558,10 +580,10 @@ function DownloaderPanelView(props, children) {
                 });
                 const radius = 22;
                 const circumference = 2 * Math.PI * radius;
-                const offset = computed(state, (d) => {
+                const offset = computed(state_, (d) => {
                   return circumference - (d.pr / 100) * circumference;
                 });
-                const strokeColor = computed(state, (d) => {
+                const strokeColor = computed(state_, (d) => {
                   return d.isPaused ? "#FBC02D" : "#07C160";
                 });
 
@@ -574,7 +596,7 @@ function DownloaderPanelView(props, children) {
                     [
                       Show(
                         {
-                          when: computed(state, (t) => {
+                          when: computed(state_, (t) => {
                             return t.isRunning || t.isPaused;
                           }),
                           fallback: [DangerouslyInnerHTML(PrefixIcon.value)],
@@ -646,13 +668,13 @@ function DownloaderPanelView(props, children) {
                       View(
                         {
                           class: "weui-cell__desc",
-                          style: computed(state, (d) => {
+                          style: computed(state_, (d) => {
                             return `margin-top: 4px; color: ${d.statusColor}; font-size: 12px;`;
                           }),
                         },
                         [
                           Txt(
-                            computed(state, (d) => {
+                            computed(state_, (d) => {
                               return d.statusText;
                             }),
                           ),
@@ -672,7 +694,7 @@ function DownloaderPanelView(props, children) {
                         Switch(
                           {
                             when: combine(
-                              { state, running_count: running_count_ },
+                              { state: state_, running_count: running_count_ },
                               (t) => {
                                 if (t.state.isCompleted) {
                                   return 1;
@@ -680,11 +702,11 @@ function DownloaderPanelView(props, children) {
                                 if (t.state.isRunning) {
                                   return 2;
                                 }
-                                if (
-                                  (t.state.isPaused || t.state.isFailed) &&
-                                  t.running_count < WXU.config.MaxRunning
-                                ) {
+                                if (t.state.isPaused) {
                                   return 3;
+                                }
+                                if (t.state.isFailed) {
+                                  return 4;
                                 }
                                 return 0;
                               },
@@ -699,6 +721,9 @@ function DownloaderPanelView(props, children) {
                                   type: "a",
                                   class: "wx-download-item-open",
                                   style: btnStyle,
+                                  onClick() {
+                                    vm$.methods.open(task);
+                                  },
                                 },
                                 [
                                   Show(
@@ -722,7 +747,7 @@ function DownloaderPanelView(props, children) {
                                   class: "wx-download-item-pause",
                                   style: btnStyle,
                                   onClick() {
-                                    methods.pause(task);
+                                    vm$.methods.pause(task);
                                   },
                                 },
                                 [DangerouslyInnerHTML(PauseIcon)],
@@ -735,22 +760,40 @@ function DownloaderPanelView(props, children) {
                                 {
                                   type: "a",
                                   class: "wx-download-item-resume",
-                                  style: btnStyle,
+                                  style: sn([
+                                    btnStyle,
+                                    computed(running_count_, (t) => {
+                                      return t > WXU.config.MaxRunning
+                                        ? "opacity: 0.6; cursor: not-allowed;"
+                                        : "";
+                                    }),
+                                  ]),
                                   onClick() {
-                                    methods.resume(task);
+                                    vm$.methods.resume(task);
                                   },
                                 },
-                                [
-                                  Show(
-                                    {
-                                      when: computed(state, (t) => t.isFailed),
-                                      fallback: [
-                                        DangerouslyInnerHTML(PlayIcon),
-                                      ],
-                                    },
-                                    [DangerouslyInnerHTML(RetryIcon)],
-                                  ),
-                                ],
+                                [DangerouslyInnerHTML(PlayIcon)],
+                              ),
+                            ]),
+                            Match(4, [
+                              h(
+                                View,
+                                {
+                                  type: "a",
+                                  class: "wx-download-item-resume",
+                                  style: sn([
+                                    btnStyle,
+                                    computed(running_count_, (t) => {
+                                      return t > WXU.config.MaxRunning
+                                        ? "opacity: 0.6; cursor: not-allowed;"
+                                        : "";
+                                    }),
+                                  ]),
+                                  onClick() {
+                                    vm$.methods.resume(task);
+                                  },
+                                },
+                                [DangerouslyInnerHTML(RetryIcon)],
                               ),
                             ]),
                           ],
@@ -760,6 +803,9 @@ function DownloaderPanelView(props, children) {
                             type: "a",
                             class: "wx-download-item-delete",
                             style: btnStyle,
+                            onClick() {
+                              vm$.methods.delete(task);
+                            },
                           },
                           [DangerouslyInnerHTML(DeleteIcon)],
                         ),
