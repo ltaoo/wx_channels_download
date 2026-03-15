@@ -137,7 +137,7 @@ body[data-weui-theme=dark] {
 /* Custom Menu Styles */
 .wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; }
 .wx-dl-title { font-size: 16px; font-weight: 600; color: var(--weui-FG-0); }
-.wx-dl-more-btn { color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
+.wx-dl-more-btn { display: flex; align-items: center; color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
 .wx-dl-more-btn:hover { opacity: 1; background-color: var(--weui-BG-COLOR-ACTIVE); }
 
 .wx-dl-dropdown { 
@@ -249,6 +249,11 @@ function download_btn6() {
   var icon_download_html = download_icon4;
   var $icon = document.createElement("div");
   $icon.innerHTML = `<div data-v-81be080d class="mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer">${icon_download_html}</div>`;
+  return $icon.firstChild;
+}
+function download_btn7() {
+  var $icon = document.createElement("div");
+  $icon.innerHTML = `<div data-v-81be080d class="mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer"></div>`;
   return $icon.firstChild;
 }
 
@@ -492,7 +497,152 @@ function __wx_refresh_downloader(selector, tasks, total) {
 
 var { Menu, MenuItem } = WUI;
 MenuItem.setTemplate(
-  '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>'
+  '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>',
 );
 MenuItem.setIndicatorTemplate('<span class="custom-menu-item-arrow">›</span>');
 Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
+
+function Popover(props, children) {
+  const state_ = refobj(props.store.state);
+  const popper_state_ = refobj(props.store.popper.state);
+
+  const unlistens = [
+    props.store.onStateChange((v) => {
+      state_.as(v);
+    }),
+    props.store.popper.onStateChange((v) => {
+      popper_state_.as(v);
+    }),
+  ];
+
+  return PopoverPrimitive.Root(
+    {
+      onUnmounted() {
+        unlistens.forEach((fn) => fn());
+      },
+    },
+    [
+      PopoverPrimitive.Trigger({ store: props.store }, children),
+      PopoverPrimitive.Portal({ store: props.store }, [
+        PopoverPrimitive.Content(
+          {
+            ...props,
+            class: computed(state_, (t) => {
+              return [
+                t.enter ? "animate-in fade-in-0 zoom-in-95" : "",
+                t.exit ? "animate-out fade-out-0 zoom-out-95" : "",
+              ].join(" ");
+            }),
+          },
+          props.content,
+        ),
+      ]),
+    ],
+  );
+}
+
+function DropdownMenu(props, children) {
+  const state_ = refobj(props.store.state);
+
+  return Fragment({}, [
+    h(Show, { when: !!children }, [
+      DropdownMenuPrimitive.Trigger({ store: props.store }, children),
+    ]),
+    DropdownMenuPrimitive.Content(
+      {
+        ...props,
+        animation: {
+          in: "animate-in fade-in-0 zoom-in-95",
+          out: "animate-out fade-out-0 zoom-out-95",
+        },
+      },
+      [
+        View({ class: "custom-menu" }, [
+          For({
+            each: computed(state_, (t) => {
+              return t.items;
+            }),
+            render(item) {
+              return DropdownMenuItem({ store: item });
+            },
+          }),
+        ]),
+      ],
+    ),
+  ]);
+}
+
+function DropdownMenuItem(props) {
+  const state_ = refobj(props.store.state);
+  const has_submenu_ = ref(!!props.store.menu);
+  const menu_state_ = refobj(props.store.menu ? props.store.menu.state : {});
+  [
+    props.store.onStateChange((v) => {
+      state_.as(v);
+    }),
+    (() => {
+      if (props.store.menu) {
+        return props.store.menu.onStateChange((v) => {
+          menu_state_.as(v);
+        });
+      }
+      return () => {};
+    })(),
+  ];
+
+  return View({ class: "custom-menu-item" }, [
+    DropdownMenuPrimitive.Item(
+      {
+        store: props.store,
+        class: classNames([
+          computed(state_, (t) => {
+            return t.focused
+              ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
+              : "";
+          }),
+          computed(state_, (t) => {
+            return t.disabled ? "pointer-events-none opacity-50" : "";
+          }),
+        ]),
+      },
+      [
+        props.store.label,
+        Show({ when: has_submenu_ }, [
+          View({ class: "p-2" }, [
+            ChevronRightOutlined({
+              class: "custom-menu-item-arrow",
+              style: "font-size: 18px;",
+            }),
+          ]),
+        ]),
+      ],
+    ),
+    (() => {
+      // console.log("DropdownMenuItem render", props.store.label);
+      const inner$ = props.store.menu
+        ? DropdownMenuPrimitive.SubMenuContent(
+            {
+              store: props.store.menu,
+              animation: {
+                in: "animate-in fade-in-0 zoom-in-95",
+                out: "animate-out fade-out-0 zoom-out-95",
+              },
+            },
+            [
+              View({ class: "custom-menu" }, [
+                For({
+                  each: computed(menu_state_, (t) => {
+                    return t.items;
+                  }),
+                  render(item) {
+                    return DropdownMenuItem({ store: item });
+                  },
+                }),
+              ]),
+            ],
+          )
+        : null;
+      return View({}, [inner$]);
+    })(),
+  ]);
+}

@@ -349,33 +349,6 @@ var isWin = /Windows|Win/i.test(ua);
   if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
     connect_local_ws();
   }
-  // document.addEventListener(
-  //   "scroll",
-  //   (e) => {
-  //     if (e.target && e.target.id === "downloader_container") {
-  //       const el = e.target;
-  //       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
-  //         if (
-  //           !is_loading &&
-  //           has_more &&
-  //           ws_conn &&
-  //           ws_conn.readyState === WebSocket.OPEN
-  //         ) {
-  //           is_loading = true;
-  //           console.log("[]fetching next page", cur_page + 1);
-  //           ws_conn.send(
-  //             JSON.stringify({
-  //               type: "fetch_tasks",
-  //               page: cur_page + 1,
-  //               limit: 50,
-  //             }),
-  //           );
-  //         }
-  //       }
-  //     }
-  //   },
-  //   true,
-  // );
 })();
 
 async function __wx_handle_api_call(msg, socket) {

@@ -22,9 +22,6 @@ var js_mitt []byte
 //go:embed inject/lib/weui.min.css
 var css_weui []byte
 
-//go:embed inject/lib/boxui.umd.min.js
-var js_box []byte
-
 //go:embed inject/lib/weui.min.js
 var js_weui []byte
 
@@ -36,6 +33,15 @@ var js_timeless_reactive []byte
 
 //go:embed inject/lib/timeless.headless.umd.min.js
 var js_timeless_headless []byte
+
+//go:embed inject/lib/timeless.kit.umd.min.js
+var js_timeless_kit []byte
+
+//go:embed inject/lib/timeless.ui.umd.min.js
+var js_timeless_ui []byte
+
+//go:embed inject/lib/timeless.icons.umd.min.js
+var js_timeless_icons []byte
 
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
@@ -58,7 +64,7 @@ var js_components []byte
 //go:embed inject/src/utils.js
 var js_utils []byte
 
-//go:embed inject/src/downloader.js
+//go:embed inject/src/downloaderv2.js
 var js_downloader []byte
 
 //go:embed inject/src/officialaccount.js
@@ -92,6 +98,9 @@ type ChannelInjectedFiles struct {
 	JSEventBus              []byte
 	JSTimelessReactive      []byte
 	JSTimelessHeadless      []byte
+	JSTimelessKit           []byte
+	JSTimelessIcons         []byte
+	JSTimelessUI            []byte
 	JSComponents            []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
@@ -112,7 +121,6 @@ var Assets = &ChannelInjectedFiles{
 	JSFloatingUIDOM:         js_floating_ui_dom,
 	JSWeui:                  js_weui,
 	CSSWeui:                 css_weui,
-	JSBox:                   js_box,
 	JSWui:                   js_wui,
 	JSMitt:                  js_mitt,
 	JSDebug:                 js_debug,
@@ -120,6 +128,9 @@ var Assets = &ChannelInjectedFiles{
 	JSEventBus:              js_eventbus,
 	JSTimelessReactive:      js_timeless_reactive,
 	JSTimelessHeadless:      js_timeless_headless,
+	JSTimelessIcons:         js_timeless_icons,
+	JSTimelessKit:           js_timeless_kit,
+	JSTimelessUI:            js_timeless_ui,
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
 	JSDownloader:            js_downloader,

@@ -174,18 +174,27 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				html := string(resp_body)
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
+
 				inserted_scripts := ""
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUI)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessIcons)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
+				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
+
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
 				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
 				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
+
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
 					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
@@ -197,12 +206,8 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
 					inserted_scripts += script_pagespy + script_pagespy2
 				}
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSBox)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {

@@ -5,6 +5,13 @@ var __wx_username;
 var ua = navigator.userAgent || navigator.platform || "";
 var isWin = /Windows|Win/i.test(ua);
 
+var APIHostname = APIServerProtocol + "://" + FakeAPIServerAddr;
+var RemoteAPIHostname =
+  WXU.config.remoteServerProtocol + "://" + WXU.config.remoteServerHostname;
+if (WXU.config.remoteServerPort !== 80) {
+  RemoteAPIHostname += ":" + WXU.config.remoteServerPort;
+}
+
 function format_download_speed(bps) {
   const kb = 1024,
     mb = kb * 1024;
@@ -168,14 +175,10 @@ async function __wx_handle_api_call(msg, socket) {
   });
 }
 
-function GopeedDownloaderPanel() {
-  const tasks = [];
-  const tasks_ = ref(tasks);
-  const total_ = ref(0);
-  const task_count_ = computed(total_, (t) => {
-    return t > 0 ? t : tasks_.value.length;
-  });
-  const runningCount_ = computed(tasks_, (t) => {
+function DownloaderPanelViewModel() {
+  const tasks_ = refarr([]);
+  const task_count_ = ref(0);
+  const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
   const methods = {
@@ -185,10 +188,11 @@ function GopeedDownloaderPanel() {
       }
       const matched = tasks_.find((v) => v.id === task.id);
       if (!matched) {
+        tasks_.unshift(task);
         return;
       }
-      matched.as({
-        ...matched.value,
+      matched.assign({
+        ...task,
         ...(() => {
           if (!task.meta.opts) {
             return {};
@@ -209,10 +213,9 @@ function GopeedDownloaderPanel() {
     },
     connect() {
       return new Promise((resolve, reject) => {
-        const protocol = "wss://";
-        const pathname = FakeAPIServerAddr;
-        const ws = new WebSocket(protocol + pathname + "/ws/channels");
-
+        const ws = new WebSocket(
+          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+        );
         ws.onopen = () => {
           if (WXU.downloader) {
             WXU.downloader.status = "connected";
@@ -236,18 +239,13 @@ function GopeedDownloaderPanel() {
             return;
           }
           if (msg.type === "tasks") {
-            if (Array.isArray(msg.data)) {
-                tasks_.value = msg.data;
-                total_.value = msg.data.length;
-            } else if (msg.data.list) {
-                tasks_.value = msg.data.list;
-                total_.value = msg.data.total;
-            }
+            const { list, total } = msg.data;
+            tasks_.as(list);
+            task_count_.as(total);
             return;
           }
           if (msg.type === "clear") {
-            tasks.clear();
-            // __wx_refresh_downloader(selector, tasks);
+            tasks_.as([]);
             return;
           }
           if (msg.type === "event") {
@@ -256,7 +254,6 @@ function GopeedDownloaderPanel() {
             if (task) {
               methods.upsert(task);
             }
-            // __wx_refresh_downloader(selector, tasks);
             return;
           }
           if (msg.type === "api_call") {
@@ -265,11 +262,31 @@ function GopeedDownloaderPanel() {
         };
       });
     },
+    connect_local_ws() {
+      const ws_url =
+        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
+      const ws = new WebSocket(ws_url);
+      ws.onclose = (e) => {
+        WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
+      };
+      ws.onerror = (e) => {
+        WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
+      };
+      ws.onmessage = (ev) => {
+        const [err, msg] = WXU.parseJSON(ev.data);
+        if (err) {
+          return;
+        }
+        if (msg.type === "api_call") {
+          __wx_handle_api_call(msg.data, ws);
+        }
+      };
+    },
     async start(task) {
       const id = task.id;
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/start",
+        url: APIHostname + "/api/task/start",
         body: { id: task.id },
       });
       if (err) {
@@ -279,10 +296,10 @@ function GopeedDownloaderPanel() {
         return;
       }
       const t = tasks.get(id);
-      if (t) {
-        tasks.set(id, { ...t, status: "running" });
-        // __wx_refresh_downloader("#downloader_container", tasks);
+      if (!t) {
+        return;
       }
+      tasks.set(id, { ...t, status: "running" });
     },
     async open(task) {
       const { path, name } = task;
@@ -293,21 +310,14 @@ function GopeedDownloaderPanel() {
         return;
       }
       if (WXU.config.remoteServerEnabled) {
-        var u =
-          WXU.config.remoteServerProtocol +
-          "://" +
-          WXU.config.remoteServerHostname;
-        if (WXU.config.remoteServerPort !== 80) {
-          u += ":" + WXU.config.remoteServerPort;
-        }
-        u += "/preview?id=" + task.id;
+        var u = RemoteAPIHostname + "/preview?id=" + task.id;
         window.open(u);
         return;
       }
       // Use original API for local file
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/show_file",
+        url: APIHostname + "/api/show_file",
         body: { path, name, id: task.id },
       });
       if (err) {
@@ -319,7 +329,7 @@ function GopeedDownloaderPanel() {
     async pause(task) {
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/pause",
+        url: APIHostname + "/api/task/pause",
         body: { id: task.id },
       });
       if (err) {
@@ -329,15 +339,15 @@ function GopeedDownloaderPanel() {
         return;
       }
       const t = tasks.get(task.id);
-      if (t) {
-        tasks.set(task.id, { ...t, status: "paused" });
-        __wx_refresh_downloader("#downloader_container", tasks);
+      if (!t) {
+        return;
       }
+      tasks.set(task.id, { ...t, status: "paused" });
     },
     async delete(task) {
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/delete",
+        url: APIHostname + "/api/task/delete",
         body: { id: task.id },
       });
       if (err) {
@@ -347,12 +357,11 @@ function GopeedDownloaderPanel() {
         return;
       }
       tasks.delete(task.id);
-      __wx_refresh_downloader("#downloader_container", tasks);
     },
     async resume(task) {
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/resume",
+        url: APIHostname + "/api/task/resume",
         body: { id: task.id },
       });
       if (err) {
@@ -362,63 +371,88 @@ function GopeedDownloaderPanel() {
         return;
       }
       const t = tasks.get(task.id);
-      if (t) {
-        tasks.set(task.id, { ...t, status: "running" });
-        __wx_refresh_downloader("#downloader_container", tasks);
+      if (!t) {
+        return;
       }
+      tasks.set(task.id, { ...t, status: "running" });
     },
     async clear() {
       await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/clear",
+        url: APIHostname + "/api/task/clear",
       });
       tasks.clear();
-      __wx_refresh_downloader("#downloader_container", tasks);
     },
   };
 
-  WXU.downloader.status = "disconnected";
-  WXU.downloader.reconnect = async function () {
-    if (WXU.downloader.status === "connected") return true;
-    for (let i = 0; i < 3; i++) {
-      try {
-        await methods.connect();
-        return true;
-      } catch (e) {
-        console.warn("Reconnect attempt " + (i + 1) + " failed");
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    }
-    return false;
+  return {
+    state: {
+      tasks: tasks_,
+      task_count: task_count_,
+      running_count: running_count_,
+    },
+    methods,
+    ready() {
+      WXU.downloader.status = "disconnected";
+      WXU.downloader.reconnect = async function () {
+        if (WXU.downloader.status === "connected") return true;
+        for (let i = 0; i < 3; i++) {
+          try {
+            await methods.connect();
+            return true;
+          } catch (e) {
+            console.warn("Reconnect attempt " + (i + 1) + " failed");
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+        return false;
+      };
+      methods.connect().catch((e) => WXU.error({ msg: "建立ws连接失败" }));
+    },
   };
-  methods.connect().catch((e) => WXU.error({ msg: "建立ws连接失败" }));
+}
+
+function DownloaderPanelView(props, children) {
+  const vm$ = props.store;
+  const tasks_ = vm$.state.tasks;
+  const task_count_ = vm$.state.task_count;
+  const running_count_ = vm$.state.running_count;
 
   return View({ class: "wx-dl-panel-container" }, [
     View({ class: "wx-dl-header" }, [
       View({ class: "wx-dl-title" }, [
-        Txt("Downloads"),
-        View({ type: "span" }, [
-          Show(
-            {
-              when: computed(task_count_, (d) => {
-                return d > 0;
+        "Downloads",
+        computed(task_count_, (d) => {
+          return d > 0 ? `(${d})` : "";
+        }),
+      ]),
+      DropdownMenu(
+        {
+          store: new Timeless.ui.DropdownMenuCore({
+            trigger: "hover",
+            align: "end",
+            items: [
+              new Timeless.ui.MenuItemCore({
+                label: "清空下载记录",
+                onClick() {
+                  vm$.methods.clear();
+                },
               }),
+            ],
+          }),
+        },
+        [
+          View(
+            {
+              class: "wx-dl-more-btn",
             },
             [
-              Txt(
-                computed(task_count_, (d) => {
-                  return d > 0 ? `(${d})` : "";
-                }),
-              ),
+              Timeless.icons.EllipsisVerticalOutlined({
+                style: "font-size: 18px;",
+              }),
             ],
           ),
-        ]),
-      ]),
-      View(
-        {
-          class: "wx-dl-more-btn",
-        },
-        [DangerouslyInnerHTML(MoreIcon)],
+        ],
       ),
     ]),
     View(
@@ -635,12 +669,32 @@ function GopeedDownloaderPanel() {
                       const btnStyle =
                         "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
                       return [
-                        Switch({}, [
-                          // 场景 1: 已完成 -> 显示打开按钮
-                          Match(
-                            { when: computed(state, (s) => s.isCompleted) },
-                            [
-                              View(
+                        Switch(
+                          {
+                            when: combine(
+                              { state, running_count: running_count_ },
+                              (t) => {
+                                if (t.state.isCompleted) {
+                                  return 1;
+                                }
+                                if (t.state.isRunning) {
+                                  return 2;
+                                }
+                                if (
+                                  (t.state.isPaused || t.state.isFailed) &&
+                                  t.running_count < WXU.config.MaxRunning
+                                ) {
+                                  return 3;
+                                }
+                                return 0;
+                              },
+                            ),
+                          },
+                          [
+                            // 场景 1: 已完成 -> 显示打开按钮
+                            Match(1, [
+                              h(
+                                View,
                                 {
                                   type: "a",
                                   class: "wx-download-item-open",
@@ -658,35 +712,26 @@ function GopeedDownloaderPanel() {
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                          // 场景 2: 正在运行 -> 显示暂停按钮
-                          Match({ when: computed(state, (t) => t.isRunning) }, [
-                            View(
-                              {
-                                type: "a",
-                                class: "wx-download-item-pause",
-                                style: btnStyle,
-                                onClick() {
-                                  methods.pause(task);
+                            ]),
+                            // 场景 2: 正在运行 -> 显示暂停按钮
+                            Match(2, [
+                              h(
+                                View,
+                                {
+                                  type: "a",
+                                  class: "wx-download-item-pause",
+                                  style: btnStyle,
+                                  onClick() {
+                                    methods.pause(task);
+                                  },
                                 },
-                              },
-                              [DangerouslyInnerHTML(PauseIcon)],
-                            ),
-                          ]),
-                          // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
-                          Match(
-                            {
-                              when: combine([state, runningCount_], (t, c) => {
-                                // console.log('the state is change', runningCount.value);
-                                return (
-                                  (t.isPaused || t.isFailed) &&
-                                  c < WXU.config.MaxRunning
-                                );
-                              }),
-                            },
-                            [
-                              View(
+                                [DangerouslyInnerHTML(PauseIcon)],
+                              ),
+                            ]),
+                            // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
+                            Match(3, [
+                              h(
+                                View,
                                 {
                                   type: "a",
                                   class: "wx-download-item-resume",
@@ -707,9 +752,9 @@ function GopeedDownloaderPanel() {
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ]),
+                            ]),
+                          ],
+                        ),
                         View(
                           {
                             type: "a",
@@ -731,35 +776,73 @@ function GopeedDownloaderPanel() {
   ]);
 }
 
+function DownloaderEntry(props) {
+  return Popover(
+    {
+      store: props.popover$,
+      content: [
+        DownloaderPanelView({
+          store: props.vm$,
+        }),
+      ],
+    },
+    [
+      View(
+        {
+          class:
+            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer",
+        },
+        [
+          DangerouslyInnerHTML(
+            `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 706.608L781.968 436.64a32 32 0 1 0-45.248-45.256L544 584.096V192a32 32 0 0 0-64 0v392.096l-192.712-192.72a32 32 0 0 0-45.256 45.256L512 706.608z" fill="currentColor"></path><path d="M824 640a32 32 0 0 0-32 32v128.36c0 3.112 0 8.496-0.48 11.472l-1.008 1.024c-0.952 0.984-2.104 2.168-3.112 3.152h-538.48c-2.448-0.664-7.808-3.56-10.608-6.36-2.776-2.784-5.656-8.128-6.32-10.568V672a32 32 0 0 0-64 0v128c0 20.632 12.608 42.456 25.088 54.912C205.584 867.4 227.408 880 248 880h544c22.496 0 36.208-14.112 44.408-22.536l2.48-2.528c17.128-17.088 17.12-41.472 17.12-54.928V672A32.016 32.016 0 0 0 824 640z" fill="currentColor"></path></svg>`,
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 (() => {
+  const vm$ = DownloaderPanelViewModel();
   var mounted = false;
-  function insert_download_panel() {
+  function insert_downloader() {
+    // alert(1);
     var $header = document.querySelector(".home-header");
     console.log("[DOWNLOADER]insert_downloader", mounted, $header);
-    if (mounted) {
-      return;
-    }
+    if (mounted) return;
     if (!$header) return;
     var $box = $header.children[$header.children.length - 1];
     if (!$box) return;
     var $btn_wrap = $box.children[0];
-    if (!$btn_wrap) return;
-    var $panel_button = GopeedDownloaderPanel();
+    if (!$btn_wrap) {
+      $btn_wrap = $box;
+    }
+    var $download_panel_button = download_btn7();
+
+    $btn_wrap.insertBefore($download_panel_button, $btn_wrap.firstChild);
+    mounted = true;
+
+    const popover$ = new Timeless.ui.PopoverCore({
+      offsetY: 4,
+    });
     WXU.downloader.show = function () {
-      // download_popover$.open();
+      popover$.show();
     };
     WXU.downloader.hide = function () {
-      // download_popover$.close();
+      popover$.hide();
     };
     WXU.downloader.toggle = function () {
-      // download_popover$.toggle();
+      popover$.toggle();
     };
-    $btn_wrap.insertBefore($panel_button, $btn_wrap.firstChild);
-    mounted = true;
+    Timeless.render(DownloaderEntry({ popover$, vm$ }), $download_panel_button);
+    vm$.ready();
   }
   WXU.observe_node(".home-header", () => {
-    insert_download_panel();
+    insert_downloader();
   });
+  if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
+    vm$.methods.connect_local_ws();
+  }
 })();
 
 WXU.onInit((data) => {

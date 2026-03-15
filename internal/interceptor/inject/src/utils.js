@@ -1443,6 +1443,30 @@ function __wx_download_btn_handler() {
   __wx_channels_handle_click_download__(spec);
 }
 
+var ref = Timeless.reactive.ref;
+var refobj = Timeless.reactive.refobj;
+var refarr = Timeless.reactive.refarr;
+var computed = Timeless.reactive.computed;
+var combine = Timeless.reactive.combine;
+var isRef = Timeless.reactive.isRef;
+var cn = Timeless.reactive.cn;
+var sn = Timeless.reactive.sn;
+var classNames = Timeless.reactive.classNames;
+var View = Timeless.headless.View;
+var Txt = Timeless.headless.Txt;
+var Fragment = Timeless.headless.Fragment;
+var DangerouslyInnerHTML = Timeless.headless.DangerouslyInnerHTML;
+var SVG = Timeless.headless.SVG;
+var Circle = Timeless.headless.Circle;
+var Show = Timeless.headless.Show;
+var For = Timeless.headless.For;
+var Switch = Timeless.headless.Switch;
+var Match = Timeless.headless.Match;
+var h = Timeless.headless.h;
+var PopoverPrimitive = Timeless.headless.PopoverPrimitive;
+var DropdownMenuPrimitive = Timeless.headless.DropdownMenuPrimitive;
+var ChevronRightOutlined = Timeless.icons.ChevronRightOutlined;
+Object.assign(window.Timeless, window.Timeless.kit);
 
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerAddr
