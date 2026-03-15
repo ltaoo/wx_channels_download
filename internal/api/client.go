@@ -364,6 +364,13 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		return err
 	}
 
+	// 记录 payload 内容
+	if payloadJSON, err := json.Marshal(payload); err == nil {
+		c.logger.Info().Str("payload", string(payloadJSON)).Msg("创建 payload 成功")
+	} else {
+		c.logger.Warn().Err(err).Msg("序列化 payload 用于日志记录失败")
+	}
+
 	if payload.Id == "" {
 		return fmt.Errorf("缺少 feed id")
 	}
@@ -408,7 +415,6 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 	}
 
 	c.logger.Info().
-		Str("id", payload.Id).
 		Str("url", targetURL).
 		Msg("自动创建下载任务请求发送成功")
 
