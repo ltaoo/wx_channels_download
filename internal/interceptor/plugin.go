@@ -188,6 +188,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessIcons)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessProviderWeb)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
 				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)

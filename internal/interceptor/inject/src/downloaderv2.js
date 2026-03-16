@@ -27,7 +27,9 @@ function format_download_percent(t) {
   return Math.min(100, Math.floor((cur * 100) / total));
 }
 function get_name_of_download_task(t) {
-  if (t.meta && t.meta.opts && t.meta.opts.name) return t.meta.opts.name;
+  if (t.meta && t.meta.opts && t.meta.opts.name) {
+    return t.meta.opts.name;
+  }
   if (t.meta && t.meta.res) {
     if (t.meta.res.name) return t.meta.res.name;
     if (t.meta.res.files && t.meta.res.files.length > 0)
@@ -181,13 +183,16 @@ function DownloaderPanelViewModel() {
   const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
+  let _page = 1;
+  let _loading = false;
+  const _pageSize = 50;
   const methods = {
     formatTask(task) {
-      return {
-        ...task,
+      const r = {
         height: 82,
+        ...task,
         ...(() => {
-          if (!task.meta.opts) {
+          if (!task.meta || !task.meta.opts) {
             return {};
           }
           var p = task.meta.opts.path || "";
@@ -203,6 +208,8 @@ function DownloaderPanelViewModel() {
           };
         })(),
       };
+      console.log("format task", task, r);
+      return r;
     },
     upsert(task) {
       if (!task || !task.id) {
@@ -224,6 +231,8 @@ function DownloaderPanelViewModel() {
           WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
         );
         ws.onopen = () => {
+          _page = 1;
+          _loading = false;
           if (WXU.downloader) {
             WXU.downloader.status = "connected";
           }
@@ -253,6 +262,14 @@ function DownloaderPanelViewModel() {
             tasks_.as(tasks);
             task_count_.as(total);
             ui.waterfall$.methods.appendItems(tasks);
+            return;
+          }
+          if (msg.type === "batch_tasks") {
+            const list = Array.isArray(msg.data) ? msg.data : [];
+            const tasks = list.map((t) => methods.formatTask(t));
+            task_count_.as((prev) => prev + tasks.length);
+            tasks_.unshift(...tasks);
+            ui.waterfall$.methods.unshiftItems(tasks);
             return;
           }
           if (msg.type === "clear") {
@@ -413,17 +430,43 @@ function DownloaderPanelViewModel() {
       onScroll(pos) {
         ui.waterfall$.methods.handleScroll({ scrollTop: pos.scrollTop });
       },
-      onReachBottom() {
-        // ui.waterfall$.methods.appendItems(newItems);
-        // totalItemCount += 10;
-        // totalCount.as(totalItemCount);
-        // scrollStore.finishLoadingMore();
+      async onReachBottom() {
+        if (_loading) {
+          return;
+        }
+        if (tasks_.value.length >= task_count_.value) {
+          ui.view$.finishLoadingMore();
+          return;
+        }
+        _loading = true;
+        _page += 1;
+        var [err, data] = await WXU.request({
+          method: "GET",
+          url:
+            APIHostname +
+            "/api/task/list?page=" +
+            _page +
+            "&page_size=" +
+            _pageSize,
+        });
+        _loading = false;
+        if (err || !data || !data.list) {
+          _page -= 1;
+          ui.view$.finishLoadingMore();
+          return;
+        }
+        const tasks = data.list.map((t) => methods.formatTask(t));
+        // console.log(tasks);
+        task_count_.as(data.total);
+        tasks_.push(...tasks);
+        ui.waterfall$.methods.appendItems(tasks);
+        ui.view$.finishLoadingMore();
       },
     }),
     waterfall$: new Timeless.ui.WaterfallModel({
       column: 1,
-      size: 50,
-      buffer: 3,
+      size: 20,
+      buffer: 10,
       gutter: 8,
     }),
   };
@@ -499,10 +542,11 @@ function DownloaderPanelView(props, children) {
         ],
       ),
     ]),
-    View(
+    ScrollView(
       {
         class: "wx-dl-list wx-dl-dark-scroll",
         style: "background-color: transparent; margin-top: 0;",
+        store: vm$.ui.view$,
       },
       [
         Show(
@@ -520,7 +564,7 @@ function DownloaderPanelView(props, children) {
                     {
                       class: "weui-loadmore__tips",
                     },
-                    [Txt("暂无下载任务")],
+                    ["暂无下载任务"],
                   ),
                 ],
               ),
@@ -536,6 +580,7 @@ function DownloaderPanelView(props, children) {
                   // console.log("the task is changed", t.status);
                   const pr = format_download_percent(t);
                   const isCompleted =
+                    t.status === "done" ||
                     t.status === "completed" ||
                     t.status === "success" ||
                     t.status === "finished" ||
@@ -581,9 +626,7 @@ function DownloaderPanelView(props, children) {
                   };
                 });
                 const isOpenExternal = WXU.config.remoteServerEnabled;
-                const filename = computed(task, (t) => {
-                  return get_name_of_download_task(t);
-                });
+                const filename = task.name;
                 const PrefixIcon = computed(filename, (t) => {
                   const filename = t;
                   let selectedIcon = FileIcon;
@@ -688,7 +731,7 @@ function DownloaderPanelView(props, children) {
                           style:
                             "color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
                         },
-                        [Txt(filename)],
+                        [task.name],
                       ),
                       View(
                         {
@@ -698,11 +741,9 @@ function DownloaderPanelView(props, children) {
                           }),
                         },
                         [
-                          Txt(
-                            computed(state_, (d) => {
-                              return d.statusText;
-                            }),
-                          ),
+                          computed(state_, (d) => {
+                            return d.statusText;
+                          }),
                         ],
                       ),
                     ],

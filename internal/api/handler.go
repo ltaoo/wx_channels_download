@@ -313,15 +313,6 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": id})
 }
 
-type DownloadTaskSummary struct {
-	ID       string      `json:"id"`
-	Title    string      `json:"title"`
-	Status   base.Status `json:"status"`
-	Filepath string      `json:"filepath"`
-	Path     string      `json:"path"`
-	Name     string      `json:"name"`
-}
-
 func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	status := ctx.Query("status")
 	page_str := ctx.Query("page")
@@ -352,24 +343,8 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	if end > total {
 		end = total
 	}
-	summaries := make([]DownloadTaskSummary, 0, end-start)
-	for _, task := range list[start:end] {
-		filename := task.Meta.Opts.Name
-		file_path := task.Meta.Opts.Path
-		if filename == "" {
-			filename = task.ID
-		}
-		summaries = append(summaries, DownloadTaskSummary{
-			ID:       task.ID,
-			Title:    task.Meta.Req.Labels["title"],
-			Status:   task.Status,
-			Path:     file_path,
-			Name:     filename,
-			Filepath: filepath.Join(file_path, filename),
-		})
-	}
 	result.Ok(ctx, gin.H{
-		"list":      summaries,
+		"list":      list[start:end],
 		"total":     total,
 		"page":      page_num,
 		"page_size": page_size_num,
@@ -482,20 +457,18 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
-	// c.logger.Info().
-	// 	Int("count", len(task.Reqs)).
-	// 	Dur("cost", time.Since(start)).
-	// 	Msg("批量创建任务完成")
+	var batchTasks []interface{}
 	for _, id := range ids {
 		task := c.downloader.GetTask(id)
 		if task != nil {
-			c.channels.Broadcast(APIClientWSMessage{
-				Type: "event",
-				Data: map[string]interface{}{
-					"task": task,
-				},
-			})
+			batchTasks = append(batchTasks, task)
 		}
+	}
+	if len(batchTasks) > 0 {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "batch_tasks",
+			Data: batchTasks,
+		})
 	}
 	result.Ok(ctx, gin.H{"ids": ids})
 }

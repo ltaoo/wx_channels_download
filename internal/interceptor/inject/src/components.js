@@ -171,13 +171,15 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
 .wx-dl-menu-item svg { margin-right: 8px; fill: currentColor; }
 
 .wx-dl-list {
-  flex: 1;
+  height: 380px;
   min-height: 0;
-  overflow-y: scroll;
   position: relative;
   padding: 12px;
   padding-top: 0;
-  scrollbar-gutter: stable;
+}
+.scroll-view-waterfall {
+  overflow: visible !important;
+  height: auto !important;
 }
 .wx-dl-item {
   padding: 16px;
@@ -704,29 +706,24 @@ function ScrollView(props, children) {
   return ScrollViewPrimitive.Root(
     {
       store,
-      class: cn(["scroll-view w-full h-full overflow-y-auto", cls]),
+      class: cn(["scroll-view h-full overflow-y-auto", cls]),
+      style: 'height: 100%; overflow-y: auto;',
       ...rest,
     },
     [
       ScrollViewPrimitive.Indicator(
         {
           store,
-          class:
-            "scroll-view-indicator relative w-full overflow-hidden text-center",
+          class: "scroll-view-indicator",
+          style:
+            "position: relative; width: 100%; overflow: hidden; text-align: center;",
         },
         [
-          ScrollViewPrimitive.Progress(
-            {
-              store,
-              class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
-            },
-            [
-              ScrollViewPrimitive.Progress({
-                store,
-                class: "w-[50px] h-[50px] mx-auto rounded-full bg-w-bg-0",
-              }),
-            ],
-          ),
+          ScrollViewPrimitive.Progress({
+            store,
+            class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
+            style: 'position: absolute; left: 0; bottom: 0; width: 100%; min-height: 30px; padding: 10px 0;',
+          }),
         ],
       ),
       ...children,
