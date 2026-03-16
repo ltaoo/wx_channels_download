@@ -185,6 +185,7 @@ function DownloaderPanelViewModel() {
     formatTask(task) {
       return {
         ...task,
+        height: 82,
         ...(() => {
           if (!task.meta.opts) {
             return {};
@@ -209,6 +210,9 @@ function DownloaderPanelViewModel() {
       }
       const matched = tasks_.find((v) => v.id === task.id);
       if (!matched) {
+        task_count_.as((prev) => {
+          return prev + 1;
+        });
         tasks_.unshift(task);
         return;
       }
@@ -243,12 +247,12 @@ function DownloaderPanelViewModel() {
           }
           if (msg.type === "tasks") {
             const { list, total } = msg.data;
-            tasks_.as(
-              list.map((t) => {
-                return methods.formatTask(t);
-              }),
-            );
+            const tasks = list.map((t) => {
+              return methods.formatTask(t);
+            });
+            tasks_.as(tasks);
             task_count_.as(total);
+            ui.waterfall$.methods.appendItems(tasks);
             return;
           }
           if (msg.type === "clear") {
@@ -404,8 +408,28 @@ function DownloaderPanelViewModel() {
       }
     },
   };
+  const ui = {
+    view$: new Timeless.ui.ScrollViewCore({
+      onScroll(pos) {
+        ui.waterfall$.methods.handleScroll({ scrollTop: pos.scrollTop });
+      },
+      onReachBottom() {
+        // ui.waterfall$.methods.appendItems(newItems);
+        // totalItemCount += 10;
+        // totalCount.as(totalItemCount);
+        // scrollStore.finishLoadingMore();
+      },
+    }),
+    waterfall$: new Timeless.ui.WaterfallModel({
+      column: 1,
+      size: 50,
+      buffer: 3,
+      gutter: 8,
+    }),
+  };
 
   return {
+    ui,
     state: {
       tasks: tasks_,
       task_count: task_count_,
@@ -503,8 +527,9 @@ function DownloaderPanelView(props, children) {
             ],
           },
           [
-            For({
-              each: tasks_,
+            Waterfall({
+              // each: tasks_,
+              store: vm$.ui.waterfall$,
               render(task) {
                 const iconSize = "50px";
                 const state_ = computed(task, (t) => {
@@ -851,21 +876,8 @@ function DownloaderEntry(props) {
 (() => {
   const vm$ = DownloaderPanelViewModel();
   var mounted = false;
-  function insert_downloader() {
-    // alert(1);
-    var $header = document.querySelector(".home-header");
-    console.log("[DOWNLOADER]insert_downloader", mounted, $header);
-    if (mounted) return;
-    if (!$header) return;
-    var $box = $header.children[$header.children.length - 1];
-    if (!$box) return;
-    var $btn_wrap = $box.children[0];
-    if (!$btn_wrap) {
-      $btn_wrap = $box;
-    }
-    var $download_panel_button = download_btn7();
-
-    $btn_wrap.insertBefore($download_panel_button, $btn_wrap.firstChild);
+  function insert_downloader($wrap, $trigger) {
+    $wrap.insertBefore($trigger, $wrap.firstChild);
     mounted = true;
 
     const popover$ = new Timeless.ui.PopoverCore({
@@ -880,12 +892,37 @@ function DownloaderEntry(props) {
     WXU.downloader.toggle = function () {
       popover$.toggle();
     };
-    Timeless.render(DownloaderEntry({ popover$, vm$ }), $download_panel_button);
+    Timeless.render(DownloaderEntry({ popover$, vm$ }), $trigger);
     vm$.ready();
   }
-  WXU.observe_node(".home-header", () => {
-    insert_downloader();
-  });
+
+  if (window.location.pathname === "/web/pages/profile") {
+    WXU.observe_node(".page-profile", () => {
+      var $page = document.querySelector(".page-profile");
+      if (mounted) return;
+      if (!$page) return;
+      var $box = $page;
+      var $btn_wrap = document.createElement("div");
+      $btn_wrap.style.cssText =
+        "z-index: 999; position: fixed; right: 40px; top: 36px;";
+      insert_downloader($box, $btn_wrap);
+    });
+  } else {
+    WXU.observe_node(".home-header", () => {
+      var $header = document.querySelector(".home-header");
+      console.log("[DOWNLOADER]insert_downloader", mounted, $header);
+      if (mounted) return;
+      if (!$header) return;
+      var $box = $header.children[$header.children.length - 1];
+      if (!$box) return;
+      var $btn_wrap = $box.children[0];
+      if (!$btn_wrap) {
+        $btn_wrap = $box;
+      }
+      var $download_panel_button = download_btn7();
+      insert_downloader($btn_wrap, $download_panel_button);
+    });
+  }
   if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
     vm$.methods.connect_local_ws();
   }

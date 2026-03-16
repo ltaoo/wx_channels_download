@@ -176,8 +176,14 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
 				inserted_scripts := ""
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
+					inserted_scripts += script_error
+				}
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUI)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
@@ -187,31 +193,25 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
-
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
 				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
 				inserted_scripts += script_variable
-
-				if cfg.DebugShowError {
-					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
-					inserted_scripts += script_error
-				}
-				if cfg.PagespyEnabled {
-					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
-				}
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
+				}
+				// 必须放在 JSUtils 后面
+				if cfg.PagespyEnabled {
+					/** 在线调试 */
+					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
+					script_debug := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
+					inserted_scripts += script_pagespy + script_debug
 				}
 				if pathname == "/web/pages/home" {
 					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)

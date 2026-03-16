@@ -34,6 +34,9 @@ var js_timeless_reactive []byte
 //go:embed inject/lib/timeless.headless.umd.min.js
 var js_timeless_headless []byte
 
+//go:embed inject/lib/timeless.utils.umd.min.js
+var js_timeless_utils []byte
+
 //go:embed inject/lib/timeless.kit.umd.min.js
 var js_timeless_kit []byte
 
@@ -98,6 +101,7 @@ type ChannelInjectedFiles struct {
 	JSEventBus              []byte
 	JSTimelessReactive      []byte
 	JSTimelessHeadless      []byte
+	JSTimelessUtils         []byte
 	JSTimelessKit           []byte
 	JSTimelessIcons         []byte
 	JSTimelessUI            []byte
@@ -128,6 +132,7 @@ var Assets = &ChannelInjectedFiles{
 	JSEventBus:              js_eventbus,
 	JSTimelessReactive:      js_timeless_reactive,
 	JSTimelessHeadless:      js_timeless_headless,
+	JSTimelessUtils:         js_timeless_utils,
 	JSTimelessIcons:         js_timeless_icons,
 	JSTimelessKit:           js_timeless_kit,
 	JSTimelessUI:            js_timeless_ui,
