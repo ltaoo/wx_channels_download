@@ -176,42 +176,43 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
 				inserted_scripts := ""
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
+					inserted_scripts += script_error
+				}
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUI)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessIcons)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessProviderWeb)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
 				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
-
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
 				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
 				inserted_scripts += script_variable
-
-				if cfg.DebugShowError {
-					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
-					inserted_scripts += script_error
-				}
-				if cfg.PagespyEnabled {
-					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
-				}
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
+				}
+				// 必须放在 JSUtils 后面
+				if cfg.PagespyEnabled {
+					/** 在线调试 */
+					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
+					script_debug := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
+					inserted_scripts += script_pagespy + script_debug
 				}
 				if pathname == "/web/pages/home" {
 					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
@@ -285,7 +286,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$1;
 					})();
 					var data = result.data;
-					console.log("before Init", data);
+					// console.log("before Init", data);
 					WXU.emit(WXU.Events.Init, data);
 					return result;
 				}async`
@@ -297,7 +298,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feeds = result.data.object;
-					console.log("before PCFlowLoaded", result.data);
+					// console.log("before PCFlowLoaded", result.data);
 					WXU.emit(WXU.Events.PCFlowLoaded, feeds);
 					return result;
 				}async`
@@ -321,7 +322,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feed = result.data.object;
-					console.log("before FeedProfileLoaded", result.data);
+					// console.log("before FeedProfileLoaded", result.data);
 					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
 					return result;
 				}async`
@@ -332,7 +333,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var result = await (async () => {
 						$2;
 					})();
-					console.log("before finderPCSearch", result, $1);
+					// console.log("before finderPCSearch", result, $1);
 					return result;
 				}async`
 						js_script = jsFinderPCSearchReg.ReplaceAllString(js_script, js_finder_pc_search)
@@ -342,7 +343,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var result = await (async () => {
 						$2;
 					})();
-					console.log("before finderSearch", result, $1);
+					// console.log("before finderSearch", result, $1);
 					return result;
 				}async`
 						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
@@ -353,7 +354,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 							$2;
 						})();
 						var feeds = result.data.object;
-						console.log("before finderGetInteractionedFeedList", result, $1);
+						// console.log("before finderGetInteractionedFeedList", result, $1);
 						WXU.emit(WXU.Events.InteractionedFeedsLoaded, feeds);
 						return result;
 					}}const`
@@ -365,7 +366,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feeds = result.data.object;
-					console.log("before UserFeedsLoaded", result.data, $1);
+					// console.log("before UserFeedsLoaded", result.data, $1);
 					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
 					return result;
 				}async`
@@ -377,7 +378,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 							$2;
 						})();
 						var feeds = result.data.object;
-						console.log("before LiveUserFeedsLoaded", result.data, $1);
+						// console.log("before LiveUserFeedsLoaded", result.data, $1);
 						WXU.emit(WXU.Events.LiveUserFeedsLoaded, feeds);
 						return result;
 					}async`
@@ -389,7 +390,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var live = result.data;
-					console.log("before LiveProfileLoaded", result.data);
+					// console.log("before LiveProfileLoaded", result.data);
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
 					return result;
 				}async`
@@ -401,7 +402,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var data = result.data;
-					console.log("before JoinLive", data);
+					// console.log("before JoinLive", data);
 					WXU.emit(WXU.Events.JoinLive, data);
 					return result;
 				}async`
@@ -447,12 +448,12 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 
 						js_go_next_feed := fmt.Sprintf(`goToNextFlowFeed:async function(v){
 						await $1(v);
-						console.log('goToNextFlowFeed', %[1]s);
+						// console.log('goToNextFlowFeed', %[1]s);
 						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
-						console.log("before GotoNextFeed", %[1]s, feed);
+						// console.log("before GotoNextFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
@@ -460,12 +461,12 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					{
 						js_go_prev_feed := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
 						await $1(v);
-						console.log('goToPrevFlowFeed', %[1]s);
+						// console.log('goToPrevFlowFeed', %[1]s);
 						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
-						console.log("before GotoPrevFeed", %[1]s, feed);
+						// console.log("before GotoPrevFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)

@@ -30,6 +30,7 @@ export default [
         __wx_channels_live_store__: "writable",
         __wx_channels_live_download_btn__: "writable",
         __wx_channels_version__: "writable",
+        __wx_attach_download_dropdown_menu: "writeable",
         WXVariable: "writable",
         WXU: "writable",
         WXE: "writable",

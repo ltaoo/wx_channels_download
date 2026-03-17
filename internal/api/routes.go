@@ -25,8 +25,6 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
-		// 文件传输助手接口
-		c.engine.GET("/filehelper", c.filehelper.HandlePage)
 		c.engine.GET("/api/filehelper/qrcode", c.filehelper.HandleGetQRCode)
 		c.engine.GET("/api/filehelper/login/wait", c.filehelper.HandleWaitLogin)
 		c.engine.GET("/api/filehelper/status", c.filehelper.HandleGetStatus)
@@ -67,6 +65,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
+	// 文件传输助手接口
+	c.engine.GET("/filehelper", c.filehelper.HandlePage)
 	// c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
