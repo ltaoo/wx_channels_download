@@ -34,6 +34,9 @@ var js_timeless_reactive []byte
 //go:embed inject/lib/timeless.headless.umd.min.js
 var js_timeless_headless []byte
 
+//go:embed inject/lib/timeless.utils.umd.min.js
+var js_timeless_utils []byte
+
 //go:embed inject/lib/timeless.kit.umd.min.js
 var js_timeless_kit []byte
 
@@ -42,6 +45,9 @@ var js_timeless_ui []byte
 
 //go:embed inject/lib/timeless.icons.umd.min.js
 var js_timeless_icons []byte
+
+//go:embed inject/lib/timeless.web.umd.min.js
+var js_timeless_web []byte
 
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
@@ -98,9 +104,11 @@ type ChannelInjectedFiles struct {
 	JSEventBus              []byte
 	JSTimelessReactive      []byte
 	JSTimelessHeadless      []byte
+	JSTimelessUtils         []byte
 	JSTimelessKit           []byte
 	JSTimelessIcons         []byte
 	JSTimelessUI            []byte
+	JSTimelessProviderWeb   []byte
 	JSComponents            []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
@@ -128,9 +136,11 @@ var Assets = &ChannelInjectedFiles{
 	JSEventBus:              js_eventbus,
 	JSTimelessReactive:      js_timeless_reactive,
 	JSTimelessHeadless:      js_timeless_headless,
+	JSTimelessUtils:         js_timeless_utils,
 	JSTimelessIcons:         js_timeless_icons,
 	JSTimelessKit:           js_timeless_kit,
 	JSTimelessUI:            js_timeless_ui,
+	JSTimelessProviderWeb:   js_timeless_web,
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
 	JSDownloader:            js_downloader,

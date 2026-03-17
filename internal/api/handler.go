@@ -27,6 +27,7 @@ import (
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
+
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
 	resp, err := c.channels.SearchChannelsContact(keyword)
@@ -202,6 +203,7 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 
 type FeedDownloadTaskBody struct {
 	Id       string `json:"id"`
+	NonceId  string `json:"nonce_id"`
 	URL      string `json:"url"`
 	Title    string `json:"title"`
 	Filename string `json:"filename"`
@@ -248,11 +250,12 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		&base.Request{
 			URL: body.URL,
 			Labels: map[string]string{
-				"id":     body.Id,
-				"title":  body.Title,
-				"key":    strconv.Itoa(body.Key),
-				"spec":   body.Spec,
-				"suffix": body.Suffix,
+				"id":       body.Id,
+				"nonce_id": body.NonceId,
+				"title":    body.Title,
+				"key":      strconv.Itoa(body.Key),
+				"spec":     body.Spec,
+				"suffix":   body.Suffix,
 			},
 		},
 		&base.Options{
@@ -313,15 +316,6 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": id})
 }
 
-type DownloadTaskSummary struct {
-	ID       string      `json:"id"`
-	Title    string      `json:"title"`
-	Status   base.Status `json:"status"`
-	Filepath string      `json:"filepath"`
-	Path     string      `json:"path"`
-	Name     string      `json:"name"`
-}
-
 func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	status := ctx.Query("status")
 	page_str := ctx.Query("page")
@@ -352,24 +346,8 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	if end > total {
 		end = total
 	}
-	summaries := make([]DownloadTaskSummary, 0, end-start)
-	for _, task := range list[start:end] {
-		filename := task.Meta.Opts.Name
-		file_path := task.Meta.Opts.Path
-		if filename == "" {
-			filename = task.ID
-		}
-		summaries = append(summaries, DownloadTaskSummary{
-			ID:       task.ID,
-			Title:    task.Meta.Req.Labels["title"],
-			Status:   task.Status,
-			Path:     file_path,
-			Name:     filename,
-			Filepath: filepath.Join(file_path, filename),
-		})
-	}
 	result.Ok(ctx, gin.H{
-		"list":      summaries,
+		"list":      list[start:end],
 		"total":     total,
 		"page":      page_num,
 		"page_size": page_size_num,
@@ -482,20 +460,18 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "创建任务失败: "+err.Error())
 		return
 	}
-	// c.logger.Info().
-	// 	Int("count", len(task.Reqs)).
-	// 	Dur("cost", time.Since(start)).
-	// 	Msg("批量创建任务完成")
+	var batchTasks []interface{}
 	for _, id := range ids {
 		task := c.downloader.GetTask(id)
 		if task != nil {
-			c.channels.Broadcast(APIClientWSMessage{
-				Type: "event",
-				Data: map[string]interface{}{
-					"task": task,
-				},
-			})
+			batchTasks = append(batchTasks, task)
 		}
+	}
+	if len(batchTasks) > 0 {
+		c.channels.Broadcast(APIClientWSMessage{
+			Type: "batch_tasks",
+			Data: batchTasks,
+		})
 	}
 	result.Ok(ctx, gin.H{"ids": ids})
 }
@@ -509,13 +485,14 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 			continue
 		}
 		items = append(items, map[string]string{
-			"id":     req.Id,
-			"title":  req.Title,
-			"key":    strconv.Itoa(req.Key),
-			"spec":   req.Spec,
-			"suffix": req.Suffix,
-			"url":    req.URL,
-			"name":   req.Filename,
+			"id":       req.Id,
+			"nonce_id": req.NonceId,
+			"title":    req.Title,
+			"key":      strconv.Itoa(req.Key),
+			"spec":     req.Spec,
+			"suffix":   req.Suffix,
+			"url":      req.URL,
+			"name":     req.Filename,
 		})
 	}
 	if len(items) == 0 {
@@ -532,11 +509,12 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 			Req: &base.Request{
 				URL: url,
 				Labels: map[string]string{
-					"id":     item["id"],
-					"title":  item["title"],
-					"key":    item["key"],
-					"spec":   item["spec"],
-					"suffix": item["suffix"],
+					"id":       item["id"],
+					"nonce_id": item["nonce_id"],
+					"title":    item["title"],
+					"key":      item["key"],
+					"spec":     item["spec"],
+					"suffix":   item["suffix"],
 				},
 			},
 			Opts: &base.Options{

@@ -2,15 +2,21 @@ const inserted_style = `<style>
 :root {
   --popup-bg-color: #f6f6f6;
   --popup-content-bg-color: #e7e7e7;
+  --popup-menu-bg-color: #dcdcdc;
+  --popup-menu-hover-color: #d0d0d0;
 }
 body[data-weui-theme=dark] {
   --popup-bg-color: #272727;
   --popup-content-bg-color: #323232;
+  --popup-menu-bg-color: #3a3a3a;
+  --popup-menu-hover-color: #444444;
 }
 @media (prefers-color-scheme: dark) {
   body:not([data-weui-theme=light]) {
     --popup-bg-color: #272727;
     --popup-content-bg-color: #323232;
+    --popup-menu-bg-color: #3a3a3a;
+    --popup-menu-hover-color: #444444;
   }
 }
 .flex {
@@ -18,7 +24,7 @@ body[data-weui-theme=dark] {
 }
 .custom-menu {
   z-index: 99999;
-  background: var(--popup-bg-color);
+  background: var(--popup-menu-bg-color);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
   border-radius: 4px;
   color: var(--weui-FG-0);
@@ -37,7 +43,7 @@ body[data-weui-theme=dark] {
   transition: background .15s ease-in-out
 }
 .custom-menu-item:hover {
-  background: var(--popup-content-bg-color);
+  background: var(--popup-menu-hover-color);
 }
 .custom-menu-item-arrow {
   position: absolute;
@@ -119,23 +125,42 @@ body[data-weui-theme=dark] {
   background: var(--weui-BG-COLOR-ACTIVE);
 }
 .wx-dl-panel-container { 
-  width: 400px; 
-  max-height: 450px; 
-  background-color: var(--popup-bg-color); 
-  border-radius: 8px; 
+  box-sizing: border-box;
   display: flex; 
   flex-direction: column; 
-  padding: 12px; 
-  box-sizing: border-box;
+  width: 400px; 
+  max-height: 450px; 
+  padding-bottom: 12px;
+  background-color: var(--popup-bg-color); 
+  border-radius: 8px;
   color: var(--weui-FG-0);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
 }
-.wx-dl-dark-scroll::-webkit-scrollbar { width: 6px; }
-.wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent; }
-.wx-dl-dark-scroll::-webkit-scrollbar-thumb { background-color: var(--weui-FG-3); border-radius: 3px; }
+.wx-dl-dark-scroll::-webkit-scrollbar { width: 6px !important; }
+.wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent !important; border-radius: 3px !important; }
+.wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; border-radius: 3px !important; }
+.wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.35) !important; }
+.wx-dl-dark-scroll:focus-within::-webkit-scrollbar { width: 6px !important; }
+.wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
+.wx-dl-dark-scroll:focus::-webkit-scrollbar { width: 6px !important; }
+.wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
+.wx-dl-dark-scroll:active::-webkit-scrollbar { width: 6px !important; }
+.wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
+body[data-weui-theme=dark] .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+body[data-weui-theme=dark] .wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35) !important; }
+body[data-weui-theme=dark] .wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+body[data-weui-theme=dark] .wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+@media (prefers-color-scheme: dark) {
+  body:not([data-weui-theme=light]) .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+  body:not([data-weui-theme=light]) .wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35) !important; }
+  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
+}
 
 /* Custom Menu Styles */
-.wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; }
+.wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; }
 .wx-dl-title { font-size: 16px; font-weight: 600; color: var(--weui-FG-0); }
 .wx-dl-more-btn { display: flex; align-items: center; color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
 .wx-dl-more-btn:hover { opacity: 1; background-color: var(--weui-BG-COLOR-ACTIVE); }
@@ -153,19 +178,19 @@ body[data-weui-theme=dark] {
 .wx-dl-menu-item svg { margin-right: 8px; fill: currentColor; }
 
 .wx-dl-list {
-  flex: 1;
+  height: 380px;
   min-height: 0;
-  overflow-y: auto;
-  position: relative; /* Ensure it contains its children properly */
+  position: relative;
+  padding: 0 12px;
 }
-.wx-dl-list.weui-cells:before, .wx-dl-list.weui-cells:after, .wx-dl-list .weui-cells:before, .wx-dl-list .weui-cells:after { display: none; }
-.wx-dl-list .weui-cell:before { display: none; }
-
+.scroll-view-waterfall {
+  overflow: visible !important;
+  height: auto !important;
+}
 .wx-dl-item {
   padding: 16px;
   background-color: var(--popup-content-bg-color);
   border-radius: 8px;
-  margin-bottom: 8px;
   align-items: center;
 }
 </style>`;
@@ -645,4 +670,69 @@ function DropdownMenuItem(props) {
       return View({}, [inner$]);
     })(),
   ]);
+}
+
+function Waterfall(props) {
+  const { store, class: cls, render, ...rest } = props;
+
+  const columnChildren = store.$columns.map((column) => {
+    const visibleCells = refarr([...column.$cells]);
+    column.onStateChange(() => {
+      visibleCells.as([...column.$cells]);
+    });
+
+    return WaterfallPrimitive.Column({ store: column }, [
+      For({
+        key: "id",
+        each: visibleCells,
+        render(cell) {
+          const payload = cell.state.payload;
+          return WaterfallPrimitive.Cell({ store: cell }, [
+            render(payload, cell),
+          ]);
+        },
+      }),
+    ]);
+  });
+
+  return WaterfallPrimitive.Root(
+    {
+      store,
+      class: cn(["w-full h-full overflow-y-auto", cls]),
+      ...rest,
+    },
+    columnChildren,
+  );
+}
+
+function ScrollView(props, children) {
+  const { store, class: cls, ...rest } = props;
+
+  return ScrollViewPrimitive.Root(
+    {
+      store,
+      class: cn(["scroll-view h-full overflow-y-auto", cls]),
+      style: "height: 100%; overflow-y: auto;",
+      ...rest,
+    },
+    [
+      ScrollViewPrimitive.Indicator(
+        {
+          store,
+          class: "scroll-view-indicator",
+          style:
+            "position: relative; width: 100%; overflow: hidden; text-align: center;",
+        },
+        [
+          ScrollViewPrimitive.Progress({
+            store,
+            class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
+            style:
+              "position: absolute; left: 0; bottom: 0; width: 100%; min-height: 30px; padding: 10px 0;",
+          }),
+        ],
+      ),
+      ...children,
+    ],
+  );
 }

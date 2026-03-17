@@ -102,6 +102,8 @@ type FeedProfile = {
   key: number;
   /** 封面地址 */
   cover_url: string;
+  /** 视频来源地址（视频号地址） */
+  // source_url: string;
   /** 视频发布时间 */
   createtime: number;
   /** 文件大小 */
