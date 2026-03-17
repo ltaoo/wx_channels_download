@@ -657,7 +657,7 @@ var WXU = (() => {
       toggle() {},
       /**
        * 提交下载任务
-       * @param {FeedProfile} feed
+       * @param {import('./utils').FeedProfile} feed
        * @param {object} opt 配置
        * @param {string} opt.spec 规格
        * @param {string} opt.suffix 后缀

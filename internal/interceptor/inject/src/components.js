@@ -119,13 +119,14 @@ body[data-weui-theme=dark] {
   background: var(--weui-BG-COLOR-ACTIVE);
 }
 .wx-dl-panel-container { 
-  width: 400px; 
-  max-height: 450px; 
-  background-color: var(--popup-bg-color); 
-  border-radius: 8px; 
+  box-sizing: border-box;
   display: flex; 
   flex-direction: column; 
-  box-sizing: border-box;
+  width: 400px; 
+  max-height: 450px; 
+  padding-bottom: 12px;
+  background-color: var(--popup-bg-color); 
+  border-radius: 8px;
   color: var(--weui-FG-0);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
 }
@@ -174,8 +175,7 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
   height: 380px;
   min-height: 0;
   position: relative;
-  padding: 12px;
-  padding-top: 0;
+  padding: 0 12px;
 }
 .scroll-view-waterfall {
   overflow: visible !important;
@@ -185,7 +185,6 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
   padding: 16px;
   background-color: var(--popup-content-bg-color);
   border-radius: 8px;
-  margin-bottom: 8px;
   align-items: center;
 }
 </style>`;
@@ -707,7 +706,7 @@ function ScrollView(props, children) {
     {
       store,
       class: cn(["scroll-view h-full overflow-y-auto", cls]),
-      style: 'height: 100%; overflow-y: auto;',
+      style: "height: 100%; overflow-y: auto;",
       ...rest,
     },
     [
@@ -722,7 +721,8 @@ function ScrollView(props, children) {
           ScrollViewPrimitive.Progress({
             store,
             class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
-            style: 'position: absolute; left: 0; bottom: 0; width: 100%; min-height: 30px; padding: 10px 0;',
+            style:
+              "position: absolute; left: 0; bottom: 0; width: 100%; min-height: 30px; padding: 10px 0;",
           }),
         ],
       ),

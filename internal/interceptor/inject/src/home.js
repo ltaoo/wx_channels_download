@@ -64,6 +64,18 @@ function __wx_render_sider_tools() {
     WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);
   var home_page_mounted = false;
+  WXU.onFetchFeedProfile((feed) => {
+    if (home_page_mounted) {
+      return;
+    }
+    console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
+    home_page_mounted = true;
+    WXU.set_cur_video();
+    WXU.set_feed(feed);
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
+    __wx_insert_download_btn_to_home_page();
+  });
   WXU.onPCFlowLoaded((feeds) => {
     console.log("[main.js]WXU.onPCFlowLoaded", feeds);
     if (home_page_mounted) {

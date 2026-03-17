@@ -286,7 +286,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$1;
 					})();
 					var data = result.data;
-					console.log("before Init", data);
+					// console.log("before Init", data);
 					WXU.emit(WXU.Events.Init, data);
 					return result;
 				}async`
@@ -298,7 +298,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feeds = result.data.object;
-					console.log("before PCFlowLoaded", result.data);
+					// console.log("before PCFlowLoaded", result.data);
 					WXU.emit(WXU.Events.PCFlowLoaded, feeds);
 					return result;
 				}async`
@@ -322,7 +322,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feed = result.data.object;
-					console.log("before FeedProfileLoaded", result.data);
+					// console.log("before FeedProfileLoaded", result.data);
 					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
 					return result;
 				}async`
@@ -333,7 +333,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var result = await (async () => {
 						$2;
 					})();
-					console.log("before finderPCSearch", result, $1);
+					// console.log("before finderPCSearch", result, $1);
 					return result;
 				}async`
 						js_script = jsFinderPCSearchReg.ReplaceAllString(js_script, js_finder_pc_search)
@@ -343,7 +343,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var result = await (async () => {
 						$2;
 					})();
-					console.log("before finderSearch", result, $1);
+					// console.log("before finderSearch", result, $1);
 					return result;
 				}async`
 						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
@@ -354,7 +354,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 							$2;
 						})();
 						var feeds = result.data.object;
-						console.log("before finderGetInteractionedFeedList", result, $1);
+						// console.log("before finderGetInteractionedFeedList", result, $1);
 						WXU.emit(WXU.Events.InteractionedFeedsLoaded, feeds);
 						return result;
 					}}const`
@@ -366,7 +366,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var feeds = result.data.object;
-					console.log("before UserFeedsLoaded", result.data, $1);
+					// console.log("before UserFeedsLoaded", result.data, $1);
 					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
 					return result;
 				}async`
@@ -378,7 +378,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 							$2;
 						})();
 						var feeds = result.data.object;
-						console.log("before LiveUserFeedsLoaded", result.data, $1);
+						// console.log("before LiveUserFeedsLoaded", result.data, $1);
 						WXU.emit(WXU.Events.LiveUserFeedsLoaded, feeds);
 						return result;
 					}async`
@@ -390,7 +390,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var live = result.data;
-					console.log("before LiveProfileLoaded", result.data);
+					// console.log("before LiveProfileLoaded", result.data);
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
 					return result;
 				}async`
@@ -402,7 +402,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						$2;
 					})();
 					var data = result.data;
-					console.log("before JoinLive", data);
+					// console.log("before JoinLive", data);
 					WXU.emit(WXU.Events.JoinLive, data);
 					return result;
 				}async`
@@ -448,12 +448,12 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 
 						js_go_next_feed := fmt.Sprintf(`goToNextFlowFeed:async function(v){
 						await $1(v);
-						console.log('goToNextFlowFeed', %[1]s);
+						// console.log('goToNextFlowFeed', %[1]s);
 						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
-						console.log("before GotoNextFeed", %[1]s, feed);
+						// console.log("before GotoNextFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
@@ -461,12 +461,12 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					{
 						js_go_prev_feed := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
 						await $1(v);
-						console.log('goToPrevFlowFeed', %[1]s);
+						// console.log('goToPrevFlowFeed', %[1]s);
 						if (!%[1]s || !%[1]s.value.feeds) {
 							return;
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
-						console.log("before GotoPrevFeed", %[1]s, feed);
+						// console.log("before GotoPrevFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)

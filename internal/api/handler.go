@@ -27,6 +27,7 @@ import (
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
+
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
 	resp, err := c.channels.SearchChannelsContact(keyword)
@@ -202,6 +203,7 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 
 type FeedDownloadTaskBody struct {
 	Id       string `json:"id"`
+	NonceId  string `json:"nonce_id"`
 	URL      string `json:"url"`
 	Title    string `json:"title"`
 	Filename string `json:"filename"`
@@ -248,11 +250,12 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		&base.Request{
 			URL: body.URL,
 			Labels: map[string]string{
-				"id":     body.Id,
-				"title":  body.Title,
-				"key":    strconv.Itoa(body.Key),
-				"spec":   body.Spec,
-				"suffix": body.Suffix,
+				"id":       body.Id,
+				"nonce_id": body.NonceId,
+				"title":    body.Title,
+				"key":      strconv.Itoa(body.Key),
+				"spec":     body.Spec,
+				"suffix":   body.Suffix,
 			},
 		},
 		&base.Options{
@@ -482,13 +485,14 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 			continue
 		}
 		items = append(items, map[string]string{
-			"id":     req.Id,
-			"title":  req.Title,
-			"key":    strconv.Itoa(req.Key),
-			"spec":   req.Spec,
-			"suffix": req.Suffix,
-			"url":    req.URL,
-			"name":   req.Filename,
+			"id":       req.Id,
+			"nonce_id": req.NonceId,
+			"title":    req.Title,
+			"key":      strconv.Itoa(req.Key),
+			"spec":     req.Spec,
+			"suffix":   req.Suffix,
+			"url":      req.URL,
+			"name":     req.Filename,
 		})
 	}
 	if len(items) == 0 {
@@ -505,11 +509,12 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 			Req: &base.Request{
 				URL: url,
 				Labels: map[string]string{
-					"id":     item["id"],
-					"title":  item["title"],
-					"key":    item["key"],
-					"spec":   item["spec"],
-					"suffix": item["suffix"],
+					"id":       item["id"],
+					"nonce_id": item["nonce_id"],
+					"title":    item["title"],
+					"key":      item["key"],
+					"spec":     item["spec"],
+					"suffix":   item["suffix"],
 				},
 			},
 			Opts: &base.Options{

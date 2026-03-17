@@ -86,42 +86,44 @@ function __wx_render_footer_tools() {
     WXU.error({ msg: "没有获取到视频详情", alert: 0 });
   }, 5000);
   var prev_feed = null;
-  var feed_loaded_on_profile_callback = false;
+  var loaded = false;
   WXU.onFetchFeedProfile((feed) => {
-    console.log("[main.js]WXU.onFetchFeedProfile for page", feed);
-    WXU.set_cur_video();
-    if (!prev_feed || prev_feed.id !== feed.id) {
-      WXU.set_feed(feed);
-    }
-    prev_feed = feed;
-    if (feed_loaded_on_profile_callback) {
+    if (loaded) {
       return;
     }
-    feed_loaded_on_profile_callback = true;
+    console.log("[feed.js]WXU.onFetchFeedProfile for page", feed);
+    loaded = true;
+    WXU.set_cur_video();
+    WXU.set_feed(feed);
+    // 这里是为了旧版本，在详情页直接切换视频，会重复插入下载按钮，以及视频没有切换到新的 做的修复
+    // if (!prev_feed || prev_feed.id !== feed.id) {
+    //   WXU.set_feed(feed);
+    // }
+    // prev_feed = feed;
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
     __wx_insert_download_btn_to_feed_profile_page();
   });
   WXU.onGotoNextFeed((feed) => {
-    console.log("[main.js]WXU.onGotoNextFeed", feed);
+    console.log("[feed.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
     __wx_insert_download_btn_to_feed_profile_page();
   });
   WXU.onGotoPrevFeed((feed) => {
-    console.log("[main.js]WXU.onGotoPrevFeed", feed);
+    console.log("[feed.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
     __wx_insert_download_btn_to_feed_profile_page();
   });
   WXU.onHomeFeedChanged((feed) => {
-    console.log("[main.js]WXU.onHomeFeedChanged", feed);
+    console.log("[feed.js]WXU.onHomeFeedChanged", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
     __wx_insert_download_btn_to_feed_profile_page();
   });
   WXE.onFeed((feed) => {
-    console.log("[main.js]WXU.onFeed", feed);
+    console.log("[feed.js]WXU.onFeed", feed);
     WXU.set_feed(feed);
   });
 })();
