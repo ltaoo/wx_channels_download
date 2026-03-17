@@ -286,7 +286,6 @@ function DownloaderPanelViewModel() {
           if (err) {
             return;
           }
-          console.log(msg);
           if (msg.type === "tasks") {
             const { list, total } = msg.data;
             const tasks = list.map((t) => methods.formatTask(t));

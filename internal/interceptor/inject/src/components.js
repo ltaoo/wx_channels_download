@@ -2,15 +2,21 @@ const inserted_style = `<style>
 :root {
   --popup-bg-color: #f6f6f6;
   --popup-content-bg-color: #e7e7e7;
+  --popup-menu-bg-color: #dcdcdc;
+  --popup-menu-hover-color: #d0d0d0;
 }
 body[data-weui-theme=dark] {
   --popup-bg-color: #272727;
   --popup-content-bg-color: #323232;
+  --popup-menu-bg-color: #3a3a3a;
+  --popup-menu-hover-color: #444444;
 }
 @media (prefers-color-scheme: dark) {
   body:not([data-weui-theme=light]) {
     --popup-bg-color: #272727;
     --popup-content-bg-color: #323232;
+    --popup-menu-bg-color: #3a3a3a;
+    --popup-menu-hover-color: #444444;
   }
 }
 .flex {
@@ -18,7 +24,7 @@ body[data-weui-theme=dark] {
 }
 .custom-menu {
   z-index: 99999;
-  background: var(--popup-bg-color);
+  background: var(--popup-menu-bg-color);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
   border-radius: 4px;
   color: var(--weui-FG-0);
@@ -37,7 +43,7 @@ body[data-weui-theme=dark] {
   transition: background .15s ease-in-out
 }
 .custom-menu-item:hover {
-  background: var(--popup-content-bg-color);
+  background: var(--popup-menu-hover-color);
 }
 .custom-menu-item-arrow {
   position: absolute;
