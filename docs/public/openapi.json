@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeChat Channels Download API",
-    "version": "v260201",
+    "version": "v260317",
     "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
   },
   "servers": [
@@ -249,7 +249,7 @@
       "get": {
         "tags": ["视频号"],
         "summary": "获取视频号指定视频详情",
-        "description": "**注意：必须提供 `oid`+`nid` 或 `url` 其中一种组合。**",
+        "description": "**注意：必须提供 `oid`+`nid` 或 `url` 或 `eid` 其中一种组合。**",
         "parameters": [
           {
             "name": "oid",
@@ -277,6 +277,15 @@
               "type": "string"
             },
             "description": "视频号页面 URL，https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4\n\n传入的地址需要进行编码。\n\n"
+          },
+          {
+            "name": "eid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "企微打开视频号页面时 URL 会携带的参数\n\n"
           }
         ],
         "responses": {
@@ -1502,28 +1511,58 @@
                       "data": {
                         "list": [
                           {
-                            "id": "qOHgEmL1igYFiRFcEmsmu",
-                            "title": "所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。\n\n\n\n\n#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线",
+                            "id": "fqG2OhiJFRYpnELqZmPRW",
+                            "protocol": "http",
+                            "meta": {
+                              "req": {
+                                "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
+                                "extra": null,
+                                "labels": {
+                                  "id": "14864072987480824226",
+                                  "key": "81721112",
+                                  "spec": "xWT111",
+                                  "suffix": ".mp4",
+                                  "title": ""
+                                },
+                                "proxy": null,
+                                "skipVerifyCert": false
+                              },
+                              "res": {
+                                "name": "",
+                                "size": 1462345,
+                                "range": true,
+                                "files": [
+                                  {
+                                    "name": "stodownload",
+                                    "path": "",
+                                    "size": 1462345,
+                                    "ctime": null,
+                                    "req": null
+                                  }
+                                ],
+                                "hash": ""
+                              },
+                              "opts": {
+                                "name": "14864072987480824226_xWT111.mp4",
+                                "path": "/volume1/homes/ltaoo/Applications/WXChannelsDownload/Downloads/苏苏是猪猪",
+                                "selectFiles": [],
+                                "extra": {
+                                  "connections": 4
+                                }
+                              }
+                            },
                             "status": "done",
-                            "filepath": "/Downloads/王同学爱蹦迪/所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线_xWT111.mp4",
-                            "path": "/Downloads/王同学爱蹦迪",
-                            "name": "所有回不去的良辰美景，都是举世无双的好时光，余生愿你常欢笑，别流泪，也别想他。#蹦迪小姐姐#蹦迪选手#神仙姐姐#嗨翻现场#电音#DJ#气氛组#气氛组上线_xWT111.mp4"
-                          },
-                          {
-                            "id": "Hbi1lWWL8IX4BkL1a2L3y",
-                            "title": "听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐\n\n\n\n\n#蹦迪小姐姐#仙女姐姐\n",
-                            "status": "done",
-                            "filepath": "/Downloads/王同学爱蹦迪/听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐#蹦迪小姐姐#仙女姐姐_xWT111.mp4",
-                            "path": "/Downloads/王同学爱蹦迪",
-                            "name": "听完能让你热血沸腾的曲子，开车听这曲驾驶分都不够扣了#嗨曲 #硬曲 #重低音 #顶级旋律 #环绕音乐#蹦迪小姐姐#仙女姐姐_xWT111.mp4"
-                          },
-                          {
-                            "id": "rCU-iqC7HH5Sj4UXTSG0b",
-                            "title": "我爱你 无论风雨 只要是你 如此！\n\n\n\n\n\n#蹦迪#嗨翻全场#电音#微信派#DJ\n#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组",
-                            "status": "done",
-                            "filepath": "/Downloads/王同学爱蹦迪/我爱你 无论风雨 只要是你 如此！#蹦迪#嗨翻全场#电音#微信派#DJ#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组_xWT111.mp4",
-                            "path": "/Downloads/王同学爱蹦迪",
-                            "name": "我爱你 无论风雨 只要是你 如此！#蹦迪#嗨翻全场#电音#微信派#DJ#神仙姐姐#蹦迪小姐姐#蹦迪选手#气氛组_xWT111.mp4"
+                            "uploading": false,
+                            "progress": {
+                              "used": 689710309,
+                              "speed": 1462345,
+                              "downloaded": 1462345,
+                              "uploadSpeed": 0,
+                              "uploaded": 0
+                            },
+                            "createdAt": "2026-03-17T23:08:25.007358827+08:00",
+                            "updatedAt": "2026-03-17T23:08:26.039336471+08:00",
+                            "name": "14864072987480824226_xWT111.mp4"
                           }
                         ],
                         "page": 1,
