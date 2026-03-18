@@ -84,9 +84,9 @@ func main() {
 	})
 
 	// 6. 添加核心业务插件
-	// 这完全模拟了 interceptor.Start() 中的逻辑：client.AddPlugin(CreateSimpleChannelInterceptorPlugin(c, Assets))
+	// 这完全模拟了 interceptor.Start() 中的逻辑：client.AddPlugin(CreateSimpleChannelInterceptorPlugin(c))
 	fmt.Println("加载核心插件: SimpleChannelInterceptorPlugin")
-	corePlugin := interceptor.CreateSimpleChannelInterceptorPlugin(ic, interceptor.Assets)
+	corePlugin := interceptor.CreateSimpleChannelInterceptorPlugin(ic)
 	p.AddPlugin(corePlugin)
 
 	// 7. 启动代理服务

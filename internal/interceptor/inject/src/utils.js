@@ -7,7 +7,19 @@ var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
 var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
 var WSServerProtocol = "wss";
-
+var __wx_assets_base = (function () {
+  var cfg = window.__wx_channels_config__;
+  if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
+    return (
+      cfg.apiServerProtocol +
+      "://" +
+      cfg.apiServerAddr +
+      "/__wx_channels_assets"
+    );
+  }
+  return "";
+})();
+var __wx_username;
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
@@ -491,9 +503,7 @@ var WXU = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
-      await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js",
-      );
+      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);
@@ -822,9 +832,7 @@ var WXU = (() => {
      * 类型转换相关
      */
     async media_buffer_to_wav(...args) {
-      await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/recorder.min.js",
-      );
+      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
       return mediaBufferToWav(...args);
     },
     wav_to_mp3_blob: wavBlobToMP3,
@@ -1004,15 +1012,11 @@ var WXU = (() => {
       });
     },
     async save(blob, filename) {
-      await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js",
-      );
+      await __wx_load_script(__wx_assets_base + "/lib/FileSaver.min.js");
       saveAs(blob, filename);
     },
     async Zip() {
-      await __wx_load_script(
-        "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/jszip.min.js",
-      );
+      await __wx_load_script(__wx_assets_base + "/lib/jszip.min.js");
       const zip = new JSZip();
       return zip;
     },
@@ -1476,3 +1480,169 @@ var FakeAPIServerAddr = WXU.config.remoteServerEnabled
 var APIServerProtocol = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerProtocol
   : FakeLocalAPIServerProtocol;
+
+function ChannelsWebsocketClient() {
+  const methods = {
+    connect_local_ws() {
+      const ws_url =
+        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
+      const ws = new WebSocket(ws_url);
+      ws.onclose = (e) => {
+        WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
+      };
+      ws.onerror = (e) => {
+        WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
+      };
+      ws.onmessage = (ev) => {
+        const [err, msg] = WXU.parseJSON(ev.data);
+        if (err) {
+          return;
+        }
+        if (msg.type === "api_call") {
+          this.__wx_handle_api_call(msg.data, ws);
+        }
+      };
+    },
+    async __wx_handle_api_call(msg, socket) {
+      var { id, key, data } = msg;
+      console.log("[DOWNLOADER]__wx_handle_api_call", id, key, data);
+      function resp(body) {
+        socket.send(
+          JSON.stringify({
+            id,
+            data: body,
+          }),
+        );
+      }
+      if (key === "key:channels:contact_list") {
+        var payload = {
+          query: data.keyword,
+          scene: 13,
+          requestId: String(new Date().valueOf()),
+        };
+        var r = await WXU.API2.finderSearch(payload);
+        console.log("[DOWNLOADER]finderSearch", r);
+        /** @type {SearchResp} */
+        var { infoList, objectList } = r.data;
+        resp({
+          ...r,
+          payload,
+        });
+        return;
+      }
+      if (key === "key:channels:feed_list") {
+        var payload = {
+          username: data.username,
+          finderUsername: __wx_username,
+          lastBuffer: data.next_marker
+            ? decodeURIComponent(data.next_marker)
+            : "",
+          needFansCount: 0,
+          objectId: "0",
+        };
+        var r = await WXU.API.finderUserPage(payload);
+        console.log("[DOWNLOADER]finderUserPage", r);
+        /** @type {ChannelsObject[]} */
+        const object = r.data.object || [];
+        resp({
+          ...r,
+          payload,
+        });
+        return;
+      }
+      if (key === "key:channels:live_replay_list") {
+        var payload = {
+          username: data.username,
+          finderUsername: __wx_username || data.username,
+          lastBuffer: data.next_marker
+            ? decodeURIComponent(data.next_marker)
+            : "",
+          needFansCount: 0,
+          objectId: "0",
+        };
+        var r = await WXU.API3.finderLiveUserPage(payload);
+        console.log("[DOWNLOADER]finderLiveUserPage", r);
+        resp({
+          ...r,
+          payload,
+        });
+        return;
+      }
+      if (key === "key:channels:interactioned_list") {
+        var payload = {
+          lastBuffer: data.next_marker
+            ? decodeURIComponent(data.next_marker)
+            : "",
+          tabFlag: data.flag ? Number(data.flag) : 7,
+        };
+        var r = await WXU.API4.finderGetInteractionedFeedList(payload);
+        console.log("[DOWNLOADER]finderGetInteractionedFeedList", r);
+        resp({
+          ...r,
+          payload,
+        });
+        return;
+      }
+      if (key === "key:channels:feed_profile") {
+        console.log("before finderGetCommentProfile", data.oid, data.nid);
+        try {
+          if (data.url) {
+            var u = new URL(decodeURIComponent(data.url));
+            data.oid = WXU.API.decodeBase64ToUint64String(
+              u.searchParams.get("oid"),
+            );
+            data.nid = WXU.API.decodeBase64ToUint64String(
+              u.searchParams.get("nid"),
+            );
+          }
+          var payload = {
+            needObject: 1,
+            lastBuffer: "",
+            scene: 146,
+            direction: 2,
+            identityScene: 2,
+            pullScene: 6,
+            objectid: (() => {
+              if (data.oid.includes("_")) {
+                return data.oid.split("_")[0];
+              }
+              return data.oid;
+            })(),
+            objectNonceId: data.nid,
+            encrypted_objectid: "",
+          };
+          var r = await WXU.API.finderGetCommentDetail(payload);
+          /** @type {MediaProfileResp} */
+          var { object } = r.data;
+          resp({
+            ...r,
+            payload,
+          });
+          return;
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload,
+          });
+          return;
+        }
+      }
+      resp({
+        errCode: 1000,
+        errMsg: "未匹配的key",
+        payload: msg,
+      });
+    },
+  };
+  return {
+    methods,
+  };
+}
+
+WXU.onInit((data) => {
+  __wx_username = data.mainFinderUsername;
+});
+
+const ws_client$ = ChannelsWebsocketClient();
+ws_client$.methods.connect_local_ws();

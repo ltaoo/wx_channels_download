@@ -42,8 +42,6 @@ type ChannelsClient struct {
 	cache           *cache.Cache
 	req_seq         uint64
 	refreshInterval int
-	OnConnected     func(client *Client)
-	OnMessage       func(client *Client, message []byte)
 }
 
 func NewChannelsClient(refreshInterval int) *ChannelsClient {
@@ -68,10 +66,6 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	c.ws_mu.Unlock()
 
 	go client.writePump()
-
-	if c.OnConnected != nil {
-		c.OnConnected(client)
-	}
 
 	// 定时刷新逻辑
 	refreshInterval := c.refreshInterval
@@ -103,6 +97,13 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		c.ws_mu.Unlock()
 		conn.Close()
 	}()
+
+	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+		return nil
+	})
+
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -118,10 +119,6 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 				ch <- resp
 				continue
 			}
-		}
-
-		if c.OnMessage != nil {
-			c.OnMessage(client, message)
 		}
 	}
 }

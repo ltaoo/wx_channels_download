@@ -20,6 +20,7 @@ import (
 
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
+	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
@@ -27,14 +28,15 @@ import (
 )
 
 type APIClient struct {
-	downloader *downloadpkg.Downloader
-	official   *officialaccount.OfficialAccountClient
-	channels   *channels.ChannelsClient
-	filehelper *FileHelperHandler
-	formatter  *util.FilenameProcessor
-	cfg        *APIConfig
-	engine     *gin.Engine
-	logger     *zerolog.Logger
+	downloader    *downloadpkg.Downloader
+	official      *officialaccount.OfficialAccountClient
+	channels      *channels.ChannelsClient
+	downloader_ws *downloaderclient.DownloaderClient
+	filehelper    *FileHelperHandler
+	formatter     *util.FilenameProcessor
+	cfg           *APIConfig
+	engine        *gin.Engine
+	logger        *zerolog.Logger
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
@@ -48,6 +50,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
+	downloader_ws := downloaderclient.NewDownloaderClient()
 
 	get_sorted_tasks := func() []*downloadpkg.Task {
 		tasks := downloader.GetTasks()
@@ -57,7 +60,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		return tasks
 	}
 
-	channels_client.OnConnected = func(client *channels.Client) {
+	downloader_ws.OnConnected = func(client *downloaderclient.WSClient) {
 		// Initial tasks
 		all_tasks := get_sorted_tasks()
 		limit := 50
@@ -73,7 +76,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		}
 	}
 
-	channels_client.OnMessage = func(client *channels.Client, message []byte) {
+	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
 		var req struct {
 			Type  string `json:"type"`
 			Page  int    `json:"page"`
@@ -113,14 +116,15 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	}
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	client := &APIClient{
-		downloader: downloader,
-		official:   officialaccount_client,
-		channels:   channels_client,
-		filehelper: NewFileHelperHandler(),
-		formatter:  util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
-		cfg:        cfg,
-		engine:     gin.Default(),
-		logger:     &logger,
+		downloader:    downloader,
+		official:      officialaccount_client,
+		channels:      channels_client,
+		downloader_ws: downloader_ws,
+		filehelper:    NewFileHelperHandler(),
+		formatter:     util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
+		cfg:           cfg,
+		engine:        gin.Default(),
+		logger:        &logger,
 	}
 
 	// 设置文件传输助手视频号自动下载回调
@@ -170,7 +174,7 @@ func (c *APIClient) Start() error {
 		if evt == nil || evt.Task == nil || evt.Task.ID == "" {
 			return
 		}
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: evt,
 		})
@@ -219,6 +223,9 @@ func (c *APIClient) Stop() error {
 	}
 	if c.channels != nil {
 		c.channels.Stop()
+	}
+	if c.downloader_ws != nil {
+		c.downloader_ws.Stop()
 	}
 	return nil
 }

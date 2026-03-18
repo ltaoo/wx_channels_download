@@ -88,12 +88,14 @@ function __wx_render_sider_tools() {
     __wx_insert_download_btn_to_home_page();
   });
   WXU.onGotoNextFeed((feed) => {
+    // alert('onGotoNextFeed');
     console.log("[main.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
     __wx_insert_download_btn_to_home_page();
   });
   WXU.onGotoPrevFeed((feed) => {
+    // alert('onGotoPrevFeed');
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);

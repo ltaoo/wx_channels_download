@@ -110,7 +110,7 @@ func root_command(cfg *config.Config) {
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	if !official_cfg.Disabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg))
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 			Match: "official.weixin.qq.com",
 			Target: &proxy.TargetConfig{

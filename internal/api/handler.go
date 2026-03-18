@@ -273,7 +273,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -416,7 +416,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -468,7 +468,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		}
 	}
 	if len(batchTasks) > 0 {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "batch_tasks",
 			Data: batchTasks,
 		})
@@ -599,7 +599,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -683,7 +683,7 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	c.downloader.Delete(nil, true)
-	c.channels.Broadcast(APIClientWSMessage{
+	c.downloader_ws.Broadcast(APIClientWSMessage{
 		Type: "clear",
 		Data: c.downloader.GetTasks(),
 	})
@@ -700,21 +700,20 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 		return string(defaultData)
 	}
 	// html := read_asset("inject/index.html", files.HTMLHome)
-	files := interceptor.Assets
-	// css := read_asset("inject/lib/weui.min.css", files.CSSWeui)
+	// css := read_asset("inject/lib/weui.min.css", interceptor.CSSWeui)
 	// html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
 	var inserted_scripts string
 	cfg_byte, _ := json.Marshal(c.cfg)
 	inserted_scripts += fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "local";</script>`, string(cfg_byte))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/mitt.umd.js", files.JSMitt))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/eventbus.js", files.JSEventBus))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/utils.js", files.JSUtils))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.core.1.7.4.min.js", files.JSFloatingUICore))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.dom.1.7.4.min.js", files.JSFloatingUIDOM))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/weui.min.js", files.JSWeui))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/wui.umd.js", files.JSWui))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", files.JSComponents))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", files.JSDownloader))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/mitt.umd.js", interceptor.JSMitt))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/eventbus.js", interceptor.JSEventBus))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/utils.js", interceptor.JSUtils))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.core.1.7.4.min.js", interceptor.JSFloatingUICore))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.dom.1.7.4.min.js", interceptor.JSFloatingUIDOM))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/weui.min.js", interceptor.JSWeui))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/wui.umd.js", interceptor.JSWui))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", interceptor.JSComponents))
+	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", interceptor.JSDownloader))
 
 	// html = strings.Replace(html, "<!-- INJECT_JS -->", inserted_scripts, 1)
 

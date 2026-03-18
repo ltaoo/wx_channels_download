@@ -81,7 +81,7 @@ func (c *Interceptor) Start() error {
 			Port:     c.Settings.APIServerPort,
 		},
 	})
-	plugins := CreateChannelInterceptorPlugins(c, Assets)
+	plugins := CreateChannelInterceptorPlugins(c)
 	for _, plugin := range plugins {
 		client.AddPlugin(plugin)
 	}
