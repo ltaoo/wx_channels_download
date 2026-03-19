@@ -29,6 +29,7 @@ type ChannelsConfig = {
   remoteServerHostname: string;
   remoteServerPort: number;
   MaxRunning: number;
+  downloadForceCheckAllFeeds: boolean;
 };
 type DropdownMenuItemPayload = {
   label: string;

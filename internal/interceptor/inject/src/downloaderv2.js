@@ -802,7 +802,7 @@ function DownloaderEntry(props) {
       View(
         {
           class:
-            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer",
+            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
         },
         [
           DangerouslyInnerHTML(
