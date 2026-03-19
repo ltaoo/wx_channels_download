@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import globals from "globals";
+import { globals as timelessGlobals } from "@timeless/dev/eslint";
 
 export default [
   {
@@ -12,6 +13,7 @@ export default [
       sourceType: "script",
       globals: {
         ...globals.browser,
+        ...timelessGlobals,
         __wx_channels_store__: "writable",
         __wx_channels_tip__: "writable",
         __wx_channels_config__: "writable",
@@ -31,6 +33,8 @@ export default [
         __wx_channels_live_download_btn__: "writable",
         __wx_channels_version__: "writable",
         __wx_attach_download_dropdown_menu: "writeable",
+        __wx_channels_live_store__: "writeable",
+        __wx_refresh_downloader: "writable",
         WXVariable: "writable",
         WXU: "writable",
         WXE: "writable",
@@ -68,7 +72,8 @@ export default [
         download_btn3: "writable",
         download_btn4: "writable",
         download_btn5: "writable",
-        __wx_refresh_downloader: "writable",
+        download_btn6: "writable",
+        download_btn7: "writable",
         EventBus: "writable",
         Module: "readonly",
         saveAs: "readonly",
@@ -79,20 +84,6 @@ export default [
         Weui: "readonly",
         weui: "readonly",
         WUI: "readonly",
-        For: "readonly",
-        Show: "readonly",
-        Switch: "readonly",
-        Match: "readonly",
-        View: "readonly",
-        Txt: "readonly",
-        DangerouslyInnerHTML: "readonly",
-        SVG: "readonly",
-        Circle: "readonly",
-        ref: "readonly",
-        refarr: "readonly",
-        refobj: "readonly",
-        computed: "readonly",
-        combine: "readonly",
       },
     },
     rules: {

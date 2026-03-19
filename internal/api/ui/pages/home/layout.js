@@ -96,7 +96,7 @@ export default function HomeLayoutView(props) {
             fetch("/api/status")
               .then((r) => r.json())
               .then((res) => {
-                statusAvailable.as(res.data?.available ?? false);
+                statusAvailable.as(res.data?.channels.available ?? false);
                 statusMsg.as(res.code === 0 ? "已连接" : res.msg || "未连接");
               })
               .catch(() => {

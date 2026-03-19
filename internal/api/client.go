@@ -77,42 +77,6 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	}
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
-		var req struct {
-			Type  string `json:"type"`
-			Page  int    `json:"page"`
-			Limit int    `json:"limit"`
-		}
-		if err := json.Unmarshal(message, &req); err == nil && req.Type == "fetch_tasks" {
-			allTasks := get_sorted_tasks()
-			start := (req.Page - 1) * req.Limit
-			if start < 0 {
-				start = 0
-			}
-			if req.Limit <= 0 {
-				req.Limit = 50
-			}
-
-			if start >= len(allTasks) {
-				if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
-					"list":  []*downloadpkg.Task{},
-					"total": len(allTasks),
-				}}); err == nil {
-					client.Send <- data
-				}
-				return
-			}
-			end := start + req.Limit
-			if end > len(allTasks) {
-				end = len(allTasks)
-			}
-			tasks := allTasks[start:end]
-			if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
-				"list":  tasks,
-				"total": len(allTasks),
-			}}); err == nil {
-				client.Send <- data
-			}
-		}
 	}
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	client := &APIClient{

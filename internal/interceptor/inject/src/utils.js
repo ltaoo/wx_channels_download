@@ -7,8 +7,14 @@ var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
 var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
 var WSServerProtocol = "wss";
+if (typeof window.__wx_channels_config__ === "undefined") {
+  __wx_channels_config__ = window.__wx_channels_config__;
+}
+if (typeof window.WXVariable === "function") {
+  WXVariable = window.WXVariable;
+}
 var __wx_assets_base = (function () {
-  var cfg = window.__wx_channels_config__;
+  var cfg = __wx_channels_config__;
   if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
     return (
       cfg.apiServerProtocol +
@@ -163,6 +169,8 @@ var WXU = (() => {
         cover_url: media.coverUrl,
         title: feed.objectDesc.description,
         files: feed.objectDesc.media,
+        url: "",
+        key: 0,
         spec: [],
         contact: {
           id: feed.contact.username,
@@ -217,7 +225,7 @@ var WXU = (() => {
   function __wx_channels_pause_cur_video() {
     if (
       __wx_channels_cur_video &&
-      typeof window.__wx_channels_cur_video.player.pause === "function"
+      typeof __wx_channels_cur_video.player.pause === "function"
     ) {
       __wx_channels_cur_video.player.pause();
     }
@@ -270,7 +278,7 @@ var WXU = (() => {
   }
 
   /**
-   * @param {() => HTMLElement} getter
+   * @param {() => HTMLElement} selector
    * @returns
    */
   function __wx_find_elm(selector) {
@@ -329,7 +337,7 @@ var WXU = (() => {
     var filename = template
       ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) => params[key])
       : default_name;
-    if (window.beforeFilename) {
+    if (typeof window.beforeFilename === "function") {
       return window.beforeFilename(filename, params, profile, spec);
     }
     return filename;
@@ -562,7 +570,7 @@ var WXU = (() => {
         handlers.onProgress({
           loaded_size,
           progress: total_size
-            ? ((loaded_size / total_size) * 100).toFixed(2)
+            ? Number(((loaded_size / total_size) * 100).toFixed(2))
             : null,
         });
       }
@@ -576,31 +584,31 @@ var WXU = (() => {
 
   /**
    * 检查是否存在视频
-   * @param {{ silence: boolean }} opt
+   * @param {{ silence?: boolean }} opt
    * @returns {[boolean, FeedProfile]}
    */
   function __wx_check_feed_existing(opt = {}) {
     var profile = __wx_channels_store__.profile;
     if (!profile) {
       WXU.error({
-        alert: !opt.silence,
+        alert: Number(!opt.silence),
         msg: "检测不到视频，请提交 issue 反馈",
       });
       return [true, null];
     }
     return [false, profile];
   }
+
   /**
-   *
    * @param {RequestInfo | URL} url
-   * @returns {Promise<[Error | null, Response | null]>}
+   * @returns {Promise<[null, Response] | [Error, null]>}
    */
   async function __wx_fetch(url) {
     try {
       const r = await fetch(url);
       return [null, r];
     } catch (err) {
-      return [err, null];
+      return [/** @type {Error} */ (err), null];
     }
   }
 
@@ -667,11 +675,10 @@ var WXU = (() => {
       toggle() {},
       /**
        * 提交下载任务
-       * @param {import('./utils').FeedProfile} feed
+       * @param {FeedProfile} feed
        * @param {object} opt 配置
-       * @param {string} opt.spec 规格
-       * @param {string} opt.suffix 后缀
-       * @returns
+       * @param {string} [opt.spec] 规格
+       * @param {string} [opt.suffix] 后缀
        */
       async create(feed, opt = {}) {
         console.log("[downloader.create]create", feed);
@@ -728,7 +735,6 @@ var WXU = (() => {
           },
         });
         if (err) {
-          // console.log("downloader.create failed", err);
           return [err, null];
         }
         WXU.downloader.show();
@@ -738,8 +744,8 @@ var WXU = (() => {
        * 批量提交下载任务
        * @param {FeedProfile[]} feeds
        * @param {object} opt 配置
-       * @param {string} opt.spec 规格
-       * @param {string} opt.suffix 后缀
+       * @param {string} [opt.spec] 规格
+       * @param {string} [opt.suffix] 后缀
        * @returns
        */
       async create_batch(feeds, opt = {}) {
@@ -1046,8 +1052,8 @@ var WXU = (() => {
     get config() {
       /** @type {ChannelsConfig} */
       return {
-        ...(window.__wx_channels_config__ || {}),
-        ...(window.WXVariable || {}),
+        ...(__wx_channels_config__ || {}),
+        ...(WXVariable || {}),
       };
     },
     get version() {
@@ -1159,6 +1165,7 @@ async function __wx_channels_download4(feed, opt) {
             : `${progress}%`,
       });
     },
+    onEnd() {},
   });
   WXU.log({ ignore_prefix: 1, msg: "" });
   var media_buf = new Uint8Array(await media_blob.arrayBuffer());
@@ -1444,35 +1451,16 @@ function __wx_download_btn_handler() {
     }
     return null;
   })();
-  __wx_channels_handle_click_download__(spec);
+  __wx_channels_handle_click_download__(spec, false);
 }
 
-var ref = Timeless.reactive.ref;
-var refobj = Timeless.reactive.refobj;
-var refarr = Timeless.reactive.refarr;
-var computed = Timeless.reactive.computed;
-var combine = Timeless.reactive.combine;
-var isRef = Timeless.reactive.isRef;
-var cn = Timeless.reactive.cn;
-var sn = Timeless.reactive.sn;
-var classNames = Timeless.reactive.classNames;
-var View = Timeless.headless.View;
-var Txt = Timeless.headless.Txt;
-var Fragment = Timeless.headless.Fragment;
-var DangerouslyInnerHTML = Timeless.headless.DangerouslyInnerHTML;
-var SVG = Timeless.headless.SVG;
-var Circle = Timeless.headless.Circle;
-var Show = Timeless.headless.Show;
-var For = Timeless.headless.For;
-var Switch = Timeless.headless.Switch;
-var Match = Timeless.headless.Match;
-var ScrollViewPrimitive = Timeless.headless.ScrollViewPrimitive;
-var WaterfallPrimitive = Timeless.headless.WaterfallPrimitive;
-var h = Timeless.headless.h;
-var PopoverPrimitive = Timeless.headless.PopoverPrimitive;
-var DropdownMenuPrimitive = Timeless.headless.DropdownMenuPrimitive;
-var ChevronRightOutlined = Timeless.icons.ChevronRightOutlined;
-Object.assign(window.Timeless, window.Timeless.kit);
+Object.assign(Timeless, Timeless.kit);
+Object.keys(Timeless).map((k) => {
+  if (["Symbol"].includes(k)) {
+    return;
+  }
+  window[k] = Timeless[k];
+});
 
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerAddr
@@ -1515,7 +1503,7 @@ function ChannelsWebsocketClient() {
         );
       }
       if (key === "key:channels:contact_list") {
-        var payload = {
+        let payload = {
           query: data.keyword,
           scene: 13,
           requestId: String(new Date().valueOf()),
@@ -1531,7 +1519,7 @@ function ChannelsWebsocketClient() {
         return;
       }
       if (key === "key:channels:feed_list") {
-        var payload = {
+        let payload = {
           username: data.username,
           finderUsername: __wx_username,
           lastBuffer: data.next_marker
@@ -1540,7 +1528,7 @@ function ChannelsWebsocketClient() {
           needFansCount: 0,
           objectId: "0",
         };
-        var r = await WXU.API.finderUserPage(payload);
+        let r = await WXU.API.finderUserPage(payload);
         console.log("[DOWNLOADER]finderUserPage", r);
         /** @type {ChannelsObject[]} */
         const object = r.data.object || [];
@@ -1551,7 +1539,7 @@ function ChannelsWebsocketClient() {
         return;
       }
       if (key === "key:channels:live_replay_list") {
-        var payload = {
+        let payload = {
           username: data.username,
           finderUsername: __wx_username || data.username,
           lastBuffer: data.next_marker
@@ -1569,7 +1557,7 @@ function ChannelsWebsocketClient() {
         return;
       }
       if (key === "key:channels:interactioned_list") {
-        var payload = {
+        let payload = {
           lastBuffer: data.next_marker
             ? decodeURIComponent(data.next_marker)
             : "",
@@ -1595,7 +1583,7 @@ function ChannelsWebsocketClient() {
               u.searchParams.get("nid"),
             );
           }
-          var payload = {
+          let payload = {
             needObject: 1,
             lastBuffer: "",
             scene: 146,
@@ -1618,12 +1606,10 @@ function ChannelsWebsocketClient() {
             ...r,
             payload,
           });
-          return;
         } catch (err) {
           resp({
             errCode: 1011,
             errMsg: err.message,
-            payload,
           });
           return;
         }

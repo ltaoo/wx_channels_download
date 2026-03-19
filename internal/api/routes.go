@@ -142,11 +142,15 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
 	err := c.channels.Validate()
+	channels_data := gin.H{
+		"available": false,
+	}
 	data := gin.H{
-		"available": true,
+		"version":  c.cfg.Version,
+		"channels": channels_data,
 	}
 	if err != nil {
-		data["available"] = false
+		channels_data["available"] = false
 	}
 	ctx.JSON(200, gin.H{
 		"code": 0,

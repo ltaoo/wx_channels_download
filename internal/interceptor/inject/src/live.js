@@ -1,7 +1,8 @@
+/// <reference path="utils.js" />
 /**
  * @file 直播页
  */
-window.__wx_channels_live_store__ = {};
+var __wx_channels_live_store__ = { profile: null };
 function __wx_copy_live_download_command(url) {
   var filename = (() => {
     return new Date().valueOf();
@@ -87,17 +88,21 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     if (!success) {
       return;
     }
+    if (!WXU.API.finderJoinLiveMapper) {
+      console.log("missing WXU.API.finderJoinLiveMapper");
+      return;
+    }
     const i = WXU.API.createAdapterFromGlobalMapper(
       data,
       WXU.API.finderJoinLiveMapper,
       ["room", "stream", "liveUser"],
-      "poll"
+      "poll",
     );
-    console.log("[live.js]has more options", i[1]);
-    var { DropdownMenu, Menu, MenuItem } = WUI;
-    if (i[1] && i[1].payload.channelParams) {
+    console.log("[live.js]has more options", i);
+    var { MenuItem } = WUI;
+    if (i && i[1] && i[1].payload.channelParams) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
-        (vv) => vv.url
+        (vv) => vv.url,
       );
       var [dropdown$] = __wx_attach_live_download_dropdown_menu($btn);
       const download_menus = [

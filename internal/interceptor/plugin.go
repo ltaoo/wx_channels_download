@@ -196,7 +196,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor) []*proxy.Plugin {
 					inserted_scripts += d.Tag("lib/pagespy.min.js")
 					inserted_scripts += d.Tag("src/pagespy.js")
 				}
-				fmt.Println("inserted_scripts", inserted_scripts)
+				// fmt.Println("inserted_scripts", inserted_scripts)
 				if pathname == "/web/pages/home" {
 					inserted_scripts += d.Tag("src/home.js")
 					if cfg.InjectExtraScriptAfterJSMain != "" {

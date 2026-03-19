@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"wx_channel/internal/interceptor"
@@ -16,63 +18,51 @@ import (
 // 完全模拟真实环境下的插件加载逻辑
 
 const (
-	sourceHost = "kf.qq.com"
-	webHost    = "channels.weixin.qq.com"
-	targetHost = "127.0.0.1"
-	targetPort = 2022
-	proxyPort  = 2024
-	webPort    = 8080
+	webHost   = "channels.weixin.qq.com"
+	proxyPort = 2024
+	webPort   = 8081
 )
 
-func main() {
-	// 1. 启动静态文件服务 (用于模拟前端页面)
-	go func() {
-		fs := http.FileServer(http.Dir("_example"))
-		http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Printf("[Static] Request: %s %s\n", r.Method, r.URL.Path)
-			fs.ServeHTTP(w, r)
-		}))
-		fmt.Printf("静态服务已启动，请访问: http://127.0.0.1:%d/ws_proxy.html\n", webPort)
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", webPort), nil); err != nil {
-			fmt.Printf("静态服务启动失败: %v\n", err)
-		}
-	}()
+// ProxyConfig 代理转发配置
+type ProxyConfig struct {
+	MatchHost      string `json:"matchHost"`      // 拦截的 fake 域名
+	TargetProtocol string `json:"targetProtocol"` // 源服务协议 (ws/wss)
+	TargetHost     string `json:"targetHost"`     // 源服务地址
+	TargetPort     int    `json:"targetPort"`     // 源服务端口
+}
 
-	// 2. 初始化 Proxy
-	// 使用默认证书 (真实环境中也是如此)
+var (
+	currentConfig = ProxyConfig{
+		MatchHost:      "remoteapi.weixin.qq.com",
+		TargetProtocol: "ws",
+		TargetHost:     "127.0.0.1",
+		TargetPort:     2022,
+	}
+	currentProxy proxy.InnerProxy
+	proxyMu      sync.RWMutex
+)
+
+func buildProxy(cfg ProxyConfig) (proxy.InnerProxy, error) {
 	cert := certificate.DefaultCertFiles
 	p, err := proxy.NewProxy(cert.Cert, cert.PrivateKey)
 	if err != nil {
-		panic(fmt.Errorf("创建代理失败: %v", err))
+		return nil, fmt.Errorf("创建代理失败: %v", err)
 	}
 
-	// 3. 构造 Interceptor 上下文
-	// CreateSimpleChannelInterceptorPlugin 需要这些上下文信息
-	interceptorCfg := &interceptor.InterceptorConfig{
-		Version:                       "dev-test",
-		DebugShowError:                true,
-		ChannelsDisableLocationToHome: true, // 模拟真实配置
-	}
-	ic := &interceptor.Interceptor{
-		Version:           interceptorCfg.Version,
-		Settings:          interceptorCfg,
-		FrontendVariables: make(map[string]any),
+	// 添加转发规则: fake 域名 -> 源服务
+	if cfg.MatchHost != "" && cfg.TargetHost != "" && cfg.TargetPort != 0 {
+		fmt.Printf("添加转发规则: %s -> %s://%s:%d\n", cfg.MatchHost, cfg.TargetProtocol, cfg.TargetHost, cfg.TargetPort)
+		p.AddPlugin(&proxy.Plugin{
+			Match: cfg.MatchHost,
+			Target: &proxy.TargetConfig{
+				Protocol: cfg.TargetProtocol,
+				Host:     cfg.TargetHost,
+				Port:     cfg.TargetPort,
+			},
+		})
 	}
 
-	// 4. 添加转发规则 (解决 DNS 解析失败问题)
-	// 这是为了让 remoteapi.weixin.qq.com 能够被正确转发到目标 WebSocket 服务
-	fmt.Printf("添加转发规则: wss://%s -> ws://%s:%d\n", sourceHost, targetHost, targetPort)
-	p.AddPlugin(&proxy.Plugin{
-		Match: sourceHost,
-		Target: &proxy.TargetConfig{
-			Protocol: "ws",
-			Host:     targetHost,
-			Port:     targetPort,
-		},
-	})
-
-	// 5. 添加转发规则 (静态资源)
-	// 这是为了方便本地测试，将 channels.qq.com 映射到本地静态服务
+	// 添加静态资源转发规则
 	fmt.Printf("添加转发规则: https://%s -> http://127.0.0.1:%d\n", webHost, webPort)
 	p.AddPlugin(&proxy.Plugin{
 		Match: webHost,
@@ -83,28 +73,118 @@ func main() {
 		},
 	})
 
-	// 6. 添加核心业务插件
-	// 这完全模拟了 interceptor.Start() 中的逻辑：client.AddPlugin(CreateSimpleChannelInterceptorPlugin(c))
+	// 添加核心业务插件
+	interceptorCfg := &interceptor.InterceptorConfig{
+		Version:                       "dev-test",
+		DebugShowError:                true,
+		ChannelsDisableLocationToHome: true,
+	}
+	ic := &interceptor.Interceptor{
+		Version:           interceptorCfg.Version,
+		Settings:          interceptorCfg,
+		FrontendVariables: make(map[string]any),
+	}
 	fmt.Println("加载核心插件: SimpleChannelInterceptorPlugin")
-	corePlugin := interceptor.CreateSimpleChannelInterceptorPlugin(ic)
-	p.AddPlugin(corePlugin)
+	p.AddPlugin(interceptor.CreateSimpleChannelInterceptorPlugin(ic))
 
-	// 7. 启动代理服务
+	return p, nil
+}
+
+func main() {
+	// 1. 初始化代理
+	p, err := buildProxy(currentConfig)
+	if err != nil {
+		panic(err)
+	}
+	proxyMu.Lock()
+	currentProxy = p
+	proxyMu.Unlock()
+
+	// 2. 启动静态文件服务 + 配置 API
+	mux := http.NewServeMux()
+
+	// 静态资源 - lib JS/CSS 文件
+	if libFS, err := interceptor.LibFS(); err == nil {
+		mux.Handle("/__wx_channels_assets/lib/", http.StripPrefix("/__wx_channels_assets/lib/", http.FileServer(http.FS(libFS))))
+	}
+	// 静态资源 - src JS 文件
+	if srcFS, err := interceptor.SrcFS(); err == nil {
+		mux.Handle("/__wx_channels_assets/src/", http.StripPrefix("/__wx_channels_assets/src/", http.FileServer(http.FS(srcFS))))
+	}
+
+	fileServer := http.FileServer(http.Dir("_example"))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("[Static] Request: %s %s\n", r.Method, r.URL.Path)
+		fileServer.ServeHTTP(w, r)
+	}))
+
+	// GET /api/config - 获取当前配置
+	// POST /api/config - 更新配置并重建代理
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			proxyMu.RLock()
+			cfg := currentConfig
+			proxyMu.RUnlock()
+			json.NewEncoder(w).Encode(cfg)
+			return
+		}
+		if r.Method == http.MethodPost {
+			var cfg ProxyConfig
+			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+				http.Error(w, fmt.Sprintf("无效的配置: %v", err), http.StatusBadRequest)
+				return
+			}
+			if cfg.MatchHost == "" || cfg.TargetHost == "" || cfg.TargetPort == 0 {
+				http.Error(w, "matchHost, targetHost, targetPort 不能为空", http.StatusBadRequest)
+				return
+			}
+			if cfg.TargetProtocol == "" {
+				cfg.TargetProtocol = "ws"
+			}
+
+			newProxy, err := buildProxy(cfg)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("重建代理失败: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			proxyMu.Lock()
+			currentConfig = cfg
+			currentProxy = newProxy
+			proxyMu.Unlock()
+
+			fmt.Printf("配置已更新: %s -> %s://%s:%d\n", cfg.MatchHost, cfg.TargetProtocol, cfg.TargetHost, cfg.TargetPort)
+			json.NewEncoder(w).Encode(map[string]any{"ok": true, "config": cfg})
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	go func() {
+		fmt.Printf("静态服务已启动，请访问: http://127.0.0.1:%d/ws_proxy.html\n", webPort)
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", webPort), mux); err != nil {
+			fmt.Printf("静态服务启动失败: %v\n", err)
+		}
+	}()
+
+	// 3. 启动代理服务 (handler 动态读取 currentProxy)
 	go func() {
 		fmt.Printf("WebSocket 代理服务正在启动，监听端口: %d\n", proxyPort)
-		// 使用 http.ListenAndServe 启动服务，将请求转发给 proxy
-		if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", proxyPort), http.HandlerFunc(p.ServeHTTP)); err != nil {
+		if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", proxyPort), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			proxyMu.RLock()
+			p := currentProxy
+			proxyMu.RUnlock()
+			p.ServeHTTP(w, r)
+		})); err != nil {
 			fmt.Printf("启动代理服务失败: %v\n", err)
 			os.Exit(1)
 		}
 	}()
 
-	// 等待退出信号
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
 	fmt.Println("\n正在关闭代理服务...")
-	// 注意：这里没有调用 srv.Stop() 因为我们直接使用了 proxy 对象，
-	// 如果 proxy 有 Stop 方法可以调用，否则直接退出即可
 }

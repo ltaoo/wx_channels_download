@@ -1,3 +1,4 @@
+/// <reference path="utils.js" />
 /**
  * @file 下载管理面板2
  */
@@ -360,7 +361,7 @@ function DownloaderPanelViewModel() {
         ui.view$.finishLoadingMore();
       },
     }),
-    waterfall$: new Timeless.ui.WaterfallModel({
+    waterfall$: Timeless.ui.WaterfallModel({
       column: 1,
       size: 20,
       buffer: 10,
@@ -693,7 +694,7 @@ function DownloaderPanelView(props, children) {
                                 [
                                   Show(
                                     {
-                                      when: isOpenExternal,
+                                      when: !!isOpenExternal,
                                       fallback: [
                                         DangerouslyInnerHTML(FolderIcon),
                                       ],
@@ -821,7 +822,7 @@ function DownloaderEntry(props) {
     mounted = true;
 
     const popover$ = new Timeless.ui.PopoverCore({
-      offsetY: 4,
+      // offsetY: 4,
     });
     WXU.downloader.show = function () {
       popover$.show();

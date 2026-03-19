@@ -14,7 +14,7 @@
   },
   "include": [
     "src/**/*.js",
-    "types/index.d.ts"
+    "src/**/*.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
