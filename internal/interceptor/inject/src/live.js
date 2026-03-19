@@ -63,18 +63,32 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
   var live_page_mounted = false;
-  WXU.onFetchLiveProfile((feed) => {
-    console.log("[live.js]onFetchLiveProfile", feed);
+  // WXU.onFetchLiveProfile((feed) => {
+   
+  // });
+  WXU.onJoinLive(async (data) => {
+    console.log("[live.js]onJoinLive", data);
+    // console.log("[live.js]onFetchLiveProfile", feed);
     if (live_page_mounted) {
       return;
     }
     live_page_mounted = true;
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
+    const feed = {
+      id: data.liveInfo.liveId,
+      liveInfo: data.liveInfo,
+      liveDescription: data.liveDescription,
+      objectDesc: {
+        description: data.liveDescription,
+      },
+      contact: {
+        nickname: data.bizUserInfo.bizNickname,
+        username: data.bizUserInfo.bizUsername
+      },
+      createtime: data.liveInfo.startTime,
+    };
     WXU.set_live_feed(feed);
-  });
-  WXU.onJoinLive(async (data) => {
-    console.log("[live.js]onJoinLive", data);
     var $btn = download_btn4();
     $btn.onclick = function () {
       var profile = __wx_channels_live_store__.profile;
@@ -89,7 +103,12 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       return;
     }
     if (!WXU.API.finderJoinLiveMapper) {
+      // WXU.error({ msg: "missing WXU.API.finderJoinLiveMapper" });
       console.log("missing WXU.API.finderJoinLiveMapper");
+      return;
+    }
+    if (!WXU.API.createAdapterFromGlobalMapper) {
+      console.log("missing WXU.API.createAdapterFromGlobalMapper");
       return;
     }
     const i = WXU.API.createAdapterFromGlobalMapper(
