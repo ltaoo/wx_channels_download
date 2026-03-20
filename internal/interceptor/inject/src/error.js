@@ -162,7 +162,7 @@ class ErrorModal {
   }
 }
 
-window.errorModal = new ErrorModal();
+var errorModal = new ErrorModal();
 var errors = [];
 window.addEventListener("error", function (event) {
   event.preventDefault();
@@ -172,7 +172,7 @@ window.addEventListener("error", function (event) {
   }
   if (errors.length) {
     var text = render_errors(errors);
-    window.errorModal.show(text);
+    errorModal.show(text);
   }
 });
 window.addEventListener("unhandledrejection", function (event) {
@@ -183,7 +183,7 @@ window.addEventListener("unhandledrejection", function (event) {
   }
   if (errors.length) {
     var text = render_errors(errors);
-    window.errorModal.show(text);
+    errorModal.show(text);
   }
 });
 

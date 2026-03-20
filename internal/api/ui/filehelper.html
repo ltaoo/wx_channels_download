@@ -561,7 +561,7 @@
             try {
                 const resp = await fetch(`${API_BASE}/api/status`);
                 const result = await resp.json();
-                if (result.code === 0 && result.data.available) {
+                if (result.code === 0 && result.data.channels.available) {
                     textEl.textContent = '可用';
                     textEl.style.color = 'var(--wechat-green)';
                 } else {

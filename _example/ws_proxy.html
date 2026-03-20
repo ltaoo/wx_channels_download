@@ -1,57 +1,291 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebSocket 代理测试</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .control-panel { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
-        .input-group { margin-bottom: 10px; }
-        .input-group label { display: inline-block; width: 100px; font-weight: bold; }
-        .input-group input { width: 300px; padding: 5px; }
-        button { padding: 5px 15px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 3px; }
-        button:hover { background-color: #0056b3; }
-        button:disabled { background-color: #cccccc; cursor: not-allowed; }
-        #log { height: 400px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; background-color: #fff; font-family: monospace; }
-        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; }
-        .log-time { color: #888; font-size: 0.8em; margin-right: 10px; }
-        .log-type-sent { color: #006600; font-weight: bold; }
-        .log-type-received { color: #0000cc; font-weight: bold; }
-        .log-type-error { color: #cc0000; font-weight: bold; }
-        .log-type-info { color: #666; font-style: italic; }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .control-panel {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .panel-title {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-group label {
+            display: inline-block;
+            width: 100px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .input-group input,
+        .input-group select {
+            padding: 5px;
+        }
+
+        .input-group input[type="text"] {
+            width: 260px;
+        }
+
+        .input-group input[type="number"] {
+            width: 80px;
+        }
+
+        button {
+            padding: 5px 15px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        #log {
+            height: 400px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #fff;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 2px;
+        }
+
+        .log-time {
+            color: #888;
+            font-size: 0.85em;
+            margin-right: 10px;
+        }
+
+        .log-type-sent {
+            color: #006600;
+            font-weight: bold;
+        }
+
+        .log-type-received {
+            color: #0000cc;
+            font-weight: bold;
+        }
+
+        .log-type-error {
+            color: #cc0000;
+            font-weight: bold;
+        }
+
+        .log-type-info {
+            color: #666;
+            font-style: italic;
+        }
+
+        .status-msg {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .status-ok {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-err {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .rule-summary {
+            font-size: 13px;
+            color: #555;
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #e9ecef;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .btn-direct {
+            background-color: #28a745;
+        }
+
+        .btn-direct:hover {
+            background-color: #218838;
+        }
+
+        .btn-direct:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+
+        .direct-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .direct-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .direct-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
     </style>
+    <!-- lib JS/CSS 静态资源 -->
+    <script src="/__wx_channels_assets/lib/timeless.reactive.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.utils.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.ui.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.kit.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.headless.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.icons.umd.min.js"></script>
+    <script src="/__wx_channels_assets/lib/timeless.web.umd.min.js"></script>
 </head>
+
 <body>
     <h1>WebSocket 代理测试</h1>
-    
-    <div class="control-panel">
-        <div class="input-group">
-            <label for="wsUrl">WebSocket URL:</label>
-            <input type="text" id="wsUrl" value="wss://kf.qq.com/ws/channels">
+
+    <div style="display: flex;">
+    <div style="width: 240px;">
+        <!-- 源服务配置 -->
+        <div class="control-panel" style="display: block;">
+            <h3 class="panel-title">源服务配置（真实提供数据的后端）</h3>
+            <div class="input-group">
+                <label for="targetProtocol">协议:</label>
+                <select id="targetProtocol">
+                    <option value="ws">ws</option>
+                    <option value="wss">wss</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="targetHost">地址:</label>
+                <input type="text" id="targetHost" placeholder="100.78.198.69">
+            </div>
+            <div class="input-group">
+                <label for="targetPort">端口:</label>
+                <input type="number" id="targetPort" placeholder="2022">
+            </div>
+            <div class="input-group">
+                <label for="targetPath">路径:</label>
+                <input type="text" id="targetPath" placeholder="/ws/channels">
+            </div>
+            <div class="input-group">
+                <label>直连测试:</label>
+                <button id="directConnectBtn" class="btn-direct">直连源服务</button>
+                <button id="directDisconnectBtn" class="btn-danger" disabled>断开直连</button>
+                <span id="directStatus" class="direct-status"></span>
+            </div>
+            <div class="input-group" id="directSendGroup" style="display:none;">
+                <label for="directMessageInput">发送消息:</label>
+                <input type="text" id="directMessageInput" placeholder="输入要发送的消息">
+                <button id="directSendBtn">发送</button>
+            </div>
         </div>
-        <div class="input-group">
-            <button id="connectBtn">连接</button>
-            <button id="disconnectBtn" disabled>断开</button>
-            <button id="clearBtn" style="background-color: #6c757d;">清空日志</button>
-        </div>
-        <div class="input-group" style="margin-top: 15px;">
-            <label for="messageInput">消息内容:</label>
-            <input type="text" id="messageInput" placeholder="输入要发送的消息">
-            <button id="sendBtn" disabled>发送</button>
+
+        <!-- 连接测试 -->
+        <div class="control-panel">
+            <h3 class="panel-title">连接测试（可填任意 fake 域名，代理自动转发到源服务）</h3>
+            <div class="input-group">
+                <label for="wsUrl">WebSocket URL:</label>
+                <input type="text" id="wsUrl" value="wss://remoteapi.weixin.qq.com" style="width: 380px;">
+            </div>
+            <div class="input-group">
+                <button id="connectBtn">连接</button>
+                <button id="disconnectBtn" disabled>断开</button>
+                <button id="clearBtn" class="btn-secondary">清空日志</button>
+                <span id="configStatus"></span>
+            </div>
+            <div id="ruleSummary" class="rule-summary" style="display:none;"></div>
+            <div class="input-group" style="margin-top: 15px;">
+                <label for="messageInput">消息内容:</label>
+                <input type="text" id="messageInput" placeholder="输入要发送的消息">
+                <button id="sendBtn" disabled>发送</button>
+            </div>
         </div>
     </div>
-
-    <div id="log"></div>
+    <div id="log" style="flex: 1; width: 0; margin-left: 12px;"></div>
+    </div>
 
     <script>
         let ws = null;
+        let directWs = null;
         const logDiv = document.getElementById('log');
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
         const sendBtn = document.getElementById('sendBtn');
         const messageInput = document.getElementById('messageInput');
         const wsUrlInput = document.getElementById('wsUrl');
+
+        const targetProtocolSelect = document.getElementById('targetProtocol');
+        const targetHostInput = document.getElementById('targetHost');
+        const targetPortInput = document.getElementById('targetPort');
+        const targetPathInput = document.getElementById('targetPath');
+        const configStatus = document.getElementById('configStatus');
+        const ruleSummary = document.getElementById('ruleSummary');
+
+        const directConnectBtn = document.getElementById('directConnectBtn');
+        const directDisconnectBtn = document.getElementById('directDisconnectBtn');
+        const directStatus = document.getElementById('directStatus');
+        const directSendGroup = document.getElementById('directSendGroup');
+        const directMessageInput = document.getElementById('directMessageInput');
+        const directSendBtn = document.getElementById('directSendBtn');
 
         function log(message, type = 'info') {
             const entry = document.createElement('div');
@@ -62,23 +296,107 @@
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        connectBtn.addEventListener('click', () => {
-            const url = wsUrlInput.value;
-            if (!url) {
-                log('请输入有效的 WebSocket URL', 'error');
+        function showStatus(msg, ok) {
+            configStatus.textContent = msg;
+            configStatus.className = 'status-msg ' + (ok ? 'status-ok' : 'status-err');
+            setTimeout(() => { configStatus.textContent = ''; configStatus.className = ''; }, 3000);
+        }
+
+        function extractHostname(url) {
+            try {
+                const u = new URL(url);
+                return u.hostname;
+            } catch {
+                return '';
+            }
+        }
+
+        // 加载当前配置
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const cfg = await res.json();
+                targetProtocolSelect.value = cfg.targetProtocol || 'ws';
+                targetHostInput.value = cfg.targetHost;
+                targetPortInput.value = cfg.targetPort;
+            } catch (e) {
+                console.error('加载配置失败:', e);
+            }
+        }
+
+        // 应用配置并连接：从 fake URL 提取 hostname 作为 match，将其转发到源服务
+        async function applyConfigAndConnect() {
+            const fakeUrl = wsUrlInput.value.trim();
+            const matchHost = extractHostname(fakeUrl);
+            if (!matchHost) {
+                showStatus('URL 格式不正确', false);
+                return false;
+            }
+
+            const cfg = {
+                matchHost: matchHost,
+                targetProtocol: targetProtocolSelect.value,
+                targetHost: targetHostInput.value.trim(),
+                targetPort: parseInt(targetPortInput.value, 10),
+            };
+
+            if (!cfg.targetHost || !cfg.targetPort) {
+                showStatus('请先填写源服务地址和端口', false);
+                return false;
+            }
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg),
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text);
+                }
+                ruleSummary.style.display = 'block';
+                ruleSummary.textContent = `转发规则: ${matchHost} → ${cfg.targetProtocol}://${cfg.targetHost}:${cfg.targetPort}`;
+                log(`代理已配置: ${matchHost} → ${cfg.targetProtocol}://${cfg.targetHost}:${cfg.targetPort}`, 'info');
+                return true;
+            } catch (e) {
+                showStatus('配置失败: ' + e.message, false);
+                return false;
+            }
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            const baseUrl = wsUrlInput.value.trim();
+            if (!baseUrl) {
+                log('请输入 WebSocket URL', 'error');
                 return;
             }
 
+            // 先应用代理配置
+            connectBtn.disabled = true;
+            const ok = await applyConfigAndConnect();
+            if (!ok) {
+                connectBtn.disabled = false;
+                return;
+            }
+
+            // 拼接路径：使用源服务配置的 pathname
+            const path = targetPathInput.value.trim() || targetPathInput.placeholder;
+            const url = baseUrl.replace(/\/+$/, '') + path;
+
+            // 再建立 WebSocket 连接
             try {
                 log(`正在连接到 ${url}...`, 'info');
                 ws = new WebSocket(url);
 
                 ws.onopen = () => {
                     log('连接已建立', 'info');
-                    connectBtn.disabled = true;
                     disconnectBtn.disabled = false;
                     sendBtn.disabled = false;
                     wsUrlInput.disabled = true;
+                    targetProtocolSelect.disabled = true;
+                    targetHostInput.disabled = true;
+                    targetPortInput.disabled = true;
                 };
 
                 ws.onmessage = (event) => {
@@ -90,20 +408,19 @@
                     cleanup();
                 };
 
-                ws.onerror = (error) => {
+                ws.onerror = () => {
                     log('发生错误', 'error');
-                    console.error('WebSocket Error:', error);
+                    cleanup();
                 };
 
             } catch (e) {
                 log(`连接失败: ${e.message}`, 'error');
+                cleanup();
             }
         });
 
         disconnectBtn.addEventListener('click', () => {
-            if (ws) {
-                ws.close();
-            }
+            if (ws) ws.close();
         });
 
         sendBtn.addEventListener('click', () => {
@@ -127,7 +444,82 @@
             disconnectBtn.disabled = true;
             sendBtn.disabled = true;
             wsUrlInput.disabled = false;
+            targetProtocolSelect.disabled = false;
+            targetHostInput.disabled = false;
+            targetPortInput.disabled = false;
         }
+
+        // === 直连源服务 ===
+        function directCleanup() {
+            directWs = null;
+            directConnectBtn.disabled = false;
+            directDisconnectBtn.disabled = true;
+            directSendGroup.style.display = 'none';
+            directStatus.textContent = '已断开';
+            directStatus.className = 'direct-status disconnected';
+            setTimeout(() => { directStatus.textContent = ''; directStatus.className = 'direct-status'; }, 3000);
+        }
+
+        directConnectBtn.addEventListener('click', () => {
+            const protocol = targetProtocolSelect.value;
+            const host = targetHostInput.value.trim() || targetHostInput.placeholder;
+            const port = targetPortInput.value.trim() || targetPortInput.placeholder;
+            const path = targetPathInput.value.trim() || targetPathInput.placeholder;
+            if (!host || !port) {
+                log('请先填写源服务地址和端口', 'error');
+                return;
+            }
+            const directUrl = `${protocol}://${host}:${port}${path}`;
+            log(`[直连] 正在直连源服务 ${directUrl}...`, 'info');
+            directConnectBtn.disabled = true;
+
+            try {
+                directWs = new WebSocket(directUrl);
+
+                directWs.onopen = () => {
+                    log(`[直连] 源服务连接成功 ${directUrl}`, 'info');
+                    directDisconnectBtn.disabled = false;
+                    directSendGroup.style.display = 'flex';
+                    directStatus.textContent = '已连接';
+                    directStatus.className = 'direct-status connected';
+                };
+
+                directWs.onmessage = (event) => {
+                    log(`[直连] 收到消息: ${event.data}`, 'received');
+                };
+
+                directWs.onclose = (event) => {
+                    log(`[直连] 连接已关闭 (Code: ${event.code}, Reason: ${event.reason})`, 'info');
+                    directCleanup();
+                };
+
+                directWs.onerror = () => {
+                    log('[直连] 连接发生错误', 'error');
+                    directCleanup();
+                };
+            } catch (e) {
+                log(`[直连] 连接失败: ${e.message}`, 'error');
+                directCleanup();
+            }
+        });
+
+        directDisconnectBtn.addEventListener('click', () => {
+            if (directWs) directWs.close();
+        });
+
+        directSendBtn.addEventListener('click', () => {
+            const message = directMessageInput.value;
+            if (directWs && directWs.readyState === WebSocket.OPEN) {
+                directWs.send(message);
+                log(`[直连] 发送消息: ${message}`, 'sent');
+                directMessageInput.value = '';
+            } else {
+                log('[直连] 连接未开启', 'error');
+            }
+        });
+
+        loadConfig();
     </script>
 </body>
+
 </html>

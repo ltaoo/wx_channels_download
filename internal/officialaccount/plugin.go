@@ -12,7 +12,7 @@ import (
 
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
-func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles) *proxy.Plugin {
+func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig) *proxy.Plugin {
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnResponse: func(ctx proxy.Context) {
@@ -30,31 +30,29 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
 				}
+				assets_base := fmt.Sprintf("%s://%s/__wx_channels_assets", cfg.Protocol, cfg.Addr)
+				d := interceptor.NewAssetDirWithAttr(assets_base, "", script_attr)
 				inserted_scripts := ""
 				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
-				inserted_scripts += script_config
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
-				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
+				inserted_scripts += d.Inline(fmt.Sprintf("var __wx_channels_config__ = %s", string(cfg_byte)), false)
+				inserted_scripts += d.Tag("lib/mitt.umd.js")
+				inserted_scripts += d.Tag("src/eventbus.js")
+				inserted_scripts += d.Tag("src/utils.js")
+				inserted_scripts += d.Inline(string(interceptor.CSSWeui), true)
+				inserted_scripts += d.Tag("lib/weui.min.js")
+				inserted_scripts += d.Tag("lib/floating-ui.core.1.7.4.min.js")
+				inserted_scripts += d.Tag("lib/floating-ui.dom.1.7.4.min.js")
+				inserted_scripts += d.Tag("lib/wui.umd.js")
+				inserted_scripts += d.Tag("src/components.js")
+				inserted_scripts += d.Tag("src/officialaccount.js")
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
-					inserted_scripts += script_error
+					inserted_scripts += d.Tag("src/error.js")
 				}
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
+					inserted_scripts += d.Tag("lib/pagespy.min.js")
+					inserted_scripts += d.Tag("src/pagespy.js")
 				}
 				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
 				ctx.SetResponseBody(html)

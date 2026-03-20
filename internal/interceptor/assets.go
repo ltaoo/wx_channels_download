@@ -1,152 +1,111 @@
 package interceptor
 
 import (
-	_ "embed"
+	"embed"
+	"io/fs"
+	"strings"
 )
 
-//go:embed inject/lib/FileSaver.min.js
-var js_file_saver []byte
+//go:embed inject/lib
+var libFS embed.FS
 
-//go:embed inject/lib/jszip.min.js
-var js_zip []byte
+//go:embed inject/src
+var srcFS embed.FS
 
-//go:embed inject/lib/floating-ui.core.1.7.4.min.js
-var js_floating_ui_core []byte
+// LibFS returns the embedded lib directory as an fs.FS rooted at "inject/lib".
+func LibFS() (fs.FS, error) {
+	return fs.Sub(libFS, "inject/lib")
+}
 
-//go:embed inject/lib/floating-ui.dom.1.7.4.min.js
-var js_floating_ui_dom []byte
+// SrcFS returns the embedded src directory as an fs.FS rooted at "inject/src".
+func SrcFS() (fs.FS, error) {
+	return fs.Sub(srcFS, "inject/src")
+}
+
+// AssetDir is a helper that binds base URL, version, and optional extra attributes
+// for generating script/link tags.
+type AssetDir struct {
+	base    string
+	version string
+	attr    string // extra attributes appended to <script> tags, e.g. ` nonce="xxx"`
+}
+
+func NewAssetDir(base, version string) *AssetDir {
+	return &AssetDir{base: base, version: version}
+}
+
+func NewAssetDirWithAttr(base, version, attr string) *AssetDir {
+	return &AssetDir{base: base, version: version, attr: attr}
+}
+
+// Tag generates a <script src> or <link rel="stylesheet" href> tag.
+// path is like "lib/mitt.umd.js" or "src/utils.js".
+func (d *AssetDir) Tag(path string) string {
+	url := d.base + "/" + path + d.version
+	if strings.HasSuffix(path, ".css") {
+		return `<link rel="stylesheet" href="` + url + `">`
+	}
+	return `<script` + d.attr + ` src="` + url + `"></script>`
+}
+
+// Inline generates a <script>content</script> or <style>content</style> tag.
+func (d *AssetDir) Inline(content string, isCSS bool) string {
+	if isCSS {
+		return `<style>` + content + `</style>`
+	}
+	return `<script` + d.attr + `>` + content + `</script>`
+}
 
 //go:embed inject/lib/mitt.umd.js
-var js_mitt []byte
+var JSMitt []byte
 
 //go:embed inject/lib/weui.min.css
-var css_weui []byte
+var CSSWeui []byte
 
 //go:embed inject/lib/weui.min.js
-var js_weui []byte
+var JSWeui []byte
 
 //go:embed inject/lib/wui.umd.js
-var js_wui []byte
+var JSWui []byte
 
-//go:embed inject/lib/timeless.reactive.umd.min.js
-var js_timeless_reactive []byte
+//go:embed inject/lib/floating-ui.core.1.7.4.min.js
+var JSFloatingUICore []byte
 
-//go:embed inject/lib/timeless.headless.umd.min.js
-var js_timeless_headless []byte
-
-//go:embed inject/lib/timeless.utils.umd.min.js
-var js_timeless_utils []byte
-
-//go:embed inject/lib/timeless.kit.umd.min.js
-var js_timeless_kit []byte
-
-//go:embed inject/lib/timeless.ui.umd.min.js
-var js_timeless_ui []byte
-
-//go:embed inject/lib/timeless.icons.umd.min.js
-var js_timeless_icons []byte
-
-//go:embed inject/lib/timeless.web.umd.min.js
-var js_timeless_web []byte
-
-//go:embed inject/lib/recorder.min.js
-var js_recorder []byte
+//go:embed inject/lib/floating-ui.dom.1.7.4.min.js
+var JSFloatingUIDOM []byte
 
 //go:embed inject/lib/pagespy.min.js
-var js_pagespy []byte
+var JSPageSpy []byte
 
 //go:embed inject/src/pagespy.js
-var js_debug []byte
+var JSDebug []byte
 
 //go:embed inject/src/error.js
-var js_error []byte
+var JSError []byte
 
 //go:embed inject/src/eventbus.js
-var js_eventbus []byte
+var JSEventBus []byte
 
 //go:embed inject/src/components.js
-var js_components []byte
+var JSComponents []byte
 
 //go:embed inject/src/utils.js
-var js_utils []byte
+var JSUtils []byte
 
 //go:embed inject/src/downloaderv2.js
-var js_downloader []byte
+var JSDownloader []byte
 
 //go:embed inject/src/officialaccount.js
-var js_wechat_officialaccount []byte
+var JSWechatOfficialAccount []byte
 
 //go:embed inject/src/home.js
-var js_home_page []byte
+var JSHomePage []byte
 
 //go:embed inject/src/feed.js
-var js_feed_profile_page []byte
+var JSFeedProfilePage []byte
 
 //go:embed inject/src/live.js
-var js_live_profile_page []byte
+var JSLiveProfilePage []byte
 
 //go:embed inject/src/profile.js
-var js_contact_profile_page []byte
-
-type ChannelInjectedFiles struct {
-	JSFileSaver             []byte
-	JSZip                   []byte
-	JSRecorder              []byte
-	JSPageSpy               []byte
-	JSFloatingUICore        []byte
-	JSFloatingUIDOM         []byte
-	JSWeui                  []byte
-	CSSWeui                 []byte
-	JSWui                   []byte
-	JSBox                   []byte
-	JSMitt                  []byte
-	JSDebug                 []byte
-	JSEventBus              []byte
-	JSTimelessReactive      []byte
-	JSTimelessHeadless      []byte
-	JSTimelessUtils         []byte
-	JSTimelessKit           []byte
-	JSTimelessIcons         []byte
-	JSTimelessUI            []byte
-	JSTimelessProviderWeb   []byte
-	JSComponents            []byte
-	JSDownloader            []byte
-	JSUtils                 []byte
-	JSError                 []byte
-	JSHomePage              []byte
-	JSFeedProfilePage       []byte
-	JSLiveProfilePage       []byte
-	JSContactPage           []byte
-	JSWechatOfficialAccount []byte
-}
-
-var Assets = &ChannelInjectedFiles{
-	JSFileSaver:             js_file_saver,
-	JSZip:                   js_zip,
-	JSRecorder:              js_recorder,
-	JSPageSpy:               js_pagespy,
-	JSFloatingUICore:        js_floating_ui_core,
-	JSFloatingUIDOM:         js_floating_ui_dom,
-	JSWeui:                  js_weui,
-	CSSWeui:                 css_weui,
-	JSWui:                   js_wui,
-	JSMitt:                  js_mitt,
-	JSDebug:                 js_debug,
-	JSError:                 js_error,
-	JSEventBus:              js_eventbus,
-	JSTimelessReactive:      js_timeless_reactive,
-	JSTimelessHeadless:      js_timeless_headless,
-	JSTimelessUtils:         js_timeless_utils,
-	JSTimelessIcons:         js_timeless_icons,
-	JSTimelessKit:           js_timeless_kit,
-	JSTimelessUI:            js_timeless_ui,
-	JSTimelessProviderWeb:   js_timeless_web,
-	JSComponents:            js_components,
-	JSUtils:                 js_utils,
-	JSDownloader:            js_downloader,
-	JSHomePage:              js_home_page,
-	JSFeedProfilePage:       js_feed_profile_page,
-	JSLiveProfilePage:       js_live_profile_page,
-	JSContactPage:           js_contact_profile_page,
-	JSWechatOfficialAccount: js_wechat_officialaccount,
-}
+var JSContactPage []byte

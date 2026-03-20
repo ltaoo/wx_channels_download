@@ -1,11 +1,12 @@
 {
-  "name": "wx_channels_download",
+  "name": "@wcd/injected",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "scripts": {
     "lint": "eslint \"src/**/*.js\""
   },
   "devDependencies": {
+    "@timeless/dev": "1.0.0",
     "eslint": "^9.14.0",
     "@eslint/js": "^9.14.0",
     "globals": "^15.12.0"

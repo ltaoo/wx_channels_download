@@ -1,16 +1,12 @@
 (() => {
   const config = {
+    // api: "127.0.0.1:6752",
     api: "debug.weixin.qq.com",
-    clientOrigin: "https://debug.weixin.qq.com",
+    // clientOrigin: "https://debug.weixin.qq.com",
   };
-  if (WXU.config.pagespyServerAPI) {
-    config.api = WXU.config.pagespyServerAPI;
-  }
-  if (WXU.config.pagespyServerProtocol) {
-    config.clientOrigin = WXU.config.pagespyServerProtocol + "://" + config.api;
-  }
   try {
-    window.$pageSpy = new PageSpy({
+    // @ts-ignore
+    new PageSpy({
       ...config,
       project: "WXChannel",
       autoRender: true,

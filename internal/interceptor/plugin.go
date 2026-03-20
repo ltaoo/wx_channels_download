@@ -49,7 +49,7 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInjectedFiles) []*proxy.Plugin {
+func CreateChannelInterceptorPlugins(interceptor *Interceptor) []*proxy.Plugin {
 	version := interceptor.Version
 	cfg := interceptor.Settings
 	variables := interceptor.FrontendVariables
@@ -58,24 +58,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if strings.Contains(pathname, "jszip.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSZip))
-				return
-			}
-			if strings.Contains(pathname, "FileSaver.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSFileSaver))
-				return
-			}
-			if strings.Contains(pathname, "recorder.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSRecorder))
-				return
-			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
@@ -175,72 +157,69 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
+				assets_base := fmt.Sprintf("%s://%s/__wx_channels_assets", cfg.APIServerProtocol, cfg.APIServerAddr)
+				d := NewAssetDir(assets_base, v)
 				inserted_scripts := ""
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
-					inserted_scripts += script_error
+					inserted_scripts += d.Tag("src/error.js")
 				}
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUtils)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUI)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessIcons)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessProviderWeb)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
+				inserted_scripts += d.Tag("lib/mitt.umd.js")
+				inserted_scripts += d.Tag("lib/timeless.reactive.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.utils.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.ui.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.kit.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.headless.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.icons.umd.min.js")
+				inserted_scripts += d.Tag("lib/timeless.web.umd.min.js")
+				inserted_scripts += d.Tag("lib/floating-ui.core.1.7.4.min.js")
+				inserted_scripts += d.Tag("lib/floating-ui.dom.1.7.4.min.js")
+				inserted_scripts += d.Tag("lib/weui.min.css")
+				inserted_scripts += d.Tag("lib/weui.min.js")
+				inserted_scripts += d.Tag("lib/wui.umd.js")
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
 				inserted_scripts += script_config
 				variable_byte, _ := json.Marshal(variables)
 				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
 				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
+				inserted_scripts += d.Tag("src/eventbus.js")
+				inserted_scripts += d.Tag("src/utils.js")
+				inserted_scripts += d.Tag("src/components.js")
+				inserted_scripts += d.Tag("src/downloaderv2.js")
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
 				// 必须放在 JSUtils 后面
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
-					script_debug := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
-					inserted_scripts += script_pagespy + script_debug
+					inserted_scripts += d.Tag("lib/pagespy.min.js")
+					inserted_scripts += d.Tag("src/pagespy.js")
 				}
+				// fmt.Println("inserted_scripts", inserted_scripts)
 				if pathname == "/web/pages/home" {
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
+					inserted_scripts += d.Tag("src/home.js")
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_main
 				}
 				if pathname == "/web/pages/feed" {
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSFeedProfilePage)
+					inserted_scripts += d.Tag("src/feed.js")
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_main
 				}
 				if pathname == "/web/pages/live" {
-					script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveProfilePage)
+					inserted_scripts += d.Tag("src/live.js")
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_live_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_live_main
 				}
 				if pathname == "/web/pages/profile" {
-					script_contact_main := fmt.Sprintf(`<script>%s</script>`, files.JSContactPage)
+					inserted_scripts += d.Tag("src/profile.js")
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_contact_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_contact_main
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 				ctx.SetResponseBody(html)
@@ -501,7 +480,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 	return []*proxy.Plugin{plugin1, plugin2}
 }
 
-func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
+func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor) *proxy.Plugin {
 	version := interceptor.Version
 	v := "?t=" + version
 	return &proxy.Plugin{
@@ -522,7 +501,7 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 				inserted_scripts := ""
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 					/** 核心逻辑 */
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
+					script_main := fmt.Sprintf(`<script>%s</script>`, JSHomePage)
 					inserted_scripts += script_main
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)

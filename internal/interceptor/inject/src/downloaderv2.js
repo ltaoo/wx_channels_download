@@ -1,7 +1,7 @@
+/// <reference path="utils.js" />
 /**
  * @file 下载管理面板2
  */
-var __wx_username;
 var ua = navigator.userAgent || navigator.platform || "";
 var isWin = /Windows|Win/i.test(ua);
 
@@ -49,132 +49,6 @@ function total_speed(tasks) {
     }
   });
   return sum;
-}
-
-async function __wx_handle_api_call(msg, socket) {
-  var { id, key, data } = msg;
-  console.log("[DOWNLOADER]__wx_handle_api_call", id, key, data);
-  function resp(body) {
-    socket.send(
-      JSON.stringify({
-        id,
-        data: body,
-      }),
-    );
-  }
-  if (key === "key:channels:contact_list") {
-    var payload = {
-      query: data.keyword,
-      scene: 13,
-      requestId: String(new Date().valueOf()),
-    };
-    var r = await WXU.API2.finderSearch(payload);
-    console.log("[DOWNLOADER]finderSearch", r);
-    /** @type {SearchResp} */
-    var { infoList, objectList } = r.data;
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:feed_list") {
-    var payload = {
-      username: data.username,
-      finderUsername: __wx_username,
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      needFansCount: 0,
-      objectId: "0",
-    };
-    var r = await WXU.API.finderUserPage(payload);
-    console.log("[DOWNLOADER]finderUserPage", r);
-    /** @type {ChannelsObject[]} */
-    const object = r.data.object || [];
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:live_replay_list") {
-    var payload = {
-      username: data.username,
-      finderUsername: __wx_username || data.username,
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      needFansCount: 0,
-      objectId: "0",
-    };
-    var r = await WXU.API3.finderLiveUserPage(payload);
-    console.log("[DOWNLOADER]finderLiveUserPage", r);
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:interactioned_list") {
-    var payload = {
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      tabFlag: data.flag ? Number(data.flag) : 7,
-    };
-    var r = await WXU.API4.finderGetInteractionedFeedList(payload);
-    console.log("[DOWNLOADER]finderGetInteractionedFeedList", r);
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:feed_profile") {
-    console.log("before finderGetCommentProfile", data.oid, data.nid);
-    try {
-      if (data.url) {
-        var u = new URL(decodeURIComponent(data.url));
-        data.oid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("oid"),
-        );
-        data.nid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("nid"),
-        );
-      }
-      var payload = {
-        needObject: 1,
-        lastBuffer: "",
-        scene: 146,
-        direction: 2,
-        identityScene: 2,
-        pullScene: 6,
-        objectid: (() => {
-          if (data.oid.includes("_")) {
-            return data.oid.split("_")[0];
-          }
-          return data.oid;
-        })(),
-        objectNonceId: data.nid,
-        encrypted_objectid: "",
-      };
-      var r = await WXU.API.finderGetCommentDetail(payload);
-      /** @type {MediaProfileResp} */
-      var { object } = r.data;
-      resp({
-        ...r,
-        payload,
-      });
-      return;
-    } catch (err) {
-      resp({
-        errCode: 1011,
-        errMsg: err.message,
-        payload,
-      });
-      return;
-    }
-  }
-  resp({
-    errCode: 1000,
-    errMsg: "未匹配的key",
-    payload: msg,
-  });
 }
 
 function DownloaderPanelViewModel() {
@@ -259,33 +133,47 @@ function DownloaderPanelViewModel() {
     },
     connect() {
       return new Promise((resolve, reject) => {
-        const ws = new WebSocket(
-          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+        let downloaderReady = false;
+        let settled = false;
+        function tryResolve() {
+          if (settled) return;
+          if (downloaderReady) {
+            settled = true;
+            resolve(true);
+          }
+        }
+        function fail(e) {
+          if (settled) return;
+          settled = true;
+          reject(e);
+        }
+        // /ws/downloader — only handles tasks, batch_tasks, event, clear
+        const downloaderWs = new WebSocket(
+          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/downloader",
         );
-        ws.onopen = () => {
+        downloaderWs.onopen = () => {
           _page = 1;
           _loading = false;
+          downloaderReady = true;
           if (WXU.downloader) {
             WXU.downloader.status = "connected";
           }
-          resolve(true);
+          tryResolve();
         };
-        ws.onclose = () => {
+        downloaderWs.onclose = () => {
           WXU.error({ msg: "ws连接已关闭，请刷新页面" });
           if (WXU.downloader) {
             WXU.downloader.status = "disconnected";
           }
         };
-        ws.onerror = (e) => {
+        downloaderWs.onerror = (e) => {
           if (WXU.downloader && WXU.downloader.status !== "connected") {
-            reject(e);
+            fail(e);
           }
         };
-        ws.onmessage = (ev) => {
+        downloaderWs.onmessage = (ev) => {
           const [err, msg] = WXU.parseJSON(ev.data);
-          if (err) {
-            return;
-          }
+          if (err) return;
           if (msg.type === "tasks") {
             const { list, total } = msg.data;
             const tasks = list.map((t) => methods.formatTask(t));
@@ -302,38 +190,20 @@ function DownloaderPanelViewModel() {
           }
           if (msg.type === "event") {
             const data = msg && msg.data ? msg.data : null;
-            const task = data ? data.Task || data.task : null; // 兼容大小写字段
-            if (!task) {
-              return;
-            }
+            const task = data ? data.Task || data.task : null;
+            if (!task) return;
             methods.upsert(methods.formatTask(task));
+            return;
           }
-          if (msg.type === "api_call") {
-            __wx_handle_api_call(msg.data, ws);
+          if (msg.type === "clear") {
+            tasks_.as([]);
+            task_count_.as(0);
+            ui.waterfall$.methods.cleanColumns();
           }
         };
       });
     },
-    connect_local_ws() {
-      const ws_url =
-        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
-      const ws = new WebSocket(ws_url);
-      ws.onclose = (e) => {
-        WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
-      };
-      ws.onerror = (e) => {
-        WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
-      };
-      ws.onmessage = (ev) => {
-        const [err, msg] = WXU.parseJSON(ev.data);
-        if (err) {
-          return;
-        }
-        if (msg.type === "api_call") {
-          __wx_handle_api_call(msg.data, ws);
-        }
-      };
-    },
+
     async start(task) {
       const id = task.id;
       var [err, data] = await WXU.request({
@@ -491,7 +361,7 @@ function DownloaderPanelViewModel() {
         ui.view$.finishLoadingMore();
       },
     }),
-    waterfall$: new Timeless.ui.WaterfallModel({
+    waterfall$: Timeless.ui.WaterfallModel({
       column: 1,
       size: 20,
       buffer: 10,
@@ -621,7 +491,7 @@ function DownloaderPanelView(props, children) {
                   const isRunning = t.status === "running";
 
                   let statusText = t.status;
-                  let statusColor = "var(--FG-1)";
+                  let statusColor = "var(--weui-FG-1)";
                   var isFailed = t.status === "failed" || t.status === "error";
                   var isPending = t.status === "pending";
                   if (isRunning) {
@@ -719,7 +589,7 @@ function DownloaderPanelView(props, children) {
                                     cx: "25",
                                     cy: "25",
                                     r: radius,
-                                    stroke: "var(--FG-3)",
+                                    stroke: "var(--weui-FG-3)",
                                     "stroke-width": "3",
                                     fill: "none",
                                   }),
@@ -824,7 +694,7 @@ function DownloaderPanelView(props, children) {
                                 [
                                   Show(
                                     {
-                                      when: isOpenExternal,
+                                      when: !!isOpenExternal,
                                       fallback: [
                                         DangerouslyInnerHTML(FolderIcon),
                                       ],
@@ -932,7 +802,7 @@ function DownloaderEntry(props) {
       View(
         {
           class:
-            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer",
+            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
         },
         [
           DangerouslyInnerHTML(
@@ -952,7 +822,7 @@ function DownloaderEntry(props) {
     mounted = true;
 
     const popover$ = new Timeless.ui.PopoverCore({
-      offsetY: 4,
+      // offsetY: 4,
     });
     WXU.downloader.show = function () {
       popover$.show();
@@ -994,11 +864,4 @@ function DownloaderEntry(props) {
       insert_downloader($btn_wrap, $download_panel_button);
     });
   }
-  if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
-    vm$.methods.connect_local_ws();
-  }
 })();
-
-WXU.onInit((data) => {
-  __wx_username = data.mainFinderUsername;
-});

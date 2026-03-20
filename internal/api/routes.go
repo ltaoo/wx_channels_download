@@ -1,30 +1,44 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"wx_channel/internal/interceptor"
 )
 
 func (c *APIClient) SetupRoutes() {
+	// 首页
+	c.engine.GET("/", c.handleHome)
+	// UI 静态资源 - index.js, store/, pages/
+	if uiFS, err := UIFS(); err == nil {
+		c.engine.GET("/index.js", c.serveUIFile(uiFS))
+		c.engine.GET("/store/*filepath", c.serveUIFile(uiFS))
+		c.engine.GET("/pages/*filepath", c.serveUIFile(uiFS))
+	}
 	// favicon
 	c.engine.GET("/favicon.ico", c.handleFavicon)
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
-		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
-		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 		// 视频号接口
+		c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 		c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
 		c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
 		c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
 		c.engine.GET("/api/channels/live/replay/list", c.handleFetchLiveReplayList)
 		c.engine.GET("/api/channels/interactioned/list", c.handleFetchInteractionedFeedList)
 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
-		// 公众号接口 本地服务
+		// 公众号接口
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
+		// 文件传输助手接口
+		c.engine.GET("/filehelper", c.filehelper.HandlePage)
 		c.engine.GET("/api/filehelper/qrcode", c.filehelper.HandleGetQRCode)
 		c.engine.GET("/api/filehelper/login/wait", c.filehelper.HandleWaitLogin)
 		c.engine.GET("/api/filehelper/status", c.filehelper.HandleGetStatus)
@@ -34,9 +48,12 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/filehelper/send", c.filehelper.HandleSendMessage)
 		c.engine.POST("/api/filehelper/logout", c.filehelper.HandleLogout)
 		c.engine.POST("/api/filehelper/parse_finder_feed", c.filehelper.HandleParseFinderFeed)
+		// 文件操作
+		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
+		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 	}
 	// 下载任务接口
-	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
+	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)
 	c.engine.GET("/api/task/list", c.handleFetchTaskList)
 	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
 	c.engine.POST("/api/task/create", c.handleCreateFeedDownloadTask)
@@ -65,14 +82,56 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
-	// 文件传输助手接口
-	c.engine.GET("/filehelper", c.filehelper.HandlePage)
-	// c.engine.GET("/api/test", c.handleTest)
 
+	// 静态资源 - lib JS/CSS 文件
+	if libFS, err := interceptor.LibFS(); err == nil {
+		c.engine.StaticFS("/__wx_channels_assets/lib", http.FS(libFS))
+	}
+	// 静态资源 - src JS 文件
+	if srcFS, err := interceptor.SrcFS(); err == nil {
+		c.engine.StaticFS("/__wx_channels_assets/src", http.FS(srcFS))
+	}
+
+	// SPA fallback - 非 API/静态资源的 GET 请求返回 index.html，由前端路由处理
 	c.engine.NoRoute(func(ctx *gin.Context) {
+		// 只对 GET 请求做 SPA fallback
+		if ctx.Request.Method != http.MethodGet {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		p := ctx.Request.URL.Path
+		// API、WebSocket、RSS、静态资源等路径不做 fallback
+		if strings.HasPrefix(p, "/api/") ||
+			strings.HasPrefix(p, "/ws/") ||
+			strings.HasPrefix(p, "/rss/") ||
+			strings.HasPrefix(p, "/__wx_channels_assets/") {
+			ctx.Header("Content-Type", "application/json; charset=utf-8")
+			ctx.String(http.StatusNotFound, `{"code":404,"msg":"not found"}`)
+			return
+		}
+		// 带扩展名的请求视为静态资源，返回 404
+		if ext := path.Ext(p); ext != "" {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		// 其余 GET 请求 fallback 到 index.html
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
-		ctx.String(http.StatusNotFound, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>404 Not Found</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b0c0f;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh}.box{max-width:560px;padding:24px 28px;border-radius:12px;background:#14171f;box-shadow:0 8px 24px rgba(0,0,0,.3)}h1{margin:0 0 8px;font-size:24px}p{margin:0;color:#b0b0b0}a{color:#8ab4f8;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class=\"box\"><h1>404 未找到页面</h1><p>请求的路径不存在。返回 <a href=\"/\">首页</a></p></div></body></html>")
+		ctx.String(http.StatusOK, string(files.HTMLHome))
 	})
+}
+
+func (c *APIClient) handleHome(ctx *gin.Context) {
+	ctx.Header("Content-Type", "text/html; charset=utf-8")
+	ctx.String(http.StatusOK, string(files.HTMLHome))
+}
+
+func (c *APIClient) serveUIFile(fsys fs.FS) gin.HandlerFunc {
+	fileServer := http.FileServer(http.FS(fsys))
+	return func(ctx *gin.Context) {
+		ctx.Header("Content-Type", "application/javascript; charset=utf-8")
+		ctx.Header("Cache-Control", "no-cache")
+		fileServer.ServeHTTP(ctx.Writer, ctx.Request)
+	}
 }
 
 func (c *APIClient) handleFavicon(ctx *gin.Context) {
@@ -83,21 +142,19 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
 	err := c.channels.Validate()
+	channels_data := gin.H{
+		"available": false,
+	}
+	data := gin.H{
+		"version":  c.cfg.Version,
+		"channels": channels_data,
+	}
 	if err != nil {
-		ctx.JSON(200, gin.H{
-			"code": 1,
-			"msg":  err.Error(),
-			"data": gin.H{
-				"available": false,
-			},
-		})
-		return
+		channels_data["available"] = false
 	}
 	ctx.JSON(200, gin.H{
 		"code": 0,
 		"msg":  "ok",
-		"data": gin.H{
-			"available": true,
-		},
+		"data": data,
 	})
 }

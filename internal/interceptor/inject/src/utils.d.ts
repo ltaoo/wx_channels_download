@@ -9,7 +9,7 @@ type LogMsg = {
 };
 type ErrorMsg = {
   /** 是否同时调用 alert */
-  alert?: 1;
+  alert?: number;
   /** 错误消息内容 */
   msg: string;
 };
@@ -24,6 +24,12 @@ type ChannelsConfig = {
   downloadInFrontend: boolean;
   /** API 服务地址 */
   apiServerAddr: string;
+  remoteServerEnabled: string;
+  remoteServerProtocol: string;
+  remoteServerHostname: string;
+  remoteServerPort: number;
+  MaxRunning: number;
+  downloadForceCheckAllFeeds: boolean;
 };
 type DropdownMenuItemPayload = {
   label: string;
@@ -33,6 +39,7 @@ type DropdownMenuItemPayload = {
 /** 视频号原始的视频数据 */
 type ChannelsFeed = {
   id: string;
+  description?: string;
   objectDesc: {
     /** 4视频 9直播 */
     mediaType: number;
@@ -74,9 +81,10 @@ type ChannelsFeed = {
 /** 视频号原始的 media */
 type ChannelsMedia = {
   url: string;
+  urlToken: string;
   coverUrl: string;
   fileSize: number;
-  decodeKey: string;
+  decodeKey: number;
   /** 时长 */
   videoPlayLen: number;
   width: number;
@@ -93,7 +101,7 @@ type ChannelsMediaSpec = {
  */
 type FeedProfile = {
   type: "media" | "picture" | "live";
-  id: number;
+  id: string;
   nonce_id: string;
   /** 标题 */
   title: string;
