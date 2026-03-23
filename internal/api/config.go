@@ -14,6 +14,7 @@ import (
 
 type APIConfig struct {
 	Version                      string
+	Mode string
 	Original                     *config.Config
 	RootDir                      string
 	DownloadDir                  string
@@ -47,6 +48,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	mp_token_filepath := viper.GetString("mp.tokenFilepath")
 	api_cfg := &APIConfig{
 		Version:                      c.Version,
+		Mode:                         c.Mode,
 		Original:                     c,
 		RootDir:                      c.RootDir,
 		DownloadDir:                  dir,

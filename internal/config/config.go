@@ -21,6 +21,7 @@ type Config struct {
 	Error    error
 	Debug    bool
 	Version  string
+	Mode     string
 }
 
 func New(ver string, mode string) *Config {
@@ -60,6 +61,7 @@ func New(ver string, mode string) *Config {
 		FullPath: config_filepath,
 		Existing: has_config,
 		Version:  ver,
+		Mode:     mode,
 	}
 	return c
 }

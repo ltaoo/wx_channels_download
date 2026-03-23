@@ -12,8 +12,8 @@ import (
 	"wx_channel/pkg/platform"
 )
 
-var AppVer = "260317.1"
-var Mode = "debug"
+var AppVer = "260323"
+var Mode = "dev"
 
 func main() {
 	if Mode == "release" {

@@ -52,252 +52,153 @@ function total_speed(tasks) {
 }
 
 function DownloaderPanelViewModel() {
+  const ITEM_HEIGHT = 82;
+  const GUTTER = 8;
+  const _pageSize = 20;
+
+  function formatTask(task) {
+    const r = {
+      height: ITEM_HEIGHT,
+      ...task,
+      ...(() => {
+        if (!task.meta || !task.meta.opts) {
+          return {};
+        }
+        var p = task.meta.opts.path || "";
+        var n = task.meta.opts.name || "";
+        var sep = isWin ? "\\" : "/";
+        if (!p || !n) {
+          return {};
+        }
+        return {
+          path: p,
+          name: n,
+          filepath: p.endsWith(sep) ? p + n : p + sep + n,
+        };
+      })(),
+    };
+    return r;
+  }
+
+  const http_client = new Timeless.HttpClientCore({
+    headers: { "Content-Type": "application/json" },
+    hostname: APIHostname,
+  });
+  Timeless.web.provide_http_client(http_client);
+  const request = Timeless.kit.request_factory({
+    headers: { "Content-Type": "application/json" },
+    process(r) {
+      if (r.error) {
+        return Timeless.Result.Err(r.error);
+      }
+      const { code, msg, data } = r.data;
+      if (code !== 0) {
+        return Timeless.Result.Err(msg, code, data);
+      }
+      return Timeless.Result.Ok(data);
+    },
+  });
+
+  const taskListReq = new Timeless.kit.RequestCore(
+    (params) => request.get("/api/task/list", params),
+    {
+      client: http_client,
+      process(r) {
+        if (r.error) {
+          return r.error;
+        }
+        console.log(r.data);
+        return Timeless.Result.Ok({
+          list: (r.data.list || []).map((t) => formatTask(t)),
+          total: r.data.total || 0,
+          page: r.data.page || 1,
+          pageSize: r.data.page_size || 50,
+        });
+      },
+    },
+  );
+
+  const deleteReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/delete", { id }),
+    { client: http_client },
+  );
+  const startReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/start", { id }),
+    { client: http_client },
+  );
+  const pauseReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/pause", { id }),
+    { client: http_client },
+  );
+  const resumeReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/resume", { id }),
+    { client: http_client },
+  );
+  const clearReq = new Timeless.kit.RequestCore(
+    () => request.post("/api/task/clear"),
+    { client: http_client },
+  );
+  const showFileReq = new Timeless.kit.RequestCore(
+    ({ path, name, id }) => request.post("/api/show_file", { path, name, id }),
+    { client: http_client },
+  );
+
+  const list$ = new Timeless.kit.ListCore(taskListReq, {
+    pageSize: _pageSize,
+  });
+
   const tasks_ = refarr([]);
   const task_count_ = ref(0);
   const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
-  let _page = 1;
-  let _loading = false;
-  const ITEM_HEIGHT = 82;
-  const GUTTER = 8;
-  const _pageSize = 50;
-  const methods = {
-    formatTask(task) {
-      const r = {
-        height: ITEM_HEIGHT,
-        ...task,
-        ...(() => {
-          if (!task.meta || !task.meta.opts) {
-            return {};
-          }
-          var p = task.meta.opts.path || "";
-          var n = task.meta.opts.name || "";
-          var sep = isWin ? "\\" : "/";
-          if (!p || !n) {
-            return {};
-          }
-          return {
-            path: p,
-            name: n,
-            filepath: p.endsWith(sep) ? p + n : p + sep + n,
-          };
-        })(),
-      };
-      // console.log("format task", task, r);
-      return r;
-    },
-    /** 批量插入下载记录（头部插入），已存在的记录走更新 */
-    batchInsert(tasks) {
-      if (!tasks || !tasks.length) return;
-      const newTasks = [];
-      for (let i = 0; i < tasks.length; i++) {
-        const t = tasks[i];
-        if (!t || !t.id) continue;
-        const matched = tasks_.find((v) => v.id === t.id);
-        if (matched) {
-          matched.assign(t);
-        } else {
-          newTasks.push(t);
-        }
-      }
-      if (newTasks.length) {
-        tasks_.unshift(...newTasks);
-        task_count_.as((prev) => prev + newTasks.length);
-        ui.waterfall$.methods.unshiftItems(newTasks);
-        const addedHeight = newTasks.length * (ITEM_HEIGHT + GUTTER);
-        ui.view$.addScrollTop(addedHeight);
-      }
-    },
-    /** 更新或插入下载记录 */
-    upsert(task) {
-      console.log("[]upsert task", task);
-      if (!task || !task.id) {
-        return;
-      }
-      const matched = tasks_.find((v) => v.id === task.id);
-      if (!matched) {
-        console.log("[]insert task", task);
-        task_count_.as((prev) => {
-          return prev + 1;
-        });
-        tasks_.unshift(task);
-        // ui.waterfall$.methods.appendItems([task]);
-        ui.waterfall$.methods.unshiftItems([task]);
-        const addedHeight = 1 * ITEM_HEIGHT + GUTTER;
-        ui.view$.addScrollTop(addedHeight);
-        return;
-      }
-      console.log("[]update task", task);
-      matched.assign(task);
-    },
-    connect() {
-      return new Promise((resolve, reject) => {
-        let downloaderReady = false;
-        let settled = false;
-        function tryResolve() {
-          if (settled) return;
-          if (downloaderReady) {
-            settled = true;
-            resolve(true);
-          }
-        }
-        function fail(e) {
-          if (settled) return;
-          settled = true;
-          reject(e);
-        }
-        // /ws/downloader — only handles tasks, batch_tasks, event, clear
-        const downloaderWs = new WebSocket(
-          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/downloader",
-        );
-        downloaderWs.onopen = () => {
-          _page = 1;
-          _loading = false;
-          downloaderReady = true;
-          if (WXU.downloader) {
-            WXU.downloader.status = "connected";
-          }
-          tryResolve();
-        };
-        downloaderWs.onclose = () => {
-          WXU.error({ msg: "ws连接已关闭，请刷新页面" });
-          if (WXU.downloader) {
-            WXU.downloader.status = "disconnected";
-          }
-        };
-        downloaderWs.onerror = (e) => {
-          if (WXU.downloader && WXU.downloader.status !== "connected") {
-            fail(e);
-          }
-        };
-        downloaderWs.onmessage = (ev) => {
-          const [err, msg] = WXU.parseJSON(ev.data);
-          if (err) return;
-          if (msg.type === "tasks") {
-            const { list, total } = msg.data;
-            const tasks = list.map((t) => methods.formatTask(t));
-            tasks_.as(tasks);
-            task_count_.as(total);
-            ui.waterfall$.methods.appendItems(tasks);
-            return;
-          }
-          if (msg.type === "batch_tasks") {
-            const list = Array.isArray(msg.data) ? msg.data : [];
-            const tasks = list.map((t) => methods.formatTask(t));
-            methods.batchInsert(tasks);
-            return;
-          }
-          if (msg.type === "event") {
-            const data = msg && msg.data ? msg.data : null;
-            const task = data ? data.Task || data.task : null;
-            if (!task) return;
-            methods.upsert(methods.formatTask(task));
-            return;
-          }
-          if (msg.type === "clear") {
-            tasks_.as([]);
-            task_count_.as(0);
-            ui.waterfall$.methods.cleanColumns();
-          }
-        };
-      });
-    },
 
-    async start(task) {
-      const id = task.id;
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/start",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "running",
-      });
+  const methods = {
+    syncFromList() {
+      var ds = list$.response.dataSource || [];
+      console.log("[]syncFromList", list$.response);
+      tasks_.as(ds);
+      task_count_.as(list$.response.total || 0);
+      ui.waterfall$.methods.cleanColumns();
+      ui.waterfall$.methods.appendItems(ds);
     },
-    async pause(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/pause",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "paused",
-      });
+    async deleteTask(task) {
+      await deleteReq.run(task.id);
+      list$.deleteItem((t) => t.id === task.id);
+      methods.syncFromList();
     },
-    async delete(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/delete",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      tasks_.remove(matched);
-      task_count_.as((prev) => prev - 1);
-      ui.waterfall$.methods.deleteCell((t) => t.id === task.id);
+    async startTask(task) {
+      await startReq.run(task.id);
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
+      methods.syncFromList();
     },
-    async resume(task) {
+    async pauseTask(task) {
+      await pauseReq.run(task.id);
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "paused" } : t,
+      );
+      methods.syncFromList();
+    },
+    async resumeTask(task) {
       if (running_count_.value > WXU.config.MaxRunning) {
         return;
       }
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/resume",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "running",
-      });
+      await resumeReq.run(task.id);
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
+      methods.syncFromList();
     },
-    async clear() {
-      await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/clear",
-      });
+    async clearTasks() {
+      await clearReq.run();
+      list$.clear();
       tasks_.as([]);
       task_count_.as(0);
       ui.waterfall$.methods.cleanColumns();
     },
-    async open(task) {
+    async openTask(task) {
       const { path, name } = task;
       if (!path || !name) {
         WXU.error({
@@ -310,60 +211,41 @@ function DownloaderPanelViewModel() {
         window.open(u);
         return;
       }
-      // Use original API for local file
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/show_file",
-        body: { path, name, id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-      }
+      await showFileReq.run({ path, name, id: task.id });
     },
   };
+
+  list$.onStateChange(() => {
+    methods.syncFromList();
+  });
+  list$.onError((err) => {
+    WXU.error({
+      msg: err.message,
+    });
+  });
+
   const ui = {
     view$: new Timeless.ui.ScrollViewCore({
       onScroll(pos) {
+        console.log("[]the ui.ScrollViewCore onScroll callback", pos.scrollTop);
         ui.waterfall$.methods.handleScroll({ scrollTop: pos.scrollTop });
       },
       async onReachBottom() {
-        if (_loading) {
-          return;
-        }
-        if (tasks_.value.length >= task_count_.value) {
+        if (list$.response.loading) {
           ui.view$.finishLoadingMore();
           return;
         }
-        _loading = true;
-        _page += 1;
-        var [err, data] = await WXU.request({
-          method: "GET",
-          url:
-            APIHostname +
-            "/api/task/list?page=" +
-            _page +
-            "&page_size=" +
-            _pageSize,
-        });
-        _loading = false;
-        if (err || !data || !data.list) {
-          _page -= 1;
+        if (list$.response.noMore) {
           ui.view$.finishLoadingMore();
           return;
         }
-        const tasks = data.list.map((t) => methods.formatTask(t));
-        // console.log(tasks);
-        task_count_.as(data.total);
-        tasks_.push(...tasks);
-        ui.waterfall$.methods.appendItems(tasks);
+        await list$.loadMore();
         ui.view$.finishLoadingMore();
       },
     }),
     waterfall$: Timeless.ui.WaterfallModel({
       column: 1,
-      size: 20,
+      size: _pageSize,
       buffer: 10,
       gutter: GUTTER,
     }),
@@ -374,7 +256,7 @@ function DownloaderPanelViewModel() {
         new Timeless.ui.MenuItemCore({
           label: "清空下载记录",
           async onClick() {
-            await methods.clear();
+            await methods.clearTasks();
             ui.dropdown$.hide();
           },
         }),
@@ -396,7 +278,7 @@ function DownloaderPanelViewModel() {
         if (WXU.downloader.status === "connected") return true;
         for (let i = 0; i < 3; i++) {
           try {
-            await methods.connect();
+            await list$.init();
             return true;
           } catch (e) {
             console.warn("Reconnect attempt " + (i + 1) + " failed");
@@ -405,7 +287,7 @@ function DownloaderPanelViewModel() {
         }
         return false;
       };
-      methods.connect().catch((e) => WXU.error({ msg: "建立ws连接失败" }));
+      list$.init();
     },
   };
 }
@@ -442,347 +324,350 @@ function DownloaderPanelView(props, children) {
         ],
       ),
     ]),
-    ScrollView(
+    View(
       {
         class: "wx-dl-list wx-dl-dark-scroll",
-        style: "background-color: transparent; margin-top: 0;",
-        store: vm$.ui.view$,
+        style: "overflow: hidden; height: 480px;",
       },
       [
-        Show(
-          {
-            when: computed(task_count_, (d) => d > 0),
-            fallback: [
-              View(
-                {
-                  class: "weui-loadmore weui-loadmore_line",
-                },
-                [
-                  View(
-                    {
-                      class: "weui-loadmore__tips",
-                    },
-                    ["暂无下载任务"],
-                  ),
-                ],
-              ),
-            ],
-          },
-          [
-            Waterfall({
-              // each: tasks_,
-              store: vm$.ui.waterfall$,
-              class: "scroll-view-waterfall !overflow-visible !h-auto",
-              style: "",
-              render(task) {
-                const iconSize = "50px";
-                const state_ = computed(task, (t) => {
-                  // console.log("the task is changed", t.status);
-                  const pr = format_download_percent(t);
-                  const isCompleted =
-                    t.status === "done" ||
-                    t.status === "completed" ||
-                    t.status === "success" ||
-                    t.status === "finished" ||
-                    (pr === 100 && t.status !== "running");
+        ScrollView({ store: vm$.ui.view$ }, [
+          Show(
+            {
+              when: computed(task_count_, (d) => d > 0),
+              fallback: [
+                View(
+                  {
+                    class: "weui-loadmore weui-loadmore_line",
+                  },
+                  [
+                    View(
+                      {
+                        class: "weui-loadmore__tips",
+                      },
+                      ["暂无下载任务"],
+                    ),
+                  ],
+                ),
+              ],
+            },
+            [
+              Waterfall({
+                store: vm$.ui.waterfall$,
+                class: "scroll-view-waterfall !overflow-visible !h-auto",
+                render(task) {
+                  const iconSize = "50px";
+                  const state_ = computed(task, (t) => {
+                    // console.log("the task is changed", t.status);
+                    const pr = format_download_percent(t);
+                    const isCompleted =
+                      t.status === "done" ||
+                      t.status === "completed" ||
+                      t.status === "success" ||
+                      t.status === "finished" ||
+                      (pr === 100 && t.status !== "running");
 
-                  const isPaused =
-                    t.status === "paused" || t.status === "pause";
-                  const isRunning = t.status === "running";
+                    const isPaused =
+                      t.status === "paused" || t.status === "pause";
+                    const isRunning = t.status === "running";
 
-                  let statusText = t.status;
-                  let statusColor = "var(--weui-FG-1)";
-                  var isFailed = t.status === "failed" || t.status === "error";
-                  var isPending = t.status === "pending";
-                  if (isRunning) {
-                    const speed = format_download_speed(
-                      t.progress ? t.progress.speed : 0,
-                    );
-                    statusText = `${speed} • ${pr}%`;
-                  } else if (isCompleted) {
-                    statusText = "已完成";
-                    // Calculate size
-                    const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-                    if (total) {
-                      statusText = WXU.bytes_to_size(total);
+                    let statusText = t.status;
+                    let statusColor = "var(--weui-FG-1)";
+                    var isFailed =
+                      t.status === "failed" || t.status === "error";
+                    var isPending = t.status === "pending";
+                    if (isRunning) {
+                      const speed = format_download_speed(
+                        t.progress ? t.progress.speed : 0,
+                      );
+                      statusText = `${speed} • ${pr}%`;
+                    } else if (isCompleted) {
+                      statusText = "已完成";
+                      // Calculate size
+                      const total = t.meta && t.meta.res ? t.meta.res.size : 0;
+                      if (total) {
+                        statusText = WXU.bytes_to_size(total);
+                      }
+                    } else if (isFailed) {
+                      statusText = "下载失败";
+                      statusColor = "#FA5151";
+                    } else if (isPending) {
+                      statusText = "等待中...";
+                    } else if (isPaused) {
+                      statusText = `已暂停 • ${pr}%`;
                     }
-                  } else if (isFailed) {
-                    statusText = "下载失败";
-                    statusColor = "#FA5151";
-                  } else if (isPending) {
-                    statusText = "等待中...";
-                  } else if (isPaused) {
-                    statusText = `已暂停 • ${pr}%`;
-                  }
-                  return {
-                    pr,
-                    isCompleted,
-                    isPaused,
-                    isRunning,
-                    isFailed,
-                    canResume: isFailed || isPaused,
-                    statusText,
-                    statusColor,
-                  };
-                });
-                const isOpenExternal = WXU.config.remoteServerEnabled;
-                const filename = task.name;
-                const PrefixIcon = computed(filename, (t) => {
-                  const filename = t;
-                  let selectedIcon = FileIcon;
-                  if (filename) {
-                    const ext = filename.split(".").pop().toLowerCase();
-                    if (ext === "mp3") {
-                      selectedIcon = MP3Icon;
-                    } else if (ext === "mp4") {
-                      selectedIcon = MP4Icon;
-                    } else if (
-                      ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
-                    ) {
-                      selectedIcon = ImageIcon;
+                    return {
+                      pr,
+                      isCompleted,
+                      isPaused,
+                      isRunning,
+                      isFailed,
+                      canResume: isFailed || isPaused,
+                      statusText,
+                      statusColor,
+                    };
+                  });
+                  const isOpenExternal = WXU.config.remoteServerEnabled;
+                  const filename = task.name;
+                  const PrefixIcon = computed(filename, (t) => {
+                    const filename = t;
+                    let selectedIcon = FileIcon;
+                    if (filename) {
+                      const ext = filename.split(".").pop().toLowerCase();
+                      if (ext === "mp3") {
+                        selectedIcon = MP3Icon;
+                      } else if (ext === "mp4") {
+                        selectedIcon = MP4Icon;
+                      } else if (
+                        ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
+                      ) {
+                        selectedIcon = ImageIcon;
+                      }
                     }
-                  }
-                  return selectedIcon
-                    .replace('width="20"', 'width="32"')
-                    .replace('height="20"', 'height="32"');
-                });
-                const radius = 22;
-                const circumference = 2 * Math.PI * radius;
-                const offset = computed(state_, (d) => {
-                  return circumference - (d.pr / 100) * circumference;
-                });
-                const strokeColor = computed(state_, (d) => {
-                  return d.isPaused ? "#FBC02D" : "#07C160";
-                });
+                    return selectedIcon
+                      .replace('width="20"', 'width="32"')
+                      .replace('height="20"', 'height="32"');
+                  });
+                  const radius = 22;
+                  const circumference = 2 * Math.PI * radius;
+                  const offset = computed(state_, (d) => {
+                    return circumference - (d.pr / 100) * circumference;
+                  });
+                  const strokeColor = computed(state_, (d) => {
+                    return d.isPaused ? "#FBC02D" : "#07C160";
+                  });
 
-                return View({ class: "weui-cell wx-dl-item" }, [
-                  View(
-                    {
-                      class: "weui-cell__hd",
-                      style: `position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);`,
-                    },
-                    [
-                      Show(
-                        {
-                          when: computed(state_, (t) => {
-                            return t.isRunning || t.isPaused;
-                          }),
-                          fallback: [DangerouslyInnerHTML(PrefixIcon.value)],
-                        },
-                        [
-                          View(
-                            {
-                              style:
-                                "position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;",
-                            },
-                            [
-                              SVG(
-                                {
-                                  style:
-                                    "position: absolute; top: 0; left: 0; transform: rotate(-90deg);",
-                                  width: "50",
-                                  height: "50",
-                                  viewBox: "0 0 50 50",
-                                },
-                                [
-                                  Circle({
-                                    cx: "25",
-                                    cy: "25",
-                                    r: radius,
-                                    stroke: "var(--weui-FG-3)",
-                                    "stroke-width": "3",
-                                    fill: "none",
-                                  }),
-                                  Circle({
-                                    cx: "25",
-                                    cy: "25",
-                                    r: radius,
-                                    stroke: strokeColor,
-                                    "stroke-width": "3",
-                                    fill: "none",
-                                    "stroke-dasharray": circumference,
-                                    "stroke-dashoffset": offset,
-                                    "stroke-linecap": "round",
-                                  }),
-                                ],
-                              ),
-                              View(
-                                {
-                                  style:
-                                    "position: relative; z-index: 1; display: flex;",
-                                },
-                                [DangerouslyInnerHTML(PrefixIcon.value)],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  View(
-                    {
-                      class: "weui-cell__bd",
-                      style: "min-width:0;",
-                    },
-                    [
-                      View(
-                        {
-                          class: "weui-ellipsis",
-                          style:
-                            "color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
-                        },
-                        [task.name],
-                      ),
-                      View(
-                        {
-                          class: "weui-cell__desc",
-                          style: computed(state_, (d) => {
-                            return `margin-top: 4px; color: ${d.statusColor}; font-size: 12px;`;
-                          }),
-                        },
-                        [
-                          computed(state_, (d) => {
-                            return d.statusText;
-                          }),
-                        ],
-                      ),
-                    ],
-                  ),
-                  View(
-                    {
-                      class: "weui-cell__ft",
-                      style: "display: flex; align-items: center;",
-                    },
-                    (() => {
-                      const btnStyle =
-                        "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
-                      return [
-                        Switch(
+                  return View({ class: "weui-cell wx-dl-item" }, [
+                    View(
+                      {
+                        class: "weui-cell__hd",
+                        style: `position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);`,
+                      },
+                      [
+                        Show(
                           {
-                            when: combine(
-                              { state: state_, running_count: running_count_ },
-                              (t) => {
-                                if (t.state.isCompleted) {
-                                  return 1;
-                                }
-                                if (t.state.isRunning) {
-                                  return 2;
-                                }
-                                if (t.state.isPaused) {
-                                  return 3;
-                                }
-                                if (t.state.isFailed) {
-                                  return 4;
-                                }
-                                return 0;
-                              },
-                            ),
+                            when: computed(state_, (t) => {
+                              return t.isRunning || t.isPaused;
+                            }),
+                            fallback: [DangerouslyInnerHTML(PrefixIcon.value)],
                           },
                           [
-                            // 场景 1: 已完成 -> 显示打开按钮
-                            Match(1, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-open",
-                                  style: btnStyle,
-                                  onClick() {
-                                    vm$.methods.open(task);
+                            View(
+                              {
+                                style:
+                                  "position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;",
+                              },
+                              [
+                                SVG(
+                                  {
+                                    style:
+                                      "position: absolute; top: 0; left: 0; transform: rotate(-90deg);",
+                                    width: "50",
+                                    height: "50",
+                                    viewBox: "0 0 50 50",
                                   },
-                                },
-                                [
-                                  Show(
-                                    {
-                                      when: !!isOpenExternal,
-                                      fallback: [
-                                        DangerouslyInnerHTML(FolderIcon),
-                                      ],
-                                    },
-                                    [DangerouslyInnerHTML(ExternalLinkIcon)],
-                                  ),
-                                ],
-                              ),
-                            ]),
-                            // 场景 2: 正在运行 -> 显示暂停按钮
-                            Match(2, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-pause",
-                                  style: btnStyle,
-                                  onClick() {
-                                    vm$.methods.pause(task);
-                                  },
-                                },
-                                [DangerouslyInnerHTML(PauseIcon)],
-                              ),
-                            ]),
-                            // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
-                            Match(3, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-resume",
-                                  style: sn([
-                                    btnStyle,
-                                    computed(running_count_, (t) => {
-                                      return t > WXU.config.MaxRunning
-                                        ? "opacity: 0.6; cursor: not-allowed;"
-                                        : "";
+                                  [
+                                    Circle({
+                                      cx: "25",
+                                      cy: "25",
+                                      r: radius,
+                                      stroke: "var(--weui-FG-3)",
+                                      "stroke-width": "3",
+                                      fill: "none",
                                     }),
-                                  ]),
-                                  onClick() {
-                                    vm$.methods.resume(task);
-                                  },
-                                },
-                                [DangerouslyInnerHTML(PlayIcon)],
-                              ),
-                            ]),
-                            Match(4, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-resume",
-                                  style: sn([
-                                    btnStyle,
-                                    computed(running_count_, (t) => {
-                                      return t > WXU.config.MaxRunning
-                                        ? "opacity: 0.6; cursor: not-allowed;"
-                                        : "";
+                                    Circle({
+                                      cx: "25",
+                                      cy: "25",
+                                      r: radius,
+                                      stroke: strokeColor,
+                                      "stroke-width": "3",
+                                      fill: "none",
+                                      "stroke-dasharray": circumference,
+                                      "stroke-dashoffset": offset,
+                                      "stroke-linecap": "round",
                                     }),
-                                  ]),
-                                  onClick() {
-                                    vm$.methods.resume(task);
+                                  ],
+                                ),
+                                View(
+                                  {
+                                    style:
+                                      "position: relative; z-index: 1; display: flex;",
                                   },
-                                },
-                                [DangerouslyInnerHTML(RetryIcon)],
-                              ),
-                            ]),
+                                  [DangerouslyInnerHTML(PrefixIcon.value)],
+                                ),
+                              ],
+                            ),
                           ],
+                        ),
+                      ],
+                    ),
+                    View(
+                      {
+                        class: "weui-cell__bd",
+                        style: "min-width:0;",
+                      },
+                      [
+                        View(
+                          {
+                            class: "weui-ellipsis",
+                            style:
+                              "color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                          },
+                          [task.name],
                         ),
                         View(
                           {
-                            type: "a",
-                            class: "wx-download-item-delete",
-                            style: btnStyle,
-                            onClick() {
-                              vm$.methods.delete(task);
-                            },
+                            class: "weui-cell__desc",
+                            style: computed(state_, (d) => {
+                              return `margin-top: 4px; color: ${d.statusColor}; font-size: 12px;`;
+                            }),
                           },
-                          [DangerouslyInnerHTML(DeleteIcon)],
+                          [
+                            computed(state_, (d) => {
+                              return d.statusText;
+                            }),
+                          ],
                         ),
-                      ];
-                    })(),
-                  ),
-                ]);
-              },
-            }),
-          ],
-        ),
+                      ],
+                    ),
+                    View(
+                      {
+                        class: "weui-cell__ft",
+                        style: "display: flex; align-items: center;",
+                      },
+                      (() => {
+                        const btnStyle =
+                          "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
+                        return [
+                          Switch(
+                            {
+                              when: combine(
+                                {
+                                  state: state_,
+                                  running_count: running_count_,
+                                },
+                                (t) => {
+                                  if (t.state.isCompleted) {
+                                    return 1;
+                                  }
+                                  if (t.state.isRunning) {
+                                    return 2;
+                                  }
+                                  if (t.state.isPaused) {
+                                    return 3;
+                                  }
+                                  if (t.state.isFailed) {
+                                    return 4;
+                                  }
+                                  return 0;
+                                },
+                              ),
+                            },
+                            [
+                              // 场景 1: 已完成 -> 显示打开按钮
+                              Match(1, [
+                                h(
+                                  View,
+                                  {
+                                    type: "a",
+                                    class: "wx-download-item-open",
+                                    style: btnStyle,
+                                    onClick() {
+                                      vm$.methods.openTask(task);
+                                    },
+                                  },
+                                  [
+                                    Show(
+                                      {
+                                        when: !!isOpenExternal,
+                                        fallback: [
+                                          DangerouslyInnerHTML(FolderIcon),
+                                        ],
+                                      },
+                                      [DangerouslyInnerHTML(ExternalLinkIcon)],
+                                    ),
+                                  ],
+                                ),
+                              ]),
+                              // 场景 2: 正在运行 -> 显示暂停按钮
+                              Match(2, [
+                                h(
+                                  View,
+                                  {
+                                    type: "a",
+                                    class: "wx-download-item-pause",
+                                    style: btnStyle,
+                                    onClick() {
+                                      vm$.methods.pauseTask(task);
+                                    },
+                                  },
+                                  [DangerouslyInnerHTML(PauseIcon)],
+                                ),
+                              ]),
+                              // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
+                              Match(3, [
+                                h(
+                                  View,
+                                  {
+                                    type: "a",
+                                    class: "wx-download-item-resume",
+                                    style: sn([
+                                      btnStyle,
+                                      computed(running_count_, (t) => {
+                                        return t > WXU.config.MaxRunning
+                                          ? "opacity: 0.6; cursor: not-allowed;"
+                                          : "";
+                                      }),
+                                    ]),
+                                    onClick() {
+                                      vm$.methods.resumeTask(task);
+                                    },
+                                  },
+                                  [DangerouslyInnerHTML(PlayIcon)],
+                                ),
+                              ]),
+                              Match(4, [
+                                h(
+                                  View,
+                                  {
+                                    type: "a",
+                                    class: "wx-download-item-resume",
+                                    style: sn([
+                                      btnStyle,
+                                      computed(running_count_, (t) => {
+                                        return t > WXU.config.MaxRunning
+                                          ? "opacity: 0.6; cursor: not-allowed;"
+                                          : "";
+                                      }),
+                                    ]),
+                                    onClick() {
+                                      vm$.methods.resumeTask(task);
+                                    },
+                                  },
+                                  [DangerouslyInnerHTML(RetryIcon)],
+                                ),
+                              ]),
+                            ],
+                          ),
+                          View(
+                            {
+                              type: "a",
+                              class: "wx-download-item-delete",
+                              style: btnStyle,
+                              onClick() {
+                                vm$.methods.deleteTask(task);
+                              },
+                            },
+                            [DangerouslyInnerHTML(DeleteIcon)],
+                          ),
+                        ];
+                      })(),
+                    ),
+                  ]);
+                },
+              }),
+            ],
+          ),
+        ]),
       ],
     ),
   ]);

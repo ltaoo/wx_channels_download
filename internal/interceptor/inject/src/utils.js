@@ -734,10 +734,10 @@ var WXU = (() => {
             suffix: opt.suffix,
           },
         });
+        WXU.downloader.show();
         if (err) {
           return [err, null];
         }
-        WXU.downloader.show();
         return [null, data];
       },
       /**
@@ -799,6 +799,7 @@ var WXU = (() => {
             });
           }
         }
+        WXU.downloader.show();
         var [err, data] = await WXU.request({
           method: "POST",
           url:
@@ -811,7 +812,6 @@ var WXU = (() => {
         if (err) {
           return [err, null];
         }
-        WXU.downloader.show();
         return [null, data];
       },
     },

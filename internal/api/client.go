@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
+	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,28 +52,27 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
 	downloader_ws := downloaderclient.NewDownloaderClient()
 
-	get_sorted_tasks := func() []*downloadpkg.Task {
-		tasks := downloader.GetTasks()
-		sort.Slice(tasks, func(i, j int) bool {
-			return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
-		})
-		return tasks
-	}
+	// get_sorted_tasks := func() []*downloadpkg.Task {
+	// 	tasks := downloader.GetTasks()
+	// 	sort.Slice(tasks, func(i, j int) bool {
+	// 		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+	// 	})
+	// 	return tasks
+	// }
 
 	downloader_ws.OnConnected = func(client *downloaderclient.WSClient) {
-		// Initial tasks
-		all_tasks := get_sorted_tasks()
-		limit := 50
-		if limit > len(all_tasks) {
-			limit = len(all_tasks)
-		}
-		tasks := all_tasks[:limit]
-		if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
-			"list":  tasks,
-			"total": len(all_tasks),
-		}}); err == nil {
-			client.Send <- data
-		}
+		// all_tasks := get_sorted_tasks()
+		// limit := 50
+		// if limit > len(all_tasks) {
+		// 	limit = len(all_tasks)
+		// }
+		// tasks := all_tasks[:limit]
+		// if data, err := json.Marshal(APIClientWSMessage{Type: "tasks", Data: map[string]interface{}{
+		// 	"list":  tasks,
+		// 	"total": len(all_tasks),
+		// }}); err == nil {
+		// 	client.Send <- data
+		// }
 	}
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {

@@ -11,7 +11,7 @@ function ApplicationRootView() {
     console.error("[App] error", err);
   });
 
-  return RouteSubViews({
+  return StandardSubViews({
     view: root_view$,
     app,
     client,

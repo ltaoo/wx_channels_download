@@ -28,21 +28,7 @@
       "Bash(echo Verifying SunnyNet packages compile...:*)",
       "Bash(docker:*)",
       "Bash(ls:*)",
-      "Bash(cd /Users/mayfair/Documents/other/timeless && pnpm --filter @timeless/ui build 2>&1)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.base.umd.min.js | tr ';' '\\\\n' | head -30)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.web.umd.min.js | tr ';' '\\\\n' | grep -E '\\(exports\\\\.|e\\\\.\\)' | grep -v 'function' | head -60)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.headless.umd.min.js | tr ';' '\\\\n' | grep -oE 'e\\\\.[A-Z][a-zA-Z]+=' | sort -u)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.ui.umd.min.js | tr ';' '\\\\n' | grep -oE 'e\\\\.[A-Z][a-zA-Z]+=' | sort -u)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.web.umd.min.js | tr ';' '\\\\n' | grep -oE 'e\\\\.[A-Z][a-zA-Z]+=' | sort -u)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.reactive.umd.min.js | tr ';' '\\\\n' | grep -oE 'e\\\\.[a-zA-Z]+=' | sort -u)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.headless.umd.min.js | tr ';' '\\\\n' | grep 'DangerouslyInnerHTML' | head -5)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.ui.umd.min.js | tr ';' '\\\\n' | grep -i 'onEnter\\\\|on_enter\\\\|onenter' | head -10)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.reactive.umd.min.js | tr ';' '\\\\n' | grep 'computed' | head -10)",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.reactive.umd.min.js | tr ';' '\\\\n' | grep -A2 'computed=function')",
-      "Bash(cd /Users/mayfair/Documents/other/wx_channels_download/internal/interceptor/inject/lib && cat timeless.headless.umd.min.js | tr ';' '\\\\n' | grep -oE 'e\\\\.\\(Text|Txt|Paragraph|View|Flex|Span|Div|Label|DangerouslyInnerHTML\\)=' | sort -u)",
-      "Bash(cd /Users/mayfair/Documents/other/timeless/packages/dev && npm run generate)",
-      "Bash(npm run:*)",
-      "Bash(curl -s -D - -o /dev/null http://127.0.0.1:2022/store/index.js 2>&1 | head -30)"
+      "Bash(cd /Users/mayfair/Documents/other/timeless && pnpm --filter @timeless/ui build 2>&1)"
     ]
   }
 }

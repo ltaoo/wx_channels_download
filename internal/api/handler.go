@@ -544,6 +544,15 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		return
 	}
 
+	// 提前解析 URL，如果包含 eid 则提取出来
+	if body.Eid == "" && body.URL != "" {
+		if parsedURL, err := url.Parse(body.URL); err == nil {
+			if eid := parsedURL.Query().Get("eid"); eid != "" {
+				body.Eid = eid
+			}
+		}
+	}
+
 	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())

@@ -162,24 +162,24 @@ export default function HomePageView(props) {
             }),
           ],
         ),
-        Button(
-          {
-            store: new Timeless.ui.ButtonCore({
-              onClick() {
-                doSearch();
-              },
-            }),
-            class: computed(loading, (l) =>
-              l
-                ? "px-4 h-10 rounded-lg bg-[var(--weui-GREEN)] text-white text-sm font-medium opacity-50 cursor-not-allowed"
-                : "px-4 h-10 rounded-lg bg-[var(--weui-GREEN)] text-white text-sm font-medium hover:opacity-90 transition-opacity",
-            ),
-          },
-          [
-            Show({ when: loading }, [Txt("搜索中...")]),
-            Show({ when: computed(loading, (l) => !l) }, [Txt("搜索")]),
-          ],
-        ),
+        // Button(
+        //   {
+        //     store: new Timeless.ui.ButtonCore({
+        //       onClick() {
+        //         doSearch();
+        //       },
+        //     }),
+        //     class: computed(loading, (l) =>
+        //       l
+        //         ? "px-4 h-10 rounded-lg bg-[var(--weui-GREEN)] text-white text-sm font-medium opacity-50 cursor-not-allowed"
+        //         : "px-4 h-10 rounded-lg bg-[var(--weui-GREEN)] text-white text-sm font-medium hover:opacity-90 transition-opacity",
+        //     ),
+        //   },
+        //   [
+        //     Show({ when: loading }, [Txt("搜索中...")]),
+        //     Show({ when: computed(loading, (l) => !l) }, [Txt("搜索")]),
+        //   ],
+        // ),
       ]),
       // Error message
       Show({ when: computed(errMsg, (m) => !!m) }, [

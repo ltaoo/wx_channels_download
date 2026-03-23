@@ -35,18 +35,18 @@ export default function SettingsPageView(props) {
             { class: "flex-1 text-sm text-[var(--weui-FG-1)] truncate" },
             [Txt("使用默认下载目录")],
           ),
-          Button(
-            {
-              store: new Timeless.ui.ButtonCore({
-                onClick() {
-                  fetch("/api/open_download_dir", { method: "POST" });
-                },
-              }),
-              class:
-                "px-3 py-1.5 rounded-lg border border-[var(--weui-FG-3)] bg-[var(--weui-BG-2)] text-[var(--weui-FG-0)] text-sm hover:bg-[var(--weui-BG-COLOR-ACTIVE)] transition-colors",
-            },
-            [Txt("打开目录")],
-          ),
+          // Button(
+          //   {
+          //     store: new Timeless.ui.ButtonCore({
+          //       onClick() {
+          //         fetch("/api/open_download_dir", { method: "POST" });
+          //       },
+          //     }),
+          //     class:
+          //       "px-3 py-1.5 rounded-lg border border-[var(--weui-FG-3)] bg-[var(--weui-BG-2)] text-[var(--weui-FG-0)] text-sm hover:bg-[var(--weui-BG-COLOR-ACTIVE)] transition-colors",
+          //   },
+          //   [Txt("打开目录")],
+          // ),
         ],
       ),
     ]),

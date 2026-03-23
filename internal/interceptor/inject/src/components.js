@@ -136,6 +136,10 @@ body[data-weui-theme=dark] {
   color: var(--weui-FG-0);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
 }
+.scroll-view-waterfall {
+  overflow: visible !important;
+  height: auto !important;
+}
 .wx-dl-dark-scroll::-webkit-scrollbar { width: 6px !important; }
 .wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent !important; border-radius: 3px !important; }
 .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; border-radius: 3px !important; }
@@ -711,7 +715,6 @@ function ScrollView(props, children) {
   return ScrollViewPrimitive.Root(
     {
       store,
-      class: cn(["scroll-view h-full overflow-y-auto", cls]),
       style: "height: 100%; overflow-y: auto;",
       ...rest,
     },

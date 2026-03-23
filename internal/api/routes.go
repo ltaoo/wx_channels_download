@@ -1,12 +1,17 @@
 package api
 
 import (
+	"bytes"
+	"encoding/hex"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zeebo/blake3"
 
 	"wx_channel/internal/interceptor"
 )
@@ -85,11 +90,38 @@ func (c *APIClient) SetupRoutes() {
 
 	// 静态资源 - lib JS/CSS 文件
 	if libFS, err := interceptor.LibFS(); err == nil {
-		c.engine.StaticFS("/__wx_channels_assets/lib", http.FS(libFS))
+		c.engine.GET("/__wx_channels_assets/lib/*filepath", func(ctx *gin.Context) {
+			fpath := strings.TrimPrefix(ctx.Param("filepath"), "/")
+			data, err := fs.ReadFile(libFS, fpath)
+			if err != nil {
+				ctx.Status(http.StatusNotFound)
+				return
+			}
+			switch path.Ext(fpath) {
+			case ".css":
+				ctx.Header("Content-Type", "text/css; charset=utf-8")
+			case ".js":
+				ctx.Header("Content-Type", "application/javascript; charset=utf-8")
+			}
+			ctx.Header("Cache-Control", "public, max-age=31536000, immutable")
+			ctx.Data(http.StatusOK, ctx.Writer.Header().Get("Content-Type"), data)
+		})
 	}
 	// 静态资源 - src JS 文件
-	if srcFS, err := interceptor.SrcFS(); err == nil {
-		c.engine.StaticFS("/__wx_channels_assets/src", http.FS(srcFS))
+	srcDir := "internal/interceptor/inject/src"
+	if c.cfg.Mode == "dev" {
+		if info, err := os.Stat(srcDir); err == nil && info.IsDir() {
+			// 开发模式：直接从磁盘读取，修改即生效
+			srcHandler := http.StripPrefix("/__wx_channels_assets/src", http.FileServer(http.Dir(srcDir)))
+			c.engine.GET("/__wx_channels_assets/src/*filepath", func(ctx *gin.Context) {
+				ctx.Header("Cache-Control", "no-cache")
+				srcHandler.ServeHTTP(ctx.Writer, ctx.Request)
+			})
+		}
+	} else if srcFS, err := interceptor.SrcFS(); err == nil {
+		// release 模式：嵌入 FS + 协商缓存
+		etagMap := computeETags(srcFS)
+		c.engine.GET("/__wx_channels_assets/src/*filepath", serveWithETag(srcFS, etagMap))
 	}
 
 	// SPA fallback - 非 API/静态资源的 GET 请求返回 index.html，由前端路由处理
@@ -116,13 +148,22 @@ func (c *APIClient) SetupRoutes() {
 		}
 		// 其余 GET 请求 fallback 到 index.html
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
-		ctx.String(http.StatusOK, string(files.HTMLHome))
+		ctx.String(http.StatusOK, string(c.readHTMLHome()))
 	})
 }
 
 func (c *APIClient) handleHome(ctx *gin.Context) {
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, string(files.HTMLHome))
+	ctx.String(http.StatusOK, string(c.readHTMLHome()))
+}
+
+func (c *APIClient) readHTMLHome() []byte {
+	if c.cfg.Mode == "dev" {
+		if data, err := os.ReadFile("internal/api/ui/index.html"); err == nil {
+			return data
+		}
+	}
+	return files.HTMLHome
 }
 
 func (c *APIClient) serveUIFile(fsys fs.FS) gin.HandlerFunc {
@@ -157,4 +198,43 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 		"msg":  "ok",
 		"data": data,
 	})
+}
+
+func computeETags(fsys fs.FS) map[string]string {
+	tags := make(map[string]string)
+	fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(fsys, p)
+		if err == nil {
+			h := blake3.Sum256(data)
+			tags["/"+p] = `"` + hex.EncodeToString(h[:]) + `"`
+		}
+		return nil
+	})
+	return tags
+}
+
+func serveWithETag(fsys fs.FS, etags map[string]string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		fpath := strings.TrimPrefix(ctx.Param("filepath"), "/")
+		etag, ok := etags["/"+fpath]
+		if !ok {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		ctx.Header("ETag", etag)
+		ctx.Header("Cache-Control", "no-cache")
+		if ctx.GetHeader("If-None-Match") == etag {
+			ctx.Status(http.StatusNotModified)
+			return
+		}
+		data, err := fs.ReadFile(fsys, fpath)
+		if err != nil {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+		http.ServeContent(ctx.Writer, ctx.Request, path.Base(fpath), time.Now(), bytes.NewReader(data))
+	}
 }

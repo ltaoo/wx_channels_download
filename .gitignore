@@ -21,3 +21,6 @@ docs/.vitepress/dist
 gopeed.db
 /*.json
 *.log
+
+deploy.sh
+.env

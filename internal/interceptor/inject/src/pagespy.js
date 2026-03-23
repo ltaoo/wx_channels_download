@@ -1,7 +1,7 @@
 (() => {
   const config = {
-    // api: "127.0.0.1:6752",
-    api: "debug.weixin.qq.com",
+    api: "127.0.0.1:6752",
+    // api: "debug.weixin.qq.com",
     // clientOrigin: "https://debug.weixin.qq.com",
   };
   try {
