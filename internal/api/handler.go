@@ -526,15 +526,17 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 	return &task, nil
 }
 
+type ChannelsDownloadPayload struct {
+	Oid   string `json:"oid"`
+	Nid   string `json:"nid"`
+	Eid   string `json:"eid"`
+	URL   string `json:"url"`
+	MP3   bool   `json:"mp3"`   // 是否下载为 mp3
+	Cover bool   `json:"cover"` // 是否下载封面
+}
+
 func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
-	var body struct {
-		Oid   string `json:"oid"`
-		Nid   string `json:"nid"`
-		Eid   string `json:"eid"`
-		URL   string `json:"url"`
-		MP3   bool   `json:"mp3"`   // 是否下载为 mp3
-		Cover bool   `json:"cover"` // 是否下载封面
-	}
+	var body ChannelsDownloadPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
@@ -547,7 +549,9 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	if body.Eid == "" && body.URL != "" {
 		if parsedURL, err := url.Parse(body.URL); err == nil {
 			if eid := parsedURL.Query().Get("eid"); eid != "" {
-				body.Eid = eid
+				body = ChannelsDownloadPayload{
+					Eid: eid,
+				}
 			}
 		}
 	}
