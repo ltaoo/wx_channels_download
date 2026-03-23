@@ -191,9 +191,18 @@ func (c *APIClient) handleFetchFeedListOfContactRSS(ctx *gin.Context) {
 func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	uid := ctx.Query("nid")
-	url := ctx.Query("url")
+	_url := ctx.Query("url")
 	eid := ctx.Query("eid")
-	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, url, eid)
+	// 提前解析 URL，如果包含 eid 则提取出来
+	if eid == "" && _url != "" {
+		if parsedURL, err := url.Parse(_url); err == nil {
+			if _eid := parsedURL.Query().Get("eid"); _eid != "" {
+				eid = _eid
+				_url = ""
+			}
+		}
+	}
+	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, _url, eid)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -273,7 +282,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -416,7 +425,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -468,7 +477,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		}
 	}
 	if len(batchTasks) > 0 {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "batch_tasks",
 			Data: batchTasks,
 		})
@@ -526,15 +535,17 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 	return &task, nil
 }
 
+type ChannelsDownloadPayload struct {
+	Oid   string `json:"oid"`
+	Nid   string `json:"nid"`
+	Eid   string `json:"eid"`
+	URL   string `json:"url"`
+	MP3   bool   `json:"mp3"`   // 是否下载为 mp3
+	Cover bool   `json:"cover"` // 是否下载封面
+}
+
 func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
-	var body struct {
-		Oid   string `json:"oid"`
-		Nid   string `json:"nid"`
-		Eid   string `json:"eid"`
-		URL   string `json:"url"`
-		MP3   bool   `json:"mp3"`   // 是否下载为 mp3
-		Cover bool   `json:"cover"` // 是否下载封面
-	}
+	var body ChannelsDownloadPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
@@ -543,7 +554,16 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "缺少参数")
 		return
 	}
-
+	// 提前解析 URL，如果包含 eid 则提取出来
+	if body.Eid == "" && body.URL != "" {
+		if parsedURL, err := url.Parse(body.URL); err == nil {
+			if eid := parsedURL.Query().Get("eid"); eid != "" {
+				body = ChannelsDownloadPayload{
+					Eid: eid,
+				}
+			}
+		}
+	}
 	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -599,7 +619,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -683,7 +703,7 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	c.downloader.Delete(nil, true)
-	c.channels.Broadcast(APIClientWSMessage{
+	c.downloader_ws.Broadcast(APIClientWSMessage{
 		Type: "clear",
 		Data: c.downloader.GetTasks(),
 	})

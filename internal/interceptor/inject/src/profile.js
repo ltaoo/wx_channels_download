@@ -112,7 +112,6 @@
           if (!WXU.config.downloadForceCheckAllFeeds && data.ids.length === 0) {
             if (created_task_ids.length === 0) {
               WXU.toast("没有新的视频可以下载");
-              WXU.downloader.hide();
               return;
             }
             continue;
@@ -126,7 +125,6 @@
             has_more = false;
             if (created_task_ids.length === 0) {
               WXU.toast("没有新的视频可以下载");
-              WXU.downloader.hide();
               return;
             }
             return;

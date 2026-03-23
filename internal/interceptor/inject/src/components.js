@@ -62,7 +62,7 @@ body[data-weui-theme=dark] {
   border-radius: 4px;
 }
 .custom-menu .weui-cell:hover {
-  background: var(--FG-6);
+  background: var(--weui-FG-6);
 }
 .custom-menu .weui-cell__bd p {
   color: var(--weui-FG-0);
@@ -378,7 +378,7 @@ function __wx_refresh_downloader(selector, tasks, total) {
 
     let statusText = t.status;
     let progressDisplay = "";
-    let statusColor = "var(--FG-1)";
+    let statusColor = "var(--weui-FG-1)";
 
     if (isRunning) {
       const speed = format_download_speed(t.progress ? t.progress.speed : 0);
@@ -481,7 +481,7 @@ function __wx_refresh_downloader(selector, tasks, total) {
       iconInner = `
         <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
              <svg width="50" height="50" style="position: absolute; top: 0; left: 0; transform: rotate(-90deg);">
-                <circle cx="25" cy="25" r="${radius}" stroke="var(--FG-3)" stroke-width="3" fill="none"></circle>
+                <circle cx="25" cy="25" r="${radius}" stroke="var(--weui-FG-3)" stroke-width="3" fill="none"></circle>
                 <circle cx="25" cy="25" r="${radius}" stroke="${strokeColor}" stroke-width="3" fill="none" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
              </svg>
              <div style="position: relative; z-index: 1; display: flex;">
@@ -500,7 +500,7 @@ function __wx_refresh_downloader(selector, tasks, total) {
             <div class="weui-cell__desc" style="margin-top: 4px; color: ${statusColor}; font-size: 12px;">${statusText}</div>
             ${
               typeof pr === "number" && !isCompleted
-                ? `<div style="height: 4px; background: var(--FG-3); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
+                ? `<div style="height: 4px; background: var(--weui-FG-3); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
                 : ""
             }
             ${progressDisplay}
@@ -634,7 +634,7 @@ function DropdownMenuItem(props) {
         props.store.label,
         Show({ when: has_submenu_ }, [
           View({ class: "p-2" }, [
-            ChevronRightOutlined({
+            Timeless.icons.ChevronRightOutlined({
               class: "custom-menu-item-arrow",
               style: "font-size: 18px;",
             }),
