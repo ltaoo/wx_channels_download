@@ -8,10 +8,10 @@ var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
 var WSServerProtocol = "wss";
 if (typeof window.__wx_channels_config__ === "undefined") {
-  __wx_channels_config__ = window.__wx_channels_config__;
+  __wx_channels_config__ = {};
 }
-if (typeof window.WXVariable === "function") {
-  WXVariable = window.WXVariable;
+if (typeof window.WXVariable === "undefined") {
+  WXVariable = {};
 }
 var __wx_assets_base = (function () {
   var cfg = __wx_channels_config__;
@@ -1503,7 +1503,7 @@ function ChannelsWebsocketClient() {
         );
       }
       if (key === "key:channels:contact_list") {
-        let payload = {
+        var payload = {
           query: data.keyword,
           scene: 13,
           requestId: String(new Date().valueOf()),
@@ -1572,7 +1572,7 @@ function ChannelsWebsocketClient() {
         return;
       }
       if (key === "key:channels:feed_profile") {
-        console.log("before finderGetCommentProfile", data.oid, data.nid);
+        console.log("before finderGetCommentProfile", data);
         try {
           if (data.url) {
             var u = new URL(decodeURIComponent(data.url));
@@ -1586,19 +1586,25 @@ function ChannelsWebsocketClient() {
           let payload = {
             needObject: 1,
             lastBuffer: "",
-            scene: 146,
+            scene: data.eid ? 141 : 146,
             direction: 2,
             identityScene: 2,
             pullScene: 6,
             objectid: (() => {
+              if (data.eid) {
+                return undefined;
+              }
               if (data.oid.includes("_")) {
                 return data.oid.split("_")[0];
               }
               return data.oid;
             })(),
-            objectNonceId: data.nid,
-            encrypted_objectid: "",
+            objectNonceId: data.eid ? undefined : data.nid,
+            encrypted_objectid: data.eid || "",
           };
+          if (data.eid) {
+            payload.traceBuffer = undefined;
+          }
           var r = await WXU.API.finderGetCommentDetail(payload);
           /** @type {MediaProfileResp} */
           var { object } = r.data;
@@ -1606,13 +1612,25 @@ function ChannelsWebsocketClient() {
             ...r,
             payload,
           });
+          return;
         } catch (err) {
           resp({
             errCode: 1011,
             errMsg: err.message,
+            payload,
           });
           return;
         }
+      }
+      if (key === "key:channels:reload") {
+        console.log("[DOWNLOADER]reloading page");
+        resp({
+          msg: "reloading",
+        });
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+        return;
       }
       resp({
         errCode: 1000,

@@ -282,6 +282,27 @@ function DownloaderPanelViewModel() {
         };
       });
     },
+    batchInsert(tasks) {
+      if (!tasks || !tasks.length) return;
+      const newTasks = [];
+      for (let i = 0; i < tasks.length; i++) {
+        const t = tasks[i];
+        if (!t || !t.id) continue;
+        const matched = tasks_.find((v) => v.id === t.id);
+        if (matched) {
+          matched.assign(t);
+        } else {
+          newTasks.push(t);
+        }
+      }
+      if (newTasks.length) {
+        tasks_.unshift(...newTasks);
+        task_count_.as((prev) => prev + newTasks.length);
+        ui.waterfall$.methods.unshiftItems(newTasks);
+        const addedHeight = newTasks.length * (ITEM_HEIGHT + GUTTER);
+        ui.view$.addScrollTop(addedHeight);
+      }
+    },
     upsert(task) {
       console.log("[]upsert task", task);
       if (!task || !task.id) {

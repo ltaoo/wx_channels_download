@@ -191,9 +191,18 @@ func (c *APIClient) handleFetchFeedListOfContactRSS(ctx *gin.Context) {
 func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	uid := ctx.Query("nid")
-	url := ctx.Query("url")
+	_url := ctx.Query("url")
 	eid := ctx.Query("eid")
-	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, url, eid)
+	// 提前解析 URL，如果包含 eid 则提取出来
+	if eid == "" && _url != "" {
+		if parsedURL, err := url.Parse(_url); err == nil {
+			if _eid := parsedURL.Query().Get("eid"); _eid != "" {
+				eid = _eid
+				_url = ""
+			}
+		}
+	}
+	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, _url, eid)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
