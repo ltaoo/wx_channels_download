@@ -439,7 +439,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				if strings.Contains(pathname, "connect.publish") {
+				if strings.Contains(pathname, "connect.publish") || strings.Contains(pathname, "applyMic.publish") {
 					flow_list_variable_name := "yt"
 					if m := jsFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
 						flow_list_variable_name = m[1]

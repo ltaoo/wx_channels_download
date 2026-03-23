@@ -14,16 +14,6 @@ package downloader
 // "wx_channel/pkg/system"
 // "wx_channel/pkg/util"
 
-type FeedDownloadTaskBody struct {
-	Id       string `json:"id"`
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	Filename string `json:"filename"`
-	Key      int    `json:"key"`
-	Spec     string `json:"spec"`
-	Suffix   string `json:"suffix"`
-}
-
 // func (c *DownloadClient) handleCreateTask(ctx *gin.Context) {
 // 	var body FeedDownloadTaskBody
 // 	if err := ctx.ShouldBindJSON(&body); err != nil {

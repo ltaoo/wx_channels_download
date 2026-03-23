@@ -62,18 +62,28 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
   var live_page_mounted = false;
-  WXU.onFetchLiveProfile((feed) => {
-    console.log("[live.js]onFetchLiveProfile", feed);
+  WXU.onJoinLive(async (data) => {
+    console.log("[live.js]onJoinLive", data);
     if (live_page_mounted) {
       return;
     }
     live_page_mounted = true;
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
+    const feed = {
+      id: data.liveInfo.liveId,
+      liveInfo: data.liveInfo,
+      liveDescription: data.liveDescription,
+      objectDesc: {
+        description: data.liveDescription,
+      },
+      contact: {
+        nickname: data.bizUserInfo.bizNickname,
+        username: data.bizUserInfo.bizUsername,
+      },
+      createtime: data.liveInfo.startTime,
+    };
     WXU.set_live_feed(feed);
-  });
-  WXU.onJoinLive(async (data) => {
-    console.log("[live.js]onJoinLive", data);
     var $btn = download_btn4();
     $btn.onclick = function () {
       var profile = __wx_channels_live_store__.profile;
@@ -87,17 +97,26 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     if (!success) {
       return;
     }
+    if (!WXU.API.finderJoinLiveMapper) {
+      // WXU.error({ msg: "missing WXU.API.finderJoinLiveMapper" });
+      console.log("missing WXU.API.finderJoinLiveMapper");
+      return;
+    }
+    if (!WXU.API.createAdapterFromGlobalMapper) {
+      console.log("missing WXU.API.createAdapterFromGlobalMapper");
+      return;
+    }
     const i = WXU.API.createAdapterFromGlobalMapper(
       data,
       WXU.API.finderJoinLiveMapper,
       ["room", "stream", "liveUser"],
-      "poll"
+      "poll",
     );
     console.log("[live.js]has more options", i[1]);
-    var { DropdownMenu, Menu, MenuItem } = WUI;
-    if (i[1] && i[1].payload.channelParams) {
+    var { MenuItem } = WUI;
+    if (i && i[1] && i[1].payload.channelParams) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
-        (vv) => vv.url
+        (vv) => vv.url,
       );
       var [dropdown$] = __wx_attach_live_download_dropdown_menu($btn);
       const download_menus = [

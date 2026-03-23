@@ -24,6 +24,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				if err != nil {
 					return
 				}
+				variables := map[string]interface{}{}
 				html := string(resp_body)
 				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 				script_attr := ""
@@ -34,6 +35,9 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
 				inserted_scripts += script_config
+				variable_byte, _ := json.Marshal(variables)
+				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
+				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
