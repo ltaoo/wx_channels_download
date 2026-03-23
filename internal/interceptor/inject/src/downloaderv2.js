@@ -1,7 +1,7 @@
+/// <reference path="utils.js" />
 /**
  * @file 下载管理面板2
  */
-var __wx_username;
 var ua = navigator.userAgent || navigator.platform || "";
 var isWin = /Windows|Win/i.test(ua);
 
@@ -11,6 +11,25 @@ var RemoteAPIHostname =
 if (WXU.config.remoteServerPort !== 80) {
   RemoteAPIHostname += ":" + WXU.config.remoteServerPort;
 }
+
+const http_client = new Timeless.HttpClientCore({
+  headers: { "Content-Type": "application/json" },
+  hostname: APIHostname,
+});
+Timeless.web.provide_http_client(http_client);
+const request = Timeless.kit.request_factory({
+  headers: { "Content-Type": "application/json" },
+  process(r) {
+    if (r.error) {
+      return Timeless.Result.Err(r.error);
+    }
+    const { code, msg, data } = r.data;
+    if (code !== 0) {
+      return Timeless.Result.Err(msg, code, data);
+    }
+    return Timeless.Result.Ok(data);
+  },
+});
 
 function format_download_speed(bps) {
   const kb = 1024,
@@ -51,143 +70,62 @@ function total_speed(tasks) {
   return sum;
 }
 
-async function __wx_handle_api_call(msg, socket) {
-  var { id, key, data } = msg;
-  console.log("[DOWNLOADER]__wx_handle_api_call", id, key, data);
-  function resp(body) {
-    socket.send(
-      JSON.stringify({
-        id,
-        data: body,
-      }),
-    );
-  }
-  if (key === "key:channels:contact_list") {
-    var payload = {
-      query: data.keyword,
-      scene: 13,
-      requestId: String(new Date().valueOf()),
-    };
-    var r = await WXU.API2.finderSearch(payload);
-    console.log("[DOWNLOADER]finderSearch", r);
-    /** @type {SearchResp} */
-    var { infoList, objectList } = r.data;
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:feed_list") {
-    var payload = {
-      username: data.username,
-      finderUsername: __wx_username,
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      needFansCount: 0,
-      objectId: "0",
-    };
-    var r = await WXU.API.finderUserPage(payload);
-    console.log("[DOWNLOADER]finderUserPage", r);
-    /** @type {ChannelsObject[]} */
-    const object = r.data.object || [];
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:live_replay_list") {
-    var payload = {
-      username: data.username,
-      finderUsername: __wx_username || data.username,
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      needFansCount: 0,
-      objectId: "0",
-    };
-    var r = await WXU.API3.finderLiveUserPage(payload);
-    console.log("[DOWNLOADER]finderLiveUserPage", r);
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:interactioned_list") {
-    var payload = {
-      lastBuffer: data.next_marker ? decodeURIComponent(data.next_marker) : "",
-      tabFlag: data.flag ? Number(data.flag) : 7,
-    };
-    var r = await WXU.API4.finderGetInteractionedFeedList(payload);
-    console.log("[DOWNLOADER]finderGetInteractionedFeedList", r);
-    resp({
-      ...r,
-      payload,
-    });
-    return;
-  }
-  if (key === "key:channels:feed_profile") {
-    console.log("before finderGetCommentProfile", data.oid, data.nid);
-    try {
-      if (data.url) {
-        var u = new URL(decodeURIComponent(data.url));
-        data.oid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("oid"),
-        );
-        data.nid = WXU.API.decodeBase64ToUint64String(
-          u.searchParams.get("nid"),
-        );
-      }
-      var payload = {
-        needObject: 1,
-        lastBuffer: "",
-        scene: 146,
-        direction: 2,
-        identityScene: 2,
-        pullScene: 6,
-        objectid: (() => {
-          if (data.oid.includes("_")) {
-            return data.oid.split("_")[0];
-          }
-          return data.oid;
-        })(),
-        objectNonceId: data.nid,
-        encrypted_objectid: "",
-      };
-      var r = await WXU.API.finderGetCommentDetail(payload);
-      /** @type {MediaProfileResp} */
-      var { object } = r.data;
-      resp({
-        ...r,
-        payload,
-      });
-      return;
-    } catch (err) {
-      resp({
-        errCode: 1011,
-        errMsg: err.message,
-        payload,
-      });
-      return;
-    }
-  }
-  resp({
-    errCode: 1000,
-    errMsg: "未匹配的key",
-    payload: msg,
-  });
-}
-
 function DownloaderPanelViewModel() {
+  const ITEM_HEIGHT = 82;
+  const GUTTER = 8;
+  const _pageSize = 50;
+
+  const taskListReq = new Timeless.kit.RequestCore(
+    (params) => request.get("/api/task/list", params),
+    {
+      client: http_client,
+      process(r) {
+        if (r.error) {
+          return r.error;
+        }
+        return Timeless.Result.Ok({
+          list: (r.data.list || []).map((t) => methods.formatTask(t)),
+          total: r.data.total || 0,
+          page: r.data.page || 1,
+          pageSize: r.data.page_size || 50,
+        });
+      },
+    },
+  );
+  const deleteReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/delete", { id }),
+    { client: http_client },
+  );
+  const startReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/start", { id }),
+    { client: http_client },
+  );
+  const pauseReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/pause", { id }),
+    { client: http_client },
+  );
+  const resumeReq = new Timeless.kit.RequestCore(
+    (id) => request.post("/api/task/resume", { id }),
+    { client: http_client },
+  );
+  const clearReq = new Timeless.kit.RequestCore(
+    () => request.post("/api/task/clear"),
+    { client: http_client },
+  );
+  const showFileReq = new Timeless.kit.RequestCore(
+    ({ path, name, id }) => request.post("/api/show_file", { path, name, id }),
+    { client: http_client },
+  );
+  const list$ = new Timeless.kit.ListCore(taskListReq, {
+    pageSize: _pageSize,
+  });
+
   const tasks_ = refarr([]);
   const task_count_ = ref(0);
   const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
-  let _page = 1;
-  let _loading = false;
-  const ITEM_HEIGHT = 82;
-  const GUTTER = 8;
-  const _pageSize = 50;
+
   const methods = {
     formatTask(task) {
       const r = {
@@ -210,61 +148,102 @@ function DownloaderPanelViewModel() {
           };
         })(),
       };
-      // console.log("format task", task, r);
       return r;
     },
-    /** 批量插入下载记录（头部插入），已存在的记录走更新 */
-    batchInsert(tasks) {
-      if (!tasks || !tasks.length) return;
-      const newTasks = [];
-      for (let i = 0; i < tasks.length; i++) {
-        const t = tasks[i];
-        if (!t || !t.id) continue;
-        const matched = tasks_.find((v) => v.id === t.id);
-        if (matched) {
-          matched.assign(t);
-        } else {
-          newTasks.push(t);
-        }
-      }
-      if (newTasks.length) {
-        tasks_.unshift(...newTasks);
-        task_count_.as((prev) => prev + newTasks.length);
-        ui.waterfall$.methods.unshiftItems(newTasks);
-        const addedHeight = newTasks.length * (ITEM_HEIGHT + GUTTER);
-        ui.view$.addScrollTop(addedHeight);
-      }
-    },
-    /** 更新或插入下载记录 */
-    upsert(task) {
-      console.log("[]upsert task", task);
-      if (!task || !task.id) {
+    async startTask(task) {
+      const r = await startReq.run(task.id);
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
         return;
       }
-      const matched = tasks_.find((v) => v.id === task.id);
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
+      const matched = tasks_.find((t) => t.id === task.id);
       if (!matched) {
-        console.log("[]insert task", task);
-        task_count_.as((prev) => {
-          return prev + 1;
-        });
-        tasks_.unshift(task);
-        // ui.waterfall$.methods.appendItems([task]);
-        ui.waterfall$.methods.unshiftItems([task]);
-        const addedHeight = 1 * ITEM_HEIGHT + GUTTER;
-        ui.view$.addScrollTop(addedHeight);
         return;
       }
-      console.log("[]update task", task);
-      matched.assign(task);
+      matched.assign({
+        status: "running",
+      });
+    },
+    async pauseTask(task) {
+      const r = await pauseReq.run(task.id);
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "paused" } : t,
+      );
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "paused",
+      });
+    },
+    async deleteTask(task) {
+      const r = await deleteReq.run(task.id);
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      tasks_.remove(matched);
+      task_count_.as((prev) => prev - 1);
+      ui.waterfall$.methods.deleteCell((t) => t.id === task.id);
+      list$.deleteItem((t) => t.id === task.id);
+    },
+    async resumeTask(task) {
+      const r = await resumeReq.run(task.id);
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "running",
+      });
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
+    },
+    async clearTasks() {
+      await clearReq.run();
+      list$.clear();
+      tasks_.as([]);
+      task_count_.as(0);
+      ui.waterfall$.methods.cleanColumns();
+    },
+    async openTask(task) {
+      const { path, name } = task;
+      if (!path || !name) {
+        WXU.error({
+          msg: "path or name is empty",
+        });
+        return;
+      }
+      if (WXU.config.remoteServerEnabled) {
+        var u = RemoteAPIHostname + "/preview?id=" + task.id;
+        window.open(u);
+        return;
+      }
+      showFileReq.run({ path, name, id: task.id });
     },
     connect() {
       return new Promise((resolve, reject) => {
         const ws = new WebSocket(
-          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+          WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/downloader",
         );
         ws.onopen = () => {
-          _page = 1;
-          _loading = false;
           if (WXU.downloader) {
             WXU.downloader.status = "connected";
           }
@@ -286,14 +265,6 @@ function DownloaderPanelViewModel() {
           if (err) {
             return;
           }
-          if (msg.type === "tasks") {
-            const { list, total } = msg.data;
-            const tasks = list.map((t) => methods.formatTask(t));
-            tasks_.as(tasks);
-            task_count_.as(total);
-            ui.waterfall$.methods.appendItems(tasks);
-            return;
-          }
           if (msg.type === "batch_tasks") {
             const list = Array.isArray(msg.data) ? msg.data : [];
             const tasks = list.map((t) => methods.formatTask(t));
@@ -308,192 +279,64 @@ function DownloaderPanelViewModel() {
             }
             methods.upsert(methods.formatTask(task));
           }
-          if (msg.type === "api_call") {
-            __wx_handle_api_call(msg.data, ws);
-          }
         };
       });
     },
-    connect_local_ws() {
-      const ws_url =
-        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
-      const ws = new WebSocket(ws_url);
-      ws.onclose = (e) => {
-        WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
-      };
-      ws.onerror = (e) => {
-        WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
-      };
-      ws.onmessage = (ev) => {
-        const [err, msg] = WXU.parseJSON(ev.data);
-        if (err) {
-          return;
-        }
-        if (msg.type === "api_call") {
-          __wx_handle_api_call(msg.data, ws);
-        }
-      };
-    },
-    async start(task) {
-      const id = task.id;
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/start",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
+    upsert(task) {
+      console.log("[]upsert task", task);
+      if (!task || !task.id) {
         return;
       }
-      const matched = tasks_.find((t) => t.id === task.id);
+      const matched = tasks_.find((v) => v.id === task.id);
       if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "running",
-      });
-    },
-    async pause(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/pause",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
+        console.log("[]insert task", task);
+        task_count_.as((prev) => {
+          return prev + 1;
         });
+        tasks_.unshift(task);
+        // ui.waterfall$.methods.appendItems([task]);
+        ui.waterfall$.methods.unshiftItems([task]);
+        const addedHeight = 1 * ITEM_HEIGHT + GUTTER;
+        ui.view$.addScrollTop(addedHeight);
         return;
       }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "paused",
-      });
-    },
-    async delete(task) {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/delete",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      tasks_.remove(matched);
-      task_count_.as((prev) => prev - 1);
-      ui.waterfall$.methods.deleteCell((t) => t.id === task.id);
-    },
-    async resume(task) {
-      if (running_count_.value > WXU.config.MaxRunning) {
-        return;
-      }
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/resume",
-        body: { id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "running",
-      });
-    },
-    async clear() {
-      await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/task/clear",
-      });
-      tasks_.as([]);
-      task_count_.as(0);
-      ui.waterfall$.methods.cleanColumns();
-    },
-    async open(task) {
-      const { path, name } = task;
-      if (!path || !name) {
-        WXU.error({
-          msg: "path or name is empty",
-        });
-        return;
-      }
-      if (WXU.config.remoteServerEnabled) {
-        var u = RemoteAPIHostname + "/preview?id=" + task.id;
-        window.open(u);
-        return;
-      }
-      // Use original API for local file
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: APIHostname + "/api/show_file",
-        body: { path, name, id: task.id },
-      });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-      }
+      console.log("[]update task", task);
+      matched.assign(task);
     },
   };
+
+  list$.onDataSourceAdded((list) => {
+    const tasks = list;
+    task_count_.as((prev) => prev + tasks.length);
+    tasks_.push(...tasks);
+    ui.waterfall$.methods.appendItems(tasks);
+  });
+  list$.onError((err) => {
+    WXU.error({
+      msg: err.message,
+    });
+  });
+
   const ui = {
     view$: new Timeless.ui.ScrollViewCore({
       onScroll(pos) {
         ui.waterfall$.methods.handleScroll({ scrollTop: pos.scrollTop });
       },
       async onReachBottom() {
-        if (_loading) {
+        if (list$.response.loading) {
           return;
         }
-        if (tasks_.value.length >= task_count_.value) {
+        if (list$.response.noMore) {
           ui.view$.finishLoadingMore();
           return;
         }
-        _loading = true;
-        _page += 1;
-        var [err, data] = await WXU.request({
-          method: "GET",
-          url:
-            APIHostname +
-            "/api/task/list?page=" +
-            _page +
-            "&page_size=" +
-            _pageSize,
-        });
-        _loading = false;
-        if (err || !data || !data.list) {
-          _page -= 1;
-          ui.view$.finishLoadingMore();
-          return;
-        }
-        const tasks = data.list.map((t) => methods.formatTask(t));
-        // console.log(tasks);
-        task_count_.as(data.total);
-        tasks_.push(...tasks);
-        ui.waterfall$.methods.appendItems(tasks);
+        await list$.loadMore();
         ui.view$.finishLoadingMore();
       },
     }),
-    waterfall$: new Timeless.ui.WaterfallModel({
+    waterfall$: Timeless.ui.WaterfallModel({
       column: 1,
-      size: 20,
+      size: _pageSize,
       buffer: 10,
       gutter: GUTTER,
     }),
@@ -504,7 +347,7 @@ function DownloaderPanelViewModel() {
         new Timeless.ui.MenuItemCore({
           label: "清空下载记录",
           async onClick() {
-            await methods.clear();
+            await methods.clearTasks();
             ui.dropdown$.hide();
           },
         }),
@@ -520,13 +363,13 @@ function DownloaderPanelViewModel() {
       running_count: running_count_,
     },
     methods,
-    ready() {
+    async ready() {
       WXU.downloader.status = "disconnected";
       WXU.downloader.reconnect = async function () {
         if (WXU.downloader.status === "connected") return true;
         for (let i = 0; i < 3; i++) {
           try {
-            await methods.connect();
+            await list$.init();
             return true;
           } catch (e) {
             console.warn("Reconnect attempt " + (i + 1) + " failed");
@@ -535,7 +378,18 @@ function DownloaderPanelViewModel() {
         }
         return false;
       };
-      methods.connect().catch((e) => WXU.error({ msg: "建立ws连接失败" }));
+      methods.connect();
+      const r = await list$.init();
+      if (r.error) {
+        WXU.error({
+          msg: r.error.message,
+        });
+        return;
+      }
+      const tasks = list$.response.dataSource;
+      tasks_.push(tasks);
+      task_count_.as(list$.response.total);
+      ui.waterfall$.methods.appendItems(tasks);
     },
   };
 }
@@ -600,10 +454,8 @@ function DownloaderPanelView(props, children) {
           },
           [
             Waterfall({
-              // each: tasks_,
               store: vm$.ui.waterfall$,
               class: "scroll-view-waterfall !overflow-visible !h-auto",
-              style: "",
               render(task) {
                 const iconSize = "50px";
                 const state_ = computed(task, (t) => {
@@ -621,7 +473,7 @@ function DownloaderPanelView(props, children) {
                   const isRunning = t.status === "running";
 
                   let statusText = t.status;
-                  let statusColor = "var(--FG-1)";
+                  let statusColor = "var(--weui-FG-1)";
                   var isFailed = t.status === "failed" || t.status === "error";
                   var isPending = t.status === "pending";
                   if (isRunning) {
@@ -719,7 +571,7 @@ function DownloaderPanelView(props, children) {
                                     cx: "25",
                                     cy: "25",
                                     r: radius,
-                                    stroke: "var(--FG-3)",
+                                    stroke: "var(--weui-FG-3)",
                                     "stroke-width": "3",
                                     fill: "none",
                                   }),
@@ -790,7 +642,10 @@ function DownloaderPanelView(props, children) {
                         Switch(
                           {
                             when: combine(
-                              { state: state_, running_count: running_count_ },
+                              {
+                                state: state_,
+                                running_count: running_count_,
+                              },
                               (t) => {
                                 if (t.state.isCompleted) {
                                   return 1;
@@ -818,13 +673,13 @@ function DownloaderPanelView(props, children) {
                                   class: "wx-download-item-open",
                                   style: btnStyle,
                                   onClick() {
-                                    vm$.methods.open(task);
+                                    vm$.methods.openTask(task);
                                   },
                                 },
                                 [
                                   Show(
                                     {
-                                      when: isOpenExternal,
+                                      when: !!isOpenExternal,
                                       fallback: [
                                         DangerouslyInnerHTML(FolderIcon),
                                       ],
@@ -843,7 +698,7 @@ function DownloaderPanelView(props, children) {
                                   class: "wx-download-item-pause",
                                   style: btnStyle,
                                   onClick() {
-                                    vm$.methods.pause(task);
+                                    vm$.methods.pauseTask(task);
                                   },
                                 },
                                 [DangerouslyInnerHTML(PauseIcon)],
@@ -865,7 +720,7 @@ function DownloaderPanelView(props, children) {
                                     }),
                                   ]),
                                   onClick() {
-                                    vm$.methods.resume(task);
+                                    vm$.methods.resumeTask(task);
                                   },
                                 },
                                 [DangerouslyInnerHTML(PlayIcon)],
@@ -886,7 +741,7 @@ function DownloaderPanelView(props, children) {
                                     }),
                                   ]),
                                   onClick() {
-                                    vm$.methods.resume(task);
+                                    vm$.methods.resumeTask(task);
                                   },
                                 },
                                 [DangerouslyInnerHTML(RetryIcon)],
@@ -900,7 +755,7 @@ function DownloaderPanelView(props, children) {
                             class: "wx-download-item-delete",
                             style: btnStyle,
                             onClick() {
-                              vm$.methods.delete(task);
+                              vm$.methods.deleteTask(task);
                             },
                           },
                           [DangerouslyInnerHTML(DeleteIcon)],
@@ -932,7 +787,7 @@ function DownloaderEntry(props) {
       View(
         {
           class:
-            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer",
+            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
         },
         [
           DangerouslyInnerHTML(
@@ -994,11 +849,4 @@ function DownloaderEntry(props) {
       insert_downloader($btn_wrap, $download_panel_button);
     });
   }
-  if (WXU.env.isWxwork || WXU.config.remoteServerEnabled) {
-    vm$.methods.connect_local_ws();
-  }
 })();
-
-WXU.onInit((data) => {
-  __wx_username = data.mainFinderUsername;
-});

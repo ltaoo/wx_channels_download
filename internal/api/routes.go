@@ -11,8 +11,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/favicon.ico", c.handleFavicon)
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
-		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
-		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 		// 视频号接口
 		c.engine.GET("/api/channels/contact/search", c.handleSearchChannelsContact)
 		c.engine.GET("/api/channels/contact/feed/list", c.handleFetchFeedListOfContact)
@@ -20,11 +18,13 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/api/channels/live/replay/list", c.handleFetchLiveReplayList)
 		c.engine.GET("/api/channels/interactioned/list", c.handleFetchInteractionedFeedList)
 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
-		// 公众号接口 本地服务
+		// 公众号接口
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
+		// 文件传输助手接口
+		c.engine.GET("/filehelper", c.filehelper.HandlePage)
 		c.engine.GET("/api/filehelper/qrcode", c.filehelper.HandleGetQRCode)
 		c.engine.GET("/api/filehelper/login/wait", c.filehelper.HandleWaitLogin)
 		c.engine.GET("/api/filehelper/status", c.filehelper.HandleGetStatus)
@@ -34,8 +34,12 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/filehelper/send", c.filehelper.HandleSendMessage)
 		c.engine.POST("/api/filehelper/logout", c.filehelper.HandleLogout)
 		c.engine.POST("/api/filehelper/parse_finder_feed", c.filehelper.HandleParseFinderFeed)
+		// 文件操作
+		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
+		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 	}
 	// 下载任务接口
+	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)
 	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 	c.engine.GET("/api/task/list", c.handleFetchTaskList)
 	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
@@ -65,8 +69,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
-	// 文件传输助手接口
-	c.engine.GET("/filehelper", c.filehelper.HandlePage)
 	// c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
@@ -83,21 +85,19 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
 	err := c.channels.Validate()
+	channels_data := gin.H{
+		"available": false,
+	}
+	data := gin.H{
+		"version":  c.cfg.Version,
+		"channels": channels_data,
+	}
 	if err != nil {
-		ctx.JSON(200, gin.H{
-			"code": 1,
-			"msg":  err.Error(),
-			"data": gin.H{
-				"available": false,
-			},
-		})
-		return
+		channels_data["available"] = false
 	}
 	ctx.JSON(200, gin.H{
 		"code": 0,
 		"msg":  "ok",
-		"data": gin.H{
-			"available": true,
-		},
+		"data": data,
 	})
 }

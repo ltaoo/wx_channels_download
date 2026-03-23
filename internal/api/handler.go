@@ -273,7 +273,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -416,7 +416,7 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -468,7 +468,7 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 		}
 	}
 	if len(batchTasks) > 0 {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "batch_tasks",
 			Data: batchTasks,
 		})
@@ -543,7 +543,14 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "缺少参数")
 		return
 	}
-
+	// 提前解析 URL，如果包含 eid 则提取出来
+	if body.Eid == "" && body.URL != "" {
+		if parsedURL, err := url.Parse(body.URL); err == nil {
+			if eid := parsedURL.Query().Get("eid"); eid != "" {
+				body.Eid = eid
+			}
+		}
+	}
 	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -599,7 +606,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
-		c.channels.Broadcast(APIClientWSMessage{
+		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
 				"task": task,
@@ -683,7 +690,7 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	c.downloader.Delete(nil, true)
-	c.channels.Broadcast(APIClientWSMessage{
+	c.downloader_ws.Broadcast(APIClientWSMessage{
 		Type: "clear",
 		Data: c.downloader.GetTasks(),
 	})

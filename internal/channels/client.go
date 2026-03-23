@@ -119,10 +119,6 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 				continue
 			}
 		}
-
-		if c.OnMessage != nil {
-			c.OnMessage(client, message)
-		}
 	}
 }
 func (c *ChannelsClient) Stop() {
