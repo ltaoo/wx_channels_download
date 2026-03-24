@@ -702,3 +702,49 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	}
 	return body, err
 }
+
+// ExtractArticleID extracts a unique article identifier from a WeChat official account URL.
+// For short URLs like https://mp.weixin.qq.com/s/2kaR8z-xO_IAO9TPSUecsQ, returns the path suffix.
+// For full URLs, returns mid+idx as the unique key.
+// The rawURL may have an "officialaccount://" prefix.
+func ExtractArticleID(rawURL string) string {
+	u := rawURL
+	lower := strings.ToLower(u)
+	if strings.HasPrefix(lower, "officialaccount://") {
+		u = u[len("officialaccount://"):]
+		if !strings.HasPrefix(u, "http") {
+			u = "https://" + u
+		}
+	}
+
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+
+	if !strings.Contains(parsed.Host, "mp.weixin.qq.com") {
+		return ""
+	}
+
+	// Short URL: /s/2kaR8z-xO_IAO9TPSUecsQ
+	path := strings.TrimRight(parsed.Path, "/")
+	if strings.HasPrefix(path, "/s/") {
+		shortID := strings.TrimPrefix(path, "/s/")
+		if shortID != "" && !strings.Contains(shortID, "/") {
+			return shortID
+		}
+	}
+
+	// Full URL: extract mid+idx
+	q := parsed.Query()
+	mid := q.Get("mid")
+	idx := q.Get("idx")
+	if mid != "" {
+		if idx == "" {
+			idx = "1"
+		}
+		return mid + "_" + idx
+	}
+
+	return ""
+}

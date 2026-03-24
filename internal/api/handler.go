@@ -18,6 +18,7 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
+	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
@@ -306,21 +307,39 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
+
+	// Extract article_id for officialaccount URLs
+	articleID := officialaccountdownload.ExtractArticleID(body.URL)
+
 	tasks := c.downloader.GetTasks()
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil {
 			continue
 		}
-		// fmt.Println("compare url", t.Meta.Req.URL, body.URL)
-		if t.Meta.Req.URL == body.URL {
+		// For officialaccount URLs, compare by article_id label
+		if articleID != "" && t.Meta.Req.Labels != nil && t.Meta.Req.Labels["article_id"] == articleID {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		}
+		// For other URLs, compare by URL directly
+		if articleID == "" && t.Meta.Req.URL == body.URL {
 			result.Err(ctx, 409, "已存在该下载内容")
 			return
 		}
 	}
+
+	labels := body.Extra
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if articleID != "" {
+		labels["article_id"] = articleID
+	}
+
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL:    body.URL,
-			Labels: body.Extra,
+			Labels: labels,
 		},
 		&base.Options{
 			Name: body.Filename,
