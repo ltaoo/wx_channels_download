@@ -17,8 +17,9 @@ import (
 
 type Fetcher struct {
 	fetcher.DefaultFetcher
-	mu     sync.Mutex
-	closed bool
+	mu         sync.Mutex
+	closed     bool
+	downloaded int64
 }
 
 func (f *Fetcher) Setup(ctl *controller.Controller) {
@@ -42,21 +43,8 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 
 	oa := &officialaccountdownload.OfficialAccountDownload{}
 
-	// Handle custom scheme
-	real_url := req.URL
-	if strings.HasPrefix(strings.ToLower(real_url), "officialaccount://") {
-		real_url = real_url[len("officialaccount://"):]
-		if !strings.HasPrefix(real_url, "http") {
-			real_url = "https://" + real_url
-		}
-		// Create a copy of request with real URL
-		req_copy := *req
-		req_copy.URL = real_url
-		f.DefaultFetcher.Meta.Req = &req_copy
-	}
-
 	// Fetch the article to get the title
-	article, err := oa.FetchArticle(f.DefaultFetcher.Meta.Req.URL)
+	article, err := oa.FetchArticle(resolveRealURL(req.URL))
 	if err != nil {
 		return err
 	}
@@ -118,13 +106,16 @@ func (f *Fetcher) Create(opts *base.Options) error {
 func (f *Fetcher) Start() error {
 	go func() {
 		oa := &officialaccountdownload.OfficialAccountDownload{}
+		oa.OnProgress = func(downloaded int64) {
+			f.addProgress(downloaded)
+		}
 		// Use the URL from the request and Path from options
 		destPath := filepath.Join(f.DefaultFetcher.Meta.Opts.Path, f.DefaultFetcher.Meta.Opts.Name)
 		needCompress := false
 		if f.DefaultFetcher.Meta.Req.Labels != nil && f.DefaultFetcher.Meta.Req.Labels["compress"] == "true" {
 			needCompress = true
 		}
-		content, err := oa.BuildHTMLFromURL(f.DefaultFetcher.Meta.Req.URL, needCompress)
+		content, err := oa.BuildHTMLFromURL(resolveRealURL(f.DefaultFetcher.Meta.Req.URL), needCompress)
 		if err != nil {
 			f.DoneCh <- err
 			return
@@ -159,14 +150,31 @@ func (f *Fetcher) Stats() any {
 	return nil
 }
 
+func (f *Fetcher) addProgress(n int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.downloaded += n
+}
+
 func (f *Fetcher) Progress() fetcher.Progress {
-	// Progress tracking might be difficult with current SaveURLAsHTML implementation
-	// as it doesn't report progress. We return 0 or maybe implemented later.
-	return fetcher.Progress{0}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return fetcher.Progress{f.downloaded}
 }
 
 // Manager
 type FetcherManager struct{}
+
+// resolveRealURL strips the "officialaccount://" scheme prefix and returns a valid HTTP(S) URL.
+func resolveRealURL(rawURL string) string {
+	if strings.HasPrefix(strings.ToLower(rawURL), "officialaccount://") {
+		rawURL = rawURL[len("officialaccount://"):]
+		if !strings.HasPrefix(rawURL, "http") {
+			rawURL = "https://" + rawURL
+		}
+	}
+	return rawURL
+}
 
 func (fm *FetcherManager) Name() string {
 	return "officialaccount"

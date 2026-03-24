@@ -22,7 +22,14 @@ import (
 var md_convert = htmltomarkdown.NewConverter("", true, nil)
 
 type OfficialAccountDownload struct {
-	article *WechatOfficialArticle
+	article    *WechatOfficialArticle
+	OnProgress func(downloaded int64) // callback after each image download, reports bytes downloaded
+}
+
+func (c *OfficialAccountDownload) reportProgress(n int64) {
+	if c.OnProgress != nil {
+		c.OnProgress(n)
+	}
 }
 
 func (c *OfficialAccountDownload) SaveURLAsMarkdown(url string, dir_path string) error {
@@ -379,6 +386,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 		for _, imgURL := range article.Images {
 			imgData, mimeType, err := downloadImageBytes(imgURL)
 			if err == nil {
+				c.reportProgress(int64(len(imgData)))
 				if need_compress_img {
 					// Compress image to reduce size
 					compressedData, compressedMime, errCompress := compressImage(imgData)
@@ -499,6 +507,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 			if imgURL != "" {
 				imgData, mimeType, err := downloadImageBytes(imgURL)
 				if err == nil {
+					c.reportProgress(int64(len(imgData)))
 					if need_compress_img {
 						// Compress image to reduce size
 						compressedData, compressedMime, errCompress := compressImage(imgData)

@@ -311,6 +311,7 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil {
 			continue
 		}
+		// fmt.Println("compare url", t.Meta.Req.URL, body.URL)
 		if t.Meta.Req.URL == body.URL {
 			result.Err(ctx, 409, "已存在该下载内容")
 			return
