@@ -27,6 +27,10 @@
     .img-container img { max-width: 100%; max-height: 200px; object-fit: contain; cursor: pointer; border-radius: 4px; display: block; margin: 0 auto; }
     .img-name { margin-bottom: 8px; font-size: 14px; color: #666; word-break: break-all; }
 
+    /* HTML iframe */
+    .html-container { width: 100%; height: 100%; }
+    .html-container iframe { width: 100%; height: 100%; border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
     /* Overlay */
     .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; }
     .overlay img { max-width: 90%; max-height: 90%; object-fit: contain; }
@@ -111,6 +115,12 @@ function render(data, filename) {
             </div>
         `).join('');
         container.innerHTML = `<div class="gallery">${html}</div>`;
+    } else if (data.type === 'html') {
+        container.innerHTML = `
+            <div class="html-container">
+                <iframe src="${data.url}" sandbox="allow-same-origin"></iframe>
+            </div>
+        `;
     } else {
         container.innerHTML = '<h3>Unsupported file type or format</h3>';
     }

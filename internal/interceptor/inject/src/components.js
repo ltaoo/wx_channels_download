@@ -22,6 +22,39 @@ body[data-weui-theme=dark] {
 .flex {
   display: flex;
 }
+.fixed {
+  position: fixed;
+}
+.inset-0 {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+.z-50 {
+  z-index: 50;
+}
+.items-center {
+  align-items: center;
+}
+.justify-center {
+  justify-content: center;
+}
+.p-4 {
+  padding: 1rem;
+}
+.bg-black\/80 {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+.w-full {
+ width: 100%;
+}
+.h-full {
+ height: 100%;
+}
+.overflow-y-auto {
+  overflow-y: auto;
+}
 .custom-menu {
   z-index: 99999;
   background: var(--popup-menu-bg-color);
@@ -181,7 +214,6 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
   height: 380px;
   min-height: 0;
   position: relative;
-  padding: 0 12px;
 }
 .scroll-view-waterfall {
   overflow: visible !important;
@@ -552,6 +584,7 @@ function Popover(props, children) {
         PopoverPrimitive.Content(
           {
             ...props,
+            zIndex: 9999,
             class: computed(state_, (t) => {
               return [
                 t.enter ? "animate-in fade-in-0 zoom-in-95" : "",
@@ -564,6 +597,37 @@ function Popover(props, children) {
       ]),
     ],
   );
+}
+
+function Dialog(props, children) {
+  const { store, ...rest } = props;
+  const state_ = refobj(store.state);
+
+  store.onStateChange((v) => {
+    state_.as(v);
+  });
+
+  return DialogPrimitive.Root({ store }, [
+    DialogPrimitive.Overlay({
+      store,
+      class: "fixed inset-0 z-50 bg-black/80",
+    }),
+    View(
+      {
+        class: "fixed inset-0 z-50 flex items-center justify-center p-4",
+        onClick(e) {
+          if (e.target === e.currentTarget && store.closeable) {
+            store.hide();
+          }
+        },
+      },
+      [
+        DialogPrimitive.Content({ ...rest, store }, [
+          DialogPrimitive.Body({ store }, children || []),
+        ]),
+      ],
+    ),
+  ]);
 }
 
 function DropdownMenu(props, children) {
@@ -619,7 +683,7 @@ function DropdownMenuItem(props) {
     DropdownMenuPrimitive.Item(
       {
         store: props.store,
-        class: classNames([
+        class: cn([
           computed(state_, (t) => {
             return t.focused
               ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
@@ -675,33 +739,70 @@ function DropdownMenuItem(props) {
 function Waterfall(props) {
   const { store, class: cls, render, ...rest } = props;
 
-  const columnChildren = store.$columns.map((column) => {
-    const visibleCells = refarr([...column.$cells]);
-    column.onStateChange(() => {
-      visibleCells.as([...column.$cells]);
-    });
-
-    return WaterfallPrimitive.Column({ store: column }, [
+  return WaterfallPrimitive.Root(
+    {
+      ...rest,
+      store,
+      class: cn(["w-full h-full overflow-y-auto", cls]),
+    },
+    [
       For({
-        key: "id",
-        each: visibleCells,
-        render(cell) {
-          const payload = cell.state.payload;
-          return WaterfallPrimitive.Cell({ store: cell }, [
-            render(payload, cell),
+        each: store.$columns,
+        render(column) {
+          const visible_cells = refarr([...column.$cells]);
+          return WaterfallPrimitive.Column({ store: column }, [
+            For({
+              key: "id",
+              each: visible_cells,
+              render(slot) {
+                let payload = slot.state.payload;
+                let user_content = slot.state.bound
+                  ? render(payload, slot)
+                  : null;
+
+                const cell$ = WaterfallPrimitive.Cell(
+                  { store: slot },
+                  user_content ? [user_content] : [],
+                );
+
+                // 监听 rebind — 替换内部用户内容
+                slot.onRebind(() => {
+                  const cellDiv = cell$.$elm;
+                  if (!cellDiv) return;
+
+                  // 卸载旧内容
+                  if (
+                    user_content &&
+                    typeof user_content.onUnmounted === "function"
+                  ) {
+                    user_content.onUnmounted();
+                  }
+                  // 清空 Cell div 内部（保留 Cell div 本身在 Column 中的位置不变）
+                  while (cellDiv.firstChild) {
+                    cellDiv.removeChild(cellDiv.firstChild);
+                  }
+
+                  // 创建并挂载新内容
+                  payload = slot.state.payload;
+                  user_content = render(payload, slot);
+                  if (user_content && isElement(user_content)) {
+                    const rendered = user_content.render();
+                    if (rendered) {
+                      cellDiv.appendChild(rendered);
+                    }
+                    if (typeof user_content.onMounted === "function") {
+                      user_content.onMounted(user_content.$elm);
+                    }
+                  }
+                });
+
+                return cell$;
+              },
+            }),
           ]);
         },
       }),
-    ]);
-  });
-
-  return WaterfallPrimitive.Root(
-    {
-      store,
-      class: cn(["w-full h-full overflow-y-auto", cls]),
-      ...rest,
-    },
-    columnChildren,
+    ],
   );
 }
 
@@ -710,10 +811,10 @@ function ScrollView(props, children) {
 
   return ScrollViewPrimitive.Root(
     {
+      ...rest,
       store,
       class: cn(["scroll-view h-full overflow-y-auto", cls]),
-      style: "height: 100%; overflow-y: auto;",
-      ...rest,
+      style: "height: 100%; overflow-y: auto; padding: 0 12px;",
     },
     [
       ScrollViewPrimitive.Indicator(
@@ -721,7 +822,7 @@ function ScrollView(props, children) {
           store,
           class: "scroll-view-indicator",
           style:
-            "position: relative; width: 100%; overflow: hidden; text-align: center;",
+            "position: relative; width: 100%; height: 0, overflow: hidden; text-align: center;",
         },
         [
           ScrollViewPrimitive.Progress({
