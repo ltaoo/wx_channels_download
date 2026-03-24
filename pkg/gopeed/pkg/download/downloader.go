@@ -865,7 +865,9 @@ func (d *Downloader) restoreFetcher(task *Task) error {
 			return err
 		}
 	}
-	task.fetcher = f(task.Meta, v)
+	if f != nil {
+		task.fetcher = f(task.Meta, v)
+	}
 	if task.fetcher == nil {
 		task.fetcher = task.fetcherManager.Build()
 	}

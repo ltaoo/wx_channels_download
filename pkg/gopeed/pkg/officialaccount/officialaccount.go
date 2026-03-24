@@ -22,7 +22,14 @@ import (
 var md_convert = htmltomarkdown.NewConverter("", true, nil)
 
 type OfficialAccountDownload struct {
-	article *WechatOfficialArticle
+	article    *WechatOfficialArticle
+	OnProgress func(downloaded int64) // callback after each image download, reports bytes downloaded
+}
+
+func (c *OfficialAccountDownload) reportProgress(n int64) {
+	if c.OnProgress != nil {
+		c.OnProgress(n)
+	}
 }
 
 func (c *OfficialAccountDownload) SaveURLAsMarkdown(url string, dir_path string) error {
@@ -379,6 +386,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 		for _, imgURL := range article.Images {
 			imgData, mimeType, err := downloadImageBytes(imgURL)
 			if err == nil {
+				c.reportProgress(int64(len(imgData)))
 				if need_compress_img {
 					// Compress image to reduce size
 					compressedData, compressedMime, errCompress := compressImage(imgData)
@@ -499,6 +507,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 			if imgURL != "" {
 				imgData, mimeType, err := downloadImageBytes(imgURL)
 				if err == nil {
+					c.reportProgress(int64(len(imgData)))
 					if need_compress_img {
 						// Compress image to reduce size
 						compressedData, compressedMime, errCompress := compressImage(imgData)
@@ -692,4 +701,50 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 		return nil, err
 	}
 	return body, err
+}
+
+// ExtractArticleID extracts a unique article identifier from a WeChat official account URL.
+// For short URLs like https://mp.weixin.qq.com/s/2kaR8z-xO_IAO9TPSUecsQ, returns the path suffix.
+// For full URLs, returns mid+idx as the unique key.
+// The rawURL may have an "officialaccount://" prefix.
+func ExtractArticleID(rawURL string) string {
+	u := rawURL
+	lower := strings.ToLower(u)
+	if strings.HasPrefix(lower, "officialaccount://") {
+		u = u[len("officialaccount://"):]
+		if !strings.HasPrefix(u, "http") {
+			u = "https://" + u
+		}
+	}
+
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+
+	if !strings.Contains(parsed.Host, "mp.weixin.qq.com") {
+		return ""
+	}
+
+	// Short URL: /s/2kaR8z-xO_IAO9TPSUecsQ
+	path := strings.TrimRight(parsed.Path, "/")
+	if strings.HasPrefix(path, "/s/") {
+		shortID := strings.TrimPrefix(path, "/s/")
+		if shortID != "" && !strings.Contains(shortID, "/") {
+			return shortID
+		}
+	}
+
+	// Full URL: extract mid+idx
+	q := parsed.Query()
+	mid := q.Get("mid")
+	idx := q.Get("idx")
+	if mid != "" {
+		if idx == "" {
+			idx = "1"
+		}
+		return mid + "_" + idx
+	}
+
+	return ""
 }

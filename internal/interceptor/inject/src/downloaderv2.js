@@ -12,6 +12,8 @@ if (WXU.config.remoteServerPort !== 80) {
   RemoteAPIHostname += ":" + WXU.config.remoteServerPort;
 }
 
+console.log("[]downloaderv2.js - ", FakeAPIServerAddr, APIHostname);
+
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
   hostname: APIHostname,
@@ -192,6 +194,7 @@ function DownloaderPanelViewModel() {
       }
       const matched = tasks_.find((t) => t.id === task.id);
       if (!matched) {
+        WXU.error({ msg: "异常操作" });
         return;
       }
       tasks_.remove(matched);
@@ -250,7 +253,7 @@ function DownloaderPanelViewModel() {
           resolve(true);
         };
         ws.onclose = () => {
-          WXU.error({ msg: "ws连接已关闭，请刷新页面" });
+          WXU.error({ msg: "download ws连接已关闭，请刷新页面" });
           if (WXU.downloader) {
             WXU.downloader.status = "disconnected";
           }
@@ -273,7 +276,13 @@ function DownloaderPanelViewModel() {
           }
           if (msg.type === "event") {
             const data = msg && msg.data ? msg.data : null;
-            const task = data ? data.Task || data.task : null; // 兼容大小写字段
+            if (!data || !data.Key) {
+              return;
+            }
+            if (data.Key === "delete") {
+              return;
+            }
+            const task = data.Task || data.task; // 兼容大小写字段
             if (!task) {
               return;
             }
@@ -337,10 +346,11 @@ function DownloaderPanelViewModel() {
       msg: err.message,
     });
   });
-
+  let _scrollTop = 0;
   const ui = {
     view$: new Timeless.ui.ScrollViewCore({
       onScroll(pos) {
+        _scrollTop = pos.scrollTop;
         ui.waterfall$.methods.handleScroll({ scrollTop: pos.scrollTop });
       },
       async onReachBottom() {
@@ -372,19 +382,45 @@ function DownloaderPanelViewModel() {
             ui.dropdown$.hide();
           },
         }),
+        // new Timeless.ui.MenuItemCore({
+        //   label: "刷新",
+        //   async onClick() {
+        //     list$.clear();
+        //     tasks_.as([]);
+        //     task_count_.as(0);
+        //     ui.waterfall$.methods.cleanColumns();
+        //     const r = await list$.init();
+        //     if (r.error) {
+        //       WXU.error({ msg: r.error.message });
+        //       ui.dropdown$.hide();
+        //       return;
+        //     }
+        //     const tasks = list$.response.dataSource;
+        //     tasks_.push(tasks);
+        //     task_count_.as(list$.response.total);
+        //     ui.waterfall$.methods.appendItems(tasks);
+        //     ui.dropdown$.hide();
+        //   },
+        // }),
       ],
     }),
   };
-
+  let ready = false;
   return {
     ui,
     state: {
       tasks: tasks_,
       task_count: task_count_,
       running_count: running_count_,
+      get scrollTop() {
+        return _scrollTop;
+      },
     },
     methods,
     async ready() {
+      if (ready) {
+        return;
+      }
       WXU.downloader.status = "disconnected";
       WXU.downloader.reconnect = async function () {
         if (WXU.downloader.status === "connected") return true;
@@ -408,401 +444,433 @@ function DownloaderPanelViewModel() {
         return;
       }
       const tasks = list$.response.dataSource;
-      tasks_.push(tasks);
+      tasks_.push(...tasks);
       task_count_.as(list$.response.total);
+      console.log("before waterfall$.methods.appendItems", tasks);
       ui.waterfall$.methods.appendItems(tasks);
+      ready = true;
+    },
+    clean() {
+      tasks_.as([]);
+      task_count_.as(0);
+      list$.clear();
+      ui.waterfall$.methods.cleanColumns();
     },
   };
 }
 
 function DownloaderPanelView(props, children) {
-  const vm$ = props.store;
-  // const tasks_ = vm$.state.tasks;
+  // const vm$ = props.store;
+  const vm$ = DownloaderPanelViewModel();
+  const tasks_ = vm$.state.tasks;
   const task_count_ = vm$.state.task_count;
   const running_count_ = vm$.state.running_count;
 
-  return View({ class: "wx-dl-panel-container" }, [
-    View({ class: "wx-dl-header" }, [
-      View({ class: "wx-dl-title" }, [
-        "Downloads",
-        computed(task_count_, (d) => {
-          return d > 0 ? `（${d}）` : "";
-        }),
-      ]),
-      DropdownMenu(
-        {
-          store: vm$.ui.dropdown$,
-        },
-        [
-          View(
-            {
-              class: "wx-dl-more-btn",
-            },
-            [
-              Timeless.icons.EllipsisVerticalOutlined({
-                style: "font-size: 18px;",
-              }),
-            ],
-          ),
-        ],
-      ),
-    ]),
-    ScrollView(
-      {
-        class: "wx-dl-list wx-dl-dark-scroll",
-        style: "background-color: transparent; margin-top: 0;",
-        store: vm$.ui.view$,
+  return View(
+    {
+      class: "wx-dl-panel-container",
+      onMounted() {
+        vm$.ready();
       },
-      [
-        Show(
+      onUnmounted() {
+        // vm$.clean();
+      },
+    },
+    [
+      View({ class: "wx-dl-header" }, [
+        View({ class: "wx-dl-title" }, [
+          "Downloads",
+          computed(task_count_, (d) => {
+            return d > 0 ? `（${d}）` : "";
+          }),
+        ]),
+        DropdownMenu(
           {
-            when: computed(task_count_, (d) => d > 0),
-            fallback: [
-              View(
-                {
-                  class: "weui-loadmore weui-loadmore_line",
-                },
-                [
-                  View(
-                    {
-                      class: "weui-loadmore__tips",
-                    },
-                    ["暂无下载任务"],
-                  ),
-                ],
-              ),
-            ],
+            store: vm$.ui.dropdown$,
           },
           [
-            Waterfall({
-              store: vm$.ui.waterfall$,
-              class: "scroll-view-waterfall !overflow-visible !h-auto",
-              render(task) {
-                const iconSize = "50px";
-                const state_ = computed(task, (t) => {
-                  // console.log("the task is changed", t.status);
-                  const pr = format_download_percent(t);
-                  const isCompleted =
-                    t.status === "done" ||
-                    t.status === "completed" ||
-                    t.status === "success" ||
-                    t.status === "finished" ||
-                    (pr === 100 && t.status !== "running");
-
-                  const isPaused =
-                    t.status === "paused" || t.status === "pause";
-                  const isRunning = t.status === "running";
-
-                  let statusText = t.status;
-                  let statusColor = "var(--weui-FG-1)";
-                  var isFailed = t.status === "failed" || t.status === "error";
-                  var isPending = t.status === "pending";
-                  if (isRunning) {
-                    const speed = format_download_speed(
-                      t.progress ? t.progress.speed : 0,
-                    );
-                    statusText = `${speed} • ${pr}%`;
-                  } else if (isCompleted) {
-                    statusText = "已完成";
-                    // Calculate size
-                    const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-                    if (total) {
-                      statusText = WXU.bytes_to_size(total);
-                    }
-                  } else if (isFailed) {
-                    statusText = "下载失败";
-                    statusColor = "#FA5151";
-                  } else if (isPending) {
-                    statusText = "等待中...";
-                  } else if (isPaused) {
-                    statusText = `已暂停 • ${pr}%`;
-                  }
-                  return {
-                    pr,
-                    isCompleted,
-                    isPaused,
-                    isRunning,
-                    isFailed,
-                    canResume: isFailed || isPaused,
-                    statusText,
-                    statusColor,
-                  };
-                });
-                const isOpenExternal = WXU.config.remoteServerEnabled;
-                const filename = task.name;
-                const PrefixIcon = computed(filename, (t) => {
-                  const filename = t;
-                  let selectedIcon = FileIcon;
-                  if (filename) {
-                    const ext = filename.split(".").pop().toLowerCase();
-                    if (ext === "mp3") {
-                      selectedIcon = MP3Icon;
-                    } else if (ext === "mp4") {
-                      selectedIcon = MP4Icon;
-                    } else if (
-                      ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
-                    ) {
-                      selectedIcon = ImageIcon;
-                    }
-                  }
-                  return selectedIcon
-                    .replace('width="20"', 'width="32"')
-                    .replace('height="20"', 'height="32"');
-                });
-                const radius = 22;
-                const circumference = 2 * Math.PI * radius;
-                const offset = computed(state_, (d) => {
-                  return circumference - (d.pr / 100) * circumference;
-                });
-                const strokeColor = computed(state_, (d) => {
-                  return d.isPaused ? "#FBC02D" : "#07C160";
-                });
-
-                return View({ class: "weui-cell wx-dl-item" }, [
-                  View(
-                    {
-                      class: "weui-cell__hd",
-                      style: `position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);`,
-                    },
-                    [
-                      Show(
-                        {
-                          when: computed(state_, (t) => {
-                            return t.isRunning || t.isPaused;
-                          }),
-                          fallback: [DangerouslyInnerHTML(PrefixIcon.value)],
-                        },
-                        [
-                          View(
-                            {
-                              style:
-                                "position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;",
-                            },
-                            [
-                              SVG(
-                                {
-                                  style:
-                                    "position: absolute; top: 0; left: 0; transform: rotate(-90deg);",
-                                  width: "50",
-                                  height: "50",
-                                  viewBox: "0 0 50 50",
-                                },
-                                [
-                                  Circle({
-                                    cx: "25",
-                                    cy: "25",
-                                    r: radius,
-                                    stroke: "var(--weui-FG-3)",
-                                    "stroke-width": "3",
-                                    fill: "none",
-                                  }),
-                                  Circle({
-                                    cx: "25",
-                                    cy: "25",
-                                    r: radius,
-                                    stroke: strokeColor,
-                                    "stroke-width": "3",
-                                    fill: "none",
-                                    "stroke-dasharray": circumference,
-                                    "stroke-dashoffset": offset,
-                                    "stroke-linecap": "round",
-                                  }),
-                                ],
-                              ),
-                              View(
-                                {
-                                  style:
-                                    "position: relative; z-index: 1; display: flex;",
-                                },
-                                [DangerouslyInnerHTML(PrefixIcon.value)],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  View(
-                    {
-                      class: "weui-cell__bd",
-                      style: "min-width:0;",
-                    },
-                    [
-                      View(
-                        {
-                          class: "weui-ellipsis",
-                          style:
-                            "color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
-                        },
-                        [task.name],
-                      ),
-                      View(
-                        {
-                          class: "weui-cell__desc",
-                          style: computed(state_, (d) => {
-                            return `margin-top: 4px; color: ${d.statusColor}; font-size: 12px;`;
-                          }),
-                        },
-                        [
-                          computed(state_, (d) => {
-                            return d.statusText;
-                          }),
-                        ],
-                      ),
-                    ],
-                  ),
-                  View(
-                    {
-                      class: "weui-cell__ft",
-                      style: "display: flex; align-items: center;",
-                    },
-                    (() => {
-                      const btnStyle =
-                        "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
-                      return [
-                        Switch(
+            View(
+              {
+                class: "wx-dl-more-btn",
+              },
+              [
+                Timeless.icons.EllipsisVerticalOutlined({
+                  style: "font-size: 18px;",
+                }),
+              ],
+            ),
+          ],
+        ),
+      ]),
+      View(
+        {
+          class: "wx-dl-list wx-dl-dark-scroll",
+        },
+        [
+          ScrollView(
+            {
+              style: "background-color: transparent; margin-top: 0;",
+              store: vm$.ui.view$,
+            },
+            [
+              Show(
+                {
+                  when: computed(task_count_, (d) => d > 0),
+                  fallback: [
+                    View(
+                      {
+                        class: "weui-loadmore weui-loadmore_line",
+                      },
+                      [
+                        View(
                           {
-                            when: combine(
-                              {
-                                state: state_,
-                                running_count: running_count_,
-                              },
-                              (t) => {
-                                if (t.state.isCompleted) {
-                                  return 1;
-                                }
-                                if (t.state.isRunning) {
-                                  return 2;
-                                }
-                                if (t.state.isPaused) {
-                                  return 3;
-                                }
-                                if (t.state.isFailed) {
-                                  return 4;
-                                }
-                                return 0;
-                              },
-                            ),
+                            class: "weui-loadmore__tips",
+                          },
+                          ["暂无下载任务"],
+                        ),
+                      ],
+                    ),
+                  ],
+                },
+                [
+                  Waterfall({
+                    store: vm$.ui.waterfall$,
+                    class: "scroll-view-waterfall !overflow-visible !h-auto",
+                    style: "overflow: visible; height: auto;",
+                    render(task) {
+                      console.log("task in waterfall", task);
+                      const iconSize = "50px";
+                      const state_ = computed(task, (t) => {
+                        // console.log("the task is changed", t.status);
+                        const pr = format_download_percent(t);
+                        const isCompleted =
+                          t.status === "done" ||
+                          t.status === "completed" ||
+                          t.status === "success" ||
+                          t.status === "finished" ||
+                          (pr === 100 && t.status !== "running");
+
+                        const isPaused =
+                          t.status === "paused" || t.status === "pause";
+                        const isRunning = t.status === "running";
+
+                        let statusText = t.status;
+                        let statusColor = "var(--weui-FG-1)";
+                        var isFailed =
+                          t.status === "failed" || t.status === "error";
+                        var isPending = t.status === "pending";
+                        if (isRunning) {
+                          const speed = format_download_speed(
+                            t.progress ? t.progress.speed : 0,
+                          );
+                          statusText = `${speed} • ${pr}%`;
+                        } else if (isCompleted) {
+                          statusText = "已完成";
+                          // Calculate size
+                          const total =
+                            t.meta && t.meta.res ? t.meta.res.size : 0;
+                          if (total) {
+                            statusText = WXU.bytes_to_size(total);
+                          }
+                        } else if (isFailed) {
+                          statusText = "下载失败";
+                          statusColor = "#FA5151";
+                        } else if (isPending) {
+                          statusText = "等待中...";
+                        } else if (isPaused) {
+                          statusText = `已暂停 • ${pr}%`;
+                        }
+                        return {
+                          pr,
+                          isCompleted,
+                          isPaused,
+                          isRunning,
+                          isFailed,
+                          canResume: isFailed || isPaused,
+                          statusText,
+                          statusColor,
+                        };
+                      });
+                      const isOpenExternal = WXU.config.remoteServerEnabled;
+                      const filename = task.name;
+                      const PrefixIcon = computed(filename, (t) => {
+                        const filename = t;
+                        let selectedIcon = FileIcon;
+                        if (filename) {
+                          const ext = filename.split(".").pop().toLowerCase();
+                          if (ext === "mp3") {
+                            selectedIcon = MP3Icon;
+                          } else if (ext === "mp4") {
+                            selectedIcon = MP4Icon;
+                          } else if (
+                            ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
+                          ) {
+                            selectedIcon = ImageIcon;
+                          }
+                        }
+                        return selectedIcon
+                          .replace('width="20"', 'width="32"')
+                          .replace('height="20"', 'height="32"');
+                      });
+                      const radius = 22;
+                      const circumference = 2 * Math.PI * radius;
+                      const offset = computed(state_, (d) => {
+                        return circumference - (d.pr / 100) * circumference;
+                      });
+                      const strokeColor = computed(state_, (d) => {
+                        return d.isPaused ? "#FBC02D" : "#07C160";
+                      });
+
+                      return View({ class: "weui-cell wx-dl-item" }, [
+                        View(
+                          {
+                            class: "weui-cell__hd",
+                            style: `position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);`,
                           },
                           [
-                            // 场景 1: 已完成 -> 显示打开按钮
-                            Match(1, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-open",
-                                  style: btnStyle,
-                                  onClick() {
-                                    vm$.methods.openTask(task);
-                                  },
-                                },
-                                [
-                                  Show(
-                                    {
-                                      when: !!isOpenExternal,
-                                      fallback: [
-                                        DangerouslyInnerHTML(FolderIcon),
-                                      ],
-                                    },
-                                    [DangerouslyInnerHTML(ExternalLinkIcon)],
-                                  ),
+                            Show(
+                              {
+                                when: computed(state_, (t) => {
+                                  return t.isRunning || t.isPaused;
+                                }),
+                                fallback: [
+                                  DangerouslyInnerHTML(PrefixIcon.value),
                                 ],
-                              ),
-                            ]),
-                            // 场景 2: 正在运行 -> 显示暂停按钮
-                            Match(2, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-pause",
-                                  style: btnStyle,
-                                  onClick() {
-                                    vm$.methods.pauseTask(task);
+                              },
+                              [
+                                View(
+                                  {
+                                    style:
+                                      "position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;",
                                   },
-                                },
-                                [DangerouslyInnerHTML(PauseIcon)],
-                              ),
-                            ]),
-                            // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
-                            Match(3, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-resume",
-                                  style: sn([
-                                    btnStyle,
-                                    computed(running_count_, (t) => {
-                                      return t > WXU.config.MaxRunning
-                                        ? "opacity: 0.6; cursor: not-allowed;"
-                                        : "";
-                                    }),
-                                  ]),
-                                  onClick() {
-                                    vm$.methods.resumeTask(task);
-                                  },
-                                },
-                                [DangerouslyInnerHTML(PlayIcon)],
-                              ),
-                            ]),
-                            Match(4, [
-                              h(
-                                View,
-                                {
-                                  type: "a",
-                                  class: "wx-download-item-resume",
-                                  style: sn([
-                                    btnStyle,
-                                    computed(running_count_, (t) => {
-                                      return t > WXU.config.MaxRunning
-                                        ? "opacity: 0.6; cursor: not-allowed;"
-                                        : "";
-                                    }),
-                                  ]),
-                                  onClick() {
-                                    vm$.methods.resumeTask(task);
-                                  },
-                                },
-                                [DangerouslyInnerHTML(RetryIcon)],
-                              ),
-                            ]),
+                                  [
+                                    SVG(
+                                      {
+                                        style:
+                                          "position: absolute; top: 0; left: 0; transform: rotate(-90deg);",
+                                        width: "50",
+                                        height: "50",
+                                        viewBox: "0 0 50 50",
+                                      },
+                                      [
+                                        Circle({
+                                          cx: "25",
+                                          cy: "25",
+                                          r: radius,
+                                          stroke: "var(--weui-FG-3)",
+                                          "stroke-width": "3",
+                                          fill: "none",
+                                        }),
+                                        Circle({
+                                          cx: "25",
+                                          cy: "25",
+                                          r: radius,
+                                          stroke: strokeColor,
+                                          "stroke-width": "3",
+                                          fill: "none",
+                                          "stroke-dasharray": circumference,
+                                          "stroke-dashoffset": offset,
+                                          "stroke-linecap": "round",
+                                        }),
+                                      ],
+                                    ),
+                                    View(
+                                      {
+                                        style:
+                                          "position: relative; z-index: 1; display: flex;",
+                                      },
+                                      [DangerouslyInnerHTML(PrefixIcon.value)],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                         View(
                           {
-                            type: "a",
-                            class: "wx-download-item-delete",
-                            style: btnStyle,
-                            onClick() {
-                              vm$.methods.deleteTask(task);
-                            },
+                            class: "weui-cell__bd",
+                            style: "min-width:0;",
                           },
-                          [DangerouslyInnerHTML(DeleteIcon)],
+                          [
+                            View(
+                              {
+                                class: "weui-ellipsis",
+                                style:
+                                  "color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                              },
+                              [computed(task, (t) => t.name)],
+                            ),
+                            View(
+                              {
+                                class: "weui-cell__desc",
+                                style: computed(state_, (d) => {
+                                  return `margin-top: 4px; color: ${d.statusColor}; font-size: 12px;`;
+                                }),
+                              },
+                              [
+                                computed(state_, (d) => {
+                                  return d.statusText;
+                                }),
+                              ],
+                            ),
+                          ],
                         ),
-                      ];
-                    })(),
-                  ),
-                ]);
-              },
-            }),
-          ],
-        ),
-      ],
-    ),
-  ]);
+                        View(
+                          {
+                            class: "weui-cell__ft",
+                            style: "display: flex; align-items: center;",
+                          },
+                          (() => {
+                            const btnStyle =
+                              "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
+                            return [
+                              Switch(
+                                {
+                                  when: combine(
+                                    {
+                                      state: state_,
+                                      running_count: running_count_,
+                                    },
+                                    (t) => {
+                                      if (t.state.isCompleted) {
+                                        return 1;
+                                      }
+                                      if (t.state.isRunning) {
+                                        return 2;
+                                      }
+                                      if (t.state.isPaused) {
+                                        return 3;
+                                      }
+                                      if (t.state.isFailed) {
+                                        return 4;
+                                      }
+                                      return 0;
+                                    },
+                                  ),
+                                },
+                                [
+                                  // 场景 1: 已完成 -> 显示打开按钮
+                                  Match(1, [
+                                    Timeless.h(
+                                      View,
+                                      {
+                                        type: "a",
+                                        class: "wx-download-item-open",
+                                        style: btnStyle,
+                                        onClick() {
+                                          vm$.methods.openTask(task);
+                                        },
+                                      },
+                                      [
+                                        Show(
+                                          {
+                                            when: !!isOpenExternal,
+                                            fallback: [
+                                              DangerouslyInnerHTML(FolderIcon),
+                                            ],
+                                          },
+                                          [
+                                            DangerouslyInnerHTML(
+                                              ExternalLinkIcon,
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ]),
+                                  // 场景 2: 正在运行 -> 显示暂停按钮
+                                  Match(2, [
+                                    Timeless.h(
+                                      View,
+                                      {
+                                        type: "a",
+                                        class: "wx-download-item-pause",
+                                        style: btnStyle,
+                                        onClick() {
+                                          vm$.methods.pauseTask(task);
+                                        },
+                                      },
+                                      [DangerouslyInnerHTML(PauseIcon)],
+                                    ),
+                                  ]),
+                                  // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
+                                  Match(3, [
+                                    Timeless.h(
+                                      View,
+                                      {
+                                        type: "a",
+                                        class: "wx-download-item-resume",
+                                        style: Timeless.sn([
+                                          btnStyle,
+                                          computed(running_count_, (t) => {
+                                            return t > WXU.config.MaxRunning
+                                              ? "opacity: 0.6; cursor: not-allowed;"
+                                              : "";
+                                          }),
+                                        ]),
+                                        onClick() {
+                                          vm$.methods.resumeTask(task);
+                                        },
+                                      },
+                                      [DangerouslyInnerHTML(PlayIcon)],
+                                    ),
+                                  ]),
+                                  Match(4, [
+                                    Timeless.h(
+                                      View,
+                                      {
+                                        type: "a",
+                                        class: "wx-download-item-resume",
+                                        style: Timeless.sn([
+                                          btnStyle,
+                                          computed(running_count_, (t) => {
+                                            return t > WXU.config.MaxRunning
+                                              ? "opacity: 0.6; cursor: not-allowed;"
+                                              : "";
+                                          }),
+                                        ]),
+                                        onClick() {
+                                          vm$.methods.resumeTask(task);
+                                        },
+                                      },
+                                      [DangerouslyInnerHTML(RetryIcon)],
+                                    ),
+                                  ]),
+                                ],
+                              ),
+                              View(
+                                {
+                                  type: "a",
+                                  class: "wx-download-item-delete",
+                                  style: btnStyle,
+                                  onClick() {
+                                    vm$.methods.deleteTask(task);
+                                  },
+                                },
+                                [DangerouslyInnerHTML(DeleteIcon)],
+                              ),
+                            ];
+                          })(),
+                        ),
+                      ]);
+                    },
+                  }),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 function DownloaderEntry(props) {
   return Popover(
     {
       store: props.popover$,
-      content: [
-        DownloaderPanelView({
-          store: props.vm$,
-        }),
-      ],
+      content: [DownloaderPanelView({})],
     },
     [
       View(
@@ -821,14 +889,11 @@ function DownloaderEntry(props) {
 }
 
 (() => {
-  const vm$ = DownloaderPanelViewModel();
-  var mounted = false;
   function insert_downloader($wrap, $trigger) {
     $wrap.insertBefore($trigger, $wrap.firstChild);
-    mounted = true;
-
     const popover$ = new Timeless.ui.PopoverCore({
       offsetY: 4,
+      destroyOnClose: false,
     });
     WXU.downloader.show = function () {
       popover$.show();
@@ -839,10 +904,9 @@ function DownloaderEntry(props) {
     WXU.downloader.toggle = function () {
       popover$.toggle();
     };
-    Timeless.render(DownloaderEntry({ popover$, vm$ }), $trigger);
-    vm$.ready();
+    Timeless.render(DownloaderEntry({ popover$ }), $trigger);
   }
-
+  let mounted = false;
   if (window.location.pathname === "/web/pages/profile") {
     WXU.observe_node(".page-profile", () => {
       var $page = document.querySelector(".page-profile");
@@ -853,7 +917,10 @@ function DownloaderEntry(props) {
       $btn_wrap.style.cssText =
         "z-index: 999; position: fixed; right: 40px; top: 36px;";
       insert_downloader($box, $btn_wrap);
+      mounted = true;
     });
+  } else if (window.location.hostname === "mp.weixin.qq.com") {
+    //
   } else {
     WXU.observe_node(".home-header", () => {
       var $header = document.querySelector(".home-header");
@@ -868,6 +935,7 @@ function DownloaderEntry(props) {
       }
       var $download_panel_button = download_btn7();
       insert_downloader($btn_wrap, $download_panel_button);
+      mounted = true;
     });
   }
 })();

@@ -3,10 +3,10 @@
     api: "debug.weixin.qq.com",
     clientOrigin: "https://debug.weixin.qq.com",
   };
-  if (WXU.config.pagespyServerAPI) {
+  if (typeof WXU !== "undefined" && WXU.config.pagespyServerAPI) {
     config.api = WXU.config.pagespyServerAPI;
   }
-  if (WXU.config.pagespyServerProtocol) {
+  if (typeof WXU !== "undefined" && WXU.config.pagespyServerProtocol) {
     config.clientOrigin = WXU.config.pagespyServerProtocol + "://" + config.api;
   }
   try {

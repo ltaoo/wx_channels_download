@@ -200,7 +200,7 @@
     };
     return $btn;
   }
-  function render_download_button(opt) {
+  function render_download_button(opt, dialog$) {
     var $btn = document.createElement("div");
     // $btn.className = "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link";
     $btn.style.cssText = `display: flex; align-items: center; margin-left: 16px; font-size: 14px; cursor: pointer;`;
@@ -225,7 +225,8 @@
         });
         return;
       }
-      WXU.toast("开始下载，请在下载面板查看进度");
+      // WXU.toast("开始下载");
+      dialog$.show();
     };
     return $btn;
   }
@@ -239,6 +240,11 @@
     var $btn = render_rss_button(acct);
     $container.appendChild($btn);
   }
+  function DownloaderPanel(props) {
+    return View({}, [
+      Dialog({ store: props.dialog$ }, [DownloaderPanelView({})]),
+    ]);
+  }
   function insert_download_button() {
     var $wraps = document.querySelectorAll(".interaction_bar");
     var $container = $wraps[$wraps.length - 1];
@@ -248,7 +254,13 @@
     if (!$container || !$container.lastElementChild) {
       return;
     }
-    var $btn = render_download_button({ type: window.cgiDataNew.page_type });
+    const dialog$ = new Timeless.ui.DialogCore({
+      offsetY: 4,
+    });
+    var $btn = render_download_button(
+      { type: window.cgiDataNew.page_type },
+      dialog$,
+    );
     const { DropdownMenu, Menu, MenuItem } = WUI;
     const dropdown$ = DropdownMenu({
       $trigger: $btn,
@@ -282,6 +294,13 @@
             dropdown$.hide();
           },
         }),
+        MenuItem({
+          label: "下载记录",
+          onClick() {
+            dialog$.show();
+            dropdown$.hide();
+          },
+        }),
       ],
     });
     dropdown$.ui.$trigger.onMouseEnter(() => {
@@ -294,7 +313,12 @@
       dropdown$.hide();
     });
     $container.insertBefore($btn, $container.lastElementChild);
+    const panel$ = DownloaderPanel({ dialog$ });
+    setTimeout(() => {
+      document.body.appendChild(panel$.render());
+    }, 0);
   }
+  window.insert_download_button = insert_download_button;
   async function main() {
     if (location.pathname === "/s") {
       var _OfficialAccountCredentials = {

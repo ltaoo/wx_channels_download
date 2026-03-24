@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [
       "Bash(git add:*)",
-      "Bash(/Users/mayfair/Documents/other/wx_channels_download/docs/faq/task_create_crash_fix.md:*)",
       "Bash(git reset:*)",
       "Bash(go mod:*)",
       "Bash(mise use:*)",
@@ -19,16 +18,10 @@
       "Bash(CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ GOOS=windows GOARCH=amd64 go build:*)",
       "Bash(go clean:*)",
       "Bash(sudo rm:*)",
-      "Read(//Users/mayfair/go/pkg/mod/golang.org/x/text@v0.14.0/**)",
-      "Read(//Users/mayfair/go/pkg/mod/golang.org/x/sys@v0.14.0/**)",
-      "Read(//Users/mayfair/go/pkg/mod/golang.org/x/sync@v0.5.0/**)",
-      "Read(//Users/mayfair/go/pkg/mod/golang.org/x/image@v0.14.0/**)",
-      "Read(//Users/mayfair/go/pkg/mod/golang.org/x/term@v0.14.0/**)",
       "Bash(git checkout:*)",
       "Bash(echo Verifying SunnyNet packages compile...:*)",
       "Bash(docker:*)",
-      "Bash(ls:*)",
-      "Bash(cd /Users/mayfair/Documents/other/timeless && pnpm --filter @timeless/ui build 2>&1)"
+      "Bash(ls:*)"
     ]
   }
 }

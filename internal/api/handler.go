@@ -18,6 +18,7 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
+	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
@@ -299,16 +300,46 @@ type DownloadTaskPayload struct {
 	Extra    map[string]string
 }
 
+// 创建常规下载任务
 func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	var body DownloadTaskPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
+
+	// Extract article_id for officialaccount URLs
+	articleID := officialaccountdownload.ExtractArticleID(body.URL)
+
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil {
+			continue
+		}
+		// For officialaccount URLs, compare by article_id label
+		if articleID != "" && t.Meta.Req.Labels != nil && t.Meta.Req.Labels["article_id"] == articleID {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		}
+		// For other URLs, compare by URL directly
+		if articleID == "" && t.Meta.Req.URL == body.URL {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		}
+	}
+
+	labels := body.Extra
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if articleID != "" {
+		labels["article_id"] = articleID
+	}
+
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL:    body.URL,
-			Labels: body.Extra,
+			Labels: labels,
 		},
 		&base.Options{
 			Name: body.Filename,
@@ -321,6 +352,15 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	if err != nil {
 		result.Err(ctx, 500, "创建任务失败："+err.Error())
 		return
+	}
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
 	}
 	result.Ok(ctx, gin.H{"id": id})
 }
@@ -893,6 +933,14 @@ func (c *APIClient) handleFetchFile(ctx *gin.Context) {
 	if ext == ".mp3" || (c.isVideoOrImage(ext) && !c.isImage(ext)) {
 		result.Ok(ctx, gin.H{
 			"type": "video",
+			"url":  "/file?path=" + url.QueryEscape(path),
+		})
+		return
+	}
+
+	if ext == ".html" || ext == ".htm" {
+		result.Ok(ctx, gin.H{
+			"type": "html",
 			"url":  "/file?path=" + url.QueryEscape(path),
 		})
 		return
