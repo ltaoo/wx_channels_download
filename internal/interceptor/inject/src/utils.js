@@ -982,7 +982,11 @@ var WXU = (() => {
         });
       });
       WXU.onWindowLoaded(() => {
-        observer.observe(document.getElementById("app"), {
+        const $root = document.getElementById("app");
+        if (!$root) {
+          return;
+        }
+        observer.observe($root, {
           childList: true,
           subtree: true,
         });
@@ -1454,13 +1458,40 @@ function __wx_download_btn_handler() {
   __wx_channels_handle_click_download__(spec, false);
 }
 
-Object.assign(Timeless, Timeless.kit);
-Object.keys(Timeless).map((k) => {
-  if (["Symbol"].includes(k)) {
-    return;
-  }
-  window[k] = Timeless[k];
-});
+if (typeof window.Timeless !== undefined) {
+  Object.assign(Timeless, Timeless.kit);
+  Object.assign(Timeless, Timeless.headless);
+  // Rendering
+  window.h = Timeless.h;
+  window.View = Timeless.View;
+  window.Fragment = Timeless.Fragment;
+  // Control flow
+  window.Show = Timeless.Show;
+  window.For = Timeless.For;
+  window.Switch = Timeless.Switch;
+  window.Match = Timeless.Match;
+  // Reactivity
+  window.ref = Timeless.ref;
+  window.refobj = Timeless.refobj;
+  window.refarr = Timeless.refarr;
+  window.computed = Timeless.computed;
+  window.combine = Timeless.combine;
+  window.isElement = Timeless.isElement;
+  // Styling
+  window.cn = Timeless.cn;
+  window.classNames = Timeless.classNames;
+  // Primitives
+  window.PopoverPrimitive = Timeless.PopoverPrimitive;
+  window.DropdownMenuPrimitive = Timeless.DropdownMenuPrimitive;
+  window.WaterfallPrimitive = Timeless.WaterfallPrimitive;
+  window.ScrollViewPrimitive = Timeless.ScrollViewPrimitive;
+  window.DialogPrimitive = Timeless.DialogPrimitive;
+  // SVG helpers
+  window.SVG = Timeless.SVG;
+  window.Circle = Timeless.Circle;
+  // HTML injection
+  window.DangerouslyInnerHTML = Timeless.DangerouslyInnerHTML;
+}
 
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled
   ? FakeRemoteAPIServerAddr
@@ -1476,10 +1507,10 @@ function ChannelsWebsocketClient() {
         WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
       const ws = new WebSocket(ws_url);
       ws.onclose = (e) => {
-        WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
+        WXU.error({ msg: "channels ws连接已关闭，" + JSON.stringify(e) });
       };
       ws.onerror = (e) => {
-        WXU.error({ msg: "本地ws连接发生错误，" + JSON.stringify(e) });
+        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e) });
       };
       ws.onmessage = (ev) => {
         const [err, msg] = WXU.parseJSON(ev.data);

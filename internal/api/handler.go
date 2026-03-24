@@ -299,11 +299,22 @@ type DownloadTaskPayload struct {
 	Extra    map[string]string
 }
 
+// 创建常规下载任务
 func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	var body DownloadTaskPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
+	}
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil {
+			continue
+		}
+		if t.Meta.Req.URL == body.URL {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		}
 	}
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
@@ -321,6 +332,15 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	if err != nil {
 		result.Err(ctx, 500, "创建任务失败："+err.Error())
 		return
+	}
+	task := c.downloader.GetTask(id)
+	if task != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
 	}
 	result.Ok(ctx, gin.H{"id": id})
 }
@@ -893,6 +913,14 @@ func (c *APIClient) handleFetchFile(ctx *gin.Context) {
 	if ext == ".mp3" || (c.isVideoOrImage(ext) && !c.isImage(ext)) {
 		result.Ok(ctx, gin.H{
 			"type": "video",
+			"url":  "/file?path=" + url.QueryEscape(path),
+		})
+		return
+	}
+
+	if ext == ".html" || ext == ".htm" {
+		result.Ok(ctx, gin.H{
+			"type": "html",
 			"url":  "/file?path=" + url.QueryEscape(path),
 		})
 		return

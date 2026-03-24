@@ -1,5 +1,6 @@
 /**
  * @file 下载管理
+ * @deprecated
  */
 var __wx_username;
 var ua = navigator.userAgent || navigator.platform || "";

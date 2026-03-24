@@ -141,14 +141,14 @@ func root_command(cfg *config.Config) {
 	interceptor_srv.Interceptor.AddVariable("downloadDir", api_cfg.DownloadDir)
 
 	cleanup := func() {
-		fmt.Printf("\n正在关闭服务...\n")
+		fmt.Printf("\n正在关闭下载器...\n")
 		if err := mgr.StopServer("interceptor"); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭代理服务失败: %v\n", err))
 		}
 		if err := mgr.StopServer("api"); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭API服务失败: %v\n", err))
 		}
-		color.Green("服务已关闭")
+		color.Green("下载器已关闭")
 	}
 
 	if err := mgr.StartServer("api"); err != nil {
@@ -162,14 +162,14 @@ func root_command(cfg *config.Config) {
 		cleanup()
 		os.Exit(0)
 	}
-	color.Green("代理服务启动成功")
+	color.Green(fmt.Sprintf("代理服务启动成功, 地址: %v", interceptor_srv.Addr()))
 
 	if !buildtags.UsingSunnyNet {
 		if !interceptor_cfg.ProxySetSystem {
 			color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
 			color.Red("设置成功后再打开视频号页面下载")
 		} else {
-			color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptor_srv.Addr()))
+			color.Green("已修改系统代理为代理服务地址")
 			color.Green("请打开需要下载的视频号页面进行下载")
 			has_changed := false
 			expected_addr := interceptor_srv.Addr()

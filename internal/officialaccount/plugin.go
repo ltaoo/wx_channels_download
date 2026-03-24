@@ -32,6 +32,11 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
 				}
 				inserted_scripts := ""
+				if cfg.DebugShowError {
+					/** 全局错误捕获并展示弹窗 */
+					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
+					inserted_scripts += script_error
+				}
 				cfg_byte, _ := json.Marshal(cfg)
 				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
 				inserted_scripts += script_config
@@ -39,21 +44,23 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
 				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
-				// inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWeui)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessReactive)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUtils)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUI)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessKit)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessHeadless)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessIcons)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessProviderWeb)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUICore)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUIDOM)
+				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWeui)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWui)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSComponents)
+				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDownloader)
 				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
-				if cfg.DebugShowError {
-					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
-					inserted_scripts += script_error
-				}
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
 					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
