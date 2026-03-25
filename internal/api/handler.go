@@ -31,7 +31,8 @@ import (
 
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
-	resp, err := c.channels.SearchChannelsContact(keyword)
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.SearchChannelsContact(keyword, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

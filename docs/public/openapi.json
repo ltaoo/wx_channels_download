@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeChat Channels Download API",
-    "version": "v260317",
+    "version": "v260324",
     "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
   },
   "servers": [
@@ -39,6 +39,15 @@
               "type": "string"
             },
             "description": "搜索关键词"
+          },
+          {
+            "name": "next_marker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "分页标记，用于获取下一页数据"
           }
         ],
         "responses": {
@@ -1364,6 +1373,88 @@
                       "code": 400,
                       "msg": "不合法的参数",
                       "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/create2": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建通用下载任务（公众号文章）",
+        "description": "创建单个通用下载任务。用于下载公众号文章等任意直链 URL",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "下载地址，officialaccount://https://mp.weixin.qq.com/s/xxxxxxxxxxxxxxxxxxxxxx"
+                  },
+                  "filename": {
+                    "type": "string",
+                    "description": "文件名（包含扩展名）"
+                  },
+                  "dir": {
+                    "type": "string",
+                    "description": "保存目录（相对于下载目录，可为空）"
+                  },
+                  "extra": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "附加标签（可选）"
+                  }
+                },
+                "required": ["url"]
+              },
+              "examples": {
+                "mp_article": {
+                  "summary": "下载公众号文章",
+                  "value": {
+                    "url": "https://mp.weixin.qq.com/s/xxxxxxxxxxxxxxxxxxxxxx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "id": "task_id"
+                      }
+                    }
+                  },
+                  "dup": {
+                    "summary": "已存在",
+                    "value": {
+                      "code": 409,
+                      "msg": "已存在该下载内容"
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 400,
+                      "msg": "不合法的参数"
                     }
                   }
                 }

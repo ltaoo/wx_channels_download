@@ -186,9 +186,10 @@ type ChannelsContactSearchResp struct {
 		// ObjectList      []ChannelsObject `json:"objectList"`
 	} `json:"data"`
 	Payload struct {
-		Query     string `json:"query"`
-		Scene     int    `json:"scene"`
-		RequestId string `json:"requestId"`
+		Query       string   `json:"query"`
+		Scene       int      `json:"scene"`
+		LastBuffer  string   `json:"lastBuff"`
+		RequestId   string   `json:"requestId"`
 	} `json:"payload"`
 }
 
@@ -276,7 +277,8 @@ type ChannelsFeedProfileResp struct {
 }
 
 type ChannelsAccountSearchBody struct {
-	Keyword string `json:"keyword"`
+	Keyword    string `json:"keyword"`
+	NextMarker string `json:"next_marker"`
 }
 type ChannelsFeedListBody struct {
 	Username   string `json:"username"`

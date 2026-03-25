@@ -207,18 +207,19 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	}
 }
 
-func (c *ChannelsClient) SearchChannelsContact(keyword string) (*types.ChannelsContactSearchResp, error) {
+func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*types.ChannelsContactSearchResp, error) {
 	if keyword == "" {
 		return nil, errors.New("keyword 不能为空")
 	}
 	clean_keyword := strings.TrimSpace(keyword)
-	cache_key := "channels:contact_list:" + clean_keyword
+	cache_key := "channels:contact_list:" + clean_keyword + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:contact_list", types.ChannelsAccountSearchBody{Keyword: keyword}, 20*time.Second)
+	fmt.Println("next_marker", next_marker)
+	resp, err := c.RequestFrontend("key:channels:contact_list", types.ChannelsAccountSearchBody{Keyword: keyword, NextMarker: next_marker}, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
