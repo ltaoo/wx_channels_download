@@ -155,7 +155,7 @@ func deploy() {
 
 	panels := pterm.Panels{
 		{{Data: pterm.DefaultBox.WithTitle("Worker Info").Sprint(
-			pterm.Sprintf("%s: %s\n%s: %s\n%s: %s",
+			pterm.Sprintf("%s: %s\n%s: %s",
 				pterm.Bold.Sprint("Worker Name"), pterm.Cyan(worker_name),
 				// pterm.Bold.Sprint("Worker ID"), pterm.Cyan(worker_id),
 				pterm.Bold.Sprint("URL"), pterm.LightGreen(workerUrl),

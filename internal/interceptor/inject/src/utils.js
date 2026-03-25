@@ -1534,13 +1534,16 @@ function ChannelsWebsocketClient() {
         );
       }
       if (key === "key:channels:contact_list") {
-        var payload = {
+        let payload = {
           query: data.keyword,
           scene: 13,
+          lastBuff: data.next_marker
+            ? decodeURIComponent(data.next_marker)
+            : "",
           requestId: String(new Date().valueOf()),
         };
         var r = await WXU.API2.finderSearch(payload);
-        console.log("[DOWNLOADER]finderSearch", r);
+        console.log("[DOWNLOADER]finderSearch", r, payload);
         /** @type {SearchResp} */
         var { infoList, objectList } = r.data;
         resp({
