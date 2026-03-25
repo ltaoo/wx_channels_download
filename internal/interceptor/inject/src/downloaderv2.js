@@ -337,7 +337,6 @@ function DownloaderPanelViewModel() {
 
   list$.onDataSourceAdded((list) => {
     const tasks = list;
-    task_count_.as((prev) => prev + tasks.length);
     tasks_.push(...tasks);
     ui.waterfall$.methods.appendItems(tasks);
   });
