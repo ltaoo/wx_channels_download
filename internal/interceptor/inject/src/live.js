@@ -62,8 +62,12 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
   var live_page_mounted = false;
-  WXU.onJoinLive(async (data) => {
-    console.log("[live.js]onJoinLive", data);
+  var profile = null;
+  var live = null;
+  async function handleLoaded(profile, data) {
+    if (!data) {
+      return;
+    }
     if (live_page_mounted) {
       return;
     }
@@ -77,10 +81,24 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       objectDesc: {
         description: data.liveDescription,
       },
-      contact: {
-        nickname: data.bizUserInfo.bizNickname,
-        username: data.bizUserInfo.bizUsername,
-      },
+      contact: (() => {
+        if (data.bizUserInfo) {
+          return {
+            nickname: data.bizUserInfo.bizNickname,
+            username: data.bizUserInfo.bizUsername,
+          };
+        }
+        if (profile) {
+          return {
+            nickname: profile.nickname,
+            username: profile.username,
+          };
+        }
+        return {
+          nickname: "",
+          username: "",
+        };
+      })(),
       createtime: data.liveInfo.startTime,
     };
     WXU.set_live_feed(feed);
@@ -140,5 +158,15 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
         dropdown$.show();
       });
     }
+  }
+  WXU.onFetchFeedProfile((data) => {
+    console.log("[live.js]onFetchFeedProfile", data);
+    profile = data;
+    handleLoaded(profile, live);
+  });
+  WXU.onJoinLive(async (data) => {
+    console.log("[live.js]onJoinLive", JSON.stringify(data));
+    live = data;
+    handleLoaded(profile, live);
   });
 })();
