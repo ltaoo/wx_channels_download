@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"wx_channel/internal/api"
+	"wx_channel/internal/database"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/system"
@@ -75,6 +76,13 @@ func serve_command() {
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
+	database_cfg := database.NewDatabaseConfig(cfg)
+	db := database.NewClientDatabase(database_cfg, &logger)
+	if err := db.Setup(); err != nil {
+		color.Red(fmt.Sprintf("数据库初始化失败，%s\n\n", err))
+		os.Exit(0)
+		return
+	}
 	mgr := manager.NewServerManager()
 	api_cfg := api.NewAPIConfig(Cfg, true)
 	mp_token_filepath, err := officialaccount.ValidateTokenFilepath(api_cfg.OfficialAccountTokenFilepath, cfg.RootDir)
@@ -89,7 +97,7 @@ func serve_command() {
 		return
 	}
 	l.Close()
-	api_srv := api.NewAPIServer(api_cfg, &logger)
+	api_srv := api.NewAPIServer(api_cfg, &logger, db)
 	mgr.RegisterServer(api_srv)
 	if daemon_child {
 		_ = write_wx_pidfile(os.Getpid())
@@ -101,6 +109,9 @@ func serve_command() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("api"); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭API服务失败: %v\n", err))
+		}
+		if err := db.Close(); err != nil {
+			color.Red(fmt.Sprintf("⚠️ 关闭数据库失败: %v\n", err))
 		}
 		color.Green("服务已关闭")
 	}

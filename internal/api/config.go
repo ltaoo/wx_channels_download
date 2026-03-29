@@ -32,6 +32,15 @@ type APIConfig struct {
 	OfficialAccountTokenFilepath string
 	ChannelsRefreshInterval      int
 	CloudflareSphCookie          string
+
+	DBType         string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBPath         string
+	MigrationsPath string
 }
 
 func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
@@ -48,6 +57,21 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	mp_refresh_token := viper.GetString("mp.refreshToken")
 	mp_token_filepath := viper.GetString("mp.tokenFilepath")
 	cloudflare_sph_cookie := viper.GetString("cloudflare.sphCookie")
+
+	dbPath := viper.GetString("db.filepath")
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.RootDir)
+	dbPath = filepath.Clean(dbPath)
+	if !filepath.IsAbs(dbPath) {
+		dbPath = filepath.Join(c.RootDir, dbPath)
+	}
+
+	migPath := viper.GetString("db.migration")
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.RootDir)
+	migPath = filepath.Clean(migPath)
+	if !filepath.IsAbs(migPath) {
+		migPath = filepath.Join(c.RootDir, migPath)
+	}
+
 	api_cfg := &APIConfig{
 		Version:                      c.Version,
 		Mode:                         c.Mode,
@@ -68,6 +92,15 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		OfficialAccountRefreshToken:  mp_refresh_token,
 		ChannelsRefreshInterval:      viper.GetInt("channels.refreshInterval"),
 		CloudflareSphCookie:          cloudflare_sph_cookie,
+
+		DBType:         viper.GetString("db.type"),
+		DBHost:         viper.GetString("db.host"),
+		DBPort:         viper.GetString("db.port"),
+		DBUser:         viper.GetString("db.username"),
+		DBPassword:     viper.GetString("db.password"),
+		DBName:         viper.GetString("db.filename"),
+		DBPath:         dbPath,
+		MigrationsPath: migPath,
 	}
 	return api_cfg
 }

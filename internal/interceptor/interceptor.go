@@ -17,16 +17,17 @@ import (
 )
 
 type Interceptor struct {
-	Version           string
-	Debug             bool
-	Settings          *InterceptorConfig
-	Headers           map[string]string
-	Cert              *certificate.CertFileAndKeyFile
-	proxy             proxy.InnerProxy
-	PostPlugins       []interface{}  // echo 的插件，将在 echo 初始化后传给 echo
-	FrontendVariables map[string]any // 前端额外的全局变量
-	log               *zerolog.Logger
-	OnCookies         func(url string, cookies []*http.Cookie) // 捕获到 cookie 时的回调
+	Version             string
+	Debug               bool
+	Settings            *InterceptorConfig
+	Headers             map[string]string
+	Cert                *certificate.CertFileAndKeyFile
+	proxy               proxy.InnerProxy
+	PostPlugins         []interface{}  // echo 的插件，将在 echo 初始化后传给 echo
+	FrontendVariables   map[string]any // 前端额外的全局变量
+	log                 *zerolog.Logger
+	OnCookies           func(url string, cookies []*http.Cookie) // 捕获到 cookie 时的回调
+	OnFeedProfileLoaded func(profile *ChannelMediaProfile)
 }
 
 func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *Interceptor {
