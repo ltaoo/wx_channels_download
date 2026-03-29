@@ -64,7 +64,7 @@ function __wx_render_sider_tools() {
   }, 5000);
   var home_page_mounted = false;
   WXU.onFetchFeedProfile((feed) => {
-    console.log("[main.js]WXU.onFetchFeedProfile", feed, home_page_mounted);
+    console.log("[home.js]WXU.onFetchFeedProfile", feed, home_page_mounted);
     if (home_page_mounted) {
       return;
     }
