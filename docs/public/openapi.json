@@ -26,19 +26,19 @@
     },
     {
       "name": "下载任务",
-      "description": "兼容 wx_channels_api 的下载任务接口（/download_task/*），底层复用本项目的下载器与 download_task 表"
+      "description": "下载任务相关接口（/download_task/*）"
     },
     {
       "name": "平台",
-      "description": "兼容 wx_channels_api 的平台/账号/视频号相关接口（/account/*、/channels/*）"
+      "description": "平台/账号/视频号相关接口（/account/*、/channels/*）"
     },
     {
       "name": "达人",
-      "description": "兼容 wx_channels_api 的达人接口（/influencers*）"
+      "description": "达人相关接口（/influencers*）"
     },
     {
       "name": "内容",
-      "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
+      "description": "内容相关接口（/api/content/*、/video/*、/browse_history/*）"
     }
   ],
   "paths": {
@@ -1815,6 +1815,107 @@
         }
       }
     },
+    "/api/content/list": {
+      "get": {
+        "tags": ["内容"],
+        "summary": "获取内容列表",
+        "parameters": [
+          { "name": "platform_id", "in": "query", "required": false, "schema": { "type": "string" }, "description": "平台 ID，如 wx_channels" },
+          { "name": "content_type", "in": "query", "required": false, "schema": { "type": "string" }, "description": "内容类型，如 video / image / audio / article" },
+          { "name": "account_id", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "按 content_account.account_id 过滤" },
+          { "name": "download_status", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "按 content.download_status 过滤（0:未下载, 1:下载中, 2:已完成, 3:失败）" },
+          { "name": "unread", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "按 content.unread 过滤" },
+          { "name": "validated", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "按 content.validated 过滤" },
+          { "name": "keyword", "in": "query", "required": false, "schema": { "type": "string" }, "description": "按标题/描述模糊搜索（title/description LIKE）" },
+          { "name": "start_at", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "created_at 起始毫秒时间戳" },
+          { "name": "end_at", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "created_at 结束毫秒时间戳" },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 }, "description": "页码，默认 1" },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "default": 20 }, "description": "每页数量，默认 20" },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "限制返回条数（优先于 page_size）" },
+          { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "偏移量（优先于 page/page_size 计算）" }
+        ],
+        "responses": {
+          "200": {
+            "description": "内容列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "list": [
+                          {
+                            "id": 1,
+                            "platform_id": "wx_channels",
+                            "content_type": "video",
+                            "external_id": "14545102784038246591",
+                            "external_id2": "nonce_id_xxx",
+                            "external_id3": "81721112",
+                            "title": "示例内容标题",
+                            "description": "示例描述",
+                            "content_url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                            "source_url": "https://channels.weixin.qq.com/xxx",
+                            "cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                            "publish_time": 1710000000000,
+                            "download_task_id": 1,
+                            "download_status": 2,
+                            "download_path": "苏苏是猪猪/示例内容标题.mp4",
+                            "file_size": 1462345,
+                            "duration": 12,
+                            "unread": 0,
+                            "validated": 1,
+                            "created_at": 1710000000000,
+                            "updated_at": 1710000000000,
+                            "accounts": [
+                              {
+                                "id": 1,
+                                "platform_id": "wx_channels",
+                                "external_id": "v2_xxx@finder",
+                                "username": "v2_xxx@finder",
+                                "nickname": "示例账号",
+                                "avatar_url": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132",
+                                "created_at": 1710000000000,
+                                "updated_at": 1710000000000
+                              }
+                            ],
+                            "download_task": {
+                              "id": 1,
+                              "task_id": "fqG2OhiJFRYpnELqZmPRW",
+                              "type": 1,
+                              "status": 4,
+                              "external_id": "14545102784038246591",
+                              "protocol": "http",
+                              "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
+                              "title": "示例内容标题.mp4",
+                              "cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                              "size": 1462345,
+                              "filepath": "苏苏是猪猪/示例内容标题.mp4",
+                              "error": "",
+                              "created_at": 1710000000000,
+                              "updated_at": 1710000001000
+                            }
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 20,
+                        "total": 1
+                      }
+                    }
+                  },
+                  "no_db": {
+                    "summary": "数据库未初始化",
+                    "value": { "code": 500, "msg": "数据库未初始化", "data": {} }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/task/list": {
       "get": {
         "tags": ["下载器"],
@@ -2262,7 +2363,7 @@
     "/download_task/list": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "获取下载任务列表（兼容 wx_channels_api）",
+        "summary": "获取下载任务列表",
         "requestBody": {
           "required": false,
           "content": {
@@ -2343,7 +2444,7 @@
     "/download_task/start": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "开始/恢复下载任务（兼容 wx_channels_api）",
+        "summary": "开始/恢复下载任务",
         "requestBody": {
           "required": true,
           "content": {
@@ -2375,7 +2476,7 @@
     "/download_task/profile": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "获取单个下载任务（兼容 wx_channels_api）",
+        "summary": "获取单个下载任务",
         "requestBody": {
           "required": true,
           "content": {
@@ -2409,7 +2510,7 @@
     "/download_task/create": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "创建视频号下载任务（兼容 wx_channels_api）",
+        "summary": "创建视频号下载任务",
         "description": "请求体与 /api/browse_history/create 使用的 ChannelsObject 结构一致：从 objectDesc.media[0].url + urlToken 拼接下载地址，并创建下载任务。成功后会尝试写入/更新 account、video、video_account 关联。",
         "requestBody": {
           "required": true,
@@ -2471,7 +2572,7 @@
     "/download_task/batch_create": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "批量创建下载任务（兼容 wx_channels_api）",
+        "summary": "批量创建下载任务",
         "requestBody": {
           "required": true,
           "content": {
@@ -2502,7 +2603,7 @@
     "/download_task/delete": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "删除下载任务（兼容 wx_channels_api）",
+        "summary": "删除下载任务",
         "requestBody": {
           "required": true,
           "content": {
@@ -2533,7 +2634,7 @@
     "/download_task/retry": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "重试下载任务（兼容 wx_channels_api）",
+        "summary": "重试下载任务",
         "requestBody": {
           "required": true,
           "content": {
@@ -2559,7 +2660,7 @@
     "/download_task/pause_all": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "暂停全部下载任务（兼容 wx_channels_api）",
+        "summary": "暂停全部下载任务",
         "responses": {
           "200": {
             "description": "操作结果",
@@ -2577,7 +2678,7 @@
     "/download_task/start_all": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "开始全部下载任务（兼容 wx_channels_api）",
+        "summary": "开始全部下载任务",
         "responses": {
           "200": {
             "description": "操作结果",
@@ -2595,7 +2696,7 @@
     "/download_task/highlight_file": {
       "post": {
         "tags": ["下载任务"],
-        "summary": "在文件管理器中高亮已下载文件（兼容 wx_channels_api）",
+        "summary": "在文件管理器中高亮已下载文件",
         "requestBody": {
           "required": true,
           "content": {
@@ -2621,7 +2722,7 @@
     "/download_task/play": {
       "get": {
         "tags": ["下载任务"],
-        "summary": "在线播放已下载文件（兼容 wx_channels_api）",
+        "summary": "在线播放已下载文件",
         "parameters": [
           { "name": "id", "in": "query", "required": true, "schema": { "type": "integer" }, "description": "download_task 表主键 id" }
         ],
@@ -2635,7 +2736,7 @@
     "/browse_history/create": {
       "post": {
         "tags": ["内容"],
-        "summary": "创建/更新浏览历史（兼容 wx_channels_api）",
+        "summary": "创建/更新浏览历史",
         "description": "与 /api/browse_history/create 行为一致。",
         "requestBody": {
           "required": true,
@@ -2662,7 +2763,7 @@
     "/browse_history/list": {
       "post": {
         "tags": ["内容"],
-        "summary": "获取浏览历史（兼容 wx_channels_api）",
+        "summary": "获取浏览历史",
         "description": "与 /api/browse_history/list 行为一致。",
         "requestBody": {
           "required": false,
@@ -2683,7 +2784,7 @@
     "/influencers": {
       "get": {
         "tags": ["达人"],
-        "summary": "达人列表（兼容 wx_channels_api）",
+        "summary": "达人列表",
         "parameters": [
           { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 } },
           { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "default": 20 } }
@@ -2706,7 +2807,7 @@
       },
       "post": {
         "tags": ["达人"],
-        "summary": "创建达人（兼容 wx_channels_api）",
+        "summary": "创建达人",
         "requestBody": {
           "required": true,
           "content": {
@@ -2729,13 +2830,13 @@
     "/influencers/{id}": {
       "get": {
         "tags": ["达人"],
-        "summary": "获取达人详情（兼容 wx_channels_api）",
+        "summary": "获取达人详情",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": { "200": { "description": "详情" } }
       },
       "put": {
         "tags": ["达人"],
-        "summary": "更新达人（兼容 wx_channels_api）",
+        "summary": "更新达人",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "required": true,
@@ -2758,7 +2859,7 @@
     "/account/list": {
       "post": {
         "tags": ["平台"],
-        "summary": "账号列表（兼容 wx_channels_api）",
+        "summary": "账号列表",
         "responses": {
           "200": {
             "description": "账号列表",
@@ -2776,7 +2877,7 @@
     "/account/synchronize": {
       "post": {
         "tags": ["平台"],
-        "summary": "同步账号视频列表并入库（兼容 wx_channels_api）",
+        "summary": "同步账号视频列表并入库",
         "description": "通过视频号 ws 调用拉取指定账号的视频列表，并 upsert 写入 account/video/video_account。",
         "requestBody": {
           "required": true,
@@ -2798,7 +2899,7 @@
     "/video/list": {
       "post": {
         "tags": ["内容"],
-        "summary": "视频列表（兼容 wx_channels_api）",
+        "summary": "视频列表",
         "requestBody": {
           "required": true,
           "content": {
@@ -2825,7 +2926,7 @@
     "/channels/search/author": {
       "get": {
         "tags": ["平台"],
-        "summary": "搜索视频号账号（兼容 wx_channels_api）",
+        "summary": "搜索视频号账号",
         "parameters": [
           { "name": "keyword", "in": "query", "required": true, "schema": { "type": "string" } },
           { "name": "next_marker", "in": "query", "required": false, "schema": { "type": "string" } }
@@ -2836,7 +2937,7 @@
     "/channels/author/videos": {
       "get": {
         "tags": ["平台"],
-        "summary": "获取视频号账号的视频列表（兼容 wx_channels_api）",
+        "summary": "获取视频号账号的视频列表",
         "parameters": [
           { "name": "username", "in": "query", "required": true, "schema": { "type": "string" } },
           { "name": "next_marker", "in": "query", "required": false, "schema": { "type": "string" } }
@@ -2847,7 +2948,7 @@
     "/channels/media/profile": {
       "get": {
         "tags": ["平台"],
-        "summary": "获取视频详情（兼容 wx_channels_api）",
+        "summary": "获取视频详情",
         "parameters": [
           { "name": "oid", "in": "query", "required": false, "schema": { "type": "string" } },
           { "name": "nid", "in": "query", "required": false, "schema": { "type": "string" } },
@@ -2860,7 +2961,7 @@
     "/channels/task/status": {
       "get": {
         "tags": ["平台"],
-        "summary": "查询任务状态（兼容 wx_channels_api）",
+        "summary": "查询任务状态",
         "parameters": [{ "name": "task_id", "in": "query", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "状态信息" } }
       }
@@ -2868,7 +2969,7 @@
     "/channels/task/start": {
       "get": {
         "tags": ["平台"],
-        "summary": "开始任务（兼容 wx_channels_api）",
+        "summary": "开始任务",
         "parameters": [{ "name": "task_id", "in": "query", "required": false, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "操作结果" } }
       }

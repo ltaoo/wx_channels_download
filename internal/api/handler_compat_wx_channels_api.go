@@ -216,63 +216,71 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 		name = filenameBase
 		dir = ""
 	}
-	suffix := ".mp4"
-	if strings.HasSuffix(strings.ToLower(name), suffix) {
-		suffix = ""
+	payload := FeedDownloadTaskBody{
+		Id:       body.ID,
+		NonceId:  body.ObjectNonceId,
+		URL:      downloadURL,
+		Title:    body.ObjectDesc.Description,
+		Filename: filenameBase,
+		Key:      key,
+		Spec:     "",
+		Suffix:   ".mp4",
 	}
-	id, err := c.downloader.CreateDirect(
-		&base.Request{
-			URL: downloadURL,
-			Labels: map[string]string{
-				"id":       body.ID,
-				"nonce_id": body.ObjectNonceId,
-				"title":    body.ObjectDesc.Description,
-				"key":      strconv.Itoa(key),
-				"spec":     "",
-				"suffix":   ".mp4",
-			},
-		},
-		&base.Options{
-			Name: name + suffix,
-			Path: filepath.Join(c.cfg.DownloadDir, dir),
-			Extra: &gopeedhttp.OptsExtra{
-				Connections: c.resolve_connections(downloadURL),
-			},
-		},
-	)
-	if err != nil {
-		result.Err(ctx, 2000, err.Error())
+	if code, msg := c.validateAndDedupeFeedDownloadTask(&payload); code != 0 {
+		result.Err(ctx, code, msg)
 		return
 	}
-	task := c.downloader.GetTask(id)
-	if task != nil {
-		c.downloader_ws.Broadcast(APIClientWSMessage{
-			Type: "event",
-			Data: map[string]interface{}{
-				"task": task,
-			},
-		})
+	id, code, msg := c.createFeedDownloadTaskDirect(&payload, name, dir)
+	if code != 0 {
+		result.Err(ctx, code, msg)
+		return
 	}
 
 	var meta2Bytes []byte
 	meta2Bytes, _ = json.Marshal(gin.H{
-		"platform":    "wx_channels",
 		"external_id": body.ID,
 		"nonce_id":    body.ObjectNonceId,
 		"eid":         "",
 	})
-	if c.db != nil && c.db.DB() != nil {
-		_ = c.db.DB().Model(&model.DownloadTask{}).Where("task_id = ?", id).Updates(map[string]any{
-			"cover_url":   media.CoverUrl,
-			"metadata2":   string(meta2Bytes),
-			"external_id": body.ID,
-		}).Error
-	}
-
 	var downloadTaskId *int
 	if c.db != nil && c.db.DB() != nil {
+		now := utilpkg.NowMillis()
 		var rec model.DownloadTask
-		if err := c.db.DB().Select("id").Where("task_id = ?", id).First(&rec).Error; err == nil && rec.Id > 0 {
+		err := c.db.DB().Where("task_id = ?", id).First(&rec).Error
+		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+			protocol := ""
+			status := 0
+			size := int64(0)
+			task := c.downloader.GetTask(id)
+			if task != nil {
+				protocol = task.Protocol
+				if task.Meta != nil && task.Meta.Res != nil {
+					size = task.Meta.Res.Size
+				}
+			}
+			rec = model.DownloadTask{
+				TaskId:     id,
+				Type:       1,
+				Status:     status,
+				ExternalId: body.ID,
+				Protocol:   protocol,
+				URL:        downloadURL,
+				Title:      strings.TrimSpace(payload.Title),
+				CoverURL:   media.CoverUrl,
+				Size:       size,
+				Metadata2:  string(meta2Bytes),
+				Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+			}
+			_ = c.db.DB().Create(&rec).Error
+		} else if err == nil && rec.Id > 0 {
+			_ = c.db.DB().Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
+				"cover_url":   media.CoverUrl,
+				"metadata2":   string(meta2Bytes),
+				"external_id": body.ID,
+				"updated_at":  now,
+			}).Error
+		}
+		if rec.Id > 0 {
 			downloadTaskId = &rec.Id
 		}
 	}
@@ -1353,6 +1361,99 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *apitypes.Channe
 
 	if accountId > 0 && v.Id > 0 {
 		link := model.VideoAccount{VideoId: v.Id, AccountId: accountId, Role: "owner"}
+		_ = c.db.DB().Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+	}
+
+	contentType := "video"
+	var content model.Content
+	err = c.db.DB().Where("platform_id = ? AND content_type = ? AND external_id = ?", "wx_channels", contentType, obj.ID).First(&content).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return
+	}
+	publishTime := int64(obj.CreateTime)
+	if content.Id == 0 {
+		content = model.Content{
+			PlatformId:     "wx_channels",
+			ContentType:    contentType,
+			ExternalId:     obj.ID,
+			ExternalId2:    obj.ObjectNonceId,
+			ExternalId3:    decodeKey,
+			Title:          obj.ObjectDesc.Description,
+			Description:    obj.ObjectDesc.Description,
+			ContentURL:     "",
+			URL:            mediaURL,
+			SourceURL:      obj.SourceURL,
+			CoverURL:       coverURL,
+			DownloadTaskId: downloadTaskId,
+			DownloadStatus: 0,
+			DownloadPath:   "",
+			Size:           size,
+			Duration:       duration,
+			PublishTime:    &publishTime,
+			Timestamps:     model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		if err := c.db.DB().Create(&content).Error; err != nil {
+			return
+		}
+	} else {
+		updates := map[string]any{
+			"external_id2":  obj.ObjectNonceId,
+			"external_id3":  decodeKey,
+			"title":         obj.ObjectDesc.Description,
+			"description":   obj.ObjectDesc.Description,
+			"url":           mediaURL,
+			"source_url":    obj.SourceURL,
+			"cover_url":     coverURL,
+			"size":          size,
+			"duration":      duration,
+			"publish_time":  publishTime,
+			"updated_at":    now,
+			"platform_id":   "wx_channels",
+			"content_type":  contentType,
+			"external_id":   obj.ID,
+		}
+		if downloadTaskId != nil {
+			updates["download_task_id"] = downloadTaskId
+		}
+		_ = c.db.DB().Model(&model.Content{}).Where("id = ?", content.Id).Updates(updates).Error
+	}
+
+	if content.Id > 0 {
+		var cv model.ContentVideo
+		err = c.db.DB().Where("content_id = ?", content.Id).First(&cv).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return
+		}
+		width := 0
+		height := 0
+		if len(obj.ObjectDesc.Media) > 0 {
+			m := obj.ObjectDesc.Media[0]
+			width = int(m.Width)
+			height = int(m.Height)
+		}
+		if cv.ContentId == 0 {
+			cv = model.ContentVideo{
+				ContentId: content.Id,
+				Duration:  duration,
+				Width:     width,
+				Height:    height,
+				NonceId:   obj.ObjectNonceId,
+				DecodeKey: decodeKey,
+			}
+			_ = c.db.DB().Create(&cv).Error
+		} else {
+			_ = c.db.DB().Model(&model.ContentVideo{}).Where("content_id = ?", content.Id).Updates(map[string]any{
+				"duration":   duration,
+				"width":      width,
+				"height":     height,
+				"nonce_id":   obj.ObjectNonceId,
+				"decode_key": decodeKey,
+			}).Error
+		}
+	}
+
+	if accountId > 0 && content.Id > 0 {
+		link := model.ContentAccount{ContentId: content.Id, AccountId: accountId, Role: "owner", CreatedAt: now}
 		_ = c.db.DB().Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 	}
 }

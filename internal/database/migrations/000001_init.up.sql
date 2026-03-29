@@ -517,10 +517,6 @@ CREATE TABLE IF NOT EXISTS `browse_history` (
   `visited_times` INTEGER NOT NULL DEFAULT 1, --访问次数
   `account_id` INTEGER,
   `influencer_id` INTEGER,
-  `account_external_id` TEXT,
-  `account_username` TEXT,
-  `account_nickname` TEXT,
-  `account_avatar_url` TEXT,
   `content_id` INTEGER,
   `content_type` TEXT,
   `content_external_id` TEXT,

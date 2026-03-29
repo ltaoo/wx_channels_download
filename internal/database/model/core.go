@@ -110,10 +110,6 @@ type BrowseHistory struct {
 	VisitedTimes      int64  `gorm:"not null" json:"visited_times"`
 	AccountId         *int   `json:"account_id"`
 	InfluencerId      *int   `json:"influencer_id"`
-	AccountExternalId string `json:"account_external_id"`
-	AccountUsername   string `json:"account_username"`
-	AccountNickname   string `json:"account_nickname"`
-	AccountAvatarURL  string `json:"account_avatar_url"`
 	ContentId         *int   `json:"content_id"`
 	ContentType       string `json:"content_type"`
 	ContentExternalId string `json:"content_external_id"`
@@ -151,10 +147,8 @@ func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 	err := db.Where("platform_id = ? AND content_external_id = ?", b.PlatformId, b.ContentExternalId).First(&existing).Error
 	if err == nil {
 		existing.VisitedTimes = existing.VisitedTimes + 1
-		existing.AccountExternalId = b.AccountExternalId
-		existing.AccountUsername = b.AccountUsername
-		existing.AccountNickname = b.AccountNickname
-		existing.AccountAvatarURL = b.AccountAvatarURL
+		existing.AccountId = b.AccountId
+		existing.InfluencerId = b.InfluencerId
 		existing.ContentType = b.ContentType
 		existing.ContentTitle = b.ContentTitle
 		existing.ContentURL = b.ContentURL

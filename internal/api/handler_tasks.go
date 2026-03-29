@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -15,9 +17,14 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
+	apitypes "wx_channel/internal/api/types"
+	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
+	utilpkg "wx_channel/pkg/util"
 )
 
 type FeedDownloadTaskBody struct {
@@ -31,38 +38,68 @@ type FeedDownloadTaskBody struct {
 	Suffix   string `json:"suffix"`
 }
 
-func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
-	var body FeedDownloadTaskBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, "不合法的参数")
-		return
+type FeedDownloadTaskAccountPayload struct {
+	ExternalId string `json:"external_id"`
+	Username   string `json:"username"`
+	Nickname   string `json:"nickname"`
+	AvatarURL  string `json:"avatar_url"`
+}
+
+type FeedDownloadTaskCreateReq struct {
+	Id       string `json:"id"`
+	NonceId  string `json:"nonce_id"`
+	URL      string `json:"url"`
+	Title    string `json:"title"`
+	Filename string `json:"filename"`
+	Key      int    `json:"key"`
+	Spec     string `json:"spec"`
+	Suffix   string `json:"suffix"`
+
+	SourceURL string `json:"source_url"`
+	CoverURL  string `json:"cover_url"`
+	FileSize  *int64 `json:"file_size"`
+	Width     *int   `json:"width"`
+	Height    *int   `json:"height"`
+
+	Account        *FeedDownloadTaskAccountPayload `json:"account"`
+	ChannelsObject *apitypes.ChannelsObject        `json:"channels_object"`
+}
+
+func (c *APIClient) validateAndDedupeFeedDownloadTask(body *FeedDownloadTaskBody) (int, string) {
+	if body == nil {
+		return 400, "不合法的参数"
 	}
 	if body.Id == "" {
-		result.Err(ctx, 400, "缺少 feed id 参数")
-		return
+		return 400, "缺少 feed id 参数"
 	}
 	if body.Suffix == ".mp3" {
 		hasFFmpeg := system.ExistingCommand("ffmpeg")
 		if !hasFFmpeg {
-			result.Err(ctx, 3001, "下载 mp3 需要支持 ffmpeg 命令")
-			return
+			return 3001, "下载 mp3 需要支持 ffmpeg 命令"
 		}
 	}
-	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, &body)
-	if existing {
-		result.Err(ctx, 409, "已存在该下载内容")
-		return
+	if c.downloader == nil {
+		return 500, "请先初始化 downloader"
 	}
-	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
-	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
-		return
+	tasks := c.downloader.GetTasks()
+	existing := c.check_existing_feed(tasks, body)
+	if existing {
+		return 409, "已存在该下载内容"
+	}
+	return 0, ""
+}
+
+func (c *APIClient) createFeedDownloadTaskDirect(body *FeedDownloadTaskBody, filename, dir string) (string, int, string) {
+	if body == nil {
+		return "", 400, "不合法的参数"
 	}
 	connections := c.resolve_connections(body.URL)
-	if c.downloader == nil {
-		result.Err(ctx, 500, "请先初始化 downloader")
-		return
+	finalName := filename
+	if strings.TrimSpace(body.Suffix) != "" {
+		suffixLower := strings.ToLower(body.Suffix)
+		if !strings.HasSuffix(strings.ToLower(finalName), suffixLower) {
+			finalName += body.Suffix
+		}
 	}
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
@@ -77,7 +114,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 			},
 		},
 		&base.Options{
-			Name: filename + body.Suffix,
+			Name: finalName,
 			Path: filepath.Join(c.cfg.DownloadDir, dir),
 			Extra: &gopeedhttp.OptsExtra{
 				Connections: connections,
@@ -86,8 +123,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	)
 	if err != nil {
 		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
-		result.Err(ctx, 500, "创建任务失败："+err.Error())
-		return
+		return "", 500, "创建任务失败：" + err.Error()
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil {
@@ -97,6 +133,266 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 				"task": task,
 			},
 		})
+	}
+	return id, 0, ""
+}
+
+func (c *APIClient) ensureDownloadTaskRecord(taskId string, body *FeedDownloadTaskBody, coverURL string, metadata2 string) *int {
+	if c.db == nil || c.db.DB() == nil || strings.TrimSpace(taskId) == "" || body == nil {
+		return nil
+	}
+	now := utilpkg.NowMillis()
+	var rec model.DownloadTask
+	err := c.db.DB().Where("task_id = ?", taskId).First(&rec).Error
+	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		protocol := ""
+		size := int64(0)
+		task := c.downloader.GetTask(taskId)
+		if task != nil {
+			protocol = task.Protocol
+			if task.Meta != nil && task.Meta.Res != nil {
+				size = task.Meta.Res.Size
+			}
+		}
+		rec = model.DownloadTask{
+			TaskId:     taskId,
+			Type:       1,
+			Status:     0,
+			ExternalId: body.Id,
+			Protocol:   protocol,
+			URL:        body.URL,
+			Title:      strings.TrimSpace(body.Title),
+			CoverURL:   coverURL,
+			Size:       size,
+			Metadata2:  metadata2,
+			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		if err := c.db.DB().Create(&rec).Error; err != nil {
+			return nil
+		}
+	} else if err == nil && rec.Id > 0 {
+		updates := map[string]any{
+			"external_id": body.Id,
+			"updated_at":  now,
+		}
+		if strings.TrimSpace(coverURL) != "" {
+			updates["cover_url"] = coverURL
+		}
+		if strings.TrimSpace(metadata2) != "" {
+			updates["metadata2"] = metadata2
+		}
+		_ = c.db.DB().Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(updates).Error
+	} else {
+		return nil
+	}
+	if rec.Id <= 0 {
+		return nil
+	}
+	return &rec.Id
+}
+
+func (c *APIClient) upsertAccountAndContentFromFeedDownloadCreate(body *FeedDownloadTaskBody, req *FeedDownloadTaskCreateReq, downloadTaskId *int) {
+	if body == nil || c.db == nil || c.db.DB() == nil {
+		return
+	}
+	now := utilpkg.NowMillis()
+	platformId := "wx_channels"
+	contentType := "video"
+	suffix := strings.ToLower(strings.TrimSpace(body.Suffix))
+	if suffix == ".mp3" {
+		contentType = "audio"
+	} else if strings.Contains(suffix, ".jpg") || suffix == ".jpg" || strings.Contains(suffix, ".png") || suffix == ".png" {
+		contentType = "image"
+	}
+
+	accountId := 0
+	if req != nil && req.Account != nil {
+		external := strings.TrimSpace(req.Account.ExternalId)
+		if external == "" {
+			external = strings.TrimSpace(req.Account.Username)
+		}
+		if external != "" {
+			var acc model.Account
+			err := c.db.DB().Where("platform_id = ? AND external_id = ?", platformId, external).First(&acc).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return
+			}
+			if acc.Id == 0 {
+				acc = model.Account{
+					PlatformId: platformId,
+					ExternalId: external,
+					Username:   req.Account.Username,
+					Nickname:   req.Account.Nickname,
+					AvatarURL:  req.Account.AvatarURL,
+					Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+				}
+				if err := c.db.DB().Create(&acc).Error; err != nil {
+					return
+				}
+			} else {
+				_ = c.db.DB().Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
+					"username":    req.Account.Username,
+					"nickname":    req.Account.Nickname,
+					"avatar_url":  req.Account.AvatarURL,
+					"updated_at":  now,
+					"platform_id": platformId,
+				}).Error
+			}
+			accountId = acc.Id
+		}
+	}
+
+	externalId3 := ""
+	if body.Key != 0 {
+		externalId3 = strconv.Itoa(body.Key)
+	}
+	sourceURL := ""
+	coverURL := ""
+	fileSize := int64(0)
+	width := 0
+	height := 0
+	if req != nil {
+		sourceURL = strings.TrimSpace(req.SourceURL)
+		coverURL = strings.TrimSpace(req.CoverURL)
+		if req.FileSize != nil {
+			fileSize = *req.FileSize
+		}
+		if req.Width != nil {
+			width = *req.Width
+		}
+		if req.Height != nil {
+			height = *req.Height
+		}
+	}
+
+	var content model.Content
+	err := c.db.DB().Where("platform_id = ? AND content_type = ? AND external_id = ?", platformId, contentType, body.Id).First(&content).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return
+	}
+	publishTime := int64(0)
+	if req != nil && strings.TrimSpace(req.NonceId) != "" {
+		publishTime = now
+	}
+	if publishTime == 0 {
+		publishTime = now
+	}
+	if content.Id == 0 {
+		content = model.Content{
+			PlatformId:     platformId,
+			ContentType:    contentType,
+			ExternalId:     body.Id,
+			ExternalId2:    body.NonceId,
+			ExternalId3:    externalId3,
+			Title:          body.Title,
+			Description:    body.Title,
+			ContentURL:     "",
+			URL:            body.URL,
+			SourceURL:      sourceURL,
+			CoverURL:       coverURL,
+			DownloadTaskId: downloadTaskId,
+			DownloadStatus: 0,
+			Size:           fileSize,
+			Duration:       0,
+			PublishTime:    &publishTime,
+			Timestamps:     model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		if err := c.db.DB().Create(&content).Error; err != nil {
+			return
+		}
+	} else {
+		updates := map[string]any{
+			"external_id2": body.NonceId,
+			"external_id3": externalId3,
+			"title":        body.Title,
+			"description":  body.Title,
+			"url":          body.URL,
+			"source_url":   sourceURL,
+			"cover_url":    coverURL,
+			"size":         fileSize,
+			"updated_at":   now,
+		}
+		if downloadTaskId != nil {
+			updates["download_task_id"] = downloadTaskId
+		}
+		_ = c.db.DB().Model(&model.Content{}).Where("id = ?", content.Id).Updates(updates).Error
+	}
+
+	if content.Id > 0 && contentType == "video" {
+		var cv model.ContentVideo
+		err = c.db.DB().Where("content_id = ?", content.Id).First(&cv).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return
+		}
+		decodeKey := externalId3
+		if cv.ContentId == 0 {
+			cv = model.ContentVideo{
+				ContentId: content.Id,
+				Duration:  0,
+				Width:     width,
+				Height:    height,
+				NonceId:   body.NonceId,
+				DecodeKey: decodeKey,
+			}
+			_ = c.db.DB().Create(&cv).Error
+		} else {
+			_ = c.db.DB().Model(&model.ContentVideo{}).Where("content_id = ?", content.Id).Updates(map[string]any{
+				"width":      width,
+				"height":     height,
+				"nonce_id":   body.NonceId,
+				"decode_key": decodeKey,
+			}).Error
+		}
+	}
+
+	if accountId > 0 && content.Id > 0 {
+		link := model.ContentAccount{ContentId: content.Id, AccountId: accountId, Role: "owner", CreatedAt: now}
+		_ = c.db.DB().Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+	}
+}
+
+func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
+	var req FeedDownloadTaskCreateReq
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+	body := FeedDownloadTaskBody{
+		Id:       req.Id,
+		NonceId:  req.NonceId,
+		URL:      req.URL,
+		Title:    req.Title,
+		Filename: req.Filename,
+		Key:      req.Key,
+		Spec:     req.Spec,
+		Suffix:   req.Suffix,
+	}
+	if code, msg := c.validateAndDedupeFeedDownloadTask(&body); code != 0 {
+		result.Err(ctx, code, msg)
+		return
+	}
+	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
+	if err != nil {
+		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
+		return
+	}
+	id, code, msg := c.createFeedDownloadTaskDirect(&body, filename, dir)
+	if code != 0 {
+		result.Err(ctx, code, msg)
+		return
+	}
+
+	metadata2Bytes, _ := json.Marshal(gin.H{
+		"platform":    "wx_channels",
+		"id": body.Id,
+		"nonce_id":    body.NonceId,
+		"key":    body.Key,
+	})
+	downloadTaskId := c.ensureDownloadTaskRecord(id, &body, strings.TrimSpace(req.CoverURL), string(metadata2Bytes))
+	if req.ChannelsObject != nil {
+		c.upsertAccountAndVideoFromChannelsObject(req.ChannelsObject, downloadTaskId)
+	} else {
+		c.upsertAccountAndContentFromFeedDownloadCreate(&body, &req, downloadTaskId)
 	}
 	result.Ok(ctx, gin.H{"id": id})
 }
@@ -475,4 +771,3 @@ func (c *APIClient) handleFetchTaskProfile(ctx *gin.Context) {
 		"name": task.Meta.Opts.Name,
 	})
 }
-

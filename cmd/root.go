@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -19,16 +18,15 @@ import (
 
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
+	"wx_channel/internal/channels"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
-	"wx_channel/pkg/util"
 )
 
 var (
@@ -155,37 +153,7 @@ func root_command(cfg *config.Config) {
 		if profile == nil || profile.Id == "" {
 			return
 		}
-		now := util.NowMillis()
-		extraDataBytes, _ := json.Marshal(map[string]any{
-			"nonce_id":  profile.NonceId,
-			"decode_key": profile.Key,
-		})
-		contentType := "video"
-		if profile.Type == "picture" {
-			contentType = "image"
-		} else if profile.Type == "live" {
-			contentType = "live"
-		}
-		browse := model.BrowseHistory{
-			PlatformId:        "wx_channels",
-			VisitedTimes:      1,
-			AccountExternalId: profile.Contact.Id,
-			AccountUsername:   profile.Contact.Id,
-			AccountNickname:   profile.Contact.Nickname,
-			AccountAvatarURL:  profile.Contact.AvatarURL,
-			ContentType:       contentType,
-			ContentExternalId: profile.Id,
-			ContentTitle:      profile.Title,
-			ContentURL:        profile.URL,
-			ContentSourceURL:  profile.URL,
-			ContentCoverURL:   profile.CoverURL,
-			ExtraData:         string(extraDataBytes),
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		}
-		if err := api_srv.APIClient.CreateBrowseHistory(&browse); err != nil {
+		if err := channels.CreateBrowseHistoryFromProfile(db.DB(), &logger, api_srv.APIClient, profile); err != nil {
 			logger.Error().Err(err).Str("content_external_id", profile.Id).Msg("create browse history failed")
 		}
 	}

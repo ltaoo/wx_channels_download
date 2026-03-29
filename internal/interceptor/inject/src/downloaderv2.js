@@ -78,7 +78,7 @@ function DownloaderPanelViewModel() {
   const _pageSize = 50;
 
   const taskListReq = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/task/list", params),
+    (params) => request.get("/api/download_task/list", params),
     {
       client: http_client,
       process(r) {
@@ -95,23 +95,23 @@ function DownloaderPanelViewModel() {
     },
   );
   const deleteReq = new Timeless.kit.RequestCore(
-    (id) => request.post("/api/task/delete", { id }),
+    (id) => request.post("/api/download_task/delete", { id }),
     { client: http_client },
   );
   const startReq = new Timeless.kit.RequestCore(
-    (id) => request.post("/api/task/start", { id }),
+    (id) => request.post("/api/download_task/start", { id }),
     { client: http_client },
   );
   const pauseReq = new Timeless.kit.RequestCore(
-    (id) => request.post("/api/task/pause", { id }),
+    (id) => request.post("/api/download_task/pause", { id }),
     { client: http_client },
   );
   const resumeReq = new Timeless.kit.RequestCore(
-    (id) => request.post("/api/task/resume", { id }),
+    (id) => request.post("/api/download_task/resume", { id }),
     { client: http_client },
   );
   const clearReq = new Timeless.kit.RequestCore(
-    () => request.post("/api/task/clear"),
+    () => request.post("/api/download_task/clear"),
     { client: http_client },
   );
   const showFileReq = new Timeless.kit.RequestCore(

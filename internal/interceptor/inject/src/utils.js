@@ -198,6 +198,7 @@ var WXU = (() => {
           avatar_url: feed.contact.headUrl,
           nickname: feed.contact.nickname,
         },
+        channels_object: feed,
       };
     }
     return null;
@@ -723,7 +724,7 @@ var WXU = (() => {
         var [err, data] = await WXU.request({
           method: "POST",
           url:
-            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
+            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/download_task/create",
           body: {
             id: feed.id,
             url: feed.url,
