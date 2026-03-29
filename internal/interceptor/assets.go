@@ -76,6 +76,12 @@ var js_components []byte
 //go:embed inject/src/utils.js
 var js_utils []byte
 
+//go:embed inject/src/base64.js
+var js_base64 []byte
+
+//go:embed inject/src/router.js
+var js_router []byte
+
 //go:embed inject/src/downloaderv2.js
 var js_downloader []byte
 
@@ -120,6 +126,8 @@ type ChannelInjectedFiles struct {
 	JSComponents            []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
+	JSBase64                []byte
+	JSRouter                []byte
 	JSError                 []byte
 	JSHomePage              []byte
 	JSFeedProfilePage       []byte
@@ -153,6 +161,8 @@ var Assets = &ChannelInjectedFiles{
 	JSTimelessProviderWeb:   js_timeless_web,
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
+	JSBase64:                js_base64,
+	JSRouter:                js_router,
 	JSDownloader:            js_downloader,
 	JSHomePage:              js_home_page,
 	JSFeedProfilePage:       js_feed_profile_page,

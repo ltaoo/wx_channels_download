@@ -923,7 +923,7 @@ function DownloaderEntry(props) {
   } else {
     WXU.observe_node(".home-header", () => {
       var $header = document.querySelector(".home-header");
-      console.log("[DOWNLOADER]insert_downloader", mounted, $header);
+      // console.log("[DOWNLOADER]insert_downloader", mounted, $header);
       if (mounted) return;
       if (!$header) return;
       var $box = $header.children[$header.children.length - 1];
