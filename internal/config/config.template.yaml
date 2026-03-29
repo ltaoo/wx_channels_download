@@ -23,6 +23,16 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+db:
+  type: "sqlite"
+  host: ""
+  port: ""
+  username: ""
+  password: ""
+  filename: ""
+  filepath: "%CWD%/wx_channels_download.db"
+  migration: "%CWD%/migrations"
+
 proxy:
   system: true
   hostname: "127.0.0.1"

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,8 +19,10 @@ import (
 
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
+	"wx_channel/internal/database"
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/officialaccount"
+	"wx_channel/internal/storage"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
@@ -36,14 +37,22 @@ type APIClient struct {
 	formatter     *util.FilenameProcessor
 	cfg           *APIConfig
 	engine        *gin.Engine
+	db            *database.ClientDatabase
 	logger        *zerolog.Logger
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.ClientDatabase) *APIClient {	
 	data_dir := cfg.RootDir
+	logger := parent_logger.With().Str("Client", "api_client").Logger()
+	var st downloadpkg.Storage
+	if db != nil && db.DB() != nil {
+		st = storage.NewSqliteStorage(db.DB(), &logger, cfg.DownloadDir)
+	} else {
+		st = downloadpkg.NewBoltStorage(data_dir)
+	}
 	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 		RefreshInterval: 360,
-		Storage:         downloadpkg.NewBoltStorage(data_dir),
+		Storage:         st,
 		StorageDir:      data_dir,
 	})
 	var channels_client *channels.ChannelsClient
@@ -77,7 +86,6 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
 	}
-	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	client := &APIClient{
 		downloader:    downloader,
 		official:      officialaccount_client,
@@ -87,6 +95,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		formatter:     util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:           cfg,
 		engine:        gin.Default(),
+		db:            db,
 		logger:        &logger,
 	}
 
@@ -189,6 +198,10 @@ func (c *APIClient) Stop() error {
 	}
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
+	}
+	if c.db != nil {
+		_ = c.db.Close()
+		c.db = nil
 	}
 	return nil
 }

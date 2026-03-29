@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/manager"
+	"wx_channel/internal/database"
 )
 
 type APIServer struct {
@@ -15,9 +16,9 @@ type APIServer struct {
 	APIClient *APIClient
 }
 
-func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger) *APIServer {
+func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger, db *database.ClientDatabase) *APIServer {
 	srv := manager.NewHTTPServer("API服务", "api", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
-	client := NewAPIClient(cfg, logger)
+	client := NewAPIClient(cfg, logger, db)
 	srv.SetHandler(withCORS(client))
 	return &APIServer{
 		HTTPServer: srv,

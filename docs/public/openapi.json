@@ -23,6 +23,22 @@
     {
       "name": "下载器",
       "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
+    },
+    {
+      "name": "下载任务",
+      "description": "兼容 wx_channels_api 的下载任务接口（/download_task/*），底层复用本项目的下载器与 download_task 表"
+    },
+    {
+      "name": "平台",
+      "description": "兼容 wx_channels_api 的平台/账号/视频号相关接口（/account/*、/channels/*）"
+    },
+    {
+      "name": "达人",
+      "description": "兼容 wx_channels_api 的达人接口（/influencers*）"
+    },
+    {
+      "name": "内容",
+      "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
     }
   ],
   "paths": {
@@ -1551,6 +1567,254 @@
         }
       }
     },
+    "/api/browse_history/create": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建/更新浏览历史",
+        "description": "根据内容 id 进行 upsert：首次写入创建记录，重复写入会将 visited_times + 1，并更新内容/账号信息。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "内容 id（视频号 object id）"
+                  },
+                  "contact": {
+                    "type": "object",
+                    "properties": {
+                      "username": {
+                        "type": "string",
+                        "description": "视频号账号 username（如 v2_xxx@finder）"
+                      },
+                      "nickname": {
+                        "type": "string",
+                        "description": "视频号昵称"
+                      },
+                      "headUrl": {
+                        "type": "string",
+                        "description": "视频号头像 URL"
+                      }
+                    },
+                    "required": ["username"]
+                  },
+                  "objectDesc": {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "description": "内容描述/标题"
+                      },
+                      "media": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "description": "媒体直链（不含 urlToken）"
+                            },
+                            "coverUrl": {
+                              "type": "string",
+                              "description": "封面 URL"
+                            },
+                            "decodeKey": {
+                              "type": "string",
+                              "description": "解密 key（视频号下载用）"
+                            },
+                            "urlToken": {
+                              "type": "string",
+                              "description": "媒体 token（拼接到 url 后）"
+                            }
+                          }
+                        },
+                        "description": "媒体列表（取第 1 个用于写入 content_url/content_cover_url）"
+                      }
+                    }
+                  },
+                  "objectNonceId": {
+                    "type": "string",
+                    "description": "nonce id（写入 extra_data）"
+                  },
+                  "source_url": {
+                    "type": "string",
+                    "description": "来源页面 URL"
+                  }
+                },
+                "required": ["id"]
+              },
+              "examples": {
+                "create": {
+                  "summary": "记录浏览历史",
+                  "value": {
+                    "id": "14545102784038246591",
+                    "contact": {
+                      "username": "v2_xxx@finder",
+                      "nickname": "示例账号",
+                      "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132"
+                    },
+                    "objectDesc": {
+                      "description": "示例内容标题",
+                      "media": [
+                        {
+                          "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                          "coverUrl": "https://wx.qlogo.cn/finder/xxx/0",
+                          "decodeKey": "81721112",
+                          "urlToken": "&token=xxx"
+                        }
+                      ]
+                    },
+                    "objectNonceId": "nonce_id_xxx",
+                    "source_url": "https://channels.weixin.qq.com/xxx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "写入成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {}
+                    }
+                  },
+                  "missing_id": {
+                    "summary": "缺少 id",
+                    "value": {
+                      "code": 400,
+                      "msg": "缺少内容 id",
+                      "data": {}
+                    }
+                  },
+                  "invalid": {
+                    "summary": "参数不合法",
+                    "value": {
+                      "code": 400,
+                      "msg": "不合法的参数",
+                      "data": {}
+                    }
+                  },
+                  "no_db": {
+                    "summary": "数据库未初始化",
+                    "value": {
+                      "code": 500,
+                      "msg": "数据库未初始化",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browse_history/list": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "获取浏览历史列表",
+        "description": "按 updated_at 倒序返回浏览历史。可选通过 username 过滤指定视频号账号。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "视频号账号 username（如 v2_xxx@finder）。不传则返回全部。"
+                  }
+                }
+              },
+              "examples": {
+                "all": {
+                  "summary": "查询全部",
+                  "value": {}
+                },
+                "by_username": {
+                  "summary": "按账号过滤",
+                  "value": {
+                    "username": "v2_xxx@finder"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "浏览历史列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "list": [
+                          {
+                            "id": 1,
+                            "platform_id": "wx_channels",
+                            "visited_times": 3,
+                            "account_id": null,
+                            "influencer_id": null,
+                            "account_external_id": "v2_xxx@finder",
+                            "account_username": "v2_xxx@finder",
+                            "account_nickname": "示例账号",
+                            "account_avatar_url": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132",
+                            "content_id": null,
+                            "content_type": "video",
+                            "content_external_id": "14545102784038246591",
+                            "content_title": "示例内容标题",
+                            "content_url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                            "content_source_url": "https://channels.weixin.qq.com/xxx",
+                            "content_cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                            "extra_data": "{\"nonce_id\":\"nonce_id_xxx\",\"decodeKey\":\"81721112\",\"urlToken\":\"&token=xxx\"}",
+                            "created_at": 1710000000000,
+                            "updated_at": 1710000000000,
+                            "deleted_at": null
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "invalid": {
+                    "summary": "参数不合法",
+                    "value": {
+                      "code": 400,
+                      "msg": "EOF",
+                      "data": {}
+                    }
+                  },
+                  "no_db": {
+                    "summary": "数据库未初始化",
+                    "value": {
+                      "code": 500,
+                      "msg": "数据库未初始化",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/task/list": {
       "get": {
         "tags": ["下载器"],
@@ -1993,6 +2257,620 @@
             }
           }
         }
+      }
+    },
+    "/download_task/list": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "获取下载任务列表（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "page": { "type": "integer", "default": 1, "description": "页码（从 1 开始）" },
+                  "pageSize": { "type": "integer", "default": 20, "description": "每页条数" },
+                  "status": { "type": "integer", "description": "按 download_task.status 过滤" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "list": [
+                          {
+                            "id": 1,
+                            "task_id": "fqG2OhiJFRYpnELqZmPRW",
+                            "type": 1,
+                            "status": 4,
+                            "external_id": "14545102784038246591",
+                            "protocol": "http",
+                            "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
+                            "title": "示例标题.mp4",
+                            "cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                            "size": 1462345,
+                            "progress": "{\"downloaded\":1462345}",
+                            "filepath": "苏苏是猪猪/示例标题.mp4",
+                            "error": "",
+                            "reason": "",
+                            "metadata1": "{}",
+                            "metadata2": "{\"platform\":\"wx_channels\"}",
+                            "idx": 0,
+                            "created_at": "1760000000000",
+                            "updated_at": "1760000001000",
+                            "events": [
+                              {
+                                "id": 1,
+                                "task_id": 1,
+                                "type": "started",
+                                "message": "",
+                                "data": "",
+                                "created_at": "1760000000000"
+                              }
+                            ]
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 20,
+                        "total": 1
+                      }
+                    }
+                  },
+                  "no_db": {
+                    "summary": "数据库未初始化",
+                    "value": { "code": 500, "msg": "数据库未初始化", "data": {} }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/start": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "开始/恢复下载任务（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "download_task_id": { "type": "integer", "description": "download_task 表主键 id" } },
+                "required": ["download_task_id"]
+              },
+              "examples": { "start": { "summary": "开始任务", "value": { "download_task_id": 1 } } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "开始下载" } } },
+                  "not_found": { "summary": "任务不存在", "value": { "code": 404, "msg": "未找到下载任务", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/profile": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "获取单个下载任务（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "task_id": { "type": "string", "description": "下载器 task id（download_task.task_id）" } },
+                "required": ["task_id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务详情",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": { "code": 0, "msg": "成功", "data": { "id": 1, "task_id": "fqG2OhiJFRYpnELqZmPRW", "status": 4, "url": "https://finder.video.qq.com/xxx", "title": "示例标题.mp4" } }
+                  },
+                  "not_found": { "summary": "任务不存在", "value": { "code": 404, "msg": "未找到下载任务", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/create": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "创建视频号下载任务（兼容 wx_channels_api）",
+        "description": "请求体与 /api/browse_history/create 使用的 ChannelsObject 结构一致：从 objectDesc.media[0].url + urlToken 拼接下载地址，并创建下载任务。成功后会尝试写入/更新 account、video、video_account 关联。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "description": "内容 id（视频号 object id）" },
+                  "contact": {
+                    "type": "object",
+                    "properties": {
+                      "username": { "type": "string", "description": "视频号账号 username（如 v2_xxx@finder）" },
+                      "nickname": { "type": "string", "description": "视频号昵称" },
+                      "headUrl": { "type": "string", "description": "视频号头像 URL" }
+                    }
+                  },
+                  "objectDesc": {
+                    "type": "object",
+                    "properties": {
+                      "description": { "type": "string", "description": "标题/描述（作为文件名输入）" },
+                      "media": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": { "type": "string", "description": "媒体直链（不含 urlToken）" },
+                            "urlToken": { "type": "string", "description": "媒体 token（拼接到 url 后）" },
+                            "coverUrl": { "type": "string", "description": "封面 URL" },
+                            "decodeKey": { "type": "string", "description": "解密 key（写入 labels[key]）" }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "objectNonceId": { "type": "string", "description": "nonce id（写入 labels[nonce_id] 与 metadata2）" },
+                  "source_url": { "type": "string", "description": "来源页面 URL" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "创建下载任务成功", "task_id": "fqG2OhiJFRYpnELqZmPRW" } } },
+                  "invalid": { "summary": "参数不合法", "value": { "code": 400, "msg": "不合法的参数", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/batch_create": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "批量创建下载任务（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "urls": { "type": "array", "items": { "type": "string" }, "description": "下载 URL 列表" } },
+                "required": ["urls"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "ids": ["fqG2OhiJFRYpnELqZmPRW"] } } },
+                  "missing_urls": { "summary": "缺少 urls", "value": { "code": 400, "msg": "缺少 urls", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/delete": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "删除下载任务（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "download_task_id": { "type": "integer", "description": "download_task 表主键 id" } },
+                "required": ["download_task_id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "删除结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "删除下载任务成功" } } },
+                  "not_found": { "summary": "任务不存在", "value": { "code": 404, "msg": "未找到下载任务", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/retry": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "重试下载任务（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": { "id": { "type": "integer" } }, "required": ["id"] }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "重试结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "已重试下载", "new_task_id": "new_task_id_xxx" } } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/pause_all": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "暂停全部下载任务（兼容 wx_channels_api）",
+        "responses": {
+          "200": {
+            "description": "操作结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "已暂停全部任务" } } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/start_all": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "开始全部下载任务（兼容 wx_channels_api）",
+        "responses": {
+          "200": {
+            "description": "操作结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "message": "已开始全部任务" } } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/highlight_file": {
+      "post": {
+        "tags": ["下载任务"],
+        "summary": "在文件管理器中高亮已下载文件（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": { "file_path": { "type": "string", "description": "相对下载目录的文件路径" } }, "required": ["file_path"] }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作结果",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": "Success" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/download_task/play": {
+      "get": {
+        "tags": ["下载任务"],
+        "summary": "在线播放已下载文件（兼容 wx_channels_api）",
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer" }, "description": "download_task 表主键 id" }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件流（或业务错误时返回 JSON）"
+          }
+        }
+      }
+    },
+    "/browse_history/create": {
+      "post": {
+        "tags": ["内容"],
+        "summary": "创建/更新浏览历史（兼容 wx_channels_api）",
+        "description": "与 /api/browse_history/create 行为一致。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "写入成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": {} } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browse_history/list": {
+      "post": {
+        "tags": ["内容"],
+        "summary": "获取浏览历史（兼容 wx_channels_api）",
+        "description": "与 /api/browse_history/list 行为一致。",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "username": { "type": "string", "description": "按账号 username 过滤" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "列表结果" }
+        }
+      }
+    },
+    "/influencers": {
+      "get": {
+        "tags": ["达人"],
+        "summary": "达人列表（兼容 wx_channels_api）",
+        "parameters": [
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 } },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "name": "示例达人", "avatar_url": "", "sex": 0, "description": "", "created_at": "1760000000000", "updated_at": "1760000000000" }], "page": 1, "page_size": 20, "total": 1 } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["达人"],
+        "summary": "创建达人（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "avatar_url": { "type": "string" },
+                  "description": { "type": "string" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "创建结果" } }
+      }
+    },
+    "/influencers/{id}": {
+      "get": {
+        "tags": ["达人"],
+        "summary": "获取达人详情（兼容 wx_channels_api）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "详情" } }
+      },
+      "put": {
+        "tags": ["达人"],
+        "summary": "更新达人（兼容 wx_channels_api）",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "avatar_url": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "更新结果" } }
+      }
+    },
+    "/account/list": {
+      "post": {
+        "tags": ["平台"],
+        "summary": "账号列表（兼容 wx_channels_api）",
+        "responses": {
+          "200": {
+            "description": "账号列表",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "nickname": "示例账号", "avatar_url": "https://wx.qlogo.cn/xxx", "external_id": "v2_xxx@finder", "video_accounts": [] }] } } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account/synchronize": {
+      "post": {
+        "tags": ["平台"],
+        "summary": "同步账号视频列表并入库（兼容 wx_channels_api）",
+        "description": "通过视频号 ws 调用拉取指定账号的视频列表，并 upsert 写入 account/video/video_account。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account_id": { "type": "integer", "description": "本地 account.id（与 username 二选一）" },
+                  "username": { "type": "string", "description": "视频号账号 username（与 account_id 二选一）" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "同步结果" } }
+      }
+    },
+    "/video/list": {
+      "post": {
+        "tags": ["内容"],
+        "summary": "视频列表（兼容 wx_channels_api）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account_id": { "type": "integer", "description": "按账号筛选（可选）" },
+                  "keyword": { "type": "string", "description": "标题关键词（可选）" },
+                  "start_at": { "type": "string", "format": "date-time", "description": "开始时间（可选）" },
+                  "end_at": { "type": "string", "format": "date-time", "description": "结束时间（可选）" },
+                  "page": { "type": "integer", "default": 1 },
+                  "page_size": { "type": "integer", "default": 20 },
+                  "limit": { "type": "integer", "description": "覆盖 page_size（可选）" },
+                  "offset": { "type": "integer", "description": "覆盖分页 offset（可选）" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "列表结果" } }
+      }
+    },
+    "/channels/search/author": {
+      "get": {
+        "tags": ["平台"],
+        "summary": "搜索视频号账号（兼容 wx_channels_api）",
+        "parameters": [
+          { "name": "keyword", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "next_marker", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "搜索结果（结构与 /api/channels/contact/search 相同）" } }
+      }
+    },
+    "/channels/author/videos": {
+      "get": {
+        "tags": ["平台"],
+        "summary": "获取视频号账号的视频列表（兼容 wx_channels_api）",
+        "parameters": [
+          { "name": "username", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "next_marker", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "列表结果（结构与 /api/channels/contact/feed/list 相同）" } }
+      }
+    },
+    "/channels/media/profile": {
+      "get": {
+        "tags": ["平台"],
+        "summary": "获取视频详情（兼容 wx_channels_api）",
+        "parameters": [
+          { "name": "oid", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "nid", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "url", "in": "query", "required": false, "schema": { "type": "string" }, "description": "分享链接（可解析 eid）" },
+          { "name": "eid", "in": "query", "required": false, "schema": { "type": "string" }, "description": "加密 object id" }
+        ],
+        "responses": { "200": { "description": "详情结果（结构与 /api/channels/feed/profile 相同）" } }
+      }
+    },
+    "/channels/task/status": {
+      "get": {
+        "tags": ["平台"],
+        "summary": "查询任务状态（兼容 wx_channels_api）",
+        "parameters": [{ "name": "task_id", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "状态信息" } }
+      }
+    },
+    "/channels/task/start": {
+      "get": {
+        "tags": ["平台"],
+        "summary": "开始任务（兼容 wx_channels_api）",
+        "parameters": [{ "name": "task_id", "in": "query", "required": false, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "操作结果" } }
       }
     }
   }
