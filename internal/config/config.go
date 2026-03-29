@@ -22,6 +22,15 @@ type Config struct {
 	Debug    bool
 	Version  string
 	Mode     string
+
+	DBType         string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBPath         string
+	MigrationsPath string
 }
 
 func New(ver string, mode string) *Config {
@@ -245,6 +254,71 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 	})
 	Register(ConfigItem{
+		Key:         "db.type",
+		Type:        ConfigTypeSelect,
+		Default:     "sqlite",
+		Options:     []string{"sqlite", "mysql", "postgres"},
+		Description: "数据库类型",
+		Title:       "数据库类型",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.host",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库主机名",
+		Title:       "数据库主机",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.port",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库端口",
+		Title:       "数据库端口",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.username",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库用户名",
+		Title:       "数据库用户名",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.password",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库密码",
+		Title:       "数据库密码",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.filename",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库名称（mysql/postgres）或文件名（sqlite）",
+		Title:       "数据库名称",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.filepath",
+		Type:        ConfigTypeString,
+		Default:     "%CWD%/wx_channels_download.db",
+		Description: "SQLite 数据库文件路径",
+		Title:       "SQLite 路径",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.migration",
+		Type:        ConfigTypeString,
+		Default:     "%CWD%/migrations",
+		Description: "数据库迁移文件目录",
+		Title:       "迁移目录",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
 		Key:         "api.protocol",
 		Type:        ConfigTypeString,
 		Default:     "http",
@@ -424,6 +498,30 @@ func (c *Config) LoadConfig() error {
 			}
 		}
 	}
+
+	c.DBType = viper.GetString("db.type")
+	c.DBHost = viper.GetString("db.host")
+	c.DBPort = viper.GetString("db.port")
+	c.DBUser = viper.GetString("db.username")
+	c.DBPassword = viper.GetString("db.password")
+	c.DBName = viper.GetString("db.filename")
+
+	dbPath := viper.GetString("db.filepath")
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.RootDir)
+	dbPath = filepath.Clean(dbPath)
+	if !filepath.IsAbs(dbPath) {
+		dbPath = filepath.Join(c.RootDir, dbPath)
+	}
+	c.DBPath = dbPath
+
+	migPath := viper.GetString("db.migration")
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.RootDir)
+	migPath = filepath.Clean(migPath)
+	if !filepath.IsAbs(migPath) {
+		migPath = filepath.Join(c.RootDir, migPath)
+	}
+	c.MigrationsPath = migPath
+
 	return nil
 }
 

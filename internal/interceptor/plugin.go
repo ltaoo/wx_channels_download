@@ -81,6 +81,10 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
+				if interceptor.OnFeedProfileLoaded != nil {
+					profile := data
+					go interceptor.OnFeedProfileLoaded(&profile)
+				}
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
