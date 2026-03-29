@@ -14,16 +14,16 @@ if (typeof window.WXVariable === "undefined") {
   WXVariable = {};
 }
 var __wx_assets_base = (function () {
-  var cfg = __wx_channels_config__;
-  if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
-    return (
-      cfg.apiServerProtocol +
-      "://" +
-      cfg.apiServerAddr +
-      "/__wx_channels_assets"
-    );
-  }
-  return "";
+  // var cfg = __wx_channels_config__;
+  // if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
+  //   return (
+  //     cfg.apiServerProtocol +
+  //     "://" +
+  //     cfg.apiServerAddr +
+  //     "/__wx_channels_assets"
+  //   );
+  // }
+  return "https://channels.weixin.qq.com/__wx_channels_assets";
 })();
 var __wx_username;
 var __wx_channels_tip__ = {};
