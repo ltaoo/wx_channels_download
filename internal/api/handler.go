@@ -221,6 +221,7 @@ type FeedDownloadTaskBody struct {
 	Key      int    `json:"key"`
 	Spec     string `json:"spec"`
 	Suffix   string `json:"suffix"`
+	SourceURL   string `json:"source_url"`
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
@@ -267,6 +268,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 				"key":      strconv.Itoa(body.Key),
 				"spec":     body.Spec,
 				"suffix":   body.Suffix,
+				"source_url":   body.SourceURL,
 			},
 		},
 		&base.Options{

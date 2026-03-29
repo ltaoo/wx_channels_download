@@ -732,6 +732,7 @@ var WXU = (() => {
             key: Number(feed.key),
             spec,
             suffix: opt.suffix,
+            source_url: WXRouter.buildJumpUrl(feed),
           },
         });
         WXU.downloader.show();
@@ -796,6 +797,7 @@ var WXU = (() => {
               filename,
               spec,
               suffix: opt.suffix,
+              source_url: WXRouter.buildJumpUrl(feed),
             });
           }
         }
