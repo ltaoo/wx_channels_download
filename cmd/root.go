@@ -185,6 +185,9 @@ func root_command(cfg *config.Config) {
 						if err != nil {
 							continue
 						}
+						if cur == nil {
+							continue
+						}
 						cur_addr := cur.Hostname + ":" + cur.Port
 						changed := cur == nil || cur_addr != expected_addr
 						if changed {
