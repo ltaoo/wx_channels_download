@@ -24,23 +24,52 @@ import (
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
 )
 
 var (
-	Version   string
-	Cfg       *config.Config
-	CertFiles *certificate.CertFileAndKeyFile
-	device    string
-	hostname  string
-	port      int
-	debug     bool
+	Version         string
+	Cfg             *config.Config
+	CertFiles       *certificate.CertFileAndKeyFile
+	device          string
+	config_filepath string
+	hostname        string
+	port            int
+	debug           bool
 )
 
 var root_cmd = &cobra.Command{
 	Use:   "wx_video_download",
 	Short: "启动下载程序",
 	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if config_filepath != "" {
+			abs, err := filepath.Abs(config_filepath)
+			if err != nil {
+				return fmt.Errorf("配置文件路径无效 %v", err)
+			}
+			viper.SetConfigFile(abs)
+			Cfg.Filename = filepath.Base(abs)
+			Cfg.FullPath = abs
+			Cfg.RootDir = filepath.Dir(abs)
+			_, err2 := os.Stat(abs)
+			Cfg.Existing = err2 == nil
+		}
+		if err := Cfg.LoadConfig(); err != nil {
+			return fmt.Errorf("加载配置文件失败 %v", err)
+		}
+		need_admin_for_proxy := viper.GetBool("proxy.system") || buildtags.UsingSunnyNet
+		if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
+			if !platform.RequestAdminPermission() {
+				fmt.Println("运行失败，请右键选择「以管理员身份运行」")
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+		CertFiles = config.LoadCertFiles()
+		return nil
+	},
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -50,6 +79,7 @@ var root_cmd = &cobra.Command{
 
 func init() {
 	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "代理服务器网络设备")
+	root_cmd.PersistentFlags().StringVarP(&config_filepath, "config", "c", "", "配置文件路径")
 	root_cmd.PersistentFlags().StringVar(&hostname, "hostname", "127.0.0.1", "代理服务器主机名")
 	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
 	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
@@ -59,11 +89,10 @@ func init() {
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }
 
-func Execute(cert *certificate.CertFileAndKeyFile, cfg *config.Config) error {
+func Execute(cfg *config.Config) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = cfg.Version
-	CertFiles = cert
 	Cfg = cfg
 
 	return root_cmd.Execute()
