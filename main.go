@@ -4,12 +4,9 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 
 	"wx_channel/cmd"
-	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
-	"wx_channel/pkg/platform"
 )
 
 var AppVer = "260330"
@@ -20,20 +17,7 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	cfg := config.New(AppVer, Mode)
-	if err := cfg.LoadConfig(); err != nil {
-		fmt.Printf("加载配置文件失败 %v\n", err.Error())
-		return
-	}
-	need_admin_for_proxy := viper.GetBool("proxy.system") || buildtags.UsingSunnyNet
-	if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
-		if !platform.RequestAdminPermission() {
-			fmt.Println("运行失败，请右键选择「以管理员身份运行」")
-			return
-		}
-		return
-	}
-	cert := config.LoadCertFiles()
-	if err := cmd.Execute(cert, cfg); err != nil {
+	if err := cmd.Execute(cfg); err != nil {
 		fmt.Printf("运行失败 %v\n", err.Error())
 	}
 }
