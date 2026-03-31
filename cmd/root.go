@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -39,6 +40,8 @@ var (
 	debug           bool
 )
 
+var error_prefix = color.RedString("[ERROR]")
+
 var root_cmd = &cobra.Command{
 	Use:   "wx_video_download",
 	Short: "启动下载程序",
@@ -47,23 +50,33 @@ var root_cmd = &cobra.Command{
 		if config_filepath != "" {
 			abs, err := filepath.Abs(config_filepath)
 			if err != nil {
-				return fmt.Errorf("配置文件路径无效 %v", err)
+				fmt.Println(fmt.Sprintf("%s配置文件路径无效 %v", error_prefix, err))
+				os.Exit(0)
 			}
 			viper.SetConfigFile(abs)
 			Cfg.Filename = filepath.Base(abs)
 			Cfg.FullPath = abs
 			Cfg.RootDir = filepath.Dir(abs)
-			_, err2 := os.Stat(abs)
-			Cfg.Existing = err2 == nil
+			if _, err := os.Stat(abs); err != nil {
+				if os.IsNotExist(err) {
+					fmt.Println(fmt.Sprintf(`%s配置文件 %v 不存在`, error_prefix, color.New(color.FgBlue, color.Underline).Sprint(abs)))
+					os.Exit(0)
+				}
+				fmt.Println(fmt.Sprintf("%s读取配置文件失败 %v", error_prefix, err))
+				os.Exit(0)
+			}
+			Cfg.Existing = true
 		}
 		if err := Cfg.LoadConfig(); err != nil {
-			return fmt.Errorf("加载配置文件失败 %v", err)
+			 fmt.Println(fmt.Sprintf("%s加载配置文件失败 %v", error_prefix, err))
+			 os.Exit(0)
 		}
 		need_admin_for_proxy := viper.GetBool("proxy.system") || buildtags.UsingSunnyNet
-		if need_admin_for_proxy && platform.NeedAdminPermission() && !platform.IsAdmin() {
+		is_admin := platform.IsAdmin()
+		if runtime.GOOS == "windows" && need_admin_for_proxy && !is_admin {
 			if !platform.RequestAdminPermission() {
-				fmt.Println("运行失败，请右键选择「以管理员身份运行」")
-				os.Exit(1)
+				fmt.Println(error_prefix + "运行失败，请右键选择「以管理员身份运行」")
+				os.Exit(0)
 			}
 			os.Exit(0)
 		}

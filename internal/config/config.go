@@ -118,6 +118,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
+		Key:         "proxy.skipInstallRootCert",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否跳过安装根证书（需要自行手动信任/导入证书）",
+		Title:       "不安装根证书",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
 		Key:         "pagespy.enabled",
 		Type:        ConfigTypeSelect,
 		Default:     false,
