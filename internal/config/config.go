@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -113,6 +115,14 @@ func (c *Config) LoadConfig() error {
 		Default:     "Echo",
 		Description: "自定义证书名称",
 		Title:       "证书名称",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "proxy.skipInstallRootCert",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否跳过安装根证书（需要自行手动信任/导入证书）",
+		Title:       "不安装根证书",
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
@@ -485,6 +495,58 @@ func EnsureDirIfMissing(path string) error {
 
 func LoadCertFiles() *certificate.CertFileAndKeyFile {
 	cert := certificate.DefaultCertFiles
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".mitmproxy"))
+	}
+	if runtime.GOOS == "windows" {
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			dirs = append(dirs, filepath.Join(appdata, "mitmproxy"))
+		}
+	}
+	for _, dir := range dirs {
+		cert_path := filepath.Join(dir, "mitmproxy-ca-cert.pem")
+		key_path := filepath.Join(dir, "mitmproxy-ca.pem")
+		if cert_bytes, err1 := os.ReadFile(cert_path); err1 == nil {
+			if key_bytes, err2 := os.ReadFile(key_path); err2 == nil {
+				return &certificate.CertFileAndKeyFile{
+					Name:       "mitmproxy",
+					Cert:       cert_bytes,
+					PrivateKey: key_bytes,
+				}
+			}
+		}
+		if key_bytes, err := os.ReadFile(key_path); err == nil {
+			rest := key_bytes
+			var certBlocks [][]byte
+			var keyBlock []byte
+			for {
+				block, rem := pem.Decode(rest)
+				if block == nil {
+					break
+				}
+				rest = rem
+				if block.Type == "CERTIFICATE" {
+					enc := pem.EncodeToMemory(block)
+					if enc != nil {
+						certBlocks = append(certBlocks, enc)
+					}
+				} else if strings.Contains(block.Type, "PRIVATE KEY") {
+					enc := pem.EncodeToMemory(block)
+					if enc != nil {
+						keyBlock = enc
+					}
+				}
+			}
+			if len(certBlocks) > 0 && len(keyBlock) > 0 {
+				return &certificate.CertFileAndKeyFile{
+					Name:       "mitmproxy",
+					Cert:       bytes.Join(certBlocks, []byte("")),
+					PrivateKey: keyBlock,
+				}
+			}
+		}
+	}
 	cert_filepath := viper.GetString("cert.file")
 	certkey_filepath := viper.GetString("cert.key")
 	if cert_filepath != "" && certkey_filepath != "" {

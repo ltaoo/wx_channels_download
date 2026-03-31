@@ -86,14 +86,16 @@ func (c *Interceptor) Start() error {
 		client.AddPlugin(plugin)
 	}
 	c.proxy = client
-	existing, err := certificate.CheckHasCertificate(c.Cert.Name)
-	if err != nil {
-		return fmt.Errorf("检查证书失败: %v", err)
-	}
-	if !existing {
-		fmt.Printf("正在安装证书...\n")
-		if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
-			return fmt.Errorf("安装证书失败: %v", err)
+	if !c.Settings.ProxySkipInstallRootCert {
+		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
+		if err != nil {
+			return fmt.Errorf("检查证书失败: %v", err)
+		}
+		if !existing {
+			fmt.Printf("正在安装证书...\n")
+			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
+				return fmt.Errorf("安装证书失败: %v", err)
+			}
 		}
 	}
 	if !buildtags.UsingSunnyNet && c.Settings.ProxySetSystem {
