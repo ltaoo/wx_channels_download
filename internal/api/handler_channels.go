@@ -13,6 +13,7 @@ import (
 	"wx_channel/pkg/system"
 )
 
+// 搜索视频号作者
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
 	next_marker := ctx.Query("next_marker")
@@ -24,6 +25,7 @@ func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+// 获取指定用户的视频列表
 func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	username := ctx.Query("username")
 	next_marker := ctx.Query("next_marker")
@@ -35,6 +37,7 @@ func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+// 获取指定用户的直播回放列表
 func (c *APIClient) handleFetchLiveReplayList(ctx *gin.Context) {
 	username := ctx.Query("username")
 	next_marker := ctx.Query("next_marker")
@@ -46,6 +49,7 @@ func (c *APIClient) handleFetchLiveReplayList(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+// 获取用户 收藏或点赞 的视频列表
 func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	flag := ctx.Query("flag")
 	next_marker := ctx.Query("next_marker")
@@ -57,6 +61,7 @@ func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+// 获取指定视频详情
 func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	uid := ctx.Query("nid")
@@ -87,6 +92,7 @@ type ChannelsDownloadPayload struct {
 	Cover bool   `json:"cover"`
 }
 
+// 创建视频号视频下载任务
 func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	var body ChannelsDownloadPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -170,3 +176,14 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": id})
 }
 
+func (c *APIClient) handleCompatChannelsSearchAuthor(ctx *gin.Context) {
+	c.handleSearchChannelsContact(ctx)
+}
+
+func (c *APIClient) handleCompatChannelsAuthorVideos(ctx *gin.Context) {
+	c.handleFetchFeedListOfContact(ctx)
+}
+
+func (c *APIClient) handleCompatChannelsMediaProfile(ctx *gin.Context) {
+	c.handleFetchFeedProfile(ctx)
+}
