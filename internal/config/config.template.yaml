@@ -5,6 +5,7 @@ pagespy:
   enabled: false
 
 download:
+  # defaultHighest 已失效（保留兼容旧配置），该配置不会影响下载行为
   defaultHighest: false
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"
