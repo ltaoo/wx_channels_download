@@ -369,6 +369,81 @@ var WXU = (() => {
     }
     return `${remove_zero(size.toFixed(2))}${unit}`;
   }
+  function format_codec_label(codec) {
+    const v = String(codec || "").toLowerCase();
+    if (!v) return "";
+    if (v === "h264" || v === "avc") return "H.264";
+    if (v === "h265" || v === "hevc") return "H.265";
+    if (v === "av1") return "AV1";
+    return v.toUpperCase();
+  }
+  function format_mbps_from_kbps(kbps) {
+    const v = Number(kbps);
+    if (!Number.isFinite(v) || v <= 0) return "";
+    if (v >= 1000) {
+      return `${remove_zero((v / 1000).toFixed(1))}Mbps`;
+    }
+    return `${remove_zero(v.toFixed(0))}Kbps`;
+  }
+  function format_mbps_from_kb_per_s(kbPerS) {
+    const v = Number(kbPerS);
+    if (!Number.isFinite(v) || v <= 0) return "";
+    const mbps = (v * 8) / 1024;
+    return `${remove_zero(mbps.toFixed(1))}Mbps`;
+  }
+  function format_quality_label(levelOrder) {
+    const v = Number(levelOrder);
+    if (!Number.isFinite(v)) return "";
+    if (v <= 100) return "高";
+    if (v <= 200) return "中";
+    if (v <= 300) return "低";
+    return "";
+  }
+  function format_media_spec_label(spec) {
+    const parts = [];
+    const w = Number(spec.width);
+    const h = Number(spec.height);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      parts.push(`${w}x${h}`);
+    }
+    const codec = format_codec_label(spec.codingFormat || spec.codec);
+    if (codec) {
+      parts.push(codec);
+    }
+    const videoKbps = Number(spec.videoBitrate);
+    const audioKbps = Number(spec.audioBitrate);
+    if (
+      Number.isFinite(videoKbps) &&
+      videoKbps > 0 &&
+      Number.isFinite(audioKbps) &&
+      audioKbps >= 0
+    ) {
+      const total = videoKbps + audioKbps;
+      const rate = format_mbps_from_kbps(total);
+      if (rate) parts.push(rate);
+    } else {
+      const rate = format_mbps_from_kb_per_s(spec.bitRate);
+      if (rate) parts.push(rate);
+    }
+    const q = format_quality_label(spec.levelOrder);
+    if (q) parts.push(q);
+    const ff = spec.fileFormat ? String(spec.fileFormat) : "";
+    if (parts.length === 0) return ff;
+    if (ff) return `${parts.join(" · ")} (${ff})`;
+    return parts.join(" · ");
+  }
+  function format_media_spec_short_label(spec) {
+    const parts = [];
+    const w = Number(spec.width);
+    const h = Number(spec.height);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      parts.push(`${w}x${h}`);
+    }
+    const ff = spec.fileFormat ? String(spec.fileFormat) : "";
+    if (parts.length === 0) return ff;
+    if (ff) return `${parts.join(" ")} ${ff}`;
+    return parts.join(" ");
+  }
   function get_queries(href) {
     var [pathname, search] = decodeURIComponent(href).split("?");
     var queries = decodeURIComponent(search)
@@ -686,13 +761,10 @@ var WXU = (() => {
           if (opt.spec) {
             return opt.spec;
           }
-          if (WXU.config.defaultHighest || opt.spec === null) {
-            return "original";
-          }
           if (feed.spec[0]) {
             return feed.spec[0].fileFormat;
           }
-          return "original";
+          return null;
         })();
         var filename = WXU.build_filename(
           feed,
@@ -716,7 +788,7 @@ var WXU = (() => {
           )}`;
           console.log("[]feed.url", feed.url);
         }
-        if (opt.suffix !== ".jpg") {
+        if (opt.suffix !== ".jpg" && spec) {
           feed.url = feed.url + "&X-snsvideoflag=" + spec;
         }
         // console.log("[downloader.create]before WXU.request");
@@ -873,6 +945,8 @@ var WXU = (() => {
     },
     uid: __wx_uid__,
     bytes_to_size,
+    format_media_spec_label,
+    format_media_spec_short_label,
     parseJSON(v) {
       try {
         var r = JSON.parse(v);
@@ -1405,13 +1479,6 @@ function __wx_attach_download_dropdown_menu(trigger) {
   });
   dropdown$.ui.$trigger.onMouseEnter(() => {
     const download_menus = [
-      MenuItem({
-        label: "原始视频",
-        onClick() {
-          __wx_channels_handle_click_download__(null);
-          dropdown$.hide();
-        },
-      }),
       ...(() => {
         const [err, profile] = WXU.check_feed_existing({
           silence: true,
@@ -1420,8 +1487,10 @@ function __wx_attach_download_dropdown_menu(trigger) {
           return [];
         }
         return profile.spec.map((spec) => {
+          const title = WXU.format_media_spec_label(spec) || spec.fileFormat;
           return MenuItem({
-            label: spec.fileFormat,
+            label: WXU.format_media_spec_short_label(spec),
+            title,
             onClick() {
               __wx_channels_handle_click_download__(spec.fileFormat);
               dropdown$.hide();
