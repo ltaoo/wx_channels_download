@@ -434,8 +434,6 @@ var WXU = (() => {
   }
   function format_media_spec_short_label(spec) {
     const parts = [];
-    const q = format_quality_label(spec.levelOrder);
-    if (q) parts.push(q);
     const w = Number(spec.width);
     const h = Number(spec.height);
     if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
@@ -443,7 +441,7 @@ var WXU = (() => {
     }
     const ff = spec.fileFormat ? String(spec.fileFormat) : "";
     if (parts.length === 0) return ff;
-    if (ff) return `${parts.join(" ")} (${ff})`;
+    if (ff) return `${parts.join(" ")} ${ff}`;
     return parts.join(" ");
   }
   function get_queries(href) {
@@ -763,13 +761,10 @@ var WXU = (() => {
           if (opt.spec) {
             return opt.spec;
           }
-          if (WXU.config.defaultHighest || opt.spec === null) {
-            return "original";
-          }
           if (feed.spec[0]) {
             return feed.spec[0].fileFormat;
           }
-          return "original";
+          return null;
         })();
         var filename = WXU.build_filename(
           feed,
@@ -793,7 +788,7 @@ var WXU = (() => {
           )}`;
           console.log("[]feed.url", feed.url);
         }
-        if (opt.suffix !== ".jpg") {
+        if (opt.suffix !== ".jpg" && spec) {
           feed.url = feed.url + "&X-snsvideoflag=" + spec;
         }
         // console.log("[downloader.create]before WXU.request");
