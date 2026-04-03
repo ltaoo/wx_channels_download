@@ -2,6 +2,12 @@ package channels
 
 import (
 	"encoding/json"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
+
+	utilpkg "wx_channel/pkg/util"
 )
 
 type BaseResponse struct {
@@ -158,12 +164,17 @@ type IPRegionInfo struct {
 }
 
 type ChannelsObject struct {
-	ID            string             `json:"id"`
-	Contact       ChannelsContact    `json:"contact"`
-	ObjectDesc    ChannelsObjectDesc `json:"objectDesc"`
-	ObjectNonceId string             `json:"objectNonceId"`
-	SourceURL     string             `json:"source_url"`
-	CreateTime    int                `json:"createtime"`
+	ID            string              `json:"id"`
+	Contact       ChannelsContact     `json:"contact"`
+	ObjectDesc    ChannelsObjectDesc  `json:"objectDesc"`
+	ObjectNonceId string              `json:"objectNonceId"`
+	SourceURL     string              `json:"source_url"`
+	CreateTime    int                 `json:"createtime"`
+	Type          string              `json:"type"`
+	Spec          []ChannelsMediaSpec `json:"spec"`
+	LiveInfo      *ChannelsLiveInfo   `json:"liveInfo,omitempty"`
+	Files         []ChannelsMediaItem `json:"files"`
+	AnchorContact *ChannelsContact    `json:"anchorContact,omitempty"`
 }
 
 type ChannelsSearchResp struct {
@@ -293,6 +304,7 @@ type ChannelsFeedProfile struct {
 	Duration    int                 `json:"duration"`
 	FileSize    int                 `json:"file_size"`
 	CreatedAt   int                 `json:"created_at"`
+	Spec        []ChannelsMediaSpec `json:"spec"`
 	Contact     ChannelsFeedAccount `json:"contact"`
 }
 
@@ -313,13 +325,116 @@ type RequestResponse struct {
 	Data interface{} `json:"data"`
 }
 
-func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) *ChannelsFeedProfile {
+func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfile, error) {
 	if r == nil {
-		return nil
+		return nil, errors.New("channels object 为空")
 	}
 	feed := r
+
+	if strings.TrimSpace(feed.ID) == "" {
+		return nil, errors.New("缺少 id 字段")
+	}
+
+	// 标题处理：优先使用 Description，其次 ID，最后使用时间戳
+	buildTitle := func(description string, isLive bool) string {
+		if isLive {
+			return "直播"
+		}
+		if strings.TrimSpace(description) != "" {
+			return description
+		}
+		if strings.TrimSpace(feed.ID) != "" {
+			return feed.ID
+		}
+		return strconv.FormatInt(time.Now().Unix(), 10)
+	}
+
+	if feed.LiveInfo != nil {
+		coverURL := ""
+		if feed.AnchorContact != nil {
+			coverURL = feed.AnchorContact.CoverImgUrl
+		} else if len(feed.ObjectDesc.Media) > 0 && feed.ObjectDesc.Media[0].CoverUrl != "" {
+			coverURL = feed.ObjectDesc.Media[0].CoverUrl
+		}
+		contact := ChannelsFeedAccount{}
+		if feed.AnchorContact != nil {
+			contact = ChannelsFeedAccount{
+				Username:  feed.AnchorContact.Username,
+				Nickname:  feed.AnchorContact.Nickname,
+				AvatarURL: feed.AnchorContact.HeadUrl,
+			}
+		} else {
+			contact = ChannelsFeedAccount{
+				Username:  feed.Contact.Username,
+				Nickname:  feed.Contact.Nickname,
+				AvatarURL: feed.Contact.HeadUrl,
+			}
+		}
+		return &ChannelsFeedProfile{
+			ObjectId:  feed.ID,
+			NonceId:   feed.ObjectNonceId,
+			SourceURL: feed.SourceURL,
+			URL:       "",
+			Title:     buildTitle(feed.ObjectDesc.Description, true),
+			Contact:   contact,
+			CoverURL:  coverURL,
+			CreatedAt: feed.CreateTime,
+		}, nil
+	}
+
+	if feed.Type == "picture" || feed.ObjectDesc.MediaType == 2 {
+		if len(feed.Files) == 0 {
+			return nil, errors.New("picture 类型缺少 files 数据")
+		}
+		return &ChannelsFeedProfile{
+			ObjectId:  feed.ID,
+			NonceId:   feed.ObjectNonceId,
+			SourceURL: feed.SourceURL,
+			URL:       "",
+			Title:     buildTitle(feed.ObjectDesc.Description, false),
+			CoverURL:  feed.Files[0].CoverUrl,
+			CreatedAt: feed.CreateTime,
+			Contact: ChannelsFeedAccount{
+				Username:  feed.Contact.Username,
+				Nickname:  feed.Contact.Nickname,
+				AvatarURL: feed.Contact.HeadUrl,
+			},
+		}, nil
+	}
+
+	if feed.Type == "media" || feed.ObjectDesc.MediaType == 4 {
+		if len(feed.ObjectDesc.Media) == 0 {
+			return nil, errors.New("media 类型缺少 media 数据")
+		}
+		media := feed.ObjectDesc.Media[0]
+		return &ChannelsFeedProfile{
+			ObjectId:    feed.ID,
+			NonceId:     feed.ObjectNonceId,
+			SourceURL:   feed.SourceURL,
+			URL:         media.URL + media.URLToken,
+			Title:       buildTitle(feed.ObjectDesc.Description, false),
+			DecryptKey:  media.DecodeKey,
+			CoverURL:    media.CoverUrl,
+			CoverWidth:  media.Width,
+			CoverHeight: media.Height,
+			Duration:    media.VideoPlayLen,
+			FileSize:    media.FileSize,
+			CreatedAt:   feed.CreateTime,
+			Spec:        media.Spec,
+			Contact: ChannelsFeedAccount{
+				Username:  feed.Contact.Username,
+				Nickname:  feed.Contact.Nickname,
+				AvatarURL: feed.Contact.HeadUrl,
+			},
+		}, nil
+	}
+
+	if feed.ObjectDesc.MediaType == 9 {
+		return nil, errors.New("不支持直播回放（mediaType=9）")
+	}
+
 	if len(feed.ObjectDesc.Media) == 0 {
-		return nil
+		return nil, errors.New("objectDesc.media 为空")
 	}
 	media := feed.ObjectDesc.Media[0]
 	prof := &ChannelsFeedProfile{
@@ -327,7 +442,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) *ChannelsFeedProfile
 		NonceId:     feed.ObjectNonceId,
 		SourceURL:   feed.SourceURL,
 		URL:         media.URL + media.URLToken,
-		Title:       feed.ObjectDesc.Description,
+		Title:       buildTitle(feed.ObjectDesc.Description, false),
 		DecryptKey:  media.DecodeKey,
 		CoverURL:    media.CoverUrl,
 		CoverWidth:  media.Width,
@@ -335,11 +450,54 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) *ChannelsFeedProfile
 		Duration:    media.VideoPlayLen,
 		FileSize:    media.FileSize,
 		CreatedAt:   feed.CreateTime,
+		Spec:        media.Spec,
 		Contact: ChannelsFeedAccount{
 			Username:  feed.Contact.Username,
 			Nickname:  feed.Contact.Nickname,
 			AvatarURL: feed.Contact.HeadUrl,
 		},
 	}
-	return prof
+	return prof, nil
+}
+
+func BuildJumpUrl(feed *ChannelsFeedProfile) string {
+	origin := "https://channels.weixin.qq.com"
+	if feed == nil {
+		return origin + "/web/pages/feed"
+	}
+
+	if feed.SourceURL != "" {
+		return feed.SourceURL
+	}
+
+	oid := feed.ObjectId
+	nid := feed.NonceId
+
+	username := ""
+	if feed.Contact.Username != "" {
+		username = feed.Contact.Username
+	}
+
+	u := origin + "/web/pages/feed"
+	if username != "" {
+		u += "?username=" + username
+	} else {
+		u += "?"
+	}
+
+	if oid != "" {
+		encodedOid := utilpkg.EncodeUint64ToBase64(oid)
+		if encodedOid != "" {
+			u += "&oid=" + encodedOid
+		}
+	}
+
+	if nid != "" {
+		encodedNid := utilpkg.EncodeUint64ToBase64(nid)
+		if encodedNid != "" {
+			u += "&nid=" + encodedNid
+		}
+	}
+
+	return strings.TrimPrefix(u, "?")
 }

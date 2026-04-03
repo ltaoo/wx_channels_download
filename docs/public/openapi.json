@@ -2410,7 +2410,7 @@
       "post": {
         "tags": ["下载任务"],
         "summary": "创建视频号下载任务（兼容 wx_channels_api）",
-        "description": "请求体与 /api/browse_history/create 使用的 ChannelsObject 结构一致：从 objectDesc.media[0].url + urlToken 拼接下载地址，并创建下载任务。成功后会尝试写入/更新 account、video、video_account 关联。",
+        "description": "接收 ChannelsObject 结构的原始视频号数据，后端自动处理 format_feed（类似 format_feed 逻辑）、链接拼接、文件名生成、spec 处理等。支持 video、picture、live 三种类型。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2422,7 +2422,7 @@
                   "contact": {
                     "type": "object",
                     "properties": {
-                      "username": { "type": "string", "description": "视频号账号 username（如 v2_xxx@finder）" },
+                      "username": { "type": "string", "description": "视频号账号 username" },
                       "nickname": { "type": "string", "description": "视频号昵称" },
                       "headUrl": { "type": "string", "description": "视频号头像 URL" }
                     }
@@ -2430,23 +2430,37 @@
                   "objectDesc": {
                     "type": "object",
                     "properties": {
-                      "description": { "type": "string", "description": "标题/描述（作为文件名输入）" },
+                      "description": { "type": "string", "description": "标题/描述" },
+                      "mediaType": { "type": "integer", "description": "媒体类型（2=图片视频, 4=普通视频, 9=直播）" },
                       "media": {
                         "type": "array",
                         "items": {
                           "type": "object",
                           "properties": {
-                            "url": { "type": "string", "description": "媒体直链（不含 urlToken）" },
-                            "urlToken": { "type": "string", "description": "媒体 token（拼接到 url 后）" },
+                            "url": { "type": "string", "description": "媒体 URL" },
+                            "urlToken": { "type": "string", "description": "媒体 token" },
                             "coverUrl": { "type": "string", "description": "封面 URL" },
-                            "decodeKey": { "type": "string", "description": "解密 key（写入 labels[key]）" }
+                            "decodeKey": { "type": "string", "description": "解密 key" },
+                            "spec": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fileFormat": { "type": "string", "description": "视频规格名称" }
+                                }
+                              }
+                            }
                           }
                         }
                       }
                     }
                   },
-                  "objectNonceId": { "type": "string", "description": "nonce id（写入 labels[nonce_id] 与 metadata2）" },
-                  "source_url": { "type": "string", "description": "来源页面 URL" }
+                  "objectNonceId": { "type": "string", "description": "nonce id" },
+                  "source_url": { "type": "string", "description": "来源页面 URL（提供则直接使用）" },
+                  "type": { "type": "string", "description": "feed 类型：media、picture、live" },
+                  "liveInfo": { "type": "object", "description": "直播信息（live 类型时使用）" },
+                  "files": { "type": "array", "description": "图片列表（picture 类型时使用）" },
+                  "anchorContact": { "type": "object", "description": "主播信息（live 类型时使用）" }
                 },
                 "required": ["id"]
               }
@@ -2472,14 +2486,49 @@
       "post": {
         "tags": ["下载任务"],
         "summary": "批量创建下载任务（兼容 wx_channels_api）",
+        "description": "批量接收 ChannelsObject 结构的原始视频号数据数组，后端自动处理 format_feed、链接拼接、文件名生成等。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": { "urls": { "type": "array", "items": { "type": "string" }, "description": "下载 URL 列表" } },
-                "required": ["urls"]
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "description": "内容 id" },
+                    "contact": {
+                      "type": "object",
+                      "properties": {
+                        "username": { "type": "string", "description": "视频号账号 username" },
+                        "nickname": { "type": "string", "description": "视频号昵称" },
+                        "headUrl": { "type": "string", "description": "视频号头像 URL" }
+                      }
+                    },
+                    "objectDesc": {
+                      "type": "object",
+                      "properties": {
+                        "description": { "type": "string", "description": "标题/描述" },
+                        "mediaType": { "type": "integer", "description": "媒体类型" },
+                        "media": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "url": { "type": "string", "description": "媒体 URL" },
+                              "urlToken": { "type": "string", "description": "媒体 token" },
+                              "coverUrl": { "type": "string", "description": "封面 URL" },
+                              "decodeKey": { "type": "string", "description": "解密 key" }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "objectNonceId": { "type": "string", "description": "nonce id" },
+                    "source_url": { "type": "string", "description": "来源页面 URL" }
+                  },
+                  "required": ["id"]
+                }
               }
             }
           }
@@ -2490,8 +2539,7 @@
             "content": {
               "application/json": {
                 "examples": {
-                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "ids": ["fqG2OhiJFRYpnELqZmPRW"] } } },
-                  "missing_urls": { "summary": "缺少 urls", "value": { "code": 400, "msg": "缺少 urls", "data": {} } }
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "ids": ["fqG2OhiJFRYpnELqZmPRW"] } } }
                 }
               }
             }

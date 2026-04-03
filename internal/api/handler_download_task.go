@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,11 +18,264 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	apitypes "wx_channel/internal/api/types"
+	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 	utilpkg "wx_channel/pkg/util"
 )
+
+func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
+	if c.db == nil || c.db.DB() == nil {
+		result.Err(ctx, 500, "数据库未初始化")
+		return
+	}
+	if c.downloader == nil {
+		result.Err(ctx, 500, "downloader 未初始化")
+		return
+	}
+
+	var body channels.ChannelsObject
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+
+	feed, err := channels.ChannelsObjectToChannelsFeedProfile(&body)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	if strings.TrimSpace(feed.ObjectId) == "" || strings.TrimSpace(feed.URL) == "" {
+		result.Err(ctx, 400, "不合法的参数：缺少 objectId 或 url")
+		return
+	}
+
+	spec := "original"
+	if len(feed.Spec) > 0 {
+		spec = feed.Spec[0].FileFormat
+	}
+
+	suffix := ".mp4"
+
+	if strings.TrimSpace(body.Type) == "picture" || body.ObjectDesc.MediaType == 2 {
+		if len(body.Files) > 0 {
+			files := make([]map[string]string, len(body.Files))
+			for i, f := range body.Files {
+				files[i] = map[string]string{
+					"url":      f.URL,
+					"filename": strconv.Itoa(i+1) + ".jpg",
+				}
+			}
+			filesJSON, _ := json.Marshal(files)
+			feed.URL = "zip://weixin.qq.com?files=" + string(filesJSON)
+			suffix = ".zip"
+		}
+	}
+
+	downloadURL := strings.TrimSpace(feed.URL)
+	if suffix != ".zip" && !strings.Contains(downloadURL, "zip://") && spec != "original" {
+		downloadURL = downloadURL + "&X-snsvideoflag=" + spec
+	}
+
+	// feed.Title 已在 ChannelsObjectToChannelsFeedProfile 中保证不为空
+	filenameBase := strings.TrimSpace(feed.Title)
+	filename, dir, err := c.formatter.ProcessFilename(filenameBase)
+	if err != nil || strings.TrimSpace(filename) == "" {
+		filename = filenameBase
+		dir = ""
+	}
+	if strings.HasSuffix(strings.ToLower(filename), ".mp4") {
+		suffix = ""
+	}
+
+	sourceURL := strings.TrimSpace(feed.SourceURL)
+	if sourceURL == "" {
+		sourceURL = channels.BuildJumpUrl(feed)
+	}
+
+	key := 0
+	if strings.TrimSpace(feed.DecryptKey) != "" {
+		if v, err := strconv.Atoi(feed.DecryptKey); err == nil {
+			key = v
+		}
+	}
+
+	tasks := c.downloader.GetTasks()
+	existing := c.check_existing_feed(tasks, &FeedDownloadTaskBody{
+		Id:     feed.ObjectId,
+		Spec:   spec,
+		Suffix: suffix,
+	})
+	if existing {
+		result.Err(ctx, 409, "已存在该下载内容")
+		return
+	}
+
+	taskId, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: downloadURL,
+			Labels: map[string]string{
+				"id":         feed.ObjectId,
+				"nonce_id":   feed.NonceId,
+				"title":      feed.Title,
+				"key":        strconv.Itoa(key),
+				"spec":       spec,
+				"suffix":     suffix,
+				"source_url": sourceURL,
+			},
+		},
+		&base.Options{
+			Name: filename + suffix,
+			Path: filepath.Join(c.cfg.DownloadDir, dir),
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: c.resolve_connections(downloadURL),
+			},
+		},
+	)
+	if err != nil {
+		result.Err(ctx, 2000, err.Error())
+		return
+	}
+
+	task := c.downloader.GetTask(taskId)
+	if task != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+
+	result.Ok(ctx, gin.H{
+		"message":          "创建下载任务成功",
+		"task_id":          taskId,
+		"download_task_id": 0,
+		"content_id":       0,
+	})
+}
+
+func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
+	var body []channels.ChannelsObject
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	if len(body) == 0 {
+		result.Err(ctx, 400, "缺少 feeds")
+		return
+	}
+
+	batch := base.CreateTaskBatch{}
+	for _, raw := range body {
+		feed, err := channels.ChannelsObjectToChannelsFeedProfile(&raw)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(feed.ObjectId) == "" || strings.TrimSpace(feed.URL) == "" {
+			continue
+		}
+
+		spec := "original"
+		if len(feed.Spec) > 0 {
+			spec = feed.Spec[0].FileFormat
+		}
+
+		suffix := ".mp4"
+
+		if strings.TrimSpace(raw.Type) == "picture" || raw.ObjectDesc.MediaType == 2 {
+			if len(raw.Files) > 0 {
+				files := make([]map[string]string, len(raw.Files))
+				for i, f := range raw.Files {
+					files[i] = map[string]string{
+						"url":      f.URL,
+						"filename": strconv.Itoa(i+1) + ".jpg",
+					}
+				}
+				filesJSON, _ := json.Marshal(files)
+				feed.URL = "zip://weixin.qq.com?files=" + string(filesJSON)
+				suffix = ".zip"
+			}
+		}
+
+		downloadURL := strings.TrimSpace(feed.URL)
+		if suffix != ".zip" && !strings.Contains(downloadURL, "zip://") {
+			downloadURL = downloadURL + "&X-snsvideoflag=" + spec
+		}
+
+		// feed.Title 已在 ChannelsObjectToChannelsFeedProfile 中保证不为空
+		filenameBase := strings.TrimSpace(feed.Title)
+		name, dir, err := c.formatter.ProcessFilename(filenameBase)
+		if err != nil || strings.TrimSpace(name) == "" {
+			name = filenameBase
+			dir = ""
+		}
+		if strings.HasSuffix(strings.ToLower(name), ".mp4") {
+			suffix = ""
+		}
+
+		sourceURL := strings.TrimSpace(feed.SourceURL)
+		if sourceURL == "" {
+			sourceURL = channels.BuildJumpUrl(feed)
+		}
+
+		key := 0
+		if strings.TrimSpace(feed.DecryptKey) != "" {
+			if v, err := strconv.Atoi(feed.DecryptKey); err == nil {
+				key = v
+			}
+		}
+
+		batch.Reqs = append(batch.Reqs, &base.CreateTaskBatchItem{
+			Req: &base.Request{
+				URL: downloadURL,
+				Labels: map[string]string{
+					"id":         feed.ObjectId,
+					"nonce_id":   feed.NonceId,
+					"title":      feed.Title,
+					"key":        strconv.Itoa(key),
+					"spec":       spec,
+					"suffix":     suffix,
+					"source_url": sourceURL,
+				},
+			},
+			Opts: &base.Options{
+				Path: filepath.Join(c.cfg.DownloadDir, dir),
+				Name: name + suffix,
+				Extra: &gopeedhttp.OptsExtra{
+					Connections: c.resolve_connections(downloadURL),
+				},
+			},
+		})
+	}
+
+	if len(batch.Reqs) == 0 {
+		result.Ok(ctx, gin.H{"ids": []string{}})
+		return
+	}
+
+	ids, err := c.downloader.CreateDirectBatch(&batch)
+	if err != nil {
+		result.Err(ctx, 2000, err.Error())
+		return
+	}
+
+	var batchTasks []interface{}
+	for _, id := range ids {
+		task := c.downloader.GetTask(id)
+		if task != nil {
+			batchTasks = append(batchTasks, task)
+		}
+	}
+	if len(batchTasks) > 0 {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "batch_tasks",
+			Data: batchTasks,
+		})
+	}
+
+	result.Ok(ctx, gin.H{"ids": ids})
+}
 
 func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	if c.db == nil || c.db.DB() == nil {
@@ -178,214 +430,6 @@ func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, task)
-}
-
-func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
-		result.Err(ctx, 500, "数据库未初始化")
-		return
-	}
-	if c.downloader == nil {
-		result.Err(ctx, 500, "downloader 未初始化")
-		return
-	}
-
-	var body apitypes.ChannelsObject
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, "不合法的参数")
-		return
-	}
-
-	feed := apitypes.ChannelsObjectToChannelsFeedProfile(&body)
-	if feed == nil || strings.TrimSpace(feed.ObjectId) == "" || strings.TrimSpace(feed.URL) == "" {
-		result.Err(ctx, 400, "不合法的参数")
-		return
-	}
-
-	if c.channels == nil {
-		result.Err(ctx, 500, "channels client 未初始化")
-		return
-	}
-	content, err := c.channels.UpsertChannelsFeed(feed)
-	if err != nil || content == nil || content.Id <= 0 {
-		if err != nil {
-			result.Err(ctx, 2000, "保存内容失败："+err.Error())
-			return
-		}
-		result.Err(ctx, 2000, "保存内容失败")
-		return
-	}
-
-	// 按 id/spec/suffix 检查是否已存在相同下载内容（与 handleCreateFeedDownloadTask 一致）
-	spec := "original"
-	suffix := ".mp4"
-	if c.check_existing_feed(c.downloader.GetTasks(), &FeedDownloadTaskBody{
-		Id:     feed.ObjectId,
-		Spec:   spec,
-		Suffix: suffix,
-	}) {
-		result.Err(ctx, 409, "已存在该下载内容")
-		return
-	}
-
-	var existingTask model.DownloadTask
-	if err := c.db.DB().Where("external_id = ?", content.ExternalId).Order("id DESC").First(&existingTask).Error; err == nil && strings.TrimSpace(existingTask.TaskId) != "" {
-		now := utilpkg.NowMillis()
-		_ = c.db.DB().Model(&model.Content{}).Where("id = ?", content.Id).Updates(map[string]any{
-			"download_task_id": existingTask.Id,
-			"download_status":  existingTask.Status,
-			"download_path":    existingTask.Filepath,
-			"updated_at":       now,
-		}).Error
-		result.Ok(ctx, gin.H{
-			"message":          "创建下载任务成功",
-			"task_id":          existingTask.TaskId,
-			"download_task_id": existingTask.Id,
-			"content_id":       content.Id,
-		})
-		return
-	}
-
-	filenameBase := strings.TrimSpace(feed.Title)
-	if filenameBase == "" {
-		filenameBase = feed.ObjectId
-	}
-	filename, dir, err := c.formatter.ProcessFilename(filenameBase)
-	if err != nil || strings.TrimSpace(filename) == "" {
-		filename = filenameBase
-		dir = ""
-	}
-	// 与旧逻辑对齐：suffix 单独控制拼接，避免双重扩展名
-	if strings.HasSuffix(strings.ToLower(filename), ".mp4") {
-		suffix = ""
-	}
-
-	downloadURL := strings.TrimSpace(feed.URL)
-	id, err := c.downloader.CreateDirect(
-		&base.Request{
-			URL: downloadURL,
-			Labels: map[string]string{
-				"id":       feed.ObjectId,
-				"nonce_id": feed.NonceId,
-				"title":    feed.Title,
-				"key": func() string {
-					k := 0
-					if strings.TrimSpace(feed.DecryptKey) != "" {
-						if v, err := strconv.Atoi(feed.DecryptKey); err == nil {
-							k = v
-						}
-					}
-					return strconv.Itoa(k)
-				}(),
-				"spec":   spec,
-				"suffix": ".mp4",
-			},
-		},
-		&base.Options{
-			Name: filename + suffix,
-			Path: filepath.Join(c.cfg.DownloadDir, dir),
-			Extra: &gopeedhttp.OptsExtra{
-				Connections: c.resolve_connections(downloadURL),
-			},
-		},
-	)
-	if err != nil {
-		result.Err(ctx, 2000, err.Error())
-		return
-	}
-
-	task := c.downloader.GetTask(id)
-	if task != nil {
-		c.downloader_ws.Broadcast(APIClientWSMessage{
-			Type: "event",
-			Data: map[string]interface{}{
-				"task": task,
-			},
-		})
-	}
-
-	taskRec, err := c.CreateContentDownloadTask(content, task, "api call")
-	if err != nil {
-		result.Err(ctx, 2000, err.Error())
-		return
-	}
-
-	result.Ok(ctx, gin.H{
-		"message":          "创建下载任务成功",
-		"task_id":          id,
-		"download_task_id": taskRec.Id,
-		"content_id":       content.Id,
-	})
-}
-
-func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
-	var body struct {
-		URLs []string `json:"urls"`
-	}
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if len(body.URLs) == 0 {
-		result.Err(ctx, 400, "缺少 urls")
-		return
-	}
-	batch := base.CreateTaskBatch{}
-	for _, raw := range body.URLs {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		u, err := url.Parse(raw)
-		if err != nil {
-			continue
-		}
-		filename := strings.TrimSpace(u.Query().Get("filename"))
-		if filename == "" {
-			filename = filepath.Base(u.Path)
-		}
-		if filename == "" || filename == "." || filename == "/" {
-			filename = strconv.FormatInt(time.Now().UnixNano(), 10)
-		}
-		name, dir, err := c.formatter.ProcessFilename(filename)
-		if err != nil {
-			name = filename
-			dir = ""
-		}
-		batch.Reqs = append(batch.Reqs, &base.CreateTaskBatchItem{
-			Req: &base.Request{URL: raw},
-			Opts: &base.Options{
-				Path: filepath.Join(c.cfg.DownloadDir, dir),
-				Name: name,
-				Extra: &gopeedhttp.OptsExtra{
-					Connections: c.resolve_connections(raw),
-				},
-			},
-		})
-	}
-	if len(batch.Reqs) == 0 {
-		result.Ok(ctx, gin.H{"ids": []string{}})
-		return
-	}
-	ids, err := c.downloader.CreateDirectBatch(&batch)
-	if err != nil {
-		result.Err(ctx, 2000, err.Error())
-		return
-	}
-	var batchTasks []interface{}
-	for _, id := range ids {
-		task := c.downloader.GetTask(id)
-		if task != nil {
-			batchTasks = append(batchTasks, task)
-		}
-	}
-	if len(batchTasks) > 0 {
-		c.downloader_ws.Broadcast(APIClientWSMessage{
-			Type: "batch_tasks",
-			Data: batchTasks,
-		})
-	}
-	result.Ok(ctx, gin.H{"ids": ids})
 }
 
 func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
@@ -854,7 +898,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *apitypes.ChannelsObject, downloadTaskId *int) {
+func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.ChannelsObject, downloadTaskId *int) {
 	if obj == nil || c.db == nil || c.db.DB() == nil {
 		return
 	}
