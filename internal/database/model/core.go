@@ -18,6 +18,22 @@ type Platform struct {
 
 func (Platform) TableName() string { return "platform" }
 
+type AuthCredential struct {
+	Id         int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	PlatformId string `gorm:"not null;index:idx_auth_credential_platform_status_default,priority:1" json:"platform_id"`
+	Name       string `gorm:"not null" json:"name"`
+	Kind       string `gorm:"not null" json:"kind"`
+	Secret     string `json:"secret"`
+	Payload    string `json:"payload"`
+	ExpiresAt  *int64 `json:"expires_at"`
+	Status     int    `gorm:"not null;index:idx_auth_credential_platform_status_default,priority:2" json:"status"`
+	IsDefault  int    `gorm:"not null;index:idx_auth_credential_platform_status_default,priority:3" json:"is_default"`
+	LastUsedAt *int64 `json:"last_used_at"`
+	Timestamps
+}
+
+func (AuthCredential) TableName() string { return "auth_credential" }
+
 type Influencer struct {
 	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name        string `gorm:"not null" json:"name"`

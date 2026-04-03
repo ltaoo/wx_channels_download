@@ -28,6 +28,7 @@ import (
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
+	"wx_channel/internal/zhihu"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
@@ -159,6 +160,7 @@ func root_command(cfg *config.Config) {
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
+	zhihu_cfg := zhihu.NewZhihuConfig(Cfg)
 	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
@@ -195,6 +197,9 @@ func root_command(cfg *config.Config) {
 			fmt.Println(api_cfg.CloudflareSphCookie)
 		}
 	}))
+	if !zhihu_cfg.Disabled {
+		interceptor_srv.Interceptor.AddPostPlugin(zhihu.CreateZhihuInterceptorPlugin(zhihu_cfg, db.DB(), &logger))
+	}
 	mgr.RegisterServer(interceptor_srv)
 	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	if api_cfg.RemoteServerEnabled {
@@ -220,7 +225,7 @@ func root_command(cfg *config.Config) {
 		}
 		now := util.NowMillis()
 		extraDataBytes, _ := json.Marshal(map[string]any{
-			"nonce_id":  profile.NonceId,
+			"nonce_id":   profile.NonceId,
 			"decode_key": profile.Key,
 		})
 		contentType := "video"

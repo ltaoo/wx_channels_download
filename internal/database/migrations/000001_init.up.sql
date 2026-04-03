@@ -78,6 +78,36 @@ INSERT OR IGNORE INTO `platform` (
   'https://www.youtube.com'
 );
 
+INSERT OR IGNORE INTO `platform` (
+  `id`, `code`, `name`, `homepage`, `logo_url`, `entry_url`
+) VALUES (
+  'zhihu',
+  'zhihu',
+  '知乎',
+  'https://www.zhihu.com',
+  NULL,
+  'https://www.zhihu.com'
+);
+
+CREATE TABLE IF NOT EXISTS `auth_credential` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `platform_id` TEXT NOT NULL,
+  `name` TEXT NOT NULL,
+  `kind` TEXT NOT NULL,
+  `secret` TEXT,
+  `payload` TEXT,
+  `expires_at` INTEGER,
+  `status` INTEGER NOT NULL DEFAULT 1,
+  `is_default` INTEGER NOT NULL DEFAULT 0,
+  `last_used_at` INTEGER,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_credential_platform_status_default
+ON `auth_credential` (`platform_id`, `status`, `is_default`);
+
 -- 网红/博主表 (Influencer) - 归纳的自然人或IP实体
 CREATE TABLE IF NOT EXISTS `influencer` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
