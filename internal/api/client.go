@@ -3,12 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
-	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,11 +17,15 @@ import (
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
+	"wx_channel/internal/database"
+	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/officialaccount"
+	"wx_channel/internal/storage"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
@@ -36,20 +40,31 @@ type APIClient struct {
 	formatter     *util.FilenameProcessor
 	cfg           *APIConfig
 	engine        *gin.Engine
+	db            *database.ClientDatabase
 	logger        *zerolog.Logger
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.ClientDatabase) *APIClient {
 	data_dir := cfg.RootDir
+	logger := parent_logger.With().Str("Client", "api_client").Logger()
+	var st downloadpkg.Storage
+	if db != nil && db.DB() != nil {
+		st = storage.NewSqliteStorage(db.DB(), &logger, cfg.DownloadDir)
+	} else {
+		st = downloadpkg.NewBoltStorage(data_dir)
+	}
 	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 		RefreshInterval: 360,
-		Storage:         downloadpkg.NewBoltStorage(data_dir),
+		Storage:         st,
 		StorageDir:      data_dir,
 	})
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
+	if db != nil && db.DB() != nil {
+		channels_client.SetDB(db.DB())
+	}
 	downloader_ws := downloaderclient.NewDownloaderClient()
 
 	// get_sorted_tasks := func() []*downloadpkg.Task {
@@ -77,7 +92,6 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
 	}
-	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	client := &APIClient{
 		downloader:    downloader,
 		official:      officialaccount_client,
@@ -87,6 +101,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 		formatter:     util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:           cfg,
 		engine:        gin.Default(),
+		db:            db,
 		logger:        &logger,
 	}
 
@@ -189,6 +204,10 @@ func (c *APIClient) Stop() error {
 	}
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
+	}
+	if c.db != nil {
+		_ = c.db.Close()
+		c.db = nil
 	}
 	return nil
 }
@@ -389,4 +408,120 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Msg("自动创建下载任务请求发送成功")
 
 	return nil
+}
+
+func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloadpkg.Task, reason string) (*model.DownloadTask, error) {
+	if content == nil {
+		return nil, errors.New("content is nil")
+	}
+	if t == nil {
+		return nil, errors.New("download task is nil")
+	}
+	if c.db == nil || c.db.DB() == nil {
+		return nil, errors.New("db is nil")
+	}
+
+	db := c.db.DB()
+
+	title := ""
+	if t.Meta != nil && t.Meta.Opts != nil {
+		title = strings.TrimSpace(t.Meta.Opts.Name)
+	}
+	if title == "" {
+		title = strings.TrimSpace(content.Title)
+	}
+
+	taskURL := strings.TrimSpace(content.ContentURL)
+	if taskURL == "" {
+		taskURL = strings.TrimSpace(content.URL)
+	}
+	if taskURL == "" && t.Meta != nil && t.Meta.Req != nil {
+		taskURL = strings.TrimSpace(t.Meta.Req.URL)
+	}
+
+	size := content.Size
+	if size <= 0 {
+		size = content.FileSize
+	}
+
+	meta2Bytes, _ := json.Marshal(map[string]any{
+		"platform":    content.PlatformId,
+		"external_id": content.ExternalId,
+		"nonce_id":    content.ExternalId2,
+		"eid":         "",
+	})
+
+	statusToInt := func(s base.Status) int {
+		switch s {
+		case base.DownloadStatusReady:
+			return 0
+		case base.DownloadStatusRunning:
+			return 1
+		case base.DownloadStatusPause:
+			return 2
+		case base.DownloadStatusWait:
+			return 3
+		case base.DownloadStatusDone:
+			return 4
+		case base.DownloadStatusError:
+			return 5
+		default:
+			return 0
+		}
+	}
+
+	var rec model.DownloadTask
+	err := db.Where("task_id = ?", t.ID).First(&rec).Error
+	updates := map[string]any{
+		"url":         taskURL,
+		"external_id": content.ExternalId,
+		"title":       title,
+		"cover_url":   content.CoverURL,
+		"metadata2":   string(meta2Bytes),
+		"reason":      reason,
+		"updated_at":  util.TimeToMillisInt64(t.UpdatedAt),
+	}
+	if size > 0 {
+		updates["size"] = size
+	}
+
+	if err == nil {
+		if err := db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		rec = model.DownloadTask{
+			TaskId:     t.ID,
+			Status:     statusToInt(t.Status),
+			Protocol:   t.Protocol,
+			URL:        taskURL,
+			ExternalId: content.ExternalId,
+			Title:      title,
+			CoverURL:   content.CoverURL,
+			Size:       size,
+			Reason:     reason,
+			Metadata2:  string(meta2Bytes),
+			Timestamps: model.Timestamps{
+				CreatedAt: util.TimeToMillisInt64(t.CreatedAt),
+				UpdatedAt: util.TimeToMillisInt64(t.UpdatedAt),
+			},
+		}
+		if err := db.Create(&rec).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
+
+	now := util.NowMillis()
+	if err := db.Model(&model.Content{}).Where("id = ?", content.Id).Updates(map[string]any{
+		"download_task_id": rec.Id,
+		"download_status":  rec.Status,
+		"download_path":    rec.Filepath,
+		"updated_at":       now,
+	}).Error; err != nil {
+		return &rec, err
+	}
+
+	return &rec, nil
 }

@@ -13,9 +13,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/api/types"
+	"wx_channel/internal/database/model"
 	"wx_channel/pkg/cache"
+	"wx_channel/pkg/util"
 )
 
 var channels_ws_upgrader = websocket.Upgrader{
@@ -42,19 +45,23 @@ type ChannelsClient struct {
 	cache           *cache.Cache
 	req_seq         uint64
 	refreshInterval int
+	db              *gorm.DB
 	OnConnected     func(client *Client)
 	OnMessage       func(client *Client, message []byte)
 }
 
 func NewChannelsClient(refreshInterval int) *ChannelsClient {
 	return &ChannelsClient{
-		ws_clients: make(map[*Client]bool),
-		requests:   make(map[string]chan ClientWebsocketResponse),
-		// engine:     gin.Default(),
+		ws_clients:      make(map[*Client]bool),
+		requests:        make(map[string]chan ClientWebsocketResponse),
 		cache:           cache.New(),
 		req_seq:         uint64(time.Now().UnixNano()),
 		refreshInterval: refreshInterval,
 	}
+}
+
+func (c *ChannelsClient) SetDB(db *gorm.DB) {
+	c.db = db
 }
 
 func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
@@ -207,6 +214,7 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	}
 }
 
+// 根据关键字搜索用户
 func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*types.ChannelsContactSearchResp, error) {
 	if keyword == "" {
 		return nil, errors.New("keyword 不能为空")
@@ -231,6 +239,7 @@ func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker strin
 	return &r, nil
 }
 
+// 获取指定用户的视频列表
 func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
@@ -254,6 +263,7 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 	return &r, nil
 }
 
+// 获取指定用户的直播回放列表
 func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
@@ -277,6 +287,7 @@ func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker strin
 	return &r, nil
 }
 
+// 获取用户 收藏或点赞 的视频列表
 func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
 	cache_key := "channels:interactioned_list:" + flag + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
@@ -296,6 +307,7 @@ func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker st
 	return &r, nil
 }
 
+// 获取指定视频详情
 func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*types.ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)
@@ -317,7 +329,115 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*t
 	return &r, nil
 }
 
+// 刷新视频号页面
 func (c *ChannelsClient) ReloadChannels() error {
 	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
 	return err
+}
+
+// 保存 channels feed profile 到数据库，返回 model.Content 实例
+func (c *ChannelsClient) UpsertChannelsFeed(feed *types.ChannelsFeedProfile) (*model.Content, error) {
+	if c.db == nil {
+		return nil, errors.New("db is nil")
+	}
+
+	if feed == nil {
+		return nil, errors.New("feed is nil")
+	}
+	if strings.TrimSpace(feed.ObjectId) == "" {
+		return nil, errors.New("missing object_id")
+	}
+	if strings.TrimSpace(feed.URL) == "" {
+		return nil, errors.New("missing url")
+	}
+
+	platformID := "wx_channels"
+	now := util.NowMillis()
+
+	acc := &model.Account{
+		PlatformId: platformID,
+		ExternalId: feed.Contact.Username,
+		Username:   feed.Contact.Username,
+		Nickname:   feed.Contact.Nickname,
+		AvatarURL:  feed.Contact.AvatarURL,
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	existingAccount := &model.Account{}
+	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(existingAccount).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := c.db.Create(acc).Error; err != nil {
+				return nil, err
+			}
+			existingAccount = acc
+		} else {
+			return nil, err
+		}
+	}
+
+	media := feed
+	var existing model.Content
+	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, media.ObjectId).First(&existing).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	pub := int64(media.CreatedAt)
+	content := model.Content{
+		PlatformId:  platformID,
+		ContentType: "video",
+		Title:       media.Title,
+		ExternalId:  media.ObjectId,
+		ExternalId2: media.NonceId,
+		ExternalId3: media.DecryptKey,
+		SourceURL:   media.SourceURL,
+		ContentURL:  media.URL,
+		URL:         media.SourceURL,
+		CoverURL:    media.CoverURL,
+		CoverWidth:  strconv.Itoa(media.CoverWidth),
+		CoverHeight: strconv.Itoa(media.CoverHeight),
+		Duration:    int64(media.Duration),
+		Size:        int64(media.FileSize),
+		PublishTime: &pub,
+		Metadata:    fmt.Sprintf(`{"key":"%s"}`, media.DecryptKey),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	if existing.Id == 0 {
+		if err := c.db.Create(&content).Error; err != nil {
+			return nil, err
+		}
+		ac := model.ContentAccount{
+			AccountId: existingAccount.Id,
+			ContentId: content.Id,
+			Role:      "owner",
+			CreatedAt: now,
+		}
+		if err := c.db.Create(&ac).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		content.Id = existing.Id
+		if err := c.db.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(map[string]any{
+			"title":        content.Title,
+			"content_url":  content.ContentURL,
+			"url":          content.URL,
+			"cover_url":    content.CoverURL,
+			"cover_width":  content.CoverWidth,
+			"cover_height": content.CoverHeight,
+			"duration":     content.Duration,
+			"size":         content.Size,
+			"update_time":  content.UpdateTime,
+			"updated_at":   now,
+		}).Error; err != nil {
+			return nil, err
+		}
+	}
+	return &content, nil
 }

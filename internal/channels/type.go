@@ -1,4 +1,4 @@
-package types
+package channels
 
 import (
 	"encoding/json"
@@ -6,13 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-type ChannelsRequestResp[T any] struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    T      `json:"data"`
-}
+	utilpkg "wx_channel/pkg/util"
+)
 
 type BaseResponse struct {
 	Ret    int        `json:"Ret"`
@@ -40,9 +36,9 @@ type ChannelsMediaSpec struct {
 	// CodingFormat     string `json:"codingFormat"`
 	// DynamicRangeType int    `json:"dynamicRangeType"`
 	// Vfps             int    `json:"vfps"`
-	Width      float32 `json:"width"`
-	Height     float32 `json:"height"`
-	DurationMs int     `json:"durationMs"`
+	Width      int `json:"width"`
+	Height     int `json:"height"`
+	DurationMs int `json:"durationMs"`
 	// QualityScore     int    `json:"qualityScore"`
 	// VideoBitrate     int    `json:"videoBitrate"`
 	// AudioBitrate     int    `json:"audioBitrate"`
@@ -73,8 +69,8 @@ type ChannelsMediaItem struct {
 	URL          string              `json:"url"`
 	MediaType    int                 `json:"mediaType"`
 	VideoPlayLen int                 `json:"videoPlayLen"`
-	Width        float32             `json:"width"`
-	Height       float32             `json:"height"`
+	Width        int                 `json:"width"`
+	Height       int                 `json:"height"`
 	FileSize     int                 `json:"fileSize"`
 	Spec         []ChannelsMediaSpec `json:"spec"`
 	CoverUrl     string              `json:"coverUrl"`
@@ -181,98 +177,73 @@ type ChannelsObject struct {
 	AnchorContact *ChannelsContact    `json:"anchorContact,omitempty"`
 }
 
-type ChannelsContactSearchResp struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    struct {
-		BaseResponse    BaseResponse   `json:"BaseResponse"`
-		InfoList        []InfoListItem `json:"infoList"`
-		ContinueFlag    int            `json:"continueFlag"`
-		LastBuff        string         `json:"lastBuff"`
-		TopicInfoList   []any          `json:"topicInfoList"`
-		MusicInfoList   []any          `json:"musicInfoList"`
-		MultiFeedStream []any          `json:"multiFeedStream"`
-		// ObjectList      []ChannelsObject `json:"objectList"`
-	} `json:"data"`
-	Payload struct {
-		Query      string `json:"query"`
-		Scene      int    `json:"scene"`
-		LastBuffer string `json:"lastBuff"`
-		RequestId  string `json:"requestId"`
-	} `json:"payload"`
+type ChannelsSearchResp struct {
+	BaseResponse    BaseResponse     `json:"BaseResponse"`
+	InfoList        []InfoListItem   `json:"infoList"`
+	ContinueFlag    int              `json:"continueFlag"`
+	ObjectList      []ChannelsObject `json:"objectList"`
+	LastBuff        string           `json:"lastBuff"`
+	TopicInfoList   []any            `json:"topicInfoList"`
+	MusicInfoList   []any            `json:"musicInfoList"`
+	MultiFeedStream []any            `json:"multiFeedStream"`
 }
 
 type ChannelsFeedListOfAccountResp struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    struct {
-		BaseResponse   BaseResponse     `json:"BaseResponse"`
-		Object         []ChannelsObject `json:"object"`
-		FinderUserInfo struct {
-			CoverImgUrl string `json:"coverImgUrl"`
-		} `json:"finderUserInfo"`
-		Contact      ChannelsContact `json:"contact"`
-		FeedsCount   int             `json:"feedsCount"`
-		ContinueFlag int             `json:"continueFlag"`
-		LastBuffer   string          `json:"lastBuffer"`
-		UserTags     []string        `json:"userTags"`
-		PreloadInfo  json.RawMessage `json:"preloadInfo"`
-		LiveObjects  []any           `json:"liveObjects"`
-		UsualTopics  []struct {
-			Topic   string `json:"topic"`
-			TopicId string `json:"topicId"`
-		} `json:"usualTopics"`
-		LiveDurationHours int   `json:"liveDurationHours"`
-		EventInfoList     []any `json:"eventInfoList"`
-		JustWatch         struct {
-			ShowJustWatch bool `json:"showJustWatch"`
-			AllowPrefetch bool `json:"allowPrefetch"`
-		} `json:"justWatch"`
-		JumpInfo           []any `json:"jumpInfo"`
-		DeprecatedClubInfo []any `json:"deprecatedClubInfo"`
-		AnchorStat         struct {
-			TotalLiveCount  int `json:"totalLiveCount"`
-			RecentLiveCount int `json:"recentLiveCount"`
-		} `json:"anchorStat"`
-		IPRegionInfo *IPRegionInfo `json:"ipRegionInfo,omitempty"`
-		OriginalInfo struct {
-			OriginalCount int `json:"originalCount"`
-		} `json:"originalInfo"`
-		LayoutConfig   json.RawMessage `json:"layoutConfig"`
-		ProfileBanner  json.RawMessage `json:"profileBanner"`
-		ShowInfo       json.RawMessage `json:"showInfo"`
-		MemberStatus   int             `json:"memberStatus"`
-		UpContinueFlag int             `json:"upContinueFlag"`
-		UpLastbuffer   string          `json:"upLastbuffer"`
-	} `json:"data"`
-	Payload struct {
-		Username       string `json:"username"`
-		FinderUsername string `json:"finderUsername"`
-		LastBuffer     string `json:"lastBuffer"`
-		NeedFansCount  int    `json:"needFansCount"`
-		ObjectId       string `json:"objectId"`
-	} `json:"payload"`
+	BaseResponse   BaseResponse     `json:"BaseResponse"`
+	Object         []ChannelsObject `json:"object"`
+	FinderUserInfo struct {
+		CoverImgUrl string `json:"coverImgUrl"`
+	} `json:"finderUserInfo"`
+	Contact      ChannelsContact `json:"contact"`
+	FeedsCount   int             `json:"feedsCount"`
+	ContinueFlag int             `json:"continueFlag"`
+	LastBuffer   string          `json:"lastBuffer"`
+	UserTags     []string        `json:"userTags"`
+	PreloadInfo  json.RawMessage `json:"preloadInfo"`
+	LiveObjects  []any           `json:"liveObjects"`
+	UsualTopics  []struct {
+		Topic   string `json:"topic"`
+		TopicId string `json:"topicId"`
+	} `json:"usualTopics"`
+	LiveDurationHours int   `json:"liveDurationHours"`
+	EventInfoList     []any `json:"eventInfoList"`
+	JustWatch         struct {
+		ShowJustWatch bool `json:"showJustWatch"`
+		AllowPrefetch bool `json:"allowPrefetch"`
+	} `json:"justWatch"`
+	JumpInfo           []any `json:"jumpInfo"`
+	DeprecatedClubInfo []any `json:"deprecatedClubInfo"`
+	AnchorStat         struct {
+		TotalLiveCount  int `json:"totalLiveCount"`
+		RecentLiveCount int `json:"recentLiveCount"`
+	} `json:"anchorStat"`
+	IPRegionInfo *IPRegionInfo `json:"ipRegionInfo,omitempty"`
+	OriginalInfo struct {
+		OriginalCount int `json:"originalCount"`
+	} `json:"originalInfo"`
+	LayoutConfig   json.RawMessage `json:"layoutConfig"`
+	ProfileBanner  json.RawMessage `json:"profileBanner"`
+	ShowInfo       json.RawMessage `json:"showInfo"`
+	MemberStatus   int             `json:"memberStatus"`
+	UpContinueFlag int             `json:"upContinueFlag"`
+	UpLastbuffer   string          `json:"upLastbuffer"`
 }
 
-type ChannelsFeedProfileResp struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    struct {
-		BaseResponse          BaseResponse    `json:"BaseResponse"`
-		CommentInfo           []any           `json:"commentInfo"`
-		Object                ChannelsObject  `json:"object"`
-		CommentCount          int             `json:"commentCount"`
-		NextCheckObjectStatus int             `json:"nextCheckObjectStatus"`
-		BarrageCommentInfo    []any           `json:"barrageCommentInfo"`
-		RefObjectList         []any           `json:"refObjectList"`
-		PreloadInfo           json.RawMessage `json:"preloadInfo"`
-		TraceBuffer           string          `json:"traceBuffer"`
-		LiveAliasInfo         []any           `json:"liveAliasInfo"`
-		DescCommentInfo       []any           `json:"descCommentInfo"`
-		UserTags              []string        `json:"userTags"`
-		ReportBypass          string          `json:"reportBypass"`
-	} `json:"data"`
-	Payload struct {
+type MediaProfileResp struct {
+	BaseResponse          BaseResponse    `json:"BaseResponse"`
+	CommentInfo           []any           `json:"commentInfo"`
+	Object                ChannelsObject  `json:"object"`
+	CommentCount          int             `json:"commentCount"`
+	NextCheckObjectStatus int             `json:"nextCheckObjectStatus"`
+	BarrageCommentInfo    []any           `json:"barrageCommentInfo"`
+	RefObjectList         []any           `json:"refObjectList"`
+	PreloadInfo           json.RawMessage `json:"preloadInfo"`
+	TraceBuffer           string          `json:"traceBuffer"`
+	LiveAliasInfo         []any           `json:"liveAliasInfo"`
+	DescCommentInfo       []any           `json:"descCommentInfo"`
+	UserTags              []string        `json:"userTags"`
+	ReportBypass          string          `json:"reportBypass"`
+	Payload               struct {
 		NeedObject        int    `json:"needObject"`
 		LastBuffer        string `json:"lastBuffer"`
 		Scene             int    `json:"scene"`
@@ -285,32 +256,36 @@ type ChannelsFeedProfileResp struct {
 	} `json:"payload"`
 }
 
+type ChannelsAccountSearchResultResp struct {
+	ErrCode int                         `json:"err_code"`
+	ErrMsg  string                      `json:"err_msg"`
+	Data    ChannelsAccountSearchResult `json:"data"`
+}
+type ChannelsAccountSearchResult struct {
+}
+
 type ChannelsAccountSearchBody struct {
-	Keyword    string `json:"keyword"`
-	NextMarker string `json:"next_marker"`
+	Keyword string `json:"keyword"`
 }
 type ChannelsFeedListBody struct {
 	Username   string `json:"username"`
 	NextMarker string `json:"next_marker"`
 }
-type ChannelsLiveReplayListBody struct {
-	Username   string `json:"username"`
-	NextMarker string `json:"next_marker"`
-}
-type ChannelsInteractionedFeedListBody struct {
-	Flag       string `json:"flag"`
-	NextMarker string `json:"next_marker"`
-}
 type ChannelsFeedProfileBody struct {
-	URL               string `json:"url"`
-	ObjectId          string `json:"oid"`
-	NonceId           string `json:"nid"`
-	EncryptedObjectId string `json:"eid"`
+	URL      string `json:"url"`
+	ObjectId string `json:"oid"`
+	NonceId  string `json:"nid"`
+}
+type ChannelsFeedListResp struct {
+	ErrCode int              `json:"err_code"`
+	ErrMsg  string           `json:"err_msg"`
+	Data    ChannelsFeedList `json:"data"`
 }
 type ChannelsFeedList struct {
 	List       []ChannelsFeedProfile `json:"list"`
 	NextMarker string                `json:"next_marker"`
 }
+
 type ChannelsFeedAccount struct {
 	Username  string `json:"username"`
 	Nickname  string `json:"nickname"`
@@ -333,6 +308,17 @@ type ChannelsFeedProfile struct {
 	Contact     ChannelsFeedAccount `json:"contact"`
 }
 
+type ChannelsContactSearchResp struct {
+	ErrCode int                 `json:"errCode"`
+	ErrMsg  string              `json:"errMsg"`
+	Data    ChannelsFeedProfile `json:"data"`
+}
+
+type ChannelsFeedProfileResp struct {
+	ErrCode int                 `json:"errCode"`
+	ErrMsg  string              `json:"errMsg"`
+	Data    ChannelsFeedProfile `json:"data"`
+}
 type RequestResponse struct {
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
@@ -421,12 +407,6 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 			return nil, errors.New("media 类型缺少 media 数据")
 		}
 		media := feed.ObjectDesc.Media[0]
-		spec := make([]ChannelsMediaSpec, 0)
-		if len(media.Spec) > 0 {
-			spec = media.Spec
-		} else if len(feed.Spec) > 0 {
-			spec = feed.Spec
-		}
 		return &ChannelsFeedProfile{
 			ObjectId:    feed.ID,
 			NonceId:     feed.ObjectNonceId,
@@ -435,12 +415,12 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 			Title:       buildTitle(feed.ObjectDesc.Description, false),
 			DecryptKey:  media.DecodeKey,
 			CoverURL:    media.CoverUrl,
-			CoverWidth:  int(media.Width),
-			CoverHeight: int(media.Height),
+			CoverWidth:  media.Width,
+			CoverHeight: media.Height,
 			Duration:    media.VideoPlayLen,
 			FileSize:    media.FileSize,
 			CreatedAt:   feed.CreateTime,
-			Spec:        spec,
+			Spec:        media.Spec,
 			Contact: ChannelsFeedAccount{
 				Username:  feed.Contact.Username,
 				Nickname:  feed.Contact.Nickname,
@@ -465,11 +445,12 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 		Title:       buildTitle(feed.ObjectDesc.Description, false),
 		DecryptKey:  media.DecodeKey,
 		CoverURL:    media.CoverUrl,
-		CoverWidth:  int(media.Width),
-		CoverHeight: int(media.Height),
+		CoverWidth:  media.Width,
+		CoverHeight: media.Height,
 		Duration:    media.VideoPlayLen,
 		FileSize:    media.FileSize,
 		CreatedAt:   feed.CreateTime,
+		Spec:        media.Spec,
 		Contact: ChannelsFeedAccount{
 			Username:  feed.Contact.Username,
 			Nickname:  feed.Contact.Nickname,
@@ -477,4 +458,46 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 		},
 	}
 	return prof, nil
+}
+
+func BuildJumpUrl(feed *ChannelsFeedProfile) string {
+	origin := "https://channels.weixin.qq.com"
+	if feed == nil {
+		return origin + "/web/pages/feed"
+	}
+
+	if feed.SourceURL != "" {
+		return feed.SourceURL
+	}
+
+	oid := feed.ObjectId
+	nid := feed.NonceId
+
+	username := ""
+	if feed.Contact.Username != "" {
+		username = feed.Contact.Username
+	}
+
+	u := origin + "/web/pages/feed"
+	if username != "" {
+		u += "?username=" + username
+	} else {
+		u += "?"
+	}
+
+	if oid != "" {
+		encodedOid := utilpkg.EncodeUint64ToBase64(oid)
+		if encodedOid != "" {
+			u += "&oid=" + encodedOid
+		}
+	}
+
+	if nid != "" {
+		encodedNid := utilpkg.EncodeUint64ToBase64(nid)
+		if encodedNid != "" {
+			u += "&nid=" + encodedNid
+		}
+	}
+
+	return strings.TrimPrefix(u, "?")
 }

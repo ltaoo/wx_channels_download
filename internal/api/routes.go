@@ -41,6 +41,8 @@ func (c *APIClient) SetupRoutes() {
 	// 下载任务接口
 	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)
 	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
+	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
+	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
 	c.engine.GET("/api/task/list", c.handleFetchTaskList)
 	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
 	c.engine.POST("/api/task/create", c.handleCreateFeedDownloadTask)
@@ -54,6 +56,37 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/task/delete", c.handleDeleteTask)
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
 	c.engine.GET("/api/file", c.handleFetchFile)
+
+	c.engine.POST("/download_task/list", c.handleCompatDownloadTaskList)
+	c.engine.POST("/download_task/start", c.handleCompatDownloadTaskStart)
+	c.engine.POST("/download_task/profile", c.handleCompatDownloadTaskProfile)
+	c.engine.POST("/download_task/create", c.handleCompatDownloadTaskCreate)
+	c.engine.POST("/download_task/batch_create", c.handleCompatDownloadTaskBatchCreate)
+	c.engine.POST("/download_task/delete", c.handleCompatDownloadTaskDelete)
+	c.engine.POST("/download_task/retry", c.handleCompatDownloadTaskRetry)
+	c.engine.POST("/download_task/pause_all", c.handleCompatDownloadTaskPauseAll)
+	c.engine.POST("/download_task/start_all", c.handleCompatDownloadTaskStartAll)
+	c.engine.POST("/download_task/highlight_file", c.handleCompatDownloadTaskHighlightFile)
+	c.engine.GET("/download_task/play", c.handleCompatDownloadTaskPlay)
+
+	c.engine.POST("/browse_history/create", c.handleCreateBrowseHistory)
+	c.engine.POST("/browse_history/list", c.handleFetchBrowseHistoryList)
+
+	c.engine.GET("/influencers", c.handleCompatInfluencerList)
+	c.engine.GET("/influencers/:id", c.handleCompatInfluencerGet)
+	c.engine.POST("/influencers", c.handleCompatInfluencerCreate)
+	c.engine.PUT("/influencers/:id", c.handleCompatInfluencerUpdate)
+
+	c.engine.POST("/account/list", c.handleCompatAccountList)
+	c.engine.POST("/account/synchronize", c.handleCompatAccountSynchronize)
+
+	c.engine.POST("/video/list", c.handleCompatVideoList)
+
+	c.engine.GET("/channels/search/author", c.handleCompatChannelsSearchAuthor)
+	c.engine.GET("/channels/author/videos", c.handleCompatChannelsAuthorVideos)
+	c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
+	c.engine.GET("/channels/task/status", c.handleCompatChannelsTaskStatus)
+	c.engine.GET("/channels/task/start", c.handleCompatChannelsTaskStart)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
 	c.engine.GET("/file", c.handleStreamVideo)
