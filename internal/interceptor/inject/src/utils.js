@@ -1397,6 +1397,14 @@ async function __wx_channels_handle_download_cover() {
   const blob = await response.blob();
   WXU.save(blob, filename + ".jpg");
 }
+/** 复制封面链接 */
+async function __wx_channels_handle_copy_cover_url() {
+  var [err, profile] = WXU.check_feed_existing();
+  if (err) return;
+  var url = profile.cover_url.replace(/^http:/, "https:");
+  WXU.copy(url);
+  WXU.toast("复制成功");
+}
 /**
  * 为指定按钮添加额外的下载选项菜单
  * @param {HTMLElement} trigger
@@ -1443,6 +1451,13 @@ function __wx_attach_download_dropdown_menu(trigger) {
         label: "下载封面",
         onClick() {
           __wx_channels_handle_download_cover();
+          dropdown$.hide();
+        },
+      }),
+      MenuItem({
+        label: "复制封面链接",
+        onClick() {
+          __wx_channels_handle_copy_cover_url();
           dropdown$.hide();
         },
       }),
