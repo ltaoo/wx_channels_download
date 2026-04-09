@@ -81,6 +81,10 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
+				if interceptor.OnFeedProfileLoaded != nil {
+					profile := data
+					go interceptor.OnFeedProfileLoaded(&profile)
+				}
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
@@ -202,6 +206,8 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				inserted_scripts += script_variable
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSBase64)
+				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSRouter)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
 				if cfg.InjectGlobalScript != "" {
