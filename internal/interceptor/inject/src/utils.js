@@ -1447,13 +1447,6 @@ function __wx_attach_download_dropdown_menu(trigger) {
         },
       }),
       MenuItem({
-        label: "打印下载命令",
-        onClick() {
-          __wx_channels_handle_print_download_command();
-          dropdown$.hide();
-        },
-      }),
-      MenuItem({
         label: "复制页面链接",
         onClick() {
           __wx_channels_handle_copy__();
