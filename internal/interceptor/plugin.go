@@ -6,8 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -49,11 +52,271 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
+type domCommentItem struct {
+	UserName   string   `json:"user_name"`
+	RegionTime []string `json:"region_time"`
+	Content    string   `json:"content"`
+	LikeNum    string   `json:"like_num"`
+	Replies    []domReplyItem `json:"replies,omitempty"`
+}
+
+type domReplyItem struct {
+	UserName   string   `json:"user_name"`
+	RegionTime []string `json:"region_time"`
+	Content    string   `json:"content"`
+	LikeNum    string   `json:"like_num"`
+}
+
+type domVideoMeta struct {
+	VideoID string `json:"video_id"`
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Owner   struct {
+		Nickname string `json:"nickname"`
+		Avatar   string `json:"avatar"`
+	} `json:"owner"`
+}
+
+type commentCaptureSession struct {
+	Video domVideoMeta       `json:"video"`
+	Meta  map[string]any     `json:"meta"`
+	Items []domCommentItem   `json:"comments"`
+	index map[string]int              // not marshaled
+	seen  map[string]struct{}         // not marshaled
+	reply map[string]map[string]struct{} // not marshaled
+}
+
+type commentCaptureStore struct {
+	mu        sync.Mutex
+	sessions  map[string]*commentCaptureSession
+	download  string
+	lastVideo domVideoMeta
+}
+
+func newCommentCaptureStore(downloadDir string) *commentCaptureStore {
+	return &commentCaptureStore{
+		sessions: make(map[string]*commentCaptureSession),
+		download: downloadDir,
+	}
+}
+
+func (s *commentCaptureStore) ensureSession(key string) *commentCaptureSession {
+	if key == "" {
+		key = "unknown"
+	}
+	ss := s.sessions[key]
+	if ss == nil {
+		ss = &commentCaptureSession{
+			Video: s.lastVideo,
+			Meta:  make(map[string]any),
+			Items: make([]domCommentItem, 0, 128),
+			index: make(map[string]int),
+			seen:  make(map[string]struct{}),
+			reply: make(map[string]map[string]struct{}),
+		}
+		s.sessions[key] = ss
+	}
+	return ss
+}
+
+func (s *commentCaptureStore) setLastVideo(v domVideoMeta) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastVideo = v
+	key := v.VideoID
+	if key == "" {
+		key = v.URL
+	}
+	ss := s.ensureSession(key)
+	ss.Video = v
+}
+
+func (s *commentCaptureStore) defaultSessionKey() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastVideo.VideoID != "" {
+		return s.lastVideo.VideoID
+	}
+	if s.lastVideo.URL != "" {
+		return s.lastVideo.URL
+	}
+	return "unknown"
+}
+
+func (s *commentCaptureStore) updateMeta(key string, meta map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ss := s.ensureSession(key)
+	for k, v := range meta {
+		ss.Meta[k] = v
+	}
+}
+
+func (s *commentCaptureStore) addItems(key string, items []domCommentItem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ss := s.ensureSession(key)
+	for _, it := range items {
+		k := it.UserName + "||" + it.Content + "||" + strings.Join(it.RegionTime, "|")
+		if idx, ok := ss.index[k]; ok {
+			// merge replies
+			if len(it.Replies) != 0 {
+				if ss.reply[k] == nil {
+					ss.reply[k] = make(map[string]struct{})
+					for _, r := range ss.Items[idx].Replies {
+						rk := r.UserName + "||" + r.Content + "||" + strings.Join(r.RegionTime, "|")
+						ss.reply[k][rk] = struct{}{}
+					}
+				}
+				for _, r := range it.Replies {
+					rk := r.UserName + "||" + r.Content + "||" + strings.Join(r.RegionTime, "|")
+					if _, exists := ss.reply[k][rk]; exists {
+						continue
+					}
+					ss.reply[k][rk] = struct{}{}
+					ss.Items[idx].Replies = append(ss.Items[idx].Replies, r)
+				}
+			}
+			continue
+		}
+		ss.seen[k] = struct{}{}
+		ss.index[k] = len(ss.Items)
+		// init reply set for this comment
+		if len(it.Replies) != 0 {
+			ss.reply[k] = make(map[string]struct{}, len(it.Replies))
+			for _, r := range it.Replies {
+				rk := r.UserName + "||" + r.Content + "||" + strings.Join(r.RegionTime, "|")
+				ss.reply[k][rk] = struct{}{}
+			}
+		}
+		ss.Items = append(ss.Items, it)
+	}
+}
+
+func (s *commentCaptureStore) addReplies(key, commentKey string, replies []domReplyItem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ss := s.ensureSession(key)
+	idx, ok := ss.index[commentKey]
+	if !ok {
+		return
+	}
+	if ss.reply[commentKey] == nil {
+		ss.reply[commentKey] = make(map[string]struct{})
+		for _, r := range ss.Items[idx].Replies {
+			rk := r.UserName + "||" + r.Content + "||" + strings.Join(r.RegionTime, "|")
+			ss.reply[commentKey][rk] = struct{}{}
+		}
+	}
+	for _, r := range replies {
+		rk := r.UserName + "||" + r.Content + "||" + strings.Join(r.RegionTime, "|")
+		if _, exists := ss.reply[commentKey][rk]; exists {
+			continue
+		}
+		ss.reply[commentKey][rk] = struct{}{}
+		ss.Items[idx].Replies = append(ss.Items[idx].Replies, r)
+	}
+}
+
+func sanitizeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "capture"
+	}
+	// Windows: <>:"/\|?* and control chars
+	replacer := strings.NewReplacer(
+		"<", "＜",
+		">", "＞",
+		":", "：",
+		"\"", "＂",
+		"/", "／",
+		"\\", "＼",
+		"|", "｜",
+		"?", "？",
+		"*", "＊",
+	)
+	name = replacer.Replace(name)
+	name = strings.Map(func(r rune) rune {
+		if r < 32 {
+			return -1
+		}
+		return r
+	}, name)
+	// keep it short
+	if len([]rune(name)) > 80 {
+		r := []rune(name)
+		name = string(r[:80])
+	}
+	return name
+}
+
+func (s *commentCaptureStore) exportJSON(key string) (string, error) {
+	s.mu.Lock()
+	ss := s.sessions[key]
+	if ss == nil {
+		s.mu.Unlock()
+		return "", fmt.Errorf("session not found: %s", key)
+	}
+	// copy to avoid holding lock during file write
+	out := struct {
+		Video      domVideoMeta     `json:"video"`
+		Meta       map[string]any   `json:"meta"`
+		Comments   []domCommentItem `json:"comments"`
+		ExportedAt int64            `json:"exported_at"`
+	}{
+		Video:      ss.Video,
+		Meta:       ss.Meta,
+		Comments:   ss.Items,
+		ExportedAt: time.Now().UnixMilli(),
+	}
+	s.mu.Unlock()
+
+	dir := s.download
+	if dir == "" {
+		dir = "."
+	}
+	dir = filepath.Join(dir, "_wx_channels_exports")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	owner := out.Video.Owner.Nickname
+	title := out.Video.Title
+	if title == "" {
+		if v, ok := out.Meta["title"]; ok {
+			title = fmt.Sprint(v)
+		}
+	}
+	ts := time.Now().Format("20060102_150405")
+	base := sanitizeFilename(strings.TrimSpace(owner + "_" + title))
+	if base == "_" || base == "" {
+		base = "capture"
+	}
+	filename := base + "_" + ts + ".json"
+	full := filepath.Join(dir, filename)
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(full, b, 0644); err != nil {
+		return "", err
+	}
+	return full, nil
+}
+
 func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInjectedFiles) []*proxy.Plugin {
 	version := interceptor.Version
 	cfg := interceptor.Settings
 	variables := interceptor.FrontendVariables
 	v := "?t=" + version
+	downloadDir := ""
+	if variables != nil {
+		if d, ok := variables["downloadDir"]; ok {
+			if s, ok := d.(string); ok {
+				downloadDir = s
+			}
+		}
+	}
+	store := newCommentCaptureStore(downloadDir)
 	plugin1 := &proxy.Plugin{
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
@@ -82,6 +345,162 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					fmt.Println("[ECHO]handler", err.Error())
 				}
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
+				// 记录最近一次视频，用于评论导出默认归属
+				vm := domVideoMeta{
+					VideoID: data.Id,
+					Title:   data.Title,
+					URL:     "",
+				}
+				vm.Owner.Nickname = data.Contact.Nickname
+				vm.Owner.Avatar = data.Contact.AvatarURL
+				store.setLastVideo(vm)
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/json",
+				}, "{}")
+				return
+			}
+			if pathname == "/__wx_channels_api/comments" {
+				// 前端抓到的评论数据上报（支持 DOM 全量抓取分批上报）
+				body, _ := io.ReadAll(io.LimitReader(ctx.Req().Body, 2*1024*1024))
+				var envelope map[string]any
+				_ = json.Unmarshal(body, &envelope)
+				typ, _ := envelope["type"].(string)
+
+				// 默认 key：优先 video_id，其次 url
+				sessionKey := ""
+				if v, ok := envelope["video_id"].(string); ok && v != "" {
+					sessionKey = v
+				}
+				if sessionKey == "" {
+					if v, ok := envelope["url"].(string); ok && v != "" {
+						sessionKey = v
+					}
+				}
+				if sessionKey == "" {
+					// 尝试从 meta.url
+					if meta, ok := envelope["meta"].(map[string]any); ok {
+						if u, ok := meta["url"].(string); ok && u != "" {
+							sessionKey = u
+						}
+					}
+				}
+				if sessionKey == "" {
+					// fallback to last video
+					sessionKey = store.defaultSessionKey()
+				}
+
+				switch typ {
+				case "dom_video_meta":
+					var v domVideoMeta
+					if b, err := json.Marshal(envelope["video"]); err == nil {
+						_ = json.Unmarshal(b, &v)
+					}
+					if v.VideoID != "" || v.Title != "" || v.URL != "" {
+						store.setLastVideo(v)
+						if v.VideoID != "" {
+							sessionKey = v.VideoID
+						} else if v.URL != "" {
+							sessionKey = v.URL
+						}
+					}
+				case "dom_comments_full_meta":
+					var meta map[string]any
+					if m, ok := envelope["meta"].(map[string]any); ok {
+						meta = m
+					}
+					store.updateMeta(sessionKey, meta)
+				case "dom_comments_full_part":
+					// comments chunk
+					var part struct {
+						Type     string           `json:"type"`
+						URL      string           `json:"url"`
+						Part     int              `json:"part"`
+						Total    int              `json:"total"`
+						Final    bool             `json:"final"`
+						Comments []domCommentItem `json:"comments"`
+					}
+					_ = json.Unmarshal(body, &part)
+					if part.URL != "" && sessionKey == "" {
+						sessionKey = part.URL
+					}
+					store.addItems(sessionKey, part.Comments)
+					if part.Final {
+						if fp, err := store.exportJSON(sessionKey); err == nil {
+							fmt.Printf("\n[SAVED] %s\n", fp)
+						} else {
+							fmt.Printf("[COMMENTS_CAPTURE] export failed: %v\n", err)
+						}
+					}
+				case "dom_comment_replies_part":
+					var part struct {
+						Type       string         `json:"type"`
+						URL        string         `json:"url"`
+						VideoID    string         `json:"video_id"`
+						CommentKey string         `json:"comment_key"`
+						Replies    []domReplyItem `json:"replies"`
+					}
+					_ = json.Unmarshal(body, &part)
+					if part.URL != "" && sessionKey == "" {
+						sessionKey = part.URL
+					}
+					if part.CommentKey != "" && len(part.Replies) != 0 {
+						store.addReplies(sessionKey, part.CommentKey, part.Replies)
+					}
+				default:
+					// 原样打印（调试）
+					if len(body) == 0 {
+						fmt.Printf("[COMMENTS_CAPTURE] empty body\n")
+					} else {
+						var anyv interface{}
+						if err := json.Unmarshal(body, &anyv); err == nil {
+							if pretty, err := json.MarshalIndent(anyv, "", "  "); err == nil {
+								fmt.Printf("\n[COMMENTS_CAPTURE]\n%s\n", string(pretty))
+							} else {
+								fmt.Printf("\n[COMMENTS_CAPTURE]\n%s\n", string(body))
+							}
+						} else {
+							fmt.Printf("\n[COMMENTS_CAPTURE]\n%s\n", string(body))
+						}
+					}
+				}
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/json",
+				}, "{}")
+				return
+			}
+			if pathname == "/__wx_channels_api/log_disabled" {
+				// 前端通用日志上报（用于把前端请求/响应打印到终端）
+				body, _ := io.ReadAll(io.LimitReader(ctx.Req().Body, 2*1024*1024))
+				if len(body) == 0 {
+					fmt.Printf("[FRONTEND_LOG] empty body\n")
+				} else {
+					// 特殊：HTML 分块输出（避免 JSON escape 影响可读性）
+					var htmlDump struct {
+						Type  string `json:"type"`
+						Part  int    `json:"part"`
+						Total int    `json:"total"`
+						URL   string `json:"url"`
+						Chunk string `json:"chunk"`
+					}
+					if err := json.Unmarshal(body, &htmlDump); err == nil && htmlDump.Type == "html_dump" {
+						fmt.Printf("\n[HTML_DUMP] part=%d/%d url=%s\n", htmlDump.Part, htmlDump.Total, htmlDump.URL)
+						fmt.Print(htmlDump.Chunk)
+						if !strings.HasSuffix(htmlDump.Chunk, "\n") {
+							fmt.Print("\n")
+						}
+					} else {
+						var anyv interface{}
+						if err := json.Unmarshal(body, &anyv); err == nil {
+							if pretty, err := json.MarshalIndent(anyv, "", "  "); err == nil {
+								fmt.Printf("\n[FRONTEND_LOG]\n%s\n", string(pretty))
+							} else {
+								fmt.Printf("\n[FRONTEND_LOG]\n%s\n", string(body))
+							}
+						} else {
+							fmt.Printf("\n[FRONTEND_LOG]\n%s\n", string(body))
+						}
+					}
+				}
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
 				}, "{}")

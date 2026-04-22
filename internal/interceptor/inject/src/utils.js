@@ -695,7 +695,660 @@ var WXU = (() => {
   var WXAPI2 = {};
   var WXAPI3 = {};
   var WXAPI4 = {};
+  function __wx_limit_value(v, depth = 0) {
+    if (depth > 4) return "[max_depth]";
+    if (v == null) return v;
+    const t = typeof v;
+    if (t === "string") {
+      if (v.length > 800) return v.slice(0, 800) + "...(truncated)";
+      return v;
+    }
+    if (t === "number" || t === "boolean") return v;
+    if (Array.isArray(v)) {
+      const max = 20;
+      const arr = v.slice(0, max).map((x) => __wx_limit_value(x, depth + 1));
+      if (v.length > max) arr.push(`...(truncated ${v.length - max})`);
+      return arr;
+    }
+    if (t === "object") {
+      const obj = {};
+      const keys = Object.keys(v);
+      const maxKeys = 60;
+      for (let i = 0; i < Math.min(keys.length, maxKeys); i++) {
+        const k = keys[i];
+        obj[k] = __wx_limit_value(v[k], depth + 1);
+      }
+      if (keys.length > maxKeys) {
+        obj.__truncated_keys__ = keys.length - maxKeys;
+      }
+      return obj;
+    }
+    return String(v);
+  }
+  async function __wx_report_comments(payload) {
+    try {
+      await fetch("/__wx_channels_api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+  function __wx_extract_comment_text($content) {
+    if (!$content) return "";
+    // 把表情 img alt 也拼进去，避免 innerText 丢失表情语义
+    const parts = [];
+    const nodes = $content.childNodes ? Array.from($content.childNodes) : [];
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n) continue;
+      if (n.nodeType === 3) {
+        const t = String(n.textContent || "").trim();
+        if (t) parts.push(t);
+        continue;
+      }
+      if (n.nodeType === 1) {
+        const el = /** @type {HTMLElement} */ (n);
+        if (el.tagName === "IMG") {
+          const alt = el.getAttribute("alt") || "";
+          const t = alt.trim();
+          if (t) parts.push(t);
+          continue;
+        }
+        const t = String(el.textContent || "").trim();
+        if (t) parts.push(t);
+        continue;
+      }
+    }
+    return parts.join("");
+  }
 
+  function __wx_comment_key(item) {
+    if (!item) return "";
+    return [
+      item.user_name || "",
+      item.content || "",
+      Array.isArray(item.region_time) ? item.region_time.join("|") : "",
+    ].join("||");
+  }
+
+  function __wx_extract_comment_from_root($root) {
+    if (!$root) return null;
+    const $name = $root.querySelector(".comment-user-name");
+    const $content = $root.querySelector(".comment-content");
+    const regionTexts = Array.from(
+      $root.querySelectorAll(".region-info .region-text"),
+    )
+      .map((n) => String(n.textContent || "").trim())
+      .filter(Boolean);
+    const $like = $root.querySelector(".like-num");
+    const item = {
+      user_name: $name ? String($name.textContent || "").trim() : "",
+      region_time: regionTexts,
+      content: __wx_extract_comment_text($content),
+      like_num: $like ? String($like.textContent || "").trim() : "",
+    };
+    if (!item.user_name && !item.content) return null;
+    return item;
+  }
+
+  function __wx_extract_replies($commentItem) {
+    const $replyList = $commentItem
+      ? $commentItem.querySelector(".comment-reply-list")
+      : null;
+    if (!$replyList) return [];
+    const children = Array.from($replyList.children || []);
+    const replies = [];
+    // 常见结构：replyList 的子节点每个对应一个回复
+    for (let i = 0; i < children.length; i++) {
+      const r = __wx_extract_comment_from_root(children[i]);
+      if (r) replies.push(r);
+    }
+    if (replies.length) return replies;
+    // 兜底：如果没有子节点结构，尝试抓一层“包含 comment-content 的块”
+    const blocks = Array.from($replyList.querySelectorAll(".comment-content"));
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i].closest("div");
+      const r = __wx_extract_comment_from_root(b);
+      if (r) replies.push(r);
+    }
+    return replies;
+  }
+
+  async function __wx_expand_visible_replies() {
+    const $list = document.querySelector(".comment-panel .comment-list");
+    if (!$list) return 0;
+    const candidates = [];
+    const nodes = Array.from(
+      $list.querySelectorAll("button, a, div[role='button'], span"),
+    );
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i];
+      if (!el) continue;
+      if (el.offsetParent === null) continue;
+      const text = String(el.textContent || "").trim();
+      if (!text) continue;
+      // 仅在 extra/reply 区域里找“展开/查看 更多回复”
+      const inExtra = Boolean(el.closest(".comment-item__extra, .comment-reply-list"));
+      if (!inExtra) continue;
+      if (
+        /^(展开|查看)/.test(text) &&
+        /(更多|全部|条)/.test(text) &&
+        /(回复|评论)/.test(text)
+      ) {
+        candidates.push(el);
+      }
+    }
+    let clicked = 0;
+    const maxClick = 30;
+    for (let i = 0; i < Math.min(candidates.length, maxClick); i++) {
+      const el = candidates[i];
+      try {
+        if (typeof el.click === "function") {
+          el.click();
+          clicked++;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (clicked) {
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    return clicked;
+  }
+
+  async function __wx_ensure_comment_panel_open() {
+    // 已经有评论列表就认为已打开
+    const hasList = () => {
+      const $list = document.querySelector(".comment-panel .comment-list");
+      if (!$list) return false;
+      const items = $list.querySelectorAll(".comment-item");
+      return items && items.length > 0;
+    };
+    if (hasList()) return true;
+
+    // 尝试点击操作栏的“评论”按钮打开评论区
+    const findCommentBtn = () => {
+      const nodes = Array.from(
+        document.querySelectorAll('.click-box.op-item[aria-label*="评论"]'),
+      );
+      // 优先可见的
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        if (!el) continue;
+        if (el.offsetParent !== null) return el;
+      }
+      return nodes[0] || null;
+    };
+
+    const btn = findCommentBtn();
+    if (btn && typeof btn.click === "function") {
+      btn.click();
+    }
+
+    // 等待评论列表渲染（最多约 4s）
+    for (let i = 0; i < 40; i++) {
+      if (hasList()) return true;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  }
+
+  function __wx_get_comment_scroll_container() {
+    // 优先用评论面板内部的滚动容器
+    const $ctn = document.querySelector(".comment-panel .scroll-ctn");
+    if ($ctn) return $ctn;
+    // 兜底：如果类名变了，找一个可滚动的祖先
+    const $panel = document.querySelector(".comment-panel");
+    if (!$panel) return null;
+    const nodes = Array.from($panel.querySelectorAll("*"));
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i];
+      try {
+        const style = window.getComputedStyle(el);
+        if (style && (style.overflowY === "scroll" || style.overflowY === "auto")) {
+          if (el.scrollHeight > el.clientHeight + 50) {
+            return el;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return null;
+  }
+
+  function __wx_extract_comment_items() {
+    const $list = document.querySelector(".comment-list");
+    const $items = $list ? Array.from($list.querySelectorAll(".comment-item")) : [];
+    return $items.map(($it) => {
+      const regionTexts = Array.from(
+        $it.querySelectorAll(".region-info .region-text"),
+      )
+        .map((n) => String(n.textContent || "").trim())
+        .filter(Boolean);
+      const base = __wx_extract_comment_from_root($it);
+      if (!base) {
+        return {
+          user_name: "",
+          region_time: regionTexts,
+          content: "",
+          like_num: "",
+          replies: [],
+        };
+      }
+      const replies = __wx_extract_replies($it);
+      return { ...base, region_time: regionTexts, replies };
+    });
+  }
+
+  async function __wx_dump_all_comments_to_terminal(opt = {}) {
+    const {
+      maxRounds = 220,
+      waitMs = 650,
+      chunkSize = 50,
+    } = opt || {};
+    await __wx_ensure_comment_panel_open();
+    const url = String(window.location.href || "");
+    const videoProfile = (() => {
+      try {
+        const [err, p] = WXU.check_feed_existing({ silence: true });
+        if (err || !p) return null;
+        return p;
+      } catch (e) {
+        return null;
+      }
+    })();
+    const videoId = videoProfile && videoProfile.id ? String(videoProfile.id) : "";
+    function __wx_parse_digits(v) {
+      const s = String(v == null ? "" : v).replace(/[^\d]/g, "");
+      if (!s) return null;
+      const n = parseInt(s, 10);
+      if (!Number.isFinite(n)) return null;
+      return n;
+    }
+    function __wx_collect_op_metrics() {
+      // 尽量找到“当前视频”的操作栏容器（包含多个 op-item，且可见）
+      const opItems = Array.from(
+        document.querySelectorAll(".click-box.op-item"),
+      ).filter((el) => el && el.offsetParent !== null);
+      const containers = new Map();
+      for (let i = 0; i < opItems.length; i++) {
+        const el = opItems[i];
+        const c = el.closest(".space-x-4") || el.parentElement;
+        if (!c) continue;
+        const cur = containers.get(c) || 0;
+        containers.set(c, cur + 1);
+      }
+      let best = null;
+      let bestCount = 0;
+      for (const [c, cnt] of containers.entries()) {
+        if (cnt > bestCount) {
+          best = c;
+          bestCount = cnt;
+        }
+      }
+      const root = best || document;
+      const getByAria = (kw) => {
+        const nodes = Array.from(
+          root.querySelectorAll(".click-box.op-item[aria-label]"),
+        );
+        for (let i = 0; i < nodes.length; i++) {
+          const el = nodes[i];
+          const aria = String(el.getAttribute("aria-label") || "");
+          if (aria.includes(kw)) {
+            const text = el.querySelector(".op-text")
+              ? String(el.querySelector(".op-text").textContent || "").trim()
+              : "";
+            const count = __wx_parse_digits(aria) ?? __wx_parse_digits(text);
+            return { count, aria, text };
+          }
+        }
+        return { count: null, aria: "", text: "" };
+      };
+      const shareEl =
+        root.querySelector(".feed-share-icon") &&
+        root.querySelector(".feed-share-icon").closest(".click-box.op-item");
+      const shareText = shareEl
+        ? String((shareEl.querySelector(".op-text") || {}).textContent || "").trim()
+        : "";
+      return {
+        // 规则：喜欢/推荐、转发(share icon)、点赞、评论
+        recommend: (() => {
+          const r1 = getByAria("喜欢");
+          if (r1.count != null) return r1;
+          return getByAria("推荐");
+        })(),
+        forward: {
+          count: __wx_parse_digits(shareText),
+          text: shareText,
+        },
+        like: getByAria("点赞"),
+        comment: getByAria("评论"),
+      };
+    }
+
+    const $panel = document.querySelector(".comment-panel");
+    if (!$panel) {
+      await __wx_report_comments({ type: "dom_comments_full_error", url, error: "comment-panel not found" });
+      return;
+    }
+    const $ctn = __wx_get_comment_scroll_container();
+    if (!$ctn) {
+      await __wx_report_comments({ type: "dom_comments_full_error", url, error: "scroll container not found" });
+      return;
+    }
+
+    const topIndex = new Map(); // topKey -> item
+    const topList = [];
+    const replySeen = new Map(); // topKey -> Set(replyKey)
+    let stalls = 0;
+    let rounds = 0;
+    let totalReplies = 0;
+
+    async function __wx_send_comments_parts(final) {
+      const comments = topList;
+      if (!comments.length) return;
+      // 以 JSON 字符长度为准拆分，避免超过后端 2MB 限制
+      const maxLen = 900000;
+      let part = 0;
+      let parts = [];
+      let buf = [];
+      let lastPayloadLen = 0;
+      const pushPart = async (isFinalPart) => {
+        if (!buf.length) return;
+        part++;
+        const payload = {
+          type: "dom_comments_full_part",
+          video_id: videoId,
+          url,
+          part,
+          // total unknown until end; we'll fill later by exporting anyway
+          total: 0,
+          final: Boolean(isFinalPart),
+          comments: buf,
+        };
+        parts.push(payload);
+        buf = [];
+        lastPayloadLen = 0;
+      };
+      for (let i = 0; i < comments.length; i++) {
+        const it = comments[i];
+        const test = {
+          type: "dom_comments_full_part",
+          video_id: videoId,
+          url,
+          part: 0,
+          total: 0,
+          final: false,
+          comments: buf.concat([it]),
+        };
+        const len = JSON.stringify(test).length;
+        if (len > maxLen && buf.length > 0) {
+          await pushPart(false);
+        }
+        // 如果单条太大（通常是回复太多），拆回复
+        const single = {
+          type: "dom_comments_full_part",
+          video_id: videoId,
+          url,
+          part: 0,
+          total: 0,
+          final: false,
+          comments: [it],
+        };
+        const singleLen = JSON.stringify(single).length;
+        if (singleLen > maxLen && it && Array.isArray(it.replies) && it.replies.length) {
+          const base = { ...it, replies: [] };
+          buf.push(base);
+          await pushPart(false);
+          const ckey = __wx_comment_key(it);
+          // 拆分回复
+          const replies = it.replies;
+          const step = 60;
+          for (let r = 0; r < replies.length; r += step) {
+            const chunk = replies.slice(r, r + step);
+            // eslint-disable-next-line no-await-in-loop
+            await __wx_report_comments({
+              type: "dom_comment_replies_part",
+              video_id: videoId,
+              url,
+              comment_key: ckey,
+              replies: chunk,
+            });
+            // eslint-disable-next-line no-await-in-loop
+            await sleep();
+          }
+          continue;
+        }
+        buf.push(it);
+        lastPayloadLen = len;
+        if (lastPayloadLen > maxLen) {
+          await pushPart(false);
+        }
+      }
+      await pushPart(Boolean(final));
+
+      // 填充 total 并发送
+      const total = parts.length;
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        p.total = total;
+        if (final && i === parts.length - 1) {
+          p.final = true;
+        } else {
+          p.final = false;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await __wx_report_comments(p);
+        // eslint-disable-next-line no-await-in-loop
+        await sleep();
+      }
+    }
+
+    // 用 MutationObserver 加速“等新评论出现”的检测
+    let changed = false;
+    const $list = document.querySelector(".comment-list");
+    const observer = $list
+      ? new MutationObserver(() => {
+          changed = true;
+        })
+      : null;
+    if (observer && $list) {
+      observer.observe($list, { childList: true, subtree: true });
+    }
+
+    try {
+      // 先上报视频元信息（标题/作者/互动数）
+      if (videoProfile) {
+        await __wx_report_comments(
+          __wx_limit_value(
+            {
+              type: "dom_video_meta",
+              video: {
+                video_id: videoProfile.id || "",
+                url,
+                title: videoProfile.title || "",
+                owner: {
+                  nickname:
+                    (videoProfile.contact && videoProfile.contact.nickname) ||
+                    "",
+                  avatar:
+                    (videoProfile.contact && videoProfile.contact.avatar_url) ||
+                    "",
+                },
+              },
+            },
+            0,
+          ),
+        );
+      }
+      const __wx_is_end_marker_visible = () => {
+        try {
+          const $noMore =
+            $ctn.querySelector(".no-more") ||
+            document.querySelector(".comment-panel .no-more");
+          if (!$noMore) return false;
+          if ($noMore.offsetParent === null) return false;
+          const nr = $noMore.getBoundingClientRect();
+          const cr = $ctn.getBoundingClientRect();
+          // “横线 + 点 + 横线”分割线需要出现在滚动容器可视区域内
+          return nr.top < cr.bottom && nr.bottom > cr.top;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      while (rounds < maxRounds) {
+        if (__wx_is_end_marker_visible()) {
+          break;
+        }
+        rounds++;
+        // 尝试展开可见折叠回复
+        // eslint-disable-next-line no-await-in-loop
+        await __wx_expand_visible_replies();
+
+        const items = __wx_extract_comment_items();
+        let added = 0;
+        let replyAdded = 0;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (!it) continue;
+          const k = __wx_comment_key(it);
+          if (!k) continue;
+          const existing = topIndex.get(k);
+          if (!existing) {
+            const base = { ...it, replies: Array.isArray(it.replies) ? it.replies : [] };
+            topIndex.set(k, base);
+            topList.push(base);
+            added++;
+            if (!replySeen.has(k)) replySeen.set(k, new Set());
+            const set = replySeen.get(k);
+            const reps = base.replies || [];
+            for (let r = 0; r < reps.length; r++) {
+              const rk = __wx_comment_key(reps[r]);
+              if (!rk) continue;
+              if (set.has(rk)) continue;
+              set.add(rk);
+              totalReplies++;
+            }
+          } else {
+            if (!replySeen.has(k)) replySeen.set(k, new Set());
+            const set = replySeen.get(k);
+            const reps = Array.isArray(it.replies) ? it.replies : [];
+            for (let r = 0; r < reps.length; r++) {
+              const rr = reps[r];
+              const rk = __wx_comment_key(rr);
+              if (!rk) continue;
+              if (set.has(rk)) continue;
+              set.add(rk);
+              if (!existing.replies) existing.replies = [];
+              existing.replies.push(rr);
+              replyAdded++;
+              totalReplies++;
+            }
+          }
+        }
+
+        // 默认不输出滚动抓取进度到终端，避免刷屏
+
+        // 尝试触发加载更多：滚动到底部
+        changed = false;
+        const beforeTop = topList.length;
+        const beforeReply = totalReplies;
+        // 小步滚动更稳：避免直接跳底导致虚拟列表不触发加载
+        $ctn.scrollTop = Math.min($ctn.scrollTop + Math.floor($ctn.clientHeight * 0.9), $ctn.scrollHeight);
+
+        // 等待：如果 DOM 有变化就提前结束等待
+        const startWait = Date.now();
+        while (Date.now() - startWait < waitMs) {
+          if (changed) break;
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 80));
+        }
+
+        // 再抽取一遍（很多站点是滚动后异步插入）
+        // eslint-disable-next-line no-await-in-loop
+        await __wx_expand_visible_replies();
+        const items2 = __wx_extract_comment_items();
+        for (let i = 0; i < items2.length; i++) {
+          const it = items2[i];
+          if (!it) continue;
+          const k = __wx_comment_key(it);
+          if (!k) continue;
+          const existing = topIndex.get(k);
+          if (!existing) {
+            const base = { ...it, replies: Array.isArray(it.replies) ? it.replies : [] };
+            topIndex.set(k, base);
+            topList.push(base);
+            added++;
+            if (!replySeen.has(k)) replySeen.set(k, new Set());
+            const set = replySeen.get(k);
+            const reps = base.replies || [];
+            for (let r = 0; r < reps.length; r++) {
+              const rk = __wx_comment_key(reps[r]);
+              if (!rk) continue;
+              if (set.has(rk)) continue;
+              set.add(rk);
+              totalReplies++;
+            }
+          } else {
+            if (!replySeen.has(k)) replySeen.set(k, new Set());
+            const set = replySeen.get(k);
+            const reps = Array.isArray(it.replies) ? it.replies : [];
+            for (let r = 0; r < reps.length; r++) {
+              const rr = reps[r];
+              const rk = __wx_comment_key(rr);
+              if (!rk) continue;
+              if (set.has(rk)) continue;
+              set.add(rk);
+              if (!existing.replies) existing.replies = [];
+              existing.replies.push(rr);
+              replyAdded++;
+              totalReplies++;
+            }
+          }
+        }
+
+        const progressed =
+          added > 0 || replyAdded > 0 || topList.length > beforeTop || totalReplies > beforeReply;
+        if (!progressed) {
+          stalls++;
+        } else {
+          stalls = 0;
+        }
+
+        if (__wx_is_end_marker_visible()) {
+          break;
+        }
+      }
+    } finally {
+      if (observer) observer.disconnect();
+    }
+
+    const meta = {
+      url,
+      captured_at: Date.now(),
+      has_panel: true,
+      rounds,
+      stalls,
+      total_collected: topList.length,
+      total_replies: totalReplies,
+      comment_count: (() => {
+        const $c = document.querySelector(".comment-count");
+        const t = $c ? String($c.textContent || "").trim() : "";
+        const n = parseInt(t, 10);
+        return Number.isFinite(n) ? n : t;
+      })(),
+      op_metrics: __wx_collect_op_metrics(),
+    };
+    await __wx_report_comments({ type: "dom_comments_full_meta", video_id: videoId, url, meta });
+    await __wx_send_comments_parts(true);
+  }
   WXE.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
     for (let i = 0; i < keys.length; i++) {
@@ -714,6 +1367,28 @@ var WXU = (() => {
         }
         if (typeof methods.finderGetCommentDetail === "function") {
           WXAPI = methods;
+          // 兼容：如果后端正则注入失效，改为在前端直接 wrap API，
+          // 通过调用结果 emit FeedProfileLoaded，确保能拿到视频详情
+          try {
+            if (!methods.finderGetCommentDetail.__wx_profile_wrapped__) {
+              const raw = methods.finderGetCommentDetail;
+              methods.finderGetCommentDetail = async function (...args) {
+                const r = await raw.apply(this, args);
+                try {
+                  const feed = r && r.data ? r.data.object : null;
+                  if (feed) {
+                    WXE.emit(WXE.Events.FeedProfileLoaded, feed);
+                  }
+                } catch (e) {
+                  // ignore
+                }
+                return r;
+              };
+              methods.finderGetCommentDetail.__wx_profile_wrapped__ = true;
+            }
+          } catch (e) {
+            // ignore
+          }
           return;
         }
         if (typeof methods.finderSearch === "function") {
@@ -744,6 +1419,7 @@ var WXU = (() => {
     get API4() {
       return WXAPI4;
     },
+    dump_all_comments_to_terminal: __wx_dump_all_comments_to_terminal,
     downloader: {
       show() {},
       hide() {},
@@ -1451,6 +2127,15 @@ function __wx_attach_download_dropdown_menu(trigger) {
         onClick() {
           __wx_channels_handle_copy__();
           dropdown$.hide();
+        },
+      }),
+      MenuItem({
+        label: "下载评论",
+        async onClick() {
+          dropdown$.hide();
+          WXU.toast("开始下载评论（自动滚动），可能需要较久...");
+          await WXU.dump_all_comments_to_terminal();
+          WXU.toast("下载完成（请看终端保存路径）");
         },
       }),
       ...(() => {
