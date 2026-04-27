@@ -52,6 +52,9 @@ var js_timeless_web []byte
 //go:embed inject/lib/recorder.min.js
 var js_recorder []byte
 
+//go:embed inject/lib/merlin.js
+var js_merlin []byte
+
 //go:embed inject/lib/pagespy.min.js
 var js_pagespy []byte
 
@@ -100,6 +103,7 @@ type ChannelInjectedFiles struct {
 	JSWui                   []byte
 	JSBox                   []byte
 	JSMitt                  []byte
+	JSMerlin                []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
 	JSTimelessReactive      []byte
@@ -134,6 +138,7 @@ var Assets = &ChannelInjectedFiles{
 	JSDebug:                 js_debug,
 	JSError:                 js_error,
 	JSEventBus:              js_eventbus,
+	JSMerlin:                js_merlin,
 	JSTimelessReactive:      js_timeless_reactive,
 	JSTimelessHeadless:      js_timeless_headless,
 	JSTimelessUtils:         js_timeless_utils,

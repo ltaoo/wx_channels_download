@@ -1667,41 +1667,45 @@ function ChannelsWebsocketClient() {
         });
         return;
       }
+      async function fetchFeedProfileWith(data) {
+        if (data.url) {
+          var u = new URL(decodeURIComponent(data.url));
+          data.oid = WXU.API.decodeBase64ToUint64String(
+            u.searchParams.get("oid"),
+          );
+          data.nid = WXU.API.decodeBase64ToUint64String(
+            u.searchParams.get("nid"),
+          );
+        }
+        let payload = {
+          needObject: 1,
+          lastBuffer: "",
+          scene: data.eid ? 141 : 146,
+          direction: 2,
+          identityScene: 2,
+          pullScene: 6,
+          objectid: (() => {
+            if (data.eid) {
+              return undefined;
+            }
+            if (data.oid.includes("_")) {
+              return data.oid.split("_")[0];
+            }
+            return data.oid;
+          })(),
+          objectNonceId: data.eid ? undefined : data.nid,
+          encrypted_objectid: data.eid || "",
+        };
+        if (data.eid) {
+          payload.traceBuffer = undefined;
+        }
+        var r = await WXU.API.finderGetCommentDetail(payload);
+        return r;
+      }
       if (key === "key:channels:feed_profile") {
         console.log("before finderGetCommentProfile", data);
         try {
-          if (data.url) {
-            var u = new URL(decodeURIComponent(data.url));
-            data.oid = WXU.API.decodeBase64ToUint64String(
-              u.searchParams.get("oid"),
-            );
-            data.nid = WXU.API.decodeBase64ToUint64String(
-              u.searchParams.get("nid"),
-            );
-          }
-          let payload = {
-            needObject: 1,
-            lastBuffer: "",
-            scene: data.eid ? 141 : 146,
-            direction: 2,
-            identityScene: 2,
-            pullScene: 6,
-            objectid: (() => {
-              if (data.eid) {
-                return undefined;
-              }
-              if (data.oid.includes("_")) {
-                return data.oid.split("_")[0];
-              }
-              return data.oid;
-            })(),
-            objectNonceId: data.eid ? undefined : data.nid,
-            encrypted_objectid: data.eid || "",
-          };
-          if (data.eid) {
-            payload.traceBuffer = undefined;
-          }
-          var r = await WXU.API.finderGetCommentDetail(payload);
+          var r = await fetchFeedProfileWith(data);
           /** @type {MediaProfileResp} */
           var { object } = r.data;
           resp({
@@ -1713,7 +1717,80 @@ function ChannelsWebsocketClient() {
           resp({
             errCode: 1011,
             errMsg: err.message,
+            payload: null,
+          });
+          return;
+        }
+      }
+      if (key === "key:channels:shared_feed_profile") {
+        console.log("before getFeedInfo", data);
+        function getShortUri(data) {
+          var u = new URL(decodeURIComponent(data.url));
+          var pathname = u.pathname;
+          var m = pathname.match(/\/sph\/([a-zA-Z0-9]{1,})/);
+          if (m) {
+            return m[1];
+          }
+          return u.searchParams.get("id");
+        }
+        try {
+          if (!data.url) {
+            resp({
+              errCode: 1011,
+              errMsg: "missing url",
+              payload: null,
+            });
+            return;
+          }
+          var uri = getShortUri(data);
+          if (!uri) {
+            resp({
+              errCode: 1011,
+              errMsg: "can't get the uri from url, " + data.url,
+              payload: null,
+            });
+            return;
+          }
+          console.log("[]WXU.API5", WXU.API5, uri);
+          await WXU.load_script(__wx_assets_base + "/lib/merlin.js");
+          if (typeof WXAPI5.getFeedInfo !== "function") {
+            resp({
+              errCode: 1011,
+              errMsg: "the getFeedInfo is not a function",
+              payload: null,
+            });
+            return;
+          }
+          var payload = {
+            baseReq: {
+                generalToken: "",
+            },
+            shortUri: uri,
+          }
+          /** @type {SharedFeedProfileResp} */
+          var shared = await WXAPI5.getFeedInfo(payload);
+          if (!shared.data.sceneInfo.dynamicExportId) {
+            resp({
+              errCode: 1011,
+              errMsg: "getFeedInfo failed, missing 'sceneInfo.dynamicExportId'",
+              payload: null,
+            });
+            return;
+          }
+          var r = await fetchFeedProfileWith({
+            eid: shared.data.sceneInfo.dynamicExportId,
+          });
+          var { object } = r.data;
+          resp({
+            ...r,
             payload,
+          });
+          return;
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload: null,
           });
           return;
         }

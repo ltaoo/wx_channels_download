@@ -245,6 +245,45 @@ type ChannelsFeedListOfAccountResp struct {
 	} `json:"payload"`
 }
 
+type ChannelsSharedFeedProfileResp struct {
+	Data SharedFeedProfileData `json:"data"`
+	Errcode int `json:"errCode"`
+	Errmsg string `json:"errMsg"`
+}
+type SharedFeedProfileData struct {
+	Authorinfo SharedFeedAuthorinfo `json:"authorInfo"`
+	Feedinfo SharedFeedinfo `json:"feedInfo"`
+	Errmsg Errmsg `json:"errMsg"`
+	Sceneinfo SharedFeedSceneinfo `json:"sceneInfo"`
+}
+type SharedFeedSceneinfo struct {
+	Dynamicexportid string `json:"dynamicExportId"`
+	Commentscene int `json:"commentScene"`
+	Expiredtime int `json:"expiredTime"`
+	Requestscene int `json:"requestScene"`
+	Entryscene int `json:"entryScene"`
+	Entrycardtype int `json:"entryCardType"`
+}
+type Errmsg struct {
+	Type int `json:"type"`
+}
+type SharedFeedinfo struct {
+	Picinfo []interface{} `json:"picInfo"`
+	Description string `json:"description"`
+	Favcountfmt string `json:"favCountFmt"`
+	Likecountfmt string `json:"likeCountFmt"`
+	Forwardcountfmt string `json:"forwardCountFmt"`
+	Commentcountfmt string `json:"commentCountFmt"`
+	Createtime int `json:"createtime"`
+	Ishardad bool `json:"isHardAd"`
+	Coverurl string `json:"coverUrl"`
+}
+type SharedFeedAuthorinfo struct {
+	Nickname string `json:"nickname"`
+	Headimgurl string `json:"headImgUrl"`
+	Authiconurl string `json:"authIconUrl"`
+}
+
 type ChannelsFeedProfileResp struct {
 	ErrCode int    `json:"errCode"`
 	ErrMsg  string `json:"errMsg"`
@@ -297,6 +336,9 @@ type ChannelsFeedProfileBody struct {
 	ObjectId          string `json:"oid"`
 	NonceId           string `json:"nid"`
 	EncryptedObjectId string `json:"eid"`
+}
+type ChannelsSharedFeedProfileBody struct {
+	URL               string `json:"url"`
 }
 type ChannelsFeedList struct {
 	List       []ChannelsFeedProfile `json:"list"`
