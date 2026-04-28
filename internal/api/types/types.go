@@ -406,38 +406,43 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) *ChannelsFeedProfile
 type ChannelsFeedCommentListBody struct {
 	ObjectId  string `json:"oid"`
 	ObjectNonceId  string `json:"nid"`
+	CommentId string `json:"comment_id"`
 	NextMarker string `json:"next_marker"`
 }
 
 type ChannelsFeedCommentListResp struct {
-	Baseresponse Baseresponse `json:"BaseResponse"`
-	Commentinfo []FeedCommentInfo `json:"commentInfo"` // 评论列表
-	Countinfo FeedCommentCountInfo `json:"countInfo"`
-	Lastbuffer string `json:"lastBuffer"` // 分页参数
-	Upcontinueflag int `json:"upContinueFlag"`
-	Downcontinueflag int `json:"downContinueFlag"`
-	Monotonicdata Monotonicdata `json:"monotonicData"`
-	Newlifeinfo FeedCommentNewlifeinfo `json:"newlifeInfo"`
-	Requestid int `json:"requestId"`
-	Emojidesccomments []interface{} `json:"emojiDescComments"`
-	Desccomments []interface{} `json:"descComments"`
-	Payload struct {
-		FinderBasereq struct{
-			Scene int `json:"scene"`
-			CtxInfo struct {
-				ClientReportBuff string `json:"clientReportBuff"`
-			} `json:"ctxInfo"`
-			ObjectBaseInfos []struct{
-				SessionBuffer string `json:"sessionBuffer"`
-			} `json:"objectBaseInfos"`
-		} `json:"finderBasereq"`
-		ObjectId string `json:"objectId"`
-		ObjectNonceId string `json:"objectNonceId"`
-		Direction int `json:"direction"`
-		IdentityScene int `json:"identityScene"`
-		LastBuffer string `json:"lastBuffer"`
-		EnterSessionId string `json:"enterSessionId"`
-	} `json:"payload"`
+	ErrCode int    `json:"errCode"`
+	ErrMsg  string `json:"errMsg"`
+	Data    struct {
+		Baseresponse Baseresponse `json:"BaseResponse"`
+		Commentinfo []FeedCommentInfo `json:"commentInfo"` // 评论列表
+		Countinfo FeedCommentCountInfo `json:"countInfo"`
+		Lastbuffer string `json:"lastBuffer"` // 分页参数
+		Upcontinueflag int `json:"upContinueFlag"`
+		Downcontinueflag int `json:"downContinueFlag"`
+		Monotonicdata Monotonicdata `json:"monotonicData"`
+		Newlifeinfo FeedCommentNewlifeinfo `json:"newlifeInfo"`
+		Requestid int `json:"requestId"`
+		Emojidesccomments []interface{} `json:"emojiDescComments"`
+		Desccomments []interface{} `json:"descComments"`
+		Payload struct {
+			FinderBasereq struct{
+				Scene int `json:"scene"`
+				CtxInfo struct {
+					ClientReportBuff string `json:"clientReportBuff"`
+				} `json:"ctxInfo"`
+				ObjectBaseInfos []struct{
+					SessionBuffer string `json:"sessionBuffer"`
+				} `json:"objectBaseInfos"`
+			} `json:"finderBasereq"`
+			ObjectId string `json:"objectId"`
+			ObjectNonceId string `json:"objectNonceId"`
+			Direction int `json:"direction"`
+			IdentityScene int `json:"identityScene"`
+			LastBuffer string `json:"lastBuffer"`
+			EnterSessionId string `json:"enterSessionId"`
+		} `json:"payload"`
+	}      `json:"data"`
 }
 type FeedCommentNewlifeinfo struct {
    Commentflag int `json:"commentFlag"`

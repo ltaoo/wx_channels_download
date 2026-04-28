@@ -339,11 +339,14 @@ func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*types.Chan
 
 }
 
-func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, next_marker string) (*types.ChannelsFeedCommentListResp, error) {
-	if oid == "" || nid == "" {
-		return nil, errors.New("missing oid or nid")
+func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*types.ChannelsFeedCommentListResp, error) {
+	if oid == "" {
+		return nil, errors.New("missing oid")
 	}
-	kk := fmt.Sprintf("%s:%s:%s", oid, nid, next_marker)
+	if nid == "" && comment_id == "" {
+		return nil, errors.New("missing nid or comment_id")
+	}
+	kk := fmt.Sprintf("%s:%s:%s:%s", oid, nid, comment_id, next_marker)
 	cache_key := "channels:feed_comment_list:" + kk
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*types.ChannelsFeedCommentListResp); ok {
@@ -353,6 +356,7 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, next_marker stri
 	resp, err := c.RequestFrontend("key:channels:fetch_feed_comment_list", types.ChannelsFeedCommentListBody{
 		ObjectId:  oid,
 		ObjectNonceId: nid,
+		CommentId: comment_id,
 		NextMarker: next_marker,
 	}, 10*time.Second)
 	if err != nil {

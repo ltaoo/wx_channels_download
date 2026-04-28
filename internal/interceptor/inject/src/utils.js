@@ -64,7 +64,7 @@ let loaded = false;
 async function __wx_channels_decrypt(seed) {
   if (!loaded) {
     await WXU.load_script(
-      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js"
+      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js",
     );
     loaded = true;
   }
@@ -459,7 +459,7 @@ var WXU = (() => {
           ...prev,
           ...cur,
         }),
-        {}
+        {},
       );
     return queries;
   }
@@ -614,7 +614,7 @@ var WXU = (() => {
         },
         function (msg) {
           resolve([new Error(msg || "Conversion failed"), null]);
-        }
+        },
       );
     });
   }
@@ -769,7 +769,7 @@ var WXU = (() => {
         var filename = WXU.build_filename(
           feed,
           spec,
-          WXU.config.downloadFilenameTemplate
+          WXU.config.downloadFilenameTemplate,
         );
         if (!filename) {
           return [new Error("filename 为空"), null];
@@ -783,8 +783,8 @@ var WXU = (() => {
                   url: f.url,
                   filename: `${idx + 1}.jpg`,
                 };
-              })
-            )
+              }),
+            ),
           )}`;
           console.log("[]feed.url", feed.url);
         }
@@ -841,7 +841,7 @@ var WXU = (() => {
           var filename = WXU.build_filename(
             feed,
             spec,
-            WXU.config.downloadFilenameTemplate
+            WXU.config.downloadFilenameTemplate,
           );
           if (filename) {
             if (feed.type === "picture") {
@@ -853,8 +853,8 @@ var WXU = (() => {
                       url: f.url,
                       filename: `${idx + 1}.jpg`,
                     };
-                  })
-                )
+                  }),
+                ),
               )}`;
             }
             if (opt.suffix !== ".jpg") {
@@ -977,7 +977,7 @@ var WXU = (() => {
     set_cur_video() {
       setTimeout(() => {
         window.__wx_channels_cur_video = document.querySelector(
-          ".feed-video.video-js"
+          ".feed-video.video-js",
         );
       }, 800);
     },
@@ -1042,7 +1042,9 @@ var WXU = (() => {
               if (node.nodeType === 1) {
                 if (node.matches(selector) || node.querySelector(selector)) {
                   cb(
-                    node.matches(selector) ? node : node.querySelector(selector)
+                    node.matches(selector)
+                      ? node
+                      : node.querySelector(selector),
                   );
                   if (document.querySelector(selector)) {
                     obs.disconnect();
@@ -1203,7 +1205,7 @@ async function __wx_channels_download4(feed, opt) {
   var filename = WXU.build_filename(
     feed,
     opt.spec,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -1319,7 +1321,7 @@ function __wx_channels_download_cur__() {
   var filename = WXU.build_filename(
     profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -1337,7 +1339,7 @@ function __wx_channels_handle_print_download_command() {
   var filename = WXU.build_filename(
     _profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     alert("文件名生成失败");
@@ -1367,7 +1369,7 @@ async function __wx_channels_handle_download_cover() {
       },
       {
         suffix: ".jpg",
-      }
+      },
     );
     if (err) {
       WXU.error({ msg: err.message });
@@ -1378,7 +1380,7 @@ async function __wx_channels_handle_download_cover() {
   var filename = WXU.build_filename(
     profile,
     null,
-    WXU.config.downloadFilenameTemplate
+    WXU.config.downloadFilenameTemplate,
   );
   if (!filename) {
     WXU.error({ msg: "文件名生成失败" });
@@ -1590,7 +1592,7 @@ function ChannelsWebsocketClient() {
           JSON.stringify({
             id,
             data: body,
-          })
+          }),
         );
       }
       if (key === "key:channels:contact_list") {
@@ -1669,10 +1671,10 @@ function ChannelsWebsocketClient() {
         if (data.url) {
           var u = new URL(decodeURIComponent(data.url));
           data.oid = WXU.API.decodeBase64ToUint64String(
-            u.searchParams.get("oid")
+            u.searchParams.get("oid"),
           );
           data.nid = WXU.API.decodeBase64ToUint64String(
-            u.searchParams.get("nid")
+            u.searchParams.get("nid"),
           );
         }
         let payload = {
@@ -1794,41 +1796,61 @@ function ChannelsWebsocketClient() {
         }
       }
       if (key === "key:channels:fetch_feed_comment_list") {
-        console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
-        if (!data.oid || !data.nid) {
+        // console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
+        if (!data.oid) {
           resp({
             errCode: 1011,
-            errMsg: "missing oid or nid",
+            errMsg: "missing oid",
             payload: null,
           });
           return;
         }
-        var [err, feed] = WXU.check_feed_existing();
-        var payload = {
-          finderBasereq: {
-            scene: 140,
-            ctxInfo:  {
-              clientReportBuff : "{\"entranceId\":\"1002\"}"
-            },
-            objectBaseInfos: feed ? [
-              {
-                sessionBuffer: feed.sessionBuffer
-              },
-            ] : [],
-          },
-          objectId: data.oid,
-          direction: 2,
-          objectNonceId: data.nid,
-          identityScene: 2,
-          lastBuffer: data.next_marker ?? undefined,
-          enterSessionId: String(Date.now()),
-        };
-        var r = await WXU.API.finderGetCommentList(payload);
-        // console.log('after finderGetCommentList', r);
-        resp({
-          ...r,
-          payload,
-        });
+        if (!data.nid && !data.comment_id) {
+          resp({
+            errCode: 1011,
+            errMsg: "missing nid or comment_id",
+            payload: null,
+          });
+          return;
+        }
+        try {
+          var payload = data.comment_id
+            ? {
+                direction: 2,
+                identityScene: 2,
+                objectId: data.oid,
+                lastBuffer:
+                  data.next_marker === "" ? undefined : data.next_marker,
+                rootCommentId: data.comment_id,
+              }
+            : {
+                finderBasereq: {
+                  scene: 140,
+                  ctxInfo: {
+                    clientReportBuff: '{"entranceId":"1002"}',
+                  },
+                  objectBaseInfos: [],
+                },
+                objectId: data.oid,
+                direction: 2,
+                objectNonceId: data.nid,
+                identityScene: 2,
+                lastBuffer:
+                  data.next_marker === "" ? undefined : data.next_marker,
+                enterSessionId: String(Date.now()),
+              };
+          var r = await WXU.API.finderGetCommentList(payload);
+          resp({
+            ...r,
+            payload,
+          });
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload: null,
+          });
+        }
         return;
       }
       if (key === "key:channels:reload") {
