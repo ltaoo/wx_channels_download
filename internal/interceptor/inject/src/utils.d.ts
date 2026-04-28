@@ -180,3 +180,37 @@ type OfficialAccountMsgListResp = {
   real_type: number;
   home_page_list: unknown[];
 };
+
+type SharedFeedProfileResp = {
+  data: {
+    authorInfo: {
+      nickname: string;
+      headImgUrl: string;
+      authIconUrl: string;
+    };
+    feedInfo: {
+      picInfo: unknown[];
+      description: string;
+      favCountFmt: string;
+      likeCountFmt: string;
+      forwardCountFmt: string;
+      commentCountFmt: string;
+      createtime: number;
+      isHardAd: boolean;
+      coverUrl: string;
+    };
+    errMsg: {
+      type: number;
+    };
+    sceneInfo: {
+      dynamicExportId: string;
+      commentScene: number;
+      expiredTime: number;
+      requestScene: number;
+      entryScene: number;
+      entryCardType: number;
+    };
+  };
+  errCode: number;
+  errMsg: string;
+}
