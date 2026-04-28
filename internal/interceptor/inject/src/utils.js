@@ -1763,10 +1763,10 @@ function ChannelsWebsocketClient() {
           }
           var payload = {
             baseReq: {
-                generalToken: "",
+              generalToken: "",
             },
             shortUri: uri,
-          }
+          };
           /** @type {SharedFeedProfileResp} */
           var shared = await WXAPI5.getFeedInfo(payload);
           if (!shared.data.sceneInfo.dynamicExportId) {
@@ -1794,6 +1794,64 @@ function ChannelsWebsocketClient() {
           });
           return;
         }
+      }
+      if (key === "key:channels:fetch_feed_comment_list") {
+        // console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
+        if (!data.oid) {
+          resp({
+            errCode: 1011,
+            errMsg: "missing oid",
+            payload: null,
+          });
+          return;
+        }
+        if (!data.nid && !data.comment_id) {
+          resp({
+            errCode: 1011,
+            errMsg: "missing nid or comment_id",
+            payload: null,
+          });
+          return;
+        }
+        try {
+          var payload = data.comment_id
+            ? {
+                direction: 2,
+                identityScene: 2,
+                objectId: data.oid,
+                lastBuffer:
+                  data.next_marker === "" ? undefined : data.next_marker,
+                rootCommentId: data.comment_id,
+              }
+            : {
+                finderBasereq: {
+                  scene: 140,
+                  ctxInfo: {
+                    clientReportBuff: '{"entranceId":"1002"}',
+                  },
+                  objectBaseInfos: [],
+                },
+                objectId: data.oid,
+                direction: 2,
+                objectNonceId: data.nid,
+                identityScene: 2,
+                lastBuffer:
+                  data.next_marker === "" ? undefined : data.next_marker,
+                enterSessionId: String(Date.now()),
+              };
+          var r = await WXU.API.finderGetCommentList(payload);
+          resp({
+            ...r,
+            payload,
+          });
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload: null,
+          });
+        }
+        return;
       }
       if (key === "key:channels:reload") {
         console.log("[DOWNLOADER]reloading page");

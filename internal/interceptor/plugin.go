@@ -33,6 +33,7 @@ var (
 	jsSourceBufferReg                   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
 	jsInitReg                           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
 	jsFeedProfileReg                    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	jsCommentListReg                    = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
 	jsPCFlowReg                         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
 	jsLiveInfoReg                       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
 	jsLiveFeedListReg                   = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
@@ -327,6 +328,17 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					return result;
 				}async`
 						js_script = jsFeedProfileReg.ReplaceAllString(js_script, js_feed_profile)
+					}
+					{
+						js_comment_list := `async finderGetCommentList($1) {
+					var result = await (async () => {
+						$2;
+					})();
+					// console.log("before CommentListLoaded", result.data, $1);
+					WXU.emit(WXU.Events.FeedCommentListLoaded, result.data);
+					return result;
+				}async`
+						js_script = jsCommentListReg.ReplaceAllString(js_script, js_comment_list)
 					}
 					{
 						js_finder_pc_search := `async finderPCSearch($1) {

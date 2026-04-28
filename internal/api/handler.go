@@ -72,6 +72,19 @@ func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+func (c *APIClient) handleFetchFeedCommentList(ctx *gin.Context) {
+	oid := ctx.Query("oid")
+	nid := ctx.Query("nid")
+	comment_id := ctx.Query("comment_id")
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
 type AtomAuthor struct {
 	Name string `xml:"name"`
 }

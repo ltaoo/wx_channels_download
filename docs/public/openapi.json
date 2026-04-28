@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeChat Channels Download API",
-    "version": "v260324",
+    "version": "v260428",
     "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
   },
   "servers": [
@@ -468,6 +468,233 @@
                           "objectid": "14819096805414996657",
                           "objectNonceId": "8609277293449234222",
                           "encrypted_objectid": ""
+                        }
+                      }
+                    }
+                  },
+                  "nosocket": {
+                    "summary": "业务异常",
+                    "value": {
+                      "code": 400,
+                      "msg": "请先初始化客户端 socket 连接",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/channels/shared_feed/profile": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "根据视频号分享链接获取视频详情",
+        "description": "通过视频号分享链接获取视频详情，支持 `weixin.qq.com/sph/xxx` 和 `channels.weixin.qq.com/finder-preview/pages/sph?id=xxx` 两种格式。响应数据同 `/api/channels/feed/profile`。",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频号分享链接，如 `https://weixin.qq.com/sph/AoPX5bEBDd` 或 `https://channels.weixin.qq.com/finder-preview/pages/sph?id=AoPX5bEBDd`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功响应",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "errCode": 0,
+                        "errMsg": "ok",
+                        "data": {
+                          "BaseResponse": {
+                            "Ret": 0,
+                            "ErrMsg": {
+                              "String": ""
+                            }
+                          },
+                          "commentInfo": [],
+                          "object": {
+                            "id": "14819096805414996657",
+                            "contact": {
+                              "username": "v2_060000231003b20faec8cae08f19c0d1c802ee33b07778a2a650b6d670ef63af3f3ac1c51124@finder",
+                              "nickname": "Girls-Talk",
+                              "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/JrkaKTpRhjYlpkDnIicnbhicmYPxsX769yKAMexpa0icN3vBq8eDh2cNl1gQtpOsI4hMz1URF9e8icMNeD3AJR080J5nURCqSedFmic4z5PMLGCTSfU6KibpwM6wTSw549pcyC/132",
+                              "signature": "「女性，她们有思想，有灵魂」",
+                              "coverImgUrl": ""
+                            },
+                            "objectDesc": {
+                              "description": "「被误解是表达者的宿命，不要活在别人的语言里」#陈都灵 #女性力量 #女性成长 #女性智慧",
+                              "media": [
+                                {
+                                  "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                                  "mediaType": 4,
+                                  "videoPlayLen": 41,
+                                  "width": 1080,
+                                  "height": 1440,
+                                  "fileSize": 50833261,
+                                  "spec": [
+                                    {
+                                      "fileFormat": "xWT111",
+                                      "width": 720,
+                                      "height": 960,
+                                      "durationMs": 41901
+                                    }
+                                  ],
+                                  "coverUrl": "http://wxapp.tc.qq.com/251/20304/stodownload?encfilekey=xxx"
+                                }
+                              ],
+                              "mediaType": 4
+                            },
+                            "objectNonceId": "8609277293449234222_0_146_0_0",
+                            "source_url": "",
+                            "createtime": 1766574001
+                          },
+                          "commentCount": 193,
+                          "nextCheckObjectStatus": 1,
+                          "barrageCommentInfo": [],
+                          "refObjectList": []
+                        },
+                        "payload": {
+                          "needObject": 1,
+                          "lastBuffer": "",
+                          "scene": 146,
+                          "direction": 2,
+                          "identityScene": 2,
+                          "pullScene": 6,
+                          "objectid": "14819096805414996657",
+                          "objectNonceId": "8609277293449234222",
+                          "encrypted_objectid": ""
+                        }
+                      }
+                    }
+                  },
+                  "nosocket": {
+                    "summary": "业务异常",
+                    "value": {
+                      "code": 400,
+                      "msg": "请先初始化客户端 socket 连接",
+                      "data": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/channels/feed/comment/list": {
+      "get": {
+        "tags": ["视频号"],
+        "summary": "获取视频评论列表",
+        "description": "获取指定视频的评论列表",
+        "parameters": [
+          {
+            "name": "oid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频唯一 ID"
+          },
+          {
+            "name": "nid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "视频 nid"
+          },
+          {
+            "name": "next_marker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "分页标记，用于获取下一页数据（使用响应的 lastBuffer 字段）"
+          },
+          {
+            "name": "comment_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "评论id，用于获取指定评论的回复列表"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功响应",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "msg": "成功",
+                      "data": {
+                        "errCode": 0,
+                        "errMsg": "ok",
+                        "data": {
+                          "BaseResponse": {
+                            "Ret": 0,
+                            "ErrMsg": {
+                              "type": 0
+                            }
+                          },
+                          "commentInfo": [
+                            {
+                              "username": "v2_060000231003b20faec8c4e28e1bc0d3ca02ee33b077485d5c20cb48449b204f13ff4c17e884@finder",
+                              "nickname": "文鱼若水",
+                              "content": "从来就没好好走过一步路[呲牙]",
+                              "commentId": "14901879320262215928",
+                              "replyCommentId": "0",
+                              "headUrl": "https://wx.qlogo.cn/finderhead/dibCvqHg4WneeFgMa9dAWp5ic2Kj3mmjMkTn2qLF7A9RK2x2dQNaP689seSNj0rIkpO1THauCxGyM/0",
+                              "levelTwoComment": [],
+                              "createtime": "1776442446",
+                              "likeFlag": 0,
+                              "likeCount": 131,
+                              "expandCommentCount": 7,
+                              "continueFlag": 1,
+                              "displayFlag": 8,
+                              "authorContact": {
+                                "username": "v2_060000231003b20faec8c4e28e1bc0d3ca02ee33b077485d5c20cb48449b204f13ff4c17e884@finder",
+                                "nickname": "文鱼若水",
+                                "headUrl": "https://wx.qlogo.cn/finderhead/dibCvqHg4WneeFgMa9dAWp5ic2Kj3mmjMkTn2qLF7A9RK2x2dQNaP689seSNj0rIkpO1THauCxGyM/0"
+                              },
+                              "contentType": 0,
+                              "ipRegionInfo": {
+                                "regionText": "Shaanxi"
+                              }
+                            }
+                          ],
+                          "countInfo": {
+                            "commentCount": 138,
+                            "likeCount": 300,
+                            "forwardCount": 878,
+                            "favCount": 1435
+                          },
+                          "lastBuffer": "CrABCMCQ+Lqs+938zgEY+JHgz5yJh+fOARjBkvDGg7ut6M4BGNiS3Jmp66zozgEYnpCIkPW8h+fOARiUtPiLhYOH584BGL+QxO7W07/0zgEY7bHc/Ir8jOfOARjakOzRt5DC9M4BGLORgLSN1rn0zgEYjrCsnIa9ovTOARi7sei/8MKI7c4BGNKS2OPHs4zszgEYwZLou7iW+OrOARi5sdymnP336s4BGIakjPHgt/HqzgE=",
+                          "upContinueFlag": 0,
+                          "downContinueFlag": 1
                         }
                       }
                     }
