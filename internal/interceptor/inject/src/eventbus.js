@@ -29,6 +29,8 @@ var WXE = (() => {
     HomeFeedChanged: "HomeFeedChanged",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
+    /** 视频的评论列表（包括评论的回复）加载完成 */
+    FeedCommentListLoaded: "FeedCommentListLoaded",
     /** 获取到直播详情 */
     LiveProfileLoaded: "OnLiveProfileLoaded",
     JoinLive: "JoinLive",
@@ -172,6 +174,16 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.FeedProfileLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.FeedProfileLoaded, handler);
+      };
+    },
+    /**
+     * 获取到视频评论列表
+     * @param {(data: unknown) => void} handler
+     */
+    onFetchFeedCommentList(handler) {
+      eventbus.on(ChannelsEvents.FeedCommentListLoaded, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.FeedCommentListLoaded, handler);
       };
     },
     /**

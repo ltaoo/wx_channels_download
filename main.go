@@ -9,7 +9,7 @@ import (
 	"wx_channel/internal/config"
 )
 
-var AppVer = "26042701"
+var AppVer = "26042702"
 var Mode = "debug"
 
 func main() {
