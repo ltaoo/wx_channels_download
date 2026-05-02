@@ -77,6 +77,18 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				}, string(files.JSRecorder))
 				return
 			}
+			if strings.Contains(pathname, "getFeedInfo") {
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/javascript",
+				}, string(files.JSGetFeedInfo))
+				return
+			}
+			if strings.Contains(pathname, "axios") {
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/javascript",
+				}, string(files.JSAxios))
+				return
+			}
 			if pathname == "/__wx_channels_api/profile" {
 				var data ChannelMediaProfile
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {

@@ -285,7 +285,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "视频号页面 URL，https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4\n\n传入的地址需要进行编码。\n\n"
+            "description": "视频号页面 URL，https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4\n\n传入的地址需要进行编码。\n\n也可以是分享链接如 https://weixin.qq.com/sph/AoPX5bEBDd\nhttps://channels.weixin.qq.com/finder-preview/pages/sph?id=AoPX5bEBDd \n\n"
           },
           {
             "name": "eid",
