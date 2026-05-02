@@ -32,6 +32,7 @@ export default [
         __wx_channels_version__: "writable",
         __wx_attach_download_dropdown_menu: "writeable",
         WXVariable: "writable",
+        getFeedInfo: "writeable",
         WXU: "writable",
         WXE: "writable",
         render_extra_menu_items: "writable",
