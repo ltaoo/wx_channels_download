@@ -28,6 +28,7 @@ proxy:
   hostname: "127.0.0.1"
   port: 2023
   skipInstallRootCert: false
+  upstreamProxy: ""
 
 channels:
   disableLocationToHome: false
