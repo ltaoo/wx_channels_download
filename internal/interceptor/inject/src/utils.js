@@ -321,7 +321,7 @@ var WXU = (() => {
       filename: default_name,
       id: profile.id,
       title: profile.title,
-      spec: "original",
+      spec: null,
       created_at: profile.createtime,
       download_at: (new Date().valueOf() / 1000).toFixed(0),
     };
@@ -335,7 +335,9 @@ var WXU = (() => {
       }
     }
     var filename = template
-      ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) => params[key])
+      ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) =>
+          params[key] === null || params[key] === undefined ? "" : params[key],
+        )
       : default_name;
     if (typeof window.beforeFilename === "function") {
       return window.beforeFilename(filename, params, profile, spec);
@@ -761,6 +763,9 @@ var WXU = (() => {
           if (opt.spec) {
             return opt.spec;
           }
+          if (WXU.config.defaultHighest || opt.spec === null) {
+            return null;
+          }
           if (feed.spec[0]) {
             return feed.spec[0].fileFormat;
           }
@@ -788,8 +793,21 @@ var WXU = (() => {
           )}`;
           console.log("[]feed.url", feed.url);
         }
-        if (opt.suffix !== ".jpg" && spec) {
-          feed.url = feed.url + "&X-snsvideoflag=" + spec;
+        if (opt.suffix !== ".jpg") {
+          if (spec) {
+            feed.url = feed.url + "&X-snsvideoflag=" + spec;
+          } else {
+            // 该下载原始视频逻辑参考自 https://github.com/putyy/res-downloader/blob/master/core/resource.go#L142
+            var u = new URL(decodeURIComponent(feed.url));
+            var filekey = u.searchParams.get("encfilekey");
+            var token = u.searchParams.get("token");
+            if (filekey && token) {
+              var new_url = new URL(u.origin + u.pathname);
+              new_url.searchParams.set("encfilekey", filekey);
+              new_url.searchParams.set("token", token);
+              feed.url = new_url.toString();
+            }
+          }
         }
         // console.log("[downloader.create]before WXU.request");
         var [err, data] = await WXU.request({
@@ -831,12 +849,12 @@ var WXU = (() => {
               return opt.spec;
             }
             if (WXU.config.defaultHighest || opt.spec === null) {
-              return "original";
+              return null;
             }
             if (feed.spec[0]) {
               return feed.spec[0].fileFormat;
             }
-            return "original";
+            return null;
           })();
           var filename = WXU.build_filename(
             feed,
@@ -858,7 +876,19 @@ var WXU = (() => {
               )}`;
             }
             if (opt.suffix !== ".jpg") {
-              feed.url = feed.url + "&X-snsvideoflag=" + spec;
+              if (spec) {
+                feed.url = feed.url + "&X-snsvideoflag=" + spec;
+              } else {
+                var u = new URL(decodeURIComponent(feed.url));
+                var filekey = u.searchParams.get("encfilekey");
+                var token = u.searchParams.get("token");
+                if (filekey && token) {
+                  var new_url = new URL(u.origin + u.pathname);
+                  new_url.searchParams.set("encfilekey", filekey);
+                  new_url.searchParams.set("token", token);
+                  feed.url = new_url.toString();
+                }
+              }
             }
             body.feeds.push({
               id: feed.id,
@@ -1218,6 +1248,16 @@ async function __wx_channels_download4(feed, opt) {
   }
   if (opt.spec) {
     feed.url = feed.url + "&X-snsvideoflag=" + opt.spec;
+  } else {
+    var u = new URL(decodeURIComponent(feed.url));
+    var filekey = u.searchParams.get("encfilekey");
+    var token = u.searchParams.get("token");
+    if (filekey && token) {
+      var new_url = new URL(u.origin + u.pathname);
+      new_url.searchParams.set("encfilekey", filekey);
+      new_url.searchParams.set("token", token);
+      feed.url = new_url.toString();
+    }
   }
   if (WXU.config.downloadPauseWhenDownload) {
     WXU.pause_cur_video();
@@ -1472,6 +1512,13 @@ function __wx_attach_download_dropdown_menu(trigger) {
   });
   dropdown$.ui.$trigger.onMouseEnter(() => {
     const download_menus = [
+      MenuItem({
+        label: "原始视频",
+        onClick() {
+          __wx_channels_handle_click_download__(null);
+          dropdown$.hide();
+        },
+      }),
       ...(() => {
         const [err, profile] = WXU.check_feed_existing({
           silence: true,

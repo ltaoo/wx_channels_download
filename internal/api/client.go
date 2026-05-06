@@ -228,7 +228,7 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDow
 	return false
 }
 
-func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool) (*FeedDownloadTaskBody, error) {
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*FeedDownloadTaskBody, error) {
 	// 获取视频详情
 	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
@@ -251,8 +251,10 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		key = k
 	}
 
-	spec := "original"
-	if !c.cfg.Original.GetBool("download.defaultHighest") {
+	spec := ""
+	if len(customSpec) > 0 && customSpec[0] != "" {
+		spec = customSpec[0]
+	} else if !c.cfg.Original.GetBool("download.defaultHighest") {
 		if len(media.Spec) > 0 {
 			spec = media.Spec[0].FileFormat
 		}
@@ -294,6 +296,23 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		Suffix:   ".mp4",
 		URL:      media.URL + media.URLToken,
 		Filename: filename,
+	}
+
+	// 处理 URL：非空 spec 添加 X-snsvideoflag 参数，空 spec 则清理 URL 只保留 encfilekey 和 token
+	if !isCover {
+		if spec != "" {
+			payload.URL += "&X-snsvideoflag=" + spec
+		} else {
+			if u, err := url.Parse(payload.URL); err == nil {
+				filekey := u.Query().Get("encfilekey")
+				token := u.Query().Get("token")
+				if filekey != "" && token != "" {
+					newURL := u.Scheme + "://" + u.Host + u.Path
+					newURL += "?encfilekey=" + filekey + "&token=" + token
+					payload.URL = newURL
+				}
+			}
+		}
 	}
 
 	if isMp3 {

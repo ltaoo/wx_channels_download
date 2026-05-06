@@ -45,7 +45,7 @@ func main() {
 				Title:    "test",
 				Filename: "test",
 				Key:      0,
-				Spec:     "original",
+				Spec:     "",
 				Suffix:   ".mp4",
 			})
 		}
