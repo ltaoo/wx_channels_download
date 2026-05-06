@@ -33,7 +33,7 @@ func BuildFilename(feed struct {
 		"filename":    default_name,
 		"id":          feed.ObjectId,
 		"title":       feed.Title,
-		"spec":        "original",
+		"spec":        "",
 		"created_at":  string(feed.CreatedAt),
 		"download_at": NowMillisStr(),
 	}
