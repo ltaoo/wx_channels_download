@@ -126,6 +126,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
+		Key:         "proxy.upstreamProxy",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "上游代理地址，用于转发所有请求到指定代理（如 http://127.0.0.1:7890）",
+		Title:       "上游代理",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
 		Key:         "pagespy.enabled",
 		Type:        ConfigTypeSelect,
 		Default:     false,
