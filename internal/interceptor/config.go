@@ -38,6 +38,7 @@ type InterceptorConfig struct {
 	ProxyServerHostname                 string
 	ProxyServerPort                     int
 	ProxySkipInstallRootCert            bool
+	ProxyUpstreamProxy                  string
 	PagespyEnabled                      bool
 	PageppyServerProtocol               string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
 	PageppyServerAPI                    string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
@@ -82,6 +83,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		ProxyServerPort:                     viper.GetInt("proxy.port"),
 		ProxyServerHostname:                 viper.GetString("proxy.hostname"),
 		ProxySkipInstallRootCert:            viper.GetBool("proxy.skipInstallRootCert"),
+		ProxyUpstreamProxy:                  viper.GetString("proxy.upstreamProxy"),
 		InjectExtraScriptAfterJSMain:        viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScriptFilepath:          viper.GetString("inject.globalScript"),
 		t:                                   c,

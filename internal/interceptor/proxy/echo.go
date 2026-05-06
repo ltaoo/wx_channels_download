@@ -13,10 +13,11 @@ type EchoProxy struct {
 	echo *echo.Echo
 }
 
-func NewProxy(cert []byte, private_key []byte) (InnerProxy, error) {
+func NewProxy(cert []byte, private_key []byte, upstreamProxy string) (InnerProxy, error) {
 	e, err := echo.NewEchoWithOptions(cert, private_key, &echo.Options{
 		EnableBuiltinBypass:  false,
 		InterceptOnlyMatched: true,
+		UpstreamProxy:        upstreamProxy,
 	})
 	if err != nil {
 		return nil, err

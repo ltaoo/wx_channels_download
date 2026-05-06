@@ -44,7 +44,7 @@ func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile
 
 func (c *Interceptor) Start() error {
 	echo.SetLogEnabled(false)
-	client, err := proxy.NewProxy(c.Cert.Cert, c.Cert.PrivateKey)
+	client, err := proxy.NewProxy(c.Cert.Cert, c.Cert.PrivateKey, c.Settings.ProxyUpstreamProxy)
 	if err != nil {
 		return err
 	}
