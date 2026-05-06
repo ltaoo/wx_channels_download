@@ -239,7 +239,6 @@ func (c *APIClient) handleFetchSharedFeedProfile(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
-
 type FeedDownloadTaskBody struct {
 	Id       string `json:"id"`
 	NonceId  string `json:"nonce_id"`
@@ -609,6 +608,7 @@ type ChannelsDownloadPayload struct {
 	Nid   string `json:"nid"`
 	Eid   string `json:"eid"`
 	URL   string `json:"url"`
+	Spec  string `json:"spec"`  // 自定义规格，为空时下载原始视频
 	MP3   bool   `json:"mp3"`   // 是否下载为 mp3
 	Cover bool   `json:"cover"` // 是否下载封面
 }
@@ -633,7 +633,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 			}
 		}
 	}
-	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
+	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
