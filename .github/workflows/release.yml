@@ -66,8 +66,8 @@ jobs:
       - name: Generate Windows resources (.syso)
         run: |
           set -e
-          go run github.com/tc-hib/go-winres@latest make --in ./build/winres/winres.json --arch amd64
-          go run github.com/tc-hib/go-winres@latest make --in ./build/winres/winres.json --arch arm64
+          go run github.com/tc-hib/go-winres@latest make --in ./build/winres.json --arch amd64
+          go run github.com/tc-hib/go-winres@latest make --in ./build/winres.json --arch arm64
 
       # TODO: Temporarily disabled macOS notarization
       # - name: Install rcodesign
