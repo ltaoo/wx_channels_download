@@ -66,8 +66,8 @@ jobs:
       - name: Generate Windows resources (.syso)
         run: |
           set -e
-          go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch amd64
-          go run github.com/tc-hib/go-winres@latest make --in ./winres/winres.json --arch arm64
+          go run github.com/tc-hib/go-winres@latest make --in ./build/winres/winres.json --arch amd64
+          go run github.com/tc-hib/go-winres@latest make --in ./build/winres/winres.json --arch arm64
 
       # TODO: Temporarily disabled macOS notarization
       # - name: Install rcodesign
@@ -90,7 +90,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --skip=publish,validate --clean
+          args: release --config ./build/goreleaser.yaml --skip=publish,validate --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAC_CERT_P12_FILE: cert.p12
