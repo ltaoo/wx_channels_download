@@ -82,7 +82,7 @@ func (c *APIClient) SetupRoutes() {
 func (c *APIClient) handleFavicon(ctx *gin.Context) {
 	ctx.Header("Content-Type", "image/png")
 	ctx.Header("Cache-Control", "public, max-age=86400")
-	ctx.File("winres/icon.png")
+	ctx.File("build/winres/icon.png")
 }
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
