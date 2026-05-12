@@ -226,8 +226,8 @@ func (c *Config) LoadConfig() error {
 		Key:         "download.defaultHighest",
 		Type:        ConfigTypeBool,
 		Default:     false,
-		Description: "已失效：点击下载图标时是否下载原始视频（该配置不再生效）",
-		Title:       "原始视频（已失效）",
+		Description: "点击下载图标时是否下载原始视频（该配置不再生效）",
+		Title:       "原始视频",
 		Group:       "Download",
 	})
 	Register(ConfigItem{
