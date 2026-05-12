@@ -6,14 +6,13 @@ title: 下载配置
 
 通过 `config.yaml` 控制下载行为。
 
-## 默认下载原始视频（已失效）
+## 默认下载原始视频
 
 ```yaml
 download:
   defaultHighest: false
 ```
 
-该配置已失效（保留兼容旧配置），不会影响下载行为。
 
 ## 下载时的文件名称
 
