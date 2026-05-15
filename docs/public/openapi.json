@@ -26,7 +26,7 @@
     },
     {
       "name": "下载任务",
-      "description": "兼容 wx_channels_api 的下载任务接口（/download_task/*），底层复用本项目的下载器与 download_task 表"
+      "description": "兼容 wx_channels_api 的下载任务接口（/api/download_task/*），底层复用本项目的下载器与 download_task 表"
     },
     {
       "name": "平台",
@@ -39,6 +39,14 @@
     {
       "name": "内容",
       "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
+    },
+    {
+      "name": "文件传输助手",
+      "description": "文件传输助手相关接口（仅本地模式可用）"
+    },
+    {
+      "name": "媒体",
+      "description": "媒体文件预览与播放接口"
     }
   ],
   "paths": {

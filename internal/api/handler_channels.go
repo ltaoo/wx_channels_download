@@ -1,14 +1,17 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"net/url"
-	"path/filepath"
-	"strconv"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
-	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/api/services"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
@@ -17,7 +20,9 @@ import (
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
 	next_marker := ctx.Query("next_marker")
-	resp, err := c.channels.SearchChannelsContact(keyword, next_marker)
+
+	// Use service
+	resp, err := c.channelsService.SearchContact(keyword, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -29,7 +34,9 @@ func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
 func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 	username := ctx.Query("username")
 	next_marker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsFeedListOfContact(username, next_marker)
+
+	// Use service
+	resp, err := c.channelsService.FetchFeedList(username, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -41,7 +48,9 @@ func (c *APIClient) handleFetchFeedListOfContact(ctx *gin.Context) {
 func (c *APIClient) handleFetchLiveReplayList(ctx *gin.Context) {
 	username := ctx.Query("username")
 	next_marker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsLiveReplayList(username, next_marker)
+
+	// Use service
+	resp, err := c.channelsService.FetchLiveReplayList(username, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -53,7 +62,9 @@ func (c *APIClient) handleFetchLiveReplayList(ctx *gin.Context) {
 func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	flag := ctx.Query("flag")
 	next_marker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsInteractionedFeedList(flag, next_marker)
+
+	// Use service
+	resp, err := c.channelsService.FetchInteractionedFeedList(flag, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -67,15 +78,9 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	uid := ctx.Query("nid")
 	_url := ctx.Query("url")
 	eid := ctx.Query("eid")
-	if eid == "" && _url != "" {
-		if parsedURL, err := url.Parse(_url); err == nil {
-			if _eid := parsedURL.Query().Get("eid"); _eid != "" {
-				eid = _eid
-				_url = ""
-			}
-		}
-	}
-	resp, err := c.channels.FetchChannelsFeedProfile(oid, uid, _url, eid)
+
+	// Use service
+	resp, err := c.channelsService.FetchFeedProfile(oid, uid, _url, eid)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -112,7 +117,16 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 			}
 		}
 	}
-	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover)
+
+	// Use channels service to build download task
+	feed, payload, err := c.channelsService.BuildDownloadTask(&services.FeedDownloadParams{
+		Oid:   body.Oid,
+		Nid:   body.Nid,
+		Eid:   body.Eid,
+		URL:   body.URL,
+		MP3:   body.MP3,
+		Cover: body.Cover,
+	})
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -129,49 +143,67 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 			return
 		}
 	}
-	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, payload)
+
+	if c.cfg.RemoteServerEnabled {
+		protocol := c.cfg.RemoteServerProtocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		targetURL := fmt.Sprintf("%s://%s:%d/api/task/create", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
+
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			result.Err(ctx, 500, "序列化请求参数失败")
+			return
+		}
+
+		resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			result.Err(ctx, 500, "请求远程服务器失败: "+err.Error())
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			result.Err(ctx, 500, fmt.Sprintf("远程服务器创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes)))
+			return
+		}
+
+		var respBody struct {
+			Id string `json:"id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+			result.Err(ctx, 500, "解析远程服务器响应失败")
+			return
+		}
+
+		result.Ok(ctx, gin.H{"id": respBody.Id})
+		return
+	}
+
+	// Use download service
+	existing := c.downloadService.CheckExisting(payload.Id, payload.Spec, payload.Suffix)
 	if existing {
 		result.Err(ctx, 409, "已存在该下载内容")
 		return
 	}
-	filename, dir, err := c.formatter.ProcessFilename(payload.Filename)
+
+	_ = feed // feed 已使用
+	opts, err := c.downloadService.BuildTaskOpts(payload)
 	if err != nil {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
 	}
-	connections := c.resolve_connections(payload.URL)
-	id, err := c.downloader.CreateDirect(
-		&base.Request{
-			URL: payload.URL,
-			Labels: map[string]string{
-				"id":     payload.Id,
-				"title":  payload.Title,
-				"key":    strconv.Itoa(payload.Key),
-				"spec":   payload.Spec,
-				"suffix": payload.Suffix,
-			},
-		},
-		&base.Options{
-			Name: filename + payload.Suffix,
-			Path: filepath.Join(c.cfg.DownloadDir, dir),
-			Extra: &gopeedhttp.OptsExtra{
-				Connections: connections,
-			},
-		},
-	)
+
+	labels := c.downloadService.BuildTaskLabels(payload)
+	id, err := c.downloadService.CreateTask(&base.Request{
+		URL:    payload.URL,
+		Labels: labels,
+	}, opts)
 	if err != nil {
 		result.Err(ctx, 500, "下载失败")
 		return
-	}
-	task := c.downloader.GetTask(id)
-	if task != nil {
-		c.downloader_ws.Broadcast(APIClientWSMessage{
-			Type: "event",
-			Data: map[string]interface{}{
-				"task": task,
-			},
-		})
 	}
 	result.Ok(ctx, gin.H{"id": id})
 }

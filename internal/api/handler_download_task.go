@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"wx_channel/internal/api/services"
 	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
@@ -101,7 +102,7 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 	}
 
 	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, &FeedDownloadTaskBody{
+	existing := c.check_existing_feed(tasks, &services.FeedDownloadTaskBody{
 		Id:     feed.ObjectId,
 		Spec:   spec,
 		Suffix: suffix,

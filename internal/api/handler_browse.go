@@ -12,21 +12,20 @@ import (
 	"wx_channel/pkg/util"
 )
 
+var ErrDBNotInitialized = errors.New("数据库未初始化")
+var ErrInvalidInput = errors.New("invalid input")
+
 func (c *APIClient) CreateBrowseHistory(browse *model.BrowseHistory) error {
 	if c.db == nil || c.db.DB() == nil {
-		return errors.New("数据库未初始化")
+		return ErrDBNotInitialized
 	}
 	if browse == nil {
-		return errors.New("browse is nil")
+		return ErrInvalidInput
 	}
 	return browse.Upsert(c.db.DB())
 }
 
 func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
-		result.Err(ctx, 500, "数据库未初始化")
-		return
-	}
 	var body apitypes.ChannelsObject
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
@@ -45,33 +44,33 @@ func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
 		decodeKey = body.ObjectDesc.Media[0].DecodeKey
 		urlToken = body.ObjectDesc.Media[0].URLToken
 	}
-	extraDataBytes, _ := json.Marshal(gin.H{
-		"nonce_id":  body.ObjectNonceId,
-		"decodeKey": decodeKey,
-		"urlToken":  urlToken,
+	extraDataBytes, _ := json.Marshal(map[string]interface{}{
+		"nonce_id":   body.ObjectNonceId,
+		"decodeKey":  decodeKey,
+		"urlToken":   urlToken,
+		"source_url": body.SourceURL,
 	})
 
-	browse := model.BrowseHistory{
-		PlatformId:        "wx_channels",
-		VisitedTimes:      1,
-		AccountExternalId: body.Contact.Username,
-		AccountUsername:   body.Contact.Username,
-		AccountNickname:   body.Contact.Nickname,
-		AccountAvatarURL:  body.Contact.HeadUrl,
-		ContentType:       "video",
-		ContentExternalId: body.ID,
-		ContentTitle:      body.ObjectDesc.Description,
-		ContentURL:        mediaURL,
-		ContentSourceURL:  body.SourceURL,
-		ContentCoverURL:   mediaCoverURL,
-		ExtraData:         string(extraDataBytes),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
+	// Use service
+	err := c.contentService.DB().Create(&map[string]interface{}{
+		"platform_id":         "wx_channels",
+		"visited_times":       1,
+		"account_external_id": body.Contact.Username,
+		"account_username":    body.Contact.Username,
+		"account_nickname":    body.Contact.Nickname,
+		"account_avatar_url":  body.Contact.HeadUrl,
+		"content_type":        "video",
+		"content_external_id": body.ID,
+		"content_title":       body.ObjectDesc.Description,
+		"content_url":         mediaURL,
+		"content_source_url":  body.SourceURL,
+		"content_cover_url":   mediaCoverURL,
+		"extra_data":          string(extraDataBytes),
+		"created_at":          now,
+		"updated_at":          now,
+	}).Error
 
-	if err := c.CreateBrowseHistory(&browse); err != nil {
+	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -79,10 +78,6 @@ func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
-		result.Err(ctx, 500, "数据库未初始化")
-		return
-	}
 	var body struct {
 		Username *string `json:"username"`
 	}
@@ -90,11 +85,13 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	query := c.db.DB().Where("platform_id = ?", "wx_channels")
+
+	query := c.contentService.DB().Where("platform_id = ?", "wx_channels")
 	if body.Username != nil {
 		query = query.Where("account_username = ?", *body.Username)
 	}
-	var browseHistories []model.BrowseHistory
+
+	var browseHistories []interface{}
 	if err := query.Order("updated_at DESC").Find(&browseHistories).Error; err != nil {
 		result.Err(ctx, 500, err.Error())
 		return

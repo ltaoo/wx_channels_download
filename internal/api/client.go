@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"wx_channel/internal/api/services"
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
 	"wx_channel/internal/database"
@@ -42,6 +43,12 @@ type APIClient struct {
 	engine        *gin.Engine
 	db            *database.ClientDatabase
 	logger        *zerolog.Logger
+
+	// Services
+	downloadService *services.DownloadService
+	channelsService *services.ChannelsService
+	accountService  *services.AccountService
+	contentService  *services.ContentService
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.ClientDatabase) *APIClient {
@@ -92,17 +99,28 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.Cl
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
 	}
+
+	// Initialize services
+	downloadService := services.NewDownloadService(downloader, db, cfg.DownloadDir, downloader_ws)
+	channelsService := services.NewChannelsService(channels_client)
+	accountService := services.NewAccountService(db)
+	contentService := services.NewContentService(db)
+
 	client := &APIClient{
-		downloader:    downloader,
-		official:      officialaccount_client,
-		channels:      channels_client,
-		downloader_ws: downloader_ws,
-		filehelper:    NewFileHelperHandler(),
-		formatter:     util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
-		cfg:           cfg,
-		engine:        gin.Default(),
-		db:            db,
-		logger:        &logger,
+		downloader:      downloader,
+		official:        officialaccount_client,
+		channels:        channels_client,
+		downloader_ws:   downloader_ws,
+		filehelper:      NewFileHelperHandler(),
+		formatter:       util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
+		cfg:             cfg,
+		engine:          gin.Default(),
+		db:              db,
+		logger:          &logger,
+		downloadService: downloadService,
+		channelsService: channelsService,
+		accountService:  accountService,
+		contentService:  contentService,
 	}
 
 	// 设置文件传输助手视频号自动下载回调
@@ -234,7 +252,7 @@ func (c *APIClient) resolve_connections(url string) int {
 	return 4
 }
 
-func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
+func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *services.FeedDownloadTaskBody) bool {
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
 			continue
@@ -309,8 +327,9 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		}
 	}
 
-	payload := &FeedDownloadTaskBody{
+	payload := &services.FeedDownloadTaskBody{
 		Id:       feed.ID,
+		NonceId:  nid,
 		Title:    feed.ObjectDesc.Description,
 		Key:      key,
 		Spec:     spec,
