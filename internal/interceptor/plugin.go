@@ -216,7 +216,9 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
 				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
+				if !cfg.DownloadInFrontend {
+					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
+				}
 				if cfg.InjectGlobalScript != "" {
 					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
 				}
