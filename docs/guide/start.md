@@ -31,6 +31,8 @@ title: 下载
 3. Windows x86_64
 选择 windows_x86_64 后缀
 
+> windows 平台有带 `safe` 标记的文件，表示「没有使用UPX压缩来减小体积」，在某些电脑上，可以避免被识别为病毒
+
 ## 运行下载器
 
 在 `Windows` 平台，解压后双击直接运行 `wx_video_download.exe` 即可，首次使用会自动安装证书并设置系统代理。
