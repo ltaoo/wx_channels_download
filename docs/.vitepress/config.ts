@@ -78,6 +78,7 @@ export default defineConfig({
           { text: "解密", link: "/cli/decrypt" },
           { text: "删除证书", link: "/cli/uninstall" },
           { text: "查看版本", link: "/cli/version" },
+          { text: "更新", link: "/cli/update" },
         ],
       },
       {
