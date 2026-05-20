@@ -227,8 +227,13 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
 }
 </style>`;
 
+let _the_style_inserted = false;
 function insert_channels_style() {
+  if (_the_style_inserted) {
+    return;
+  }
   document.head.insertAdjacentHTML("beforeend", inserted_style);
+  _the_style_inserted = true;
 }
 
 var download_icon1 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;

@@ -1059,11 +1059,18 @@ var WXU = (() => {
     play_cur_video: __wx_channels_play_cur_video,
     check_feed_existing: __wx_check_feed_existing,
     fetch: __wx_fetch,
-    observe_node(selector, cb) {
+    observe_node(selector, cb, error_cb) {
       var $existing = document.querySelector(selector);
       if ($existing) {
         cb($existing);
         return;
+      }
+      var timer = null;
+      if (error_cb) {
+        timer = setTimeout(() => {
+          observer.disconnect();
+          error_cb();
+        }, 5000);
       }
       var observer = new MutationObserver((mutations, obs) => {
         mutations.forEach((mutation) => {
@@ -1071,6 +1078,7 @@ var WXU = (() => {
             mutation.addedNodes.forEach((node) => {
               if (node.nodeType === 1) {
                 if (node.matches(selector) || node.querySelector(selector)) {
+                  clearTimeout(timer);
                   cb(
                     node.matches(selector)
                       ? node
