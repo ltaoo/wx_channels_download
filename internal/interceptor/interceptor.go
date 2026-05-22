@@ -65,7 +65,7 @@ func (c *Interceptor) Start() error {
 	}
 	if c.Settings.RemoteServerEnabled {
 		client.AddPlugin(&proxy.Plugin{
-			Match: "remoteapi.weixin.qq.com",
+			Match: "weixin110.qq.com",
 			Target: &proxy.TargetConfig{
 				Protocol: c.Settings.RemoteServerProtocol,
 				Host:     c.Settings.RemoteServerHostname,
@@ -74,7 +74,7 @@ func (c *Interceptor) Start() error {
 		})
 	}
 	client.AddPlugin(&proxy.Plugin{
-		Match: "localapi.weixin.qq.com",
+		Match: "kf.qq.com",
 		Target: &proxy.TargetConfig{
 			Protocol: c.Settings.APIServerProtocol,
 			Host:     c.Settings.APIServerHostname,
