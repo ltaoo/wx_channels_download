@@ -43,18 +43,15 @@ func New(ver string, mode string) *Config {
 	}
 	var config_filepath string
 	var has_config bool
+	filename := "config.yaml"
 	for _, dir := range candidates {
-		p := filepath.Join(dir, "config.yaml")
+		p := filepath.Join(dir, filename)
 		if _, err := os.Stat(p); err == nil {
 			base_dir = dir
 			config_filepath = p
 			has_config = true
 			break
 		}
-	}
-	filename := "config.yaml"
-	if config_filepath == "" {
-		config_filepath = filepath.Join(base_dir, filename)
 	}
 	viper.SetConfigFile(config_filepath)
 	c := &Config{
@@ -406,6 +403,24 @@ func (c *Config) LoadConfig() error {
 		Title:       "D1 Database Name",
 		Group:       "Cloudflare",
 	})
+	// Update 自更新配置
+	Register(ConfigItem{
+		Key:         "update.proxy",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "update 命令从 GitHub 下载更新时使用的代理地址（如 http://127.0.0.1:7890），与 proxy.upstreamProxy 不同",
+		Title:       "更新代理",
+		Group:       "Update",
+	})
+	Register(ConfigItem{
+		Key:         "update.mirror",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "update 命令从 GitHub 下载更新时使用的镜像地址（如 https://ghproxy.com/），会拼接在原始 URL 之前",
+		Title:       "更新镜像",
+		Group:       "Update",
+	})
+
 	// FileHelper 微信文件传输助手配置
 	Register(ConfigItem{
 		Key:         "filehelper.enabled",

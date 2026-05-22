@@ -1,9 +1,8 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
-var FakeLocalAPIServerAddr = "localapi.weixin.qq.com";
-var FakeRemoteAPIServerAddr = "remoteapi.weixin.qq.com";
-var FakeOfficialAccountServerAddr = "official.weixin.qq.com";
+var FakeLocalAPIServerAddr = "kf.qq.com";
+var FakeRemoteAPIServerAddr = "weixin110.qq.com";
 var FakeRemoteAPIServerProtocol = "https";
 var FakeLocalAPIServerProtocol = "https";
 var WSServerProtocol = "wss";
@@ -1711,7 +1710,9 @@ function ChannelsWebsocketClient() {
         WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
       const ws = new WebSocket(ws_url);
       ws.onclose = (e) => {
-        WXU.error({ msg: "channels ws连接已关闭，" + JSON.stringify(e) });
+        WXU.error({
+          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}`,
+        });
       };
       ws.onerror = (e) => {
         WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e) });
