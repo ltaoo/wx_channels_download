@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +21,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/rhysd/go-github-selfupdate/selfupdate"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var updateCmd = &cobra.Command{
@@ -127,8 +129,10 @@ func do_update() {
 }
 
 func fetch_releases(slug string) ([]GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", slug)
-	resp, err := http.Get(url)
+	rawURL := fmt.Sprintf("https://api.github.com/repos/%s/releases", slug)
+	reqURL := apply_mirror(rawURL)
+	client := create_update_http_client()
+	resp, err := client.Get(reqURL)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +183,10 @@ func (pr *ProgressReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-func update_from_compressed(url, filename, exePath string) error {
-	resp, err := http.Get(url)
+func update_from_compressed(rawURL, filename, exePath string) error {
+	reqURL := apply_mirror(rawURL)
+	client := create_update_http_client()
+	resp, err := client.Get(reqURL)
 	if err != nil {
 		return err
 	}
@@ -268,4 +274,29 @@ func is_executable_file(name string) bool {
 		return strings.EqualFold(base, "wx_channels_download.exe") || strings.EqualFold(base, "wx_video_download.exe")
 	}
 	return base == "wx_channels_download" || base == "wx_video_download"
+}
+
+func create_update_http_client() *http.Client {
+	proxyURL := viper.GetString("update.proxy")
+	if proxyURL == "" {
+		return http.DefaultClient
+	}
+	proxy, err := url.Parse(proxyURL)
+	if err != nil {
+		return http.DefaultClient
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxy),
+		},
+	}
+}
+
+func apply_mirror(rawURL string) string {
+	mirror := viper.GetString("update.mirror")
+	if mirror == "" {
+		return rawURL
+	}
+	mirror = strings.TrimSuffix(mirror, "/")
+	return mirror + "/" + rawURL
 }
