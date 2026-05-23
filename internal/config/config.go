@@ -115,6 +115,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
+		Key:         "proxy.tun",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "启用 TUN 模式（网络层流量转发），开启后不会设置系统代理",
+		Title:       "TUN 模式",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
 		Key:         "proxy.skipInstallRootCert",
 		Type:        ConfigTypeBool,
 		Default:     false,

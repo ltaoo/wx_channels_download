@@ -7,7 +7,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-.}"
 
 build_windows() {
     echo "Building Windows x86_64..."
-    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_windows_x86_64.exe"
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -tags with_gvisor -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_windows_x86_64.exe"
     echo "Done: $OUTPUT_DIR/wx_video_download_windows_x86_64.exe"
 }
 
