@@ -78,12 +78,12 @@ type Feedinfo struct {
 }
 
 type Scalinginfo struct {
-	Version               string `json:"version"`
-	Issplitscreen         bool   `json:"isSplitScreen"`
-	Isdisablefollow       bool   `json:"isDisableFollow"`
-	Uppercentposition     int    `json:"upPercentPosition"`
-	Downpercentposition   int    `json:"downPercentPosition"`
-	Aspectratioexceeds169 bool   `json:"aspectRatioExceeds169"`
+	Version               string  `json:"version"`
+	Issplitscreen         bool    `json:"isSplitScreen"`
+	Isdisablefollow       bool    `json:"isDisableFollow"`
+	Uppercentposition     float64 `json:"upPercentPosition"`
+	Downpercentposition   float64 `json:"downPercentPosition"`
+	Aspectratioexceeds169 bool    `json:"aspectRatioExceeds169"`
 }
 
 type H265videoinfo struct {
