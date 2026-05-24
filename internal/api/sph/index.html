@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>视频号视频信息查询</title>
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/icon.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -142,6 +144,21 @@
       background: #fafafa;
       margin: 0;
     }
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      font-size: 13px;
+      color: #999;
+    }
+    .footer a {
+      color: #07c160;
+      text-decoration: none;
+    }
+    .footer a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -158,6 +175,9 @@
     </div>
     <div id="status" class="status" hidden></div>
     <div id="result" hidden></div>
+    <div class="footer">
+      <a href="https://github.com/ltaoo/wx_channels_download" target="_blank">https://github.com/ltaoo/wx_channels_download</a>
+    </div>
   </div>
 
   <script>
@@ -233,7 +253,7 @@
         if (fi.forwardCountFmt) html += `<span>转发 ${esc(fi.forwardCountFmt)}</span>`;
         if (fi.commentCountFmt) html += `<span>评论 ${esc(fi.commentCountFmt)}</span>`;
         html += '</div>';
-        if (bestVideoUrl) html += `<div><button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadVideoFromBtn(this)">下载视频</button></div>`;
+        if (bestVideoUrl) html += `<div><button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadVideoFromBtn(this)">下载视频</button> <button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadRawVideoFromBtn(this)">下载原始视频</button></div>`;
         if (bestVideoUrl) html += `<div class="video-link"><a href="${esc(bestVideoUrl)}" target="_blank">${esc(bestVideoUrl)}</a></div>`;
         html += '</div></div>';
       }
@@ -250,9 +270,32 @@
       resultEl.hidden = false;
     }
 
+    function getRawVideoUrl(url) {
+      try {
+        var u = new URL(decodeURIComponent(url));
+        var filekey = u.searchParams.get("encfilekey");
+        var token = u.searchParams.get("token");
+        if (filekey && token) {
+          var newUrl = new URL(u.origin + u.pathname);
+          newUrl.searchParams.set("encfilekey", filekey);
+          newUrl.searchParams.set("token", token);
+          return newUrl.toString();
+        }
+      } catch (e) {}
+      return url;
+    }
+
     function downloadVideoFromBtn(btn) {
       downloadVideo(
         btn.getAttribute("data-video-url"),
+        btn.getAttribute("data-desc"),
+        btn.getAttribute("data-createtime")
+      );
+    }
+
+    function downloadRawVideoFromBtn(btn) {
+      downloadVideo(
+        getRawVideoUrl(btn.getAttribute("data-video-url")),
         btn.getAttribute("data-desc"),
         btn.getAttribute("data-createtime")
       );
