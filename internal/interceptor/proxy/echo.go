@@ -64,6 +64,10 @@ func (p *EchoProxy) Start(port int) error {
 	return nil
 }
 
+func (p *EchoProxy) Close() error {
+	return p.echo.Close()
+}
+
 func (p *EchoProxy) AddPlugin(plugin interface{}) {
 	switch pl := plugin.(type) {
 	case *echo.Plugin:

@@ -8,6 +8,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"path/filepath"
+	"strings"
 )
 
 // DeployBody 定义 Worker 部署所需的参数
@@ -18,6 +20,8 @@ type DeployBody struct {
 	ScriptContent     []byte
 	CompatibilityDate string
 	Bindings          []Binding
+	MainModule        string            // ES module entry point, defaults to "index.js"
+	AdditionalFiles   map[string][]byte // extra files to include (e.g. index.html)
 }
 
 // Metadata 定义 Worker 部署所需的元数据
@@ -44,11 +48,42 @@ type DeployResult struct {
 	} `json:"result"`
 }
 
+func detectContentType(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".html", ".htm":
+		return "application/octet-stream"
+	case ".js", ".mjs":
+		return "application/javascript+module"
+	case ".css":
+		return "text/css"
+	case ".json":
+		return "application/json"
+	case ".txt":
+		return "text/plain"
+	case ".svg":
+		return "image/svg+xml"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".wasm":
+		return "application/wasm"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // Deploy 执行 Cloudflare Worker 部署
 func Deploy(deployBody DeployBody) (string, error) {
+	mainModule := deployBody.MainModule
+	if mainModule == "" {
+		mainModule = "index.js"
+	}
+
 	// 构造 Metadata
 	metadata := Metadata{
-		MainModule:        "index.js",
+		MainModule:        mainModule,
 		CompatibilityDate: deployBody.CompatibilityDate,
 		Bindings:          deployBody.Bindings,
 	}
@@ -73,16 +108,27 @@ func Deploy(deployBody DeployBody) (string, error) {
 	}
 	part.Write(metadataJSON)
 
-	// Part 2: index.js
-	// 注意: 必须标记为 application/javascript+module (ES Module)
+	// Part 2: main module (ES Module)
 	h2 := make(textproto.MIMEHeader)
-	h2.Set("Content-Disposition", `form-data; name="index.js"; filename="index.js"`)
+	h2.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, mainModule, mainModule))
 	h2.Set("Content-Type", "application/javascript+module")
 	part2, err := writer.CreatePart(h2)
 	if err != nil {
 		return "", fmt.Errorf("创建 multipart script 失败: %v", err)
 	}
 	part2.Write(deployBody.ScriptContent)
+
+	// Part 3+: additional files
+	for filename, content := range deployBody.AdditionalFiles {
+		hf := make(textproto.MIMEHeader)
+		hf.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, filename, filename))
+		hf.Set("Content-Type", detectContentType(filename))
+		pf, err := writer.CreatePart(hf)
+		if err != nil {
+			return "", fmt.Errorf("创建 multipart file %s 失败: %v", filename, err)
+		}
+		pf.Write(content)
+	}
 
 	writer.Close()
 

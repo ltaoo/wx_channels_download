@@ -76,6 +76,7 @@ export default defineConfig({
           { text: "代理服务", link: "/cli/proxy" },
           { text: "下载", link: "/cli/download" },
           { text: "解密", link: "/cli/decrypt" },
+          { text: "视频号解析", link: "/cli/sph" },
           { text: "删除证书", link: "/cli/uninstall" },
           { text: "查看版本", link: "/cli/version" },
           { text: "更新", link: "/cli/update" },

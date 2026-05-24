@@ -60,6 +60,10 @@ func (p *SunnyNetProxy) Start(port int) error {
 	return nil
 }
 
+func (p *SunnyNetProxy) Close() error {
+	return nil
+}
+
 func (p *SunnyNetProxy) AddPlugin(plugin interface{}) {
 	switch pl := plugin.(type) {
 	case *SunnyNetPlugin:

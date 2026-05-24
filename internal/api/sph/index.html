@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频号视频信息查询</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 20px; margin-bottom: 20px; text-align: center; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+    .input-row input:focus { border-color: #07c160; }
+    .input-row button {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      background: #07c160;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .input-row button:hover { background: #06ad56; }
+    .input-row button:disabled { background: #a0d9b8; cursor: not-allowed; }
+    .status { text-align: center; color: #999; font-size: 14px; margin-bottom: 16px; }
+    .status.error { color: #e74c3c; }
+    .result {
+      background: #fff;
+      border-radius: 8px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .result-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #eee;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .result-body { padding: 20px; }
+    /* 视频预览卡片 */
+    .video-card {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .video-card .cover {
+      width: 180px;
+      height: 320px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #000;
+      cursor: pointer;
+    }
+    .video-card video {
+      width: 320px;
+      max-width: 100%;
+      border-radius: 8px;
+      background: #000;
+    }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #07c160;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .download-btn:hover { background: #06ad56; }
+    .video-card .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 14px;
+      min-width: 0;
+    }
+    .video-card .meta .author {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .video-card .meta .author img {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+    }
+    .video-card .meta .author .name {
+      font-weight: 600;
+    }
+    .video-card .meta .desc {
+      color: #666;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .video-card .meta .stats {
+      display: flex;
+      gap: 16px;
+      color: #999;
+      font-size: 13px;
+    }
+    .video-card .meta .video-link a {
+      color: #07c160;
+      text-decoration: none;
+      font-size: 13px;
+      word-break: break-all;
+    }
+    /* JSON 区域 */
+    details.json-section { margin-top: 4px; }
+    details.json-section summary {
+      padding: 10px 20px;
+      font-size: 13px;
+      color: #666;
+      cursor: pointer;
+      border-top: 1px solid #eee;
+    }
+    details.json-section pre {
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-x: auto;
+      padding: 16px 20px;
+      background: #fafafa;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>视频号视频信息查询</h1>
+    <div class="input-row">
+      <input
+        id="urlInput"
+        type="text"
+        placeholder="粘贴视频号分享链接，如 https://weixin.qq.com/sph/xxx"
+        autofocus
+      >
+      <button id="fetchBtn" onclick="doFetch()">查询</button>
+    </div>
+    <div id="status" class="status" hidden></div>
+    <div id="result" hidden></div>
+  </div>
+
+  <script>
+    // 部署后改为你的 Worker 域名
+    const API_BASE = "/api";
+
+    const urlInput = document.getElementById("urlInput");
+    const fetchBtn = document.getElementById("fetchBtn");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+
+    urlInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doFetch();
+    });
+
+    async function doFetch() {
+      const shareUrl = urlInput.value.trim();
+      if (!shareUrl) return;
+
+      fetchBtn.disabled = true;
+      resultEl.hidden = true;
+      showStatus("查询中...", "");
+
+      try {
+        const resp = await fetch(`${API_BASE}/fetch_video_profile`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: shareUrl }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || resp.statusText);
+        showStatus("", "");
+        renderResult(data);
+      } catch (err) {
+        showStatus(err.message, "error");
+      } finally {
+        fetchBtn.disabled = false;
+      }
+    }
+
+    function showStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = "status" + (cls ? " " + cls : "");
+      statusEl.hidden = !msg;
+    }
+
+    function renderResult(feed) {
+      const fi = feed.data && feed.data.feedInfo;
+      const ai = feed.data && feed.data.authorInfo;
+
+      let html = '<div class="result"><div class="result-header">查询结果</div><div class="result-body">';
+
+      if (fi) {
+        const bestVideoUrl = fi.h264VideoInfo?.videoUrl || fi.h265VideoInfo?.videoUrl || fi.videoUrl || "";
+        html += '<div class="video-card">';
+        if (bestVideoUrl) {
+          html += `<video src="${esc(bestVideoUrl)}" poster="${esc(fi.coverUrl)}" controls preload="metadata"></video>`;
+        } else {
+          html += `<img class="cover" src="${esc(fi.coverUrl)}" alt="cover" onerror="this.style.display='none'">`;
+        }
+        html += '<div class="meta">';
+        if (ai) {
+          html += '<div class="author">';
+          html += `<img src="${esc(ai.headImgUrl)}" alt="" onerror="this.style.display='none'">`;
+          html += `<span class="name">${esc(ai.nickname)}</span>`;
+          if (ai.authIconUrl) html += `<img src="${esc(ai.authIconUrl)}" style="width:16px;height:16px" onerror="this.style.display='none'">`;
+          html += '</div>';
+        }
+        if (fi.description) html += `<div class="desc">${esc(fi.description)}</div>`;
+        html += '<div class="stats">';
+        if (fi.likeCountFmt) html += `<span>赞 ${esc(fi.likeCountFmt)}</span>`;
+        if (fi.favCountFmt) html += `<span>爱心 ${esc(fi.favCountFmt)}</span>`;
+        if (fi.forwardCountFmt) html += `<span>转发 ${esc(fi.forwardCountFmt)}</span>`;
+        if (fi.commentCountFmt) html += `<span>评论 ${esc(fi.commentCountFmt)}</span>`;
+        html += '</div>';
+        if (bestVideoUrl) html += `<div><button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadVideoFromBtn(this)">下载视频</button></div>`;
+        if (bestVideoUrl) html += `<div class="video-link"><a href="${esc(bestVideoUrl)}" target="_blank">${esc(bestVideoUrl)}</a></div>`;
+        html += '</div></div>';
+      }
+
+      html += '</div>';
+
+      // JSON 详情
+      html += '<details class="json-section"><summary>原始响应 JSON</summary>';
+      html += `<pre>${esc(JSON.stringify(feed, null, 2))}</pre>`;
+      html += '</details>';
+
+      html += '</div>';
+      resultEl.innerHTML = html;
+      resultEl.hidden = false;
+    }
+
+    function downloadVideoFromBtn(btn) {
+      downloadVideo(
+        btn.getAttribute("data-video-url"),
+        btn.getAttribute("data-desc"),
+        btn.getAttribute("data-createtime")
+      );
+    }
+
+    async function downloadVideo(url, description, createtime) {
+      try {
+        showStatus("下载中...", "");
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("下载失败");
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = sanitizeFilename(description, createtime) || "video.mp4";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        showStatus("", "");
+      } catch (err) {
+        showStatus("下载失败: " + err.message, "error");
+      }
+    }
+
+    function sanitizeFilename(desc, createtime) {
+      if (desc) return desc.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 200) + ".mp4";
+      if (createtime) {
+        const d = new Date(Number(createtime) * 1000);
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.mp4`;
+      }
+      return "";
+    }
+
+    function esc(s) {
+      if (!s) return "";
+      const div = document.createElement("div");
+      div.textContent = s;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
