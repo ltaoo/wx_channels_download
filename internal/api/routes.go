@@ -69,6 +69,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
+	// sph 接口
+	c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
 	// c.engine.GET("/api/test", c.handleTest)
