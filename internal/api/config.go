@@ -31,6 +31,7 @@ type APIConfig struct {
 	OfficialAccountRefreshToken  string
 	OfficialAccountTokenFilepath string
 	ChannelsRefreshInterval      int
+	CloudflareSphCookie          string
 }
 
 func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
@@ -46,6 +47,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	}
 	mp_refresh_token := viper.GetString("mp.refreshToken")
 	mp_token_filepath := viper.GetString("mp.tokenFilepath")
+	cloudflare_sph_cookie := viper.GetString("cloudflare.sphCookie")
 	api_cfg := &APIConfig{
 		Version:                      c.Version,
 		Mode:                         c.Mode,
@@ -65,6 +67,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		OfficialAccountTokenFilepath: mp_token_filepath,
 		OfficialAccountRefreshToken:  mp_refresh_token,
 		ChannelsRefreshInterval:      viper.GetInt("channels.refreshInterval"),
+		CloudflareSphCookie:          cloudflare_sph_cookie,
 	}
 	return api_cfg
 }
