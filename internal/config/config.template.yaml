@@ -31,6 +31,7 @@ proxy:
   system: true
   hostname: "127.0.0.1"
   port: 2023
+  tun: false
   skipInstallRootCert: false
   upstreamProxy: ""
 
