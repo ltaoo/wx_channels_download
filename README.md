@@ -2,6 +2,15 @@
 
 体积小、使用简单、支持 macOS 和 Windows 系统。
 
+## 分享链接在线解析
+
+获取视频号分享链接，如 https://weixin.qq.com/sph/Axv548mzBF 后，可打开下面页面直接获取视频链接
+
+https://sph.litao.workers.dev/
+
+![在线解析分享链接](./docs/assets/sph.png)
+
+
 ## 使用说明
 
 下载[构建包](https://github.com/ltaoo/wx_channels_download/releases)，**以管理员身份运行**，首次打开会自动安装证书，然后启动服务。

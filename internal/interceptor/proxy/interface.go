@@ -7,6 +7,7 @@ import (
 
 type InnerProxy interface {
 	Start(port int) error
+	Close() error
 	AddPlugin(plugin interface{})
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }

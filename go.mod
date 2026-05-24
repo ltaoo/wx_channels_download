@@ -55,7 +55,7 @@ require (
 
 replace github.com/GopeedLab/gopeed => ./pkg/gopeed
 
-// replace github.com/ltaoo/echo => /Users/xxx/Documents/other/echo
+replace github.com/ltaoo/echo => C:/Users/litao/Documents/workspace/echo
 
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
 

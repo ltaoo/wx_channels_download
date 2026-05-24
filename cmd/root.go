@@ -73,7 +73,7 @@ var root_cmd = &cobra.Command{
 		}
 		need_admin_for_proxy := viper.GetBool("proxy.system") || viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet
 		is_admin := platform.IsAdmin()
-		if runtime.GOOS == "windows" && need_admin_for_proxy && !is_admin {
+		if runtime.GOOS == "windows" && need_admin_for_proxy && !is_admin && !cmd.HasParent() {
 			if !platform.RequestAdminPermission() {
 				fmt.Println(error_prefix + "运行失败，请右键选择「以管理员身份运行」")
 				os.Exit(0)

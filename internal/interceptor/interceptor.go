@@ -125,6 +125,11 @@ func (c *Interceptor) Stop() error {
 			return fmt.Errorf("关闭系统代理失败: %v", err)
 		}
 	}
+	if c.proxy != nil {
+		if err := c.proxy.Close(); err != nil {
+			return fmt.Errorf("关闭代理服务失败: %v", err)
+		}
+	}
 	return nil
 }
 
