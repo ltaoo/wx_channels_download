@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,6 +62,15 @@ func sph_deploy() {
 		return
 	}
 
+	// 读取 icon.png 并转 base64，作为 JS 模块部署
+	icon_path := filepath.Join(Cfg.RootDir, "build", "icon.png")
+	icon_bytes, err := os.ReadFile(icon_path)
+	if err != nil {
+		pterm.Error.Printf("读取 icon.png 失败: %v\n", err)
+		return
+	}
+	icon_base64 := base64.StdEncoding.EncodeToString(icon_bytes)
+
 	// 构造部署参数 (sph worker 不需要 D1 和额外绑定)
 	deploy_body := worker.DeployBody{
 		AccountID:         account_id,
@@ -74,6 +84,7 @@ func sph_deploy() {
 		},
 		AdditionalFiles: map[string][]byte{
 			"index.html": html_content,
+			"icon.js":    []byte(fmt.Sprintf(`export default "%s";`, icon_base64)),
 		},
 	}
 

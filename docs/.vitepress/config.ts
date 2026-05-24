@@ -39,6 +39,10 @@ export default defineConfig({
   description: "微信视频号下载工具文档",
   base: "/wx_channels_download/",
   lastUpdated: true,
+  head: [
+    ["link", { rel: "shortcut icon", href: "/wx_channels_download/favicon.png" }],
+    ["link", { rel: "icon", type: "image/png", href: "/wx_channels_download/favicon.png" }],
+  ],
   themeConfig: {
     nav: [
       { text: "首页", link: "/" },
