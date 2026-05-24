@@ -27,6 +27,8 @@ builds:
     ldflags:
       - -s -w
       - -X main.Mode=release
+    tags:
+      - with_gvisor
     ignore:
       - goos: darwin
         goarch: "386"
@@ -46,6 +48,8 @@ builds:
     ldflags:
       - -s -w
       - -X main.Mode=release
+    tags:
+      - with_gvisor
     # TODO: Temporarily disabled macOS signing
     # hooks:
     #   post:
@@ -63,6 +67,8 @@ builds:
     binary: wx_video_download
     ldflags:
       - -X main.Mode=release
+    tags:
+      - with_gvisor
 
   # TODO: Temporarily disabled SunnyNet build
   # - id: windows_sunnynet

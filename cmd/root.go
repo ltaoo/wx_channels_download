@@ -71,7 +71,7 @@ var root_cmd = &cobra.Command{
 			 fmt.Println(fmt.Sprintf("%s加载配置文件失败 %v", error_prefix, err))
 			 os.Exit(0)
 		}
-		need_admin_for_proxy := viper.GetBool("proxy.system") || buildtags.UsingSunnyNet
+		need_admin_for_proxy := viper.GetBool("proxy.system") || viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet
 		is_admin := platform.IsAdmin()
 		if runtime.GOOS == "windows" && need_admin_for_proxy && !is_admin {
 			if !platform.RequestAdminPermission() {
@@ -207,7 +207,10 @@ func root_command(cfg *config.Config) {
 	color.Green(fmt.Sprintf("代理服务启动成功, 地址: %v", interceptor_srv.Addr()))
 
 	if !buildtags.UsingSunnyNet {
-		if !interceptor_cfg.ProxySetSystem {
+		if interceptor_cfg.ProxyTun {
+			color.Green("已启用 TUN 模式，流量将通过虚拟网卡自动转发")
+			color.Green("请打开需要下载的视频号页面进行下载")
+		} else if !interceptor_cfg.ProxySetSystem {
 			color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptor_srv.Addr()))
 			color.Red("设置成功后再打开视频号页面下载")
 		} else {

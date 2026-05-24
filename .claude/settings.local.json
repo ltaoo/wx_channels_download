@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(python *)",
+      "Bash(go build *)",
+      "PowerShell(go build *)"
+    ]
+  }
+}

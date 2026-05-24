@@ -35,6 +35,7 @@ type InterceptorConfig struct {
 	OfficialAccountRemoteServerPort     int    `json:"officialRemoteServerPort"`
 	ProxyDevice                         string
 	ProxySetSystem                      bool
+	ProxyTun                            bool
 	ProxyServerHostname                 string
 	ProxyServerPort                     int
 	ProxySkipInstallRootCert            bool
@@ -80,6 +81,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
 		OfficialAccountRemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
 		ProxySetSystem:                      viper.GetBool("proxy.system"),
+		ProxyTun:                            viper.GetBool("proxy.tun"),
 		ProxyServerPort:                     viper.GetInt("proxy.port"),
 		ProxyServerHostname:                 viper.GetString("proxy.hostname"),
 		ProxySkipInstallRootCert:            viper.GetBool("proxy.skipInstallRootCert"),

@@ -7,18 +7,53 @@ import (
 	"net/http"
 
 	"github.com/ltaoo/echo"
+	"github.com/ltaoo/echo/tun"
 )
 
 type EchoProxy struct {
 	echo *echo.Echo
 }
 
-func NewProxy(cert []byte, private_key []byte, upstreamProxy string) (InnerProxy, error) {
-	e, err := echo.NewEchoWithOptions(cert, private_key, &echo.Options{
+func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int) (InnerProxy, error) {
+	opts := &echo.Options{
 		EnableBuiltinBypass:  false,
 		InterceptOnlyMatched: true,
 		UpstreamProxy:        upstreamProxy,
-	})
+	}
+	if tunEnabled {
+		opts.Tun = true
+		opts.TunConfig = tun.DefaultConfig()
+		opts.TunConfig.Inbound.AutoRoute = true
+		opts.TunConfig.Inbound.StrictRoute = true
+		// Set the proxy outbound to point to our own proxy port
+		for i := range opts.TunConfig.Outbounds {
+			if opts.TunConfig.Outbounds[i].Tag == "proxy" {
+				opts.TunConfig.Outbounds[i].Port = uint16(proxyPort)
+			}
+		}
+		// Configure routing rules (evaluated in order)
+		opts.TunConfig.Route = tun.RouteConfig{
+			Rules: []tun.RuleConfig{
+				// Highest priority: self-process direct to avoid loopback
+				{
+					ProcessName: []string{"wx_video_download", "wx_video_download.exe", "wx_channel", "wx_channel.exe", "go", "go.exe", "main", "main.exe"},
+					Outbound:    "direct",
+				},
+				// WeChat processes through proxy
+				{
+					ProcessName: []string{"WeChat", "WeChatAppEx", "WeChatAppEx.exe", "Weixin.exe", "WeChatAppEx Helper"},
+					Outbound:    "proxy",
+				},
+				// qq.com domains through proxy
+				{
+					DomainSuffix: []string{"qq.com"},
+					Outbound:     "proxy",
+				},
+			},
+			Final: "direct",
+		}
+	}
+	e, err := echo.NewEchoWithOptions(cert, private_key, opts)
 	if err != nil {
 		return nil, err
 	}
