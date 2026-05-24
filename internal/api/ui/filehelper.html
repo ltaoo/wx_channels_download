@@ -743,11 +743,6 @@
                         continue;
                     }
 
-                    // 忽略 AppMsgType === 0 的消息
-                    if (msg.AppMsgType === 0) {
-                        continue;
-                    }
-
                     // 检查是否已存在
                     const exists = messages.some(m => m.MsgId === msg.MsgId);
                     if (exists) continue;
