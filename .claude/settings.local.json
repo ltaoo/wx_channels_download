@@ -4,7 +4,9 @@
       "Bash(git checkout *)",
       "Bash(python *)",
       "Bash(go build *)",
-      "PowerShell(go build *)"
+      "PowerShell(go build *)",
+      "Bash(go mod *)",
+      "PowerShell(go mod *)"
     ]
   }
 }
