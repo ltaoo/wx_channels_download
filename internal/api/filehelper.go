@@ -18,11 +18,15 @@ import (
 // FinderAutoDownloadCallback 视频号自动下载回调
 type FinderAutoDownloadCallback func(objectID, objectNonceID string) error
 
+// SphAutoDownloadCallback SPH 自动下载回调
+type SphAutoDownloadCallback func(sphUrl string) error
+
 // FileHelperHandler 文件传输助手处理器
 type FileHelperHandler struct {
 	client               *filehelper.Client
 	mu                   sync.RWMutex
 	onFinderAutoDownload FinderAutoDownloadCallback
+	onSphAutoDownload    SphAutoDownloadCallback
 }
 
 // NewFileHelperHandler 创建处理器
@@ -35,6 +39,13 @@ func (h *FileHelperHandler) SetFinderAutoDownloadCallback(cb FinderAutoDownloadC
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.onFinderAutoDownload = cb
+}
+
+// SetSphAutoDownloadCallback 设置 SPH 自动下载回调
+func (h *FileHelperHandler) SetSphAutoDownloadCallback(cb SphAutoDownloadCallback) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onSphAutoDownload = cb
 }
 
 // GetClient 获取或创建客户端
@@ -228,39 +239,54 @@ func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 // processFinderMessages 处理视频号消息，自动创建下载任务
 func (h *FileHelperHandler) processFinderMessages(messages []map[string]interface{}) {
 	h.mu.RLock()
-	callback := h.onFinderAutoDownload
+	finderCallback := h.onFinderAutoDownload
+	sphCallback := h.onSphAutoDownload
 	h.mu.RUnlock()
 
-	if callback == nil {
-		return
-	}
-
 	for _, msg := range messages {
-		// 检查 MsgType 是否为 49（应用消息）
 		msgType, ok := msg["MsgType"].(float64)
-		if !ok || int(msgType) != 49 {
+		if !ok {
 			continue
 		}
 
-		// 获取消息内容
-		content, ok := msg["Content"].(string)
-		if !ok || content == "" {
-			continue
+		// 处理应用消息（视频号）
+		if int(msgType) == 49 {
+			// 检查 MsgType 是否为 49（应用消息）
+			content, ok := msg["Content"].(string)
+			if !ok || content == "" {
+				continue
+			}
+
+			// 解析视频号消息
+			finderData, err := parseFinderFeed(content)
+			if err != nil || finderData == nil {
+				continue
+			}
+
+			// 检查是否包含必要的字段
+			if finderData.ObjectID == "" || finderData.ObjectNonceID == "" {
+				continue
+			}
+
+			// 调用回调创建下载任务
+			if finderCallback != nil {
+				go finderCallback(finderData.ObjectID, finderData.ObjectNonceID)
+			}
 		}
 
-		// 解析视频号消息
-		finderData, err := parseFinderFeed(content)
-		if err != nil || finderData == nil {
-			continue
-		}
+		// 处理文本消息
+		if int(msgType) == 1 {
+			content, ok := msg["Content"].(string)
+			if !ok || content == "" {
+				continue
+			}
 
-		// 检查是否包含必要的字段
-		if finderData.ObjectID == "" || finderData.ObjectNonceID == "" {
-			continue
+			// 提取 SPH URL
+			sphUrl := extractSphUrl(content)
+			if sphUrl != "" && sphCallback != nil {
+				go sphCallback(sphUrl)
+			}
 		}
-
-		// 调用回调创建下载任务
-		go callback(finderData.ObjectID, finderData.ObjectNonceID)
 	}
 }
 
@@ -447,4 +473,16 @@ func parseFinderFeed(content string) (*FinderFeedData, error) {
 		ObjectID:      strings.TrimSpace(feed.ObjectID),
 		ObjectNonceID: strings.TrimSpace(feed.ObjectNonceID),
 	}, nil
+}
+
+// extractSphUrl 从文本中提取 SPH URL
+func extractSphUrl(content string) string {
+	// 匹配 https://weixin.qq.com/sph/... 格式的 URL，前后可能有空格
+	pattern := `https://weixin\.qq\.com/sph/\w+`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindAllString(content, -1)
+	if len(matches) > 0 {
+		return matches[0]
+	}
+	return ""
 }

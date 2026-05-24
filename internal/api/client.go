@@ -92,6 +92,8 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 
 	// 设置文件传输助手视频号自动下载回调
 	client.filehelper.SetFinderAutoDownloadCallback(client.autoCreateChannelsTask)
+	// 设置文件传输助手 SPH 自动下载回调
+	client.filehelper.SetSphAutoDownloadCallback(client.autoDownloadSphVideo)
 
 	client.SetupRoutes()
 	return client
@@ -349,7 +351,9 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 
 	payload, err := c.createFeedTaskBody(objectID, objectNonceID, "", "", false, false)
 	if err != nil {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
 		c.logger.Error().Err(err).Msg("构建下载任务失败")
+		c.sendMessageToFilehelper(errMsg)
 		return err
 	}
 
@@ -361,6 +365,9 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 	}
 
 	if payload.Id == "" {
+		errMsg := "✗ 视频号下载失败: 缺少 feed id"
+		c.logger.Error().Msg("缺少 feed id")
+		c.sendMessageToFilehelper(errMsg)
 		return fmt.Errorf("缺少 feed id")
 	}
 
@@ -386,13 +393,135 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
 		c.logger.Error().Err(err).Msg("序列化请求参数失败")
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("序列化请求参数失败: %w", err)
+	}
+
+	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+		c.logger.Error().Err(err).Str("url", targetURL).Msg("请求创建任务接口失败")
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("请求创建任务接口失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", string(bodyBytes))
+		c.logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("创建任务失败")
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	c.logger.Info().
+		Str("url", targetURL).
+		Msg("自动创建下载任务请求发送成功")
+
+	// 发送成功消息
+	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", payload.Filename)
+	c.sendMessageToFilehelper(successMsg)
+
+	return nil
+}
+
+// sendMessageToFilehelper 发送消息到 filehelper
+func (c *APIClient) sendMessageToFilehelper(msg string) {
+	go func() {
+		fhClient := c.filehelper.GetClient()
+		if err := fhClient.SendText(msg); err != nil {
+			c.logger.Warn().Err(err).Str("msg", msg).Msg("发送消息失败")
+		} else {
+			c.logger.Info().Str("msg", msg).Msg("消息发送成功")
+		}
+	}()
+}
+
+// autoDownloadSphVideo 从 SPH URL 自动下载视频
+func (c *APIClient) autoDownloadSphVideo(sphUrl string) error {
+	c.logger.Info().
+		Str("url", sphUrl).
+		Msg("收到 SPH URL，开始获取视频信息")
+
+	// 从配置获取 cookie
+	cookie := c.cfg.CloudflareSphCookie
+	if cookie == "" {
+		c.logger.Error().Msg("cloudflare.sphCookie not configured")
+		c.sendMessageToFilehelper("✗ SPH 下载失败: 未配置 cookie")
+		return fmt.Errorf("cloudflare.sphCookie not configured")
+	}
+
+	// 获取视频信息
+	feedResp, err := fetchVideoProfileWithShareUrl(sphUrl, cookie)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("获取视频信息失败")
+		c.sendMessageToFilehelper(fmt.Sprintf("✗ SPH 下载失败: %s", err.Error()))
+		return fmt.Errorf("获取视频信息失败: %w", err)
+	}
+
+	// 处理 video URL：仅保留 encfilekey 和 token 参数，存储为 originVideoUrl
+	if feedResp != nil && feedResp.Data.Feedinfo.Videourl != "" {
+		feedResp.Data.Feedinfo.OriginVideoUrl = cleanVideoURL(feedResp.Data.Feedinfo.Videourl)
+	}
+
+	if feedResp == nil || feedResp.Data.Feedinfo.OriginVideoUrl == "" {
+		c.logger.Error().Msg("获取 originVideoUrl 失败")
+		c.sendMessageToFilehelper("✗ SPH 下载失败: 无法获取视频链接")
+		return fmt.Errorf("获取 originVideoUrl 失败")
+	}
+
+	// 构建下载任务
+	downloadUrl := feedResp.Data.Feedinfo.OriginVideoUrl
+	filename := feedResp.Data.Feedinfo.Description
+	if filename == "" {
+		filename = feedResp.Data.Authorinfo.Nickname + "_" + util.NowSecondsStr()
+	}
+	// 添加 .mp4 后缀
+	if !strings.HasSuffix(filename, ".mp4") {
+		filename += ".mp4"
+	}
+
+	// 创建下载任务
+	taskBody := &DownloadTaskPayload{
+		URL:      downloadUrl,
+		Filename: filename,
+		Dir:      "",
+		Extra:    make(map[string]string),
+	}
+
+	// 发送创建任务请求
+	var targetURL string
+	if c.cfg.RemoteServerEnabled {
+		protocol := c.cfg.RemoteServerProtocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create2", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
+	} else {
+		protocol := c.cfg.Protocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		hostname := c.cfg.Hostname
+		if hostname == "0.0.0.0" {
+			hostname = "127.0.0.1"
+		}
+		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create2", protocol, hostname, c.cfg.Port)
+	}
+
+	jsonData, err := json.Marshal(taskBody)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("序列化请求参数失败")
+		c.sendMessageToFilehelper(fmt.Sprintf("✗ SPH 下载失败: %s", err.Error()))
 		return fmt.Errorf("序列化请求参数失败: %w", err)
 	}
 
 	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		c.logger.Error().Err(err).Str("url", targetURL).Msg("请求创建任务接口失败")
+		c.sendMessageToFilehelper(fmt.Sprintf("✗ SPH 下载失败: %s", err.Error()))
 		return fmt.Errorf("请求创建任务接口失败: %w", err)
 	}
 	defer resp.Body.Close()
@@ -400,12 +529,18 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		c.logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("创建任务失败")
+		c.sendMessageToFilehelper(fmt.Sprintf("✗ SPH 下载失败: 创建任务失败"))
 		return fmt.Errorf("创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	c.logger.Info().
 		Str("url", targetURL).
-		Msg("自动创建下载任务请求发送成功")
+		Str("filename", filename).
+		Msg("自动创建 SPH 下载任务请求发送成功")
+
+	// 发送下载开始的消息到 filehelper
+	successMsg := fmt.Sprintf("✓ SPH 已开始下载: %s", filename)
+	c.sendMessageToFilehelper(successMsg)
 
 	return nil
 }
