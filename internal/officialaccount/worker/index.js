@@ -34,7 +34,7 @@ const TOKEN_CACHE = new Set();
 
 // Load tokens from DB to cache
 async function loadTokens(env) {
-  if (TOKEN_CACHE !== null) return;
+  if (TOKEN_CACHE.size > 0) return;
 
   try {
     // Create table if not exists (in case migration didn't run)
@@ -54,10 +54,10 @@ async function loadTokens(env) {
 
 // Token validation
 function validateToken(token) {
-  if (TOKEN_CACHE.size === 0) {
-    return true;
-  }
   if (!token) return false;
+  if (TOKEN_CACHE.size === 0) {
+    return false;
+  }
   return TOKEN_CACHE.has(token);
 }
 
@@ -564,11 +564,7 @@ async function handleAddToken(request, env) {
       .run();
 
     // Update cache
-    if (TOKEN_CACHE === null) {
-      await loadTokens(env);
-    } else {
-      TOKEN_CACHE.add(token);
-    }
+    TOKEN_CACHE.add(token);
 
     return Result.Ok({ token }, "Token added successfully");
   } catch (error) {
@@ -603,9 +599,7 @@ async function handleDeleteToken(request, env) {
       .run();
 
     // Update cache
-    if (TOKEN_CACHE !== null) {
-      TOKEN_CACHE.delete(token);
-    }
+    TOKEN_CACHE.delete(token);
 
     return Result.Ok({ token }, "Token deleted successfully");
   } catch (error) {
@@ -632,6 +626,9 @@ export default {
         },
       });
     }
+
+    // Ensure tokens are loaded from DB
+    await loadTokens(env);
 
     // Route handling
     try {
