@@ -1839,9 +1839,17 @@ function ChannelsWebsocketClient() {
             });
             return;
           }
-          var r = await fetchFeedProfileWith({
+          var [err, r] = await fetchFeedProfileWith({
             eid: dynamicExportId,
           });
+          if (err) {
+            resp({
+              errCode: 1011,
+              errMsg: err.message,
+              payload: null,
+            });
+            return;
+          }
           var { object } = r.data;
           resp({
             ...r,
