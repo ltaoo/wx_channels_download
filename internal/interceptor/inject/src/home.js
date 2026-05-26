@@ -151,8 +151,4 @@ WXU.onDOMContentLoaded(function () {
     WXU.set_cur_video();
     WXU.set_feed(feed);
   });
-  WXE.onFeed((feed) => {
-    console.log("[main.js]WXU.onFeed", feed);
-    WXU.set_feed(feed);
-  });
 });

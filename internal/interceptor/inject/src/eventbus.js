@@ -260,6 +260,40 @@ var WXE = (() => {
   };
 })();
 
+// Emit Feed event when any feed-related event fires
+document.addEventListener("DOMContentLoaded", function () {
+  WXE.onPCFlowLoaded((feeds) => {
+    feeds.forEach((feed) => WXE.emit(WXE.Events.Feed, feed));
+  });
+  WXE.onRecommendFeedsLoaded((feeds) => {
+    feeds.forEach((feed) => WXE.emit(WXE.Events.Feed, feed));
+  });
+  WXE.onInteractionedFeedsLoaded((feeds) => {
+    feeds.forEach((feed) => WXE.emit(WXE.Events.Feed, feed));
+  });
+  WXE.onUserFeedsLoaded((feeds) => {
+    feeds.forEach((feed) => WXE.emit(WXE.Events.Feed, feed));
+  });
+  WXE.onLiveUserFeedsLoaded((feeds) => {
+    feeds.forEach((feed) => WXE.emit(WXE.Events.Feed, feed));
+  });
+  WXE.onFetchFeedProfile((feed) => {
+    WXE.emit(WXE.Events.Feed, feed);
+  });
+  WXE.onFetchLiveProfile((live) => {
+    WXE.emit(WXE.Events.Feed, live);
+  });
+  WXE.onGotoNextFeed((feed) => {
+    WXE.emit(WXE.Events.Feed, feed);
+  });
+  WXE.onGotoPrevFeed((feed) => {
+    WXE.emit(WXE.Events.Feed, feed);
+  });
+  WXE.onHomeFeedChanged((feed) => {
+    WXE.emit(WXE.Events.Feed, feed);
+  });
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   WXE.emit(WXE.Events.DOMContentLoaded, {
     href: window.location.href,

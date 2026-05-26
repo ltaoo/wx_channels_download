@@ -315,7 +315,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var feeds = result.data.object;
 					// console.log("before PCFlowLoaded", result.data);
 					WXU.emit(WXU.Events.PCFlowLoaded, feeds);
-					WXU.emit(WXU.Events.Feed, feeds);
 					return result;
 				}async`
 						js_script = jsPCFlowReg.ReplaceAllString(js_script, js_pc_flow)
@@ -328,7 +327,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var feeds = result.data.object;
 					// console.log("before RecommendFeedsLoaded", result.data);
 					WXU.emit(WXU.Events.RecommendFeedsLoaded, feeds);
-					WXU.emit(WXU.Events.Feed, feeds);
 					return result;
 				}async`
 						js_script = jsRecommendFeedsReg.ReplaceAllString(js_script, js_recommend_feeds)
@@ -341,7 +339,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var feed = result.data.object;
 					// console.log("before FeedProfileLoaded", result.data);
 					WXU.emit(WXU.Events.FeedProfileLoaded, feed);
-					WXU.emit(WXU.Events.Feed, feed);
 					return result;
 				}async`
 						js_script = jsFeedProfileReg.ReplaceAllString(js_script, js_feed_profile)
@@ -385,7 +382,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						var feeds = result.data.object;
 						// console.log("before finderGetInteractionedFeedList", result, $1);
 						WXU.emit(WXU.Events.InteractionedFeedsLoaded, feeds);
-						WXU.emit(WXU.Events.Feed, feeds);
 						return result;
 					}}const`
 						js_script = jsFinderGetInteractionedFeedListReg.ReplaceAllString(js_script, js_finder_interactioned)
@@ -398,7 +394,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var feeds = result.data.object;
 					// console.log("before UserFeedsLoaded", result.data, $1);
 					WXU.emit(WXU.Events.UserFeedsLoaded, feeds);
-					WXU.emit(WXU.Events.Feed, feeds);
 					return result;
 				}async`
 						js_script = jsUserFeedsReg.ReplaceAllString(js_script, js_user_feed)
@@ -411,7 +406,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						var feeds = result.data.object;
 						// console.log("before LiveUserFeedsLoaded", result.data, $1);
 						WXU.emit(WXU.Events.LiveUserFeedsLoaded, feeds);
-						WXU.emit(WXU.Events.Feed, feeds);
 						return result;
 					}async`
 						js_script = jsLiveFeedListReg.ReplaceAllString(js_script, js_live_feed_list)
@@ -424,7 +418,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					var live = result.data;
 					// console.log("before LiveProfileLoaded", result.data);
 					WXU.emit(WXU.Events.LiveProfileLoaded, live);
-					WXU.emit(WXU.Events.Feed, live);
 					return result;
 				}async`
 						js_script = jsLiveInfoReg.ReplaceAllString(js_script, js_live_profile)
@@ -488,7 +481,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						// console.log("before GotoNextFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoNextFeed, feed);
-						WXU.emit(WXU.Events.Feed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
 					}
@@ -502,7 +494,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						// console.log("before GotoPrevFeed", %[1]s, feed);
 						WXU.emit(WXU.Events.GotoPrevFeed, feed);
-						WXU.emit(WXU.Events.Feed, feed);
 					}`, flow_list_variable_name)
 						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
@@ -523,7 +514,6 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						WXU.emit(WXU.Events.HomeFeedChanged, feed);
-						WXU.emit(WXU.Events.Feed, feed);
 					}`, local_feed_list_variable_name)
 						js_script = jsLoadLocalPlaylistReg.ReplaceAllString(js_script, js_load_local)
 					}
