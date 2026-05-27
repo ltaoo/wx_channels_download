@@ -1648,13 +1648,20 @@ async function fetchExportIdWithShareId(data) {
   /** @type {SharedFeedProfileResp} */
   try {
     var shared = await getFeedInfo(payload);
-    if (!shared.data.sceneInfo.dynamicExportId) {
-      return [
-        new Error("getFeedInfo failed, missing 'sceneInfo.dynamicExportId'"),
-        null,
-      ];
+    if (shared.data) {
+      if (shared.data.sceneInfo) {
+        if (shared.data.sceneInfo.dynamicExportId) {
+          return [null, shared.data.sceneInfo.dynamicExportId];
+        }
+        return [new Error("missing 'sceneInfo.dynamicExportId'"), null];
+      }
+      if (shared.data.errMsg) {
+        if (shared.data.errMsg.title) {
+          return [new Error(shared.data.errMsg.title), null];
+        }
+      }
     }
-    return [null, shared.data.sceneInfo.dynamicExportId];
+    return [new Error("getFeedInfo failed"), null];
   } catch (err) {
     return [err, null];
   }
@@ -1664,9 +1671,15 @@ async function fetchFeedProfileWith(data) {
     if (data.url.match(/sph/)) {
       var [err, eid] = await fetchExportIdWithShareId(data);
       if (err) {
-        return [err, null];
+        var m = data.url.match(/\/([a-zA-Z0-9]{1,})$/);
+        if (m[1]) {
+          data.eid = m[1];
+        } else {
+          return [err, null];
+        }
+      } else {
+        data.eid = eid;
       }
-      data.eid = eid;
     } else {
       var u = new URL(decodeURIComponent(data.url));
       data.oid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("oid"));
@@ -1697,9 +1710,9 @@ async function fetchFeedProfileWith(data) {
   }
   try {
     var r = await WXU.API.finderGetCommentDetail(payload);
-    return [null, r];
+    return [null, r, payload];
   } catch (err) {
-    return [err, null];
+    return [err, null, null];
   }
 }
 
@@ -1812,13 +1825,14 @@ function ChannelsWebsocketClient() {
       }
       if (key === "key:channels:feed_profile") {
         console.log("before finderGetCommentProfile", data);
-        var [err, r] = await fetchFeedProfileWith(data);
+        var [err, r, payload] = await fetchFeedProfileWith(data);
         if (err) {
           resp({
             errCode: 1011,
             errMsg: err.message,
             payload: null,
           });
+          return;
         }
         /** @type {MediaProfileResp} */
         var { object } = r.data;
@@ -1826,36 +1840,7 @@ function ChannelsWebsocketClient() {
           ...r,
           payload,
         });
-      }
-      if (key === "key:channels:shared_feed_profile") {
-        console.log("before getFeedInfo", data);
-        try {
-          var [error, dynamicExportId] = await fetchExportIdWithShareId(data);
-          if (error) {
-            resp({
-              errCode: 1011,
-              errMsg: error.message,
-              payload: null,
-            });
-            return;
-          }
-          var r = await fetchFeedProfileWith({
-            eid: dynamicExportId,
-          });
-          var { object } = r.data;
-          resp({
-            ...r,
-            payload,
-          });
-          return;
-        } catch (err) {
-          resp({
-            errCode: 1011,
-            errMsg: err.message,
-            payload: null,
-          });
-          return;
-        }
+        return;
       }
       if (key === "key:channels:fetch_feed_comment_list") {
         // console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
@@ -1930,6 +1915,7 @@ function ChannelsWebsocketClient() {
         errMsg: "未匹配的key",
         payload: msg,
       });
+      return;
     },
   };
   return {
