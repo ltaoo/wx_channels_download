@@ -179,6 +179,7 @@ WXU.onDOMContentLoaded(function () {
     loaded = true;
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
   });
@@ -186,19 +187,18 @@ WXU.onDOMContentLoaded(function () {
     console.log("[feed.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onGotoPrevFeed((feed) => {
     console.log("[feed.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onHomeFeedChanged((feed) => {
     console.log("[feed.js]WXU.onHomeFeedChanged", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
-  });
-  WXE.onFeed((feed) => {
-    console.log("[feed.js]WXU.onFeed", feed);
-    WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
 });
