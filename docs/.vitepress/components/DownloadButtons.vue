@@ -1,52 +1,46 @@
 <template>
-  <ClientOnly>
-    <div class="download-section">
-      <!-- 加载中 -->
-      <div v-if="loading" class="loading">正在加载下载信息...</div>
+  <div class="download-section">
+    <!-- 数据获取失败时的降级 -->
+    <div v-if="!data" class="fallback">
+      <p>无法获取最新版本信息，请前往 GitHub Releases 页面下载：</p>
+      <a
+        href="https://github.com/ltaoo/wx_channels_download/releases"
+        target="_blank"
+        class="fallback-link"
+      >
+        前往 GitHub Releases
+      </a>
+    </div>
 
-      <!-- 数据获取失败时的降级 -->
-      <div v-else-if="!data" class="fallback">
-        <p>无法获取最新版本信息，请前往 GitHub Releases 页面下载：</p>
-        <a
-          href="https://github.com/ltaoo/wx_channels_download/releases"
-          target="_blank"
-          class="fallback-link"
-        >
-          前往 GitHub Releases
-        </a>
+    <!-- 正常展示 -->
+    <template v-else>
+      <!-- 版本信息 -->
+      <div class="version-header" style="margin-bottom: 16px; text-align: center;">
+        <span class="version-badge">{{ data.tag }}</span>
       </div>
 
-      <!-- 正常展示 -->
-      <template v-else>
-        <!-- 主下载按钮（根据检测到的平台） -->
-        <div class="primary-section">
-          
-          <div v-if="primaryAsset" class="" style="display: flex; align-items: center; gap: 12px;">
-            <a :href="primaryAsset.url" class="primary-btn">
-              <svg class="btn-download-icon" viewBox="0 0 24 24" width="18" height="18">
-                <path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 3h14v2H5v-2z"/>
-              </svg>
-              下载 {{ platformLabel }} 版
-            </a> 
-            <div class="" style="margin-top: 8px;">
-              <!-- 版本信息 -->
-              <div class="version-header">
-                <span class="version-badge">{{ data.tag }}</span>
-              </div>
-              <div class="primary-meta">
-                <span>{{ primaryAsset.name }}</span>
-                <span v-if="primaryAsset.humanSize" class="file-size">{{ primaryAsset.humanSize }}</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="primary-download">
-            <span class="no-asset">当前平台暂无构建，请从下方选择其他平台</span>
+      <!-- 主下载按钮（延迟到客户端水合后，根据检测到的平台展示） -->
+      <div v-if="mounted" class="primary-section">
+        <div v-if="primaryAsset" class="" style="display: flex; align-items: center; gap: 12px;">
+          <a :href="primaryAsset.url" class="primary-btn">
+            <svg class="btn-download-icon" viewBox="0 0 24 24" width="18" height="18">
+              <path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 3h14v2H5v-2z"/>
+            </svg>
+            下载 {{ platformLabel }} 版
+          </a>
+          <div class="primary-meta">
+            <span>{{ primaryAsset.name }}</span>
+            <span v-if="primaryAsset.humanSize" class="file-size">{{ primaryAsset.humanSize }}</span>
           </div>
         </div>
+        <div v-else class="primary-download">
+          <span class="no-asset">当前平台暂无构建，请从下方选择其他平台</span>
+        </div>
+      </div>
 
-        <!-- 三大平台下载卡片 -->
-        <div class="platform-title">其他平台下载</div>
-        <div class="platform-cards">
+      <!-- 三大平台下载卡片 -->
+      <div class="platform-title">{{ mounted ? '其他平台下载' : '选择您的平台下载' }}</div>
+      <div class="platform-cards">
           <div
             v-for="p in platforms"
             :key="p.key"
@@ -93,9 +87,8 @@
         <div class="footer-links">
           <a :href="data.url" target="_blank" rel="noopener">在 GitHub 查看所有版本</a>
         </div>
-      </template>
-    </div>
-  </ClientOnly>
+    </template>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -109,7 +102,7 @@ declare const __RELEASE_DATA__: {
 } | null
 
 const data = __RELEASE_DATA__
-const loading = ref(false)
+const mounted = ref(false)
 const detectedPlatform = ref<string | null>(null)
 const detectedArch = ref<string | null>(null)
 
@@ -263,10 +256,9 @@ const platforms = computed(() => {
 // ---------- 挂载 ----------
 
 onMounted(async () => {
-  loading.value = true
   detectedPlatform.value = detectPlatform()
   detectedArch.value = await detectArch()
-  loading.value = false
+  mounted.value = true
 })
 </script>
 
@@ -278,9 +270,8 @@ onMounted(async () => {
   background: var(--vp-c-bg-soft);
 }
 
-/* ---------- 加载 / 降级 ---------- */
+/* ---------- 降级 ---------- */
 
-.loading,
 .fallback {
   text-align: center;
   color: var(--vp-c-text-2);
