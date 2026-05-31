@@ -1,6 +1,5 @@
 <template>
-  <ClientOnly>
-    <div class="VPHero VPHomeHero" v-bind="$attrs">
+  <div class="VPHero VPHomeHero" v-bind="$attrs">
       <div class="container">
         <div class="main">
           <!-- 名称 -->
@@ -18,20 +17,22 @@
               {{ startText }}
             </a>
 
-            <!-- 下载按钮 -->
-            <a
-              v-if="data && primaryAsset"
-              class="VPButton alt download-btn"
-              :href="primaryAsset.url"
-            >
-              <svg class="download-icon" viewBox="0 0 24 24" width="16" height="16">
-                <path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 3h14v2H5v-2z"/>
-              </svg>
-              下载 {{ platformLabel }} 版
-            </a>
-            <a v-else class="VPButton alt" :href="withBase(startLink)">
-              下载最新版
-            </a>
+            <!-- 下载按钮（延迟到客户端水合后再显示） -->
+            <template v-if="mounted">
+              <a
+                v-if="data && primaryAsset"
+                class="VPButton alt download-btn"
+                :href="primaryAsset.url"
+              >
+                <svg class="download-icon" viewBox="0 0 24 24" width="16" height="16">
+                  <path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 3h14v2H5v-2z"/>
+                </svg>
+                下载 {{ platformLabel }} 版
+              </a>
+              <a v-else class="VPButton alt" :href="withBase(startLink)">
+                下载最新版
+              </a>
+            </template>
 
             <!-- 版本标记 -->
             <span v-if="data" class="hero-version">最新 {{ data.tag }}</span>
@@ -53,7 +54,6 @@
         </div>
       </div>
     </div>
-  </ClientOnly>
 </template>
 
 <script setup lang="ts">
@@ -89,6 +89,7 @@ declare const __RELEASE_DATA__: {
 } | null
 
 const data = __RELEASE_DATA__
+const mounted = ref(false)
 const detectedPlatform = ref<string | null>(null)
 const detectedArch = ref<string | null>(null)
 
@@ -165,6 +166,7 @@ const primaryAsset = computed(() => {
 onMounted(async () => {
   detectedPlatform.value = detectPlatform()
   detectedArch.value = await detectArch()
+  mounted.value = true
 })
 </script>
 
