@@ -122,6 +122,7 @@ WXU.onDOMContentLoaded(function () {
     home_page_mounted = true;
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
   });
@@ -133,6 +134,7 @@ WXU.onDOMContentLoaded(function () {
     home_page_mounted = true;
     WXU.set_cur_video();
     WXU.set_feed(feeds[0]);
+    WXU.emit(WXE.Events.Feed, feeds[0]);
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
   });
@@ -140,19 +142,18 @@ WXU.onDOMContentLoaded(function () {
     console.log("[main.js]WXU.onGotoNextFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onGotoPrevFeed((feed) => {
     console.log("[main.js]WXU.onGotoPrevFeed", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onHomeFeedChanged((feed) => {
     console.log("[main.js]WXU.onHomeFeedChanged", feed);
     WXU.set_cur_video();
     WXU.set_feed(feed);
-  });
-  WXE.onFeed((feed) => {
-    console.log("[main.js]WXU.onFeed", feed);
-    WXU.set_feed(feed);
+    WXU.emit(WXE.Events.Feed, feed);
   });
 });

@@ -527,6 +527,38 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 	return []*proxy.Plugin{plugin1, plugin2}
 }
 
+// CreateYuanbaoTencentPlugin 拦截 yuanbao.tencent.com/api 的请求与响应，提取请求头中的 Cookie 和响应头中的 Set-Cookie 并通过回调传出。
+// 回调中的 cookieStr 是 Cookie / Set-Cookie 值。
+func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy.Plugin {
+	isAPIPath := func(ctx proxy.Context) bool {
+		return ctx.Req().URL.Hostname() == "yuanbao.tencent.com" && strings.HasPrefix(ctx.Req().URL.Path, "/api")
+	}
+	return &proxy.Plugin{
+		Match: "yuanbao.tencent.com",
+		OnRequest: func(ctx proxy.Context) {
+			if !isAPIPath(ctx) {
+				return
+			}
+			cookie := ctx.Req().Header.Get("Cookie")
+			if cookie != "" && onCookieExtracted != nil {
+				onCookieExtracted(cookie)
+			}
+		},
+		OnResponse: func(ctx proxy.Context) {
+			if !isAPIPath(ctx) {
+				return
+			}
+			cookies := ctx.Res().Header.Values("Set-Cookie")
+			if len(cookies) > 0 {
+				cookieValue := strings.Join(cookies, "; ")
+				if onCookieExtracted != nil {
+					onCookieExtracted(cookieValue)
+				}
+			}
+		},
+	}
+}
+
 func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
 	version := interceptor.Version
 	v := "?t=" + version

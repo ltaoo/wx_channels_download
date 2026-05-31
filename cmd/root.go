@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"runtime"
 	"syscall"
 	"time"
@@ -162,6 +163,26 @@ func root_command(cfg *config.Config) {
 			},
 		})
 	}
+	interceptor_srv.Interceptor.AddPostPlugin(interceptor.CreateYuanbaoTencentPlugin(func(cookieStr string) {
+		allowedKeys := map[string]bool{"hy_source": true, "hy_user": true, "hy_token": true}
+		var filtered []string
+		for _, kv := range strings.Split(cookieStr, ";") {
+			kv = strings.TrimSpace(kv)
+			idx := strings.Index(kv, "=")
+			if idx == -1 {
+				continue
+			}
+			key := kv[:idx]
+			if allowedKeys[key] {
+				filtered = append(filtered, kv)
+			}
+		}
+		if len(filtered) > 0 {
+			api_cfg.CloudflareSphCookie = strings.Join(filtered, "; ")
+			fmt.Println("yuanbao cookie")
+			fmt.Println(api_cfg.CloudflareSphCookie)
+		}
+	}))
 	mgr.RegisterServer(interceptor_srv)
 	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	if api_cfg.RemoteServerEnabled {
