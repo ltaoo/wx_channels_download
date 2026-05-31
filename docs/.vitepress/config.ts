@@ -33,7 +33,56 @@ function getLatestRelease() {
   return dates[0] || "251201"; // 如果没有文件，返回默认值
 }
 
-export default defineConfig({
+// 构建时从 GitHub Release API 获取最新版本下载信息
+async function fetchReleaseData() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
+      "https://api.github.com/repos/ltaoo/wx_channels_download/releases/latest",
+      {
+        headers: { Accept: "application/vnd.github+json" },
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const release = await res.json();
+    return {
+      tag: release.tag_name,
+      url: release.html_url,
+      assets: (release.assets || []).map((a: any) => ({
+        name: a.name,
+        url: a.browser_download_url,
+        size: a.size,
+      })),
+    };
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+}
+
+export default defineConfig(async () => {
+  const latestReleaseDate = getLatestRelease();
+  const releaseItems = getReleaseItems();
+  // 使用模拟数据验证组件（取消注释以使用模拟数据）
+  const releaseData = await fetchReleaseData();
+  /* const releaseData = {
+    tag: "v260531",
+    url: "https://github.com/litaoo/wx_channels_download/releases/tag/v260531",
+    assets: [
+      { name: "wx_video_download_v260531_darwin_arm64.zip", url: "https://example.com/darwin_arm64.zip", size: 8_388_608 },
+      { name: "wx_video_download_v260531_darwin_x86_64.zip", url: "https://example.com/darwin_x86_64.zip", size: 8_500_000 },
+      { name: "wx_video_download_v260531_windows_x86_64.zip", url: "https://example.com/windows_x86_64.zip", size: 7_200_000 },
+      { name: "wx_video_download_safe_v260531_windows_x86_64.zip", url: "https://example.com/safe_windows_x86_64.zip", size: 14_000_000 },
+      { name: "wx_video_download_v260531_windows_arm64.zip", url: "https://example.com/windows_arm64.zip", size: 6_800_000 },
+      { name: "wx_video_download_v260531_linux_x86_64.tar.gz", url: "https://example.com/linux_x86_64.tar.gz", size: 12_000_000 },
+      { name: "wx_video_download_v260531_linux_arm64.tar.gz", url: "https://example.com/linux_arm64.tar.gz", size: 11_500_000 },
+    ],
+  }; */
+
+  return {
   lang: "zh-CN",
   title: "wx_channels_download",
   description: "微信视频号下载工具文档",
@@ -46,7 +95,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "首页", link: "/" },
-      { text: "Releases", link: `/releases/${getLatestRelease()}` },
+      { text: "Releases", link: `/releases/${latestReleaseDate}` },
       { text: "API Playground", link: "/feature/playground" },
       { text: "FAQ", link: "/faq/button_inject_failed" },
     ],
@@ -103,7 +152,7 @@ export default defineConfig({
       {
         text: "常见问题",
         items: [
-          { text: "注入下载按钮失败", link: "/faq/button_inject_failed" },
+          { text: "没有下载按钮", link: "/faq/button_inject_failed" },
           { text: "下载卡住", link: "/faq/download_stuck" },
           { text: "解密失败", link: "/faq/decrypt_fail" },
           { text: "网络无法访问", link: "/faq/network_failed" },
@@ -112,7 +161,7 @@ export default defineConfig({
       },
       {
         text: "发布日志",
-        items: getReleaseItems(),
+        items: releaseItems,
       },
     ],
     socialLinks: [
@@ -123,4 +172,10 @@ export default defineConfig({
       provider: "local",
     },
   },
+  vite: {
+    define: {
+      __RELEASE_DATA__: JSON.stringify(releaseData),
+    },
+  },
+};
 });

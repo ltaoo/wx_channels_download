@@ -14,9 +14,6 @@ title: 下载
 
 下载对应平台的构建包：<https://github.com/ltaoo/wx_channels_download/releases>
 
-<!-- <ClientOnly>
-<DownloadButton />
-</ClientOnly> -->
 
 ## 如何选择构建包
 

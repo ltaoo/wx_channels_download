@@ -36,3 +36,18 @@ title: 步骤
 | 首页推荐 | 视频详情页 |
 | --- | --- |
 | ![首页推荐](../assets/fixed_btn1.jpg) | ![视频详情页](../assets/fixed_btn2.jpg) |
+
+
+## 没有下载按钮
+
+如果打开视频号没有下载按钮请先检查系统代理是否如下所示
+
+### win 系统
+
+![系统代理](../assets/system_proxy_win.png)
+
+
+### macos 系统
+
+![系统代理](../assets/system_proxy_macos.png)
+
