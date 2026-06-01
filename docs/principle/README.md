@@ -8,6 +8,6 @@
 
 ## 相关文档
 
-- [功能文档](../feature/)
-- [使用指南](../guide/)
-- [版本日志](../releases/)
+- [功能文档](../feature/api.md)
+- [使用指南](../guide/start.md)
+- [版本日志](../releases.md)
