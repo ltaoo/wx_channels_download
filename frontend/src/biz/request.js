@@ -108,6 +108,15 @@ export function fetchAppStatus() {
   return request.get("/api/status");
 }
 
+export function fetchAppConfig() {
+  return request.get("/api/config");
+}
+
+/** @param {{ values: Record<string, any> }} body */
+export function updateAppConfig(body) {
+  return request.post("/api/config", body);
+}
+
 /** @param {{ URL?: string; url?: string; Filename?: string; filename?: string; Dir?: string; dir?: string; Extra?: Record<string, string>; extra?: Record<string, string> }} body */
 export function createDownloadTask(body) {
   const url = body.url || body.URL || "";

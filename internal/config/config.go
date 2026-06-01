@@ -62,6 +62,9 @@ func New(ver string, mode string) *Config {
 			break
 		}
 	}
+	if config_filepath == "" {
+		config_filepath = filepath.Join(base_dir, filename)
+	}
 	viper.SetConfigFile(config_filepath)
 	c := &Config{
 		RootDir:  base_dir,
@@ -125,19 +128,21 @@ func (c *Config) LoadConfig() error {
 	})
 	Register(ConfigItem{
 		Key:         "cert.file",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeFile,
 		Default:     "",
 		Description: "自定义证书文件绝对路径",
 		Title:       "证书文件",
 		Group:       "Proxy",
+		Accept:      ".pem,.cer,.crt,.key",
 	})
 	Register(ConfigItem{
 		Key:         "cert.key",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeFile,
 		Default:     "",
 		Description: "自定义私钥文件绝对路径",
 		Title:       "私钥文件",
 		Group:       "Proxy",
+		Accept:      ".pem,.key",
 	})
 	Register(ConfigItem{
 		Key:         "cert.name",
@@ -380,6 +385,7 @@ func (c *Config) LoadConfig() error {
 		Description: "指定 API 服务的协议头",
 		Title:       "API 服务协议",
 		Group:       "API",
+		Readonly:    true,
 	})
 	Register(ConfigItem{
 		Key:         "api.hostname",
@@ -447,7 +453,7 @@ func (c *Config) LoadConfig() error {
 	})
 	Register(ConfigItem{
 		Key:         "mp.accountIdsRefreshInterval",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeText,
 		Default:     []string{},
 		Description: "需要定时刷新的帐号列表",
 		Title:       "定时刷新列表",

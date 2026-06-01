@@ -94,6 +94,9 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
 	c.engine.GET("/channels/task/status", c.handleCompatChannelsTaskStatus)
 	c.engine.GET("/channels/task/start", c.handleCompatChannelsTaskStart)
+	// 配置接口
+	c.engine.GET("/api/config", c.handleGetConfig)
+	c.engine.POST("/api/config", c.handleUpdateConfig)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
 	c.engine.GET("/file", c.handleStreamVideo)

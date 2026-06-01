@@ -12,6 +12,8 @@ const (
 	ConfigTypeInt    ConfigType = "number"
 	ConfigTypeFloat  ConfigType = "number"
 	ConfigTypeSelect ConfigType = "select"
+	ConfigTypeFile   ConfigType = "file"
+	ConfigTypeText   ConfigType = "textarea"
 )
 
 type ConfigItem struct {
@@ -22,6 +24,8 @@ type ConfigItem struct {
 	Title       string      `json:"title"`
 	Group       string      `json:"group"`             // e.g., "Network", "Download"
 	Options     []string    `json:"options,omitempty"` // For select type
+	Readonly    bool        `json:"readonly,omitempty"`
+	Accept      string      `json:"accept,omitempty"` // For file type
 }
 
 var Registry []ConfigItem
