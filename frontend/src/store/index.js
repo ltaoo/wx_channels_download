@@ -3,7 +3,8 @@
  */
 import NotFoundPageView from "@/pages/notfound/index.js";
 import HomeLayoutView from "@/pages/home/layout.js";
-import HomeIndexDashboardView from "@/pages/home/index.dashboard.js";
+import HomeIndexPageView from "@/pages/home/index.dashboard.js";
+import DownloadsPageView from "@/pages/home/downloads.js";
 
 ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
 InputPrimitive.setInputProvider(Timeless.web);
@@ -18,9 +19,29 @@ const routes_configure = /** @type {const} */ ({
     children: {
       index: {
         is_default: true,
-        title: "工作台",
-        pathname: "/home/dashboard",
-        component: HomeIndexDashboardView,
+        title: "首页",
+        pathname: "/home/index",
+        component: HomeIndexPageView,
+      },
+      download: {
+        title: "下载列表",
+        pathname: "/home/downloads",
+        component: DownloadsPageView,
+      },
+      accounts: {
+        title: "帐号",
+        pathname: "/accounts",
+        component: Timeless.lazy("@/pages/home/accounts.js"),
+      },
+      videos: {
+        title: "视频列表",
+        pathname: "/videos",
+        component: Timeless.lazy("@/pages/home/videos.js"),
+      },
+      browse: {
+        title: "浏览记录",
+        pathname: "/browse",
+        component: Timeless.lazy("@/pages/home/browse.js"),
       },
       settings: {
         title: "设置",
@@ -105,6 +126,7 @@ export const client$ = new Timeless.HttpClientCore({
     "Content-Type": "application/json",
   },
 });
+Timeless.web.provide_http_client(client$);
 export const user$ = (() => {
   let profile = storage$.get("user");
   const loginListeners = [];
@@ -156,7 +178,6 @@ export const user$ = (() => {
   };
 })();
 client$.appendHeaders({ Authorization: user$.token });
-Timeless.web.provide_http_client(client$);
 // client$.fetch = async (options) => {
 //   const { url, method, id, data, headers } = options;
 //   try {

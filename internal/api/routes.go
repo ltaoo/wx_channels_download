@@ -1,7 +1,10 @@
 package api
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -130,13 +133,52 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 	if err != nil {
 		channels_data["available"] = false
 	}
+	apiAddr := fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port)
+	proxyAddr := "127.0.0.1:2023"
+	if c.cfg.Original != nil {
+		host := c.cfg.Original.GetString("proxy.hostname")
+		port := c.cfg.Original.GetInt("proxy.port")
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		if port <= 0 {
+			port = 2023
+		}
+		proxyAddr = fmt.Sprintf("%s:%d", host, port)
+	}
+	statuses := gin.H{}
+	if c.serviceMgr != nil {
+		for name, status := range c.serviceMgr.GetAllStatus() {
+			statuses[name] = string(status)
+		}
+	}
 	data := gin.H{
-		"version":  c.cfg.Version,
-		"channels": channels_data,
+		"version":         c.cfg.Version,
+		"channels":        channels_data,
+		"server_statuses": statuses,
+		"api": gin.H{
+			"addr":      apiAddr,
+			"listening": checkPort(apiAddr),
+			"status":    statuses["api"],
+		},
+		"proxy": gin.H{
+			"addr":      proxyAddr,
+			"listening": checkPort(proxyAddr),
+			"status":    statuses["interceptor"],
+		},
 	}
 	ctx.JSON(200, gin.H{
 		"code": 0,
 		"msg":  "ok",
 		"data": data,
 	})
+}
+
+func checkPort(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }

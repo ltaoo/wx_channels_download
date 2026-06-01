@@ -24,6 +24,7 @@ import (
 	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
+	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/internal/storage"
 	"wx_channel/pkg/decrypt"
@@ -42,13 +43,16 @@ type APIClient struct {
 	engine        *gin.Engine
 	db            *gorm.DB
 	logger        *zerolog.Logger
+	httpHandler   http.Handler
+	serviceMgr    *manager.ServerManager
 
 	// Services
-	downloadService        *services.DownloadService
-	channelsService        *services.ChannelsService
-	accountService         *services.AccountService
-	contentService         *services.ContentService
-	channelsUploadService  *services.ChannelsUploadService
+	downloadService       *services.DownloadService
+	channelsService       *services.ChannelsService
+	accountService        *services.AccountService
+	contentService        *services.ContentService
+	browseService         *services.BrowseService
+	channelsUploadService *services.ChannelsUploadService
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
@@ -105,23 +109,25 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	channelsService := services.NewChannelsService(channels_client)
 	accountService := services.NewAccountService(db)
 	contentService := services.NewContentService(db)
+	browseService := services.NewBrowseService(db)
 	channelsUploadService := services.NewChannelsUploadService(db, &logger)
 
 	client := &APIClient{
-		downloader:      downloader,
-		official:        officialaccount_client,
-		channels:        channels_client,
-		downloader_ws:   downloader_ws,
-		filehelper:      NewFileHelperHandler(),
-		formatter:       util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
-		cfg:             cfg,
-		engine:          gin.Default(),
-		db:              db,
-		logger:          &logger,
+		downloader:            downloader,
+		official:              officialaccount_client,
+		channels:              channels_client,
+		downloader_ws:         downloader_ws,
+		filehelper:            NewFileHelperHandler(),
+		formatter:             util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
+		cfg:                   cfg,
+		engine:                gin.Default(),
+		db:                    db,
+		logger:                &logger,
 		downloadService:       downloadService,
 		channelsService:       channelsService,
 		accountService:        accountService,
 		contentService:        contentService,
+		browseService:         browseService,
 		channelsUploadService: channelsUploadService,
 	}
 
@@ -131,7 +137,12 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	client.filehelper.SetSphAutoDownloadCallback(client.autoDownloadSphVideo)
 
 	client.SetupRoutes()
+	client.httpHandler = client.buildHTTPHandler()
 	return client
+}
+
+func (c *APIClient) SetManager(mgr *manager.ServerManager) {
+	c.serviceMgr = mgr
 }
 
 type APIClientWSMessage struct {
@@ -234,8 +245,15 @@ func (c *APIClient) Engine() *gin.Engine {
 	return c.engine
 }
 
+func (c *APIClient) HTTPHandler() http.Handler {
+	return withCORS(c)
+}
+
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c.engine.ServeHTTP(w, r)
+	if c.httpHandler == nil {
+		c.httpHandler = c.buildHTTPHandler()
+	}
+	c.httpHandler.ServeHTTP(w, r)
 }
 
 func (c *APIClient) resolve_connections(url string) int {

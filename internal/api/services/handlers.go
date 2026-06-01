@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/channels"
+	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/database/model"
 	utilpkg "wx_channel/pkg/util"
 )
@@ -27,7 +27,7 @@ func NewChannelsUploadService(db *gorm.DB, logger *zerolog.Logger) *ChannelsUplo
 	}
 }
 
-func (s *ChannelsUploadService) HandleChannelsFeed(feed *channels.ChannelsFeedProfile) (*model.Video, error) {
+func (s *ChannelsUploadService) HandleChannelsFeed(feed *apitypes.ChannelsFeedProfile) (*model.Video, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("db not initialized")
 	}

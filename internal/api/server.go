@@ -20,7 +20,7 @@ type APIServer struct {
 func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger, db *gorm.DB) *APIServer {
 	srv := manager.NewHTTPServer("API服务", "api", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
 	client := NewAPIClient(cfg, logger, db)
-	srv.SetHandler(withCORS(client))
+	srv.SetHandler(client.HTTPHandler())
 	return &APIServer{
 		HTTPServer: srv,
 		APIClient:  client,
@@ -41,6 +41,10 @@ func (s *APIServer) Start() error {
 
 func (s *APIServer) SetHandler(handler http.Handler) {
 	s.HTTPServer.SetHandler(handler)
+}
+
+func (s *APIServer) SetManager(mgr *manager.ServerManager) {
+	s.APIClient.SetManager(mgr)
 }
 
 func (s *APIServer) Stop() error {

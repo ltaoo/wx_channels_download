@@ -77,5 +77,67 @@ export function searchFruits(body) {
 
 /** @param {Record<string, any>} params */
 export function fetchDownloadList(params) {
-  return request.get("/api/mock/downloads", params);
+  return request.post("/api/download_task/list", params);
+}
+
+/** @param {Record<string, any>} params */
+export function fetchAccountList(params = {}) {
+  return request.post("/account/list", params);
+}
+
+/** @param {{ account_id?: number; username?: string }} body */
+export function synchronizeAccount(body) {
+  return request.post("/account/synchronize", body);
+}
+
+/** @param {Record<string, any>} params */
+export function fetchVideoList(params = {}) {
+  const { pageSize, ...rest } = params || {};
+  return request.post("/video/list", {
+    ...rest,
+    page_size: pageSize || params.page_size,
+  });
+}
+
+/** @param {{ username?: string }} params */
+export function fetchBrowseHistoryList(params = {}) {
+  return request.post("/api/browse_history/list", params);
+}
+
+export function fetchAppStatus() {
+  return request.get("/api/status");
+}
+
+/** @param {{ URL?: string; url?: string; Filename?: string; filename?: string; Dir?: string; dir?: string; Extra?: Record<string, string>; extra?: Record<string, string> }} body */
+export function createDownloadTask(body) {
+  const url = body.url || body.URL || "";
+  const filename = body.filename || body.Filename || "";
+  const dir = body.dir || body.Dir || "";
+  const extra = body.extra || body.Extra || {};
+  return request.post("/api/task/create2", {
+    URL: url,
+    Filename: filename,
+    Dir: dir,
+    Extra: extra,
+  });
+}
+
+/** @param {{ download_task_id: number }} body */
+export function startDownloadTask(body) {
+  return request.post("/api/download_task/start", body);
+}
+
+/** @param {{ id: number }} body */
+export function retryDownloadTask(body) {
+  return request.post("/api/download_task/retry", body);
+}
+
+/** @param {{ download_task_id: number }} body */
+export function deleteDownloadTask(body) {
+  return request.post("/api/download_task/delete", body);
+}
+
+/** @param {{ file_path: string }} body */
+export function highlightDownloadFile(body) {
+  return request.post("/api/download_task/highlight_file", body);
 }

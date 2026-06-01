@@ -1,4 +1,46 @@
 /** 首页布局 */
+
+const HOME_MENUS = [
+  { title: "下载", name: "root.home_layout.index", icon: "hard-drive" },
+  { title: "帐号", name: "root.home_layout.accounts", icon: "user" },
+  { title: "视频", name: "root.home_layout.videos", icon: "film" },
+  { title: "浏览记录", name: "root.home_layout.browse", icon: "history" },
+  { title: "工具", name: "root.home_layout.tools", icon: "wrench" },
+  { title: "设置", name: "root.home_layout.settings", icon: "settings" },
+];
+
+function MenuButton(props, item, sidemenu$) {
+  return View(
+    {
+      class: computed(sidemenu$.cur, (cur) => {
+        const active = sidemenu$.isSelected(cur, item);
+        return active
+          ? "relative flex w-full cursor-pointer items-center gap-3 rounded-lg bg-white px-4 py-3 text-sm font-medium text-zinc-950 shadow-sm ring-1 ring-black/5 dark:bg-zinc-900 dark:text-zinc-50 dark:ring-white/10"
+          : "relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-zinc-500 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900/70 dark:hover:text-zinc-50";
+      }),
+      title: item.title,
+      onClick() {
+        props.history.push(item.name);
+      },
+    },
+    [
+      Show({
+        when: computed(sidemenu$.cur, (cur) => sidemenu$.isSelected(cur, item)),
+        ok() {
+          return View({
+            class:
+              "absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-zinc-900 dark:bg-zinc-100",
+          });
+        },
+      }),
+      View({ class: "flex h-5 w-5 shrink-0 items-center justify-center" }, [
+        Icon({ name: item.icon, size: 20 }),
+      ]),
+      View({ class: "truncate" }, [item.title]),
+    ],
+  );
+}
+
 /**
  * @param {ViewComponentProps} props
  */
@@ -6,153 +48,85 @@ export default function HomeLayoutView(props) {
   const sidemenu$ = Timeless.RouteMenusModel({
     view: props.view,
     history: props.history,
-    menus: [
-      { title: "书架", name: "root.home_layout.books", children: [] },
-      { title: "翻书", name: "root.home_layout.flipbook" },
-      { title: "Article", name: "root.home_layout.article" },
-      { title: "Project", name: "root.home_layout.project" },
-      { title: "Settings", name: "root.home_layout.settings" },
-      { title: "Tools", name: "root.home_layout.tools" },
-      { title: "Chat", name: "root.home_layout.chat" },
-      { title: "Sandboxes", name: "root.home_layout.sandboxes" },
-    ],
+    menus: HOME_MENUS,
   });
 
   return SplitView({
     resizable: false,
     panels: [
       {
-        size: 72,
+        size: 260,
         style: { overflow: "hidden" },
         content() {
           return View(
             {
               class:
-                "sidebar-wrapper py-6 border-r border-zinc-200 dark:border-zinc-800 h-full",
+                "h-full border-r border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950",
             },
             [
               Flex(
                 {
                   direction: "col",
-                  items: "center",
                   justify: "between",
-                  class: "h-full",
+                  class: "h-full gap-4",
                 },
                 [
-                  // Logo
-                  Flex(
-                    {
-                      items: "center",
-                      justify: "center",
-                      class:
-                        "relative w-10 h-10 rounded-xl font-bold text-xl mb-8 shadow-sm cursor-pointer hover:opacity-90 transition-opacity",
-                      onClick() {
-                        props.history.push("root.home_layout.books");
+                  Flex({ direction: "col", class: "gap-5" }, [
+                    View(
+                      {
+                        class: "flex items-center gap-3 px-2 py-2 cursor-pointer",
+                        onClick() {
+                          props.history.push("root.home_layout.index");
+                        },
                       },
-                    },
-                    [
-                      "T",
-                      Show({
-                        when: computed(sidemenu$.cur, (t) => {
-                          return sidemenu$.isSelected(t, sidemenu$.menus[0]);
-                        }),
-                        ok() {
-                          return View({
+                      [
+                        View(
+                          {
                             class:
-                              "absolute top-[-4px] right-[-4px] w-2 h-2 rounded-full bg-zinc-500",
-                          });
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900",
+                            title: "WX",
+                          },
+                          ["WX"],
+                        ),
+                        View({ class: "min-w-0" }, [
+                          View(
+                            {
+                              class:
+                                "truncate text-base font-semibold text-zinc-950 dark:text-zinc-50",
+                            },
+                            ["Channels Download"],
+                          ),
+                          View(
+                            {
+                              class:
+                                "truncate text-xs text-zinc-500 dark:text-zinc-400",
+                            },
+                            ["视频号下载管理"],
+                          ),
+                        ]),
+                      ],
+                    ),
+                    View({ class: "space-y-1" }, [
+                      For({
+                        each: HOME_MENUS,
+                        render(item) {
+                          return MenuButton(props, item, sidemenu$);
                         },
                       }),
-                    ],
-                  ),
-
-                  // Middle spacer
-                  Flex(
+                    ]),
+                  ]),
+                  View(
                     {
-                      direction: "col",
-                      items: "center",
-                      class: "flex-1 flex gap-3",
+                      class:
+                        "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900",
                     },
                     [
-                      // Flipbook icon
                       View(
                         {
-                          class: computed(sidemenu$.cur, (t) => {
-                            return sidemenu$.isSelected(t, sidemenu$.menus[1])
-                              ? "w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700 cursor-pointer transition-colors dark:bg-zinc-800 dark:text-white"
-                              : "w-10 h-10 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-black cursor-pointer transition-colors dark:hover:bg-zinc-800 dark:hover:text-white";
-                          }),
-                          onClick() {
-                            props.history.push("root.home_layout.flipbook");
-                          },
+                          class:
+                            "mb-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400",
                         },
-                        [Icon({ name: "book-open", size: 24 })],
-                      ),
-                      // Article icon
-                      View(
-                        {
-                          class: computed(sidemenu$.cur, (t) => {
-                            return sidemenu$.isSelected(t, sidemenu$.menus[2])
-                              ? "w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700 cursor-pointer transition-colors dark:bg-zinc-800 dark:text-white"
-                              : "w-10 h-10 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-black cursor-pointer transition-colors dark:hover:bg-zinc-800 dark:hover:text-white";
-                          }),
-                          onClick() {
-                            props.history.push("root.home_layout.article");
-                          },
-                        },
-                        [Icon({ name: "rss", size: 24 })],
-                      ),
-                      View(
-                        {
-                          class: computed(sidemenu$.cur, (t) => {
-                            return sidemenu$.isSelected(t, sidemenu$.menus[5])
-                              ? "w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700 cursor-pointer transition-colors dark:bg-zinc-800 dark:text-white"
-                              : "w-10 h-10 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-black cursor-pointer transition-colors dark:hover:bg-zinc-800 dark:hover:text-white";
-                          }),
-                          onClick() {
-                            props.history.push("root.home_layout.chat");
-                          },
-                        },
-                        [Icon({ name: "message-square-more", size: 24 })],
-                      ),
-                      View(
-                        {
-                          class: computed(sidemenu$.cur, (t) => {
-                            return sidemenu$.isSelected(t, sidemenu$.menus[6])
-                              ? "w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700 cursor-pointer transition-colors dark:bg-zinc-800 dark:text-white"
-                              : "w-10 h-10 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-black cursor-pointer transition-colors dark:hover:bg-zinc-800 dark:hover:text-white";
-                          }),
-                          onClick() {
-                            props.history.push("root.home_layout.sandboxes");
-                          },
-                        },
-                        [Icon({ name: "container", size: 24 })],
-                      ),
-                      Separator({
-                        orientation: "horizontal",
-                        class: "w-8 mx-auto",
-                      }),
-                      Flex(
-                        { direction: "col", items: "center", class: "gap-2" },
-                        [],
-                      ),
-                    ],
-                  ),
-
-                  // Bottom Actions
-                  Flex(
-                    { direction: "col", items: "center", class: "gap-6 mb-4" },
-                    [
-                      Button(
-                        {
-                          store: new Timeless.ui.ButtonCore({
-                            variant: "outline",
-                            onClick() {
-                              props.history.push("root.admin_layout.dashboard");
-                            },
-                          }),
-                        },
-                        [Icon({ name: "grid-3x3", size: 24 })],
+                        ["Display"],
                       ),
                       Button(
                         {
@@ -160,188 +134,14 @@ export default function HomeLayoutView(props) {
                             variant: "outline",
                             onClick() {
                               const cur = props.app.getTheme();
-                              const next = cur === "dark" ? "light" : "dark";
-                              props.app.setTheme(next);
+                              props.app.setTheme(
+                                cur === "dark" ? "light" : "dark",
+                              );
                             },
                           }),
                         },
-                        [Icon({ name: "sun", size: 24 })],
+                        [Icon({ name: "sun", size: 16 }), "切换主题"],
                       ),
-                      // User Avatar
-                      (() => {
-                        const dropdown$ = new Timeless.ui.DropdownMenuCore({
-                          trigger: "hover",
-                          side: "right",
-                          align: "end",
-                          offsetX: 4,
-                          offsetY: -8,
-                          items: [
-                            new Timeless.ui.MenuItemCore({
-                              label: "Profile",
-                              onClick() {
-                                const toasts = [
-                                  {
-                                    type: "success",
-                                    text: [
-                                      "Welcome back!",
-                                      "Have a productive day.",
-                                    ],
-                                  },
-                                  {
-                                    type: "success",
-                                    text: ["Profile updated successfully."],
-                                  },
-                                  {
-                                    type: "info",
-                                    text: ["You have 3 unread notifications."],
-                                  },
-                                  {
-                                    type: "info",
-                                    text: [
-                                      "Session active",
-                                      "Last login: 2 hours ago.",
-                                    ],
-                                  },
-                                  {
-                                    type: "loading",
-                                    text: [
-                                      "Syncing your data...",
-                                      "This may take a moment.",
-                                    ],
-                                  },
-                                  {
-                                    type: "warning",
-                                    text: [
-                                      "Storage almost full.",
-                                      "Consider cleaning up.",
-                                    ],
-                                  },
-                                  {
-                                    type: "error",
-                                    text: [
-                                      "Connection lost.",
-                                      "Retrying in 5s...",
-                                    ],
-                                  },
-                                  { text: ["All systems operational."] },
-                                ];
-                                const pick =
-                                  toasts[
-                                    Math.floor(Math.random() * toasts.length)
-                                  ];
-                                // @ts-ignore
-                                props.app.tip(pick);
-                              },
-                            }),
-                            new Timeless.ui.MenuItemCore({
-                              label: "Bill",
-                              onClick() {
-                                console.log("Bill clicked");
-                              },
-                            }),
-                            new Timeless.ui.MenuItemCore({
-                              label: "Other",
-                              menu: new Timeless.ui.MenuCore({
-                                items: [
-                                  new Timeless.ui.MenuItemCore({
-                                    label: "Toast",
-                                    onClick() {
-                                      const toasts = [
-                                        { text: ["Task completed!"] },
-                                        {
-                                          text: [
-                                            "File saved.",
-                                            "Auto-backup enabled.",
-                                          ],
-                                        },
-                                        {
-                                          text: [
-                                            "Reminder:",
-                                            "Meeting starts in 15 minutes.",
-                                          ],
-                                        },
-                                        {
-                                          text: [
-                                            "Download finished.",
-                                            "3 files ready.",
-                                          ],
-                                        },
-                                        { text: ["Settings applied."] },
-                                      ];
-                                      const pick =
-                                        toasts[
-                                          Math.floor(
-                                            Math.random() * toasts.length,
-                                          )
-                                        ];
-                                      props.app.tip(pick);
-                                    },
-                                  }),
-                                  new Timeless.ui.MenuItemCore({
-                                    label: "Item 2",
-                                    onClick() {
-                                      console.log("Item 2 clicked");
-                                    },
-                                  }),
-                                  new Timeless.ui.MenuItemCore({
-                                    label: "Item 3",
-                                    onClick() {
-                                      console.log("Item 3 clicked");
-                                    },
-                                  }),
-                                  new Timeless.ui.MenuItemCore({
-                                    label: "Close DropdownMenu",
-                                    onClick() {
-                                      console.log("Item 4 clicked");
-                                      dropdown$.hide();
-                                    },
-                                  }),
-                                  new Timeless.ui.MenuItemCore({
-                                    label: "Item 5",
-                                    onClick() {
-                                      console.log("Item 5 clicked");
-                                    },
-                                  }),
-                                ],
-                              }),
-                              onClick() {
-                                console.log("Other clicked");
-                              },
-                            }),
-                            new Timeless.ui.MenuItemCore({
-                              label: "Logout",
-                              onClick() {
-                                console.log("Logout clicked");
-                                dropdown$.hide();
-                                props.history.destroyAllAndPush("root.login");
-                              },
-                            }),
-                          ],
-                        });
-                        return DropdownMenu(
-                          {
-                            store: dropdown$,
-                          },
-                          [
-                            View(
-                              {
-                                class:
-                                  "w-10 h-10 rounded-full bg-zinc-100 overflow-hidden cursor-pointer border border-zinc-200 hover:ring-2 ring-zinc-200 transition-all dark:bg-zinc-800 dark:border-zinc-700 dark:ring-zinc-700",
-                                onClick() {
-                                  console.log("Avatar clicked");
-                                },
-                              },
-                              [
-                                Img({
-                                  class: "w-full h-full object-cover",
-                                  src: "public/avatar.jpeg",
-                                  alt: "User Avatar",
-                                }),
-                              ],
-                            ),
-                          ],
-                        );
-                      })(),
                     ],
                   ),
                 ],

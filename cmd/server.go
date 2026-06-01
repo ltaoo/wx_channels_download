@@ -19,7 +19,6 @@ import (
 
 	"github.com/ltaoo/velo"
 	velodatabase "github.com/ltaoo/velo/database"
-	"github.com/ltaoo/velo/frontendserver"
 
 	"wx_channel/internal/api"
 	"wx_channel/internal/database"
@@ -98,6 +97,7 @@ func serve_command() {
 	}
 	addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
+	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
 	if daemon_child {
 		_ = write_wx_pidfile(os.Getpid())
@@ -121,21 +121,13 @@ func serve_command() {
 		return
 	}
 
-	// top-level mux: API routes → gin, SPA → frontendserver
-	ginRouter := api_srv.APIClient.Engine()
-	mux := http.NewServeMux()
-	mux.Handle("/api/", ginRouter)
-	mux.Handle("/", frontendserver.New(frontendserver.Options{
-		Root:      "frontend",
-		EntryPage: "index.html",
-	}))
-
-	api_srv.SetHandler(mux)
+	handler := api_srv.APIClient.HTTPHandler()
+	api_srv.SetHandler(handler)
 
 	color.Green(fmt.Sprintf("API服务启动成功, 地址: %v", api_srv.Addr()))
 	fmt.Println("\n按 Ctrl+C 退出...")
 
-	httpSrv := &http.Server{Addr: addr, Handler: mux}
+	httpSrv := &http.Server{Addr: addr, Handler: handler}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

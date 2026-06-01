@@ -16,14 +16,14 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/channels"
+	apitypes "wx_channel/internal/api/types"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
 
 type ChannelsDownloadRequest struct {
-	Object channels.ChannelsObject `json:"object"`
+	Object apitypes.ChannelsObject `json:"object"`
 	Spec   string                  `json:"spec"`
 	Suffix string                  `json:"suffix"`
 }
@@ -244,7 +244,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 	obj := body.Object
 
 	// 1. Convert to profile (validates the object)
-	profile, err := channels.ChannelsObjectToChannelsFeedProfile(&obj)
+	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&obj)
 	if err != nil {
 		return "", fmt.Errorf("转换失败: %w", err)
 	}
@@ -263,7 +263,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 	// 4. Resolve spec: request override > config default
 	isPicture := obj.Type == "picture" || obj.ObjectDesc.MediaType == 2
 
-	var objMedia *channels.ChannelsMediaItem
+	var objMedia *apitypes.ChannelsMediaItem
 	if !isPicture && len(obj.ObjectDesc.Media) > 0 {
 		objMedia = &obj.ObjectDesc.Media[0]
 	}

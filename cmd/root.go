@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -22,21 +21,19 @@ import (
 	"github.com/ltaoo/velo"
 	velodatabase "github.com/ltaoo/velo/database"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/api"
+	"wx_channel/internal/api/services"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
-	"wx_channel/internal/database/model"
-	"wx_channel/frontend"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
-	"wx_channel/internal/zhihu"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
-	"wx_channel/pkg/util"
 )
 
 var (
@@ -164,7 +161,6 @@ func root_command(cfg *config.Config) {
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
-	zhihu_cfg := zhihu.NewZhihuConfig(Cfg)
 	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
@@ -201,9 +197,6 @@ func root_command(cfg *config.Config) {
 			fmt.Println(api_cfg.CloudflareSphCookie)
 		}
 	}))
-	if !zhihu_cfg.Disabled {
-		interceptor_srv.Interceptor.AddPostPlugin(zhihu.CreateZhihuInterceptorPlugin(zhihu_cfg, b.DB, &logger))
-	}
 	mgr.RegisterServer(interceptor_srv)
 	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	if api_cfg.RemoteServerEnabled {
@@ -220,6 +213,7 @@ func root_command(cfg *config.Config) {
 	}
 	l.Close()
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
+	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
 	interceptor_srv.Interceptor.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
 	interceptor_srv.Interceptor.AddVariable("downloadDir", api_cfg.DownloadDir)
@@ -227,37 +221,22 @@ func root_command(cfg *config.Config) {
 		if profile == nil || profile.Id == "" {
 			return
 		}
-		now := util.NowMillis()
-		extraDataBytes, _ := json.Marshal(map[string]any{
-			"nonce_id":   profile.NonceId,
-			"decode_key": profile.Key,
-		})
-		contentType := "video"
-		if profile.Type == "picture" {
-			contentType = "image"
-		} else if profile.Type == "live" {
-			contentType = "live"
-		}
-		browse := model.BrowseHistory{
+		if err := api_srv.APIClient.RecordBrowseHistory(profile.Id, services.BrowseHistoryInfo{
 			PlatformId:        "wx_channels",
-			VisitedTimes:      1,
 			AccountExternalId: profile.Contact.Id,
 			AccountUsername:   profile.Contact.Id,
 			AccountNickname:   profile.Contact.Nickname,
 			AccountAvatarURL:  profile.Contact.AvatarURL,
-			ContentType:       contentType,
-			ContentExternalId: profile.Id,
+			ContentType:       profile.Type,
 			ContentTitle:      profile.Title,
 			ContentURL:        profile.URL,
 			ContentSourceURL:  profile.URL,
 			ContentCoverURL:   profile.CoverURL,
-			ExtraData:         string(extraDataBytes),
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
+			ExtraData: map[string]any{
+				"nonce_id":   profile.NonceId,
+				"decode_key": profile.Key,
 			},
-		}
-		if err := api_srv.APIClient.CreateBrowseHistory(&browse); err != nil {
+		}); err != nil {
 			logger.Error().Err(err).Str("content_external_id", profile.Id).Msg("create browse history failed")
 		}
 	}

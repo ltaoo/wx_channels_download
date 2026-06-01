@@ -2,6 +2,12 @@ import { user$ } from "@/store/index.js";
 import { memberLogin } from "@/biz/request.js";
 
 export default function LoginPage(props) {
+  const reqs = {
+    login: new Timeless.RequestCore(memberLogin, {
+      client: props.client,
+    }),
+  };
+
   async function handleLogin() {
     const token = ui.input_token.value.trim();
     if (!token) {
@@ -11,7 +17,7 @@ export default function LoginPage(props) {
 
     ui.btn_login.loading = true;
     try {
-      const r = await memberLogin(token);
+      const r = await reqs.login.run(token);
       if (r.error) {
         alert("Invalid token: " + (r.error?.msg || r.error));
         ui.btn_login.loading = false;
@@ -38,7 +44,7 @@ export default function LoginPage(props) {
         props.history.replace(redirect, redirectQuery);
         return;
       }
-      props.history.replace("root.home_layout.books");
+      props.history.replace("root.home_layout.index");
     } catch (err) {
       alert("Login failed: " + (err?.message || err));
       ui.btn_login.loading = false;

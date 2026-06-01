@@ -72,6 +72,19 @@ func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+func (c *APIClient) handleFetchFeedCommentList(ctx *gin.Context) {
+	oid := ctx.Query("oid")
+	nid := ctx.Query("nid")
+	commentID := ctx.Query("comment_id")
+	nextMarker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsFeedCommentList(oid, nid, commentID, nextMarker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
 // 获取指定视频详情
 func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	oid := ctx.Query("oid")
@@ -81,6 +94,20 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 
 	// Use service
 	resp, err := c.channelsService.FetchFeedProfile(oid, uid, _url, eid)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
+func (c *APIClient) handleFetchSharedFeedProfile(ctx *gin.Context) {
+	_url := ctx.Query("url")
+	if _url == "" {
+		result.Err(ctx, 400, "missing url")
+		return
+	}
+	resp, err := c.channels.FetchChannelsSharedFeedProfile(_url)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

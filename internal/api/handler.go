@@ -1,3 +1,5 @@
+//go:build legacy_api_handler
+
 package api
 
 import (
@@ -23,8 +25,8 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/channels"
 	"wx_channel/frontend"
+	"wx_channel/internal/channels"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
@@ -254,15 +256,15 @@ func (c *APIClient) handleFetchFeedShareUrl(ctx *gin.Context) {
 }
 
 type FeedDownloadTaskBody struct {
-	Id       string `json:"id"`
-	NonceId  string `json:"nonce_id"`
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	Filename string `json:"filename"`
-	Key      int    `json:"key"`
-	Spec     string `json:"spec"`
-	Suffix   string `json:"suffix"`
-	SourceURL   string `json:"source_url"`
+	Id        string `json:"id"`
+	NonceId   string `json:"nonce_id"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Filename  string `json:"filename"`
+	Key       int    `json:"key"`
+	Spec      string `json:"spec"`
+	Suffix    string `json:"suffix"`
+	SourceURL string `json:"source_url"`
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
@@ -304,13 +306,13 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 			URL:            body.URL,
 			SkipVerifyCert: true,
 			Labels: map[string]string{
-				"id":       body.Id,
-				"nonce_id": body.NonceId,
-				"title":    body.Title,
-				"key":      strconv.Itoa(body.Key),
-				"spec":     body.Spec,
-				"suffix":   body.Suffix,
-				"source_url":   body.SourceURL,
+				"id":         body.Id,
+				"nonce_id":   body.NonceId,
+				"title":      body.Title,
+				"key":        strconv.Itoa(body.Key),
+				"spec":       body.Spec,
+				"suffix":     body.Suffix,
+				"source_url": body.SourceURL,
 			},
 		},
 		&base.Options{
