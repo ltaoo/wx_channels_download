@@ -41,7 +41,7 @@ func (c *ClientDatabase) Setup() error {
 		return err
 	}
 	c.db = database
-	migrator := dbpkg.NewMigrator(c.cfg, &migrations)
+	migrator := dbpkg.NewMigrator(c.cfg, &Migrations)
 	if err := migrator.MigrateUp(); err != nil {
 		c.logger.Error().Err(err).Msg("Failed to run migrations")
 		return err

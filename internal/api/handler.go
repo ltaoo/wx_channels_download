@@ -24,7 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/channels"
-	"wx_channel/internal/interceptor"
+	"wx_channel/frontend"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
@@ -808,7 +808,7 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 		return string(defaultData)
 	}
 	// html := read_asset("inject/index.html", files.HTMLHome)
-	files := interceptor.Assets
+	files := frontend.Assets
 	// css := read_asset("inject/lib/weui.min.css", files.CSSWeui)
 	// html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
 	var inserted_scripts string

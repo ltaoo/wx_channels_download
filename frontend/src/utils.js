@@ -834,31 +834,7 @@ var WXU = (() => {
       hide() {},
       toggle() {},
       /**
-       * 构建下载任务请求体
-       * @param {FeedProfile} feed
-       * @param {object} opt 配置
-       * @param {string} [opt.spec] 规格
-       * @param {string} [opt.suffix] 后缀
-       */
-      build_task_body(feed, opt = {}) {
-        return {
-          id: feed.id,
-          url: feed.url,
-          title: feed.title,
-          key: Number(feed.key),
-          spec: opt.spec || "original",
-          suffix: opt.suffix,
-          source_url: WXRouter.buildJumpUrl(feed),
-          type: feed.type,
-          nonce_id: feed.nonce_id,
-          cover_url: feed.cover_url,
-          contact: feed.contact,
-          spec_list: feed.spec,
-          files: feed.files,
-        };
-      },
-      /**
-       * 提交下载任务
+       * 提交下载任务（后端处理全部逻辑：spec 解析、URL 构建、文件名生成）
        * @param {FeedProfile} feed
        * @param {object} opt 配置
        * @param {string} [opt.spec] 规格
@@ -870,7 +846,7 @@ var WXU = (() => {
           method: "POST",
           url:
             APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
-          body: this.build_task_body(feed, opt),
+          body: { object: feed, spec: opt.spec, suffix: opt.suffix },
         });
         WXU.downloader.show();
         if (err) {
@@ -879,7 +855,7 @@ var WXU = (() => {
         return [null, data];
       },
       /**
-       * 批量提交下载任务
+       * 批量提交下载任务（后端处理全部逻辑）
        * @param {FeedProfile[]} feeds
        * @param {object} opt 配置
        * @param {string} [opt.spec] 规格
@@ -888,7 +864,9 @@ var WXU = (() => {
        */
       async create_batch(feeds, opt = {}) {
         var body = {
-          feeds: feeds.map((feed) => this.build_task_body(feed, opt)),
+          feeds: feeds.map(function (feed) {
+            return { object: feed, spec: opt.spec, suffix: opt.suffix };
+          }),
         };
         WXU.downloader.show();
         var [err, data] = await WXU.request({

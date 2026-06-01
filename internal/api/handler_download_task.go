@@ -26,7 +26,7 @@ import (
 )
 
 func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -279,7 +279,7 @@ func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -299,7 +299,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	}
 	offset := (page - 1) * size
 
-	db := c.db.DB().Model(&model.DownloadTask{})
+	db := c.db.Model(&model.DownloadTask{})
 	if body.Status != nil {
 		db = db.Where("status = ?", *body.Status)
 	}
@@ -320,7 +320,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	}
 	var events []model.DownloadTaskEvent
 	if len(ids) > 0 {
-		_ = c.db.DB().Where("task_id IN ?", ids).Order("id ASC").Find(&events).Error
+		_ = c.db.Where("task_id IN ?", ids).Order("id ASC").Find(&events).Error
 	}
 	evMap := map[int][]model.DownloadTaskEvent{}
 	for _, e := range events {
@@ -406,7 +406,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -422,7 +422,7 @@ func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {
 		return
 	}
 	var task model.DownloadTask
-	if err := c.db.DB().Where("task_id = ?", body.TaskId).First(&task).Error; err != nil {
+	if err := c.db.Where("task_id = ?", body.TaskId).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -434,7 +434,7 @@ func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -450,7 +450,7 @@ func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
 		return
 	}
 	var rec model.DownloadTask
-	if err := c.db.DB().First(&rec, "id = ?", body.TaskId).Error; err != nil {
+	if err := c.db.First(&rec, "id = ?", body.TaskId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -487,7 +487,7 @@ func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
 		result.Err(ctx, 500, "重新提交下载任务失败: "+err.Error())
 		return
 	}
-	_ = c.db.DB().Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
+	_ = c.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
 		"task_id": id,
 		"status":  2,
 	}).Error
@@ -495,7 +495,7 @@ func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskRetry(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -511,7 +511,7 @@ func (c *APIClient) handleCompatDownloadTaskRetry(ctx *gin.Context) {
 		return
 	}
 	var rec model.DownloadTask
-	if err := c.db.DB().First(&rec, "id = ?", body.Id).Error; err != nil {
+	if err := c.db.First(&rec, "id = ?", body.Id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -562,7 +562,7 @@ func (c *APIClient) handleCompatDownloadTaskRetry(ctx *gin.Context) {
 		return
 	}
 
-	_ = c.db.DB().Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
+	_ = c.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
 		"url":     newURL,
 		"task_id": newTaskId,
 		"status":  2,
@@ -571,7 +571,7 @@ func (c *APIClient) handleCompatDownloadTaskRetry(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -587,7 +587,7 @@ func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
 		return
 	}
 	var task model.DownloadTask
-	if err := c.db.DB().First(&task, "id = ?", body.TaskId).Error; err != nil {
+	if err := c.db.First(&task, "id = ?", body.TaskId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -598,8 +598,8 @@ func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
 	if task.TaskId != "" {
 		_ = c.downloader.Delete(&downloadpkg.TaskFilter{IDs: []string{task.TaskId}}, true)
 	}
-	_ = c.db.DB().Delete(&model.Video{}, "platform_id = ? AND download_task_id = ?", "wx_channels", body.TaskId).Error
-	_ = c.db.DB().Delete(&model.DownloadTask{}, "id = ?", body.TaskId).Error
+	_ = c.db.Delete(&model.Video{}, "platform_id = ? AND download_task_id = ?", "wx_channels", body.TaskId).Error
+	_ = c.db.Delete(&model.DownloadTask{}, "id = ?", body.TaskId).Error
 	result.Ok(ctx, gin.H{"message": "删除下载任务成功"})
 }
 
@@ -668,7 +668,7 @@ func (c *APIClient) handleCompatDownloadTaskHighlightFile(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatDownloadTaskPlay(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -683,7 +683,7 @@ func (c *APIClient) handleCompatDownloadTaskPlay(ctx *gin.Context) {
 		return
 	}
 	var task model.DownloadTask
-	if err := c.db.DB().First(&task, "id = ?", id).Error; err != nil {
+	if err := c.db.First(&task, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -716,7 +716,7 @@ func (c *APIClient) handleCompatDownloadTaskPlay(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatChannelsTaskStatus(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -726,7 +726,7 @@ func (c *APIClient) handleCompatChannelsTaskStatus(ctx *gin.Context) {
 		return
 	}
 	var task model.DownloadTask
-	if err := c.db.DB().First(&task, "task_id = ?", taskId).Error; err != nil {
+	if err := c.db.First(&task, "task_id = ?", taskId).Error; err != nil {
 		result.Err(ctx, 2000, err.Error())
 		return
 	}
@@ -749,7 +749,7 @@ func (c *APIClient) handleCompatChannelsTaskStart(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -767,7 +767,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	}
 	if username == "" && body.AccountId != nil && *body.AccountId > 0 {
 		var acc model.Account
-		if err := c.db.DB().First(&acc, *body.AccountId).Error; err != nil {
+		if err := c.db.First(&acc, *body.AccountId).Error; err != nil {
 			result.Err(ctx, 404, err.Error())
 			return
 		}
@@ -791,7 +791,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	accId := 0
 	{
 		var acc model.Account
-		err := c.db.DB().Where("platform_id = ? AND external_id = ?", "wx_channels", username).First(&acc).Error
+		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", username).First(&acc).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 500, err.Error())
 			return
@@ -808,17 +808,17 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 				Timestamps:   model.Timestamps{CreatedAt: now, UpdatedAt: now},
 				InfluencerId: nil,
 			}
-			if err := c.db.DB().Create(&acc).Error; err != nil {
+			if err := c.db.Create(&acc).Error; err != nil {
 				result.Err(ctx, 500, err.Error())
 				return
 			}
 		} else {
-			_ = c.db.DB().Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
+			_ = c.db.Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
 				"nickname":   nickname,
 				"avatar_url": avatar,
 				"updated_at": now,
 			}).Error
-			_ = c.db.DB().First(&acc, acc.Id).Error
+			_ = c.db.First(&acc, acc.Id).Error
 		}
 		accId = acc.Id
 	}
@@ -857,12 +857,12 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 			Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 		}
 		var existing model.Video
-		err := c.db.DB().Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&existing).Error
+		err := c.db.Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&existing).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}
 		if existing.Id == 0 {
-			if err := c.db.DB().Create(&v).Error; err == nil {
+			if err := c.db.Create(&v).Error; err == nil {
 				added++
 				existing = v
 			}
@@ -880,13 +880,13 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 				"publish_time": v.PublishTime,
 				"updated_at":   now,
 			}
-			if err := c.db.DB().Model(&model.Video{}).Where("id = ?", existing.Id).Updates(updates).Error; err == nil {
+			if err := c.db.Model(&model.Video{}).Where("id = ?", existing.Id).Updates(updates).Error; err == nil {
 				updated++
 			}
 		}
 		if accId > 0 && existing.Id > 0 {
 			link := model.VideoAccount{VideoId: existing.Id, AccountId: accId, Role: "owner"}
-			_ = c.db.DB().Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+			_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 		}
 	}
 	result.Ok(ctx, gin.H{
@@ -900,7 +900,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 }
 
 func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.ChannelsObject, downloadTaskId *int) {
-	if obj == nil || c.db == nil || c.db.DB() == nil {
+	if obj == nil || c.db == nil {
 		return
 	}
 	now := utilpkg.NowMillis()
@@ -908,7 +908,7 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 	accountId := 0
 	if accountExternal != "" {
 		var acc model.Account
-		err := c.db.DB().Where("platform_id = ? AND external_id = ?", "wx_channels", accountExternal).First(&acc).Error
+		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", accountExternal).First(&acc).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return
 		}
@@ -921,11 +921,11 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 				AvatarURL:  obj.Contact.HeadUrl,
 				Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
 			}
-			if err := c.db.DB().Create(&acc).Error; err != nil {
+			if err := c.db.Create(&acc).Error; err != nil {
 				return
 			}
 		} else {
-			_ = c.db.DB().Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
+			_ = c.db.Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
 				"username":    obj.Contact.Username,
 				"nickname":    obj.Contact.Nickname,
 				"avatar_url":  obj.Contact.HeadUrl,
@@ -957,7 +957,7 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 	}
 
 	var v model.Video
-	err := c.db.DB().Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&v).Error
+	err := c.db.Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&v).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return
 	}
@@ -979,7 +979,7 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 			PublishTime:    int64(obj.CreateTime),
 			Timestamps:     model.Timestamps{CreatedAt: now, UpdatedAt: now},
 		}
-		if err := c.db.DB().Create(&v).Error; err != nil {
+		if err := c.db.Create(&v).Error; err != nil {
 			return
 		}
 	} else {
@@ -999,11 +999,11 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 		if downloadTaskId != nil {
 			updates["download_task_id"] = downloadTaskId
 		}
-		_ = c.db.DB().Model(&model.Video{}).Where("id = ?", v.Id).Updates(updates).Error
+		_ = c.db.Model(&model.Video{}).Where("id = ?", v.Id).Updates(updates).Error
 	}
 
 	if accountId > 0 && v.Id > 0 {
 		link := model.VideoAccount{VideoId: v.Id, AccountId: accountId, Role: "owner"}
-		_ = c.db.DB().Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+		_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 	}
 }

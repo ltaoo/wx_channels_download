@@ -3,12 +3,13 @@ package api
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/manager"
-	"wx_channel/internal/database"
 )
 
 type APIServer struct {
@@ -16,7 +17,7 @@ type APIServer struct {
 	APIClient *APIClient
 }
 
-func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger, db *database.ClientDatabase) *APIServer {
+func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger, db *gorm.DB) *APIServer {
 	srv := manager.NewHTTPServer("API服务", "api", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
 	client := NewAPIClient(cfg, logger, db)
 	srv.SetHandler(withCORS(client))
@@ -36,6 +37,10 @@ func (s *APIServer) Start() error {
 		return err
 	}
 	return s.HTTPServer.Start()
+}
+
+func (s *APIServer) SetHandler(handler http.Handler) {
+	s.HTTPServer.SetHandler(handler)
 }
 
 func (s *APIServer) Stop() error {

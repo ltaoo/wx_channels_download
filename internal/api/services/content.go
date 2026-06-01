@@ -13,13 +13,9 @@ type ContentService struct {
 	db *gorm.DB
 }
 
-func NewContentService(db DBClient) *ContentService {
-	var d *gorm.DB
-	if db != nil {
-		d = db.DB()
-	}
+func NewContentService(db *gorm.DB) *ContentService {
 	return &ContentService{
-		db: d,
+		db: db,
 	}
 }
 

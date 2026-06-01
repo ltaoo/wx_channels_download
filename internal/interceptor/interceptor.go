@@ -10,6 +10,7 @@ import (
 	"github.com/ltaoo/echo"
 	"github.com/rs/zerolog"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/certificate"
@@ -86,7 +87,7 @@ func (c *Interceptor) Start() error {
 			Port:     c.Settings.APIServerPort,
 		},
 	})
-	plugins := CreateChannelInterceptorPlugins(c, Assets)
+	plugins := CreateChannelInterceptorPlugins(c, frontend.Assets)
 	for _, plugin := range plugins {
 		client.AddPlugin(plugin)
 	}

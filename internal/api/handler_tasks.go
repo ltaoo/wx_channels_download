@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,18 +16,25 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/api/services"
+	"wx_channel/internal/channels"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
+	"wx_channel/pkg/util"
 )
 
+type ChannelsDownloadRequest struct {
+	Object channels.ChannelsObject `json:"object"`
+	Spec   string                  `json:"spec"`
+	Suffix string                  `json:"suffix"`
+}
+
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
-	var body services.FeedDownloadTaskBody
+	var body ChannelsDownloadRequest
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
-	if body.Id == "" {
+	if body.Object.ID == "" {
 		result.Err(ctx, 400, "缺少 feed id 参数")
 		return
 	}
@@ -37,24 +46,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		}
 	}
 
-	// Use service
-	existing := c.downloadService.CheckExisting(body.Id, body.Spec, body.Suffix)
-	if existing {
-		result.Err(ctx, 409, "已存在该下载内容")
-		return
-	}
-
-	opts, err := c.downloadService.BuildTaskOpts(&body)
-	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
-		return
-	}
-
-	labels := c.downloadService.BuildTaskLabels(&body)
-	id, err := c.downloadService.CreateTask(&base.Request{
-		URL:    body.URL,
-		Labels: labels,
-	}, opts)
+	id, err := c.startDownloadChannelsObject(&body)
 	if err != nil {
 		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
 		result.Err(ctx, 500, "创建任务失败："+err.Error())
@@ -228,22 +220,227 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 
 func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	var body struct {
-		Feeds []services.FeedDownloadTaskBody `json:"feeds"`
+		Feeds []ChannelsDownloadRequest `json:"feeds"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
 
-	// Use service
-	ids, err := c.downloadService.CreateBatchDownloadTask(body.Feeds)
-	if err != nil {
-		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
-		result.Err(ctx, 500, "创建任务失败: "+err.Error())
-		return
+	var ids []string
+	for _, req := range body.Feeds {
+		id, err := c.startDownloadChannelsObject(&req)
+		if err != nil {
+			c.logger.Warn().Err(err).Interface("req", req).Msg("批量创建任务跳过一项")
+			continue
+		}
+		ids = append(ids, id)
 	}
 
 	result.Ok(ctx, gin.H{"ids": ids})
+}
+
+func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (string, error) {
+	obj := body.Object
+
+	// 1. Convert to profile (validates the object)
+	profile, err := channels.ChannelsObjectToChannelsFeedProfile(&obj)
+	if err != nil {
+		return "", fmt.Errorf("转换失败: %w", err)
+	}
+
+	// 2. Live is not supported here
+	if obj.LiveInfo != nil {
+		return "", fmt.Errorf("直播类型请使用直播下载")
+	}
+
+	// 3. Upsert Account/Video/VideoAccount in DB (non-fatal)
+	video, err := c.channelsUploadService.HandleChannelsFeed(profile)
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
+	}
+
+	// 4. Resolve spec: request override > config default
+	isPicture := obj.Type == "picture" || obj.ObjectDesc.MediaType == 2
+
+	var objMedia *channels.ChannelsMediaItem
+	if !isPicture && len(obj.ObjectDesc.Media) > 0 {
+		objMedia = &obj.ObjectDesc.Media[0]
+	}
+
+	spec := body.Spec
+	if spec == "" && !c.cfg.Original.GetBool("download.defaultHighest") {
+		if objMedia != nil && len(objMedia.Spec) > 0 {
+			spec = objMedia.Spec[0].FileFormat
+		}
+	}
+
+	// 5. Build filename using the template
+	filenameTemplate := c.cfg.Original.GetString("download.filenameTemplate")
+	filename := util.BuildFilename(
+		struct {
+			Title     string
+			ObjectId  string
+			CreatedAt string
+			Contact   struct {
+				Nickname string
+				Username string
+			}
+		}{
+			Title:     profile.Title,
+			ObjectId:  profile.ObjectId,
+			CreatedAt: strconv.Itoa(profile.CreatedAt),
+			Contact: struct {
+				Nickname string
+				Username string
+			}{
+				Nickname: profile.Contact.Nickname,
+				Username: profile.Contact.Username,
+			},
+		},
+		func() *struct{ FileFormat string } {
+			if spec != "" {
+				return &struct{ FileFormat string }{FileFormat: spec}
+			}
+			return nil
+		}(),
+		struct{ FilenameTemplate string }{FilenameTemplate: filenameTemplate},
+	)
+
+	// 6. Validate and split filename into dir/name
+	dir, name, err := util.ValidateAndSplitFilename(filename)
+	if err != nil {
+		return "", fmt.Errorf("不合法的文件名: %w", err)
+	}
+
+	// 7. Determine URL and suffix
+	var downloadURL string
+	suffix := ".mp4"
+
+	if isPicture {
+		suffix = ".zip"
+		var files []map[string]string
+		for i, f := range obj.Files {
+			files = append(files, map[string]string{
+				"url":      f.URL + f.URLToken,
+				"filename": fmt.Sprintf("%d.jpg", i+1),
+			})
+		}
+		data, _ := json.Marshal(files)
+		downloadURL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
+	} else {
+		if objMedia == nil {
+			return "", fmt.Errorf("缺少可下载的视频内容")
+		}
+		downloadURL = objMedia.URL + objMedia.URLToken
+
+		// Apply spec to URL
+		if spec != "" {
+			downloadURL += "&X-snsvideoflag=" + spec
+		} else {
+			if u, err := url.Parse(downloadURL); err == nil {
+				filekey := u.Query().Get("encfilekey")
+				token := u.Query().Get("token")
+				if filekey != "" && token != "" {
+					newURL := u.Scheme + "://" + u.Host + u.Path
+					newURL += "?encfilekey=" + filekey + "&token=" + token
+					downloadURL = newURL
+				}
+			}
+		}
+	}
+
+	// 8. Apply suffix override from request
+	if body.Suffix != "" {
+		suffix = body.Suffix
+	}
+
+	// 9. Dedup filename on disk
+	finalName := name + suffix
+	finalPath := filepath.Join(c.cfg.DownloadDir, dir)
+	if err := os.MkdirAll(finalPath, 0o755); err != nil {
+		return "", fmt.Errorf("创建目录失败: %w", err)
+	}
+	counter := 1
+	baseName := name
+	for {
+		if _, err := os.Stat(filepath.Join(finalPath, finalName)); err == nil {
+			finalName = fmt.Sprintf("%s_%d%s", baseName, counter, suffix)
+			counter++
+		} else {
+			break
+		}
+	}
+
+	// 10. Dedup by external_id in active downloader tasks
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		sameID := t.Meta.Req.Labels["id"] == obj.ID
+		sameSpec := t.Meta.Req.Labels["spec"] == spec
+		sameSuffix := t.Meta.Req.Labels["suffix"] == suffix
+		if sameID && sameSpec && sameSuffix {
+			return "", fmt.Errorf("已存在该下载内容")
+		}
+	}
+
+	// 11. Extract decrypt key
+	key := 0
+	if objMedia != nil && objMedia.DecodeKey != "" {
+		if k, err := strconv.Atoi(objMedia.DecodeKey); err == nil {
+			key = k
+		}
+	}
+
+	// 12. Build labels (preserves listener decrypt+mp3)
+	labels := map[string]string{
+		"id":       obj.ID,
+		"nonce_id": obj.ObjectNonceId,
+		"title":    profile.Title,
+		"key":      strconv.Itoa(key),
+		"spec":     spec,
+		"suffix":   suffix,
+	}
+
+	// 13. Create download task
+	taskID, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL:    downloadURL,
+			Labels: labels,
+		},
+		&base.Options{
+			Name: finalName,
+			Path: finalPath,
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: 4,
+			},
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("创建任务失败: %w", err)
+	}
+
+	// 14. Link DownloadTask to Video in DB
+	task := c.downloader.GetTask(taskID)
+	if task != nil && video != nil {
+		if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "frontend"); err != nil {
+			c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+		}
+	}
+
+	// 15. WS broadcast
+	if task != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+
+	return taskID, nil
 }
 
 func (c *APIClient) handleStartTask(ctx *gin.Context) {

@@ -16,13 +16,13 @@ var ErrDBNotInitialized = errors.New("数据库未初始化")
 var ErrInvalidInput = errors.New("invalid input")
 
 func (c *APIClient) CreateBrowseHistory(browse *model.BrowseHistory) error {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		return ErrDBNotInitialized
 	}
 	if browse == nil {
 		return ErrInvalidInput
 	}
-	return browse.Upsert(c.db.DB())
+	return browse.Upsert(c.db)
 }
 
 func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {

@@ -22,7 +22,6 @@ import (
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
-	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/officialaccount"
@@ -41,22 +40,23 @@ type APIClient struct {
 	formatter     *util.FilenameProcessor
 	cfg           *APIConfig
 	engine        *gin.Engine
-	db            *database.ClientDatabase
+	db            *gorm.DB
 	logger        *zerolog.Logger
 
 	// Services
-	downloadService *services.DownloadService
-	channelsService *services.ChannelsService
-	accountService  *services.AccountService
-	contentService  *services.ContentService
+	downloadService        *services.DownloadService
+	channelsService        *services.ChannelsService
+	accountService         *services.AccountService
+	contentService         *services.ContentService
+	channelsUploadService  *services.ChannelsUploadService
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.ClientDatabase) *APIClient {
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
 	data_dir := cfg.RootDir
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	var st downloadpkg.Storage
-	if db != nil && db.DB() != nil {
-		st = storage.NewSqliteStorage(db.DB(), &logger, cfg.DownloadDir)
+	if db != nil {
+		st = storage.NewSqliteStorage(db, &logger, cfg.DownloadDir)
 	} else {
 		st = downloadpkg.NewBoltStorage(data_dir)
 	}
@@ -69,8 +69,8 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.Cl
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
-	if db != nil && db.DB() != nil {
-		channels_client.SetDB(db.DB())
+	if db != nil {
+		channels_client.SetDB(db)
 	}
 	downloader_ws := downloaderclient.NewDownloaderClient()
 
@@ -105,6 +105,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.Cl
 	channelsService := services.NewChannelsService(channels_client)
 	accountService := services.NewAccountService(db)
 	contentService := services.NewContentService(db)
+	channelsUploadService := services.NewChannelsUploadService(db, &logger)
 
 	client := &APIClient{
 		downloader:      downloader,
@@ -117,10 +118,11 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *database.Cl
 		engine:          gin.Default(),
 		db:              db,
 		logger:          &logger,
-		downloadService: downloadService,
-		channelsService: channelsService,
-		accountService:  accountService,
-		contentService:  contentService,
+		downloadService:       downloadService,
+		channelsService:       channelsService,
+		accountService:        accountService,
+		contentService:        contentService,
+		channelsUploadService: channelsUploadService,
 	}
 
 	// 设置文件传输助手视频号自动下载回调
@@ -225,11 +227,11 @@ func (c *APIClient) Stop() error {
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
 	}
-	if c.db != nil {
-		_ = c.db.Close()
-		c.db = nil
-	}
 	return nil
+}
+
+func (c *APIClient) Engine() *gin.Engine {
+	return c.engine
 }
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -267,7 +269,7 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *service
 	return false
 }
 
-func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*FeedDownloadTaskBody, error) {
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, error) {
 	// 获取视频详情
 	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
@@ -393,26 +395,32 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Str("objectNonceID", objectNonceID).
 		Msg("收到视频号消息，开始自动创建下载任务")
 
-	payload, err := c.createFeedTaskBody(objectID, objectNonceID, "", "", false, false)
+	// 获取视频详情
+	r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
 	if err != nil {
 		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Msg("构建下载任务失败")
+		c.logger.Error().Err(err).Msg("获取详情失败")
 		c.sendMessageToFilehelper(errMsg)
 		return err
 	}
-
-	// 记录 payload 内容
-	if payloadJSON, err := json.Marshal(payload); err == nil {
-		c.logger.Info().Str("payload", string(payloadJSON)).Msg("创建 payload 成功")
-	} else {
-		c.logger.Warn().Err(err).Msg("序列化 payload 用于日志记录失败")
+	if r.ErrCode != 0 {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", r.ErrMsg)
+		c.logger.Error().Msgf("获取详情失败: %s", r.ErrMsg)
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+	}
+	if len(r.Data.Object.ObjectDesc.Media) == 0 {
+		errMsg := "✗ 视频号下载失败: 缺少可下载的视频内容"
+		c.logger.Error().Msg("缺少可下载的视频内容")
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("缺少可下载的视频内容")
 	}
 
-	if payload.Id == "" {
-		errMsg := "✗ 视频号下载失败: 缺少 feed id"
-		c.logger.Error().Msg("缺少 feed id")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("缺少 feed id")
+	// 构建请求，发送 ChannelsObject（后端处理全部逻辑）
+	req := ChannelsDownloadRequest{
+		Object: r.Data.Object,
+		Spec:   "",
+		Suffix: "",
 	}
 
 	// 发送创建任务请求
@@ -435,7 +443,7 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, hostname, c.cfg.Port)
 	}
 
-	jsonData, err := json.Marshal(payload)
+	jsonData, err := json.Marshal(req)
 	if err != nil {
 		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
 		c.logger.Error().Err(err).Msg("序列化请求参数失败")
@@ -465,7 +473,7 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Msg("自动创建下载任务请求发送成功")
 
 	// 发送成功消息
-	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", payload.Filename)
+	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", r.Data.Object.ObjectDesc.Description)
 	c.sendMessageToFilehelper(successMsg)
 
 	return nil
@@ -596,11 +604,11 @@ func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloa
 	if t == nil {
 		return nil, errors.New("download task is nil")
 	}
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		return nil, errors.New("db is nil")
 	}
 
-	db := c.db.DB()
+	db := c.db
 
 	title := ""
 	if t.Meta != nil && t.Meta.Opts != nil {

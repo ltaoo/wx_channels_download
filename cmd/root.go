@@ -19,11 +19,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/ltaoo/velo"
+	velodatabase "github.com/ltaoo/velo/database"
+
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
+	"wx_channel/frontend"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
@@ -149,9 +153,9 @@ func root_command(cfg *config.Config) {
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
-	database_cfg := database.NewDatabaseConfig(cfg)
-	db := database.NewClientDatabase(database_cfg, &logger)
-	if err := db.Setup(); err != nil {
+	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
+	dbCfg := &velodatabase.DBConfig{Type: velodatabase.DBTypeSQLite, Path: cfg.DBPath}
+	if err := b.UseDatabase(dbCfg, &database.Migrations); err != nil {
 		color.Red(fmt.Sprintf("数据库初始化失败，%s\n\n", err))
 		os.Exit(0)
 		return
@@ -167,7 +171,7 @@ func root_command(cfg *config.Config) {
 	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	if !official_cfg.Disabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets))
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 			Match: "official.weixin.qq.com",
 			Target: &proxy.TargetConfig{
@@ -198,7 +202,7 @@ func root_command(cfg *config.Config) {
 		}
 	}))
 	if !zhihu_cfg.Disabled {
-		interceptor_srv.Interceptor.AddPostPlugin(zhihu.CreateZhihuInterceptorPlugin(zhihu_cfg, db.DB(), &logger))
+		interceptor_srv.Interceptor.AddPostPlugin(zhihu.CreateZhihuInterceptorPlugin(zhihu_cfg, b.DB, &logger))
 	}
 	mgr.RegisterServer(interceptor_srv)
 	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
@@ -215,7 +219,7 @@ func root_command(cfg *config.Config) {
 		return
 	}
 	l.Close()
-	api_srv := api.NewAPIServer(api_cfg, &logger, db)
+	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
 	mgr.RegisterServer(api_srv)
 	interceptor_srv.Interceptor.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
 	interceptor_srv.Interceptor.AddVariable("downloadDir", api_cfg.DownloadDir)

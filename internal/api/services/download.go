@@ -20,7 +20,7 @@ import (
 
 type DownloadService struct {
 	downloader  *downloadpkg.Downloader
-	db          DBClient
+	db          *gorm.DB
 	downloadDir string
 	formatter   *utilpkg.FilenameProcessor
 	ws          WSBroadcaster
@@ -30,7 +30,7 @@ type WSBroadcaster interface {
 	Broadcast(msg interface{})
 }
 
-func NewDownloadService(downloader *downloadpkg.Downloader, db DBClient, downloadDir string, ws WSBroadcaster) *DownloadService {
+func NewDownloadService(downloader *downloadpkg.Downloader, db *gorm.DB, downloadDir string, ws WSBroadcaster) *DownloadService {
 	return &DownloadService{
 		downloader:  downloader,
 		db:          db,
@@ -362,10 +362,7 @@ func (s *DownloadService) ResumeAll() error {
 }
 
 func (s *DownloadService) DB() *gorm.DB {
-	if s.db != nil {
-		return s.db.DB()
-	}
-	return nil
+	return s.db
 }
 
 func (s *DownloadService) CreateContentDownloadTask(content *model.Content, t *downloadpkg.Task, reason string) (*model.DownloadTask, error) {

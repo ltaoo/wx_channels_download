@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/util"
 )
@@ -51,7 +52,7 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInjectedFiles) []*proxy.Plugin {
+func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *frontend.ChannelInjectedFiles) []*proxy.Plugin {
 	version := interceptor.Version
 	cfg := interceptor.Settings
 	variables := interceptor.FrontendVariables
@@ -578,7 +579,7 @@ func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy
 	}
 }
 
-func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
+func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
 	version := interceptor.Version
 	v := "?t=" + version
 	return &proxy.Plugin{

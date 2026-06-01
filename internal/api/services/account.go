@@ -13,13 +13,9 @@ type AccountService struct {
 	db *gorm.DB
 }
 
-func NewAccountService(db DBClient) *AccountService {
-	var d *gorm.DB
-	if db != nil {
-		d = db.DB()
-	}
+func NewAccountService(db *gorm.DB) *AccountService {
 	return &AccountService{
-		db: d,
+		db: db,
 	}
 }
 

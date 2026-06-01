@@ -125,12 +125,12 @@ func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
-	if c.db == nil || c.db.DB() == nil {
+	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
 	var accounts []model.Account
-	if err := c.db.DB().Model(&model.Account{}).Find(&accounts).Error; err != nil {
+	if err := c.db.Model(&model.Account{}).Find(&accounts).Error; err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -143,7 +143,7 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			Role      string `json:"role"`
 		}
 		var rows []vaRow
-		_ = c.db.DB().Table("video_account").
+		_ = c.db.Table("video_account").
 			Select("video_account.video_id, video_account.account_id, video_account.role").
 			Joins("JOIN video ON video.id = video_account.video_id").
 			Where("video_account.account_id = ?", acc.Id).
@@ -158,7 +158,7 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		videoByID := map[int]model.Video{}
 		if len(videoIDs) > 0 {
 			var videos []model.Video
-			_ = c.db.DB().Where("id IN ?", videoIDs).Find(&videos).Error
+			_ = c.db.Where("id IN ?", videoIDs).Find(&videos).Error
 			for _, v := range videos {
 				videoByID[v.Id] = v
 			}

@@ -3,7 +3,6 @@ package services
 import (
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
-	"gorm.io/gorm"
 )
 
 type TaskFilter struct {
@@ -135,6 +134,3 @@ type FeedContact struct {
 	AvatarURL string
 }
 
-type DBClient interface {
-	DB() *gorm.DB
-}

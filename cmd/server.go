@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -15,6 +16,10 @@ import (
 	"github.com/fatih/color"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+
+	"github.com/ltaoo/velo"
+	velodatabase "github.com/ltaoo/velo/database"
+	"github.com/ltaoo/velo/frontendserver"
 
 	"wx_channel/internal/api"
 	"wx_channel/internal/database"
@@ -64,6 +69,15 @@ func serve_command() {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
+	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
+
+	dbPath := cfg.DBPath
+	dbCfg := &velodatabase.DBConfig{Type: velodatabase.DBTypeSQLite, Path: dbPath}
+	if err := b.UseDatabase(dbCfg, &database.Migrations); err != nil {
+		color.Red(fmt.Sprintf("数据库初始化失败，%s\n\n", err))
+		os.Exit(0)
+	}
+
 	log_filepath := filepath.Join(cfg.RootDir, "app.log")
 	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
@@ -76,13 +90,6 @@ func serve_command() {
 	if cfg.FullPath != "" {
 		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
 	}
-	database_cfg := database.NewDatabaseConfig(cfg)
-	db := database.NewClientDatabase(database_cfg, &logger)
-	if err := db.Setup(); err != nil {
-		color.Red(fmt.Sprintf("数据库初始化失败，%s\n\n", err))
-		os.Exit(0)
-		return
-	}
 	mgr := manager.NewServerManager()
 	api_cfg := api.NewAPIConfig(Cfg, true)
 	mp_token_filepath, err := officialaccount.ValidateTokenFilepath(api_cfg.OfficialAccountTokenFilepath, cfg.RootDir)
@@ -90,14 +97,7 @@ func serve_command() {
 		fmt.Printf("公众号授权凭证文件 %s\n", color.New(color.Underline).Sprint(mp_token_filepath))
 	}
 	addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", addr))
-		os.Exit(0)
-		return
-	}
-	l.Close()
-	api_srv := api.NewAPIServer(api_cfg, &logger, db)
+	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
 	mgr.RegisterServer(api_srv)
 	if daemon_child {
 		_ = write_wx_pidfile(os.Getpid())
@@ -105,25 +105,47 @@ func serve_command() {
 			_ = remove_wx_pidfile()
 		}()
 	}
+
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("api"); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭API服务失败: %v\n", err))
 		}
-		if err := db.Close(); err != nil {
-			color.Red(fmt.Sprintf("⚠️ 关闭数据库失败: %v\n", err))
-		}
 		color.Green("服务已关闭")
 	}
-	if err := mgr.StartServer("api"); err != nil {
+
+	if err := api_srv.APIClient.Start(); err != nil {
 		color.Red(fmt.Sprintf("ERROR 启动API服务失败: %v\n", err.Error()))
 		cleanup()
 		os.Exit(0)
 		return
 	}
+
+	// top-level mux: API routes → gin, SPA → frontendserver
+	ginRouter := api_srv.APIClient.Engine()
+	mux := http.NewServeMux()
+	mux.Handle("/api/", ginRouter)
+	mux.Handle("/", frontendserver.New(frontendserver.Options{
+		Root:      "frontend",
+		EntryPage: "index.html",
+	}))
+
+	api_srv.SetHandler(mux)
+
 	color.Green(fmt.Sprintf("API服务启动成功, 地址: %v", api_srv.Addr()))
 	fmt.Println("\n按 Ctrl+C 退出...")
-	<-ctx.Done()
+
+	httpSrv := &http.Server{Addr: addr, Handler: mux}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(shutdownCtx)
+	}()
+
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		color.Red(fmt.Sprintf("HTTP 服务错误: %v\n", err))
+	}
 	cleanup()
 }
 

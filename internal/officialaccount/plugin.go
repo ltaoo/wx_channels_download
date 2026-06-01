@@ -6,13 +6,13 @@ import (
 	"regexp"
 	"strings"
 
-	"wx_channel/internal/interceptor"
+	"wx_channel/frontend"
 	"wx_channel/internal/interceptor/proxy"
 )
 
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
-func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles) *proxy.Plugin {
+func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnResponse: func(ctx proxy.Context) {
