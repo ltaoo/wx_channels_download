@@ -147,8 +147,8 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 		req_seq:                   uint64(time.Now().UnixNano()),
 		wait_chan_map:             make(map[string]chan *OfficialAccount),
 	}
-	if cfg.RootDir != "" {
-		mp_json_filepath = filepath.Join(cfg.RootDir, "mp.json")
+	if cfg.WorkDir != "" {
+		mp_json_filepath = filepath.Join(cfg.WorkDir, "mp.json")
 	}
 	load_accounts()
 	if cfg.RemoteServerHostname != "" {

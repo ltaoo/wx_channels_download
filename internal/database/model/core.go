@@ -166,19 +166,20 @@ func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 	var existing BrowseHistory
 	err := db.Where("platform_id = ? AND content_external_id = ?", b.PlatformId, b.ContentExternalId).First(&existing).Error
 	if err == nil {
-		existing.VisitedTimes = existing.VisitedTimes + 1
-		existing.AccountExternalId = b.AccountExternalId
-		existing.AccountUsername = b.AccountUsername
-		existing.AccountNickname = b.AccountNickname
-		existing.AccountAvatarURL = b.AccountAvatarURL
-		existing.ContentType = b.ContentType
-		existing.ContentTitle = b.ContentTitle
-		existing.ContentURL = b.ContentURL
-		existing.ContentSourceURL = b.ContentSourceURL
-		existing.ContentCoverURL = b.ContentCoverURL
-		existing.ExtraData = b.ExtraData
-		existing.UpdatedAt = b.UpdatedAt
-		return db.Save(&existing).Error
+		return db.Model(&existing).UpdateColumns(map[string]any{
+			"visited_times":       existing.VisitedTimes + 1,
+			"account_external_id": b.AccountExternalId,
+			"account_username":    b.AccountUsername,
+			"account_nickname":    b.AccountNickname,
+			"account_avatar_url":  b.AccountAvatarURL,
+			"content_type":        b.ContentType,
+			"content_title":       b.ContentTitle,
+			"content_url":         b.ContentURL,
+			"content_source_url":  b.ContentSourceURL,
+			"content_cover_url":   b.ContentCoverURL,
+			"extra_data":          b.ExtraData,
+			"updated_at":          b.UpdatedAt,
+		}).Error
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err

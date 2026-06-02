@@ -17,6 +17,7 @@ type APIConfig struct {
 	Mode                         string
 	Original                     *config.Config
 	RootDir                      string
+	WorkDir                      string
 	DownloadDir                  string
 	PlayDoneAudio                bool
 	MaxRunning                   int // 最多同时下载的任务数
@@ -46,10 +47,10 @@ type APIConfig struct {
 func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
-	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
+	dir = strings.ReplaceAll(dir, "%CWD%", c.WorkDir)
 	dir = filepath.Clean(dir)
 	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(c.RootDir, dir)
+		dir = filepath.Join(c.WorkDir, dir)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
@@ -59,17 +60,17 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	cloudflare_sph_cookie := viper.GetString("cloudflare.sphCookie")
 
 	dbPath := viper.GetString("db.filepath")
-	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.RootDir)
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
 	dbPath = filepath.Clean(dbPath)
 	if !filepath.IsAbs(dbPath) {
-		dbPath = filepath.Join(c.RootDir, dbPath)
+		dbPath = filepath.Join(c.WorkDir, dbPath)
 	}
 
 	migPath := viper.GetString("db.migration")
-	migPath = strings.ReplaceAll(migPath, "%CWD%", c.RootDir)
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.WorkDir)
 	migPath = filepath.Clean(migPath)
 	if !filepath.IsAbs(migPath) {
-		migPath = filepath.Join(c.RootDir, migPath)
+		migPath = filepath.Join(c.WorkDir, migPath)
 	}
 
 	api_cfg := &APIConfig{
@@ -77,6 +78,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		Mode:                         c.Mode,
 		Original:                     c,
 		RootDir:                      c.RootDir,
+		WorkDir:                      c.WorkDir,
 		DownloadDir:                  dir,
 		PlayDoneAudio:                viper.GetBool("download.playDoneAudio"),
 		MaxRunning:                   3,

@@ -1,10 +1,15 @@
 import { VideosPageModel } from "./videos.model.js";
 
 function VideoCard(video, vm$) {
+  const accountName = video.account?.nickname || video.account?.username || "";
+  const description = String(video.description || "").trim();
+  const title = String(video.title || "").trim();
+  const visibleDescription = description && description !== title ? description : "";
+
   return View(
     {
       class:
-        "group overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700",
+        "group h-full cursor-pointer overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700",
       onClick() {
         vm$.methods.play(video);
       },
@@ -29,18 +34,39 @@ function VideoCard(video, vm$) {
           when: !!video.account,
           ok() {
             return View({ class: "flex items-center gap-2" }, [
-              video.account.avatar_url
-                ? Img({ class: "h-6 w-6 rounded-full object-cover", src: video.account.avatar_url, alt: video.account.nickname || "" })
-                : View({ class: "h-6 w-6 rounded-full bg-zinc-100 dark:bg-zinc-900" }),
-              View({ class: "min-w-0 truncate text-xs text-zinc-500" }, [
-                video.account.nickname || video.account.username || "",
+              View(
+                {
+                  class:
+                    "h-7 w-7 shrink-0 overflow-hidden rounded-full bg-zinc-100 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800",
+                },
+                [
+                  video.account.avatar_url
+                    ? Img({
+                        class: "h-full w-full object-cover",
+                        src: video.account.avatar_url,
+                        alt: accountName,
+                      })
+                    : View(
+                        {
+                          class:
+                            "flex h-full w-full items-center justify-center text-xs font-medium text-zinc-500 dark:text-zinc-400",
+                        },
+                        [String(accountName || "?").slice(0, 1)],
+                      ),
+                ],
+              ),
+              View({ class: "min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-300" }, [
+                accountName || "未知帐号",
               ]),
             ]);
           },
         }),
-        View({ class: "line-clamp-2 min-h-[2.5rem] text-sm text-zinc-700 dark:text-zinc-300" }, [
-          video.description || video.title,
-        ]),
+        Show({
+          when: !!visibleDescription,
+          ok() {
+            return View({ class: "line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400" }, [visibleDescription]);
+          },
+        }),
       ]),
     ],
   );

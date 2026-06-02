@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -29,8 +31,31 @@ type ChannelsDownloadRequest struct {
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
+	bodyBytes, err := io.ReadAll(ctx.Request.Body)
+	if err != nil {
+		result.Err(ctx, 400, "读取请求参数失败")
+		return
+	}
+	ctx.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	var dispatchBody struct {
+		URL    string                  `json:"url"`
+		Object apitypes.ChannelsObject `json:"object"`
+	}
+	if err := json.Unmarshal(bodyBytes, &dispatchBody); err == nil &&
+		dispatchBody.URL != "" &&
+		dispatchBody.Object.ID == "" {
+		if !isChannelsDownloadURL(dispatchBody.URL) {
+			result.Err(ctx, 400, "暂时不支持该下载链接")
+			return
+		}
+		ctx.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		c.handleCreateChannelsTask(ctx)
+		return
+	}
+
 	var body ChannelsDownloadRequest
-	if err := ctx.ShouldBindJSON(&body); err != nil {
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
@@ -54,6 +79,22 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 
 	result.Ok(ctx, gin.H{"id": id})
+}
+
+func isChannelsDownloadURL(rawURL string) bool {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	hostname := parsedURL.Hostname()
+	path := parsedURL.EscapedPath()
+	if strings.EqualFold(hostname, "finder.video.qq.com") {
+		return strings.Contains(path, "/stodownload")
+	}
+	if strings.EqualFold(hostname, "channels.weixin.qq.com") {
+		return path == "/web/pages/feed"
+	}
+	return false
 }
 
 type DownloadTaskPayload struct {

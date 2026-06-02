@@ -993,7 +993,10 @@ var WXU = (() => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({
+          ...profile,
+          pageurl: window.location.href,
+        }),
       });
       __wx_channels_store__.profile = profile;
     },

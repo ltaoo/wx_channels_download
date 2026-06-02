@@ -453,7 +453,11 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 	}
 
 	if feed.Type == "picture" || feed.ObjectDesc.MediaType == 2 {
-		if len(feed.Files) == 0 {
+		files := feed.Files
+		if len(files) == 0 {
+			files = feed.ObjectDesc.Media
+		}
+		if len(files) == 0 {
 			return nil, errors.New("picture 类型缺少 files 数据")
 		}
 		return &ChannelsFeedProfile{
@@ -462,7 +466,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 			SourceURL: feed.SourceURL,
 			URL:       "",
 			Title:     buildTitle(feed.ObjectDesc.Description, false),
-			CoverURL:  feed.Files[0].CoverUrl,
+			CoverURL:  files[0].CoverUrl,
 			CreatedAt: feed.CreateTime,
 			Contact: ChannelsFeedAccount{
 				Username:  feed.Contact.Username,

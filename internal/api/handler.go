@@ -653,7 +653,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 			}
 		}
 	}
-	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
+	payload, _, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return

@@ -434,7 +434,7 @@
         }
       }
     },
-    "/download_task/list": {
+    "/api/download_task/list": {
       "post": {
         "tags": ["下载任务"],
         "summary": "获取下载任务列表（兼容 wx_channels_api）",
@@ -515,7 +515,7 @@
         }
       }
     },
-    "/download_task/start": {
+    "/api/download_task/start": {
       "post": {
         "tags": ["下载任务"],
         "summary": "开始/恢复下载任务（兼容 wx_channels_api）",
@@ -547,7 +547,7 @@
         }
       }
     },
-    "/download_task/profile": {
+    "/api/download_task/profile": {
       "post": {
         "tags": ["下载任务"],
         "summary": "获取单个下载任务（兼容 wx_channels_api）",
@@ -581,7 +581,7 @@
         }
       }
     },
-    "/download_task/create": {
+    "/api/download_task/create": {
       "post": {
         "tags": ["下载任务"],
         "summary": "创建视频号下载任务（兼容 wx_channels_api）",
@@ -657,7 +657,7 @@
         }
       }
     },
-    "/download_task/batch_create": {
+    "/api/download_task/batch_create": {
       "post": {
         "tags": ["下载任务"],
         "summary": "批量创建下载任务（兼容 wx_channels_api）",
@@ -722,7 +722,7 @@
         }
       }
     },
-    "/download_task/delete": {
+    "/api/download_task/delete": {
       "post": {
         "tags": ["下载任务"],
         "summary": "删除下载任务（兼容 wx_channels_api）",
@@ -753,7 +753,7 @@
         }
       }
     },
-    "/download_task/retry": {
+    "/api/download_task/retry": {
       "post": {
         "tags": ["下载任务"],
         "summary": "重试下载任务（兼容 wx_channels_api）",
@@ -779,7 +779,7 @@
         }
       }
     },
-    "/download_task/pause_all": {
+    "/api/download_task/pause_all": {
       "post": {
         "tags": ["下载任务"],
         "summary": "暂停全部下载任务（兼容 wx_channels_api）",
@@ -797,7 +797,7 @@
         }
       }
     },
-    "/download_task/start_all": {
+    "/api/download_task/start_all": {
       "post": {
         "tags": ["下载任务"],
         "summary": "开始全部下载任务（兼容 wx_channels_api）",
@@ -815,7 +815,7 @@
         }
       }
     },
-    "/download_task/highlight_file": {
+    "/api/download_task/highlight_file": {
       "post": {
         "tags": ["下载任务"],
         "summary": "在文件管理器中高亮已下载文件（兼容 wx_channels_api）",
@@ -841,7 +841,7 @@
         }
       }
     },
-    "/download_task/play": {
+    "/api/download_task/play": {
       "get": {
         "tags": ["下载任务"],
         "summary": "在线播放已下载文件（兼容 wx_channels_api）",
@@ -855,55 +855,7 @@
         }
       }
     },
-    "/browse_history/create": {
-      "post": {
-        "tags": ["内容"],
-        "summary": "创建/更新浏览历史（兼容 wx_channels_api）",
-        "description": "与 /api/browse_history/create 行为一致。",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "type": "object" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "写入成功",
-            "content": {
-              "application/json": {
-                "examples": {
-                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": {} } }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/browse_history/list": {
-      "post": {
-        "tags": ["内容"],
-        "summary": "获取浏览历史（兼容 wx_channels_api）",
-        "description": "与 /api/browse_history/list 行为一致。",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": { "username": { "type": "string", "description": "按账号 username 过滤" } }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "列表结果" }
-        }
-      }
-    },
-    "/influencers": {
+    "/api/influencers": {
       "get": {
         "tags": ["达人"],
         "summary": "达人列表（兼容 wx_channels_api）",
@@ -949,7 +901,7 @@
         "responses": { "200": { "description": "创建结果" } }
       }
     },
-    "/influencers/{id}": {
+    "/api/influencers/{id}": {
       "get": {
         "tags": ["达人"],
         "summary": "获取达人详情（兼容 wx_channels_api）",
@@ -978,7 +930,7 @@
         "responses": { "200": { "description": "更新结果" } }
       }
     },
-    "/account/list": {
+    "/api/account/list": {
       "post": {
         "tags": ["平台"],
         "summary": "账号列表（兼容 wx_channels_api）",
@@ -988,7 +940,7 @@
             "content": {
               "application/json": {
                 "examples": {
-                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "nickname": "示例账号", "avatar_url": "https://wx.qlogo.cn/xxx", "external_id": "v2_xxx@finder", "video_accounts": [] }] } } }
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "platform_id": "wx_channels", "platform_name": "微信视频号", "platform": { "id": "wx_channels", "code": "wx_channels", "name": "微信视频号", "homepage": "https://channels.weixin.qq.com", "logo_url": "/public/WechatChannels_A.png", "entry_url": "https://channels.weixin.qq.com" }, "nickname": "示例账号", "avatar_url": "https://wx.qlogo.cn/xxx", "external_id": "v2_xxx@finder", "video_accounts": [] }] } } }
                 }
               }
             }
@@ -996,7 +948,7 @@
         }
       }
     },
-    "/account/synchronize": {
+    "/api/account/synchronize": {
       "post": {
         "tags": ["平台"],
         "summary": "同步账号视频列表并入库（兼容 wx_channels_api）",
@@ -1018,7 +970,7 @@
         "responses": { "200": { "description": "同步结果" } }
       }
     },
-    "/video/list": {
+    "/api/video/list": {
       "post": {
         "tags": ["内容"],
         "summary": "视频列表（兼容 wx_channels_api）",
@@ -1045,7 +997,7 @@
         "responses": { "200": { "description": "列表结果" } }
       }
     },
-    "/channels/search/author": {
+    "/api/channels/search/author": {
       "get": {
         "tags": ["平台"],
         "summary": "搜索视频号账号（兼容 wx_channels_api）",
@@ -1056,7 +1008,7 @@
         "responses": { "200": { "description": "搜索结果（结构与 /api/channels/contact/search 相同）" } }
       }
     },
-    "/channels/author/videos": {
+    "/api/channels/author/videos": {
       "get": {
         "tags": ["平台"],
         "summary": "获取视频号账号的视频列表（兼容 wx_channels_api）",
@@ -1067,7 +1019,7 @@
         "responses": { "200": { "description": "列表结果（结构与 /api/channels/contact/feed/list 相同）" } }
       }
     },
-    "/channels/media/profile": {
+    "/api/channels/media/profile": {
       "get": {
         "tags": ["平台"],
         "summary": "获取视频详情（兼容 wx_channels_api）",
@@ -1080,7 +1032,7 @@
         "responses": { "200": { "description": "详情结果（结构与 /api/channels/feed/profile 相同）" } }
       }
     },
-    "/channels/task/status": {
+    "/api/channels/task/status": {
       "get": {
         "tags": ["平台"],
         "summary": "查询任务状态（兼容 wx_channels_api）",
@@ -1088,7 +1040,7 @@
         "responses": { "200": { "description": "状态信息" } }
       }
     },
-    "/channels/task/start": {
+    "/api/channels/task/start": {
       "get": {
         "tags": ["平台"],
         "summary": "开始任务（兼容 wx_channels_api）",

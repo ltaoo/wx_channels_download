@@ -19,8 +19,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/api/services"
+	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
@@ -38,6 +38,7 @@ type APIClient struct {
 	official      *officialaccount.OfficialAccountClient
 	channels      *channels.ChannelsClient
 	downloader_ws *downloaderclient.DownloaderClient
+	status_ws     *downloaderclient.DownloaderClient
 	filehelper    *FileHelperHandler
 	formatter     *util.FilenameProcessor
 	cfg           *APIConfig
@@ -57,7 +58,7 @@ type APIClient struct {
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
-	data_dir := cfg.RootDir
+	data_dir := cfg.WorkDir
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	var st downloadpkg.Storage
 	if db != nil {
@@ -78,6 +79,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		channels_client.SetDB(db)
 	}
 	downloader_ws := downloaderclient.NewDownloaderClient()
+	status_ws := downloaderclient.NewDownloaderClient()
 
 	// get_sorted_tasks := func() []*downloadpkg.Task {
 	// 	tasks := downloader.GetTasks()
@@ -113,11 +115,12 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	browseService := services.NewBrowseService(db)
 	channelsUploadService := services.NewChannelsUploadService(db, &logger)
 
-	client := &APIClient{
+	apiClient := &APIClient{
 		downloader:            downloader,
 		official:              officialaccount_client,
 		channels:              channels_client,
 		downloader_ws:         downloader_ws,
+		status_ws:             status_ws,
 		filehelper:            NewFileHelperHandler(),
 		formatter:             util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:                   cfg,
@@ -132,14 +135,40 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		channelsUploadService: channelsUploadService,
 	}
 
-	// 设置文件传输助手视频号自动下载回调
-	client.filehelper.SetFinderAutoDownloadCallback(client.autoCreateChannelsTask)
-	// 设置文件传输助手 SPH 自动下载回调
-	client.filehelper.SetSphAutoDownloadCallback(client.autoDownloadSphVideo)
+	status_ws.OnConnected = func(wsClient *downloaderclient.WSClient) {
+		data, err := json.Marshal(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
+		if err != nil {
+			return
+		}
+		select {
+		case wsClient.Send <- data:
+		default:
+		}
+	}
+	channels_client.OnConnected = func(_ *channels.Client) {
+		status_ws.Broadcast(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
+	}
+	channels_client.OnDisconnected = func(_ *channels.Client) {
+		status_ws.Broadcast(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
+	}
 
-	client.SetupRoutes()
-	client.httpHandler = client.buildHTTPHandler()
-	return client
+	// 设置文件传输助手视频号自动下载回调
+	apiClient.filehelper.SetFinderAutoDownloadCallback(apiClient.autoCreateChannelsTask)
+	// 设置文件传输助手 SPH 自动下载回调
+	apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
+
+	apiClient.SetupRoutes()
+	apiClient.httpHandler = apiClient.buildHTTPHandler()
+	return apiClient
 }
 
 func (c *APIClient) SetManager(mgr *manager.ServerManager) {
@@ -190,6 +219,7 @@ func (c *APIClient) Start() error {
 			Type: "event",
 			Data: evt,
 		})
+		c.recordDownloadTaskEvent(evt)
 		if evt.Key == downloadpkg.EventKeyDone {
 			if c.cfg.PlayDoneAudio {
 				go assets.PlayDoneAudio()
@@ -239,6 +269,9 @@ func (c *APIClient) Stop() error {
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
 	}
+	if c.status_ws != nil {
+		c.status_ws.Stop()
+	}
 	return nil
 }
 
@@ -255,6 +288,107 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.httpHandler = c.buildHTTPHandler()
 	}
 	c.httpHandler.ServeHTTP(w, r)
+}
+
+func (c *APIClient) recordDownloadTaskEvent(evt *downloadpkg.Event) {
+	if c.db == nil || evt == nil || evt.Task == nil || evt.Task.ID == "" {
+		return
+	}
+	if evt.Key == downloadpkg.EventKeyProgress {
+		return
+	}
+
+	var rec model.DownloadTask
+	if err := c.db.Where("task_id = ?", evt.Task.ID).First(&rec).Error; err != nil {
+		return
+	}
+
+	message := ""
+	if evt.Err != nil {
+		message = evt.Err.Error()
+	}
+	data := map[string]any{
+		"task_id": evt.Task.ID,
+		"status":  string(evt.Task.Status),
+	}
+	if evt.Task.Meta != nil && evt.Task.Meta.Opts != nil {
+		data["name"] = evt.Task.Meta.Opts.Name
+		data["path"] = evt.Task.Meta.Opts.Path
+	}
+	if evt.Task.Meta != nil && evt.Task.Meta.Req != nil && evt.Task.Meta.Req.Labels != nil {
+		data["labels"] = evt.Task.Meta.Req.Labels
+	}
+	dataBytes, _ := json.Marshal(data)
+
+	_ = c.db.Create(&model.DownloadTaskEvent{
+		TaskId:    rec.Id,
+		Type:      string(evt.Key),
+		Message:   message,
+		Data:      string(dataBytes),
+		CreatedAt: util.NowMillis(),
+	}).Error
+}
+
+func (c *APIClient) ensureDownloadTaskBaselineEvents(tasks []model.DownloadTask) {
+	if c.db == nil || len(tasks) == 0 {
+		return
+	}
+	for _, task := range tasks {
+		if task.Id == 0 {
+			continue
+		}
+		var count int64
+		if err := c.db.Model(&model.DownloadTaskEvent{}).Where("task_id = ?", task.Id).Count(&count).Error; err != nil || count > 0 {
+			continue
+		}
+		createdAt := task.CreatedAt
+		if createdAt == 0 {
+			createdAt = task.UpdatedAt
+		}
+		if createdAt == 0 {
+			createdAt = util.NowMillis()
+		}
+		_ = c.db.Create(&model.DownloadTaskEvent{
+			TaskId:    task.Id,
+			Type:      "create",
+			Message:   "创建下载任务",
+			CreatedAt: createdAt,
+		}).Error
+
+		statusEvent := downloadTaskStatusEventType(task.Status)
+		if statusEvent == "" {
+			continue
+		}
+		statusAt := task.UpdatedAt
+		if statusAt == 0 {
+			statusAt = createdAt
+		}
+		message := ""
+		if statusEvent == "error" {
+			message = task.Error
+		}
+		_ = c.db.Create(&model.DownloadTaskEvent{
+			TaskId:    task.Id,
+			Type:      statusEvent,
+			Message:   message,
+			CreatedAt: statusAt,
+		}).Error
+	}
+}
+
+func downloadTaskStatusEventType(status int) string {
+	switch status {
+	case 1:
+		return "start"
+	case 2:
+		return "pause"
+	case 4:
+		return "done"
+	case 5:
+		return "error"
+	default:
+		return ""
+	}
 }
 
 func (c *APIClient) resolve_connections(url string) int {
@@ -288,25 +422,39 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *service
 	return false
 }
 
-func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, error) {
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, *apitypes.ChannelsFeedProfile, error) {
 	// 获取视频详情
 	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
-		return nil, fmt.Errorf("获取详情失败: %w", err)
+		return nil, nil, fmt.Errorf("获取详情失败: %w", err)
 	}
 	if r.ErrCode != 0 {
-		return nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
-	}
-	if len(r.Data.Object.ObjectDesc.Media) == 0 {
-		return nil, fmt.Errorf("缺少可下载的视频内容")
+		return nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
 	}
 
-	media := r.Data.Object.ObjectDesc.Media[0]
+	feed := r.Data.Object
+	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&feed)
+	if err != nil {
+		return nil, nil, fmt.Errorf("解析视频号内容失败: %w", err)
+	}
+	if feed.LiveInfo != nil {
+		return nil, nil, fmt.Errorf("直播类型请使用直播下载")
+	}
+
+	isPicture := feed.Type == "picture" || feed.ObjectDesc.MediaType == 2
+	var media *apitypes.ChannelsMediaItem
+	if !isPicture {
+		if len(feed.ObjectDesc.Media) == 0 {
+			return nil, nil, fmt.Errorf("缺少可下载的视频内容")
+		}
+		media = &feed.ObjectDesc.Media[0]
+	}
+
 	key := 0
-	if media.DecodeKey != "" {
+	if media != nil && media.DecodeKey != "" {
 		k, err := strconv.Atoi(media.DecodeKey)
 		if err != nil {
-			return nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
+			return nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
 		}
 		key = k
 	}
@@ -315,17 +463,16 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	if len(customSpec) > 0 && customSpec[0] != "" {
 		spec = customSpec[0]
 	} else if !c.cfg.Original.GetBool("download.defaultHighest") {
-		if len(media.Spec) > 0 {
+		if media != nil && len(media.Spec) > 0 {
 			spec = media.Spec[0].FileFormat
 		}
 	}
 
 	// 构建文件名
-	feed := r.Data.Object
-	defaultName := feed.ObjectDesc.Description
+	defaultName := profile.Title
 	if defaultName == "" {
-		if feed.ID != "" {
-			defaultName = feed.ID
+		if profile.ObjectId != "" {
+			defaultName = profile.ObjectId
 		} else {
 			defaultName = util.NowSecondsStr()
 		}
@@ -335,12 +482,12 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	if template != "" {
 		params := map[string]string{
 			"filename":    defaultName,
-			"id":          feed.ID,
-			"title":       feed.ObjectDesc.Description,
+			"id":          profile.ObjectId,
+			"title":       profile.Title,
 			"spec":        spec,
-			"created_at":  strconv.Itoa(feed.CreateTime),
+			"created_at":  strconv.Itoa(profile.CreatedAt),
 			"download_at": util.NowSecondsStr(),
-			"author":      feed.Contact.Nickname,
+			"author":      profile.Contact.Nickname,
 		}
 		filename = template
 		for k, v := range params {
@@ -349,18 +496,21 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	}
 
 	payload := &services.FeedDownloadTaskBody{
-		Id:       feed.ID,
-		NonceId:  nid,
-		Title:    feed.ObjectDesc.Description,
+		Id:       profile.ObjectId,
+		NonceId:  profile.NonceId,
+		Title:    profile.Title,
 		Key:      key,
 		Spec:     spec,
 		Suffix:   ".mp4",
-		URL:      media.URL + media.URLToken,
+		URL:      profile.URL,
 		Filename: filename,
+	}
+	if payload.NonceId == "" {
+		payload.NonceId = nid
 	}
 
 	// 处理 URL：非空 spec 添加 X-snsvideoflag 参数，空 spec 则清理 URL 只保留 encfilekey 和 token
-	if !isCover {
+	if !isCover && !isPicture {
 		if spec != "" {
 			payload.URL += "&X-snsvideoflag=" + spec
 		} else {
@@ -380,15 +530,20 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		payload.Suffix = ".mp3"
 	}
 	if isCover {
-		payload.Suffix += ".jpg"
-		payload.URL = media.CoverUrl
+		payload.Suffix = ".jpg"
+		payload.URL = profile.CoverURL
 	}
 
 	// 处理图集类型
-	if feed.ObjectDesc.MediaType == 2 {
+	if isPicture {
 		payload.Suffix = ".zip"
+		payload.URL = ""
 		var files []map[string]string
-		for i, m := range feed.ObjectDesc.Media {
+		pictureFiles := feed.Files
+		if len(pictureFiles) == 0 {
+			pictureFiles = feed.ObjectDesc.Media
+		}
+		for i, m := range pictureFiles {
 			files = append(files, map[string]string{
 				"url":      m.URL + m.URLToken,
 				"filename": fmt.Sprintf("%d.jpg", i+1),
@@ -400,11 +555,14 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 				"filename": "bgm.mp3",
 			})
 		}
+		if len(files) == 0 {
+			return nil, nil, fmt.Errorf("图集类型缺少可下载图片")
+		}
 		data, _ := json.Marshal(files)
 		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}
 
-	return payload, nil
+	return payload, profile, nil
 }
 
 // autoCreateChannelsTask 根据视频号消息自动创建下载任务

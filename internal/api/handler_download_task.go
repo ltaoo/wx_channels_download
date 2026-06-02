@@ -323,6 +323,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	for _, t := range tasks {
 		ids = append(ids, t.Id)
 	}
+	c.ensureDownloadTaskBaselineEvents(tasks)
 	var events []model.DownloadTaskEvent
 	if len(ids) > 0 {
 		_ = c.db.Where("task_id IN ?", ids).Order("id ASC").Find(&events).Error

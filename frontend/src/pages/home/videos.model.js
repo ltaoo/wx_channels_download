@@ -1,6 +1,33 @@
 import { fetchAccountList, fetchVideoList } from "@/biz/request.js";
 import { formatBytes, formatDate } from "./downloads.model.js";
 
+function pick(...values) {
+  return values.find((v) => v !== undefined && v !== null && v !== "") || "";
+}
+
+function normalizeAccount(account) {
+  if (!account) return null;
+  return {
+    ...account,
+    nickname: pick(account.nickname, account.account_nickname, account.name),
+    username: pick(account.username, account.account_username, account.external_id, account.account_external_id),
+    avatar_url: pick(account.avatar_url, account.account_avatar_url, account.avatarUrl, account.headUrl),
+  };
+}
+
+function accountFromVideo(video, fallback) {
+  if (fallback) return normalizeAccount(fallback);
+  if (video.account) return normalizeAccount(video.account);
+  if (Array.isArray(video.accounts) && video.accounts.length > 0) return normalizeAccount(video.accounts[0]);
+  const account = normalizeAccount({
+    id: video.account_id,
+    nickname: video.account_nickname,
+    username: pick(video.account_username, video.account_external_id),
+    avatar_url: video.account_avatar_url,
+  });
+  return account.nickname || account.username || account.avatar_url ? account : null;
+}
+
 function normalizeVideo(video, account) {
   return {
     ...video,
@@ -12,7 +39,7 @@ function normalizeVideo(video, account) {
     file_size: video.file_size || video.size || video.Size || 0,
     duration: video.duration || video.Duration || 0,
     publish_time: video.publish_time || video.PublishTime || 0,
-    account,
+    account: accountFromVideo(video, account),
   };
 }
 

@@ -96,18 +96,18 @@ export function proxyRemoteRequest(body) {
 
 /** @param {Record<string, any>} params */
 export function fetchAccountList(params = {}) {
-  return request.post("/account/list", params);
+  return request.post("/api/account/list", params);
 }
 
 /** @param {{ account_id?: number; username?: string }} body */
 export function synchronizeAccount(body) {
-  return request.post("/account/synchronize", body);
+  return request.post("/api/account/synchronize", body);
 }
 
 /** @param {Record<string, any>} params */
 export function fetchVideoList(params = {}) {
   const { pageSize, ...rest } = params || {};
-  return request.post("/video/list", {
+  return request.post("/api/video/list", {
     ...rest,
     page_size: pageSize || params.page_size,
   });
@@ -120,6 +120,33 @@ export function fetchBrowseHistoryList(params = {}) {
 
 export function fetchAppStatus() {
   return request.get("/api/status");
+}
+
+/** @param {{ name: string }} body */
+export function startService(body) {
+  return request.post("/api/service/start", body);
+}
+
+/** @param {{ name: string }} body */
+export function stopService(body) {
+  return request.post("/api/service/stop", body);
+}
+
+/** @param {{ values: Record<string, any> }} body */
+export function updateServiceConfig(body) {
+  return request.post("/api/service/config", body);
+}
+
+export function fetchRootCertificateStatus() {
+  return request.get("/api/certificate/root/status");
+}
+
+export function installRootCertificate() {
+  return request.post("/api/certificate/root/install", {});
+}
+
+export function uninstallRootCertificate() {
+  return request.post("/api/certificate/root/uninstall", {});
 }
 
 export function fetchAppConfig() {
@@ -146,6 +173,14 @@ export function createDownloadTask(body) {
     Filename: filename,
     Dir: dir,
     Extra: extra,
+  });
+}
+
+/** @param {{ url: string; cover?: boolean }} body */
+export function createTask(body) {
+  return request.post("/api/task/create", {
+    url: body.url,
+    cover: !!body.cover,
   });
 }
 

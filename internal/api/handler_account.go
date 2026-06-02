@@ -135,6 +135,28 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		return
 	}
 
+	platformIDs := make([]string, 0, len(accounts))
+	seenPlatformIDs := map[string]struct{}{}
+	for _, acc := range accounts {
+		if acc.PlatformId == "" {
+			continue
+		}
+		if _, ok := seenPlatformIDs[acc.PlatformId]; ok {
+			continue
+		}
+		seenPlatformIDs[acc.PlatformId] = struct{}{}
+		platformIDs = append(platformIDs, acc.PlatformId)
+	}
+
+	platformByID := map[string]model.Platform{}
+	if len(platformIDs) > 0 {
+		var platforms []model.Platform
+		_ = c.db.Where("id IN ?", platformIDs).Find(&platforms).Error
+		for _, p := range platforms {
+			platformByID[p.Id] = p
+		}
+	}
+
 	list := make([]gin.H, 0, len(accounts))
 	for _, acc := range accounts {
 		type vaRow struct {
@@ -164,11 +186,27 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			}
 		}
 
+		platform := platformByID[acc.PlatformId]
+		platformName := platform.Name
+		if platformName == "" {
+			platformName = platformNameOf(acc.PlatformId)
+		}
+
 		list = append(list, gin.H{
 			"id":          acc.Id,
-			"nickname":    acc.Nickname,
-			"avatar_url":  acc.AvatarURL,
-			"external_id": acc.ExternalId,
+			"platform_id": acc.PlatformId,
+			"platform": gin.H{
+				"id":        acc.PlatformId,
+				"code":      firstNonEmpty(platform.Code, acc.PlatformId),
+				"name":      platformName,
+				"homepage":  platform.Homepage,
+				"logo_url":  platform.LogoURL,
+				"entry_url": platform.EntryURL,
+			},
+			"platform_name": platformName,
+			"nickname":      acc.Nickname,
+			"avatar_url":    acc.AvatarURL,
+			"external_id":   acc.ExternalId,
 			"video_accounts": func() any {
 				out := make([]gin.H, 0, len(rows))
 				for _, r := range rows {
@@ -184,4 +222,34 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		})
 	}
 	result.Ok(ctx, gin.H{"list": list})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func platformNameOf(platformID string) string {
+	switch platformID {
+	case "wx_channels":
+		return "视频号"
+	case "douyin":
+		return "抖音"
+	case "bilibili":
+		return "Bilibili"
+	case "xiaohongshu", "xhs", "rednote":
+		return "小红书"
+	case "tiktok":
+		return "TikTok"
+	case "youtube":
+		return "YouTube"
+	case "zhihu":
+		return "知乎"
+	default:
+		return platformID
+	}
 }

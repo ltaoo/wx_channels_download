@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gorm.io/gorm"
 
 	"github.com/ltaoo/velo"
 	velodatabase "github.com/ltaoo/velo/database"
@@ -28,6 +30,7 @@ import (
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
@@ -35,6 +38,7 @@ import (
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
+	"wx_channel/pkg/util"
 )
 
 var (
@@ -43,6 +47,7 @@ var (
 	CertFiles       *certificate.CertFileAndKeyFile
 	device          string
 	config_filepath string
+	workdir         string
 	hostname        string
 	port            int
 	debug           bool
@@ -101,10 +106,12 @@ var root_cmd = &cobra.Command{
 func init() {
 	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "代理服务器网络设备")
 	root_cmd.PersistentFlags().StringVarP(&config_filepath, "config", "c", "", "配置文件路径")
+	root_cmd.PersistentFlags().StringVar(&workdir, "workdir", "", "运行时工作目录")
 	root_cmd.PersistentFlags().StringVar(&hostname, "hostname", "127.0.0.1", "代理服务器主机名")
 	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
 	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
 
+	viper.BindPFlag("workdir", root_cmd.PersistentFlags().Lookup("workdir"))
 	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
 	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
@@ -187,10 +194,12 @@ func root_command(cfg *config.Config) {
 
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
+	fmt.Printf("workdir %s\n", color.New(color.Underline).Sprint(cfg.WorkDir))
+	fmt.Printf("data path %s\n", color.New(color.Underline).Sprint(cfg.DBPath))
 
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	log_filepath := filepath.Join(cfg.RootDir, "app.log")
+	log_filepath := filepath.Join(cfg.WorkDir, "app.log")
 	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		color.Red(fmt.Sprintf("创建日志文件失败，%s\n\n", err))
@@ -274,18 +283,54 @@ func root_command(cfg *config.Config) {
 		if profile == nil || profile.Id == "" {
 			return
 		}
+		platformID := "wx_channels"
+		accountUsername := strings.TrimSpace(profile.Contact.Id)
+		if accountUsername != "" {
+			now := util.NowMillis()
+			acc := model.Account{
+				PlatformId: platformID,
+				ExternalId: accountUsername,
+				Username:   accountUsername,
+				Nickname:   profile.Contact.Nickname,
+				AvatarURL:  profile.Contact.AvatarURL,
+				Timestamps: model.Timestamps{
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}
+			var existingAccount model.Account
+			if err := b.DB.Where("platform_id = ? AND external_id = ?", platformID, accountUsername).First(&existingAccount).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					if err := b.DB.Create(&acc).Error; err != nil {
+						logger.Error().Err(err).Str("platform_id", platformID).Str("username", accountUsername).Msg("create account failed")
+					}
+				} else {
+					logger.Error().Err(err).Str("platform_id", platformID).Str("username", accountUsername).Msg("find account failed")
+				}
+			} else {
+				if err := b.DB.Model(&existingAccount).Updates(map[string]any{
+					"username":   accountUsername,
+					"nickname":   profile.Contact.Nickname,
+					"avatar_url": profile.Contact.AvatarURL,
+					"updated_at": now,
+				}).Error; err != nil {
+					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update account failed")
+				}
+			}
+		}
 		if err := api_srv.APIClient.RecordBrowseHistory(profile.Id, services.BrowseHistoryInfo{
-			PlatformId:        "wx_channels",
-			AccountExternalId: profile.Contact.Id,
-			AccountUsername:   profile.Contact.Id,
+			PlatformId:        platformID,
+			AccountExternalId: accountUsername,
+			AccountUsername:   accountUsername,
 			AccountNickname:   profile.Contact.Nickname,
 			AccountAvatarURL:  profile.Contact.AvatarURL,
 			ContentType:       profile.Type,
 			ContentTitle:      profile.Title,
 			ContentURL:        profile.URL,
-			ContentSourceURL:  profile.URL,
+			ContentSourceURL:  profile.Pageurl,
 			ContentCoverURL:   profile.CoverURL,
 			ExtraData: map[string]any{
+				"id":         profile.Id,
 				"nonce_id":   profile.NonceId,
 				"decode_key": profile.Key,
 			},

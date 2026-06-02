@@ -2,6 +2,10 @@ import { fetchAccountList, synchronizeAccount } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
 function normalizeAccount(account) {
+  const platformName =
+    account.platform_name ||
+    account.platform?.name ||
+    platformNameOf(account.platform_id || account.platform?.id || account.platform?.code);
   const medias = (account.video_accounts || [])
     .map((row) => row.video || row.Video || null)
     .filter(Boolean)
@@ -18,8 +22,33 @@ function normalizeAccount(account) {
       account.external_id ||
       "未命名帐号",
     avatar_url: account.avatar_url || "",
+    platform_id: account.platform_id || account.platform?.id || account.platform?.code || "",
+    platform_name: platformName,
     medias,
   };
+}
+
+function platformNameOf(platformId) {
+  switch (platformId) {
+    case "wx_channels":
+      return "视频号";
+    case "douyin":
+      return "抖音";
+    case "bilibili":
+      return "Bilibili";
+    case "xiaohongshu":
+    case "xhs":
+    case "rednote":
+      return "小红书";
+    case "tiktok":
+      return "TikTok";
+    case "youtube":
+      return "YouTube";
+    case "zhihu":
+      return "知乎";
+    default:
+      return platformId || "未知平台";
+  }
 }
 
 export function AccountsPageModel(props) {
@@ -58,7 +87,7 @@ export function AccountsPageModel(props) {
         .toLowerCase();
       if (!k) return d.accounts;
       return d.accounts.filter((it) => {
-        return [it.nickname, it.username, it.external_id].some((v) =>
+        return [it.nickname, it.username, it.external_id, it.platform_name, it.platform_id].some((v) =>
           String(v || "")
             .toLowerCase()
             .includes(k),

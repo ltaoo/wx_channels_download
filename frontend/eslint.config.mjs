@@ -84,6 +84,7 @@ export default [
         Show: "readonly",
         Switch: "readonly",
         Match: "readonly",
+        AspectRatio: "readonly",
         View: "readonly",
         Txt: "readonly",
         DangerouslyInnerHTML: "readonly",

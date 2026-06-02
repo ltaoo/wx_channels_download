@@ -47,6 +47,7 @@ func (c *APIClient) SetupRoutes() {
 	}
 	// 下载任务接口
 	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)
+	c.engine.GET("/ws/status", c.status_ws.HandleDownloaderWebsocket)
 	c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
 	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
@@ -81,16 +82,28 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/browse_history/create", c.handleCreateBrowseHistory)
 	c.engine.POST("/browse_history/list", c.handleFetchBrowseHistoryList)
 
+	c.engine.GET("/api/influencers", c.handleCompatInfluencerList)
+	c.engine.GET("/api/influencers/:id", c.handleCompatInfluencerGet)
+	c.engine.POST("/api/influencers", c.handleCompatInfluencerCreate)
+	c.engine.PUT("/api/influencers/:id", c.handleCompatInfluencerUpdate)
 	c.engine.GET("/influencers", c.handleCompatInfluencerList)
 	c.engine.GET("/influencers/:id", c.handleCompatInfluencerGet)
 	c.engine.POST("/influencers", c.handleCompatInfluencerCreate)
 	c.engine.PUT("/influencers/:id", c.handleCompatInfluencerUpdate)
 
+	c.engine.POST("/api/account/list", c.handleCompatAccountList)
+	c.engine.POST("/api/account/synchronize", c.handleCompatAccountSynchronize)
 	c.engine.POST("/account/list", c.handleCompatAccountList)
 	c.engine.POST("/account/synchronize", c.handleCompatAccountSynchronize)
 
+	c.engine.POST("/api/video/list", c.handleCompatVideoList)
 	c.engine.POST("/video/list", c.handleCompatVideoList)
 
+	c.engine.GET("/api/channels/search/author", c.handleCompatChannelsSearchAuthor)
+	c.engine.GET("/api/channels/author/videos", c.handleCompatChannelsAuthorVideos)
+	c.engine.GET("/api/channels/media/profile", c.handleCompatChannelsMediaProfile)
+	c.engine.GET("/api/channels/task/status", c.handleCompatChannelsTaskStatus)
+	c.engine.GET("/api/channels/task/start", c.handleCompatChannelsTaskStart)
 	c.engine.GET("/channels/search/author", c.handleCompatChannelsSearchAuthor)
 	c.engine.GET("/channels/author/videos", c.handleCompatChannelsAuthorVideos)
 	c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
@@ -113,6 +126,12 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
+	c.engine.POST("/api/service/start", c.handleServiceStart)
+	c.engine.POST("/api/service/stop", c.handleServiceStop)
+	c.engine.POST("/api/service/config", c.handleServiceConfigUpdate)
+	c.engine.GET("/api/certificate/root/status", c.handleRootCertificateStatus)
+	c.engine.POST("/api/certificate/root/install", c.handleRootCertificateInstall)
+	c.engine.POST("/api/certificate/root/uninstall", c.handleRootCertificateUninstall)
 	// c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
@@ -128,16 +147,17 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
-	channels_data := gin.H{
-		"available": false,
-	}
-	err := c.channels.Validate()
-	if err != nil {
-		channels_data["available"] = false
-	}
-	apiAddr := fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port)
+	channels_data := c.channelsStatusData()["channels"]
+	apiHost := c.cfg.Hostname
+	apiPort := c.cfg.Port
 	proxyAddr := "127.0.0.1:2023"
 	if c.cfg.Original != nil {
+		if host := c.cfg.Original.GetString("api.hostname"); host != "" {
+			apiHost = host
+		}
+		if port := c.cfg.Original.GetInt("api.port"); port > 0 {
+			apiPort = port
+		}
 		host := c.cfg.Original.GetString("proxy.hostname")
 		port := c.cfg.Original.GetInt("proxy.port")
 		if host == "" {
@@ -148,6 +168,7 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 		}
 		proxyAddr = fmt.Sprintf("%s:%d", host, port)
 	}
+	apiAddr := fmt.Sprintf("%s:%d", apiHost, apiPort)
 	statuses := gin.H{}
 	if c.serviceMgr != nil {
 		for name, status := range c.serviceMgr.GetAllStatus() {

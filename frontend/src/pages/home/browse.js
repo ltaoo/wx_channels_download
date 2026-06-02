@@ -24,7 +24,9 @@ function AccountAvatar(account) {
   );
 }
 
-function BrowseCard(item, vm$) {
+function BrowseCard(item, vm$, props) {
+  const sourceURL = item.source_url || item.content_source_url || "";
+
   return View(
     {
       class:
@@ -111,13 +113,40 @@ function BrowseCard(item, vm$) {
                 },
                 [item.title],
               ),
-              View(
-                {
-                  class:
-                    "mt-2 truncate text-xs text-zinc-500 dark:text-zinc-400",
-                },
-                [item.source_url || item.url || "-"],
-              ),
+              View({ class: "mt-2 flex min-w-0 items-center gap-2" }, [
+                View(
+                  {
+                    class:
+                      "min-w-0 flex-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
+                    title: sourceURL,
+                  },
+                  [`ContentSourceURL: ${sourceURL || "-"}`],
+                ),
+                Button(
+                  {
+                    store: new Timeless.ui.ButtonCore({
+                      variant: "ghost",
+                      size: "sm",
+                      disabled: !sourceURL,
+                      onClick() {
+                        if (!sourceURL) {
+                          props.app.tip?.({
+                            type: "warning",
+                            text: ["ContentSourceURL 为空"],
+                          });
+                          return;
+                        }
+                        props.app.copy(sourceURL);
+                        props.app.tip?.({
+                          type: "success",
+                          text: ["已复制 ContentSourceURL"],
+                        });
+                      },
+                    }),
+                  },
+                  [Icon({ name: "copy", size: 15 }), "复制"],
+                ),
+              ]),
             ]),
           ]),
         ]),
@@ -208,7 +237,7 @@ export default function BrowseHistoryPageView(props) {
                 For({
                   each: vm$.state.filtered,
                   render(item) {
-                    return BrowseCard(item, vm$);
+                    return BrowseCard(item, vm$, props);
                   },
                 }),
               ]);

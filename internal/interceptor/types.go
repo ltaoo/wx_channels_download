@@ -39,6 +39,7 @@ type ChannelMediaProfile struct {
 	Contact  json.RawMessage `json:"contact"`
 	Spec     json.RawMessage `json:"spec"`
 	Files    json.RawMessage `json:"files"`
+	Pageurl  json.RawMessage `json:"pageurl"`
 }
 
 type FrontendTip struct {

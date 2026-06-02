@@ -89,7 +89,7 @@ func (s *BrowseService) List(platformId string, accountUsername *string) ([]mode
 	}
 
 	var browseHistories []model.BrowseHistory
-	if err := query.Order("updated_at DESC").Find(&browseHistories).Error; err != nil {
+	if err := query.Order("updated_at DESC, id DESC").Find(&browseHistories).Error; err != nil {
 		return nil, err
 	}
 	return browseHistories, nil

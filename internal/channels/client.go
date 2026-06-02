@@ -47,6 +47,7 @@ type ChannelsClient struct {
 	refreshInterval int
 	db              *gorm.DB
 	OnConnected     func(client *Client)
+	OnDisconnected  func(client *Client)
 	OnMessage       func(client *Client, message []byte)
 }
 
@@ -102,12 +103,17 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	}
 
 	defer func() {
+		removed := false
 		c.ws_mu.Lock()
 		if _, ok := c.ws_clients[client]; ok {
 			delete(c.ws_clients, client)
 			close(client.Send)
+			removed = true
 		}
 		c.ws_mu.Unlock()
+		if removed && c.OnDisconnected != nil {
+			c.OnDisconnected(client)
+		}
 		conn.Close()
 	}()
 	for {
@@ -153,12 +159,16 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
 	}
 }
 func (wc *ChannelsClient) Validate() error {
-	// wc.clientsMu.Lock()
-	// defer wc.clientsMu.Unlock()
-	if len(wc.ws_clients) == 0 {
+	if !wc.Available() {
 		return errors.New("请先初始化客户端 socket 连接")
 	}
 	return nil
+}
+
+func (wc *ChannelsClient) Available() bool {
+	wc.ws_mu.RLock()
+	defer wc.ws_mu.RUnlock()
+	return len(wc.ws_clients) > 0
 }
 func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.Validate(); err != nil {

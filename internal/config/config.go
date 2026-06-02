@@ -17,6 +17,7 @@ import (
 
 type Config struct {
 	RootDir  string // 二进制文件所在目录
+	WorkDir  string // 运行时数据目录
 	Filename string // 配置文件名
 	FullPath string // 配置文件完整路径
 	Existing bool   // 配置文件是否存在
@@ -68,6 +69,7 @@ func New(ver string, mode string) *Config {
 	viper.SetConfigFile(config_filepath)
 	c := &Config{
 		RootDir:  base_dir,
+		WorkDir:  base_dir,
 		Filename: filename,
 		FullPath: config_filepath,
 		Existing: has_config,
@@ -78,6 +80,14 @@ func New(ver string, mode string) *Config {
 }
 
 func (c *Config) LoadConfig() error {
+	Register(ConfigItem{
+		Key:         "workdir",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "运行时工作目录，日志、数据库等运行时文件将写入该目录",
+		Title:       "工作目录",
+		Group:       "General",
+	})
 	Register(ConfigItem{
 		Key:         "proxy.system",
 		Type:        ConfigTypeBool,
@@ -601,19 +611,34 @@ func (c *Config) LoadConfig() error {
 	c.DBPassword = viper.GetString("db.password")
 	c.DBName = viper.GetString("db.filename")
 
+	workDir := strings.TrimSpace(viper.GetString("workdir"))
+	if workDir == "" {
+		workDir = c.RootDir
+	}
+	workDir = strings.ReplaceAll(workDir, "%CWD%", c.RootDir)
+	workDir = filepath.Clean(workDir)
+	if !filepath.IsAbs(workDir) {
+		workDir = filepath.Join(c.RootDir, workDir)
+	}
+	c.WorkDir = workDir
+	if err := os.MkdirAll(c.WorkDir, 0755); err != nil {
+		c.Error = err
+		return err
+	}
+
 	dbPath := viper.GetString("db.filepath")
-	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.RootDir)
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
 	dbPath = filepath.Clean(dbPath)
 	if !filepath.IsAbs(dbPath) {
-		dbPath = filepath.Join(c.RootDir, dbPath)
+		dbPath = filepath.Join(c.WorkDir, dbPath)
 	}
 	c.DBPath = dbPath
 
 	migPath := viper.GetString("db.migration")
-	migPath = strings.ReplaceAll(migPath, "%CWD%", c.RootDir)
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.WorkDir)
 	migPath = filepath.Clean(migPath)
 	if !filepath.IsAbs(migPath) {
-		migPath = filepath.Join(c.RootDir, migPath)
+		migPath = filepath.Join(c.WorkDir, migPath)
 	}
 	c.MigrationsPath = migPath
 
@@ -629,6 +654,7 @@ func (c *Config) GetDebugInfo() map[string]string {
 		"executable":    exe,
 		"exe_dir":       exe_dir,
 		"base_dir":      c.RootDir,
+		"work_dir":      c.WorkDir,
 		"config_path":   c.FullPath,
 		"config_exists": fmt.Sprintf("%v", c.Existing),
 	}

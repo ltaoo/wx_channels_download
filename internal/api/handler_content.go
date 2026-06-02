@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 )
 
@@ -85,7 +86,7 @@ func (c *APIClient) handleCompatVideoList(ctx *gin.Context) {
 		return
 	}
 
-	countDb := db.Model("video")
+	countDb := db.Model(&model.Video{})
 	if body.Keyword != nil && strings.TrimSpace(*body.Keyword) != "" {
 		countDb = countDb.Where("title LIKE ?", "%"+strings.TrimSpace(*body.Keyword)+"%")
 	}

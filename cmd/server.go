@@ -67,6 +67,8 @@ func serve_command() {
 	cfg := Cfg
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
+	fmt.Printf("workdir %s\n", color.New(color.Underline).Sprint(cfg.WorkDir))
+	fmt.Printf("data path %s\n", color.New(color.Underline).Sprint(cfg.DBPath))
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 
@@ -77,7 +79,7 @@ func serve_command() {
 		os.Exit(0)
 	}
 
-	log_filepath := filepath.Join(cfg.RootDir, "app.log")
+	log_filepath := filepath.Join(cfg.WorkDir, "app.log")
 	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		color.Red(fmt.Sprintf("创建日志文件失败，%s\n\n", err))
@@ -147,14 +149,21 @@ func start_daemon() {
 		color.Red(fmt.Sprintf("ERROR 获取可执行文件失败: %v\n", err))
 		return
 	}
-	log_fp := filepath.Join(Cfg.RootDir, "wx.log")
+	log_fp := filepath.Join(Cfg.WorkDir, "wx.log")
 	log_file, err := os.OpenFile(log_fp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		color.Red(fmt.Sprintf("ERROR 打开日志文件失败: %v\n", err))
 		return
 	}
 	defer log_file.Close()
-	c := exec.Command(exe, "server", "--daemon-child")
+	args := []string{"server", "--daemon-child"}
+	if Cfg.FullPath != "" {
+		args = append(args, "--config", Cfg.FullPath)
+	}
+	if Cfg.WorkDir != "" {
+		args = append(args, "--workdir", Cfg.WorkDir)
+	}
+	c := exec.Command(exe, args...)
 	c.Stdout = log_file
 	c.Stderr = log_file
 	c.SysProcAttr = system.SetSysProcAttrForDaemon()
@@ -171,7 +180,7 @@ func start_daemon() {
 }
 
 func wx_pidfile_path() string {
-	return filepath.Join(Cfg.RootDir, "wx.pid")
+	return filepath.Join(Cfg.WorkDir, "wx.pid")
 }
 
 func write_wx_pidfile(pid int) error {

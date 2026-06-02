@@ -10,6 +10,7 @@ import (
 
 type OfficialAccountConfig struct {
 	RootDir                   string
+	WorkDir                   string
 	Disabled                  bool `json:"officialServerDisabled"` // 是否禁用公众号服务
 	DebugShowError            bool
 	PagespyEnabled            bool
@@ -35,6 +36,7 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 	port := viper.GetInt("api.port")
 	cfg := &OfficialAccountConfig{
 		RootDir:                   c.RootDir,
+		WorkDir:                   c.WorkDir,
 		DebugShowError:            viper.GetBool("debug.error"),
 		PagespyEnabled:            viper.GetBool("pagespy.enabled"),
 		Protocol:                  protocol,

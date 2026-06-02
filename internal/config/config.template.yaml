@@ -1,6 +1,8 @@
 debug:
   error: false
 
+workdir: ""
+
 pagespy:
   enabled: false
 

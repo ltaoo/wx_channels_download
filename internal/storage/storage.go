@@ -260,7 +260,16 @@ func (s *SqliteStorage) putTask(t *download.Task) error {
 	}
 
 	if rec.Id == 0 {
-		return s.db.Create(&rec).Error
+		if err := s.db.Create(&rec).Error; err != nil {
+			return err
+		}
+		_ = s.db.Create(&model.DownloadTaskEvent{
+			TaskId:    rec.Id,
+			Type:      "create",
+			Message:   "创建下载任务",
+			CreatedAt: rec.CreatedAt,
+		}).Error
+		return nil
 	}
 	return s.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
 		"status":     rec.Status,

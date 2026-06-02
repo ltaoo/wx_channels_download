@@ -11,7 +11,6 @@ import (
 	"github.com/GopeedLab/gopeed/pkg/base"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/api/services"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
@@ -140,23 +139,12 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	if body.Eid == "" && body.URL != "" {
 		if parsedURL, err := url.Parse(body.URL); err == nil {
 			if eid := parsedURL.Query().Get("eid"); eid != "" {
-				body = ChannelsDownloadPayload{
-					Eid: eid,
-				}
+				body.Eid = eid
 			}
 		}
 	}
 
-	// Use channels service to build download task
-	feed, payload, err := c.channelsService.BuildDownloadTask(&services.FeedDownloadParams{
-		Oid:   body.Oid,
-		Nid:   body.Nid,
-		Eid:   body.Eid,
-		URL:   body.URL,
-		Spec:  body.Spec,
-		MP3:   body.MP3,
-		Cover: body.Cover,
-	})
+	payload, profile, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -219,7 +207,6 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		return
 	}
 
-	_ = feed // feed 已使用
 	opts, err := c.downloadService.BuildTaskOpts(payload)
 	if err != nil {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
@@ -234,6 +221,17 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	if err != nil {
 		result.Err(ctx, 500, "下载失败")
 		return
+	}
+	task := c.downloader.GetTask(id)
+	if task != nil && profile != nil && c.channelsUploadService != nil {
+		video, err := c.channelsUploadService.HandleChannelsFeed(profile)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
+		} else if video != nil {
+			if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "admin"); err != nil {
+				c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+			}
+		}
 	}
 	result.Ok(ctx, gin.H{"id": id})
 }
