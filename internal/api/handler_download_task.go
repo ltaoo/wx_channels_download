@@ -994,7 +994,13 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 		return
 	}
 	now := utilpkg.NowMillis()
-	accountExternal := strings.TrimSpace(obj.Contact.Username)
+	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(c.db, "wx_channels", obj.ID, model.AccountIdentity{
+		ExternalId: obj.Contact.Username,
+		Username:   obj.Contact.Username,
+		Nickname:   obj.Contact.Nickname,
+		AvatarURL:  obj.Contact.HeadUrl,
+	})
+	accountExternal := accountIdentity.ExternalId
 	accountId := 0
 	if accountExternal != "" {
 		var acc model.Account
@@ -1006,9 +1012,9 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 			acc = model.Account{
 				PlatformId: "wx_channels",
 				ExternalId: accountExternal,
-				Username:   obj.Contact.Username,
-				Nickname:   obj.Contact.Nickname,
-				AvatarURL:  obj.Contact.HeadUrl,
+				Username:   accountIdentity.Username,
+				Nickname:   accountIdentity.Nickname,
+				AvatarURL:  accountIdentity.AvatarURL,
 				Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
 			}
 			if err := c.db.Create(&acc).Error; err != nil {
@@ -1016,9 +1022,9 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 			}
 		} else {
 			_ = c.db.Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
-				"username":    obj.Contact.Username,
-				"nickname":    obj.Contact.Nickname,
-				"avatar_url":  obj.Contact.HeadUrl,
+				"username":    accountIdentity.Username,
+				"nickname":    accountIdentity.Nickname,
+				"avatar_url":  accountIdentity.AvatarURL,
 				"updated_at":  now,
 				"platform_id": "wx_channels",
 			}).Error
@@ -1093,7 +1099,9 @@ func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.Channe
 	}
 
 	if accountId > 0 && v.Id > 0 {
+		_ = c.db.Where("video_id = ? AND account_id <> ? AND role = ?", v.Id, accountId, "owner").Delete(&model.VideoAccount{}).Error
 		link := model.VideoAccount{VideoId: v.Id, AccountId: accountId, Role: "owner"}
 		_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+		_ = c.db.Model(&model.VideoAccount{}).Where("video_id = ? AND account_id = ?", v.Id, accountId).Update("role", "owner").Error
 	}
 }

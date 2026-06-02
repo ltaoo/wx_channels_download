@@ -37,36 +37,46 @@ func (s *ChannelsUploadService) HandleChannelsFeed(feed *apitypes.ChannelsFeedPr
 
 	now := utilpkg.NowMillis()
 	platformId := "wx_channels"
+	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(s.db, platformId, feed.ObjectId, model.AccountIdentity{
+		ExternalId: feed.Contact.Username,
+		Username:   feed.Contact.Username,
+		Nickname:   feed.Contact.Nickname,
+		AvatarURL:  feed.Contact.AvatarURL,
+	})
 
 	// Upsert Account by (platform_id, external_id=username)
 	var account model.Account
-	err := s.db.Where("platform_id = ? AND external_id = ?", platformId, feed.Contact.Username).First(&account).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		account = model.Account{
-			PlatformId: platformId,
-			ExternalId: feed.Contact.Username,
-			Username:   feed.Contact.Username,
-			Nickname:   feed.Contact.Nickname,
-			AvatarURL:  feed.Contact.AvatarURL,
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		}
-		if err := s.db.Create(&account).Error; err != nil {
+	var err error
+	if accountIdentity.ExternalId != "" {
+		err = s.db.Where("platform_id = ? AND external_id = ?", platformId, accountIdentity.ExternalId).First(&account).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-	} else {
-		updates := map[string]any{
-			"nickname":   feed.Contact.Nickname,
-			"avatar_url": feed.Contact.AvatarURL,
-			"updated_at": now,
-		}
-		if err := s.db.Model(&account).Updates(updates).Error; err != nil {
-			return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			account = model.Account{
+				PlatformId: platformId,
+				ExternalId: accountIdentity.ExternalId,
+				Username:   accountIdentity.Username,
+				Nickname:   accountIdentity.Nickname,
+				AvatarURL:  accountIdentity.AvatarURL,
+				Timestamps: model.Timestamps{
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}
+			if err := s.db.Create(&account).Error; err != nil {
+				return nil, err
+			}
+		} else {
+			updates := map[string]any{
+				"username":   accountIdentity.Username,
+				"nickname":   accountIdentity.Nickname,
+				"avatar_url": accountIdentity.AvatarURL,
+				"updated_at": now,
+			}
+			if err := s.db.Model(&account).Updates(updates).Error; err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -110,6 +120,12 @@ func (s *ChannelsUploadService) HandleChannelsFeed(feed *apitypes.ChannelsFeedPr
 	}
 
 	// Create VideoAccount if new
+	if account.Id == 0 {
+		return &video, nil
+	}
+	if err := s.db.Where("video_id = ? AND account_id <> ? AND role = ?", video.Id, account.Id, "owner").Delete(&model.VideoAccount{}).Error; err != nil {
+		return nil, err
+	}
 	var va model.VideoAccount
 	err = s.db.Where("video_id = ? AND account_id = ?", video.Id, account.Id).First(&va).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -123,6 +139,10 @@ func (s *ChannelsUploadService) HandleChannelsFeed(feed *apitypes.ChannelsFeedPr
 		}
 	} else if err != nil {
 		return nil, err
+	} else if va.Role != "owner" {
+		if err := s.db.Model(&model.VideoAccount{}).Where("video_id = ? AND account_id = ?", video.Id, account.Id).Update("role", "owner").Error; err != nil {
+			return nil, err
+		}
 	}
 
 	return &video, nil

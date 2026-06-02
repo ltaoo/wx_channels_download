@@ -127,6 +127,14 @@ export const client$ = new Timeless.HttpClientCore({
   },
 });
 Timeless.web.provide_http_client(client$);
+export const api_client$ = new Timeless.HttpClientCore({
+  hostname: "http://127.0.0.1:2022",
+  // hostname: 'http://100.78.198.69:2022',
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+Timeless.web.provide_http_client(api_client$);
 export const user$ = (() => {
   let profile = storage$.get("user");
   const loginListeners = [];

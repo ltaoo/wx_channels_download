@@ -1,4 +1,5 @@
 import { fetchAccountList, synchronizeAccount } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 
 function normalizeAccount(account) {
   const medias = (account.video_accounts || [])
@@ -11,7 +12,11 @@ function normalizeAccount(account) {
     }));
   return {
     ...account,
-    nickname: account.nickname || account.username || account.external_id || "未命名帐号",
+    nickname:
+      account.nickname ||
+      account.username ||
+      account.external_id ||
+      "未命名帐号",
     avatar_url: account.avatar_url || "",
     medias,
   };
@@ -20,10 +25,10 @@ function normalizeAccount(account) {
 export function AccountsPageModel(props) {
   const reqs = {
     accounts: new Timeless.RequestCore(fetchAccountList, {
-      client: props.client,
+      client: api_client$,
     }),
     synchronize: new Timeless.RequestCore(synchronizeAccount, {
-      client: props.client,
+      client: api_client$,
     }),
   };
   const accounts_ = refarr([]);
@@ -45,15 +50,22 @@ export function AccountsPageModel(props) {
     accounts_.as((r.data.list || []).map(normalizeAccount));
   }
 
-  const filtered_ = computed({ accounts: accounts_, keyword: keyword_ }, (d) => {
-    const k = String(d.keyword || "").trim().toLowerCase();
-    if (!k) return d.accounts;
-    return d.accounts.filter((it) => {
-      return [it.nickname, it.username, it.external_id].some((v) =>
-        String(v || "").toLowerCase().includes(k),
-      );
-    });
-  });
+  const filtered_ = combine(
+    { accounts: accounts_, keyword: keyword_ },
+    (d) => {
+      const k = String(d.keyword || "")
+        .trim()
+        .toLowerCase();
+      if (!k) return d.accounts;
+      return d.accounts.filter((it) => {
+        return [it.nickname, it.username, it.external_id].some((v) =>
+          String(v || "")
+            .toLowerCase()
+            .includes(k),
+        );
+      });
+    },
+  );
 
   return {
     state: {
@@ -83,7 +95,10 @@ export function AccountsPageModel(props) {
       async synchronize(account) {
         const r = await reqs.synchronize.run({ account_id: account.id });
         if (r.error) {
-          props.app.tip?.({ type: "error", text: [r.error.message || String(r.error)] });
+          props.app.tip?.({
+            type: "error",
+            text: [r.error.message || String(r.error)],
+          });
           return;
         }
         props.app.tip?.({ type: "success", text: ["同步完成"] });

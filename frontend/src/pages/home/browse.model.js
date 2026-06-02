@@ -1,4 +1,5 @@
 import { createDownloadTask, fetchBrowseHistoryList } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 
 import { formatDate } from "./downloads.model.js";
 
@@ -63,7 +64,7 @@ export function BrowseHistoryPageModel(props) {
   const pageSize = 50;
   const reqs = {
     history: new Timeless.RequestCore(fetchBrowseHistoryList, {
-      client: props.client,
+      client: api_client$,
       process(r) {
         if (r.error) return r;
         const list = pickListFromResponse(r.data).map(normalizeBrowseHistory);
@@ -80,42 +81,27 @@ export function BrowseHistoryPageModel(props) {
       client: props.client,
     }),
   };
-  const list$ = new Timeless.ListCore(reqs.history, {
-    pageSize,
-  });
   const items_ = refarr([]);
   const loading_ = ref(false);
   const error_ = ref("");
   const keyword_ = ref("");
 
-  list$.onStateChange((state) => {
-    loading_.as(!!state.loading);
-    error_.as(state.error ? state.error.message || String(state.error) : "");
-  });
-
-  list$.onDataSourceChange(({ dataSource }) => {
-    items_.as(dataSource || []);
-  });
-
-  list$.onError((err) => {
-    error_.as(err.message || String(err));
-  });
-
   async function load() {
+    loading_.as(true);
     error_.as("");
-    const r = await list$.init();
+    const r = await reqs.history.run({ page: 1, pageSize });
+    loading_.as(false);
     if (r.error) {
       error_.as(r.error.message || String(r.error));
       return;
     }
-    items_.as(r.data.dataSource || []);
+    items_.as(r.data.list || []);
   }
 
-  const filtered_ = computed({ items: items_, keyword: keyword_ }, (d) => {
+  const filtered_ = combine({ items: items_, keyword: keyword_ }, (d) => {
     const k = String(d.keyword || "")
       .trim()
       .toLowerCase();
-    console.log('123123213', d.items, d.keyword);
     if (!k) {
       return d.items;
     }
@@ -148,11 +134,7 @@ export function BrowseHistoryPageModel(props) {
     methods: {
       init: load,
       async refresh() {
-        error_.as("");
-        const r = await list$.refresh();
-        if (r.error) {
-          error_.as(r.error.message || String(r.error));
-        }
+        await load();
       },
       open(item) {
         const url = item.source_url || item.url;

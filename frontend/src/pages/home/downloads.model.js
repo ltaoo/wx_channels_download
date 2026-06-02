@@ -7,6 +7,7 @@ import {
   retryDownloadTask,
   startDownloadTask,
 } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 
 export const DownloadTaskStatus = {
   Ready: 0,
@@ -94,7 +95,9 @@ function parseProgress(raw, size) {
       downloaded,
       total,
       speed: Number(data.speed || 0),
-      percent: total ? Math.min(100, Math.floor((downloaded / total) * 100)) : 0,
+      percent: total
+        ? Math.min(100, Math.floor((downloaded / total) * 100))
+        : 0,
     };
   } catch {
     return { downloaded: 0, total: Number(size || 0), speed: 0, percent: 0 };
@@ -103,7 +106,8 @@ function parseProgress(raw, size) {
 
 export function normalizeTask(task) {
   const progress = parseProgress(task.progress, task.size);
-  const percent = task.status === DownloadTaskStatus.Done ? 100 : progress.percent;
+  const percent =
+    task.status === DownloadTaskStatus.Done ? 100 : progress.percent;
   return {
     ...task,
     progress_info: progress,
@@ -134,7 +138,9 @@ function normalizeRemoteDate(value) {
 }
 
 export function normalizeRemoteTask(task) {
-  const status = REMOTE_STATUS_MAP[String(task.status || "").toLowerCase()] || DownloadTaskStatus.Unknown;
+  const status =
+    REMOTE_STATUS_MAP[String(task.status || "").toLowerCase()] ||
+    DownloadTaskStatus.Unknown;
   const size = Number(task.meta?.res?.size || 0);
   const downloaded = Number(task.progress?.downloaded || 0);
   const progress = {
@@ -189,18 +195,30 @@ function normalizeRuntimeTask(raw) {
   const res = readTaskField(meta, "res", "Res") || {};
   const progressRaw = readTaskField(raw, "progress", "Progress") || {};
   const id = readTaskField(raw, "id", "ID") || "";
-  const name = readTaskField(raw, "name", "Name") || opts.name || res.name || id;
+  const name =
+    readTaskField(raw, "name", "Name") || opts.name || res.name || id;
   const size = Number(res.size || res.Size || 0);
-  const downloaded = Number(progressRaw.downloaded || progressRaw.Downloaded || 0);
+  const downloaded = Number(
+    progressRaw.downloaded || progressRaw.Downloaded || 0,
+  );
   const speed = Number(progressRaw.speed || progressRaw.Speed || 0);
   const status = normalizeTaskStatus(readTaskField(raw, "status", "Status"));
-  const updatedAt = normalizeRuntimeDate(readTaskField(raw, "updatedAt", "UpdatedAt"));
-  const createdAt = normalizeRuntimeDate(readTaskField(raw, "createdAt", "CreatedAt"));
+  const updatedAt = normalizeRuntimeDate(
+    readTaskField(raw, "updatedAt", "UpdatedAt"),
+  );
+  const createdAt = normalizeRuntimeDate(
+    readTaskField(raw, "createdAt", "CreatedAt"),
+  );
   const progress = {
     downloaded,
     total: size,
     speed,
-    percent: status === DownloadTaskStatus.Done ? 100 : size ? Math.min(100, Math.floor((downloaded / size) * 100)) : 0,
+    percent:
+      status === DownloadTaskStatus.Done
+        ? 100
+        : size
+          ? Math.min(100, Math.floor((downloaded / size) * 100))
+          : 0,
   };
   const path = opts.path || opts.Path || "";
   return normalizeTask({
@@ -212,7 +230,8 @@ function normalizeRuntimeTask(raw) {
     url: req.url || req.URL || "",
     size,
     progress,
-    filepath: path && name ? `${String(path).replace(/[\\/]$/, "")}/${name}` : path,
+    filepath:
+      path && name ? `${String(path).replace(/[\\/]$/, "")}/${name}` : path,
     created_at: createdAt,
     updated_at: updatedAt,
   });
@@ -220,7 +239,9 @@ function normalizeRuntimeTask(raw) {
 
 function normalizeRemoteServerConfig(values) {
   const protocol = values["download.remoteServer.protocol"] || "http";
-  const hostname = String(values["download.remoteServer.hostname"] || "").trim();
+  const hostname = String(
+    values["download.remoteServer.hostname"] || "",
+  ).trim();
   const port = Number(values["download.remoteServer.port"] || 0);
   const exists = !!hostname && port > 0;
   return {
@@ -265,7 +286,8 @@ export function DownloadTaskPanelModel(props = {}) {
 
   function statusesForTab(tab) {
     if (tab === DownloadTaskTabs.Running) return [DownloadTaskStatus.Running];
-    if (tab === DownloadTaskTabs.Queued) return [DownloadTaskStatus.Ready, DownloadTaskStatus.Wait];
+    if (tab === DownloadTaskTabs.Queued)
+      return [DownloadTaskStatus.Ready, DownloadTaskStatus.Wait];
     if (tab === DownloadTaskTabs.Done) return [DownloadTaskStatus.Done];
     if (tab === DownloadTaskTabs.Error) return [DownloadTaskStatus.Error];
     if (tab === DownloadTaskTabs.Paused) return [DownloadTaskStatus.Paused];
@@ -274,7 +296,9 @@ export function DownloadTaskPanelModel(props = {}) {
 
   function normalizeCounts(data, list) {
     const counts = data?.counts || {};
-    const total = Number(data?.all_total ?? counts.total ?? data?.total ?? list.length);
+    const total = Number(
+      data?.all_total ?? counts.total ?? data?.total ?? list.length,
+    );
     return {
       total,
       running: Number(counts.running || 0),
@@ -301,28 +325,40 @@ export function DownloadTaskPanelModel(props = {}) {
       [DownloadTaskStatus.Unknown]: 7,
     };
     return [...list].sort((a, b) => {
-      if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+      if (order[a.status] !== order[b.status])
+        return order[a.status] - order[b.status];
       return Number(b.updated_at || 0) - Number(a.updated_at || 0);
     });
   }
 
   function countKeyForStatus(status) {
     if (status === DownloadTaskStatus.Running) return "running";
-    if (status === DownloadTaskStatus.Ready || status === DownloadTaskStatus.Wait) return "queued";
+    if (
+      status === DownloadTaskStatus.Ready ||
+      status === DownloadTaskStatus.Wait
+    )
+      return "queued";
     if (status === DownloadTaskStatus.Done) return "done";
     if (status === DownloadTaskStatus.Error) return "error";
     if (status === DownloadTaskStatus.Paused) return "paused";
     return null;
   }
 
-  function updateCounts(oldStatus, newStatus, inserted = false, removed = false) {
+  function updateCounts(
+    oldStatus,
+    newStatus,
+    inserted = false,
+    removed = false,
+  ) {
     const counts = { ...status_counts_.value };
     if (inserted) counts.total = Number(counts.total || 0) + 1;
     if (removed) counts.total = Math.max(0, Number(counts.total || 0) - 1);
     const oldKey = countKeyForStatus(oldStatus);
     const newKey = countKeyForStatus(newStatus);
-    if (oldKey && oldKey !== newKey) counts[oldKey] = Math.max(0, Number(counts[oldKey] || 0) - 1);
-    if (newKey && (inserted || oldKey !== newKey)) counts[newKey] = Number(counts[newKey] || 0) + 1;
+    if (oldKey && oldKey !== newKey)
+      counts[oldKey] = Math.max(0, Number(counts[oldKey] || 0) - 1);
+    if (newKey && (inserted || oldKey !== newKey))
+      counts[newKey] = Number(counts[newKey] || 0) + 1;
     status_counts_.as(counts);
   }
 
@@ -331,7 +367,9 @@ export function DownloadTaskPanelModel(props = {}) {
     const nextTask = normalizeRuntimeTask(rawTask);
     if (!nextTask.task_id) return;
     const current = tasks_.value || [];
-    const idx = current.findIndex((task) => task.task_id === nextTask.task_id || task.id === nextTask.id);
+    const idx = current.findIndex(
+      (task) => task.task_id === nextTask.task_id || task.id === nextTask.id,
+    );
     const matches = tabMatchesStatus(active_tab_.value, nextTask.status);
     if (idx >= 0) {
       const prevTask = current[idx];
@@ -360,7 +398,8 @@ export function DownloadTaskPanelModel(props = {}) {
   }
 
   function removeRuntimeTask(rawTask) {
-    const id = readTaskField(rawTask, "id", "ID") || rawTask?.task_id || rawTask;
+    const id =
+      readTaskField(rawTask, "id", "ID") || rawTask?.task_id || rawTask;
     if (!id) return;
     const current = tasks_.value || [];
     const found = current.find((task) => task.task_id === id || task.id === id);
@@ -387,11 +426,20 @@ export function DownloadTaskPanelModel(props = {}) {
     if (message.type === "clear") {
       tasks_.as([]);
       total_.as(0);
-      status_counts_.as({ total: 0, running: 0, queued: 0, done: 0, error: 0, paused: 0 });
+      status_counts_.as({
+        total: 0,
+        running: 0,
+        queued: 0,
+        done: 0,
+        error: 0,
+        paused: 0,
+      });
       return;
     }
     if (message.type === "delete") {
-      removeRuntimeTask(message.data?.task || message.data?.Task || message.data);
+      removeRuntimeTask(
+        message.data?.task || message.data?.Task || message.data,
+      );
     }
   }
 
@@ -471,7 +519,10 @@ export function DownloadTaskPanelModel(props = {}) {
   async function act(fn, successText) {
     const r = await fn();
     if (r.error) {
-      props.app?.tip?.({ type: "error", text: [r.error.message || String(r.error)] });
+      props.app?.tip?.({
+        type: "error",
+        text: [r.error.message || String(r.error)],
+      });
       return;
     }
     props.app?.tip?.({ type: "success", text: [successText] });
@@ -489,12 +540,25 @@ export function DownloadTaskPanelModel(props = {}) {
       activeTab: active_tab_,
       statusStats: status_counts_,
       tabs: TAB_DEFS,
-      noMore: computed({ tasks: tasks_, total: total_ }, (d) => d.tasks.length >= d.total),
-      runningCount: computed(tasks_, (list) => list.filter((t) => t.status === DownloadTaskStatus.Running).length),
-      totalSpeed: computed(tasks_, (list) => formatBytes(list.reduce((sum, t) => {
-        if (t.status !== DownloadTaskStatus.Running) return sum;
-        return sum + Number(t.progress_info?.speed || 0);
-      }, 0)) + "/s"),
+      noMore: computed(
+        { tasks: tasks_, total: total_ },
+        (d) => d.tasks.length >= d.total,
+      ),
+      runningCount: computed(
+        tasks_,
+        (list) =>
+          list.filter((t) => t.status === DownloadTaskStatus.Running).length,
+      ),
+      totalSpeed: computed(
+        tasks_,
+        (list) =>
+          formatBytes(
+            list.reduce((sum, t) => {
+              if (t.status !== DownloadTaskStatus.Running) return sum;
+              return sum + Number(t.progress_info?.speed || 0);
+            }, 0),
+          ) + "/s",
+      ),
     },
     ui: {
       view: new Timeless.ui.ScrollViewCore({}),
@@ -519,20 +583,29 @@ export function DownloadTaskPanelModel(props = {}) {
         return load(1);
       },
       start(task) {
-        return act(() => reqs.start.run({ download_task_id: task.id }), "已开始下载");
+        return act(
+          () => reqs.start.run({ download_task_id: task.id }),
+          "已开始下载",
+        );
       },
       retry(task) {
         return act(() => reqs.retry.run({ id: task.id }), "已重试下载");
       },
       remove(task) {
-        return act(() => reqs.remove.run({ download_task_id: task.id }), "已删除下载任务");
+        return act(
+          () => reqs.remove.run({ download_task_id: task.id }),
+          "已删除下载任务",
+        );
       },
       openFile(task) {
         if (!task.filepath) {
           props.app?.tip?.({ type: "warning", text: ["该任务还没有文件路径"] });
           return null;
         }
-        return act(() => reqs.highlight.run({ file_path: task.filepath }), "已定位文件");
+        return act(
+          () => reqs.highlight.run({ file_path: task.filepath }),
+          "已定位文件",
+        );
       },
       play(task) {
         window.open(`/api/download_task/play?id=${task.id}`, "_blank");
@@ -551,18 +624,9 @@ function remoteStatusForTab(tab) {
 }
 
 export function DownloadsPageModel(props) {
-  const apiClient$ = new Timeless.HttpClientCore({
-    hostname: 'http://127.0.0.1:2022',
-    // hostname: 'http://100.78.198.69:2022',
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-  Timeless.web.provide_http_client(apiClient$);
-
   const taskPanel = DownloadTaskPanelModel({
     ...props,
-    client: apiClient$,
+    client: api_client$,
   });
   const reqs = {
     config: new Timeless.RequestCore(fetchDownloadAppConfig, {
@@ -628,12 +692,25 @@ export function DownloadsPageModel(props) {
       remoteTotal: remote_total_,
       remoteEnabled: remote_enabled_,
       remoteLabel: remote_label_,
-      remoteNoMore: computed({ tasks: remote_tasks_, total: remote_total_ }, (d) => d.tasks.length >= d.total),
-      remoteRunningCount: computed(remote_tasks_, (list) => list.filter((t) => t.status === DownloadTaskStatus.Running).length),
-      remoteTotalSpeed: computed(remote_tasks_, (list) => formatBytes(list.reduce((sum, t) => {
-        if (t.status !== DownloadTaskStatus.Running) return sum;
-        return sum + Number(t.progress_info?.speed || 0);
-      }, 0)) + "/s"),
+      remoteNoMore: computed(
+        { tasks: remote_tasks_, total: remote_total_ },
+        (d) => d.tasks.length >= d.total,
+      ),
+      remoteRunningCount: computed(
+        remote_tasks_,
+        (list) =>
+          list.filter((t) => t.status === DownloadTaskStatus.Running).length,
+      ),
+      remoteTotalSpeed: computed(
+        remote_tasks_,
+        (list) =>
+          formatBytes(
+            list.reduce((sum, t) => {
+              if (t.status !== DownloadTaskStatus.Running) return sum;
+              return sum + Number(t.progress_info?.speed || 0);
+            }, 0),
+          ) + "/s",
+      ),
     },
     ui: taskPanel.ui,
     methods: {

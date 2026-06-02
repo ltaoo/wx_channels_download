@@ -431,27 +431,44 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *types.ChannelsFeedProfile) (*m
 
 	platformID := "wx_channels"
 	now := util.NowMillis()
-
-	acc := &model.Account{
-		PlatformId: platformID,
+	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(c.db, platformID, feed.ObjectId, model.AccountIdentity{
 		ExternalId: feed.Contact.Username,
 		Username:   feed.Contact.Username,
 		Nickname:   feed.Contact.Nickname,
 		AvatarURL:  feed.Contact.AvatarURL,
+	})
+
+	acc := &model.Account{
+		PlatformId: platformID,
+		ExternalId: accountIdentity.ExternalId,
+		Username:   accountIdentity.Username,
+		Nickname:   accountIdentity.Nickname,
+		AvatarURL:  accountIdentity.AvatarURL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
 	existingAccount := &model.Account{}
-	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(existingAccount).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err := c.db.Create(acc).Error; err != nil {
+	if acc.ExternalId != "" {
+		if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(existingAccount).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := c.db.Create(acc).Error; err != nil {
+					return nil, err
+				}
+				existingAccount = acc
+			} else {
 				return nil, err
 			}
-			existingAccount = acc
 		} else {
-			return nil, err
+			if err := c.db.Model(existingAccount).Updates(map[string]any{
+				"username":   acc.Username,
+				"nickname":   acc.Nickname,
+				"avatar_url": acc.AvatarURL,
+				"updated_at": now,
+			}).Error; err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -491,15 +508,6 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *types.ChannelsFeedProfile) (*m
 		if err := c.db.Create(&content).Error; err != nil {
 			return nil, err
 		}
-		ac := model.ContentAccount{
-			AccountId: existingAccount.Id,
-			ContentId: content.Id,
-			Role:      "owner",
-			CreatedAt: now,
-		}
-		if err := c.db.Create(&ac).Error; err != nil {
-			return nil, err
-		}
 	} else {
 		content.Id = existing.Id
 		if err := c.db.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(map[string]any{
@@ -515,6 +523,25 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *types.ChannelsFeedProfile) (*m
 			"updated_at":   now,
 		}).Error; err != nil {
 			return nil, err
+		}
+	}
+	if existingAccount.Id != 0 {
+		if err := c.db.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, existingAccount.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
+			return nil, err
+		}
+		ac := model.ContentAccount{
+			AccountId: existingAccount.Id,
+			ContentId: content.Id,
+			Role:      "owner",
+			CreatedAt: now,
+		}
+		if err := c.db.FirstOrCreate(&ac, model.ContentAccount{AccountId: existingAccount.Id, ContentId: content.Id}).Error; err != nil {
+			return nil, err
+		}
+		if ac.Role != "owner" {
+			if err := c.db.Model(&model.ContentAccount{}).Where("content_id = ? AND account_id = ?", content.Id, existingAccount.Id).Update("role", "owner").Error; err != nil {
+				return nil, err
+			}
 		}
 	}
 	return &content, nil
