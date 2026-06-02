@@ -404,6 +404,22 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 	})
 	Register(ConfigItem{
+		Key:         "admin.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "指定 GUI/Admin 服务的主机名",
+		Title:       "Admin 服务主机",
+		Group:       "Admin",
+	})
+	Register(ConfigItem{
+		Key:         "admin.port",
+		Type:        ConfigTypeInt,
+		Default:     2021,
+		Description: "指定 GUI/Admin 服务的端口",
+		Title:       "Admin 服务端口",
+		Group:       "Admin",
+	})
+	Register(ConfigItem{
 		Key:         "mp.disabled",
 		Type:        ConfigTypeBool,
 		Default:     true,

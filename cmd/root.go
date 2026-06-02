@@ -3,11 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +22,7 @@ import (
 	velodatabase "github.com/ltaoo/velo/database"
 
 	"wx_channel/frontend"
+	"wx_channel/internal/admin"
 	"wx_channel/internal/api"
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/buildtags"
@@ -124,6 +125,62 @@ func Register(cmd *cobra.Command) {
 type RootCommandArg struct {
 }
 
+type rootServiceController struct {
+	mgr *manager.ServerManager
+}
+
+func (c *rootServiceController) ListServices() []admin.ServiceSnapshot {
+	names := c.mgr.ListServers()
+	sort.Slice(names, func(i, j int) bool {
+		return serviceOrder(names[i]) < serviceOrder(names[j])
+	})
+	snapshots := make([]admin.ServiceSnapshot, 0, len(names))
+	for _, name := range names {
+		status, _ := c.mgr.GetStatus(name)
+		addr := ""
+		title := name
+		switch name {
+		case "admin":
+			title = "GUI/Admin服务"
+		case "api":
+			title = "API服务"
+		case "interceptor":
+			title = "Proxy服务"
+		}
+		if server := c.mgr.GetServer(name); server != nil {
+			addr = server.Addr()
+		}
+		snapshots = append(snapshots, admin.ServiceSnapshot{
+			Name:   name,
+			Title:  title,
+			Addr:   addr,
+			Status: status,
+		})
+	}
+	return snapshots
+}
+
+func serviceOrder(name string) int {
+	switch name {
+	case "admin":
+		return 0
+	case "api":
+		return 1
+	case "interceptor":
+		return 2
+	default:
+		return 10
+	}
+}
+
+func (c *rootServiceController) StartService(name string) error {
+	return c.mgr.StartServer(name)
+}
+
+func (c *rootServiceController) StopService(name string) error {
+	return c.mgr.StopServer(name)
+}
+
 func root_command(cfg *config.Config) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -158,13 +215,17 @@ func root_command(cfg *config.Config) {
 		return
 	}
 
+	mgr := manager.NewServerManager()
+	controller := &rootServiceController{mgr: mgr}
+	admin_srv := admin.NewAdminServer(cfg, b, controller)
+	mgr.RegisterServer(admin_srv)
+
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
 	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
-	mgr := manager.NewServerManager()
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	if !official_cfg.Disabled {
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
@@ -204,14 +265,6 @@ func root_command(cfg *config.Config) {
 	} else {
 		fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
 	}
-	api_addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
-	l, err := net.Listen("tcp", api_addr)
-	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", api_addr))
-		os.Exit(0)
-		return
-	}
-	l.Close()
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
 	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
@@ -249,9 +302,18 @@ func root_command(cfg *config.Config) {
 		if err := mgr.StopServer("api"); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭API服务失败: %v\n", err))
 		}
+		if err := mgr.StopServer("admin"); err != nil {
+			color.Red(fmt.Sprintf("⚠️ 关闭GUI/Admin服务失败: %v\n", err))
+		}
 		color.Green("下载器已关闭")
 	}
 
+	if err := mgr.StartServer("admin"); err != nil {
+		color.Red(fmt.Sprintf("ERROR 启动GUI/Admin服务失败: %v\n", err.Error()))
+		cleanup()
+		os.Exit(0)
+	}
+	color.Green(fmt.Sprintf("GUI/Admin服务启动成功, 地址: %v", admin_srv.Addr()))
 	if err := mgr.StartServer("api"); err != nil {
 		color.Red(fmt.Sprintf("ERROR 启动API服务失败: %v\n", err.Error()))
 		cleanup()

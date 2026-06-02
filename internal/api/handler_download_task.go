@@ -286,7 +286,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	var body struct {
 		Page     *int `json:"page"`
 		PageSize *int `json:"pageSize"`
-		Status   *int `json:"status"`
+		Status   any  `json:"status"`
 	}
 	_ = ctx.ShouldBindJSON(&body)
 	page := 1
@@ -300,8 +300,12 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	offset := (page - 1) * size
 
 	db := c.db.Model(&model.DownloadTask{})
-	if body.Status != nil {
-		db = db.Where("status = ?", *body.Status)
+	if statuses, ok := parseCompatDownloadTaskStatuses(body.Status); ok {
+		if len(statuses) == 1 {
+			db = db.Where("status = ?", statuses[0])
+		} else {
+			db = db.Where("status IN ?", statuses)
+		}
 	}
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
@@ -313,6 +317,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 		result.Err(ctx, 2000, err.Error())
 		return
 	}
+	counts, allTotal := c.compatDownloadTaskStatusCounts()
 
 	ids := make([]int, 0, len(tasks))
 	for _, t := range tasks {
@@ -402,7 +407,92 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 		"page":      page,
 		"page_size": size,
 		"total":     total,
+		"all_total": allTotal,
+		"counts":    counts,
 	})
+}
+
+func parseCompatDownloadTaskStatuses(raw any) ([]int, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	appendStatus := func(out []int, value int) []int {
+		for _, existing := range out {
+			if existing == value {
+				return out
+			}
+		}
+		return append(out, value)
+	}
+	var statuses []int
+	var parseOne func(any)
+	parseOne = func(value any) {
+		switch v := value.(type) {
+		case float64:
+			statuses = appendStatus(statuses, int(v))
+		case int:
+			statuses = appendStatus(statuses, v)
+		case string:
+			for _, part := range strings.Split(v, ",") {
+				part = strings.TrimSpace(part)
+				if part == "" || part == "all" {
+					continue
+				}
+				if n, err := strconv.Atoi(part); err == nil {
+					statuses = appendStatus(statuses, n)
+				}
+			}
+		case []any:
+			for _, item := range v {
+				parseOne(item)
+			}
+		case []int:
+			for _, item := range v {
+				statuses = appendStatus(statuses, item)
+			}
+		}
+	}
+	parseOne(raw)
+	return statuses, len(statuses) > 0
+}
+
+func (c *APIClient) compatDownloadTaskStatusCounts() (gin.H, int64) {
+	counts := gin.H{
+		"running": 0,
+		"queued":  0,
+		"done":    0,
+		"error":   0,
+		"paused":  0,
+	}
+	if c.db == nil {
+		return counts, 0
+	}
+	type row struct {
+		Status int
+		Total  int64
+	}
+	var rows []row
+	if err := c.db.Model(&model.DownloadTask{}).Select("status, count(*) as total").Group("status").Scan(&rows).Error; err != nil {
+		return counts, 0
+	}
+	var allTotal int64
+	for _, item := range rows {
+		allTotal += item.Total
+		switch item.Status {
+		case 0, 3:
+			counts["queued"] = counts["queued"].(int) + int(item.Total)
+		case 1:
+			counts["running"] = int(item.Total)
+		case 2:
+			counts["paused"] = int(item.Total)
+		case 4:
+			counts["done"] = int(item.Total)
+		case 5:
+			counts["error"] = int(item.Total)
+		}
+	}
+	counts["total"] = int(allTotal)
+	return counts, allTotal
 }
 
 func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {

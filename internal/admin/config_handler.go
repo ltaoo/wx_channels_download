@@ -1,42 +1,43 @@
-package api
+package admin
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 
 	"wx_channel/internal/config"
-	result "wx_channel/internal/util"
 )
 
-func (c *APIClient) handleGetConfig(ctx *gin.Context) {
-	if c.cfg.Original == nil {
-		result.Err(ctx, 500, "配置未初始化")
+func (s *AdminServer) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if s.cfg == nil {
+		s.writeError(w, http.StatusInternalServerError, "配置未初始化")
 		return
 	}
 
-	result.Ok(ctx, gin.H{
-		"path":   c.cfg.Original.FullPath,
-		"schema": config.GetSchema(),
-		"values": currentConfigValues(),
-	})
+	switch r.Method {
+	case http.MethodGet:
+		s.writeOK(w, map[string]interface{}{
+			"path":   s.cfg.FullPath,
+			"schema": config.GetSchema(),
+			"values": currentConfigValues(),
+		})
+	case http.MethodPost:
+		s.handleUpdateConfig(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
-func (c *APIClient) handleUpdateConfig(ctx *gin.Context) {
-	if c.cfg.Original == nil {
-		result.Err(ctx, 500, "配置未初始化")
-		return
-	}
-
+func (s *AdminServer) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var body map[string]interface{}
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -44,13 +45,13 @@ func (c *APIClient) handleUpdateConfig(ctx *gin.Context) {
 	if rawValues, ok := body["values"]; ok {
 		nestedValues, ok := rawValues.(map[string]interface{})
 		if !ok {
-			result.Err(ctx, 400, "values 必须是对象")
+			s.writeError(w, http.StatusBadRequest, "values 必须是对象")
 			return
 		}
 		values = nestedValues
 	}
 	if len(values) == 0 {
-		result.Err(ctx, 400, "缺少配置项")
+		s.writeError(w, http.StatusBadRequest, "缺少配置项")
 		return
 	}
 
@@ -64,33 +65,33 @@ func (c *APIClient) handleUpdateConfig(ctx *gin.Context) {
 	for key, value := range values {
 		item, ok := schemaByKey[key]
 		if !ok {
-			result.Err(ctx, 400, fmt.Sprintf("未知配置项: %s", key))
+			s.writeError(w, http.StatusBadRequest, fmt.Sprintf("未知配置项: %s", key))
 			return
 		}
 		converted, err := convertConfigValue(item, value)
 		if err != nil {
-			result.Err(ctx, 400, fmt.Sprintf("%s: %v", key, err))
+			s.writeError(w, http.StatusBadRequest, fmt.Sprintf("%s: %v", key, err))
 			return
 		}
 		updated[key] = converted
 	}
 
 	for key, value := range updated {
-		c.cfg.Original.Update(key, value)
+		s.cfg.Update(key, value)
 	}
 
-	if err := ensureConfigFilePath(c.cfg.Original); err != nil {
-		result.Err(ctx, 500, err.Error())
+	if err := ensureConfigFilePath(s.cfg); err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := c.cfg.Original.Save(); err != nil {
-		result.Err(ctx, 500, err.Error())
+	if err := s.cfg.Save(); err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.cfg.Original.Existing = true
+	s.cfg.Existing = true
 
-	result.Ok(ctx, gin.H{
-		"path":   c.cfg.Original.FullPath,
+	s.writeOK(w, map[string]interface{}{
+		"path":   s.cfg.FullPath,
 		"values": currentConfigValues(),
 	})
 }

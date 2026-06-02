@@ -1,8 +1,11 @@
 package frontend
 
 import (
-	_ "embed"
+	"embed"
 )
+
+//go:embed index.html all:src all:public all:lib
+var FS embed.FS
 
 //go:embed lib/FileSaver.min.js
 var js_file_saver []byte

@@ -55,7 +55,7 @@ func (c *Interceptor) Start() error {
     
     // 4. 安装根证书 (用于 HTTPS 解密)
     if !c.Settings.ProxySkipInstallRootCert {
-        certificate.InstallCertificate(c.Cert.Cert)
+        certificate.InstallCertificate(c.Cert.Name, c.Cert.Cert)
     }
     
     // 5. 设置系统代理 (可选)

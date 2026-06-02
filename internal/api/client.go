@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
@@ -434,9 +435,17 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		return fmt.Errorf("缺少可下载的视频内容")
 	}
 
+	object, err := convertAPIChannelsObject(r.Data.Object)
+	if err != nil {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+		c.logger.Error().Err(err).Msg("转换视频号对象失败")
+		c.sendMessageToFilehelper(errMsg)
+		return err
+	}
+
 	// 构建请求，发送 ChannelsObject（后端处理全部逻辑）
 	req := ChannelsDownloadRequest{
-		Object: r.Data.Object,
+		Object: object,
 		Spec:   "",
 		Suffix: "",
 	}
@@ -495,6 +504,18 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 	c.sendMessageToFilehelper(successMsg)
 
 	return nil
+}
+
+func convertAPIChannelsObject(obj interface{}) (apitypes.ChannelsObject, error) {
+	var converted apitypes.ChannelsObject
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return converted, fmt.Errorf("序列化视频号对象失败: %w", err)
+	}
+	if err := json.Unmarshal(data, &converted); err != nil {
+		return converted, fmt.Errorf("解析视频号对象失败: %w", err)
+	}
+	return converted, nil
 }
 
 // sendMessageToFilehelper 发送消息到 filehelper

@@ -101,6 +101,7 @@ func (c *APIClient) handleFetchFeedProfile(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+// 获取分享视频详情
 func (c *APIClient) handleFetchSharedFeedProfile(ctx *gin.Context) {
 	_url := ctx.Query("url")
 	if _url == "" {
@@ -120,6 +121,7 @@ type ChannelsDownloadPayload struct {
 	Nid   string `json:"nid"`
 	Eid   string `json:"eid"`
 	URL   string `json:"url"`
+	Spec  string `json:"spec"`
 	MP3   bool   `json:"mp3"`
 	Cover bool   `json:"cover"`
 }
@@ -151,6 +153,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		Nid:   body.Nid,
 		Eid:   body.Eid,
 		URL:   body.URL,
+		Spec:  body.Spec,
 		MP3:   body.MP3,
 		Cover: body.Cover,
 	})

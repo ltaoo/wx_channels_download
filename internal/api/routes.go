@@ -51,6 +51,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
 	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
 	c.engine.GET("/api/task/list", c.handleFetchTaskList)
+	c.engine.POST("/api/remote/proxy", c.handleRemoteProxyRequest)
+	c.engine.GET("/api/remote/task/list", c.handleFetchRemoteTaskList)
 	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
 	c.engine.POST("/api/task/create", c.handleCreateFeedDownloadTask)
 	c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
@@ -94,9 +96,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
 	c.engine.GET("/channels/task/status", c.handleCompatChannelsTaskStatus)
 	c.engine.GET("/channels/task/start", c.handleCompatChannelsTaskStart)
-	// 配置接口
-	c.engine.GET("/api/config", c.handleGetConfig)
-	c.engine.POST("/api/config", c.handleUpdateConfig)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
 	c.engine.GET("/file", c.handleStreamVideo)

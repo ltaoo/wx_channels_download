@@ -99,7 +99,7 @@ func (c *Interceptor) Start() error {
 		}
 		if !existing {
 			fmt.Printf("正在安装证书...\n")
-			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
+			if err := certificate.InstallCertificate(c.Cert.Name, c.Cert.Cert); err != nil {
 				return fmt.Errorf("安装证书失败: %v", err)
 			}
 		}

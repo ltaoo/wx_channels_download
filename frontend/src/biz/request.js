@@ -81,6 +81,20 @@ export function fetchDownloadList(params) {
 }
 
 /** @param {Record<string, any>} params */
+export function fetchRemoteDownloadList(params) {
+  return proxyRemoteRequest({
+    method: "GET",
+    path: "/api/task/list",
+    query: params,
+  });
+}
+
+/** @param {{ method?: string; path: string; query?: Record<string, any>; body?: any; headers?: Record<string, string> }} body */
+export function proxyRemoteRequest(body) {
+  return request.post("/api/remote/proxy", body);
+}
+
+/** @param {Record<string, any>} params */
 export function fetchAccountList(params = {}) {
   return request.post("/account/list", params);
 }
@@ -109,12 +123,16 @@ export function fetchAppStatus() {
 }
 
 export function fetchAppConfig() {
-  return request.get("/api/config");
+  return request.get("/api/admin/config");
+}
+
+export function fetchDownloadAppConfig() {
+  return request.get("/api/admin/config");
 }
 
 /** @param {{ values: Record<string, any> }} body */
 export function updateAppConfig(body) {
-  return request.post("/api/config", body);
+  return request.post("/api/admin/config", body);
 }
 
 /** @param {{ URL?: string; url?: string; Filename?: string; filename?: string; Dir?: string; dir?: string; Extra?: Record<string, string>; extra?: Record<string, string> }} body */
