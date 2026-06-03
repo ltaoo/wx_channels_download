@@ -1,4 +1,5 @@
 import { fetchAccountList, fetchVideoList } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 import { formatBytes, formatDate } from "./downloads.model.js";
 
 function pick(...values) {
@@ -69,10 +70,10 @@ async function fetchVideosFallback(keyword, reqs) {
 export function VideosPageModel(props) {
   const reqs = {
     accounts: new Timeless.RequestCore(fetchAccountList, {
-      client: props.client,
+      client: api_client$,
     }),
     videos: new Timeless.RequestCore(fetchVideoList, {
-      client: props.client,
+      client: api_client$,
     }),
   };
   const videos_ = refarr([]);

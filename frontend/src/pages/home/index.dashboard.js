@@ -6,6 +6,7 @@ import {
   fetchDownloadList,
   fetchVideoList,
 } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 
 function pickList(data) {
   if (Array.isArray(data)) return data;
@@ -58,22 +59,22 @@ function statCard(label, value, icon, desc) {
 export default function DashboardPageView(props) {
   const reqs = {
     accounts: new Timeless.RequestCore(fetchAccountList, {
-      client: props.client,
+      client: api_client$,
     }),
     videos: new Timeless.RequestCore(fetchVideoList, {
-      client: props.client,
+      client: api_client$,
     }),
     browse: new Timeless.RequestCore(fetchBrowseHistoryList, {
-      client: props.client,
+      client: api_client$,
     }),
     downloads: new Timeless.RequestCore(fetchDownloadList, {
-      client: props.client,
+      client: api_client$,
     }),
     status: new Timeless.RequestCore(fetchAppStatus, {
-      client: props.client,
+      client: api_client$,
     }),
     createTask: new Timeless.RequestCore(createTask, {
-      client: props.client,
+      client: api_client$,
     }),
   };
   const loading_ = ref(false);

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -17,9 +18,12 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	apitypes "wx_channel/internal/api/types"
+	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
+	"wx_channel/pkg/douyin"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
@@ -46,6 +50,18 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		dispatchBody.URL != "" &&
 		dispatchBody.Object.ID == "" {
 		if !isChannelsDownloadURL(dispatchBody.URL) {
+			if shareURL := douyin.ExtractShareURL(dispatchBody.URL); shareURL != "" {
+				id, err := c.startDownloadDouyinShareURL(ctx, shareURL)
+				if err != nil {
+					if c.logger != nil {
+						c.logger.Error().Str("url", shareURL).Err(err).Msg("创建抖音下载任务失败")
+					}
+					result.Err(ctx, 500, "创建任务失败："+err.Error())
+					return
+				}
+				result.Ok(ctx, gin.H{"id": id})
+				return
+			}
 			result.Err(ctx, 400, "暂时不支持该下载链接")
 			return
 		}
@@ -95,6 +111,263 @@ func isChannelsDownloadURL(rawURL string) bool {
 		return path == "/web/pages/feed"
 	}
 	return false
+}
+
+func (c *APIClient) startDownloadDouyinShareURL(ctx *gin.Context, rawURL string) (string, error) {
+	shareURL := douyin.ExtractShareURL(rawURL)
+	if shareURL == "" {
+		return "", fmt.Errorf("不支持的抖音分享链接")
+	}
+
+	info, err := douyin.Parse(ctx.Request.Context(), shareURL)
+	if err != nil {
+		return "", fmt.Errorf("解析抖音分享链接失败: %w", err)
+	}
+	if info.VideoID == "" || info.URL == "" {
+		return "", fmt.Errorf("抖音视频信息不完整")
+	}
+
+	suffix := ".mp4"
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		labels := t.Meta.Req.Labels
+		if labels["platform"] == "douyin" && labels["id"] == info.VideoID && labels["suffix"] == suffix {
+			return "", fmt.Errorf("已存在该下载内容")
+		}
+	}
+
+	filenameTemplate := ""
+	if c.cfg != nil && c.cfg.Original != nil {
+		filenameTemplate = c.cfg.Original.GetString("download.filenameTemplate")
+	}
+	filename := util.BuildFilename(
+		struct {
+			Title     string
+			ObjectId  string
+			CreatedAt string
+			Contact   struct {
+				Nickname string
+				Username string
+			}
+		}{
+			Title:     info.Title,
+			ObjectId:  info.VideoID,
+			CreatedAt: strconv.FormatInt(time.Now().Unix(), 10),
+			Contact: struct {
+				Nickname string
+				Username string
+			}{
+				Nickname: firstNonEmpty(info.AuthorNickname, douyin.SourceName),
+				Username: firstNonEmpty(info.AuthorUsername, info.AuthorID),
+			},
+		},
+		nil,
+		struct{ FilenameTemplate string }{FilenameTemplate: filenameTemplate},
+	)
+	if strings.TrimSpace(filename) == "" {
+		filename = info.Title
+	}
+	dir, name, err := util.ValidateAndSplitFilename(filename)
+	if err != nil {
+		return "", fmt.Errorf("不合法的文件名: %w", err)
+	}
+
+	finalName := name + suffix
+	downloadDir := ""
+	if c.cfg != nil {
+		downloadDir = c.cfg.DownloadDir
+	}
+	finalPath := filepath.Join(downloadDir, dir)
+	if err := os.MkdirAll(finalPath, 0o755); err != nil {
+		return "", fmt.Errorf("创建目录失败: %w", err)
+	}
+	counter := 1
+	baseName := name
+	for {
+		if _, err := os.Stat(filepath.Join(finalPath, finalName)); err == nil {
+			finalName = fmt.Sprintf("%s_%d%s", baseName, counter, suffix)
+			counter++
+		} else {
+			break
+		}
+	}
+
+	labels := map[string]string{
+		"platform":   "douyin",
+		"id":         info.VideoID,
+		"title":      info.Title,
+		"key":        "0",
+		"spec":       "",
+		"suffix":     suffix,
+		"source_url": shareURL,
+	}
+	taskID, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: info.URL,
+			Extra: &gopeedhttp.ReqExtra{
+				Header: map[string]string{
+					"User-Agent":      info.UserAgent,
+					"Referer":         "https://www.douyin.com/",
+					"Accept":          "*/*",
+					"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+				},
+			},
+			Labels: labels,
+		},
+		&base.Options{
+			Name: finalName,
+			Path: finalPath,
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: 4,
+			},
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("创建任务失败: %w", err)
+	}
+
+	task := c.downloader.GetTask(taskID)
+	video, err := c.upsertDouyinVideo(info, shareURL)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.Warn().Err(err).Msg("upsert douyin video failed, continuing without DB records")
+		}
+	} else if task != nil && video != nil && c.channelsUploadService != nil {
+		if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "frontend"); err != nil {
+			if c.logger != nil {
+				c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+			}
+		}
+	}
+
+	if task != nil && c.downloader_ws != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+
+	return taskID, nil
+}
+
+func (c *APIClient) upsertDouyinVideo(info *douyin.VideoInfo, sourceURL string) (*model.Video, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	if info == nil {
+		return nil, fmt.Errorf("douyin video info is nil")
+	}
+
+	now := util.NowMillis()
+	accountExternalID := firstNonEmpty(info.AuthorID, info.AuthorSecID, info.AuthorUsername, "douyin_"+info.VideoID)
+	accountUsername := firstNonEmpty(info.AuthorUsername, info.AuthorSecID, accountExternalID)
+	accountNickname := firstNonEmpty(info.AuthorNickname, accountUsername)
+
+	var video model.Video
+	err := c.db.Transaction(func(tx *gorm.DB) error {
+		var account model.Account
+		err := tx.Where("platform_id = ? AND external_id = ?", "douyin", accountExternalID).First(&account).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			account = model.Account{
+				PlatformId: "douyin",
+				ExternalId: accountExternalID,
+				Username:   accountUsername,
+				Nickname:   accountNickname,
+				AvatarURL:  info.AuthorAvatarURL,
+				ProfileURL: douyinProfileURL(accountUsername),
+				Timestamps: model.Timestamps{
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}
+			if err := tx.Create(&account).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Model(&account).Updates(map[string]any{
+				"username":    accountUsername,
+				"nickname":    accountNickname,
+				"avatar_url":  info.AuthorAvatarURL,
+				"profile_url": douyinProfileURL(accountUsername),
+				"updated_at":  now,
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		err = tx.Where("platform_id = ? AND external_id1 = ?", "douyin", info.VideoID).First(&video).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			video = model.Video{
+				PlatformId:  "douyin",
+				ExternalId1: info.VideoID,
+				ExternalId2: info.AuthorSecID,
+				Title:       info.Title,
+				Description: info.Title,
+				URL:         info.URL,
+				SourceURL:   sourceURL,
+				CoverURL:    info.CoverURL,
+				PublishTime: time.Now().Unix(),
+				Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+			}
+			if err := tx.Create(&video).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Model(&video).Updates(map[string]any{
+				"external_id2": info.AuthorSecID,
+				"title":        info.Title,
+				"description":  info.Title,
+				"url":          info.URL,
+				"source_url":   sourceURL,
+				"cover_url":    info.CoverURL,
+				"updated_at":   now,
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Where("video_id = ? AND account_id <> ? AND role = ?", video.Id, account.Id, "owner").Delete(&model.VideoAccount{}).Error; err != nil {
+			return err
+		}
+		var link model.VideoAccount
+		err = tx.Where("video_id = ? AND account_id = ?", video.Id, account.Id).First(&link).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&model.VideoAccount{
+				VideoId:   video.Id,
+				AccountId: account.Id,
+				Role:      "owner",
+			}).Error
+		}
+		if err != nil {
+			return err
+		}
+		if link.Role != "owner" {
+			return tx.Model(&model.VideoAccount{}).Where("video_id = ? AND account_id = ?", video.Id, account.Id).Update("role", "owner").Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &video, nil
+}
+
+func douyinProfileURL(username string) string {
+	if strings.TrimSpace(username) == "" {
+		return ""
+	}
+	return "https://www.douyin.com/user/" + url.PathEscape(username)
 }
 
 type DownloadTaskPayload struct {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -207,8 +208,8 @@ func root_command(cfg *config.Config) {
 	}
 	defer log_file.Close()
 	logger := zerolog.New(log_file).With().Timestamp().Logger()
-	log.Logger = log.Output(os.Stderr)
-	log.Logger = log.With().
+	log.Logger = zerolog.New(zerolog.MultiLevelWriter(os.Stderr, log_file)).With().
+		Timestamp().
 		Str("service", "WechatHelper").
 		Str("version", cfg.Version).
 		Logger()
@@ -236,17 +237,7 @@ func root_command(cfg *config.Config) {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
-	if !official_cfg.Disabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "official.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: official_cfg.RemoteServerProtocol,
-				Host:     official_cfg.RemoteServerHostname,
-				Port:     official_cfg.RemoteServerPort,
-			},
-		})
-	}
+	interceptor_srv.Interceptor.SetLog(log_file)
 	interceptor_srv.Interceptor.AddPostPlugin(interceptor.CreateYuanbaoTencentPlugin(func(cookieStr string) {
 		allowedKeys := map[string]bool{"hy_source": true, "hy_user": true, "hy_token": true}
 		var filtered []string
@@ -337,6 +328,86 @@ func root_command(cfg *config.Config) {
 		}); err != nil {
 			logger.Error().Err(err).Str("content_external_id", profile.Id).Msg("create browse history failed")
 		}
+	}
+	onOfficialAccountArticleLoaded := func(profile *interceptor.OfficialAccountArticleProfile) {
+		if profile == nil || profile.UniqueMark == "" {
+			return
+		}
+		platformID := "wx_official_account"
+		accountExternalID := strings.TrimSpace(profile.Biz)
+		accountUsername := strings.TrimSpace(profile.Username)
+		if accountExternalID == "" {
+			accountExternalID = accountUsername
+		}
+		if accountExternalID != "" {
+			now := util.NowMillis()
+			acc := model.Account{
+				PlatformId: platformID,
+				ExternalId: accountExternalID,
+				Username:   accountUsername,
+				Nickname:   profile.Nickname,
+				AvatarURL:  profile.AvatarURL,
+				Timestamps: model.Timestamps{
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}
+			var existingAccount model.Account
+			if err := b.DB.Where("platform_id = ? AND external_id = ?", platformID, accountExternalID).First(&existingAccount).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					if err := b.DB.Create(&acc).Error; err != nil {
+						logger.Error().Err(err).Str("platform_id", platformID).Str("account_external_id", accountExternalID).Msg("create official account failed")
+					}
+				} else {
+					logger.Error().Err(err).Str("platform_id", platformID).Str("account_external_id", accountExternalID).Msg("find official account failed")
+				}
+			} else {
+				if err := b.DB.Model(&existingAccount).Updates(map[string]any{
+					"username":   accountUsername,
+					"nickname":   profile.Nickname,
+					"avatar_url": profile.AvatarURL,
+					"updated_at": now,
+				}).Error; err != nil {
+					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update official account failed")
+				}
+			}
+		}
+
+		extraDataBytes, _ := json.Marshal(map[string]any{
+			"biz":        profile.Biz,
+			"username":   profile.Username,
+			"mid":        profile.Mid,
+			"idx":        profile.Idx,
+			"sn":         profile.Sn,
+			"cgiDataNew": profile.RawCgiDataNew,
+		})
+		if err := api_srv.APIClient.RecordBrowseHistory(profile.UniqueMark, services.BrowseHistoryInfo{
+			PlatformId:        platformID,
+			AccountExternalId: accountExternalID,
+			AccountUsername:   accountUsername,
+			AccountNickname:   profile.Nickname,
+			AccountAvatarURL:  profile.AvatarURL,
+			ContentType:       "article",
+			ContentTitle:      profile.Title,
+			ContentURL:        profile.URL,
+			ContentSourceURL:  profile.SourceURL,
+			ContentCoverURL:   profile.CoverURL,
+			ExtraDataJSON:     string(extraDataBytes),
+		}); err != nil {
+			logger.Error().Err(err).Str("content_external_id", profile.UniqueMark).Msg("create official account article browse history failed")
+		}
+	}
+	if !official_cfg.Disabled {
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountArticleLoadedPlugin(onOfficialAccountArticleLoaded))
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
+		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+			Match: "official.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: official_cfg.RemoteServerProtocol,
+				Host:     official_cfg.RemoteServerHostname,
+				Port:     official_cfg.RemoteServerPort,
+			},
+		})
 	}
 
 	cleanup := func() {

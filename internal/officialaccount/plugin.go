@@ -3,14 +3,44 @@ package officialaccount
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
 	"wx_channel/frontend"
+	interceptorpkg "wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 )
 
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
+
+func CreateOfficialAccountArticleLoadedPlugin(onArticleLoaded func(profile *interceptorpkg.OfficialAccountArticleProfile)) *proxy.Plugin {
+	return &proxy.Plugin{
+		Match: "mp.weixin.qq.com",
+		OnRequest: func(ctx proxy.Context) {
+			if ctx.Req().URL.Path != "/__wx_channels_api/officialaccount/article" {
+				return
+			}
+			body, err := io.ReadAll(ctx.Req().Body)
+			if err != nil {
+				fmt.Println("[ECHO]handler", err.Error())
+			}
+			profile, err := interceptorpkg.NewOfficialAccountArticleProfile(json.RawMessage(body))
+			if err != nil {
+				fmt.Println("[ECHO]handler", err.Error())
+			}
+			if profile != nil && onArticleLoaded != nil {
+				go onArticleLoaded(profile)
+			}
+			if profile != nil {
+				fmt.Printf("\n打开了公众号文章\n%s\n", profile.Title)
+			}
+			ctx.Mock(200, map[string]string{
+				"Content-Type": "application/json",
+			}, "{}")
+		},
+	}
+}
 
 func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
 	return &proxy.Plugin{
@@ -24,8 +54,8 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 				if err != nil {
 					return
 				}
-				variables := map[string]interface{}{}
 				html := string(resp_body)
+				variables := buildOfficialAccountVariables(html)
 				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 				script_attr := ""
 				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {

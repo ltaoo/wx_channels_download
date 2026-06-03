@@ -88,14 +88,23 @@ func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
 
 func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 	var body struct {
-		Username *string `json:"username"`
+		Username    *string  `json:"username"`
+		PlatformId  string   `json:"platform_id"`
+		PlatformIds []string `json:"platform_ids"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
 
-	browseHistories, err := c.browseService.List("wx_channels", body.Username)
+	platformIds := body.PlatformIds
+	if body.PlatformId != "" {
+		platformIds = []string{body.PlatformId}
+	}
+	if len(platformIds) == 0 {
+		platformIds = []string{"wx_channels", "wx_official_account"}
+	}
+	browseHistories, err := c.browseService.ListPlatforms(platformIds, body.Username)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return

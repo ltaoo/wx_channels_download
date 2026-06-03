@@ -60,7 +60,7 @@ channels:
   disableLocationToHome: false
 
 mp:
-  disabled: true
+  enabled: false
   remoteServer:
     protocol: "http"
     hostname: ""

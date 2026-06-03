@@ -58,6 +58,11 @@ const routes_configure = /** @type {const} */ ({
         pathname: "/tools",
         component: Timeless.lazy("@/pages/tools/index.js"),
       },
+      logs: {
+        title: "日志",
+        pathname: "/logs",
+        component: Timeless.lazy("@/pages/logs/index.js"),
+      },
     },
   },
   login: {

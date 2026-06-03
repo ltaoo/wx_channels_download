@@ -633,7 +633,7 @@ export function DownloadsPageModel(props) {
       client: props.client,
     }),
     remoteList: new Timeless.RequestCore(fetchRemoteDownloadList, {
-      client: props.client,
+      client: api_client$,
     }),
   };
   const remote_tasks_ = refarr([]);

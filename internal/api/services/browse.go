@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -76,14 +77,25 @@ func (s *BrowseService) Record(uniqueMark string, info BrowseHistoryInfo) error 
 }
 
 func (s *BrowseService) List(platformId string, accountUsername *string) ([]model.BrowseHistory, error) {
+	return s.ListPlatforms([]string{platformId}, accountUsername)
+}
+
+func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *string) ([]model.BrowseHistory, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
-	if platformId == "" {
+	var normalizedPlatformIds []string
+	for _, platformId := range platformIds {
+		platformId = strings.TrimSpace(platformId)
+		if platformId != "" {
+			normalizedPlatformIds = append(normalizedPlatformIds, platformId)
+		}
+	}
+	if len(normalizedPlatformIds) == 0 {
 		return nil, ErrInvalidInput
 	}
 
-	query := s.db.Where("platform_id = ?", platformId)
+	query := s.db.Where("platform_id IN ?", normalizedPlatformIds)
 	if accountUsername != nil {
 		query = query.Where("account_username = ?", *accountUsername)
 	}

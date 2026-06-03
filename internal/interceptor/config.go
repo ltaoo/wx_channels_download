@@ -79,7 +79,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		RemoteServerProtocol:                viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:                viper.GetString("download.remoteServer.hostname"),
 		RemoteServerPort:                    viper.GetInt("download.remoteServer.port"),
-		OfficialAccountServerDisabled:       viper.GetBool("mp.disabled"),
+		OfficialAccountServerDisabled:       !viper.GetBool("mp.enabled"),
 		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
 		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
 		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),

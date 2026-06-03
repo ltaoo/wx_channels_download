@@ -1,16 +1,17 @@
 import { BrowseHistoryPageModel } from "./browse.model.js";
 
 function AccountAvatar(account) {
+  const avatarURL = account.display_avatar_url || account.avatar_url || "";
   return View(
     {
       class:
         "h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
     },
     [
-      account.avatar_url
+      avatarURL
         ? Img({
             class: "h-full w-full object-cover",
-            src: account.avatar_url,
+            src: avatarURL,
             alt: account.nickname,
           })
         : View(
@@ -24,8 +25,21 @@ function AccountAvatar(account) {
   );
 }
 
+function Badge(label, variant) {
+  const classes = {
+    platform:
+      "inline-flex h-6 items-center rounded-md bg-emerald-100 px-2.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
+    type:
+      "inline-flex h-6 items-center rounded-md bg-sky-100 px-2.5 text-xs font-semibold text-sky-800 ring-1 ring-inset ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
+  };
+  return View({ class: classes[variant] || classes.type }, [label]);
+}
+
 function BrowseCard(item, vm$, props) {
-  const sourceURL = item.source_url || item.content_source_url || "";
+  const copyURL = item.copy_url || item.source_url || item.content_source_url || "";
+  const urlLabel = item.is_article ? "文章链接" : "ContentSourceURL";
+  const contentBadge = item.is_article ? "文章" : item.type === "image" ? "图片" : item.type === "live" ? "直播" : "视频";
+  const placeholderIcon = item.is_article ? "file-text" : item.type === "image" ? "image" : "film";
 
   return View(
     {
@@ -38,6 +52,10 @@ function BrowseCard(item, vm$, props) {
         View({ class: "min-w-0 flex-1" }, [
           View({ class: "flex flex-wrap items-start justify-between gap-3" }, [
             View({ class: "min-w-0" }, [
+              View({ class: "mb-2 flex flex-wrap gap-2" }, [
+                Badge(item.platform_label || item.platform_id || "未知平台", "platform"),
+                Badge(contentBadge, "type"),
+              ]),
               View(
                 {
                   class:
@@ -90,10 +108,10 @@ function BrowseCard(item, vm$, props) {
                   "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
               },
               [
-                item.cover_url
+                (item.display_cover_url || item.cover_url)
                   ? Img({
                       class: "h-full w-full object-cover",
-                      src: item.cover_url,
+                      src: item.display_cover_url || item.cover_url,
                       alt: item.title,
                     })
                   : View(
@@ -101,7 +119,7 @@ function BrowseCard(item, vm$, props) {
                         class:
                           "flex h-full w-full items-center justify-center text-zinc-400",
                       },
-                      [Icon({ name: "film", size: 24 })],
+                      [Icon({ name: placeholderIcon, size: 24 })],
                     ),
               ],
             ),
@@ -118,28 +136,28 @@ function BrowseCard(item, vm$, props) {
                   {
                     class:
                       "min-w-0 flex-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
-                    title: sourceURL,
+                    title: copyURL,
                   },
-                  [`ContentSourceURL: ${sourceURL || "-"}`],
+                  [`${urlLabel}: ${copyURL || "-"}`],
                 ),
                 Button(
                   {
                     store: new Timeless.ui.ButtonCore({
                       variant: "ghost",
                       size: "sm",
-                      disabled: !sourceURL,
+                      disabled: !copyURL,
                       onClick() {
-                        if (!sourceURL) {
+                        if (!copyURL) {
                           props.app.tip?.({
                             type: "warning",
-                            text: ["ContentSourceURL 为空"],
+                            text: [`${urlLabel} 为空`],
                           });
                           return;
                         }
-                        props.app.copy(sourceURL);
+                        props.app.copy(copyURL);
                         props.app.tip?.({
                           type: "success",
-                          text: ["已复制 ContentSourceURL"],
+                          text: [`已复制${urlLabel}`],
                         });
                       },
                     }),
@@ -182,7 +200,7 @@ export default function BrowseHistoryPageView(props) {
                 ["浏览记录"],
               ),
               View({ class: "mt-1 text-sm text-zinc-500 dark:text-zinc-400" }, [
-                "查看已捕获的视频号浏览内容并快速下载",
+                "查看已捕获的视频号内容和公众号文章",
               ]),
             ]),
             View({ class: "flex min-w-[280px] gap-2" }, [

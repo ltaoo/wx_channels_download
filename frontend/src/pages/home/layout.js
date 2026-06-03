@@ -8,6 +8,7 @@ import {
   uninstallRootCertificate,
   updateServiceConfig,
 } from "@/biz/request.js";
+import { api_client$ } from "@/store/index.js";
 
 const HOME_MENUS = [
   { title: "下载", name: "root.home_layout.download", icon: "hard-drive" },
@@ -15,6 +16,7 @@ const HOME_MENUS = [
   { title: "视频", name: "root.home_layout.videos", icon: "film" },
   { title: "浏览记录", name: "root.home_layout.browse", icon: "history" },
   { title: "工具", name: "root.home_layout.tools", icon: "wrench" },
+  { title: "日志", name: "root.home_layout.logs", icon: "scroll-text" },
   { title: "设置", name: "root.home_layout.settings", icon: "settings" },
 ];
 
@@ -480,25 +482,25 @@ export default function HomeLayoutView(props) {
     menus: HOME_MENUS,
   });
   const reqStatus = new Timeless.RequestCore(fetchAppStatus, {
-    client: props.client,
+    client: api_client$,
   });
   const reqStartService = new Timeless.RequestCore(startService, {
-    client: props.client,
+    client: api_client$,
   });
   const reqStopService = new Timeless.RequestCore(stopService, {
-    client: props.client,
+    client: api_client$,
   });
   const reqUpdateConfig = new Timeless.RequestCore(updateServiceConfig, {
-    client: props.client,
+    client: api_client$,
   });
   const reqCertStatus = new Timeless.RequestCore(fetchRootCertificateStatus, {
-    client: props.client,
+    client: api_client$,
   });
   const reqInstallCert = new Timeless.RequestCore(installRootCertificate, {
-    client: props.client,
+    client: api_client$,
   });
   const reqUninstallCert = new Timeless.RequestCore(uninstallRootCertificate, {
-    client: props.client,
+    client: api_client$,
   });
   const channelsStatus_ = ref("checking");
   const services_ = refarr([]);

@@ -122,6 +122,11 @@ export function fetchAppStatus() {
   return request.get("/api/status");
 }
 
+/** @param {{ levels?: string; keyword?: string; source?: string; limit?: number; max_bytes?: number; format_json?: boolean }} params */
+export function fetchLogs(params = {}) {
+  return request.get("/api/logs", params);
+}
+
 /** @param {{ name: string }} body */
 export function startService(body) {
   return request.post("/api/service/start", body);

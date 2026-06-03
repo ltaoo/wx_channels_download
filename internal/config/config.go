@@ -430,10 +430,10 @@ func (c *Config) LoadConfig() error {
 		Group:       "Admin",
 	})
 	Register(ConfigItem{
-		Key:         "mp.disabled",
+		Key:         "mp.enabled",
 		Type:        ConfigTypeBool,
-		Default:     true,
-		Description: "是否禁用公众号本地服务，本地服务会提供接口、RSS 等功能",
+		Default:     false,
+		Description: "是否启用公众号本地服务，本地服务会提供接口、RSS 等功能",
 		Title:       "启用本地服务",
 		Group:       "OfficialAccount",
 	})

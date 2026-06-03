@@ -59,7 +59,7 @@ https://dash.cloudflare.com/profile/api-tokens
 
 ```yaml
 mp:
-  disabled: false
+  enabled: true
   remoteServer:
     protocol: "https"
     hostname: "mp-rss-api.xx.workers.dev" # 这里填部署好的 cloudflare worker 访问域名
@@ -107,7 +107,7 @@ mp:
 ```yaml
 # config.yaml
 mp:
-  disabled: false
+  enabled: true
   remoteServer:
     protocol: "https"
     hostname: "rss.example.com"
@@ -134,4 +134,3 @@ mp:
 ### 授权凭证
 
 授权凭证中，只有 `biz` 和 `uin` 是不变的，`biz` 是公众号唯一标记，`uin` 微信用户（你自己）的唯一标记，所以 `mp.remoteServer` 里面不要填非自己的服务，避免别人拿到 `uin`，疯狂调用推送消息列表接口，被微信风控，自己没法用了
-

@@ -169,6 +169,24 @@
       resolve([null, params.refresh_uri]);
     });
   }
+  function report_article_loaded() {
+    console.log(
+      "report_article_loaded",
+      window.cgiDataNew,
+      window.__wx_official_account_article_reported__,
+    );
+    if (!window.cgiDataNew || window.__wx_official_account_article_reported__) {
+      return;
+    }
+    window.__wx_official_account_article_reported__ = true;
+    fetch("/__wx_channels_api/officialaccount/article", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(window.cgiDataNew),
+    });
+  }
   function render_rss_button(acct) {
     var $btn = document.createElement("div");
     $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; margin-left: 6px; cursor: pointer;`;
@@ -320,7 +338,9 @@
   }
   window.insert_download_button = insert_download_button;
   async function main() {
-    if (location.pathname === "/s") {
+    console.log('page location pathname', location.pathname);
+    if (location.pathname.match(/\/s\/[0-9a-zA-Z-_]{1,}/) || location.pathname === '/s') {
+      report_article_loaded();
       var _OfficialAccountCredentials = {
         nickname: (() => {
           if (window.nickname) {

@@ -126,6 +126,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
+	c.engine.GET("/api/logs", c.handleLogs)
 	c.engine.POST("/api/service/start", c.handleServiceStart)
 	c.engine.POST("/api/service/stop", c.handleServiceStop)
 	c.engine.POST("/api/service/config", c.handleServiceConfigUpdate)
