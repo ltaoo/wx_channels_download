@@ -494,6 +494,54 @@ func (c *Config) LoadConfig() error {
 		Group:       "OfficialAccount",
 	})
 	Register(ConfigItem{
+		Key:         "zhihu.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录知乎页面浏览记录",
+		Title:       "记录知乎浏览",
+		Group:       "Zhihu",
+	})
+	Register(ConfigItem{
+		Key:         "zhihu.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "知乎请求 Cookie，用于访问需要登录态的知乎接口",
+		Title:       "知乎 Cookie",
+		Group:       "Zhihu",
+	})
+	Register(ConfigItem{
+		Key:         "xiaohongshu.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录小红书页面浏览记录",
+		Title:       "记录小红书浏览",
+		Group:       "Xiaohongshu",
+	})
+	Register(ConfigItem{
+		Key:         "bilibili.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录 B 站页面浏览记录",
+		Title:       "记录 B 站浏览",
+		Group:       "Bilibili",
+	})
+	Register(ConfigItem{
+		Key:         "youtube.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录 YouTube 页面浏览记录",
+		Title:       "记录 YouTube 浏览",
+		Group:       "YouTube",
+	})
+	Register(ConfigItem{
+		Key:         "weibo.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录微博页面浏览记录",
+		Title:       "记录微博浏览",
+		Group:       "Weibo",
+	})
+	Register(ConfigItem{
 		Key:         "cloudflare.accountId",
 		Type:        ConfigTypeString,
 		Default:     "",

@@ -1,11 +1,49 @@
 import { fetchAccountList, synchronizeAccount } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
+function getConfig() {
+  if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
+  if (typeof window !== "undefined" && window.__wx_channels_config__) {
+    return window.__wx_channels_config__;
+  }
+  return {};
+}
+
+function getAPIClientOrigin() {
+  const hostname = String(api_client$?.hostname || "").trim();
+  if (!hostname) {
+    return "";
+  }
+  try {
+    return new URL(hostname, window.location.origin).origin;
+  } catch (e) {
+    return hostname.replace(/\/+$/, "");
+  }
+}
+
+function mpProxyURL(rawURL) {
+  const url = String(rawURL || "").trim();
+  if (!url || url.includes("/mp/proxy?")) {
+    return url;
+  }
+  const cfg = getConfig();
+  const token = cfg.officialServerRefreshToken || "";
+  const params = new URLSearchParams();
+  if (token) {
+    params.set("token", token);
+  }
+  params.set("url", url);
+  return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
+}
+
 function normalizeAccount(account) {
+  const platformId =
+    account.platform_id || account.platform?.id || account.platform?.code || "";
   const platformName =
     account.platform_name ||
     account.platform?.name ||
-    platformNameOf(account.platform_id || account.platform?.id || account.platform?.code);
+    platformNameOf(platformId);
+  const avatarURL = account.avatar_url || "";
   const medias = (account.video_accounts || [])
     .map((row) => row.video || row.Video || null)
     .filter(Boolean)
@@ -21,15 +59,37 @@ function normalizeAccount(account) {
       account.username ||
       account.external_id ||
       "未命名帐号",
-    avatar_url: account.avatar_url || "",
-    platform_id: account.platform_id || account.platform?.id || account.platform?.code || "",
+    avatar_url: avatarURL,
+    display_avatar_url:
+      platformId === "wx_official_account" ? mpProxyURL(avatarURL) : avatarURL,
+    platform_id: platformId,
     platform_name: platformName,
+    content_count: Number(account.content_count || 0),
+    has_content: !!account.has_content || Number(account.content_count || 0) > 0,
     medias,
   };
 }
 
+function createdAtOf(account) {
+  const value = account.created_at || account.CreatedAt || 0;
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortAccountsByCreatedAtDesc(accounts) {
+  return accounts.toSorted
+    ? accounts.toSorted(
+        (a, b) => createdAtOf(b) - createdAtOf(a) || (b.id || 0) - (a.id || 0),
+      )
+    : [...accounts].sort(
+        (a, b) => createdAtOf(b) - createdAtOf(a) || (b.id || 0) - (a.id || 0),
+      );
+}
+
 function platformNameOf(platformId) {
   switch (platformId) {
+    case "wx_official_account":
+      return "公众号";
     case "wx_channels":
       return "视频号";
     case "douyin":
@@ -64,19 +124,22 @@ export function AccountsPageModel(props) {
   const loading_ = ref(false);
   const error_ = ref("");
   const keyword_ = ref("");
+  const content_filter_ = ref("with");
   const selected_ = ref(null);
   const playing_url_ = ref("");
 
   async function load() {
     loading_.as(true);
     error_.as("");
-    const r = await reqs.accounts.run({});
+    const r = await reqs.accounts.run({ content_filter: content_filter_.value });
     loading_.as(false);
     if (r.error) {
       error_.as(r.error.message || String(r.error));
       return;
     }
-    accounts_.as((r.data.list || []).map(normalizeAccount));
+    accounts_.as(
+      sortAccountsByCreatedAtDesc((r.data.list || []).map(normalizeAccount)),
+    );
   }
 
   const filtered_ = combine(
@@ -103,6 +166,7 @@ export function AccountsPageModel(props) {
       loading: loading_,
       error: error_,
       keyword: keyword_,
+      contentFilter: content_filter_,
       selected: selected_,
       playingUrl: playing_url_,
     },
@@ -118,6 +182,11 @@ export function AccountsPageModel(props) {
     methods: {
       init: load,
       refresh: load,
+      async setContentFilter(value) {
+        if (content_filter_.value === value) return;
+        content_filter_.as(value);
+        await load();
+      },
       select(account) {
         selected_.as(account);
       },

@@ -2,7 +2,9 @@ package api
 
 import (
 	"errors"
+	"io"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -129,8 +131,48 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
+	var body struct {
+		HasContent    *bool  `json:"has_content"`
+		ContentFilter string `json:"content_filter"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			if !errors.Is(err, io.EOF) {
+				result.Err(ctx, 400, err.Error())
+				return
+			}
+		}
+	}
+
+	contentFilter := strings.ToLower(strings.TrimSpace(body.ContentFilter))
+	if body.HasContent != nil {
+		if *body.HasContent {
+			contentFilter = "with"
+		} else {
+			contentFilter = "without"
+		}
+	}
+	if contentFilter == "" {
+		contentFilter = "with"
+	}
+
 	var accounts []model.Account
-	if err := c.db.Model(&model.Account{}).Find(&accounts).Error; err != nil {
+	query := c.db.Model(&model.Account{})
+	switch contentFilter {
+	case "with", "has", "true":
+		query = query.Where(
+			"EXISTS (SELECT 1 FROM video_account WHERE video_account.account_id = account.id) OR EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
+		)
+	case "without", "none", "false":
+		query = query.Where(
+			"NOT EXISTS (SELECT 1 FROM video_account WHERE video_account.account_id = account.id) AND NOT EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
+		)
+	case "all":
+	default:
+		result.Err(ctx, 400, "invalid content_filter")
+		return
+	}
+	if err := query.Order("created_at DESC, id DESC").Find(&accounts).Error; err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -191,6 +233,10 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		if platformName == "" {
 			platformName = platformNameOf(acc.PlatformId)
 		}
+		var videoAccountCount int64
+		_ = c.db.Table("video_account").Where("account_id = ?", acc.Id).Count(&videoAccountCount).Error
+		var contentAccountCount int64
+		_ = c.db.Table("content_account").Where("account_id = ?", acc.Id).Count(&contentAccountCount).Error
 
 		list = append(list, gin.H{
 			"id":          acc.Id,
@@ -207,6 +253,10 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			"nickname":      acc.Nickname,
 			"avatar_url":    acc.AvatarURL,
 			"external_id":   acc.ExternalId,
+			"created_at":    acc.CreatedAt,
+			"updated_at":    acc.UpdatedAt,
+			"content_count": videoAccountCount + contentAccountCount,
+			"has_content":   videoAccountCount+contentAccountCount > 0,
 			"video_accounts": func() any {
 				out := make([]gin.H, 0, len(rows))
 				for _, r := range rows {

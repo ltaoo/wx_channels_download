@@ -29,16 +29,21 @@ function normalizeContentType(item) {
   switch (value) {
     case "article":
       return "article";
+    case "answer":
+      return "answer";
     case "picture":
     case "image":
       return "image";
     case "live":
       return "live";
+    case "other":
+      return "other";
     case "":
     case "media":
     case "video":
-    default:
       return "video";
+    default:
+      return value;
   }
 }
 
@@ -54,6 +59,16 @@ function platformLabelOf(platformId) {
       return "视频号";
     case "douyin":
       return "抖音";
+    case "zhihu":
+      return "知乎";
+    case "xiaohongshu":
+      return "小红书";
+    case "bilibili":
+      return "B站";
+    case "youtube":
+      return "YouTube";
+    case "weibo":
+      return "微博";
     default:
       return platformId || "未知平台";
   }

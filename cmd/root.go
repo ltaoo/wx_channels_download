@@ -36,6 +36,11 @@ import (
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/officialaccount"
+	platformbilibili "wx_channel/internal/platformbrowser/bilibili"
+	platformweibo "wx_channel/internal/platformbrowser/weibo"
+	platformxiaohongshu "wx_channel/internal/platformbrowser/xiaohongshu"
+	platformyoutube "wx_channel/internal/platformbrowser/youtube"
+	platformzhihu "wx_channel/internal/platformbrowser/zhihu"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
@@ -397,6 +402,21 @@ func root_command(cfg *config.Config) {
 			logger.Error().Err(err).Str("content_external_id", profile.UniqueMark).Msg("create official account article browse history failed")
 		}
 	}
+	onZhihuLoaded := func(profile *interceptor.PlatformBrowserProfile) {
+		platformzhihu.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
+	}
+	onXiaohongshuLoaded := func(profile *interceptor.PlatformBrowserProfile) {
+		platformxiaohongshu.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
+	}
+	onBilibiliLoaded := func(profile *interceptor.PlatformBrowserProfile) {
+		platformbilibili.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
+	}
+	onYoutubeLoaded := func(profile *interceptor.PlatformBrowserProfile) {
+		platformyoutube.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
+	}
+	onWeiboLoaded := func(profile *interceptor.PlatformBrowserProfile) {
+		platformweibo.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
+	}
 	if !official_cfg.Disabled {
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountArticleLoadedPlugin(onOfficialAccountArticleLoaded))
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
@@ -408,6 +428,21 @@ func root_command(cfg *config.Config) {
 				Port:     official_cfg.RemoteServerPort,
 			},
 		})
+	}
+	if viper.GetBool("zhihu.enabled") {
+		interceptor_srv.Interceptor.AddPostPlugin(platformzhihu.CreatePlugin(onZhihuLoaded))
+	}
+	if viper.GetBool("xiaohongshu.enabled") {
+		interceptor_srv.Interceptor.AddPostPlugin(platformxiaohongshu.CreatePlugin(onXiaohongshuLoaded))
+	}
+	if viper.GetBool("bilibili.enabled") {
+		interceptor_srv.Interceptor.AddPostPlugin(platformbilibili.CreatePlugin(onBilibiliLoaded))
+	}
+	if viper.GetBool("youtube.enabled") {
+		interceptor_srv.Interceptor.AddPostPlugin(platformyoutube.CreatePlugin(onYoutubeLoaded))
+	}
+	if viper.GetBool("weibo.enabled") {
+		interceptor_srv.Interceptor.AddPostPlugin(platformweibo.CreatePlugin(onWeiboLoaded))
 	}
 
 	cleanup := func() {

@@ -70,6 +70,22 @@ mp:
   refreshSkipMinutes: 20
   maxWebsocketClients: 5
 
+zhihu:
+  enabled: false
+  cookie: ""
+
+xiaohongshu:
+  enabled: false
+
+bilibili:
+  enabled: false
+
+youtube:
+  enabled: false
+
+weibo:
+  enabled: false
+
 cloudflare:
   accountId: ""
   apiToken: ""

@@ -1,16 +1,17 @@
 import { AccountsPageModel } from "./accounts.model.js";
 
 function Avatar(account) {
+  const avatarURL = account.display_avatar_url || account.avatar_url || "";
   return View(
     {
       class:
         "h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
     },
     [
-      account.avatar_url
+      avatarURL
         ? Img({
             class: "h-full w-full object-cover",
-            src: account.avatar_url,
+            src: avatarURL,
             alt: account.nickname,
           })
         : View(
@@ -97,6 +98,37 @@ function PlatformBadge(account) {
   );
 }
 
+const CONTENT_FILTERS = [
+  { value: "with", label: "有关联内容" },
+  { value: "all", label: "全部帐号" },
+  { value: "without", label: "无关联内容" },
+];
+
+function ContentFilterButton(option, vm$) {
+  const active_ = computed(
+    vm$.state.contentFilter,
+    (value) => value === option.value,
+  );
+  return View(
+    {
+      as: "button",
+      type: "button",
+      class: Timeless.classNames([
+        "h-9 whitespace-nowrap rounded-md border px-3 text-sm font-medium transition",
+        computed(active_, (active) =>
+          active
+            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900",
+        ),
+      ]),
+      onClick() {
+        vm$.methods.setContentFilter(option.value);
+      },
+    },
+    [option.label],
+  );
+}
+
 export default function AccountsPageView(props) {
   const vm$ = AccountsPageModel(props);
 
@@ -139,7 +171,20 @@ export default function AccountsPageView(props) {
               [Icon({ name: "refresh-cw", size: 16 }), "刷新"],
             ),
           ]),
-          View({ class: "mt-4 max-w-md" }, [Input({ store: vm$.ui.keyword })]),
+          View(
+            { class: "mt-4 flex flex-wrap items-center gap-3" },
+            [
+              View({ class: "w-full max-w-md" }, [Input({ store: vm$.ui.keyword })]),
+              View({ class: "flex flex-wrap items-center gap-2" }, [
+                For({
+                  each: CONTENT_FILTERS,
+                  render(option) {
+                    return ContentFilterButton(option, vm$);
+                  },
+                }),
+              ]),
+            ],
+          ),
         ],
       ),
       ScrollView({ store: vm$.ui.view, class: "flex-1" }, [
@@ -223,7 +268,7 @@ export default function AccountsPageView(props) {
                                 ]),
                                 View({ class: "flex items-center gap-2" }, [
                                   View({ class: "text-xs text-zinc-500" }, [
-                                    `${account.medias.length} 个视频`,
+                                    `${account.content_count || account.medias.length} 个内容`,
                                   ]),
                                   Button(
                                     {

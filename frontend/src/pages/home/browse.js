@@ -38,8 +38,18 @@ function Badge(label, variant) {
 function BrowseCard(item, vm$, props) {
   const copyURL = item.copy_url || item.source_url || item.content_source_url || "";
   const urlLabel = item.is_article ? "文章链接" : "ContentSourceURL";
-  const contentBadge = item.is_article ? "文章" : item.type === "image" ? "图片" : item.type === "live" ? "直播" : "视频";
-  const placeholderIcon = item.is_article ? "file-text" : item.type === "image" ? "image" : "film";
+  const coverURL = item.display_cover_url || item.cover_url;
+  const contentBadge = item.is_article
+    ? "文章"
+    : item.type === "answer"
+      ? "回答"
+      : item.type === "image"
+        ? "图片"
+        : item.type === "live"
+          ? "直播"
+          : item.type === "other"
+            ? "其他"
+            : "视频";
 
   return View(
     {
@@ -102,27 +112,21 @@ function BrowseCard(item, vm$, props) {
             ]),
           ]),
           View({ class: "mt-3 flex gap-3" }, [
-            View(
-              {
-                class:
-                  "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
-              },
-              [
-                (item.display_cover_url || item.cover_url)
-                  ? Img({
+            coverURL
+              ? View(
+                  {
+                    class:
+                      "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+                  },
+                  [
+                    Img({
                       class: "h-full w-full object-cover",
-                      src: item.display_cover_url || item.cover_url,
+                      src: coverURL,
                       alt: item.title,
-                    })
-                  : View(
-                      {
-                        class:
-                          "flex h-full w-full items-center justify-center text-zinc-400",
-                      },
-                      [Icon({ name: placeholderIcon, size: 24 })],
-                    ),
-              ],
-            ),
+                    }),
+                  ],
+                )
+              : "",
             View({ class: "min-w-0 flex-1" }, [
               View(
                 {
