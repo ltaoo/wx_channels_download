@@ -1,4 +1,4 @@
-package api
+package admin
 
 import (
 	"bufio"
@@ -6,16 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
-
-	result "wx_channel/internal/util"
 )
 
 const (
@@ -37,15 +34,31 @@ type logEntry struct {
 	Formatted string                 `json:"formatted,omitempty"`
 }
 
-func (c *APIClient) handleLogs(ctx *gin.Context) {
-	limit := boundedInt(ctx.Query("limit"), defaultLogLimit, 1, maxLogLimit)
-	maxBytes := boundedInt(ctx.Query("max_bytes"), defaultLogMaxBytes, 64*1024, maxLogMaxBytes)
-	keyword := strings.ToLower(strings.TrimSpace(ctx.Query("keyword")))
-	sourceFilter := strings.ToLower(strings.TrimSpace(ctx.Query("source")))
-	levels := parseLevelFilter(ctx.Query("levels"))
-	formatJSON := parseBool(ctx.Query("format_json"))
+type logFileInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
 
-	files := c.discoverLogFiles()
+func (s *AdminServer) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg == nil {
+		s.writeError(w, http.StatusInternalServerError, "配置未初始化")
+		return
+	}
+
+	query := r.URL.Query()
+	limit := boundedInt(query.Get("limit"), defaultLogLimit, 1, maxLogLimit)
+	maxBytes := boundedInt(query.Get("max_bytes"), defaultLogMaxBytes, 64*1024, maxLogMaxBytes)
+	keyword := strings.ToLower(strings.TrimSpace(query.Get("keyword")))
+	sourceFilter := strings.ToLower(strings.TrimSpace(query.Get("source")))
+	levels := parseLevelFilter(query.Get("levels"))
+	formatJSON := parseBool(query.Get("format_json"))
+
+	files := s.discoverLogFiles()
 	entries := make([]logEntry, 0, limit)
 	total := 0
 	seq := 0
@@ -81,7 +94,7 @@ func (c *APIClient) handleLogs(ctx *gin.Context) {
 		entries[i].Index = i + 1
 	}
 
-	result.Ok(ctx, gin.H{
+	s.writeOK(w, map[string]interface{}{
 		"entries": entries,
 		"files":   files,
 		"total":   total,
@@ -89,17 +102,11 @@ func (c *APIClient) handleLogs(ctx *gin.Context) {
 	})
 }
 
-type logFileInfo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Size int64  `json:"size"`
-}
-
-func (c *APIClient) discoverLogFiles() []logFileInfo {
+func (s *AdminServer) discoverLogFiles() []logFileInfo {
 	roots := uniqueStrings([]string{
-		c.cfg.WorkDir,
-		filepath.Join(c.cfg.WorkDir, "logs"),
-		filepath.Join(c.cfg.WorkDir, "data", "logs"),
+		s.cfg.WorkDir,
+		filepath.Join(s.cfg.WorkDir, "logs"),
+		filepath.Join(s.cfg.WorkDir, "data", "logs"),
 	})
 	files := make(map[string]logFileInfo)
 	for _, root := range roots {
@@ -252,13 +259,13 @@ func parseLogLine(file logFileInfo, raw string, formatJSON bool) logEntry {
 func stringField(obj map[string]interface{}, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := obj[key]; ok && value != nil {
-			return strings.TrimSpace(strings.Trim(strings.TrimSpace(toString(value)), `"`))
+			return strings.TrimSpace(strings.Trim(strings.TrimSpace(logValueString(value)), `"`))
 		}
 	}
 	return ""
 }
 
-func toString(value interface{}) string {
+func logValueString(value interface{}) string {
 	switch v := value.(type) {
 	case string:
 		return v

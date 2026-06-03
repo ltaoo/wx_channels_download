@@ -33,10 +33,10 @@ export const routes_configure = /** @type {const} */ ({
         pathname: "/accounts",
         component: Timeless.lazy("@/pages/home/accounts.js"),
       },
-      videos: {
-        title: "视频列表",
-        pathname: "/videos",
-        component: Timeless.lazy("@/pages/home/videos.js"),
+      content: {
+        title: "内容列表",
+        pathname: "/content",
+        component: Timeless.lazy("@/pages/home/content.js"),
       },
       browse: {
         title: "浏览记录",

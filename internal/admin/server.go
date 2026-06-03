@@ -70,6 +70,7 @@ func (s *AdminServer) routes() http.Handler {
 	mux.HandleFunc("/api/admin/service/stop", s.handleServiceStop)
 	mux.HandleFunc("/api/admin/config", s.handleConfig)
 	mux.HandleFunc("/api/admin/config/repair", s.handleConfigRepair)
+	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.Handle("/", s.frontendHandler())
 	return mux
 }

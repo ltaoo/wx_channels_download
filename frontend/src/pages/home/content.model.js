@@ -1,4 +1,4 @@
-import { fetchAccountList, fetchVideoList } from "@/biz/request.js";
+import { fetchAccountList, fetchContentList } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 import { formatBytes, formatDate } from "./downloads.model.js";
 
@@ -16,35 +16,36 @@ function normalizeAccount(account) {
   };
 }
 
-function accountFromVideo(video, fallback) {
+function accountFromContent(content, fallback) {
   if (fallback) return normalizeAccount(fallback);
-  if (video.account) return normalizeAccount(video.account);
-  if (Array.isArray(video.accounts) && video.accounts.length > 0) return normalizeAccount(video.accounts[0]);
+  if (content.account) return normalizeAccount(content.account);
+  if (Array.isArray(content.accounts) && content.accounts.length > 0) return normalizeAccount(content.accounts[0]);
   const account = normalizeAccount({
-    id: video.account_id,
-    nickname: video.account_nickname,
-    username: pick(video.account_username, video.account_external_id),
-    avatar_url: video.account_avatar_url,
+    id: content.account_id,
+    nickname: content.account_nickname,
+    username: pick(content.account_username, content.account_external_id),
+    avatar_url: content.account_avatar_url,
   });
   return account.nickname || account.username || account.avatar_url ? account : null;
 }
 
-function normalizeVideo(video, account) {
+function normalizeContent(content, account) {
   return {
-    ...video,
-    id: video.id || video.Id || `${video.external_id || video.title}-${Math.random()}`,
-    title: video.title || video.Title || video.description || "未命名视频",
-    description: video.description || video.Description || "",
-    cover_url: video.cover_url || video.CoverURL || video.coverUrl || "",
-    url: video.url || video.URL || "",
-    file_size: video.file_size || video.size || video.Size || 0,
-    duration: video.duration || video.Duration || 0,
-    publish_time: video.publish_time || video.PublishTime || 0,
-    account: accountFromVideo(video, account),
+    ...content,
+    id: content.id || content.Id || `${content.external_id || content.title}-${Math.random()}`,
+    title: content.title || content.Title || content.description || "未命名内容",
+    description: content.description || content.Description || "",
+    content_type: content.content_type || content.type || "",
+    cover_url: content.cover_url || content.CoverURL || content.coverUrl || "",
+    url: pick(content.url, content.URL, content.content_url, content.ContentURL, content.source_url, content.SourceURL),
+    file_size: content.file_size || content.size || content.Size || 0,
+    duration: content.duration || content.Duration || 0,
+    publish_time: content.publish_time || content.PublishTime || 0,
+    account: accountFromContent(content, account),
   };
 }
 
-async function fetchVideosFallback(keyword, reqs) {
+async function fetchContentFallback(keyword, reqs) {
   const r = await reqs.accounts.run({});
   if (r.error) return r;
   const k = String(keyword || "").trim().toLowerCase();
@@ -57,10 +58,10 @@ async function fetchVideosFallback(keyword, reqs) {
     };
     for (const row of account.content_accounts || []) {
       const content = row.content || row.Content;
-      if (content && (content.content_type || content.type) === "video") {
-        const video = normalizeVideo(content, acc);
-        if (!k || String(video.title || video.description || "").toLowerCase().includes(k)) {
-          list.push(video);
+      if (content) {
+        const item = normalizeContent(content, acc);
+        if (!k || String(item.title || item.description || "").toLowerCase().includes(k)) {
+          list.push(item);
         }
       }
     }
@@ -68,16 +69,16 @@ async function fetchVideosFallback(keyword, reqs) {
   return Timeless.Result.Ok({ list, total: list.length, page: 1, page_size: list.length });
 }
 
-export function VideosPageModel(props) {
+export function ContentPageModel(props) {
   const reqs = {
     accounts: new Timeless.RequestCore(fetchAccountList, {
       client: api_client$,
     }),
-    videos: new Timeless.RequestCore(fetchVideoList, {
+    content: new Timeless.RequestCore(fetchContentList, {
       client: api_client$,
     }),
   };
-  const videos_ = refarr([]);
+  const content_ = refarr([]);
   const loading_ = ref(false);
   const error_ = ref("");
   const total_ = ref(0);
@@ -88,25 +89,25 @@ export function VideosPageModel(props) {
   async function load(page = 1) {
     loading_.as(true);
     error_.as("");
-    const r = await reqs.videos.run({
+    const r = await reqs.content.run({
       page,
       pageSize: page_size_,
       keyword: keyword_.value.trim(),
     });
     let result = r;
     if (!r.error && page === 1 && (!r.data.list || r.data.list.length === 0)) {
-      result = await fetchVideosFallback(keyword_.value, reqs);
+      result = await fetchContentFallback(keyword_.value, reqs);
     }
     loading_.as(false);
     if (result.error) {
       error_.as(result.error.message || String(result.error));
       return;
     }
-    const list = (result.data.list || []).map((it) => normalizeVideo(it));
+    const list = (result.data.list || []).map((it) => normalizeContent(it));
     if (page === 1) {
-      videos_.as(list);
+      content_.as(list);
     } else {
-      videos_.push(...list);
+      content_.push(...list);
     }
     total_.as(result.data.total || list.length);
     page_.as(page);
@@ -114,18 +115,18 @@ export function VideosPageModel(props) {
 
   return {
     state: {
-      videos: videos_,
+      content: content_,
       loading: loading_,
       error: error_,
       total: total_,
       keyword: keyword_,
       page: page_,
-      noMore: computed({ videos: videos_, total: total_ }, (d) => d.videos.length >= d.total),
+      noMore: computed({ content: content_, total: total_ }, (d) => d.content.length >= d.total),
     },
     ui: {
       view: new Timeless.ui.ScrollViewCore({}),
       keyword: new Timeless.ui.InputCore({
-        placeholder: "搜索视频标题",
+        placeholder: "搜索内容标题",
         onChange(value) {
           keyword_.as(value);
         },
@@ -142,12 +143,12 @@ export function VideosPageModel(props) {
         if (loading_.value) return null;
         return load(page_.value + 1);
       },
-      play(video) {
-        if (!video.url) {
-          props.app.tip?.({ type: "warning", text: ["该视频没有可播放地址"] });
+      open(content) {
+        if (!content.url) {
+          props.app.tip?.({ type: "warning", text: ["该内容没有可打开地址"] });
           return;
         }
-        window.open(video.url, "_blank");
+        window.open(content.url, "_blank");
       },
       formatBytes,
       formatDate,

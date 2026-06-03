@@ -2,6 +2,7 @@ package zhihu
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -163,7 +164,7 @@ func (c *Client) doBytes(method, rawURL, referer string) ([]byte, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("zhihu status %d url=%s body=%s", resp.StatusCode, rawURL, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("zhihu status %d debug=%s", resp.StatusCode, zhihuRequestDebug(req, resp, body))
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err == nil && c.OnProgress != nil {
@@ -244,7 +245,7 @@ func (c *Client) doImageBytes(rawURL string, referer string) ([]byte, string, er
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, "", fmt.Errorf("zhihu image status %d url=%s body=%s", resp.StatusCode, rawURL, strings.TrimSpace(string(body)))
+		return nil, "", fmt.Errorf("zhihu image status %d debug=%s", resp.StatusCode, zhihuRequestDebug(req, resp, body))
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 	if err == nil && c.OnProgress != nil {
@@ -254,16 +255,18 @@ func (c *Client) doImageBytes(rawURL string, referer string) ([]byte, string, er
 }
 
 func setHeaders(req *http.Request, referer string) {
-	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7")
+	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	req.Header.Set("accept-language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("cache-control", "no-cache")
 	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("priority", "u=0, i")
 	req.Header.Set("sec-ch-ua", `"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"`)
 	req.Header.Set("sec-ch-ua-mobile", "?0")
 	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
 	req.Header.Set("sec-fetch-dest", "document")
 	req.Header.Set("sec-fetch-mode", "navigate")
 	req.Header.Set("sec-fetch-site", "none")
+	req.Header.Set("sec-fetch-user", "?1")
 	req.Header.Set("upgrade-insecure-requests", "1")
 	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36")
 	if referer != "" {
@@ -272,6 +275,142 @@ func setHeaders(req *http.Request, referer string) {
 	if cookie := strings.TrimSpace(viper.GetString("zhihu.cookie")); cookie != "" {
 		req.Header.Set("cookie", cookie)
 	}
+}
+
+func zhihuRequestDebug(req *http.Request, resp *http.Response, body []byte) string {
+	cookie := ""
+	if req != nil {
+		cookie = req.Header.Get("cookie")
+	}
+	keys := cookieKeys(cookie)
+	bodyText := string(body)
+	zseChallenge := strings.Contains(bodyText, `id="zh-zse-ck"`) || strings.Contains(bodyText, "zse-ck")
+
+	debug := map[string]any{
+		"cookie": map[string]any{
+			"present": strings.TrimSpace(cookie) != "",
+			"keys":    keys,
+			"len":     len(cookie),
+			"sha256":  sha256Hex(cookie),
+			"has": map[string]bool{
+				"d_c0":     getCookieValue(cookie, "d_c0") != "",
+				"z_c0":     getCookieValue(cookie, "z_c0") != "",
+				"__zse_ck": getCookieValue(cookie, "__zse_ck") != "",
+				"_xsrf":    getCookieValue(cookie, "_xsrf") != "",
+			},
+			"source":      "viper:zhihu.cookie",
+			"config_file": viper.ConfigFileUsed(),
+		},
+		"body": map[string]any{
+			"len":       len(body),
+			"snippet":   strings.TrimSpace(bodyText),
+			"zse_ck":    zseChallenge,
+			"truncated": len(body) >= 2048,
+		},
+	}
+	if zseChallenge {
+		debug["diagnosis"] = "zhihu_zse_ck_challenge"
+		debug["hint"] = "Zhihu returned the browser JS challenge page. Refresh zhihu.cookie by opening Zhihu through the app proxy in a real browser, then retry; a plain Go HTTP request cannot execute the zse-ck challenge."
+	}
+	if req != nil {
+		debug["request"] = map[string]any{
+			"method":  req.Method,
+			"url":     req.URL.String(),
+			"headers": redactHeaders(req.Header),
+			"curl":    buildReproCurl(req),
+		}
+	}
+	if resp != nil {
+		finalURL := ""
+		if resp.Request != nil && resp.Request.URL != nil {
+			finalURL = resp.Request.URL.String()
+		}
+		debug["response"] = map[string]any{
+			"status":      resp.Status,
+			"status_code": resp.StatusCode,
+			"headers":     redactHeaders(resp.Header),
+			"final_url":   finalURL,
+		}
+	}
+	data, err := json.Marshal(debug)
+	if err != nil {
+		return fmt.Sprintf(`{"error":"marshal debug failed: %s"}`, err)
+	}
+	return string(data)
+}
+
+func redactHeaders(headers http.Header) map[string][]string {
+	out := make(map[string][]string, len(headers))
+	for key, values := range headers {
+		lower := strings.ToLower(key)
+		if lower == "cookie" || lower == "set-cookie" || lower == "setcookie" {
+			joined := strings.Join(values, "; ")
+			out[key] = []string{redactedCookieSummary(joined)}
+			continue
+		}
+		out[key] = append([]string(nil), values...)
+	}
+	return out
+}
+
+func redactedCookieSummary(cookie string) string {
+	keys := cookieKeys(cookie)
+	return fmt.Sprintf("<redacted len=%d sha256=%s keys=%s>", len(cookie), sha256Hex(cookie), strings.Join(keys, ","))
+}
+
+func sha256Hex(value string) string {
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func buildReproCurl(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	parts := []string{"curl", "-i", "--max-time", "20", shellQuote(req.URL.String())}
+	keys := make([]string, 0, len(req.Header))
+	for key := range req.Header {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := strings.Join(req.Header.Values(key), ", ")
+		if strings.EqualFold(key, "cookie") {
+			value = "<paste zhihu.cookie from config>"
+		}
+		parts = append(parts, "-H", shellQuote(key+": "+value))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func cookieKeys(cookie string) []string {
+	seen := make(map[string]bool)
+	var keys []string
+	for _, part := range strings.Split(cookie, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		key, _, ok := strings.Cut(part, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func parseAnswerPage(body []byte, answerURL AnswerURL) (*AnswerPage, error) {
@@ -383,7 +522,7 @@ func (c *Client) doAPIBytes(endpoint, referer string) ([]byte, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("zhihu api status %d url=%s body=%s", resp.StatusCode, req.URL.String(), strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("zhihu api status %d debug=%s", resp.StatusCode, zhihuRequestDebug(req, resp, body))
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err == nil && c.OnProgress != nil {

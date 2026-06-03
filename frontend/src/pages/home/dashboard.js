@@ -50,7 +50,7 @@ export default function DashboardPageView(props) {
     {
       class: "flex h-full flex-col bg-zinc-50 dark:bg-zinc-900",
       onMounted() {
-        vm$.refresh();
+        vm$.methods.refresh();
       },
     },
     [
@@ -80,7 +80,7 @@ export default function DashboardPageView(props) {
           ]),
         ],
       ),
-      ScrollView({ store: vm$.ui.$view, class: "flex-1" }, [
+      ScrollView({ store: vm$.ui.view$, class: "flex-1" }, [
         View({ class: "space-y-6 p-6" }, [
           Show({
             when: computed(vm$.state.error, (t) => !!t),

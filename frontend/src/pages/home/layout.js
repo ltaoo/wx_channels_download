@@ -13,7 +13,7 @@ import { api_client$ } from "@/store/index.js";
 const HOME_MENUS = [
   { title: "下载", name: "root.home_layout.download", icon: "hard-drive" },
   { title: "帐号", name: "root.home_layout.accounts", icon: "user" },
-  { title: "视频", name: "root.home_layout.videos", icon: "film" },
+  { title: "内容", name: "root.home_layout.content", icon: "file-stack" },
   { title: "浏览记录", name: "root.home_layout.browse", icon: "history" },
   { title: "工具", name: "root.home_layout.tools", icon: "wrench" },
   { title: "日志", name: "root.home_layout.logs", icon: "scroll-text" },

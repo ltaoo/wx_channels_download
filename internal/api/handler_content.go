@@ -11,20 +11,29 @@ import (
 )
 
 func (c *APIClient) handleCompatVideoList(ctx *gin.Context) {
+	c.handleCompatContentListWithType(ctx, "video")
+}
+
+func (c *APIClient) handleCompatContentList(ctx *gin.Context) {
+	c.handleCompatContentListWithType(ctx, "")
+}
+
+func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceContentType string) {
 	db := c.contentService.DB()
 	if db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
 	var body struct {
-		AccountId *int       `json:"account_id"`
-		Keyword   *string    `json:"keyword"`
-		StartAt   *time.Time `json:"start_at"`
-		EndAt     *time.Time `json:"end_at"`
-		Page      *int       `json:"page"`
-		PageSize  *int       `json:"page_size"`
-		Limit     *int       `json:"limit"`
-		Offset    *int       `json:"offset"`
+		AccountId   *int       `json:"account_id"`
+		ContentType *string    `json:"content_type"`
+		Keyword     *string    `json:"keyword"`
+		StartAt     *time.Time `json:"start_at"`
+		EndAt       *time.Time `json:"end_at"`
+		Page        *int       `json:"page"`
+		PageSize    *int       `json:"page_size"`
+		Limit       *int       `json:"limit"`
+		Offset      *int       `json:"offset"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -46,7 +55,14 @@ func (c *APIClient) handleCompatVideoList(ctx *gin.Context) {
 		offset = *body.Offset
 	}
 
-	baseQuery := db.Model(&model.Content{}).Where("content_type = ?", "video")
+	baseQuery := db.Model(&model.Content{})
+	contentType := forceContentType
+	if contentType == "" && body.ContentType != nil {
+		contentType = strings.TrimSpace(*body.ContentType)
+	}
+	if contentType != "" {
+		baseQuery = baseQuery.Where("content_type = ?", contentType)
+	}
 	if body.AccountId != nil && *body.AccountId > 0 {
 		baseQuery = baseQuery.Joins("JOIN content_account ON content_account.content_id = content.id").
 			Where("content_account.account_id = ?", *body.AccountId)

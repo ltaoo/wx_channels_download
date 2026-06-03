@@ -113,6 +113,15 @@ export function fetchVideoList(params = {}) {
   });
 }
 
+/** @param {Record<string, any>} params */
+export function fetchContentList(params = {}) {
+  const { pageSize, ...rest } = params || {};
+  return request.post("/api/content/list", {
+    ...rest,
+    page_size: pageSize || params.page_size,
+  });
+}
+
 /** @param {{ username?: string }} params */
 export function fetchBrowseHistoryList(params = {}) {
   return request.post("/api/browse_history/list", params);

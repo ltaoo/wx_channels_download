@@ -1,24 +1,32 @@
-import { fetchLogs } from "@/biz/request.js";
+import { LogsPageModel } from "./index.model.js";
 
-const LEVELS = [
-  { value: "debug", label: "Debug" },
-  { value: "info", label: "Info" },
-  { value: "warn", label: "Warn" },
-  { value: "error", label: "Error" },
-];
+/* global Alert, AlertDescription, AlertTitle, Badge, Card, CardContent, CardHeader, CardTitle, Select, Skeleton */
 
 const LEVEL_STYLE = {
-  debug: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:ring-violet-900",
-  info: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900",
-  warn: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900",
-  error: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900",
+  debug: {
+    badge:
+      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200",
+    dot: "bg-violet-500",
+  },
+  info: {
+    badge:
+      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
+    dot: "bg-sky-500",
+  },
+  warn: {
+    badge:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+    dot: "bg-amber-500",
+  },
+  error: {
+    badge:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200",
+    dot: "bg-red-500",
+  },
 };
 
-function uniqueSources(files, entries) {
-  const set = new Set(["all"]);
-  for (const file of files || []) set.add(file.name || file.path || "log");
-  for (const entry of entries || []) set.add(entry.source || entry.file || "log");
-  return Array.from(set);
+function cn(parts) {
+  return Timeless.classNames(parts);
 }
 
 function formatTime(value) {
@@ -35,453 +43,468 @@ function fileSize(size) {
   return `${n} B`;
 }
 
-function levelClass(level) {
+function levelStyle(level) {
   return LEVEL_STYLE[String(level || "").toLowerCase()] || LEVEL_STYLE.info;
 }
 
-function ToggleButton(label, active, onClick) {
-  const activeClass =
-    typeof active === "boolean"
-      ? active
-        ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-        : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
-      : computed(active, (v) =>
-          v
-            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900",
-        );
-  return View(
-    {
-      as: "button",
-      type: "button",
-      class: Timeless.classNames([
-        "h-9 whitespace-nowrap rounded-md border px-3 text-sm font-medium transition",
-        activeClass,
-      ]),
-      onClick,
-    },
-    [label],
-  );
+function jsonValueText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
-function IconButton(icon, title, onClick, variant = "outline") {
-  return Button(
-    {
-      title,
-      store: new Timeless.ui.ButtonCore({
-        size: "sm",
-        variant,
-        onClick,
-      }),
-    },
-    [Icon({ name: icon, size: 16 })],
-  );
-}
-
-function NativeSelect(props, children) {
-  return View(
-    {
-      as: "select",
-      class:
-        "h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100",
-      value: props.value,
-      onChange(e) {
-        props.onChange?.(e.target.value);
-      },
-    },
-    children,
-  );
-}
-
-function Stat(label, value, icon) {
-  return View(
-    {
-      class:
-        "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950",
-    },
-    [
-      View({ class: "flex items-center justify-between gap-3" }, [
-        View({ class: "text-xs font-medium text-zinc-500 dark:text-zinc-400" }, [
-          label,
-        ]),
-        Icon({ name: icon, size: 17 }),
-      ]),
-      View(
-        {
-          class:
-            "mt-2 truncate text-xl font-semibold text-zinc-950 dark:text-zinc-50",
-        },
-        [value],
-      ),
-    ],
-  );
-}
-
-function LogEntryRow(entry, expanded_, toggle) {
-  const expanded = computed(expanded_, (m) => !!m[entry.index]);
-  return View(
-    {
-      class:
-        "border-b border-zinc-100 px-4 py-3 last:border-b-0 dark:border-zinc-900",
-    },
-    [
-      View({ class: "flex items-start gap-3" }, [
-        View(
-          {
-            class: Timeless.classNames([
-              "mt-0.5 shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold uppercase ring-1",
-              levelClass(entry.level),
-            ]),
-          },
-          [entry.level || "info"],
-        ),
-        View({ class: "min-w-0 flex-1" }, [
-          View({ class: "flex flex-wrap items-center gap-x-3 gap-y-1" }, [
-            View(
-              {
-                class:
-                  "font-mono text-[11px] text-zinc-500 dark:text-zinc-400",
-              },
-              [formatTime(entry.time)],
-            ),
-            View(
-              {
-                class:
-                  "rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300",
-              },
-              [entry.source || entry.file || "app"],
-            ),
-            View(
-              {
-                class:
-                  "truncate text-[11px] text-zinc-400 dark:text-zinc-500",
-                title: entry.file,
-              },
-              [entry.file || ""],
-            ),
-          ]),
-          View(
-            {
-              class:
-                "mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-900 dark:text-zinc-100",
-            },
-            [entry.message || entry.raw || ""],
-          ),
-          Show({
-            when: expanded,
-            ok() {
-              return View(
-                {
-                  as: "pre",
-                  class:
-                    "mt-3 max-h-80 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100",
-                },
-                [entry.formatted || entry.raw || ""],
-              );
-            },
-          }),
-        ]),
-        IconButton(
-          computed(expanded, (v) => (v ? "chevron-up" : "chevron-down")),
-          "展开日志详情",
-          () => toggle(entry.index),
-          "ghost",
-        ),
-      ]),
-    ],
-  );
-}
-
-export default function LogsPageView(props) {
-  const entries_ = refarr([]);
-  const files_ = refarr([]);
-  const loading_ = ref(false);
-  const error_ = ref("");
-  const total_ = ref(0);
-  const keyword_ = ref("");
-  const source_ = ref("all");
-  const selectedLevels_ = ref({
-    debug: true,
-    info: true,
-    warn: true,
-    error: true,
-  });
-  const limit_ = ref("300");
-  const formatJson_ = ref(true);
-  const autoRefresh_ = ref(false);
-  const expanded_ = ref({});
-  let timer = null;
-
-  const keywordInput$ = new Timeless.ui.InputCore({
-    placeholder: "按关键字搜索消息、字段、原始日志",
-    onChange(value) {
-      keyword_.as(value);
-    },
-  });
-
-  async function load() {
-    loading_.as(true);
-    error_.as("");
-    const selected = Object.keys(selectedLevels_.value).filter(
-      (k) => selectedLevels_.value[k],
-    );
-    const r = await fetchLogs({
-      levels: selected.length ? selected.join(",") : "__none",
-      keyword: keyword_.value.trim(),
-      source: source_.value,
-      limit: Number(limit_.value) || 300,
-      format_json: formatJson_.value,
-    });
-    loading_.as(false);
-    if (r.error) {
-      error_.as(r.error.message || String(r.error));
-      return;
+function logDetailRows(entry) {
+  const rows = [
+    ["time", entry.time],
+    ["level", entry.level],
+    ["source", entry.source],
+    ["file", entry.file],
+    ["message", entry.message],
+  ];
+  const data = entry.json || entry.JSON || null;
+  if (data && typeof data === "object") {
+    const existing = new Set(rows.map((row) => row[0]));
+    for (const key of ["error", "err", "stack", "trace", "request", "response", "url", "task_id"]) {
+      if (data[key] !== undefined && !existing.has(key)) {
+        rows.push([key, jsonValueText(data[key])]);
+        existing.add(key);
+      }
     }
-    entries_.as(r.data.entries || []);
-    files_.as(r.data.files || []);
-    total_.as(r.data.total || 0);
-  }
-
-  function toggleLevel(level) {
-    selectedLevels_.as({
-      ...selectedLevels_.value,
-      [level]: !selectedLevels_.value[level],
-    });
-    setTimeout(load, 0);
-  }
-
-  function toggleExpanded(index) {
-    expanded_.as({
-      ...expanded_.value,
-      [index]: !expanded_.value[index],
-    });
-  }
-
-  function resetFilters() {
-    keyword_.as("");
-    keywordInput$.setValue?.("");
-    source_.as("all");
-    selectedLevels_.as({ debug: true, info: true, warn: true, error: true });
-    limit_.as("300");
-    formatJson_.as(true);
-    expanded_.as({});
-    load();
-  }
-
-  function restartTimer() {
-    if (timer) clearInterval(timer);
-    timer = null;
-    if (autoRefresh_.value) {
-      timer = setInterval(load, 5000);
+    for (const [key, value] of Object.entries(data)) {
+      if (!existing.has(key)) {
+        rows.push([key, jsonValueText(value)]);
+      }
     }
   }
+  return rows.filter((row) => row[1] !== undefined && row[1] !== null && String(row[1]) !== "");
+}
 
-  return View(
-    {
-      class: "flex h-full min-h-0 flex-col bg-zinc-50 dark:bg-zinc-950",
-      onMounted() {
-        load();
+function LogDetailPanel(entry) {
+  return View({ class: "mt-3 space-y-3" }, [
+    View(
+      {
+        class:
+          "overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900",
       },
-      onUnmounted() {
-        if (timer) clearInterval(timer);
-      },
-    },
-    [
-      View(
-        {
-          class:
-            "border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-950",
-        },
-        [
-          View({ class: "flex flex-wrap items-center justify-between gap-3" }, [
-            View({}, [
-              View(
-                {
-                  class:
-                    "text-lg font-semibold text-zinc-950 dark:text-zinc-50",
-                },
-                ["日志"],
-              ),
-              View(
-                {
-                  class: "mt-1 text-xs text-zinc-500 dark:text-zinc-400",
-                },
-                ["查看当前项目产生的 API、Proxy、下载器等运行日志"],
-              ),
-            ]),
-            View({ class: "flex items-center gap-2" }, [
-              IconButton("rotate-cw", "刷新", load),
-              ToggleButton(
-                computed(autoRefresh_, (v) => (v ? "自动刷新中" : "自动刷新")),
-                autoRefresh_,
-                () => {
-                  autoRefresh_.as(!autoRefresh_.value);
-                  restartTimer();
-                },
-              ),
-            ]),
-          ]),
-          View(
-            {
-              class:
-                "mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(220px,1fr)_auto_auto_auto]",
-            },
-            [
-              Input({ store: keywordInput$ }),
-              View({ class: "flex flex-wrap items-center gap-2" }, [
-                For({
-                  each: LEVELS,
-                  render(level) {
-                    return ToggleButton(
-                      level.label,
-                      computed(selectedLevels_, (m) => !!m[level.value]),
-                      () => toggleLevel(level.value),
-                    );
-                  },
-                }),
-              ]),
-              NativeSelect(
-                {
-                  value: computed(source_, (v) => v),
-                  onChange(value) {
-                    source_.as(value);
-                    setTimeout(load, 0);
-                  },
-                },
-                [
-                  For({
-                    each: computed({ files: files_, entries: entries_ }, (d) =>
-                      uniqueSources(d.files, d.entries),
-                    ),
-                    render(source) {
-                      return View(
-                        { as: "option", value: source },
-                        [source === "all" ? "全部来源" : source],
-                      );
-                    },
-                  }),
-                ],
-              ),
-              View({ class: "flex items-center gap-2" }, [
-                NativeSelect(
+      [
+        For({
+          each: logDetailRows(entry),
+          render(row) {
+            return View(
+              {
+                class:
+                  "grid grid-cols-[96px_minmax(0,1fr)] border-b border-zinc-200 last:border-b-0 dark:border-zinc-800",
+              },
+              [
+                View(
                   {
-                    value: computed(limit_, (v) => v),
-                    onChange(value) {
-                      limit_.as(value);
-                      setTimeout(load, 0);
-                    },
+                    class:
+                      "bg-zinc-100 px-3 py-2 font-mono text-[11px] text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400",
                   },
-                  [
-                    View({ as: "option", value: "100" }, ["100 条"]),
-                    View({ as: "option", value: "300" }, ["300 条"]),
-                    View({ as: "option", value: "800" }, ["800 条"]),
-                    View({ as: "option", value: "2000" }, ["2000 条"]),
-                  ],
+                  [row[0]],
                 ),
-                ToggleButton("格式化 JSON", formatJson_, () => {
-                  formatJson_.as(!formatJson_.value);
-                  setTimeout(load, 0);
-                }),
-                IconButton("filter-x", "重置筛选", resetFilters, "ghost"),
-              ]),
-            ],
+                View(
+                  {
+                    class:
+                      "whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5 text-zinc-900 dark:text-zinc-100",
+                  },
+                  [row[1]],
+                ),
+              ],
+            );
+          },
+        }),
+      ],
+    ),
+    View(
+      {
+        as: "pre",
+        class:
+          "max-h-96 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100",
+      },
+      [entry.formatted || entry.raw || ""],
+    ),
+  ]);
+}
+
+function PageHeader(vm$) {
+  return View(
+    {
+      class:
+        "border-b border-zinc-200 bg-white px-6 py-5 dark:border-zinc-800 dark:bg-zinc-950",
+    },
+    [
+      View({ class: "flex flex-wrap items-center justify-between gap-4" }, [
+        View({ class: "min-w-0" }, [
+          View(
+            {
+              class: "text-2xl font-semibold text-zinc-950 dark:text-zinc-50",
+            },
+            ["日志"],
           ),
-        ],
-      ),
-      View({ class: "grid grid-cols-1 gap-4 p-6 md:grid-cols-3" }, [
-        Stat("匹配日志", computed(total_, (v) => String(v)), "list-filter"),
-        Stat("当前显示", computed(entries_, (v) => String(v.length)), "rows-3"),
-        Stat(
-          "日志文件",
-          computed(files_, (v) => String(v.length)),
-          "file-text",
-        ),
-      ]),
-      Show({
-        when: computed(files_, (files) => files.length > 0),
-        ok() {
-          return View(
+          View(
             {
               class:
-                "mx-6 mb-4 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400",
+                "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400",
             },
             [
-              For({
-                each: files_,
-                render(file) {
-                  return View(
-                    {
-                      class:
-                        "max-w-full truncate rounded-md border border-zinc-200 bg-white px-2.5 py-1 dark:border-zinc-800 dark:bg-zinc-950",
-                      title: file.path,
-                    },
-                    [`${file.name} · ${fileSize(file.size)}`],
-                  );
+              "运行日志、请求代理和下载器事件",
+              Show({
+                when: vm$.state.lastLoadedAt,
+                ok() {
+                  return View({ class: "text-xs" }, [
+                    computed(
+                      vm$.state.lastLoadedAt,
+                      (time) => `更新于 ${time}`,
+                    ),
+                  ]);
                 },
               }),
             ],
-          );
-        },
-      }),
-      Show({
-        when: computed(error_, (v) => !!v),
-        ok() {
-          return View(
+          ),
+        ]),
+        View({ class: "flex items-center gap-2" }, [
+          View(
             {
               class:
-                "mx-6 mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+                "flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 dark:border-zinc-800",
             },
-            [error_],
-          );
-        },
-      }),
+            [
+              Switch({
+                store: vm$.ui.autoRefreshSwitch,
+              }),
+              View({ class: "text-sm text-zinc-700 dark:text-zinc-200" }, [
+                "自动刷新",
+              ]),
+            ],
+          ),
+          Button(
+            {
+              store: vm$.ui.refreshBtn,
+              prefix: [
+                Show({
+                  when: computed(vm$.state.loading, (v) => {
+                    return v;
+                  }),
+                  ok() {
+                    return Icon({
+                      name: "loader",
+                      size: 16,
+                    });
+                  },
+                  else() {
+                    return Icon({
+                      name: "refresh-cw",
+                      size: 16,
+                    });
+                  },
+                }),
+              ],
+            },
+            ["刷新"],
+          ),
+        ]),
+      ]),
+    ],
+  );
+}
+
+function Toolbar(vm$) {
+  return Card({ class: "border-zinc-200 shadow-none dark:border-zinc-800" }, [
+    CardContent({ class: "p-3" }, [
       View(
         {
           class:
-            "mx-6 mb-6 min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+            "flex items-center gap-2 overflow-x-auto whitespace-nowrap",
         },
         [
-          Show({
-            when: computed(loading_, (v) => v && entries_.value.length === 0),
-            ok() {
-              return View(
+          Input({ store: vm$.ui.keywordInput, class: "min-w-[260px] flex-1" }),
+          View({ class: "w-48 shrink-0" }, [
+            Select({ store: vm$.ui.sourceSelect }),
+          ]),
+          View({ class: "w-36 shrink-0" }, [
+            Select({ store: vm$.ui.levelSelect }),
+          ]),
+          View({ class: "w-32 shrink-0" }, [
+            Select({ store: vm$.ui.limitSelect }),
+          ]),
+          View(
+            {
+              class:
+                "flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-200 px-3 dark:border-zinc-800",
+            },
+            [
+              Checkbox({
+                store: vm$.ui.formatJsonCheckbox,
+              }),
+              View(
                 {
                   class:
-                    "flex h-64 items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-400",
+                    "whitespace-nowrap text-sm text-zinc-700 dark:text-zinc-200",
                 },
-                [Icon({ name: "loader", size: 16 }), "正在加载日志"],
-              );
+                ["格式化 JSON"],
+              ),
+            ],
+          ),
+          Button(
+            {
+              store: vm$.ui.resetBtn,
+              class: "shrink-0",
+              prefix: [Icon({ name: "filter-x", size: 16 })],
             },
-            else() {
-              return Show({
-                when: computed(entries_, (v) => v.length > 0),
-                ok() {
-                  return View({ class: "h-full overflow-auto" }, [
-                    For({
-                      each: entries_,
-                      render(entry) {
-                        return LogEntryRow(entry, expanded_, toggleExpanded);
-                      },
-                    }),
-                  ]);
-                },
-                else() {
-                  return View(
-                    {
-                      class:
-                        "flex h-64 flex-col items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-400",
-                    },
-                    [
-                      Icon({ name: "file-search", size: 22 }),
-                      "没有匹配的日志",
-                    ],
-                  );
-                },
-              });
+            ["重置"],
+          ),
+          View({ class: "shrink-0 text-xs text-zinc-500 dark:text-zinc-400" }, [
+            computed(
+              {
+                total: vm$.state.total,
+                entries: vm$.state.entries,
+                files: vm$.state.files,
+              },
+              (d) =>
+                `${d.entries.length}/${d.total} 条 · ${d.files.length} 个文件`,
+            ),
+          ]),
+        ],
+      ),
+    ]),
+  ]);
+}
+
+function FileStrip(vm$) {
+  return Show({
+    when: computed(vm$.state.files, (files) => files.length > 0),
+    ok() {
+      return View({ class: "flex flex-wrap gap-2" }, [
+        For({
+          each: vm$.state.files,
+          render(file) {
+            return Badge(
+              {
+                variant: "secondary",
+                class:
+                  "max-w-full gap-1 truncate border border-zinc-200 bg-white font-normal dark:border-zinc-800 dark:bg-zinc-950",
+                // title: file.path,
+              },
+              [
+                Icon({ name: "file-text", size: 13 }),
+                `${file.name || "log"} · ${fileSize(file.size)}`,
+              ],
+            );
+          },
+        }),
+      ]);
+    },
+  });
+}
+
+function LogEntryRow(entry, vm$) {
+  const expanded = computed(vm$.state.expanded, (map) => !!map[entry.index]);
+  const style = levelStyle(entry.level);
+  return View(
+    {
+      class:
+        "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0 dark:border-zinc-900",
+    },
+    [
+      Badge(
+        {
+          class: cn([
+            "mt-0.5 h-6 shrink-0 border px-2 font-mono text-[11px] font-semibold uppercase",
+            style.badge,
+          ]),
+        },
+        [entry.level || "info"],
+      ),
+      View({ class: "min-w-0" }, [
+        View({ class: "flex flex-wrap items-center gap-x-3 gap-y-1" }, [
+          View(
+            { class: "font-mono text-[11px] text-zinc-500 dark:text-zinc-400" },
+            [formatTime(entry.time)],
+          ),
+          Badge(
+            {
+              variant: "outline",
+              class: "h-5 max-w-[240px] truncate px-1.5 text-[11px]",
             },
+            [entry.source || entry.file || "app"],
+          ),
+          View(
+            {
+              class: "truncate text-[11px] text-zinc-400 dark:text-zinc-500",
+              // title: entry.file,
+            },
+            [entry.file || ""],
+          ),
+        ]),
+        View(
+          {
+            class:
+              "mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-900 dark:text-zinc-100",
+          },
+          [entry.message || entry.raw || ""],
+        ),
+        Show({
+          when: expanded,
+          ok() {
+            return LogDetailPanel(entry);
+          },
+        }),
+      ]),
+      Button(
+        {
+          title: "查看日志详情",
+          store: new Timeless.ui.ButtonCore({
+            size: "sm",
+            variant: "ghost",
+            onClick() {
+              vm$.methods.toggleExpanded(entry.index);
+            },
+          }),
+        },
+        [
+          computed(expanded, (v) => (v ? "收起" : "详情")),
+          Icon({
+            name: computed(expanded, (v) => (v ? "chevron-up" : "chevron-down")),
+            size: 16,
           }),
         ],
       ),
+    ],
+  );
+}
+
+function LoadingState() {
+  return View({ class: "space-y-0" }, [
+    For({
+      each: [0, 1, 2, 3, 4],
+      render() {
+        return View(
+          {
+            class:
+              "border-b border-zinc-100 px-4 py-4 last:border-b-0 dark:border-zinc-900",
+          },
+          [
+            View({ class: "flex items-center gap-3" }, [
+              Skeleton({ class: "h-6 w-14" }),
+              View({ class: "min-w-0 flex-1 space-y-2" }, [
+                Skeleton({ class: "h-3 w-48" }),
+                Skeleton({ class: "h-4 w-full" }),
+              ]),
+            ]),
+          ],
+        );
+      },
+    }),
+  ]);
+}
+
+function EmptyState() {
+  return View(
+    {
+      class:
+        "flex h-72 flex-col items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-400",
+    },
+    [Icon({ name: "file-search", size: 24 }), "没有匹配的日志"],
+  );
+}
+
+function LogList(vm$) {
+  return Card(
+    {
+      class:
+        "flex min-h-0 flex-1 flex-col overflow-hidden border-zinc-200 shadow-none dark:border-zinc-800",
+    },
+    [
+      CardHeader(
+        { class: "border-b border-zinc-100 px-4 py-3 dark:border-zinc-900" },
+        [
+          View({ class: "flex items-center justify-between gap-3" }, [
+            CardTitle({ class: "text-sm" }, ["日志流"]),
+            Show({
+              when: vm$.state.loading,
+              ok() {
+                return Badge({ variant: "secondary", class: "gap-1" }, [
+                  Icon({ name: "loader", size: 13 }),
+                  "加载中",
+                ]);
+              },
+            }),
+          ]),
+        ],
+      ),
+      CardContent({ class: "min-h-0 flex-1 overflow-hidden p-0" }, [
+        Show({
+          when: computed(
+            vm$.state.loading,
+            (loading) => loading && vm$.state.entries.value.length === 0,
+          ),
+          ok() {
+            return LoadingState();
+          },
+          else() {
+            return Show({
+              when: computed(
+                vm$.state.entries,
+                (entries) => entries.length > 0,
+              ),
+              ok() {
+                return View({ class: "h-full min-h-0 overflow-auto" }, [
+                  For({
+                    each: vm$.state.entries,
+                    render(entry) {
+                      return LogEntryRow(entry, vm$);
+                    },
+                  }),
+                ]);
+              },
+              else() {
+                return EmptyState();
+              },
+            });
+          },
+        }),
+      ]),
+    ],
+  );
+}
+
+/**
+ * @param {ViewComponentProps} props
+ */
+export default function LogsPageView(props) {
+  const vm$ = LogsPageModel(props);
+
+  return View(
+    {
+      class: "flex h-full min-h-0 flex-col bg-zinc-50 dark:bg-zinc-900",
+      onMounted() {
+        vm$.methods.load();
+      },
+      onUnmounted() {
+        vm$.methods.destroy();
+      },
+    },
+    [
+      PageHeader(vm$),
+      View({ class: "flex min-h-0 flex-1 flex-col gap-3 p-4" }, [
+        Toolbar(vm$),
+        FileStrip(vm$),
+        Show({
+          when: computed(vm$.state.error, (t) => !!t),
+          ok() {
+            return Alert({ variant: "destructive" }, [
+              AlertTitle({}, ["加载失败"]),
+              AlertDescription({}, [vm$.state.error]),
+            ]);
+          },
+        }),
+        LogList(vm$),
+      ]),
     ],
   );
 }

@@ -1,9 +1,26 @@
-import { VideosPageModel } from "./videos.model.js";
+/* global Img */
+import { ContentPageModel } from "./content.model.js";
 
-function VideoCard(video, vm$) {
-  const accountName = video.account?.nickname || video.account?.username || "";
-  const description = String(video.description || "").trim();
-  const title = String(video.title || "").trim();
+function contentIconName(content) {
+  switch (content.content_type || content.type) {
+    case "article":
+      return "file-text";
+    case "image":
+      return "image";
+    case "audio":
+      return "music";
+    case "video":
+    case "short_video":
+      return "film";
+    default:
+      return "file";
+  }
+}
+
+function ContentCard(content, vm$) {
+  const accountName = content.account?.nickname || content.account?.username || "";
+  const description = String(content.description || "").trim();
+  const title = String(content.title || "").trim();
   const visibleDescription = description && description !== title ? description : "";
 
   return View(
@@ -11,27 +28,27 @@ function VideoCard(video, vm$) {
       class:
         "group h-full cursor-pointer overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700",
       onClick() {
-        vm$.methods.play(video);
+        vm$.methods.open(content);
       },
     },
     [
       View({ class: "relative aspect-[3/4] bg-zinc-100 dark:bg-zinc-900" }, [
-        video.cover_url
-          ? Img({ class: "h-full w-full object-cover transition group-hover:scale-105", src: video.cover_url, alt: video.title })
+        content.cover_url
+          ? Img({ class: "h-full w-full object-cover transition group-hover:scale-105", src: content.cover_url, alt: content.title })
           : View({ class: "flex h-full w-full items-center justify-center text-zinc-400" }, [
-              Icon({ name: "film", size: 36 }),
+              Icon({ name: contentIconName(content), size: 36 }),
             ]),
         View({ class: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-white" }, [
-          View({ class: "line-clamp-2 text-sm font-medium" }, [video.title]),
+          View({ class: "line-clamp-2 text-sm font-medium" }, [content.title]),
           View({ class: "mt-1 flex items-center justify-between text-xs text-white/80" }, [
-            vm$.methods.formatBytes(video.file_size),
-            video.publish_time ? vm$.methods.formatDate(Number(video.publish_time) * 1000) : "",
+            vm$.methods.formatBytes(content.file_size),
+            content.publish_time ? vm$.methods.formatDate(Number(content.publish_time) * 1000) : "",
           ]),
         ]),
       ]),
       View({ class: "space-y-2 p-3" }, [
         Show({
-          when: !!video.account,
+          when: !!content.account,
           ok() {
             return View({ class: "flex items-center gap-2" }, [
               View(
@@ -40,10 +57,10 @@ function VideoCard(video, vm$) {
                     "h-7 w-7 shrink-0 overflow-hidden rounded-full bg-zinc-100 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800",
                 },
                 [
-                  video.account.avatar_url
+                  content.account.avatar_url
                     ? Img({
                         class: "h-full w-full object-cover",
-                        src: video.account.avatar_url,
+                        src: content.account.avatar_url,
                         alt: accountName,
                       })
                     : View(
@@ -72,8 +89,8 @@ function VideoCard(video, vm$) {
   );
 }
 
-export default function VideosPageView(props) {
-  const vm$ = VideosPageModel(props);
+export default function ContentPageView(props) {
+  const vm$ = ContentPageModel(props);
 
   return View(
     {
@@ -86,8 +103,8 @@ export default function VideosPageView(props) {
       View({ class: "border-b border-zinc-200 bg-white px-6 py-5 dark:border-zinc-800 dark:bg-zinc-950" }, [
         View({ class: "flex flex-wrap items-center justify-between gap-3" }, [
           View({}, [
-            View({ class: "text-2xl font-semibold text-zinc-950 dark:text-zinc-50" }, ["视频列表"]),
-            View({ class: "mt-1 text-sm text-zinc-500 dark:text-zinc-400" }, ["查看已归档的视频号内容"]),
+            View({ class: "text-2xl font-semibold text-zinc-950 dark:text-zinc-50" }, ["内容列表"]),
+            View({ class: "mt-1 text-sm text-zinc-500 dark:text-zinc-400" }, ["查看已归档的内容"]),
           ]),
           View({ class: "flex min-w-[280px] gap-2" }, [
             View({ class: "flex-1" }, [Input({ store: vm$.ui.keyword })]),
@@ -116,20 +133,20 @@ export default function VideosPageView(props) {
             },
           }),
           Show({
-            when: computed(vm$.state.videos, (list) => list.length === 0),
+            when: computed(vm$.state.content, (list) => list.length === 0),
             ok() {
               return View({ class: "flex h-56 flex-col items-center justify-center gap-3 text-zinc-500" }, [
-                Icon({ name: "film", size: 36 }),
-                computed(vm$.state.loading, (loading) => (loading ? "加载中..." : "暂无视频")),
+                Icon({ name: "file", size: 36 }),
+                computed(vm$.state.loading, (loading) => (loading ? "加载中..." : "暂无内容")),
               ]);
             },
             else() {
               return View({ class: "space-y-5" }, [
                 View({ class: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5" }, [
                   For({
-                    each: vm$.state.videos,
-                    render(video) {
-                      return VideoCard(video, vm$);
+                    each: vm$.state.content,
+                    render(content) {
+                      return ContentCard(content, vm$);
                     },
                   }),
                 ]),
