@@ -1,12 +1,15 @@
 package interceptor
 
+import "encoding/json"
+
+
 type ChannelMediaSpec struct {
 	FileFormat       string  `json:"file_format"`
 	FirstLoadBytes   int     `json:"first_load_bytes"`
 	BitRate          int     `json:"bit_rate"`
 	CodingFormat     string  `json:"coding_format"`
 	DynamicRangeType int     `json:"dynamic_range_type"`
-	Vfps             int     `json:"vfps"`
+	Vfps             float64 `json:"vfps"`
 	Width            int     `json:"width"`
 	Height           int     `json:"height"`
 	DurationMs       int     `json:"duration_ms"`
@@ -25,18 +28,20 @@ type ChannelContact struct {
 	Nickname  string `json:"nickname"`
 	AvatarURL string `json:"avatar_url"`
 }
+
 type ChannelMediaProfile struct {
-	Type     string             `json:"type"` // media | picture | live
-	Id       string             `json:"id"`
-	NonceId  string             `json:"nonce_id"`
-	Title    string             `json:"title"`
-	URL      string             `json:"url"`
-	Key      string             `json:"key"`
-	CoverURL string             `json:"cover_url"`
-	Contact  ChannelContact     `json:"contact"`
-	Spec     []ChannelMediaSpec `json:"spec"`
-	Files    []ChannelPicture   `json:"files"`
+	Type     json.RawMessage `json:"type"` // media | picture | live
+	Id       json.RawMessage `json:"id"`
+	NonceId  json.RawMessage `json:"nonce_id"`
+	Title    json.RawMessage `json:"title"`
+	URL      json.RawMessage `json:"url"`
+	Key      json.RawMessage `json:"key"`
+	CoverURL json.RawMessage `json:"cover_url"`
+	Contact  json.RawMessage `json:"contact"`
+	Spec     json.RawMessage `json:"spec"`
+	Files    json.RawMessage `json:"files"`
 }
+
 type FrontendTip struct {
 	End          int     `json:"end"`
 	Replace      int     `json:"replace"`
