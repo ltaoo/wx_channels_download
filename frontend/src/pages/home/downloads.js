@@ -4,11 +4,52 @@ import {
   formatBytes,
 } from "./downloads.model.js";
 
-function HeaderStat(label, value, icon) {
+function mapStatusClassName(status) {
+  if (status === DownloadTaskStatus.Running) {
+    return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  }
+  if (status === DownloadTaskStatus.Done) {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  }
+  if (status === DownloadTaskStatus.Error) {
+    return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+  }
+  if (status === DownloadTaskStatus.Paused) {
+    return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  }
+  if (
+    status === DownloadTaskStatus.Wait ||
+    status === DownloadTaskStatus.Ready
+  ) {
+    return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+  }
+  return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+}
+
+function mapProgressClassName(status) {
+  if (status === DownloadTaskStatus.Running) {
+    return "bg-blue-500 dark:bg-blue-400";
+  }
+  if (status === DownloadTaskStatus.Done) {
+    return "bg-emerald-500 dark:bg-emerald-400";
+  }
+  if (status === DownloadTaskStatus.Error) {
+    return "bg-red-500 dark:bg-red-400";
+  }
+  if (status === DownloadTaskStatus.Paused) {
+    return "bg-zinc-500 dark:bg-zinc-400";
+  }
+  return "bg-amber-500 dark:bg-amber-400";
+}
+
+function HeaderStat(props) {
+  const { label, value, icon } = props;
   return View(
     {
-      class:
-        "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950",
+      class: [
+        "rounded-lg border border-zinc-200 bg-white p-4 ",
+        "dark:border-zinc-800 dark:bg-zinc-950",
+      ].join(" "),
     },
     [
       View({ class: "flex items-center justify-between" }, [
@@ -23,44 +64,6 @@ function HeaderStat(label, value, icon) {
       ),
     ],
   );
-}
-
-function SmallButton(label, onClick, variant = "ghost") {
-  return Button(
-    {
-      store: new Timeless.ui.ButtonCore({
-        variant,
-        size: "sm",
-        onClick,
-      }),
-    },
-    [label],
-  );
-}
-
-function statusClass(status) {
-  if (status === DownloadTaskStatus.Running)
-    return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
-  if (status === DownloadTaskStatus.Done)
-    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
-  if (status === DownloadTaskStatus.Error)
-    return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
-  if (status === DownloadTaskStatus.Paused)
-    return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
-  if (status === DownloadTaskStatus.Wait || status === DownloadTaskStatus.Ready)
-    return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
-  return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
-}
-
-function progressClass(status) {
-  if (status === DownloadTaskStatus.Running)
-    return "bg-blue-500 dark:bg-blue-400";
-  if (status === DownloadTaskStatus.Done)
-    return "bg-emerald-500 dark:bg-emerald-400";
-  if (status === DownloadTaskStatus.Error) return "bg-red-500 dark:bg-red-400";
-  if (status === DownloadTaskStatus.Paused)
-    return "bg-zinc-500 dark:bg-zinc-400";
-  return "bg-amber-500 dark:bg-amber-400";
 }
 
 function countForTab(stats, tab) {
@@ -126,12 +129,13 @@ function taskPlayLabel(task) {
   return isHTMLTask(task) ? "在浏览器打开" : "播放";
 }
 
-function DownloadInfoItem(label, value, extraClass = "") {
+function DownloadInfoItem(props) {
+  const { label, value, class: cls = "" } = props;
   return View(
     {
       class: classNames([
         "flex min-w-0 items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400",
-        extraClass,
+        cls,
       ]),
     },
     [
@@ -183,7 +187,7 @@ function DownloadInfoBar(task) {
               class: classNames([
                 "h-full rounded-full transition-all",
                 computed(task, (t) => {
-                  return progressClass(t.status);
+                  return mapProgressClassName(t.status);
                 }),
               ]),
               style: {
@@ -201,32 +205,32 @@ function DownloadInfoBar(task) {
             "mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pl-0 sm:pl-14",
         },
         [
-          DownloadInfoItem(
-            "大小",
-            computed(task, (t) => t.size_text),
-          ),
+          DownloadInfoItem({
+            label: "大小",
+            value: computed(task, (t) => t.size_text),
+          }),
           DownloadInfoDivider(),
-          DownloadInfoItem(
-            "已下",
-            computed(task, (t) =>
-              t.progress_info.total
+          DownloadInfoItem({
+            label: "已下",
+            value: computed(task, (t) => {
+              return t.progress_info.total
                 ? formatBytes(t.progress_info.downloaded)
-                : "-",
-            ),
-          ),
+                : "-";
+            }),
+          }),
           DownloadInfoDivider(),
-          DownloadInfoItem(
-            "速度",
-            computed(task, (t) =>
+          DownloadInfoItem({
+            label: "速度",
+            value: computed(task, (t) =>
               t.status === DownloadTaskStatus.Running ? t.speed_text : "-",
             ),
-            "tabular-nums",
-          ),
+            icon: "tabular-nums",
+          }),
           DownloadInfoDivider(),
-          DownloadInfoItem(
-            "更新",
-            computed(task, (t) => t.updated_at_text),
-          ),
+          DownloadInfoItem({
+            label: "更新",
+            value: computed(task, (t) => t.updated_at_text),
+          }),
           Show({
             when: computed(
               task,
@@ -235,11 +239,11 @@ function DownloadInfoBar(task) {
             ok() {
               return [
                 DownloadInfoDivider(),
-                DownloadInfoItem(
-                  "原因",
-                  computed(task, (t) => t.error),
-                  "max-w-full text-red-600 dark:text-red-300",
-                ),
+                DownloadInfoItem({
+                  label: "原因",
+                  value: computed(task, (t) => t.error),
+                  class: "max-w-full text-red-600 dark:text-red-300",
+                }),
               ];
             },
           }),
@@ -250,9 +254,7 @@ function DownloadInfoBar(task) {
 }
 
 function TaskCard(task, vm$) {
-  const deleteFileCheckbox$ = new Timeless.ui.CheckboxCore({
-    defaultValue: false,
-  });
+  const deleteFileCheckbox$ = new Timeless.ui.CheckboxCore({});
   const deleteFileCheckboxId = `delete-file-${task.id || task.task_id}`;
 
   return View(
@@ -271,7 +273,10 @@ function TaskCard(task, vm$) {
             View({ class: "min-w-0" }, [
               View({ class: "flex items-start gap-3" }, [
                 Show({
-                  when: computed(task, (t) => t.display_cover_url || t.cover_url),
+                  when: computed(
+                    task,
+                    (t) => t.display_cover_url || t.cover_url,
+                  ),
                   ok() {
                     return View(
                       {
@@ -296,7 +301,7 @@ function TaskCard(task, vm$) {
                     {
                       class:
                         "truncate text-base font-semibold text-zinc-950 dark:text-zinc-50",
-                      title: task.title || task.task_id,
+                      // title: task.title || task.task_id,
                     },
                     [task.title || task.name || task.task_id || "未命名任务"],
                   ),
@@ -311,13 +316,19 @@ function TaskCard(task, vm$) {
                     Show({
                       when: computed(task, (t) => isPlayableStatus(t.status)),
                       ok() {
-                        return SmallButton(
-                          computed(task, taskPlayLabel),
-                          () =>
-                            isHTMLTask(task)
-                              ? vm$.methods.openInBrowser(task)
-                              : vm$.methods.play(task),
-                          "outline",
+                        return Button(
+                          {
+                            store: new Timeless.ui.ButtonCore({
+                              variant: "outline",
+                              size: "sm",
+                              onClick() {
+                                isHTMLTask(task)
+                                  ? vm$.methods.openInBrowser(task)
+                                  : vm$.methods.play(task);
+                              },
+                            }),
+                          },
+                          [computed(task, taskPlayLabel)],
                         );
                       },
                     }),
@@ -327,8 +338,17 @@ function TaskCard(task, vm$) {
                         (t) => t.status === DownloadTaskStatus.Done,
                       ),
                       ok() {
-                        return SmallButton("定位", () =>
-                          vm$.methods.openFile(task),
+                        return Button(
+                          {
+                            store: new Timeless.ui.ButtonCore({
+                              variant: "outline",
+                              size: "sm",
+                              onClick() {
+                                vm$.methods.openFile(task);
+                              },
+                            }),
+                          },
+                          ["打开所在目录"],
                         );
                       },
                     }),
@@ -338,7 +358,7 @@ function TaskCard(task, vm$) {
                   {
                     class: classNames([
                       "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                      computed(task, (t) => statusClass(t.status)),
+                      computed(task, (t) => mapStatusClassName(t.status)),
                     ]),
                   },
                   [computed(task, (t) => t.status_text)],
@@ -357,27 +377,48 @@ function TaskCard(task, vm$) {
                     return t.status === DownloadTaskStatus.Error;
                   }),
                   ok() {
-                    return SmallButton(
-                      "重试",
-                      () => vm$.methods.retry(task),
-                      "outline",
+                    return Button(
+                      {
+                        store: new Timeless.ui.ButtonCore({
+                          variant: "outline",
+                          size: "sm",
+                          onClick() {
+                            vm$.methods.retry(task);
+                          },
+                        }),
+                      },
+                      ["重试"],
                     );
                   },
                 }),
                 Show({
                   when: computed(task, (t) => isStartableStatus(t.status)),
                   ok() {
-                    return SmallButton(
-                      "开始",
-                      () => vm$.methods.start(task),
-                      "outline",
+                    return Button(
+                      {
+                        store: new Timeless.ui.ButtonCore({
+                          variant: "outline",
+                          size: "sm",
+                          onClick() {
+                            vm$.methods.start(task);
+                          },
+                        }),
+                      },
+                      ["开始"],
                     );
                   },
                 }),
-                SmallButton(
-                  "删除",
-                  () => vm$.methods.remove(task, deleteFileCheckbox$.value),
-                  "ghost",
+                Button(
+                  {
+                    store: new Timeless.ui.ButtonCore({
+                      variant: "ghost",
+                      size: "sm",
+                      onClick() {
+                        vm$.methods.remove(task, deleteFileCheckbox$.value);
+                      },
+                    }),
+                  },
+                  ["删除"],
                 ),
                 View({ class: "flex items-center gap-1.5 xl:justify-start" }, [
                   Checkbox({
@@ -424,7 +465,7 @@ function RemoteTaskCard(task) {
                 {
                   class:
                     "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
-                  title: task.title || task.task_id,
+                  // title: task.title || task.task_id,
                 },
                 [task.title || task.task_id || "未命名任务"],
               ),
@@ -440,7 +481,7 @@ function RemoteTaskCard(task) {
               {
                 class: classNames([
                   "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                  computed(task, (t) => statusClass(t.status)),
+                  computed(task, (t) => mapStatusClassName(t.status)),
                 ]),
               },
               [computed(task, (t) => t.status_text)],
@@ -507,17 +548,21 @@ function RemoteServerPanel(vm$) {
               ]),
             ]),
             View({ class: "flex flex-wrap gap-3" }, [
-              HeaderStat(
-                "远端任务",
-                computed(vm$.state.remoteTotal, (v) => String(v)),
-                "list",
-              ),
-              HeaderStat(
-                "远端下载中",
-                computed(vm$.state.remoteRunningCount, (v) => String(v)),
-                "activity",
-              ),
-              HeaderStat("远端速度", vm$.state.remoteTotalSpeed, "gauge"),
+              HeaderStat({
+                label: "远端任务",
+                value: computed(vm$.state.remoteTotal, (v) => String(v)),
+                icon: "list",
+              }),
+              HeaderStat({
+                label: "远端下载中",
+                value: computed(vm$.state.remoteRunningCount, (v) => String(v)),
+                icon: "activity",
+              }),
+              HeaderStat({
+                lable: "远端速度",
+                value: vm$.state.remoteTotalSpeed,
+                icon: "gauge",
+              }),
             ]),
           ]),
           Show({
@@ -588,6 +633,9 @@ function RemoteServerPanel(vm$) {
   });
 }
 
+/**
+ * @param {ViewComponentProps} props
+ */
 export default function DownloadsPageView(props) {
   const vm$ = DownloadsPageModel(props);
 
@@ -623,28 +671,31 @@ export default function DownloadsPageView(props) {
             ]),
             Button(
               {
-                store: new Timeless.ui.ButtonCore({
-                  variant: "outline",
-                  onClick() {
-                    vm$.methods.refresh();
-                  },
-                }),
+                store: vm$.ui.btn_refresh$,
               },
               [Icon({ name: "refresh-cw", size: 16 }), "刷新"],
             ),
           ]),
           View({ class: "mt-5 grid gap-3 md:grid-cols-3" }, [
-            HeaderStat(
-              "任务总数",
-              computed(vm$.state.statusStats, (v) => String(v.total || 0)),
-              "hard-drive",
-            ),
-            HeaderStat(
-              "下载中",
-              computed(vm$.state.statusStats, (v) => String(v.running || 0)),
-              "activity",
-            ),
-            HeaderStat("总速度", vm$.state.totalSpeed, "gauge"),
+            HeaderStat({
+              label: "任务总数",
+              value: computed(vm$.state.statusStats, (v) => {
+                return String(v.total || 0);
+              }),
+              icon: "hard-drive",
+            }),
+            HeaderStat({
+              label: "下载中",
+              value: computed(vm$.state.statusStats, (v) => {
+                return String(v.running || 0);
+              }),
+              icon: "activity",
+            }),
+            HeaderStat({
+              label: "总速度",
+              value: vm$.state.totalSpeed,
+              icon: "gauge",
+            }),
           ]),
           View({ class: "mt-4 flex flex-wrap gap-2" }, [
             For({
@@ -674,9 +725,9 @@ export default function DownloadsPageView(props) {
                         }),
                       },
                       [
-                        computed(vm$.state.statusStats, (stats) =>
-                          String(countForTab(stats, tab)),
-                        ),
+                        computed(vm$.state.statusStats, (stats) => {
+                          return String(countForTab(stats, tab));
+                        }),
                       ],
                     ),
                   ],
@@ -688,9 +739,8 @@ export default function DownloadsPageView(props) {
       ),
       ScrollView({ store: vm$.ui.view, class: "flex-1" }, [
         View({ class: "space-y-3 p-6" }, [
-          // RemoteServerPanel(vm$),
           Show({
-            when: vm$.state.error,
+            when: computed(vm$.state.error, (t) => !!t),
             ok() {
               return View(
                 {
@@ -711,9 +761,9 @@ export default function DownloadsPageView(props) {
                 },
                 [
                   Icon({ name: "inbox", size: 36 }),
-                  computed(vm$.state.loading, (loading) =>
-                    loading ? "加载中..." : "暂无下载任务",
-                  ),
+                  computed(vm$.state.loading, (loading) => {
+                    return loading ? "加载中..." : "暂无下载任务";
+                  }),
                 ],
               );
             },
@@ -731,18 +781,12 @@ export default function DownloadsPageView(props) {
                     return View({ class: "flex justify-center py-4" }, [
                       Button(
                         {
-                          store: new Timeless.ui.ButtonCore({
-                            variant: "outline",
-                            disabled: vm$.state.loading,
-                            onClick() {
-                              vm$.methods.loadMore();
-                            },
-                          }),
+                          store: vm$.ui.btn_load_more$,
                         },
                         [
-                          computed(vm$.state.loading, (v) =>
-                            v ? "加载中..." : "加载更多",
-                          ),
+                          computed(vm$.state.loading, (v) => {
+                            return v ? "加载中..." : "加载更多";
+                          }),
                         ],
                       ),
                     ]);

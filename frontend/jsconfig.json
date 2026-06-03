@@ -5,7 +5,7 @@
     "moduleResolution": "node",
     "checkJs": true,
     "allowJs": true,
-    "types": ["@timeless/dev"],
+    "types": ["@timeless/types"],
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
@@ -15,7 +15,7 @@
   "include": [
     "src/**/*.js",
     "types/global.d.ts",
-    "types/index.d.ts",
+    "types/timeless.d.ts",
   ],
   "exclude": ["node_modules", "dist"]
 }

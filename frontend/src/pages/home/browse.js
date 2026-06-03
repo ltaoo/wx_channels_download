@@ -5,51 +5,65 @@ function AccountAvatar(account) {
   return View(
     {
       class:
-        "h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
+        "h-6 w-6 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
     },
     [
-      avatarURL
-        ? Img({
+      Show({
+        when: avatarURL,
+        ok() {
+          return Img({
             class: "h-full w-full object-cover",
             src: avatarURL,
             alt: account.nickname,
-          })
-        : View(
+          });
+        },
+        else() {
+          return View(
             {
               class:
                 "flex h-full w-full items-center justify-center text-sm font-medium text-zinc-500",
             },
             [String(account.nickname || "?").slice(0, 1)],
-          ),
+          );
+        },
+      }),
     ],
   );
 }
 
-function Badge(label, variant) {
+function Badge(props) {
+  const { label, variant } = props;
   const classes = {
     platform:
       "inline-flex h-6 items-center rounded-md bg-emerald-100 px-2.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800",
-    type:
-      "inline-flex h-6 items-center rounded-md bg-sky-100 px-2.5 text-xs font-semibold text-sky-800 ring-1 ring-inset ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
+    type: "inline-flex h-6 items-center rounded-md bg-sky-100 px-2.5 text-xs font-semibold text-sky-800 ring-1 ring-inset ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800",
   };
   return View({ class: classes[variant] || classes.type }, [label]);
 }
 
 function BrowseCard(item, vm$, props) {
-  const copyURL = item.copy_url || item.source_url || item.content_source_url || "";
-  const urlLabel = item.is_article ? "文章链接" : "ContentSourceURL";
+  const copyURL =
+    item.copy_url || item.source_url || item.content_source_url || "";
+  // const urlLabel = item.is_article ? "文章链接" : "ContentSourceURL";
   const coverURL = item.display_cover_url || item.cover_url;
-  const contentBadge = item.is_article
-    ? "文章"
-    : item.type === "answer"
-      ? "回答"
-      : item.type === "image"
-        ? "图片"
-        : item.type === "live"
-          ? "直播"
-          : item.type === "other"
-            ? "其他"
-            : "视频";
+  const contentBadge = (() => {
+    if (item.is_article) {
+      return "文章";
+    }
+    if (item.type === "answer") {
+      return "回答";
+    }
+    if (item.type === "image") {
+      return "图片";
+    }
+    if (item.type === "live") {
+      return "直播";
+    }
+    if (item.type === "other") {
+      return "其他";
+    }
+    return "视频";
+  })();
 
   return View(
     {
@@ -57,63 +71,74 @@ function BrowseCard(item, vm$, props) {
         "rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700",
     },
     [
-      View({ class: "flex items-start gap-4" }, [
-        AccountAvatar(item.account),
+      View({ class: "min-w-0" }, [
+        View(
+          {
+            class:
+              "mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400",
+          },
+          [
+            View({}, [item.updated_at_text]),
+            View({}, [
+              computed(item, (t) => {
+                return t.visited_times > 1 ? `浏览 ${t.visited_times} 次` : "";
+              }),
+            ]),
+          ],
+        ),
+      ]),
+      View({ class: "mt-2 flex flex-wrap gap-2" }, [
+        Badge({
+          label: item.platform_label || item.platform_id || "未知平台",
+          variant: "platform",
+        }),
+        Badge({ label: contentBadge, variant: "type" }),
+      ]),
+      View({ class: "mt-4" }, [
+        View({ class: "flex items-center gap-2" }, [
+          AccountAvatar(item.account),
+          View(
+            {
+              class:
+                "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+            },
+            [item.account.nickname],
+          ),
+        ]),
         View({ class: "min-w-0 flex-1" }, [
           View({ class: "flex flex-wrap items-start justify-between gap-3" }, [
-            View({ class: "min-w-0" }, [
-              View({ class: "mb-2 flex flex-wrap gap-2" }, [
-                Badge(item.platform_label || item.platform_id || "未知平台", "platform"),
-                Badge(contentBadge, "type"),
-              ]),
-              View(
-                {
-                  class:
-                    "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
-                },
-                [item.account.nickname],
-              ),
-              View(
-                {
-                  class:
-                    "mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400",
-                },
-                [
-                  item.updated_at_text,
-                  item.visited_times > 1 ? `浏览 ${item.visited_times} 次` : "",
-                ],
-              ),
-            ]),
             View({ class: "flex gap-2" }, [
-              Button(
-                {
-                  store: new Timeless.ui.ButtonCore({
-                    variant: "outline",
-                    size: "sm",
-                    onClick() {
-                      vm$.methods.download(item);
-                    },
-                  }),
-                },
-                [Icon({ name: "download", size: 15 }), "下载"],
-              ),
-              Button(
-                {
-                  store: new Timeless.ui.ButtonCore({
-                    variant: "ghost",
-                    size: "sm",
-                    onClick() {
-                      vm$.methods.open(item);
-                    },
-                  }),
-                },
-                [Icon({ name: "external-link", size: 15 }), "打开"],
-              ),
+              // Button(
+              //   {
+              //     store: new Timeless.ui.ButtonCore({
+              //       variant: "outline",
+              //       size: "sm",
+              //       onClick() {
+              //         vm$.methods.download(item);
+              //       },
+              //     }),
+              //   },
+              //   [Icon({ name: "download", size: 15 }), "下载"],
+              // ),
+              // Button(
+              //   {
+              //     store: new Timeless.ui.ButtonCore({
+              //       variant: "ghost",
+              //       size: "sm",
+              //       onClick() {
+              //         vm$.methods.open(item);
+              //       },
+              //     }),
+              //   },
+              //   [Icon({ name: "external-link", size: 15 }), "打开"],
+              // ),
             ]),
           ]),
           View({ class: "mt-3 flex gap-3" }, [
-            coverURL
-              ? View(
+            Show({
+              when: coverURL,
+              ok() {
+                return View(
                   {
                     class:
                       "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
@@ -125,8 +150,9 @@ function BrowseCard(item, vm$, props) {
                       alt: item.title,
                     }),
                   ],
-                )
-              : "",
+                );
+              },
+            }),
             View({ class: "min-w-0 flex-1" }, [
               View(
                 {
@@ -140,9 +166,9 @@ function BrowseCard(item, vm$, props) {
                   {
                     class:
                       "min-w-0 flex-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
-                    title: copyURL,
+                    // title: copyURL,
                   },
-                  [`${urlLabel}: ${copyURL || "-"}`],
+                  [`${copyURL || "-"}`],
                 ),
                 Button(
                   {
@@ -154,14 +180,14 @@ function BrowseCard(item, vm$, props) {
                         if (!copyURL) {
                           props.app.tip?.({
                             type: "warning",
-                            text: [`${urlLabel} 为空`],
+                            text: ["链接为空"],
                           });
                           return;
                         }
                         props.app.copy(copyURL);
-                        props.app.tip?.({
+                        props.app.tip({
                           type: "success",
-                          text: [`已复制${urlLabel}`],
+                          text: ["已复制"],
                         });
                       },
                     }),
@@ -227,7 +253,7 @@ export default function BrowseHistoryPageView(props) {
       ScrollView({ store: vm$.ui.view, class: "flex-1" }, [
         View({ class: "space-y-3 p-6" }, [
           Show({
-            when: vm$.state.error,
+            when: computed(vm$.state.error, (t) => !!t),
             ok() {
               return View(
                 {
@@ -248,9 +274,9 @@ export default function BrowseHistoryPageView(props) {
                 },
                 [
                   Icon({ name: "history", size: 36 }),
-                  computed(vm$.state.loading, (loading) =>
-                    loading ? "加载中..." : "暂无浏览记录",
-                  ),
+                  computed(vm$.state.loading, (loading) => {
+                    return loading ? "加载中..." : "暂无浏览记录";
+                  }),
                 ],
               );
             },

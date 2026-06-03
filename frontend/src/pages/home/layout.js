@@ -1,4 +1,3 @@
-/** 首页布局 */
 import {
   fetchAppStatus,
   fetchRootCertificateStatus,
@@ -10,6 +9,7 @@ import {
 } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
+/** @type {{ title: string; name: PageKey; icon: string }[]} */
 const HOME_MENUS = [
   { title: "下载", name: "root.home_layout.download", icon: "hard-drive" },
   { title: "帐号", name: "root.home_layout.accounts", icon: "user" },
@@ -20,79 +20,62 @@ const HOME_MENUS = [
   { title: "设置", name: "root.home_layout.settings", icon: "settings" },
 ];
 
-function MenuButton(props, item, sidemenu$) {
-  return View(
-    {
-      class: computed(sidemenu$.cur, (cur) => {
-        const active = sidemenu$.isSelected(cur, item);
-        return active
-          ? "relative flex w-full cursor-pointer items-center gap-3 rounded-lg bg-white px-4 py-3 text-sm font-medium text-zinc-950 shadow-sm ring-1 ring-black/5 dark:bg-zinc-900 dark:text-zinc-50 dark:ring-white/10"
-          : "relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-zinc-500 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900/70 dark:hover:text-zinc-50";
-      }),
-      title: item.title,
-      onClick() {
-        props.history.push(item.name);
-      },
-    },
-    [
-      Show({
-        when: computed(sidemenu$.cur, (cur) => sidemenu$.isSelected(cur, item)),
-        ok() {
-          return View({
-            class:
-              "absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-zinc-900 dark:bg-zinc-100",
-          });
-        },
-      }),
-      View({ class: "flex h-5 w-5 shrink-0 items-center justify-center" }, [
-        Icon({ name: item.icon, size: 20 }),
-      ]),
-      View({ class: "truncate" }, [item.title]),
-    ],
-  );
-}
-
 function ChannelsStatusBadge(status_) {
-  const dotClass = computed(status_, (status) => {
-    if (status === "connected") return "h-2 w-2 rounded-full bg-emerald-500";
-    if (status === "checking") return "h-2 w-2 rounded-full bg-amber-500";
-    return "h-2 w-2 rounded-full bg-red-500";
-  });
-  const textClass = computed(status_, (status) => {
-    if (status === "connected")
-      return "text-xs font-medium text-emerald-700 dark:text-emerald-300";
-    if (status === "checking")
-      return "text-xs font-medium text-amber-700 dark:text-amber-300";
-    return "text-xs font-medium text-red-700 dark:text-red-300";
-  });
-  const statusText = computed(status_, (status) => {
-    if (status === "connected") return "已连接";
-    if (status === "checking") return "检测中";
-    if (status === "error") return "检测失败";
-    return "未连接";
-  });
-
   return View(
     {
       class:
         "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900",
-      title: "检测是否已和视频号页面建立 WebSocket 连接",
+      // title: "检测是否已和视频号页面建立 WebSocket 连接",
     },
     [
       View({ class: "flex items-center justify-between gap-3" }, [
         View({ class: "flex min-w-0 items-center gap-2" }, [
           View({
-            class: dotClass,
+            class: computed(status_, (status) => {
+              if (status === "connected") {
+                return "h-2 w-2 rounded-full bg-emerald-500";
+              }
+              if (status === "checking") {
+                return "h-2 w-2 rounded-full bg-amber-500";
+              }
+              return "h-2 w-2 rounded-full bg-red-500";
+            }),
           }),
           View(
             {
               class:
                 "truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
             },
-            ["视频号页面 WS"],
+            ["视频号"],
           ),
         ]),
-        View({ class: textClass }, [statusText]),
+        View(
+          {
+            class: computed(status_, (status) => {
+              if (status === "connected") {
+                return "text-xs font-medium text-emerald-700 dark:text-emerald-300";
+              }
+              if (status === "checking") {
+                return "text-xs font-medium text-amber-700 dark:text-amber-300";
+              }
+              return "text-xs font-medium text-red-700 dark:text-red-300";
+            }),
+          },
+          [
+            computed(status_, (status) => {
+              if (status === "connected") {
+                return "已连接";
+              }
+              if (status === "checking") {
+                return "检测中";
+              }
+              if (status === "error") {
+                return "检测失败";
+              }
+              return "未连接";
+            }),
+          ],
+        ),
       ]),
     ],
   );
@@ -100,9 +83,9 @@ function ChannelsStatusBadge(status_) {
 
 function getConfig() {
   if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
-  if (typeof window !== "undefined" && window.__wx_channels_config__) {
-    return window.__wx_channels_config__;
-  }
+  // if (typeof window !== "undefined" && window.__wx_channels_config__) {
+  //   return window.__wx_channels_config__;
+  // }
   return {};
 }
 
@@ -176,8 +159,7 @@ function buildServices(statusData) {
       icon: "server",
       description: "下载任务、帐号、视频和浏览记录接口",
       addr:
-        statusData?.api?.addr ||
-        (apiPort ? `${apiHost}:${apiPort}` : apiHost),
+        statusData?.api?.addr || (apiPort ? `${apiHost}:${apiPort}` : apiHost),
       protocol: apiProtocol,
       host: apiHost,
       port: apiPort || "",
@@ -219,7 +201,7 @@ function ServiceInfo(label, value, icon) {
       {
         class:
           "mt-1 truncate font-mono text-xs text-zinc-800 dark:text-zinc-200",
-        title: value,
+        // title: value,
       },
       [value || "-"],
     ),
@@ -229,9 +211,9 @@ function ServiceInfo(label, value, icon) {
 function ServiceStatusItem(props) {
   const service = props.service;
   const popover$ = new Timeless.ui.PopoverCore({
-    offsetX: 10,
+    // off: 10,
     destroyOnClose: false,
-    placement: "right",
+    // placement: "right",
   });
   let hideTimer = null;
   const host_ = ref(service.host || "");
@@ -345,17 +327,17 @@ function ServiceStatusItem(props) {
           ),
           Button(
             {
-              title:
-                service.id === "api"
-                  ? "API Server 不能通过自身 HTTP 请求停止"
-                  : "停止服务",
+              // title:
+              //   service.id === "api"
+              //     ? "API Server 不能通过自身 HTTP 请求停止"
+              //     : "停止服务",
               store: new Timeless.ui.ButtonCore({
                 size: "sm",
                 variant: "outline",
-                disabled: computed(
-                  props.busy_,
-                  (busy) => busy || service.id === "api",
-                ),
+                // disabled: computed(
+                //   props.busy_,
+                //   (busy) => busy || service.id === "api",
+                // ),
                 onClick() {
                   props.stopService(service);
                 },
@@ -364,8 +346,12 @@ function ServiceStatusItem(props) {
             [Icon({ name: "square", size: 14 }), "停止"],
           ),
         ]),
-        service.id === "proxy"
-          ? View(
+        Show({
+          when: computed(service, (t) => {
+            return t.id === "proxy";
+          }),
+          ok() {
+            return View(
               {
                 class:
                   "mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800",
@@ -429,241 +415,250 @@ function ServiceStatusItem(props) {
                   ),
                 ]),
               ],
-            )
-          : null,
+            );
+          },
+        }),
       ],
     );
   }
 
-  return Popover(
-    {
-      store: popover$,
-      content: [content()],
-    },
-    [
-      View(
-        {
-          class:
-            "rounded-lg border border-zinc-200 bg-white p-3 transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700",
-          title: "查看服务详情",
-          onMouseEnter: show,
-          onMouseLeave: hide,
-        },
-        [
-          View({ class: "flex items-center justify-between gap-3" }, [
-            View({ class: "flex min-w-0 items-center gap-2" }, [
-              View({ class: serviceDotClass(service.status) }),
-              Icon({ name: service.icon, size: 15 }),
-              View(
-                {
-                  class:
-                    "truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
-                },
-                [service.title],
-              ),
-            ]),
-            View({ class: serviceTextClass(service.status) }, [
-              serviceStatusText(service.status),
-            ]),
+  return Popover({ store: popover$, content: [content()] }, [
+    View(
+      {
+        class:
+          "rounded-lg border border-zinc-200 bg-white p-3 transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700",
+        // title: "查看服务详情",
+        // onMouseEnter: show,
+        // onMouseLeave: hide,
+      },
+      [
+        View({ class: "flex items-center justify-between gap-3" }, [
+          View({ class: "flex min-w-0 items-center gap-2" }, [
+            View({ class: serviceDotClass(service.status) }),
+            Icon({ name: service.icon, size: 15 }),
+            View(
+              {
+                class:
+                  "truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
+              },
+              [service.title],
+            ),
           ]),
-        ],
-      ),
-    ],
-  );
+          View({ class: serviceTextClass(service.status) }, [
+            serviceStatusText(service.status),
+          ]),
+        ]),
+      ],
+    ),
+  ]);
 }
 
 /**
  * @param {ViewComponentProps} props
  */
 export default function HomeLayoutView(props) {
-  const sidemenu$ = Timeless.RouteMenusModel({
-    view: props.view,
-    history: props.history,
-    menus: HOME_MENUS,
-  });
-  const reqStatus = new Timeless.RequestCore(fetchAppStatus, {
-    client: api_client$,
-  });
-  const reqStartService = new Timeless.RequestCore(startService, {
-    client: api_client$,
-  });
-  const reqStopService = new Timeless.RequestCore(stopService, {
-    client: api_client$,
-  });
-  const reqUpdateConfig = new Timeless.RequestCore(updateServiceConfig, {
-    client: api_client$,
-  });
-  const reqCertStatus = new Timeless.RequestCore(fetchRootCertificateStatus, {
-    client: api_client$,
-  });
-  const reqInstallCert = new Timeless.RequestCore(installRootCertificate, {
-    client: api_client$,
-  });
-  const reqUninstallCert = new Timeless.RequestCore(uninstallRootCertificate, {
-    client: api_client$,
-  });
+  const reqs = {
+    reqStatus: new Timeless.RequestCore(fetchAppStatus, {
+      client: api_client$,
+    }),
+    reqStartService: new Timeless.RequestCore(startService, {
+      client: api_client$,
+    }),
+    reqStopService: new Timeless.RequestCore(stopService, {
+      client: api_client$,
+    }),
+    reqUpdateConfig: new Timeless.RequestCore(updateServiceConfig, {
+      client: api_client$,
+    }),
+    reqCertStatus: new Timeless.RequestCore(fetchRootCertificateStatus, {
+      client: api_client$,
+    }),
+    reqInstallCert: new Timeless.RequestCore(installRootCertificate, {
+      client: api_client$,
+    }),
+    reqUninstallCert: new Timeless.RequestCore(uninstallRootCertificate, {
+      client: api_client$,
+    }),
+  };
   const channelsStatus_ = ref("checking");
   const services_ = refarr([]);
   const serviceBusy_ = ref(false);
   const certBusy_ = ref(false);
   const certStatus_ = ref({ loading: false, installed: false, error: "" });
+
   let statusTimer = null;
   let disposed = false;
   let statusWS = null;
   let statusReconnectTimer = null;
   let statusWSClosed = false;
 
-  function applyChannelsAvailable(available) {
-    channelsStatus_.as(available ? "connected" : "disconnected");
-  }
+  const ui = {
+    sidemenu$: Timeless.RouteMenusModel({
+      view: props.view,
+      history: props.history,
+      menus: HOME_MENUS,
+    }),
+    btn_toggle_theme$: new Timeless.ui.ButtonCore({
+      variant: "outline",
+      onClick() {
+        const cur = props.app.getTheme();
+        props.app.setTheme(cur === "dark" ? "light" : "dark");
+      },
+    }),
+  };
+  const methods = {
+    applyChannelsAvailable(available) {
+      channelsStatus_.as(available ? "connected" : "disconnected");
+    },
 
-  async function checkChannelsStatus() {
-    if (
-      channelsStatus_.value === "checking" ||
-      channelsStatus_.value === "error"
-    ) {
-      channelsStatus_.as("checking");
-    }
-    const result = await reqStatus.run();
-    if (disposed) return;
-    if (result.error) {
-      channelsStatus_.as("error");
-      services_.as(buildServices(null));
-      return;
-    }
-    applyChannelsAvailable(!!result.data?.channels?.available);
-    services_.as(buildServices(result.data));
-  }
-
-  async function refreshCertStatus() {
-    if (certStatus_.value.loading) return;
-    certStatus_.as({ ...certStatus_.value, loading: true, error: "" });
-    const result = await reqCertStatus.run();
-    if (result.error) {
-      certStatus_.as({
-        loading: false,
-        installed: false,
-        error: result.error.message || String(result.error),
-      });
-      return;
-    }
-    certStatus_.as({
-      loading: false,
-      installed: !!result.data?.installed,
-      error: "",
-    });
-  }
-
-  async function runServiceAction(service, action) {
-    serviceBusy_.as(true);
-    const result =
-      action === "start"
-        ? await reqStartService.run({ name: service.serviceName })
-        : await reqStopService.run({ name: service.serviceName });
-    serviceBusy_.as(false);
-    if (result.error) {
-      props.app.tip?.({
-        type: "error",
-        text: [result.error.message || String(result.error)],
-      });
-      return;
-    }
-    props.app.tip?.({
-      type: "success",
-      text: [`${service.title} ${action === "start" ? "已启动" : "已停止"}`],
-    });
-    await checkChannelsStatus();
-  }
-
-  async function saveServiceConfig(service, host, port) {
-    const values = {};
-    values[service.configKeys.host] = String(host || "").trim();
-    values[service.configKeys.port] = Number(port) || 0;
-    serviceBusy_.as(true);
-    const result = await reqUpdateConfig.run({ values });
-    serviceBusy_.as(false);
-    if (result.error) {
-      props.app.tip?.({
-        type: "error",
-        text: [result.error.message || String(result.error)],
-      });
-      return;
-    }
-    props.app.tip?.({ type: "success", text: ["服务配置已保存"] });
-    await checkChannelsStatus();
-  }
-
-  async function runCertAction(action) {
-    certBusy_.as(true);
-    const result =
-      action === "install"
-        ? await reqInstallCert.run()
-        : await reqUninstallCert.run();
-    certBusy_.as(false);
-    if (result.error) {
-      props.app.tip?.({
-        type: "error",
-        text: [result.error.message || String(result.error)],
-      });
-      await refreshCertStatus();
-      return;
-    }
-    props.app.tip?.({
-      type: "success",
-      text: [action === "install" ? "系统根证书已安装" : "系统根证书已卸载"],
-    });
-    await refreshCertStatus();
-  }
-
-  function getAPIOrigin() {
-    return props.hostname || props.client?.hostname || window.location.origin;
-  }
-
-  function handleStatusWSMessage(message) {
-    if (message.type !== "channels_status") return;
-    const data = message.data || {};
-    const available = data.channels?.available ?? data.available;
-    applyChannelsAvailable(!!available);
-  }
-
-  function connectStatusWS() {
-    if (statusWS || typeof WebSocket === "undefined") return;
-    statusWSClosed = false;
-    const wsURL = new URL(getAPIOrigin());
-    wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
-    wsURL.pathname = "/ws/status";
-    wsURL.search = "";
-    const ws = new WebSocket(wsURL.toString());
-    statusWS = ws;
-    ws.onmessage = (ev) => {
-      try {
-        handleStatusWSMessage(JSON.parse(ev.data));
-      } catch {
+    async checkChannelsStatus() {
+      if (
+        channelsStatus_.value === "checking" ||
+        channelsStatus_.value === "error"
+      ) {
+        channelsStatus_.as("checking");
+      }
+      const result = await reqs.reqStatus.run();
+      if (disposed) return;
+      if (result.error) {
+        channelsStatus_.as("error");
+        services_.as(buildServices(null));
         return;
       }
-    };
-    ws.onclose = () => {
-      if (statusWS === ws) statusWS = null;
-      if (!statusWSClosed && !disposed) {
-        statusReconnectTimer = window.setTimeout(connectStatusWS, 2000);
+      methods.applyChannelsAvailable(!!result.data?.channels?.available);
+      services_.as(buildServices(result.data));
+    },
+    async refreshCertStatus() {
+      if (certStatus_.value.loading) return;
+      certStatus_.as({ ...certStatus_.value, loading: true, error: "" });
+      const result = await reqs.reqCertStatus.run();
+      if (result.error) {
+        certStatus_.as({
+          loading: false,
+          installed: false,
+          error: result.error.message || String(result.error),
+        });
+        return;
       }
-    };
-    ws.onerror = () => {
-      ws.close();
-    };
-  }
+      certStatus_.as({
+        loading: false,
+        installed: !!result.data?.installed,
+        error: "",
+      });
+    },
 
-  function closeStatusWS() {
-    statusWSClosed = true;
-    if (statusReconnectTimer) {
-      window.clearTimeout(statusReconnectTimer);
-      statusReconnectTimer = null;
-    }
-    if (statusWS) {
-      statusWS.close();
-      statusWS = null;
-    }
-  }
+    async runServiceAction(service, action) {
+      serviceBusy_.as(true);
+      const result =
+        action === "start"
+          ? await reqs.reqStartService.run({ name: service.serviceName })
+          : await reqs.reqStopService.run({ name: service.serviceName });
+      serviceBusy_.as(false);
+      if (result.error) {
+        props.app.tip?.({
+          type: "error",
+          text: [result.error.message || String(result.error)],
+        });
+        return;
+      }
+      props.app.tip?.({
+        type: "success",
+        text: [`${service.title} ${action === "start" ? "已启动" : "已停止"}`],
+      });
+      await methods.checkChannelsStatus();
+    },
+    async saveServiceConfig(service, host, port) {
+      const values = {};
+      values[service.configKeys.host] = String(host || "").trim();
+      values[service.configKeys.port] = Number(port) || 0;
+      serviceBusy_.as(true);
+      const result = await reqs.reqUpdateConfig.run({ values });
+      serviceBusy_.as(false);
+      if (result.error) {
+        props.app.tip?.({
+          type: "error",
+          text: [result.error.message || String(result.error)],
+        });
+        return;
+      }
+      props.app.tip?.({ type: "success", text: ["服务配置已保存"] });
+      await methods.checkChannelsStatus();
+    },
+
+    async runCertAction(action) {
+      certBusy_.as(true);
+      const result =
+        action === "install"
+          ? await reqs.reqInstallCert.run()
+          : await reqs.reqUninstallCert.run();
+      certBusy_.as(false);
+      if (result.error) {
+        props.app.tip?.({
+          type: "error",
+          text: [result.error.message || String(result.error)],
+        });
+        await methods.refreshCertStatus();
+        return;
+      }
+      props.app.tip?.({
+        type: "success",
+        text: [action === "install" ? "系统根证书已安装" : "系统根证书已卸载"],
+      });
+      await methods.refreshCertStatus();
+    },
+
+    getAPIOrigin() {
+      return props.client.hostname || window.location.origin;
+    },
+
+    handleStatusWSMessage(message) {
+      if (message.type !== "channels_status") return;
+      const data = message.data || {};
+      const available = data.channels?.available ?? data.available;
+      methods.applyChannelsAvailable(!!available);
+    },
+
+    connectStatusWS() {
+      if (statusWS || typeof WebSocket === "undefined") return;
+      statusWSClosed = false;
+      const wsURL = new URL(methods.getAPIOrigin());
+      wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
+      wsURL.pathname = "/ws/status";
+      wsURL.search = "";
+      const ws = new WebSocket(wsURL.toString());
+      statusWS = ws;
+      ws.onmessage = (ev) => {
+        try {
+          methods.handleStatusWSMessage(JSON.parse(ev.data));
+        } catch {
+          return;
+        }
+      };
+      ws.onclose = () => {
+        if (statusWS === ws) statusWS = null;
+        if (!statusWSClosed && !disposed) {
+          statusReconnectTimer = window.setTimeout(
+            methods.connectStatusWS,
+            2000,
+          );
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+      };
+    },
+    closeStatusWS() {
+      statusWSClosed = true;
+      if (statusReconnectTimer) {
+        window.clearTimeout(statusReconnectTimer);
+        statusReconnectTimer = null;
+      }
+      if (statusWS) {
+        statusWS.close();
+        statusWS = null;
+      }
+    },
+  };
 
   return SplitView({
     resizable: false,
@@ -678,13 +673,13 @@ export default function HomeLayoutView(props) {
                 "h-full border-r border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950",
               onMounted() {
                 disposed = false;
-                checkChannelsStatus();
-                connectStatusWS();
-                statusTimer = setInterval(checkChannelsStatus, 30000);
+                methods.checkChannelsStatus();
+                methods.connectStatusWS();
+                statusTimer = setInterval(methods.checkChannelsStatus, 30000);
               },
               onUnmounted() {
                 disposed = true;
-                closeStatusWS();
+                methods.closeStatusWS();
                 if (statusTimer) {
                   clearInterval(statusTimer);
                   statusTimer = null;
@@ -702,7 +697,8 @@ export default function HomeLayoutView(props) {
                   Flex({ direction: "col", class: "gap-5" }, [
                     View(
                       {
-                        class: "flex items-center gap-3 px-2 py-2 cursor-pointer",
+                        class:
+                          "flex items-center gap-3 px-2 py-2 cursor-pointer",
                         onClick() {
                           props.history.push("root.home_layout.index");
                         },
@@ -712,7 +708,7 @@ export default function HomeLayoutView(props) {
                           {
                             class:
                               "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900",
-                            title: "WX",
+                            // title: "WX",
                           },
                           ["WX"],
                         ),
@@ -738,7 +734,47 @@ export default function HomeLayoutView(props) {
                       For({
                         each: HOME_MENUS,
                         render(item) {
-                          return MenuButton(props, item, sidemenu$);
+                          return View(
+                            {
+                              class: classNames([
+                                "relative flex w-full cursor-pointer items-center gap-3 rounded-lg",
+                                computed(ui.sidemenu$.cur, (cur) => {
+                                  const active = ui.sidemenu$.isSelected(
+                                    cur,
+                                    item,
+                                  );
+                                  return active
+                                    ? "bg-white px-4 py-3 text-sm font-medium text-zinc-950 shadow-sm ring-1 ring-black/5 dark:bg-zinc-900 dark:text-zinc-50 dark:ring-white/10"
+                                    : "px-4 py-3 text-sm font-medium text-zinc-500 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900/70 dark:hover:text-zinc-50";
+                                }),
+                              ]),
+                              // title: item.title,
+                              onClick() {
+                                props.history.push(item.name);
+                              },
+                            },
+                            [
+                              Show({
+                                when: computed(ui.sidemenu$.cur, (cur) =>
+                                  ui.sidemenu$.isSelected(cur, item),
+                                ),
+                                ok() {
+                                  return View({
+                                    class:
+                                      "absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-zinc-900 dark:bg-zinc-100",
+                                  });
+                                },
+                              }),
+                              View(
+                                {
+                                  class:
+                                    "flex h-5 w-5 shrink-0 items-center justify-center",
+                                },
+                                [Icon({ name: item.icon, size: 20 })],
+                              ),
+                              View({ class: "truncate" }, [item.title]),
+                            ],
+                          );
                         },
                       }),
                     ]),
@@ -746,60 +782,37 @@ export default function HomeLayoutView(props) {
                   Flex({ direction: "col", class: "gap-3" }, [
                     ChannelsStatusBadge(channelsStatus_),
                     View({ class: "space-y-2" }, [
-                      For({
-                        each: services_,
-                        render(service) {
-                          return ServiceStatusItem({
-                            service,
-                            busy_: serviceBusy_,
-                            certBusy_,
-                            certStatus_,
-                            refreshCertStatus,
-                            startService(item) {
-                              runServiceAction(item, "start");
-                            },
-                            stopService(item) {
-                              runServiceAction(item, "stop");
-                            },
-                            saveServiceConfig,
-                            installCert() {
-                              runCertAction("install");
-                            },
-                            uninstallCert() {
-                              runCertAction("uninstall");
-                            },
-                          });
-                        },
-                      }),
+                      // For({
+                      //   each: services_,
+                      //   render(service) {
+                      //     return ServiceStatusItem({
+                      //       service,
+                      //       busy_: serviceBusy_,
+                      //       certBusy_,
+                      //       certStatus_,
+                      //       refreshCertStatus: methods.refreshCertStatus,
+                      //       startService(item) {
+                      //         methods.runServiceAction(item, "start");
+                      //       },
+                      //       stopService(item) {
+                      //         methods.runServiceAction(item, "stop");
+                      //       },
+                      //       saveServiceConfig: methods.saveServiceConfig,
+                      //       installCert() {
+                      //         methods.runCertAction("install");
+                      //       },
+                      //       uninstallCert() {
+                      //         methods.runCertAction("uninstall");
+                      //       },
+                      //     });
+                      //   },
+                      // }),
                     ]),
-                    View(
+                    Button(
                       {
-                        class:
-                          "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900",
+                        store: ui.btn_toggle_theme$,
                       },
-                      [
-                        View(
-                          {
-                            class:
-                              "mb-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400",
-                          },
-                          ["Display"],
-                        ),
-                        Button(
-                          {
-                            store: new Timeless.ui.ButtonCore({
-                              variant: "outline",
-                              onClick() {
-                                const cur = props.app.getTheme();
-                                props.app.setTheme(
-                                  cur === "dark" ? "light" : "dark",
-                                );
-                              },
-                            }),
-                          },
-                          [Icon({ name: "sun", size: 16 }), "切换主题"],
-                        ),
-                      ],
+                      [Icon({ name: "sun", size: 16 }), "切换主题"],
                     ),
                   ]),
                 ],

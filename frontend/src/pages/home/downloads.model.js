@@ -67,22 +67,14 @@ const TAB_DEFS = [
 
 function getConfig() {
   if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
-  if (typeof window !== "undefined" && window.__wx_channels_config__) {
-    return window.__wx_channels_config__;
-  }
+  // if (typeof window !== "undefined" && window.__wx_channels_config__) {
+  //   return window.__wx_channels_config__;
+  // }
   return {};
 }
 
 function getAPIClientOrigin() {
-  const hostname = String(api_client$?.hostname || "").trim();
-  if (!hostname) {
-    return "";
-  }
-  try {
-    return new URL(hostname, window.location.origin).origin;
-  } catch (e) {
-    return hostname.replace(/\/+$/, "");
-  }
+  return String(api_client$.hostname || "").trim();
 }
 
 function mpProxyURL(rawURL) {
@@ -90,12 +82,7 @@ function mpProxyURL(rawURL) {
   if (!url || url.includes("/mp/proxy?")) {
     return url;
   }
-  const cfg = getConfig();
-  const token = cfg.officialServerRefreshToken || "";
   const params = new URLSearchParams();
-  if (token) {
-    params.set("token", token);
-  }
   params.set("url", url);
   return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
 }
@@ -138,16 +125,21 @@ function isOfficialAccountTask(task) {
   const contentType = String(
     task.content_type || metadata2.content_type || labels.content_type || "",
   ).trim();
-  if (contentType === "article") return true;
+  if (contentType === "article") {
+    return true;
+  }
   return String(task.url || task.URL || "").startsWith("officialaccount://");
 }
 
 function displayCoverURL(task) {
   const coverURL = task.cover_url || task.CoverURL || "";
-  if (!coverURL) return "";
-  return isOfficialAccountTask(task) || isMmbizURL(coverURL)
-    ? mpProxyURL(coverURL)
-    : coverURL;
+  if (!coverURL) {
+    return "";
+  }
+  if (isOfficialAccountTask(task) || isMmbizURL(coverURL)) {
+    return mpProxyURL(coverURL);
+  }
+  return coverURL;
 }
 
 export function formatBytes(value) {
@@ -165,7 +157,9 @@ export function formatBytes(value) {
 
 export function formatDate(value) {
   const n = Number(value || 0);
-  if (!n) return "-";
+  if (!n) {
+    return "-";
+  }
   return new Date(n).toLocaleString();
 }
 
@@ -342,7 +336,10 @@ function normalizeRemoteServerConfig(values) {
   };
 }
 
-export function DownloadTaskPanelModel(props = {}) {
+/**
+ * @param {ViewComponentProps} props
+ */
+export function DownloadTaskPanelModel(props) {
   const reqs = {
     list: new Timeless.RequestCore(fetchDownloadList, {
       client: props.client,
@@ -368,7 +365,7 @@ export function DownloadTaskPanelModel(props = {}) {
   const error_ = ref("");
   const total_ = ref(0);
   const page_ = ref(1);
-  const page_size_ = props.pageSize || 20;
+  const page_size_ = 20;
   const active_tab_ = ref(DownloadTaskTabs.All);
   const status_counts_ = ref({
     total: 0,
@@ -550,7 +547,7 @@ export function DownloadTaskPanelModel(props = {}) {
   let ws_closed_ = false;
 
   function getDownloaderHostname() {
-    return props.hostname || props.client?.hostname || window.location.origin;
+    return props.client.hostname || window.location.origin;
   }
 
   function connectWS() {
@@ -631,6 +628,86 @@ export function DownloadTaskPanelModel(props = {}) {
     await load(1);
   }
 
+  const methods = {
+    init() {
+      connectWS();
+      return load(1);
+    },
+    destroy() {
+      closeWS();
+    },
+    refresh() {
+      return load(1);
+    },
+    loadMore() {
+      if (loading_.value) return null;
+      return load(page_.value + 1);
+    },
+    filter(status) {
+      active_tab_.as(status);
+      return load(1);
+    },
+    start(task) {
+      const id = downloadTaskID(task);
+      if (!id) {
+        props.app?.tip?.({
+          type: "error",
+          text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+        });
+        return null;
+      }
+      return act(() => reqs.start.run({ download_task_id: id }), "已开始下载");
+    },
+    retry(task) {
+      return act(() => reqs.retry.run({ id: task.id }), "已重试下载");
+    },
+    remove(task, deleteFile = false) {
+      const id = downloadTaskID(task);
+      if (!id) {
+        props.app?.tip?.({
+          type: "error",
+          text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+        });
+        return null;
+      }
+      return act(
+        () =>
+          reqs.remove.run({
+            download_task_id: id,
+            delete_file: !!deleteFile,
+          }),
+        "已删除下载任务",
+      );
+    },
+    openFile(task) {
+      if (!task.filepath) {
+        props.app?.tip?.({ type: "warning", text: ["该任务还没有文件路径"] });
+        return null;
+      }
+      return act(
+        () => reqs.highlight.run({ file_path: task.filepath }),
+        "已定位文件",
+      );
+    },
+    play(task) {
+      window.open(`/api/download_task/play?id=${task.id}`, "_blank");
+    },
+    openInBrowser(task) {
+      if (!task.id) {
+        props.app?.tip?.({
+          type: "warning",
+          text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+        });
+        return null;
+      }
+      const url = new URL(
+        `/api/download_task/play?id=${encodeURIComponent(task.id)}`,
+        getAPIClientOrigin() || window.location.origin,
+      ).toString();
+      return act(() => reqs.open.run({ url }), "已在浏览器打开");
+    },
+  };
+
   return {
     state: {
       tasks: tasks_,
@@ -642,111 +719,42 @@ export function DownloadTaskPanelModel(props = {}) {
       activeTab: active_tab_,
       statusStats: status_counts_,
       tabs: TAB_DEFS,
-      noMore: computed(
+      noMore: combine(
         { tasks: tasks_, total: total_ },
         (d) => d.tasks.length >= d.total,
       ),
-      runningCount: computed(
-        tasks_,
-        (list) =>
-          list.filter((t) => t.status === DownloadTaskStatus.Running).length,
-      ),
-      totalSpeed: computed(
-        tasks_,
-        (list) =>
+      runningCount: computed(tasks_, (list) => {
+        return list.filter((t) => t.status === DownloadTaskStatus.Running)
+          .length;
+      }),
+      totalSpeed: computed(tasks_, (list) => {
+        return (
           formatBytes(
             list.reduce((sum, t) => {
               if (t.status !== DownloadTaskStatus.Running) return sum;
               return sum + Number(t.progress_info?.speed || 0);
             }, 0),
-          ) + "/s",
-      ),
+          ) + "/s"
+        );
+      }),
     },
     ui: {
       view: new Timeless.ui.ScrollViewCore({}),
+      btn_refresh$: new Timeless.ui.ButtonCore({
+        variant: "outline",
+        onClick() {
+          methods.refresh();
+        },
+      }),
+      btn_load_more$: new Timeless.ui.ButtonCore({
+        variant: "outline",
+        // disabled: vm$.state.loading,
+        onClick() {
+          methods.loadMore();
+        },
+      }),
     },
-    methods: {
-      init() {
-        connectWS();
-        return load(1);
-      },
-      destroy() {
-        closeWS();
-      },
-      refresh() {
-        return load(1);
-      },
-      loadMore() {
-        if (loading_.value) return null;
-        return load(page_.value + 1);
-      },
-      filter(status) {
-        active_tab_.as(status);
-        return load(1);
-      },
-      start(task) {
-        const id = downloadTaskID(task);
-        if (!id) {
-          props.app?.tip?.({
-            type: "error",
-            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
-          });
-          return null;
-        }
-        return act(
-          () => reqs.start.run({ download_task_id: id }),
-          "已开始下载",
-        );
-      },
-      retry(task) {
-        return act(() => reqs.retry.run({ id: task.id }), "已重试下载");
-      },
-      remove(task, deleteFile = false) {
-        const id = downloadTaskID(task);
-        if (!id) {
-          props.app?.tip?.({
-            type: "error",
-            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
-          });
-          return null;
-        }
-        return act(
-          () =>
-            reqs.remove.run({
-              download_task_id: id,
-              delete_file: !!deleteFile,
-            }),
-          "已删除下载任务",
-        );
-      },
-      openFile(task) {
-        if (!task.filepath) {
-          props.app?.tip?.({ type: "warning", text: ["该任务还没有文件路径"] });
-          return null;
-        }
-        return act(
-          () => reqs.highlight.run({ file_path: task.filepath }),
-          "已定位文件",
-        );
-      },
-      play(task) {
-        window.open(`/api/download_task/play?id=${task.id}`, "_blank");
-      },
-      openInBrowser(task) {
-        if (!task.id) {
-          props.app?.tip?.({
-            type: "warning",
-            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
-          });
-          return null;
-        }
-        const url = new URL(
-          `/api/download_task/play?id=${encodeURIComponent(task.id)}`,
-          getAPIClientOrigin() || window.location.origin,
-        ).toString();
-        return act(() => reqs.open.run({ url }), "已在浏览器打开");
-      },
-    },
+    methods,
   };
 }
 
@@ -828,7 +836,7 @@ export function DownloadsPageModel(props) {
       remoteTotal: remote_total_,
       remoteEnabled: remote_enabled_,
       remoteLabel: remote_label_,
-      remoteNoMore: computed(
+      remoteNoMore: combine(
         { tasks: remote_tasks_, total: remote_total_ },
         (d) => d.tasks.length >= d.total,
       ),

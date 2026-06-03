@@ -3,7 +3,7 @@
  */
 import NotFoundPageView from "@/pages/notfound/index.js";
 import HomeLayoutView from "@/pages/home/layout.js";
-import HomeIndexPageView from "@/pages/home/index.dashboard.js";
+import HomeIndexPageView from "@/pages/home/dashboard.js";
 import DownloadsPageView from "@/pages/home/downloads.js";
 
 ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
@@ -11,7 +11,7 @@ InputPrimitive.setInputProvider(Timeless.web);
 TextareaPrimitive.setTextareaProvider(Timeless.web);
 Timeless.NavigatorCore.prefix = "/";
 
-const routes_configure = /** @type {const} */ ({
+export const routes_configure = /** @type {const} */ ({
   home_layout: {
     title: "首页",
     pathname: "/home",
