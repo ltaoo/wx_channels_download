@@ -1,4 +1,8 @@
-import { DownloadTaskStatus, DownloadsPageModel } from "./downloads.model.js";
+import {
+  DownloadTaskStatus,
+  DownloadsPageModel,
+  formatBytes,
+} from "./downloads.model.js";
 
 function HeaderStat(label, value, icon) {
   return View(
@@ -73,149 +77,326 @@ function isStartableStatus(status) {
   );
 }
 
+function isPlayableStatus(status) {
+  return status === DownloadTaskStatus.Done;
+}
+
+function parseTaskJSON(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function isHTMLTask(task) {
+  const metadata2 = parseTaskJSON(task.metadata2 || task.Metadata2);
+  const labels = parseTaskJSON(
+    task.labels || task.Labels || task.extra || task.Extra,
+  );
+  const contentType = String(
+    task.content_type ||
+      task.contentType ||
+      task.mime_type ||
+      task.mimeType ||
+      metadata2.content_type ||
+      metadata2.contentType ||
+      metadata2.mime_type ||
+      metadata2.mimeType ||
+      labels.content_type ||
+      labels.contentType ||
+      labels.mime_type ||
+      labels.mimeType ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  if (contentType === "html" || contentType === "text/html") return true;
+
+  const path = String(task.filepath || task.path || task.name || task.url || "")
+    .split("?")[0]
+    .split("#")[0]
+    .toLowerCase();
+  return path.endsWith(".html") || path.endsWith(".htm");
+}
+
+function taskPlayLabel(task) {
+  return isHTMLTask(task) ? "在浏览器打开" : "播放";
+}
+
+function DownloadInfoItem(label, value, extraClass = "") {
+  return View(
+    {
+      class: classNames([
+        "flex min-w-0 items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400",
+        extraClass,
+      ]),
+    },
+    [
+      View({ class: "shrink-0 text-zinc-400 dark:text-zinc-500" }, [label]),
+      View(
+        {
+          class:
+            "min-w-0 truncate font-medium text-zinc-700 dark:text-zinc-200",
+        },
+        [value],
+      ),
+    ],
+  );
+}
+
+function DownloadInfoDivider() {
+  return View(
+    { class: "hidden h-3 w-px shrink-0 bg-zinc-200 dark:bg-zinc-800 sm:block" },
+    [],
+  );
+}
+
+function DownloadInfoBar(task) {
+  return View(
+    {
+      class:
+        "min-w-0 rounded-md border border-zinc-100 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/60",
+    },
+    [
+      View({ class: "flex items-center gap-3" }, [
+        View(
+          {
+            class:
+              "w-11 shrink-0 text-right text-sm font-semibold tabular-nums text-zinc-950 dark:text-zinc-50",
+          },
+          [
+            computed(task, (t) => {
+              return `${Math.floor(t.percent ?? t.progress_info.percent)}%`;
+            }),
+          ],
+        ),
+        View(
+          {
+            class:
+              "h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800",
+          },
+          [
+            View({
+              class: classNames([
+                "h-full rounded-full transition-all",
+                computed(task, (t) => {
+                  return progressClass(t.status);
+                }),
+              ]),
+              style: {
+                width: computed(task, (t) => {
+                  return `${t.percent ?? t.progress_info.percent}%`;
+                }),
+              },
+            }),
+          ],
+        ),
+      ]),
+      View(
+        {
+          class:
+            "mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pl-0 sm:pl-14",
+        },
+        [
+          DownloadInfoItem(
+            "大小",
+            computed(task, (t) => t.size_text),
+          ),
+          DownloadInfoDivider(),
+          DownloadInfoItem(
+            "已下",
+            computed(task, (t) =>
+              t.progress_info.total
+                ? formatBytes(t.progress_info.downloaded)
+                : "-",
+            ),
+          ),
+          DownloadInfoDivider(),
+          DownloadInfoItem(
+            "速度",
+            computed(task, (t) =>
+              t.status === DownloadTaskStatus.Running ? t.speed_text : "-",
+            ),
+            "tabular-nums",
+          ),
+          DownloadInfoDivider(),
+          DownloadInfoItem(
+            "更新",
+            computed(task, (t) => t.updated_at_text),
+          ),
+          Show({
+            when: computed(
+              task,
+              (t) => t.status === DownloadTaskStatus.Error && !!t.error,
+            ),
+            ok() {
+              return [
+                DownloadInfoDivider(),
+                DownloadInfoItem(
+                  "原因",
+                  computed(task, (t) => t.error),
+                  "max-w-full text-red-600 dark:text-red-300",
+                ),
+              ];
+            },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
 function TaskCard(task, vm$) {
+  const deleteFileCheckbox$ = new Timeless.ui.CheckboxCore({
+    defaultValue: false,
+  });
+  const deleteFileCheckboxId = `delete-file-${task.id || task.task_id}`;
+
   return View(
     {
       class:
         "group rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700",
     },
     [
-      View({ class: "flex gap-4" }, [
+      View({ class: "flex flex-col gap-4 lg:flex-row lg:items-start" }, [
         View(
           {
             class:
-              "h-16 w-16 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+              "grid min-w-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)_auto]",
           },
           [
-            Show({
-              when: computed(task, (t) => t.cover_url),
-              ok() {
-                return Img({
-                  class: "h-full w-full object-cover",
-                  src: computed(task, (t) => t.cover_url),
-                  alt: computed(task, (t) => t.title || "cover"),
-                });
-              },
-              else() {
-                return View(
-                  {
-                    class:
-                      "flex h-full w-full items-center justify-center text-zinc-400",
-                  },
-                  [Icon({ name: "file-video", size: 24 })],
-                );
-              },
-            }),
-          ],
-        ),
-        View({ class: "min-w-0 flex-1" }, [
-          View({ class: "flex items-start justify-between gap-3" }, [
             View({ class: "min-w-0" }, [
-              View(
-                {
-                  class:
-                    "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
-                  title: task.title || task.task_id,
-                },
-                [task.title || task.name || task.task_id || "未命名任务"],
-              ),
-              View(
-                {
-                  class:
-                    "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
-                },
-                [task.filepath || task.url || "-"],
-              ),
-            ]),
-            View(
-              {
-                class: classNames([
-                  "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                  computed(task, (t) => statusClass(t.status)),
-                ]),
-              },
-              [computed(task, (t) => t.status_text)],
-            ),
-          ]),
-          View({ class: "mt-3 space-y-2" }, [
-            View(
-              {
-                class:
-                  "h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
-              },
-              [
-                View({
-                  class: classNames([
-                    "h-full rounded-full transition-all",
-                    computed(task, (t) => {
-                      return progressClass(t.status);
+              View({ class: "flex items-start gap-3" }, [
+                Show({
+                  when: computed(task, (t) => t.display_cover_url || t.cover_url),
+                  ok() {
+                    return View(
+                      {
+                        class:
+                          "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+                      },
+                      [
+                        Img({
+                          class: "h-full w-full object-cover",
+                          src: computed(
+                            task,
+                            (t) => t.display_cover_url || t.cover_url,
+                          ),
+                          alt: computed(task, (t) => t.title || "cover"),
+                        }),
+                      ],
+                    );
+                  },
+                }),
+                View({ class: "min-w-0 flex-1" }, [
+                  View(
+                    {
+                      class:
+                        "truncate text-base font-semibold text-zinc-950 dark:text-zinc-50",
+                      title: task.title || task.task_id,
+                    },
+                    [task.title || task.name || task.task_id || "未命名任务"],
+                  ),
+                  View(
+                    {
+                      class:
+                        "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
+                    },
+                    [task.filepath || task.url || "-"],
+                  ),
+                  View({ class: "mt-2" }, [
+                    Show({
+                      when: computed(task, (t) => isPlayableStatus(t.status)),
+                      ok() {
+                        return SmallButton(
+                          computed(task, taskPlayLabel),
+                          () =>
+                            isHTMLTask(task)
+                              ? vm$.methods.openInBrowser(task)
+                              : vm$.methods.play(task),
+                          "outline",
+                        );
+                      },
+                    }),
+                    Show({
+                      when: computed(
+                        task,
+                        (t) => t.status === DownloadTaskStatus.Done,
+                      ),
+                      ok() {
+                        return SmallButton("定位", () =>
+                          vm$.methods.openFile(task),
+                        );
+                      },
                     }),
                   ]),
-                  style: {
-                    width: computed(task, (t) => {
-                      return `${t.percent ?? t.progress_info.percent}%`;
-                    }),
+                ]),
+                View(
+                  {
+                    class: classNames([
+                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                      computed(task, (t) => statusClass(t.status)),
+                    ]),
                   },
-                }),
-              ],
-            ),
+                  [computed(task, (t) => t.status_text)],
+                ),
+              ]),
+            ]),
+            DownloadInfoBar(task),
             View(
               {
                 class:
-                  "flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400",
+                  "flex shrink-0 flex-wrap items-center gap-2 xl:w-28 xl:flex-col xl:items-stretch",
               },
               [
-                computed(task, (t) => {
-                  return `${Math.floor(t.percent ?? t.progress_info.percent)}%`;
+                Show({
+                  when: computed(task, (t) => {
+                    return t.status === DownloadTaskStatus.Error;
+                  }),
+                  ok() {
+                    return SmallButton(
+                      "重试",
+                      () => vm$.methods.retry(task),
+                      "outline",
+                    );
+                  },
                 }),
-                computed(task, (t) => t.size_text),
-                computed(task, (t) => {
-                  return t.status === DownloadTaskStatus.Running
-                    ? t.speed_text
-                    : "";
+                Show({
+                  when: computed(task, (t) => isStartableStatus(t.status)),
+                  ok() {
+                    return SmallButton(
+                      "开始",
+                      () => vm$.methods.start(task),
+                      "outline",
+                    );
+                  },
                 }),
-                "更新",
-                computed(task, (t) => {
-                  return t.updated_at_text;
-                }),
+                SmallButton(
+                  "删除",
+                  () => vm$.methods.remove(task, deleteFileCheckbox$.value),
+                  "ghost",
+                ),
+                View({ class: "flex items-center gap-1.5 xl:justify-start" }, [
+                  Checkbox({
+                    id: deleteFileCheckboxId,
+                    store: deleteFileCheckbox$,
+                  }),
+                  Label(
+                    {
+                      for: deleteFileCheckboxId,
+                      class:
+                        "cursor-pointer whitespace-nowrap text-xs text-zinc-600 dark:text-zinc-300",
+                    },
+                    ["同时删除文件"],
+                  ),
+                ]),
               ],
             ),
-          ]),
-          View({ class: "mt-3 flex flex-wrap gap-2" }, [
-            Show({
-              when: computed(task, (t) => {
-                return t.status === DownloadTaskStatus.Error;
-              }),
-              ok() {
-                return SmallButton("重试", () => vm$.methods.retry(task), "outline");
-              },
-            }),
-            Show({
-              when: computed(task, (t) => isStartableStatus(t.status)),
-              ok() {
-                return SmallButton("开始", () => vm$.methods.start(task), "outline");
-              },
-            }),
-            Show({
-              when: computed(task, (t) => t.status === DownloadTaskStatus.Done),
-              ok() {
-                return SmallButton("播放", () => vm$.methods.play(task), "outline");
-              },
-            }),
-            Show({
-              when: computed(task, (t) => t.status === DownloadTaskStatus.Done),
-              ok() {
-                return SmallButton("定位", () => vm$.methods.openFile(task));
-              },
-            }),
-            Show({
-              when: computed(task, (t) => t.status !== DownloadTaskStatus.Done),
-              ok() {
-                return SmallButton("删除", () => vm$.methods.remove(task), "ghost");
-              },
-            }),
-          ]),
-        ]),
+          ],
+        ),
       ]),
     ],
   );

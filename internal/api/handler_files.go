@@ -60,6 +60,33 @@ func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
+type OpenURLBody struct {
+	URL string `json:"url"`
+}
+
+func (c *APIClient) handleOpenURL(ctx *gin.Context) {
+	var body OpenURLBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	targetURL := strings.TrimSpace(body.URL)
+	if targetURL == "" {
+		result.Err(ctx, 400, "Missing the `url`")
+		return
+	}
+	parsedURL, err := url.ParseRequestURI(targetURL)
+	if err != nil || parsedURL.Scheme == "" {
+		result.Err(ctx, 400, "Invalid URL")
+		return
+	}
+	if err := system.Open(targetURL); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
+}
+
 type OpenFolderAndHighlightFileBody struct {
 	Path string `json:"path"`
 	Name string `json:"name"`
@@ -265,4 +292,3 @@ func (c *APIClient) handleTest(ctx *gin.Context) {
 	}
 	result.Ok(ctx, nil)
 }
-

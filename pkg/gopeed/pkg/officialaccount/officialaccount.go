@@ -272,6 +272,15 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 		font-size: 15px;
 		-webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 	}
+	.rich_media_meta_avatar {
+		display: inline-block;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		object-fit: cover;
+		vertical-align: middle;
+		margin: 0 8px 10px 0;
+	}
 	.rich_media_meta_text.article_modify_tag, .rich_media_meta_nickname {
 		position: relative;
 	}
@@ -414,7 +423,14 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 	if article.Creator != "" {
 		creator_html = `<span class="rich_media_meta rich_media_meta_text">` + article.Creator + `</span>`
 	}
-	htmlContent.WriteString(`<div class="rich_media_meta_list">` + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.AuthorNickname + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article.PublishTimeStr + "</em></span></div>")
+	avatarHTML := ""
+	if article.AuthorAvatar != "" {
+		if imgData, mimeType, err := downloadImageBytes(article.AuthorAvatar); err == nil {
+			c.reportProgress(int64(len(imgData)))
+			avatarHTML = `<img class="rich_media_meta_avatar" src="data:` + mimeType + `;base64,` + base64.StdEncoding.EncodeToString(imgData) + `" alt="` + escapeHTML(article.AuthorNickname) + `">`
+		}
+	}
+	htmlContent.WriteString(`<div class="rich_media_meta_list">` + avatarHTML + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.AuthorNickname + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article.PublishTimeStr + "</em></span></div>")
 	htmlContent.WriteString(`<div class="rich_media_content js_underline_content autoTypeSetting24psection fix_apple_default_style">`)
 	// Process HTML content to handle newlines
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
@@ -584,7 +600,7 @@ func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) 
 		return filename, nil
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 25 * time.Second}
 	req, err := http.NewRequest("GET", imgURL, nil)
 	if err != nil {
 		return "", err
@@ -670,7 +686,7 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	if url == "" {
 		return nil, fmt.Errorf("url is empty")
 	}
-	client := &http.Client{}
+	client := &http.Client{Timeout: 25 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -695,6 +711,10 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("bad status: %s body=%s", resp.Status, strings.TrimSpace(string(body)))
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -705,7 +725,7 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 
 // ExtractArticleID extracts a unique article identifier from a WeChat official account URL.
 // For short URLs like https://mp.weixin.qq.com/s/2kaR8z-xO_IAO9TPSUecsQ, returns the path suffix.
-// For full URLs, returns mid+idx as the unique key.
+// For full URLs, returns mid+idx as the unique key, or a hash of __biz-style query links.
 // The rawURL may have an "officialaccount://" prefix.
 func ExtractArticleID(rawURL string) string {
 	u := rawURL
@@ -722,7 +742,7 @@ func ExtractArticleID(rawURL string) string {
 		return ""
 	}
 
-	if !strings.Contains(parsed.Host, "mp.weixin.qq.com") {
+	if !strings.EqualFold(parsed.Hostname(), "mp.weixin.qq.com") {
 		return ""
 	}
 
@@ -744,6 +764,14 @@ func ExtractArticleID(rawURL string) string {
 			idx = "1"
 		}
 		return mid + "_" + idx
+	}
+	if q.Get("__biz") != "" {
+		sn := q.Get("sn")
+		if sn != "" {
+			return q.Get("__biz") + "_" + sn
+		}
+		sum := md5.Sum([]byte(parsed.EscapedPath() + "?" + parsed.RawQuery))
+		return q.Get("__biz") + "_" + hex.EncodeToString(sum[:8])
 	}
 
 	return ""

@@ -26,6 +26,7 @@ import (
 	"wx_channel/pkg/douyin"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
+	"wx_channel/pkg/zhihu"
 )
 
 type ChannelsDownloadRequest struct {
@@ -50,6 +51,30 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		dispatchBody.URL != "" &&
 		dispatchBody.Object.ID == "" {
 		if !isChannelsDownloadURL(dispatchBody.URL) {
+			if articleID := officialaccountdownload.ExtractArticleID(dispatchBody.URL); articleID != "" {
+				id, err := c.startDownloadOfficialAccountURL(dispatchBody.URL, articleID)
+				if err != nil {
+					if c.logger != nil {
+						c.logger.Error().Str("url", dispatchBody.URL).Err(err).Msg("创建公众号下载任务失败")
+					}
+					result.Err(ctx, 500, "创建任务失败："+err.Error())
+					return
+				}
+				result.Ok(ctx, gin.H{"id": id})
+				return
+			}
+			if answerURL, ok := zhihu.ParseAnswerURL(dispatchBody.URL); ok {
+				id, err := c.startDownloadZhihuAnswerURL(answerURL)
+				if err != nil {
+					if c.logger != nil {
+						c.logger.Error().Str("url", answerURL.Canonical).Err(err).Msg("创建知乎下载任务失败")
+					}
+					result.Err(ctx, 500, "创建任务失败："+err.Error())
+					return
+				}
+				result.Ok(ctx, gin.H{"id": id})
+				return
+			}
 			if shareURL := douyin.ExtractShareURL(dispatchBody.URL); shareURL != "" {
 				id, err := c.startDownloadDouyinShareURL(ctx, shareURL)
 				if err != nil {
@@ -111,6 +136,281 @@ func isChannelsDownloadURL(rawURL string) bool {
 		return path == "/web/pages/feed"
 	}
 	return false
+}
+
+func (c *APIClient) startDownloadOfficialAccountURL(rawURL string, articleID string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || articleID == "" {
+		return "", fmt.Errorf("不支持的公众号链接")
+	}
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		labels := t.Meta.Req.Labels
+		if labels["platform"] == "officialaccount" && labels["article_id"] == articleID {
+			return "", fmt.Errorf("已存在该下载内容")
+		}
+	}
+
+	content, err := c.upsertOfficialAccountArticleContent(rawURL, articleID)
+	if err != nil {
+		return "", fmt.Errorf("解析公众号文章失败: %w", err)
+	}
+
+	downloadDir := ""
+	if c.cfg != nil {
+		downloadDir = c.cfg.DownloadDir
+	}
+	taskID, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: "officialaccount://" + rawURL,
+			Labels: map[string]string{
+				"platform":   "officialaccount",
+				"id":         articleID,
+				"article_id": articleID,
+				"key":        "0",
+				"spec":       "",
+				"suffix":     ".html",
+				"source_url": rawURL,
+			},
+		},
+		&base.Options{
+			Name: fmt.Sprintf("wechat_official_%s.html", articleID),
+			Path: downloadDir,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("创建任务失败: %w", err)
+	}
+	task := c.downloader.GetTask(taskID)
+	if task != nil && content != nil {
+		if _, err := c.CreateContentDownloadTask(content, task, "frontend"); err != nil && c.logger != nil {
+			c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
+		}
+	}
+	if task != nil && c.downloader_ws != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+	return taskID, nil
+}
+
+func (c *APIClient) startDownloadZhihuAnswerURL(answerURL zhihu.AnswerURL) (string, error) {
+	if answerURL.QuestionID == "" || answerURL.AnswerID == "" || answerURL.Canonical == "" {
+		return "", fmt.Errorf("不支持的知乎回答链接")
+	}
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
+			continue
+		}
+		labels := t.Meta.Req.Labels
+		if labels["platform"] == "zhihu" && labels["question_id"] == answerURL.QuestionID && labels["answer_id"] == answerURL.AnswerID {
+			return "", fmt.Errorf("已存在该下载内容")
+		}
+	}
+
+	content, err := c.upsertZhihuAnswerContent(answerURL)
+	if err != nil {
+		return "", fmt.Errorf("解析知乎回答失败: %w", err)
+	}
+
+	downloadDir := ""
+	if c.cfg != nil {
+		downloadDir = c.cfg.DownloadDir
+	}
+	taskID, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL: "zhihu://" + answerURL.Canonical,
+			Labels: map[string]string{
+				"platform":    "zhihu",
+				"id":          answerURL.AnswerID,
+				"question_id": answerURL.QuestionID,
+				"answer_id":   answerURL.AnswerID,
+				"key":         "0",
+				"spec":        "",
+				"suffix":      ".html",
+				"source_url":  answerURL.Canonical,
+			},
+		},
+		&base.Options{
+			Name: fmt.Sprintf("zhihu_%s_%s.html", answerURL.QuestionID, answerURL.AnswerID),
+			Path: downloadDir,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("创建任务失败: %w", err)
+	}
+
+	task := c.downloader.GetTask(taskID)
+	if task != nil && content != nil {
+		if _, err := c.CreateContentDownloadTask(content, task, "frontend"); err != nil && c.logger != nil {
+			c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
+		}
+	}
+	if task != nil && c.downloader_ws != nil {
+		c.downloader_ws.Broadcast(APIClientWSMessage{
+			Type: "event",
+			Data: map[string]interface{}{
+				"task": task,
+			},
+		})
+	}
+	return taskID, nil
+}
+
+func (c *APIClient) upsertOfficialAccountArticleContent(rawURL string, articleID string) (*model.Content, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	oa := &officialaccountdownload.OfficialAccountDownload{}
+	article, err := oa.FetchArticle(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if article == nil {
+		return nil, fmt.Errorf("empty article")
+	}
+
+	now := util.NowMillis()
+	accountExternalID := firstNonEmpty(article.AuthorID, article.AuthorNickname, "officialaccount_"+articleID)
+	accountUsername := firstNonEmpty(article.AuthorID, accountExternalID)
+	accountNickname := firstNonEmpty(article.AuthorNickname, article.Creator, accountUsername)
+	title := firstNonEmpty(article.Title, "公众号文章")
+	coverURL := ""
+	if len(article.Images) > 0 {
+		coverURL = article.Images[0]
+	}
+
+	var content model.Content
+	err = c.db.Transaction(func(tx *gorm.DB) error {
+		account, err := upsertContentAccount(tx, model.Account{
+			PlatformId: "wx_official_account",
+			ExternalId: accountExternalID,
+			Username:   accountUsername,
+			Nickname:   accountNickname,
+			AvatarURL:  article.AuthorAvatar,
+			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}, now)
+		if err != nil {
+			return err
+		}
+
+		content = model.Content{
+			PlatformId:  "wx_official_account",
+			ContentType: "article",
+			ExternalId:  articleID,
+			ExternalId2: article.AuthorID,
+			Title:       title,
+			Description: firstNonEmpty(article.Creator, accountNickname),
+			ContentURL:  rawURL,
+			URL:         rawURL,
+			SourceURL:   rawURL,
+			CoverURL:    coverURL,
+			FileSize:    int64(article.ContentLength),
+			Size:        int64(article.ContentLength),
+			Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		if err := upsertContentByPlatformExternalID(tx, &content, now); err != nil {
+			return err
+		}
+		if err := upsertContentArticle(tx, content.Id, model.ContentArticle{
+			ContentId:   content.Id,
+			ContentHTML: article.Content,
+			AuthorName:  accountNickname,
+		}); err != nil {
+			return err
+		}
+		return upsertContentOwner(tx, content.Id, account.Id, now)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &content, nil
+}
+
+func (c *APIClient) upsertZhihuAnswerContent(answerURL zhihu.AnswerURL) (*model.Content, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	client := &zhihu.Client{}
+	page, err := client.FetchAnswerPage(answerURL.Canonical)
+	if err != nil {
+		return nil, err
+	}
+	if page == nil {
+		return nil, fmt.Errorf("empty answer page")
+	}
+
+	now := util.NowMillis()
+	author := page.Answer.Author
+	accountExternalID := firstNonEmpty(author.ID, author.URLToken, author.URLTokenSnake, "zhihu_"+answerURL.AnswerID)
+	accountUsername := firstNonEmpty(author.URLToken, author.URLTokenSnake, accountExternalID)
+	accountNickname := firstNonEmpty(author.Name, accountUsername)
+	avatarURL := firstNonEmpty(author.AvatarURL, author.AvatarURLSnake, author.AvatarURLTemplate)
+	profileURL := zhihuUserProfileURL(author)
+	title := firstNonEmpty(page.Question.Title, "知乎回答")
+	description := firstNonEmpty(page.Answer.Excerpt, strings.TrimSpace(page.Question.Excerpt))
+	publishTime := page.Answer.CreatedTime
+	contentHTML := zhihu.BuildHTML(page)
+	coverURL := zhihu.FirstImageURL(page.Answer.Content, answerURL.Canonical)
+
+	var content model.Content
+	err = c.db.Transaction(func(tx *gorm.DB) error {
+		account, err := upsertContentAccount(tx, model.Account{
+			PlatformId: "zhihu",
+			ExternalId: accountExternalID,
+			Username:   accountUsername,
+			Nickname:   accountNickname,
+			AvatarURL:  avatarURL,
+			ProfileURL: profileURL,
+			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}, now)
+		if err != nil {
+			return err
+		}
+
+		content = model.Content{
+			PlatformId:  "zhihu",
+			ContentType: "article",
+			ExternalId:  answerURL.AnswerID,
+			ExternalId2: answerURL.QuestionID,
+			Title:       title,
+			Description: description,
+			ContentURL:  answerURL.Canonical,
+			URL:         answerURL.Canonical,
+			SourceURL:   answerURL.Canonical,
+			CoverURL:    coverURL,
+			FileSize:    int64(len(contentHTML)),
+			Size:        int64(len(contentHTML)),
+			PublishTime: &publishTime,
+			Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		if publishTime <= 0 {
+			content.PublishTime = nil
+		}
+		if err := upsertContentByPlatformExternalID(tx, &content, now); err != nil {
+			return err
+		}
+		if err := upsertContentArticle(tx, content.Id, model.ContentArticle{
+			ContentId:   content.Id,
+			ContentHTML: page.Answer.Content,
+			AuthorName:  accountNickname,
+		}); err != nil {
+			return err
+		}
+		return upsertContentOwner(tx, content.Id, account.Id, now)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &content, nil
 }
 
 func (c *APIClient) startDownloadDouyinShareURL(ctx *gin.Context, rawURL string) (string, error) {
@@ -230,15 +530,15 @@ func (c *APIClient) startDownloadDouyinShareURL(ctx *gin.Context, rawURL string)
 	}
 
 	task := c.downloader.GetTask(taskID)
-	video, err := c.upsertDouyinVideo(info, shareURL)
+	content, err := c.upsertDouyinContent(info, shareURL)
 	if err != nil {
 		if c.logger != nil {
-			c.logger.Warn().Err(err).Msg("upsert douyin video failed, continuing without DB records")
+			c.logger.Warn().Err(err).Msg("upsert douyin content failed, continuing without DB records")
 		}
-	} else if task != nil && video != nil && c.channelsUploadService != nil {
-		if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "frontend"); err != nil {
+	} else if task != nil && content != nil {
+		if _, err := c.CreateContentDownloadTask(content, task, "frontend"); err != nil {
 			if c.logger != nil {
-				c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+				c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
 			}
 		}
 	}
@@ -255,7 +555,7 @@ func (c *APIClient) startDownloadDouyinShareURL(ctx *gin.Context, rawURL string)
 	return taskID, nil
 }
 
-func (c *APIClient) upsertDouyinVideo(info *douyin.VideoInfo, sourceURL string) (*model.Video, error) {
+func (c *APIClient) upsertDouyinContent(info *douyin.VideoInfo, sourceURL string) (*model.Content, error) {
 	if c.db == nil {
 		return nil, fmt.Errorf("db not initialized")
 	}
@@ -268,7 +568,7 @@ func (c *APIClient) upsertDouyinVideo(info *douyin.VideoInfo, sourceURL string) 
 	accountUsername := firstNonEmpty(info.AuthorUsername, info.AuthorSecID, accountExternalID)
 	accountNickname := firstNonEmpty(info.AuthorNickname, accountUsername)
 
-	var video model.Video
+	var content model.Content
 	err := c.db.Transaction(func(tx *gorm.DB) error {
 		var account model.Account
 		err := tx.Where("platform_id = ? AND external_id = ?", "douyin", accountExternalID).First(&account).Error
@@ -303,64 +603,212 @@ func (c *APIClient) upsertDouyinVideo(info *douyin.VideoInfo, sourceURL string) 
 			}
 		}
 
-		err = tx.Where("platform_id = ? AND external_id1 = ?", "douyin", info.VideoID).First(&video).Error
+		pub := time.Now().Unix()
+		err = tx.Where("platform_id = ? AND external_id = ?", "douyin", info.VideoID).First(&content).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			video = model.Video{
+			content = model.Content{
 				PlatformId:  "douyin",
-				ExternalId1: info.VideoID,
+				ContentType: "video",
+				ExternalId:  info.VideoID,
 				ExternalId2: info.AuthorSecID,
 				Title:       info.Title,
 				Description: info.Title,
+				ContentURL:  info.URL,
 				URL:         info.URL,
 				SourceURL:   sourceURL,
 				CoverURL:    info.CoverURL,
-				PublishTime: time.Now().Unix(),
+				PublishTime: &pub,
 				Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 			}
-			if err := tx.Create(&video).Error; err != nil {
+			if err := tx.Create(&content).Error; err != nil {
 				return err
 			}
 		} else {
-			if err := tx.Model(&video).Updates(map[string]any{
+			if err := tx.Model(&content).Updates(map[string]any{
+				"content_type": "video",
 				"external_id2": info.AuthorSecID,
 				"title":        info.Title,
 				"description":  info.Title,
+				"content_url":  info.URL,
 				"url":          info.URL,
 				"source_url":   sourceURL,
 				"cover_url":    info.CoverURL,
+				"publish_time": &pub,
 				"updated_at":   now,
 			}).Error; err != nil {
 				return err
 			}
 		}
 
-		if err := tx.Where("video_id = ? AND account_id <> ? AND role = ?", video.Id, account.Id, "owner").Delete(&model.VideoAccount{}).Error; err != nil {
+		if err := tx.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, account.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
 			return err
 		}
-		var link model.VideoAccount
-		err = tx.Where("video_id = ? AND account_id = ?", video.Id, account.Id).First(&link).Error
+		var link model.ContentAccount
+		err = tx.Where("content_id = ? AND account_id = ?", content.Id, account.Id).First(&link).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return tx.Create(&model.VideoAccount{
-				VideoId:   video.Id,
+			return tx.Create(&model.ContentAccount{
+				ContentId: content.Id,
 				AccountId: account.Id,
 				Role:      "owner",
+				CreatedAt: now,
 			}).Error
 		}
 		if err != nil {
 			return err
 		}
 		if link.Role != "owner" {
-			return tx.Model(&model.VideoAccount{}).Where("video_id = ? AND account_id = ?", video.Id, account.Id).Update("role", "owner").Error
+			return tx.Model(&model.ContentAccount{}).Where("content_id = ? AND account_id = ?", content.Id, account.Id).Update("role", "owner").Error
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &video, nil
+	return &content, nil
+}
+
+func upsertContentAccount(tx *gorm.DB, next model.Account, now int64) (*model.Account, error) {
+	next.ExternalId = strings.TrimSpace(next.ExternalId)
+	if next.ExternalId == "" {
+		return nil, fmt.Errorf("account external_id is empty")
+	}
+	next.PlatformId = strings.TrimSpace(next.PlatformId)
+	if next.PlatformId == "" {
+		return nil, fmt.Errorf("account platform_id is empty")
+	}
+	var account model.Account
+	err := tx.Where("platform_id = ? AND external_id = ?", next.PlatformId, next.ExternalId).First(&account).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if next.CreatedAt == 0 {
+			next.CreatedAt = now
+		}
+		next.UpdatedAt = now
+		if err := tx.Create(&next).Error; err != nil {
+			return nil, err
+		}
+		return &next, nil
+	}
+	updates := map[string]any{
+		"username":    next.Username,
+		"alias":       next.Alias,
+		"nickname":    next.Nickname,
+		"avatar_url":  next.AvatarURL,
+		"profile_url": next.ProfileURL,
+		"updated_at":  now,
+	}
+	if err := tx.Model(&model.Account{}).Where("id = ?", account.Id).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.First(&account, account.Id).Error; err != nil {
+		return nil, err
+	}
+	return &account, nil
+}
+
+func upsertContentByPlatformExternalID(tx *gorm.DB, content *model.Content, now int64) error {
+	content.PlatformId = strings.TrimSpace(content.PlatformId)
+	content.ExternalId = strings.TrimSpace(content.ExternalId)
+	if content.PlatformId == "" {
+		return fmt.Errorf("content platform_id is empty")
+	}
+	if content.ExternalId == "" {
+		return fmt.Errorf("content external_id is empty")
+	}
+
+	var existing model.Content
+	err := tx.Where("platform_id = ? AND external_id = ?", content.PlatformId, content.ExternalId).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if content.CreatedAt == 0 {
+			content.CreatedAt = now
+		}
+		content.UpdatedAt = now
+		return tx.Create(content).Error
+	}
+
+	content.Id = existing.Id
+	updates := map[string]any{
+		"content_type": content.ContentType,
+		"external_id2": content.ExternalId2,
+		"external_id3": content.ExternalId3,
+		"title":        content.Title,
+		"description":  content.Description,
+		"content_url":  content.ContentURL,
+		"url":          content.URL,
+		"source_url":   content.SourceURL,
+		"cover_url":    content.CoverURL,
+		"cover_width":  content.CoverWidth,
+		"cover_height": content.CoverHeight,
+		"metadata":     content.Metadata,
+		"publish_time": content.PublishTime,
+		"update_time":  content.UpdateTime,
+		"file_size":    content.FileSize,
+		"size":         content.Size,
+		"duration":     content.Duration,
+		"updated_at":   now,
+	}
+	if content.DownloadTaskId != nil {
+		updates["download_task_id"] = content.DownloadTaskId
+	}
+	return tx.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(updates).Error
+}
+
+func upsertContentArticle(tx *gorm.DB, contentID int, article model.ContentArticle) error {
+	if contentID <= 0 {
+		return fmt.Errorf("content id is empty")
+	}
+	article.ContentId = contentID
+	var existing model.ContentArticle
+	err := tx.Where("content_id = ?", contentID).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return tx.Create(&article).Error
+	}
+	return tx.Model(&model.ContentArticle{}).Where("content_id = ?", contentID).Updates(map[string]any{
+		"word_count":       article.WordCount,
+		"reading_time":     article.ReadingTime,
+		"content_text":     article.ContentText,
+		"content_html":     article.ContentHTML,
+		"content_markdown": article.ContentMarkdown,
+		"author_name":      article.AuthorName,
+		"publish_platform": article.PublishPlatform,
+	}).Error
+}
+
+func upsertContentOwner(tx *gorm.DB, contentID int, accountID int, now int64) error {
+	if contentID <= 0 || accountID <= 0 {
+		return nil
+	}
+	if err := tx.Where("content_id = ? AND account_id <> ? AND role = ?", contentID, accountID, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
+		return err
+	}
+	var link model.ContentAccount
+	err := tx.Where("content_id = ? AND account_id = ?", contentID, accountID).First(&link).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return tx.Create(&model.ContentAccount{
+			ContentId: contentID,
+			AccountId: accountID,
+			Role:      "owner",
+			CreatedAt: now,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	if link.Role != "owner" {
+		return tx.Model(&model.ContentAccount{}).Where("content_id = ? AND account_id = ?", contentID, accountID).Update("role", "owner").Error
+	}
+	return nil
 }
 
 func douyinProfileURL(username string) string {
@@ -368,6 +816,17 @@ func douyinProfileURL(username string) string {
 		return ""
 	}
 	return "https://www.douyin.com/user/" + url.PathEscape(username)
+}
+
+func zhihuUserProfileURL(user zhihu.User) string {
+	if strings.TrimSpace(user.URL) != "" {
+		return user.URL
+	}
+	token := firstNonEmpty(user.URLToken, user.URLTokenSnake)
+	if token == "" {
+		return ""
+	}
+	return "https://www.zhihu.com/people/" + url.PathEscape(token)
 }
 
 type DownloadTaskPayload struct {
@@ -568,8 +1027,8 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		return "", fmt.Errorf("直播类型请使用直播下载")
 	}
 
-	// 3. Upsert Account/Video/VideoAccount in DB (non-fatal)
-	video, err := c.channelsUploadService.HandleChannelsFeed(profile)
+	// 3. Upsert Account/Content/ContentAccount in DB (non-fatal)
+	content, err := c.channelsUploadService.HandleChannelsFeed(profile)
 	if err != nil {
 		c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
 	}
@@ -736,11 +1195,11 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		return "", fmt.Errorf("创建任务失败: %w", err)
 	}
 
-	// 14. Link DownloadTask to Video in DB
+	// 14. Link DownloadTask to Content in DB
 	task := c.downloader.GetTask(taskID)
-	if task != nil && video != nil {
-		if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "frontend"); err != nil {
-			c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+	if task != nil && content != nil {
+		if _, err := c.CreateContentDownloadTask(content, task, "frontend"); err != nil {
+			c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
 		}
 	}
 

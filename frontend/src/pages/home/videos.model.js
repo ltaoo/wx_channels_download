@@ -32,7 +32,7 @@ function accountFromVideo(video, fallback) {
 function normalizeVideo(video, account) {
   return {
     ...video,
-    id: video.id || video.Id || `${video.external_id1 || video.title}-${Math.random()}`,
+    id: video.id || video.Id || `${video.external_id || video.title}-${Math.random()}`,
     title: video.title || video.Title || video.description || "未命名视频",
     description: video.description || video.Description || "",
     cover_url: video.cover_url || video.CoverURL || video.coverUrl || "",
@@ -55,9 +55,10 @@ async function fetchVideosFallback(keyword, reqs) {
       username: account.username || account.external_id,
       avatar_url: account.avatar_url,
     };
-    for (const row of account.video_accounts || []) {
-      if (row.video) {
-        const video = normalizeVideo(row.video, acc);
+    for (const row of account.content_accounts || []) {
+      const content = row.content || row.Content;
+      if (content && (content.content_type || content.type) === "video") {
+        const video = normalizeVideo(content, acc);
         if (!k || String(video.title || video.description || "").toLowerCase().includes(k)) {
           list.push(video);
         }

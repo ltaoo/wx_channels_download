@@ -25,20 +25,42 @@ function Avatar(account) {
   );
 }
 
-function MediaThumb(video, onClick) {
+function contentIconName(content) {
+  switch (content.content_type || content.type) {
+    case "video":
+    case "short_video":
+      return "film";
+    case "article":
+    case "html":
+    case "blog":
+      return "file-text";
+    case "image":
+    case "image_set":
+      return "image";
+    case "audio":
+    case "podcast":
+    case "music":
+      return "music";
+    default:
+      return "file";
+  }
+}
+
+function MediaThumb(content, onClick) {
+  const coverURL = content.display_cover_url || content.cover_url || "";
   return View(
     {
       class: "h-[98px]",
     },
     [
       Show({
-        when: video.cover_url,
+        when: coverURL,
         ok() {
           return Img({
             class:
               "h-full w-full object-cover transition group-hover:scale-105",
-            src: video.cover_url,
-            alt: video.title || "cover",
+            src: coverURL,
+            alt: content.title || "cover",
             onClick,
           });
         },
@@ -47,8 +69,9 @@ function MediaThumb(video, onClick) {
             {
               class:
                 "flex h-full w-full items-center justify-center text-zinc-400",
+              onClick,
             },
-            [Icon({ name: "film", size: 22 })],
+            [Icon({ name: contentIconName(content), size: 22 })],
           );
         },
       }),
@@ -156,7 +179,7 @@ export default function AccountsPageView(props) {
                 ["帐号"],
               ),
               View({ class: "mt-1 text-sm text-zinc-500 dark:text-zinc-400" }, [
-                "浏览已保存的平台帐号及最近视频",
+                "浏览已保存的平台帐号及最近内容",
               ]),
             ]),
             Button(
@@ -296,9 +319,9 @@ export default function AccountsPageView(props) {
                                   [
                                     For({
                                       each: account.medias.slice(0, 10),
-                                      render(video) {
-                                        return MediaThumb(video, () =>
-                                          vm$.methods.play(video),
+                                      render(content) {
+                                        return MediaThumb(content, () =>
+                                          vm$.methods.play(content),
                                         );
                                       },
                                     }),

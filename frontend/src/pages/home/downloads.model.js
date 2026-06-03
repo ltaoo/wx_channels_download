@@ -4,6 +4,7 @@ import {
   fetchDownloadList,
   fetchRemoteDownloadList,
   highlightDownloadFile,
+  openURL,
   retryDownloadTask,
   startDownloadTask,
 } from "@/biz/request.js";
@@ -64,6 +65,91 @@ const TAB_DEFS = [
   { label: "已暂停", value: DownloadTaskTabs.Paused, countKey: "paused" },
 ];
 
+function getConfig() {
+  if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
+  if (typeof window !== "undefined" && window.__wx_channels_config__) {
+    return window.__wx_channels_config__;
+  }
+  return {};
+}
+
+function getAPIClientOrigin() {
+  const hostname = String(api_client$?.hostname || "").trim();
+  if (!hostname) {
+    return "";
+  }
+  try {
+    return new URL(hostname, window.location.origin).origin;
+  } catch (e) {
+    return hostname.replace(/\/+$/, "");
+  }
+}
+
+function mpProxyURL(rawURL) {
+  const url = String(rawURL || "").trim();
+  if (!url || url.includes("/mp/proxy?")) {
+    return url;
+  }
+  const cfg = getConfig();
+  const token = cfg.officialServerRefreshToken || "";
+  const params = new URLSearchParams();
+  if (token) {
+    params.set("token", token);
+  }
+  params.set("url", url);
+  return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
+}
+
+function parseJSON(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function isMmbizURL(rawURL) {
+  const url = String(rawURL || "").trim();
+  if (!url) return false;
+  try {
+    return new URL(url, window.location.origin).hostname === "mmbiz.qpic.cn";
+  } catch {
+    return /^https?:\/\/mmbiz\.qpic\.cn(?:\/|$)/i.test(url);
+  }
+}
+
+function isOfficialAccountTask(task) {
+  const metadata2 = parseJSON(task.metadata2 || task.Metadata2);
+  const labels = parseJSON(
+    task.labels || task.Labels || task.extra || task.Extra,
+  );
+  const platform = String(
+    task.platform_id ||
+      task.platform ||
+      metadata2.platform ||
+      labels.platform ||
+      "",
+  ).trim();
+  if (platform === "wx_official_account" || platform === "officialaccount") {
+    return true;
+  }
+  const contentType = String(
+    task.content_type || metadata2.content_type || labels.content_type || "",
+  ).trim();
+  if (contentType === "article") return true;
+  return String(task.url || task.URL || "").startsWith("officialaccount://");
+}
+
+function displayCoverURL(task) {
+  const coverURL = task.cover_url || task.CoverURL || "";
+  if (!coverURL) return "";
+  return isOfficialAccountTask(task) || isMmbizURL(coverURL)
+    ? mpProxyURL(coverURL)
+    : coverURL;
+}
+
 export function formatBytes(value) {
   const n = Number(value || 0);
   if (!n) return "0 B";
@@ -117,6 +203,7 @@ export function normalizeTask(task) {
     speed_text: `${formatBytes(progress.speed)}/s`,
     created_at_text: formatDate(task.created_at),
     updated_at_text: formatDate(task.updated_at),
+    display_cover_url: displayCoverURL(task),
   };
 }
 
@@ -203,6 +290,10 @@ function normalizeRuntimeTask(raw) {
   );
   const speed = Number(progressRaw.speed || progressRaw.Speed || 0);
   const status = normalizeTaskStatus(readTaskField(raw, "status", "Status"));
+  const error =
+    readTaskField(raw, "error", "Error") ||
+    readTaskField(raw, "Err", "err") ||
+    "";
   const updatedAt = normalizeRuntimeDate(
     readTaskField(raw, "updatedAt", "UpdatedAt"),
   );
@@ -222,9 +313,10 @@ function normalizeRuntimeTask(raw) {
   };
   const path = opts.path || opts.Path || "";
   return normalizeTask({
-    id,
+    id: "",
     task_id: id,
     status,
+    error,
     title: name,
     name,
     url: req.url || req.URL || "",
@@ -265,6 +357,9 @@ export function DownloadTaskPanelModel(props = {}) {
       client: props.client,
     }),
     highlight: new Timeless.RequestCore(highlightDownloadFile, {
+      client: props.client,
+    }),
+    open: new Timeless.RequestCore(openURL, {
       client: props.client,
     }),
   };
@@ -367,9 +462,7 @@ export function DownloadTaskPanelModel(props = {}) {
     const nextTask = normalizeRuntimeTask(rawTask);
     if (!nextTask.task_id) return;
     const current = tasks_.value || [];
-    const idx = current.findIndex(
-      (task) => task.task_id === nextTask.task_id || task.id === nextTask.id,
-    );
+    const idx = current.findIndex((task) => task.task_id === nextTask.task_id);
     const matches = tabMatchesStatus(active_tab_.value, nextTask.status);
     if (idx >= 0) {
       const prevTask = current[idx];
@@ -399,7 +492,7 @@ export function DownloadTaskPanelModel(props = {}) {
 
   function removeRuntimeTask(rawTask) {
     const id =
-      readTaskField(rawTask, "id", "ID") || rawTask?.task_id || rawTask;
+      rawTask?.task_id || readTaskField(rawTask, "id", "ID") || rawTask;
     if (!id) return;
     const current = tasks_.value || [];
     const found = current.find((task) => task.task_id === id || task.id === id);
@@ -410,11 +503,20 @@ export function DownloadTaskPanelModel(props = {}) {
     }
   }
 
+  function downloadTaskID(task) {
+    const id = Number(task?.id || 0);
+    return Number.isFinite(id) && id > 0 ? id : 0;
+  }
+
   function handleWSMessage(message) {
     if (!message || !message.type) return;
     if (message.type === "event") {
       const data = message.data || {};
-      mergeRuntimeTask(data.Task || data.task);
+      const task = data.Task || data.task;
+      if (task && (data.error || data.Err)) {
+        task.error = data.error || data.Err;
+      }
+      mergeRuntimeTask(task);
       return;
     }
     if (message.type === "batch_tasks" || message.type === "tasks") {
@@ -583,17 +685,37 @@ export function DownloadTaskPanelModel(props = {}) {
         return load(1);
       },
       start(task) {
+        const id = downloadTaskID(task);
+        if (!id) {
+          props.app?.tip?.({
+            type: "error",
+            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+          });
+          return null;
+        }
         return act(
-          () => reqs.start.run({ download_task_id: task.id }),
+          () => reqs.start.run({ download_task_id: id }),
           "已开始下载",
         );
       },
       retry(task) {
         return act(() => reqs.retry.run({ id: task.id }), "已重试下载");
       },
-      remove(task) {
+      remove(task, deleteFile = false) {
+        const id = downloadTaskID(task);
+        if (!id) {
+          props.app?.tip?.({
+            type: "error",
+            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+          });
+          return null;
+        }
         return act(
-          () => reqs.remove.run({ download_task_id: task.id }),
+          () =>
+            reqs.remove.run({
+              download_task_id: id,
+              delete_file: !!deleteFile,
+            }),
           "已删除下载任务",
         );
       },
@@ -609,6 +731,20 @@ export function DownloadTaskPanelModel(props = {}) {
       },
       play(task) {
         window.open(`/api/download_task/play?id=${task.id}`, "_blank");
+      },
+      openInBrowser(task) {
+        if (!task.id) {
+          props.app?.tip?.({
+            type: "warning",
+            text: ["该任务缺少数据库下载任务 ID，请刷新列表后重试"],
+          });
+          return null;
+        }
+        const url = new URL(
+          `/api/download_task/play?id=${encodeURIComponent(task.id)}`,
+          getAPIClientOrigin() || window.location.origin,
+        ).toString();
+        return act(() => reqs.open.run({ url }), "已在浏览器打开");
       },
     },
   };

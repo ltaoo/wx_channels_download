@@ -940,7 +940,7 @@
             "content": {
               "application/json": {
                 "examples": {
-                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "platform_id": "wx_channels", "platform_name": "微信视频号", "platform": { "id": "wx_channels", "code": "wx_channels", "name": "微信视频号", "homepage": "https://channels.weixin.qq.com", "logo_url": "/public/WechatChannels_A.png", "entry_url": "https://channels.weixin.qq.com" }, "nickname": "示例账号", "avatar_url": "https://wx.qlogo.cn/xxx", "external_id": "v2_xxx@finder", "video_accounts": [] }] } } }
+                  "success": { "summary": "成功", "value": { "code": 0, "msg": "成功", "data": { "list": [{ "id": 1, "platform_id": "wx_channels", "platform_name": "微信视频号", "platform": { "id": "wx_channels", "code": "wx_channels", "name": "微信视频号", "homepage": "https://channels.weixin.qq.com", "logo_url": "/public/WechatChannels_A.png", "entry_url": "https://channels.weixin.qq.com" }, "nickname": "示例账号", "avatar_url": "https://wx.qlogo.cn/xxx", "external_id": "v2_xxx@finder", "content_count": 1, "has_content": true, "content_accounts": [] }] } } }
                 }
               }
             }
@@ -951,8 +951,8 @@
     "/api/account/synchronize": {
       "post": {
         "tags": ["平台"],
-        "summary": "同步账号视频列表并入库（兼容 wx_channels_api）",
-        "description": "通过视频号 ws 调用拉取指定账号的视频列表，并 upsert 写入 account/video/video_account。",
+        "summary": "同步账号内容列表并入库（兼容 wx_channels_api）",
+        "description": "通过视频号 ws 调用拉取指定账号的内容列表，并 upsert 写入 account/content/content_account。",
         "requestBody": {
           "required": true,
           "content": {

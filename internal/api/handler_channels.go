@@ -224,12 +224,12 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	task := c.downloader.GetTask(id)
 	if task != nil && profile != nil && c.channelsUploadService != nil {
-		video, err := c.channelsUploadService.HandleChannelsFeed(profile)
+		content, err := c.channelsUploadService.HandleChannelsFeed(profile)
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
-		} else if video != nil {
-			if _, err := c.channelsUploadService.CreateDownloadTaskWithVideo(video, task, "admin"); err != nil {
-				c.logger.Warn().Err(err).Msg("CreateDownloadTaskWithVideo failed")
+		} else if content != nil {
+			if _, err := c.CreateContentDownloadTask(content, task, "admin"); err != nil {
+				c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
 			}
 		}
 	}

@@ -13,6 +13,7 @@ type TaskFilter struct {
 type TaskInfo struct {
 	ID        string
 	Status    string
+	Error     string
 	Name      string
 	Path      string
 	Progress  *TaskProgress
@@ -60,6 +61,7 @@ func ConvertTask(t *downloadpkg.Task) *TaskInfo {
 	info := &TaskInfo{
 		ID:        t.ID,
 		Status:    string(t.Status),
+		Error:     t.Error,
 		CreatedAt: t.CreatedAt.UnixMilli(),
 		UpdatedAt: t.UpdatedAt.UnixMilli(),
 	}
@@ -133,4 +135,3 @@ type FeedContact struct {
 	Nickname  string
 	AvatarURL string
 }
-

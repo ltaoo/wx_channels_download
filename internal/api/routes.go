@@ -44,6 +44,7 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
 		c.engine.POST("/api/open_file", c.handleHighlightFileInFolder)
 		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
+		c.engine.POST("/api/open", c.handleOpenURL)
 	}
 	// 下载任务接口
 	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)

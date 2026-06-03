@@ -140,57 +140,8 @@ CREATE TABLE IF NOT EXISTS `account` (
   `deleted_at` INTEGER
 );
 
--- 视频/媒体表 (Video) - 下载的视频记录
-CREATE TABLE IF NOT EXISTS `video` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `platform_id` TEXT NOT NULL, -- 来源平台
-  `download_task_id` INTEGER, --关联的下载任务
-  `title` TEXT, -- 视频标题
-  `description` TEXT, -- 视频描述
-  `external_id1` TEXT, -- 平台侧视频Id (如 视频号的oid)
-  `external_id2` TEXT, -- 平台侧额外数据2 (如 视频号的nid)
-  `external_id3` TEXT, -- 平台侧额外数据3 (如 视频号的key)
-  `metadata` TEXT, -- 平台侧数据 JSON
-  `url` TEXT, -- 视频原始链接
-  `source_url` TEXT, -- 视频来源地址（页面地址）
-  `cover_url` TEXT, -- 封面图链接
-  `cover_width` TEXT, -- 封面图宽度
-  `cover_height` TEXT, -- 封面图高度
-  `size` INTEGER, -- 大小（字节）
-  `duration` INTEGER, -- 时长 (秒)
-  `publish_time` INTEGER, -- 发布时间
-  `play_times` INTEGER DEFAULT 0, -- 播放次数
-  `unread` INTEGER DEFAULT 0, -- 1需要展示红点 2已读
-  `source_deleted` INTEGER DEFAULT 0, --远端是否被删除
-  `validated` INTEGER DEFAULT 0, -- 是否可用（视频号视频需要解密，如果解密成功 这里就是 1）
-  `created_at` INTEGER NOT NULL DEFAULT 0,
-  `updated_at` INTEGER NOT NULL DEFAULT 0,
-  `deleted_at` INTEGER
-);
-
--- 视频与帐号关联表 (多对多) - 记录视频归属的帐号 (合拍/联名)
-CREATE TABLE IF NOT EXISTS `video_account` (
-  `video_id` INTEGER NOT NULL,
-  `account_id` INTEGER NOT NULL,
-  `role` TEXT,
-  `deleted_at` INTEGER,
-
-  PRIMARY KEY (`video_id`, `account_id`)
-);
-
--- 视频与网红关联表 (多对多) - 记录视频出镜或关联的网红
-CREATE TABLE IF NOT EXISTS `video_influencer` (
-  `video_id` INTEGER NOT NULL,
-  `influencer_id` INTEGER NOT NULL,
-  `role` TEXT,
-  `deleted_at` INTEGER,
-
-  PRIMARY KEY (`video_id`, `influencer_id`)
-);
-
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_account_platform_external ON `account` (`platform_id`, `external_id`);
-CREATE INDEX IF NOT EXISTS idx_video_platform_external ON `video` (`platform_id`, `external_id1`);
 
 -- 下载任务表 (DownloadTask)
 CREATE TABLE IF NOT EXISTS `download_task` (

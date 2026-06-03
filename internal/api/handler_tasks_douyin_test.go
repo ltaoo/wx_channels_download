@@ -10,12 +10,12 @@ import (
 	"wx_channel/pkg/douyin"
 )
 
-func TestUpsertDouyinVideoCreatesDouyinRecords(t *testing.T) {
+func TestUpsertDouyinContentCreatesDouyinRecords(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Account{}, &model.Video{}, &model.VideoAccount{}); err != nil {
+	if err := db.AutoMigrate(&model.Account{}, &model.Content{}, &model.ContentAccount{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -32,12 +32,12 @@ func TestUpsertDouyinVideoCreatesDouyinRecords(t *testing.T) {
 		AuthorAvatarURL: "https://example.com/avatar.jpg",
 	}
 
-	video, err := client.upsertDouyinVideo(info, "https://v.douyin.com/share/")
+	content, err := client.upsertDouyinContent(info, "https://v.douyin.com/share/")
 	if err != nil {
-		t.Fatalf("upsertDouyinVideo() error = %v", err)
+		t.Fatalf("upsertDouyinContent() error = %v", err)
 	}
-	if video.PlatformId != "douyin" || video.ExternalId1 != "video_1" {
-		t.Fatalf("unexpected video: %#v", video)
+	if content.PlatformId != "douyin" || content.ExternalId != "video_1" || content.ContentType != "video" {
+		t.Fatalf("unexpected content: %#v", content)
 	}
 
 	var account model.Account
@@ -48,9 +48,9 @@ func TestUpsertDouyinVideoCreatesDouyinRecords(t *testing.T) {
 		t.Fatalf("unexpected account: %#v", account)
 	}
 
-	var link model.VideoAccount
-	if err := db.Where("video_id = ? AND account_id = ?", video.Id, account.Id).First(&link).Error; err != nil {
-		t.Fatalf("load video account link: %v", err)
+	var link model.ContentAccount
+	if err := db.Where("content_id = ? AND account_id = ?", content.Id, account.Id).First(&link).Error; err != nil {
+		t.Fatalf("load content account link: %v", err)
 	}
 	if link.Role != "owner" {
 		t.Fatalf("unexpected link: %#v", link)
@@ -58,12 +58,12 @@ func TestUpsertDouyinVideoCreatesDouyinRecords(t *testing.T) {
 
 	info.Title = "抖音视频更新"
 	info.AuthorNickname = "作者更新"
-	video, err = client.upsertDouyinVideo(info, "https://v.douyin.com/share/")
+	content, err = client.upsertDouyinContent(info, "https://v.douyin.com/share/")
 	if err != nil {
-		t.Fatalf("second upsertDouyinVideo() error = %v", err)
+		t.Fatalf("second upsertDouyinContent() error = %v", err)
 	}
-	if video.Title != "抖音视频更新" {
-		t.Fatalf("expected updated video title, got %q", video.Title)
+	if content.Title != "抖音视频更新" {
+		t.Fatalf("expected updated content title, got %q", content.Title)
 	}
 	if err := db.Where("platform_id = ? AND external_id = ?", "douyin", "author_1").First(&account).Error; err != nil {
 		t.Fatalf("reload douyin account: %v", err)

@@ -64,51 +64,6 @@ type Account struct {
 
 func (Account) TableName() string { return "account" }
 
-type Video struct {
-	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	PlatformId     string `gorm:"not null;index:idx_video_platform_external,priority:1" json:"platform_id"`
-	DownloadTaskId *int   `json:"download_task_id"`
-	Title          string `json:"title"`
-	Description    string `json:"description"`
-	ExternalId1    string `gorm:"index:idx_video_platform_external,priority:2" json:"external_id1"`
-	ExternalId2    string `json:"external_id2"`
-	ExternalId3    string `json:"external_id3"`
-	Metadata       string `json:"metadata"`
-	URL            string `json:"url"`
-	SourceURL      string `json:"source_url"`
-	CoverURL       string `json:"cover_url"`
-	CoverWidth     string `json:"cover_width"`
-	CoverHeight    string `json:"cover_height"`
-	Size           int64  `json:"size"`
-	Duration       int64  `json:"duration"`
-	PublishTime    int64  `json:"publish_time"`
-	PlayTimes      int64  `json:"play_times"`
-	Unread         int    `json:"unread"`
-	SourceDeleted  int    `json:"source_deleted"`
-	Validated      int    `json:"validated"`
-	Timestamps
-}
-
-func (Video) TableName() string { return "video" }
-
-type VideoAccount struct {
-	VideoId   int    `gorm:"primaryKey" json:"video_id"`
-	AccountId int    `gorm:"primaryKey" json:"account_id"`
-	Role      string `json:"role"`
-	DeletedAt *int64 `gorm:"column:deleted_at;index" json:"deleted_at"`
-}
-
-func (VideoAccount) TableName() string { return "video_account" }
-
-type VideoInfluencer struct {
-	VideoId      int    `gorm:"primaryKey" json:"video_id"`
-	InfluencerId int    `gorm:"primaryKey" json:"influencer_id"`
-	Role         string `json:"role"`
-	DeletedAt    *int64 `gorm:"column:deleted_at;index" json:"deleted_at"`
-}
-
-func (VideoInfluencer) TableName() string { return "video_influencer" }
-
 type WXVideoAccess struct {
 	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	AccountId   int    `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:1" json:"account_id"`

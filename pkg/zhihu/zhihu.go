@@ -1,0 +1,758 @@
+package zhihu
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"html"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/spf13/viper"
+)
+
+const (
+	Protocol  = "zhihu"
+	SourceURL = "https://www.zhihu.com/"
+)
+
+var answerURLRe = regexp.MustCompile(`^/question/([0-9]+)/answer/([0-9]+)$`)
+
+type Client struct {
+	HTTPClient *http.Client
+	OnProgress func(downloaded int64)
+}
+
+type AnswerURL struct {
+	QuestionID string
+	AnswerID   string
+	Canonical  string
+}
+
+type User struct {
+	ID                string `json:"id"`
+	URL               string `json:"url"`
+	URLToken          string `json:"urlToken"`
+	URLTokenSnake     string `json:"url_token"`
+	Name              string `json:"name"`
+	Headline          string `json:"headline"`
+	AvatarURL         string `json:"avatarUrl"`
+	AvatarURLSnake    string `json:"avatar_url"`
+	AvatarURLTemplate string `json:"avatarUrlTemplate"`
+}
+
+type Question struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Detail  string `json:"detail"`
+	Excerpt string `json:"excerpt"`
+	Author  User   `json:"author"`
+}
+
+type Answer struct {
+	ID           string `json:"id"`
+	Content      string `json:"content"`
+	Excerpt      string `json:"excerpt"`
+	CommentCount int    `json:"commentCount"`
+	CreatedTime  int64  `json:"createdTime"`
+	UpdatedTime  int64  `json:"updatedTime"`
+	Author       User   `json:"author"`
+}
+
+type Comment struct {
+	ID          string
+	ContentHTML string
+	ContentText string
+	CreatedTime int64
+	Author      User
+	ReplyTo     *User
+	Replies     []Comment
+}
+
+type AnswerPage struct {
+	URL      AnswerURL
+	Source   string
+	Question Question
+	Answer   Answer
+	Comments []Comment
+}
+
+func ParseAnswerURL(rawURL string) (AnswerURL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return AnswerURL{}, false
+	}
+	if !strings.EqualFold(parsed.Hostname(), "www.zhihu.com") {
+		return AnswerURL{}, false
+	}
+	matches := answerURLRe.FindStringSubmatch(parsed.EscapedPath())
+	if len(matches) != 3 {
+		return AnswerURL{}, false
+	}
+	canonical := "https://www.zhihu.com/question/" + matches[1] + "/answer/" + matches[2]
+	return AnswerURL{QuestionID: matches[1], AnswerID: matches[2], Canonical: canonical}, true
+}
+
+func ResolveRealURL(rawURL string) string {
+	if strings.HasPrefix(strings.ToLower(rawURL), Protocol+"://") {
+		rawURL = rawURL[len(Protocol+"://"):]
+		if !strings.HasPrefix(strings.ToLower(rawURL), "http") {
+			rawURL = "https://" + rawURL
+		}
+	}
+	return rawURL
+}
+
+func (c *Client) FetchAnswerPage(rawURL string) (*AnswerPage, error) {
+	answerURL, ok := ParseAnswerURL(ResolveRealURL(rawURL))
+	if !ok {
+		return nil, fmt.Errorf("unsupported zhihu answer url")
+	}
+	body, err := c.doBytes(http.MethodGet, answerURL.Canonical, answerURL.Canonical)
+	if err != nil {
+		return nil, err
+	}
+	page, err := parseAnswerPage(body, answerURL)
+	if err != nil {
+		return nil, err
+	}
+	page.Source = answerURL.Canonical
+	if page.Answer.CommentCount > 0 {
+		if comments, err := c.fetchAnswerComments(answerURL); err == nil {
+			page.Comments = comments
+		}
+	}
+	return page, nil
+}
+
+func (c *Client) BuildHTMLFromURL(rawURL string) (string, error) {
+	page, err := c.FetchAnswerPage(rawURL)
+	if err != nil {
+		return "", err
+	}
+	content := BuildHTML(page)
+	content, err = c.inlineRemoteImages(content, page.Source)
+	if err != nil {
+		return "", err
+	}
+	return content, nil
+}
+
+func (c *Client) doBytes(method, rawURL, referer string) ([]byte, error) {
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	req, err := http.NewRequest(method, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	setHeaders(req, referer)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("zhihu status %d url=%s body=%s", resp.StatusCode, rawURL, strings.TrimSpace(string(body)))
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err == nil && c.OnProgress != nil {
+		c.OnProgress(int64(len(data)))
+	}
+	return data, err
+}
+
+func (c *Client) inlineRemoteImages(content string, referer string) (string, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content))
+	if err != nil {
+		return "", err
+	}
+	var firstErr error
+	doc.Find("img[src]").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		src, _ := s.Attr("src")
+		src = normalizeAssetURL(src, referer)
+		if src == "" || strings.HasPrefix(src, "data:") {
+			return true
+		}
+		dataURI, err := c.fetchImageDataURI(src, referer)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			return true
+		}
+		s.SetAttr("src", dataURI)
+		return true
+	})
+	if firstErr != nil {
+		return "", firstErr
+	}
+	out, err := doc.Html()
+	if err != nil {
+		return "", err
+	}
+	return "<!doctype html>" + out, nil
+}
+
+func (c *Client) fetchImageDataURI(rawURL string, referer string) (string, error) {
+	body, contentType, err := c.doImageBytes(rawURL, referer)
+	if err != nil {
+		return "", err
+	}
+	if contentType == "" {
+		contentType = http.DetectContentType(body)
+	}
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	if contentType == "" || contentType == "application/octet-stream" {
+		if ext := strings.ToLower(pathExt(rawURL)); ext != "" {
+			contentType = mime.TypeByExtension(ext)
+		}
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(body), nil
+}
+
+func (c *Client) doImageBytes(rawURL string, referer string) ([]byte, string, error) {
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	setHeaders(req, referer)
+	req.Header.Set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, "", fmt.Errorf("zhihu image status %d url=%s body=%s", resp.StatusCode, rawURL, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	if err == nil && c.OnProgress != nil {
+		c.OnProgress(int64(len(body)))
+	}
+	return body, resp.Header.Get("content-type"), err
+}
+
+func setHeaders(req *http.Request, referer string) {
+	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7")
+	req.Header.Set("accept-language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "document")
+	req.Header.Set("sec-fetch-mode", "navigate")
+	req.Header.Set("sec-fetch-site", "none")
+	req.Header.Set("upgrade-insecure-requests", "1")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36")
+	if referer != "" {
+		req.Header.Set("referer", referer)
+	}
+	if cookie := strings.TrimSpace(viper.GetString("zhihu.cookie")); cookie != "" {
+		req.Header.Set("cookie", cookie)
+	}
+}
+
+func parseAnswerPage(body []byte, answerURL AnswerURL) (*AnswerPage, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
+	if raw == "" {
+		return nil, fmt.Errorf("missing zhihu initial data")
+	}
+	var state struct {
+		InitialState struct {
+			Entities struct {
+				Questions map[string]Question `json:"questions"`
+				Answers   map[string]Answer   `json:"answers"`
+			} `json:"entities"`
+		} `json:"initialState"`
+	}
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	question := state.InitialState.Entities.Questions[answerURL.QuestionID]
+	answer := state.InitialState.Entities.Answers[answerURL.AnswerID]
+	if question.ID == "" || answer.ID == "" {
+		return nil, fmt.Errorf("missing zhihu question or answer entity")
+	}
+	return &AnswerPage{
+		URL:      answerURL,
+		Source:   answerURL.Canonical,
+		Question: question,
+		Answer:   answer,
+	}, nil
+}
+
+func (c *Client) fetchAnswerComments(answerURL AnswerURL) ([]Comment, error) {
+	comments, err := c.fetchAnswerRootComments(answerURL)
+	if err == nil {
+		return comments, nil
+	}
+	return c.fetchAnswerCommentsV5(answerURL)
+}
+
+func (c *Client) fetchAnswerRootComments(answerURL AnswerURL) ([]Comment, error) {
+	endpoint := fmt.Sprintf("/api/v4/answers/%s/root_comments?limit=20&offset=0&order=normal&status=open", url.PathEscape(answerURL.AnswerID))
+	var comments []Comment
+	for endpoint != "" {
+		body, err := c.doAPIBytes(endpoint, answerURL.Canonical)
+		if err != nil {
+			return nil, err
+		}
+		var resp struct {
+			Data   []commentPayload `json:"data"`
+			Paging struct {
+				IsEnd bool   `json:"is_end"`
+				Next  string `json:"next"`
+			} `json:"paging"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+		for _, item := range resp.Data {
+			comments = append(comments, item.toComment())
+		}
+		if resp.Paging.IsEnd || resp.Paging.Next == "" || len(comments) >= 200 {
+			break
+		}
+		endpoint = endpointFromURL(resp.Paging.Next)
+	}
+	return comments, nil
+}
+
+func (c *Client) fetchAnswerCommentsV5(answerURL AnswerURL) ([]Comment, error) {
+	endpoint := fmt.Sprintf("/api/v4/comment_v5/answers/%s/root_comment?order_by=score&limit=20&offset=0&status=open", url.PathEscape(answerURL.AnswerID))
+	body, err := c.doAPIBytes(endpoint, answerURL.Canonical)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data []commentPayload `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	comments := make([]Comment, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		comments = append(comments, item.toComment())
+	}
+	return comments, nil
+}
+
+func (c *Client) doAPIBytes(endpoint, referer string) ([]byte, error) {
+	if !strings.HasPrefix(endpoint, "/") {
+		return nil, fmt.Errorf("invalid zhihu api endpoint")
+	}
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	req, err := http.NewRequest(http.MethodGet, SourceURL+strings.TrimPrefix(endpoint, "/"), nil)
+	if err != nil {
+		return nil, err
+	}
+	setAPIHeaders(req, endpoint, referer)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("zhihu api status %d url=%s body=%s", resp.StatusCode, req.URL.String(), strings.TrimSpace(string(body)))
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err == nil && c.OnProgress != nil {
+		c.OnProgress(int64(len(data)))
+	}
+	return data, err
+}
+
+func setAPIHeaders(req *http.Request, endpoint, referer string) {
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("priority", "u=1, i")
+	req.Header.Set("sec-ch-ua", `"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-origin")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+	req.Header.Set("x-requested-with", "fetch")
+	if referer != "" {
+		req.Header.Set("referer", referer)
+	}
+	cookie := strings.TrimSpace(viper.GetString("zhihu.cookie"))
+	if cookie != "" {
+		req.Header.Set("cookie", cookie)
+		if dc0 := strings.Trim(getCookieValue(cookie, "d_c0"), `"`); dc0 != "" {
+			for k, v := range buildSignedHeader(endpoint, dc0) {
+				req.Header.Set(k, v)
+			}
+		}
+	}
+}
+
+func endpointFromURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if parsed.Host != "" && !strings.EqualFold(parsed.Hostname(), "www.zhihu.com") {
+		return ""
+	}
+	if parsed.RawQuery == "" {
+		return parsed.EscapedPath()
+	}
+	return parsed.EscapedPath() + "?" + parsed.RawQuery
+}
+
+type commentPayload struct {
+	ID         json.RawMessage  `json:"id"`
+	Content    string           `json:"content"`
+	ContentTag string           `json:"content_tag"`
+	Created    int64            `json:"created_time"`
+	CreatedAt  int64            `json:"createdAt"`
+	Author     User             `json:"author"`
+	ReplyTo    *User            `json:"reply_to_author"`
+	Child      []commentPayload `json:"child_comments"`
+}
+
+func (p commentPayload) toComment() Comment {
+	created := p.Created
+	if created == 0 {
+		created = p.CreatedAt
+	}
+	content := firstNonEmpty(p.Content, p.ContentTag)
+	comment := Comment{
+		ID:          rawIDString(p.ID),
+		ContentHTML: content,
+		ContentText: htmlToText(content),
+		CreatedTime: created,
+		Author:      p.Author,
+		ReplyTo:     p.ReplyTo,
+	}
+	for _, child := range p.Child {
+		comment.Replies = append(comment.Replies, child.toComment())
+	}
+	return comment
+}
+
+func rawIDString(raw json.RawMessage) string {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err == nil {
+		return number.String()
+	}
+	return strings.Trim(string(raw), `"`)
+}
+
+func BuildHTML(page *AnswerPage) string {
+	if page == nil {
+		return ""
+	}
+	var b strings.Builder
+	title := strings.TrimSpace(page.Question.Title)
+	if title == "" {
+		title = "知乎回答"
+	}
+	b.WriteString("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</title><style>")
+	b.WriteString(`body{margin:0;background:#f6f6f6;color:#1f2329;font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:760px;margin:0 auto;padding:32px 18px 56px;background:#fff;min-height:100vh}h1{font-size:28px;line-height:1.35;margin:0 0 12px}h2{font-size:20px;margin:34px 0 12px;border-top:1px solid #e7e9ee;padding-top:24px}.meta{color:#69707a;font-size:14px;margin:0 0 18px}.author{display:flex;gap:12px;align-items:center;margin:0 0 18px;color:#69707a;font-size:14px}.avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#edf0f3;flex:0 0 auto}.author-name{font-weight:600;color:#1f2329}.content p{margin:0 0 14px}.content img{max-width:100%;height:auto}.comment{border-top:1px solid #edf0f3;padding:14px 0}.reply{margin-left:18px;border-left:3px solid #edf0f3;padding-left:12px}.source{word-break:break-all}a{color:#175199;text-decoration:none}a:hover{text-decoration:underline}`)
+	b.WriteString("</style></head><body><main>")
+	b.WriteString("<h1>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</h1><p class=\"meta\">问题作者：")
+	b.WriteString(html.EscapeString(displayName(page.Question.Author)))
+	b.WriteString(" · 问题原始链接：<a href=\"")
+	b.WriteString(html.EscapeString(questionURL(page)))
+	b.WriteString("\">")
+	b.WriteString(html.EscapeString(questionURL(page)))
+	b.WriteString("</a>")
+	b.WriteString("</p>")
+	if strings.TrimSpace(page.Question.Detail) != "" {
+		b.WriteString("<section class=\"content\">")
+		b.WriteString(sanitizeFragment(page.Question.Detail))
+		b.WriteString("</section>")
+	} else if strings.TrimSpace(page.Question.Excerpt) != "" {
+		b.WriteString("<p>")
+		b.WriteString(html.EscapeString(page.Question.Excerpt))
+		b.WriteString("</p>")
+	}
+	b.WriteString("<h2>回答</h2>")
+	writeAuthorBlock(&b, "回答作者", page.Answer.Author, page.Source)
+	if page.Answer.CreatedTime > 0 {
+		b.WriteString("<p class=\"meta\">发布于 ")
+		b.WriteString(html.EscapeString(formatTime(page.Answer.CreatedTime)))
+		b.WriteString("</p>")
+	}
+	b.WriteString("<section class=\"content\">")
+	b.WriteString(sanitizeFragment(page.Answer.Content))
+	b.WriteString("</section>")
+	if len(page.Comments) > 0 {
+		b.WriteString("<h2>回答评论</h2>")
+		for _, comment := range page.Comments {
+			writeComment(&b, comment, false)
+		}
+	}
+	b.WriteString("<h2>来源</h2><p class=\"source\"><a href=\"")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("\">")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("</a></p></main></body></html>")
+	return b.String()
+}
+
+func writeComment(b *strings.Builder, comment Comment, reply bool) {
+	className := "comment"
+	if reply {
+		className += " reply"
+	}
+	b.WriteString("<div class=\"")
+	b.WriteString(className)
+	b.WriteString("\"><p class=\"meta\">评论作者：")
+	b.WriteString(html.EscapeString(displayName(comment.Author)))
+	if comment.ReplyTo != nil && displayName(*comment.ReplyTo) != "" {
+		b.WriteString(" 回复 ")
+		b.WriteString(html.EscapeString(displayName(*comment.ReplyTo)))
+	}
+	b.WriteString("</p><div class=\"content\">")
+	if comment.ContentHTML != "" {
+		b.WriteString(sanitizeFragment(comment.ContentHTML))
+	} else {
+		b.WriteString("<p>")
+		b.WriteString(html.EscapeString(comment.ContentText))
+		b.WriteString("</p>")
+	}
+	b.WriteString("</div>")
+	for _, child := range comment.Replies {
+		writeComment(b, child, true)
+	}
+	b.WriteString("</div>")
+}
+
+func writeAuthorBlock(b *strings.Builder, label string, user User, fallbackURL string) {
+	profileURL := authorURL(user)
+	if profileURL == "" {
+		profileURL = fallbackURL
+	}
+	b.WriteString("<div class=\"author\">")
+	if avatar := avatarURL(user); avatar != "" {
+		b.WriteString("<img class=\"avatar\" src=\"")
+		b.WriteString(html.EscapeString(avatar))
+		b.WriteString("\" alt=\"")
+		b.WriteString(html.EscapeString(displayName(user)))
+		b.WriteString("\">")
+	}
+	b.WriteString("<div>")
+	b.WriteString(html.EscapeString(label))
+	b.WriteString("：")
+	if profileURL != "" {
+		b.WriteString("<a class=\"author-name\" href=\"")
+		b.WriteString(html.EscapeString(profileURL))
+		b.WriteString("\">")
+		b.WriteString(html.EscapeString(displayName(user)))
+		b.WriteString("</a>")
+	} else {
+		b.WriteString("<span class=\"author-name\">")
+		b.WriteString(html.EscapeString(displayName(user)))
+		b.WriteString("</span>")
+	}
+	if strings.TrimSpace(user.Headline) != "" {
+		b.WriteString("<br>")
+		b.WriteString(html.EscapeString(user.Headline))
+	}
+	b.WriteString("</div></div>")
+}
+
+func sanitizeFragment(fragment string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader("<div id=\"wx-zhihu-root\">" + fragment + "</div>"))
+	if err != nil {
+		return html.EscapeString(htmlToText(fragment))
+	}
+	root := doc.Find("#wx-zhihu-root")
+	root.Find("script,style,iframe,button,svg").Remove()
+	root.Find("img").Each(func(_ int, s *goquery.Selection) {
+		if src := bestZhihuImageSrc(s); src != "" {
+			s.SetAttr("src", src)
+		}
+	})
+	root.Find("*").Each(func(_ int, s *goquery.Selection) {
+		for _, node := range s.Nodes {
+			sort.Slice(node.Attr, func(i, j int) bool {
+				return node.Attr[i].Key < node.Attr[j].Key
+			})
+			attrs := node.Attr[:0]
+			for _, attr := range node.Attr {
+				key := strings.ToLower(attr.Key)
+				if key == "href" || key == "src" || key == "alt" || key == "title" || key == "width" || key == "height" {
+					attrs = append(attrs, attr)
+				}
+			}
+			node.Attr = attrs
+		}
+	})
+	out, err := root.Html()
+	if err != nil {
+		return html.EscapeString(htmlToText(fragment))
+	}
+	return out
+}
+
+func bestZhihuImageSrc(s *goquery.Selection) string {
+	for _, attr := range []string{"data-original", "data-actualsrc", "data-default-watermark-src", "src"} {
+		value, ok := s.Attr(attr)
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value == "" || isPlaceholderImage(value) {
+			continue
+		}
+		return value
+	}
+	return ""
+}
+
+func FirstImageURL(fragment string, base string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader("<div id=\"wx-zhihu-root\">" + fragment + "</div>"))
+	if err != nil {
+		return ""
+	}
+	var imageURL string
+	doc.Find("#wx-zhihu-root img").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		src := normalizeAssetURL(bestZhihuImageSrc(s), base)
+		if src == "" || strings.HasPrefix(src, "data:") {
+			return true
+		}
+		imageURL = src
+		return false
+	})
+	return imageURL
+}
+
+func isPlaceholderImage(rawURL string) bool {
+	lower := strings.ToLower(rawURL)
+	return strings.Contains(lower, "data:image/svg") ||
+		strings.Contains(lower, "placeholder") ||
+		strings.Contains(lower, "loading") ||
+		strings.Contains(lower, "blank")
+}
+
+func htmlToText(fragment string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(fragment))
+	if err != nil {
+		return strings.TrimSpace(fragment)
+	}
+	return strings.TrimSpace(doc.Text())
+}
+
+func displayName(user User) string {
+	return firstNonEmpty(user.Name, user.URLToken, user.URLTokenSnake, user.ID, "匿名用户")
+}
+
+func avatarURL(user User) string {
+	return firstNonEmpty(user.AvatarURL, user.AvatarURLSnake, user.AvatarURLTemplate)
+}
+
+func authorURL(user User) string {
+	token := firstNonEmpty(user.URLToken, user.URLTokenSnake)
+	if token != "" {
+		return "https://www.zhihu.com/people/" + url.PathEscape(token)
+	}
+	if strings.HasPrefix(user.URL, "https://www.zhihu.com/people/") {
+		return user.URL
+	}
+	return ""
+}
+
+func normalizeAssetURL(rawURL string, base string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || strings.HasPrefix(rawURL, "data:") {
+		return rawURL
+	}
+	if strings.HasPrefix(rawURL, "//") {
+		return "https:" + rawURL
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if parsed.IsAbs() {
+		if parsed.Scheme == "http" || parsed.Scheme == "https" {
+			return parsed.String()
+		}
+		return ""
+	}
+	if base == "" {
+		return ""
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	return baseURL.ResolveReference(parsed).String()
+}
+
+func pathExt(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	path := parsed.EscapedPath()
+	if idx := strings.LastIndex(path, "."); idx >= 0 {
+		return path[idx:]
+	}
+	return ""
+}
+
+func questionURL(page *AnswerPage) string {
+	if page == nil || page.URL.QuestionID == "" {
+		return ""
+	}
+	return "https://www.zhihu.com/question/" + url.PathEscape(page.URL.QuestionID)
+}
+
+func formatTime(unix int64) string {
+	return time.Unix(unix, 0).Format("2006-01-02 15:04")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}

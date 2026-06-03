@@ -25,6 +25,60 @@ import (
 	utilpkg "wx_channel/pkg/util"
 )
 
+type compatDownloadTaskID struct {
+	ID     int
+	TaskID string
+}
+
+func (id *compatDownloadTaskID) UnmarshalJSON(data []byte) error {
+	var n int
+	if err := json.Unmarshal(data, &n); err == nil {
+		id.ID = n
+		id.TaskID = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		id.ID = 0
+		id.TaskID = ""
+		return nil
+	}
+	if parsed, err := strconv.Atoi(s); err == nil {
+		id.ID = parsed
+		id.TaskID = ""
+		return nil
+	}
+	id.ID = 0
+	id.TaskID = s
+	return nil
+}
+
+func (id compatDownloadTaskID) Empty() bool {
+	return id.ID == 0 && strings.TrimSpace(id.TaskID) == ""
+}
+
+func (id compatDownloadTaskID) Find(db *gorm.DB, out *model.DownloadTask) error {
+	if id.ID > 0 {
+		return db.First(out, "id = ?", id.ID).Error
+	}
+	return db.First(out, "task_id = ?", id.TaskID).Error
+}
+
+func downloadTaskFullPath(downloadDir, filePath string) string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return ""
+	}
+	if filepath.IsAbs(filePath) {
+		return filepath.Clean(filePath)
+	}
+	return filepath.Join(downloadDir, filePath)
+}
+
 func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
@@ -381,7 +435,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 				CoverURL:   t.CoverURL,
 				Size:       t.Size,
 				Progress:   t.Progress,
-				Filepath:   t.Filepath,
+				Filepath:   downloadTaskFullPath(c.cfg.DownloadDir, t.Filepath),
 				Error:      t.Error,
 				Reason:     t.Reason,
 				Metadata1:  t.Metadata1,
@@ -530,18 +584,18 @@ func (c *APIClient) handleCompatDownloadTaskStart(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		TaskId int `json:"download_task_id"`
+		TaskId compatDownloadTaskID `json:"download_task_id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if body.TaskId == 0 {
+	if body.TaskId.Empty() {
 		result.Err(ctx, 400, "缺少 download_task_id")
 		return
 	}
 	var rec model.DownloadTask
-	if err := c.db.First(&rec, "id = ?", body.TaskId).Error; err != nil {
+	if err := body.TaskId.Find(c.db, &rec); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -667,18 +721,19 @@ func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		TaskId int `json:"download_task_id"`
+		TaskId     compatDownloadTaskID `json:"download_task_id"`
+		DeleteFile bool                 `json:"delete_file"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if body.TaskId == 0 {
+	if body.TaskId.Empty() {
 		result.Err(ctx, 400, "缺少 download_task_id")
 		return
 	}
 	var task model.DownloadTask
-	if err := c.db.First(&task, "id = ?", body.TaskId).Error; err != nil {
+	if err := body.TaskId.Find(c.db, &task); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, "未找到下载任务")
 			return
@@ -687,10 +742,10 @@ func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
 		return
 	}
 	if task.TaskId != "" {
-		_ = c.downloader.Delete(&downloadpkg.TaskFilter{IDs: []string{task.TaskId}}, true)
+		_ = c.downloader.Delete(&downloadpkg.TaskFilter{IDs: []string{task.TaskId}}, body.DeleteFile)
 	}
-	_ = c.db.Delete(&model.Video{}, "platform_id = ? AND download_task_id = ?", "wx_channels", body.TaskId).Error
-	_ = c.db.Delete(&model.DownloadTask{}, "id = ?", body.TaskId).Error
+	_ = c.db.Delete(&model.Content{}, "platform_id = ? AND download_task_id = ?", "wx_channels", task.Id).Error
+	_ = c.db.Delete(&model.DownloadTask{}, "id = ?", task.Id).Error
 	result.Ok(ctx, gin.H{"message": "删除下载任务成功"})
 }
 
@@ -734,7 +789,7 @@ func (c *APIClient) handleCompatDownloadTaskHighlightFile(ctx *gin.Context) {
 		result.Err(ctx, 500, "Missing the `file_path`")
 		return
 	}
-	fullPath := filepath.Join(c.cfg.DownloadDir, body.FilePath)
+	fullPath := downloadTaskFullPath(c.cfg.DownloadDir, body.FilePath)
 	if _, err := os.Stat(fullPath); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -932,51 +987,56 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 				duration = int64(m.Spec[0].DurationMs / 1000)
 			}
 		}
-		v := model.Video{
+		pub := int64(obj.CreateTime)
+		content := model.Content{
 			PlatformId:  "wx_channels",
+			ContentType: "video",
 			Title:       obj.ObjectDesc.Description,
 			Description: obj.ObjectDesc.Description,
-			ExternalId1: obj.ID,
+			ExternalId:  obj.ID,
 			ExternalId2: obj.ObjectNonceId,
 			ExternalId3: decodeKey,
+			ContentURL:  mediaURL,
 			URL:         mediaURL,
 			SourceURL:   obj.SourceURL,
 			CoverURL:    coverURL,
 			Size:        size,
 			Duration:    duration,
-			PublishTime: int64(obj.CreateTime),
+			PublishTime: &pub,
 			Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 		}
-		var existing model.Video
-		err := c.db.Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&existing).Error
+		var existing model.Content
+		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", obj.ID).First(&existing).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}
 		if existing.Id == 0 {
-			if err := c.db.Create(&v).Error; err == nil {
+			if err := c.db.Create(&content).Error; err == nil {
 				added++
-				existing = v
+				existing = content
 			}
 		} else {
 			updates := map[string]any{
-				"title":        v.Title,
-				"description":  v.Description,
-				"external_id2": v.ExternalId2,
-				"external_id3": v.ExternalId3,
-				"url":          v.URL,
-				"source_url":   v.SourceURL,
-				"cover_url":    v.CoverURL,
-				"size":         v.Size,
-				"duration":     v.Duration,
-				"publish_time": v.PublishTime,
+				"content_type": "video",
+				"title":        content.Title,
+				"description":  content.Description,
+				"external_id2": content.ExternalId2,
+				"external_id3": content.ExternalId3,
+				"content_url":  content.ContentURL,
+				"url":          content.URL,
+				"source_url":   content.SourceURL,
+				"cover_url":    content.CoverURL,
+				"size":         content.Size,
+				"duration":     content.Duration,
+				"publish_time": content.PublishTime,
 				"updated_at":   now,
 			}
-			if err := c.db.Model(&model.Video{}).Where("id = ?", existing.Id).Updates(updates).Error; err == nil {
+			if err := c.db.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(updates).Error; err == nil {
 				updated++
 			}
 		}
 		if accId > 0 && existing.Id > 0 {
-			link := model.VideoAccount{VideoId: existing.Id, AccountId: accId, Role: "owner"}
+			link := model.ContentAccount{ContentId: existing.Id, AccountId: accId, Role: "owner", CreatedAt: now}
 			_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 		}
 	}
@@ -988,121 +1048,4 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		},
 		"status": "synchronized",
 	})
-}
-
-func (c *APIClient) upsertAccountAndVideoFromChannelsObject(obj *channels.ChannelsObject, downloadTaskId *int) {
-	if obj == nil || c.db == nil {
-		return
-	}
-	now := utilpkg.NowMillis()
-	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(c.db, "wx_channels", obj.ID, model.AccountIdentity{
-		ExternalId: obj.Contact.Username,
-		Username:   obj.Contact.Username,
-		Nickname:   obj.Contact.Nickname,
-		AvatarURL:  obj.Contact.HeadUrl,
-	})
-	accountExternal := accountIdentity.ExternalId
-	accountId := 0
-	if accountExternal != "" {
-		var acc model.Account
-		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", accountExternal).First(&acc).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return
-		}
-		if acc.Id == 0 {
-			acc = model.Account{
-				PlatformId: "wx_channels",
-				ExternalId: accountExternal,
-				Username:   accountIdentity.Username,
-				Nickname:   accountIdentity.Nickname,
-				AvatarURL:  accountIdentity.AvatarURL,
-				Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
-			}
-			if err := c.db.Create(&acc).Error; err != nil {
-				return
-			}
-		} else {
-			_ = c.db.Model(&model.Account{}).Where("id = ?", acc.Id).Updates(map[string]any{
-				"username":    accountIdentity.Username,
-				"nickname":    accountIdentity.Nickname,
-				"avatar_url":  accountIdentity.AvatarURL,
-				"updated_at":  now,
-				"platform_id": "wx_channels",
-			}).Error
-		}
-		accountId = acc.Id
-	}
-
-	mediaURL := ""
-	coverURL := ""
-	decodeKey := ""
-	size := int64(0)
-	duration := int64(0)
-	if len(obj.ObjectDesc.Media) > 0 {
-		m := obj.ObjectDesc.Media[0]
-		mediaURL = strings.TrimSpace(m.URL + m.URLToken)
-		coverURL = m.CoverUrl
-		decodeKey = m.DecodeKey
-		size = int64(m.FileSize)
-		if len(m.Spec) > 0 {
-			duration = int64(m.Spec[0].DurationMs / 1000)
-		}
-	}
-
-	if strings.TrimSpace(obj.ID) == "" {
-		return
-	}
-
-	var v model.Video
-	err := c.db.Where("platform_id = ? AND external_id1 = ?", "wx_channels", obj.ID).First(&v).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return
-	}
-	if v.Id == 0 {
-		v = model.Video{
-			PlatformId:     "wx_channels",
-			DownloadTaskId: downloadTaskId,
-			Title:          obj.ObjectDesc.Description,
-			Description:    obj.ObjectDesc.Description,
-			ExternalId1:    obj.ID,
-			ExternalId2:    obj.ObjectNonceId,
-			ExternalId3:    decodeKey,
-			Metadata:       "",
-			URL:            mediaURL,
-			SourceURL:      obj.SourceURL,
-			CoverURL:       coverURL,
-			Size:           size,
-			Duration:       duration,
-			PublishTime:    int64(obj.CreateTime),
-			Timestamps:     model.Timestamps{CreatedAt: now, UpdatedAt: now},
-		}
-		if err := c.db.Create(&v).Error; err != nil {
-			return
-		}
-	} else {
-		updates := map[string]any{
-			"title":        obj.ObjectDesc.Description,
-			"description":  obj.ObjectDesc.Description,
-			"external_id2": obj.ObjectNonceId,
-			"external_id3": decodeKey,
-			"url":          mediaURL,
-			"source_url":   obj.SourceURL,
-			"cover_url":    coverURL,
-			"size":         size,
-			"duration":     duration,
-			"publish_time": int64(obj.CreateTime),
-			"updated_at":   now,
-		}
-		if downloadTaskId != nil {
-			updates["download_task_id"] = downloadTaskId
-		}
-		_ = c.db.Model(&model.Video{}).Where("id = ?", v.Id).Updates(updates).Error
-	}
-
-	if accountId > 0 && v.Id > 0 {
-		_ = c.db.Where("video_id = ? AND account_id <> ? AND role = ?", v.Id, accountId, "owner").Delete(&model.VideoAccount{}).Error
-		link := model.VideoAccount{VideoId: v.Id, AccountId: accountId, Role: "owner"}
-		_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
-		_ = c.db.Model(&model.VideoAccount{}).Where("video_id = ? AND account_id = ?", v.Id, accountId).Update("role", "owner").Error
-	}
 }

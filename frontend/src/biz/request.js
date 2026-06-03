@@ -199,7 +199,7 @@ export function retryDownloadTask(body) {
   return request.post("/api/download_task/retry", body);
 }
 
-/** @param {{ download_task_id: number }} body */
+/** @param {{ download_task_id: number; delete_file?: boolean }} body */
 export function deleteDownloadTask(body) {
   return request.post("/api/download_task/delete", body);
 }
@@ -207,4 +207,9 @@ export function deleteDownloadTask(body) {
 /** @param {{ file_path: string }} body */
 export function highlightDownloadFile(body) {
   return request.post("/api/download_task/highlight_file", body);
+}
+
+/** @param {{ url: string }} body */
+export function openURL(body) {
+  return request.post("/api/open", body);
 }

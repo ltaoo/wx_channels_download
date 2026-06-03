@@ -15,7 +15,7 @@ func TestHandleChannelsFeedUsesBrowseHistoryAccountIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Account{}, &model.Video{}, &model.VideoAccount{}, &model.BrowseHistory{}); err != nil {
+	if err := db.AutoMigrate(&model.Account{}, &model.Content{}, &model.ContentAccount{}, &model.BrowseHistory{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -77,12 +77,12 @@ func TestHandleChannelsFeedUsesBrowseHistoryAccountIdentity(t *testing.T) {
 		t.Fatalf("unexpected second account: %#v", accounts[1])
 	}
 
-	var links []model.VideoAccount
+	var links []model.ContentAccount
 	if err := db.Find(&links).Error; err != nil {
-		t.Fatalf("list video_account: %v", err)
+		t.Fatalf("list content_account: %v", err)
 	}
 	if len(links) != 2 {
-		t.Fatalf("expected 2 video account links, got %d: %#v", len(links), links)
+		t.Fatalf("expected 2 content account links, got %d: %#v", len(links), links)
 	}
 
 	wrong := model.Account{
@@ -95,11 +95,11 @@ func TestHandleChannelsFeedUsesBrowseHistoryAccountIdentity(t *testing.T) {
 	if err := db.Create(&wrong).Error; err != nil {
 		t.Fatalf("create wrong account: %v", err)
 	}
-	var videoB model.Video
-	if err := db.Where("external_id1 = ?", "object_b").First(&videoB).Error; err != nil {
-		t.Fatalf("load video b: %v", err)
+	var contentB model.Content
+	if err := db.Where("external_id = ?", "object_b").First(&contentB).Error; err != nil {
+		t.Fatalf("load content b: %v", err)
 	}
-	if err := db.Create(&model.VideoAccount{VideoId: videoB.Id, AccountId: wrong.Id, Role: "owner"}).Error; err != nil {
+	if err := db.Create(&model.ContentAccount{ContentId: contentB.Id, AccountId: wrong.Id, Role: "owner"}).Error; err != nil {
 		t.Fatalf("create wrong owner link: %v", err)
 	}
 	feed := apitypes.ChannelsFeedProfile{
@@ -113,7 +113,7 @@ func TestHandleChannelsFeedUsesBrowseHistoryAccountIdentity(t *testing.T) {
 	}
 	links = nil
 	if err := db.Find(&links).Error; err != nil {
-		t.Fatalf("list repaired video_account: %v", err)
+		t.Fatalf("list repaired content_account: %v", err)
 	}
 	if len(links) != 2 {
 		t.Fatalf("expected stale owner link to be removed, got %d links: %#v", len(links), links)

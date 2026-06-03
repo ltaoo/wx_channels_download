@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
@@ -175,7 +176,7 @@ func compressImage(data []byte) ([]byte, string, error) {
 }
 
 func downloadImageBytes(imgURL string) ([]byte, string, error) {
-	client := &http.Client{}
+	client := &http.Client{Timeout: 25 * time.Second}
 	req, err := http.NewRequest("GET", imgURL, nil)
 	if err != nil {
 		return nil, "", err
@@ -194,7 +195,7 @@ func downloadImageBytes(imgURL string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 	if err != nil {
 		return nil, "", err
 	}

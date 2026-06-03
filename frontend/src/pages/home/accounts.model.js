@@ -1,4 +1,4 @@
-import { fetchAccountList, synchronizeAccount } from "@/biz/request.js";
+import { fetchAccountList, openURL, synchronizeAccount } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
 function getConfig() {
@@ -36,6 +36,35 @@ function mpProxyURL(rawURL) {
   return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
 }
 
+function normalizeContent(content, options = {}) {
+  const type = String(content.content_type || content.type || "").trim();
+  const title = content.title || content.Title || content.description || "";
+  const coverURL =
+    content.cover_url || content.CoverURL || content.coverUrl || "";
+  return {
+    ...content,
+    id: content.id || content.Id || content.content_id || content.ContentId,
+    type,
+    content_type: type,
+    cover_url: coverURL,
+    display_cover_url: options.proxyImages ? mpProxyURL(coverURL) : coverURL,
+    title,
+    url:
+      content.url ||
+      content.URL ||
+      content.content_url ||
+      content.ContentURL ||
+      content.source_url ||
+      content.SourceURL ||
+      "",
+  };
+}
+
+function isArticleContent(content) {
+  const type = String(content.content_type || content.type || "").trim();
+  return type === "article";
+}
+
 function normalizeAccount(account) {
   const platformId =
     account.platform_id || account.platform?.id || account.platform?.code || "";
@@ -44,14 +73,11 @@ function normalizeAccount(account) {
     account.platform?.name ||
     platformNameOf(platformId);
   const avatarURL = account.avatar_url || "";
-  const medias = (account.video_accounts || [])
-    .map((row) => row.video || row.Video || null)
+  const proxyImages = platformId === "wx_official_account";
+  const contentMedias = (account.content_accounts || [])
+    .map((row) => row.content || row.Content || null)
     .filter(Boolean)
-    .map((video) => ({
-      ...video,
-      cover_url: video.cover_url || video.CoverURL || video.coverUrl || "",
-      title: video.title || video.Title || "",
-    }));
+    .map((content) => normalizeContent(content, { proxyImages }));
   return {
     ...account,
     nickname:
@@ -60,13 +86,12 @@ function normalizeAccount(account) {
       account.external_id ||
       "未命名帐号",
     avatar_url: avatarURL,
-    display_avatar_url:
-      platformId === "wx_official_account" ? mpProxyURL(avatarURL) : avatarURL,
+    display_avatar_url: proxyImages ? mpProxyURL(avatarURL) : avatarURL,
     platform_id: platformId,
     platform_name: platformName,
     content_count: Number(account.content_count || 0),
     has_content: !!account.has_content || Number(account.content_count || 0) > 0,
-    medias,
+    medias: contentMedias,
   };
 }
 
@@ -117,6 +142,9 @@ export function AccountsPageModel(props) {
       client: api_client$,
     }),
     synchronize: new Timeless.RequestCore(synchronizeAccount, {
+      client: api_client$,
+    }),
+    open: new Timeless.RequestCore(openURL, {
       client: api_client$,
     }),
   };
@@ -202,10 +230,22 @@ export function AccountsPageModel(props) {
         props.app.tip?.({ type: "success", text: ["同步完成"] });
         await load();
       },
-      play(video) {
-        const url = video.url || video.URL || "";
+      async play(content) {
+        const url = content.url || content.URL || "";
         if (!url) {
-          props.app.tip?.({ type: "warning", text: ["该视频没有可播放地址"] });
+          props.app.tip?.({ type: "warning", text: ["该内容没有可打开地址"] });
+          return;
+        }
+        if (isArticleContent(content)) {
+          const r = await reqs.open.run({ url });
+          if (r.error) {
+            props.app.tip?.({
+              type: "error",
+              text: [r.error.message || String(r.error)],
+            });
+            return;
+          }
+          props.app.tip?.({ type: "success", text: ["已在浏览器打开"] });
           return;
         }
         playing_url_.as(url);

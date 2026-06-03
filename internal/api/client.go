@@ -307,9 +307,19 @@ func (c *APIClient) recordDownloadTaskEvent(evt *downloadpkg.Event) {
 	if evt.Err != nil {
 		message = evt.Err.Error()
 	}
+	if evt.Key == downloadpkg.EventKeyError && message != "" {
+		_ = c.db.Model(&model.DownloadTask{}).
+			Where("task_id = ?", evt.Task.ID).
+			Updates(map[string]any{
+				"status":     5,
+				"error":      message,
+				"updated_at": util.NowMillis(),
+			}).Error
+	}
 	data := map[string]any{
 		"task_id": evt.Task.ID,
 		"status":  string(evt.Task.Status),
+		"error":   message,
 	}
 	if evt.Task.Meta != nil && evt.Task.Meta.Opts != nil {
 		data["name"] = evt.Task.Meta.Opts.Name

@@ -161,11 +161,11 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 	switch contentFilter {
 	case "with", "has", "true":
 		query = query.Where(
-			"EXISTS (SELECT 1 FROM video_account WHERE video_account.account_id = account.id) OR EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
+			"EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
 		)
 	case "without", "none", "false":
 		query = query.Where(
-			"NOT EXISTS (SELECT 1 FROM video_account WHERE video_account.account_id = account.id) AND NOT EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
+			"NOT EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
 		)
 	case "all":
 	default:
@@ -201,30 +201,30 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 
 	list := make([]gin.H, 0, len(accounts))
 	for _, acc := range accounts {
-		type vaRow struct {
-			VideoId   int    `json:"video_id"`
+		type caRow struct {
+			ContentId int    `json:"content_id"`
 			AccountId int    `json:"account_id"`
 			Role      string `json:"role"`
 		}
-		var rows []vaRow
-		_ = c.db.Table("video_account").
-			Select("video_account.video_id, video_account.account_id, video_account.role").
-			Joins("JOIN video ON video.id = video_account.video_id").
-			Where("video_account.account_id = ?", acc.Id).
-			Order("video.publish_time DESC").
+		var contentRows []caRow
+		_ = c.db.Table("content_account").
+			Select("content_account.content_id, content_account.account_id, content_account.role").
+			Joins("JOIN content ON content.id = content_account.content_id").
+			Where("content_account.account_id = ?", acc.Id).
+			Order("COALESCE(content.publish_time, content.updated_at, content.created_at) DESC").
 			Limit(10).
-			Scan(&rows).Error
+			Scan(&contentRows).Error
 
-		videoIDs := make([]int, 0, len(rows))
-		for _, r := range rows {
-			videoIDs = append(videoIDs, r.VideoId)
+		contentIDs := make([]int, 0, len(contentRows))
+		for _, r := range contentRows {
+			contentIDs = append(contentIDs, r.ContentId)
 		}
-		videoByID := map[int]model.Video{}
-		if len(videoIDs) > 0 {
-			var videos []model.Video
-			_ = c.db.Where("id IN ?", videoIDs).Find(&videos).Error
-			for _, v := range videos {
-				videoByID[v.Id] = v
+		contentByID := map[int]model.Content{}
+		if len(contentIDs) > 0 {
+			var contents []model.Content
+			_ = c.db.Where("id IN ?", contentIDs).Find(&contents).Error
+			for _, content := range contents {
+				contentByID[content.Id] = content
 			}
 		}
 
@@ -233,8 +233,6 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		if platformName == "" {
 			platformName = platformNameOf(acc.PlatformId)
 		}
-		var videoAccountCount int64
-		_ = c.db.Table("video_account").Where("account_id = ?", acc.Id).Count(&videoAccountCount).Error
 		var contentAccountCount int64
 		_ = c.db.Table("content_account").Where("account_id = ?", acc.Id).Count(&contentAccountCount).Error
 
@@ -255,16 +253,16 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			"external_id":   acc.ExternalId,
 			"created_at":    acc.CreatedAt,
 			"updated_at":    acc.UpdatedAt,
-			"content_count": videoAccountCount + contentAccountCount,
-			"has_content":   videoAccountCount+contentAccountCount > 0,
-			"video_accounts": func() any {
-				out := make([]gin.H, 0, len(rows))
-				for _, r := range rows {
+			"content_count": contentAccountCount,
+			"has_content":   contentAccountCount > 0,
+			"content_accounts": func() any {
+				out := make([]gin.H, 0, len(contentRows))
+				for _, r := range contentRows {
 					out = append(out, gin.H{
-						"video_id":   r.VideoId,
+						"content_id": r.ContentId,
 						"account_id": r.AccountId,
 						"role":       r.Role,
-						"video":      videoByID[r.VideoId],
+						"content":    contentByID[r.ContentId],
 					})
 				}
 				return out
