@@ -801,6 +801,12 @@ function normalizeProbePreviewContent(content, probe, raw) {
     probe?.source_url,
     raw?.url,
   );
+  merged.raw_data = firstNonEmpty(merged.raw_data, envelope?.data);
+  merged.warnings = [
+    ...asArray(merged.warnings),
+    ...asArray(probe?.warnings),
+    ...asArray(raw?.warnings),
+  ].filter(Boolean);
   return merged;
 }
 
@@ -834,7 +840,7 @@ function contentTypeLabel(type) {
   return map[type] || type || "内容";
 }
 
-function IconMappedType(props) {
+function IconMappedType() {
   return {
     video() {
       return Icon({
@@ -945,16 +951,31 @@ function imageURLOf(image) {
     image.url,
     image.URL,
     image.src,
+    image.Src,
     image.thumbnail_url,
+    image.thumbnailUrl,
     image.cover_url,
+    image.coverUrl,
+    image.CoverURL,
+    image.CoverUrl,
   );
 }
 
 function contentImages(content) {
+  const raw = rawPreviewData(content);
   const images = [
     ...asArray(content?.images),
+    ...asArray(content?.Images),
     ...asArray(content?.preview_images),
+    ...asArray(content?.previewImages),
     ...asArray(content?.files),
+    ...asArray(content?.Files),
+    ...asArray(raw.images),
+    ...asArray(raw.Images),
+    ...asArray(raw.preview_images),
+    ...asArray(raw.previewImages),
+    ...asArray(raw.files),
+    ...asArray(raw.Files),
   ]
     .map(imageURLOf)
     .filter(Boolean);
@@ -963,7 +984,20 @@ function contentImages(content) {
 }
 
 function contentCoverURL(content) {
-  return firstNonEmpty(content?.cover_url, contentImages(content)[0]);
+  const raw = rawPreviewData(content);
+  return firstNonEmpty(
+    content?.cover_url,
+    content?.coverUrl,
+    content?.CoverURL,
+    raw.cover_url,
+    raw.coverUrl,
+    raw.CoverURL,
+    raw.CoverUrl,
+    raw.image_url,
+    raw.imageUrl,
+    raw.ImageURL,
+    contentImages(content)[0],
+  );
 }
 
 function countImages(content) {
@@ -985,6 +1019,83 @@ function formatBoolean(value) {
   return value ? "是" : "否";
 }
 
+function normalizePlatformID(platform) {
+  const value = String(platform || "").trim().toLowerCase();
+  const aliases = {
+    officialaccount: "officialaccount",
+    wx_official_account: "officialaccount",
+    xhs: "xiaohongshu",
+    rednote: "xiaohongshu",
+  };
+  return aliases[value] || value;
+}
+
+function isKnownPreviewPlatform(platform) {
+  return [
+    "wx_channels",
+    "douyin",
+    "zhihu",
+    "officialaccount",
+    "youtube",
+    "xiaohongshu",
+    "weibo",
+    "bilibili",
+  ].includes(normalizePlatformID(platform));
+}
+
+function rawPreviewData(content) {
+  return content?.raw_data && typeof content.raw_data === "object"
+    ? content.raw_data
+    : {};
+}
+
+function valueAtPath(source, path) {
+  if (!source || !path) return undefined;
+  return String(path)
+    .split(".")
+    .reduce((current, key) => {
+      if (current === undefined || current === null) return undefined;
+      return current[key];
+    }, source);
+}
+
+function hasPreviewValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function previewField(content, ...paths) {
+  const sources = [content || {}, rawPreviewData(content)];
+  for (const path of paths) {
+    for (const source of sources) {
+      const value = valueAtPath(source, path);
+      if (hasPreviewValue(value)) return value;
+    }
+  }
+  return "";
+}
+
+function firstPreviewText(content, ...paths) {
+  const value = previewField(content, ...paths);
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") return "";
+  return String(value).trim();
+}
+
+function previewVideoDuration(content) {
+  return formatDurationSeconds(
+    previewField(
+      content,
+      "video.duration",
+      "video.Duration",
+      "duration",
+      "Duration",
+    ),
+  );
+}
+
 function previewBadges(content) {
   const tags = [];
   if (content?.platform) tags.push(platformLabel(content.platform));
@@ -997,15 +1108,58 @@ function previewBadges(content) {
 
 function previewStats(content) {
   const stats = content?.stats || {};
+  const raw = rawPreviewData(content);
+  const rawStats = raw.stats || raw.Stats || {};
   const pairs = [
-    ["播放", firstNonEmpty(content?.play_count, stats.play_count)],
-    ["浏览", firstNonEmpty(content?.view_count, stats.view_count)],
-    ["点赞", firstNonEmpty(content?.like_count, stats.like_count)],
-    ["评论", firstNonEmpty(content?.comment_count, stats.comment_count)],
-    ["转发", firstNonEmpty(content?.repost_count, stats.repost_count)],
-    ["分享", firstNonEmpty(content?.share_count, stats.share_count)],
-    ["收藏", firstNonEmpty(content?.collect_count, stats.collect_count)],
-    ["弹幕", firstNonEmpty(content?.danmaku_count, stats.danmaku_count)],
+    [
+      "播放",
+      firstNonEmpty(content?.play_count, stats.play_count, rawStats.play_count),
+    ],
+    [
+      "浏览",
+      firstNonEmpty(content?.view_count, stats.view_count, rawStats.view_count),
+    ],
+    [
+      "点赞",
+      firstNonEmpty(content?.like_count, stats.like_count, rawStats.like_count),
+    ],
+    [
+      "评论",
+      firstNonEmpty(
+        content?.comment_count,
+        stats.comment_count,
+        rawStats.comment_count,
+        raw.commentCount,
+      ),
+    ],
+    [
+      "转发",
+      firstNonEmpty(
+        content?.repost_count,
+        stats.repost_count,
+        rawStats.repost_count,
+      ),
+    ],
+    [
+      "分享",
+      firstNonEmpty(content?.share_count, stats.share_count, rawStats.share_count),
+    ],
+    [
+      "收藏",
+      firstNonEmpty(
+        content?.collect_count,
+        stats.collect_count,
+        rawStats.collect_count,
+      ),
+    ],
+    [
+      "弹幕",
+      firstNonEmpty(
+        content?.danmaku_count,
+        stats.danmaku_count,
+        rawStats.danmaku_count,
+      ),
+    ],
   ];
   return pairs
     .map(([label, value]) => [label, formatCompactNumber(value)])
@@ -1393,25 +1547,248 @@ function ContentPreviewTags(data_) {
   });
 }
 
-function ContentPreview(props) {
-  const data_ = combine(
-    {
-      content: props.content,
-      probe: props.probe,
-      raw: props.raw,
-    },
-    ({ content, probe, raw }) =>
-      normalizeProbePreviewContent(content, probe, raw),
-  );
-
-  return View(
-    { class: "min-w-0 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900/60" },
-    [
-      View({ class: "flex items-start gap-3" }, [
+function GenericContentPreview(data_) {
+  return View({}, [
+    View({ class: "flex items-start gap-3" }, [
+      View(
+        {
+          class:
+            "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+        },
+        [
+          Show({
+            when: computed(data_, contentCoverURL),
+            ok() {
+              return ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+              });
+            },
+            else() {
+              return View(
+                {
+                  class:
+                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                },
+                [
+                  Match({
+                    when: computed(data_, (content) => content.content_type),
+                    cases: IconMappedType(),
+                  }),
+                ],
+              );
+            },
+          }),
+        ],
+      ),
+      View({ class: "min-w-0 flex-1" }, [
+        View({ class: "flex flex-wrap items-center gap-1.5" }, [
+          For({
+            each: computed(data_, previewBadges),
+            render(label) {
+              return PreviewBadge(label);
+            },
+          }),
+        ]),
         View(
           {
             class:
-              "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+              "mt-2 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          {
+            class:
+              "mt-1 truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
+          },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+      ]),
+    ]),
+    Show({
+      when: computed(data_, (content) => !!previewDescription(content)),
+      ok() {
+        return View(
+          {
+            class:
+              "mt-3 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+          },
+          [
+            computed(data_, (content) =>
+              shortText(previewDescription(content), 220),
+            ),
+          ],
+        );
+      },
+    }),
+    ContentPreviewMediaStrip(data_),
+    TypeSpecificPreview(data_),
+    ContentPreviewStats(data_),
+    ContentPreviewTags(data_),
+    PreviewInfoGrid([
+      PreviewInfoItem("内容 ID", data_, (content) =>
+        firstPreviewText(content, "content_id", "id", "ID"),
+      ),
+      PreviewInfoItem("发布", data_, (content) =>
+        formatTimestamp(
+          previewField(
+            content,
+            "publish_time",
+            "created_time",
+            "create_time",
+            "createtime",
+            "CreatedTime",
+            "createdAt",
+          ),
+        ),
+      ),
+      PreviewInfoItem("更新", data_, (content) =>
+        formatTimestamp(
+          previewField(content, "update_time", "updated_time", "UpdatedTime"),
+        ),
+      ),
+      PreviewInfoItem("链接", data_, (content) =>
+        firstPreviewText(
+          content,
+          "canonical_url",
+          "source_url",
+          "share_url",
+          "url",
+          "URL",
+        ),
+      ),
+    ]),
+    Show({
+      when: computed(data_, (content) => asArray(content.warnings).length > 0),
+      ok() {
+        return View(
+          {
+            class:
+              "mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+          },
+          [
+            For({
+              each: computed(data_, (content) => asArray(content.warnings)),
+              render(warning) {
+                return View({ class: "truncate" }, [warning]);
+              },
+            }),
+          ],
+        );
+      },
+    }),
+  ]);
+}
+
+function WxChannelsContentPreview(data_) {
+  return View({}, [
+    View({ class: "flex gap-3" }, [
+      View(
+        {
+          class:
+            "h-24 w-24 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+        },
+        [
+          Show({
+            when: computed(data_, contentCoverURL),
+            ok() {
+              return ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+                platformId: "wx_channels",
+              });
+            },
+            else() {
+              return View(
+                {
+                  class:
+                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                },
+                [Icon({ name: "film", size: 28 })],
+              );
+            },
+          }),
+        ],
+      ),
+      View({ class: "min-w-0 flex-1" }, [
+        View({ class: "text-xs font-medium text-emerald-600 dark:text-emerald-300" }, [
+          "视频号",
+        ]),
+        View(
+          {
+            class:
+              "mt-1 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+        View({ class: "mt-2 text-xs text-zinc-500 dark:text-zinc-400" }, [
+          computed(data_, (content) =>
+            firstNonEmpty(
+              previewVideoDuration(content),
+              countImages(content) ? `${countImages(content)} 张图片` : "",
+              content.content_id,
+            ),
+          ),
+        ]),
+      ]),
+    ]),
+    Show({
+      when: computed(data_, (content) => {
+        const description = previewDescription(content);
+        return description && description !== previewTitle(content);
+      }),
+      ok() {
+        return View(
+          {
+            class:
+              "mt-3 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+          },
+          [computed(data_, (content) => shortText(previewDescription(content), 180))],
+        );
+      },
+    }),
+    Show({
+      when: computed(data_, (content) => contentImages(content).length > 1),
+      ok() {
+        return View({ class: "mt-3 grid grid-cols-4 gap-2" }, [
+          For({
+            each: computed(data_, (content) => contentImages(content).slice(0, 4)),
+            render(url) {
+              return View(
+                { class: "aspect-square overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900" },
+                [
+                  ProxyImg({
+                    class: "h-full w-full object-cover",
+                    src: url,
+                    alt: "channels image",
+                    platformId: "wx_channels",
+                  }),
+                ],
+              );
+            },
+          }),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function DouyinContentPreview(data_) {
+  return Show({
+    when: computed(data_, (content) => content.content_type === "video"),
+    ok() {
+      return View({ class: "flex gap-3" }, [
+        View(
+          {
+            class:
+              "h-32 w-24 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
           },
           [
             Show({
@@ -1421,6 +1798,8 @@ function ContentPreview(props) {
                   class: "h-full w-full object-cover",
                   src: computed(data_, contentCoverURL),
                   alt: computed(data_, previewTitle),
+                  platformId: "douyin",
+                  contentType: "video",
                 });
               },
               else() {
@@ -1429,39 +1808,17 @@ function ContentPreview(props) {
                     class:
                       "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
                   },
-                  [
-                    // IconMappedType({
-                    //   type:
-                    // })
-                    Match({
-                      when: computed(data_, (content) => {
-                        return content.content_type;
-                      }),
-                      cases: IconMappedType(),
-                    }),
-                  ],
+                  [Icon({ name: "film", size: 28 })],
                 );
               },
             }),
           ],
         ),
         View({ class: "min-w-0 flex-1" }, [
-          View({ class: "flex flex-wrap items-center gap-1.5" }, [
-            For({
-              each: computed(data_, previewBadges),
-              render(label) {
-                return PreviewBadge(label);
-              },
-            }),
+          View({ class: "text-xs font-medium text-pink-600 dark:text-pink-300" }, [
+            "抖音视频",
           ]),
-          View(
-            {
-              class:
-                "mt-2 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
-            },
-            [computed(data_, previewTitle)],
-          ),
-          View({ class: "mt-1 flex min-w-0 items-center gap-1.5" }, [
+          View({ class: "mt-2 flex min-w-0 items-center gap-1.5" }, [
             Show({
               when: computed(data_, contentAuthorAvatar),
               ok() {
@@ -1474,9 +1831,8 @@ function ContentPreview(props) {
                     ProxyImg({
                       class: "h-full w-full object-cover",
                       src: computed(data_, contentAuthorAvatar),
-                      alt: computed(data_, (content) =>
-                        contentAuthorName(content),
-                      ),
+                      alt: computed(data_, contentAuthorName),
+                      platformId: "douyin",
                     }),
                   ],
                 );
@@ -1485,45 +1841,718 @@ function ContentPreview(props) {
             View(
               {
                 class:
-                  "min-w-0 truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
+                  "min-w-0 truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
               },
               [computed(data_, (content) => contentAuthorName(content) || "-")],
             ),
           ]),
+          View(
+            {
+              class:
+                "mt-2 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+            },
+            [
+              computed(data_, (content) =>
+                shortText(
+                  firstNonEmpty(
+                    previewDescription(content),
+                    content.title,
+                    content.content_id,
+                  ),
+                  180,
+                ),
+              ),
+            ],
+          ),
+          Show({
+            when: computed(data_, (content) =>
+              !!formatTimestamp(
+                previewField(content, "publish_time", "created_time"),
+              ),
+            ),
+            ok() {
+              return View(
+                { class: "mt-2 text-xs text-zinc-400 dark:text-zinc-500" },
+                [
+                  "发布于 ",
+                  computed(data_, (content) =>
+                    formatTimestamp(
+                      previewField(content, "publish_time", "created_time"),
+                    ),
+                  ),
+                ],
+              );
+            },
+          }),
+        ]),
+      ]);
+    },
+    else() {
+      return GenericContentPreview(data_);
+    },
+  });
+}
+
+function ZhihuContentPreview(data_) {
+  return Show({
+    when: computed(data_, (content) => content.content_type === "answer"),
+    ok() {
+      return View({ class: "space-y-4" }, [
+        View(
+          {
+            class: "border-b border-zinc-200 pb-4 dark:border-zinc-800",
+          },
+          [
+            View({ class: "text-xs font-medium text-blue-600 dark:text-blue-300" }, [
+              "知乎问题",
+            ]),
+            View(
+              {
+                class:
+                  "mt-1 line-clamp-2 text-base font-semibold text-zinc-950 dark:text-zinc-50",
+              },
+              [
+                computed(data_, (content) => {
+                  const raw = rawPreviewData(content);
+                  const question = raw.question || raw.Question || {};
+                  return firstNonEmpty(
+                    content.question_title,
+                    question.title,
+                    question.Title,
+                    content.title,
+                    "未命名问题",
+                  );
+                }),
+              ],
+            ),
+            View({ class: "mt-2 text-xs text-zinc-500 dark:text-zinc-400" }, [
+              "提问者 ",
+              computed(data_, (content) => {
+                const raw = rawPreviewData(content);
+                const question = raw.question || raw.Question || {};
+                const author = question.author || question.Author || {};
+                return firstNonEmpty(
+                  author.name,
+                  author.Name,
+                  author.nickname,
+                  author.username,
+                  author.id,
+                  "未知",
+                );
+              }),
+            ]),
+            View(
+              {
+                class:
+                  "mt-2 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+              },
+              [
+                computed(data_, (content) => {
+                  const raw = rawPreviewData(content);
+                  const question = raw.question || raw.Question || {};
+                  return shortText(
+                    firstNonEmpty(
+                      content.question_html,
+                      question.detail,
+                      question.Detail,
+                      question.excerpt,
+                      question.Excerpt,
+                    ),
+                    220,
+                  );
+                }),
+              ],
+            ),
+          ],
+        ),
+        View({}, [
+          View({ class: "flex min-w-0 items-center gap-2" }, [
+            Show({
+              when: computed(data_, (content) => {
+                const raw = rawPreviewData(content);
+                const answer = raw.answer || raw.Answer || {};
+                const author = answer.author || answer.Author || {};
+                return firstNonEmpty(
+                  contentAuthorAvatar(content),
+                  author.avatarUrl,
+                  author.avatar_url,
+                  author.AvatarURL,
+                );
+              }),
+              ok() {
+                return View(
+                  {
+                    class:
+                      "h-7 w-7 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
+                  },
+                  [
+                    ProxyImg({
+                      class: "h-full w-full object-cover",
+                      src: computed(data_, (content) => {
+                        const raw = rawPreviewData(content);
+                        const answer = raw.answer || raw.Answer || {};
+                        const author = answer.author || answer.Author || {};
+                        return firstNonEmpty(
+                          contentAuthorAvatar(content),
+                          author.avatarUrl,
+                          author.avatar_url,
+                          author.AvatarURL,
+                        );
+                      }),
+                      alt: computed(data_, contentAuthorName),
+                      platformId: "zhihu",
+                    }),
+                  ],
+                );
+              },
+            }),
+            View({ class: "min-w-0" }, [
+              View(
+                {
+                  class:
+                    "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+                },
+                [
+                  computed(data_, (content) => {
+                    const raw = rawPreviewData(content);
+                    const answer = raw.answer || raw.Answer || {};
+                    const author = answer.author || answer.Author || {};
+                    return firstNonEmpty(
+                      contentAuthorName(content),
+                      author.name,
+                      author.Name,
+                      author.id,
+                      "未知回答人",
+                    );
+                  }),
+                ],
+              ),
+              View({ class: "text-xs text-zinc-400 dark:text-zinc-500" }, [
+                "回答于 ",
+                computed(data_, (content) => {
+                  const raw = rawPreviewData(content);
+                  const answer = raw.answer || raw.Answer || {};
+                  return (
+                    formatTimestamp(
+                      firstNonEmpty(
+                        content.created_time,
+                        answer.createdTime,
+                        answer.CreatedTime,
+                      ),
+                    ) || "-"
+                  );
+                }),
+              ]),
+            ]),
+          ]),
+          View(
+            {
+              class:
+                "mt-3 line-clamp-6 text-xs leading-relaxed text-zinc-700 dark:text-zinc-200",
+            },
+            [
+              computed(data_, (content) => {
+                const raw = rawPreviewData(content);
+                const answer = raw.answer || raw.Answer || {};
+                return shortText(
+                  firstNonEmpty(
+                    content.body_html,
+                    content.body_text,
+                    answer.content,
+                    answer.Content,
+                    content.excerpt,
+                    content.description,
+                  ),
+                  420,
+                );
+              }),
+            ],
+          ),
+        ]),
+      ]);
+    },
+    else() {
+      return View({ class: "space-y-3" }, [
+        View({ class: "text-xs font-medium text-blue-600 dark:text-blue-300" }, [
+          computed(data_, (content) =>
+            content.content_type === "question" ? "知乎问题" : "知乎文章",
+          ),
+        ]),
+        View(
+          {
+            class:
+              "line-clamp-2 text-base font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+        View(
+          {
+            class:
+              "line-clamp-5 text-xs leading-relaxed text-zinc-700 dark:text-zinc-200",
+          },
+          [
+            computed(data_, (content) =>
+              shortText(
+                firstNonEmpty(
+                  content.body_html,
+                  content.body_text,
+                  content.detail,
+                  content.description,
+                ),
+                360,
+              ),
+            ),
+          ],
+        ),
+      ]);
+    },
+  });
+}
+
+function OfficialAccountContentPreview(data_) {
+  return View({ class: "space-y-3" }, [
+    View({ class: "flex gap-3" }, [
+      View(
+        {
+          class:
+            "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+        },
+        [
+          Show({
+            when: computed(data_, contentCoverURL),
+            ok() {
+              return ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+                platformId: "officialaccount",
+              });
+            },
+            else() {
+              return View(
+                {
+                  class:
+                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                },
+                [Icon({ name: "file-text", size: 28 })],
+              );
+            },
+          }),
+        ],
+      ),
+      View({ class: "min-w-0 flex-1" }, [
+        View({ class: "text-xs font-medium text-green-600 dark:text-green-300" }, [
+          "公众号文章",
+        ]),
+        View(
+          {
+            class:
+              "mt-1 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+      ]),
+    ]),
+    View(
+      {
+        class:
+          "line-clamp-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-200",
+      },
+      [
+        computed(data_, (content) =>
+          shortText(
+            firstNonEmpty(
+              content.digest,
+              content.description,
+              content.body_text,
+              content.body_html,
+            ),
+            320,
+          ),
+        ),
+      ],
+    ),
+  ]);
+}
+
+function YoutubeContentPreview(data_) {
+  return View({}, [
+    View({ class: "flex gap-3" }, [
+      View(
+        {
+          class:
+            "h-20 w-32 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+        },
+        [
+          Show({
+            when: computed(data_, contentCoverURL),
+            ok() {
+              return ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+                platformId: "youtube",
+              });
+            },
+            else() {
+              return View(
+                {
+                  class:
+                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                },
+                [Icon({ name: "youtube", size: 28 })],
+              );
+            },
+          }),
+        ],
+      ),
+      View({ class: "min-w-0 flex-1" }, [
+        View({ class: "text-xs font-medium text-red-600 dark:text-red-300" }, [
+          "YouTube",
+        ]),
+        View(
+          {
+            class:
+              "mt-1 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+        View({ class: "mt-2 text-xs text-zinc-500 dark:text-zinc-400" }, [
+          computed(data_, (content) =>
+            firstNonEmpty(
+              previewVideoDuration(content),
+              firstPreviewText(content, "video_id", "content_id"),
+            ),
+          ),
         ]),
       ]),
+    ]),
+  ]);
+}
+
+function XiaohongshuContentPreview(data_) {
+  return View({ class: "space-y-3" }, [
+    View({ class: "flex min-w-0 items-start justify-between gap-3" }, [
+      View({ class: "min-w-0" }, [
+        View({ class: "text-xs font-medium text-red-500 dark:text-red-300" }, [
+          computed(data_, (content) =>
+            content.note_type === "video" ? "小红书视频笔记" : "小红书图文笔记",
+          ),
+        ]),
+        View(
+          {
+            class:
+              "mt-1 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+      ]),
       Show({
-        when: computed(data_, (content) => !!previewDescription(content)),
+        when: computed(data_, contentCoverURL),
         ok() {
           return View(
             {
               class:
-                "mt-3 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+                "h-20 w-16 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
             },
             [
-              computed(data_, (content) =>
-                shortText(previewDescription(content), 220),
-              ),
+              ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+                platformId: "xiaohongshu",
+              }),
             ],
           );
         },
       }),
-      ContentPreviewMediaStrip(data_),
-      TypeSpecificPreview(data_),
-      ContentPreviewStats(data_),
-      ContentPreviewTags(data_),
-      PreviewInfoGrid([
-        PreviewInfoItem("内容 ID", data_, (content) => content.content_id),
-        PreviewInfoItem("发布", data_, (content) =>
-          formatTimestamp(content.publish_time),
+    ]),
+    View(
+      {
+        class:
+          "line-clamp-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-200",
+      },
+      [
+        computed(data_, (content) =>
+          shortText(firstNonEmpty(content.text, content.description), 260),
         ),
-        PreviewInfoItem("更新", data_, (content) =>
-          formatTimestamp(content.update_time),
+      ],
+    ),
+    Show({
+      when: computed(data_, (content) => contentImages(content).length > 0),
+      ok() {
+        return View({ class: "grid grid-cols-4 gap-2" }, [
+          For({
+            each: computed(data_, (content) => contentImages(content).slice(0, 4)),
+            render(url) {
+              return View(
+                { class: "aspect-square overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900" },
+                [
+                  ProxyImg({
+                    class: "h-full w-full object-cover",
+                    src: url,
+                    alt: "xhs image",
+                    platformId: "xiaohongshu",
+                  }),
+                ],
+              );
+            },
+          }),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function WeiboContentPreview(data_) {
+  return View({ class: "space-y-3" }, [
+    View({ class: "flex min-w-0 items-center gap-2" }, [
+      Show({
+        when: computed(data_, contentAuthorAvatar),
+        ok() {
+          return View(
+            {
+              class:
+                "h-7 w-7 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
+            },
+            [
+              ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentAuthorAvatar),
+                alt: computed(data_, contentAuthorName),
+                platformId: "weibo",
+              }),
+            ],
+          );
+        },
+      }),
+      View({ class: "min-w-0" }, [
+        View(
+          {
+            class:
+              "truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
         ),
-        PreviewInfoItem("链接", data_, (content) =>
-          firstNonEmpty(content.canonical_url, content.source_url, content.url),
-        ),
+        View({ class: "text-xs text-orange-500 dark:text-orange-300" }, [
+          "微博动态",
+        ]),
       ]),
+    ]),
+    View(
+      {
+        class:
+          "line-clamp-5 text-xs leading-relaxed text-zinc-700 dark:text-zinc-200",
+      },
+      [
+        computed(data_, (content) =>
+          shortText(
+            firstNonEmpty(content.rich_text, content.text, content.description),
+            360,
+          ),
+        ),
+      ],
+    ),
+    Show({
+      when: computed(data_, (content) => contentImages(content).length > 0),
+      ok() {
+        return View({ class: "grid grid-cols-3 gap-2" }, [
+          For({
+            each: computed(data_, (content) => contentImages(content).slice(0, 6)),
+            render(url) {
+              return View(
+                { class: "aspect-square overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900" },
+                [
+                  ProxyImg({
+                    class: "h-full w-full object-cover",
+                    src: url,
+                    alt: "weibo image",
+                    platformId: "weibo",
+                  }),
+                ],
+              );
+            },
+          }),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function BilibiliContentPreview(data_) {
+  return View({}, [
+    View({ class: "flex gap-3" }, [
+      View(
+        {
+          class:
+            "h-20 w-32 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+        },
+        [
+          Show({
+            when: computed(data_, contentCoverURL),
+            ok() {
+              return ProxyImg({
+                class: "h-full w-full object-cover",
+                src: computed(data_, contentCoverURL),
+                alt: computed(data_, previewTitle),
+                platformId: "bilibili",
+              });
+            },
+            else() {
+              return View(
+                {
+                  class:
+                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                },
+                [Icon({ name: "film", size: 28 })],
+              );
+            },
+          }),
+        ],
+      ),
+      View({ class: "min-w-0 flex-1" }, [
+        View({ class: "text-xs font-medium text-sky-600 dark:text-sky-300" }, [
+          computed(data_, (content) => `B站${contentTypeLabel(content.content_type)}`),
+        ]),
+        View(
+          {
+            class:
+              "mt-1 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+          },
+          [computed(data_, previewTitle)],
+        ),
+        View(
+          { class: "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400" },
+          [computed(data_, (content) => contentAuthorName(content) || "-")],
+        ),
+        View({ class: "mt-2 flex flex-wrap gap-x-3 gap-y-1" }, [
+          For({
+            each: computed(data_, previewStats),
+            render(pair) {
+              return View({ class: "text-xs text-zinc-500 dark:text-zinc-400" }, [
+                `${pair[0]} ${pair[1]}`,
+              ]);
+            },
+          }),
+        ]),
+      ]),
+    ]),
+  ]);
+}
+
+function ContentPreview(props) {
+  const data_ = combine(
+    {
+      content: props.content,
+      probe: props.probe,
+      raw: props.raw,
+    },
+    ({ content, probe, raw }) => {
+      return normalizeProbePreviewContent(content, probe, raw);
+    },
+  );
+
+  return View(
+    { class: "min-w-0 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900/60" },
+    [
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "wx_channels",
+        ),
+        ok() {
+          return WxChannelsContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "douyin",
+        ),
+        ok() {
+          return DouyinContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "zhihu",
+        ),
+        ok() {
+          return ZhihuContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) =>
+            normalizePlatformID(content.platform) === "officialaccount",
+        ),
+        ok() {
+          return OfficialAccountContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "youtube",
+        ),
+        ok() {
+          return YoutubeContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "xiaohongshu",
+        ),
+        ok() {
+          return XiaohongshuContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "weibo",
+        ),
+        ok() {
+          return WeiboContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => normalizePlatformID(content.platform) === "bilibili",
+        ),
+        ok() {
+          return BilibiliContentPreview(data_);
+        },
+      }),
+      Show({
+        when: computed(
+          data_,
+          (content) => !isKnownPreviewPlatform(content.platform),
+        ),
+        ok() {
+          return GenericContentPreview(data_);
+        },
+      }),
     ],
   );
 }
@@ -1564,9 +2593,9 @@ function PlatformCreatePanel(vm$) {
           },
           [
             Icon({ name: "play", size: 16 }),
-            computed(vm$.state.createCreating, (v) =>
-              v ? "创建中..." : "开始下载",
-            ),
+            computed(vm$.state.createCreating, (v) => {
+              return v ? "创建中..." : "开始下载";
+            }),
           ],
         ),
       ]),
