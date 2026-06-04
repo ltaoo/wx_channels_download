@@ -68,7 +68,16 @@ function logDetailRows(entry) {
   const data = entry.json || entry.JSON || null;
   if (data && typeof data === "object") {
     const existing = new Set(rows.map((row) => row[0]));
-    for (const key of ["error", "err", "stack", "trace", "request", "response", "url", "task_id"]) {
+    for (const key of [
+      "error",
+      "err",
+      "stack",
+      "trace",
+      "request",
+      "response",
+      "url",
+      "task_id",
+    ]) {
       if (data[key] !== undefined && !existing.has(key)) {
         rows.push([key, jsonValueText(data[key])]);
         existing.add(key);
@@ -80,7 +89,9 @@ function logDetailRows(entry) {
       }
     }
   }
-  return rows.filter((row) => row[1] !== undefined && row[1] !== null && String(row[1]) !== "");
+  return rows.filter(
+    (row) => row[1] !== undefined && row[1] !== null && String(row[1]) !== "",
+  );
 }
 
 function LogDetailPanel(entry) {
@@ -171,7 +182,7 @@ function PageHeader(vm$) {
           View(
             {
               class:
-                "flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-2 dark:border-zinc-800",
+                "flex items-center gap-2 rounded-md px-3 py-2 dark:border-zinc-800",
             },
             [
               Switch({
@@ -218,59 +229,61 @@ function Toolbar(vm$) {
     CardContent({ class: "p-3" }, [
       View(
         {
-          class:
-            "flex items-center gap-2 overflow-x-auto whitespace-nowrap",
+          class: "flex items-center gap-2 overflow-x-auto whitespace-nowrap",
         },
         [
-          Input({ store: vm$.ui.keywordInput, class: "min-w-[260px] flex-1" }),
           View({ class: "w-48 shrink-0" }, [
             Select({ store: vm$.ui.sourceSelect }),
           ]),
           View({ class: "w-36 shrink-0" }, [
             Select({ store: vm$.ui.levelSelect }),
           ]),
-          View({ class: "w-32 shrink-0" }, [
-            Select({ store: vm$.ui.limitSelect }),
-          ]),
-          View(
-            {
-              class:
-                "flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-200 px-3 dark:border-zinc-800",
-            },
-            [
-              Checkbox({
-                store: vm$.ui.formatJsonCheckbox,
-              }),
-              View(
-                {
-                  class:
-                    "whitespace-nowrap text-sm text-zinc-700 dark:text-zinc-200",
-                },
-                ["格式化 JSON"],
-              ),
-            ],
-          ),
+          Input({ store: vm$.ui.keywordInput, class: "min-w-[260px] flex-1" }),
           Button(
             {
               store: vm$.ui.resetBtn,
               class: "shrink-0",
-              prefix: [Icon({ name: "filter-x", size: 16 })],
+              prefix: [Icon({ name: "rotate-ccw", size: 16 })],
             },
             ["重置"],
           ),
-          View({ class: "shrink-0 text-xs text-zinc-500 dark:text-zinc-400" }, [
-            computed(
-              {
-                total: vm$.state.total,
-                entries: vm$.state.entries,
-                files: vm$.state.files,
-              },
-              (d) =>
-                `${d.entries.length}/${d.total} 条 · ${d.files.length} 个文件`,
-            ),
-          ]),
         ],
       ),
+      View({ class: "flex items-center gap-2 mt-2" }, [
+        View({ class: "w-32 shrink-0" }, [
+          Select({ store: vm$.ui.limitSelect }),
+        ]),
+        View(
+          {
+            class:
+              "flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-200 px-3 dark:border-zinc-800",
+          },
+          [
+            Checkbox({
+              store: vm$.ui.formatJsonCheckbox,
+            }),
+            View(
+              {
+                class:
+                  "whitespace-nowrap text-sm text-zinc-700 dark:text-zinc-200",
+              },
+              ["格式化 JSON"],
+            ),
+          ],
+        ),
+        View({ class: "shrink-0 text-xs text-zinc-500 dark:text-zinc-400" }, [
+          combine(
+            {
+              total: vm$.state.total,
+              entries: vm$.state.entries,
+              files: vm$.state.files,
+            },
+            (d) => {
+              return `${d.entries.length}/${d.total} 条 · ${d.files.length} 个文件`;
+            },
+          ),
+        ]),
+      ]),
     ]),
   ]);
 }
@@ -369,7 +382,9 @@ function LogEntryRow(entry, vm$) {
         [
           computed(expanded, (v) => (v ? "收起" : "详情")),
           Icon({
-            name: computed(expanded, (v) => (v ? "chevron-up" : "chevron-down")),
+            name: computed(expanded, (v) =>
+              v ? "chevron-up" : "chevron-down",
+            ),
             size: 16,
           }),
         ],

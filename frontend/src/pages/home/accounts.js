@@ -1,4 +1,5 @@
 import { AccountsPageModel } from "./accounts.model.js";
+import { ProxyImg } from "@/components/proxy-img.js";
 
 function Avatar(account) {
   const avatarURL = account.display_avatar_url || account.avatar_url || "";
@@ -9,10 +10,11 @@ function Avatar(account) {
     },
     [
       avatarURL
-        ? Img({
+        ? ProxyImg({
             class: "h-full w-full object-cover",
             src: avatarURL,
             alt: account.nickname,
+            platformId: account.platform_id,
           })
         : View(
             {
@@ -56,11 +58,13 @@ function MediaThumb(content, onClick) {
       Show({
         when: coverURL,
         ok() {
-          return Img({
+          return ProxyImg({
             class:
               "h-full w-full object-cover transition group-hover:scale-105",
             src: coverURL,
             alt: content.title || "cover",
+            platformId: content.platform_id,
+            contentType: content.content_type || content.type,
             onClick,
           });
         },

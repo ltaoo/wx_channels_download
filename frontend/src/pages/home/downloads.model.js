@@ -71,71 +71,6 @@ function getAPIClientOrigin() {
   return String(api_client$.hostname || "").trim();
 }
 
-function mpProxyURL(rawURL) {
-  const url = String(rawURL || "").trim();
-  if (!url || url.includes("/mp/proxy?")) {
-    return url;
-  }
-  const params = new URLSearchParams();
-  params.set("url", url);
-  return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
-}
-
-function parseJSON(value) {
-  if (!value) return {};
-  if (typeof value === "object") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-}
-
-function isMmbizURL(rawURL) {
-  const url = String(rawURL || "").trim();
-  if (!url) return false;
-  try {
-    return new URL(url, window.location.origin).hostname === "mmbiz.qpic.cn";
-  } catch {
-    return /^https?:\/\/mmbiz\.qpic\.cn(?:\/|$)/i.test(url);
-  }
-}
-
-function isOfficialAccountTask(task) {
-  const metadata2 = parseJSON(task.metadata2 || task.Metadata2);
-  const labels = parseJSON(
-    task.labels || task.Labels || task.extra || task.Extra,
-  );
-  const platform = String(
-    task.platform_id ||
-      task.platform ||
-      metadata2.platform ||
-      labels.platform ||
-      "",
-  ).trim();
-  if (platform === "wx_official_account" || platform === "officialaccount") {
-    return true;
-  }
-  const contentType = String(
-    task.content_type || metadata2.content_type || labels.content_type || "",
-  ).trim();
-  if (contentType === "article") {
-    return true;
-  }
-  return String(task.url || task.URL || "").startsWith("officialaccount://");
-}
-
-function displayCoverURL(task) {
-  const coverURL = task.cover_url || task.CoverURL || "";
-  if (!coverURL) {
-    return "";
-  }
-  if (isOfficialAccountTask(task) || isMmbizURL(coverURL)) {
-    return mpProxyURL(coverURL);
-  }
-  return coverURL;
-}
-
 export function formatBytes(value) {
   const n = Number(value || 0);
   if (!n) return "0 B";
@@ -191,7 +126,7 @@ export function normalizeTask(task) {
     speed_text: `${formatBytes(progress.speed)}/s`,
     created_at_text: formatDate(task.created_at),
     updated_at_text: formatDate(task.updated_at),
-    display_cover_url: displayCoverURL(task),
+    display_cover_url: task.cover_url || task.CoverURL || "",
   };
 }
 

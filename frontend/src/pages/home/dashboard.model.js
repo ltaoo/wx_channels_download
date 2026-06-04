@@ -28,6 +28,40 @@ function pickTotal(data) {
   return pickList(data).length;
 }
 
+function pickCounts(data) {
+  return data?.counts || data?.data?.counts || {};
+}
+
+function formatBytes(value) {
+  const n = Number(value || 0);
+  if (!n) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = n;
+  let idx = 0;
+  while (size >= 1024 && idx < units.length - 1) {
+    size /= 1024;
+    idx += 1;
+  }
+  return `${size.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function parseProgress(raw) {
+  if (!raw) return {};
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function sumRunningSpeed(list) {
+  return pickList(list).reduce((sum, task) => {
+    if (task.status !== 1) return sum;
+    return sum + Number(parseProgress(task.progress).speed || 0);
+  }, 0);
+}
+
 function selectOption(label, value) {
   return new Timeless.ui.SelectItemCore({
     label: String(label || value || ""),
@@ -73,6 +107,9 @@ export function HomeDashboardPageModel(props) {
     downloads: new Timeless.RequestCore(fetchDownloadList, {
       client: api_client$,
     }),
+    runningDownloads: new Timeless.RequestCore(fetchDownloadList, {
+      client: api_client$,
+    }),
     status: new Timeless.RequestCore(fetchAppStatus, {
       client: api_client$,
     }),
@@ -100,6 +137,8 @@ export function HomeDashboardPageModel(props) {
     videos: 0,
     browse: 0,
     downloads: 0,
+    runningDownloads: 0,
+    totalSpeed: "0 B/s",
   });
 
   let probeSeq = 0;
@@ -160,16 +199,18 @@ export function HomeDashboardPageModel(props) {
     async refresh() {
       loading_.as(true);
       error_.as("");
-      const [accounts, videos, browse, downloads] = await Promise.all([
-        reqs.accounts.run({}),
-        reqs.videos.run({ page: 1, pageSize: 1 }),
-        reqs.browse.run({}),
-        reqs.downloads.run({ page: 1, pageSize: 1 }),
-        // reqs.status.run(),
-      ]);
+      const [accounts, videos, browse, downloads, runningDownloads] =
+        await Promise.all([
+          reqs.accounts.run({}),
+          reqs.videos.run({ page: 1, pageSize: 1 }),
+          reqs.browse.run({}),
+          reqs.downloads.run({ page: 1, pageSize: 1 }),
+          reqs.runningDownloads.run({ page: 1, pageSize: 200, status: [1] }),
+          // reqs.status.run(),
+        ]);
       loading_.as(false);
 
-      const errors = [accounts, videos, browse, downloads]
+      const errors = [accounts, videos, browse, downloads, runningDownloads]
         .filter((r) => r.error)
         .map((r) => r.error?.message || String(r.error));
       if (errors.length) {
@@ -181,6 +222,12 @@ export function HomeDashboardPageModel(props) {
         videos: videos.error ? 0 : pickTotal(videos.data),
         browse: browse.error ? 0 : pickTotal(browse.data),
         downloads: downloads.error ? 0 : pickTotal(downloads.data),
+        runningDownloads: downloads.error
+          ? 0
+          : Number(pickCounts(downloads.data).running || 0),
+        totalSpeed: runningDownloads.error
+          ? "0 B/s"
+          : `${formatBytes(sumRunningSpeed(runningDownloads.data))}/s`,
       });
     },
     resetProbe() {

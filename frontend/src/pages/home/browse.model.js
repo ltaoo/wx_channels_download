@@ -74,41 +74,6 @@ function platformLabelOf(platformId) {
   }
 }
 
-function getConfig() {
-  if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
-  if (typeof window !== "undefined" && window.__wx_channels_config__) {
-    return window.__wx_channels_config__;
-  }
-  return {};
-}
-
-function getAPIClientOrigin() {
-  const hostname = String(api_client$?.hostname || "").trim();
-  if (!hostname) {
-    return "";
-  }
-  try {
-    return new URL(hostname, window.location.origin).origin;
-  } catch (e) {
-    return hostname.replace(/\/+$/, "");
-  }
-}
-
-function mpProxyURL(rawURL) {
-  const url = String(rawURL || "").trim();
-  if (!url || url.includes("/mp/proxy?")) {
-    return url;
-  }
-  const cfg = getConfig();
-  const token = cfg.officialServerRefreshToken || "";
-  const params = new URLSearchParams();
-  if (token) {
-    params.set("token", token);
-  }
-  params.set("url", url);
-  return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
-}
-
 export function normalizeBrowseHistory(item) {
   const contentType = normalizeContentType(item);
   const platformId = normalizePlatformId(item);
@@ -143,7 +108,7 @@ export function normalizeBrowseHistory(item) {
     download_url: isArticle && contentUrl ? `officialaccount://${contentUrl}` : contentUrl,
     download_filename: isArticle ? safeArticleFilename(title) : safeFilename(title),
     cover_url: coverURL,
-    display_cover_url: isArticle ? mpProxyURL(coverURL) : coverURL,
+    display_cover_url: coverURL,
     visited_times: Number(item.visited_times || 0),
     created_at_text: formatDate(item.created_at),
     updated_at_text: formatDate(item.updated_at),
@@ -156,7 +121,7 @@ export function normalizeBrowseHistory(item) {
       username: pick(item.account_username, item.contact_username),
       nickname: pick(item.account_nickname, item.contact_nickname, "未知帐号"),
       avatar_url: avatarURL,
-      display_avatar_url: isArticle ? mpProxyURL(avatarURL) : avatarURL,
+      display_avatar_url: avatarURL,
     },
   };
 }

@@ -10,6 +10,7 @@ function normalizeAccount(account) {
   if (!account) return null;
   return {
     ...account,
+    platform_id: pick(account.platform_id, account.platform?.id, account.platform?.code),
     nickname: pick(account.nickname, account.account_nickname, account.name),
     username: pick(account.username, account.account_username, account.external_id, account.account_external_id),
     avatar_url: pick(account.avatar_url, account.account_avatar_url, account.avatarUrl, account.headUrl),
@@ -36,6 +37,7 @@ function normalizeContent(content, account) {
     title: content.title || content.Title || content.description || "未命名内容",
     description: content.description || content.Description || "",
     content_type: content.content_type || content.type || "",
+    platform_id: pick(content.platform_id, content.platform?.id, content.platform?.code, account?.platform_id),
     cover_url: content.cover_url || content.CoverURL || content.coverUrl || "",
     url: pick(content.url, content.URL, content.content_url, content.ContentURL, content.source_url, content.SourceURL),
     file_size: content.file_size || content.size || content.Size || 0,

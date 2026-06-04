@@ -1,21 +1,27 @@
-/* global Img, Select */
+/* global Select */
 import { HomeDashboardPageModel } from "./dashboard.model.js";
+import { ProxyImg } from "@/components/proxy-img.js";
 
 function StatCard(props) {
-  const { label, value, icon, desc } = props;
+  const { label, value, icon, desc, class: cls = "" } = props;
   return View(
     {
-      class:
+      class: [
         "rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950",
+        cls,
+      ].join(" "),
     },
     [
       View({ class: "flex items-start justify-between gap-3" }, [
         View({ class: "min-w-0" }, [
-          View({ class: "text-sm text-zinc-500 dark:text-zinc-400" }, [label]),
+          View(
+            { class: "truncate text-sm text-zinc-500 dark:text-zinc-400" },
+            [label],
+          ),
           View(
             {
               class:
-                "mt-2 text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50",
+                "mt-2 truncate text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50",
             },
             [value],
           ),
@@ -228,7 +234,7 @@ export default function DashboardPageView(props) {
                                     "h-16 w-16 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
                                 },
                                 [
-                                  Img({
+                                  ProxyImg({
                                     class: "h-full w-full object-cover",
                                     src: computed(
                                       vm$.state.taskContent,
@@ -337,7 +343,7 @@ export default function DashboardPageView(props) {
               }),
             ],
           ),
-          View({ class: "grid gap-4 md:grid-cols-2 xl:grid-cols-4" }, [
+          View({ class: "grid gap-4 md:grid-cols-4 xl:grid-cols-8" }, [
             StatCard({
               label: "帐号数",
               value: computed(vm$.state.stats, (v) => String(v.accounts)),
@@ -357,10 +363,25 @@ export default function DashboardPageView(props) {
               desc: "已捕获的页面访问记录",
             }),
             StatCard({
-              label: "下载任务数",
+              label: "任务总数",
               value: computed(vm$.state.stats, (v) => String(v.downloads)),
               icon: "hard-drive-download",
               desc: "全部下载任务",
+            }),
+            StatCard({
+              label: "下载中",
+              value: computed(vm$.state.stats, (v) =>
+                String(v.runningDownloads),
+              ),
+              icon: "loader-circle",
+              desc: "正在下载的任务",
+            }),
+            StatCard({
+              label: "总速度",
+              value: computed(vm$.state.stats, (v) => v.totalSpeed),
+              icon: "gauge",
+              desc: "当前下载速度合计",
+              class: "md:col-span-2 xl:col-span-3",
             }),
           ]),
         ]),

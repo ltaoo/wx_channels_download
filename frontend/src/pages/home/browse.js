@@ -1,6 +1,7 @@
 import { BrowseHistoryPageModel } from "./browse.model.js";
+import { ProxyImg } from "@/components/proxy-img.js";
 
-function AccountAvatar(account) {
+function AccountAvatar(account, context = {}) {
   const avatarURL = account.display_avatar_url || account.avatar_url || "";
   return View(
     {
@@ -11,10 +12,12 @@ function AccountAvatar(account) {
       Show({
         when: avatarURL,
         ok() {
-          return Img({
+          return ProxyImg({
             class: "h-full w-full object-cover",
             src: avatarURL,
             alt: account.nickname,
+            platformId: context.platform_id,
+            contentType: context.content_type || context.type,
           });
         },
         else() {
@@ -96,7 +99,7 @@ function BrowseCard(item, vm$, props) {
       ]),
       View({ class: "mt-4" }, [
         View({ class: "flex items-center gap-2" }, [
-          AccountAvatar(item.account),
+          AccountAvatar(item.account, item),
           View(
             {
               class:
@@ -144,10 +147,12 @@ function BrowseCard(item, vm$, props) {
                       "h-20 w-28 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
                   },
                   [
-                    Img({
+                    ProxyImg({
                       class: "h-full w-full object-cover",
                       src: coverURL,
                       alt: item.title,
+                      platformId: item.platform_id,
+                      contentType: item.content_type || item.type,
                     }),
                   ],
                 );

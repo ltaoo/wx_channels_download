@@ -1,53 +1,21 @@
 import { fetchAccountList, openURL, synchronizeAccount } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
-function getConfig() {
-  if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
-  if (typeof window !== "undefined" && window.__wx_channels_config__) {
-    return window.__wx_channels_config__;
-  }
-  return {};
-}
-
-function getAPIClientOrigin() {
-  const hostname = String(api_client$?.hostname || "").trim();
-  if (!hostname) {
-    return "";
-  }
-  try {
-    return new URL(hostname, window.location.origin).origin;
-  } catch (e) {
-    return hostname.replace(/\/+$/, "");
-  }
-}
-
-function mpProxyURL(rawURL) {
-  const url = String(rawURL || "").trim();
-  if (!url || url.includes("/mp/proxy?")) {
-    return url;
-  }
-  const cfg = getConfig();
-  const token = cfg.officialServerRefreshToken || "";
-  const params = new URLSearchParams();
-  if (token) {
-    params.set("token", token);
-  }
-  params.set("url", url);
-  return `${getAPIClientOrigin()}/mp/proxy?${params.toString()}`;
-}
-
-function normalizeContent(content, options = {}) {
+function normalizeContent(content, context = {}) {
   const type = String(content.content_type || content.type || "").trim();
   const title = content.title || content.Title || content.description || "";
   const coverURL =
     content.cover_url || content.CoverURL || content.coverUrl || "";
+  const platformId =
+    content.platform_id || content.platform?.id || context.platformId || "";
   return {
     ...content,
     id: content.id || content.Id || content.content_id || content.ContentId,
+    platform_id: platformId,
     type,
     content_type: type,
     cover_url: coverURL,
-    display_cover_url: options.proxyImages ? mpProxyURL(coverURL) : coverURL,
+    display_cover_url: coverURL,
     title,
     url:
       content.url ||
@@ -73,11 +41,10 @@ function normalizeAccount(account) {
     account.platform?.name ||
     platformNameOf(platformId);
   const avatarURL = account.avatar_url || "";
-  const proxyImages = platformId === "wx_official_account";
   const contentMedias = (account.content_accounts || [])
     .map((row) => row.content || row.Content || null)
     .filter(Boolean)
-    .map((content) => normalizeContent(content, { proxyImages }));
+    .map((content) => normalizeContent(content, { platformId }));
   return {
     ...account,
     nickname:
@@ -86,7 +53,7 @@ function normalizeAccount(account) {
       account.external_id ||
       "未命名帐号",
     avatar_url: avatarURL,
-    display_avatar_url: proxyImages ? mpProxyURL(avatarURL) : avatarURL,
+    display_avatar_url: avatarURL,
     platform_id: platformId,
     platform_name: platformName,
     content_count: Number(account.content_count || 0),

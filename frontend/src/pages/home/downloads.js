@@ -1,4 +1,5 @@
-/* global classNames, Img, Select */
+/* global classNames, Select */
+import { ProxyImg } from "@/components/proxy-img.js";
 import {
   DownloadTaskStatus,
   DownloadsPageModel,
@@ -44,22 +45,26 @@ function mapProgressClassName(status) {
 }
 
 function HeaderStat(props) {
-  const { label, value, icon } = props;
+  const { label, value, icon, class: cls = "" } = props;
   return View(
     {
       class: [
         "rounded-lg border border-zinc-200 bg-white p-4 ",
         "dark:border-zinc-800 dark:bg-zinc-950",
+        cls,
       ].join(" "),
     },
     [
-      View({ class: "flex items-center justify-between" }, [
-        View({ class: "text-sm text-zinc-500 dark:text-zinc-400" }, [label]),
+      View({ class: "flex items-center justify-between gap-3" }, [
+        View({ class: "truncate text-sm text-zinc-500 dark:text-zinc-400" }, [
+          label,
+        ]),
         Icon({ name: icon, size: 18 }),
       ]),
       View(
         {
-          class: "mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50",
+          class:
+            "mt-2 truncate text-2xl font-semibold text-zinc-950 dark:text-zinc-50",
         },
         [value],
       ),
@@ -285,13 +290,21 @@ function TaskCard(task, vm$) {
                           "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
                       },
                       [
-                        Img({
+                        ProxyImg({
                           class: "h-full w-full object-cover",
                           src: computed(
                             task,
                             (t) => t.display_cover_url || t.cover_url,
                           ),
                           alt: computed(task, (t) => t.title || "cover"),
+                          platformId: computed(
+                            task,
+                            (t) => t.platform_id || t.platform,
+                          ),
+                          contentType: computed(
+                            task,
+                            (t) => t.content_type || t.type,
+                          ),
                         }),
                       ],
                     );
@@ -548,23 +561,32 @@ function RemoteServerPanel(vm$) {
                 vm$.state.remoteLabel,
               ]),
             ]),
-            View({ class: "flex flex-wrap gap-3" }, [
-              HeaderStat({
-                label: "远端任务",
-                value: computed(vm$.state.remoteTotal, (v) => String(v)),
-                icon: "list",
-              }),
-              HeaderStat({
-                label: "远端下载中",
-                value: computed(vm$.state.remoteRunningCount, (v) => String(v)),
-                icon: "activity",
-              }),
-              HeaderStat({
-                lable: "远端速度",
-                value: vm$.state.remoteTotalSpeed,
-                icon: "gauge",
-              }),
-            ]),
+            View(
+              {
+                class:
+                  "grid w-full gap-3 sm:grid-cols-4 xl:w-auto xl:min-w-[520px] xl:grid-cols-6",
+              },
+              [
+                HeaderStat({
+                  label: "远端任务",
+                  value: computed(vm$.state.remoteTotal, (v) => String(v)),
+                  icon: "list",
+                }),
+                HeaderStat({
+                  label: "远端下载中",
+                  value: computed(vm$.state.remoteRunningCount, (v) =>
+                    String(v),
+                  ),
+                  icon: "activity",
+                }),
+                HeaderStat({
+                  label: "远端速度",
+                  value: vm$.state.remoteTotalSpeed,
+                  icon: "gauge",
+                  class: "sm:col-span-2 xl:col-span-4",
+                }),
+              ],
+            ),
           ]),
           Show({
             when: vm$.state.remoteError,
@@ -812,22 +834,81 @@ function contentTypeLabel(type) {
   return map[type] || type || "内容";
 }
 
-function contentTypeIcon(type) {
-  const map = {
-    video: "film",
-    image_album: "images",
-    image: "image",
-    note: "notebook-text",
-    post: "message-square-text",
-    article: "file-text",
-    question: "circle-help",
-    answer: "message-circle",
-    live: "radio",
-    collection: "list-video",
-    account: "user",
-    topic: "hash",
+function IconMappedType(props) {
+  return {
+    video() {
+      return Icon({
+        name: "film",
+        size: 28,
+      });
+    },
+    image_album() {
+      return Icon({
+        name: "images",
+        size: 28,
+      });
+    },
+    image() {
+      return Icon({
+        name: "image",
+        size: 28,
+      });
+    },
+    note() {
+      return Icon({
+        name: "notebook-text",
+        size: 28,
+      });
+    },
+    post() {
+      return Icon({
+        name: "message-square-text",
+        size: 28,
+      });
+    },
+    article() {
+      return Icon({
+        name: "file-text",
+        size: 28,
+      });
+    },
+    question() {
+      return Icon({
+        name: "circle-help",
+        size: 28,
+      });
+    },
+    answer() {
+      return Icon({
+        name: "message-circle",
+        size: 28,
+      });
+    },
+    live() {
+      return Icon({
+        name: "radio",
+        size: 28,
+      });
+    },
+    collection() {
+      return Icon({
+        name: "list-video",
+        size: 28,
+      });
+    },
+    account() {
+      return Icon({
+        name: "user",
+        size: 28,
+      });
+    },
+    topic() {
+      return Icon({
+        name: "hash",
+        size: 28,
+      });
+    },
   };
-  return map[type] || "file";
 }
 
 function contentAuthorName(content) {
@@ -978,7 +1059,10 @@ function PreviewBadge(label) {
 
 function PreviewInfoItem(label, data_, selector) {
   return Show({
-    when: computed(data_, (content) => !!String(selector(content) || "").trim()),
+    when: computed(
+      data_,
+      (content) => !!String(selector(content) || "").trim(),
+    ),
     ok() {
       return View({ class: "min-w-0" }, [
         View({ class: "text-[11px] text-zinc-400 dark:text-zinc-500" }, [
@@ -1027,14 +1111,21 @@ function TypeSpecificPreview(data_) {
       },
     }),
     Show({
-      when: computed(data_, (content) => content.content_type === "image_album"),
+      when: computed(
+        data_,
+        (content) => content.content_type === "image_album",
+      ),
       ok() {
         return PreviewInfoGrid([
           PreviewInfoItem("图片数", data_, (content) => countImages(content)),
           PreviewInfoItem("尺寸", data_, formatDimension),
           PreviewInfoItem("格式", data_, (content) => content.format),
-          PreviewInfoItem("GIF", data_, (content) => formatBoolean(content.is_gif)),
-          PreviewInfoItem("OCR", data_, (content) => shortText(content.ocr_text, 48)),
+          PreviewInfoItem("GIF", data_, (content) =>
+            formatBoolean(content.is_gif),
+          ),
+          PreviewInfoItem("OCR", data_, (content) =>
+            shortText(content.ocr_text, 48),
+          ),
         ]);
       },
     }),
@@ -1047,8 +1138,10 @@ function TypeSpecificPreview(data_) {
           PreviewInfoItem("视频时长", data_, (content) =>
             formatDurationSeconds(content.video?.duration || content.duration),
           ),
-          PreviewInfoItem("商品卡片", data_, (content) =>
-            asArray(content.product_cards).length || "",
+          PreviewInfoItem(
+            "商品卡片",
+            data_,
+            (content) => asArray(content.product_cards).length || "",
           ),
           PreviewInfoItem("收藏", data_, (content) =>
             formatCompactNumber(content.collect_count),
@@ -1064,8 +1157,10 @@ function TypeSpecificPreview(data_) {
           PreviewInfoItem("视频时长", data_, (content) =>
             formatDurationSeconds(content.video?.duration || content.duration),
           ),
-          PreviewInfoItem("链接卡片", data_, (content) =>
-            asArray(content.link_cards).length || "",
+          PreviewInfoItem(
+            "链接卡片",
+            data_,
+            (content) => asArray(content.link_cards).length || "",
           ),
           PreviewInfoItem("转发", data_, (content) =>
             content.repost_of || content.quote_of ? "是" : "",
@@ -1090,8 +1185,10 @@ function TypeSpecificPreview(data_) {
             content.reading_time ? `${content.reading_time} 分钟` : "",
           ),
           PreviewInfoItem("图片数", data_, (content) => countImages(content)),
-          PreviewInfoItem("内嵌媒体", data_, (content) =>
-            asArray(content.embedded_media).length || "",
+          PreviewInfoItem(
+            "内嵌媒体",
+            data_,
+            (content) => asArray(content.embedded_media).length || "",
           ),
           PreviewInfoItem("正文", data_, (content) =>
             content.body_html || content.body_text ? "已解析" : "",
@@ -1223,7 +1320,9 @@ function ContentPreviewMediaStrip(data_) {
     ok() {
       return View({ class: "mt-3 flex gap-2 overflow-hidden" }, [
         For({
-          each: computed(data_, (content) => contentImages(content).slice(0, 5)),
+          each: computed(data_, (content) =>
+            contentImages(content).slice(0, 5),
+          ),
           render(url) {
             return View(
               {
@@ -1231,7 +1330,7 @@ function ContentPreviewMediaStrip(data_) {
                   "h-12 w-12 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
               },
               [
-                Img({
+                ProxyImg({
                   class: "h-full w-full object-cover",
                   src: url,
                   alt: "image",
@@ -1253,21 +1352,18 @@ function ContentPreviewStats(data_) {
         For({
           each: computed(data_, previewStats),
           render(pair) {
-            return View(
-              { class: "text-xs text-zinc-500 dark:text-zinc-400" },
-              [
-                View({ as: "span", class: "text-zinc-400 dark:text-zinc-500" }, [
-                  `${pair[0]} `,
-                ]),
-                View(
-                  {
-                    as: "span",
-                    class: "font-medium text-zinc-700 dark:text-zinc-200",
-                  },
-                  [pair[1]],
-                ),
-              ],
-            );
+            return View({ class: "text-xs text-zinc-500 dark:text-zinc-400" }, [
+              View({ as: "span", class: "text-zinc-400 dark:text-zinc-500" }, [
+                `${pair[0]} `,
+              ]),
+              View(
+                {
+                  as: "span",
+                  class: "font-medium text-zinc-700 dark:text-zinc-200",
+                },
+                [pair[1]],
+              ),
+            ]);
           },
         }),
       ]);
@@ -1298,129 +1394,138 @@ function ContentPreviewTags(data_) {
 }
 
 function ContentPreview(props) {
-  const data_ = computed(
+  const data_ = combine(
     {
       content: props.content,
       probe: props.probe,
       raw: props.raw,
     },
-    ({ content, probe, raw }) => normalizeProbePreviewContent(content, probe, raw),
+    ({ content, probe, raw }) =>
+      normalizeProbePreviewContent(content, probe, raw),
   );
 
-  return View({ class: "min-w-0 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900/60" }, [
-    View({ class: "flex items-start gap-3" }, [
-      View(
-        {
-          class:
-            "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
-        },
-        [
-          Show({
-            when: computed(data_, contentCoverURL),
-            ok() {
-              return Img({
-                class: "h-full w-full object-cover",
-                src: computed(data_, contentCoverURL),
-                alt: computed(data_, previewTitle),
-              });
-            },
-            else() {
-              return View(
-                {
-                  class:
-                    "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
-                },
-                [
-                  Icon({
-                    name: computed(data_, (content) =>
-                      contentTypeIcon(content.content_type),
-                    ),
-                    size: 28,
-                  }),
-                ],
-              );
-            },
-          }),
-        ],
-      ),
-      View({ class: "min-w-0 flex-1" }, [
-        View({ class: "flex flex-wrap items-center gap-1.5" }, [
-          For({
-            each: computed(data_, previewBadges),
-            render(label) {
-              return PreviewBadge(label);
-            },
-          }),
-        ]),
+  return View(
+    { class: "min-w-0 rounded-md bg-zinc-50 p-3 dark:bg-zinc-900/60" },
+    [
+      View({ class: "flex items-start gap-3" }, [
         View(
           {
             class:
-              "mt-2 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+              "h-20 w-20 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
           },
-          [computed(data_, previewTitle)],
+          [
+            Show({
+              when: computed(data_, contentCoverURL),
+              ok() {
+                return ProxyImg({
+                  class: "h-full w-full object-cover",
+                  src: computed(data_, contentCoverURL),
+                  alt: computed(data_, previewTitle),
+                });
+              },
+              else() {
+                return View(
+                  {
+                    class:
+                      "flex h-full w-full items-center justify-center text-zinc-400 dark:text-zinc-500",
+                  },
+                  [
+                    // IconMappedType({
+                    //   type:
+                    // })
+                    Match({
+                      when: computed(data_, (content) => {
+                        return content.content_type;
+                      }),
+                      cases: IconMappedType(),
+                    }),
+                  ],
+                );
+              },
+            }),
+          ],
         ),
-        View({ class: "mt-1 flex min-w-0 items-center gap-1.5" }, [
-          Show({
-            when: computed(data_, contentAuthorAvatar),
-            ok() {
-              return View(
-                {
-                  class:
-                    "h-5 w-5 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
-                },
-                [
-                  Img({
-                    class: "h-full w-full object-cover",
-                    src: computed(data_, contentAuthorAvatar),
-                    alt: computed(data_, (content) => contentAuthorName(content)),
-                  }),
-                ],
-              );
-            },
-          }),
+        View({ class: "min-w-0 flex-1" }, [
+          View({ class: "flex flex-wrap items-center gap-1.5" }, [
+            For({
+              each: computed(data_, previewBadges),
+              render(label) {
+                return PreviewBadge(label);
+              },
+            }),
+          ]),
           View(
             {
               class:
-                "min-w-0 truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
+                "mt-2 line-clamp-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50",
             },
-            [computed(data_, (content) => contentAuthorName(content) || "-")],
+            [computed(data_, previewTitle)],
           ),
+          View({ class: "mt-1 flex min-w-0 items-center gap-1.5" }, [
+            Show({
+              when: computed(data_, contentAuthorAvatar),
+              ok() {
+                return View(
+                  {
+                    class:
+                      "h-5 w-5 shrink-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900",
+                  },
+                  [
+                    ProxyImg({
+                      class: "h-full w-full object-cover",
+                      src: computed(data_, contentAuthorAvatar),
+                      alt: computed(data_, (content) =>
+                        contentAuthorName(content),
+                      ),
+                    }),
+                  ],
+                );
+              },
+            }),
+            View(
+              {
+                class:
+                  "min-w-0 truncate text-xs font-medium text-zinc-600 dark:text-zinc-300",
+              },
+              [computed(data_, (content) => contentAuthorName(content) || "-")],
+            ),
+          ]),
         ]),
       ]),
-    ]),
-    Show({
-      when: computed(data_, (content) => !!previewDescription(content)),
-      ok() {
-        return View(
-          {
-            class:
-              "mt-3 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
-          },
-          [
-            computed(data_, (content) =>
-              shortText(previewDescription(content), 220),
-            ),
-          ],
-        );
-      },
-    }),
-    ContentPreviewMediaStrip(data_),
-    TypeSpecificPreview(data_),
-    ContentPreviewStats(data_),
-    ContentPreviewTags(data_),
-    PreviewInfoGrid([
-      PreviewInfoItem("内容 ID", data_, (content) => content.content_id),
-      PreviewInfoItem("发布", data_, (content) =>
-        formatTimestamp(content.publish_time),
-      ),
-      PreviewInfoItem("更新", data_, (content) =>
-        formatTimestamp(content.update_time),
-      ),
-      PreviewInfoItem("链接", data_, (content) =>
-        firstNonEmpty(content.canonical_url, content.source_url, content.url),
-      ),
-    ]),
-  ]);
+      Show({
+        when: computed(data_, (content) => !!previewDescription(content)),
+        ok() {
+          return View(
+            {
+              class:
+                "mt-3 line-clamp-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300",
+            },
+            [
+              computed(data_, (content) =>
+                shortText(previewDescription(content), 220),
+              ),
+            ],
+          );
+        },
+      }),
+      ContentPreviewMediaStrip(data_),
+      TypeSpecificPreview(data_),
+      ContentPreviewStats(data_),
+      ContentPreviewTags(data_),
+      PreviewInfoGrid([
+        PreviewInfoItem("内容 ID", data_, (content) => content.content_id),
+        PreviewInfoItem("发布", data_, (content) =>
+          formatTimestamp(content.publish_time),
+        ),
+        PreviewInfoItem("更新", data_, (content) =>
+          formatTimestamp(content.update_time),
+        ),
+        PreviewInfoItem("链接", data_, (content) =>
+          firstNonEmpty(content.canonical_url, content.source_url, content.url),
+        ),
+      ]),
+    ],
+  );
 }
 
 function PlatformCreatePanel(vm$) {
@@ -1435,8 +1540,7 @@ function PlatformCreatePanel(vm$) {
           Icon({ name: "download", size: 18 }),
           View(
             {
-              class:
-                "text-base font-semibold text-zinc-950 dark:text-zinc-50",
+              class: "text-base font-semibold text-zinc-950 dark:text-zinc-50",
             },
             ["新建下载"],
           ),
@@ -1444,10 +1548,9 @@ function PlatformCreatePanel(vm$) {
         Show({
           when: vm$.state.createLoading,
           ok() {
-            return View(
-              { class: "text-xs text-zinc-500 dark:text-zinc-400" },
-              ["解析中..."],
-            );
+            return View({ class: "text-xs text-zinc-500 dark:text-zinc-400" }, [
+              "解析中...",
+            ]);
           },
         }),
       ]),
@@ -1487,34 +1590,34 @@ function PlatformCreatePanel(vm$) {
               class:
                 "mt-4 grid gap-4 border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]",
             },
-                    [
-                      View({ class: "min-w-0" }, [
-                        Show({
-                          when: computed(
-                            vm$.state.createExisting,
-                            (list) => Array.isArray(list) && list.length > 0,
-                          ),
-                          ok() {
-                            return View(
-                              {
-                                class:
-                                  "mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
-                              },
-                              [
-                                computed(vm$.state.createExisting, (list) =>
-                                  existingTaskText(list),
-                                ),
-                              ],
-                            );
-                          },
-                        }),
-                        ContentPreview({
-                          content: vm$.state.createContent,
-                          probe: vm$.state.createProbe,
-                          raw: vm$.state.createProbeRaw,
-                        }),
+            [
+              View({ class: "min-w-0" }, [
+                Show({
+                  when: computed(
+                    vm$.state.createExisting,
+                    (list) => Array.isArray(list) && list.length > 0,
+                  ),
+                  ok() {
+                    return View(
+                      {
+                        class:
+                          "mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+                      },
+                      [
+                        computed(vm$.state.createExisting, (list) =>
+                          existingTaskText(list),
+                        ),
+                      ],
+                    );
+                  },
+                }),
+                ContentPreview({
+                  content: vm$.state.createContent,
+                  probe: vm$.state.createProbe,
+                  raw: vm$.state.createProbeRaw,
+                }),
               ]),
-                      View({ class: "grid gap-3 sm:grid-cols-2 lg:grid-cols-1" }, [
+              View({ class: "grid gap-3 sm:grid-cols-2 lg:grid-cols-1" }, [
                 View({}, [
                   Label(
                     {
@@ -1535,36 +1638,36 @@ function PlatformCreatePanel(vm$) {
                   ),
                   Input({ store: vm$.ui.filenameInput }),
                 ]),
-                      ]),
-                      View(
-                        {
-                          class:
-                            "lg:col-span-2 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200",
-                        },
-                        [
-                          View(
-                            {
-                              class:
-                                "mb-2 font-medium text-zinc-500 dark:text-zinc-400",
-                            },
-                            ["预请求 JSON"],
-                          ),
-                          View(
-                            {
-                              as: "pre",
-                              class:
-                                "max-h-80 whitespace-pre-wrap break-words font-mono leading-relaxed",
-                            },
-                            [
-                              computed(vm$.state.createProbeRaw, (value) =>
-                                formatJSON(value),
-                              ),
-                            ],
-                          ),
-                        ],
+              ]),
+              View(
+                {
+                  class:
+                    "lg:col-span-2 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200",
+                },
+                [
+                  View(
+                    {
+                      class:
+                        "mb-2 font-medium text-zinc-500 dark:text-zinc-400",
+                    },
+                    ["预请求 JSON"],
+                  ),
+                  View(
+                    {
+                      as: "pre",
+                      class:
+                        "max-h-80 whitespace-pre-wrap break-words font-mono leading-relaxed",
+                    },
+                    [
+                      computed(vm$.state.createProbeRaw, (value) =>
+                        formatJSON(value),
                       ),
                     ],
-                  );
+                  ),
+                ],
+              ),
+            ],
+          );
         },
       }),
     ],
@@ -1614,7 +1717,7 @@ export default function DownloadsPageView(props) {
               [Icon({ name: "refresh-cw", size: 16 }), "刷新"],
             ),
           ]),
-          View({ class: "mt-5 grid gap-3 md:grid-cols-3" }, [
+          View({ class: "mt-5 grid gap-3 md:grid-cols-4 xl:grid-cols-6" }, [
             HeaderStat({
               label: "任务总数",
               value: computed(vm$.state.statusStats, (v) => {
@@ -1633,6 +1736,7 @@ export default function DownloadsPageView(props) {
               label: "总速度",
               value: vm$.state.totalSpeed,
               icon: "gauge",
+              class: "md:col-span-2 xl:col-span-4",
             }),
           ]),
           View({ class: "mt-4 flex flex-wrap gap-2" }, [

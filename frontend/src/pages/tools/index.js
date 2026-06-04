@@ -732,14 +732,14 @@ export default function ToolsPageView(props) {
             View({ class: "flex items-center gap-3 flex-wrap" }, [
               Button({
                 store: new Timeless.ui.ButtonCore({
-                  disabled: appLoading_,
+                  // disabled: appLoading_,
                   onClick: loadApps,
                 }),
               }, ["刷新应用列表"]),
               Button({
                 store: new Timeless.ui.ButtonCore({
                   variant: "outline",
-                  disabled: appLoading_,
+                  // disabled: appLoading_,
                   onClick: loadAppTasks,
                 }),
               }, ["刷新任务"]),
@@ -854,7 +854,7 @@ export default function ToolsPageView(props) {
               when: computed(appList_, (v) => v.length === 0 && !appLoading_.value && !appError_.value),
               ok() {
                 return View({ class: "text-sm text-zinc-400 py-8 text-center" }, [
-                  "暂无应用，点击"刷新应用列表"加载",
+                  '暂无应用，点击"刷新应用列表"加载',
                 ]);
               },
             }),

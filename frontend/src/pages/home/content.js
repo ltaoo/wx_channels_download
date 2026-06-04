@@ -1,5 +1,5 @@
-/* global Img */
 import { ContentPageModel } from "./content.model.js";
+import { ProxyImg } from "@/components/proxy-img.js";
 
 function contentIconName(content) {
   switch (content.content_type || content.type) {
@@ -34,7 +34,14 @@ function ContentCard(content, vm$) {
     [
       View({ class: "relative aspect-[3/4] bg-zinc-100 dark:bg-zinc-900" }, [
         content.cover_url
-          ? Img({ class: "h-full w-full object-cover transition group-hover:scale-105", src: content.cover_url, alt: content.title })
+          ? ProxyImg({
+              class:
+                "h-full w-full object-cover transition group-hover:scale-105",
+              src: content.cover_url,
+              alt: content.title,
+              platformId: content.platform_id || content.account?.platform_id,
+              contentType: content.content_type || content.type,
+            })
           : View({ class: "flex h-full w-full items-center justify-center text-zinc-400" }, [
               Icon({ name: contentIconName(content), size: 36 }),
             ]),
@@ -58,10 +65,13 @@ function ContentCard(content, vm$) {
                 },
                 [
                   content.account.avatar_url
-                    ? Img({
+                    ? ProxyImg({
                         class: "h-full w-full object-cover",
                         src: content.account.avatar_url,
                         alt: accountName,
+                        platformId:
+                          content.account.platform_id || content.platform_id,
+                        contentType: content.content_type || content.type,
                       })
                     : View(
                         {
