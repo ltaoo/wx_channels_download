@@ -1,9 +1,12 @@
 package zhihu
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +20,29 @@ func TestParseAnswerURL(t *testing.T) {
 	}
 	if got.QuestionID != "14844743711" || got.AnswerID != "2040749293515043854" {
 		t.Fatalf("ParseAnswerURL = %#v", got)
+	}
+}
+
+func TestParseQuestionAndArticleURL(t *testing.T) {
+	question, ok := ParseQuestionURL("https://www.zhihu.com/question/14844743711")
+	if !ok {
+		t.Fatal("ParseQuestionURL returned false")
+	}
+	if question.QuestionID != "14844743711" || question.Canonical != "https://www.zhihu.com/question/14844743711" {
+		t.Fatalf("ParseQuestionURL = %#v", question)
+	}
+
+	article, ok := ParseArticleURL("https://zhuanlan.zhihu.com/p/680224567")
+	if !ok {
+		t.Fatal("ParseArticleURL returned false")
+	}
+	if article.ArticleID != "680224567" || article.Canonical != "https://zhuanlan.zhihu.com/p/680224567" {
+		t.Fatalf("ParseArticleURL = %#v", article)
+	}
+
+	article, ok = ParseArticleURL("https://www.zhihu.com/p/680224567")
+	if !ok || article.Canonical != "https://zhuanlan.zhihu.com/p/680224567" {
+		t.Fatalf("ParseArticleURL www alias = %#v ok=%v", article, ok)
 	}
 }
 
@@ -68,6 +94,37 @@ func TestInlineRemoteImages(t *testing.T) {
 	}
 	if count := strings.Count(out, "data:image/png;base64,"); count != 2 {
 		t.Fatalf("embedded image count = %d, want 2: %s", count, out)
+	}
+}
+
+func TestLocalizeRemoteVideos(t *testing.T) {
+	videoBody := []byte("video-body")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "video/mp4")
+		_, _ = w.Write(videoBody)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	htmlPath := filepath.Join(dir, "answer.html")
+	input := `<!doctype html><html><body><video src="/clip.mp4"></video></body></html>`
+	client := &Client{HTTPClient: server.Client()}
+	out, err := client.LocalizeRemoteVideos(context.Background(), input, server.URL+"/answer", htmlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, server.URL) || !strings.Contains(out, `src="answer_files/video_01.mp4"`) {
+		t.Fatalf("video src was not localized: %s", out)
+	}
+	if !strings.Contains(out, `controls="controls"`) {
+		t.Fatalf("video controls were not added: %s", out)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "answer_files", "video_01.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(videoBody) {
+		t.Fatalf("video body = %q, want %q", got, videoBody)
 	}
 }
 
@@ -195,6 +252,17 @@ func TestSanitizeFragmentUsesZhihuOriginalImage(t *testing.T) {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("output contains %q: %s", unwanted, out)
 		}
+	}
+}
+
+func TestSanitizeFragmentKeepsVideoSource(t *testing.T) {
+	fragment := `<div><video class="player" controls src="https://vdn.example.com/clip.mp4?token=1" playsinline></video></div>`
+	out := sanitizeFragment(fragment)
+	if !strings.Contains(out, `<video src="https://vdn.example.com/clip.mp4?token=1"></video>`) {
+		t.Fatalf("video source was not preserved: %s", out)
+	}
+	if strings.Contains(out, "class=") || strings.Contains(out, "playsinline") {
+		t.Fatalf("unexpected unsafe attrs kept: %s", out)
 	}
 }
 

@@ -1,3 +1,4 @@
+/* global Img, Select */
 import { HomeDashboardPageModel } from "./dashboard.model.js";
 
 function StatCard(props) {
@@ -38,6 +39,40 @@ function StatCard(props) {
       ]),
     ],
   );
+}
+
+function platformLabel(platform) {
+  const map = {
+    wx_channels: "视频号",
+    douyin: "抖音",
+    zhihu: "知乎",
+    officialaccount: "公众号",
+    youtube: "YouTube",
+  };
+  return map[platform] || platform || "-";
+}
+
+function existingTaskText(list) {
+  const total = Array.isArray(list) ? list.length : 0;
+  if (!total) return "";
+  const latest = list[0] || {};
+  const statusMap = {
+    0: "待下载",
+    1: "下载中",
+    2: "已暂停",
+    3: "排队中",
+    4: "已完成",
+    5: "失败",
+  };
+  return `已存在 ${total} 个下载任务，最新状态：${statusMap[latest.status] || "未知"}`;
+}
+
+function formatJSON(value) {
+  try {
+    return JSON.stringify(value || {}, null, 2);
+  } catch {
+    return "{}";
+  }
 }
 
 /**
@@ -123,24 +158,183 @@ export default function DashboardPageView(props) {
                 Button({ store: vm$.ui.btn_create_task$ }, [
                   Icon({ name: "download", size: 16 }),
                   computed(vm$.state.creatingTask, (v) =>
-                    v ? "创建中..." : "下载",
+                    v ? "创建中..." : "开始下载",
                   ),
                 ]),
               ]),
-              View({ class: "mt-3 flex items-center gap-2" }, [
-                Checkbox({
-                  id: "download-cover-checkbox",
-                  store: vm$.ui.downloadCoverCheckbox$,
-                }),
-                Label(
-                  {
-                    for: "download-cover-checkbox",
-                    class:
-                      "cursor-pointer text-sm text-zinc-700 dark:text-zinc-300",
-                  },
-                  ["同时下载封面"],
-                ),
-              ]),
+              Show({
+                when: vm$.state.probingTask,
+                ok() {
+                  return View(
+                    {
+                      class:
+                        "mt-3 text-xs text-zinc-500 dark:text-zinc-400",
+                    },
+                    ["正在解析链接..."],
+                  );
+                },
+              }),
+              Show({
+                when: vm$.state.probeError,
+                ok() {
+                  return View(
+                    {
+                      class:
+                        "mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
+                    },
+                    [vm$.state.probeError],
+                  );
+                },
+              }),
+              Show({
+                when: vm$.state.taskProbe,
+                ok() {
+                  return View(
+                    {
+                      class:
+                        "mt-4 grid gap-4 border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]",
+                    },
+                    [
+                      View({ class: "min-w-0" }, [
+                        Show({
+                          when: computed(
+                            vm$.state.taskExisting,
+                            (list) => Array.isArray(list) && list.length > 0,
+                          ),
+                          ok() {
+                            return View(
+                              {
+                                class:
+                                  "mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+                              },
+                              [
+                                computed(vm$.state.taskExisting, (list) =>
+                                  existingTaskText(list),
+                                ),
+                              ],
+                            );
+                          },
+                        }),
+                        View({ class: "flex items-start gap-3" }, [
+                          Show({
+                            when: computed(
+                              vm$.state.taskContent,
+                              (content) => content?.cover_url,
+                            ),
+                            ok() {
+                              return View(
+                                {
+                                  class:
+                                    "h-16 w-16 shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900",
+                                },
+                                [
+                                  Img({
+                                    class: "h-full w-full object-cover",
+                                    src: computed(
+                                      vm$.state.taskContent,
+                                      (content) => content?.cover_url,
+                                    ),
+                                    alt: "cover",
+                                  }),
+                                ],
+                              );
+                            },
+                          }),
+                          View({ class: "min-w-0 flex-1" }, [
+                            View({ class: "flex flex-wrap items-center gap-2" }, [
+                              View(
+                                {
+                                  class:
+                                    "rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+                                },
+                                [
+                                  computed(vm$.state.taskProbe, (probe) =>
+                                    platformLabel(probe?.platform),
+                                  ),
+                                ],
+                              ),
+                              View(
+                                {
+                                  class:
+                                    "min-w-0 truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+                                },
+                                [
+                                  computed(
+                                    vm$.state.taskContent,
+                                    (content) => content?.title || "未命名内容",
+                                  ),
+                                ],
+                              ),
+                            ]),
+                            View(
+                              {
+                                class:
+                                  "mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400",
+                              },
+                              [
+                                computed(vm$.state.taskContent, (content) => {
+                                  return (
+                                    content?.author || content?.external_id || "-"
+                                  );
+                                }),
+                              ],
+                            ),
+                          ]),
+                        ]),
+                      ]),
+                      View({ class: "grid gap-3 sm:grid-cols-2 lg:grid-cols-1" }, [
+                        View({}, [
+                          Label(
+                            {
+                              class:
+                                "mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400",
+                            },
+                            ["下载内容"],
+                          ),
+                          Select({ store: vm$.ui.taskVariantSelect$ }),
+                        ]),
+                        View({}, [
+                          Label(
+                            {
+                              class:
+                                "mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400",
+                            },
+                            ["文件名"],
+                          ),
+                          Input({ store: vm$.ui.taskFilenameInput$ }),
+                        ]),
+                      ]),
+                      View(
+                        {
+                          class:
+                            "lg:col-span-2 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200",
+                        },
+                        [
+                          View(
+                            {
+                              class:
+                                "mb-2 font-medium text-zinc-500 dark:text-zinc-400",
+                            },
+                            ["预请求 JSON"],
+                          ),
+                          View(
+                            {
+                              as: "pre",
+                              class:
+                                "max-h-80 whitespace-pre-wrap break-words font-mono leading-relaxed",
+                            },
+                            [
+                              computed(vm$.state.taskProbeRaw, (value) =>
+                                formatJSON(value),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              }),
             ],
           ),
           View({ class: "grid gap-4 md:grid-cols-2 xl:grid-cols-4" }, [

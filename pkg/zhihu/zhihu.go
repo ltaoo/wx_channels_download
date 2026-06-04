@@ -2,6 +2,7 @@ package zhihu
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -11,6 +12,8 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -26,6 +29,8 @@ const (
 )
 
 var answerURLRe = regexp.MustCompile(`^/question/([0-9]+)/answer/([0-9]+)$`)
+var questionURLRe = regexp.MustCompile(`^/question/([0-9]+)$`)
+var articleURLRe = regexp.MustCompile(`^/p/([0-9]+)$`)
 
 type Client struct {
 	HTTPClient *http.Client
@@ -36,6 +41,16 @@ type AnswerURL struct {
 	QuestionID string
 	AnswerID   string
 	Canonical  string
+}
+
+type QuestionURL struct {
+	QuestionID string
+	Canonical  string
+}
+
+type ArticleURL struct {
+	ArticleID string
+	Canonical string
 }
 
 type User struct {
@@ -68,6 +83,18 @@ type Answer struct {
 	Author       User   `json:"author"`
 }
 
+type Article struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	Excerpt     string `json:"excerpt"`
+	ImageURL    string `json:"imageUrl"`
+	ImageURLAlt string `json:"image_url"`
+	Author      User   `json:"author"`
+	CreatedTime int64  `json:"created"`
+	UpdatedTime int64  `json:"updated"`
+}
+
 type Comment struct {
 	ID          string
 	ContentHTML string
@@ -86,6 +113,18 @@ type AnswerPage struct {
 	Comments []Comment
 }
 
+type QuestionPage struct {
+	URL      QuestionURL
+	Source   string
+	Question Question
+}
+
+type ArticlePage struct {
+	URL     ArticleURL
+	Source  string
+	Article Article
+}
+
 func ParseAnswerURL(rawURL string) (AnswerURL, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -100,6 +139,39 @@ func ParseAnswerURL(rawURL string) (AnswerURL, bool) {
 	}
 	canonical := "https://www.zhihu.com/question/" + matches[1] + "/answer/" + matches[2]
 	return AnswerURL{QuestionID: matches[1], AnswerID: matches[2], Canonical: canonical}, true
+}
+
+func ParseQuestionURL(rawURL string) (QuestionURL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return QuestionURL{}, false
+	}
+	if !strings.EqualFold(parsed.Hostname(), "www.zhihu.com") {
+		return QuestionURL{}, false
+	}
+	matches := questionURLRe.FindStringSubmatch(parsed.EscapedPath())
+	if len(matches) != 2 {
+		return QuestionURL{}, false
+	}
+	canonical := "https://www.zhihu.com/question/" + matches[1]
+	return QuestionURL{QuestionID: matches[1], Canonical: canonical}, true
+}
+
+func ParseArticleURL(rawURL string) (ArticleURL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ArticleURL{}, false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "zhuanlan.zhihu.com" && host != "www.zhihu.com" {
+		return ArticleURL{}, false
+	}
+	matches := articleURLRe.FindStringSubmatch(parsed.EscapedPath())
+	if len(matches) != 2 {
+		return ArticleURL{}, false
+	}
+	canonical := "https://zhuanlan.zhihu.com/p/" + matches[1]
+	return ArticleURL{ArticleID: matches[1], Canonical: canonical}, true
 }
 
 func ResolveRealURL(rawURL string) string {
@@ -134,7 +206,65 @@ func (c *Client) FetchAnswerPage(rawURL string) (*AnswerPage, error) {
 	return page, nil
 }
 
+func (c *Client) FetchQuestionPage(rawURL string) (*QuestionPage, error) {
+	questionURL, ok := ParseQuestionURL(ResolveRealURL(rawURL))
+	if !ok {
+		return nil, fmt.Errorf("unsupported zhihu question url")
+	}
+	body, err := c.doBytes(http.MethodGet, questionURL.Canonical, questionURL.Canonical)
+	if err != nil {
+		return nil, err
+	}
+	page, err := parseQuestionPage(body, questionURL)
+	if err != nil {
+		return nil, err
+	}
+	page.Source = questionURL.Canonical
+	return page, nil
+}
+
+func (c *Client) FetchArticlePage(rawURL string) (*ArticlePage, error) {
+	articleURL, ok := ParseArticleURL(ResolveRealURL(rawURL))
+	if !ok {
+		return nil, fmt.Errorf("unsupported zhihu article url")
+	}
+	body, err := c.doBytes(http.MethodGet, articleURL.Canonical, articleURL.Canonical)
+	if err != nil {
+		return nil, err
+	}
+	page, err := parseArticlePage(body, articleURL)
+	if err != nil {
+		return nil, err
+	}
+	page.Source = articleURL.Canonical
+	return page, nil
+}
+
 func (c *Client) BuildHTMLFromURL(rawURL string) (string, error) {
+	if articleURL, ok := ParseArticleURL(ResolveRealURL(rawURL)); ok {
+		page, err := c.FetchArticlePage(articleURL.Canonical)
+		if err != nil {
+			return "", err
+		}
+		content := BuildArticleHTML(page)
+		content, err = c.inlineRemoteImages(content, page.Source)
+		if err != nil {
+			return "", err
+		}
+		return content, nil
+	}
+	if questionURL, ok := ParseQuestionURL(ResolveRealURL(rawURL)); ok {
+		page, err := c.FetchQuestionPage(questionURL.Canonical)
+		if err != nil {
+			return "", err
+		}
+		content := BuildQuestionHTML(page)
+		content, err = c.inlineRemoteImages(content, page.Source)
+		if err != nil {
+			return "", err
+		}
+		return content, nil
+	}
 	page, err := c.FetchAnswerPage(rawURL)
 	if err != nil {
 		return "", err
@@ -203,6 +333,171 @@ func (c *Client) inlineRemoteImages(content string, referer string) (string, err
 		return "", err
 	}
 	return "<!doctype html>" + out, nil
+}
+
+func (c *Client) InlineRemoteImages(content string, referer string) (string, error) {
+	return c.inlineRemoteImages(content, referer)
+}
+
+func (c *Client) LocalizeRemoteVideos(ctx context.Context, content string, referer string, htmlPath string) (string, error) {
+	if strings.TrimSpace(content) == "" || strings.TrimSpace(htmlPath) == "" {
+		return content, nil
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content))
+	if err != nil {
+		return "", err
+	}
+	assetsDirName := htmlAssetsDirName(htmlPath)
+	assetsDirPath := filepath.Join(filepath.Dir(htmlPath), assetsDirName)
+	downloaded := make(map[string]string)
+	var firstErr error
+	videoIndex := 0
+	doc.Find("video[src], video source[src]").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		src, _ := s.Attr("src")
+		src = normalizeAssetURL(src, referer)
+		if src == "" || strings.HasPrefix(src, "data:") || !strings.HasPrefix(src, "http") {
+			return true
+		}
+		localPath, ok := downloaded[src]
+		if !ok {
+			videoIndex++
+			filename, err := c.downloadVideo(ctx, src, referer, assetsDirPath, videoIndex)
+			if err != nil {
+				firstErr = err
+				return false
+			}
+			localPath = filepath.ToSlash(filepath.Join(assetsDirName, filename))
+			downloaded[src] = localPath
+		}
+		s.SetAttr("src", localPath)
+		if s.Is("video") {
+			ensurePlayableVideo(s)
+		} else {
+			s.ParentFiltered("video").Each(func(_ int, video *goquery.Selection) {
+				ensurePlayableVideo(video)
+			})
+		}
+		return true
+	})
+	if firstErr != nil {
+		return "", firstErr
+	}
+	out, err := doc.Html()
+	if err != nil {
+		return "", err
+	}
+	return "<!doctype html>" + out, nil
+}
+
+func ensurePlayableVideo(s *goquery.Selection) {
+	s.SetAttr("controls", "controls")
+	if _, ok := s.Attr("preload"); !ok {
+		s.SetAttr("preload", "metadata")
+	}
+	if _, ok := s.Attr("style"); !ok {
+		s.SetAttr("style", "max-width:100%;height:auto")
+	}
+}
+
+func htmlAssetsDirName(htmlPath string) string {
+	base := strings.TrimSuffix(filepath.Base(htmlPath), filepath.Ext(htmlPath))
+	base = strings.TrimSpace(base)
+	if base == "" || base == "." {
+		base = "zhihu"
+	}
+	return base + "_files"
+}
+
+func (c *Client) downloadVideo(ctx context.Context, rawURL string, referer string, dir string, index int) (string, error) {
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 0}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	setHeaders(req, referer)
+	req.Header.Set("accept", "video/mp4,video/webm,video/*,*/*;q=0.8")
+	req.Header.Set("sec-fetch-dest", "video")
+	req.Header.Set("sec-fetch-mode", "no-cors")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return "", fmt.Errorf("zhihu video status %d debug=%s", resp.StatusCode, zhihuRequestDebug(req, resp, body))
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	filename := fmt.Sprintf("video_%02d%s", index, videoExt(rawURL, resp.Header.Get("content-type")))
+	destPath := filepath.Join(dir, filename)
+	file, err := os.Create(destPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	if _, err := copyWithClientProgress(file, resp.Body, c.OnProgress); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+func copyWithClientProgress(dst io.Writer, src io.Reader, onProgress func(int64)) (int64, error) {
+	buf := make([]byte, 64*1024)
+	var written int64
+	for {
+		n, readErr := src.Read(buf)
+		if n > 0 {
+			m, writeErr := dst.Write(buf[:n])
+			written += int64(m)
+			if onProgress != nil && m > 0 {
+				onProgress(int64(m))
+			}
+			if writeErr != nil {
+				return written, writeErr
+			}
+			if m != n {
+				return written, io.ErrShortWrite
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return written, nil
+			}
+			return written, readErr
+		}
+	}
+}
+
+func videoExt(rawURL string, contentType string) string {
+	if ext := strings.ToLower(pathExt(rawURL)); validMediaExt(ext) {
+		return ext
+	}
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	if exts, err := mime.ExtensionsByType(strings.TrimSpace(contentType)); err == nil {
+		for _, ext := range exts {
+			if validMediaExt(ext) {
+				return ext
+			}
+		}
+	}
+	return ".mp4"
+}
+
+func validMediaExt(ext string) bool {
+	switch ext {
+	case ".mp4", ".m4v", ".mov", ".webm", ".mkv":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) fetchImageDataURI(rawURL string, referer string) (string, error) {
@@ -446,6 +741,70 @@ func parseAnswerPage(body []byte, answerURL AnswerURL) (*AnswerPage, error) {
 	}, nil
 }
 
+func parseQuestionPage(body []byte, questionURL QuestionURL) (*QuestionPage, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
+	if raw == "" {
+		return nil, fmt.Errorf("missing zhihu initial data")
+	}
+	var state struct {
+		InitialState struct {
+			Entities struct {
+				Questions map[string]Question `json:"questions"`
+			} `json:"entities"`
+		} `json:"initialState"`
+	}
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	question := state.InitialState.Entities.Questions[questionURL.QuestionID]
+	if question.ID == "" {
+		return nil, fmt.Errorf("missing zhihu question entity")
+	}
+	return &QuestionPage{
+		URL:      questionURL,
+		Source:   questionURL.Canonical,
+		Question: question,
+	}, nil
+}
+
+func parseArticlePage(body []byte, articleURL ArticleURL) (*ArticlePage, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
+	if raw == "" {
+		return nil, fmt.Errorf("missing zhihu initial data")
+	}
+	var state struct {
+		InitialState struct {
+			Entities struct {
+				Articles map[string]Article `json:"articles"`
+				Posts    map[string]Article `json:"posts"`
+			} `json:"entities"`
+		} `json:"initialState"`
+	}
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	article := state.InitialState.Entities.Articles[articleURL.ArticleID]
+	if article.ID == "" {
+		article = state.InitialState.Entities.Posts[articleURL.ArticleID]
+	}
+	if article.ID == "" {
+		return nil, fmt.Errorf("missing zhihu article entity")
+	}
+	return &ArticlePage{
+		URL:     articleURL,
+		Source:  articleURL.Canonical,
+		Article: article,
+	}, nil
+}
+
 func (c *Client) fetchAnswerComments(answerURL AnswerURL) ([]Comment, error) {
 	comments, err := c.fetchAnswerRootComments(answerURL)
 	if err == nil {
@@ -673,6 +1032,79 @@ func BuildHTML(page *AnswerPage) string {
 	return b.String()
 }
 
+func BuildQuestionHTML(page *QuestionPage) string {
+	if page == nil {
+		return ""
+	}
+	var b strings.Builder
+	title := strings.TrimSpace(page.Question.Title)
+	if title == "" {
+		title = "知乎问题"
+	}
+	b.WriteString("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</title><style>")
+	b.WriteString(`body{margin:0;background:#f6f6f6;color:#1f2329;font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:760px;margin:0 auto;padding:32px 18px 56px;background:#fff;min-height:100vh}h1{font-size:28px;line-height:1.35;margin:0 0 12px}.meta{color:#69707a;font-size:14px;margin:0 0 18px}.author{display:flex;gap:12px;align-items:center;margin:0 0 18px;color:#69707a;font-size:14px}.avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#edf0f3;flex:0 0 auto}.author-name{font-weight:600;color:#1f2329}.content p{margin:0 0 14px}.content img{max-width:100%;height:auto}.source{word-break:break-all}a{color:#175199;text-decoration:none}a:hover{text-decoration:underline}`)
+	b.WriteString("</style></head><body><main><h1>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</h1>")
+	writeAuthorBlock(&b, "问题作者", page.Question.Author, page.Source)
+	if strings.TrimSpace(page.Question.Detail) != "" {
+		b.WriteString("<section class=\"content\">")
+		b.WriteString(sanitizeFragment(page.Question.Detail))
+		b.WriteString("</section>")
+	} else if strings.TrimSpace(page.Question.Excerpt) != "" {
+		b.WriteString("<p>")
+		b.WriteString(html.EscapeString(page.Question.Excerpt))
+		b.WriteString("</p>")
+	}
+	b.WriteString("<h2>来源</h2><p class=\"source\"><a href=\"")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("\">")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("</a></p></main></body></html>")
+	return b.String()
+}
+
+func BuildArticleHTML(page *ArticlePage) string {
+	if page == nil {
+		return ""
+	}
+	var b strings.Builder
+	title := strings.TrimSpace(page.Article.Title)
+	if title == "" {
+		title = "知乎文章"
+	}
+	b.WriteString("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</title><style>")
+	b.WriteString(`body{margin:0;background:#f6f6f6;color:#1f2329;font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:760px;margin:0 auto;padding:32px 18px 56px;background:#fff;min-height:100vh}h1{font-size:28px;line-height:1.35;margin:0 0 12px}.meta{color:#69707a;font-size:14px;margin:0 0 18px}.author{display:flex;gap:12px;align-items:center;margin:0 0 18px;color:#69707a;font-size:14px}.avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#edf0f3;flex:0 0 auto}.author-name{font-weight:600;color:#1f2329}.content p{margin:0 0 14px}.content img{max-width:100%;height:auto}.source{word-break:break-all}a{color:#175199;text-decoration:none}a:hover{text-decoration:underline}`)
+	b.WriteString("</style></head><body><main><h1>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString("</h1>")
+	writeAuthorBlock(&b, "文章作者", page.Article.Author, page.Source)
+	if page.Article.CreatedTime > 0 {
+		b.WriteString("<p class=\"meta\">发布于 ")
+		b.WriteString(html.EscapeString(formatTime(page.Article.CreatedTime)))
+		b.WriteString("</p>")
+	}
+	if strings.TrimSpace(page.Article.Content) != "" {
+		b.WriteString("<section class=\"content\">")
+		b.WriteString(sanitizeFragment(page.Article.Content))
+		b.WriteString("</section>")
+	} else if strings.TrimSpace(page.Article.Excerpt) != "" {
+		b.WriteString("<p>")
+		b.WriteString(html.EscapeString(page.Article.Excerpt))
+		b.WriteString("</p>")
+	}
+	b.WriteString("<h2>来源</h2><p class=\"source\"><a href=\"")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("\">")
+	b.WriteString(html.EscapeString(page.Source))
+	b.WriteString("</a></p></main></body></html>")
+	return b.String()
+}
+
 func writeComment(b *strings.Builder, comment Comment, reply bool) {
 	className := "comment"
 	if reply {
@@ -823,6 +1255,14 @@ func displayName(user User) string {
 
 func avatarURL(user User) string {
 	return firstNonEmpty(user.AvatarURL, user.AvatarURLSnake, user.AvatarURLTemplate)
+}
+
+func UserDisplayName(user User) string {
+	return displayName(user)
+}
+
+func UserAvatarURL(user User) string {
+	return avatarURL(user)
 }
 
 func authorURL(user User) string {

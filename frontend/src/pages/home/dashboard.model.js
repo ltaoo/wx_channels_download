@@ -1,10 +1,11 @@
 import {
-  createTask,
   fetchAccountList,
   fetchAppStatus,
   fetchBrowseHistoryList,
   fetchDownloadList,
   fetchVideoList,
+  resumeTaskPipeline,
+  startTaskPipeline,
 } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
@@ -27,6 +28,34 @@ function pickTotal(data) {
   return pickList(data).length;
 }
 
+function selectOption(label, value) {
+  return new Timeless.ui.SelectItemCore({
+    label: String(label || value || ""),
+    value: String(value || ""),
+  });
+}
+
+function variantOptions(probe) {
+  const variants = probe?.variants || probe?.Variants || [];
+  return variants.map((item) => {
+    const id = item.id || item.ID || item.spec || item.Spec || "";
+    const label = item.label || item.Label || item.id || item.ID || id;
+    const suffix = item.suffix || item.Suffix || "";
+    const requires = Array.isArray(item.requires || item.Requires)
+      ? item.requires || item.Requires
+      : [];
+    const extra = requires.length ? ` (${requires.join(", ")})` : "";
+    return selectOption(`${label}${suffix ? ` ${suffix}` : ""}${extra}`, id);
+  });
+}
+
+function findVariant(probe, id) {
+  const variants = probe?.variants || probe?.Variants || [];
+  return variants.find(
+    (item) => String(item.id || item.ID || "") === String(id || ""),
+  );
+}
+
 /**
  * @param {ViewComponentProps} props
  */
@@ -47,7 +76,10 @@ export function HomeDashboardPageModel(props) {
     status: new Timeless.RequestCore(fetchAppStatus, {
       client: api_client$,
     }),
-    createTask: new Timeless.RequestCore(createTask, {
+    resumePipeline: new Timeless.RequestCore(resumeTaskPipeline, {
+      client: api_client$,
+    }),
+    startPipeline: new Timeless.RequestCore(startTaskPipeline, {
       client: api_client$,
     }),
   };
@@ -55,12 +87,34 @@ export function HomeDashboardPageModel(props) {
   const error_ = ref("");
   const taskUrl_ = ref("");
   const creatingTask_ = ref(false);
+  const probingTask_ = ref(false);
+  const probeError_ = ref("");
+  const taskProbe_ = ref(null);
+  const taskContent_ = ref(null);
+  const taskExisting_ = refarr([]);
+  const taskProbeRaw_ = ref(null);
+  const taskVariantID_ = ref("");
+  const taskFilename_ = ref("");
   const stats_ = ref({
     accounts: 0,
     videos: 0,
     browse: 0,
     downloads: 0,
   });
+
+  let probeSeq = 0;
+  const debounce =
+    Timeless.utils?.debounce ||
+    ((fn, wait) => {
+      let timer = null;
+      return (...args) => {
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(() => fn(...args), wait);
+      };
+    });
+  const debouncedProbeTask = debounce((value) => {
+    methods.probeDownloadTaskURL(value);
+  }, 500);
 
   const ui = {
     view$: new Timeless.ui.ScrollViewCore({}),
@@ -79,28 +133,43 @@ export function HomeDashboardPageModel(props) {
     }),
     taskUrlInput$: new Timeless.ui.InputCore({
       defaultValue: "",
-      placeholder: "粘贴视频号下载链接",
+      placeholder: "粘贴视频号、抖音、知乎、公众号、YouTube 链接",
       onChange(value) {
         taskUrl_.as(value);
+        debouncedProbeTask(value);
       },
     }),
-    downloadCoverCheckbox$: new Timeless.ui.CheckboxCore({}),
+    taskVariantSelect$: new Timeless.ui.SelectCore({
+      defaultValue: "",
+      placeholder: "选择下载内容",
+      options: [],
+      onChange(value) {
+        taskVariantID_.as(value || "");
+      },
+    }),
+    taskFilenameInput$: new Timeless.ui.InputCore({
+      defaultValue: "",
+      placeholder: "文件名",
+      onChange(value) {
+        taskFilename_.as(value);
+      },
+    }),
   };
 
   const methods = {
     async refresh() {
       loading_.as(true);
       error_.as("");
-      const [accounts, videos, browse, downloads, status] = await Promise.all([
+      const [accounts, videos, browse, downloads] = await Promise.all([
         reqs.accounts.run({}),
         reqs.videos.run({ page: 1, pageSize: 1 }),
         reqs.browse.run({}),
         reqs.downloads.run({ page: 1, pageSize: 1 }),
-        reqs.status.run(),
+        // reqs.status.run(),
       ]);
       loading_.as(false);
 
-      const errors = [accounts, videos, browse, downloads, status]
+      const errors = [accounts, videos, browse, downloads]
         .filter((r) => r.error)
         .map((r) => r.error?.message || String(r.error));
       if (errors.length) {
@@ -114,17 +183,84 @@ export function HomeDashboardPageModel(props) {
         downloads: downloads.error ? 0 : pickTotal(downloads.data),
       });
     },
+    resetProbe() {
+      probingTask_.as(false);
+      probeError_.as("");
+      taskProbe_.as(null);
+      taskContent_.as(null);
+      taskExisting_.as([]);
+      taskProbeRaw_.as(null);
+      taskVariantID_.as("");
+      taskFilename_.as("");
+      ui.taskVariantSelect$.setOptions([]);
+      ui.taskVariantSelect$.setValue("");
+      ui.taskFilenameInput$.setValue("");
+    },
+    async probeDownloadTaskURL(url) {
+      const trimmed = String(url || "").trim();
+      if (!trimmed) {
+        methods.resetProbe();
+        return;
+      }
+      const seq = ++probeSeq;
+      probingTask_.as(true);
+      probeError_.as("");
+      const result = await reqs.startPipeline.run({ url: trimmed });
+      if (seq !== probeSeq) return;
+      probingTask_.as(false);
+      if (result.error) {
+        taskProbe_.as(null);
+        taskContent_.as(null);
+        taskExisting_.as([]);
+        taskProbeRaw_.as(null);
+        taskVariantID_.as("");
+        ui.taskVariantSelect$.setOptions([]);
+        ui.taskVariantSelect$.setValue("");
+        probeError_.as(result.error.message || String(result.error));
+        return;
+      }
+      const probe = result.data?.probe || null;
+      const content = result.data?.content || null;
+      const defaults = probe?.defaults || probe?.Defaults || {};
+      const defaultVariant = defaults.variant_id || defaults.VariantID || "";
+      const defaultFilename = content?.title || probe?.title || "";
+      taskProbe_.as(probe);
+      taskContent_.as(content);
+      taskExisting_.as(result.data?.existing || []);
+      taskProbeRaw_.as(result.data || null);
+      taskVariantID_.as(defaultVariant);
+      taskFilename_.as(defaultFilename);
+      ui.taskVariantSelect$.setOptions(variantOptions(probe));
+      ui.taskVariantSelect$.setValue(defaultVariant);
+      ui.taskFilenameInput$.setValue(defaultFilename);
+    },
     async createDownloadTaskFromURL() {
       const url = taskUrl_.value.trim();
       if (!url) {
         props.app.tip?.({ type: "warning", text: ["请输入下载链接"] });
         return;
       }
+      if (!taskProbe_.value) {
+        props.app.tip?.({ type: "warning", text: ["请等待链接解析完成"] });
+        return;
+      }
+      const variant = findVariant(taskProbe_.value, taskVariantID_.value);
       creatingTask_.as(true);
-      const result = await reqs.createTask.run({ url });
-      const coverResult = ui.downloadCoverCheckbox$.value
-        ? await reqs.createTask.run({ url, cover: true })
-        : null;
+      const result = await reqs.resumePipeline.run({
+        url,
+        run_id: taskProbeRaw_.value?.run_id,
+        probe_id: taskProbeRaw_.value?.probe_id,
+        variant_id: taskVariantID_.value,
+        spec: variant?.spec || variant?.Spec || "",
+        suffix: variant?.suffix || variant?.Suffix || "",
+        filename: taskFilename_.value,
+        options: {
+          variant_id: taskVariantID_.value,
+          spec: variant?.spec || variant?.Spec || "",
+          suffix: variant?.suffix || variant?.Suffix || "",
+          filename: taskFilename_.value,
+        },
+      });
       creatingTask_.as(false);
       if (result.error) {
         props.app.tip?.({
@@ -133,19 +269,13 @@ export function HomeDashboardPageModel(props) {
         });
         return;
       }
-      if (coverResult?.error) {
-        props.app.tip?.({
-          type: "error",
-          text: [coverResult.error.message || String(coverResult.error)],
-        });
-        return;
-      }
       props.app.tip?.({
         type: "success",
-        text: [coverResult ? "已创建下载任务和封面下载任务" : "已创建下载任务"],
+        text: ["已开始下载"],
       });
       taskUrl_.as("");
       ui.taskUrlInput$.setValue?.("");
+      methods.resetProbe();
       await methods.refresh();
     },
   };
@@ -159,6 +289,14 @@ export function HomeDashboardPageModel(props) {
       loading: loading_,
       error: error_,
       creatingTask: creatingTask_,
+      probingTask: probingTask_,
+      probeError: probeError_,
+      taskProbe: taskProbe_,
+      taskContent: taskContent_,
+      taskExisting: taskExisting_,
+      taskProbeRaw: taskProbeRaw_,
+      taskVariantID: taskVariantID_,
+      taskFilename: taskFilename_,
       stats: stats_,
     },
     ui,

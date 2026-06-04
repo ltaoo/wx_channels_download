@@ -194,7 +194,40 @@ export function createDownloadTask(body) {
 export function createTask(body) {
   return request.post("/api/task/create", {
     url: body.url,
+    run_id: body.run_id,
+    probe_id: body.probe_id,
     cover: !!body.cover,
+    variant_id: body.variant_id,
+    spec: body.spec,
+    suffix: body.suffix,
+    filename: body.filename,
+    options: body.options,
+    extra: body.extra,
+  });
+}
+
+/** @param {{ url: string; extra?: Record<string, any> }} body */
+export function startTaskPipeline(body) {
+  return request.post("/api/task/pipeline/start", {
+    url: body.url,
+    extra: body.extra,
+  });
+}
+
+export const probeTask = startTaskPipeline;
+
+/** @param {{ url?: string; run_id?: string; probe_id?: string; variant_id?: string; spec?: string; suffix?: string; filename?: string; options?: Record<string, any>; extra?: Record<string, any> }} body */
+export function resumeTaskPipeline(body) {
+  return request.post("/api/task/pipeline/resume", {
+    url: body.url,
+    run_id: body.run_id,
+    probe_id: body.probe_id,
+    variant_id: body.variant_id,
+    spec: body.spec,
+    suffix: body.suffix,
+    filename: body.filename,
+    options: body.options,
+    extra: body.extra,
   });
 }
 

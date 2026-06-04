@@ -50,6 +50,23 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	if err := json.Unmarshal(bodyBytes, &dispatchBody); err == nil &&
 		dispatchBody.URL != "" &&
 		dispatchBody.Object.ID == "" {
+		if c.platformDownloadRouter().Match(dispatchBody.URL) != nil {
+			var createBody platformCreateTaskBody
+			if err := json.Unmarshal(bodyBytes, &createBody); err != nil {
+				result.Err(ctx, 400, "不合法的参数")
+				return
+			}
+			id, err := c.startPlatformDownloadTask(ctx.Request.Context(), createBody)
+			if err != nil {
+				if c.logger != nil {
+					c.logger.Error().Str("url", dispatchBody.URL).Err(err).Msg("创建平台下载任务失败")
+				}
+				result.Err(ctx, 500, "创建任务失败："+err.Error())
+				return
+			}
+			result.Ok(ctx, gin.H{"id": id})
+			return
+		}
 		if !isChannelsDownloadURL(dispatchBody.URL) {
 			if articleID := officialaccountdownload.ExtractArticleID(dispatchBody.URL); articleID != "" {
 				id, err := c.startDownloadOfficialAccountURL(dispatchBody.URL, articleID)

@@ -619,33 +619,33 @@ export default function HomeLayoutView(props) {
     },
 
     connectStatusWS() {
-      if (statusWS || typeof WebSocket === "undefined") return;
-      statusWSClosed = false;
-      const wsURL = new URL(methods.getAPIOrigin());
-      wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
-      wsURL.pathname = "/ws/status";
-      wsURL.search = "";
-      const ws = new WebSocket(wsURL.toString());
-      statusWS = ws;
-      ws.onmessage = (ev) => {
-        try {
-          methods.handleStatusWSMessage(JSON.parse(ev.data));
-        } catch {
-          return;
-        }
-      };
-      ws.onclose = () => {
-        if (statusWS === ws) statusWS = null;
-        if (!statusWSClosed && !disposed) {
-          statusReconnectTimer = window.setTimeout(
-            methods.connectStatusWS,
-            2000,
-          );
-        }
-      };
-      ws.onerror = () => {
-        ws.close();
-      };
+      // if (statusWS || typeof WebSocket === "undefined") return;
+      // statusWSClosed = false;
+      // const wsURL = new URL(methods.getAPIOrigin());
+      // wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
+      // wsURL.pathname = "/ws/status";
+      // wsURL.search = "";
+      // const ws = new WebSocket(wsURL.toString());
+      // statusWS = ws;
+      // ws.onmessage = (ev) => {
+      //   try {
+      //     methods.handleStatusWSMessage(JSON.parse(ev.data));
+      //   } catch {
+      //     return;
+      //   }
+      // };
+      // ws.onclose = () => {
+      //   if (statusWS === ws) statusWS = null;
+      //   if (!statusWSClosed && !disposed) {
+      //     statusReconnectTimer = window.setTimeout(
+      //       methods.connectStatusWS,
+      //       2000,
+      //     );
+      //   }
+      // };
+      // ws.onerror = () => {
+      //   ws.close();
+      // };
     },
     closeStatusWS() {
       statusWSClosed = true;

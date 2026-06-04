@@ -14,8 +14,7 @@
   },
   "include": [
     "src/**/*.js",
-    "types/global.d.ts",
-    "types/timeless.d.ts",
+    "types/**/*.d.ts",
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -5,8 +5,10 @@ import {
   fetchRemoteDownloadList,
   highlightDownloadFile,
   openURL,
+  resumeTaskPipeline,
   retryDownloadTask,
   startDownloadTask,
+  startTaskPipeline,
 } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
@@ -64,14 +66,6 @@ const TAB_DEFS = [
   { label: "失败", value: DownloadTaskTabs.Error, countKey: "error" },
   { label: "已暂停", value: DownloadTaskTabs.Paused, countKey: "paused" },
 ];
-
-function getConfig() {
-  if (typeof WXU !== "undefined" && WXU.config) return WXU.config;
-  // if (typeof window !== "undefined" && window.__wx_channels_config__) {
-  //   return window.__wx_channels_config__;
-  // }
-  return {};
-}
 
 function getAPIClientOrigin() {
   return String(api_client$.hostname || "").trim();
@@ -336,6 +330,32 @@ function normalizeRemoteServerConfig(values) {
   };
 }
 
+function selectOption(label, value) {
+  return new Timeless.ui.SelectItemCore({
+    label: String(label || value || ""),
+    value: String(value || ""),
+  });
+}
+
+function variantOptions(probe) {
+  const variants = probe?.variants || probe?.Variants || [];
+  return variants.map((item) => {
+    const id = item.id || item.ID || item.spec || item.Spec || "";
+    const label = item.label || item.Label || item.id || item.ID || id;
+    const suffix = item.suffix || item.Suffix || "";
+    const requires = Array.isArray(item.requires || item.Requires)
+      ? item.requires || item.Requires
+      : [];
+    const extra = requires.length ? ` (${requires.join(", ")})` : "";
+    return selectOption(`${label}${suffix ? ` ${suffix}` : ""}${extra}`, id);
+  });
+}
+
+function findVariant(probe, id) {
+  const variants = probe?.variants || probe?.Variants || [];
+  return variants.find((item) => String(item.id || item.ID || "") === String(id || ""));
+}
+
 /**
  * @param {ViewComponentProps} props
  */
@@ -359,6 +379,12 @@ export function DownloadTaskPanelModel(props) {
     open: new Timeless.RequestCore(openURL, {
       client: props.client,
     }),
+    startPipeline: new Timeless.RequestCore(startTaskPipeline, {
+      client: props.client,
+    }),
+    resumePipeline: new Timeless.RequestCore(resumeTaskPipeline, {
+      client: props.client,
+    }),
   };
   const tasks_ = refarr([]);
   const loading_ = ref(false);
@@ -375,6 +401,19 @@ export function DownloadTaskPanelModel(props) {
     error: 0,
     paused: 0,
   });
+  const create_url_ = ref("");
+  const create_probe_ = ref(null);
+  const create_content_ = ref(null);
+  const create_existing_ = refarr([]);
+  const create_form_ = refarr([]);
+  const create_probe_raw_ = ref(null);
+  const create_error_ = ref("");
+  const create_loading_ = ref(false);
+  const create_creating_ = ref(false);
+  const create_variant_id_ = ref("");
+  const create_filename_ = ref("");
+  let probe_timer_ = null;
+  let probe_seq_ = 0;
 
   function statusesForTab(tab) {
     if (tab === DownloadTaskTabs.Running) return [DownloadTaskStatus.Running];
@@ -590,6 +629,61 @@ export function DownloadTaskPanelModel(props) {
     }
   }
 
+  function resetProbe() {
+    create_probe_.as(null);
+    create_content_.as(null);
+    create_existing_.as([]);
+    create_form_.as([]);
+    create_probe_raw_.as(null);
+    create_error_.as("");
+    create_variant_id_.as("");
+    create_filename_.as("");
+    ui.variantSelect.setOptions([]);
+    ui.variantSelect.setValue("");
+    ui.filenameInput.setValue("");
+  }
+
+  async function runProbe(url) {
+    const trimmed = String(url || "").trim();
+    if (!trimmed) {
+      resetProbe();
+      return;
+    }
+    const seq = ++probe_seq_;
+    create_loading_.as(true);
+    create_error_.as("");
+    const r = await reqs.startPipeline.run({ url: trimmed });
+    if (seq !== probe_seq_) return;
+    create_loading_.as(false);
+    if (r.error) {
+      resetProbe();
+      create_error_.as(r.error.message || String(r.error));
+      return;
+    }
+    const probe = r.data?.probe || null;
+    const defaults = probe?.defaults || probe?.Defaults || {};
+    const defaultVariant = defaults.variant_id || defaults.VariantID || "";
+    create_probe_.as(probe);
+    create_content_.as(r.data?.content || null);
+    create_existing_.as(r.data?.existing || []);
+    create_form_.as(r.data?.form || []);
+    create_probe_raw_.as(r.data || null);
+    create_variant_id_.as(defaultVariant);
+    create_filename_.as(r.data?.content?.title || probe?.title || "");
+    ui.variantSelect.setOptions(variantOptions(probe));
+    ui.variantSelect.setValue(defaultVariant);
+    ui.filenameInput.setValue(r.data?.content?.title || probe?.title || "");
+  }
+
+  function scheduleProbe(value) {
+    create_url_.as(value);
+    if (probe_timer_) {
+      window.clearTimeout(probe_timer_);
+      probe_timer_ = null;
+    }
+    probe_timer_ = window.setTimeout(() => runProbe(value), 450);
+  }
+
   async function load(page = 1) {
     loading_.as(true);
     error_.as("");
@@ -635,6 +729,10 @@ export function DownloadTaskPanelModel(props) {
     },
     destroy() {
       closeWS();
+      if (probe_timer_) {
+        window.clearTimeout(probe_timer_);
+        probe_timer_ = null;
+      }
     },
     refresh() {
       return load(1);
@@ -706,6 +804,94 @@ export function DownloadTaskPanelModel(props) {
       ).toString();
       return act(() => reqs.open.run({ url }), "已在浏览器打开");
     },
+    async createFromURL() {
+      const url = String(create_url_.value || "").trim();
+      if (!url) {
+        props.app?.tip?.({ type: "warning", text: ["请先输入下载链接"] });
+        return;
+      }
+      const probe = create_probe_.value;
+      const variant = findVariant(probe, create_variant_id_.value);
+      create_creating_.as(true);
+      const r = await reqs.resumePipeline.run({
+        url,
+        run_id: create_probe_raw_.value?.run_id,
+        probe_id: create_probe_raw_.value?.probe_id,
+        variant_id: create_variant_id_.value,
+        spec: variant?.spec || variant?.Spec || "",
+        suffix: variant?.suffix || variant?.Suffix || "",
+        filename: create_filename_.value,
+        options: {
+          variant_id: create_variant_id_.value,
+          spec: variant?.spec || variant?.Spec || "",
+          suffix: variant?.suffix || variant?.Suffix || "",
+          filename: create_filename_.value,
+        },
+      });
+      create_creating_.as(false);
+      if (r.error) {
+        props.app?.tip?.({
+          type: "error",
+          text: [r.error.message || String(r.error)],
+        });
+        return;
+      }
+      props.app?.tip?.({ type: "success", text: ["已开始下载"] });
+      await load(1);
+    },
+  };
+
+  const ui = {
+    view: new Timeless.ui.ScrollViewCore({}),
+    btn_refresh$: new Timeless.ui.ButtonCore({
+      variant: "outline",
+      onClick() {
+        methods.refresh();
+      },
+    }),
+    btn_load_more$: new Timeless.ui.ButtonCore({
+      variant: "outline",
+      // disabled: vm$.state.loading,
+      onClick() {
+        methods.loadMore();
+      },
+    }),
+    createUrlInput: new Timeless.ui.InputCore({
+      defaultValue: "",
+      placeholder: "粘贴视频号、抖音、知乎、公众号、YouTube 链接",
+      onChange(value) {
+        scheduleProbe(value);
+      },
+    }),
+    variantSelect: new Timeless.ui.SelectCore({
+      defaultValue: "",
+      placeholder: "选择下载内容",
+      options: [],
+      onChange(value) {
+        create_variant_id_.as(value || "");
+        const variant = findVariant(create_probe_.value, value);
+        if (variant?.suffix || variant?.Suffix) {
+          const current = String(create_filename_.value || "");
+          const suffix = variant.suffix || variant.Suffix;
+          if (current && current.toLowerCase().endsWith(String(suffix).toLowerCase())) {
+            create_filename_.as(current.slice(0, -String(suffix).length));
+            ui.filenameInput.setValue(create_filename_.value);
+          }
+        }
+      },
+    }),
+    filenameInput: new Timeless.ui.InputCore({
+      defaultValue: "",
+      placeholder: "文件名",
+      onChange(value) {
+        create_filename_.as(value);
+      },
+    }),
+    btnCreatePlatformTask: new Timeless.ui.ButtonCore({
+      onClick() {
+        methods.createFromURL();
+      },
+    }),
   };
 
   return {
@@ -737,23 +923,19 @@ export function DownloadTaskPanelModel(props) {
           ) + "/s"
         );
       }),
+      createUrl: create_url_,
+      createProbe: create_probe_,
+      createContent: create_content_,
+      createExisting: create_existing_,
+      createForm: create_form_,
+      createProbeRaw: create_probe_raw_,
+      createError: create_error_,
+      createLoading: create_loading_,
+      createCreating: create_creating_,
+      createVariantID: create_variant_id_,
+      createFilename: create_filename_,
     },
-    ui: {
-      view: new Timeless.ui.ScrollViewCore({}),
-      btn_refresh$: new Timeless.ui.ButtonCore({
-        variant: "outline",
-        onClick() {
-          methods.refresh();
-        },
-      }),
-      btn_load_more$: new Timeless.ui.ButtonCore({
-        variant: "outline",
-        // disabled: vm$.state.loading,
-        onClick() {
-          methods.loadMore();
-        },
-      }),
-    },
+    ui,
     methods,
   };
 }
