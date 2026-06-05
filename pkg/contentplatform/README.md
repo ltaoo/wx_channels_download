@@ -140,8 +140,8 @@ to work from pipeline data.
 - `zhihu/`: Zhihu answer/question/article handler and HTML executor.
 - `officialaccount/`: WeChat Official Account article handler and HTML
   executor.
-- `youtube/`: YouTube placeholder handler. It currently needs an external
-  resolver before downloads are available.
+- `youtube/`: YouTube video handler. It extracts watch/player metadata,
+  exposes direct progressive video, MP3-from-audio, and cover variants.
 
 ## Adding a Platform
 

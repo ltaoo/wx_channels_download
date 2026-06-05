@@ -15,10 +15,15 @@ import (
 
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
+	contentshuba69 "wx_channel/pkg/contentplatform/69shuba"
 	contentchannels "wx_channel/pkg/contentplatform/channels"
 	contentdouyin "wx_channel/pkg/contentplatform/douyin"
 	contentdownload "wx_channel/pkg/contentplatform/download"
+	contentfanqie "wx_channel/pkg/contentplatform/fanqienovel"
 	contentoa "wx_channel/pkg/contentplatform/officialaccount"
+	contentqidian "wx_channel/pkg/contentplatform/qidian"
+	contentquanben "wx_channel/pkg/contentplatform/quanben"
+	contentttk "wx_channel/pkg/contentplatform/ttk"
 	contentyoutube "wx_channel/pkg/contentplatform/youtube"
 	contentzhihu "wx_channel/pkg/contentplatform/zhihu"
 	"wx_channel/pkg/decrypt"
@@ -529,6 +534,11 @@ func (c *APIClient) platformDownloadRouter() *contentdownload.Router {
 		contentzhihu.New(nil),
 		contentoa.New(nil),
 		contentyoutube.New(nil),
+		contentshuba69.New(nil),
+		contentqidian.New(nil),
+		contentquanben.New(nil),
+		contentttk.New(nil),
+		contentfanqie.New(nil),
 	)
 }
 

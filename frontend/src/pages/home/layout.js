@@ -565,7 +565,7 @@ export default function HomeLayoutView(props) {
         type: "success",
         text: [`${service.title} ${action === "start" ? "已启动" : "已停止"}`],
       });
-      await methods.checkChannelsStatus();
+      // await methods.checkChannelsStatus();
     },
     async saveServiceConfig(service, host, port) {
       const values = {};
@@ -582,7 +582,7 @@ export default function HomeLayoutView(props) {
         return;
       }
       props.app.tip?.({ type: "success", text: ["服务配置已保存"] });
-      await methods.checkChannelsStatus();
+      // await methods.checkChannelsStatus();
     },
 
     async runCertAction(action) {
@@ -673,9 +673,9 @@ export default function HomeLayoutView(props) {
                 "h-full border-r border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950",
               onMounted() {
                 disposed = false;
-                methods.checkChannelsStatus();
-                methods.connectStatusWS();
-                statusTimer = setInterval(methods.checkChannelsStatus, 30000);
+                // methods.checkChannelsStatus();
+                // methods.connectStatusWS();
+                // statusTimer = setInterval(methods.checkChannelsStatus, 30000);
               },
               onUnmounted() {
                 disposed = true;

@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -20,6 +21,9 @@ type Handler struct {
 }
 
 func New(resolver Resolver) *Handler {
+	if resolver == nil {
+		resolver = NewClient(nil)
+	}
 	return &Handler{Resolver: resolver}
 }
 
@@ -33,55 +37,29 @@ func (h *Handler) Match(rawURL string) bool {
 }
 
 func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (*contentdownload.Probe, error) {
-	if h.Resolver != nil {
-		return h.Resolver.Probe(ctx, input)
+	if h.Resolver == nil {
+		return nil, contentdownload.ErrResolveUnavailable
 	}
-	videoID, ok := ExtractVideoID(input.URL)
-	if !ok {
-		return nil, contentdownload.ErrUnsupportedURL
-	}
-	canonicalURL := "https://www.youtube.com/watch?v=" + videoID
-	return &contentdownload.Probe{
-		Platform:     PlatformID,
-		SourceURL:    input.URL,
-		CanonicalURL: canonicalURL,
-		ContentID:    videoID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:  PlatformID,
-			Type:      "video",
-			ID:        videoID,
-			Title:     "youtube_" + videoID,
-			URL:       canonicalURL,
-			SourceURL: canonicalURL,
-		}, map[string]string{"video_id": videoID}, map[string]any{"video_id": videoID}, nil),
-		Variants: []contentdownload.Variant{
-			{
-				ID:       "external_resolver",
-				Type:     "video",
-				Label:    "外部解析器",
-				Suffix:   ".mp4",
-				Requires: []string{"youtube_resolver"},
-			},
-		},
-		Defaults: contentdownload.Defaults{VariantID: "external_resolver", Suffix: ".mp4"},
-		Warnings: []string{"youtube resolver is not configured"},
-	}, nil
+	return h.Resolver.Probe(ctx, input)
 }
 
 func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInput) (*contentdownload.ResolvedRequest, error) {
-	if h.Resolver != nil {
-		resolved, err := h.Resolver.Resolve(ctx, input)
-		if err != nil {
-			return nil, err
-		}
-		plan, err := h.Plan(ctx, resolved)
-		if err != nil {
-			return nil, err
-		}
-		resolved.Pipeline = plan
-		return resolved, nil
+	if h.Resolver == nil {
+		return nil, contentdownload.ErrResolveUnavailable
 	}
-	return nil, contentdownload.ErrResolveUnavailable
+	resolved, err := h.Resolver.Resolve(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil {
+		return nil, fmt.Errorf("youtube resolver returned empty request")
+	}
+	plan, err := h.Plan(ctx, resolved)
+	if err != nil {
+		return nil, err
+	}
+	resolved.Pipeline = plan
+	return resolved, nil
 }
 
 func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRequest) (*contentdownload.PipelinePlan, error) {
@@ -102,30 +80,70 @@ func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRe
 }
 
 func ExtractVideoID(rawURL string) (string, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", false
+	}
+	if isLikelyVideoID(rawURL) {
+		return rawURL, true
+	}
+	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", false
 	}
 	host := strings.ToLower(parsed.Hostname())
+	path := strings.Trim(parsed.EscapedPath(), "/")
 	switch {
-	case host == "youtu.be":
-		id := strings.Trim(parsed.EscapedPath(), "/")
-		return id, id != ""
-	case host == "youtube.com" || host == "www.youtube.com" || host == "m.youtube.com":
+	case host == "youtu.be" || host == "www.youtu.be":
+		id := firstPathSegment(path)
+		return id, isLikelyVideoID(id)
+	case isYouTubeHost(host):
 		if parsed.EscapedPath() == "/watch" {
 			id := parsed.Query().Get("v")
-			return id, id != ""
+			return id, isLikelyVideoID(id)
 		}
-		if strings.HasPrefix(parsed.EscapedPath(), "/shorts/") {
-			id := strings.TrimPrefix(parsed.EscapedPath(), "/shorts/")
-			id = strings.Trim(id, "/")
-			return id, id != ""
+		for _, prefix := range []string{"shorts/", "embed/", "v/", "live/"} {
+			if strings.HasPrefix(path, prefix) {
+				id := firstPathSegment(strings.TrimPrefix(path, prefix))
+				return id, isLikelyVideoID(id)
+			}
 		}
-		if strings.HasPrefix(parsed.EscapedPath(), "/embed/") {
-			id := strings.TrimPrefix(parsed.EscapedPath(), "/embed/")
-			id = strings.Trim(id, "/")
-			return id, id != ""
+		if parsed.Query().Get("video_id") != "" {
+			id := parsed.Query().Get("video_id")
+			return id, isLikelyVideoID(id)
 		}
 	}
 	return "", false
+}
+
+func isYouTubeHost(host string) bool {
+	return host == "youtube.com" ||
+		host == "www.youtube.com" ||
+		host == "m.youtube.com" ||
+		host == "music.youtube.com" ||
+		host == "youtube-nocookie.com" ||
+		host == "www.youtube-nocookie.com"
+}
+
+func firstPathSegment(path string) string {
+	if i := strings.Index(path, "/"); i >= 0 {
+		return path[:i]
+	}
+	return path
+}
+
+func isLikelyVideoID(value string) bool {
+	if len(value) != 11 || strings.ContainsAny(value, "/:?&=#") {
+		return false
+	}
+	for _, r := range value {
+		if (r >= '0' && r <= '9') ||
+			(r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }

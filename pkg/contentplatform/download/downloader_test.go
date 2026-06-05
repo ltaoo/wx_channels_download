@@ -98,3 +98,24 @@ func TestZipExecutor(t *testing.T) {
 		t.Fatalf("zip file not created: info=%v err=%v", info, err)
 	}
 }
+
+func TestInlineHTMLExecutor(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "page.html")
+	err := NewInlineHTMLExecutor().Execute(context.Background(), ExecuteRequest{
+		Resolved: &ResolvedRequest{
+			Metadata: map[string]any{"body_html": "<html>hello</html>"},
+		},
+		Source:   DownloadSpec{URL: "inline-html://test/1", Protocol: "inline_html"},
+		DestPath: dest,
+	})
+	if err != nil {
+		t.Fatalf("inline html execute: %v", err)
+	}
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if string(data) != "<html>hello</html>" {
+		t.Fatalf("file = %q", string(data))
+	}
+}

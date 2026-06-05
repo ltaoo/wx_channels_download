@@ -100,7 +100,7 @@ func NewDownloader(router *Router, downloadDir string, opts ...DownloaderOption)
 		downloadDir: downloadDir,
 		tasks:       make(map[string]*Task),
 	}
-	d.executors = append(d.executors, NewHTTPExecutor(nil), NewZipExecutor(nil))
+	d.executors = append(d.executors, NewHTTPExecutor(nil), NewZipExecutor(nil), NewInlineHTMLExecutor())
 	for _, opt := range opts {
 		opt(d)
 	}
