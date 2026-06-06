@@ -83,7 +83,7 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			"oid": parts.Oid,
 			"nid": parts.Nid,
 			"eid": parts.Eid,
-		}, nil),
+		}, ProbeOutput{}.Map()),
 		Defaults: contentdownload.Defaults{
 			VariantID: "original",
 			Suffix:    ".mp4",
@@ -137,7 +137,7 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 		"eid":        parts.Eid,
 		"nonce_id":   profile.NonceId,
 		"source_url": profile.SourceURL,
-	}, nil)
+	}, ProbeOutput{}.Map())
 	probe.Internal["decode_key"] = profile.DecryptKey
 
 	if isPicture {
@@ -203,7 +203,7 @@ func (h *Handler) probeSph(ctx context.Context, input contentdownload.ProbeInput
 		}, SphProfile{ShareURL: input.URL, SphID: parts.ID}, map[string]any{
 			"sph_id":    parts.ID,
 			"share_url": input.URL,
-		}, nil),
+		}, ProbeOutput{}.Map()),
 		Defaults: contentdownload.Defaults{
 			VariantID: "original",
 			Suffix:    ".mp4",
@@ -258,7 +258,7 @@ func (h *Handler) probeSph(ctx context.Context, input contentdownload.ProbeInput
 		"export_id":  profile.ExportID,
 		"share_url":  profile.ShareURL,
 		"source_url": input.URL,
-	}, nil)
+	}, ProbeOutput{}.Map())
 	probe.Variants = []contentdownload.Variant{
 		{ID: "original", Type: "video", Label: "默认/原始", Suffix: ".mp4"},
 		{ID: "audio_mp3", Type: "audio", Label: "MP3", Suffix: ".mp3", Requires: []string{"ffmpeg"}},

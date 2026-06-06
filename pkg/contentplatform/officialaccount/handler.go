@@ -67,13 +67,13 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			CoverURL:        coverURL,
 		}, article, map[string]any{
 			"author_id": article.AuthorID,
-		}, map[string]any{
-			"format":       "html",
-			"content_type": "article",
-			"title":        title,
-			"source_url":   input.URL,
-			"body_html":    article.Content,
-		}),
+		}, ProbeOutput{
+			Format:      "html",
+			ContentType: "article",
+			Title:       title,
+			SourceURL:   input.URL,
+			BodyHTML:    article.Content,
+		}.Map()),
 		Variants: []contentdownload.Variant{
 			{ID: "html", Type: "html", Label: "HTML", Suffix: ".html"},
 		},

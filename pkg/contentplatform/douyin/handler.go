@@ -69,7 +69,7 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			"author_id":       info.AuthorID,
 			"author_username": info.AuthorUsername,
 			"author_sec_id":   info.AuthorSecID,
-		}, nil),
+		}, ProbeOutput{}.Map()),
 		Variants: []contentdownload.Variant{
 			{ID: "video", Type: "video", Label: "视频", Suffix: ".mp4"},
 			{ID: "audio_mp3", Type: "audio", Label: "MP3", Suffix: ".mp3", Requires: []string{"ffmpeg"}},

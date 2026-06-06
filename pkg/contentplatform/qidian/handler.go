@@ -123,14 +123,14 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			"latest_chapter":   profile.LatestChapter.Title,
 			"latest_update_at": profile.LatestUpdateAt,
 			"source_url":       parts.Canonical,
-		}, map[string]any{
-			"format":        "html",
-			"content_type":  "novel",
-			"title":         title,
-			"source_url":    parts.Canonical,
-			"canonical_url": parts.Canonical,
-			"body_html":     bodyHTML,
-		}),
+		}, ProbeOutput{
+			Format:       "html",
+			ContentType:  "novel",
+			Title:        title,
+			SourceURL:    parts.Canonical,
+			CanonicalURL: parts.Canonical,
+			BodyHTML:     bodyHTML,
+		}.Map()),
 		Variants: []contentdownload.Variant{
 			novelutil.HTMLVariant("目录 HTML", "novel"),
 		},
