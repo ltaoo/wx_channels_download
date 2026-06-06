@@ -335,6 +335,12 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 				"filename": fmt.Sprintf("%d.jpg", i+1),
 			})
 		}
+		if bgmURL := feed.ObjectDesc.FollowPostInfo.MusicInfo.MediaStreamingUrl; bgmURL != "" {
+			files = append(files, map[string]string{
+				"url":      bgmURL,
+				"filename": "bgm.mp3",
+			})
+		}
 		data, _ := json.Marshal(files)
 		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}

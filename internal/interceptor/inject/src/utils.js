@@ -107,6 +107,88 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function get_media_url(media) {
+    if (!media) {
+      return "";
+    }
+    return (media.url || "") + (media.urlToken || "");
+  }
+  function get_picture_cover_url(media) {
+    if (!media) {
+      return "";
+    }
+    return (
+      media.coverUrl ||
+      media.thumbUrl ||
+      media.fullThumbUrl ||
+      media.fullUrl ||
+      get_media_url(media)
+    );
+  }
+  function get_feed_title(feed) {
+    if (feed.objectDesc && feed.objectDesc.description) {
+      return feed.objectDesc.description;
+    }
+    if (
+      feed.objectDesc &&
+      feed.objectDesc.flowCardDesc &&
+      feed.objectDesc.flowCardDesc.description
+    ) {
+      return feed.objectDesc.flowCardDesc.description;
+    }
+    if (
+      feed.objectDesc &&
+      feed.objectDesc.finderNewlifeDesc &&
+      feed.objectDesc.finderNewlifeDesc.richTextTitle
+    ) {
+      return feed.objectDesc.finderNewlifeDesc.richTextTitle;
+    }
+    return feed.description || feed.id || "";
+  }
+  function format_bgm(feed) {
+    var musicInfo =
+      feed.objectDesc &&
+      feed.objectDesc.followPostInfo &&
+      feed.objectDesc.followPostInfo.musicInfo;
+    if (!musicInfo || !musicInfo.mediaStreamingUrl) {
+      return null;
+    }
+    return {
+      url: musicInfo.mediaStreamingUrl,
+      filename: "bgm.mp3",
+      name: musicInfo.name || "",
+      artist: musicInfo.artist || "",
+      doc_id: musicInfo.docId || "",
+      doc_type: musicInfo.docType || 0,
+    };
+  }
+  function build_picture_zip_files(feed) {
+    var files = [];
+    var mediaList = feed.files || [];
+    for (let i = 0; i < mediaList.length; i += 1) {
+      var item = mediaList[i];
+      var media_url = get_media_url(item);
+      if (!media_url) {
+        continue;
+      }
+      files.push({
+        url: media_url,
+        filename: `${files.length + 1}.jpg`,
+      });
+    }
+    if (feed.bgm && feed.bgm.url) {
+      files.push({
+        url: feed.bgm.url,
+        filename: feed.bgm.filename || "bgm.mp3",
+      });
+    }
+    return files;
+  }
+  function build_picture_zip_url(feed) {
+    return `zip://weixin.qq.com?files=${encodeURIComponent(
+      JSON.stringify(build_picture_zip_files(feed)),
+    )}`;
+  }
   /**
    * 格式化 FeedProfile，增加了一些字段
    * @param {ChannelsFeed} feed
@@ -157,7 +239,8 @@ var WXU = (() => {
       // 直播没有 media
       return null;
     }
-    var media = feed.objectDesc.media[0];
+    var mediaList = feed.objectDesc.media || [];
+    var media = mediaList[0];
     if (type === 2) {
       // 图片视频
       return {
@@ -165,9 +248,10 @@ var WXU = (() => {
         type: "picture",
         id: feed.id,
         nonce_id: feed.objectNonceId,
-        cover_url: media.coverUrl,
-        title: feed.objectDesc.description,
-        files: feed.objectDesc.media,
+        cover_url: get_picture_cover_url(media),
+        title: get_feed_title(feed),
+        files: mediaList,
+        bgm: format_bgm(feed),
         url: "",
         key: 0,
         spec: [],
@@ -184,12 +268,12 @@ var WXU = (() => {
         type: "media",
         id: feed.id,
         nonce_id: feed.objectNonceId,
-        title: feed.objectDesc.description,
-        url: media.url + media.urlToken,
+        title: get_feed_title(feed),
+        url: get_media_url(media),
         key: media.decodeKey,
         cover_url: media.coverUrl,
         createtime: feed.createtime,
-        spec: media.spec,
+        spec: media.spec || [],
         size: media.fileSize,
         duration: media.videoPlayLen,
         contact: {
@@ -765,7 +849,7 @@ var WXU = (() => {
           if (WXU.config.defaultHighest || opt.spec === null) {
             return null;
           }
-          if (feed.spec[0]) {
+          if (feed.spec && feed.spec[0]) {
             return feed.spec[0].fileFormat;
           }
           return null;
@@ -780,16 +864,7 @@ var WXU = (() => {
         }
         if (feed.type === "picture") {
           opt.suffix = ".zip";
-          feed.url = `zip://weixin.qq.com?files=${encodeURIComponent(
-            JSON.stringify(
-              feed.files.map((f, idx) => {
-                return {
-                  url: f.url,
-                  filename: `${idx + 1}.jpg`,
-                };
-              }),
-            ),
-          )}`;
+          feed.url = build_picture_zip_url(feed);
           console.log("[]feed.url", feed.url);
         }
         if (opt.suffix !== ".jpg") {
@@ -850,7 +925,7 @@ var WXU = (() => {
             if (WXU.config.defaultHighest || opt.spec === null) {
               return null;
             }
-            if (feed.spec[0]) {
+            if (feed.spec && feed.spec[0]) {
               return feed.spec[0].fileFormat;
             }
             return null;
@@ -861,20 +936,12 @@ var WXU = (() => {
             WXU.config.downloadFilenameTemplate,
           );
           if (filename) {
+            var suffix = opt.suffix;
             if (feed.type === "picture") {
-              opt.suffix = ".zip";
-              feed.url = `zip://weixin.qq.com?files=${encodeURIComponent(
-                JSON.stringify(
-                  feed.files.map((f, idx) => {
-                    return {
-                      url: f.url,
-                      filename: `${idx + 1}.jpg`,
-                    };
-                  }),
-                ),
-              )}`;
+              suffix = ".zip";
+              feed.url = build_picture_zip_url(feed);
             }
-            if (opt.suffix !== ".jpg") {
+            if (suffix !== ".jpg") {
               if (spec) {
                 feed.url = feed.url + "&X-snsvideoflag=" + spec;
               } else {
@@ -896,7 +963,7 @@ var WXU = (() => {
               key: Number(feed.key),
               filename,
               spec,
-              suffix: opt.suffix,
+              suffix,
             });
           }
         }
@@ -985,6 +1052,8 @@ var WXU = (() => {
       }
     },
     build_filename,
+    build_picture_zip_files,
+    build_picture_zip_url,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,
     get_queries,
@@ -1201,26 +1270,31 @@ async function __wx_channels_download(profile) {
  */
 async function __wx_channels_download3(profile) {
   console.log("__wx_channels_download3");
-  const files = profile.files;
+  const files = WXU.build_picture_zip_files(profile);
+  if (files.length === 0) {
+    WXU.error({ msg: "没有可下载的内容" });
+    return;
+  }
   const zip = await WXU.Zip();
   zip.file("contact.txt", JSON.stringify(profile.contact, null, 2));
-  const folder = zip.folder("images");
-  const fetchPromises = files
-    .map((f) => f.url)
-    .map(async (url, index) => {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      folder.file(index + 1 + ".png", blob);
-    });
   const ins = WXU.loading();
+  const fetchPromises = files.map(async (item) => {
+    const response = await fetch(item.url);
+    if (!response.ok) {
+      throw new Error(`${item.filename} ${response.status}`);
+    }
+    const blob = await response.blob();
+    zip.file(item.filename, blob);
+  });
   try {
     await Promise.all(fetchPromises);
     const content = await zip.generateAsync({ type: "blob" });
     await WXU.save(content, profile.filename + ".zip");
   } catch (err) {
     WXU.error({ msg: "下载失败，" + err.message });
+  } finally {
+    ins.hide();
   }
-  ins.hide();
 }
 /**
  * 下载加密视频
