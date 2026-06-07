@@ -31,7 +31,7 @@ type SunnyNetProxy struct {
 	plugins  []interface{}
 }
 
-func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int) (InnerProxy, error) {
+func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int, defaultInterface string) (InnerProxy, error) {
 	Sunny := SunnyNet.NewSunny()
 	return &SunnyNetProxy{Sunny: Sunny}, nil
 }
@@ -296,7 +296,7 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 						}
 						if targetProto == "wss" {
 							targetProto = "https"
-						}				
+						}
 						targetHost := pl.Target.Host
 						targetPort := pl.Target.Port
 						if targetPort <= 0 {

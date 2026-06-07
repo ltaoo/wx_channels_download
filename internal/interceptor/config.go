@@ -36,6 +36,7 @@ type InterceptorConfig struct {
 	ProxyDevice                         string
 	ProxySetSystem                      bool
 	ProxyTun                            bool
+	ProxyDefaultInterface               string
 	ProxyServerHostname                 string
 	ProxyServerPort                     int
 	ProxySkipInstallRootCert            bool
@@ -82,6 +83,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		OfficialAccountRemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
 		ProxySetSystem:                      viper.GetBool("proxy.system"),
 		ProxyTun:                            viper.GetBool("proxy.tun"),
+		ProxyDefaultInterface:               viper.GetString("proxy.defaultInterface"),
 		ProxyServerPort:                     viper.GetInt("proxy.port"),
 		ProxyServerHostname:                 viper.GetString("proxy.hostname"),
 		ProxySkipInstallRootCert:            viper.GetBool("proxy.skipInstallRootCert"),

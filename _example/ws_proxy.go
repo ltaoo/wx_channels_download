@@ -41,7 +41,7 @@ func main() {
 	// 2. 初始化 Proxy
 	// 使用默认证书 (真实环境中也是如此)
 	cert := certificate.DefaultCertFiles
-	p, err := proxy.NewProxy(cert.Cert, cert.PrivateKey)
+	p, err := proxy.NewProxy(cert.Cert, cert.PrivateKey, "", false, proxyPort, "")
 	if err != nil {
 		panic(fmt.Errorf("创建代理失败: %v", err))
 	}

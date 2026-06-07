@@ -123,6 +123,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
+		Key:         "proxy.defaultInterface",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "TUN 模式下指定默认出口网卡名称，留空时自动检测",
+		Title:       "默认网卡",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
 		Key:         "proxy.skipInstallRootCert",
 		Type:        ConfigTypeBool,
 		Default:     false,
