@@ -41,10 +41,25 @@ type ChannelsFeed = {
   id: string;
   description?: string;
   objectDesc: {
-    /** 4视频 9直播 */
+    /** 2图片 4视频 9直播 */
     mediaType: number;
     description: string;
     media: ChannelsMedia[];
+    flowCardDesc?: {
+      description: string;
+    };
+    finderNewlifeDesc?: {
+      richTextTitle: string;
+    };
+    followPostInfo?: {
+      musicInfo?: {
+        docId?: string;
+        docType?: number;
+        name?: string;
+        artist?: string;
+        mediaStreamingUrl?: string;
+      };
+    };
   };
   objectNonceId: string;
   objectStatus: number;
@@ -83,6 +98,9 @@ type ChannelsMedia = {
   url: string;
   urlToken: string;
   coverUrl: string;
+  thumbUrl?: string;
+  fullThumbUrl?: string;
+  fullUrl?: string;
   fileSize: number;
   decodeKey: number;
   /** 时长 */
@@ -94,6 +112,14 @@ type ChannelsMedia = {
 type ChannelsMediaSpec = {
   /** 规格值 */
   fileFormat: string;
+};
+type ChannelsBgm = {
+  url: string;
+  filename: string;
+  name: string;
+  artist: string;
+  doc_id: string;
+  doc_type: number;
 };
 /**
  * 对原始 feed 做了一些提取后的
@@ -119,7 +145,9 @@ type FeedProfile = {
   /** 视频时长 */
   duration?: number;
   /** 图片列表，类型为 pictures 才有 */
-  files?: { url: string }[];
+  files?: { url: string; urlToken?: string }[];
+  /** 背景音乐，图片动态可能有 */
+  bgm?: ChannelsBgm | null;
   /** 规格列表，类型为 media 才有 */
   spec?: ChannelsMediaSpec[];
   /** 发布者 */

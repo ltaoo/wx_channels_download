@@ -2,6 +2,7 @@ package zip
 
 import (
 	"archive/zip"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,21 @@ func (f *Fetcher) Setup(ctl *controller.Controller) {
 
 func (f *Fetcher) Meta() *fetcher.FetcherMeta {
 	return f.DefaultFetcher.Meta
+}
+
+func (f *Fetcher) buildClient(req *base.Request, timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: req != nil && req.SkipVerifyCert,
+		},
+	}
+	if f.Ctl != nil && f.Ctl.GetProxy != nil && req != nil {
+		transport.Proxy = f.Ctl.GetProxy(req.Proxy)
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
 }
 
 func (f *Fetcher) Resolve(req *base.Request) error {
@@ -89,9 +105,7 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	var sizeMu sync.Mutex
 	// Limit concurrency
 	sem := make(chan struct{}, 16)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := f.buildClient(req, 10*time.Second)
 
 	for _, file := range files {
 		wg.Add(1)
@@ -159,9 +173,7 @@ func (f *Fetcher) downloadAndZip() error {
 	zipWriter := zip.NewWriter(destFile)
 	defer zipWriter.Close()
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	client := f.buildClient(f.DefaultFetcher.Meta.Req, 30*time.Second)
 
 	for _, item := range f.files {
 		if f.isClosed() {

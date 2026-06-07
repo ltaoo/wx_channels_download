@@ -286,7 +286,8 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
-			URL: body.URL,
+			URL:            body.URL,
+			SkipVerifyCert: true,
 			Labels: map[string]string{
 				"id":       body.Id,
 				"nonce_id": body.NonceId,
@@ -584,7 +585,8 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 		url := item["url"]
 		task.Reqs = append(task.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
-				URL: url,
+				URL:            url,
+				SkipVerifyCert: true,
 				Labels: map[string]string{
 					"id":       item["id"],
 					"nonce_id": item["nonce_id"],
@@ -665,7 +667,8 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	connections := c.resolve_connections(payload.URL)
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
-			URL: payload.URL,
+			URL:            payload.URL,
+			SkipVerifyCert: true,
 			Labels: map[string]string{
 				"id":     payload.Id,
 				"title":  payload.Title,
