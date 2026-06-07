@@ -78,6 +78,19 @@ type ChannelsMediaItem struct {
 	URLToken     string              `json:"urlToken"`
 }
 
+type ChannelsMusicInfo struct {
+	DocId             string `json:"docId"`
+	DocType           int    `json:"docType"`
+	Name              string `json:"name"`
+	Artist            string `json:"artist"`
+	MediaStreamingUrl string `json:"mediaStreamingUrl"`
+}
+
+type ChannelsFollowPostInfo struct {
+	MusicInfo ChannelsMusicInfo `json:"musicInfo"`
+	HasBgm    int               `json:"hasBgm"`
+}
+
 type ChannelsLocationLang struct {
 	Lang     string `json:"lang"`
 	Country  string `json:"country"`
@@ -131,9 +144,10 @@ type ShortTitle struct {
 }
 
 type ChannelsObjectDesc struct {
-	Description string              `json:"description"`
-	Media       []ChannelsMediaItem `json:"media"`
-	MediaType   int                 `json:"mediaType"`
+	Description    string                 `json:"description"`
+	Media          []ChannelsMediaItem    `json:"media"`
+	MediaType      int                    `json:"mediaType"`
+	FollowPostInfo ChannelsFollowPostInfo `json:"followPostInfo"`
 }
 
 type InfoListItem struct {
