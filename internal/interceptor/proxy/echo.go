@@ -5,6 +5,7 @@ package proxy
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/ltaoo/echo"
 	"github.com/ltaoo/echo/tun"
@@ -14,13 +15,14 @@ type EchoProxy struct {
 	echo *echo.Echo
 }
 
-func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int) (InnerProxy, error) {
+func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int, defaultInterface string) (InnerProxy, error) {
 	opts := &echo.Options{
 		EnableBuiltinBypass:  false,
 		InterceptOnlyMatched: true,
 		UpstreamProxy:        upstreamProxy,
 	}
 	if tunEnabled {
+		defaultInterface = strings.TrimSpace(defaultInterface)
 		opts.Tun = true
 		opts.TunConfig = tun.DefaultConfig()
 		opts.TunConfig.Inbound.AutoRoute = true
@@ -50,7 +52,8 @@ func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled 
 					Outbound:     "proxy",
 				},
 			},
-			Final: "direct",
+			Final:            "direct",
+			DefaultInterface: defaultInterface,
 		}
 	}
 	e, err := echo.NewEchoWithOptions(cert, private_key, opts)
