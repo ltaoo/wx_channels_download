@@ -43,6 +43,7 @@ var (
 	jsFinderPCSearchReg                 = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
 	jsFinderSearchReg                   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
 	jsFinderGetInteractionedFeedListReg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
+	jsFinderGetFeedH5Url                = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
 	jsGoToPrevFlowReg                   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
 	jsGoToNextFlowReg                   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
 	jsFlowTabReg                        = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
@@ -385,6 +386,18 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 						return result;
 					}}const`
 						js_script = jsFinderGetInteractionedFeedListReg.ReplaceAllString(js_script, js_finder_interactioned)
+					}
+					{
+						js_finder_feed_h5_url := `async finderGetFeedH5Url($1) {
+						var result = await (async () => {
+							$2;
+						})();
+						var data = result.data.object;
+						// console.log("before finderGetFeedH5Url", result, $1);
+						WXU.emit(WXU.Events.GetFeedH5Url, data);
+						return result;
+					}}const`
+						js_script = jsFinderGetFeedH5Url.ReplaceAllString(js_script, js_finder_feed_h5_url)
 					}
 					{
 						js_user_feed := `async finderUserPage($1) {

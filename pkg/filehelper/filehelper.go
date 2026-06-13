@@ -92,25 +92,25 @@ type SyncResponse struct {
 		Ret    int    `json:"Ret"`
 		ErrMsg string `json:"ErrMsg"`
 	} `json:"BaseResponse"`
-	AddMsgCount        int                     `json:"AddMsgCount"`
-	AddMsgList         []map[string]interface{} `json:"AddMsgList"`
-	ModContactCount    int                     `json:"ModContactCount"`
-	ModContactList     []interface{}           `json:"ModContactList"`
-	DelContactCount    int                     `json:"DelContactCount"`
-	DelContactList     []interface{}           `json:"DelContactList"`
-	ModChatRoomMemberCount int                 `json:"ModChatRoomMemberCount"`
-	ModChatRoomMemberList  []interface{}       `json:"ModChatRoomMemberList"`
-	Profile            map[string]interface{}  `json:"Profile"`
-	ContinueFlag       int                     `json:"ContinueFlag"`
-	SyncKey            struct {
+	AddMsgCount            int                      `json:"AddMsgCount"`
+	AddMsgList             []map[string]interface{} `json:"AddMsgList"`
+	ModContactCount        int                      `json:"ModContactCount"`
+	ModContactList         []interface{}            `json:"ModContactList"`
+	DelContactCount        int                      `json:"DelContactCount"`
+	DelContactList         []interface{}            `json:"DelContactList"`
+	ModChatRoomMemberCount int                      `json:"ModChatRoomMemberCount"`
+	ModChatRoomMemberList  []interface{}            `json:"ModChatRoomMemberList"`
+	Profile                map[string]interface{}   `json:"Profile"`
+	ContinueFlag           int                      `json:"ContinueFlag"`
+	SyncKey                struct {
 		Count int `json:"Count"`
 		List  []struct {
 			Key int `json:"Key"`
 			Val int `json:"Val"`
 		} `json:"List"`
 	} `json:"SyncKey"`
-	SKey           string `json:"SKey"`
-	SyncCheckKey   struct {
+	SKey         string `json:"SKey"`
+	SyncCheckKey struct {
 		Count int `json:"Count"`
 		List  []struct {
 			Key int `json:"Key"`
@@ -143,17 +143,17 @@ func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
 		jar = nil // 如果创建失败，不使用 cookie jar
 	}
 	return &Client{
-		cfg:        cfg,
-		logger:     logger,
+		cfg:    cfg,
+		logger: logger,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 			Jar:     jar,
 		},
-		deviceID:   generateDeviceID(),
-		entryHost:  "szfilehelper.weixin.qq.com",
-		synckey:    map[string]interface{}{"Count": 0, "List": []interface{}{}},
-		msgCache:   make([]map[string]interface{}, 0),
-		stopChan:   make(chan struct{}),
+		deviceID:  generateDeviceID(),
+		entryHost: "szfilehelper.weixin.qq.com",
+		synckey:   map[string]interface{}{"Count": 0, "List": []interface{}{}},
+		msgCache:  make([]map[string]interface{}, 0),
+		stopChan:  make(chan struct{}),
 	}
 }
 

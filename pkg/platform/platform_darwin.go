@@ -31,7 +31,7 @@ func request_admin_permission() bool {
 	}
 
 	params := strings.Join(os.Args[1:], " ")
-	
+
 	// Escape backslashes and double quotes for the AppleScript string
 	cmdStr := fmt.Sprintf("%s %s", exe, params)
 	cmdStr = strings.ReplaceAll(cmdStr, "\\", "\\\\")

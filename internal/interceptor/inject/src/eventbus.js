@@ -27,6 +27,7 @@ var WXE = (() => {
     GotoNextFeed: "GotoNextFeed",
     GotoPrevFeed: "GotoPrevFeed",
     HomeFeedChanged: "HomeFeedChanged",
+    GetFeedH5Url: "GetFeedH5Url",
     /** 获取到视频详情 */
     FeedProfileLoaded: "OnFeedProfileLoaded",
     /** 视频的评论列表（包括评论的回复）加载完成 */
@@ -148,6 +149,12 @@ var WXE = (() => {
       eventbus.on(ChannelsEvents.InteractionedFeedsLoaded, handler);
       return () => {
         eventbus.off(ChannelsEvents.InteractionedFeedsLoaded, handler);
+      };
+    },
+    onGetFeedH5Url(handler) {
+      eventbus.on(ChannelsEvents.GetFeedH5Url, handler);
+      return () => {
+        eventbus.off(ChannelsEvents.GetFeedH5Url, handler);
       };
     },
     onLiveUserFeedsLoaded(handler) {

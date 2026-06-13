@@ -1974,6 +1974,34 @@ function ChannelsWebsocketClient() {
         }
         return;
       }
+      if (key === "key:channels:feed_share_url") {
+        // console.log("[DOWNLOADER]fetchFeedShareUrl");
+        if (!data.oid) {
+          resp({
+            errCode: 1011,
+            errMsg: "missing oid",
+            payload: null,
+          });
+          return;
+        }
+        var payload = {
+          objectId: data.oid,
+        };
+        try {
+          var r = await WXU.API.finderGetFeedH5Url(payload);
+          resp({
+            ...r,
+            payload,
+          });
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload,
+          });
+        }
+        return;
+      }
       if (key === "key:channels:reload") {
         console.log("[DOWNLOADER]reloading page");
         resp({
