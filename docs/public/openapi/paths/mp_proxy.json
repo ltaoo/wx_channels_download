@@ -1,0 +1,56 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "公众号内容代理",
+    "description": "用于代理访问公众号文章或图片，解决跨域或防盗链问题。",
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "目标 URL (需 URL 编码)"
+      },
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "鉴权 Token (开启鉴权时必填)"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "代理的内容",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

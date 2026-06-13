@@ -239,6 +239,20 @@ func (c *APIClient) handleFetchSharedFeedProfile(ctx *gin.Context) {
 	result.Ok(ctx, resp)
 }
 
+func (c *APIClient) handleFetchFeedShareUrl(ctx *gin.Context) {
+	oid := ctx.Query("oid")
+	if oid == "" {
+		result.Err(ctx, 400, "missing oid")
+		return
+	}
+	resp, err := c.channels.FetchChannelsFeedShareUrl(oid)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
 type FeedDownloadTaskBody struct {
 	Id       string `json:"id"`
 	NonceId  string `json:"nonce_id"`

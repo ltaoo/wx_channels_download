@@ -1,0 +1,135 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取下载任务列表",
+    "parameters": [
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "all",
+            "ready",
+            "running",
+            "pause",
+            "error",
+            "done"
+          ],
+          "default": "all"
+        },
+        "description": "任务状态过滤，可选值：`all` (默认), `ready`, `running`, `pause`, `error`, `done`"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1
+        },
+        "description": "页码，默认 1"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20
+        },
+        "description": "每页数量，默认 20"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "任务列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "list": [
+                      {
+                        "id": "fqG2OhiJFRYpnELqZmPRW",
+                        "protocol": "http",
+                        "meta": {
+                          "req": {
+                            "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
+                            "extra": null,
+                            "labels": {
+                              "id": "14864072987480824226",
+                              "key": "81721112",
+                              "spec": "xWT111",
+                              "suffix": ".mp4",
+                              "title": ""
+                            },
+                            "proxy": null,
+                            "skipVerifyCert": false
+                          },
+                          "res": {
+                            "name": "",
+                            "size": 1462345,
+                            "range": true,
+                            "files": [
+                              {
+                                "name": "stodownload",
+                                "path": "",
+                                "size": 1462345,
+                                "ctime": null,
+                                "req": null
+                              }
+                            ],
+                            "hash": ""
+                          },
+                          "opts": {
+                            "name": "14864072987480824226_xWT111.mp4",
+                            "path": "/volume1/homes/ltaoo/Applications/WXChannelsDownload/Downloads/苏苏是猪猪",
+                            "selectFiles": [],
+                            "extra": {
+                              "connections": 4
+                            }
+                          }
+                        },
+                        "status": "done",
+                        "uploading": false,
+                        "progress": {
+                          "used": 689710309,
+                          "speed": 1462345,
+                          "downloaded": 1462345,
+                          "uploadSpeed": 0,
+                          "uploaded": 0
+                        },
+                        "createdAt": "2026-03-17T23:08:25.007358827+08:00",
+                        "updatedAt": "2026-03-17T23:08:26.039336471+08:00",
+                        "name": "14864072987480824226_xWT111.mp4"
+                      }
+                    ],
+                    "page": 1,
+                    "page_size": 20,
+                    "total": 571
+                  }
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

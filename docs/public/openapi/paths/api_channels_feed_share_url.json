@@ -1,0 +1,60 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取视频号分享链接",
+    "description": "根据视频 objectId 获取视频号分享链接。",
+    "parameters": [
+      {
+        "name": "oid",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频 objectId，如 `14545102784038246591`"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "Data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "type": 0
+                        }
+                      },
+                      "feedH5Url": "https://weixin.qq.com/sph/Ali0QjN99U",
+                      "urlList": [
+                        {
+                          "feedH5Url": "https://weixin.qq.com/sph/Ali0QjN99U",
+                          "objectId": "14545102784038246591"
+                        }
+                      ]
+                    },
+                    "payload": {
+                      "objectId": "14545102784038246591"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

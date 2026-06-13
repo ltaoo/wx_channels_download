@@ -60,21 +60,21 @@ type Errmsg struct {
 }
 
 type Feedinfo struct {
-	Picinfo        []interface{} `json:"picInfo"`
-	Videourl       string        `json:"videoUrl"`
-	OriginVideoUrl string        `json:"originVideoUrl"`
-	Description    string        `json:"description"`
-	Mediatype      int           `json:"mediaType"`
-	Favcountfmt    string        `json:"favCountFmt"`
-	Likecountfmt   string        `json:"likeCountFmt"`
+	Picinfo         []interface{} `json:"picInfo"`
+	Videourl        string        `json:"videoUrl"`
+	OriginVideoUrl  string        `json:"originVideoUrl"`
+	Description     string        `json:"description"`
+	Mediatype       int           `json:"mediaType"`
+	Favcountfmt     string        `json:"favCountFmt"`
+	Likecountfmt    string        `json:"likeCountFmt"`
 	Forwardcountfmt string        `json:"forwardCountFmt"`
 	Commentcountfmt string        `json:"commentCountFmt"`
-	H264videoinfo  H264videoinfo `json:"h264VideoInfo"`
-	H265videoinfo  H265videoinfo `json:"h265VideoInfo"`
-	Createtime     int           `json:"createtime"`
-	Scalinginfo    Scalinginfo   `json:"scalingInfo"`
-	Ishardad       bool          `json:"isHardAd"`
-	Coverurl       string        `json:"coverUrl"`
+	H264videoinfo   H264videoinfo `json:"h264VideoInfo"`
+	H265videoinfo   H265videoinfo `json:"h265VideoInfo"`
+	Createtime      int           `json:"createtime"`
+	Scalinginfo     Scalinginfo   `json:"scalingInfo"`
+	Ishardad        bool          `json:"isHardAd"`
+	Coverurl        string        `json:"coverUrl"`
 }
 
 type Scalinginfo struct {

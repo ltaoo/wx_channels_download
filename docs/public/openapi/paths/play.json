@@ -1,0 +1,34 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "视频代理播放",
+    "description": "url 是视频地址，非「视频号页面地址」，同样需要对地址进行编码",
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "目标视频地址"
+      },
+      {
+        "name": "key",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "解密密钥"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "视频流"
+      }
+    }
+  }
+}
