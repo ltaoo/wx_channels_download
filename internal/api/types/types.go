@@ -534,7 +534,7 @@ type ChannelsFeedShareUrlResp struct {
 		Baseresponse Baseresponse  `json:"BaseResponse"`
 		FeedH5Url    string        `json:"feedH5Url"`
 		UrlList      []interface{} `json:"urlList"`
-	}
+	} `json:"data"`
 	Payload struct {
 		ObjectId string `json:"objectId"`
 	} `json:"payload"`

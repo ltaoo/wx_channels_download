@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "在文件夹中显示文件",
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "文件所在目录绝对路径"
+              },
+              "name": {
+                "type": "string",
+                "description": "文件名"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

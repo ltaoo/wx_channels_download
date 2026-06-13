@@ -1,0 +1,90 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "更新凭证",
+    "description": "更新指定公众号的凭证，需提交有效的凭证内容",
+    "parameters": [
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "刷新Token"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "biz": {
+                "type": "string",
+                "description": "公众号唯一 ID"
+              },
+              "key": {
+                "type": "string",
+                "description": "授权 Key"
+              },
+              "pass_ticket": {
+                "type": "string",
+                "description": "票据"
+              },
+              "appmsg_token": {
+                "type": "string",
+                "description": "消息 Token"
+              },
+              "uin": {
+                "type": "string",
+                "description": "用户唯一 ID"
+              },
+              "nickname": {
+                "type": "string",
+                "description": "昵称"
+              }
+            },
+            "required": [
+              "biz",
+              "key",
+              "pass_ticket",
+              "appmsg_token",
+              "uin"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

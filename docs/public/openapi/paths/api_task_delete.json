@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "删除任务",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "任务 ID"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
