@@ -1,0 +1,136 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取视频号指定账号的视频列表",
+    "parameters": [
+      {
+        "name": "username",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频号 ID，例如 `v2_xxx@finder`"
+      },
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记，用于获取下一页数据"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "String": ""
+                        }
+                      },
+                      "object": [
+                        {
+                          "id": "14545102784038246591",
+                          "contact": {
+                            "username": "v2_060000231003b20faec8c4e48e1dc3ddcd03ec3cb077bb11b3c6c9a42ee3cea8073a64e6e2bd@finder",
+                            "nickname": "我不叫龙虾.",
+                            "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/33icjVbn3Wgiccaq0iamxIenIO3ZucxmE4TtBu1WrSoUm1lnhrv2wmL8S7wxfNkPqrjSsmxcHx7aZFoWYNlNlsoYZFPVX3ichOv49HnS8EHIWY5MQnppdhncQkE5flrIe38F/132",
+                            "signature": "我不叫龙虾🦞",
+                            "coverImgUrl": ""
+                          },
+                          "objectDesc": {
+                            "description": "不是我都说要嫁给你啦 你打我干嘛˃̣̣̥᷄⌓˂̣̣̥᷅",
+                            "media": [
+                              {
+                                "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewK0tHtibORqcsqchXNh0Gf3YiaX8QrZIfDfbbDuNxCaRrmC3HnECprk1pCZheGG4QmWjUCo7ibnm6KqoRAhibVpLqYY3ibiaUtyqhOZicu5gxbNT6lp9yrfM5DyX0&hy=SZ&idx=1&m=&uzid=2",
+                                "mediaType": 4,
+                                "videoPlayLen": 7,
+                                "width": 1080,
+                                "height": 1920,
+                                "fileSize": 11557355,
+                                "spec": [
+                                  {
+                                    "fileFormat": "xWT111",
+                                    "width": 720,
+                                    "height": 1280,
+                                    "durationMs": 7233
+                                  },
+                                  {
+                                    "fileFormat": "xWT112",
+                                    "width": 576,
+                                    "height": 1024,
+                                    "durationMs": 7233
+                                  },
+                                  {
+                                    "fileFormat": "xWT156",
+                                    "width": 720,
+                                    "height": 1280,
+                                    "durationMs": 7233
+                                  },
+                                  {
+                                    "fileFormat": "xWT113",
+                                    "width": 576,
+                                    "height": 1024,
+                                    "durationMs": 7233
+                                  },
+                                  {
+                                    "fileFormat": "xWT157",
+                                    "width": 576,
+                                    "height": 1024,
+                                    "durationMs": 7233
+                                  },
+                                  {
+                                    "fileFormat": "xWT158",
+                                    "width": 576,
+                                    "height": 1024,
+                                    "durationMs": 7233
+                                  }
+                                ],
+                                "coverUrl": "http://wxapp.tc.qq.com/251/20304/stodownload?encfilekey=oibeqyX228riaCwo9STVsGLIBn9G5YG8ZnffcsCiaN8QExibEBAMBrvLTnghut9ib9x6QmLCpPMl6UiaBhVwqlNmwmrDSRFyYp4ibwLWgbEepMk4Ficu4OG5DEhQtJ3wkUt3eCAJ5rbfibz901T4&token=x5Y29zUxcibDHxWfF8R3ao2MN4d8PMDvFN3hfeibV9eVnJ0LMRiana1aLYjJn0L5ibArHq9Tiawf2oW70ibEgD1OnUH94zuRLtn8ETLRBePNMz2RvXKfSMgnVsxTGUUgCBxMB1JKES9txma7xm53spLoUHgguib3g9z7H4v&idx=1&hy=SZ&m=5140e64d871f1f103a4c3a70925ae551&uzid=2&picformat=200",
+                                "decodeKey": "930220499",
+                                "urlToken": "&token=x5Y29zUxcibAq37UB3SAO7X1q6BG5zDyLxbI5IB5y0iacyPaShR0NUgpbzP0FSF7nXO2qACJa3dTcicAn8qD5z2MxKdgQoMYOVfGNasxYNxYEPoEUlz9SfgqficN1wE3WI9ntibLp5DgxcNX2B8U5fjXZnKQIRSLxicb7XU5rO2OYmicVA&basedata=CAESABoGeFdUMTExGgZ4V1QxMTIaBnhXVDE1NhoGeFdUMTEzGgZ4V1QxNTcaBnhXVDE1OCIAKgcI4DMQABgC&sign=S0-7BBO9mVW8rfuj3PSfa-2UUvt3UN-tOSZX51LRlpF77cn9CwBeJuUm25Ou4Ij8hTZ_bCjLsqwGu-FwusRrsQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAACTC%2BKXJoVQi%2FN%2B355jaRAAAADnaHZTnGbFfAj9RgZXfw6V32imHd%2F5K9TlTPEvT7Z5OfCO16AgITCPsyqIFL7GmUVzfZzD1wYus10%3D&svrnonce=1768136415"
+                              }
+                            ],
+                            "mediaType": 4
+                          },
+                          "objectNonceId": "17453311911488030792_0_0_2_33_5217681364151768_78fbb070-eeed-11f0-9e01-614e44bc5b79",
+                          "source_url": "",
+                          "createtime": 1733911369
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "nosocket": {
+                "summary": "业务异常",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

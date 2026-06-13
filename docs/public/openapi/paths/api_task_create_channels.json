@@ -1,0 +1,70 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "创建视频号下载任务",
+    "description": "其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "oid": {
+                "type": "string",
+                "description": "视频唯一 ID (配合 nid 使用)"
+              },
+              "nid": {
+                "type": "string",
+                "description": "视频唯一 ID (配合 oid 使用)"
+              },
+              "url": {
+                "type": "string",
+                "description": "视频号页面 URL"
+              },
+              "mp3": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否下载为 MP3，默认为 false"
+              },
+              "cover": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否下载为封面，默认为 false"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "任务创建成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "解析视频号分享链接",
+    "description": "通过视频号分享链接解析视频详情，支持 `weixin.qq.com/sph/xxx` 格式。",
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频号分享链接，如 `https://weixin.qq.com/sph/AoPX5bEBDd`"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "data": {
+                      "authorInfo": {
+                        "nickname": "双双渔",
+                        "headImgUrl": "https://wx.qlogo.cn/finderhead/ver_1/lwqLjMoQfibLddgbvExSqISibx2Bl4Eeh2hngU5HnfoIHMTldmshjyaKE5wH3xby8MVyoa0wsk8WxlrTedw20lD9B833fiabGe94Ik0poAaJiaW6kWBqribMicnrmbiasVYbGbwo3HV93UiaDzruicviasanxYvA/0",
+                        "authIconUrl": ""
+                      },
+                      "feedInfo": {
+                        "picInfo": [],
+                        "videoUrl": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                        "originVideoUrl": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                        "description": "你很臭啊\n#健身\n",
+                        "mediaType": 4,
+                        "favCountFmt": "1091",
+                        "likeCountFmt": "270",
+                        "forwardCountFmt": "172",
+                        "commentCountFmt": "58",
+                        "h264VideoInfo": {
+                          "videoUrl": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx"
+                        },
+                        "h265VideoInfo": {
+                          "videoUrl": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx"
+                        },
+                        "createtime": 1779526800,
+                        "scalingInfo": {
+                          "version": "v2.0.1",
+                          "isSplitScreen": false,
+                          "isDisableFollow": false,
+                          "upPercentPosition": 0,
+                          "downPercentPosition": 0,
+                          "aspectRatioExceeds169": false
+                        },
+                        "isHardAd": false,
+                        "coverUrl": "https://finder.video.qq.com/251/20304/stodownload?encfilekey=xxx"
+                      },
+                      "errMsg": {
+                        "type": 0
+                      },
+                      "sceneInfo": {
+                        "dynamicExportId": "export/UzFfBgAAxLCCJB88bVjwjMzT4DCgIqOsVwAsEdpeW5Dq8xVYrsOgRo5Wlg",
+                        "commentScene": 39,
+                        "expiredTime": 1779686274,
+                        "requestScene": 0,
+                        "entryScene": 0,
+                        "entryCardType": 48
+                      }
+                    },
+                    "errCode": 0,
+                    "errMsg": ""
+                  }
+                }
+              },
+              "error": {
+                "summary": "错误",
+                "value": {
+                  "code": 400,
+                  "msg": "解析失败",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

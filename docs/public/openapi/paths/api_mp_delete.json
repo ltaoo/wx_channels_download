@@ -1,0 +1,65 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "删除公众号",
+    "parameters": [
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "鉴权 Token (开启鉴权时必填)"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "biz": {
+                "type": "string",
+                "description": "公众号唯一 ID"
+              }
+            },
+            "required": [
+              "biz"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

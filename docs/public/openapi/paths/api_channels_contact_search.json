@@ -1,0 +1,96 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "搜索视频号账号",
+    "parameters": [
+      {
+        "name": "keyword",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "搜索关键词"
+      },
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记，用于获取下一页数据"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "String": ""
+                        }
+                      },
+                      "infoList": [
+                        {
+                          "contact": {
+                            "username": "v2_060000231003b20faec8c4e48e1dc3ddcd03ec3cb077bb11b3c6c9a42ee3cea8073a64e6e2bd@finder",
+                            "nickname": "我不叫龙虾.",
+                            "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/33icjVbn3Wgiccaq0iamxIenIO3ZucxmE4TtBu1WrSoUm1lnhrv2wmL8S7wxfNkPqrjSsmxcHx7aZFoWYNlNlsoYZFPVX3ichOv49HnS8EHIWY5MQnppdhncQkE5flrIe38F/132",
+                            "signature": "我不叫龙虾🦞",
+                            "coverImgUrl": ""
+                          },
+                          "highlightNickname": "我不叫<em class=\"highlight\">龙虾</em>.",
+                          "highlightSignature": "我不叫<em class=\"highlight\">龙虾</em>🦞",
+                          "friendFollowCount": 0,
+                          "highlightProfession": "国风自媒体",
+                          "reqIndex": 0
+                        },
+                        {
+                          "contact": {
+                            "username": "v2_060000231003b20faec8c4e08c10cad4c707ee37b077c5f14e385655f6f7ed18eaea3cbfe7b7@finder",
+                            "nickname": "辣个龙虾.海鲜老板娘baby洋",
+                            "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/SRnmI6Zgrj53fmHlMEl3gX71hm867zy2GB0iaDxrF8bT3anoKd32XbN4OkQqFNn6CMS0BUkgJcQNXfWiaFIUAA5DPmE9M7HXLaZDxZVE913tFrp1ibLU0xsDTicuxIY3ibiaOR/132",
+                            "signature": "合肥包河区宁国路大宁缤购商业广场停车场入口。辣个龙虾海鲜，订餐电话199 6618 2806",
+                            "coverImgUrl": ""
+                          },
+                          "highlightNickname": "辣个<em class=\"highlight\">龙虾</em>.海鲜老板娘baby洋",
+                          "highlightSignature": "合肥包河区宁国路大宁缤购商业广场停车场入口。辣个<em class=\"highlight\">龙虾</em>海鲜，订餐电话199 6618 2806",
+                          "friendFollowCount": 0,
+                          "highlightProfession": "",
+                          "reqIndex": 1
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "nosocket": {
+                "summary": "业务异常",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

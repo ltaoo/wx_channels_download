@@ -13,4 +13,3 @@ func need_admin_permission() bool {
 func request_admin_permission() bool {
 	return false
 }
-

@@ -1,0 +1,39 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "RSS 订阅",
+    "description": "获取指定视频号的 RSS Feed。",
+    "parameters": [
+      {
+        "name": "username",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频号 ID"
+      },
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "RSS XML",
+        "content": {
+          "application/xml": {
+            "example": "<feed></feed>"
+          }
+        }
+      }
+    }
+  }
+}

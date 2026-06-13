@@ -1,0 +1,192 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "获取公众号列表",
+    "description": "**非微信公众号搜索接口**，获取的是本地已添加的公众号",
+    "parameters": [
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "鉴权 Token (开启鉴权时必填)"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1
+        },
+        "description": "页码，默认 1"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 10
+        },
+        "description": "每页数量，默认 10"
+      },
+      {
+        "name": "keyword",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "搜索关键词 (匹配 biz 或 nickname)"
+      },
+      {
+        "name": "is_effective",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "boolean"
+        },
+        "description": "过滤是否有效 (1/true 为有效)"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "公众号列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "keyword": "",
+                    "list": [
+                      {
+                        "biz": "Mzg2ODQ1OTExOA==",
+                        "nickname": "字节前端 ByteFE",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/lP9iauFI73z8ujxEen5FiczfdZIN3MFVZT3Nol4FGiahOFuyINzQMHficQlA9fuPaAL9esXmVX3RmJEEu0iaNPaGRGA/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952854,
+                        "update_time": 1767955478,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=Mzg2ODQ1OTExOA==&mid=2247506133&idx=1&sn=1d4b9ff25a4a5c879eac3d88e2cd0ae2"
+                      },
+                      {
+                        "biz": "MzE5MTEwNjE0Mg==",
+                        "nickname": "熊猫教练工具",
+                        "avatar_url": "/0",
+                        "is_effective": false,
+                        "created_at": 1767952636,
+                        "update_time": 1767955934,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzE5MTEwNjE0Mg==&mid=2247483653&idx=1&sn=1911cf7b599e9a0fea0b662ebd435bcf"
+                      },
+                      {
+                        "biz": "MjM5NzE1NjA0MQ==",
+                        "nickname": "腾讯安全应急响应中心",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/JMH1pEQ7qP5asPR2KQZHIkuvt7d85Nic3JIRVcIMoJa1rEqMEkibSkxEptehGiaffy66vGXWxCrJ4ZbPibVYofAkyw/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952613,
+                        "update_time": 1767952613,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5NzE1NjA0MQ==&mid=2651208056&idx=1&sn=15e1cc43e9d33549f827b4eb5100bc2b"
+                      },
+                      {
+                        "biz": "MjM5OTk2MTMxOQ==",
+                        "nickname": "京东安全应急响应中心",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/Z9MuUwaeeGIlXfXZDFfRBZuzMIeAKzMfMxSjmvm8OnyrJCz9K2bnuL1L3wdTZMh5mibyKD3sbQB0Mia5qZCvxNTw/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952600,
+                        "update_time": 1767952626,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5OTk2MTMxOQ==&mid=2727850303&idx=1&sn=0df59cc37c4235b827c2fe3044ea683e"
+                      },
+                      {
+                        "biz": "MzI3MTQyMDY1NQ==",
+                        "nickname": "postpost space",
+                        "avatar_url": "http://mmbiz.qpic.cn/sz_mmbiz_png/dPvOZcovia3ic4qkD9z3c8h0ueB4TIFhyhOhib9Yic2HVftgXeo6CQ6icjZPVicjjOPJcSuRibnqFbDIDsBeX8eibDBib7g/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952586,
+                        "update_time": 1767952586,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzI3MTQyMDY1NQ==&mid=2247501111&idx=1&sn=732949952b7c940d4e3ea4f47acd5818"
+                      },
+                      {
+                        "biz": "MzA3NTcyNDAxMA==",
+                        "nickname": "饮啖茶食个包",
+                        "avatar_url": "http://mmbiz.qpic.cn/sz_mmbiz_png/A3pq2yTdNscoBsOwU56LAzJmvOBibynqy0G4PFMf5xo0iaq2niafiauwAjGLwsOz74KEGgS5wj24HXhZpuBsxNlNHQ/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952574,
+                        "update_time": 1767952574,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzA3NTcyNDAxMA==&mid=2653511911&idx=1&sn=db15cb86ff216626aef839cdb92423de"
+                      },
+                      {
+                        "biz": "MzI2NzI2OTExNA==",
+                        "nickname": "小米安全中心",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/zabS4D3Aq5icsYoNy1o7fTD2ApBYm3IPcicZEs6B3Oun3DJruX4jnugny5HPH37gYXd2ewlCBRKJLlZhUpzziaiabQ/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952557,
+                        "update_time": 1767952557,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzI2NzI2OTExNA==&mid=2247519910&idx=1&sn=4a273b7a6101af9d703595bf7981414d"
+                      },
+                      {
+                        "biz": "MzA4MDMwMjQ3Mg==",
+                        "nickname": "关注安全技术",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/shVkAyu04IFqXnyF5ib6xds87ICSU2ia2Sayqib8onstk7BMsnq3CkIlUEibL1x3Ut5SzgW084SrIbo4rsMNStCoug/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952546,
+                        "update_time": 1767952546,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzA4MDMwMjQ3Mg==&mid=2651868681&idx=1&sn=dedb0e5490769bce90c99d3d216776d9"
+                      },
+                      {
+                        "biz": "MzU1MjgwNzc4Ng==",
+                        "nickname": "腾讯科恩实验室",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/zZKnUibvoericeibR9Via8lKsXBGe86PNOO29563lc14hN34D4ibbIeAjn8H388NjENBlYQibdA9GCW708MbsgxwqnWA/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952536,
+                        "update_time": 1767952536,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MzU1MjgwNzc4Ng==&mid=2247512956&idx=1&sn=c3df8d4f50c2e56f81915ff13b5f39c2"
+                      },
+                      {
+                        "biz": "MjM5NTc2MDYxMw==",
+                        "nickname": "看雪学苑",
+                        "avatar_url": "http://mmbiz.qpic.cn/mmbiz_png/1UG7KPNHN8EGLfh77kFmnicd9WOic2ibvhCibFdB4bL4srJCgo2wnvdoXLxpIvAkfCmmcptXZB0qKWMoIP8iaibYN2FA/0?wx_fmt=png",
+                        "is_effective": false,
+                        "created_at": 1767952522,
+                        "update_time": 1767952522,
+                        "error": "",
+                        "refresh_uri": "https://mp.weixin.qq.com/s?__biz=MjM5NTc2MDYxMw==&mid=2458607554&idx=2&sn=938d93225f6b22535124b87b074f2578"
+                      }
+                    ],
+                    "page": 1,
+                    "page_size": 10,
+                    "total": 328
+                  }
+                }
+              },
+              "fail": {
+                "summary": "",
+                "value": {
+                  "code": 400,
+                  "msg": "",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

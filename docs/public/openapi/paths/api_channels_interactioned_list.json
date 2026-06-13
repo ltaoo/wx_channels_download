@@ -1,0 +1,59 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取我的赞和收藏列表",
+    "parameters": [
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记"
+      },
+      {
+        "name": "flag",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "number",
+          "enum": [
+            1,
+            2,
+            4,
+            7
+          ]
+        },
+        "description": "赞、喜欢、收藏标记。1: 喜欢, 2: 赞, 4: 收藏, 7: 全部"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "object": []
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取视频评论列表",
+    "description": "获取指定视频的评论列表",
+    "parameters": [
+      {
+        "name": "oid",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频唯一 ID"
+      },
+      {
+        "name": "nid",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频 nid"
+      },
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记，用于获取下一页数据（使用响应的 lastBuffer 字段）"
+      },
+      {
+        "name": "comment_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "default": ""
+        },
+        "description": "评论id，用于获取指定评论的回复列表"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "type": 0
+                        }
+                      },
+                      "commentInfo": [
+                        {
+                          "username": "v2_060000231003b20faec8c4e28e1bc0d3ca02ee33b077485d5c20cb48449b204f13ff4c17e884@finder",
+                          "nickname": "文鱼若水",
+                          "content": "从来就没好好走过一步路[呲牙]",
+                          "commentId": "14901879320262215928",
+                          "replyCommentId": "0",
+                          "headUrl": "https://wx.qlogo.cn/finderhead/dibCvqHg4WneeFgMa9dAWp5ic2Kj3mmjMkTn2qLF7A9RK2x2dQNaP689seSNj0rIkpO1THauCxGyM/0",
+                          "levelTwoComment": [],
+                          "createtime": "1776442446",
+                          "likeFlag": 0,
+                          "likeCount": 131,
+                          "expandCommentCount": 7,
+                          "continueFlag": 1,
+                          "displayFlag": 8,
+                          "authorContact": {
+                            "username": "v2_060000231003b20faec8c4e28e1bc0d3ca02ee33b077485d5c20cb48449b204f13ff4c17e884@finder",
+                            "nickname": "文鱼若水",
+                            "headUrl": "https://wx.qlogo.cn/finderhead/dibCvqHg4WneeFgMa9dAWp5ic2Kj3mmjMkTn2qLF7A9RK2x2dQNaP689seSNj0rIkpO1THauCxGyM/0"
+                          },
+                          "contentType": 0,
+                          "ipRegionInfo": {
+                            "regionText": "Shaanxi"
+                          }
+                        }
+                      ],
+                      "countInfo": {
+                        "commentCount": 138,
+                        "likeCount": 300,
+                        "forwardCount": 878,
+                        "favCount": 1435
+                      },
+                      "lastBuffer": "CrABCMCQ+Lqs+938zgEY+JHgz5yJh+fOARjBkvDGg7ut6M4BGNiS3Jmp66zozgEYnpCIkPW8h+fOARiUtPiLhYOH584BGL+QxO7W07/0zgEY7bHc/Ir8jOfOARjakOzRt5DC9M4BGLORgLSN1rn0zgEYjrCsnIa9ovTOARi7sei/8MKI7c4BGNKS2OPHs4zszgEYwZLou7iW+OrOARi5sdymnP336s4BGIakjPHgt/HqzgE=",
+                      "upContinueFlag": 0,
+                      "downContinueFlag": 1
+                    }
+                  }
+                }
+              },
+              "nosocket": {
+                "summary": "业务异常",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

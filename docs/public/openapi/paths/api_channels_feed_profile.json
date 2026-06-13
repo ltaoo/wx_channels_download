@@ -1,0 +1,235 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取视频号指定视频详情",
+    "description": "**注意：必须提供 `oid`+`nid` 或 `url` 或 `eid` 其中一种组合。**",
+    "parameters": [
+      {
+        "name": "oid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频唯一 ID (配合 nid 使用)"
+      },
+      {
+        "name": "nid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频唯一 ID (配合 oid 使用)"
+      },
+      {
+        "name": "url",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频号页面 URL，https://channels.weixin.qq.com/web/pages/feed?oid=zagCB5LjCrE&nid=d3pMFaDgxy4\n\n传入的地址需要进行编码。\n\n也可以是分享链接如 https://weixin.qq.com/sph/AoPX5bEBDd\nhttps://channels.weixin.qq.com/finder-preview/pages/sph?id=AoPX5bEBDd \n\n"
+      },
+      {
+        "name": "eid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "企微打开视频号页面时 URL 会携带的参数\n\n"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "String": ""
+                        }
+                      },
+                      "commentInfo": [],
+                      "object": {
+                        "id": "14819096805414996657",
+                        "contact": {
+                          "username": "v2_060000231003b20faec8cae08f19c0d1c802ee33b07778a2a650b6d670ef63af3f3ac1c51124@finder",
+                          "nickname": "Girls-Talk",
+                          "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/JrkaKTpRhjYlpkDnIicnbhicmYPxsX769yKAMexpa0icN3vBq8eDh2cNl1gQtpOsI4hMz1URF9e8icMNeD3AJR080J5nURCqSedFmic4z5PMLGCTSfU6KibpwM6wTSw549pcyC/132",
+                          "signature": "“女性，她们有思想，有灵魂”",
+                          "coverImgUrl": ""
+                        },
+                        "objectDesc": {
+                          "description": "“被误解是表达者的宿命，不要活在别人的语言里”#陈都灵 #女性力量 #女性成长 #女性智慧",
+                          "media": [
+                            {
+                              "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewK0tHtibORqcsqchXNh0Gf3sJcaYqC2rQDpwzgf4OvFRdRpHRb1MzrzSdfFPCgFTfk8mrhzsLKe2B1JIDYnE3gQY3qRoGoRjic3p3In1NWtW5hpw1HMG6OVu&bizid=1023&dotrans=0&hy=SH&idx=1&m=&uzid=7a166",
+                              "mediaType": 4,
+                              "videoPlayLen": 41,
+                              "width": 1080,
+                              "height": 1440,
+                              "fileSize": 50833261,
+                              "spec": [
+                                {
+                                  "fileFormat": "xWT111",
+                                  "width": 720,
+                                  "height": 960,
+                                  "durationMs": 41901
+                                },
+                                {
+                                  "fileFormat": "xWT112",
+                                  "width": 720,
+                                  "height": 960,
+                                  "durationMs": 41901
+                                },
+                                {
+                                  "fileFormat": "xWT113",
+                                  "width": 576,
+                                  "height": 768,
+                                  "durationMs": 41917
+                                },
+                                {
+                                  "fileFormat": "xWT126",
+                                  "width": 720,
+                                  "height": 960,
+                                  "durationMs": 41901
+                                },
+                                {
+                                  "fileFormat": "xWT127",
+                                  "width": 720,
+                                  "height": 960,
+                                  "durationMs": 41901
+                                },
+                                {
+                                  "fileFormat": "xWT128",
+                                  "width": 576,
+                                  "height": 768,
+                                  "durationMs": 41917
+                                }
+                              ],
+                              "coverUrl": "http://wxapp.tc.qq.com/251/20304/stodownload?encfilekey=rjD5jyTuFrIpZ2ibE8T7YmwgiahniaXswqzGOtP29kPHJ59RtsyZf6v0824RAZdtLQynv4NqUjgD9I8BWbZqqBYDPhibMiayIvppYOpjUGsia85ias3YfIeYUcJeQ&token=x5Y29zUxcibDHxWfF8R3aox1Dqic3uCibRBu4icgTRABiaiaUicKibH4FDwwdebfA9asyAT9balYg6YFFicSLTubJSibAyUOgmGPDVCSwcTR5H1JicuJkYGLRFwut8yxwwCFwkuwMSK0R5w0WibxSYC2DCOJBxL56icn9DNqYDEZQ&idx=1&hy=SH&m=&scene=2&uzid=1&picformat=200",
+                              "decodeKey": "394253653",
+                              "urlToken": "&token=x5Y29zUxcibAq37UB3SAO7dZXR9anXy7Wgxcicu3bLjSsZKSTvUnmxjamgZU7ag2npbeZoVUALC0KhiaicdSfdEtWImibjOONu0CawwUCULAvnIdt9Jh1ZExd20azibwqRUzjdAL15SIdsupicNt78C1eErfO04vcEErXvLnQ6RyLyaAPg&basedata=CAESABoDeFYwIgAqBwiLKRAAGAI&sign=ttbnb0qaI_HwA0hbluHgg3lBd4WrdvcMXnfV7UzhS8eIQYJrWc2fCurJNNwqDi28J4ykLreRMQ1WEBeT9KtmTw&ctsc=146&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAACZ3xK%2FuPwmyeBpAppjaRAAAADnaHZTnGbFfAj9RgZXfw6V996Fck4oFO1qxgm3OHC7cAgwlUePFkt0tDtvlNPSpCMbnl54fJ6Crxs%3D&svrnonce=1768135170"
+                            }
+                          ],
+                          "mediaType": 4
+                        },
+                        "objectNonceId": "8609277293449234222_0_146_0_0",
+                        "source_url": "",
+                        "createtime": 1766574001
+                      },
+                      "commentCount": 193,
+                      "nextCheckObjectStatus": 1,
+                      "barrageCommentInfo": [],
+                      "refObjectList": [],
+                      "preloadInfo": {
+                        "preloadStrategyId": 17840794003360850000,
+                        "globalInfo": {
+                          "prevCount": 0,
+                          "nextCount": 5,
+                          "maxBitRate": 150,
+                          "preloadFileSizePercent": 0.25,
+                          "preloadFileMinBytes": 0,
+                          "preloadMaxConcurrentCount": 1,
+                          "megavideoMaxBitRate": 0,
+                          "megavideoPrevCount": 1,
+                          "megavideoNextCount": 2,
+                          "minBufferLength": 10,
+                          "maxBufferLength": 10,
+                          "minCurrentFeedBufferLength": 5,
+                          "minRefreshInterval": 86400,
+                          "preloadFileTimeMs": 30000,
+                          "localserverBufferSize": 524288,
+                          "localserverSendSocketBufferSize": 131072,
+                          "ffmpegTcpRecvSocketBufferSize": 131072,
+                          "lastFeedInfoCount": 12,
+                          "nextFeedInfoCount": 1,
+                          "allowToUseNewSpecMaxPercent": -1,
+                          "isBackendControlFindPagePreload": false,
+                          "isFindPagePreload": false,
+                          "findPagePreloadSecond": 5,
+                          "wcplayerSchedulerType": 2,
+                          "minStartPlayBufferLengthMs": 4000,
+                          "findPageEnableCellularPreload": false,
+                          "holdoutExptParamSet": {
+                            "holdoutItems": [
+                              {
+                                "key": "holdout_expt_2",
+                                "value": "default_test_2",
+                                "inPriority": false
+                              },
+                              {
+                                "key": "holdout_expt_1",
+                                "value": "default_test",
+                                "inPriority": true
+                              }
+                            ],
+                            "hitHoldoutExpt": 0
+                          },
+                          "flowViewPreload": true,
+                          "bufferingHealthLengthL0": 5,
+                          "bufferingHealthLengthL1": 10,
+                          "bufferingHealthLengthL2": 15,
+                          "loadWithPlaying": [],
+                          "loadWithPlayWait": [],
+                          "findPagePreloadFeedCount": 1
+                        },
+                        "objectInfo": [
+                          {
+                            "feedId": 14819096805414996000,
+                            "interestFactor": 1,
+                            "loadWithPlaying": []
+                          }
+                        ],
+                        "megavideoInfo": []
+                      },
+                      "traceBuffer": "CLGVjJf5wIDUzQE=",
+                      "liveAliasInfo": [],
+                      "descCommentInfo": [],
+                      "userTags": [],
+                      "reportBypass": "{\"client_region\":{\"countryid\":\"cn\",\"ipaddr\":\"183.129.150.86\"}}"
+                    },
+                    "payload": {
+                      "needObject": 1,
+                      "lastBuffer": "",
+                      "scene": 146,
+                      "direction": 2,
+                      "identityScene": 2,
+                      "pullScene": 6,
+                      "objectid": "14819096805414996657",
+                      "objectNonceId": "8609277293449234222",
+                      "encrypted_objectid": ""
+                    }
+                  }
+                }
+              },
+              "nosocket": {
+                "summary": "业务异常",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

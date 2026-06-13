@@ -1,0 +1,82 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "RSS 订阅",
+    "description": "同样可以传入 `offset` 指定偏移量，获取到更多消息记录。\n\n还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文",
+    "parameters": [
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "鉴权 Token (开启鉴权时必填)"
+      },
+      {
+        "name": "biz",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "公众号唯一 ID"
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "偏移量"
+      },
+      {
+        "name": "content",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "description": "是否获取正文 (1 为开启)。如果希望直接获取到正文，可以指定 `content=1`，那么请求 `RSS` 接口时，就会同时获取正文。但是缺点就是列表接口会比较慢（因为要依次请求到正文）"
+      },
+      {
+        "name": "proxy",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "description": "是否使用代理 (1 为开启)。仅在 `linux` 部署的服务上支持。如果阅读器提供获取全文能力，但是无法正确获取到公众号文章正文，可以指定 `proxy=1`，那么返回文章列表中，文章链接都会添加 `{{APIServerAddr}}/mp/proxy` 前缀，当打开文章时，将使用代理代为请求微信公众号返回正文内容"
+      },
+      {
+        "name": "proxy_cover",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "description": "是否只代理封面 (1 为开启)。仅在 `linux` 部署的服务上支持。相比 `proxy`，`proxy_cover` 仅代理封面图片，可以用在仅需查看列表，点击跳转到原文的场景"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "RSS XML"
+      }
+    }
+  }
+}
