@@ -157,6 +157,14 @@ IMAGE=wx_video_download:v260607 \
 bash scripts/build-webtop-image.sh
 ```
 
+默认配置来自 `internal/config/config.template.yaml`，`global.js` 不存在时会使用空脚本占位。需要打包自定义默认配置或用户脚本时：
+
+```bash
+CONFIG_FILE=/path/to/config.yaml \
+GLOBAL_SCRIPT=/path/to/global.js \
+bash scripts/build-webtop-image.sh
+```
+
 使用本地构建镜像启动：
 
 ```bash

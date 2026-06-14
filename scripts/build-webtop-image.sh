@@ -7,6 +7,8 @@ WECHAT_DEB="${WECHAT_DEB:-/Users/litao/Downloads/WeChatLinux_arm64.deb}"
 TARGETARCH="${TARGETARCH:-arm64}"
 PLATFORM="${PLATFORM:-linux/${TARGETARCH}}"
 GOCACHE="${GOCACHE:-/tmp/wx-go-build-cache}"
+CONFIG_FILE="${CONFIG_FILE:-$ROOT_DIR/internal/config/config.template.yaml}"
+GLOBAL_SCRIPT="${GLOBAL_SCRIPT:-}"
 
 if [ "$TARGETARCH" != "arm64" ]; then
     echo "Only TARGETARCH=arm64 is supported because the provided WeChat deb is arm64." >&2
@@ -26,6 +28,20 @@ trap cleanup EXIT
 
 mkdir -p "$BUILD_DIR/rootfs"
 
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Config file not found: $CONFIG_FILE" >&2
+    exit 1
+fi
+
+if [ -z "$GLOBAL_SCRIPT" ] && [ -f "$ROOT_DIR/global.js" ]; then
+    GLOBAL_SCRIPT="$ROOT_DIR/global.js"
+fi
+
+if [ -n "$GLOBAL_SCRIPT" ] && [ ! -f "$GLOBAL_SCRIPT" ]; then
+    echo "Global script not found: $GLOBAL_SCRIPT" >&2
+    exit 1
+fi
+
 echo "Building wx_video_download for ${PLATFORM}..."
 (
     cd "$ROOT_DIR"
@@ -35,9 +51,13 @@ echo "Building wx_video_download for ${PLATFORM}..."
 )
 
 cp "$ROOT_DIR/docker/webtop/Dockerfile" "$BUILD_DIR/Dockerfile"
-cp "$ROOT_DIR/docker/webtop/config.yaml" "$BUILD_DIR/config.yaml"
+cp "$CONFIG_FILE" "$BUILD_DIR/config.yaml"
 cp "$ROOT_DIR/docs/public/SunnyRoot.cer" "$BUILD_DIR/SunnyRoot.cer"
-cp "$ROOT_DIR/global.js" "$BUILD_DIR/global.js"
+if [ -n "$GLOBAL_SCRIPT" ]; then
+    cp "$GLOBAL_SCRIPT" "$BUILD_DIR/global.js"
+else
+    : > "$BUILD_DIR/global.js"
+fi
 cp "$WECHAT_DEB" "$BUILD_DIR/WeChatLinux_arm64.deb"
 cp -R "$ROOT_DIR/docker/webtop/rootfs/." "$BUILD_DIR/rootfs/"
 
