@@ -61,13 +61,13 @@ build_macos_arm64() {
 
 build_linux() {
     echo "Building Linux x86_64..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_linux"
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_linux"
     echo "Done: $OUTPUT_DIR/wx_video_download_linux"
 }
 
 build_linux_arm64() {
     echo "Building Linux arm64..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_linux_arm64"
+    CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$OUTPUT_DIR/wx_video_download_linux_arm64"
     echo "Done: $OUTPUT_DIR/wx_video_download_linux_arm64"
 }
 

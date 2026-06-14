@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_CONFIG="${WX_VIDEO_CONFIG:-${WX_HOME}/config.yaml}"
+LOG_DIR="${WX_LOG_DIR:-/config/logs}"
+PID_FILE="${WX_HOME}/wx_video_download.pid"
+LOG_FILE="${LOG_DIR}/wx_video_download.out.log"
+
+if [ "$(id -u)" -eq 0 ] && [ "${WX_VIDEO_RUN_AS_ROOT:-false}" != "true" ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
+    exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_CONFIG="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" "$0" "$@"
+fi
+
+export HOME="${HOME:-/config}"
+export DISPLAY="${DISPLAY:-:1}"
+
+mkdir -p "$WX_HOME" "$LOG_DIR" /config/Downloads
+
+if [ ! -f "$WX_CONFIG" ]; then
+    cp /opt/wx_video_download/config.yaml "$WX_CONFIG"
+fi
+
+if pgrep -af "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1; then
+    echo "wx_video_download is already running. Showing logs."
+    touch "$LOG_FILE"
+    exec tail -n 120 -F "$LOG_FILE"
+fi
+
+cd /opt/wx_video_download
+umask 0002
+echo "$$" >"$PID_FILE"
+
+set +e
+/opt/wx_video_download/wx_video_download --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
+status=$?
+set -e
+
+rm -f "$PID_FILE"
+echo
+echo "wx_video_download exited with status ${status}."
+read -r -p "Press Enter to close this terminal..." _ || true
+exit "$status"
+

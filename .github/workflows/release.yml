@@ -29,6 +29,15 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.20'
+          cache: ${{ env.ACT != 'true' }}
+
+      - name: Restore Node.js path for act
+        if: ${{ env.ACT == 'true' }}
+        run: |
+          node_bin=$(find /opt/acttoolcache/node -path '*/bin' -type d | head -n 1)
+          if [ -n "$node_bin" ]; then
+            echo "$node_bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Install cross-compiler for windows
         run: |
@@ -119,6 +128,7 @@ jobs:
       #     done
 
       - name: Create GitHub Release and upload assets
+        if: ${{ env.ACT != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           draft: true

@@ -1,0 +1,50 @@
+#!/usr/bin/with-contenv bash
+set -euo pipefail
+
+IDENTITY_DIR="${WX_IDENTITY_DIR:-/config/.wx_identity}"
+MACHINE_ID_FILE="${WX_MACHINE_ID_FILE:-${IDENTITY_DIR}/machine-id}"
+HOSTNAME_FILE="${WX_HOSTNAME_FILE:-${IDENTITY_DIR}/hostname}"
+
+generate_machine_id() {
+    if [ -r /proc/sys/kernel/random/uuid ]; then
+        tr -d '-' < /proc/sys/kernel/random/uuid | tr 'A-F' 'a-f'
+    else
+        head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+    fi
+}
+
+mkdir -p "$IDENTITY_DIR"
+
+if [ ! -s "$MACHINE_ID_FILE" ]; then
+    generate_machine_id > "$MACHINE_ID_FILE"
+fi
+
+machine_id="$(tr -dc 'a-f0-9' < "$MACHINE_ID_FILE" | head -c 32)"
+if [ "${#machine_id}" -ne 32 ]; then
+    machine_id="$(generate_machine_id | head -c 32)"
+    printf '%s\n' "$machine_id" > "$MACHINE_ID_FILE"
+fi
+
+printf '%s\n' "$machine_id" > /etc/machine-id 2>/dev/null || true
+mkdir -p /var/lib/dbus
+printf '%s\n' "$machine_id" > /var/lib/dbus/machine-id 2>/dev/null || true
+
+if [ ! -s "$HOSTNAME_FILE" ]; then
+    current_hostname="$(hostname 2>/dev/null || true)"
+    current_hostname="${current_hostname:-wx-linux}"
+    printf '%s\n' "$current_hostname" > "$HOSTNAME_FILE"
+fi
+
+stable_hostname="$(tr -cd 'A-Za-z0-9_.-' < "$HOSTNAME_FILE" | head -c 63)"
+if [ -n "$stable_hostname" ]; then
+    printf '%s\n' "$stable_hostname" > /etc/hostname 2>/dev/null || true
+    hostname "$stable_hostname" 2>/dev/null || true
+fi
+
+chmod 700 "$IDENTITY_DIR" 2>/dev/null || true
+chmod 600 "$MACHINE_ID_FILE" "$HOSTNAME_FILE" 2>/dev/null || true
+if id abc >/dev/null 2>&1; then
+    chown -R abc:abc "$IDENTITY_DIR" 2>/dev/null || true
+fi
+
+echo "[wx-identity] machine-id is persisted at ${MACHINE_ID_FILE}; hostname=${stable_hostname:-unknown}"

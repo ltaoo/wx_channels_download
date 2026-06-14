@@ -31,7 +31,7 @@ type SunnyNetProxy struct {
 	plugins  []interface{}
 }
 
-func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyPort int, defaultInterface string) (InnerProxy, error) {
+func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyHostname string, proxyPort int, defaultInterface string, tcpRelayConfig *TCPRelayConfig) (InnerProxy, error) {
 	Sunny := SunnyNet.NewSunny()
 	return &SunnyNetProxy{Sunny: Sunny}, nil
 }
