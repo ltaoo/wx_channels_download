@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -u
+
+show_processes() {
+    label="$1"
+    pattern="$2"
+    echo "$label"
+    matches="$(pgrep -af "$pattern" 2>/dev/null || true)"
+    if [ -n "$matches" ]; then
+        echo "$matches" | sed 's/^/  /'
+    else
+        echo "  stopped"
+    fi
+}
+
+show_processes "wx_video_download:" "^/opt/wx_video_download/wx_video_download( |$)"
+show_processes "WeChat:" "(^/usr/bin/wechat|^/opt/wechat/wechat|^/opt/wechat/RadiumWMPF/runtime/WeChatAppEx)( |$)"
+
+if command -v ss >/dev/null 2>&1; then
+    echo "Listening ports:"
+    ss -ltnp 2>/dev/null | awk 'NR == 1 || /:2022|:2023|:3000|:3001/'
+fi

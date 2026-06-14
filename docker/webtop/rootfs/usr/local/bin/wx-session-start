@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -u
+
+export HOME="${HOME:-/config}"
+export DISPLAY="${DISPLAY:-:1}"
+LOG_FILE="/config/logs/wx-session-start.log"
+
+mkdir -p /config/logs
+sleep "${WX_SESSION_START_DELAY:-5}"
+
+{
+    echo "[$(date -Is)] session start"
+
+    if [ "${WX_VIDEO_AUTOSTART:-true}" != "false" ]; then
+        /usr/local/bin/wx-open-downloader-terminal || true
+    fi
+
+    if [ "${WECHAT_AUTOSTART:-true}" != "false" ]; then
+        /usr/local/bin/wx-start-wechat || true
+    fi
+
+} >>"$LOG_FILE" 2>&1

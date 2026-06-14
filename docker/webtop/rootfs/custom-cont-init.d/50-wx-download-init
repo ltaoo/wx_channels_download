@@ -1,0 +1,35 @@
+#!/usr/bin/with-contenv bash
+set -euo pipefail
+
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_CONFIG="${WX_VIDEO_CONFIG:-${WX_HOME}/config.yaml}"
+CERT_PATH="/usr/local/share/ca-certificates/SunnyRoot.crt"
+
+run_as_abc() {
+    if command -v s6-setuidgid >/dev/null 2>&1; then
+        s6-setuidgid abc "$@"
+    else
+        runuser -u abc -- "$@"
+    fi
+}
+
+mkdir -p "$WX_HOME" /config/Downloads /config/logs /config/Desktop
+rm -f /config/Desktop/wx-manager.desktop /config/logs/wx-manager.log
+
+if [ ! -f "$WX_CONFIG" ]; then
+    cp /opt/wx_video_download/config.yaml "$WX_CONFIG"
+fi
+
+if id abc >/dev/null 2>&1; then
+    chown -R abc:abc "$WX_HOME" /config/Downloads /config/logs /config/Desktop
+fi
+
+if command -v certutil >/dev/null 2>&1 && id abc >/dev/null 2>&1 && [ -f "$CERT_PATH" ]; then
+    mkdir -p /config/.pki/nssdb
+    chown -R abc:abc /config/.pki
+    if [ ! -f /config/.pki/nssdb/cert9.db ]; then
+        run_as_abc certutil -d sql:/config/.pki/nssdb -N --empty-password || true
+    fi
+    run_as_abc certutil -d sql:/config/.pki/nssdb -D -n SunnyRoot >/dev/null 2>&1 || true
+    run_as_abc certutil -d sql:/config/.pki/nssdb -A -n SunnyRoot -t "CT,C,C" -i "$CERT_PATH" || true
+fi

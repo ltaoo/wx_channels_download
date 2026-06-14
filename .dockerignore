@@ -1,0 +1,10 @@
+.git
+.docker
+dist
+node_modules
+docs/node_modules
+coverage
+tmp
+*.log
+.DS_Store
+

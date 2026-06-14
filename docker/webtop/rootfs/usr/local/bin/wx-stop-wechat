@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+pkill -TERM -f "(^/usr/bin/wechat|^/opt/wechat/wechat|^/opt/wechat/RadiumWMPF/runtime/WeChatAppEx)( |$)" >/dev/null 2>&1 || true
+echo "WeChat stopped."
