@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信页面刷新凭证",
+    "description": "借助已连接的前端（公众号文章页面）批量刷新公众号凭证。该接口会同步等待任务完成（或超时），但只返回操作结果状态，不返回详细的刷新数据。",
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "biz_list": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "需要刷新的公众号 `biz` ID 列表。如果为空或不传，则刷新所有包含 `refresh_uri` 的公众号。"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "fail": {
+                "summary": "失败",
+                "value": {
+                  "code": 400,
+                  "msg": "参数错误",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
