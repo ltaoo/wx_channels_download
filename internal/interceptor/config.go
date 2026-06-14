@@ -39,6 +39,9 @@ type InterceptorConfig struct {
 	ProxyDefaultInterface               string
 	ProxyServerHostname                 string
 	ProxyServerPort                     int
+	ProxyTCPRelayEnabled                bool
+	ProxyTCPRelayHostname               string
+	ProxyTCPRelayPort                   int
 	ProxySkipInstallRootCert            bool
 	ProxyUpstreamProxy                  string
 	PagespyEnabled                      bool
@@ -86,6 +89,9 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		ProxyDefaultInterface:               viper.GetString("proxy.defaultInterface"),
 		ProxyServerPort:                     viper.GetInt("proxy.port"),
 		ProxyServerHostname:                 viper.GetString("proxy.hostname"),
+		ProxyTCPRelayEnabled:                viper.GetBool("proxy.tcpRelay.enabled"),
+		ProxyTCPRelayHostname:               viper.GetString("proxy.tcpRelay.hostname"),
+		ProxyTCPRelayPort:                   viper.GetInt("proxy.tcpRelay.port"),
 		ProxySkipInstallRootCert:            viper.GetBool("proxy.skipInstallRootCert"),
 		ProxyUpstreamProxy:                  viper.GetString("proxy.upstreamProxy"),
 		InjectExtraScriptAfterJSMain:        viper.GetString("inject.extraScript.afterJSMain"),

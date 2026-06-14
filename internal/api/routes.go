@@ -39,6 +39,7 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/filehelper/parse_finder_feed", c.filehelper.HandleParseFinderFeed)
 		// 文件操作
 		c.engine.POST("/api/show_file", c.handleHighlightFileInFolder)
+		c.engine.POST("/api/open_file", c.handleHighlightFileInFolder)
 		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 	}
 	// 下载任务接口

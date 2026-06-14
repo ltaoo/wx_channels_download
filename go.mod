@@ -32,7 +32,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/ltaoo/echo v0.11.0
+	github.com/ltaoo/echo v0.11.1
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
 	github.com/rhysd/go-github-selfupdate v1.2.3
@@ -54,8 +54,6 @@ require (
 )
 
 replace github.com/GopeedLab/gopeed => ./pkg/gopeed
-
-// replace github.com/ltaoo/echo => C:/Users/litao/Documents/workspace/echo
 
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
 
