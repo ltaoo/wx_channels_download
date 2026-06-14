@@ -15,6 +15,11 @@ COPY global.js /opt/wx_video_download/global.js
 COPY WeChatLinux_arm64.deb /tmp/WeChatLinux_arm64.deb
 
 RUN set -eux; \
+    sed -i '/^api:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /opt/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /opt/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  tun:[[:space:]]*\).*/\1true/' /opt/wx_video_download/config.yaml
+
+RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
