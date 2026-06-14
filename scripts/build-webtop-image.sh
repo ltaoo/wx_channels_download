@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${IMAGE:-wx-channels-download-webtop:local}"
+IMAGE="${IMAGE:-wx_video_download:v260607}"
 WECHAT_DEB="${WECHAT_DEB:-/Users/litao/Downloads/WeChatLinux_arm64.deb}"
 TARGETARCH="${TARGETARCH:-arm64}"
 PLATFORM="${PLATFORM:-linux/${TARGETARCH}}"
@@ -44,4 +44,3 @@ cp -R "$ROOT_DIR/docker/webtop/rootfs/." "$BUILD_DIR/rootfs/"
 echo "Building Docker image ${IMAGE}..."
 docker build --platform "$PLATFORM" -t "$IMAGE" "$BUILD_DIR"
 echo "Built image: ${IMAGE}"
-

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${IMAGE:-wx-channels-download-webtop:local}"
+IMAGE="${IMAGE:-ghcr.io/ltaoo/wx_video_download:v260607}"
 NAME="${NAME:-wx_download}"
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 WEB_PORT="${WEB_PORT:-3000}"
+CONTAINER_HOSTNAME="${CONTAINER_HOSTNAME:-wx-linux}"
 TZ_VALUE="${TZ:-Asia/Shanghai}"
 RESOLUTION="${RESOLUTION:-1920x1080x24}"
 PUID_VALUE="${PUID:-1000}"
@@ -24,6 +25,7 @@ run_args=(
     -d
     --name "$NAME"
     --restart=unless-stopped
+    --hostname "$CONTAINER_HOSTNAME"
     --security-opt seccomp=unconfined
     --cap-add=NET_ADMIN
     --device /dev/net/tun

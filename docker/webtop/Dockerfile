@@ -72,6 +72,6 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY rootfs/ /
-RUN chmod +x /usr/local/bin/wx-* /custom-cont-init.d/50-wx-download-init
+RUN chmod +x /usr/local/bin/wx-* /custom-cont-init.d/*
 
 EXPOSE 3000 3001 2022 2023
