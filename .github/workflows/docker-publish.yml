@@ -64,6 +64,7 @@ jobs:
               ;;
           esac
           echo "image=${REGISTRY}/${IMAGE_NAME}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "latest_image=${REGISTRY}/${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Download WeChat Linux package
         run: |
@@ -81,8 +82,10 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${{ steps.image.outputs.image }}" scripts/build-webtop-image.sh
+          docker tag "${{ steps.image.outputs.image }}" "${{ steps.image.outputs.latest_image }}"
 
       - name: Push Docker image
         run: |
           set -euo pipefail
           docker push "${{ steps.image.outputs.image }}"
+          docker push "${{ steps.image.outputs.latest_image }}"
