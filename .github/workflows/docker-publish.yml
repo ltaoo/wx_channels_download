@@ -1,0 +1,88 @@
+name: Publish Docker image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag, for example v260607
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/wx_video_download
+  WECHAT_DEB_URL: https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push-image:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+          cache: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve Docker image
+        id: image
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.image_tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          case "$tag" in
+            v[0-9]*) ;;
+            *)
+              echo "Docker image tag must look like v260607, got: ${tag}" >&2
+              exit 1
+              ;;
+          esac
+          echo "image=${REGISTRY}/${IMAGE_NAME}:${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Download WeChat Linux package
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 5 \
+            -o "${RUNNER_TEMP}/WeChatLinux_arm64.deb" \
+            "${WECHAT_DEB_URL}"
+
+      - name: Build Docker image
+        env:
+          WECHAT_DEB: ${{ runner.temp }}/WeChatLinux_arm64.deb
+          TARGETARCH: arm64
+          PLATFORM: linux/arm64
+          DOCKER_BUILDKIT: 1
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.image.outputs.image }}" scripts/build-webtop-image.sh
+
+      - name: Push Docker image
+        run: |
+          set -euo pipefail
+          docker push "${{ steps.image.outputs.image }}"

@@ -104,8 +104,8 @@ export default defineConfig(async () => {
         text: "开始使用",
         items: [
           { text: "下载并运行", link: "/guide/start" },
-          { text: "macOS 运行", link: "/guide/macos" },
           { text: "使用步骤", link: "/guide/step" },
+          { text: "使用 Docker 运行", link: "/guide/docker" },
           { text: "手动安装根证书", link: "/guide/certificate" },
         ],
       },

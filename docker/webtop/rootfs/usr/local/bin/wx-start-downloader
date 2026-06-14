@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_CONFIG="${WX_VIDEO_CONFIG:-${WX_HOME}/config.yaml}"
+LOG_DIR="${WX_LOG_DIR:-/config/logs}"
+PID_FILE="${WX_HOME}/wx_video_download.pid"
+
+if [ "$(id -u)" -eq 0 ] && [ "${WX_VIDEO_RUN_AS_ROOT:-false}" != "true" ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
+    exec s6-setuidgid abc env HOME=/config WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_CONFIG="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" "$0" "$@"
+fi
+
+mkdir -p "$WX_HOME" "$LOG_DIR" /config/Downloads
+
+if [ ! -f "$WX_CONFIG" ]; then
+    cp /opt/wx_video_download/config.yaml "$WX_CONFIG"
+fi
+
+if pgrep -af "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1; then
+    echo "wx_video_download is already running."
+    exit 0
+fi
+
+cd /opt/wx_video_download
+umask 0002
+nohup /opt/wx_video_download/wx_video_download --config "$WX_CONFIG" >>"${LOG_DIR}/wx_video_download.out.log" 2>&1 &
+echo "$!" >"$PID_FILE"
+echo "wx_video_download started, pid $(cat "$PID_FILE")."

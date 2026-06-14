@@ -2,7 +2,9 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 )
 
@@ -31,7 +33,11 @@ func ShowInExplorer(path string) error {
 	case "darwin":
 		cmd = exec.Command("open", "-R", path)
 	case "linux":
-		cmd = exec.Command("xdg-open", path)
+		openPath := path
+		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+			openPath = filepath.Dir(path)
+		}
+		cmd = exec.Command("xdg-open", openPath)
 	default:
 		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}

@@ -91,6 +91,30 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 	})
 	Register(ConfigItem{
+		Key:         "proxy.tcpRelay.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否启用 TCP relay，用于接收 iptables/nftables 透明重定向的原始 TCP 流量",
+		Title:       "启用 TCP Relay",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "proxy.tcpRelay.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "TCP relay 监听主机名",
+		Title:       "TCP Relay 主机",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
+		Key:         "proxy.tcpRelay.port",
+		Type:        ConfigTypeInt,
+		Default:     9900,
+		Description: "TCP relay 监听端口，必须与代理端口不同",
+		Title:       "TCP Relay 端口",
+		Group:       "Proxy",
+	})
+	Register(ConfigItem{
 		Key:         "cert.file",
 		Type:        ConfigTypeString,
 		Default:     "",

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$(id -u)" -eq 0 ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
+    abc_uid="$(id -u abc)"
+    runtime_dir="${XDG_RUNTIME_DIR:-/tmp/runtime-${abc_uid}}"
+    mkdir -p "$runtime_dir" /config/logs
+    chown abc:abc "$runtime_dir" /config/logs || true
+    chmod 700 "$runtime_dir" || true
+    exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" XDG_RUNTIME_DIR="$runtime_dir" "$0" "$@"
+fi
+
+export HOME="${HOME:-/config}"
+export DISPLAY="${DISPLAY:-:1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-$(id -u)}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+export QT_X11_NO_MITSHM=1
+export NO_AT_BRIDGE=1
+
+mkdir -p "$XDG_RUNTIME_DIR" /config/logs
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+find_wechat() {
+    for candidate in "${WECHAT_BIN:-}" /usr/bin/wechat /opt/wechat/wechat /usr/local/bin/wechat; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    command -v wechat 2>/dev/null || true
+}
+
+wechat_bin="$(find_wechat)"
+if [ -z "$wechat_bin" ]; then
+    echo "WeChat binary was not found."
+    exit 1
+fi
+
+if pgrep -af "(^/usr/bin/wechat|^/opt/wechat/wechat|^/opt/wechat/RadiumWMPF/runtime/WeChatAppEx)( |$)" >/dev/null 2>&1; then
+    echo "WeChat is already running."
+    exit 0
+fi
+
+nohup "$wechat_bin" >>/config/logs/wechat.log 2>&1 &
+echo "WeChat started, pid $!."

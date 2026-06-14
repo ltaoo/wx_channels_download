@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-/config}"
+export DISPLAY="${DISPLAY:-:1}"
+
+mkdir -p /config/logs
+
+if pgrep -af "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1; then
+    echo "wx_video_download is already running."
+    exit 0
+fi
+
+if command -v xfce4-terminal >/dev/null 2>&1; then
+    xfce4-terminal --title="wx_video_download" --command="/usr/local/bin/wx-run-downloader" \
+        >/config/logs/wx_video_download_terminal.log 2>&1 &
+    echo "wx_video_download terminal opened."
+    exit 0
+fi
+
+if command -v xterm >/dev/null 2>&1; then
+    xterm -T "wx_video_download" -e /usr/local/bin/wx-run-downloader \
+        >/config/logs/wx_video_download_terminal.log 2>&1 &
+    echo "wx_video_download terminal opened."
+    exit 0
+fi
+
+/usr/local/bin/wx-start-downloader
+

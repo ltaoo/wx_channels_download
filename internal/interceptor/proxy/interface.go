@@ -12,6 +12,12 @@ type InnerProxy interface {
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
+type TCPRelayConfig struct {
+	Enabled  bool
+	Hostname string
+	Port     int
+}
+
 type Plugin struct {
 	Match      string
 	Target     *TargetConfig

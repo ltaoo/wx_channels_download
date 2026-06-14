@@ -31,6 +31,10 @@ proxy:
   system: true
   hostname: "127.0.0.1"
   port: 2023
+  tcpRelay:
+    enabled: false
+    hostname: "127.0.0.1"
+    port: 9900
   tun: false
   defaultInterface: ""
   skipInstallRootCert: false

@@ -24,7 +24,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_VERSION="${APP_VER}-${GIT_COMMIT}"
 
 echo "🚧 Building for Linux/amd64 (Version: ${BUILD_VERSION})..."
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.AppVer=${BUILD_VERSION}" -o dist/$BINARY_NAME main.go
+CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.AppVer=${BUILD_VERSION}" -o dist/$BINARY_NAME main.go
 
 if [ ! -f "dist/$BINARY_NAME" ]; then
     echo "❌ Build failed!"

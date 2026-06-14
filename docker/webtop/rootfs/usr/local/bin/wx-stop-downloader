@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+PID_FILE="${WX_HOME}/wx_video_download.pid"
+
+if [ -s "$PID_FILE" ]; then
+    pid="$(cat "$PID_FILE")"
+    if kill -0 "$pid" >/dev/null 2>&1; then
+        kill "$pid" || true
+    fi
+    rm -f "$PID_FILE"
+fi
+
+pkill -TERM -f "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1 || true
+echo "wx_video_download stopped."

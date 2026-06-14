@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=WX Download Services
+Exec=/usr/local/bin/wx-session-start
+Terminal=false
+X-GNOME-Autostart-enabled=true
+
