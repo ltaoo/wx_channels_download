@@ -1,5 +1,13 @@
 package qidian
 
+import qidianpkg "wx_channel/pkg/qidian"
+
+type BookVolume = qidianpkg.BookVolume
+type Chapter = qidianpkg.Chapter
+type Author = qidianpkg.Author
+type BookProfile = qidianpkg.BookProfile
+type Client = qidianpkg.Client
+
 // ProbeOutput is the Qidian novel output extracted during Probe and exposed
 // through the shared content envelope.
 type ProbeOutput struct {

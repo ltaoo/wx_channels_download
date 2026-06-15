@@ -2,6 +2,7 @@ package fanqienovel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	"wx_channel/pkg/contentplatform/novelutil"
+	fanqiepkg "wx_channel/pkg/fanqienovel"
 )
 
 const (
@@ -39,24 +41,26 @@ type Chapter struct {
 }
 
 type BookProfile struct {
-	URL            string       `json:"url"`
-	Title          string       `json:"title"`
-	Description    string       `json:"description"`
-	Slogan         string       `json:"slogan"`
-	CoverURL       string       `json:"cover_url"`
-	LatestUpdateAt *time.Time   `json:"latest_update_at,omitempty"`
-	Tags           []string     `json:"tags,omitempty"`
-	LatestChapter  Chapter      `json:"latest_chapter"`
-	ChapterCount   int          `json:"chapter_count"`
-	Author         Author       `json:"author"`
-	Volumes        []BookVolume `json:"volumes,omitempty"`
+	URL              string          `json:"url"`
+	Title            string          `json:"title"`
+	Description      string          `json:"description"`
+	Slogan           string          `json:"slogan"`
+	CoverURL         string          `json:"cover_url"`
+	LatestUpdateAt   *time.Time      `json:"latest_update_at,omitempty"`
+	Tags             []string        `json:"tags,omitempty"`
+	LatestChapter    Chapter         `json:"latest_chapter"`
+	ChapterCount     int             `json:"chapter_count"`
+	Author           Author          `json:"author"`
+	Volumes          []BookVolume    `json:"volumes,omitempty"`
+	InitialStateJSON json.RawMessage `json:"-"`
 }
 
 type ChapterContent struct {
-	Title     string     `json:"title"`
-	PublishAt *time.Time `json:"publish_at,omitempty"`
-	Content   string     `json:"content"`
-	WorkCount string     `json:"work_count,omitempty"`
+	Title            string          `json:"title"`
+	PublishAt        *time.Time      `json:"publish_at,omitempty"`
+	Content          string          `json:"content"`
+	WorkCount        string          `json:"work_count,omitempty"`
+	InitialStateJSON json.RawMessage `json:"-"`
 }
 
 type Fetcher interface {
@@ -126,6 +130,10 @@ func (h *Handler) probeNovel(sourceURL string, parts parsedURL) (*contentdownloa
 		Tags:        profile.Tags,
 		Chapters:    fanqieChapters(profile.Volumes),
 	})
+	internal := map[string]any{"profile": profile}
+	if len(profile.InitialStateJSON) > 0 {
+		internal["pagejson"] = json.RawMessage(append([]byte(nil), profile.InitialStateJSON...))
+	}
 	return &contentdownload.Probe{
 		Platform:     PlatformID,
 		SourceURL:    sourceURL,
@@ -160,7 +168,7 @@ func (h *Handler) probeNovel(sourceURL string, parts parsedURL) (*contentdownloa
 		}.Map()),
 		Variants: []contentdownload.Variant{novelutil.HTMLVariant("目录 HTML", "novel")},
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
-		Internal: map[string]any{"profile": profile},
+		Internal: internal,
 	}, nil
 }
 
@@ -171,6 +179,10 @@ func (h *Handler) probeChapter(sourceURL string, parts parsedURL) (*contentdownl
 	}
 	title := novelutil.FirstNonEmpty(chapter.Title, "fanqie_"+parts.ID)
 	bodyHTML := novelutil.RenderChapterHTML("番茄小说", title, parts.Canonical, chapter.Content)
+	internal := map[string]any{"chapter": chapter}
+	if len(chapter.InitialStateJSON) > 0 {
+		internal["pagejson"] = json.RawMessage(append([]byte(nil), chapter.InitialStateJSON...))
+	}
 	return &contentdownload.Probe{
 		Platform:     PlatformID,
 		SourceURL:    sourceURL,
@@ -199,7 +211,7 @@ func (h *Handler) probeChapter(sourceURL string, parts parsedURL) (*contentdownl
 		}.Map()),
 		Variants: []contentdownload.Variant{novelutil.HTMLVariant("章节 HTML", "chapter")},
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
-		Internal: map[string]any{"chapter": chapter},
+		Internal: internal,
 	}, nil
 }
 
@@ -289,7 +301,14 @@ func (c *Client) newRequest(reqURL, referer string) (*http.Request, error) {
 }
 
 func (c *Client) parseBookProfile(reqURL string, r io.Reader) (*BookProfile, error) {
-	doc, err := goquery.NewDocumentFromReader(r)
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	if profile, err := fanqiepkg.ParseBookProfileHTML(reqURL, string(body)); err == nil {
+		return bookProfileFromPkg(profile), nil
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
 	if err != nil {
 		return nil, err
 	}
@@ -339,12 +358,38 @@ func (c *Client) parseBookProfile(reqURL string, r io.Reader) (*BookProfile, err
 			profile.Volumes = append(profile.Volumes, volume)
 		}
 	})
+	if chapterCount == 0 {
+		volume := BookVolume{Idx: 1, Title: "默认"}
+		doc.Find(".page-directory-content .chapter_item, .page-directory-content .chapter-item").Each(func(_ int, cs *goquery.Selection) {
+			link := cs.Find(".chapter-title, .chapter-item-title, a").First()
+			title := strings.TrimSpace(link.Text())
+			if title == "" {
+				return
+			}
+			chapterCount++
+			volume.Chapters = append(volume.Chapters, Chapter{
+				Idx:   chapterCount,
+				Title: title,
+				URL:   normalizeFanqieURL(link.AttrOr("href", "")),
+			})
+		})
+		if len(volume.Chapters) > 0 {
+			profile.Volumes = append(profile.Volumes, volume)
+		}
+	}
 	profile.ChapterCount = chapterCount
 	return profile, nil
 }
 
 func (c *Client) parseChapterProfile(r io.Reader) (*ChapterContent, error) {
-	doc, err := goquery.NewDocumentFromReader(r)
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	if chapter, err := fanqiepkg.ParseChapterContentHTML(string(body)); err == nil {
+		return chapterContentFromPkg(chapter), nil
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
 	if err != nil {
 		return nil, err
 	}
@@ -400,4 +445,58 @@ func translateString(value string) string {
 		b.WriteString(TranslateText(string(r)))
 	}
 	return b.String()
+}
+
+func bookProfileFromPkg(in *fanqiepkg.BookProfile) *BookProfile {
+	if in == nil {
+		return nil
+	}
+	return &BookProfile{
+		URL:              in.URL,
+		Title:            in.Title,
+		Description:      in.Description,
+		Slogan:           in.Slogan,
+		CoverURL:         in.CoverURL,
+		LatestUpdateAt:   in.LatestUpdateAt,
+		Tags:             append([]string(nil), in.Tags...),
+		LatestChapter:    chapterFromPkg(in.LatestChapter),
+		ChapterCount:     in.ChapterCount,
+		InitialStateJSON: append(json.RawMessage(nil), in.InitialStateJSON...),
+		Author: Author{
+			Name:      in.Author.Name,
+			Desc:      in.Author.Desc,
+			AvatarURL: in.Author.AvatarURL,
+			URL:       in.Author.URL,
+		},
+		Volumes: volumesFromPkg(in.Volumes),
+	}
+}
+
+func volumesFromPkg(in []fanqiepkg.BookVolume) []BookVolume {
+	out := make([]BookVolume, 0, len(in))
+	for _, volume := range in {
+		chapters := make([]Chapter, 0, len(volume.Chapters))
+		for _, chapter := range volume.Chapters {
+			chapters = append(chapters, chapterFromPkg(chapter))
+		}
+		out = append(out, BookVolume{Idx: volume.Idx, Title: volume.Title, Chapters: chapters})
+	}
+	return out
+}
+
+func chapterFromPkg(in fanqiepkg.Chapter) Chapter {
+	return Chapter{Idx: in.Idx, Title: in.Title, URL: in.URL}
+}
+
+func chapterContentFromPkg(in *fanqiepkg.ChapterContent) *ChapterContent {
+	if in == nil {
+		return nil
+	}
+	return &ChapterContent{
+		Title:            in.Title,
+		PublishAt:        in.PublishAt,
+		Content:          in.Content,
+		WorkCount:        in.WorkCount,
+		InitialStateJSON: append(json.RawMessage(nil), in.InitialStateJSON...),
+	}
 }

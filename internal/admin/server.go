@@ -15,6 +15,7 @@ import (
 	"wx_channel/frontend"
 	"wx_channel/internal/config"
 	"wx_channel/internal/manager"
+	"wx_channel/pkg/browsermgr"
 )
 
 type ServiceSnapshot struct {
@@ -40,6 +41,7 @@ type AdminServer struct {
 	cfg        *config.Config
 	app        *velo.Box
 	controller ServiceController
+	browserMgr *browsermgr.Manager
 }
 
 func NewAdminServer(cfg *config.Config, app *velo.Box, controller ServiceController) *AdminServer {
@@ -51,6 +53,21 @@ func NewAdminServer(cfg *config.Config, app *velo.Box, controller ServiceControl
 		app:        app,
 		controller: controller,
 	}
+	browserMgr, _ := browsermgr.New(browsermgr.Config{
+		WorkDir:          cfg.WorkDir,
+		DockerImage:      viper.GetString("sandbox.dockerImage"),
+		DockerEntrypoint: viper.GetString("sandbox.dockerEntrypoint"),
+		DockerNetwork:    viper.GetString("sandbox.dockerNetwork"),
+		CDPPortMin:       viper.GetInt("sandbox.cdpPortMin"),
+		CDPPortMax:       viper.GetInt("sandbox.cdpPortMax"),
+		DesktopPortMin:   viper.GetInt("sandbox.desktopPortMin"),
+		DesktopPortMax:   viper.GetInt("sandbox.desktopPortMax"),
+		Resolution:       viper.GetString("sandbox.resolution"),
+		ShmSize:          viper.GetString("sandbox.shmSize"),
+		MemoryLimit:      viper.GetString("sandbox.memoryLimit"),
+		ChromeCommand:    viper.GetString("sandbox.chromeCommand"),
+	}, nil)
+	admin.browserMgr = browserMgr
 	srv.SetHandler(admin.routes())
 	return admin
 }
@@ -71,6 +88,25 @@ func (s *AdminServer) routes() http.Handler {
 	mux.HandleFunc("/api/admin/config", s.handleConfig)
 	mux.HandleFunc("/api/admin/config/repair", s.handleConfigRepair)
 	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/v1/daemons/status", s.handleDaemonStatus)
+	mux.HandleFunc("/api/v1/daemons/start", s.handleDaemonStart)
+	mux.HandleFunc("/api/v1/daemons/stop", s.handleDaemonStop)
+	mux.HandleFunc("/api/v1/daemons/restart", s.handleDaemonRestart)
+	mux.HandleFunc("/api/v1/daemons/remote/start", s.handleDaemonRemoteUnsupported)
+	mux.HandleFunc("/api/v1/daemons/remote/stop", s.handleDaemonRemoteUnsupported)
+	mux.HandleFunc("/api/v1/daemons/tabs", s.handleDaemonTabs)
+	mux.HandleFunc("/api/v1/daemons/page-info", s.handleDaemonPageInfo)
+	mux.HandleFunc("/api/v1/daemons/debugger-url", s.handleDaemonDebuggerURL)
+	mux.HandleFunc("/api/v1/daemons/fetch", s.handleDaemonFetch)
+	mux.HandleFunc("/api/v1/apps", s.handleApps)
+	mux.HandleFunc("/api/v1/apps/install", s.handleAppTaskUnsupported)
+	mux.HandleFunc("/api/v1/apps/remove", s.handleAppTaskUnsupported)
+	mux.HandleFunc("/api/v1/apps/update", s.handleAppTaskUnsupported)
+	mux.HandleFunc("/api/v1/apps/run", s.handleAppTaskUnsupported)
+	mux.HandleFunc("/api/v1/apps/tasks", s.handleAppTasks)
+	mux.HandleFunc("/api/v1/apps/tasks/", s.handleAppTask)
+	mux.HandleFunc("/api/v1/sandboxes", s.handleSandboxes)
+	mux.HandleFunc("/api/v1/sandboxes/", s.handleSandbox)
 	mux.Handle("/", s.frontendHandler())
 	return mux
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
@@ -23,7 +24,9 @@ import (
 	contentqidian "wx_channel/pkg/contentplatform/qidian"
 	contentquanben "wx_channel/pkg/contentplatform/quanben"
 	contentttk "wx_channel/pkg/contentplatform/ttk"
+	contentv2ex "wx_channel/pkg/contentplatform/v2ex"
 	contentwxchannels "wx_channel/pkg/contentplatform/wxchannels"
+	contentxiaohongshu "wx_channel/pkg/contentplatform/xiaohongshu"
 	contentyoutube "wx_channel/pkg/contentplatform/youtube"
 	contentzhihu "wx_channel/pkg/contentplatform/zhihu"
 	"wx_channel/pkg/decrypt"
@@ -128,6 +131,9 @@ func (c *APIClient) handleProbePlatformDownloadTask(ctx *gin.Context) {
 	}
 	if pageHTML := platformProbePageHTML(probe); pageHTML != "" {
 		resp["pagehtml"] = pageHTML
+	}
+	if probePipeline := platformProbePipeline(probe); probePipeline != nil {
+		resp["probe_pipeline"] = probePipeline
 	}
 	result.Ok(ctx, resp)
 }
@@ -269,6 +275,13 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 			}
 			platformProbeAddJSONDefault(probe)
 		}
+		if platformProbeJSONVariantDisabled(probe) {
+			err := contentdownload.ErrVariantNotFound
+			if run != nil {
+				run.failNode("resolve", err)
+			}
+			return "", err
+		}
 		resolved = platformJSONResolvedRequest(body.URL, probe, opts)
 	} else {
 		resolved, err = router.Resolve(ctx, contentdownload.ResolveInput{
@@ -291,6 +304,7 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 	if resolved.Suffix == ".mp3" && !system.ExistingCommand("ffmpeg") {
 		return "", fmt.Errorf("下载 mp3 需要支持 ffmpeg 命令")
 	}
+	platformEnsureMetadataPipelineNodes(resolved)
 
 	downloadDir := ""
 	if c.cfg != nil {
@@ -339,8 +353,278 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 	}
 	recID = rec.Id
 
+	planExec := &platformPlanExecution{
+		Resolved:       resolved,
+		DownloadTaskID: rec.Id,
+	}
+	if err := c.runPlatformPlanNodeTypes(ctx, run, planExec, map[string]bool{
+		"create_account": true,
+		"create_content": true,
+	}); err != nil {
+		return "", err
+	}
+
 	go c.runPlatformDownloadTask(context.Background(), downloader, task.ID, rec.Id, run)
 	return task.ID, nil
+}
+
+type platformPlanExecution struct {
+	Resolved       *contentdownload.ResolvedRequest
+	DownloadTaskID int
+	Account        *model.Account
+}
+
+func (c *APIClient) runPlatformPlanNodeTypes(ctx context.Context, run *platformWorkflowRun, exec *platformPlanExecution, nodeTypes map[string]bool) error {
+	if exec == nil || exec.Resolved == nil || exec.Resolved.Pipeline == nil || len(nodeTypes) == 0 {
+		return nil
+	}
+	nodes := exec.Resolved.Pipeline.Nodes
+	byID := make(map[string]contentdownload.PipelineNode, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	visiting := make(map[string]bool, len(nodes))
+	done := make(map[string]bool, len(nodes))
+	var runNode func(string) error
+	runNode = func(id string) error {
+		if done[id] {
+			return nil
+		}
+		node, ok := byID[id]
+		if !ok || !nodeTypes[node.Type] {
+			return nil
+		}
+		if visiting[id] {
+			return fmt.Errorf("pipeline node cycle at %q", id)
+		}
+		visiting[id] = true
+		for _, depID := range node.DependsOn {
+			if err := runNode(depID); err != nil {
+				return err
+			}
+		}
+		visiting[id] = false
+		if err := c.executePlatformPlanNode(ctx, run, exec, node); err != nil {
+			return err
+		}
+		done[id] = true
+		return nil
+	}
+	for _, node := range nodes {
+		if !nodeTypes[node.Type] {
+			continue
+		}
+		if err := runNode(node.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *APIClient) executePlatformPlanNode(ctx context.Context, run *platformWorkflowRun, exec *platformPlanExecution, node contentdownload.PipelineNode) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if run != nil {
+		run.startNode(node.ID, node.Type)
+	}
+	var err error
+	switch node.Type {
+	case "create_account":
+		exec.Account, err = c.upsertPlatformResolvedAccount(exec.Resolved)
+	case "create_content":
+		_, err = c.upsertPlatformResolvedContent(exec.Resolved, exec.DownloadTaskID, exec.Account)
+	default:
+		err = fmt.Errorf("unsupported platform pipeline node type %q", node.Type)
+	}
+	if err != nil {
+		if run != nil {
+			run.failNode(node.ID, err)
+		}
+		return err
+	}
+	if run != nil {
+		run.completeNode(node.ID)
+	}
+	return nil
+}
+
+func (c *APIClient) upsertPlatformResolvedAccount(resolved *contentdownload.ResolvedRequest) (*model.Account, error) {
+	if c.db == nil || resolved == nil {
+		return nil, nil
+	}
+	summary := contentdownload.ContentSummaryOf(resolved.Content)
+	metadata := contentdownload.ContentMetadataOf(resolved.Content)
+	platformID := strings.TrimSpace(firstNonEmpty(summary.Platform, resolved.Platform))
+	if platformID == "" {
+		return nil, nil
+	}
+	externalID := strings.TrimSpace(firstNonEmpty(
+		platformContentMetadataString(metadata, "account_external_id", "account_id", "author_id", "author_url_token", "author_username", "author_sec_id"),
+		summary.Author,
+		summary.AuthorNickname,
+	))
+	if externalID == "" {
+		return nil, nil
+	}
+	username := strings.TrimSpace(firstNonEmpty(
+		platformContentMetadataString(metadata, "account_username", "author_username", "author_url_token", "author_sec_id"),
+		externalID,
+	))
+	nickname := strings.TrimSpace(firstNonEmpty(summary.AuthorNickname, summary.Author, username, externalID))
+	avatarURL := strings.TrimSpace(summary.AuthorAvatarURL)
+	now := util.NowMillis()
+	var account *model.Account
+	err := c.db.Transaction(func(tx *gorm.DB) error {
+		next, err := upsertContentAccount(tx, model.Account{
+			PlatformId: platformID,
+			ExternalId: externalID,
+			Username:   username,
+			Nickname:   nickname,
+			AvatarURL:  avatarURL,
+		}, now)
+		if err != nil {
+			return err
+		}
+		account = next
+		return nil
+	})
+	return account, err
+}
+
+func (c *APIClient) upsertPlatformResolvedContent(resolved *contentdownload.ResolvedRequest, downloadTaskID int, account *model.Account) (*model.Content, error) {
+	if c.db == nil || resolved == nil {
+		return nil, nil
+	}
+	summary := contentdownload.ContentSummaryOf(resolved.Content)
+	metadata := contentdownload.ContentMetadataOf(resolved.Content)
+	platformID := strings.TrimSpace(firstNonEmpty(summary.Platform, resolved.Platform))
+	contentID := strings.TrimSpace(firstNonEmpty(summary.ID, resolved.ContentID, resolved.Labels["id"]))
+	if platformID == "" || contentID == "" {
+		return nil, nil
+	}
+	contentType := strings.TrimSpace(firstNonEmpty(summary.Type, resolved.Labels["content_type"], platformContentMetadataString(resolved.Metadata, "content_type")))
+	if contentType == "" {
+		contentType = platformContentTypeFromSuffix(resolved.Suffix)
+	}
+	metaBytes, _ := json.Marshal(map[string]any{
+		"resolved": resolved.Metadata,
+		"content":  metadata,
+		"labels":   resolved.Labels,
+	})
+	taskID := downloadTaskID
+	now := util.NowMillis()
+	content := model.Content{
+		PlatformId:     platformID,
+		ContentType:    contentType,
+		ExternalId:     contentID,
+		ExternalId2:    platformContentMetadataString(metadata, "nonce_id", "answer_id", "article_id", "book_id"),
+		Title:          firstNonEmpty(summary.Title, resolved.Title, resolved.Filename, contentID),
+		Description:    summary.Description,
+		ContentURL:     firstNonEmpty(summary.URL, resolved.CanonicalURL, resolved.SourceURL),
+		URL:            firstNonEmpty(summary.URL, resolved.Download.URL),
+		SourceURL:      firstNonEmpty(summary.SourceURL, resolved.SourceURL, resolved.CanonicalURL),
+		CoverURL:       summary.CoverURL,
+		Metadata:       string(metaBytes),
+		Duration:       summary.Duration,
+		DownloadTaskId: &taskID,
+		DownloadStatus: 1,
+		DownloadPath:   platformTaskFilePath("", resolved),
+		Timestamps:     model.Timestamps{CreatedAt: now, UpdatedAt: now},
+	}
+	err := c.db.Transaction(func(tx *gorm.DB) error {
+		if err := upsertContentByPlatformExternalID(tx, &content, now); err != nil {
+			return err
+		}
+		if account != nil {
+			if err := upsertContentOwner(tx, content.Id, account.Id, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return &content, err
+}
+
+func platformContentMetadataString(metadata map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if metadata == nil {
+			return ""
+		}
+		value := metadata[key]
+		switch v := value.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return v
+			}
+		case fmt.Stringer:
+			text := strings.TrimSpace(v.String())
+			if text != "" {
+				return text
+			}
+		case nil:
+		default:
+			text := strings.TrimSpace(fmt.Sprint(v))
+			if text != "" && text != "<nil>" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func platformContentTypeFromSuffix(suffix string) string {
+	switch strings.ToLower(strings.TrimSpace(suffix)) {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+		return "image"
+	case ".mp3", ".m4a", ".aac", ".wav", ".flac":
+		return "audio"
+	case ".html", ".htm", ".json", ".txt", ".md":
+		return "article"
+	default:
+		return "video"
+	}
+}
+
+func platformEnsureMetadataPipelineNodes(resolved *contentdownload.ResolvedRequest) {
+	if resolved == nil {
+		return
+	}
+	if resolved.Pipeline == nil {
+		resolved.Pipeline = &contentdownload.PipelinePlan{Platform: resolved.Platform}
+	}
+	if strings.TrimSpace(resolved.Pipeline.Platform) == "" {
+		resolved.Pipeline.Platform = resolved.Platform
+	}
+	accountID := platformPipelineNodeIDByType(resolved.Pipeline, "create_account")
+	if accountID == "" {
+		accountID = "create_account"
+		resolved.Pipeline.Nodes = append(resolved.Pipeline.Nodes, contentdownload.PipelineNode{
+			ID:    accountID,
+			Type:  "create_account",
+			Stage: "prepare",
+		})
+	}
+	if platformPipelineNodeIDByType(resolved.Pipeline, "create_content") == "" {
+		resolved.Pipeline.Nodes = append(resolved.Pipeline.Nodes, contentdownload.PipelineNode{
+			ID:        "create_content",
+			Type:      "create_content",
+			Stage:     "prepare",
+			DependsOn: []string{accountID},
+		})
+	}
+}
+
+func platformPipelineNodeIDByType(plan *contentdownload.PipelinePlan, nodeType string) string {
+	if plan == nil {
+		return ""
+	}
+	for _, node := range plan.Nodes {
+		if node.Type == nodeType && strings.TrimSpace(node.ID) != "" {
+			return node.ID
+		}
+	}
+	return ""
 }
 
 func (c *APIClient) lookupPlatformWorkflow(runID string) *platformWorkflowRun {
@@ -568,15 +852,67 @@ func (c *APIClient) platformDownloadRouter() *contentdownload.Router {
 			sphCookie:          c.cfg.CloudflareSphCookie,
 		}),
 		contentdouyin.New(nil),
+		contentxiaohongshu.New(nil),
 		contentzhihu.New(nil),
 		contentoa.New(nil),
 		contentyoutube.New(nil),
-		contentshuba69.New(nil),
+		c.shuba69Handler(),
 		contentqidian.New(nil),
 		contentquanben.New(nil),
 		contentttk.New(nil),
+		contentv2ex.New(nil),
 		contentfanqie.New(nil),
 	)
+}
+
+func (c *APIClient) shuba69Handler() *contentshuba69.Handler {
+	cookie := ""
+	fetcherName := ""
+	cdpEndpoint := ""
+	cdpTimeout := 0
+	cdpWait := 0
+	sandboxAPIBaseURL := ""
+	sandboxID := ""
+	if c != nil && c.cfg != nil {
+		cookie = c.cfg.Shuba69Cookie
+		fetcherName = c.cfg.Shuba69Fetcher
+		cdpEndpoint = c.cfg.Shuba69CDPEndpoint
+		cdpTimeout = c.cfg.Shuba69CDPTimeout
+		cdpWait = c.cfg.Shuba69CDPWait
+		sandboxAPIBaseURL = c.cfg.Shuba69SandboxAPIBaseURL
+		sandboxID = c.cfg.Shuba69SandboxID
+	}
+	client := contentshuba69.NewClientWithOptions(cookie, "")
+	switch strings.ToLower(strings.TrimSpace(fetcherName)) {
+	case "cdp":
+		cdpFetcher := contentshuba69.NewCDPFetcher(cdpEndpoint)
+		if cdpTimeout > 0 {
+			cdpFetcher.Timeout = time.Duration(cdpTimeout) * time.Second
+		}
+		if cdpWait >= 0 {
+			cdpFetcher.WaitAfterLoad = time.Duration(cdpWait) * time.Second
+		}
+		client = contentshuba69.NewClientWithHTMLFetcher(cdpFetcher, cookie, "")
+	case "sandbox":
+		timeout := time.Duration(0)
+		wait := time.Duration(cdpWait) * time.Second
+		if cdpTimeout > 0 {
+			timeout = time.Duration(cdpTimeout) * time.Second
+		}
+		if strings.TrimSpace(sandboxID) == "" {
+			client = contentshuba69.NewClientWithHTMLFetcher(newShuba69BrowserPoolFetcher(c.browserMgr, timeout, wait), cookie, "")
+		} else {
+			sandboxFetcher := contentshuba69.NewSandboxCDPFetcher(sandboxAPIBaseURL, sandboxID)
+			if timeout > 0 {
+				sandboxFetcher.Timeout = timeout
+			}
+			if cdpWait >= 0 {
+				sandboxFetcher.WaitAfterLoad = wait
+			}
+			client = contentshuba69.NewClientWithHTMLFetcher(sandboxFetcher, cookie, "")
+		}
+	}
+	return contentshuba69.New(client)
 }
 
 type platformChannelsFetcher struct {
@@ -703,6 +1039,13 @@ func platformProbePageHTML(probe *contentdownload.Probe) string {
 	return value
 }
 
+func platformProbePipeline(probe *contentdownload.Probe) any {
+	if probe == nil || probe.Internal == nil {
+		return nil
+	}
+	return probe.Internal["probe_pipeline"]
+}
+
 func platformProbeView(probe *contentdownload.Probe) gin.H {
 	if probe == nil {
 		return gin.H{}
@@ -752,6 +1095,9 @@ func platformProbeAddJSONDefault(probe *contentdownload.Probe) {
 	if probe == nil {
 		return
 	}
+	if platformProbeJSONVariantDisabled(probe) {
+		return
+	}
 	probe.Variants = platformProbeVariants(probe)
 	probe.Defaults.VariantID = platformJSONVariantID
 	probe.Defaults.Suffix = ".json"
@@ -769,6 +1115,9 @@ func platformProbeVariants(probe *contentdownload.Probe) []contentdownload.Varia
 		}
 		variants = append(variants, variant)
 	}
+	if platformProbeJSONVariantDisabled(probe) {
+		return variants
+	}
 	if !hasJSON {
 		variants = append(variants, contentdownload.Variant{
 			ID:     platformJSONVariantID,
@@ -778,6 +1127,14 @@ func platformProbeVariants(probe *contentdownload.Probe) []contentdownload.Varia
 		})
 	}
 	return variants
+}
+
+func platformProbeJSONVariantDisabled(probe *contentdownload.Probe) bool {
+	if probe == nil || probe.Internal == nil {
+		return false
+	}
+	disabled, _ := probe.Internal[contentdownload.InternalKeyDisableJSONVariant].(bool)
+	return disabled
 }
 
 func platformJSONResolvedRequest(sourceURL string, probe *contentdownload.Probe, opts contentdownload.Options) *contentdownload.ResolvedRequest {
@@ -798,6 +1155,9 @@ func platformJSONResolvedRequest(sourceURL string, probe *contentdownload.Probe,
 		"defaults":      contentdownload.Defaults{VariantID: platformJSONVariantID, Suffix: ".json"},
 		"warnings":      probe.Warnings,
 		"output":        platformProbeOutput(probe),
+	}
+	if probePipeline := platformProbePipeline(probe); probePipeline != nil {
+		payload["probe_pipeline"] = probePipeline
 	}
 	return &contentdownload.ResolvedRequest{
 		Platform:     probe.Platform,

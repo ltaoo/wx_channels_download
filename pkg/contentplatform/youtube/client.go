@@ -36,29 +36,32 @@ type Client struct {
 }
 
 type VideoInfo struct {
-	ID                string            `json:"id"`
-	Title             string            `json:"title,omitempty"`
-	Description       string            `json:"description,omitempty"`
-	WebpageURL        string            `json:"webpage_url,omitempty"`
-	Thumbnail         string            `json:"thumbnail,omitempty"`
-	Thumbnails        []Thumbnail       `json:"thumbnails,omitempty"`
-	Duration          int64             `json:"duration,omitempty"`
-	ViewCount         int64             `json:"view_count,omitempty"`
-	AgeLimit          int               `json:"age_limit,omitempty"`
-	Channel           string            `json:"channel,omitempty"`
-	ChannelID         string            `json:"channel_id,omitempty"`
-	ChannelURL        string            `json:"channel_url,omitempty"`
-	Uploader          string            `json:"uploader,omitempty"`
-	UploaderID        string            `json:"uploader_id,omitempty"`
-	UploaderURL       string            `json:"uploader_url,omitempty"`
-	Categories        []string          `json:"categories,omitempty"`
-	Tags              []string          `json:"tags,omitempty"`
-	LiveStatus        string            `json:"live_status,omitempty"`
-	MediaType         string            `json:"media_type,omitempty"`
-	PlayableInEmbed   bool              `json:"playable_in_embed,omitempty"`
-	Formats           []VideoFormat     `json:"formats,omitempty"`
-	PlayabilityStatus PlayabilityStatus `json:"playability_status,omitempty"`
-	Warnings          []string          `json:"warnings,omitempty"`
+	ID                        string            `json:"id"`
+	Title                     string            `json:"title,omitempty"`
+	Description               string            `json:"description,omitempty"`
+	WebpageURL                string            `json:"webpage_url,omitempty"`
+	Thumbnail                 string            `json:"thumbnail,omitempty"`
+	Thumbnails                []Thumbnail       `json:"thumbnails,omitempty"`
+	Duration                  int64             `json:"duration,omitempty"`
+	ViewCount                 int64             `json:"view_count,omitempty"`
+	AgeLimit                  int               `json:"age_limit,omitempty"`
+	Channel                   string            `json:"channel,omitempty"`
+	ChannelID                 string            `json:"channel_id,omitempty"`
+	ChannelURL                string            `json:"channel_url,omitempty"`
+	Uploader                  string            `json:"uploader,omitempty"`
+	UploaderID                string            `json:"uploader_id,omitempty"`
+	UploaderURL               string            `json:"uploader_url,omitempty"`
+	Categories                []string          `json:"categories,omitempty"`
+	Tags                      []string          `json:"tags,omitempty"`
+	LiveStatus                string            `json:"live_status,omitempty"`
+	MediaType                 string            `json:"media_type,omitempty"`
+	PlayableInEmbed           bool              `json:"playable_in_embed,omitempty"`
+	Formats                   []VideoFormat     `json:"formats,omitempty"`
+	PlayabilityStatus         PlayabilityStatus `json:"playability_status,omitempty"`
+	Warnings                  []string          `json:"warnings,omitempty"`
+	InitialPlayerResponseJSON json.RawMessage   `json:"-"`
+	YTCfgJSON                 json.RawMessage   `json:"-"`
+	PageHTML                  string            `json:"-"`
 }
 
 type Thumbnail struct {
@@ -147,7 +150,12 @@ func (c *Client) Probe(ctx context.Context, input contentdownload.ProbeInput) (*
 		}.Map()),
 		Variants: variants,
 		Defaults: defaults,
-		Internal: map[string]any{"video_info": info},
+		Internal: map[string]any{
+			"video_info": info,
+			"pagejson":   info.InitialPlayerResponseJSON,
+			"pagehtml":   info.PageHTML,
+			"ytcfg":      info.YTCfgJSON,
+		},
 		Warnings: warnings,
 	}, nil
 }
@@ -174,6 +182,9 @@ func (c *Client) Resolve(ctx context.Context, input contentdownload.ResolveInput
 	variant, err := contentdownload.SelectVariant(probe, options)
 	if err != nil {
 		return nil, err
+	}
+	if isPlayerResponseJSONVariant(variant) {
+		return resolvePlayerResponseJSON(probe, info, options)
 	}
 
 	suffix := firstNonEmpty(options.Suffix, variant.Suffix)
@@ -271,6 +282,8 @@ func (c *Client) Extract(ctx context.Context, rawURL string) (*VideoInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("parse youtube player response: %w", err)
 	}
+	initialPlayerResponseJSON, _, _ := ExtractInitialPlayerResponseJSON(webpage)
+	ytcfgJSON, _, _ := ExtractYTCfgJSON(webpage)
 	ytcfg, _ := parseYTCfg(webpage)
 	if !hasPlayerResponse || !playerResponse.hasStreamingData() {
 		apiResponse, apiErr := c.fetchPlayerAPI(ctx, videoID, ytcfg, watchURL)
@@ -286,6 +299,14 @@ func (c *Client) Extract(ctx context.Context, rawURL string) (*VideoInfo, error)
 	}
 
 	info := buildVideoInfo(videoID, watchURL, playerResponse)
+	info.InitialPlayerResponseJSON = initialPlayerResponseJSON
+	info.YTCfgJSON = ytcfgJSON
+	info.PageHTML = string(webpage)
+	if len(info.InitialPlayerResponseJSON) == 0 {
+		if raw, err := json.Marshal(playerResponse); err == nil {
+			info.InitialPlayerResponseJSON = raw
+		}
+	}
 	if info.ID != videoID {
 		return nil, fmt.Errorf("youtube player response video id %q does not match requested id %q", info.ID, videoID)
 	}
@@ -431,7 +452,7 @@ func canonicalVideoURL(videoID string) string {
 }
 
 func parseInitialPlayerResponse(webpage []byte) (rawPlayerResponse, bool, error) {
-	rawJSON, ok, err := extractJSONByRegexp(webpage, initialPlayerResponseRE)
+	rawJSON, ok, err := ExtractInitialPlayerResponseJSON(webpage)
 	if err != nil || !ok {
 		return rawPlayerResponse{}, ok, err
 	}
@@ -442,8 +463,16 @@ func parseInitialPlayerResponse(webpage []byte) (rawPlayerResponse, bool, error)
 	return out, true, nil
 }
 
+func ExtractInitialPlayerResponseJSON(webpage []byte) (json.RawMessage, bool, error) {
+	rawJSON, ok, err := extractJSONByRegexp(webpage, initialPlayerResponseRE)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+	return json.RawMessage(append([]byte(nil), rawJSON...)), true, nil
+}
+
 func parseYTCfg(webpage []byte) (map[string]any, bool) {
-	rawJSON, ok, err := extractJSONByRegexp(webpage, ytcfgSetRE)
+	rawJSON, ok, err := ExtractYTCfgJSON(webpage)
 	if err != nil || !ok {
 		return nil, false
 	}
@@ -452,6 +481,17 @@ func parseYTCfg(webpage []byte) (map[string]any, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+func ExtractYTCfgJSON(webpage []byte) (json.RawMessage, bool, error) {
+	rawJSON, ok, err := extractJSONByRegexp(webpage, ytcfgSetRE)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+	if !json.Valid(rawJSON) {
+		return nil, true, fmt.Errorf("invalid youtube ytcfg json")
+	}
+	return json.RawMessage(append([]byte(nil), rawJSON...)), true, nil
 }
 
 func extractJSONByRegexp(data []byte, re *regexp.Regexp) ([]byte, bool, error) {
@@ -952,6 +992,9 @@ func buildVariants(info *VideoInfo) ([]contentdownload.Variant, contentdownload.
 			},
 		})
 	}
+	if len(info.InitialPlayerResponseJSON) > 0 {
+		variants = append(variants, playerResponseJSONVariant())
+	}
 
 	defaults := contentdownload.Defaults{}
 	if len(progressive) > 0 {
@@ -979,6 +1022,95 @@ func buildVariants(info *VideoInfo) ([]contentdownload.Variant, contentdownload.
 		warnings = append(warnings, "未找到可单文件下载的 progressive 视频格式")
 	}
 	return variants, defaults, warnings
+}
+
+func playerResponseJSONVariant() contentdownload.Variant {
+	return contentdownload.Variant{
+		ID:     "player_response_json",
+		Type:   "json",
+		Label:  "PlayerResponse JSON",
+		Suffix: ".json",
+		Metadata: map[string]any{
+			"format": "json",
+			"source": "ytInitialPlayerResponse",
+		},
+	}
+}
+
+func isPlayerResponseJSONVariant(variant *contentdownload.Variant) bool {
+	return variant != nil && variant.ID == "player_response_json"
+}
+
+func resolvePlayerResponseJSON(probe *contentdownload.Probe, info *VideoInfo, options contentdownload.Options) (*contentdownload.ResolvedRequest, error) {
+	raw := playerResponseJSONFromProbe(probe, info)
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing youtube player response json")
+	}
+	contentID := firstNonEmpty(probe.ContentID, info.ID)
+	title := firstNonEmpty(info.Title, contentID, "youtube")
+	sourceURL := firstNonEmpty(probe.SourceURL, info.WebpageURL)
+	canonicalURL := firstNonEmpty(probe.CanonicalURL, info.WebpageURL, sourceURL)
+	filename := firstNonEmpty(options.Filename, title, contentID)
+	suffix := firstNonEmpty(options.Suffix, ".json")
+	return &contentdownload.ResolvedRequest{
+		Platform:     PlatformID,
+		SourceURL:    sourceURL,
+		CanonicalURL: canonicalURL,
+		ContentID:    contentID,
+		Title:        title,
+		Filename:     filename,
+		Suffix:       suffix,
+		Download: contentdownload.DownloadSpec{
+			URL:         "inline-json://youtube/" + contentID + "/player-response",
+			Method:      http.MethodGet,
+			Protocol:    "inline_json",
+			Connections: 1,
+		},
+		Labels: map[string]string{
+			"platform":   PlatformID,
+			"id":         contentID,
+			"title":      title,
+			"key":        "0",
+			"spec":       "",
+			"suffix":     suffix,
+			"source_url": canonicalURL,
+		},
+		Metadata: map[string]any{
+			"variant_id":    "player_response_json",
+			"video_id":      contentID,
+			"source_url":    sourceURL,
+			"canonical_url": canonicalURL,
+			"json":          json.RawMessage(append([]byte(nil), raw...)),
+		},
+		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+			Platform:       PlatformID,
+			Type:           firstNonEmpty(info.MediaType, "video"),
+			ID:             contentID,
+			Title:          title,
+			Description:    info.Description,
+			Author:         firstNonEmpty(info.Channel, info.Uploader),
+			URL:            canonicalURL,
+			SourceURL:      sourceURL,
+			AuthorNickname: firstNonEmpty(info.Channel, info.Uploader),
+			CoverURL:       info.Thumbnail,
+			Duration:       info.Duration,
+		}, info, contentdownload.ContentMetadataOf(probe.Content), contentdownload.ContentOutputOf(probe.Content)),
+	}, nil
+}
+
+func playerResponseJSONFromProbe(probe *contentdownload.Probe, info *VideoInfo) json.RawMessage {
+	if info != nil && len(info.InitialPlayerResponseJSON) > 0 {
+		return info.InitialPlayerResponseJSON
+	}
+	if probe != nil && probe.Internal != nil {
+		switch raw := probe.Internal["pagejson"].(type) {
+		case json.RawMessage:
+			return raw
+		case []byte:
+			return json.RawMessage(raw)
+		}
+	}
+	return nil
 }
 
 func videoInfoFromProbe(probe *contentdownload.Probe) *VideoInfo {

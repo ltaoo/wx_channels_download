@@ -2,53 +2,16 @@ package qidian
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
-	"time"
-
-	"github.com/PuerkitoBio/goquery"
 
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	"wx_channel/pkg/contentplatform/novelutil"
+	qidianpkg "wx_channel/pkg/qidian"
 )
 
-const (
-	PlatformID = "qidian"
-	baseURL    = "https://www.qidian.com"
-)
-
-type BookVolume struct {
-	Idx      int       `json:"idx"`
-	Title    string    `json:"title"`
-	Chapters []Chapter `json:"chapters"`
-}
-
-type Chapter struct {
-	Idx   int    `json:"idx"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
-}
-
-type Author struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
-}
-
-type BookProfile struct {
-	URL            string       `json:"url"`
-	Title          string       `json:"title"`
-	Description    string       `json:"description"`
-	Slogan         string       `json:"slogan"`
-	CoverURL       string       `json:"cover_url"`
-	LatestUpdateAt time.Time    `json:"latest_update_at,omitempty"`
-	Tags           []string     `json:"tags,omitempty"`
-	LatestChapter  Chapter      `json:"latest_chapter"`
-	ChapterCount   int          `json:"chapter_count"`
-	Author         Author       `json:"author"`
-	Volumes        []BookVolume `json:"volumes,omitempty"`
-}
+const PlatformID = qidianpkg.PlatformID
 
 type Fetcher interface {
 	FetchBookProfile(id string) (*BookProfile, error)
@@ -68,6 +31,10 @@ func New(fetcher Fetcher) *Handler {
 		fetcher = NewClient(nil)
 	}
 	return &Handler{Fetcher: fetcher}
+}
+
+func NewClient(client *http.Client) *Client {
+	return qidianpkg.NewClient(client)
 }
 
 func (h *Handler) Platform() string {
@@ -94,35 +61,48 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 		Title:       title,
 		URL:         parts.Canonical,
 		Author:      profile.Author.Name,
+		Category:    novelutil.FirstNonEmpty(profile.Category, profile.SubCategory),
+		Status:      profile.Status,
 		BookID:      parts.BookID,
 		Description: profile.Description,
 		CoverURL:    profile.CoverURL,
 		Tags:        profile.Tags,
 		Chapters:    qidianChapters(profile.Volumes),
 	})
+	variants := []contentdownload.Variant{novelutil.HTMLVariant("目录 HTML", "novel")}
+	if len(profile.PageContextJSON) > 0 {
+		variants = append(variants, pageContextJSONVariant())
+	}
 	return &contentdownload.Probe{
 		Platform:     PlatformID,
 		SourceURL:    input.URL,
 		CanonicalURL: parts.Canonical,
 		ContentID:    parts.BookID,
 		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:       PlatformID,
-			Type:           "novel",
-			ID:             parts.BookID,
-			Title:          title,
-			Description:    novelutil.FirstNonEmpty(profile.Slogan, profile.Description),
-			Author:         profile.Author.Name,
-			URL:            parts.Canonical,
-			SourceURL:      parts.Canonical,
-			AuthorNickname: profile.Author.Name,
-			CoverURL:       profile.CoverURL,
+			Platform:        PlatformID,
+			Type:            "novel",
+			ID:              parts.BookID,
+			Title:           title,
+			Description:     novelutil.FirstNonEmpty(profile.Slogan, profile.Description),
+			Author:          profile.Author.Name,
+			URL:             parts.Canonical,
+			SourceURL:       parts.Canonical,
+			AuthorNickname:  profile.Author.Name,
+			AuthorAvatarURL: profile.Author.Avatar,
+			CoverURL:        profile.CoverURL,
 		}, profile, map[string]any{
-			"book_id":          parts.BookID,
-			"author_url":       profile.Author.URL,
-			"chapter_count":    profile.ChapterCount,
-			"latest_chapter":   profile.LatestChapter.Title,
-			"latest_update_at": profile.LatestUpdateAt,
-			"source_url":       parts.Canonical,
+			"book_id":            parts.BookID,
+			"author_id":          profile.Author.ID,
+			"author_url":         profile.Author.URL,
+			"chapter_count":      profile.ChapterCount,
+			"word_count":         profile.WordCount,
+			"display_word_count": profile.DisplayWordCount,
+			"category":           profile.Category,
+			"sub_category":       profile.SubCategory,
+			"status":             profile.Status,
+			"latest_chapter":     profile.LatestChapter.Title,
+			"latest_update_at":   profile.LatestUpdateAt,
+			"source_url":         parts.Canonical,
 		}, ProbeOutput{
 			Format:       "html",
 			ContentType:  "novel",
@@ -131,16 +111,38 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			CanonicalURL: parts.Canonical,
 			BodyHTML:     bodyHTML,
 		}.Map()),
-		Variants: []contentdownload.Variant{
-			novelutil.HTMLVariant("目录 HTML", "novel"),
-		},
+		Variants: variants,
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
-		Internal: map[string]any{"profile": profile},
+		Internal: map[string]any{
+			"profile":  profile,
+			"pagejson": profile.PageContextJSON,
+			"pagehtml": profile.PageHTML,
+		},
 	}, nil
 }
 
 func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInput) (*contentdownload.ResolvedRequest, error) {
-	return novelutil.ResolveInlineHTML(ctx, PlatformID, input, h.Probe)
+	probe := input.Probe
+	if probe == nil {
+		var err error
+		probe, err = h.Probe(ctx, contentdownload.ProbeInput{URL: input.URL, Extra: input.Extra})
+		if err != nil {
+			return nil, err
+		}
+	}
+	variant, err := contentdownload.SelectVariant(probe, input.Options)
+	if err != nil {
+		return nil, err
+	}
+	if isPageContextJSONVariant(variant) {
+		return resolvePageContextJSON(ctx, probe, input.Options)
+	}
+	return novelutil.ResolveInlineHTML(ctx, PlatformID, contentdownload.ResolveInput{
+		URL:     input.URL,
+		Probe:   probe,
+		Options: input.Options,
+		Extra:   input.Extra,
+	}, h.Probe)
 }
 
 func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRequest) (*contentdownload.PipelinePlan, error) {
@@ -148,127 +150,14 @@ func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRe
 }
 
 func ParseURL(rawURL string) (parsedURL, bool) {
-	parsed, ok := novelutil.IsHTTPHost(rawURL, "qidian.com", "www.qidian.com", "m.qidian.com")
+	parts, ok := qidianpkg.ParseURL(rawURL)
 	if !ok {
 		return parsedURL{}, false
 	}
-	segments := novelutil.SplitPath(parsed)
-	if len(segments) >= 2 && segments[0] == "book" && strings.TrimSpace(segments[1]) != "" {
-		bookID := strings.TrimSpace(segments[1])
-		return parsedURL{
-			BookID:    bookID,
-			Canonical: baseURL + "/book/" + bookID + "/",
-		}, true
-	}
-	return parsedURL{}, false
-}
-
-type Client struct {
-	HTTPClient *http.Client
-	BaseURL    string
-	UserAgent  string
-}
-
-func NewClient(client *http.Client) *Client {
-	if client == nil {
-		client = &http.Client{}
-	}
-	return &Client{
-		HTTPClient: client,
-		BaseURL:    baseURL,
-		UserAgent:  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-	}
-}
-
-func (c *Client) FetchBookProfile(id string) (*BookProfile, error) {
-	reqURL := strings.TrimRight(novelutil.FirstNonEmpty(c.BaseURL, baseURL), "/") + "/book/" + strings.TrimSpace(id) + "/"
-	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Referer", baseURL+"/")
-	req.Header.Set("User-Agent", c.UserAgent)
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, reqURL)
-	}
-	return c.ParseBookProfile(reqURL, resp.Body)
-}
-
-func (c *Client) ParseBookProfile(reqURL string, r io.Reader) (*BookProfile, error) {
-	doc, err := goquery.NewDocumentFromReader(r)
-	if err != nil {
-		return nil, err
-	}
-	profile := &BookProfile{URL: reqURL}
-	profile.Title = strings.TrimSpace(doc.Find("#bookName").Text())
-	if profile.Title == "" {
-		profile.Title = strings.TrimSpace(doc.Find("h1").First().Text())
-	}
-	profile.Slogan = strings.TrimSpace(doc.Find(".intro").Text())
-	profile.Description = strings.TrimSpace(doc.Find("#book-intro-detail").Text())
-	if profile.Description == "" {
-		profile.Description = strings.TrimSpace(doc.Find(".book-intro, .book-info-detail, .intro-detail").First().Text())
-	}
-	authorSection := doc.Find(".author-intro")
-	profile.Author.Name = strings.TrimSpace(authorSection.Find(".writer-name").Text())
-	if profile.Author.Name == "" {
-		profile.Author.Name = strings.TrimSpace(doc.Find(".writer-name, .author a, .book-author").First().Text())
-	}
-	profile.Author.URL = normalizeQidianURL(authorSection.Find(".writer-name").AttrOr("href", ""))
-	profile.CoverURL = normalizeQidianURL(novelutil.FirstNonEmpty(
-		doc.Find("#bookImg img").AttrOr("src", ""),
-		doc.Find(".book-detail-img img").AttrOr("src", ""),
-		doc.Find(".book-img img").AttrOr("src", ""),
-	))
-	doc.Find(".all-label a, .tag-wrap a, .book-label a").Each(func(_ int, s *goquery.Selection) {
-		tag := strings.TrimSpace(s.Text())
-		if tag != "" {
-			profile.Tags = append(profile.Tags, tag)
-		}
-	})
-	latestChapter := doc.Find(".book-latest-chapter")
-	profile.LatestChapter.Title = strings.TrimSpace(strings.TrimPrefix(latestChapter.Text(), "最新章节:"))
-	profile.LatestChapter.URL = normalizeQidianURL(latestChapter.AttrOr("href", ""))
-	timeStr := strings.TrimSpace(strings.TrimPrefix(doc.Find(".update-time").Text(), "更新时间:"))
-	if t, err := time.Parse("2006-01-02 15:04:05", timeStr); err == nil {
-		profile.LatestUpdateAt = t
-	}
-	chapterCount := 0
-	doc.Find("#allCatalog .catalog-volume, .catalog-volume").Each(func(i int, s *goquery.Selection) {
-		volume := BookVolume{
-			Idx:   i + 1,
-			Title: strings.TrimSpace(s.Find(".volume-name").Contents().Not("span").Text()),
-		}
-		if volume.Title == "" {
-			volume.Title = strings.TrimSpace(s.Find(".volume-name").First().Text())
-		}
-		s.Find(".volume-chapters .chapter-item, .chapter-list .chapter-item, li").Each(func(_ int, cs *goquery.Selection) {
-			link := cs.Find(".chapter-name, a").First()
-			title := strings.TrimSpace(link.Text())
-			if title == "" {
-				return
-			}
-			chapterCount++
-			volume.Chapters = append(volume.Chapters, Chapter{
-				Idx:   chapterCount,
-				Title: title,
-				URL:   normalizeQidianURL(link.AttrOr("href", "")),
-			})
-		})
-		if len(volume.Chapters) > 0 || volume.Title != "" {
-			profile.Volumes = append(profile.Volumes, volume)
-		}
-	})
-	profile.ChapterCount = chapterCount
-	return profile, nil
+	return parsedURL{
+		BookID:    parts.BookID,
+		Canonical: parts.Canonical,
+	}, true
 }
 
 func qidianChapters(volumes []BookVolume) []novelutil.Chapter {
@@ -281,19 +170,99 @@ func qidianChapters(volumes []BookVolume) []novelutil.Chapter {
 	return out
 }
 
-func normalizeQidianURL(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
+func pageContextJSONVariant() contentdownload.Variant {
+	return contentdownload.Variant{
+		ID:     "page_context_json",
+		Type:   "json",
+		Label:  "PageContext JSON",
+		Suffix: ".json",
+		Metadata: map[string]any{
+			"format": "json",
+			"source": "vite-plugin-ssr_pageContext",
+		},
 	}
-	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
-		return value
+}
+
+func isPageContextJSONVariant(variant *contentdownload.Variant) bool {
+	return variant != nil && variant.ID == "page_context_json"
+}
+
+func resolvePageContextJSON(ctx context.Context, probe *contentdownload.Probe, opts contentdownload.Options) (*contentdownload.ResolvedRequest, error) {
+	raw := pageContextJSONFromProbe(probe)
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing qidian page context json")
 	}
-	if strings.HasPrefix(value, "//") {
-		return "https:" + value
+	summary := contentdownload.ContentSummaryOf(probe.Content)
+	contentID := novelutil.FirstNonEmpty(probe.ContentID, summary.ID)
+	title := novelutil.FirstNonEmpty(summary.Title, contentID, "qidian")
+	sourceURL := novelutil.FirstNonEmpty(probe.SourceURL, summary.SourceURL, probe.CanonicalURL)
+	canonicalURL := novelutil.FirstNonEmpty(probe.CanonicalURL, summary.URL, sourceURL)
+	filename := novelutil.FirstNonEmpty(opts.Filename, title, contentID)
+	resolved := &contentdownload.ResolvedRequest{
+		Platform:     PlatformID,
+		SourceURL:    sourceURL,
+		CanonicalURL: canonicalURL,
+		ContentID:    contentID,
+		Title:        title,
+		Filename:     filename,
+		Suffix:       novelutil.FirstNonEmpty(opts.Suffix, ".json"),
+		Download: contentdownload.DownloadSpec{
+			URL:         "inline-json://qidian/" + contentID + "/page-context",
+			Method:      "GET",
+			Protocol:    "inline_json",
+			Connections: 1,
+		},
+		Labels: map[string]string{
+			"platform":     PlatformID,
+			"id":           contentID,
+			"book_id":      contentID,
+			"title":        title,
+			"key":          "0",
+			"spec":         "",
+			"suffix":       ".json",
+			"source_url":   canonicalURL,
+			"content_type": novelutil.FirstNonEmpty(summary.Type, "novel"),
+		},
+		Metadata: map[string]any{
+			"variant_id":    "page_context_json",
+			"content_type":  novelutil.FirstNonEmpty(summary.Type, "novel"),
+			"book_id":       contentID,
+			"source_url":    sourceURL,
+			"canonical_url": canonicalURL,
+			"json":          json.RawMessage(append([]byte(nil), raw...)),
+		},
+		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+			Platform:        PlatformID,
+			Type:            novelutil.FirstNonEmpty(summary.Type, "novel"),
+			ID:              contentID,
+			Title:           title,
+			Description:     summary.Description,
+			Author:          novelutil.FirstNonEmpty(summary.Author, summary.AuthorNickname),
+			URL:             canonicalURL,
+			SourceURL:       sourceURL,
+			AuthorNickname:  summary.AuthorNickname,
+			AuthorAvatarURL: summary.AuthorAvatarURL,
+			CoverURL:        summary.CoverURL,
+		}, contentdownload.ContentDataOf(probe.Content), contentdownload.ContentMetadataOf(probe.Content), contentdownload.ContentOutputOf(probe.Content)),
 	}
-	if strings.HasPrefix(value, "/") {
-		return baseURL + value
+	resolved.Pipeline = novelutil.HTMLPlan(PlatformID)
+	return resolved, nil
+}
+
+func pageContextJSONFromProbe(probe *contentdownload.Probe) json.RawMessage {
+	if probe == nil {
+		return nil
 	}
-	return value
+	if probe.Internal != nil {
+		switch raw := probe.Internal["pagejson"].(type) {
+		case json.RawMessage:
+			return raw
+		case []byte:
+			return json.RawMessage(raw)
+		}
+	}
+	if profile, _ := contentdownload.ContentDataOf(probe.Content).(*BookProfile); profile != nil {
+		return profile.PageContextJSON
+	}
+	return nil
 }

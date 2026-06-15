@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
+	"wx_channel/internal/database/model"
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	contentoa "wx_channel/pkg/contentplatform/officialaccount"
 	officialaccountpkg "wx_channel/pkg/officialaccount"
@@ -269,4 +274,210 @@ func TestPlatformProbeFormAddsJSONDefault(t *testing.T) {
 	if got := resolved.Metadata["variant_id"]; got != platformJSONVariantID {
 		t.Fatalf("json variant_id metadata = %#v", got)
 	}
+}
+
+func TestPlatformProbeFormCanDisableJSONVariant(t *testing.T) {
+	probe := &contentdownload.Probe{
+		ID:        "run_html_only",
+		Platform:  "html_only",
+		SourceURL: "https://example.com/page",
+		ContentID: "page_1",
+		Content:   contentdownload.NewContent(contentdownload.ContentSummary{Platform: "html_only", Type: "article", ID: "page_1", Title: "title"}, map[string]any{"id": "page_1"}, nil, nil),
+		Variants:  []contentdownload.Variant{{ID: "html", Type: "html", Label: "HTML", Suffix: ".html"}},
+		Defaults:  contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
+		Internal:  map[string]any{contentdownload.InternalKeyDisableJSONVariant: true},
+	}
+
+	platformProbeAddJSONDefault(probe)
+	if probe.Defaults.VariantID != "html" || probe.Defaults.Suffix != ".html" {
+		t.Fatalf("defaults changed despite disabled json: %#v", probe.Defaults)
+	}
+	form := platformProbeForm(probe)
+	options, ok := form[0]["options"].([]contentdownload.Variant)
+	if !ok {
+		t.Fatalf("options = %T, want []contentdownload.Variant", form[0]["options"])
+	}
+	for _, option := range options {
+		if option.ID == platformJSONVariantID {
+			t.Fatalf("json variant should be disabled: %#v", options)
+		}
+	}
+}
+
+func TestPlatformWorkflowResumeCreatesAccountAndContentRecords(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/workflow.db"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&model.DownloadTask{}, &model.Account{}, &model.Content{}, &model.ContentAccount{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	client := &APIClient{
+		db:  db,
+		cfg: &APIConfig{DownloadDir: t.TempDir()},
+	}
+	run := newPlatformWorkflowRun("https://example.com/content/1", nil)
+	run.Probe = &contentdownload.Probe{
+		ID:           run.ID,
+		Platform:     "test_platform",
+		SourceURL:    run.URL,
+		CanonicalURL: "https://example.com/canonical/1",
+		ContentID:    "content_1",
+		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+			Platform:        "test_platform",
+			Type:            "article",
+			ID:              "content_1",
+			Title:           "content title",
+			Description:     "content description",
+			Author:          "author nickname",
+			URL:             "https://example.com/canonical/1",
+			SourceURL:       "https://example.com/content/1",
+			AuthorNickname:  "author nickname",
+			AuthorAvatarURL: "https://example.com/avatar.jpg",
+			CoverURL:        "https://example.com/cover.jpg",
+			Duration:        12,
+		}, map[string]any{"id": "content_1"}, map[string]any{
+			"author_id":       "author_1",
+			"author_username": "author_name",
+		}, map[string]any{"body_html": "<p>body</p>"}),
+		Variants: []contentdownload.Variant{{ID: platformJSONVariantID, Type: "json", Label: "JSON", Suffix: ".json"}},
+		Defaults: contentdownload.Defaults{VariantID: platformJSONVariantID, Suffix: ".json"},
+	}
+	run.startNode("pause_after_probe", "user_confirmation")
+	run.waitForUserConfirmation("pause_after_probe", platformProbeConfirmation(run.Probe, nil))
+	platformWorkflowRuns.Store(run.ID, run)
+	defer platformWorkflowRuns.Delete(run.ID)
+
+	taskID, err := client.startPlatformDownloadTask(context.Background(), platformCreateTaskBody{
+		URL:       run.URL,
+		RunID:     run.ID,
+		VariantID: platformJSONVariantID,
+		Options:   contentdownload.Options{VariantID: platformJSONVariantID},
+	})
+	if err != nil {
+		t.Fatalf("startPlatformDownloadTask() error = %v", err)
+	}
+	if taskID == "" {
+		t.Fatal("task id is empty")
+	}
+
+	assertWorkflowNodeCompleted(t, run, "create_account")
+	assertWorkflowNodeCompleted(t, run, "create_content")
+	if run.Resolved == nil || run.Resolved.Pipeline == nil {
+		t.Fatal("resolved pipeline is empty")
+	}
+	if got := platformPipelineNodeIDByType(run.Resolved.Pipeline, "create_account"); got != "create_account" {
+		t.Fatalf("create_account plan node = %q", got)
+	}
+	if got := platformPipelineNodeIDByType(run.Resolved.Pipeline, "create_content"); got != "create_content" {
+		t.Fatalf("create_content plan node = %q", got)
+	}
+
+	var account model.Account
+	if err := db.Where("platform_id = ? AND external_id = ?", "test_platform", "author_1").First(&account).Error; err != nil {
+		t.Fatalf("load account: %v", err)
+	}
+	if account.Username != "author_name" || account.Nickname != "author nickname" {
+		t.Fatalf("unexpected account: %#v", account)
+	}
+
+	var downloadTask model.DownloadTask
+	if err := db.Where("task_id = ?", taskID).First(&downloadTask).Error; err != nil {
+		t.Fatalf("load download task: %v", err)
+	}
+
+	var content model.Content
+	if err := db.Where("platform_id = ? AND external_id = ?", "test_platform", "content_1").First(&content).Error; err != nil {
+		t.Fatalf("load content: %v", err)
+	}
+	if content.Title != "content title" || content.ContentType != "article" || content.DownloadTaskId == nil || *content.DownloadTaskId != downloadTask.Id {
+		t.Fatalf("unexpected content: %#v", content)
+	}
+
+	var link model.ContentAccount
+	if err := db.Where("content_id = ? AND account_id = ?", content.Id, account.Id).First(&link).Error; err != nil {
+		t.Fatalf("load content account link: %v", err)
+	}
+	if link.Role != "owner" {
+		t.Fatalf("unexpected content account link: %#v", link)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		run.mu.Lock()
+		status := run.Status
+		run.mu.Unlock()
+		if status == "completed" || status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestPlatformPlanMetadataNodesUseComposableNodeIDs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/workflow.db"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&model.Account{}, &model.Content{}, &model.ContentAccount{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	client := &APIClient{db: db}
+	run := newPlatformWorkflowRun("https://example.com/content/2", nil)
+	resolved := &contentdownload.ResolvedRequest{
+		Platform:  "test_platform",
+		ContentID: "content_2",
+		Title:     "content title",
+		Suffix:    ".json",
+		Download:  contentdownload.DownloadSpec{URL: "inline-json://test_platform/content_2", Protocol: "inline_json"},
+		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+			Platform:       "test_platform",
+			Type:           "article",
+			ID:             "content_2",
+			Title:          "content title",
+			AuthorNickname: "author nickname",
+		}, map[string]any{}, map[string]any{
+			"author_id": "author_2",
+		}, nil),
+		Pipeline: &contentdownload.PipelinePlan{
+			Platform: "test_platform",
+			Nodes: []contentdownload.PipelineNode{
+				{ID: "content_upsert", Type: "create_content", Stage: "prepare", DependsOn: []string{"account_upsert"}},
+				{ID: "account_upsert", Type: "create_account", Stage: "prepare"},
+			},
+		},
+	}
+	platformEnsureMetadataPipelineNodes(resolved)
+	if len(resolved.Pipeline.Nodes) != 2 {
+		t.Fatalf("custom pipeline nodes should not be duplicated: %#v", resolved.Pipeline.Nodes)
+	}
+	run.Resolved = resolved
+	err = client.runPlatformPlanNodeTypes(context.Background(), run, &platformPlanExecution{
+		Resolved:       resolved,
+		DownloadTaskID: 10,
+	}, map[string]bool{"create_account": true, "create_content": true})
+	if err != nil {
+		t.Fatalf("runPlatformPlanNodeTypes() error = %v", err)
+	}
+	assertWorkflowNodeCompleted(t, run, "account_upsert")
+	assertWorkflowNodeCompleted(t, run, "content_upsert")
+	if len(run.Nodes) < 2 || run.Nodes[0].ID != "account_upsert" || run.Nodes[1].ID != "content_upsert" {
+		t.Fatalf("workflow node order = %#v", run.Nodes)
+	}
+}
+
+func assertWorkflowNodeCompleted(t *testing.T, run *platformWorkflowRun, id string) {
+	t.Helper()
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	for _, node := range run.Nodes {
+		if node.ID == id {
+			if node.Status != "completed" {
+				t.Fatalf("node %s status = %q, want completed", id, node.Status)
+			}
+			return
+		}
+	}
+	t.Fatalf("node %s not found in %#v", id, run.Nodes)
 }

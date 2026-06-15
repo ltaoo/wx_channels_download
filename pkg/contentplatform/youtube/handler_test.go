@@ -2,9 +2,11 @@ package youtube
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -96,7 +98,7 @@ func TestProbeAndResolveFromInitialPlayerResponse(t *testing.T) {
 	if probe.Defaults.VariantID != "format_22" {
 		t.Fatalf("default variant = %q", probe.Defaults.VariantID)
 	}
-	if !hasVariant(probe, "format_18") || !hasVariant(probe, "format_22") || !hasVariant(probe, "audio_mp3") || !hasVariant(probe, "cover") {
+	if !hasVariant(probe, "format_18") || !hasVariant(probe, "format_22") || !hasVariant(probe, "audio_mp3") || !hasVariant(probe, "cover") || !hasVariant(probe, "player_response_json") {
 		t.Fatalf("variants = %#v", probe.Variants)
 	}
 	if !containsWarning(probe.Warnings, "解签") || !containsWarning(probe.Warnings, "n challenge") || !containsWarning(probe.Warnings, "HLS/DASH") {
@@ -119,6 +121,24 @@ func TestProbeAndResolveFromInitialPlayerResponse(t *testing.T) {
 	}
 	if resolved.Pipeline == nil || len(resolved.Pipeline.Nodes) == 0 {
 		t.Fatal("expected pipeline plan")
+	}
+
+	playerJSON, err := h.Resolve(context.Background(), contentdownload.ResolveInput{
+		URL:   "https://www.youtube.com/watch?v=abc123def45",
+		Probe: probe,
+		Options: contentdownload.Options{
+			VariantID: "player_response_json",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve player response JSON: %v", err)
+	}
+	if playerJSON.Download.Protocol != "inline_json" || playerJSON.Suffix != ".json" {
+		t.Fatalf("resolved json protocol=%q suffix=%q", playerJSON.Download.Protocol, playerJSON.Suffix)
+	}
+	raw, ok := playerJSON.Metadata["json"].(json.RawMessage)
+	if !ok || !json.Valid(raw) {
+		t.Fatalf("resolved json = %#v", playerJSON.Metadata["json"])
 	}
 
 	audio, err := h.Resolve(context.Background(), contentdownload.ResolveInput{
@@ -207,6 +227,37 @@ func TestProbeRejectsMismatchedPlayerResponse(t *testing.T) {
 	_, err := h.Probe(context.Background(), contentdownload.ProbeInput{URL: "https://www.youtube.com/watch?v=real1234567"})
 	if err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("Probe error = %v", err)
+	}
+}
+
+func TestProbeSamplePage(t *testing.T) {
+	body, err := os.ReadFile("../../../youtube_260614.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/watch" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("content-type", "text/html")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	h := New(&Client{HTTPClient: server.Client(), BaseURL: server.URL})
+	probe, err := h.Probe(context.Background(), contentdownload.ProbeInput{URL: "https://www.youtube.com/watch?v=3ryh7PNhz3E"})
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if probe.ContentID != "3ryh7PNhz3E" || contentdownload.ContentTitle(probe.Content) != "The Best & Worst Glute Exercises (According To Science)" {
+		t.Fatalf("probe = %#v", probe)
+	}
+	if !hasVariant(probe, "player_response_json") {
+		t.Fatalf("variants = %#v", probe.Variants)
+	}
+	if raw, ok := probe.Internal["pagejson"].(json.RawMessage); !ok || !json.Valid(raw) {
+		t.Fatalf("probe pagejson = %#v", probe.Internal["pagejson"])
 	}
 }
 

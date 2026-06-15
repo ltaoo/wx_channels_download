@@ -510,6 +510,151 @@ func (c *Config) LoadConfig() error {
 		Group:       "Zhihu",
 	})
 	Register(ConfigItem{
+		Key:         "69shuba.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "69书吧请求 Cookie，用于访问 Cloudflare 验证后的页面",
+		Title:       "69书吧 Cookie",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.fetcher",
+		Type:        ConfigTypeSelect,
+		Default:     "sandbox",
+		Options:     []string{"http", "cdp", "sandbox"},
+		Description: "69书吧 HTML 抓取方式，http 使用 Go client，cdp 使用 CDP 服务地址，sandbox 使用 webarchive 沙箱浏览器 API",
+		Title:       "69书吧抓取方式",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpEndpoint",
+		Type:        ConfigTypeString,
+		Default:     "http://127.0.0.1:9222",
+		Description: "CDP 服务地址，仅 fetcher=cdp 时使用；可以是本机浏览器或容器暴露的 CDP HTTP/WS 地址",
+		Title:       "69书吧 CDP 地址",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpTimeout",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "69书吧 CDP 单次页面抓取超时时间（秒）",
+		Title:       "69书吧 CDP 超时",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpWait",
+		Type:        ConfigTypeInt,
+		Default:     8,
+		Description: "69书吧 CDP 页面加载完成后的额外等待时间（秒），用于等待 Cloudflare 跳转",
+		Title:       "69书吧 CDP 等待",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.sandboxAPIBaseURL",
+		Type:        ConfigTypeString,
+		Default:     "http://127.0.0.1:2021/api/v1",
+		Description: "webarchive 风格沙箱 API 地址，仅 fetcher=sandbox 时使用",
+		Title:       "69书吧沙箱 API",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.sandboxID",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "用于抓取 69书吧页面的沙箱 ID，仅 fetcher=sandbox 时使用",
+		Title:       "69书吧沙箱 ID",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerImage",
+		Type:        ConfigTypeString,
+		Default:     "lscr.io/linuxserver/chromium:latest",
+		Description: "浏览器沙箱 Docker 镜像，默认使用带 Web 桌面的 Chromium 镜像",
+		Title:       "沙箱镜像",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerEntrypoint",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker --entrypoint；默认留空以使用 webtop 镜像自己的桌面启动流程",
+		Title:       "沙箱 Entrypoint",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerNetwork",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker 网络，留空使用默认网络",
+		Title:       "沙箱网络",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.cdpPortMin",
+		Type:        ConfigTypeInt,
+		Default:     39222,
+		Description: "浏览器沙箱 CDP 宿主机端口范围起点",
+		Title:       "CDP 端口起点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.cdpPortMax",
+		Type:        ConfigTypeInt,
+		Default:     39322,
+		Description: "浏览器沙箱 CDP 宿主机端口范围终点",
+		Title:       "CDP 端口终点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.desktopPortMin",
+		Type:        ConfigTypeInt,
+		Default:     39000,
+		Description: "浏览器沙箱 Web 桌面宿主机端口范围起点",
+		Title:       "桌面端口起点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.desktopPortMax",
+		Type:        ConfigTypeInt,
+		Default:     39122,
+		Description: "浏览器沙箱 Web 桌面宿主机端口范围终点",
+		Title:       "桌面端口终点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.resolution",
+		Type:        ConfigTypeString,
+		Default:     "1920x1080x24",
+		Description: "浏览器沙箱 Web 桌面分辨率",
+		Title:       "桌面分辨率",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.shmSize",
+		Type:        ConfigTypeString,
+		Default:     "1g",
+		Description: "浏览器沙箱 Docker --shm-size",
+		Title:       "共享内存",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.memoryLimit",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker --memory，留空不限制",
+		Title:       "内存限制",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.chromeCommand",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "浏览器沙箱容器启动命令，留空时自动查找 Chrome/Chromium 并启用 0.0.0.0:9222 remote debugging",
+		Title:       "Chrome 启动命令",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
 		Key:         "xiaohongshu.enabled",
 		Type:        ConfigTypeBool,
 		Default:     false,

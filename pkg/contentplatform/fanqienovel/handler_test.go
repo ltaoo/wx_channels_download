@@ -2,6 +2,8 @@ package fanqienovel
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,5 +62,31 @@ func TestProbeChapter(t *testing.T) {
 	}
 	if contentdownload.ContentType(probe.Content) != "chapter" || probe.ContentID != "67890" {
 		t.Fatalf("probe = %#v", probe)
+	}
+}
+
+func TestClientParseBookProfileInitialStateFixture(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "fanqienovel_260614.html"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("fanqienovel_260614.html fixture not present")
+		}
+		t.Fatal(err)
+	}
+	profile, err := NewClient(nil).parseBookProfile("https://fanqienovel.com/page/7069948840148732967", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatalf("parseBookProfile: %v", err)
+	}
+	if profile.Title != "部族荣光" || profile.Author.Name != "丧狐" || profile.ChapterCount != 351 {
+		t.Fatalf("profile = %#v", profile)
+	}
+	if len(profile.InitialStateJSON) == 0 {
+		t.Fatal("expected initial state json")
+	}
+	if len(profile.Volumes) == 0 || len(profile.Volumes[0].Chapters) == 0 {
+		t.Fatalf("volumes = %#v", profile.Volumes)
+	}
+	if !strings.Contains(profile.Volumes[0].Chapters[0].Title, "第351章") {
+		t.Fatalf("first chapter = %#v", profile.Volumes[0].Chapters[0])
 	}
 }

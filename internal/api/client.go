@@ -26,6 +26,7 @@ import (
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/storage"
+	"wx_channel/pkg/browsermgr"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
@@ -47,6 +48,7 @@ type APIClient struct {
 	logger        *zerolog.Logger
 	httpHandler   http.Handler
 	serviceMgr    *manager.ServerManager
+	browserMgr    *browsermgr.Manager
 
 	// Services
 	downloadService       *services.DownloadService
@@ -114,6 +116,23 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	contentService := services.NewContentService(db)
 	browseService := services.NewBrowseService(db)
 	channelsUploadService := services.NewChannelsUploadService(db, &logger)
+	browserMgr, browserMgrErr := browsermgr.New(browsermgr.Config{
+		WorkDir:          cfg.WorkDir,
+		DockerImage:      cfg.BrowserDockerImage,
+		DockerEntrypoint: cfg.BrowserDockerEntrypoint,
+		DockerNetwork:    cfg.BrowserDockerNetwork,
+		CDPPortMin:       cfg.BrowserCDPPortMin,
+		CDPPortMax:       cfg.BrowserCDPPortMax,
+		DesktopPortMin:   cfg.BrowserDesktopPortMin,
+		DesktopPortMax:   cfg.BrowserDesktopPortMax,
+		Resolution:       cfg.BrowserDesktopResolution,
+		ShmSize:          cfg.BrowserDockerShmSize,
+		MemoryLimit:      cfg.BrowserDockerMemoryLimit,
+		ChromeCommand:    cfg.BrowserDockerChromeCommand,
+	}, nil)
+	if browserMgrErr != nil {
+		logger.Warn().Err(browserMgrErr).Msg("初始化浏览器管理器失败")
+	}
 
 	apiClient := &APIClient{
 		downloader:            downloader,
@@ -127,6 +146,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		engine:                gin.Default(),
 		db:                    db,
 		logger:                &logger,
+		browserMgr:            browserMgr,
 		downloadService:       downloadService,
 		channelsService:       channelsService,
 		accountService:        accountService,

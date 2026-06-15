@@ -810,6 +810,31 @@ function normalizeProbePreviewContent(content, probe, raw) {
   return merged;
 }
 
+function normalizeProbePipeline(raw) {
+  const nodes =
+    raw?.probe_pipeline ||
+    raw?.probePipeline ||
+    raw?.ProbePipeline ||
+    raw?.pipeline ||
+    [];
+  return Array.isArray(nodes) ? nodes : [];
+}
+
+function pipelineNodeOutput(node) {
+  return node?.output || node?.Output || {};
+}
+
+function pipelineNodeLabel(node, index) {
+  const n = Number(index);
+  return firstNonEmpty(
+    node?.label,
+    node?.Label,
+    node?.title,
+    node?.Title,
+    Number.isFinite(n) ? `节点 ${n + 1}` : "节点",
+  );
+}
+
 function inferContentType(platform, content) {
   if (platform === "officialaccount" || platform === "wx_official_account") {
     return "article";
@@ -2557,6 +2582,65 @@ function ContentPreview(props) {
   );
 }
 
+function ProbePipelinePreview(props) {
+  const nodes_ = computed(props.raw, normalizeProbePipeline);
+  return Show({
+    when: computed(nodes_, (nodes) => nodes.length > 0),
+    ok() {
+      return View({ class: "mt-3 rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950" }, [
+        View({ class: "border-b border-zinc-100 px-3 py-2 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400" }, [
+          "解析流程",
+        ]),
+        View({ class: "grid gap-3 p-3" }, [
+          For({
+            each: nodes_,
+            render(node, index) {
+              const output_ = computed(node, pipelineNodeOutput);
+              return View({ class: "rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900" }, [
+                View({ class: "flex flex-wrap items-center justify-between gap-2" }, [
+                  View({ class: "min-w-0 text-sm font-medium text-zinc-900 dark:text-zinc-100" }, [
+                    computed(node, (n) => pipelineNodeLabel(n, index)),
+                  ]),
+                  View({ class: "rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" }, [
+                    computed(node, (n) => n?.status || n?.Status || "completed"),
+                  ]),
+                ]),
+                View({ class: "mt-2 grid gap-1 text-xs text-zinc-500 dark:text-zinc-400" }, [
+                  View({ class: "truncate" }, [
+                    computed(output_, (out) => firstNonEmpty(out.url, out.URL, "-")),
+                  ]),
+                  View({}, [
+                    computed(output_, (out) => {
+                      const count = Number(out.chapter_count || out.chapterCount || 0);
+                      const size = Number(out.html_size || out.htmlSize || 0);
+                      const parts = [];
+                      if (count) parts.push(`章节 ${count}`);
+                      if (size) parts.push(`HTML ${formatBytes(size)}`);
+                      return parts.join(" / ") || "-";
+                    }),
+                  ]),
+                ]),
+                Show({
+                  when: computed(output_, (out) => !!firstNonEmpty(out.body_html, out.bodyHTML)),
+                  ok() {
+                    return View({ class: "mt-3 overflow-hidden rounded-md border border-zinc-200 bg-white dark:border-zinc-800" }, [
+                      View({
+                        tag: "iframe",
+                        class: "h-80 w-full border-0",
+                        srcdoc: computed(output_, (out) => firstNonEmpty(out.body_html, out.bodyHTML)),
+                      }),
+                    ]);
+                  },
+                }),
+              ]);
+            },
+          }),
+        ]),
+      ]);
+    },
+  });
+}
+
 function PlatformCreatePanel(vm$) {
   return View(
     {
@@ -2643,6 +2727,9 @@ function PlatformCreatePanel(vm$) {
                 ContentPreview({
                   content: vm$.state.createContent,
                   probe: vm$.state.createProbe,
+                  raw: vm$.state.createProbeRaw,
+                }),
+                ProbePipelinePreview({
                   raw: vm$.state.createProbeRaw,
                 }),
               ]),

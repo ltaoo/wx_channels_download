@@ -1,5 +1,17 @@
 package shuba69
 
+import shubapkg "wx_channel/pkg/69shuba"
+
+type Novel = shubapkg.Novel
+type NovelFetchResult = shubapkg.NovelFetchResult
+type Chapter = shubapkg.Chapter
+type ChapterContent = shubapkg.ChapterContent
+type Client = shubapkg.Client
+type HTTPClient = shubapkg.HTTPClient
+type HTMLFetcher = shubapkg.HTMLFetcher
+type CDPFetcher = shubapkg.CDPFetcher
+type SandboxCDPFetcher = shubapkg.SandboxCDPFetcher
+
 // ProbeOutput is the 69shuba text output extracted during Probe and exposed
 // through the shared content envelope.
 type ProbeOutput struct {

@@ -11,6 +11,8 @@ var (
 	ErrVariantNotFound    = errors.New("variant not found")
 )
 
+const InternalKeyDisableJSONVariant = "disable_json_variant"
+
 type Handler interface {
 	Platform() string
 	Match(rawURL string) bool

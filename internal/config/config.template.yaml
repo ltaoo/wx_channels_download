@@ -74,6 +74,28 @@ zhihu:
   enabled: false
   cookie: ""
 
+69shuba:
+  cookie: ""
+  fetcher: "sandbox"
+  cdpEndpoint: "http://127.0.0.1:9222"
+  cdpTimeout: 30
+  cdpWait: 8
+  sandboxAPIBaseURL: "http://127.0.0.1:2021/api/v1"
+  sandboxID: ""
+
+sandbox:
+  dockerImage: "lscr.io/linuxserver/chromium:latest"
+  dockerEntrypoint: ""
+  dockerNetwork: ""
+  cdpPortMin: 39222
+  cdpPortMax: 39322
+  desktopPortMin: 39000
+  desktopPortMax: 39122
+  resolution: "1920x1080x24"
+  shmSize: "1g"
+  memoryLimit: ""
+  chromeCommand: ""
+
 xiaohongshu:
   enabled: false
 

@@ -15,6 +15,7 @@ const HOME_MENUS = [
   { title: "帐号", name: "root.home_layout.accounts", icon: "user" },
   { title: "内容", name: "root.home_layout.content", icon: "file-stack" },
   { title: "浏览记录", name: "root.home_layout.browse", icon: "history" },
+  { title: "沙箱", name: "root.home_layout.sandboxes", icon: "boxes" },
   { title: "工具", name: "root.home_layout.tools", icon: "wrench" },
   { title: "日志", name: "root.home_layout.logs", icon: "scroll-text" },
   { title: "设置", name: "root.home_layout.settings", icon: "settings" },
