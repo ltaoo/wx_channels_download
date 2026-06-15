@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"wx_channel/internal/api/types"
-	"wx_channel/internal/channels"
 	"wx_channel/pkg/util"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 type ChannelsService struct {

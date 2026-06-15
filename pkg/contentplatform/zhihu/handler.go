@@ -2,6 +2,7 @@ package zhihu
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -25,19 +26,6 @@ type ArticlePageFetcher interface {
 
 type Handler struct {
 	Client PageFetcher
-}
-
-type AnswerContent struct {
-	Question zhihupkg.Question `json:"question"`
-	Answer   zhihupkg.Answer   `json:"answer"`
-}
-
-type QuestionContent struct {
-	Question zhihupkg.Question `json:"question"`
-}
-
-type ArticleContent struct {
-	Article zhihupkg.Article `json:"article"`
 }
 
 func New(client PageFetcher) *Handler {
@@ -107,46 +95,51 @@ func (h *Handler) answerProbe(sourceURL string, answerURL zhihupkg.AnswerURL, pa
 		SourceURL:    sourceURL,
 		CanonicalURL: answerURL.Canonical,
 		ContentID:    answerURL.AnswerID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:        PlatformID,
-			Type:            "answer",
-			ID:              answerURL.AnswerID,
-			Title:           title,
-			Description:     page.Answer.Excerpt,
-			Author:          authorNickname,
-			URL:             answerURL.Canonical,
-			SourceURL:       answerURL.Canonical,
-			AuthorNickname:  authorNickname,
-			AuthorAvatarURL: authorAvatarURL,
-			CoverURL:        coverURL,
-		}, AnswerContent{Question: page.Question, Answer: page.Answer}, map[string]any{
-			"question_id":      answerURL.QuestionID,
-			"answer_id":        answerURL.AnswerID,
-			"question_title":   page.Question.Title,
-			"author_id":        page.Answer.Author.ID,
-			"author_url_token": firstNonEmpty(page.Answer.Author.URLToken, page.Answer.Author.URLTokenSnake),
-			"created_time":     page.Answer.CreatedTime,
-			"updated_time":     page.Answer.UpdatedTime,
-			"comment_count":    page.Answer.CommentCount,
-			"source_url":       answerURL.Canonical,
-		}, ProbeOutput{
-			Format:       "html",
-			ContentType:  "answer",
-			QuestionID:   answerURL.QuestionID,
-			AnswerID:     answerURL.AnswerID,
-			Title:        title,
-			SourceURL:    answerURL.Canonical,
-			CanonicalURL: answerURL.Canonical,
-			BodyHTML:     page.Answer.Content,
-			QuestionHTML: page.Question.Detail,
-		}.Map()),
-		Variants: []contentdownload.Variant{
-			htmlVariant("answer"),
-		},
+		Content: NewAnswerContentEnvelope(
+			contentdownload.ContentSummary{
+				Platform:        PlatformID,
+				Type:            ContentTypeAnswer,
+				ID:              answerURL.AnswerID,
+				Title:           title,
+				Description:     page.Answer.Excerpt,
+				Author:          authorNickname,
+				URL:             answerURL.Canonical,
+				SourceURL:       answerURL.Canonical,
+				AuthorNickname:  authorNickname,
+				AuthorAvatarURL: authorAvatarURL,
+				CoverURL:        coverURL,
+			},
+			AnswerContent{Question: page.Question, Answer: page.Answer},
+			AnswerMetadata{
+				QuestionID:     answerURL.QuestionID,
+				AnswerID:       answerURL.AnswerID,
+				QuestionTitle:  page.Question.Title,
+				AuthorID:       page.Answer.Author.ID,
+				AuthorURLToken: firstNonEmpty(page.Answer.Author.URLToken, page.Answer.Author.URLTokenSnake),
+				CreatedTime:    page.Answer.CreatedTime,
+				UpdatedTime:    page.Answer.UpdatedTime,
+				CommentCount:   page.Answer.CommentCount,
+				SourceURL:      answerURL.Canonical,
+			},
+			AnswerOutput{
+				Format:       OutputFormatHTML,
+				ContentType:  ContentTypeAnswer,
+				QuestionID:   answerURL.QuestionID,
+				AnswerID:     answerURL.AnswerID,
+				Title:        title,
+				SourceURL:    answerURL.Canonical,
+				CanonicalURL: answerURL.Canonical,
+				BodyHTML:     page.Answer.Content,
+				QuestionHTML: page.Question.Detail,
+			},
+		),
+		Variants: zhihuVariants(ContentTypeAnswer, page),
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
 		Internal: map[string]any{
 			"answer_url": answerURL,
 			"page":       page,
+			"pagejson":   page.InitialDataJSON,
+			"pagehtml":   page.PageHTML,
 		},
 	}
 }
@@ -162,9 +155,9 @@ func (h *Handler) questionProbe(sourceURL string, questionURL zhihupkg.QuestionU
 		SourceURL:    sourceURL,
 		CanonicalURL: questionURL.Canonical,
 		ContentID:    questionURL.QuestionID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+		Content: NewQuestionContentEnvelope(contentdownload.ContentSummary{
 			Platform:        PlatformID,
-			Type:            "question",
+			Type:            ContentTypeQuestion,
 			ID:              questionURL.QuestionID,
 			Title:           title,
 			Description:     description,
@@ -174,27 +167,27 @@ func (h *Handler) questionProbe(sourceURL string, questionURL zhihupkg.QuestionU
 			AuthorNickname:  authorNickname,
 			AuthorAvatarURL: authorAvatarURL,
 			CoverURL:        coverURL,
-		}, QuestionContent{Question: page.Question}, map[string]any{
-			"question_id":      questionURL.QuestionID,
-			"author_id":        page.Question.Author.ID,
-			"author_url_token": firstNonEmpty(page.Question.Author.URLToken, page.Question.Author.URLTokenSnake),
-			"source_url":       questionURL.Canonical,
-		}, ProbeOutput{
-			Format:       "html",
-			ContentType:  "question",
+		}, QuestionContent{Question: page.Question}, QuestionMetadata{
+			QuestionID:     questionURL.QuestionID,
+			AuthorID:       page.Question.Author.ID,
+			AuthorURLToken: firstNonEmpty(page.Question.Author.URLToken, page.Question.Author.URLTokenSnake),
+			SourceURL:      questionURL.Canonical,
+		}, QuestionOutput{
+			Format:       OutputFormatHTML,
+			ContentType:  ContentTypeQuestion,
 			QuestionID:   questionURL.QuestionID,
 			Title:        title,
 			SourceURL:    questionURL.Canonical,
 			CanonicalURL: questionURL.Canonical,
 			BodyHTML:     firstNonEmpty(page.Question.Detail, page.Question.Excerpt),
-		}.Map()),
-		Variants: []contentdownload.Variant{
-			htmlVariant("question"),
-		},
+		}),
+		Variants: zhihuVariants(ContentTypeQuestion, page),
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
 		Internal: map[string]any{
 			"question_url": questionURL,
 			"page":         page,
+			"pagejson":     page.InitialDataJSON,
+			"pagehtml":     page.PageHTML,
 		},
 	}
 }
@@ -209,9 +202,9 @@ func (h *Handler) articleProbe(sourceURL string, articleURL zhihupkg.ArticleURL,
 		SourceURL:    sourceURL,
 		CanonicalURL: articleURL.Canonical,
 		ContentID:    articleURL.ArticleID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+		Content: NewArticleContentEnvelope(contentdownload.ContentSummary{
 			Platform:        PlatformID,
-			Type:            "article",
+			Type:            ContentTypeArticle,
 			ID:              articleURL.ArticleID,
 			Title:           title,
 			Description:     page.Article.Excerpt,
@@ -221,29 +214,29 @@ func (h *Handler) articleProbe(sourceURL string, articleURL zhihupkg.ArticleURL,
 			AuthorNickname:  authorNickname,
 			AuthorAvatarURL: authorAvatarURL,
 			CoverURL:        coverURL,
-		}, ArticleContent{Article: page.Article}, map[string]any{
-			"article_id":       articleURL.ArticleID,
-			"author_id":        page.Article.Author.ID,
-			"author_url_token": firstNonEmpty(page.Article.Author.URLToken, page.Article.Author.URLTokenSnake),
-			"created_time":     page.Article.CreatedTime,
-			"updated_time":     page.Article.UpdatedTime,
-			"source_url":       articleURL.Canonical,
-		}, ProbeOutput{
-			Format:       "html",
-			ContentType:  "article",
+		}, ArticleContent{Article: page.Article}, ArticleMetadata{
+			ArticleID:      articleURL.ArticleID,
+			AuthorID:       page.Article.Author.ID,
+			AuthorURLToken: firstNonEmpty(page.Article.Author.URLToken, page.Article.Author.URLTokenSnake),
+			CreatedTime:    page.Article.CreatedTime,
+			UpdatedTime:    page.Article.UpdatedTime,
+			SourceURL:      articleURL.Canonical,
+		}, ArticleOutput{
+			Format:       OutputFormatHTML,
+			ContentType:  ContentTypeArticle,
 			ArticleID:    articleURL.ArticleID,
 			Title:        title,
 			SourceURL:    articleURL.Canonical,
 			CanonicalURL: articleURL.Canonical,
 			BodyHTML:     page.Article.Content,
-		}.Map()),
-		Variants: []contentdownload.Variant{
-			htmlVariant("article"),
-		},
+		}),
+		Variants: zhihuVariants(ContentTypeArticle, page),
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
 		Internal: map[string]any{
 			"article_url": articleURL,
 			"page":        page,
+			"pagejson":    page.InitialDataJSON,
+			"pagehtml":    page.PageHTML,
 		},
 	}
 }
@@ -268,8 +261,55 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 	canonicalURL := firstNonEmpty(probe.CanonicalURL, summary.URL, sourceURL)
 	filename := firstNonEmpty(input.Options.Filename, title, contentID)
 	suffix := firstNonEmpty(input.Options.Suffix, variant.Suffix, ".html")
-	contentType := firstNonEmpty(summary.Type, "answer")
+	contentType := firstNonEmpty(summary.Type, ContentTypeAnswer)
 	questionID, answerID, articleID := zhihuIDs(probe)
+	page := zhihuPageFromProbe(probe)
+	download := contentdownload.DownloadSpec{
+		URL:         "zhihu://" + canonicalURL,
+		Method:      "GET",
+		Protocol:    "zhihu",
+		Connections: 1,
+	}
+	metadata := map[string]any{
+		"variant_id":        variant.ID,
+		"content_type":      contentType,
+		"question_id":       questionID,
+		"answer_id":         answerID,
+		"article_id":        articleID,
+		"author_nickname":   contentdownload.ContentAuthorNickname(probe.Content),
+		"author_avatar_url": contentdownload.ContentAuthorAvatarURL(probe.Content),
+		"source_url":        sourceURL,
+		"canonical_url":     canonicalURL,
+		"page":              page,
+	}
+	if isInitialDataJSONVariant(variant) {
+		raw := initialDataJSONFromProbe(probe)
+		if len(raw) == 0 {
+			return nil, fmt.Errorf("missing zhihu initial data json")
+		}
+		suffix = firstNonEmpty(input.Options.Suffix, variant.Suffix, ".json")
+		download = contentdownload.DownloadSpec{
+			URL:         "inline-json://zhihu/" + contentID + "/initial-data",
+			Method:      "GET",
+			Protocol:    "inline_json",
+			Connections: 1,
+		}
+		metadata["json"] = json.RawMessage(append([]byte(nil), raw...))
+	}
+	resolvedSummary := contentdownload.ContentSummary{
+		Platform:        PlatformID,
+		Type:            contentType,
+		ID:              contentID,
+		Title:           title,
+		Description:     summary.Description,
+		URL:             firstNonEmpty(summary.URL, canonicalURL),
+		SourceURL:       firstNonEmpty(summary.SourceURL, canonicalURL, sourceURL),
+		Author:          firstNonEmpty(summary.Author, summary.AuthorNickname),
+		AuthorNickname:  summary.AuthorNickname,
+		AuthorAvatarURL: summary.AuthorAvatarURL,
+		CoverURL:        summary.CoverURL,
+		Duration:        summary.Duration,
+	}
 	resolved := &contentdownload.ResolvedRequest{
 		Platform:     PlatformID,
 		SourceURL:    sourceURL,
@@ -278,12 +318,7 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		Title:        title,
 		Filename:     filename,
 		Suffix:       suffix,
-		Download: contentdownload.DownloadSpec{
-			URL:         "zhihu://" + canonicalURL,
-			Method:      "GET",
-			Protocol:    "zhihu",
-			Connections: 1,
-		},
+		Download:     download,
 		Labels: map[string]string{
 			"platform":     PlatformID,
 			"id":           contentID,
@@ -297,32 +332,8 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 			"source_url":   canonicalURL,
 			"content_type": contentType,
 		},
-		Metadata: map[string]any{
-			"variant_id":        variant.ID,
-			"content_type":      contentType,
-			"question_id":       questionID,
-			"answer_id":         answerID,
-			"article_id":        articleID,
-			"author_nickname":   contentdownload.ContentAuthorNickname(probe.Content),
-			"author_avatar_url": contentdownload.ContentAuthorAvatarURL(probe.Content),
-			"source_url":        sourceURL,
-			"canonical_url":     canonicalURL,
-			"page":              probe.Internal["page"],
-		},
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:        PlatformID,
-			Type:            contentType,
-			ID:              contentID,
-			Title:           title,
-			Description:     summary.Description,
-			URL:             firstNonEmpty(summary.URL, canonicalURL),
-			SourceURL:       firstNonEmpty(summary.SourceURL, canonicalURL, sourceURL),
-			Author:          firstNonEmpty(summary.Author, summary.AuthorNickname),
-			AuthorNickname:  summary.AuthorNickname,
-			AuthorAvatarURL: summary.AuthorAvatarURL,
-			CoverURL:        summary.CoverURL,
-			Duration:        summary.Duration,
-		}, contentdownload.ContentDataOf(probe.Content), contentdownload.ContentMetadataOf(probe.Content), contentdownload.ContentOutputOf(probe.Content)),
+		Metadata: metadata,
+		Content:  zhihuContentWithSummary(probe.Content, resolvedSummary),
 	}
 	plan, err := h.Plan(ctx, resolved)
 	if err != nil {
@@ -332,18 +343,39 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 	return resolved, nil
 }
 
+func zhihuContentWithSummary(content any, summary contentdownload.ContentSummary) any {
+	switch c := content.(type) {
+	case *AnswerContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	case *QuestionContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	case *ArticleContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	default:
+		return contentdownload.NewContent(summary, contentdownload.ContentDataOf(content), contentdownload.ContentMetadataOf(content), contentdownload.ContentOutputOf(content))
+	}
+}
+
 func zhihuIDs(probe *contentdownload.Probe) (questionID string, answerID string, articleID string) {
 	if probe == nil {
 		return "", "", ""
 	}
-	if answerURL, _ := probe.Internal["answer_url"].(zhihupkg.AnswerURL); answerURL.AnswerID != "" {
-		return answerURL.QuestionID, answerURL.AnswerID, ""
-	}
-	if questionURL, _ := probe.Internal["question_url"].(zhihupkg.QuestionURL); questionURL.QuestionID != "" {
-		return questionURL.QuestionID, "", ""
-	}
-	if articleURL, _ := probe.Internal["article_url"].(zhihupkg.ArticleURL); articleURL.ArticleID != "" {
-		return "", "", articleURL.ArticleID
+	if probe.Internal != nil {
+		if answerURL, _ := probe.Internal["answer_url"].(zhihupkg.AnswerURL); answerURL.AnswerID != "" {
+			return answerURL.QuestionID, answerURL.AnswerID, ""
+		}
+		if questionURL, _ := probe.Internal["question_url"].(zhihupkg.QuestionURL); questionURL.QuestionID != "" {
+			return questionURL.QuestionID, "", ""
+		}
+		if articleURL, _ := probe.Internal["article_url"].(zhihupkg.ArticleURL); articleURL.ArticleID != "" {
+			return "", "", articleURL.ArticleID
+		}
 	}
 	metadata := contentdownload.ContentMetadataOf(probe.Content)
 	questionID = metadataString(metadata, "question_id")
@@ -379,7 +411,69 @@ func htmlVariant(contentType string) contentdownload.Variant {
 	}
 }
 
+func zhihuVariants(contentType string, page any) []contentdownload.Variant {
+	variants := []contentdownload.Variant{htmlVariant(contentType)}
+	if len(initialDataJSONFromPage(page)) > 0 {
+		variants = append(variants, initialDataJSONVariant(contentType))
+	}
+	return variants
+}
+
+func initialDataJSONVariant(contentType string) contentdownload.Variant {
+	return contentdownload.Variant{
+		ID:     "initial_data_json",
+		Type:   OutputFormatJSON,
+		Label:  "原始 JSON",
+		Suffix: ".json",
+		Metadata: map[string]any{
+			"format":       OutputFormatJSON,
+			"content_type": contentType,
+			"source":       "js-initialData",
+		},
+	}
+}
+
+func isInitialDataJSONVariant(variant *contentdownload.Variant) bool {
+	if variant == nil {
+		return false
+	}
+	return variant.ID == "initial_data_json"
+}
+
+func initialDataJSONFromProbe(probe *contentdownload.Probe) []byte {
+	return initialDataJSONFromPage(zhihuPageFromProbe(probe))
+}
+
+func initialDataJSONFromPage(page any) []byte {
+	switch p := page.(type) {
+	case *zhihupkg.AnswerPage:
+		return p.InitialDataJSON
+	case *zhihupkg.QuestionPage:
+		return p.InitialDataJSON
+	case *zhihupkg.ArticlePage:
+		return p.InitialDataJSON
+	default:
+		return nil
+	}
+}
+
+func zhihuPageFromProbe(probe *contentdownload.Probe) any {
+	if probe == nil || probe.Internal == nil {
+		return nil
+	}
+	return probe.Internal["page"]
+}
+
 func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRequest) (*contentdownload.PipelinePlan, error) {
+	if resolved != nil && strings.EqualFold(resolved.Download.Protocol, "inline_json") {
+		return &contentdownload.PipelinePlan{
+			Platform: PlatformID,
+			Nodes: []contentdownload.PipelineNode{
+				{ID: "download", Type: "download_asset", Stage: "download"},
+				{ID: "persist", Type: "persist_artifacts", Stage: "persist", DependsOn: []string{"download"}},
+			},
+		}, nil
+	}
 	return &contentdownload.PipelinePlan{
 		Platform: PlatformID,
 		Nodes: []contentdownload.PipelineNode{

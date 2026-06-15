@@ -20,15 +20,15 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
+	officialaccountdownload "wx_channel/pkg/officialaccount"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/channels"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {

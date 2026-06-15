@@ -185,15 +185,18 @@ type PicturePageInfo struct {
 }
 
 type WechatOfficialArticle struct {
-	Type           int                 `json:"type"`
-	Title          string              `json:"title"`
-	Content        string              `json:"content"`
-	ContentLength  int                 `json:"content_length"`
-	Images         []string            `json:"images"`
-	Creator        string              `json:"creator"`
-	AuthorNickname string              `json:"author_nickname"`
-	AuthorAvatar   string              `json:"author_avatar"`
-	AuthorID       string              `json:"author_id"`
-	PublishTimeStr string              `json:"publish_time_str"`
-	Videos         []VideoPageInfoItem `json:"videos"`
+	Type                int                 `json:"type"`
+	Title               string              `json:"title"`
+	Content             string              `json:"content"`
+	ContentLength       int                 `json:"content_length"`
+	Images              []string            `json:"images"`
+	Creator             string              `json:"creator"`
+	AuthorNickname      string              `json:"author_nickname"`
+	AuthorAvatar        string              `json:"author_avatar"`
+	AuthorID            string              `json:"author_id"`
+	PublishTimeStr      string              `json:"publish_time_str"`
+	Videos              []VideoPageInfoItem `json:"videos"`
+	PicturePageInfoList []PicturePageInfo   `json:"picture_page_info_list,omitempty"`
+	PageJSON            *CgiDataNew         `json:"-"`
+	PageHTML            string              `json:"-"`
 }

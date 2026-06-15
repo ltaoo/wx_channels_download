@@ -1,11 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	contentdownload "wx_channel/pkg/contentplatform/download"
+	contentoa "wx_channel/pkg/contentplatform/officialaccount"
+	officialaccountpkg "wx_channel/pkg/officialaccount"
 )
 
 func TestPlatformWorkflowUserConfirmationNode(t *testing.T) {
@@ -85,8 +88,8 @@ func TestPlatformWorkflowPublicViewsDoNotDuplicateOutput(t *testing.T) {
 	if output["body_html"] != "<p>body</p>" {
 		t.Fatalf("probe output body_html = %#v", output["body_html"])
 	}
-	if contentdownload.ContentTitle(output["content"]) != "title" {
-		t.Fatalf("probe output content = %#v", output["content"])
+	if _, ok := output["content"]; ok {
+		t.Fatalf("probe output should not include content: %#v", output)
 	}
 
 	run := newPlatformWorkflowRun("https://example.com", nil)
@@ -120,5 +123,150 @@ func TestPlatformWorkflowPublicViewsDoNotDuplicateOutput(t *testing.T) {
 	}
 	if _, ok := interaction["form"]; !ok {
 		t.Fatalf("interaction summary should include form: %#v", interaction)
+	}
+}
+
+func TestPlatformOfficialAccountProbeViewsOmitDuplicateArticleBody(t *testing.T) {
+	bodyHTML := "<p>unique official account body that must not be duplicated</p>"
+	pageHTML := "<html><body>raw official account page</body></html>"
+	pageJSON := map[string]any{"title": "article", "page_type": float64(2)}
+	probe := &contentdownload.Probe{
+		ID:        "run_oa",
+		Platform:  contentoa.PlatformID,
+		SourceURL: "https://mp.weixin.qq.com/s/demo",
+		ContentID: "demo",
+		Content: contentoa.NewArticleContentEnvelope(
+			contentdownload.ContentSummary{
+				Platform:  contentoa.PlatformID,
+				Type:      contentoa.ContentTypeArticle,
+				ID:        "demo",
+				Title:     "article",
+				Author:    "author",
+				SourceURL: "https://mp.weixin.qq.com/s/demo",
+				CoverURL:  "https://example.com/cover.jpg",
+			},
+			&officialaccountpkg.WechatOfficialArticle{
+				Title:          "article",
+				AuthorNickname: "author",
+				AuthorID:       "author-id",
+				Content:        bodyHTML,
+				Images:         []string{"https://example.com/cover.jpg"},
+			},
+			contentoa.ArticleMetadata{ArticleID: "demo", AuthorID: "author-id"},
+			contentoa.ArticleOutput{
+				Format:      contentoa.OutputFormatHTML,
+				ContentType: contentoa.ContentTypeArticle,
+				ArticleID:   "demo",
+				Title:       "article",
+				SourceURL:   "https://mp.weixin.qq.com/s/demo",
+				BodyHTML:    bodyHTML,
+			},
+		),
+		Internal: map[string]any{
+			"pagejson": pageJSON,
+			"pagehtml": pageHTML,
+		},
+	}
+
+	output := platformProbeOutput(probe)
+	if output["body_html"] != bodyHTML {
+		t.Fatalf("official account output body_html = %#v", output["body_html"])
+	}
+	if _, ok := output["content"]; ok {
+		t.Fatalf("official account output should not include content envelope: %#v", output)
+	}
+	if output["content_type"] != contentoa.ContentTypeArticle {
+		t.Fatalf("content_type = %#v", output["content_type"])
+	}
+
+	responseView := gin.H{
+		"content":  platformProbeContent(probe),
+		"probe":    platformProbeView(probe),
+		"output":   output,
+		"pagejson": platformProbePageJSON(probe),
+		"pagehtml": platformProbePageHTML(probe),
+	}
+	data, err := json.Marshal(responseView)
+	if err != nil {
+		t.Fatalf("marshal response view: %v", err)
+	}
+	decoded := map[string]any{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal response view: %v", err)
+	}
+	if got := countStringValue(decoded, bodyHTML); got != 1 {
+		t.Fatalf("response view body html count = %d, want 1: %s", got, data)
+	}
+	if got := countStringValue(decoded, pageHTML); got != 1 {
+		t.Fatalf("response view page html count = %d, want 1: %s", got, data)
+	}
+	pageJSONView, ok := decoded["pagejson"].(map[string]any)
+	if !ok || pageJSONView["title"] != "article" || pageJSONView["page_type"] != float64(2) {
+		t.Fatalf("pagejson = %#v", decoded["pagejson"])
+	}
+}
+
+func countStringValue(value any, target string) int {
+	switch v := value.(type) {
+	case string:
+		if v == target {
+			return 1
+		}
+	case []any:
+		total := 0
+		for _, item := range v {
+			total += countStringValue(item, target)
+		}
+		return total
+	case map[string]any:
+		total := 0
+		for _, item := range v {
+			total += countStringValue(item, target)
+		}
+		return total
+	}
+	return 0
+}
+
+func TestPlatformProbeFormAddsJSONDefault(t *testing.T) {
+	probe := &contentdownload.Probe{
+		ID:        "run_1",
+		Platform:  "zhihu",
+		SourceURL: "https://example.com/content",
+		ContentID: "content_1",
+		Content:   contentdownload.NewContent(contentdownload.ContentSummary{Platform: "zhihu", Type: "answer", ID: "content_1", Title: "title"}, map[string]any{"id": "content_1"}, nil, nil),
+		Variants:  []contentdownload.Variant{{ID: "html", Type: "html", Label: "HTML", Suffix: ".html"}},
+		Defaults:  contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
+		Warnings:  []string{"warning"},
+	}
+
+	platformProbeAddJSONDefault(probe)
+	form := platformProbeForm(probe)
+	if len(form) == 0 {
+		t.Fatalf("form is empty")
+	}
+	if got := form[0]["default"]; got != platformJSONVariantID {
+		t.Fatalf("variant default = %#v, want json", got)
+	}
+	options, ok := form[0]["options"].([]contentdownload.Variant)
+	if !ok {
+		t.Fatalf("options = %T, want []contentdownload.Variant", form[0]["options"])
+	}
+	foundJSON := false
+	for _, option := range options {
+		if option.ID == platformJSONVariantID && option.Type == "json" && option.Label == "JSON" && option.Suffix == ".json" {
+			foundJSON = true
+		}
+	}
+	if !foundJSON {
+		t.Fatalf("options should include JSON variant: %#v", options)
+	}
+
+	resolved := platformJSONResolvedRequest("https://example.com/content", probe, contentdownload.Options{})
+	if resolved.Suffix != ".json" || resolved.Download.Protocol != "inline_json" {
+		t.Fatalf("json resolved = %#v", resolved)
+	}
+	if got := resolved.Metadata["variant_id"]; got != platformJSONVariantID {
+		t.Fatalf("json variant_id metadata = %#v", got)
 	}
 }

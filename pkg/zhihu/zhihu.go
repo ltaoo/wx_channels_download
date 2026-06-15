@@ -1,7 +1,6 @@
 package zhihu
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -28,7 +27,7 @@ const (
 	SourceURL = "https://www.zhihu.com/"
 )
 
-var answerURLRe = regexp.MustCompile(`^/question/([0-9]+)/answer/([0-9]+)$`)
+var answerURLRe = regexp.MustCompile(`^/question/([0-9]+|undefined)/answer/([0-9]+)$`)
 var questionURLRe = regexp.MustCompile(`^/question/([0-9]+)$`)
 var articleURLRe = regexp.MustCompile(`^/p/([0-9]+)$`)
 
@@ -54,33 +53,120 @@ type ArticleURL struct {
 }
 
 type User struct {
-	ID                string `json:"id"`
-	URL               string `json:"url"`
-	URLToken          string `json:"urlToken"`
-	URLTokenSnake     string `json:"url_token"`
-	Name              string `json:"name"`
-	Headline          string `json:"headline"`
-	AvatarURL         string `json:"avatarUrl"`
-	AvatarURLSnake    string `json:"avatar_url"`
-	AvatarURLTemplate string `json:"avatarUrlTemplate"`
+	ID                string            `json:"id"`
+	URL               string            `json:"url"`
+	URLToken          string            `json:"urlToken"`
+	URLTokenSnake     string            `json:"url_token"`
+	Name              string            `json:"name"`
+	Headline          string            `json:"headline"`
+	HeadlineRender    string            `json:"headlineRender"`
+	AvatarURL         string            `json:"avatarUrl"`
+	AvatarURLSnake    string            `json:"avatar_url"`
+	AvatarURLTemplate string            `json:"avatarUrlTemplate"`
+	UseDefaultAvatar  bool              `json:"useDefaultAvatar"`
+	IsOrg             bool              `json:"isOrg"`
+	Type              string            `json:"type"`
+	UserType          string            `json:"userType"`
+	Badge             []json.RawMessage `json:"badge"`
+	BadgeV2           BadgeV2           `json:"badgeV2"`
+	Gender            int               `json:"gender"`
+	IsAdvertiser      bool              `json:"isAdvertiser"`
+	IsPrivacy         bool              `json:"isPrivacy"`
+	IsFollowed        bool              `json:"isFollowed"`
+	IPInfo            string            `json:"ipInfo"`
+	VIPInfo           VIPInfo           `json:"vipInfo"`
 }
 
 type Question struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Detail  string `json:"detail"`
-	Excerpt string `json:"excerpt"`
-	Author  User   `json:"author"`
+	ID                     string                     `json:"id"`
+	Type                   string                     `json:"type"`
+	Title                  string                     `json:"title"`
+	QuestionType           string                     `json:"questionType"`
+	Created                int64                      `json:"created"`
+	UpdatedTime            int64                      `json:"updatedTime"`
+	URL                    string                     `json:"url"`
+	IsMuted                bool                       `json:"isMuted"`
+	IsVisible              bool                       `json:"isVisible"`
+	IsNormal               bool                       `json:"isNormal"`
+	IsEditable             bool                       `json:"isEditable"`
+	AdminClosedComment     bool                       `json:"adminClosedComment"`
+	HasPublishingDraft     bool                       `json:"hasPublishingDraft"`
+	AnswerCount            int                        `json:"answerCount"`
+	VisitCount             int                        `json:"visitCount"`
+	CommentCount           int                        `json:"commentCount"`
+	FollowerCount          int                        `json:"followerCount"`
+	CollapsedAnswerCount   int                        `json:"collapsedAnswerCount"`
+	Excerpt                string                     `json:"excerpt"`
+	CommentPermission      string                     `json:"commentPermission"`
+	Detail                 string                     `json:"detail"`
+	EditableDetail         string                     `json:"editableDetail"`
+	Status                 QuestionStatus             `json:"status"`
+	Topics                 []Topic                    `json:"topics"`
+	Author                 User                       `json:"author"`
+	CanComment             CanComment                 `json:"canComment"`
+	ThumbnailInfo          ThumbnailInfo              `json:"thumbnailInfo"`
+	ReviewInfo             ReviewInfo                 `json:"reviewInfo"`
+	RelatedCards           []json.RawMessage          `json:"relatedCards"`
+	MuteInfo               MuteInfo                   `json:"muteInfo"`
+	ShowAuthor             bool                       `json:"showAuthor"`
+	IsLabeled              bool                       `json:"isLabeled"`
+	IsBannered             bool                       `json:"isBannered"`
+	ShowEncourageAuthor    bool                       `json:"showEncourageAuthor"`
+	VoteupCount            int                        `json:"voteupCount"`
+	CanVote                bool                       `json:"canVote"`
+	ReactionInstruction    map[string]json.RawMessage `json:"reactionInstruction"`
+	InvisibleAuthor        bool                       `json:"invisibleAuthor"`
+	AnswerCountDescription string                     `json:"answerCountDescription"`
+	Relationship           QuestionRelationship       `json:"relationship"`
 }
 
 type Answer struct {
-	ID           string `json:"id"`
-	Content      string `json:"content"`
-	Excerpt      string `json:"excerpt"`
-	CommentCount int    `json:"commentCount"`
-	CreatedTime  int64  `json:"createdTime"`
-	UpdatedTime  int64  `json:"updatedTime"`
-	Author       User   `json:"author"`
+	ID                          string                     `json:"id"`
+	Type                        string                     `json:"type"`
+	AdminClosedComment          bool                       `json:"adminClosedComment"`
+	AllowSegmentInteraction     int                        `json:"allowSegmentInteraction"`
+	AnnotationAction            json.RawMessage            `json:"annotationAction"`
+	AnswerType                  string                     `json:"answerType"`
+	Author                      User                       `json:"author"`
+	BizExt                      AnswerBizExt               `json:"bizExt"`
+	CanComment                  CanComment                 `json:"canComment"`
+	CollapseReason              string                     `json:"collapseReason"`
+	CollapsedBy                 string                     `json:"collapsedBy"`
+	CommentCount                int                        `json:"commentCount"`
+	CommentPermission           string                     `json:"commentPermission"`
+	Content                     string                     `json:"content"`
+	ContentNeedTruncated        bool                       `json:"contentNeedTruncated"`
+	CreatedTime                 int64                      `json:"createdTime"`
+	EditableContent             string                     `json:"editableContent"`
+	Excerpt                     string                     `json:"excerpt"`
+	Extras                      string                     `json:"extras"`
+	FavlistsCount               int                        `json:"favlistsCount"`
+	ForceLoginWhenClickReadMore bool                       `json:"forceLoginWhenClickReadMore"`
+	HasColumn                   bool                       `json:"hasColumn"`
+	IPInfo                      string                     `json:"ipInfo"`
+	IsCollapsed                 bool                       `json:"isCollapsed"`
+	IsCopyable                  bool                       `json:"isCopyable"`
+	IsJumpNative                bool                       `json:"isJumpNative"`
+	IsLabeled                   bool                       `json:"isLabeled"`
+	IsNavigator                 bool                       `json:"isNavigator"`
+	IsNormal                    bool                       `json:"isNormal"`
+	IsSticky                    bool                       `json:"isSticky"`
+	IsVisible                   bool                       `json:"isVisible"`
+	NavigatorVote               bool                       `json:"navigatorVote"`
+	PodcastAudioEnter           PodcastAudioEnter          `json:"podcastAudioEnter"`
+	Question                    QuestionRef                `json:"question"`
+	Reaction                    AnswerReaction             `json:"reaction"`
+	ReactionInstruction         map[string]json.RawMessage `json:"reactionInstruction"`
+	Relationship                AnswerRelationship         `json:"relationship"`
+	RelevantInfo                RelevantInfo               `json:"relevantInfo"`
+	ReshipmentSettings          string                     `json:"reshipmentSettings"`
+	RewardInfo                  RewardInfo                 `json:"rewardInfo"`
+	SuggestEdit                 SuggestEdit                `json:"suggestEdit"`
+	ThanksCount                 int                        `json:"thanksCount"`
+	UpdatedTime                 int64                      `json:"updatedTime"`
+	URL                         string                     `json:"url"`
+	VoteNextStep                string                     `json:"voteNextStep"`
+	VoteupCount                 int                        `json:"voteupCount"`
 }
 
 type Article struct {
@@ -106,23 +192,32 @@ type Comment struct {
 }
 
 type AnswerPage struct {
-	URL      AnswerURL
-	Source   string
-	Question Question
-	Answer   Answer
-	Comments []Comment
+	URL             AnswerURL
+	Source          string
+	PageHTML        string
+	Question        Question
+	Answer          Answer
+	Comments        []Comment
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
 }
 
 type QuestionPage struct {
-	URL      QuestionURL
-	Source   string
-	Question Question
+	URL             QuestionURL
+	Source          string
+	PageHTML        string
+	Question        Question
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
 }
 
 type ArticlePage struct {
-	URL     ArticleURL
-	Source  string
-	Article Article
+	URL             ArticleURL
+	Source          string
+	PageHTML        string
+	Article         Article
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
 }
 
 func ParseAnswerURL(rawURL string) (AnswerURL, bool) {
@@ -137,8 +232,13 @@ func ParseAnswerURL(rawURL string) (AnswerURL, bool) {
 	if len(matches) != 3 {
 		return AnswerURL{}, false
 	}
-	canonical := "https://www.zhihu.com/question/" + matches[1] + "/answer/" + matches[2]
-	return AnswerURL{QuestionID: matches[1], AnswerID: matches[2], Canonical: canonical}, true
+	questionID := matches[1]
+	answerID := matches[2]
+	canonical := canonicalAnswerURL(questionID, answerID)
+	if questionID == "undefined" {
+		questionID = ""
+	}
+	return AnswerURL{QuestionID: questionID, AnswerID: answerID, Canonical: canonical}, true
 }
 
 func ParseQuestionURL(rawURL string) (QuestionURL, bool) {
@@ -182,6 +282,14 @@ func ResolveRealURL(rawURL string) string {
 		}
 	}
 	return rawURL
+}
+
+func canonicalAnswerURL(questionID, answerID string) string {
+	questionID = strings.TrimSpace(questionID)
+	if questionID == "" {
+		questionID = "undefined"
+	}
+	return "https://www.zhihu.com/question/" + questionID + "/answer/" + strings.TrimSpace(answerID)
 }
 
 func (c *Client) FetchAnswerPage(rawURL string) (*AnswerPage, error) {
@@ -568,6 +676,7 @@ func setHeaders(req *http.Request, referer string) {
 		req.Header.Set("referer", referer)
 	}
 	if cookie := strings.TrimSpace(viper.GetString("zhihu.cookie")); cookie != "" {
+		fmt.Println("before set cookie", cookie)
 		req.Header.Set("cookie", cookie)
 	}
 }
@@ -709,99 +818,83 @@ func cookieKeys(cookie string) []string {
 }
 
 func parseAnswerPage(body []byte, answerURL AnswerURL) (*AnswerPage, error) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	initialData, err := ParseInitialData(body)
 	if err != nil {
 		return nil, err
 	}
-	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
-	if raw == "" {
-		return nil, fmt.Errorf("missing zhihu initial data")
+	answer := initialData.InitialState.Entities.Answers[answerURL.AnswerID]
+	if answer.ID == "" {
+		return nil, fmt.Errorf("missing zhihu answer entity")
 	}
-	var state struct {
-		InitialState struct {
-			Entities struct {
-				Questions map[string]Question `json:"questions"`
-				Answers   map[string]Answer   `json:"answers"`
-			} `json:"entities"`
-		} `json:"initialState"`
+	question := initialData.InitialState.Entities.Questions[answerURL.QuestionID]
+	if question.ID == "" && answer.Question.ID != "" {
+		question = initialData.InitialState.Entities.Questions[answer.Question.ID]
 	}
-	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-		return nil, err
+	if question.ID == "" && len(initialData.InitialState.Entities.Questions) == 1 {
+		for _, candidate := range initialData.InitialState.Entities.Questions {
+			question = candidate
+		}
 	}
-	question := state.InitialState.Entities.Questions[answerURL.QuestionID]
-	answer := state.InitialState.Entities.Answers[answerURL.AnswerID]
-	if question.ID == "" || answer.ID == "" {
-		return nil, fmt.Errorf("missing zhihu question or answer entity")
+	if question.ID == "" {
+		return nil, fmt.Errorf("missing zhihu question entity")
+	}
+	pageURL := answerURL
+	if pageURL.QuestionID != question.ID {
+		pageURL.QuestionID = question.ID
+		pageURL.Canonical = canonicalAnswerURL(question.ID, answer.ID)
+	}
+	if pageURL.Canonical == "" {
+		pageURL.Canonical = canonicalAnswerURL(pageURL.QuestionID, pageURL.AnswerID)
 	}
 	return &AnswerPage{
-		URL:      answerURL,
-		Source:   answerURL.Canonical,
-		Question: question,
-		Answer:   answer,
+		URL:             pageURL,
+		Source:          pageURL.Canonical,
+		PageHTML:        string(body),
+		Question:        question,
+		Answer:          answer,
+		InitialData:     initialData,
+		InitialDataJSON: initialData.Raw,
 	}, nil
 }
 
 func parseQuestionPage(body []byte, questionURL QuestionURL) (*QuestionPage, error) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	initialData, err := ParseInitialData(body)
 	if err != nil {
 		return nil, err
 	}
-	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
-	if raw == "" {
-		return nil, fmt.Errorf("missing zhihu initial data")
-	}
-	var state struct {
-		InitialState struct {
-			Entities struct {
-				Questions map[string]Question `json:"questions"`
-			} `json:"entities"`
-		} `json:"initialState"`
-	}
-	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-		return nil, err
-	}
-	question := state.InitialState.Entities.Questions[questionURL.QuestionID]
+	question := initialData.InitialState.Entities.Questions[questionURL.QuestionID]
 	if question.ID == "" {
 		return nil, fmt.Errorf("missing zhihu question entity")
 	}
 	return &QuestionPage{
-		URL:      questionURL,
-		Source:   questionURL.Canonical,
-		Question: question,
+		URL:             questionURL,
+		Source:          questionURL.Canonical,
+		PageHTML:        string(body),
+		Question:        question,
+		InitialData:     initialData,
+		InitialDataJSON: initialData.Raw,
 	}, nil
 }
 
 func parseArticlePage(body []byte, articleURL ArticleURL) (*ArticlePage, error) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	initialData, err := ParseInitialData(body)
 	if err != nil {
 		return nil, err
 	}
-	raw := strings.TrimSpace(doc.Find("#js-initialData").First().Text())
-	if raw == "" {
-		return nil, fmt.Errorf("missing zhihu initial data")
-	}
-	var state struct {
-		InitialState struct {
-			Entities struct {
-				Articles map[string]Article `json:"articles"`
-				Posts    map[string]Article `json:"posts"`
-			} `json:"entities"`
-		} `json:"initialState"`
-	}
-	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-		return nil, err
-	}
-	article := state.InitialState.Entities.Articles[articleURL.ArticleID]
+	article := initialData.InitialState.Entities.Articles[articleURL.ArticleID]
 	if article.ID == "" {
-		article = state.InitialState.Entities.Posts[articleURL.ArticleID]
+		article = initialData.InitialState.Entities.Posts[articleURL.ArticleID]
 	}
 	if article.ID == "" {
 		return nil, fmt.Errorf("missing zhihu article entity")
 	}
 	return &ArticlePage{
-		URL:     articleURL,
-		Source:  articleURL.Canonical,
-		Article: article,
+		URL:             articleURL,
+		Source:          articleURL.Canonical,
+		PageHTML:        string(body),
+		Article:         article,
+		InitialData:     initialData,
+		InitialDataJSON: initialData.Raw,
 	}, nil
 }
 

@@ -76,7 +76,10 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 			{ID: "cover", Type: "image", Label: "封面", Suffix: ".jpg"},
 		},
 		Defaults: contentdownload.Defaults{VariantID: "video", Suffix: ".mp4"},
-		Internal: map[string]any{"user_agent": info.UserAgent},
+		Internal: map[string]any{
+			"user_agent": info.UserAgent,
+			"pagejson":   info,
+		},
 	}, nil
 }
 

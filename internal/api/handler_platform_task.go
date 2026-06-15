@@ -16,7 +16,6 @@ import (
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 	contentshuba69 "wx_channel/pkg/contentplatform/69shuba"
-	contentchannels "wx_channel/pkg/contentplatform/channels"
 	contentdouyin "wx_channel/pkg/contentplatform/douyin"
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	contentfanqie "wx_channel/pkg/contentplatform/fanqienovel"
@@ -24,6 +23,7 @@ import (
 	contentqidian "wx_channel/pkg/contentplatform/qidian"
 	contentquanben "wx_channel/pkg/contentplatform/quanben"
 	contentttk "wx_channel/pkg/contentplatform/ttk"
+	contentwxchannels "wx_channel/pkg/contentplatform/wxchannels"
 	contentyoutube "wx_channel/pkg/contentplatform/youtube"
 	contentzhihu "wx_channel/pkg/contentplatform/zhihu"
 	"wx_channel/pkg/decrypt"
@@ -86,6 +86,8 @@ type platformWorkflowRun struct {
 	mu          sync.Mutex
 }
 
+const platformJSONVariantID = "json"
+
 var platformWorkflowRuns sync.Map
 
 func (c *APIClient) handleProbePlatformDownloadTask(ctx *gin.Context) {
@@ -109,7 +111,7 @@ func (c *APIClient) handleProbePlatformDownloadTask(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	result.Ok(ctx, gin.H{
+	resp := gin.H{
 		"run_id":      run.ID,
 		"probe_id":    run.ID,
 		"platform":    probe.Platform,
@@ -120,7 +122,14 @@ func (c *APIClient) handleProbePlatformDownloadTask(ctx *gin.Context) {
 		"output":      run.Output,
 		"interaction": run.currentInteractionView(),
 		"workflow":    run.snapshot(),
-	})
+	}
+	if pageJSON := platformProbePageJSON(probe); pageJSON != nil {
+		resp["pagejson"] = pageJSON
+	}
+	if pageHTML := platformProbePageHTML(probe); pageHTML != "" {
+		resp["pagehtml"] = pageHTML
+	}
+	result.Ok(ctx, resp)
 }
 
 func (c *APIClient) handleResumePlatformDownloadPipeline(ctx *gin.Context) {
@@ -186,6 +195,7 @@ func (c *APIClient) runPlatformWorkflowToProbe(ctx context.Context, run *platfor
 		return nil, err
 	}
 	probe.ID = run.ID
+	platformProbeAddJSONDefault(probe)
 	run.Probe = probe
 	run.Output = platformProbeOutput(probe)
 	run.completeNode("probe")
@@ -232,15 +242,42 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 	probe := (*contentdownload.Probe)(nil)
 	if run != nil {
 		probe = run.Probe
+		if opts.VariantID == "" && probe != nil {
+			opts.VariantID = probe.Defaults.VariantID
+		}
 		run.resumeAfterProbe(platformConfirmationOutput(body, opts))
 		run.startNode("resolve", "resolve")
 	}
-	resolved, err := router.Resolve(ctx, contentdownload.ResolveInput{
-		URL:     body.URL,
-		Probe:   probe,
-		Options: opts,
-		Extra:   body.Extra,
-	})
+	var resolved *contentdownload.ResolvedRequest
+	var err error
+	if opts.VariantID == platformJSONVariantID {
+		if probe == nil {
+			handler := router.Match(body.URL)
+			if handler == nil {
+				err := contentdownload.ErrUnsupportedURL
+				if run != nil {
+					run.failNode("resolve", err)
+				}
+				return "", err
+			}
+			probe, err = handler.Probe(ctx, contentdownload.ProbeInput{URL: body.URL, Extra: body.Extra})
+			if err != nil {
+				if run != nil {
+					run.failNode("resolve", err)
+				}
+				return "", err
+			}
+			platformProbeAddJSONDefault(probe)
+		}
+		resolved = platformJSONResolvedRequest(body.URL, probe, opts)
+	} else {
+		resolved, err = router.Resolve(ctx, contentdownload.ResolveInput{
+			URL:     body.URL,
+			Probe:   probe,
+			Options: opts,
+			Extra:   body.Extra,
+		})
+	}
 	if err != nil {
 		if run != nil {
 			run.failNode("resolve", err)
@@ -526,7 +563,7 @@ func (c *APIClient) updatePlatformDownloadTask(id int, updates map[string]any) e
 
 func (c *APIClient) platformDownloadRouter() *contentdownload.Router {
 	return contentdownload.NewRouter(
-		contentchannels.New(platformChannelsFetcher{
+		contentwxchannels.New(platformChannelsFetcher{
 			FeedProfileFetcher: c.channels,
 			sphCookie:          c.cfg.CloudflareSphCookie,
 		}),
@@ -543,11 +580,11 @@ func (c *APIClient) platformDownloadRouter() *contentdownload.Router {
 }
 
 type platformChannelsFetcher struct {
-	contentchannels.FeedProfileFetcher
+	contentwxchannels.FeedProfileFetcher
 	sphCookie string
 }
 
-func (f platformChannelsFetcher) FetchChannelsSphProfile(reqURL string) (*contentchannels.SphProfile, error) {
+func (f platformChannelsFetcher) FetchChannelsSphProfile(reqURL string) (*contentwxchannels.SphProfile, error) {
 	if strings.TrimSpace(f.sphCookie) == "" {
 		return nil, fmt.Errorf("cloudflare.sphCookie not configured")
 	}
@@ -559,7 +596,7 @@ func (f platformChannelsFetcher) FetchChannelsSphProfile(reqURL string) (*conten
 		return nil, fmt.Errorf("empty sph feed response")
 	}
 	videoURL := strings.TrimSpace(feedResp.Data.Feedinfo.Videourl)
-	return &contentchannels.SphProfile{
+	return &contentwxchannels.SphProfile{
 		ShareURL:        reqURL,
 		SphID:           "",
 		ExportID:        firstNonEmpty(feedResp.Data.Sceneinfo.Dynamicexportid),
@@ -617,15 +654,53 @@ func platformProbeOutput(probe *contentdownload.Probe) map[string]any {
 	if probe == nil {
 		return nil
 	}
-	size := 1
 	contentOutput := contentdownload.ContentOutputOf(probe.Content)
-	size += len(contentOutput)
-	out := make(map[string]any, size)
+	out := make(map[string]any, len(contentOutput))
 	for k, v := range contentOutput {
+		if platformProbeOutputOmitField(k) {
+			continue
+		}
 		out[k] = v
 	}
-	out["content"] = probe.Content
 	return out
+}
+
+func platformProbeOutputOmitField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "content", "data", "raw_data":
+		return true
+	default:
+		return false
+	}
+}
+
+func platformProbePageJSON(probe *contentdownload.Probe) any {
+	if probe == nil || probe.Internal == nil {
+		return nil
+	}
+	value := probe.Internal["pagejson"]
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case json.RawMessage:
+		if len(v) == 0 {
+			return nil
+		}
+	case []byte:
+		if len(v) == 0 {
+			return nil
+		}
+		return json.RawMessage(v)
+	}
+	return value
+}
+
+func platformProbePageHTML(probe *contentdownload.Probe) string {
+	if probe == nil || probe.Internal == nil {
+		return ""
+	}
+	value, _ := probe.Internal["pagehtml"].(string)
+	return value
 }
 
 func platformProbeView(probe *contentdownload.Probe) gin.H {
@@ -653,7 +728,7 @@ func platformProbeForm(probe *contentdownload.Probe) []gin.H {
 			"type":     "select",
 			"required": true,
 			"default":  probe.Defaults.VariantID,
-			"options":  probe.Variants,
+			"options":  platformProbeVariants(probe),
 		},
 		{
 			"name":  "filename",
@@ -662,7 +737,7 @@ func platformProbeForm(probe *contentdownload.Probe) []gin.H {
 			"value": contentdownload.ContentTitle(probe.Content),
 		},
 	}
-	if probe.Platform == contentchannels.PlatformID {
+	if probe.Platform == contentwxchannels.PlatformID {
 		form = append(form, gin.H{
 			"name":  "spec",
 			"label": "清晰度参数",
@@ -671,6 +746,92 @@ func platformProbeForm(probe *contentdownload.Probe) []gin.H {
 		})
 	}
 	return form
+}
+
+func platformProbeAddJSONDefault(probe *contentdownload.Probe) {
+	if probe == nil {
+		return
+	}
+	probe.Variants = platformProbeVariants(probe)
+	probe.Defaults.VariantID = platformJSONVariantID
+	probe.Defaults.Suffix = ".json"
+}
+
+func platformProbeVariants(probe *contentdownload.Probe) []contentdownload.Variant {
+	if probe == nil {
+		return nil
+	}
+	variants := make([]contentdownload.Variant, 0, len(probe.Variants)+1)
+	hasJSON := false
+	for _, variant := range probe.Variants {
+		if variant.ID == platformJSONVariantID {
+			hasJSON = true
+		}
+		variants = append(variants, variant)
+	}
+	if !hasJSON {
+		variants = append(variants, contentdownload.Variant{
+			ID:     platformJSONVariantID,
+			Type:   platformJSONVariantID,
+			Label:  "JSON",
+			Suffix: ".json",
+		})
+	}
+	return variants
+}
+
+func platformJSONResolvedRequest(sourceURL string, probe *contentdownload.Probe, opts contentdownload.Options) *contentdownload.ResolvedRequest {
+	summary := contentdownload.ContentSummaryOf(probe.Content)
+	contentID := firstNonEmpty(probe.ContentID, summary.ID)
+	title := firstNonEmpty(summary.Title, contentID, "content")
+	filename := firstNonEmpty(opts.Filename, title, contentID, "content")
+	canonicalURL := firstNonEmpty(probe.CanonicalURL, summary.URL, sourceURL, probe.SourceURL)
+	sourceURL = firstNonEmpty(probe.SourceURL, sourceURL, summary.SourceURL, canonicalURL)
+	payload := gin.H{
+		"id":            probe.ID,
+		"platform":      probe.Platform,
+		"source_url":    sourceURL,
+		"canonical_url": canonicalURL,
+		"content_id":    contentID,
+		"content":       probe.Content,
+		"variants":      platformProbeVariants(probe),
+		"defaults":      contentdownload.Defaults{VariantID: platformJSONVariantID, Suffix: ".json"},
+		"warnings":      probe.Warnings,
+		"output":        platformProbeOutput(probe),
+	}
+	return &contentdownload.ResolvedRequest{
+		Platform:     probe.Platform,
+		SourceURL:    sourceURL,
+		CanonicalURL: canonicalURL,
+		ContentID:    contentID,
+		Title:        title,
+		Filename:     filename,
+		Suffix:       ".json",
+		Download: contentdownload.DownloadSpec{
+			URL:         "inline-json://" + probe.Platform + "/" + contentID,
+			Method:      "GET",
+			Protocol:    "inline_json",
+			Connections: 1,
+		},
+		Labels: map[string]string{
+			"platform":     probe.Platform,
+			"id":           contentID,
+			"title":        title,
+			"key":          "0",
+			"spec":         "",
+			"suffix":       ".json",
+			"source_url":   sourceURL,
+			"content_type": summary.Type,
+		},
+		Metadata: map[string]any{
+			"variant_id":    platformJSONVariantID,
+			"content_type":  summary.Type,
+			"source_url":    sourceURL,
+			"canonical_url": canonicalURL,
+			"json":          payload,
+		},
+		Content: probe.Content,
+	}
 }
 
 func platformProbeConfirmation(probe *contentdownload.Probe, existing []gin.H) *platformWorkflowInteraction {

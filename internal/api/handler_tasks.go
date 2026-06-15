@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	officialaccountdownload "wx_channel/pkg/officialaccount"
 
 	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/database/model"

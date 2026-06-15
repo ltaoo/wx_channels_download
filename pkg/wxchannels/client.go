@@ -1,4 +1,4 @@
-package channels
+package wxchannels
 
 import (
 	"encoding/json"
@@ -15,7 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/api/types"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/util"
@@ -30,13 +29,6 @@ var channels_ws_upgrader = websocket.Upgrader{
 }
 
 type ChannelsClient struct {
-	// decryptor   *ChannelsVideoDecryptor
-	// downloader  *downloadpkg.Downloader
-	// Interceptor *interceptor.Interceptor
-	// official    *officialaccount.OfficialAccountBrowser
-	// formatter   *util.FilenameProcessor
-	// Cookies     []*http.Cookie
-	// cfg         *APIConfig
 	ws_clients      map[*Client]bool
 	ws_mu           sync.RWMutex
 	engine          *gin.Engine
@@ -225,23 +217,23 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 }
 
 // 根据关键字搜索用户
-func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*types.ChannelsContactSearchResp, error) {
+func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*ChannelsContactSearchResp, error) {
 	if keyword == "" {
 		return nil, errors.New("keyword 不能为空")
 	}
 	clean_keyword := strings.TrimSpace(keyword)
 	cache_key := "channels:contact_list:" + clean_keyword + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsContactSearchResp); ok {
+		if resp, ok := val.(*ChannelsContactSearchResp); ok {
 			return resp, nil
 		}
 	}
 	fmt.Println("next_marker", next_marker)
-	resp, err := c.RequestFrontend("key:channels:contact_list", types.ChannelsAccountSearchBody{Keyword: keyword, NextMarker: next_marker}, 20*time.Second)
+	resp, err := c.RequestFrontend("key:channels:contact_list", ChannelsAccountSearchBody{Keyword: keyword, NextMarker: next_marker}, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsContactSearchResp
+	var r ChannelsContactSearchResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -250,22 +242,22 @@ func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker strin
 }
 
 // 获取指定用户的视频列表
-func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
 	}
 	cache_key := "channels:feed_list:" + clean_name + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:feed_list", types.ChannelsFeedListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_list", ChannelsFeedListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedListOfAccountResp
+	var r ChannelsFeedListOfAccountResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -274,22 +266,22 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 }
 
 // 获取指定用户的直播回放列表
-func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
 	}
 	cache_key := "channels:live_replay_list:" + clean_name + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:live_replay_list", types.ChannelsLiveReplayListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:live_replay_list", ChannelsLiveReplayListBody{Username: clean_name, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedListOfAccountResp
+	var r ChannelsFeedListOfAccountResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -298,18 +290,18 @@ func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker strin
 }
 
 // 获取用户 收藏或点赞 的视频列表
-func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker string) (*types.ChannelsFeedListOfAccountResp, error) {
+func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	cache_key := "channels:interactioned_list:" + flag + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:interactioned_list", types.ChannelsInteractionedFeedListBody{Flag: flag, NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:interactioned_list", ChannelsInteractionedFeedListBody{Flag: flag, NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedListOfAccountResp
+	var r ChannelsFeedListOfAccountResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -318,20 +310,20 @@ func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker st
 }
 
 // 获取指定视频详情
-func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*types.ChannelsFeedProfileResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)
 	cache_key := "channels:feed_profile:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
+		if resp, ok := val.(*ChannelsFeedProfileResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:feed_profile", types.ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url, EncryptedObjectId: eid}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:feed_profile", ChannelsFeedProfileBody{ObjectId: oid, NonceId: uid, URL: url, EncryptedObjectId: eid}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedProfileResp
+	var r ChannelsFeedProfileResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -339,20 +331,45 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*t
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*types.ChannelsFeedProfileResp, error) {
+func (c *ChannelsClient) FetchFeedPage(rawURL string) (*FeedPage, error) {
+	parts, err := ParseFeedURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.FetchChannelsFeedProfile(parts.Oid, parts.Nid, rawURL, parts.Eid)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ErrCode != 0 {
+		return nil, fmt.Errorf("fetch channels feed profile: %s", resp.ErrMsg)
+	}
+	obj := resp.Data.Object
+	profile, err := ChannelsObjectToChannelsFeedProfile(&obj)
+	if err != nil {
+		return nil, err
+	}
+	return &FeedPage{
+		URL:     *parts,
+		Resp:    resp,
+		Object:  obj,
+		Profile: *profile,
+	}, nil
+}
+
+func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s", url)
 	cache_key := "channels:shared_feed_profile:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedProfileResp); ok {
+		if resp, ok := val.(*ChannelsFeedProfileResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:shared_feed_profile", types.ChannelsSharedFeedProfileBody{URL: url}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:shared_feed_profile", ChannelsSharedFeedProfileBody{URL: url}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedProfileResp
+	var r ChannelsFeedProfileResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -361,7 +378,7 @@ func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*types.Chan
 
 }
 
-func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*types.ChannelsFeedCommentListResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*ChannelsFeedCommentListResp, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
@@ -371,11 +388,11 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, nid, comment_id, next_marker)
 	cache_key := "channels:feed_comment_list:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedCommentListResp); ok {
+		if resp, ok := val.(*ChannelsFeedCommentListResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:fetch_feed_comment_list", types.ChannelsFeedCommentListBody{
+	resp, err := c.RequestFrontend("key:channels:fetch_feed_comment_list", ChannelsFeedCommentListBody{
 		ObjectId:      oid,
 		ObjectNonceId: nid,
 		CommentId:     comment_id,
@@ -384,7 +401,7 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedCommentListResp
+	var r ChannelsFeedCommentListResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -392,24 +409,24 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFeedShareUrl(oid string) (*types.ChannelsFeedShareUrlResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedShareUrlResp, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
 	kk := fmt.Sprintf("%s", oid)
 	cache_key := "channels:feed_share_url:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFeedShareUrlResp); ok {
+		if resp, ok := val.(*ChannelsFeedShareUrlResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:feed_share_url", types.ChannelsFeedShareUrlBody{
+	resp, err := c.RequestFrontend("key:channels:feed_share_url", ChannelsFeedShareUrlBody{
 		ObjectId: oid,
 	}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFeedShareUrlResp
+	var r ChannelsFeedShareUrlResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -424,7 +441,7 @@ func (c *ChannelsClient) ReloadChannels() error {
 }
 
 // 保存 channels feed profile 到数据库，返回 model.Content 实例
-func (c *ChannelsClient) UpsertChannelsFeed(feed *types.ChannelsFeedProfile) (*model.Content, error) {
+func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.Content, error) {
 	if c.db == nil {
 		return nil, errors.New("db is nil")
 	}

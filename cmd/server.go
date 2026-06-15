@@ -23,7 +23,7 @@ import (
 	"wx_channel/internal/api"
 	"wx_channel/internal/database"
 	"wx_channel/internal/manager"
-	"wx_channel/internal/officialaccount"
+	"wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
 )
 

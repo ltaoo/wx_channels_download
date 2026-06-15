@@ -1,4 +1,4 @@
-package interceptor
+package wxchannels
 
 import (
 	"encoding/json"
@@ -52,11 +52,45 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *frontend.ChannelInjectedFiles) []*proxy.Plugin {
-	version := interceptor.Version
-	cfg := interceptor.Settings
-	variables := interceptor.FrontendVariables
+func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles, onFeedProfileLoaded func(profile *MediaProfile)) []*proxy.Plugin {
+	if cfg == nil {
+		cfg = &InterceptorConfig{}
+	}
+	version := cfg.Version
+	variables := cfg.FrontendVariables
+	if variables == nil {
+		variables = map[string]any{}
+	}
 	v := "?t=" + version
+	plugins := make([]*proxy.Plugin, 0, 5)
+	if cfg.DebugShowError {
+		plugins = append(plugins, &proxy.Plugin{
+			Match: "debug.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: "http",
+				Host:     "127.0.0.1",
+				Port:     6752,
+			},
+		})
+	}
+	if cfg.RemoteServerEnabled {
+		plugins = append(plugins, &proxy.Plugin{
+			Match: "weixin110.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: cfg.RemoteServerProtocol,
+				Host:     cfg.RemoteServerHostname,
+				Port:     cfg.RemoteServerPort,
+			},
+		})
+	}
+	plugins = append(plugins, &proxy.Plugin{
+		Match: "kf.qq.com",
+		Target: &proxy.TargetConfig{
+			Protocol: cfg.APIServerProtocol,
+			Host:     cfg.APIServerHostname,
+			Port:     cfg.APIServerPort,
+		},
+	})
 	plugin1 := &proxy.Plugin{
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
@@ -92,13 +126,13 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *frontend.C
 				return
 			}
 			if pathname == "/__wx_channels_api/profile" {
-				var data ChannelMediaProfile
+				var data MediaProfile
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
 					fmt.Println("[ECHO]handler", err.Error())
 				}
-				if interceptor.OnFeedProfileLoaded != nil {
+				if onFeedProfileLoaded != nil {
 					profile := data
-					go interceptor.OnFeedProfileLoaded(&profile)
+					go onFeedProfileLoaded(&profile)
 				}
 				fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				ctx.Mock(200, map[string]string{
@@ -544,7 +578,8 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *frontend.C
 			}
 		},
 	}
-	return []*proxy.Plugin{plugin1, plugin2}
+	plugins = append(plugins, plugin1, plugin2)
+	return plugins
 }
 
 // CreateYuanbaoTencentPlugin 拦截 yuanbao.tencent.com/api 的请求与响应，提取请求头中的 Cookie 和响应头中的 Set-Cookie 并通过回调传出。
@@ -579,8 +614,11 @@ func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy
 	}
 }
 
-func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
-	version := interceptor.Version
+func CreateSimpleInterceptorPlugin(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
+	if cfg == nil {
+		cfg = &InterceptorConfig{}
+	}
+	version := cfg.Version
 	v := "?t=" + version
 	return &proxy.Plugin{
 		Match: "qq.com",

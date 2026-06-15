@@ -1,21 +1,21 @@
-package channels
+package wxchannels
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
-	apitypes "wx_channel/internal/api/types"
 	contentdownload "wx_channel/pkg/contentplatform/download"
-	"wx_channel/pkg/util"
+	channelspkg "wx_channel/pkg/wxchannels"
 )
 
 const PlatformID = "wx_channels"
 
 type FeedProfileFetcher interface {
-	FetchChannelsFeedProfile(oid, nid, reqURL, eid string) (*apitypes.ChannelsFeedProfileResp, error)
+	FetchChannelsFeedProfile(oid, nid, reqURL, eid string) (*channelspkg.ChannelsFeedProfileResp, error)
 }
 
 type SphProfileFetcher interface {
@@ -24,22 +24,6 @@ type SphProfileFetcher interface {
 
 type Handler struct {
 	Fetcher FeedProfileFetcher
-}
-
-type SphProfile struct {
-	ShareURL        string `json:"share_url,omitempty"`
-	SphID           string `json:"sph_id,omitempty"`
-	ExportID        string `json:"export_id,omitempty"`
-	VideoURL        string `json:"video_url,omitempty"`
-	OriginVideoURL  string `json:"origin_video_url,omitempty"`
-	Description     string `json:"description,omitempty"`
-	CoverURL        string `json:"cover_url,omitempty"`
-	MediaType       int    `json:"media_type,omitempty"`
-	CreateTime      int64  `json:"create_time,omitempty"`
-	AuthorNickname  string `json:"author_nickname,omitempty"`
-	AuthorAvatarURL string `json:"author_avatar_url,omitempty"`
-	ErrCode         int    `json:"err_code,omitempty"`
-	ErrMsg          string `json:"err_msg,omitempty"`
 }
 
 func New(fetcher FeedProfileFetcher) *Handler {
@@ -75,15 +59,15 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 		SourceURL:    input.URL,
 		CanonicalURL: parts.URL,
 		ContentID:    parts.Oid,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:  PlatformID,
-			ID:        parts.Oid,
-			SourceURL: input.URL,
-		}, map[string]string{"url": input.URL}, map[string]any{
-			"oid": parts.Oid,
-			"nid": parts.Nid,
-			"eid": parts.Eid,
-		}, ProbeOutput{}.Map()),
+		Content: NewFeedURLContentEnvelope(
+			contentdownload.ContentSummary{
+				Platform:  PlatformID,
+				ID:        parts.Oid,
+				SourceURL: input.URL,
+			},
+			FeedURLContent{URL: input.URL},
+			FeedURLMetadata{OID: parts.Oid, NID: parts.Nid, EID: parts.Eid},
+		),
 		Defaults: contentdownload.Defaults{
 			VariantID: "original",
 			Suffix:    ".mp4",
@@ -108,37 +92,42 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 	}
 
 	obj := resp.Data.Object
-	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&obj)
+	profile, err := channelspkg.ChannelsObjectToChannelsFeedProfile(&obj)
 	if err != nil {
 		return nil, err
 	}
 
 	isPicture := obj.Type == "picture" || obj.ObjectDesc.MediaType == 2
-	contentType := "video"
+	contentType := ContentTypeVideo
 	if isPicture {
-		contentType = "image_album"
+		contentType = ContentTypeImageAlbum
 	}
 	probe.ContentID = profile.ObjectId
-	probe.Content = contentdownload.NewContent(contentdownload.ContentSummary{
-		Platform:        PlatformID,
-		Type:            contentType,
-		ID:              profile.ObjectId,
-		Title:           profile.Title,
-		Author:          profile.Contact.Nickname,
-		URL:             profile.URL,
-		SourceURL:       profile.SourceURL,
-		AuthorNickname:  profile.Contact.Nickname,
-		AuthorAvatarURL: profile.Contact.AvatarURL,
-		CoverURL:        profile.CoverURL,
-		Duration:        int64(profile.Duration),
-	}, obj, map[string]any{
-		"oid":        parts.Oid,
-		"nid":        parts.Nid,
-		"eid":        parts.Eid,
-		"nonce_id":   profile.NonceId,
-		"source_url": profile.SourceURL,
-	}, ProbeOutput{}.Map())
+	probe.Content = NewFeedContentEnvelope(
+		contentdownload.ContentSummary{
+			Platform:        PlatformID,
+			Type:            contentType,
+			ID:              profile.ObjectId,
+			Title:           profile.Title,
+			Author:          profile.Contact.Nickname,
+			URL:             profile.URL,
+			SourceURL:       profile.SourceURL,
+			AuthorNickname:  profile.Contact.Nickname,
+			AuthorAvatarURL: profile.Contact.AvatarURL,
+			CoverURL:        profile.CoverURL,
+			Duration:        int64(profile.Duration),
+		},
+		obj,
+		FeedMetadata{
+			OID:       parts.Oid,
+			NID:       parts.Nid,
+			EID:       parts.Eid,
+			NonceID:   profile.NonceId,
+			SourceURL: profile.SourceURL,
+		},
+	)
 	probe.Internal["decode_key"] = profile.DecryptKey
+	probe.Internal["pagejson"] = resp
 
 	if isPicture {
 		probe.Variants = []contentdownload.Variant{
@@ -195,15 +184,16 @@ func (h *Handler) probeSph(ctx context.Context, input contentdownload.ProbeInput
 		SourceURL:    input.URL,
 		CanonicalURL: parts.URL,
 		ContentID:    parts.ID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:  PlatformID,
-			Type:      "video",
-			ID:        parts.ID,
-			SourceURL: input.URL,
-		}, SphProfile{ShareURL: input.URL, SphID: parts.ID}, map[string]any{
-			"sph_id":    parts.ID,
-			"share_url": input.URL,
-		}, ProbeOutput{}.Map()),
+		Content: NewSphURLContentEnvelope(
+			contentdownload.ContentSummary{
+				Platform:  PlatformID,
+				Type:      ContentTypeVideo,
+				ID:        parts.ID,
+				SourceURL: input.URL,
+			},
+			SphProfile{ShareURL: input.URL, SphID: parts.ID},
+			SphURLMetadata{SphID: parts.ID, ShareURL: input.URL},
+		),
 		Defaults: contentdownload.Defaults{
 			VariantID: "original",
 			Suffix:    ".mp4",
@@ -241,24 +231,29 @@ func (h *Handler) probeSph(ctx context.Context, input contentdownload.ProbeInput
 	contentID := firstNonEmpty(profile.ExportID, profile.SphID, parts.ID)
 	title := firstNonEmpty(profile.Description, profile.AuthorNickname, contentID)
 	probe.ContentID = contentID
-	probe.Content = contentdownload.NewContent(contentdownload.ContentSummary{
-		Platform:        PlatformID,
-		Type:            "video",
-		ID:              contentID,
-		Title:           title,
-		Description:     profile.Description,
-		Author:          profile.AuthorNickname,
-		URL:             profile.OriginVideoURL,
-		SourceURL:       input.URL,
-		AuthorNickname:  profile.AuthorNickname,
-		AuthorAvatarURL: profile.AuthorAvatarURL,
-		CoverURL:        profile.CoverURL,
-	}, *profile, map[string]any{
-		"sph_id":     profile.SphID,
-		"export_id":  profile.ExportID,
-		"share_url":  profile.ShareURL,
-		"source_url": input.URL,
-	}, ProbeOutput{}.Map())
+	probe.Content = NewSphContentEnvelope(
+		contentdownload.ContentSummary{
+			Platform:        PlatformID,
+			Type:            ContentTypeVideo,
+			ID:              contentID,
+			Title:           title,
+			Description:     profile.Description,
+			Author:          profile.AuthorNickname,
+			URL:             profile.OriginVideoURL,
+			SourceURL:       input.URL,
+			AuthorNickname:  profile.AuthorNickname,
+			AuthorAvatarURL: profile.AuthorAvatarURL,
+			CoverURL:        profile.CoverURL,
+		},
+		*profile,
+		SphMetadata{
+			SphID:     profile.SphID,
+			ExportID:  profile.ExportID,
+			ShareURL:  profile.ShareURL,
+			SourceURL: input.URL,
+		},
+	)
+	probe.Internal["pagejson"] = profile
 	probe.Variants = []contentdownload.Variant{
 		{ID: "original", Type: "video", Label: "默认/原始", Suffix: ".mp4"},
 		{ID: "audio_mp3", Type: "audio", Label: "MP3", Suffix: ".mp3", Requires: []string{"ffmpeg"}},
@@ -291,11 +286,11 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		return h.resolveSph(ctx, input, probe, variant, sph)
 	}
 
-	obj, _ := contentdownload.ContentDataOf(probe.Content).(apitypes.ChannelsObject)
+	obj, _ := contentdownload.ContentDataOf(probe.Content).(channelspkg.ChannelsObject)
 	if obj.ID == "" {
 		return nil, contentdownload.ErrResolveUnavailable
 	}
-	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&obj)
+	profile, err := channelspkg.ChannelsObjectToChannelsFeedProfile(&obj)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +372,7 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 			"variant_id": variant.ID,
 			"decode_key": key,
 		},
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+		Content: channelsContentWithSummary(content, contentdownload.ContentSummary{
 			Platform:        PlatformID,
 			Type:            contentdownload.ContentType(content),
 			ID:              profile.ObjectId,
@@ -389,7 +384,7 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 			AuthorAvatarURL: contentdownload.ContentAuthorAvatarURL(content),
 			CoverURL:        profile.CoverURL,
 			Duration:        contentdownload.ContentDuration(content),
-		}, obj, contentdownload.ContentMetadataOf(content), nil),
+		}),
 	}
 	plan, err := h.Plan(ctx, resolved)
 	if err != nil {
@@ -443,7 +438,7 @@ func (h *Handler) resolveSph(ctx context.Context, input contentdownload.ResolveI
 			"decode_key": "0",
 			"sph":        true,
 		},
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+		Content: channelsContentWithSummary(content, contentdownload.ContentSummary{
 			Platform:        PlatformID,
 			Type:            contentdownload.ContentType(content),
 			ID:              contentID,
@@ -455,7 +450,7 @@ func (h *Handler) resolveSph(ctx context.Context, input contentdownload.ResolveI
 			AuthorNickname:  firstNonEmpty(sph.AuthorNickname, contentdownload.ContentAuthorNickname(content)),
 			AuthorAvatarURL: firstNonEmpty(sph.AuthorAvatarURL, contentdownload.ContentAuthorAvatarURL(content)),
 			CoverURL:        firstNonEmpty(sph.CoverURL, contentdownload.ContentCoverURL(content)),
-		}, sph, contentdownload.ContentMetadataOf(content), nil),
+		}),
 	}
 	plan, err := h.Plan(ctx, resolved)
 	if err != nil {
@@ -463,6 +458,29 @@ func (h *Handler) resolveSph(ctx context.Context, input contentdownload.ResolveI
 	}
 	resolved.Pipeline = plan
 	return resolved, nil
+}
+
+func channelsContentWithSummary(content any, summary contentdownload.ContentSummary) any {
+	switch c := content.(type) {
+	case *FeedURLContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	case *FeedContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	case *SphURLContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	case *SphContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	default:
+		return contentdownload.NewContent(summary, contentdownload.ContentDataOf(content), contentdownload.ContentMetadataOf(content), contentdownload.ContentOutputOf(content))
+	}
 }
 
 func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRequest) (*contentdownload.PipelinePlan, error) {
@@ -501,68 +519,23 @@ func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRe
 	return &contentdownload.PipelinePlan{Platform: PlatformID, Nodes: nodes}, nil
 }
 
-type FeedURLParts struct {
-	URL string
-	Oid string
-	Nid string
-	Eid string
-}
-
-type SphURLParts struct {
-	URL string
-	ID  string
-}
+type FeedURLParts = channelspkg.FeedURLParts
+type SphURLParts = channelspkg.SphURLParts
 
 func ParseFeedURL(rawURL string) (*FeedURLParts, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil {
-		return nil, err
-	}
-	if !strings.EqualFold(parsed.Hostname(), "channels.weixin.qq.com") || parsed.EscapedPath() != "/web/pages/feed" {
+	parts, err := channelspkg.ParseFeedURL(rawURL)
+	if errors.Is(err, channelspkg.ErrUnsupportedURL) {
 		return nil, contentdownload.ErrUnsupportedURL
 	}
-	q := parsed.Query()
-	oid := q.Get("oid")
-	nid := q.Get("nid")
-	if oid != "" {
-		if decoded := util.DecodeBase64ToUint64String(oid); decoded != "" {
-			oid = decoded
-		}
-	}
-	if nid != "" {
-		if decoded := util.DecodeBase64ToUint64String(nid); decoded != "" {
-			nid = decoded
-		}
-	}
-	return &FeedURLParts{
-		URL: rawURL,
-		Oid: oid,
-		Nid: nid,
-		Eid: q.Get("eid"),
-	}, nil
+	return parts, err
 }
 
 func ParseSphShareURL(rawURL string) (*SphURLParts, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, err
-	}
-
-	host := parsed.Hostname()
-	path := parsed.EscapedPath()
-	var id string
-	if strings.EqualFold(host, "weixin.qq.com") && strings.HasPrefix(path, "/sph/") {
-		id = strings.Trim(strings.TrimPrefix(parsed.Path, "/sph/"), "/")
-	} else if strings.EqualFold(host, "channels.weixin.qq.com") && path == "/finder-preview/pages/sph" {
-		id = strings.TrimSpace(parsed.Query().Get("id"))
-	} else {
+	parts, err := channelspkg.ParseSphShareURL(rawURL)
+	if errors.Is(err, channelspkg.ErrUnsupportedURL) {
 		return nil, contentdownload.ErrUnsupportedURL
 	}
-	if id == "" {
-		return nil, contentdownload.ErrUnsupportedURL
-	}
-	return &SphURLParts{URL: rawURL, ID: id}, nil
+	return parts, err
 }
 
 func cleanSphVideoURL(videoURL string) string {

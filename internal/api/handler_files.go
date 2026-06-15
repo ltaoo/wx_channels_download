@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/channels"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 func (c *APIClient) handleIndex(ctx *gin.Context) {

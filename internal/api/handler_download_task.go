@@ -19,10 +19,10 @@ import (
 	"gorm.io/gorm/clause"
 
 	"wx_channel/internal/api/services"
-	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 	utilpkg "wx_channel/pkg/util"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 type compatDownloadTaskID struct {

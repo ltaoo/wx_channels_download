@@ -35,16 +35,17 @@ import (
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
-	"wx_channel/internal/officialaccount"
 	platformbilibili "wx_channel/internal/platformbrowser/bilibili"
 	platformweibo "wx_channel/internal/platformbrowser/weibo"
 	platformxiaohongshu "wx_channel/internal/platformbrowser/xiaohongshu"
 	platformyoutube "wx_channel/internal/platformbrowser/youtube"
 	platformzhihu "wx_channel/internal/platformbrowser/zhihu"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 var (
@@ -237,13 +238,14 @@ func root_command(cfg *config.Config) {
 
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
+	channels_interceptor_cfg := channels.NewInterceptorSettings(cfg)
 	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
-	if script_byte := interceptor_cfg.InjectGlobalScript; script_byte != "" {
-		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(interceptor_cfg.InjectGlobalScriptFilepath))
+	if script_byte := channels_interceptor_cfg.InjectGlobalScript; script_byte != "" {
+		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(channels_interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
 	interceptor_srv.Interceptor.SetLog(log_file)
-	interceptor_srv.Interceptor.AddPostPlugin(interceptor.CreateYuanbaoTencentPlugin(func(cookieStr string) {
+	interceptor_srv.Interceptor.AddPostPlugin(channels.CreateYuanbaoTencentPlugin(func(cookieStr string) {
 		allowedKeys := map[string]bool{"hy_source": true, "hy_user": true, "hy_token": true}
 		var filtered []string
 		for _, kv := range strings.Split(cookieStr, ";") {
@@ -264,7 +266,7 @@ func root_command(cfg *config.Config) {
 		}
 	}))
 	mgr.RegisterServer(interceptor_srv)
-	interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
+	channels_interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	if api_cfg.RemoteServerEnabled {
 		fmt.Printf("启用了远端服务，视频将下载至远端服务器目录\n\n")
 	} else {
@@ -273,9 +275,9 @@ func root_command(cfg *config.Config) {
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
 	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
-	interceptor_srv.Interceptor.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
-	interceptor_srv.Interceptor.AddVariable("downloadDir", api_cfg.DownloadDir)
-	interceptor_srv.Interceptor.OnFeedProfileLoaded = func(profile *interceptor.ChannelMediaProfile) {
+	channels_interceptor_cfg.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
+	channels_interceptor_cfg.AddVariable("downloadDir", api_cfg.DownloadDir)
+	onChannelsFeedProfileLoaded := func(profile *channels.MediaProfile) {
 		if profile == nil || profile.Id == "" {
 			return
 		}
@@ -443,6 +445,9 @@ func root_command(cfg *config.Config) {
 	}
 	if viper.GetBool("weibo.enabled") {
 		interceptor_srv.Interceptor.AddPostPlugin(platformweibo.CreatePlugin(onWeiboLoaded))
+	}
+	for _, plugin := range channels.CreateInterceptorPlugins(channels_interceptor_cfg, frontend.Assets, onChannelsFeedProfileLoaded) {
+		interceptor_srv.Interceptor.AddPostPlugin(plugin)
 	}
 
 	cleanup := func() {

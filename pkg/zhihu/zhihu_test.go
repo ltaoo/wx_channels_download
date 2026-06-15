@@ -76,6 +76,59 @@ func TestBuildHTMLFromInitialData(t *testing.T) {
 	}
 }
 
+func TestExtractInitialDataJSONFromZhihuHTML(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "zhihu.html"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("zhihu.html fixture not present")
+		}
+		t.Fatal(err)
+	}
+	raw, err := ExtractInitialDataJSON(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(raw) {
+		t.Fatal("initial data json is invalid")
+	}
+
+	var data InitialData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.SpanName != "AnswerPage" {
+		t.Fatalf("spanName = %q, want AnswerPage", data.SpanName)
+	}
+	if got := data.InitialState.Entities.Questions["35977425"].Title; got != "有独立开发完成一个量化系统开发的人吗？" {
+		t.Fatalf("question title = %q", got)
+	}
+	answer := data.InitialState.Entities.Answers["1957384674738435667"]
+	if answer.ID == "" || answer.Question.ID != "35977425" || answer.Author.Name != "Mr.看海" {
+		t.Fatalf("answer entity = %#v", answer)
+	}
+
+	answerURL, ok := ParseAnswerURL("https://www.zhihu.com/question/undefined/answer/1957384674738435667")
+	if !ok {
+		t.Fatal("ParseAnswerURL should accept undefined question id")
+	}
+	if answerURL.QuestionID != "" {
+		t.Fatalf("question id = %q, want empty before initial data is parsed", answerURL.QuestionID)
+	}
+	page, err := parseAnswerPage(body, answerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.URL.QuestionID != "35977425" || page.URL.Canonical != "https://www.zhihu.com/question/35977425/answer/1957384674738435667" {
+		t.Fatalf("page URL = %#v", page.URL)
+	}
+	if len(page.InitialDataJSON) == 0 || page.InitialData == nil {
+		t.Fatal("page did not retain initial data")
+	}
+	if !strings.Contains(page.Answer.Content, `class="video-box"`) {
+		t.Fatalf("answer content was not decoded from initial data: %s", page.Answer.Content)
+	}
+}
+
 func TestInlineRemoteImages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "image/png")

@@ -2,6 +2,7 @@ package zhihu
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +31,18 @@ func (fakePageFetcher) FetchAnswerPage(rawURL string) (*zhihupkg.AnswerPage, err
 			Author:  zhihupkg.User{Name: "author", AvatarURL: "https://example.com/answer-avatar.jpg"},
 		},
 	}, nil
+}
+
+type fakeInitialDataFetcher struct{}
+
+func (fakeInitialDataFetcher) FetchAnswerPage(rawURL string) (*zhihupkg.AnswerPage, error) {
+	page, err := fakePageFetcher{}.FetchAnswerPage(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	page.InitialDataJSON = json.RawMessage(`{"initialState":{"entities":{"questions":{"1":{"id":"1","title":"question"}},"answers":{"2":{"id":"2","content":"<p>answer body</p>"}}}},"spanName":"AnswerPage"}`)
+	page.PageHTML = "<html>raw zhihu page</html>"
+	return page, nil
 }
 
 func (fakePageFetcher) FetchQuestionPage(rawURL string) (*zhihupkg.QuestionPage, error) {
@@ -155,6 +168,16 @@ func TestProbeAnswerReturnsBodyOutput(t *testing.T) {
 	if probe.Content == nil {
 		t.Fatal("expected probe content")
 	}
+	envelope, ok := probe.Content.(*AnswerContentEnvelope)
+	if !ok {
+		t.Fatalf("probe content = %T, want *AnswerContentEnvelope", probe.Content)
+	}
+	if envelope.Metadata.QuestionID != "1" || envelope.Metadata.AnswerID != "2" {
+		t.Fatalf("answer metadata = %#v", envelope.Metadata)
+	}
+	if envelope.Output.ContentType != ContentTypeAnswer || envelope.Output.BodyHTML != "<p>answer body</p>" {
+		t.Fatalf("answer output = %#v", envelope.Output)
+	}
 	data, ok := contentdownload.ContentDataOf(probe.Content).(AnswerContent)
 	if !ok {
 		t.Fatalf("content data = %#v, want AnswerContent", contentdownload.ContentDataOf(probe.Content))
@@ -180,6 +203,45 @@ func TestProbeAnswerReturnsBodyOutput(t *testing.T) {
 	}
 }
 
+func TestResolveInitialDataJSONVariant(t *testing.T) {
+	h := New(fakeInitialDataFetcher{})
+	probe, err := h.Probe(context.Background(), contentdownload.ProbeInput{URL: "https://www.zhihu.com/question/1/answer/2"})
+	if err != nil {
+		t.Fatalf("Probe answer: %v", err)
+	}
+	found := false
+	for _, variant := range probe.Variants {
+		if variant.ID == "initial_data_json" && variant.Type == "json" && variant.Suffix == ".json" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("probe variants missing initial_data_json: %#v", probe.Variants)
+	}
+	if raw, ok := probe.Internal["pagejson"].(json.RawMessage); !ok || !json.Valid(raw) {
+		t.Fatalf("probe pagejson = %#v", probe.Internal["pagejson"])
+	}
+	if probe.Internal["pagehtml"] != "<html>raw zhihu page</html>" {
+		t.Fatalf("probe pagehtml = %#v", probe.Internal["pagehtml"])
+	}
+
+	resolved, err := h.Resolve(context.Background(), contentdownload.ResolveInput{
+		URL:     "https://www.zhihu.com/question/1/answer/2",
+		Probe:   probe,
+		Options: contentdownload.Options{VariantID: "initial_data_json"},
+	})
+	if err != nil {
+		t.Fatalf("Resolve initial data json: %v", err)
+	}
+	if resolved.Download.Protocol != "inline_json" || resolved.Suffix != ".json" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	raw, ok := resolved.Metadata["json"].(json.RawMessage)
+	if !ok || !json.Valid(raw) {
+		t.Fatalf("resolved json = %#v", resolved.Metadata["json"])
+	}
+}
+
 func TestProbeQuestionAndArticleContentFields(t *testing.T) {
 	h := New(fakePageFetcher{})
 
@@ -192,6 +254,9 @@ func TestProbeQuestionAndArticleContentFields(t *testing.T) {
 		contentdownload.ContentAuthorNickname(question.Content) != "question author" ||
 		contentdownload.ContentAuthorAvatarURL(question.Content) != "https://example.com/question-avatar.jpg" {
 		t.Fatalf("question probe = %#v", question)
+	}
+	if _, ok := question.Content.(*QuestionContentEnvelope); !ok {
+		t.Fatalf("question content = %T, want *QuestionContentEnvelope", question.Content)
 	}
 	if output := contentdownload.ContentOutputOf(question.Content); output["body_html"] != "<p>question body</p>" {
 		t.Fatalf("question body_html = %#v", output["body_html"])
@@ -206,6 +271,9 @@ func TestProbeQuestionAndArticleContentFields(t *testing.T) {
 		contentdownload.ContentAuthorNickname(article.Content) != "article author" ||
 		contentdownload.ContentAuthorAvatarURL(article.Content) != "https://example.com/article-avatar.jpg" {
 		t.Fatalf("article probe = %#v", article)
+	}
+	if _, ok := article.Content.(*ArticleContentEnvelope); !ok {
+		t.Fatalf("article content = %T, want *ArticleContentEnvelope", article.Content)
 	}
 	if contentdownload.ContentCoverURL(article.Content) != "https://example.com/cover.jpg" {
 		t.Fatalf("article cover = %q", contentdownload.ContentCoverURL(article.Content))
@@ -228,6 +296,9 @@ func TestResolvePreservesProbeSummaryAndContentIDs(t *testing.T) {
 	}
 	if answerResolved.Labels["question_id"] != "1" || answerResolved.Labels["answer_id"] != "2" {
 		t.Fatalf("answer labels = %#v", answerResolved.Labels)
+	}
+	if _, ok := answerResolved.Content.(*AnswerContentEnvelope); !ok {
+		t.Fatalf("answer resolved content = %T, want *AnswerContentEnvelope", answerResolved.Content)
 	}
 	answerSummary := contentdownload.ContentSummaryOf(answerResolved.Content)
 	if answerSummary.Description != "excerpt" ||

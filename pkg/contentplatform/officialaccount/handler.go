@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
-
 	contentdownload "wx_channel/pkg/contentplatform/download"
+	officialaccountpkg "wx_channel/pkg/officialaccount"
 )
 
 const PlatformID = "officialaccount"
 
 type ArticleFetcher interface {
-	FetchArticle(url string) (*officialaccountdownload.WechatOfficialArticle, error)
+	FetchArticle(url string) (*officialaccountpkg.WechatOfficialArticle, error)
 }
 
 type Handler struct {
@@ -22,7 +21,7 @@ type Handler struct {
 
 func New(fetcher ArticleFetcher) *Handler {
 	if fetcher == nil {
-		fetcher = &officialaccountdownload.OfficialAccountDownload{}
+		fetcher = &officialaccountpkg.OfficialAccountDownload{}
 	}
 	return &Handler{Fetcher: fetcher}
 }
@@ -32,11 +31,11 @@ func (h *Handler) Platform() string {
 }
 
 func (h *Handler) Match(rawURL string) bool {
-	return officialaccountdownload.ExtractArticleID(rawURL) != ""
+	return officialaccountpkg.ExtractArticleID(rawURL) != ""
 }
 
 func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (*contentdownload.Probe, error) {
-	articleID := officialaccountdownload.ExtractArticleID(input.URL)
+	articleID := officialaccountpkg.ExtractArticleID(input.URL)
 	if articleID == "" {
 		return nil, contentdownload.ErrUnsupportedURL
 	}
@@ -53,31 +52,42 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 		Platform:  PlatformID,
 		SourceURL: input.URL,
 		ContentID: articleID,
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
-			Platform:        PlatformID,
-			Type:            "article",
-			ID:              articleID,
-			Title:           title,
-			Description:     article.Creator,
-			Author:          firstNonEmpty(article.AuthorNickname, article.Creator, article.AuthorID),
-			URL:             input.URL,
-			SourceURL:       input.URL,
-			AuthorNickname:  firstNonEmpty(article.AuthorNickname, article.Creator, article.AuthorID),
-			AuthorAvatarURL: article.AuthorAvatar,
-			CoverURL:        coverURL,
-		}, article, map[string]any{
-			"author_id": article.AuthorID,
-		}, ProbeOutput{
-			Format:      "html",
-			ContentType: "article",
-			Title:       title,
-			SourceURL:   input.URL,
-			BodyHTML:    article.Content,
-		}.Map()),
+		Content: NewArticleContentEnvelope(
+			contentdownload.ContentSummary{
+				Platform:        PlatformID,
+				Type:            ContentTypeArticle,
+				ID:              articleID,
+				Title:           title,
+				Description:     article.Creator,
+				Author:          firstNonEmpty(article.AuthorNickname, article.Creator, article.AuthorID),
+				URL:             input.URL,
+				SourceURL:       input.URL,
+				AuthorNickname:  firstNonEmpty(article.AuthorNickname, article.Creator, article.AuthorID),
+				AuthorAvatarURL: article.AuthorAvatar,
+				CoverURL:        coverURL,
+			},
+			article,
+			ArticleMetadata{
+				ArticleID: articleID,
+				AuthorID:  article.AuthorID,
+			},
+			ArticleOutput{
+				Format:      OutputFormatHTML,
+				ContentType: ContentTypeArticle,
+				ArticleID:   articleID,
+				Title:       title,
+				SourceURL:   input.URL,
+				BodyHTML:    article.Content,
+			},
+		),
 		Variants: []contentdownload.Variant{
 			{ID: "html", Type: "html", Label: "HTML", Suffix: ".html"},
 		},
 		Defaults: contentdownload.Defaults{VariantID: "html", Suffix: ".html"},
+		Internal: map[string]any{
+			"pagejson": article.PageJSON,
+			"pagehtml": article.PageHTML,
+		},
 	}, nil
 }
 
@@ -123,9 +133,9 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 			"variant_id": variant.ID,
 			"article":    contentdownload.ContentDataOf(probe.Content),
 		},
-		Content: contentdownload.NewContent(contentdownload.ContentSummary{
+		Content: officialAccountContentWithSummary(probe.Content, contentdownload.ContentSummary{
 			Platform:        PlatformID,
-			Type:            "article",
+			Type:            ContentTypeArticle,
 			ID:              probe.ContentID,
 			Title:           contentdownload.ContentTitle(probe.Content),
 			URL:             probe.SourceURL,
@@ -134,7 +144,7 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 			AuthorNickname:  contentdownload.ContentAuthorNickname(probe.Content),
 			AuthorAvatarURL: contentdownload.ContentAuthorAvatarURL(probe.Content),
 			CoverURL:        contentdownload.ContentCoverURL(probe.Content),
-		}, contentdownload.ContentDataOf(probe.Content), contentdownload.ContentMetadataOf(probe.Content), contentdownload.ContentOutputOf(probe.Content)),
+		}),
 	}
 	plan, err := h.Plan(ctx, resolved)
 	if err != nil {
@@ -142,6 +152,17 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 	}
 	resolved.Pipeline = plan
 	return resolved, nil
+}
+
+func officialAccountContentWithSummary(content any, summary contentdownload.ContentSummary) any {
+	switch c := content.(type) {
+	case *ArticleContentEnvelope:
+		next := *c
+		next.Summary = summary
+		return &next
+	default:
+		return contentdownload.NewContent(summary, contentdownload.ContentDataOf(content), contentdownload.ContentMetadataOf(content), contentdownload.ContentOutputOf(content))
+	}
 }
 
 func (h *Handler) Plan(ctx context.Context, resolved *contentdownload.ResolvedRequest) (*contentdownload.PipelinePlan, error) {

@@ -392,29 +392,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 
 	if isImageArticle {
 		htmlContent.WriteString(`<div class="split-container"><div class="split-left"><div class="additional-images">`)
-		for _, imgURL := range article.Images {
-			imgData, mimeType, err := downloadImageBytes(imgURL)
-			if err == nil {
-				c.reportProgress(int64(len(imgData)))
-				if need_compress_img {
-					// Compress image to reduce size
-					compressedData, compressedMime, errCompress := compressImage(imgData)
-					if errCompress == nil {
-						fmt.Printf("Compressed image %s: %d -> %d bytes (%.2f%%)\n",
-							imgURL, len(imgData), len(compressedData), float64(len(compressedData))/float64(len(imgData))*100)
-						imgData = compressedData
-						mimeType = compressedMime
-					} else {
-						fmt.Printf("Failed to compress image %s: %v\n", imgURL, errCompress)
-					}
-				}
-				base64Str := base64.StdEncoding.EncodeToString(imgData)
-				imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
-				htmlContent.WriteString(fmt.Sprintf("        <img src=\"%s\" alt=\"\">\n", imgSrc))
-			} else {
-				fmt.Printf("Failed to download image for base64 %s: %v\n", imgURL, err)
-			}
-		}
+		c.writePictureArticleMedia(&htmlContent, article, need_compress_img)
 		htmlContent.WriteString(`</div></div><div class="split-right">`)
 	}
 
@@ -566,6 +544,75 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 	return htmlContent.String(), nil
 }
 
+func (c *OfficialAccountDownload) writePictureArticleMedia(htmlContent *strings.Builder, article *WechatOfficialArticle, needCompressImg bool) {
+	if htmlContent == nil || article == nil {
+		return
+	}
+	if len(article.PicturePageInfoList) > 0 {
+		for _, item := range article.PicturePageInfoList {
+			if videoURL := picturePageInfoLivePhotoURL(item); videoURL != "" {
+				posterAttr := ""
+				if item.CdnUrl != "" {
+					posterAttr = fmt.Sprintf(` poster="%s"`, escapeHTML(item.CdnUrl))
+				}
+				htmlContent.WriteString(fmt.Sprintf(`        <video src="%s"%s controls="controls" playsinline style="width: 100%%; height: auto;"></video>`+"\n", escapeHTML(videoURL), posterAttr))
+				continue
+			}
+			c.writeInlineImage(htmlContent, item.CdnUrl, needCompressImg)
+		}
+		return
+	}
+	for _, imgURL := range article.Images {
+		c.writeInlineImage(htmlContent, imgURL, needCompressImg)
+	}
+}
+
+func (c *OfficialAccountDownload) writeInlineImage(htmlContent *strings.Builder, imgURL string, needCompressImg bool) {
+	if htmlContent == nil || imgURL == "" {
+		return
+	}
+	imgData, mimeType, err := downloadImageBytes(imgURL)
+	if err == nil {
+		c.reportProgress(int64(len(imgData)))
+		if needCompressImg {
+			compressedData, compressedMime, errCompress := compressImage(imgData)
+			if errCompress == nil {
+				fmt.Printf("Compressed image %s: %d -> %d bytes (%.2f%%)\n",
+					imgURL, len(imgData), len(compressedData), float64(len(compressedData))/float64(len(imgData))*100)
+				imgData = compressedData
+				mimeType = compressedMime
+			} else {
+				fmt.Printf("Failed to compress image %s: %v\n", imgURL, errCompress)
+			}
+		}
+		base64Str := base64.StdEncoding.EncodeToString(imgData)
+		imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
+		htmlContent.WriteString(fmt.Sprintf("        <img src=\"%s\" alt=\"\">\n", imgSrc))
+	} else {
+		fmt.Printf("Failed to download image for base64 %s: %v\n", imgURL, err)
+	}
+}
+
+func picturePageInfoLivePhotoURL(item PicturePageInfo) string {
+	for _, raw := range item.LivePhoto.FormatInfo {
+		if m, ok := raw.(map[string]any); ok {
+			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
+				if value, _ := m[key].(string); strings.TrimSpace(value) != "" {
+					return value
+				}
+			}
+		}
+		if m, ok := raw.(map[string]string); ok {
+			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
+				if value := strings.TrimSpace(m[key]); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) (string, error) {
 	// Generate filename based on hash of URL
 	hash := md5.Sum([]byte(imgURL))
@@ -657,29 +704,37 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 	if err != nil {
 		return nil, err
 	}
-	article := &WechatOfficialArticle{
-		Type:           data.PageType,
-		Title:          data.Title,
-		Content:        data.ContentNoEncode,
-		PublishTimeStr: publish_time_str,
-		ContentLength:  len(data.ContentNoEncode),
-		Creator:        data.Author,
-		AuthorNickname: data.NickName,
-		AuthorAvatar:   data.RoundHeadImg,
-		AuthorID:       data.UserName,
-		Images:         make([]string, 0),
-		Videos:         data.VideoPageInfos,
-	}
-	// isImageArticle := data.PageType == 2
-	if len(data.PicturePageInfoList) > 1 {
-		for _, img := range data.PicturePageInfoList {
-			if img.CdnUrl != "" {
-				article.Images = append(article.Images, img.CdnUrl)
-			}
-		}
-	}
+	article := newWechatOfficialArticle(data, publish_time_str)
+	article.PageJSON = data
+	article.PageHTML = content_str
 	c.article = article
 	return article, nil
+}
+
+func newWechatOfficialArticle(data *CgiDataNew, publishTimeStr string) *WechatOfficialArticle {
+	if data == nil {
+		return &WechatOfficialArticle{}
+	}
+	article := &WechatOfficialArticle{
+		Type:                data.PageType,
+		Title:               data.Title,
+		Content:             data.ContentNoEncode,
+		PublishTimeStr:      publishTimeStr,
+		ContentLength:       len(data.ContentNoEncode),
+		Creator:             data.Author,
+		AuthorNickname:      data.NickName,
+		AuthorAvatar:        data.RoundHeadImg,
+		AuthorID:            data.UserName,
+		Images:              make([]string, 0),
+		Videos:              data.VideoPageInfos,
+		PicturePageInfoList: data.PicturePageInfoList,
+	}
+	for _, item := range data.PicturePageInfoList {
+		if item.CdnUrl != "" {
+			article.Images = append(article.Images, item.CdnUrl)
+		}
+	}
+	return article
 }
 
 func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {

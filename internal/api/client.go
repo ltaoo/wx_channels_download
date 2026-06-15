@@ -22,15 +22,15 @@ import (
 	"wx_channel/internal/api/services"
 	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/assets"
-	"wx_channel/internal/channels"
 	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/manager"
-	"wx_channel/internal/officialaccount"
 	"wx_channel/internal/storage"
 	"wx_channel/pkg/decrypt"
+	"wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
+	channels "wx_channel/pkg/wxchannels"
 )
 
 type APIClient struct {
