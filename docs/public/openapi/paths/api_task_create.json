@@ -60,7 +60,11 @@
                 "value": {
                   "code": 0,
                   "msg": "成功",
-                  "data": {}
+                  "data": {
+                    "id": "task-id",
+                    "filepath": "/downloads/video.mp4",
+                    "filename": "video.mp4"
+                  }
                 }
               },
               "fail": {

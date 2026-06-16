@@ -35,6 +35,12 @@ type ChannelsDownloadRequest struct {
 	Suffix string                  `json:"suffix"`
 }
 
+type createFeedDownloadTaskResult struct {
+	ID       string `json:"id"`
+	Filepath string `json:"filepath"`
+	Filename string `json:"filename"`
+}
+
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	bodyBytes, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
@@ -129,14 +135,14 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		}
 	}
 
-	id, err := c.startDownloadChannelsObject(&body)
+	task, err := c.startDownloadChannelsObject(&body)
 	if err != nil {
 		c.logger.Error().Interface("body", body).Err(err).Msg("创建任务失败")
 		result.Err(ctx, 500, "创建任务失败："+err.Error())
 		return
 	}
 
-	result.Ok(ctx, gin.H{"id": id})
+	result.Ok(ctx, task)
 }
 
 func isChannelsDownloadURL(rawURL string) bool {
@@ -1019,29 +1025,29 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 
 	var ids []string
 	for _, req := range body.Feeds {
-		id, err := c.startDownloadChannelsObject(&req)
+		task, err := c.startDownloadChannelsObject(&req)
 		if err != nil {
 			c.logger.Warn().Err(err).Interface("req", req).Msg("批量创建任务跳过一项")
 			continue
 		}
-		ids = append(ids, id)
+		ids = append(ids, task.ID)
 	}
 
 	result.Ok(ctx, gin.H{"ids": ids})
 }
 
-func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (string, error) {
+func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (*createFeedDownloadTaskResult, error) {
 	obj := body.Object
 
 	// 1. Convert to profile (validates the object)
 	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&obj)
 	if err != nil {
-		return "", fmt.Errorf("转换失败: %w", err)
+		return nil, fmt.Errorf("转换失败: %w", err)
 	}
 
 	// 2. Live is not supported here
 	if obj.LiveInfo != nil {
-		return "", fmt.Errorf("直播类型请使用直播下载")
+		return nil, fmt.Errorf("直播类型请使用直播下载")
 	}
 
 	// 3. Upsert Account/Content/ContentAccount in DB (non-fatal)
@@ -1100,7 +1106,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 	// 6. Validate and split filename into dir/name
 	dir, name, err := util.ValidateAndSplitFilename(filename)
 	if err != nil {
-		return "", fmt.Errorf("不合法的文件名: %w", err)
+		return nil, fmt.Errorf("不合法的文件名: %w", err)
 	}
 
 	// 7. Determine URL and suffix
@@ -1120,7 +1126,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		downloadURL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	} else {
 		if objMedia == nil {
-			return "", fmt.Errorf("缺少可下载的视频内容")
+			return nil, fmt.Errorf("缺少可下载的视频内容")
 		}
 		downloadURL = objMedia.URL + objMedia.URLToken
 
@@ -1149,7 +1155,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 	finalName := name + suffix
 	finalPath := filepath.Join(c.cfg.DownloadDir, dir)
 	if err := os.MkdirAll(finalPath, 0o755); err != nil {
-		return "", fmt.Errorf("创建目录失败: %w", err)
+		return nil, fmt.Errorf("创建目录失败: %w", err)
 	}
 	counter := 1
 	baseName := name
@@ -1172,7 +1178,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		sameSpec := t.Meta.Req.Labels["spec"] == spec
 		sameSuffix := t.Meta.Req.Labels["suffix"] == suffix
 		if sameID && sameSpec && sameSuffix {
-			return "", fmt.Errorf("已存在该下载内容")
+			return nil, fmt.Errorf("已存在该下载内容")
 		}
 	}
 
@@ -1209,7 +1215,7 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		},
 	)
 	if err != nil {
-		return "", fmt.Errorf("创建任务失败: %w", err)
+		return nil, fmt.Errorf("创建任务失败: %w", err)
 	}
 
 	// 14. Link DownloadTask to Content in DB
@@ -1230,7 +1236,18 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		})
 	}
 
-	return taskID, nil
+	absoluteFilepath := filepath.Join(finalPath, finalName)
+	if !filepath.IsAbs(absoluteFilepath) {
+		if abs, err := filepath.Abs(absoluteFilepath); err == nil {
+			absoluteFilepath = abs
+		}
+	}
+
+	return &createFeedDownloadTaskResult{
+		ID:       taskID,
+		Filepath: absoluteFilepath,
+		Filename: finalName,
+	}, nil
 }
 
 func (c *APIClient) handleStartTask(ctx *gin.Context) {
