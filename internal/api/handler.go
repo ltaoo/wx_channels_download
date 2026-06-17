@@ -808,7 +808,19 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleClearTasks(ctx *gin.Context) {
-	c.downloader.Delete(nil, true)
+	var body struct {
+		DeleteFiles bool `json:"delete_files"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil && err != io.EOF {
+			result.Err(ctx, 400, "不合法的参数")
+			return
+		}
+	}
+	if err := c.downloader.Delete(nil, body.DeleteFiles); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
 	c.downloader_ws.Broadcast(APIClientWSMessage{
 		Type: "clear",
 		Data: c.downloader.GetTasks(),
