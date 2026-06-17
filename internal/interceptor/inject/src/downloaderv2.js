@@ -71,12 +71,76 @@ function total_speed(tasks) {
   });
   return sum;
 }
+function empty_download_status_counts() {
+  return {
+    total: 0,
+    ready: 0,
+    running: 0,
+    wait: 0,
+    pause: 0,
+    error: 0,
+    done: 0,
+  };
+}
+function normalize_download_status(status) {
+  if (status === "paused") return "pause";
+  if (status === "failed") return "error";
+  return status;
+}
+function normalize_download_status_counts(counts) {
+  const next = empty_download_status_counts();
+  Object.keys(counts || {}).forEach((status) => {
+    const normalized = normalize_download_status(status);
+    if (typeof next[normalized] === "undefined") {
+      return;
+    }
+    next[normalized] += Number(counts[status]) || 0;
+  });
+  if (!counts || typeof counts.total === "undefined") {
+    next.total =
+      next.ready + next.running + next.wait + next.pause + next.error + next.done;
+  }
+  return next;
+}
+function format_download_status_counts(counts) {
+  const c = normalize_download_status_counts(counts);
+  return [
+    `未开始 ${c.ready}`,
+    `下载中 ${c.running}`,
+    `排队 ${c.wait}`,
+    `已暂停 ${c.pause}`,
+    `失败 ${c.error}`,
+    `已完成 ${c.done}`,
+  ].join(" · ");
+}
 
 function DownloaderPanelViewModel(options = {}) {
   const ITEM_HEIGHT = 82;
   const GUTTER = 8;
   const _pageSize = 50;
-  const onRequestClose = options.onRequestClose || Timeless.noop || (() => {});
+  const tasks_ = refarr([]);
+  const task_count_ = ref(0);
+  const status_counts_ = ref(empty_download_status_counts());
+  const setStatusCounts = (counts) => {
+    const normalized = normalize_download_status_counts(counts);
+    status_counts_.as(normalized);
+    task_count_.as(normalized.total);
+  };
+  const adjustStatusCounts = (fromStatus, toStatus, totalDelta) => {
+    status_counts_.as((prev) => {
+      const next = normalize_download_status_counts(prev);
+      const from = normalize_download_status(fromStatus);
+      const to = normalize_download_status(toStatus);
+      if (from && typeof next[from] !== "undefined" && next[from] > 0) {
+        next[from] -= 1;
+      }
+      if (to && typeof next[to] !== "undefined") {
+        next[to] += 1;
+      }
+      next.total = Math.max(0, next.total + (totalDelta || 0));
+      return next;
+    });
+  };
 
   const taskListReq = new Timeless.kit.RequestCore(
     (params) => request.get("/api/task/list", params),
@@ -86,6 +150,7 @@ function DownloaderPanelViewModel(options = {}) {
         if (r.error) {
           return r.error;
         }
+        setStatusCounts(r.data.status_counts);
         return Timeless.Result.Ok({
           list: (r.data.list || []).map((t) => methods.formatTask(t)),
           total: r.data.total || 0,
@@ -103,8 +168,16 @@ function DownloaderPanelViewModel(options = {}) {
     (id) => request.post("/api/task/start", { id }),
     { client: http_client },
   );
+  const startAllReq = new Timeless.kit.RequestCore(
+    () => request.post("/api/task/start_all"),
+    { client: http_client },
+  );
   const pauseReq = new Timeless.kit.RequestCore(
     (id) => request.post("/api/task/pause", { id }),
+    { client: http_client },
+  );
+  const pauseAllReq = new Timeless.kit.RequestCore(
+    () => request.post("/api/task/pause_all"),
     { client: http_client },
   );
   const resumeReq = new Timeless.kit.RequestCore(
@@ -133,6 +206,31 @@ function DownloaderPanelViewModel(options = {}) {
   const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
+  const updateTaskStatus = (id, status) => {
+    const matched = tasks_.find((t) => t.id === id);
+    const oldStatus = matched ? matched.status : "";
+    list$.modifyItem((t) => (t.id === id ? { ...t, status } : t));
+    if (matched) {
+      matched.assign({ status });
+      if (normalize_download_status(oldStatus) !== normalize_download_status(status)) {
+        adjustStatusCounts(oldStatus, status, 0);
+      }
+    }
+  };
+  const reloadTasks = async () => {
+    list$.clear();
+    tasks_.as([]);
+    task_count_.as(0);
+    ui.waterfall$.methods.cleanColumns();
+    const r = await list$.init();
+    if (r.error) {
+      return r;
+    }
+    const tasks = list$.response.dataSource;
+    tasks_.push(...tasks);
+    task_count_.as(list$.response.total);
+    ui.waterfall$.methods.appendItems(tasks);
+  };
 
   const methods = {
     formatTask(task) {
@@ -164,16 +262,7 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      list$.modifyItem((t) =>
-        t.id === task.id ? { ...t, status: "running" } : t,
-      );
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "running",
-      });
+      updateTaskStatus(task.id, "running");
     },
     async pauseTask(task) {
       const r = await pauseReq.run(task.id);
@@ -181,16 +270,7 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      list$.modifyItem((t) =>
-        t.id === task.id ? { ...t, status: "paused" } : t,
-      );
-      const matched = tasks_.find((t) => t.id === task.id);
-      if (!matched) {
-        return;
-      }
-      matched.assign({
-        status: "paused",
-      });
+      updateTaskStatus(task.id, "paused");
     },
     async deleteTask(task) {
       const r = await deleteReq.run(task.id);
@@ -205,6 +285,7 @@ function DownloaderPanelViewModel(options = {}) {
       }
       tasks_.remove(matched);
       task_count_.as((prev) => prev - 1);
+      adjustStatusCounts(matched.status, "", -1);
       ui.waterfall$.methods.deleteCell((t) => t.id === task.id);
       list$.deleteItem((t) => t.id === task.id);
     },
@@ -218,12 +299,29 @@ function DownloaderPanelViewModel(options = {}) {
       if (!matched) {
         return;
       }
-      matched.assign({
-        status: "running",
-      });
-      list$.modifyItem((t) =>
-        t.id === task.id ? { ...t, status: "running" } : t,
-      );
+      updateTaskStatus(task.id, "running");
+    },
+    async startAllTasks() {
+      const r = await startAllReq.run();
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      const reloadResult = await reloadTasks();
+      if (reloadResult && reloadResult.error) {
+        WXU.error({ msg: reloadResult.error.message });
+      }
+    },
+    async pauseAllTasks() {
+      const r = await pauseAllReq.run();
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      const reloadResult = await reloadTasks();
+      if (reloadResult && reloadResult.error) {
+        WXU.error({ msg: reloadResult.error.message });
+      }
     },
     async clearTasks(params = {}) {
       const r = await clearReq.run(params);
@@ -234,6 +332,7 @@ function DownloaderPanelViewModel(options = {}) {
       list$.clear();
       tasks_.as([]);
       task_count_.as(0);
+      status_counts_.as(empty_download_status_counts());
       ui.waterfall$.methods.cleanColumns();
       return true;
     },
@@ -304,7 +403,19 @@ function DownloaderPanelViewModel(options = {}) {
           if (msg.type === "event") {
             const data = msg && msg.data ? msg.data : null;
             if (!data || !data.Key) {
+              if (data && data.status_counts) {
+                setStatusCounts(data.status_counts);
+              }
+              const task = data ? data.Task || data.task : null;
+              if (task) {
+                methods.upsert(methods.formatTask(task), {
+                  syncCounts: !data.status_counts,
+                });
+              }
               return;
+            }
+            if (data.status_counts) {
+              setStatusCounts(data.status_counts);
             }
             if (data.Key === "delete") {
               return;
@@ -313,7 +424,9 @@ function DownloaderPanelViewModel(options = {}) {
             if (!task) {
               return;
             }
-            methods.upsert(methods.formatTask(task));
+            methods.upsert(methods.formatTask(task), {
+              syncCounts: !data.status_counts,
+            });
           }
         };
       });
@@ -326,7 +439,14 @@ function DownloaderPanelViewModel(options = {}) {
         if (!t || !t.id) continue;
         const matched = tasks_.find((v) => v.id === t.id);
         if (matched) {
+          const oldStatus = matched.status;
           matched.assign(t);
+          if (
+            normalize_download_status(oldStatus) !==
+            normalize_download_status(t.status)
+          ) {
+            adjustStatusCounts(oldStatus, t.status, 0);
+          }
         } else {
           newTasks.push(t);
         }
@@ -334,22 +454,29 @@ function DownloaderPanelViewModel(options = {}) {
       if (newTasks.length) {
         tasks_.unshift(...newTasks);
         task_count_.as((prev) => prev + newTasks.length);
+        newTasks.forEach((task) => {
+          adjustStatusCounts("", task.status, 1);
+        });
         ui.waterfall$.methods.unshiftItems(newTasks);
         const addedHeight = newTasks.length * (ITEM_HEIGHT + GUTTER);
         ui.view$.addScrollTop(addedHeight);
       }
     },
-    upsert(task) {
+    upsert(task, options) {
       console.log("[]upsert task", task);
       if (!task || !task.id) {
         return;
       }
+      const syncCounts = !options || options.syncCounts !== false;
       const matched = tasks_.find((v) => v.id === task.id);
       if (!matched) {
         console.log("[]insert task", task);
-        task_count_.as((prev) => {
-          return prev + 1;
-        });
+        if (syncCounts) {
+          task_count_.as((prev) => {
+            return prev + 1;
+          });
+          adjustStatusCounts("", task.status, 1);
+        }
         tasks_.unshift(task);
         // ui.waterfall$.methods.appendItems([task]);
         ui.waterfall$.methods.unshiftItems([task]);
@@ -358,7 +485,14 @@ function DownloaderPanelViewModel(options = {}) {
         return;
       }
       console.log("[]update task", task);
+      const oldStatus = matched.status;
       matched.assign(task);
+      if (
+        syncCounts &&
+        normalize_download_status(oldStatus) !== normalize_download_status(task.status)
+      ) {
+        adjustStatusCounts(oldStatus, task.status, 0);
+      }
     },
   };
 
@@ -401,6 +535,20 @@ function DownloaderPanelViewModel(options = {}) {
       trigger: "hover",
       align: "end",
       items: [
+        new Timeless.ui.MenuItemCore({
+          label: "开始所有任务",
+          async onClick() {
+            await methods.startAllTasks();
+            ui.dropdown$.hide();
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "暂停所有任务",
+          async onClick() {
+            await methods.pauseAllTasks();
+            ui.dropdown$.hide();
+          },
+        }),
         new Timeless.ui.MenuItemCore({
           label: "清空下载记录",
           async onClick() {
@@ -445,6 +593,7 @@ function DownloaderPanelViewModel(options = {}) {
       running_count: running_count_,
       clear_delete_files: clear_delete_files_,
       clearing_tasks: clearing_tasks_,
+      status_counts: status_counts_,
       get scrollTop() {
         return _scrollTop;
       },
@@ -486,6 +635,7 @@ function DownloaderPanelViewModel(options = {}) {
     clean() {
       tasks_.as([]);
       task_count_.as(0);
+      status_counts_.as(empty_download_status_counts());
       list$.clear();
       ui.waterfall$.methods.cleanColumns();
     },
@@ -658,6 +808,7 @@ function DownloaderPanelView(props, children) {
   const task_count_ = vm$.state.task_count;
   const running_count_ = vm$.state.running_count;
   const renderConfirmDialog = props.renderConfirmDialog !== false;
+  const status_counts_ = vm$.state.status_counts;
 
   return Fragment({}, [
     View(
@@ -672,11 +823,31 @@ function DownloaderPanelView(props, children) {
       },
       [
       View({ class: "wx-dl-header" }, [
-        View({ class: "wx-dl-title" }, [
-          "Downloads",
-          computed(task_count_, (d) => {
-            return d > 0 ? `（${d}）` : "";
-          }),
+        View({ style: "min-width: 0; flex: 1;" }, [
+          View({ class: "wx-dl-title" }, [
+            "Downloads",
+            computed(task_count_, (d) => {
+              return d > 0 ? `（${d}）` : "";
+            }),
+          ]),
+          Show(
+            {
+              when: computed(task_count_, (d) => d > 0),
+            },
+            [
+              View(
+                {
+                  style:
+                    "margin-top: 3px; color: var(--weui-FG-1); font-size: 11px; line-height: 1.4; font-weight: 400; white-space: normal;",
+                },
+                [
+                  computed(status_counts_, (counts) => {
+                    return format_download_status_counts(counts);
+                  }),
+                ],
+              ),
+            ],
+          ),
         ]),
         DropdownMenu(
           {
