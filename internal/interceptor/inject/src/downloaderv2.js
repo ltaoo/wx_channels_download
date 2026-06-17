@@ -72,10 +72,11 @@ function total_speed(tasks) {
   return sum;
 }
 
-function DownloaderPanelViewModel() {
+function DownloaderPanelViewModel(options = {}) {
   const ITEM_HEIGHT = 82;
   const GUTTER = 8;
   const _pageSize = 50;
+  const onRequestClose = options.onRequestClose || Timeless.noop || (() => {});
 
   const taskListReq = new Timeless.kit.RequestCore(
     (params) => request.get("/api/task/list", params),
@@ -404,8 +405,9 @@ function DownloaderPanelViewModel() {
           label: "清空下载记录",
           async onClick() {
             clear_delete_files_.as(false);
-            ui.clearConfirmDialog$.show();
             ui.dropdown$.hide();
+            onRequestClose();
+            ui.clearConfirmDialog$.show();
           },
         }),
         // new Timeless.ui.MenuItemCore({
@@ -651,11 +653,11 @@ function ClearTasksConfirmDialog(props) {
 }
 
 function DownloaderPanelView(props, children) {
-  // const vm$ = props.store;
-  const vm$ = DownloaderPanelViewModel();
+  const vm$ = props.store || DownloaderPanelViewModel();
   const tasks_ = vm$.state.tasks;
   const task_count_ = vm$.state.task_count;
   const running_count_ = vm$.state.running_count;
+  const renderConfirmDialog = props.renderConfirmDialog !== false;
 
   return Fragment({}, [
     View(
@@ -1056,6 +1058,47 @@ function DownloaderPanelView(props, children) {
       ),
       ],
     ),
+    renderConfirmDialog
+      ? ClearTasksConfirmDialog({
+          store: vm$.ui.clearConfirmDialog$,
+          deleteFiles: vm$.state.clear_delete_files,
+          loading: vm$.state.clearing_tasks,
+          onConfirm() {
+            vm$.methods.confirmClearTasks();
+          },
+        })
+      : null,
+  ]);
+}
+
+function DownloaderEntry(props) {
+  const vm$ = DownloaderPanelViewModel({
+    onRequestClose() {
+      props.popover$.hide();
+    },
+  });
+  return Fragment({}, [
+    Popover(
+      {
+        store: props.popover$,
+        content: [
+          DownloaderPanelView({ store: vm$, renderConfirmDialog: false }),
+        ],
+      },
+      [
+        View(
+          {
+            class:
+              "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
+          },
+          [
+            DangerouslyInnerHTML(
+              `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 706.608L781.968 436.64a32 32 0 1 0-45.248-45.256L544 584.096V192a32 32 0 0 0-64 0v392.096l-192.712-192.72a32 32 0 0 0-45.256 45.256L512 706.608z" fill="currentColor"></path><path d="M824 640a32 32 0 0 0-32 32v128.36c0 3.112 0 8.496-0.48 11.472l-1.008 1.024c-0.952 0.984-2.104 2.168-3.112 3.152h-538.48c-2.448-0.664-7.808-3.56-10.608-6.36-2.776-2.784-5.656-8.128-6.32-10.568V672a32 32 0 0 0-64 0v128c0 20.632 12.608 42.456 25.088 54.912C205.584 867.4 227.408 880 248 880h544c22.496 0 36.208-14.112 44.408-22.536l2.48-2.528c17.128-17.088 17.12-41.472 17.12-54.928V672A32.016 32.016 0 0 0 824 640z" fill="currentColor"></path></svg>`,
+            ),
+          ],
+        ),
+      ],
+    ),
     ClearTasksConfirmDialog({
       store: vm$.ui.clearConfirmDialog$,
       deleteFiles: vm$.state.clear_delete_files,
@@ -1065,28 +1108,6 @@ function DownloaderPanelView(props, children) {
       },
     }),
   ]);
-}
-
-function DownloaderEntry(props) {
-  return Popover(
-    {
-      store: props.popover$,
-      content: [DownloaderPanelView({})],
-    },
-    [
-      View(
-        {
-          class:
-            "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
-        },
-        [
-          DangerouslyInnerHTML(
-            `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 706.608L781.968 436.64a32 32 0 1 0-45.248-45.256L544 584.096V192a32 32 0 0 0-64 0v392.096l-192.712-192.72a32 32 0 0 0-45.256 45.256L512 706.608z" fill="currentColor"></path><path d="M824 640a32 32 0 0 0-32 32v128.36c0 3.112 0 8.496-0.48 11.472l-1.008 1.024c-0.952 0.984-2.104 2.168-3.112 3.152h-538.48c-2.448-0.664-7.808-3.56-10.608-6.36-2.776-2.784-5.656-8.128-6.32-10.568V672a32 32 0 0 0-64 0v128c0 20.632 12.608 42.456 25.088 54.912C205.584 867.4 227.408 880 248 880h544c22.496 0 36.208-14.112 44.408-22.536l2.48-2.528c17.128-17.088 17.12-41.472 17.12-54.928V672A32.016 32.016 0 0 0 824 640z" fill="currentColor"></path></svg>`,
-          ),
-        ],
-      ),
-    ],
-  );
 }
 
 (() => {
