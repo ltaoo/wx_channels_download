@@ -2,7 +2,7 @@
 set -euo pipefail
 
 WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
-WX_CONFIG="${WX_VIDEO_CONFIG:-${WX_HOME}/config.yaml}"
+WX_CONFIG="${WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH:-${WX_HOME}/config.yaml}"
 CERT_PATH="/usr/local/share/ca-certificates/SunnyRoot.crt"
 
 run_as_abc() {

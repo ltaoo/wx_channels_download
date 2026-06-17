@@ -2,12 +2,12 @@
 set -euo pipefail
 
 WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
-WX_CONFIG="${WX_VIDEO_CONFIG:-${WX_HOME}/config.yaml}"
+WX_CONFIG="${WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH:-${WX_HOME}/config.yaml}"
 LOG_DIR="${WX_LOG_DIR:-/config/logs}"
 PID_FILE="${WX_HOME}/wx_video_download.pid"
 
 if [ "$(id -u)" -eq 0 ] && [ "${WX_VIDEO_RUN_AS_ROOT:-false}" != "true" ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
-    exec s6-setuidgid abc env HOME=/config WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_CONFIG="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" "$0" "$@"
+    exec s6-setuidgid abc env HOME=/config WX_VIDEO_HOME="$WX_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" "$0" "$@"
 fi
 
 mkdir -p "$WX_HOME" "$LOG_DIR" /config/Downloads
