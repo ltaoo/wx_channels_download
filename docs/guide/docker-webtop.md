@@ -206,6 +206,7 @@ docker run -d \
 - `IMAGE=ghcr.io/ltaoo/wx_video_download:v260607`
 - `WECHAT_AUTOSTART=false`
 - `WX_VIDEO_AUTOSTART=false`
+- `WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml`
 - `CONFIG_DIR=/host/path`
 - `CONTAINER_HOSTNAME=wx-linux`
 - `WEB_PORT=3100`

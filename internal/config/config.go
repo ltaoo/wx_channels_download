@@ -26,10 +26,36 @@ type Config struct {
 	Mode     string
 }
 
+const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
+
 func New(ver string, mode string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
+	var config_filepath string
+	var has_config bool
+	filename := "config.yaml"
+	if env_config_filepath := strings.TrimSpace(os.Getenv(EnvConfigPath)); env_config_filepath != "" {
+		config_filepath = env_config_filepath
+		if abs, err := filepath.Abs(env_config_filepath); err == nil {
+			config_filepath = abs
+		}
+		base_dir = filepath.Dir(config_filepath)
+		filename = filepath.Base(config_filepath)
+		if _, err := os.Stat(config_filepath); err == nil {
+			has_config = true
+		}
+		viper.SetConfigFile(config_filepath)
+		return &Config{
+			RootDir:  base_dir,
+			Filename: filename,
+			FullPath: config_filepath,
+			Existing: has_config,
+			Version:  ver,
+			Mode:     mode,
+		}
+	}
+
 	var candidates []string
 	candidates = append(candidates, exe_dir)
 	if _, caller_file, _, ok := runtime.Caller(1); ok {
@@ -41,9 +67,6 @@ func New(ver string, mode string) *Config {
 		proj_root := filepath.Dir(cfg_dir)
 		candidates = append(candidates, proj_root)
 	}
-	var config_filepath string
-	var has_config bool
-	filename := "config.yaml"
 	for _, dir := range candidates {
 		p := filepath.Join(dir, filename)
 		if _, err := os.Stat(p); err == nil {

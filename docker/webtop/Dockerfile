@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=zh_CN.UTF-8 \
     LIBGL_ALWAYS_SOFTWARE=1 \
     WX_VIDEO_HOME=/config/wx_video_download \
-    WX_VIDEO_CONFIG=/config/wx_video_download/config.yaml \
+    WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml \
     WECHAT_BIN=/usr/bin/wechat
 
 COPY SunnyRoot.cer /usr/local/share/ca-certificates/SunnyRoot.crt
