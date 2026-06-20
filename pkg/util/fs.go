@@ -224,8 +224,8 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 	return filename, nil
 }
 
-// 处理单个文件名，考虑文件夹
-func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string, error) {
+// 标准化单个文件名，考虑文件夹，但不记录去重状态。
+func (fp *FilenameProcessor) NormalizeFilename(input_name string) (string, string, error) {
 	input_name = strings.ReplaceAll(input_name, "//", "_")
 	// 分离目录和文件名
 	dir, filename := filepath.Split(input_name)
@@ -248,6 +248,15 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 			valid_dirs = append(valid_dirs, valid_dir)
 		}
 		dir = filepath.Join(valid_dirs...)
+	}
+	return clean_name, dir, nil
+}
+
+// 处理单个文件名，考虑文件夹
+func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string, error) {
+	clean_name, dir, err := fp.NormalizeFilename(input_name)
+	if err != nil {
+		return "", "", err
 	}
 	// 组合完整路径
 	full_path := filepath.Join(dir, clean_name)

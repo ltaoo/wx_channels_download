@@ -221,6 +221,11 @@ func (c *APIClient) resolve_connections(url string) int {
 }
 
 func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
+	return len(c.find_existing_feed_tasks(tasks, body)) > 0
+}
+
+func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) []*downloadpkg.Task {
+	var matches []*downloadpkg.Task
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {
 			continue
@@ -229,10 +234,10 @@ func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDow
 		same_spec := t.Meta.Req.Labels["spec"] == body.Spec
 		same_suffix := t.Meta.Req.Labels["suffix"] == body.Suffix
 		if same_id && same_spec && same_suffix {
-			return true
+			matches = append(matches, t)
 		}
 	}
-	return false
+	return matches
 }
 
 func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*FeedDownloadTaskBody, error) {

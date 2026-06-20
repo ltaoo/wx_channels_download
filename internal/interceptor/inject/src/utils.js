@@ -107,6 +107,35 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function confirm_overwrite_download(msg) {
+    return new Promise((resolve) => {
+      const content =
+        (msg || "已存在该下载内容") + "，是否重新下载并覆盖已存在文件？";
+      if (typeof weui !== "undefined" && typeof weui.confirm === "function") {
+        weui.confirm(content, {
+          title: "文件已存在",
+          buttons: [
+            {
+              label: "跳过",
+              type: "default",
+              onClick() {
+                resolve(false);
+              },
+            },
+            {
+              label: "覆盖",
+              type: "primary",
+              onClick() {
+                resolve(true);
+              },
+            },
+          ],
+        });
+        return;
+      }
+      resolve(window.confirm(content));
+    });
+  }
   function get_media_url(media) {
     if (!media) {
       return "";
@@ -883,21 +912,38 @@ var WXU = (() => {
             }
           }
         }
+        const requestBody = {
+          id: feed.id,
+          nonce_id: feed.nonce_id || feed.objectNonceId || "",
+          url: feed.url,
+          title: feed.title,
+          filename: filename,
+          key: Number(feed.key),
+          spec,
+          suffix: opt.suffix,
+        };
+        const createTask = (overwrite) =>
+          WXU.request({
+            method: "POST",
+            url:
+              APIServerProtocol +
+              "://" +
+              FakeAPIServerAddr +
+              "/api/task/create",
+            body: {
+              ...requestBody,
+              overwrite: !!overwrite,
+            },
+          });
         // console.log("[downloader.create]before WXU.request");
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url:
-            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
-          body: {
-            id: feed.id,
-            url: feed.url,
-            title: feed.title,
-            filename: filename,
-            key: Number(feed.key),
-            spec,
-            suffix: opt.suffix,
-          },
-        });
+        var [err, data] = await createTask(false);
+        if (err && err.code === 409) {
+          const overwrite = await confirm_overwrite_download(err.message);
+          if (!overwrite) {
+            return [null, { skipped: true }];
+          }
+          [err, data] = await createTask(true);
+        }
         WXU.downloader.show();
         if (err) {
           return [err, null];
@@ -958,6 +1004,7 @@ var WXU = (() => {
             }
             body.feeds.push({
               id: feed.id,
+              nonce_id: feed.nonce_id || feed.objectNonceId || "",
               url: feed.url,
               title: feed.title,
               key: Number(feed.key),
@@ -1185,7 +1232,11 @@ var WXU = (() => {
           try {
             var data = JSON.parse(xhr.responseText);
             if (data.code !== 0) {
-              resolve([new Error(data.msg), null]);
+              const err = new Error(data.msg);
+              err.code = data.code;
+              err.data = data.data;
+              err.response = data;
+              resolve([err, null]);
               return;
             }
             resolve([null, data.data]);
