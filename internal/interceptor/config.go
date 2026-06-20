@@ -2,7 +2,6 @@ package interceptor
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 
@@ -103,26 +102,35 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		// 所以这里做个兼容，保证旧的配置项仍然有效
 		settings.ChannelsDisableLocationToHome = true
 	}
-	global_script_path := path.Join(c.RootDir, "global.js")
-	if _, err := os.Stat(global_script_path); err == nil {
-		script_byte, err := os.ReadFile(global_script_path)
-		if err == nil {
-			settings.InjectGlobalScriptFilepath = global_script_path
-			settings.InjectGlobalScript = string(script_byte)
-		}
+	globalScriptFilepath := resolveScriptPath(c.RootDir, settings.InjectGlobalScriptFilepath)
+	if script, ok := readScriptFile(globalScriptFilepath); ok {
+		settings.InjectGlobalScriptFilepath = globalScriptFilepath
+		settings.InjectGlobalScript = script
 	}
 	extra_js_filepath := settings.InjectExtraScriptAfterJSMain
 	if extra_js_filepath != "" {
-		// If it's a relative path, resolve it against the current working directory
-		if !filepath.IsAbs(extra_js_filepath) {
-			extra_js_filepath = filepath.Join(c.RootDir, extra_js_filepath)
-		}
-		if _, err := os.Stat(extra_js_filepath); err == nil {
-			script_byte, err := os.ReadFile(extra_js_filepath)
-			if err == nil {
-				settings.InjectExtraScriptAfterJSMain = string(script_byte)
-			}
+		extra_js_filepath = resolveScriptPath(c.RootDir, extra_js_filepath)
+		if script, ok := readScriptFile(extra_js_filepath); ok {
+			settings.InjectExtraScriptAfterJSMain = script
 		}
 	}
 	return settings
+}
+
+func resolveScriptPath(rootDir, scriptPath string) string {
+	if scriptPath == "" || filepath.IsAbs(scriptPath) {
+		return scriptPath
+	}
+	return filepath.Join(rootDir, scriptPath)
+}
+
+func readScriptFile(scriptPath string) (string, bool) {
+	if scriptPath == "" {
+		return "", false
+	}
+	scriptByte, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return "", false
+	}
+	return string(scriptByte), true
 }
