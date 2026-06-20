@@ -95,8 +95,14 @@
     "/api/task/start": {
       "$ref": "./openapi/paths/api_task_start.json"
     },
+    "/api/task/start_all": {
+      "$ref": "./openapi/paths/api_task_start_all.json"
+    },
     "/api/task/pause": {
       "$ref": "./openapi/paths/api_task_pause.json"
+    },
+    "/api/task/pause_all": {
+      "$ref": "./openapi/paths/api_task_pause_all.json"
     },
     "/api/task/resume": {
       "$ref": "./openapi/paths/api_task_resume.json"

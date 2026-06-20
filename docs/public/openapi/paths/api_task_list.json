@@ -114,7 +114,16 @@
                     ],
                     "page": 1,
                     "page_size": 20,
-                    "total": 571
+                    "total": 571,
+                    "status_counts": {
+                      "total": 571,
+                      "ready": 0,
+                      "running": 1,
+                      "wait": 2,
+                      "pause": 3,
+                      "error": 0,
+                      "done": 565
+                    }
                   }
                 }
               },

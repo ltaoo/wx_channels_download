@@ -349,7 +349,8 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
-				"task": task,
+				"task":          task,
+				"status_counts": c.downloadTaskStatusCounts(),
 			},
 		})
 	}
@@ -421,7 +422,8 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
-				"task": task,
+				"task":          task,
+				"status_counts": c.downloadTaskStatusCounts(),
 			},
 		})
 	}
@@ -459,11 +461,32 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 		end = total
 	}
 	result.Ok(ctx, gin.H{
-		"list":      list[start:end],
-		"total":     total,
-		"page":      page_num,
-		"page_size": page_size_num,
+		"list":          list[start:end],
+		"total":         total,
+		"page":          page_num,
+		"page_size":     page_size_num,
+		"status_counts": c.downloadTaskStatusCounts(),
 	})
+}
+
+func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+	counts := map[string]int{
+		"total":   0,
+		"ready":   0,
+		"running": 0,
+		"wait":    0,
+		"pause":   0,
+		"error":   0,
+		"done":    0,
+	}
+	for _, task := range c.downloader.GetTasks() {
+		if task == nil {
+			continue
+		}
+		counts["total"]++
+		counts[string(task.Status)]++
+	}
+	return counts
 }
 
 type LiveDownloadTaskBody struct {
@@ -531,7 +554,8 @@ func (c *APIClient) handleCreateLiveTask(ctx *gin.Context) {
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
-				"task": task,
+				"task":          task,
+				"status_counts": c.downloadTaskStatusCounts(),
 			},
 		})
 	}
@@ -730,7 +754,8 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: map[string]interface{}{
-				"task": task,
+				"task":          task,
+				"status_counts": c.downloadTaskStatusCounts(),
 			},
 		})
 	}
@@ -755,6 +780,14 @@ func (c *APIClient) handleStartTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"id": body.Id})
 }
 
+func (c *APIClient) handleStartAllTasks(ctx *gin.Context) {
+	if err := c.downloader.Continue(nil); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
+}
+
 func (c *APIClient) handlePauseTask(ctx *gin.Context) {
 	var body struct {
 		Id string `json:"id"`
@@ -771,6 +804,20 @@ func (c *APIClient) handlePauseTask(ctx *gin.Context) {
 		IDs: []string{body.Id},
 	})
 	result.Ok(ctx, gin.H{"id": body.Id})
+}
+
+func (c *APIClient) handlePauseAllTasks(ctx *gin.Context) {
+	if err := c.downloader.Pause(&downloadpkg.TaskFilter{
+		Statuses: []base.Status{
+			base.DownloadStatusReady,
+			base.DownloadStatusRunning,
+			base.DownloadStatusWait,
+		},
+	}); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
 }
 
 func (c *APIClient) handleResumeTask(ctx *gin.Context) {
