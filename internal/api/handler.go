@@ -278,6 +278,8 @@ func newCreateTaskResp(id, path, name string) CreateTaskResp {
 		Name:     name,
 		FilePath: filepath.Join(path, name),
 	}
+func (c *APIClient) processTaskFilename(filename, suffix string) (string, string, error) {
+	return c.formatter.ProcessFilename(filename + suffix)
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
@@ -304,7 +306,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		// ctx.JSON(http.StatusOK, Response{Code: 409, Msg: , Data: body})
 		return
 	}
-	filename, dir, err := c.formatter.ProcessFilename(body.Filename)
+	filename, dir, err := c.processTaskFilename(body.Filename, body.Suffix)
 	if err != nil {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
@@ -610,7 +612,7 @@ func buildBatchCreateTask(c *APIClient, existing_task_map map[string]int, feeds 
 	}
 	task := base.CreateTaskBatch{}
 	for _, item := range items {
-		filename, dir, err := c.formatter.ProcessFilename(item["name"] + item["suffix"])
+		filename, dir, err := c.processTaskFilename(item["name"], item["suffix"])
 		if err != nil {
 			continue
 		}
@@ -691,7 +693,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		// ctx.JSON(http.StatusOK, Response{Code: 409, Msg: , Data: body})
 		return
 	}
-	filename, dir, err := c.formatter.ProcessFilename(payload.Filename)
+	filename, dir, err := c.processTaskFilename(payload.Filename, payload.Suffix)
 	if err != nil {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
