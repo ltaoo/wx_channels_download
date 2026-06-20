@@ -278,9 +278,13 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      const matched = tasks_.find((t) => t.id === task.id);
+      methods.removeTaskById(task.id);
+    },
+    removeTaskById(id) {
+      const matched = tasks_.find((t) => t.id === id);
       if (!matched) {
-        WXU.error({ msg: "异常操作" });
+        list$.deleteItem((t) => t.id === id);
+        ui.waterfall$.methods.deleteCell((t) => t.id === id);
         return;
       }
       tasks_.remove(matched);
@@ -418,6 +422,10 @@ function DownloaderPanelViewModel(options = {}) {
               setStatusCounts(data.status_counts);
             }
             if (data.Key === "delete") {
+              const task = data.Task || data.task;
+              if (task && task.id) {
+                methods.removeTaskById(task.id);
+              }
               return;
             }
             const task = data.Task || data.task; // 兼容大小写字段

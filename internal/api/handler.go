@@ -254,14 +254,15 @@ func (c *APIClient) handleFetchFeedShareUrl(ctx *gin.Context) {
 }
 
 type FeedDownloadTaskBody struct {
-	Id       string `json:"id"`
-	NonceId  string `json:"nonce_id"`
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	Filename string `json:"filename"`
-	Key      int    `json:"key"`
-	Spec     string `json:"spec"`
-	Suffix   string `json:"suffix"`
+	Id        string `json:"id"`
+	NonceId   string `json:"nonce_id"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Filename  string `json:"filename"`
+	Key       int    `json:"key"`
+	Spec      string `json:"spec"`
+	Suffix    string `json:"suffix"`
+	Overwrite bool   `json:"overwrite"`
 }
 
 type CreateTaskResp struct {
@@ -278,8 +279,81 @@ func newCreateTaskResp(id, path, name string) CreateTaskResp {
 		Name:     name,
 		FilePath: filepath.Join(path, name),
 	}
+}
+
 func (c *APIClient) processTaskFilename(filename, suffix string) (string, string, error) {
 	return c.formatter.ProcessFilename(filename + suffix)
+}
+
+func (c *APIClient) deleteTasks(tasks []*downloadpkg.Task, deleteFiles bool) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if task == nil || task.ID == "" {
+			continue
+		}
+		ids = append(ids, task.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return c.downloader.Delete(&downloadpkg.TaskFilter{IDs: ids}, deleteFiles)
+}
+
+func findTasksByDownloadFile(tasks []*downloadpkg.Task, taskPath, taskName, taskFilePath string) []*downloadpkg.Task {
+	var matches []*downloadpkg.Task
+	seen := make(map[string]bool)
+	cleanTaskPath := filepath.Clean(taskPath)
+	cleanTaskFilePath := filepath.Clean(taskFilePath)
+	for _, task := range tasks {
+		if task == nil || task.ID == "" || seen[task.ID] || task.Meta == nil {
+			continue
+		}
+		if task.Meta.Opts != nil {
+			samePath := filepath.Clean(task.Meta.Opts.Path) == cleanTaskPath
+			if samePath && task.Meta.Opts.Name == taskName {
+				matches = append(matches, task)
+				seen[task.ID] = true
+				continue
+			}
+		}
+		if task.Meta.Res != nil && len(task.Meta.Res.Files) > 0 && filepath.Clean(task.Meta.SingleFilepath()) == cleanTaskFilePath {
+			matches = append(matches, task)
+			seen[task.ID] = true
+		}
+	}
+	return matches
+}
+
+func mergeTasks(taskLists ...[]*downloadpkg.Task) []*downloadpkg.Task {
+	var merged []*downloadpkg.Task
+	seen := make(map[string]bool)
+	for _, tasks := range taskLists {
+		for _, task := range tasks {
+			if task == nil || task.ID == "" || seen[task.ID] {
+				continue
+			}
+			merged = append(merged, task)
+			seen[task.ID] = true
+		}
+	}
+	return merged
+}
+
+func removeExistingDownloadFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("目标路径是文件夹：%s", path)
+	}
+	return os.Remove(path)
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
@@ -299,11 +373,8 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 			return
 		}
 	}
-	tasks := c.downloader.GetTasks()
-	existing := c.check_existing_feed(tasks, &body)
-	if existing {
-		result.Err(ctx, 409, "已存在该下载内容")
-		// ctx.JSON(http.StatusOK, Response{Code: 409, Msg: , Data: body})
+	if c.downloader == nil {
+		result.Err(ctx, 500, "请先初始化 downloader")
 		return
 	}
 	filename, dir, err := c.processTaskFilename(body.Filename, body.Suffix)
@@ -313,11 +384,35 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	}
 	taskName := filename + body.Suffix
 	taskPath := filepath.Join(c.cfg.DownloadDir, dir)
-	connections := c.resolve_connections(body.URL)
-	if c.downloader == nil {
-		result.Err(ctx, 500, "请先初始化 downloader")
+	taskFilePath := filepath.Join(taskPath, taskName)
+	tasks := c.downloader.GetTasks()
+	existingTasks := mergeTasks(
+		c.find_existing_feed_tasks(tasks, &body),
+		findTasksByDownloadFile(tasks, taskPath, taskName, taskFilePath),
+	)
+	_, statErr := os.Stat(taskFilePath)
+	fileExists := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		result.Err(ctx, 500, "检查文件失败："+statErr.Error())
 		return
 	}
+	if len(existingTasks) > 0 || fileExists {
+		if !body.Overwrite {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		}
+		if err := c.deleteTasks(existingTasks, true); err != nil {
+			result.Err(ctx, 500, "删除已存在任务失败："+err.Error())
+			return
+		}
+		if fileExists {
+			if err := removeExistingDownloadFile(taskFilePath); err != nil {
+				result.Err(ctx, 500, "覆盖已存在文件失败："+err.Error())
+				return
+			}
+		}
+	}
+	connections := c.resolve_connections(body.URL)
 	id, err := c.downloader.CreateDirect(
 		&base.Request{
 			URL:            body.URL,
