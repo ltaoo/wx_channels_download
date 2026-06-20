@@ -107,6 +107,62 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function confirm_overwrite_download(msg) {
+    return new Promise((resolve) => {
+      const content =
+        (msg || "已存在该下载内容") + "，是否重新下载并覆盖已存在文件？";
+      if (typeof document === "undefined" || !document.body) {
+        resolve(window.confirm(content));
+        return;
+      }
+      const $root = document.createElement("div");
+      const close = (overwrite) => {
+        document.removeEventListener("keydown", handleKeydown);
+        $root.remove();
+        resolve(overwrite);
+      };
+      const handleKeydown = (e) => {
+        if (e.key === "Escape") {
+          close(false);
+        }
+      };
+      $root.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/80" style="position: fixed; inset: 0; z-index: 999999; background-color: rgba(0, 0, 0, 0.8);"></div>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="position: fixed; inset: 0; z-index: 1000000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+          <div role="dialog" aria-modal="true" aria-label="文件已存在" style="width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; border-radius: 8px; background: var(--popup-bg-color); color: var(--weui-FG-0); box-shadow: 0 8px 28px rgba(0,0,0,0.28); overflow: hidden;">
+            <div style="padding: 20px 20px 16px;">
+              <div style="font-size: 17px; font-weight: 600; line-height: 24px; margin-bottom: 8px;">文件已存在</div>
+              <div style="font-size: 14px; line-height: 20px; color: var(--weui-FG-1); margin-bottom: 4px;">${escape_html(content)}</div>
+            </div>
+            <div style="display: flex; border-top: 1px solid var(--weui-DIALOG-LINE-COLOR);">
+              <button type="button" data-action="skip" style="flex: 1; height: 48px; border: 0; background: transparent; color: var(--weui-FG-0); font-size: 16px; cursor: pointer;">跳过</button>
+              <button type="button" data-action="overwrite" style="flex: 1; height: 48px; border: 0; border-left: 1px solid var(--weui-DIALOG-LINE-COLOR); background: transparent; color: #FA5151; font-size: 16px; font-weight: 500; cursor: pointer;">覆盖</button>
+            </div>
+          </div>
+        </div>
+      `;
+      $root.addEventListener("click", (e) => {
+        const action = e.target && e.target.getAttribute("data-action");
+        if (action === "overwrite") {
+          close(true);
+          return;
+        }
+        if (action === "skip" || e.target === $root.children[1]) {
+          close(false);
+        }
+      });
+      document.addEventListener("keydown", handleKeydown);
+      document.body.appendChild($root);
+    });
+  }
+  function escape_html(text) {
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
   function get_media_url(media) {
     if (!media) {
       return "";
@@ -883,21 +939,38 @@ var WXU = (() => {
             }
           }
         }
+        const requestBody = {
+          id: feed.id,
+          nonce_id: feed.nonce_id || feed.objectNonceId || "",
+          url: feed.url,
+          title: feed.title,
+          filename: filename,
+          key: Number(feed.key),
+          spec,
+          suffix: opt.suffix,
+        };
+        const createTask = (overwrite) =>
+          WXU.request({
+            method: "POST",
+            url:
+              APIServerProtocol +
+              "://" +
+              FakeAPIServerAddr +
+              "/api/task/create",
+            body: {
+              ...requestBody,
+              overwrite: !!overwrite,
+            },
+          });
         // console.log("[downloader.create]before WXU.request");
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url:
-            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
-          body: {
-            id: feed.id,
-            url: feed.url,
-            title: feed.title,
-            filename: filename,
-            key: Number(feed.key),
-            spec,
-            suffix: opt.suffix,
-          },
-        });
+        var [err, data] = await createTask(false);
+        if (err && err.code === 409) {
+          const overwrite = await confirm_overwrite_download(err.message);
+          if (!overwrite) {
+            return [null, { skipped: true }];
+          }
+          [err, data] = await createTask(true);
+        }
         WXU.downloader.show();
         if (err) {
           return [err, null];
@@ -958,6 +1031,7 @@ var WXU = (() => {
             }
             body.feeds.push({
               id: feed.id,
+              nonce_id: feed.nonce_id || feed.objectNonceId || "",
               url: feed.url,
               title: feed.title,
               key: Number(feed.key),
@@ -1185,7 +1259,11 @@ var WXU = (() => {
           try {
             var data = JSON.parse(xhr.responseText);
             if (data.code !== 0) {
-              resolve([new Error(data.msg), null]);
+              const err = new Error(data.msg);
+              err.code = data.code;
+              err.data = data.data;
+              err.response = data;
+              resolve([err, null]);
               return;
             }
             resolve([null, data.data]);
