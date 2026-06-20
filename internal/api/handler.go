@@ -279,6 +279,8 @@ func newCreateTaskResp(id, path, name string) CreateTaskResp {
 		Name:     name,
 		FilePath: filepath.Join(path, name),
 	}
+}
+
 func (c *APIClient) processTaskFilename(filename, suffix string) (string, string, error) {
 	return c.formatter.ProcessFilename(filename + suffix)
 }
