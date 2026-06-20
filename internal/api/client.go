@@ -141,7 +141,12 @@ func (c *APIClient) Start() error {
 		}
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
-			Data: evt,
+			Data: gin.H{
+				"Key":           evt.Key,
+				"Task":          evt.Task,
+				"Err":           evt.Err,
+				"status_counts": c.downloadTaskStatusCounts(),
+			},
 		})
 		if evt.Key == downloadpkg.EventKeyDone {
 			if c.cfg.PlayDoneAudio {
