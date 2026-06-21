@@ -39,6 +39,11 @@
               "suffix": {
                 "type": "string",
                 "description": "文件扩展名（如 .mp4, .mp3）"
+              },
+              "overwrite": {
+                "type": "boolean",
+                "description": "文件或下载内容已存在时是否覆盖并重新下载",
+                "default": false
               }
             },
             "required": [
@@ -60,7 +65,12 @@
                 "value": {
                   "code": 0,
                   "msg": "成功",
-                  "data": {}
+                  "data": {
+                    "id": "task-id",
+                    "path": "/path/to/download",
+                    "name": "video.mp4",
+                    "file_path": "/path/to/download/video.mp4"
+                  }
                 }
               },
               "fail": {
@@ -69,6 +79,13 @@
                   "code": 400,
                   "msg": "不合法的参数",
                   "data": {}
+                }
+              },
+              "exists": {
+                "summary": "已存在",
+                "value": {
+                  "code": 409,
+                  "msg": "已存在该下载内容"
                 }
               }
             }
