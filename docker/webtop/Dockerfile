@@ -5,19 +5,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=zh_CN.UTF-8 \
     LIBGL_ALWAYS_SOFTWARE=1 \
     WX_VIDEO_HOME=/config/wx_video_download \
+    WX_VIDEO_SEED_HOME=/usr/local/share/wx_video_download \
     WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml \
     WECHAT_BIN=/usr/bin/wechat
 
 COPY SunnyRoot.cer /usr/local/share/ca-certificates/SunnyRoot.crt
-COPY wx_video_download /opt/wx_video_download/wx_video_download
-COPY config.yaml /opt/wx_video_download/config.yaml
-COPY global.js /opt/wx_video_download/global.js
+COPY wx_video_download /usr/local/share/wx_video_download/wx_video_download
+COPY config.yaml /usr/local/share/wx_video_download/config.yaml
+COPY global.js /usr/local/share/wx_video_download/global.js
 COPY WeChatLinux_arm64.deb /tmp/WeChatLinux_arm64.deb
 
 RUN set -eux; \
-    sed -i '/^api:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /opt/wx_video_download/config.yaml; \
-    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /opt/wx_video_download/config.yaml; \
-    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  tun:[[:space:]]*\).*/\1true/' /opt/wx_video_download/config.yaml
+    sed -i '/^api:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  tun:[[:space:]]*\).*/\1true/' /usr/local/share/wx_video_download/config.yaml
 
 RUN set -eux; \
     apt-get update; \
@@ -70,8 +71,8 @@ RUN set -eux; \
     if [ ! -f /etc/pki/nssdb/cert9.db ]; then certutil -d sql:/etc/pki/nssdb -N --empty-password; fi; \
     certutil -d sql:/etc/pki/nssdb -D -n SunnyRoot >/dev/null 2>&1 || true; \
     certutil -d sql:/etc/pki/nssdb -A -n SunnyRoot -t "CT,C,C" -i /usr/local/share/ca-certificates/SunnyRoot.crt; \
-    chmod +x /opt/wx_video_download/wx_video_download; \
-    setcap cap_net_admin,cap_net_raw+ep /opt/wx_video_download/wx_video_download || true; \
+    chmod +x /usr/local/share/wx_video_download/wx_video_download; \
+    setcap cap_net_admin,cap_net_raw+ep /usr/local/share/wx_video_download/wx_video_download || true; \
     rm -f /tmp/WeChatLinux_arm64.deb; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*

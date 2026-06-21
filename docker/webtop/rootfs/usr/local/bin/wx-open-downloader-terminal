@@ -4,9 +4,12 @@ set -euo pipefail
 export HOME="${HOME:-/config}"
 export DISPLAY="${DISPLAY:-:1}"
 
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_BIN="${WX_HOME}/wx_video_download"
+
 mkdir -p /config/logs
 
-if pgrep -af "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1; then
+if pgrep -af "^${WX_BIN}( |$)" >/dev/null 2>&1; then
     echo "wx_video_download is already running."
     exit 0
 fi
@@ -26,4 +29,3 @@ if command -v xterm >/dev/null 2>&1; then
 fi
 
 /usr/local/bin/wx-start-downloader
-

@@ -2,36 +2,70 @@
 set -euo pipefail
 
 WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_SEED_HOME="${WX_VIDEO_SEED_HOME:-/usr/local/share/wx_video_download}"
 WX_CONFIG="${WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH:-${WX_HOME}/config.yaml}"
 LOG_DIR="${WX_LOG_DIR:-/config/logs}"
 PID_FILE="${WX_HOME}/wx_video_download.pid"
 LOG_FILE="${LOG_DIR}/wx_video_download.out.log"
-
-if [ "$(id -u)" -eq 0 ] && [ "${WX_VIDEO_RUN_AS_ROOT:-false}" != "true" ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
-    exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" "$0" "$@"
-fi
+WX_BIN="${WX_HOME}/wx_video_download"
+RUN_AS_ROOT="${WX_VIDEO_RUN_AS_ROOT:-auto}"
 
 export HOME="${HOME:-/config}"
 export DISPLAY="${DISPLAY:-:1}"
 
 mkdir -p "$WX_HOME" "$LOG_DIR" /config/Downloads
 
-if [ ! -f "$WX_CONFIG" ]; then
-    cp /opt/wx_video_download/config.yaml "$WX_CONFIG"
+if [ -f "${WX_SEED_HOME}/wx_video_download" ] && [ ! -f "$WX_BIN" ]; then
+    cp "${WX_SEED_HOME}/wx_video_download" "$WX_BIN"
+    chmod +x "$WX_BIN"
 fi
 
-if pgrep -af "^/opt/wx_video_download/wx_video_download( |$)" >/dev/null 2>&1; then
+if [ ! -f "$WX_CONFIG" ]; then
+    cp "${WX_SEED_HOME}/config.yaml" "$WX_CONFIG"
+fi
+
+if [ "$(id -u)" -ne 0 ] && [ "$RUN_AS_ROOT" != "false" ]; then
+    need_root=false
+    if [ "$RUN_AS_ROOT" = "true" ]; then
+        need_root=true
+    elif ! getcap "$WX_BIN" 2>/dev/null | grep -q "cap_net_admin"; then
+        need_root=true
+    fi
+
+    if [ "$need_root" = "true" ] && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+        exec sudo -n env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT=true "$0" "$@"
+    fi
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    setcap cap_net_admin,cap_net_raw+ep "$WX_BIN" >/dev/null 2>&1 || true
+fi
+
+if [ "$(id -u)" -eq 0 ] && [ "$RUN_AS_ROOT" != "true" ] && id abc >/dev/null 2>&1 && command -v s6-setuidgid >/dev/null 2>&1; then
+    drop_privileges=false
+    if [ "$RUN_AS_ROOT" = "false" ]; then
+        drop_privileges=true
+    elif getcap "$WX_BIN" 2>/dev/null | grep -q "cap_net_admin"; then
+        drop_privileges=true
+    fi
+
+    if [ "$drop_privileges" = "true" ]; then
+        exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT="$RUN_AS_ROOT" "$0" "$@"
+    fi
+fi
+
+if pgrep -af "^${WX_BIN}( |$)" >/dev/null 2>&1; then
     echo "wx_video_download is already running. Showing logs."
     touch "$LOG_FILE"
     exec tail -n 120 -F "$LOG_FILE"
 fi
 
-cd /opt/wx_video_download
+cd "$WX_HOME"
 umask 0002
 echo "$$" >"$PID_FILE"
 
 set +e
-/opt/wx_video_download/wx_video_download --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
+"$WX_BIN" --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
 status=$?
 set -e
 
@@ -40,4 +74,3 @@ echo
 echo "wx_video_download exited with status ${status}."
 read -r -p "Press Enter to close this terminal..." _ || true
 exit "$status"
-

@@ -2,7 +2,9 @@
 set -euo pipefail
 
 WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_SEED_HOME="${WX_VIDEO_SEED_HOME:-/usr/local/share/wx_video_download}"
 WX_CONFIG="${WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH:-${WX_HOME}/config.yaml}"
+WX_BIN="${WX_HOME}/wx_video_download"
 CERT_PATH="/usr/local/share/ca-certificates/SunnyRoot.crt"
 
 run_as_abc() {
@@ -16,12 +18,25 @@ run_as_abc() {
 mkdir -p "$WX_HOME" /config/Downloads /config/logs /config/Desktop
 rm -f /config/Desktop/wx-manager.desktop /config/logs/wx-manager.log
 
+if [ -f "${WX_SEED_HOME}/wx_video_download" ] && ! cmp -s "${WX_SEED_HOME}/wx_video_download" "$WX_BIN"; then
+    cp "${WX_SEED_HOME}/wx_video_download" "$WX_BIN"
+    chmod +x "$WX_BIN"
+fi
+
 if [ ! -f "$WX_CONFIG" ]; then
-    cp /opt/wx_video_download/config.yaml "$WX_CONFIG"
+    cp "${WX_SEED_HOME}/config.yaml" "$WX_CONFIG"
+fi
+
+if [ -f "${WX_SEED_HOME}/global.js" ] && [ ! -f "${WX_HOME}/global.js" ]; then
+    cp "${WX_SEED_HOME}/global.js" "${WX_HOME}/global.js"
 fi
 
 if id abc >/dev/null 2>&1; then
     chown -R abc:abc "$WX_HOME" /config/Downloads /config/logs /config/Desktop
+fi
+
+if [ -f "$WX_BIN" ]; then
+    setcap cap_net_admin,cap_net_raw+ep "$WX_BIN" >/dev/null 2>&1 || true
 fi
 
 if command -v certutil >/dev/null 2>&1 && id abc >/dev/null 2>&1 && [ -f "$CERT_PATH" ]; then

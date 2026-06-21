@@ -16,6 +16,7 @@ sleep "${WX_SESSION_START_DELAY:-5}"
     fi
 
     if [ "${WECHAT_AUTOSTART:-true}" != "false" ]; then
+        sleep "${WECHAT_START_DELAY:-10}"
         /usr/local/bin/wx-start-wechat || true
     fi
 
