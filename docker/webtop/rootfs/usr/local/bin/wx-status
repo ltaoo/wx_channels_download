@@ -13,7 +13,10 @@ show_processes() {
     fi
 }
 
-show_processes "wx_video_download:" "^/opt/wx_video_download/wx_video_download( |$)"
+WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
+WX_BIN="${WX_HOME}/wx_video_download"
+
+show_processes "wx_video_download:" "^${WX_BIN}( |$)"
 show_processes "WeChat:" "(^/usr/bin/wechat|^/opt/wechat/wechat|^/opt/wechat/RadiumWMPF/runtime/WeChatAppEx)( |$)"
 
 if command -v ss >/dev/null 2>&1; then
