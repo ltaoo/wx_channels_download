@@ -84,7 +84,6 @@ export default [
         Match: "readonly",
         View: "readonly",
         Txt: "readonly",
-        DangerouslyInnerHTML: "readonly",
         SVG: "readonly",
         Circle: "readonly",
         ref: "readonly",

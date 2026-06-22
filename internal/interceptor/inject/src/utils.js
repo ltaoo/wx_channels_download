@@ -13,16 +13,19 @@ if (typeof window.WXVariable === "undefined") {
   WXVariable = {};
 }
 var __wx_assets_base = (function () {
-  // var cfg = __wx_channels_config__;
-  // if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
-  //   return (
-  //     cfg.apiServerProtocol +
-  //     "://" +
-  //     cfg.apiServerAddr +
-  //     "/__wx_channels_assets"
-  //   );
-  // }
-  return "https://channels.weixin.qq.com/__wx_channels_assets";
+  var cfg = __wx_channels_config__;
+  if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
+    return (
+      cfg.apiServerProtocol +
+      "://" +
+      cfg.apiServerAddr +
+      "/__wx_channels_assets"
+    );
+  }
+  if (cfg && cfg.Protocol && cfg.Addr) {
+    return cfg.Protocol + "://" + cfg.Addr + "/__wx_channels_assets";
+  }
+  return "http://127.0.0.1:2022/__wx_channels_assets";
 })();
 function __wx_asset_url(path) {
   if (path.startsWith("/lib/")) {
@@ -246,12 +249,45 @@ var WXU = (() => {
     let isOpen = false;
     let hideTimer = null;
     let childMenus = [];
+    let cleanupAutoUpdate = null;
 
     function clearHideTimer() {
       if (hideTimer) {
         clearTimeout(hideTimer);
         hideTimer = null;
       }
+    }
+    function normalizePlacement(value) {
+      if (value === "right") {
+        return "right-start";
+      }
+      if (value === "left") {
+        return "left-start";
+      }
+      return value || "bottom-end";
+    }
+    function stopAutoUpdate() {
+      if (typeof cleanupAutoUpdate === "function") {
+        cleanupAutoUpdate();
+      }
+      cleanupAutoUpdate = null;
+    }
+    function startAutoUpdate() {
+      stopAutoUpdate();
+      if (!anchor) {
+        return;
+      }
+      const update = () => {
+        if (isOpen) {
+          position();
+        }
+      };
+      window.addEventListener("resize", update);
+      window.addEventListener("scroll", update, true);
+      cleanupAutoUpdate = () => {
+        window.removeEventListener("resize", update);
+        window.removeEventListener("scroll", update, true);
+      };
     }
     function scheduleHide() {
       clearHideTimer();
@@ -261,25 +297,71 @@ var WXU = (() => {
         }
       }, 100);
     }
-    function position() {
+    function fallbackPosition() {
       if (!anchor) {
         return;
       }
       const rect = anchor.getBoundingClientRect();
       const width = root.offsetWidth || 160;
       const height = root.offsetHeight || 40;
-      let left = rect.left;
-      let top = rect.bottom + 6;
-      if (placement === "right") {
-        left = rect.right + 6;
-        top = rect.top;
-      } else if (placement === "bottom-end") {
-        left = rect.right - width;
+      const gap = 6;
+      const padding = 8;
+      const normalizedPlacement = normalizePlacement(placement);
+      const side = normalizedPlacement.split("-")[0];
+      const align = normalizedPlacement.split("-")[1] || "center";
+      let left = rect.left + rect.width / 2 - width / 2;
+      let top = rect.bottom + gap;
+
+      if (align === "start") {
+        left = side === "top" || side === "bottom" ? rect.left : left;
+        top = side === "left" || side === "right" ? rect.top : top;
+      } else if (align === "end") {
+        left = side === "top" || side === "bottom" ? rect.right - width : left;
+        top = side === "left" || side === "right" ? rect.bottom - height : top;
       }
-      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
-      top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+
+      if (side === "top") {
+        top = rect.top - height - gap;
+      } else if (side === "left") {
+        left = rect.left - width - gap;
+        if (
+          left < padding &&
+          rect.right + gap + width <= window.innerWidth - padding
+        ) {
+          left = rect.right + gap;
+        }
+      } else if (side === "right") {
+        left = rect.right + gap;
+        if (
+          left + width > window.innerWidth - padding &&
+          rect.left - width - gap >= padding
+        ) {
+          left = rect.left - width - gap;
+        }
+      } else if (top + height > window.innerHeight - padding) {
+        const topSide = rect.top - height - gap;
+        if (topSide >= padding) {
+          top = topSide;
+        }
+      }
+
+      left = Math.max(
+        padding,
+        Math.min(left, window.innerWidth - width - padding),
+      );
+      top = Math.max(
+        padding,
+        Math.min(top, window.innerHeight - height - padding),
+      );
       root.style.left = `${left}px`;
       root.style.top = `${top}px`;
+    }
+    function position() {
+      if (!anchor) {
+        return Promise.resolve();
+      }
+      fallbackPosition();
+      return Promise.resolve();
     }
     function renderLabel(item, target) {
       if (item.label instanceof Node) {
@@ -376,19 +458,29 @@ var WXU = (() => {
             root.appendChild(itemEl);
           }
         });
+        if (isOpen) {
+          position();
+        }
       },
       show(nextAnchor, nextPlacement) {
         anchor = nextAnchor || anchor || options.trigger || null;
         placement = nextPlacement || options.placement || placement;
         clearHideTimer();
+        stopAutoUpdate();
         root.style.display = "block";
         root.style.visibility = "hidden";
         isOpen = true;
-        position();
-        root.style.visibility = "visible";
+        position().then(() => {
+          if (!isOpen) {
+            return;
+          }
+          root.style.visibility = "visible";
+          startAutoUpdate();
+        });
       },
       hide() {
         clearHideTimer();
+        stopAutoUpdate();
         childMenus.forEach((menu) => menu.hide());
         root.style.display = "none";
         isOpen = false;
@@ -2243,39 +2335,38 @@ function __wx_download_btn_handler(event) {
   __wx_channels_handle_click_download__(spec, false);
 }
 
-if (typeof window.Timeless !== undefined) {
-  Object.assign(Timeless, Timeless.kit);
-  Object.assign(Timeless, Timeless.headless);
+if (typeof window.Timeless !== "undefined") {
+  const timeless = window.Timeless;
+  Object.assign(timeless, timeless.kit);
+  Object.assign(timeless, timeless.headless);
   // Rendering
-  window.h = Timeless.h;
-  window.View = Timeless.View;
-  window.Fragment = Timeless.Fragment;
+  window.h = timeless.h;
+  window.View = timeless.View;
+  window.Fragment = timeless.Fragment;
   // Control flow
-  window.Show = Timeless.Show;
-  window.For = Timeless.For;
-  window.Switch = Timeless.Switch;
-  window.Match = Timeless.Match;
+  window.Show = timeless.Show;
+  window.For = timeless.For;
+  window.Switch = timeless.Switch;
+  window.Match = timeless.Match;
   // Reactivity
-  window.ref = Timeless.ref;
-  window.refobj = Timeless.refobj;
-  window.refarr = Timeless.refarr;
-  window.computed = Timeless.computed;
-  window.combine = Timeless.combine;
-  window.isElement = Timeless.isElement;
+  window.ref = timeless.ref;
+  window.refobj = timeless.refobj;
+  window.refarr = timeless.refarr;
+  window.computed = timeless.computed;
+  window.combine = timeless.combine;
+  window.isElement = timeless.isElement;
   // Styling
-  window.cn = Timeless.cn;
-  window.classNames = Timeless.classNames;
+  window.cn = timeless.cn;
+  window.classNames = timeless.classNames;
   // Primitives
-  window.PopoverPrimitive = Timeless.PopoverPrimitive;
-  window.DropdownMenuPrimitive = Timeless.DropdownMenuPrimitive;
-  window.WaterfallPrimitive = Timeless.WaterfallPrimitive;
-  window.ScrollViewPrimitive = Timeless.ScrollViewPrimitive;
-  window.DialogPrimitive = Timeless.DialogPrimitive;
+  window.PopoverPrimitive = timeless.PopoverPrimitive;
+  window.DropdownMenuPrimitive = timeless.DropdownMenuPrimitive;
+  window.WaterfallPrimitive = timeless.WaterfallPrimitive;
+  window.ScrollViewPrimitive = timeless.ScrollViewPrimitive;
+  window.DialogPrimitive = timeless.DialogPrimitive;
   // SVG helpers
-  window.SVG = Timeless.SVG;
-  window.Circle = Timeless.Circle;
-  // HTML injection
-  window.DangerouslyInnerHTML = Timeless.DangerouslyInnerHTML;
+  window.SVG = timeless.SVG;
+  window.Circle = timeless.Circle;
 }
 
 var FakeAPIServerAddr = WXU.config.remoteServerEnabled

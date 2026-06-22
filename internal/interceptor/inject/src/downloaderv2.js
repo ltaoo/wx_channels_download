@@ -19,7 +19,7 @@ const http_client = new Timeless.HttpClientCore({
   hostname: APIHostname,
 });
 Timeless.web.provide_http_client(http_client);
-const request = Timeless.kit.request_factory({
+const request = Timeless.request_factory({
   headers: { "Content-Type": "application/json" },
   process(r) {
     if (r.error) {
@@ -57,6 +57,28 @@ function get_name_of_download_task(t) {
       return t.meta.res.files[0].name;
   }
   return "unknown";
+}
+function get_download_task_icon_name(filename) {
+  if (!filename) return "file";
+  const ext = String(filename).split(".").pop().toLowerCase();
+  if (ext === "mp3") return "file-volume";
+  if (ext === "mp4") return "file-play";
+  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
+    return "file-image";
+  }
+  return "file";
+}
+function DownloadTaskFileIcon(props) {
+  const size = props.size || 32;
+  const iconName_ = computed(props.task, (task) => {
+    return get_download_task_icon_name(task.name);
+  });
+  return Switch({ when: iconName_ }, [
+    Match("file-volume", [Timeless.Icon({ name: "file-volume", size })]),
+    Match("file-play", [Timeless.Icon({ name: "file-play", size })]),
+    Match("file-image", [Timeless.Icon({ name: "file-image", size })]),
+    Match("file", [Timeless.Icon({ name: "file", size })]),
+  ]);
 }
 function total_speed(tasks) {
   let sum = 0;
@@ -128,7 +150,7 @@ function DownloaderPanelViewModel(props = {}) {
       ? props.onRequestClose
       : () => {};
 
-  const taskListReq = new Timeless.kit.RequestCore(
+  const taskListReq = new Timeless.RequestCore(
     (params) => request.get("/api/task/list", params),
     {
       client: http_client,
@@ -146,31 +168,31 @@ function DownloaderPanelViewModel(props = {}) {
       },
     },
   );
-  const deleteReq = new Timeless.kit.RequestCore(
+  const deleteReq = new Timeless.RequestCore(
     (id) => request.post("/api/task/delete", { id }),
     { client: http_client },
   );
-  const startReq = new Timeless.kit.RequestCore(
+  const startReq = new Timeless.RequestCore(
     (id) => request.post("/api/task/start", { id }),
     { client: http_client },
   );
-  const startAllReq = new Timeless.kit.RequestCore(
+  const startAllReq = new Timeless.RequestCore(
     () => request.post("/api/task/start_all"),
     { client: http_client },
   );
-  const pauseReq = new Timeless.kit.RequestCore(
+  const pauseReq = new Timeless.RequestCore(
     (id) => request.post("/api/task/pause", { id }),
     { client: http_client },
   );
-  const pauseAllReq = new Timeless.kit.RequestCore(
+  const pauseAllReq = new Timeless.RequestCore(
     () => request.post("/api/task/pause_all"),
     { client: http_client },
   );
-  const resumeReq = new Timeless.kit.RequestCore(
+  const resumeReq = new Timeless.RequestCore(
     (id) => request.post("/api/task/resume", { id }),
     { client: http_client },
   );
-  const clearReq = new Timeless.kit.RequestCore(
+  const clearReq = new Timeless.RequestCore(
     (params = {}) => {
       return request.post("/api/task/clear", {
         delete_files: !!params.deleteFiles,
@@ -178,11 +200,11 @@ function DownloaderPanelViewModel(props = {}) {
     },
     { client: http_client },
   );
-  const showFileReq = new Timeless.kit.RequestCore(
+  const showFileReq = new Timeless.RequestCore(
     ({ path, name, id }) => request.post("/api/show_file", { path, name, id }),
     { client: http_client },
   );
-  const list$ = new Timeless.kit.ListCore(taskListReq, {
+  const list$ = new Timeless.ListCore(taskListReq, {
     pageSize: _pageSize,
   });
 
@@ -643,11 +665,6 @@ function DownloaderPanelViewModel(props = {}) {
 function ClearTasksConfirmDialog(props) {
   const deleteFiles_ = props.deleteFiles;
   const loading_ = props.loading;
-  const checkIcon = `
-    <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="14" height="14" aria-hidden="true" style="display:block;width:14px;height:14px;color:#fff;fill:#fff;flex:none;">
-      <path d="M895.36 314.816L442.816 767.36 171.264 495.808l60.352-60.288 211.2 211.2 392.192-392.256 60.352 60.352z" fill="currentColor"></path>
-    </svg>
-  `;
   const checkboxStyle = computed(deleteFiles_, (checked) => {
     return [
       "width: 18px;",
@@ -731,7 +748,9 @@ function ClearTasksConfirmDialog(props) {
           },
           [
             View({ style: checkboxStyle }, [
-              Show({ when: deleteFiles_ }, [DangerouslyInnerHTML(checkIcon)]),
+              Show({ when: deleteFiles_ }, [
+                Timeless.Icon({ name: "check", size: 14 }),
+              ]),
             ]),
             View({}, ["同时删除视频文件"]),
           ],
@@ -938,26 +957,6 @@ function DownloaderPanelView(props, children) {
                         };
                       });
                       const isOpenExternal = WXU.config.remoteServerEnabled;
-                      const filename = task.name;
-                      const PrefixIcon = computed(filename, (t) => {
-                        const filename = t;
-                        let selectedIcon = FileIcon;
-                        if (filename) {
-                          const ext = filename.split(".").pop().toLowerCase();
-                          if (ext === "mp3") {
-                            selectedIcon = MP3Icon;
-                          } else if (ext === "mp4") {
-                            selectedIcon = MP4Icon;
-                          } else if (
-                            ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
-                          ) {
-                            selectedIcon = ImageIcon;
-                          }
-                        }
-                        return selectedIcon
-                          .replace('width="20"', 'width="32"')
-                          .replace('height="20"', 'height="32"');
-                      });
                       const radius = 22;
                       const circumference = 2 * Math.PI * radius;
                       const offset = computed(state_, (d) => {
@@ -980,7 +979,7 @@ function DownloaderPanelView(props, children) {
                                   return t.isRunning || t.isPaused;
                                 }),
                                 fallback: [
-                                  DangerouslyInnerHTML(PrefixIcon.value),
+                                  DownloadTaskFileIcon({ task, size: 32 }),
                                 ],
                               },
                               [
@@ -1025,7 +1024,7 @@ function DownloaderPanelView(props, children) {
                                         style:
                                           "position: relative; z-index: 1; display: flex;",
                                       },
-                                      [DangerouslyInnerHTML(PrefixIcon.value)],
+                                      [DownloadTaskFileIcon({ task, size: 32 })],
                                     ),
                                   ],
                                 ),
@@ -1113,13 +1112,17 @@ function DownloaderPanelView(props, children) {
                                           {
                                             when: !!isOpenExternal,
                                             fallback: [
-                                              DangerouslyInnerHTML(FolderIcon),
+                                              Timeless.Icon({
+                                                name: "folder",
+                                                size: 20,
+                                              }),
                                             ],
                                           },
                                           [
-                                            DangerouslyInnerHTML(
-                                              ExternalLinkIcon,
-                                            ),
+                                            Timeless.Icon({
+                                              name: "file-symlink",
+                                              size: 20,
+                                            }),
                                           ],
                                         ),
                                       ],
@@ -1137,7 +1140,12 @@ function DownloaderPanelView(props, children) {
                                           vm$.methods.pauseTask(task);
                                         },
                                       },
-                                      [DangerouslyInnerHTML(PauseIcon)],
+                                      [
+                                        Timeless.Icon({
+                                          name: "pause",
+                                          size: 20,
+                                        }),
+                                      ],
                                     ),
                                   ]),
                                   // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
@@ -1159,7 +1167,12 @@ function DownloaderPanelView(props, children) {
                                           vm$.methods.resumeTask(task);
                                         },
                                       },
-                                      [DangerouslyInnerHTML(PlayIcon)],
+                                      [
+                                        Timeless.Icon({
+                                          name: "play",
+                                          size: 20,
+                                        }),
+                                      ],
                                     ),
                                   ]),
                                   Match(4, [
@@ -1180,7 +1193,12 @@ function DownloaderPanelView(props, children) {
                                           vm$.methods.resumeTask(task);
                                         },
                                       },
-                                      [DangerouslyInnerHTML(RetryIcon)],
+                                      [
+                                        Timeless.Icon({
+                                          name: "refresh-ccw",
+                                          size: 20,
+                                        }),
+                                      ],
                                     ),
                                   ]),
                                 ],
@@ -1194,7 +1212,12 @@ function DownloaderPanelView(props, children) {
                                     vm$.methods.deleteTask(task);
                                   },
                                 },
-                                [DangerouslyInnerHTML(DeleteIcon)],
+                                [
+                                  Timeless.Icon({
+                                    name: "trash2",
+                                    size: 20,
+                                  }),
+                                ],
                               ),
                             ];
                           })(),
@@ -1242,11 +1265,7 @@ function DownloaderEntry(props) {
             class:
               "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
           },
-          [
-            DangerouslyInnerHTML(
-              `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 706.608L781.968 436.64a32 32 0 1 0-45.248-45.256L544 584.096V192a32 32 0 0 0-64 0v392.096l-192.712-192.72a32 32 0 0 0-45.256 45.256L512 706.608z" fill="currentColor"></path><path d="M824 640a32 32 0 0 0-32 32v128.36c0 3.112 0 8.496-0.48 11.472l-1.008 1.024c-0.952 0.984-2.104 2.168-3.112 3.152h-538.48c-2.448-0.664-7.808-3.56-10.608-6.36-2.776-2.784-5.656-8.128-6.32-10.568V672a32 32 0 0 0-64 0v128c0 20.632 12.608 42.456 25.088 54.912C205.584 867.4 227.408 880 248 880h544c22.496 0 36.208-14.112 44.408-22.536l2.48-2.528c17.128-17.088 17.12-41.472 17.12-54.928V672A32.016 32.016 0 0 0 824 640z" fill="currentColor"></path></svg>`,
-            ),
-          ],
+          [Timeless.Icon({ name: "download", size: 20 })],
         ),
       ],
     ),
@@ -1277,7 +1296,7 @@ function DownloaderEntry(props) {
     WXU.downloader.toggle = function () {
       popover$.toggle();
     };
-    Timeless.render(DownloaderEntry({ popover$ }), $trigger);
+    Timeless.DOM.render(DownloaderEntry({ popover$ }), $trigger);
   }
   let mounted = false;
   if (window.location.pathname === "/web/pages/profile") {

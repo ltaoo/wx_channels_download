@@ -1,102 +1,23 @@
 package interceptor
 
 import (
-	"embed"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 )
 
-//go:embed inject/lib
-var inject_lib_fs embed.FS
-
-//go:embed inject/src
-var inject_src_fs embed.FS
-
-//go:embed inject/lib/FileSaver.min.js
-var js_file_saver []byte
-
-//go:embed inject/lib/jszip.min.js
-var js_zip []byte
-
-//go:embed inject/lib/floating-ui.core.1.7.4.min.js
-var js_floating_ui_core []byte
-
-//go:embed inject/lib/floating-ui.dom.1.7.4.min.js
-var js_floating_ui_dom []byte
-
-//go:embed inject/lib/mitt.umd.js
-var js_mitt []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.umd.min.js
-var js_timeless []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.utils.umd.min.js
-var js_timeless_utils []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.shadcn.css
-var css_timeless_shadcn []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.shadcn.umd.min.js
-var js_timeless_shadcn []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.dom.umd.min.js
-var js_timeless_dom []byte
-
-//go:embed inject/lib/timeless/0.26.0/timeless.web.umd.min.js
-var js_timeless_web []byte
-
-//go:embed inject/lib/recorder.min.js
-var js_recorder []byte
-
-//go:embed inject/lib/axios.min.js
-var js_axios []byte
-
-//go:embed inject/lib/getFeedInfo.js
-var js_get_feed_info []byte
-
-//go:embed inject/lib/pagespy.min.js
-var js_pagespy []byte
-
-//go:embed inject/src/pagespy.js
-var js_debug []byte
-
-//go:embed inject/src/error.js
-var js_error []byte
-
-//go:embed inject/src/eventbus.js
-var js_eventbus []byte
-
-//go:embed inject/src/components.js
-var js_components []byte
-
-//go:embed inject/src/utils.js
-var js_utils []byte
-
-//go:embed inject/src/downloaderv2.js
-var js_downloader []byte
-
-//go:embed inject/src/officialaccount.js
-var js_wechat_officialaccount []byte
-
-//go:embed inject/src/home.js
-var js_home_page []byte
-
-//go:embed inject/src/feed.js
-var js_feed_profile_page []byte
-
-//go:embed inject/src/live.js
-var js_live_profile_page []byte
-
-//go:embed inject/src/profile.js
-var js_contact_profile_page []byte
+const defaultChannelInjectDir = "internal/interceptor/inject"
 
 type ChannelInjectedFiles struct {
-	LibFS                   embed.FS
-	SrcFS                   embed.FS
+	InjectDir               string
+	LibFS                   fs.FS
+	SrcFS                   fs.FS
 	JSFileSaver             []byte
 	JSZip                   []byte
 	JSRecorder              []byte
 	JSPageSpy               []byte
-	JSFloatingUICore        []byte
-	JSFloatingUIDOM         []byte
 	JSBox                   []byte
 	JSMitt                  []byte
 	JSAxios                 []byte
@@ -120,33 +41,98 @@ type ChannelInjectedFiles struct {
 	JSWechatOfficialAccount []byte
 }
 
-var Assets = &ChannelInjectedFiles{
-	LibFS:                   inject_lib_fs,
-	SrcFS:                   inject_src_fs,
-	JSFileSaver:             js_file_saver,
-	JSZip:                   js_zip,
-	JSRecorder:              js_recorder,
-	JSPageSpy:               js_pagespy,
-	JSFloatingUICore:        js_floating_ui_core,
-	JSFloatingUIDOM:         js_floating_ui_dom,
-	JSMitt:                  js_mitt,
-	JSDebug:                 js_debug,
-	JSError:                 js_error,
-	JSEventBus:              js_eventbus,
-	JSAxios:                 js_axios,
-	JSGetFeedInfo:           js_get_feed_info,
-	JSTimeless:              js_timeless,
-	JSTimelessUtils:         js_timeless_utils,
-	CSSTimelessShadcn:       css_timeless_shadcn,
-	JSTimelessShadcn:        js_timeless_shadcn,
-	JSTimelessDOM:           js_timeless_dom,
-	JSTimelessWeb:           js_timeless_web,
-	JSComponents:            js_components,
-	JSUtils:                 js_utils,
-	JSDownloader:            js_downloader,
-	JSHomePage:              js_home_page,
-	JSFeedProfilePage:       js_feed_profile_page,
-	JSLiveProfilePage:       js_live_profile_page,
-	JSContactPage:           js_contact_profile_page,
-	JSWechatOfficialAccount: js_wechat_officialaccount,
+var Assets = NewChannelInjectedFiles("")
+
+func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
+	if injectDir == "" {
+		injectDir = findChannelInjectDir()
+	}
+	if abs, err := filepath.Abs(injectDir); err == nil {
+		injectDir = abs
+	}
+	files := &ChannelInjectedFiles{
+		InjectDir: injectDir,
+		LibFS:     os.DirFS(filepath.Join(injectDir, "lib")),
+		SrcFS:     os.DirFS(filepath.Join(injectDir, "src")),
+	}
+	files.JSFileSaver = files.readLib("FileSaver.min.js")
+	files.JSZip = files.readLib("jszip.min.js")
+	files.JSRecorder = files.readLib("recorder.min.js")
+	files.JSPageSpy = files.readLib("pagespy.min.js")
+	files.JSMitt = files.readLib("mitt.umd.js")
+	files.JSAxios = files.readLib("axios.min.js")
+	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
+	files.JSTimeless = files.readLib("timeless/0.26.2/timeless.umd.min.js")
+	files.JSTimelessUtils = files.readLib("timeless/0.26.2/timeless.utils.umd.min.js")
+	files.CSSTimelessShadcn = files.readLib("timeless/0.26.2/timeless.shadcn.css")
+	files.JSTimelessShadcn = files.readLib("timeless/0.26.2/timeless.shadcn.umd.min.js")
+	files.JSTimelessDOM = files.readLib("timeless/0.26.2/timeless.dom.umd.min.js")
+	files.JSTimelessWeb = files.readLib("timeless/0.26.2/timeless.web.umd.min.js")
+	files.JSDebug = files.readSrc("pagespy.js")
+	files.JSError = files.readSrc("error.js")
+	files.JSEventBus = files.readSrc("eventbus.js")
+	files.JSComponents = files.readSrc("components.js")
+	files.JSUtils = files.readSrc("utils.js")
+	files.JSDownloader = files.readSrc("downloaderv2.js")
+	files.JSWechatOfficialAccount = files.readSrc("officialaccount.js")
+	files.JSHomePage = files.readSrc("home.js")
+	files.JSFeedProfilePage = files.readSrc("feed.js")
+	files.JSLiveProfilePage = files.readSrc("live.js")
+	files.JSContactPage = files.readSrc("profile.js")
+	return files
+}
+
+func (files *ChannelInjectedFiles) ReadLib(rel string) ([]byte, error) {
+	return readChannelAsset(files.LibFS, rel)
+}
+
+func (files *ChannelInjectedFiles) ReadSrc(rel string) ([]byte, error) {
+	return readChannelAsset(files.SrcFS, rel)
+}
+
+func (files *ChannelInjectedFiles) readLib(rel string) []byte {
+	data, _ := files.ReadLib(rel)
+	return data
+}
+
+func (files *ChannelInjectedFiles) readSrc(rel string) []byte {
+	data, _ := files.ReadSrc(rel)
+	return data
+}
+
+func readChannelAsset(assetFS fs.FS, rel string) ([]byte, error) {
+	clean, ok := cleanChannelAssetRel(rel)
+	if !ok {
+		return nil, fs.ErrInvalid
+	}
+	return fs.ReadFile(assetFS, clean)
+}
+
+func cleanChannelAssetRel(rel string) (string, bool) {
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "" || strings.Contains(rel, "..") || strings.ContainsRune(rel, 0) {
+		return "", false
+	}
+	clean := path.Clean(rel)
+	if clean == "." || strings.HasPrefix(clean, "../") || clean == ".." {
+		return "", false
+	}
+	return clean, true
+}
+
+func findChannelInjectDir() string {
+	candidates := []string{defaultChannelInjectDir}
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "inject"),
+			filepath.Join(exeDir, defaultChannelInjectDir),
+		)
+	}
+	for _, candidate := range candidates {
+		if stat, err := os.Stat(filepath.Join(candidate, "lib")); err == nil && stat.IsDir() {
+			return candidate
+		}
+	}
+	return defaultChannelInjectDir
 }

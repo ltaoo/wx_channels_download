@@ -13,6 +13,7 @@ import (
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
 func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles, version string) *proxy.Plugin {
+	assetBaseURL := interceptor.ChannelAssetsBaseURL(cfg.Protocol, cfg.Hostname, cfg.Port)
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnResponse: func(ctx proxy.Context) {
@@ -36,25 +37,25 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL("error.js"))
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
 				cfg_byte, _ := json.Marshal(cfg)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				variable_byte, _ := json.Marshal(variables)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
-				interceptor.AppendSharedLibAssets(&injected, version, script_attr, style_attr)
+				interceptor.AppendSharedLibAssets(&injected, assetBaseURL, version, script_attr, style_attr)
 				interceptor.AppendScriptSrcs(
 					&injected,
 					script_attr,
-					interceptor.ChannelSrcAssetURL("eventbus.js"),
-					interceptor.ChannelSrcAssetURL("utils.js"),
-					interceptor.ChannelSrcAssetURL("components.js"),
-					interceptor.ChannelSrcAssetURL("downloaderv2.js"),
-					interceptor.ChannelSrcAssetURL("officialaccount.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "utils.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "components.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "downloaderv2.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "officialaccount.js"),
 				)
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(version, "pagespy.min.js"), interceptor.ChannelSrcAssetURL("pagespy.js"))
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), interceptor.ChannelSrcAssetURL(assetBaseURL, "pagespy.js"))
 				}
 				html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 				ctx.SetResponseBody(html)

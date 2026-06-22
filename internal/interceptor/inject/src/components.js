@@ -1,3 +1,5 @@
+const cn = Timeless.classNames;
+
 const inserted_style = `<style>
 :root {
   --weui-BG-2: #fff;
@@ -683,36 +685,51 @@ function __wx_refresh_downloader(selector, tasks, total) {
 }
 
 function Popover(props, children) {
-  const state_ = refobj(props.store.state);
-  const popper_state_ = refobj(props.store.popper.state);
+  const presence_state_ = refobj(props.store.presence.state);
+  const was_exiting_ = ref(false);
 
   const unlistens = [
-    props.store.onStateChange((v) => {
-      state_.as(v);
-    }),
-    props.store.popper.onStateChange((v) => {
-      popper_state_.as(v);
+    props.store.presence.onStateChange((v) => {
+      presence_state_.as(v);
+      if (v.exit) {
+        was_exiting_.as(true);
+      }
+      if (v.mounted) {
+        was_exiting_.as(false);
+      }
     }),
   ];
 
-  return PopoverPrimitive.Root(
+  return Timeless.shadcn.PopoverPrimitive.Root(
     {
       onUnmounted() {
-        unlistens.forEach((fn) => fn());
+        unlistens.forEach((fn) => {
+          if (typeof fn === "function") {
+            fn();
+          }
+        });
       },
     },
     [
-      PopoverPrimitive.Trigger({ store: props.store }, children),
-      PopoverPrimitive.Portal({ store: props.store }, [
-        PopoverPrimitive.Content(
+      Timeless.shadcn.PopoverPrimitive.Trigger(
+        { store: props.store },
+        children,
+      ),
+      Timeless.shadcn.PopoverPrimitive.Portal({ store: props.store }, [
+        Timeless.shadcn.PopoverPrimitive.Content(
           {
             ...props,
             zIndex: 9999,
-            class: computed(state_, (t) => {
+            class: computed(presence_state_, (t) => {
+              const inClass = "animate-in fade-in-0 zoom-in-95";
+              const outClass = "animate-out fade-out-0 zoom-out-95";
               return [
-                t.enter ? "animate-in fade-in-0 zoom-in-95" : "",
-                t.exit ? "animate-out fade-out-0 zoom-out-95" : "",
-              ].join(" ");
+                t.enter ? inClass : "",
+                t.exit ? outClass : "",
+                !t.mounted && was_exiting_.value ? outClass : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
             }),
           },
           props.content,
@@ -730,8 +747,8 @@ function Dialog(props, children) {
     state_.as(v);
   });
 
-  return DialogPrimitive.Root({ store }, [
-    DialogPrimitive.Overlay({
+  return Timeless.shadcn.DialogPrimitive.Root({ store }, [
+    Timeless.shadcn.DialogPrimitive.Overlay({
       store,
       class: "fixed inset-0 z-50 bg-black/80",
     }),
@@ -745,8 +762,8 @@ function Dialog(props, children) {
         },
       },
       [
-        DialogPrimitive.Content({ ...rest, store }, [
-          DialogPrimitive.Body({ store }, children || []),
+        Timeless.shadcn.DialogPrimitive.Content({ ...rest, store }, [
+          Timeless.shadcn.DialogPrimitive.Body({ store }, children || []),
         ]),
       ],
     ),
@@ -755,47 +772,71 @@ function Dialog(props, children) {
 
 function DropdownMenu(props, children) {
   const state_ = refobj(props.store.state);
+  const unlistens = [
+    props.store.onStateChange((v) => {
+      state_.as(v);
+    }),
+  ];
 
-  return Fragment({}, [
-    h(Show, { when: !!children }, [
-      DropdownMenuPrimitive.Trigger({ store: props.store }, children),
-    ]),
-    DropdownMenuPrimitive.Content(
-      {
-        ...props,
-        animation: {
-          in: "animate-in fade-in-0 zoom-in-95",
-          out: "animate-out fade-out-0 zoom-out-95",
-        },
+  return Fragment(
+    {
+      onUnmounted() {
+        unlistens.forEach((fn) => {
+          if (typeof fn === "function") {
+            fn();
+          }
+        });
       },
-      [
-        View(
-          {
-            attributes: { "v-311f5750": "1" },
-            class:
-              "ctl-popover flex flex-col items-stretch space-y-1 overflow-hidden rounded p-2 text-sm",
+    },
+    [
+      Show({
+        when: !!children,
+        ok() {
+          return [
+            Timeless.shadcn.DropdownMenuPrimitive.Trigger(
+              { store: props.store },
+              children,
+            ),
+          ];
+        },
+      }),
+      Timeless.shadcn.DropdownMenuPrimitive.Content(
+        {
+          ...props,
+          animation: {
+            in: "animate-in fade-in-0 zoom-in-95",
+            out: "animate-out fade-out-0 zoom-out-95",
           },
-          [
-            For({
-              each: computed(state_, (t) => {
-                return t.items;
+        },
+        [
+          View(
+            {
+              attributes: { "v-311f5750": "1" },
+              class:
+                "ctl-popover flex flex-col items-stretch space-y-1 overflow-hidden rounded p-2 text-sm",
+            },
+            [
+              For({
+                each: computed(state_, (t) => {
+                  return t.items;
+                }),
+                render(item) {
+                  return DropdownMenuItem({ store: item });
+                },
               }),
-              render(item) {
-                return DropdownMenuItem({ store: item });
-              },
-            }),
-          ],
-        ),
-      ],
-    ),
-  ]);
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 function DropdownMenuItem(props) {
   const state_ = refobj(props.store.state);
   const has_submenu_ = ref(!!props.store.menu);
   const menu_state_ = refobj(props.store.menu ? props.store.menu.state : {});
-  [
+  const unlistens = [
     props.store.onStateChange((v) => {
       state_.as(v);
     }),
@@ -809,66 +850,84 @@ function DropdownMenuItem(props) {
     })(),
   ];
 
-  return Fragment({}, [
-    DropdownMenuPrimitive.Item(
-      {
-        store: props.store,
-        attributes: { "v-311f5750": "1" },
-        class: cn([
-          "menu-item",
-          computed(state_, (t) => {
-            return t.disabled ? "pointer-events-none opacity-50" : "";
-          }),
-        ]),
+  return View(
+    {
+      onUnmounted() {
+        unlistens.forEach((fn) => {
+          if (typeof fn === "function") {
+            fn();
+          }
+        });
       },
-      [
-        props.store.label,
-        Show({ when: has_submenu_ }, [
-          View({ attributes: { "v-311f5750": "1" }, class: "ml-auto" }, ["›"]),
-        ]),
-      ],
-    ),
-    (() => {
-      // console.log("DropdownMenuItem render", props.store.label);
-      const inner$ = props.store.menu
-        ? DropdownMenuPrimitive.SubMenuContent(
-            {
-              store: props.store.menu,
-              animation: {
-                in: "animate-in fade-in-0 zoom-in-95",
-                out: "animate-out fade-out-0 zoom-out-95",
-              },
+    },
+    [
+      Timeless.shadcn.DropdownMenuPrimitive.Item(
+        {
+          store: props.store,
+          attributes: { "v-311f5750": "1" },
+          class: cn([
+            "menu-item",
+            computed(state_, (t) => {
+              return t.disabled ? "pointer-events-none opacity-50" : "";
+            }),
+          ]),
+        },
+        [
+          props.store.label,
+          Show({
+            when: has_submenu_,
+            ok() {
+              return View(
+                { attributes: { "v-311f5750": "1" }, class: "ml-auto" },
+                ["›"],
+              );
             },
-            [
-              View(
-                {
-                  attributes: { "v-311f5750": "1" },
-                  class:
-                    "ctl-popover flex flex-col items-stretch space-y-1 overflow-hidden rounded p-2",
+          }),
+        ],
+      ),
+      Show({
+        when: props.store.menu,
+        ok() {
+          return View({}, [
+            Timeless.shadcn.DropdownMenuPrimitive.SubMenuContent(
+              {
+                store: props.store.menu,
+                animation: {
+                  in: "animate-in fade-in-0 zoom-in-95",
+                  out: "animate-out fade-out-0 zoom-out-95",
                 },
-                [
-                  For({
-                    each: computed(menu_state_, (t) => {
-                      return t.items;
+              },
+              [
+                View(
+                  {
+                    attributes: { "v-311f5750": "1" },
+                    class:
+                      "ctl-popover flex flex-col items-stretch space-y-1 overflow-hidden rounded p-2",
+                  },
+                  [
+                    For({
+                      each: computed(menu_state_, (t) => {
+                        return t.items;
+                      }),
+                      render(item) {
+                        return DropdownMenuItem({ store: item });
+                      },
                     }),
-                    render(item) {
-                      return DropdownMenuItem({ store: item });
-                    },
-                  }),
-                ],
-              ),
-            ],
-          )
-        : null;
-      return View({}, [inner$]);
-    })(),
-  ]);
+                  ],
+                ),
+              ],
+            ),
+          ]);
+        },
+      }),
+    ],
+  );
 }
 
 function Waterfall(props) {
   const { store, class: cls, render, ...rest } = props;
 
-  return WaterfallPrimitive.Root(
+  return Timeless.shadcn.WaterfallPrimitive.Root(
     {
       ...rest,
       store,
@@ -879,7 +938,7 @@ function Waterfall(props) {
         each: store.$columns,
         render(column) {
           const visible_cells = refarr([...column.$cells]);
-          return WaterfallPrimitive.Column({ store: column }, [
+          return Timeless.shadcn.WaterfallPrimitive.Column({ store: column }, [
             For({
               key: "id",
               each: visible_cells,
@@ -889,7 +948,7 @@ function Waterfall(props) {
                   ? render(payload, slot)
                   : null;
 
-                const cell$ = WaterfallPrimitive.Cell(
+                const cell$ = Timeless.shadcn.WaterfallPrimitive.Cell(
                   { store: slot },
                   user_content ? [user_content] : [],
                 );
@@ -938,7 +997,7 @@ function Waterfall(props) {
 function ScrollView(props, children) {
   const { store, class: cls, ...rest } = props;
 
-  return ScrollViewPrimitive.Root(
+  return Timeless.shadcn.ScrollViewPrimitive.Root(
     {
       ...rest,
       store,
@@ -946,7 +1005,7 @@ function ScrollView(props, children) {
       style: "height: 100%; overflow-y: auto; padding: 0 12px;",
     },
     [
-      ScrollViewPrimitive.Indicator(
+      Timeless.shadcn.ScrollViewPrimitive.Indicator(
         {
           store,
           class: "scroll-view-indicator",
@@ -954,7 +1013,7 @@ function ScrollView(props, children) {
             "position: relative; width: 100%; height: 0, overflow: hidden; text-align: center;",
         },
         [
-          ScrollViewPrimitive.Progress({
+          Timeless.shadcn.ScrollViewPrimitive.Progress({
             store,
             class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
             style:

@@ -9,6 +9,7 @@ import (
 func (c *APIClient) SetupRoutes() {
 	// favicon
 	c.engine.GET("/favicon.ico", c.handleFavicon)
+	c.setupStaticAssetRoutes()
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
 		// 视频号接口

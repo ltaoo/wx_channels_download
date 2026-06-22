@@ -1,0 +1,1123 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fake Feed Debug</title>
+  <script>
+    window.__wx_channels_assets_base__ =
+      window.__wx_channels_assets_base__ ||
+      "http://127.0.0.1:2022/__wx_channels_assets";
+    function __wx_fake_asset_url(path) {
+      return window.__wx_channels_assets_base__.replace(/\/$/, "") + path;
+    }
+    document.write(
+      '<link rel="stylesheet" href="' +
+      __wx_fake_asset_url("/lib/timeless/0.26.2/timeless.shadcn.css") +
+      '">'
+    );
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fake-bg: #15171b;
+      --fake-panel: #20242b;
+      --fake-panel-2: #292f38;
+      --fake-text: rgba(255, 255, 255, 0.88);
+      --fake-muted: rgba(255, 255, 255, 0.56);
+      --fake-line: rgba(255, 255, 255, 0.12);
+      --fake-green: #07c160;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 140vh;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(7, 193, 96, 0.12), transparent 30%),
+        var(--fake-bg);
+      color: var(--fake-text);
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 32px;
+    }
+
+    .home-header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 16px;
+      padding: 0 18px;
+      border: 1px solid var(--fake-line);
+      border-radius: 8px;
+      background: rgba(32, 36, 43, 0.96);
+    }
+
+    .home-header-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .home-header-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--fake-green);
+    }
+
+    .home-header-title {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .home-header-subtitle {
+      color: var(--fake-muted);
+      font-size: 12px;
+    }
+
+    .home-header-actions,
+    .home-header-action-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .home-header-action-wrap {
+      min-width: 128px;
+      min-height: 32px;
+    }
+
+    .home-header-placeholder {
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--fake-line);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .toolbar button,
+    .probe-trigger {
+      min-height: 32px;
+      border: 1px solid var(--fake-line);
+      border-radius: 6px;
+      background: var(--fake-panel-2);
+      color: var(--fake-text);
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover,
+    .probe-trigger:hover {
+      background: #333b47;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(480px, 1fr) 380px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .fake-stage {
+      min-height: 720px;
+      border: 1px solid var(--fake-line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #1d2229, #171a1f);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .with-transform .fake-stage {
+      transform: translate3d(38px, 24px, 0) scale(0.94);
+      transform-origin: top left;
+    }
+
+    .slides-scroll {
+      width: 100%;
+      height: 720px;
+      overflow: auto;
+      padding: 56px 70px 140px;
+    }
+
+    .slides-item {
+      width: min(720px, 100%);
+      min-height: 560px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .feed-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 76px;
+      gap: 18px;
+      align-items: end;
+    }
+
+    .video-card {
+      min-height: 560px;
+      border-radius: 8px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 38%),
+        linear-gradient(135deg, #394150, #12151a 62%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+    }
+
+    .video-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(transparent 55%, rgba(0, 0, 0, 0.58)),
+        repeating-linear-gradient(135deg,
+          rgba(255, 255, 255, 0.04) 0,
+          rgba(255, 255, 255, 0.04) 1px,
+          transparent 1px,
+          transparent 14px);
+    }
+
+    .feed-copy {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 24px;
+      z-index: 1;
+    }
+
+    .feed-title {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .feed-desc {
+      margin: 0;
+      color: var(--fake-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .op-list {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 20px;
+    }
+
+    .click-box.op-item {
+      width: 58px;
+      min-height: 58px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .click-box.op-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .op-icon {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .op-text {
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .debug-panel {
+      position: sticky;
+      top: 16px;
+      border: 1px solid var(--fake-line);
+      border-radius: 8px;
+      background: rgba(32, 36, 43, 0.96);
+      overflow: hidden;
+    }
+
+    .debug-panel header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--fake-line);
+      font-weight: 650;
+    }
+
+    .debug-panel pre {
+      margin: 0;
+      padding: 12px 14px 16px;
+      max-height: 620px;
+      overflow: auto;
+      color: rgba(255, 255, 255, 0.74);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .probe-area {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: 48px;
+      padding: 0 70px 18px;
+    }
+
+    .debug-box {
+      position: fixed;
+      z-index: 2147483646;
+      pointer-events: none;
+      border: 2px solid currentColor;
+    }
+
+    .debug-box span {
+      position: absolute;
+      left: 0;
+      top: -20px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: currentColor;
+      color: #111;
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 980px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .debug-panel {
+        position: static;
+      }
+    }
+  </style>
+  <script>
+    window.ua = navigator.userAgent;
+    window.__wx_channels_version__ = "fakefeed";
+    var __wx_fake_assets_url = new URL(window.__wx_channels_assets_base__);
+    window.__wx_channels_config__ = {
+      defaultHighest: false,
+      downloadFilenameTemplate: "{{title}}",
+      downloadInFrontend: false,
+      downloadPauseWhenDownload: false,
+      remoteServerEnabled: false,
+      apiServerProtocol: __wx_fake_assets_url.protocol.replace(":", ""),
+      apiServerAddr: __wx_fake_assets_url.host,
+    };
+    window.WXVariable = {};
+
+    (function () {
+      var taskSeq = 3;
+      var wsClients = [];
+      var fakeTasks = [
+        {
+          id: "fake-task-running",
+          status: "running",
+          progress: {
+            downloaded: 7340032,
+            speed: 368640,
+          },
+          meta: {
+            opts: {
+              path: "/Users/fake/Downloads",
+              name: "Fake feed debug video.mp4",
+            },
+            res: {
+              name: "Fake feed debug video.mp4",
+              size: 12345678,
+              files: [{ name: "Fake feed debug video.mp4" }],
+            },
+          },
+        },
+        {
+          id: "fake-task-paused",
+          status: "pause",
+          progress: {
+            downloaded: 2097152,
+            speed: 0,
+          },
+          meta: {
+            opts: {
+              path: "/Users/fake/Downloads",
+              name: "Paused fake task.mp4",
+            },
+            res: {
+              name: "Paused fake task.mp4",
+              size: 8388608,
+              files: [{ name: "Paused fake task.mp4" }],
+            },
+          },
+        },
+        {
+          id: "fake-task-done",
+          status: "done",
+          progress: {
+            downloaded: 5242880,
+            speed: 0,
+          },
+          meta: {
+            opts: {
+              path: "/Users/fake/Downloads",
+              name: "Completed fake task.mp4",
+            },
+            res: {
+              name: "Completed fake task.mp4",
+              size: 5242880,
+              files: [{ name: "Completed fake task.mp4" }],
+            },
+          },
+        },
+      ];
+
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function parseBody(body) {
+        if (!body) return {};
+        if (typeof body === "string") {
+          try {
+            return JSON.parse(body);
+          } catch (err) {
+            return {};
+          }
+        }
+        return body;
+      }
+
+      function getPath(url) {
+        try {
+          return new URL(url, window.location.href).pathname;
+        } catch (err) {
+          return String(url || "");
+        }
+      }
+
+      function statusCounts() {
+        var counts = {
+          total: fakeTasks.length,
+          ready: 0,
+          running: 0,
+          wait: 0,
+          pause: 0,
+          error: 0,
+          done: 0,
+        };
+        fakeTasks.forEach(function (task) {
+          var status = task.status === "paused" ? "pause" : task.status;
+          if (typeof counts[status] === "number") {
+            counts[status] += 1;
+          }
+        });
+        return counts;
+      }
+
+      function findTask(id) {
+        return fakeTasks.find(function (task) {
+          return task.id === id;
+        });
+      }
+
+      function createTask(body) {
+        taskSeq += 1;
+        var suffix = body.suffix || ".mp4";
+        var filename = body.filename || body.title || "Fake created task";
+        if (filename && suffix && !filename.endsWith(suffix)) {
+          filename += suffix;
+        }
+        var task = {
+          id: (body.id || "fake-created") + "-" + taskSeq,
+          status: "ready",
+          progress: {
+            downloaded: 0,
+            speed: 0,
+          },
+          meta: {
+            opts: {
+              path: "/Users/fake/Downloads",
+              name: filename,
+            },
+            res: {
+              name: filename,
+              size: 15728640,
+              files: [{ name: filename }],
+            },
+          },
+        };
+        fakeTasks.unshift(task);
+        broadcast({
+          type: "event",
+          data: {
+            Key: "create",
+            Task: clone(task),
+          },
+        });
+        return task;
+      }
+
+      function setTaskStatus(id, status) {
+        var task = findTask(id);
+        if (task) {
+          task.status = status;
+          if (status === "running") {
+            task.progress.speed = 245760;
+          } else {
+            task.progress.speed = 0;
+          }
+          broadcast({
+            type: "event",
+            data: {
+              Key: status,
+              Task: clone(task),
+            },
+          });
+        }
+        return task || null;
+      }
+
+      function broadcast(message) {
+        var text = JSON.stringify(message);
+        wsClients.forEach(function (client) {
+          if (client.readyState === 1 && typeof client.onmessage === "function") {
+            client.onmessage({ data: text });
+          }
+        });
+      }
+
+      window.__wx_fake_tasks = fakeTasks;
+      window.__wx_fake_api_response = function (url, rawBody) {
+        var path = getPath(url);
+        var body = parseBody(rawBody);
+        console.log("[fakefeed] api", path, body);
+        if (path === "/api/task/list") {
+          return {
+            code: 0,
+            data: {
+              list: clone(fakeTasks),
+              total: fakeTasks.length,
+              page: 1,
+              page_size: 50,
+              status_counts: statusCounts(),
+            },
+          };
+        }
+        if (path === "/api/task/create") {
+          return { code: 0, data: clone(createTask(body)) };
+        }
+        if (path === "/api/task/create_batch") {
+          var feeds = Array.isArray(body.feeds) ? body.feeds : [];
+          return {
+            code: 0,
+            data: feeds.map(function (feed) {
+              return clone(createTask(feed));
+            }),
+          };
+        }
+        if (path === "/api/task/start") {
+          return { code: 0, data: clone(setTaskStatus(body.id, "running")) };
+        }
+        if (path === "/api/task/pause") {
+          return { code: 0, data: clone(setTaskStatus(body.id, "pause")) };
+        }
+        if (path === "/api/task/resume") {
+          return { code: 0, data: clone(setTaskStatus(body.id, "running")) };
+        }
+        if (path === "/api/task/delete") {
+          fakeTasks = fakeTasks.filter(function (task) {
+            return task.id !== body.id;
+          });
+          window.__wx_fake_tasks = fakeTasks;
+          broadcast({ type: "event", data: { Key: "delete", id: body.id } });
+          return { code: 0, data: { ok: true } };
+        }
+        if (path === "/api/task/start_all") {
+          fakeTasks.forEach(function (task) {
+            if (task.status !== "done") setTaskStatus(task.id, "running");
+          });
+          return { code: 0, data: { ok: true } };
+        }
+        if (path === "/api/task/pause_all") {
+          fakeTasks.forEach(function (task) {
+            if (task.status === "running") setTaskStatus(task.id, "pause");
+          });
+          return { code: 0, data: { ok: true } };
+        }
+        if (path === "/api/task/clear") {
+          fakeTasks = fakeTasks.filter(function (task) {
+            return task.status === "running";
+          });
+          window.__wx_fake_tasks = fakeTasks;
+          return { code: 0, data: { ok: true } };
+        }
+        if (
+          path === "/api/show_file" ||
+          path === "/api/open_download_dir" ||
+          path.indexOf("/__wx_channels_api/") === 0
+        ) {
+          return { code: 0, data: { ok: true } };
+        }
+        return { code: 0, data: { ok: true, path: path } };
+      };
+
+      window.fetch = async function (input, init) {
+        var url = typeof input === "string" ? input : input && input.url;
+        var body = init && init.body;
+        var payload = window.__wx_fake_api_response(url, body);
+        var text = JSON.stringify(payload);
+        if (typeof Response === "function") {
+          return new Response(text, {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: function () { return "application/json"; } },
+          json: async function () { return payload; },
+          text: async function () { return text; },
+        };
+      };
+
+      function createEventTarget() {
+        return {
+          listeners: {},
+          addEventListener: function (type, cb) {
+            if (!this.listeners[type]) this.listeners[type] = [];
+            this.listeners[type].push(cb);
+          },
+          removeEventListener: function (type, cb) {
+            if (!this.listeners[type]) return;
+            this.listeners[type] = this.listeners[type].filter(function (item) {
+              return item !== cb;
+            });
+          },
+          dispatchEvent: function (type, event) {
+            (this.listeners[type] || []).forEach(function (cb) {
+              cb(event);
+            });
+          },
+        };
+      }
+
+      window.XMLHttpRequest = function FakeXMLHttpRequest() {
+        this.headers = {};
+        this.listeners = {};
+        this.upload = createEventTarget();
+        this.readyState = 0;
+        this.status = 0;
+        this.statusText = "";
+        this.responseText = "";
+        this.response = "";
+        this.responseURL = "";
+        this.onloadend = null;
+      };
+      window.XMLHttpRequest.prototype.open = function (method, url) {
+        this.method = method;
+        this.url = url;
+        this.responseURL = url;
+        this.readyState = 1;
+      };
+      window.XMLHttpRequest.prototype.setRequestHeader = function (key, value) {
+        this.headers[key] = value;
+      };
+      window.XMLHttpRequest.prototype.addEventListener = function (type, cb) {
+        if (!this.listeners[type]) this.listeners[type] = [];
+        this.listeners[type].push(cb);
+      };
+      window.XMLHttpRequest.prototype.removeEventListener = function (type, cb) {
+        if (!this.listeners[type]) return;
+        this.listeners[type] = this.listeners[type].filter(function (item) {
+          return item !== cb;
+        });
+      };
+      window.XMLHttpRequest.prototype.dispatchEvent = function (type, event) {
+        (this.listeners[type] || []).forEach(function (cb) {
+          cb(event);
+        });
+      };
+      window.XMLHttpRequest.prototype.getResponseHeader = function (key) {
+        return key && key.toLowerCase() === "content-type"
+          ? "application/json"
+          : null;
+      };
+      window.XMLHttpRequest.prototype.getAllResponseHeaders = function () {
+        return "content-type: application/json\r\n";
+      };
+      window.XMLHttpRequest.prototype.send = function (body) {
+        var xhr = this;
+        setTimeout(function () {
+          var payload = window.__wx_fake_api_response(xhr.url, body);
+          xhr.status = 200;
+          xhr.statusText = "OK";
+          xhr.readyState = 4;
+          xhr.responseText = JSON.stringify(payload);
+          xhr.response = xhr.responseText;
+          xhr.dispatchEvent("progress", {
+            loaded: xhr.responseText.length,
+            total: xhr.responseText.length,
+          });
+          if (typeof xhr.onreadystatechange === "function") {
+            xhr.onreadystatechange();
+          }
+          if (typeof xhr.onload === "function") {
+            xhr.onload();
+          }
+          xhr.upload.dispatchEvent("loadend", { target: xhr });
+          if (typeof xhr.onloadend === "function") {
+            xhr.onloadend();
+          }
+        }, 0);
+      };
+      window.XMLHttpRequest.prototype.abort = function () {
+        this.readyState = 0;
+      };
+
+      window.WebSocket = function FakeWebSocket(url) {
+        this.url = url;
+        this.readyState = 0;
+        wsClients.push(this);
+        setTimeout(() => {
+          this.readyState = 1;
+          if (typeof this.onopen === "function") {
+            this.onopen({ target: this });
+          }
+          if (typeof this.onmessage === "function") {
+            this.onmessage({
+              data: JSON.stringify({
+                type: "batch_tasks",
+                data: clone(fakeTasks),
+              }),
+            });
+          }
+        }, 30);
+      };
+      window.WebSocket.CONNECTING = 0;
+      window.WebSocket.OPEN = 1;
+      window.WebSocket.CLOSING = 2;
+      window.WebSocket.CLOSED = 3;
+      window.WebSocket.prototype.send = function (data) {
+        console.log("[fakefeed] websocket.send", data);
+      };
+      window.WebSocket.prototype.close = function () {
+        this.readyState = 3;
+        wsClients = wsClients.filter((client) => client !== this);
+        if (typeof this.onclose === "function") {
+          this.onclose({ target: this });
+        }
+      };
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="app" class="page">
+    <header class="home-header">
+      <div class="home-header-main">
+        <div class="home-header-logo" aria-hidden="true"></div>
+        <div>
+          <div class="home-header-title">Fake Channels Feed</div>
+          <div class="home-header-subtitle">home-header insertion target</div>
+        </div>
+      </div>
+      <div class="home-header-actions">
+        <div class="home-header-action-wrap">
+          <div class="home-header-placeholder" aria-hidden="true"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <button id="toggle-transform" type="button">Toggle transform</button>
+      <button id="scroll-page" type="button">Scroll page</button>
+      <button id="scroll-feed" type="button">Scroll feed</button>
+      <button id="toggle-downloader" type="button">Toggle downloader</button>
+      <button id="reinsert" type="button">Reinsert download</button>
+      <button id="log-rects" type="button">Log rects</button>
+    </div>
+
+    <div class="workspace">
+      <main class="fake-stage">
+        <div class="probe-area">
+          <div id="timeless-probe"></div>
+        </div>
+        <div class="slides-scroll">
+          <section class="slides-item">
+            <div class="feed-shell">
+              <article class="video-card">
+                <div class="feed-copy">
+                  <p class="feed-title">Fake feed for download menu debug</p>
+                  <p class="feed-desc">
+                    This page keeps the same .slides-item and .click-box.op-item
+                    shape used by feed.js, then lets feed.js inject the download
+                    button by itself.
+                  </p>
+                </div>
+              </article>
+
+              <aside class="op-list" aria-label="feed operations">
+                <div class="click-box op-item" role="button" aria-label="赞">
+                  <div class="op-icon">♡</div>
+                  <div class="op-text">赞</div>
+                </div>
+                <div class="click-box op-item" role="button" aria-label="评论">
+                  <div class="op-icon">☰</div>
+                  <div class="op-text">评论</div>
+                </div>
+                <div class="click-box op-item" role="button" aria-label="分享">
+                  <div class="op-icon">↗</div>
+                  <div class="op-text">分享</div>
+                </div>
+              </aside>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <aside class="debug-panel">
+        <header>Rect Inspector</header>
+        <pre id="rect-output">Waiting for scripts...</pre>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      function writeScript(path) {
+        document.write(
+          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
+        );
+      }
+      writeScript("/lib/mitt.umd.js");
+      writeScript("/lib/timeless/0.26.2/timeless.umd.min.js");
+      writeScript("/lib/timeless/0.26.2/timeless.utils.umd.min.js");
+      writeScript("/lib/timeless/0.26.2/timeless.shadcn.umd.min.js");
+    })();
+  </script>
+  <script>
+    Object.assign(Timeless, Timeless.shadcn.kit);
+    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(window, Timeless);
+    Object.assign(window, Timeless.shadcn);
+  </script>
+  <script>
+    (function () {
+      function writeScript(path) {
+        document.write(
+          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
+        );
+      }
+      writeScript("/lib/timeless/0.26.2/timeless.dom.umd.min.js");
+      writeScript("/lib/timeless/0.26.2/timeless.web.umd.min.js");
+      writeScript("/src/eventbus.js");
+      writeScript("/src/utils.js");
+      writeScript("/src/components.js");
+      writeScript("/src/feed.js");
+      writeScript("/src/downloaderv2.js");
+    })();
+  </script>
+  <script>
+    (function () {
+      const fakeFeed = {
+        id: "fake-feed-001",
+        objectNonceId: "fake-nonce-001",
+        createtime: Math.floor(Date.now() / 1000),
+        contact: {
+          username: "fake_author",
+          nickname: "Fake Author",
+          headUrl: "",
+        },
+        objectDesc: {
+          mediaType: 4,
+          description: "Fake feed debug video",
+          media: [
+            {
+              url: "https://example.com/fake-video.mp4?encfilekey=fake&token=fake",
+              urlToken: "",
+              decodeKey: 0,
+              coverUrl: "",
+              fileSize: 12345678,
+              videoPlayLen: 42,
+              spec: [
+                {
+                  fileFormat: "hd",
+                  width: 1920,
+                  height: 1080,
+                  bitRate: 3200,
+                  videoBitrate: 3000,
+                  audioBitrate: 128,
+                  codingFormat: "h264",
+                  levelOrder: 3,
+                },
+                {
+                  fileFormat: "sd",
+                  width: 1280,
+                  height: 720,
+                  bitRate: 1600,
+                  videoBitrate: 1500,
+                  audioBitrate: 96,
+                  codingFormat: "h264",
+                  levelOrder: 2,
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      function feedDownloadTrigger() {
+        const icon = document.querySelector(".download-icon");
+        return icon ? icon.closest(".click-box.op-item") || icon : null;
+      }
+
+      function downloaderPanelTrigger() {
+        return (
+          document.querySelector(".home-header [data-v-81be080d]") ||
+          document.querySelector(".home-header .mr-2.relative")
+        );
+      }
+
+      function rectOf(el) {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          x: Math.round(r.x),
+          y: Math.round(r.y),
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+        };
+      }
+
+      function isVisible(el) {
+        if (!el) return false;
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      }
+
+      function visibleMenus() {
+        return Array.from(
+          document.querySelectorAll(".wx-simple-menu, .t1-popper"),
+        )
+          .filter(isVisible)
+          .map((el, index) => ({
+            index,
+            className: el.className,
+            rect: rectOf(el),
+            transform: getComputedStyle(el).transform,
+          }));
+      }
+
+      function ensureDebugBox(id, color, label) {
+        let box = document.getElementById(id);
+        if (!box) {
+          box = document.createElement("div");
+          box.id = id;
+          box.className = "debug-box";
+          box.style.color = color;
+          box.innerHTML = `<span>${label}</span>`;
+          document.body.appendChild(box);
+        }
+        return box;
+      }
+
+      function placeDebugBox(id, rect, color, label) {
+        const box = ensureDebugBox(id, color, label);
+        if (!rect) {
+          box.style.display = "none";
+          return;
+        }
+        box.style.display = "block";
+        box.style.left = rect.left + "px";
+        box.style.top = rect.top + "px";
+        box.style.width = rect.width + "px";
+        box.style.height = rect.height + "px";
+      }
+
+      function snapshot() {
+        const trigger = feedDownloadTrigger();
+        const menus = visibleMenus();
+        const probe = document.getElementById("timeless-probe-trigger");
+        const data = {
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            scrollX: Math.round(window.scrollX),
+            scrollY: Math.round(window.scrollY),
+            devicePixelRatio: window.devicePixelRatio,
+          },
+          appTransform: getComputedStyle(document.getElementById("app"))
+            .transform,
+          feedTrigger: rectOf(trigger),
+          downloaderPanelTrigger: rectOf(downloaderPanelTrigger()),
+          timelessProbeTrigger: rectOf(probe),
+          menus,
+        };
+        placeDebugBox("debug-feed-trigger", data.feedTrigger, "#07c160", "feed trigger");
+        placeDebugBox(
+          "debug-downloader-trigger",
+          data.downloaderPanelTrigger,
+          "#a78bfa",
+          "downloader trigger",
+        );
+        placeDebugBox(
+          "debug-timeless-trigger",
+          data.timelessProbeTrigger,
+          "#4da3ff",
+          "timeless trigger",
+        );
+        menus.slice(0, 2).forEach((menu, index) => {
+          placeDebugBox(
+            "debug-menu-" + index,
+            menu.rect,
+            index === 0 ? "#ffcc00" : "#ff6b6b",
+            "menu " + index,
+          );
+        });
+        document.getElementById("rect-output").textContent = JSON.stringify(
+          data,
+          null,
+          2,
+        );
+        return data;
+      }
+
+      function renderTimelessProbe() {
+        const mount = document.getElementById("timeless-probe");
+        if (!mount || !window.Timeless || !window.DropdownMenu) return;
+        const subMenu = new Timeless.ui.MenuCore({
+          items: [
+            new Timeless.ui.MenuItemCore({ label: "1080p" }),
+            new Timeless.ui.MenuItemCore({ label: "720p" }),
+          ],
+        });
+        const menu = new Timeless.ui.DropdownMenuCore({
+          trigger: "hover",
+          align: "end",
+          items: [
+            new Timeless.ui.MenuItemCore({
+              label: "更多下载",
+              menu: subMenu,
+            }),
+            new Timeless.ui.MenuItemCore({ label: "下载为 MP3" }),
+            new Timeless.ui.MenuItemCore({ label: "复制页面链接" }),
+          ],
+        });
+        Timeless.DOM.render(
+          DropdownMenu({ store: menu }, [
+            View(
+              {
+                id: "timeless-probe-trigger",
+                class: "probe-trigger",
+              },
+              ["Timeless Dropdown Probe"],
+            ),
+          ]),
+          mount,
+        );
+      }
+
+      function installFakeData() {
+        if (!window.WXU || !window.WXE) return;
+        WXU.set_feed(fakeFeed);
+        const originalCreate = WXU.downloader.create;
+        WXU.downloader.create = async function (feed, opt) {
+          console.log("[fakefeed] downloader.create", { feed, opt });
+          return originalCreate.call(this, feed, opt);
+        };
+        WXE.emit(WXE.Events.FeedProfileLoaded, fakeFeed);
+        WXE.emit(WXE.Events.Feed, fakeFeed);
+      }
+
+      function bindControls() {
+        document.getElementById("toggle-transform").onclick = function () {
+          document.getElementById("app").classList.toggle("with-transform");
+          snapshot();
+        };
+        document.getElementById("scroll-page").onclick = function () {
+          window.scrollTo({
+            top: window.scrollY > 0 ? 0 : 260,
+            behavior: "smooth",
+          });
+        };
+        document.getElementById("scroll-feed").onclick = function () {
+          const scroller = document.querySelector(".slides-scroll");
+          scroller.scrollTo({
+            top: scroller.scrollTop > 0 ? 0 : 120,
+            behavior: "smooth",
+          });
+        };
+        document.getElementById("toggle-downloader").onclick = function () {
+          if (window.WXU && WXU.downloader) {
+            WXU.downloader.toggle();
+            setTimeout(snapshot, 50);
+          }
+        };
+        document.getElementById("reinsert").onclick = function () {
+          document.querySelectorAll(".download-icon").forEach((icon) => {
+            const wrap = icon.closest(".op-list > div");
+            if (wrap) wrap.remove();
+          });
+          if (window.__wx_insert_download_btn_to_feed_profile_page) {
+            window.__wx_insert_download_btn_to_feed_profile_page();
+          }
+          setTimeout(snapshot, 50);
+        };
+        document.getElementById("log-rects").onclick = function () {
+          console.log("[fakefeed] rect snapshot", snapshot());
+        };
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        setTimeout(function () {
+          installFakeData();
+          renderTimelessProbe();
+          bindControls();
+          snapshot();
+          setInterval(snapshot, 300);
+        }, 60);
+      });
+    })();
+  </script>
+</body>
+
+</html>

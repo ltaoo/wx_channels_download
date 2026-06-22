@@ -21,6 +21,7 @@ import (
 	"wx_channel/internal/assets"
 	"wx_channel/internal/channels"
 	downloaderclient "wx_channel/internal/downloader"
+	"wx_channel/internal/interceptor"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/pkg/system"
@@ -202,6 +203,51 @@ func (c *APIClient) Stop() error {
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.engine.ServeHTTP(w, r)
+}
+
+func (c *APIClient) setupStaticAssetRoutes() {
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		c.engine.Handle(method, "/__wx_channels_assets/lib/*filepath", c.handleChannelLibAsset)
+		c.engine.Handle(method, "/__wx_channels_assets/src/*filepath", c.handleChannelSrcAsset)
+	}
+}
+
+func (c *APIClient) handleChannelLibAsset(ctx *gin.Context) {
+	rel := ctx.Param("filepath")
+	data, err := interceptor.Assets.ReadLib(rel)
+	if err != nil {
+		ctx.Status(http.StatusNotFound)
+		return
+	}
+	ctx.Header("Content-Type", interceptor.ChannelStaticAssetContentType(rel))
+	ctx.Header("Cache-Control", interceptor.ChannelLibAssetCacheControl)
+	if ctx.Request.Method == http.MethodHead {
+		ctx.Status(http.StatusOK)
+		return
+	}
+	ctx.Data(http.StatusOK, interceptor.ChannelStaticAssetContentType(rel), data)
+}
+
+func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
+	rel := ctx.Param("filepath")
+	data, err := interceptor.Assets.ReadSrc(rel)
+	if err != nil {
+		ctx.Status(http.StatusNotFound)
+		return
+	}
+	etag := interceptor.ChannelStaticAssetETag(data)
+	ctx.Header("Content-Type", interceptor.ChannelStaticAssetContentType(rel))
+	ctx.Header("Cache-Control", interceptor.ChannelSrcAssetCacheControl)
+	ctx.Header("ETag", etag)
+	if strings.Contains(ctx.GetHeader("If-None-Match"), etag) {
+		ctx.Status(http.StatusNotModified)
+		return
+	}
+	if ctx.Request.Method == http.MethodHead {
+		ctx.Status(http.StatusOK)
+		return
+	}
+	ctx.Data(http.StatusOK, interceptor.ChannelStaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) resolve_connections(url string) int {

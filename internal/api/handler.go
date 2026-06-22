@@ -989,8 +989,6 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/mitt.umd.js", files.JSMitt))
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/eventbus.js", files.JSEventBus))
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/utils.js", files.JSUtils))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.core.1.7.4.min.js", files.JSFloatingUICore))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.dom.1.7.4.min.js", files.JSFloatingUIDOM))
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", files.JSComponents))
 	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", files.JSDownloader))
 
