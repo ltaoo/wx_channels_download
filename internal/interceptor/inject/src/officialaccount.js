@@ -261,18 +261,16 @@
       { type: window.cgiDataNew.page_type },
       dialog$,
     );
-    const { DropdownMenu, Menu, MenuItem } = WUI;
-    const dropdown$ = DropdownMenu({
-      $trigger: $btn,
+    const dropdown$ = WXU.create_dropdown_menu($btn, {
       zIndex: 99999,
       children: [
-        // MenuItem({
+        // WXU.menu_item({
         //   label: "下载markdown",
         //   onClick() {
         //     dropdown$.hide();
         //   },
         // }),
-        MenuItem({
+        WXU.menu_item({
           label: "复制文章HTML",
           onClick() {
             const content = window.cgiDataNew.content_noencode;
@@ -285,7 +283,7 @@
             dropdown$.hide();
           },
         }),
-        MenuItem({
+        WXU.menu_item({
           label: "复制页面HTML",
           onClick() {
             const content = window.body.innerHTML;
@@ -294,7 +292,7 @@
             dropdown$.hide();
           },
         }),
-        MenuItem({
+        WXU.menu_item({
           label: "下载记录",
           onClick() {
             dialog$.show();
@@ -304,7 +302,7 @@
       ],
     });
     dropdown$.ui.$trigger.onMouseEnter(() => {
-      dropdown$.show();
+      dropdown$.show($btn);
     });
     dropdown$.ui.$trigger.onMouseLeave(() => {
       if (dropdown$.isHover) {

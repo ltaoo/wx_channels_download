@@ -1,11 +1,14 @@
 package interceptor
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -51,6 +54,154 @@ var (
 	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
+const channelAssetsBaseURL = "https://channels.weixin.qq.com/__wx_channels_assets"
+
+const timelessBridgeScript = `Object.assign(Timeless, Timeless.shadcn.kit);
+Timeless.ui = Timeless.shadcn.ui;
+Object.assign(window, Timeless);
+Object.assign(window, Timeless.shadcn);`
+
+func ChannelLibAssetURL(version string, rel string) string {
+	if version == "" {
+		version = "static"
+	}
+	return channelAssetsBaseURL + "/lib/" + rel + "?v=" + url.QueryEscape(version)
+}
+
+func ChannelSrcAssetURL(rel string) string {
+	return channelAssetsBaseURL + "/src/" + rel
+}
+
+func AppendScriptSrcs(b *strings.Builder, attr string, srcs ...string) {
+	for _, src := range srcs {
+		if src == "" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf(`<script%s src="%s"></script>`, attr, src))
+	}
+}
+
+func AppendStylesheetHrefs(b *strings.Builder, attr string, hrefs ...string) {
+	for _, href := range hrefs {
+		if href == "" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf(`<link%s rel="stylesheet" href="%s">`, attr, href))
+	}
+}
+
+func AppendInlineScript(b *strings.Builder, attr string, script string) {
+	if script == "" {
+		return
+	}
+	b.WriteString(fmt.Sprintf(`<script%s>%s</script>`, attr, script))
+}
+
+func AppendSharedLibAssets(b *strings.Builder, version string, scriptAttr string, styleAttr string) {
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(version, "mitt.umd.js"),
+		ChannelLibAssetURL(version, "timeless/0.26.0/timeless.umd.min.js"),
+		ChannelLibAssetURL(version, "timeless/0.26.0/timeless.utils.umd.min.js"),
+	)
+	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(version, "timeless/0.26.0/timeless.shadcn.css"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(version, "timeless/0.26.0/timeless.shadcn.umd.min.js"))
+	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(version, "timeless/0.26.0/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(version, "timeless/0.26.0/timeless.web.umd.min.js"),
+		ChannelLibAssetURL(version, "floating-ui.core.1.7.4.min.js"),
+		ChannelLibAssetURL(version, "floating-ui.dom.1.7.4.min.js"),
+	)
+}
+
+func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelInjectedFiles) bool {
+	if rel, ok := channelStaticAssetRel(pathname, "lib"); ok {
+		data, err := files.LibFS.ReadFile("inject/lib/" + rel)
+		if err != nil {
+			return false
+		}
+		ctx.Mock(200, map[string]string{
+			"Content-Type":  channelStaticAssetContentType(rel),
+			"Cache-Control": "public, max-age=31536000, immutable",
+		}, string(data))
+		return true
+	}
+	if rel, ok := channelStaticAssetRel(pathname, "src"); ok {
+		data, err := readChannelSrcAsset(files, rel)
+		if err != nil {
+			return false
+		}
+		etag := channelStaticAssetETag(data)
+		headers := map[string]string{
+			"Content-Type":  channelStaticAssetContentType(rel),
+			"Cache-Control": "no-cache",
+			"ETag":          etag,
+		}
+		if req := ctx.Req(); req != nil && req.Header != nil {
+			if strings.Contains(req.Header.Get("If-None-Match"), etag) {
+				ctx.Mock(304, headers, "")
+				return true
+			}
+		}
+		ctx.Mock(200, headers, string(data))
+		return true
+	}
+	return false
+}
+
+func channelStaticAssetRel(pathname string, dir string) (string, bool) {
+	marker := "/" + dir + "/"
+	idx := strings.LastIndex(pathname, marker)
+	if idx < 0 {
+		trimmed := strings.TrimPrefix(pathname, "/")
+		prefix := dir + "/"
+		if !strings.HasPrefix(trimmed, prefix) {
+			return "", false
+		}
+		rel := strings.TrimPrefix(trimmed, prefix)
+		if rel == "" || strings.Contains(rel, "..") {
+			return "", false
+		}
+		return rel, true
+	}
+	rel := pathname[idx+len(marker):]
+	if rel == "" || strings.Contains(rel, "..") {
+		return "", false
+	}
+	return rel, true
+}
+
+func channelStaticAssetContentType(rel string) string {
+	switch {
+	case strings.HasSuffix(rel, ".js"):
+		return "application/javascript; charset=utf-8"
+	case strings.HasSuffix(rel, ".css"):
+		return "text/css; charset=utf-8"
+	case strings.HasSuffix(rel, ".html"):
+		return "text/html; charset=utf-8"
+	case strings.HasSuffix(rel, ".json"):
+		return "application/json; charset=utf-8"
+	default:
+		return "text/plain; charset=utf-8"
+	}
+}
+
+func readChannelSrcAsset(files *ChannelInjectedFiles, rel string) ([]byte, error) {
+	if data, err := os.ReadFile("internal/interceptor/inject/src/" + rel); err == nil {
+		return data, nil
+	}
+	return files.SrcFS.ReadFile("inject/src/" + rel)
+}
+
+func channelStaticAssetETag(data []byte) string {
+	hash := sha256.Sum256(data)
+	return `"` + hex.EncodeToString(hash[:]) + `"`
+}
+
 func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInjectedFiles) []*proxy.Plugin {
 	version := interceptor.Version
 	cfg := interceptor.Settings
@@ -60,34 +211,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if strings.Contains(pathname, "jszip.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSZip))
-				return
-			}
-			if strings.Contains(pathname, "FileSaver.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSFileSaver))
-				return
-			}
-			if strings.Contains(pathname, "recorder.min") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSRecorder))
-				return
-			}
-			if strings.Contains(pathname, "getFeedInfo") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSGetFeedInfo))
-				return
-			}
-			if strings.Contains(pathname, "axios") {
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/javascript",
-				}, string(files.JSAxios))
+			if mockChannelStaticAsset(ctx, pathname, files) {
 				return
 			}
 			if pathname == "/__wx_channels_api/profile" {
@@ -189,76 +313,59 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
-				inserted_scripts := ""
+				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script>%s</script>`, files.JSError)
-					inserted_scripts += script_error
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("error.js"))
 				}
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessReactive)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUtils)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessUI)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessKit)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessHeadless)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessIcons)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSTimelessProviderWeb)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSWui)
+				AppendSharedLibAssets(&injected, version, "", "")
 				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";</script>`, string(cfg_byte), version)
-				inserted_scripts += script_config
+				AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				variable_byte, _ := json.Marshal(variables)
-				script_variable := fmt.Sprintf(`<script>var WXVariable = %s;</script>`, string(variable_byte))
-				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSComponents)
+				AppendInlineScript(&injected, "", fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
+				AppendScriptSrcs(
+					&injected,
+					"",
+					ChannelSrcAssetURL("eventbus.js"),
+					ChannelSrcAssetURL("utils.js"),
+					ChannelSrcAssetURL("components.js"),
+				)
 				if !cfg.DownloadInFrontend {
-					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, files.JSDownloader)
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("downloaderv2.js"))
 				}
 				if cfg.InjectGlobalScript != "" {
-					inserted_scripts += fmt.Sprintf(`<script>%s</script>`, cfg.InjectGlobalScript)
+					AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
 				}
 				// 必须放在 JSUtils 后面
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script>%s</script>`, files.JSPageSpy)
-					script_debug := fmt.Sprintf(`<script>%s</script>`, files.JSDebug)
-					inserted_scripts += script_pagespy + script_debug
+					AppendScriptSrcs(&injected, "", ChannelLibAssetURL(version, "pagespy.min.js"), ChannelSrcAssetURL("pagespy.js"))
 				}
 				if pathname == "/web/pages/home" {
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("home.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_main
 				}
 				if pathname == "/web/pages/feed" {
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSFeedProfilePage)
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("feed.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_main
 				}
 				if pathname == "/web/pages/live" {
-					script_live_main := fmt.Sprintf(`<script>%s</script>`, files.JSLiveProfilePage)
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("live.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_live_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_live_main
 				}
 				if pathname == "/web/pages/profile" {
-					script_contact_main := fmt.Sprintf(`<script>%s</script>`, files.JSContactPage)
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("profile.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						script_contact_main += fmt.Sprintf(`<script>%s</script>`, cfg.InjectExtraScriptAfterJSMain)
+						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
-					inserted_scripts += script_contact_main
 				}
-				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)
 				return
 			}
@@ -577,6 +684,11 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 	v := "?t=" + version
 	return &proxy.Plugin{
 		Match: "qq.com",
+		OnRequest: func(ctx proxy.Context) {
+			if mockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+				return
+			}
+		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
@@ -590,13 +702,12 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 				html := string(resp_body)
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
-				inserted_scripts := ""
+				var injected strings.Builder
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 					/** 核心逻辑 */
-					script_main := fmt.Sprintf(`<script>%s</script>`, files.JSHomePage)
-					inserted_scripts += script_main
+					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL("home.js"))
 				}
-				html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
+				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)
 				return
 			}

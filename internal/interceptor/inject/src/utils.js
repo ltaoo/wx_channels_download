@@ -24,6 +24,13 @@ var __wx_assets_base = (function () {
   // }
   return "https://channels.weixin.qq.com/__wx_channels_assets";
 })();
+function __wx_asset_url(path) {
+  if (path.startsWith("/lib/")) {
+    const version = encodeURIComponent(window.__wx_channels_version__ || "static");
+    return `${__wx_assets_base}${path}?v=${version}`;
+  }
+  return `${__wx_assets_base}${path}`;
+}
 var __wx_username;
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
@@ -107,6 +114,440 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function __wx_ensure_feedback_style() {
+    if (document.getElementById("wx-feedback-style")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "wx-feedback-style";
+    style.textContent = `
+.wx-top-tip {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 2147483647;
+  max-width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #fa5151;
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
+  transform: translateX(-50%);
+}
+.wx-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  z-index: 2147483647;
+  max-width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+.wx-loading-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.08);
+}
+.wx-loading-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 14px;
+}
+.wx-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: wx-feedback-spin 0.8s linear infinite;
+}
+@keyframes wx-feedback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}`;
+    document.head.appendChild(style);
+  }
+  function __wx_top_tip(text) {
+    __wx_ensure_feedback_style();
+    const tip = document.createElement("div");
+    tip.className = "wx-top-tip";
+    tip.textContent = text || "";
+    document.body.appendChild(tip);
+    setTimeout(() => {
+      tip.remove();
+    }, 3000);
+    return {
+      hide() {
+        tip.remove();
+      },
+    };
+  }
+  function __wx_toast(text) {
+    __wx_ensure_feedback_style();
+    const toast = document.createElement("div");
+    toast.className = "wx-toast";
+    toast.textContent = text || "";
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.remove();
+    }, 2200);
+    return {
+      hide() {
+        toast.remove();
+      },
+    };
+  }
+  function __wx_loading(text = "加载中") {
+    __wx_ensure_feedback_style();
+    const mask = document.createElement("div");
+    mask.className = "wx-loading-mask";
+    mask.innerHTML = `<div class="wx-loading-box"><span class="wx-loading-spinner"></span><span>${text}</span></div>`;
+    document.body.appendChild(mask);
+    return {
+      hide() {
+        mask.remove();
+      },
+    };
+  }
+  function __wx_menu_item(options) {
+    return options || null;
+  }
+  function __wx_create_menu(options = {}) {
+    const root = document.createElement("div");
+    root.className = options.className || "wx-simple-menu";
+    root.style.position = "fixed";
+    root.style.display = "none";
+    root.style.zIndex = String(options.zIndex || 99999);
+    document.body.appendChild(root);
+
+    let anchor = null;
+    let placement = options.placement || "bottom-end";
+    let isHover = false;
+    let isOpen = false;
+    let hideTimer = null;
+    let childMenus = [];
+
+    function clearHideTimer() {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+    function scheduleHide() {
+      clearHideTimer();
+      hideTimer = setTimeout(() => {
+        if (!isHover) {
+          api.hide();
+        }
+      }, 100);
+    }
+    function position() {
+      if (!anchor) {
+        return;
+      }
+      const rect = anchor.getBoundingClientRect();
+      const width = root.offsetWidth || 160;
+      const height = root.offsetHeight || 40;
+      let left = rect.left;
+      let top = rect.bottom + 6;
+      if (placement === "right") {
+        left = rect.right + 6;
+        top = rect.top;
+      } else if (placement === "bottom-end") {
+        left = rect.right - width;
+      }
+      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+      root.style.left = `${left}px`;
+      root.style.top = `${top}px`;
+    }
+    function renderLabel(item, target) {
+      if (item.label instanceof Node) {
+        target.appendChild(item.label);
+        return;
+      }
+      target.innerHTML = item.label == null ? "" : String(item.label);
+    }
+    function renderItem(item) {
+      if (!item) {
+        return null;
+      }
+      const itemEl = document.createElement("div");
+      itemEl.className = "wx-simple-menu-item";
+      if (item.title) {
+        itemEl.title = item.title;
+      }
+      const labelEl = document.createElement("span");
+      labelEl.className = "wx-simple-menu-item-label";
+      renderLabel(item, labelEl);
+      itemEl.appendChild(labelEl);
+      if (item.submenu) {
+        const arrow = document.createElement("span");
+        arrow.className = "wx-simple-menu-item-arrow";
+        arrow.textContent = ">";
+        itemEl.appendChild(arrow);
+        itemEl.addEventListener("mouseenter", () => {
+          item.submenu.show(itemEl, "right");
+        });
+        itemEl.addEventListener("mouseleave", () => {
+          setTimeout(() => {
+            if (!item.submenu.isHover) {
+              item.submenu.hide();
+            }
+          }, 100);
+        });
+      }
+      if (typeof item.onMouseEnter === "function") {
+        itemEl.addEventListener("mouseenter", item.onMouseEnter);
+      }
+      if (typeof item.onMouseLeave === "function") {
+        itemEl.addEventListener("mouseleave", item.onMouseLeave);
+      }
+      if (typeof item.onClick === "function") {
+        itemEl.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          await item.onClick(event);
+        });
+      }
+      return itemEl;
+    }
+
+    root.addEventListener("mouseenter", () => {
+      isHover = true;
+      clearHideTimer();
+    });
+    root.addEventListener("mouseleave", () => {
+      isHover = false;
+      scheduleHide();
+    });
+
+    const api = {
+      ui: {
+        $trigger: {
+          onMouseEnter(fn) {
+            options.trigger?.addEventListener("mouseenter", fn);
+          },
+          onMouseLeave(fn) {
+            options.trigger?.addEventListener("mouseleave", (event) => {
+              setTimeout(() => {
+                fn(event);
+              }, 100);
+            });
+          },
+        },
+      },
+      get isHover() {
+        return isHover;
+      },
+      get isOpen() {
+        return isOpen;
+      },
+      setChildren(items) {
+        childMenus.forEach((menu) => menu.hide());
+        childMenus = [];
+        root.innerHTML = "";
+        (items || []).filter(Boolean).forEach((item) => {
+          if (item.submenu) {
+            childMenus.push(item.submenu);
+          }
+          const itemEl = renderItem(item);
+          if (itemEl) {
+            root.appendChild(itemEl);
+          }
+        });
+      },
+      show(nextAnchor, nextPlacement) {
+        anchor = nextAnchor || anchor || options.trigger || null;
+        placement = nextPlacement || options.placement || placement;
+        clearHideTimer();
+        root.style.display = "block";
+        root.style.visibility = "hidden";
+        isOpen = true;
+        position();
+        root.style.visibility = "visible";
+      },
+      hide() {
+        clearHideTimer();
+        childMenus.forEach((menu) => menu.hide());
+        root.style.display = "none";
+        isOpen = false;
+      },
+      destroy() {
+        api.hide();
+        root.remove();
+      },
+    };
+    api.setChildren(options.children || []);
+    return api;
+  }
+  function __wx_create_dropdown_menu(trigger, options = {}) {
+    return __wx_create_menu({
+      ...options,
+      trigger,
+      placement: options.placement || "bottom-end",
+    });
+  }
+  function __wx_create_popover(trigger, options = {}) {
+    const root = document.createElement("div");
+    root.className = options.className || "wx-simple-popover";
+    root.style.position = "fixed";
+    root.style.display = "none";
+    root.style.zIndex = String(options.zIndex || 99998);
+    root.innerHTML = options.content || "";
+    document.body.appendChild(root);
+    let isOpen = false;
+    function position() {
+      const rect = trigger.getBoundingClientRect();
+      const width = root.offsetWidth || 320;
+      const height = root.offsetHeight || 40;
+      let left = rect.right - width;
+      let top = rect.bottom + 6;
+      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+      root.style.left = `${left}px`;
+      root.style.top = `${top}px`;
+    }
+    const api = {
+      open() {
+        root.style.display = "block";
+        root.style.visibility = "hidden";
+        isOpen = true;
+        position();
+        root.style.visibility = "visible";
+      },
+      close() {
+        root.style.display = "none";
+        isOpen = false;
+      },
+      toggle() {
+        if (isOpen) {
+          api.close();
+        } else {
+          api.open();
+        }
+      },
+    };
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      api.toggle();
+    });
+    if (options.closeOnClickOutside) {
+      document.addEventListener("click", (event) => {
+        if (!isOpen) {
+          return;
+        }
+        if (root.contains(event.target) || trigger.contains(event.target)) {
+          return;
+        }
+        api.close();
+      });
+    }
+    return api;
+  }
+  function OverwriteDownloadConfirmDialog(props) {
+    const { Dialog, View } = window;
+    return Dialog(
+      {
+        store: props.store,
+        style: [
+          "width: 320px;",
+          "max-width: calc(100vw - 32px);",
+          "box-sizing: border-box;",
+          "border-radius: 8px;",
+          "background: var(--popup-bg-color);",
+          "color: var(--weui-FG-0);",
+          "box-shadow: 0 8px 28px rgba(0,0,0,0.28);",
+          "overflow: hidden;",
+        ].join(""),
+      },
+      [
+        View({ style: "padding: 20px 20px 16px;" }, [
+          View(
+            {
+              style:
+                "font-size: 17px; font-weight: 600; line-height: 24px; margin-bottom: 8px;",
+            },
+            ["文件已存在"],
+          ),
+          View(
+            {
+              style:
+                "font-size: 14px; line-height: 20px; color: var(--weui-FG-1); margin-bottom: 4px;",
+            },
+            [props.content],
+          ),
+        ]),
+        View(
+          {
+            style:
+              "display: flex; border-top: 1px solid var(--weui-DIALOG-LINE-COLOR);",
+          },
+          [
+            View(
+              {
+                type: "button",
+                style: [
+                  "flex: 1;",
+                  "height: 48px;",
+                  "border: 0;",
+                  "background: transparent;",
+                  "color: var(--weui-FG-0);",
+                  "font-size: 16px;",
+                  "cursor: pointer;",
+                ].join(""),
+                onClick() {
+                  props.store.hide();
+                },
+              },
+              ["跳过"],
+            ),
+            View(
+              {
+                type: "button",
+                style: [
+                  "flex: 1;",
+                  "height: 48px;",
+                  "border: 0;",
+                  "border-left: 1px solid var(--weui-DIALOG-LINE-COLOR);",
+                  "background: transparent;",
+                  "color: #FA5151;",
+                  "font-size: 16px;",
+                  "font-weight: 500;",
+                  "cursor: pointer;",
+                ].join(""),
+                onClick() {
+                  props.onConfirm();
+                },
+              },
+              ["覆盖"],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
   function confirm_overwrite_download(msg) {
     return new Promise((resolve) => {
       const content =
@@ -115,53 +556,61 @@ var WXU = (() => {
         resolve(window.confirm(content));
         return;
       }
+      const timeless = window.Timeless;
+      if (
+        !timeless ||
+        !timeless.ui ||
+        !timeless.ui.DialogCore ||
+        typeof timeless.render !== "function" ||
+        typeof window.Dialog !== "function" ||
+        typeof window.View !== "function"
+      ) {
+        resolve(window.confirm(content));
+        return;
+      }
+      const dialog$ = new timeless.ui.DialogCore({
+        closeable: true,
+      });
+      let settled = false;
       const $root = document.createElement("div");
-      const close = (overwrite) => {
-        document.removeEventListener("keydown", handleKeydown);
-        $root.remove();
-        resolve(overwrite);
-      };
-      const handleKeydown = (e) => {
+      let offStateChange = null;
+      const dialogView = OverwriteDownloadConfirmDialog({
+        store: dialog$,
+        content,
+        onConfirm() {
+          close(true);
+        },
+      });
+      function handleKeydown(e) {
         if (e.key === "Escape") {
           close(false);
         }
-      };
-      $root.innerHTML = `
-        <div class="fixed inset-0 z-50 bg-black/80" style="position: fixed; inset: 0; z-index: 999999; background-color: rgba(0, 0, 0, 0.8);"></div>
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="position: fixed; inset: 0; z-index: 1000000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
-          <div role="dialog" aria-modal="true" aria-label="文件已存在" style="width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; border-radius: 8px; background: var(--popup-bg-color); color: var(--weui-FG-0); box-shadow: 0 8px 28px rgba(0,0,0,0.28); overflow: hidden;">
-            <div style="padding: 20px 20px 16px;">
-              <div style="font-size: 17px; font-weight: 600; line-height: 24px; margin-bottom: 8px;">文件已存在</div>
-              <div style="font-size: 14px; line-height: 20px; color: var(--weui-FG-1); margin-bottom: 4px;">${escape_html(content)}</div>
-            </div>
-            <div style="display: flex; border-top: 1px solid var(--weui-DIALOG-LINE-COLOR);">
-              <button type="button" data-action="skip" style="flex: 1; height: 48px; border: 0; background: transparent; color: var(--weui-FG-0); font-size: 16px; cursor: pointer;">跳过</button>
-              <button type="button" data-action="overwrite" style="flex: 1; height: 48px; border: 0; border-left: 1px solid var(--weui-DIALOG-LINE-COLOR); background: transparent; color: #FA5151; font-size: 16px; font-weight: 500; cursor: pointer;">覆盖</button>
-            </div>
-          </div>
-        </div>
-      `;
-      $root.addEventListener("click", (e) => {
-        const action = e.target && e.target.getAttribute("data-action");
-        if (action === "overwrite") {
-          close(true);
+      }
+      function close(overwrite) {
+        if (settled) {
           return;
         }
-        if (action === "skip" || e.target === $root.children[1]) {
-          close(false);
+        settled = true;
+        document.removeEventListener("keydown", handleKeydown);
+        if (typeof offStateChange === "function") {
+          offStateChange();
         }
+        dialog$.hide();
+        dialogView.onUnmounted();
+        $root.remove();
+        resolve(overwrite);
+      }
+      offStateChange = dialog$.onStateChange((state) => {
+        if (settled || state.visible || state.enter) {
+          return;
+        }
+        close(false);
       });
+      timeless.render(dialogView, $root);
       document.addEventListener("keydown", handleKeydown);
       document.body.appendChild($root);
+      dialog$.show();
     });
-  }
-  function escape_html(text) {
-    return String(text)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
   }
   function get_media_url(media) {
     if (!media) {
@@ -395,7 +844,7 @@ var WXU = (() => {
       body: JSON.stringify(params),
     });
     if (_alert) {
-      weui.topTips(params.msg);
+      __wx_top_tip(params.msg);
     }
   }
   const script_loaded_map = {};
@@ -727,7 +1176,7 @@ var WXU = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
-      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);
@@ -1080,7 +1529,7 @@ var WXU = (() => {
      * 类型转换相关
      */
     async media_buffer_to_wav(...args) {
-      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
       return mediaBufferToWav(...args);
     },
     wav_to_mp3_blob: wavBlobToMP3,
@@ -1138,11 +1587,14 @@ var WXU = (() => {
     log: __wx_log,
     error: __wx_error,
     loading() {
-      return weui.loading();
+      return __wx_loading();
     },
     toast(text) {
-      return weui.toast(text);
+      return __wx_toast(text);
     },
+    menu_item: __wx_menu_item,
+    create_dropdown_menu: __wx_create_dropdown_menu,
+    create_popover: __wx_create_popover,
     append_media_buf(buf) {
       __wx_channels_store__.buffers.push(buf);
     },
@@ -1280,11 +1732,11 @@ var WXU = (() => {
       });
     },
     async save(blob, filename) {
-      await __wx_load_script(__wx_assets_base + "/lib/FileSaver.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/FileSaver.min.js"));
       saveAs(blob, filename);
     },
     async Zip() {
-      await __wx_load_script(__wx_assets_base + "/lib/jszip.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/jszip.min.js"));
       const zip = new JSZip();
       return zip;
     },
@@ -1596,22 +2048,45 @@ async function __wx_channels_handle_download_cover() {
   const blob = await response.blob();
   WXU.save(blob, filename + ".jpg");
 }
+
+/**
+ * @param {DropdownMenuItemPayload[]} items
+ * @param {{ hide: () => void }} $dropdown
+ */
+function __wx_render_extra_download_menu_items(items, $dropdown) {
+  return items
+    .filter((item) => {
+      return item.label && item.onClick;
+    })
+    .map((item) => {
+      return WXU.menu_item({
+        label: item.label,
+        async onClick(event) {
+          await item.onClick(event);
+          $dropdown.hide();
+        },
+      });
+    });
+}
+
 /**
  * 为指定按钮添加额外的下载选项菜单
  * @param {HTMLElement} trigger
  */
 function __wx_attach_download_dropdown_menu(trigger) {
-  const { DropdownMenu, Menu, MenuItem } = WUI;
-  const submenu$ = Menu({
+  const submenu$ = WXU.create_dropdown_menu(trigger, {
+    zIndex: 100000,
+    placement: "right",
     children: [],
   });
-  const dropdown$ = DropdownMenu({
-    $trigger: trigger,
+  const dropdown$ = WXU.create_dropdown_menu(trigger, {
     zIndex: 99999,
-    children: [
+  });
+  function build_menu_items() {
+    return [
       ...(() => {
         if (WXU.before_menu_items) {
-          return render_extra_menu_items(WXU.before_menu_items, {
+          return __wx_render_extra_download_menu_items(WXU.before_menu_items, {
             hide() {
               dropdown$.hide();
             },
@@ -1619,33 +2094,25 @@ function __wx_attach_download_dropdown_menu(trigger) {
         }
         return [];
       })(),
-      MenuItem({
+      WXU.menu_item({
         label: "更多下载",
         submenu: submenu$,
-        onMouseEnter() {
-          submenu$.show();
-        },
-        onMouseLeave() {
-          if (!submenu$.isHover) {
-            submenu$.hide();
-          }
-        },
       }),
-      MenuItem({
+      WXU.menu_item({
         label: "下载为MP3",
         onClick() {
           __wx_channels_handle_click_download__(null, true);
           dropdown$.hide();
         },
       }),
-      MenuItem({
+      WXU.menu_item({
         label: "下载封面",
         onClick() {
           __wx_channels_handle_download_cover();
           dropdown$.hide();
         },
       }),
-      MenuItem({
+      WXU.menu_item({
         label: "复制页面链接",
         onClick() {
           __wx_channels_handle_copy__();
@@ -1654,7 +2121,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
       }),
       ...(() => {
         if (WXU.after_menu_items) {
-          return render_extra_menu_items(WXU.after_menu_items, {
+          return __wx_render_extra_download_menu_items(WXU.after_menu_items, {
             hide() {
               dropdown$.hide();
             },
@@ -1662,16 +2129,13 @@ function __wx_attach_download_dropdown_menu(trigger) {
         }
         return [];
       })(),
-    ],
-    onMouseEnter() {
-      if (submenu$.isOpen) {
-        submenu$.hide();
-      }
-    },
-  });
+    ];
+  }
+  dropdown$.setChildren(build_menu_items());
   dropdown$.ui.$trigger.onMouseEnter(() => {
+    dropdown$.setChildren(build_menu_items());
     const download_menus = [
-      MenuItem({
+      WXU.menu_item({
         label: "原始视频",
         onClick() {
           __wx_channels_handle_click_download__(null);
@@ -1687,7 +2151,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
         }
         return profile.spec.map((spec) => {
           const title = WXU.format_media_spec_label(spec) || spec.fileFormat;
-          return MenuItem({
+          return WXU.menu_item({
             label: WXU.format_media_spec_short_label(spec),
             title,
             onClick() {
@@ -1699,7 +2163,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
       })(),
     ];
     submenu$.setChildren(download_menus);
-    dropdown$.show();
+    dropdown$.show(trigger);
   });
   dropdown$.ui.$trigger.onMouseLeave(() => {
     if (dropdown$.isHover) {
@@ -1710,10 +2174,63 @@ function __wx_attach_download_dropdown_menu(trigger) {
   return dropdown$;
 }
 
+function __wx_download_loading_icon_html() {
+  if (typeof download_loading_icon === "string") {
+    return download_loading_icon;
+  }
+  return `<i class="weui-loading" style="display: inline-block;"></i>`;
+}
+
+function __wx_show_download_btn_click_feedback($btn) {
+  if (!$btn || typeof $btn.querySelector !== "function") {
+    return;
+  }
+  if ($btn.__wxDownloadBtnFeedbackTimer) {
+    clearTimeout($btn.__wxDownloadBtnFeedbackTimer);
+    if ($btn.__wxDownloadBtnFeedbackHTML) {
+      $btn.innerHTML = $btn.__wxDownloadBtnFeedbackHTML;
+    }
+  }
+  $btn.__wxDownloadBtnFeedbackHTML = $btn.innerHTML;
+  const loadingIcon = __wx_download_loading_icon_html();
+  const $icon = $btn.querySelector(".download-icon");
+  const $text = $btn.querySelector(".op-text, .text");
+  if ($icon) {
+    $icon.innerHTML = loadingIcon;
+  } else {
+    const $svg = $btn.querySelector("svg");
+    if ($svg) {
+      $svg.outerHTML = loadingIcon;
+    }
+  }
+  if ($text) {
+    $text.textContent = "...";
+  } else if (
+    !$btn.querySelector(".download-icon") &&
+    !$btn.querySelector("svg")
+  ) {
+    $btn.innerHTML = `<span class="wx-download-inline-feedback">${loadingIcon}<span>...</span></span>`;
+  }
+  if ($btn.classList) {
+    $btn.classList.add("weui-btn_loading");
+  }
+  $btn.__wxDownloadBtnFeedbackTimer = setTimeout(() => {
+    $btn.innerHTML = $btn.__wxDownloadBtnFeedbackHTML;
+    if ($btn.classList) {
+      $btn.classList.remove("weui-btn_loading");
+    }
+    delete $btn.__wxDownloadBtnFeedbackHTML;
+    delete $btn.__wxDownloadBtnFeedbackTimer;
+  }, 1200);
+}
+
 /** 下载图标 按钮，点击时的处理函数 */
-function __wx_download_btn_handler() {
+function __wx_download_btn_handler(event) {
   const [err, profile] = WXU.check_feed_existing();
   if (err) return;
+  __wx_show_download_btn_click_feedback(
+    (event && event.currentTarget) || this,
+  );
   var spec = (() => {
     if (WXU.config.defaultHighest) {
       return null;
@@ -1785,9 +2302,9 @@ async function fetchExportIdWithShareId(data) {
   if (!uri) {
     return [new Error("can't get the uri from url, " + data.url), null];
   }
-  await WXU.load_script(__wx_assets_base + "/lib/axios.min.js");
-  await WXU.load_script(__wx_assets_base + "/lib/getFeedInfo.js");
-  // await WXU.load_script(__wx_assets_base + "/lib/merlin.js");
+  await WXU.load_script(__wx_asset_url("/lib/axios.min.js"));
+  await WXU.load_script(__wx_asset_url("/lib/getFeedInfo.js"));
+  // await WXU.load_script(__wx_asset_url("/lib/merlin.js"));
   if (typeof getFeedInfo !== "function") {
     return [new Error("the getFeedInfo is not a function"), null];
   }

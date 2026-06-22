@@ -96,8 +96,9 @@ type SunnyNetContext struct {
 }
 
 type SunnyNetContextReq struct {
-	URL  SunnyNetContextURL
-	Body []byte
+	URL    SunnyNetContextURL
+	Body   []byte
+	Header http.Header
 }
 type SunnyNetContextURL struct {
 	Hostname func() string
@@ -170,7 +171,7 @@ func (c *sunnyBridgeContext) Req() *ContextReq {
 			RawQuery: r.URL.RawQuery,
 		},
 		Body:   bytes.NewReader(r.Body),
-		Header: nil,
+		Header: r.Header,
 	}
 }
 
@@ -269,7 +270,8 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 					Pathname: parsed_url.Path,
 					RawQuery: parsed_url.RawQuery,
 				},
-				Body: body,
+				Body:   body,
+				Header: Conn.GetRequestHeader(),
 			}
 			return &req
 		}
@@ -397,7 +399,8 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 						Pathname: parsed_url.Path,
 						RawQuery: parsed_url.RawQuery,
 					},
-					Body: nil,
+					Body:   nil,
+					Header: Conn.GetRequestHeader(),
 				}
 				return &req
 			},

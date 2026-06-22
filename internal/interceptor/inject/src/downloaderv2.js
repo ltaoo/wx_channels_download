@@ -98,7 +98,12 @@ function normalize_download_status_counts(counts) {
   });
   if (!counts || typeof counts.total === "undefined") {
     next.total =
-      next.ready + next.running + next.wait + next.pause + next.error + next.done;
+      next.ready +
+      next.running +
+      next.wait +
+      next.pause +
+      next.error +
+      next.done;
   }
   return next;
 }
@@ -114,33 +119,14 @@ function format_download_status_counts(counts) {
   ].join(" · ");
 }
 
-function DownloaderPanelViewModel(options = {}) {
+function DownloaderPanelViewModel(props = {}) {
   const ITEM_HEIGHT = 82;
   const GUTTER = 8;
   const _pageSize = 50;
-  const tasks_ = refarr([]);
-  const task_count_ = ref(0);
-  const status_counts_ = ref(empty_download_status_counts());
-  const setStatusCounts = (counts) => {
-    const normalized = normalize_download_status_counts(counts);
-    status_counts_.as(normalized);
-    task_count_.as(normalized.total);
-  };
-  const adjustStatusCounts = (fromStatus, toStatus, totalDelta) => {
-    status_counts_.as((prev) => {
-      const next = normalize_download_status_counts(prev);
-      const from = normalize_download_status(fromStatus);
-      const to = normalize_download_status(toStatus);
-      if (from && typeof next[from] !== "undefined" && next[from] > 0) {
-        next[from] -= 1;
-      }
-      if (to && typeof next[to] !== "undefined") {
-        next[to] += 1;
-      }
-      next.total = Math.max(0, next.total + (totalDelta || 0));
-      return next;
-    });
-  };
+  const onRequestClose =
+    typeof props.onRequestClose === "function"
+      ? props.onRequestClose
+      : () => {};
 
   const taskListReq = new Timeless.kit.RequestCore(
     (params) => request.get("/api/task/list", params),
@@ -185,10 +171,11 @@ function DownloaderPanelViewModel(options = {}) {
     { client: http_client },
   );
   const clearReq = new Timeless.kit.RequestCore(
-    (params = {}) =>
-      request.post("/api/task/clear", {
+    (params = {}) => {
+      return request.post("/api/task/clear", {
         delete_files: !!params.deleteFiles,
-      }),
+      });
+    },
     { client: http_client },
   );
   const showFileReq = new Timeless.kit.RequestCore(
@@ -206,18 +193,43 @@ function DownloaderPanelViewModel(options = {}) {
   const running_count_ = computed(tasks_, (t) => {
     return t.filter((v) => v.status === "running").length;
   });
+  const status_counts_ = ref(empty_download_status_counts());
+
+  function setStatusCounts(counts) {
+    const normalized = normalize_download_status_counts(counts);
+    status_counts_.as(normalized);
+    task_count_.as(normalized.total);
+  }
+  function adjustStatusCounts(fromStatus, toStatus, totalDelta) {
+    status_counts_.as((prev) => {
+      const next = normalize_download_status_counts(prev);
+      const from = normalize_download_status(fromStatus);
+      const to = normalize_download_status(toStatus);
+      if (from && typeof next[from] !== "undefined" && next[from] > 0) {
+        next[from] -= 1;
+      }
+      if (to && typeof next[to] !== "undefined") {
+        next[to] += 1;
+      }
+      next.total = Math.max(0, next.total + (totalDelta || 0));
+      return next;
+    });
+  }
   const updateTaskStatus = (id, status) => {
     const matched = tasks_.find((t) => t.id === id);
     const oldStatus = matched ? matched.status : "";
     list$.modifyItem((t) => (t.id === id ? { ...t, status } : t));
     if (matched) {
       matched.assign({ status });
-      if (normalize_download_status(oldStatus) !== normalize_download_status(status)) {
+      if (
+        normalize_download_status(oldStatus) !==
+        normalize_download_status(status)
+      ) {
         adjustStatusCounts(oldStatus, status, 0);
       }
     }
   };
-  const reloadTasks = async () => {
+  async function reloadTasks() {
     list$.clear();
     tasks_.as([]);
     task_count_.as(0);
@@ -230,8 +242,7 @@ function DownloaderPanelViewModel(options = {}) {
     tasks_.push(...tasks);
     task_count_.as(list$.response.total);
     ui.waterfall$.methods.appendItems(tasks);
-  };
-
+  }
   const methods = {
     formatTask(task) {
       const r = {
@@ -262,7 +273,16 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      updateTaskStatus(task.id, "running");
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "running",
+      });
     },
     async pauseTask(task) {
       const r = await pauseReq.run(task.id);
@@ -270,7 +290,16 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      updateTaskStatus(task.id, "paused");
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "paused" } : t,
+      );
+      const matched = tasks_.find((t) => t.id === task.id);
+      if (!matched) {
+        return;
+      }
+      matched.assign({
+        status: "paused",
+      });
     },
     async deleteTask(task) {
       const r = await deleteReq.run(task.id);
@@ -278,18 +307,13 @@ function DownloaderPanelViewModel(options = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      methods.removeTaskById(task.id);
-    },
-    removeTaskById(id) {
-      const matched = tasks_.find((t) => t.id === id);
+      const matched = tasks_.find((t) => t.id === task.id);
       if (!matched) {
-        list$.deleteItem((t) => t.id === id);
-        ui.waterfall$.methods.deleteCell((t) => t.id === id);
+        WXU.error({ msg: "异常操作" });
         return;
       }
       tasks_.remove(matched);
       task_count_.as((prev) => prev - 1);
-      adjustStatusCounts(matched.status, "", -1);
       ui.waterfall$.methods.deleteCell((t) => t.id === task.id);
       list$.deleteItem((t) => t.id === task.id);
     },
@@ -303,7 +327,12 @@ function DownloaderPanelViewModel(options = {}) {
       if (!matched) {
         return;
       }
-      updateTaskStatus(task.id, "running");
+      matched.assign({
+        status: "running",
+      });
+      list$.modifyItem((t) =>
+        t.id === task.id ? { ...t, status: "running" } : t,
+      );
     },
     async startAllTasks() {
       const r = await startAllReq.run();
@@ -407,34 +436,16 @@ function DownloaderPanelViewModel(options = {}) {
           if (msg.type === "event") {
             const data = msg && msg.data ? msg.data : null;
             if (!data || !data.Key) {
-              if (data && data.status_counts) {
-                setStatusCounts(data.status_counts);
-              }
-              const task = data ? data.Task || data.task : null;
-              if (task) {
-                methods.upsert(methods.formatTask(task), {
-                  syncCounts: !data.status_counts,
-                });
-              }
               return;
             }
-            if (data.status_counts) {
-              setStatusCounts(data.status_counts);
-            }
             if (data.Key === "delete") {
-              const task = data.Task || data.task;
-              if (task && task.id) {
-                methods.removeTaskById(task.id);
-              }
               return;
             }
             const task = data.Task || data.task; // 兼容大小写字段
             if (!task) {
               return;
             }
-            methods.upsert(methods.formatTask(task), {
-              syncCounts: !data.status_counts,
-            });
+            methods.upsert(methods.formatTask(task));
           }
         };
       });
@@ -447,14 +458,7 @@ function DownloaderPanelViewModel(options = {}) {
         if (!t || !t.id) continue;
         const matched = tasks_.find((v) => v.id === t.id);
         if (matched) {
-          const oldStatus = matched.status;
           matched.assign(t);
-          if (
-            normalize_download_status(oldStatus) !==
-            normalize_download_status(t.status)
-          ) {
-            adjustStatusCounts(oldStatus, t.status, 0);
-          }
         } else {
           newTasks.push(t);
         }
@@ -462,9 +466,6 @@ function DownloaderPanelViewModel(options = {}) {
       if (newTasks.length) {
         tasks_.unshift(...newTasks);
         task_count_.as((prev) => prev + newTasks.length);
-        newTasks.forEach((task) => {
-          adjustStatusCounts("", task.status, 1);
-        });
         ui.waterfall$.methods.unshiftItems(newTasks);
         const addedHeight = newTasks.length * (ITEM_HEIGHT + GUTTER);
         ui.view$.addScrollTop(addedHeight);
@@ -475,16 +476,12 @@ function DownloaderPanelViewModel(options = {}) {
       if (!task || !task.id) {
         return;
       }
-      const syncCounts = !options || options.syncCounts !== false;
       const matched = tasks_.find((v) => v.id === task.id);
       if (!matched) {
         console.log("[]insert task", task);
-        if (syncCounts) {
-          task_count_.as((prev) => {
-            return prev + 1;
-          });
-          adjustStatusCounts("", task.status, 1);
-        }
+        task_count_.as((prev) => {
+          return prev + 1;
+        });
         tasks_.unshift(task);
         // ui.waterfall$.methods.appendItems([task]);
         ui.waterfall$.methods.unshiftItems([task]);
@@ -493,14 +490,7 @@ function DownloaderPanelViewModel(options = {}) {
         return;
       }
       console.log("[]update task", task);
-      const oldStatus = matched.status;
       matched.assign(task);
-      if (
-        syncCounts &&
-        normalize_download_status(oldStatus) !== normalize_download_status(task.status)
-      ) {
-        adjustStatusCounts(oldStatus, task.status, 0);
-      }
     },
   };
 
@@ -653,6 +643,11 @@ function DownloaderPanelViewModel(options = {}) {
 function ClearTasksConfirmDialog(props) {
   const deleteFiles_ = props.deleteFiles;
   const loading_ = props.loading;
+  const checkIcon = `
+    <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="14" height="14" aria-hidden="true" style="display:block;width:14px;height:14px;color:#fff;fill:#fff;flex:none;">
+      <path d="M895.36 314.816L442.816 767.36 171.264 495.808l60.352-60.288 211.2 211.2 392.192-392.256 60.352 60.352z" fill="currentColor"></path>
+    </svg>
+  `;
   const checkboxStyle = computed(deleteFiles_, (checked) => {
     return [
       "width: 18px;",
@@ -665,9 +660,6 @@ function ClearTasksConfirmDialog(props) {
       "display: inline-flex;",
       "align-items: center;",
       "justify-content: center;",
-      "font-size: 13px;",
-      "font-weight: 600;",
-      "line-height: 1;",
       "flex: 0 0 auto;",
     ].join("");
   });
@@ -706,9 +698,11 @@ function ClearTasksConfirmDialog(props) {
           {
             role: "checkbox",
             tabIndex: "0",
-            "aria-checked": computed(deleteFiles_, (checked) =>
-              checked ? "true" : "false",
-            ),
+            attributes: {
+              "aria-checked": computed(deleteFiles_, (checked) =>
+                checked ? "true" : "false",
+              ),
+            },
             style: [
               "display: flex;",
               "align-items: center;",
@@ -720,9 +714,9 @@ function ClearTasksConfirmDialog(props) {
               "line-height: 20px;",
             ].join(""),
             onClick() {
-              if (loading_.value) {
-                return;
-              }
+              // if (loading_.value) {
+              //   return;
+              // }
               deleteFiles_.as((prev) => !prev);
             },
             onKeyDown(e) {
@@ -737,13 +731,9 @@ function ClearTasksConfirmDialog(props) {
           },
           [
             View({ style: checkboxStyle }, [
-              DangerouslyInnerHTML(
-                computed(deleteFiles_, (checked) =>
-                  checked ? "&#10003;" : "",
-                ),
-              ),
+              Show({ when: deleteFiles_ }, [DangerouslyInnerHTML(checkIcon)]),
             ]),
-            View({}, ["同时删除下载好的文件"]),
+            View({}, ["同时删除视频文件"]),
           ],
         ),
       ]),
@@ -795,6 +785,9 @@ function ClearTasksConfirmDialog(props) {
                 ].join("");
               }),
               onClick() {
+                if (loading_.value) {
+                  return;
+                }
                 props.onConfirm();
               },
             },
@@ -811,51 +804,30 @@ function ClearTasksConfirmDialog(props) {
 }
 
 function DownloaderPanelView(props, children) {
-  const vm$ = props.store || DownloaderPanelViewModel();
+  const vm$ = props.store;
   const tasks_ = vm$.state.tasks;
   const task_count_ = vm$.state.task_count;
   const running_count_ = vm$.state.running_count;
-  const renderConfirmDialog = props.renderConfirmDialog !== false;
   const status_counts_ = vm$.state.status_counts;
+  const renderConfirmDialog = props.renderConfirmDialog !== false;
 
-  return Fragment({}, [
-    View(
-      {
-        class: "wx-dl-panel-container",
-        onMounted() {
-          vm$.ready();
-        },
-        onUnmounted() {
-          // vm$.clean();
-        },
+  return View(
+    {
+      class: "wx-dl-panel-container",
+      onMounted() {
+        vm$.ready();
       },
-      [
+      onUnmounted() {
+        // vm$.clean();
+      },
+    },
+    [
       View({ class: "wx-dl-header" }, [
-        View({ style: "min-width: 0; flex: 1;" }, [
-          View({ class: "wx-dl-title" }, [
-            "Downloads",
-            computed(task_count_, (d) => {
-              return d > 0 ? `（${d}）` : "";
-            }),
-          ]),
-          Show(
-            {
-              when: computed(task_count_, (d) => d > 0),
-            },
-            [
-              View(
-                {
-                  style:
-                    "margin-top: 3px; color: var(--weui-FG-1); font-size: 11px; line-height: 1.4; font-weight: 400; white-space: normal;",
-                },
-                [
-                  computed(status_counts_, (counts) => {
-                    return format_download_status_counts(counts);
-                  }),
-                ],
-              ),
-            ],
-          ),
+        View({ class: "wx-dl-title" }, [
+          "Downloads",
+          computed(task_count_, (d) => {
+            return d > 0 ? `（${d}）` : "";
+          }),
         ]),
         DropdownMenu(
           {
@@ -867,7 +839,8 @@ function DownloaderPanelView(props, children) {
                 class: "wx-dl-more-btn",
               },
               [
-                Timeless.icons.EllipsisVerticalOutlined({
+                Timeless.Icon({
+                  name: "ellipsis-vertical",
                   style: "font-size: 18px;",
                 }),
               ],
@@ -1235,19 +1208,18 @@ function DownloaderPanelView(props, children) {
           ),
         ],
       ),
-      ],
-    ),
-    renderConfirmDialog
-      ? ClearTasksConfirmDialog({
-          store: vm$.ui.clearConfirmDialog$,
-          deleteFiles: vm$.state.clear_delete_files,
-          loading: vm$.state.clearing_tasks,
-          onConfirm() {
-            vm$.methods.confirmClearTasks();
-          },
-        })
-      : null,
-  ]);
+      renderConfirmDialog
+        ? ClearTasksConfirmDialog({
+            store: vm$.ui.clearConfirmDialog$,
+            deleteFiles: vm$.state.clear_delete_files,
+            loading: vm$.state.clearing_tasks,
+            onConfirm() {
+              vm$.methods.confirmClearTasks();
+            },
+          })
+        : null,
+    ],
+  );
 }
 
 function DownloaderEntry(props) {

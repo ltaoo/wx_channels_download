@@ -1,8 +1,14 @@
 package interceptor
 
 import (
-	_ "embed"
+	"embed"
 )
+
+//go:embed inject/lib
+var inject_lib_fs embed.FS
+
+//go:embed inject/src
+var inject_src_fs embed.FS
 
 //go:embed inject/lib/FileSaver.min.js
 var js_file_saver []byte
@@ -19,34 +25,22 @@ var js_floating_ui_dom []byte
 //go:embed inject/lib/mitt.umd.js
 var js_mitt []byte
 
-//go:embed inject/lib/weui.min.css
-var css_weui []byte
+//go:embed inject/lib/timeless/0.26.0/timeless.umd.min.js
+var js_timeless []byte
 
-//go:embed inject/lib/weui.min.js
-var js_weui []byte
-
-//go:embed inject/lib/wui.umd.js
-var js_wui []byte
-
-//go:embed inject/lib/timeless.reactive.umd.min.js
-var js_timeless_reactive []byte
-
-//go:embed inject/lib/timeless.headless.umd.min.js
-var js_timeless_headless []byte
-
-//go:embed inject/lib/timeless.utils.umd.min.js
+//go:embed inject/lib/timeless/0.26.0/timeless.utils.umd.min.js
 var js_timeless_utils []byte
 
-//go:embed inject/lib/timeless.kit.umd.min.js
-var js_timeless_kit []byte
+//go:embed inject/lib/timeless/0.26.0/timeless.shadcn.css
+var css_timeless_shadcn []byte
 
-//go:embed inject/lib/timeless.ui.umd.min.js
-var js_timeless_ui []byte
+//go:embed inject/lib/timeless/0.26.0/timeless.shadcn.umd.min.js
+var js_timeless_shadcn []byte
 
-//go:embed inject/lib/timeless.icons.umd.min.js
-var js_timeless_icons []byte
+//go:embed inject/lib/timeless/0.26.0/timeless.dom.umd.min.js
+var js_timeless_dom []byte
 
-//go:embed inject/lib/timeless.web.umd.min.js
+//go:embed inject/lib/timeless/0.26.0/timeless.web.umd.min.js
 var js_timeless_web []byte
 
 //go:embed inject/lib/recorder.min.js
@@ -95,28 +89,26 @@ var js_live_profile_page []byte
 var js_contact_profile_page []byte
 
 type ChannelInjectedFiles struct {
+	LibFS                   embed.FS
+	SrcFS                   embed.FS
 	JSFileSaver             []byte
 	JSZip                   []byte
 	JSRecorder              []byte
 	JSPageSpy               []byte
 	JSFloatingUICore        []byte
 	JSFloatingUIDOM         []byte
-	JSWeui                  []byte
-	CSSWeui                 []byte
-	JSWui                   []byte
 	JSBox                   []byte
 	JSMitt                  []byte
 	JSAxios                 []byte
 	JSGetFeedInfo           []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
-	JSTimelessReactive      []byte
-	JSTimelessHeadless      []byte
+	JSTimeless              []byte
 	JSTimelessUtils         []byte
-	JSTimelessKit           []byte
-	JSTimelessIcons         []byte
-	JSTimelessUI            []byte
-	JSTimelessProviderWeb   []byte
+	CSSTimelessShadcn       []byte
+	JSTimelessShadcn        []byte
+	JSTimelessDOM           []byte
+	JSTimelessWeb           []byte
 	JSComponents            []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
@@ -129,28 +121,26 @@ type ChannelInjectedFiles struct {
 }
 
 var Assets = &ChannelInjectedFiles{
+	LibFS:                   inject_lib_fs,
+	SrcFS:                   inject_src_fs,
 	JSFileSaver:             js_file_saver,
 	JSZip:                   js_zip,
 	JSRecorder:              js_recorder,
 	JSPageSpy:               js_pagespy,
 	JSFloatingUICore:        js_floating_ui_core,
 	JSFloatingUIDOM:         js_floating_ui_dom,
-	JSWeui:                  js_weui,
-	CSSWeui:                 css_weui,
-	JSWui:                   js_wui,
 	JSMitt:                  js_mitt,
 	JSDebug:                 js_debug,
 	JSError:                 js_error,
 	JSEventBus:              js_eventbus,
 	JSAxios:                 js_axios,
 	JSGetFeedInfo:           js_get_feed_info,
-	JSTimelessReactive:      js_timeless_reactive,
-	JSTimelessHeadless:      js_timeless_headless,
+	JSTimeless:              js_timeless,
 	JSTimelessUtils:         js_timeless_utils,
-	JSTimelessIcons:         js_timeless_icons,
-	JSTimelessKit:           js_timeless_kit,
-	JSTimelessUI:            js_timeless_ui,
-	JSTimelessProviderWeb:   js_timeless_web,
+	CSSTimelessShadcn:       css_timeless_shadcn,
+	JSTimelessShadcn:        js_timeless_shadcn,
+	JSTimelessDOM:           js_timeless_dom,
+	JSTimelessWeb:           js_timeless_web,
 	JSComponents:            js_components,
 	JSUtils:                 js_utils,
 	JSDownloader:            js_downloader,

@@ -12,7 +12,7 @@ import (
 
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
-func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles) *proxy.Plugin {
+func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles, version string) *proxy.Plugin {
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnResponse: func(ctx proxy.Context) {
@@ -28,46 +28,35 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				html := string(resp_body)
 				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 				script_attr := ""
+				style_attr := ""
 				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
+					style_attr = fmt.Sprintf(` nonce="%s"`, match[1])
 				}
-				inserted_scripts := ""
+				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
-					inserted_scripts += script_error
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL("error.js"))
 				}
 				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
-				inserted_scripts += script_config
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				variable_byte, _ := json.Marshal(variables)
-				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
-				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessReactive)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUI)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessKit)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessHeadless)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessIcons)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessProviderWeb)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDownloader)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
+				interceptor.AppendSharedLibAssets(&injected, version, script_attr, style_attr)
+				interceptor.AppendScriptSrcs(
+					&injected,
+					script_attr,
+					interceptor.ChannelSrcAssetURL("eventbus.js"),
+					interceptor.ChannelSrcAssetURL("utils.js"),
+					interceptor.ChannelSrcAssetURL("components.js"),
+					interceptor.ChannelSrcAssetURL("downloaderv2.js"),
+					interceptor.ChannelSrcAssetURL("officialaccount.js"),
+				)
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(version, "pagespy.min.js"), interceptor.ChannelSrcAssetURL("pagespy.js"))
 				}
-				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
+				html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 				ctx.SetResponseBody(html)
 				return
 			}

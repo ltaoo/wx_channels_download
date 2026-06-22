@@ -33,19 +33,9 @@ async function __wx_insert_live_download_btn($btn) {
  * @param {HTMLElement} trigger
  */
 function __wx_attach_live_download_dropdown_menu(trigger) {
-  const { DropdownMenu, Menu, MenuItem } = WUI;
-  const submenu$ = Menu({
-    children: [],
-  });
-  const dropdown$ = DropdownMenu({
-    $trigger: trigger,
+  const dropdown$ = WXU.create_dropdown_menu(trigger, {
     zIndex: 99999,
     children: [],
-    onMouseEnter() {
-      if (submenu$.isOpen) {
-        submenu$.hide();
-      }
-    },
   });
   dropdown$.ui.$trigger.onMouseLeave(() => {
     if (dropdown$.isHover) {
@@ -53,7 +43,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     }
     dropdown$.hide();
   });
-  return [dropdown$, submenu$];
+  return [dropdown$];
 }
 
 (() => {
@@ -131,7 +121,6 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       "poll",
     );
     console.log("[live.js]has more options", i[1]);
-    var { MenuItem } = WUI;
     if (i && i[1] && i[1].payload.channelParams) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
         (vv) => vv.url,
@@ -143,7 +132,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
             var level_desc = opt.video_quality_level_desc
               ? `<div style="inline-block;margin-left: 4px;">(${opt.video_quality_level_desc})</div>`
               : "";
-            return MenuItem({
+            return WXU.menu_item({
               label: `<div class="flex"><div style="inline-block;width: 56px;">${opt.tag_name}</div><div style="inline-block;width: 32px;">${opt.rate}</div>${level_desc}</div>`,
               onClick() {
                 __wx_copy_live_download_command(opt.url);
@@ -155,7 +144,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       ];
       dropdown$.setChildren(download_menus);
       dropdown$.ui.$trigger.onMouseEnter(() => {
-        dropdown$.show();
+        dropdown$.show($btn);
       });
     }
   }

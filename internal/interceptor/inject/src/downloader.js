@@ -256,7 +256,7 @@ var isWin = /Windows|Win/i.test(ua);
         <div id="downloader_container" class="wx-dl-list wx-dl-dark-scroll" style="background-color: transparent; margin-top: 0;"></div>
       </div>
     `;
-    var download_popover$ = WUI.Popover($download_panel_button, {
+    var download_popover$ = WXU.create_popover($download_panel_button, {
       content: $download_panel.innerHTML,
       placement: "bottom-end",
       closeOnClickOutside: true,
@@ -264,11 +264,11 @@ var isWin = /Windows|Win/i.test(ua);
     });
     var $more = document.createElement("div");
     $more.innerHTML = `<div class="wx-dl-more-btn" id="wx_dl_more_btn">${MoreIcon}</div>`;
-    var moredropdown$ = WUI.DropdownMenu($more, {
+    var moredropdown$ = WXU.create_dropdown_menu($more, {
       zIndex: 99999,
       children: [
         !WXU.config.remoteServerEnabled
-          ? WUI.MenuItem({
+          ? WXU.menu_item({
               label: "打开目录",
               onClick: async () => {
                 await WXU.request({
@@ -283,7 +283,7 @@ var isWin = /Windows|Win/i.test(ua);
               },
             })
           : null,
-        WUI.MenuItem({
+        WXU.menu_item({
           label: "清空记录",
           onClick: async () => {
             moredropdown$.hide();
@@ -294,7 +294,7 @@ var isWin = /Windows|Win/i.test(ua);
       ].filter(Boolean),
     });
     moredropdown$.ui.$trigger.onMouseEnter(() => {
-      moredropdown$.show();
+      moredropdown$.show($more);
     });
     moredropdown$.ui.$trigger.onMouseLeave(() => {
       if (!moredropdown$.isHover) {
