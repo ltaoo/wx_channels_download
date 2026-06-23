@@ -897,7 +897,11 @@
 
       function feedDownloadTrigger() {
         const icon = document.querySelector(".download-icon");
-        return icon ? icon.closest(".click-box.op-item") || icon : null;
+        return icon
+          ? icon.closest("[data-dropdown-menu-impl]") ||
+          icon.closest(".click-box.op-item") ||
+          icon
+          : null;
       }
 
       function downloaderPanelTrigger() {
@@ -977,6 +981,7 @@
         const trigger = feedDownloadTrigger();
         const menus = visibleMenus();
         const probe = document.getElementById("timeless-probe-trigger");
+        const probeMount = document.getElementById("timeless-probe");
         const data = {
           viewport: {
             width: window.innerWidth,
@@ -988,8 +993,13 @@
           appTransform: getComputedStyle(document.getElementById("app"))
             .transform,
           feedTrigger: rectOf(trigger),
+          feedTriggerDropdownImpl:
+            (trigger && trigger.dataset && trigger.dataset.dropdownMenuImpl) ||
+            null,
           downloaderPanelTrigger: rectOf(downloaderPanelTrigger()),
           timelessProbeTrigger: rectOf(probe),
+          timelessProbeImpl:
+            (probeMount && probeMount.dataset.dropdownMenuImpl) || null,
           menus,
         };
         placeDebugBox("debug-feed-trigger", data.feedTrigger, "#07c160", "feed trigger");
@@ -1023,7 +1033,12 @@
 
       function renderTimelessProbe() {
         const mount = document.getElementById("timeless-probe");
-        if (!mount || !window.Timeless || !window.DropdownMenu) return;
+        const renderDropdownMenu =
+          window.Timeless &&
+          window.Timeless.shadcn &&
+          window.Timeless.shadcn.DropdownMenu;
+        if (!mount || !renderDropdownMenu) return;
+        mount.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
         const subMenu = new Timeless.ui.MenuCore({
           items: [
             new Timeless.ui.MenuItemCore({ label: "1080p" }),
@@ -1043,7 +1058,7 @@
           ],
         });
         Timeless.DOM.render(
-          DropdownMenu({ store: menu }, [
+          renderDropdownMenu({ store: menu }, [
             View(
               {
                 id: "timeless-probe-trigger",

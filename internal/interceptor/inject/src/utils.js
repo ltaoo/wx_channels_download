@@ -2141,23 +2141,44 @@ async function __wx_channels_handle_download_cover() {
   WXU.save(blob, filename + ".jpg");
 }
 
-/**
- * @param {DropdownMenuItemPayload[]} items
- * @param {{ hide: () => void }} $dropdown
- */
-function __wx_render_extra_download_menu_items(items, $dropdown) {
-  return items
+function __wx_download_menu_label(label) {
+  if (typeof Node !== "undefined" && label instanceof Node) {
+    return label.textContent || "";
+  }
+  return label == null ? "" : String(label);
+}
+
+function __wx_download_menu_click_payload(trigger) {
+  const [err, profile] = WXU.check_feed_existing({
+    silence: true,
+  });
+  return {
+    profile: err ? null : profile,
+    trigger,
+  };
+}
+
+function __wx_create_timeless_download_menu_item(options, trigger, close) {
+  return new Timeless.ui.MenuItemCore({
+    label: __wx_download_menu_label(options.label),
+    tooltip: options.title,
+    disabled: !!options.disabled,
+    async onClick() {
+      if (typeof options.onClick === "function") {
+        await options.onClick(__wx_download_menu_click_payload(trigger));
+      }
+      close();
+    },
+  });
+}
+
+function __wx_render_extra_download_dropdown_items(items, trigger, close) {
+  return (items || [])
     .filter((item) => {
       return item.label && item.onClick;
     })
     .map((item) => {
-      return WXU.menu_item({
-        label: item.label,
-        async onClick(event) {
-          await item.onClick(event);
-          $dropdown.hide();
-        },
-      });
+      return __wx_create_timeless_download_menu_item(item, trigger, close);
     });
 }
 
@@ -2166,72 +2187,70 @@ function __wx_render_extra_download_menu_items(items, $dropdown) {
  * @param {HTMLElement} trigger
  */
 function __wx_attach_download_dropdown_menu(trigger) {
-  const submenu$ = WXU.create_dropdown_menu(trigger, {
-    zIndex: 100000,
-    placement: "right",
-    children: [],
+  if (trigger.__wxTimelessDownloadDropdown) {
+    return trigger.__wxTimelessDownloadDropdown;
+  }
+
+  const submenu$ = new Timeless.ui.MenuCore({
+    items: [],
+    trigger: "hover",
   });
-  const dropdown$ = WXU.create_dropdown_menu(trigger, {
-    zIndex: 99999,
-  });
-  function build_menu_items() {
+  let dropdown$ = null;
+
+  function close_dropdown() {
+    submenu$.hide({ reason: "download menu action" });
+    if (dropdown$) {
+      dropdown$.hide({ reason: "download menu action" });
+    }
+  }
+
+  function build_root_menu_items() {
     return [
-      ...(() => {
-        if (WXU.before_menu_items) {
-          return __wx_render_extra_download_menu_items(WXU.before_menu_items, {
-            hide() {
-              dropdown$.hide();
-            },
-          });
-        }
-        return [];
-      })(),
-      WXU.menu_item({
+      ...__wx_render_extra_download_dropdown_items(
+        WXU.before_menu_items,
+        trigger,
+        close_dropdown,
+      ),
+      new Timeless.ui.MenuItemCore({
         label: "更多下载",
-        submenu: submenu$,
+        menu: submenu$,
       }),
-      WXU.menu_item({
+      new Timeless.ui.MenuItemCore({
         label: "下载为MP3",
         onClick() {
           __wx_channels_handle_click_download__(null, true);
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      WXU.menu_item({
+      new Timeless.ui.MenuItemCore({
         label: "下载封面",
         onClick() {
           __wx_channels_handle_download_cover();
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      WXU.menu_item({
+      new Timeless.ui.MenuItemCore({
         label: "复制页面链接",
         onClick() {
           __wx_channels_handle_copy__();
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      ...(() => {
-        if (WXU.after_menu_items) {
-          return __wx_render_extra_download_menu_items(WXU.after_menu_items, {
-            hide() {
-              dropdown$.hide();
-            },
-          });
-        }
-        return [];
-      })(),
+      ...__wx_render_extra_download_dropdown_items(
+        WXU.after_menu_items,
+        trigger,
+        close_dropdown,
+      ),
     ];
   }
-  dropdown$.setChildren(build_menu_items());
-  dropdown$.ui.$trigger.onMouseEnter(() => {
-    dropdown$.setChildren(build_menu_items());
-    const download_menus = [
-      WXU.menu_item({
+
+  function build_download_menu_items() {
+    return [
+      new Timeless.ui.MenuItemCore({
         label: "原始视频",
         onClick() {
           __wx_channels_handle_click_download__(null);
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
       ...(() => {
@@ -2241,28 +2260,61 @@ function __wx_attach_download_dropdown_menu(trigger) {
         if (err) {
           return [];
         }
-        return profile.spec.map((spec) => {
+        return (profile.spec || []).map((spec) => {
           const title = WXU.format_media_spec_label(spec) || spec.fileFormat;
-          return WXU.menu_item({
+          return new Timeless.ui.MenuItemCore({
             label: WXU.format_media_spec_short_label(spec),
-            title,
+            tooltip: title,
             onClick() {
               __wx_channels_handle_click_download__(spec.fileFormat);
-              dropdown$.hide();
+              close_dropdown();
             },
           });
         });
       })(),
     ];
-    submenu$.setChildren(download_menus);
-    dropdown$.show(trigger);
+  }
+
+  dropdown$ = new Timeless.ui.DropdownMenuCore({
+    trigger: "hover",
+    align: "end",
+    items: build_root_menu_items(),
   });
-  dropdown$.ui.$trigger.onMouseLeave(() => {
-    if (dropdown$.isHover) {
-      return;
-    }
-    dropdown$.hide();
+
+  const mount = document.createElement("span");
+  mount.className = "wx-download-dropdown-menu-root";
+  mount.style.display = "contents";
+  document.body.appendChild(mount);
+  Timeless.DOM.render(Timeless.shadcn.DropdownMenu({ store: dropdown$ }), mount);
+
+  function set_reference() {
+    dropdown$.setReference(
+      {
+        $el: trigger,
+        getRect() {
+          return trigger.getBoundingClientRect();
+        },
+      },
+      { force: true },
+    );
+  }
+
+  trigger.addEventListener("mouseenter", () => {
+    set_reference();
+    submenu$.setItems(build_download_menu_items());
+    dropdown$.handleEnterTrigger();
   });
+  trigger.addEventListener("mouseleave", () => {
+    dropdown$.handleLeaveTrigger();
+  });
+  trigger.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+
+  if (trigger.dataset) {
+    trigger.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
+  }
+  trigger.__wxTimelessDownloadDropdown = dropdown$;
   return dropdown$;
 }
 
