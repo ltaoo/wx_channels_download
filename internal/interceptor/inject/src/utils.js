@@ -1994,6 +1994,23 @@ function ChannelsWebsocketClient() {
         });
         return;
       }
+      if (key === "key:channels:shared_feed_profile") {
+        console.log("before sharedFeedProfile", data);
+        var [err, r, payload] = await fetchFeedProfileWith(data);
+        if (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload: null,
+          });
+          return;
+        }
+        resp({
+          ...r,
+          payload,
+        });
+        return;
+      }
       if (key === "key:channels:fetch_feed_comment_list") {
         // console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
         if (!data.oid) {
