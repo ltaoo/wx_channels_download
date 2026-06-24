@@ -426,7 +426,10 @@ function DownloaderPanelViewModel(props = {}) {
     }
     return Math.max(
       1,
-      Math.min(ITEM_MAX_TITLE_LINES, Math.ceil(units / ITEM_TITLE_UNITS_PER_LINE)),
+      Math.min(
+        ITEM_MAX_TITLE_LINES,
+        Math.ceil(units / ITEM_TITLE_UNITS_PER_LINE),
+      ),
     );
   };
   const estimateTaskItemHeight = (task) => {
@@ -493,7 +496,9 @@ function DownloaderPanelViewModel(props = {}) {
     }
     let items = [];
     if (list_view_el && typeof list_view_el.querySelectorAll === "function") {
-      items = Array.from(list_view_el.querySelectorAll("[data-list-view-item]"));
+      items = Array.from(
+        list_view_el.querySelectorAll("[data-list-view-item]"),
+      );
     }
     if (!items.length) {
       items = Array.from(
@@ -632,9 +637,7 @@ function DownloaderPanelViewModel(props = {}) {
   };
   const applyTaskPage = (data, options = {}) => {
     const page = normalizePage(data && data.page);
-    const pageSize = normalizePage(
-      (data && data.page_size) || _pageSize,
-    );
+    const pageSize = normalizePage((data && data.page_size) || _pageSize);
     const total = normalizeTotal(data && data.total);
     const current = options.reset ? [] : tasks_.value || [];
     const next = normalizeTaskSlots(current, total);
@@ -792,10 +795,7 @@ function DownloaderPanelViewModel(props = {}) {
     if (nearBottom && domScrollHeight < contentHeight) {
       _scrollTop = maxScrollTop;
     }
-    const startIndex = Math.max(
-      0,
-      Math.floor(indexScrollTop / rowHeight) - 5,
-    );
+    const startIndex = Math.max(0, Math.floor(indexScrollTop / rowHeight) - 5);
     const viewportEndIndex =
       Math.ceil((indexScrollTop + clientHeight) / rowHeight) + 5;
     const slotEndIndex = startIndex + _pageSize + LIST_BUFFER * 2;
@@ -919,7 +919,9 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       const current = tasks_.value || [];
-      const index = current.findIndex((t) => isLoadedTask(t) && t.id === task.id);
+      const index = current.findIndex(
+        (t) => isLoadedTask(t) && t.id === task.id,
+      );
       if (index === -1) {
         WXU.error({ msg: "异常操作" });
         return;
@@ -1076,7 +1078,11 @@ function DownloaderPanelViewModel(props = {}) {
         loaded_pages.clear();
         loading_pages.clear();
         pending_pages.clear();
-        for (let page = 1; page <= Math.ceil(tasks.length / _pageSize); page += 1) {
+        for (
+          let page = 1;
+          page <= Math.ceil(tasks.length / _pageSize);
+          page += 1
+        ) {
           loaded_pages.add(page);
         }
         setStatusCounts(counts);
@@ -1113,13 +1119,16 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       const current = tasks_.value || [];
-      const index = current.findIndex((v) => isLoadedTask(v) && v.id === task.id);
+      const index = current.findIndex(
+        (v) => isLoadedTask(v) && v.id === task.id,
+      );
       if (index === -1) {
         if (!options || !options.prepend) {
           return;
         }
         console.log("[]insert task", task);
-        const nextTotal = (virtual_total || current.length || task_count_.value) + 1;
+        const nextTotal =
+          (virtual_total || current.length || task_count_.value) + 1;
         const next = [task, ...current].slice(0, nextTotal);
         while (next.length < nextTotal) {
           next.push(makeTaskPlaceholder(next.length));
@@ -1526,417 +1535,423 @@ function DownloaderPanelView(props, children) {
                             vm$.methods.ensureTaskPageForIndex(task.__index);
                             return DownloadTaskSkeletonCard();
                           }
-                        const iconSize = "50px";
-                        const state_ = computed(task, (t) => {
-                          // console.log("the task is changed", t.status);
-                          const pr = format_download_percent(t);
-                          const isCompleted =
-                            t.status === "done" ||
-                            t.status === "completed" ||
-                            t.status === "success" ||
-                            t.status === "finished" ||
-                            (pr === 100 && t.status !== "running");
+                          const iconSize = "50px";
+                          const state_ = computed(task, (t) => {
+                            // console.log("the task is changed", t.status);
+                            const pr = format_download_percent(t);
+                            const isCompleted =
+                              t.status === "done" ||
+                              t.status === "completed" ||
+                              t.status === "success" ||
+                              t.status === "finished" ||
+                              (pr === 100 && t.status !== "running");
 
-                          const isPaused =
-                            t.status === "paused" || t.status === "pause";
-                          const isRunning = t.status === "running";
+                            const isPaused =
+                              t.status === "paused" || t.status === "pause";
+                            const isRunning = t.status === "running";
 
-                          let statusText = t.status;
-                          let statusColor = "var(--weui-FG-1)";
-                          var isFailed =
-                            t.status === "failed" || t.status === "error";
-                          var isPending = t.status === "pending";
-                          if (isRunning) {
-                            const speed = format_download_speed(
-                              t.progress ? t.progress.speed : 0,
-                            );
-                            statusText = `${speed} • ${pr}%`;
-                          } else if (isCompleted) {
-                            statusText = "已完成";
-                            // Calculate size
-                            const total =
-                              t.meta && t.meta.res ? t.meta.res.size : 0;
-                            if (total) {
-                              statusText = WXU.bytes_to_size(total);
+                            let statusText = t.status;
+                            let statusColor = "var(--weui-FG-1)";
+                            var isFailed =
+                              t.status === "failed" || t.status === "error";
+                            var isPending = t.status === "pending";
+                            if (isRunning) {
+                              const speed = format_download_speed(
+                                t.progress ? t.progress.speed : 0,
+                              );
+                              statusText = `${speed} • ${pr}%`;
+                            } else if (isCompleted) {
+                              statusText = "已完成";
+                              // Calculate size
+                              const total =
+                                t.meta && t.meta.res ? t.meta.res.size : 0;
+                              if (total) {
+                                statusText = WXU.bytes_to_size(total);
+                              }
+                            } else if (isFailed) {
+                              statusText = "下载失败";
+                              statusColor = "#FA5151";
+                            } else if (isPending) {
+                              statusText = "等待中...";
+                            } else if (isPaused) {
+                              statusText = `已暂停 • ${pr}%`;
                             }
-                          } else if (isFailed) {
-                            statusText = "下载失败";
-                            statusColor = "#FA5151";
-                          } else if (isPending) {
-                            statusText = "等待中...";
-                          } else if (isPaused) {
-                            statusText = `已暂停 • ${pr}%`;
-                          }
-                          return {
-                            pr,
-                            isCompleted,
-                            isPaused,
-                            isRunning,
-                            isFailed,
-                            canResume: isFailed || isPaused,
-                            statusText,
-                            statusColor,
-                          };
-                        });
-                        const isOpenExternal = WXU.config.remoteServerEnabled;
-                        const radius = 22;
-                        const circumference = 2 * Math.PI * radius;
-                        const offset = computed(state_, (d) => {
-                          return circumference - (d.pr / 100) * circumference;
-                        });
-                        const strokeColor = computed(state_, (d) => {
-                          return d.isPaused ? "#FBC02D" : "#07C160";
-                        });
+                            return {
+                              pr,
+                              isCompleted,
+                              isPaused,
+                              isRunning,
+                              isFailed,
+                              canResume: isFailed || isPaused,
+                              statusText,
+                              statusColor,
+                            };
+                          });
+                          const isOpenExternal = WXU.config.remoteServerEnabled;
+                          const radius = 22;
+                          const circumference = 2 * Math.PI * radius;
+                          const offset = computed(state_, (d) => {
+                            return circumference - (d.pr / 100) * circumference;
+                          });
+                          const strokeColor = computed(state_, (d) => {
+                            return d.isPaused ? "#FBC02D" : "#07C160";
+                          });
 
-                        return View(
-                          {
-                            class: "weui-cell wx-dl-item",
-                            style: {
-                              "box-sizing": "border-box",
-                            },
-                          },
-                          [
-                          View(
+                          return View(
                             {
-                              class: "weui-cell__hd",
+                              class: "weui-cell wx-dl-item",
                               style: {
-                                position: "relative",
-                                "margin-right": "16px",
-                                width: iconSize,
-                                height: iconSize,
-                                display: "flex",
-                                "align-items": "center",
-                                "justify-content": "center",
-                                color: "var(--weui-FG-0)",
+                                "box-sizing": "border-box",
                               },
                             },
                             [
-                              Show({
-                                when: computed(state_, (t) => {
-                                  return t.isRunning || t.isPaused;
-                                }),
-                                ok() {
-                                  return [
-                                    View(
-                                      {
-                                        style: {
-                                          position: "relative",
-                                          width: "50px",
-                                          height: "50px",
-                                          display: "flex",
-                                          "align-items": "center",
-                                          "justify-content": "center",
-                                        },
-                                      },
-                                      [
-                                        SVG.SVG(
-                                          {
-                                            style: {
-                                              position: "absolute",
-                                              top: "0",
-                                              left: "0",
-                                              transform: "rotate(-90deg)",
-                                            },
-                                            attributes: {
-                                              width: "50",
-                                              height: "50",
-                                              viewBox: "0 0 50 50",
-                                            },
-                                          },
-                                          [
-                                            SVG.Circle({
-                                              attributes: {
-                                                cx: "25",
-                                                cy: "25",
-                                                r: radius,
-                                                stroke: "var(--weui-FG-3)",
-                                                "stroke-width": "3",
-                                                fill: "none",
-                                              },
-                                            }),
-                                            SVG.Circle({
-                                              attributes: {
-                                                cx: "25",
-                                                cy: "25",
-                                                r: radius,
-                                                stroke: strokeColor,
-                                                "stroke-width": "3",
-                                                fill: "none",
-                                                "stroke-dasharray":
-                                                  circumference,
-                                                "stroke-dashoffset": offset,
-                                                "stroke-linecap": "round",
-                                              },
-                                            }),
-                                          ],
-                                        ),
+                              View(
+                                {
+                                  class: "weui-cell__hd",
+                                  style: {
+                                    position: "relative",
+                                    "margin-right": "16px",
+                                    width: iconSize,
+                                    height: iconSize,
+                                    display: "flex",
+                                    "align-items": "center",
+                                    "justify-content": "center",
+                                    color: "var(--weui-FG-0)",
+                                  },
+                                },
+                                [
+                                  Show({
+                                    when: computed(state_, (t) => {
+                                      return t.isRunning || t.isPaused;
+                                    }),
+                                    ok() {
+                                      return [
                                         View(
                                           {
                                             style: {
                                               position: "relative",
-                                              "z-index": "1",
+                                              width: "50px",
+                                              height: "50px",
                                               display: "flex",
+                                              "align-items": "center",
+                                              "justify-content": "center",
                                             },
                                           },
                                           [
-                                            DownloadTaskFileIcon({
-                                              task,
-                                              size: 32,
-                                            }),
+                                            SVG.SVG(
+                                              {
+                                                style: {
+                                                  position: "absolute",
+                                                  top: "0",
+                                                  left: "0",
+                                                  transform: "rotate(-90deg)",
+                                                },
+                                                attributes: {
+                                                  width: "50",
+                                                  height: "50",
+                                                  viewBox: "0 0 50 50",
+                                                },
+                                              },
+                                              [
+                                                SVG.Circle({
+                                                  attributes: {
+                                                    cx: "25",
+                                                    cy: "25",
+                                                    r: radius,
+                                                    stroke: "var(--weui-FG-3)",
+                                                    "stroke-width": "3",
+                                                    fill: "none",
+                                                  },
+                                                }),
+                                                SVG.Circle({
+                                                  attributes: {
+                                                    cx: "25",
+                                                    cy: "25",
+                                                    r: radius,
+                                                    stroke: strokeColor,
+                                                    "stroke-width": "3",
+                                                    fill: "none",
+                                                    "stroke-dasharray":
+                                                      circumference,
+                                                    "stroke-dashoffset": offset,
+                                                    "stroke-linecap": "round",
+                                                  },
+                                                }),
+                                              ],
+                                            ),
+                                            View(
+                                              {
+                                                style: {
+                                                  position: "relative",
+                                                  "z-index": "1",
+                                                  display: "flex",
+                                                },
+                                              },
+                                              [
+                                                DownloadTaskFileIcon({
+                                                  task,
+                                                  size: 32,
+                                                }),
+                                              ],
+                                            ),
                                           ],
                                         ),
-                                      ],
-                                    ),
-                                  ];
-                                },
-                                else() {
-                                  return [
-                                    DownloadTaskFileIcon({ task, size: 32 }),
-                                  ];
-                                },
-                              }),
-                            ],
-                          ),
-                          View(
-                            {
-                              class: "weui-cell__bd",
-                              style: { "min-width": "0" },
-                            },
-                            [
-                              View(
-                                {
-                                  class: "wx-dl-item-title",
-                                  style: {
-                                    color: "var(--weui-FG-0)",
-                                    "font-weight": "500",
-                                    "font-size": "14px",
-                                  },
-                                },
-                                [computed(task, (t) => t.name)],
-                              ),
-                              View(
-                                {
-                                  class: "weui-cell__desc",
-                                  style: computed(state_, (d) => {
-                                    return {
-                                      "margin-top": "4px",
-                                      color: d.statusColor,
-                                      "font-size": "12px",
-                                    };
-                                  }),
-                                },
-                                [
-                                  computed(state_, (d) => {
-                                    return d.statusText;
+                                      ];
+                                    },
+                                    else() {
+                                      return [
+                                        DownloadTaskFileIcon({
+                                          task,
+                                          size: 32,
+                                        }),
+                                      ];
+                                    },
                                   }),
                                 ],
                               ),
-                            ],
-                          ),
-                          View(
-                            {
-                              class: "weui-cell__ft",
-                              style: {
-                                display: "flex",
-                                "align-items": "center",
-                              },
-                            },
-                            (() => {
-                              const btnStyle = {
-                                color: "var(--weui-FG-0)",
-                                opacity: "0.8",
-                                "margin-left": "12px",
-                                cursor: "pointer",
-                                display: "flex",
-                                "align-items": "center",
-                                "justify-content": "center",
-                              };
-                              return [
-                                Match({
-                                  when: combine(
+                              View(
+                                {
+                                  class: "weui-cell__bd",
+                                  style: { "min-width": "0" },
+                                },
+                                [
+                                  View(
                                     {
-                                      state: state_,
-                                      running_count: running_count_,
+                                      class: "wx-dl-item-title",
+                                      style: {
+                                        color: "var(--weui-FG-0)",
+                                        "font-weight": "500",
+                                        "font-size": "14px",
+                                      },
                                     },
-                                    (t) => {
-                                      if (t.state.isCompleted) {
-                                        return 1;
-                                      }
-                                      if (t.state.isRunning) {
-                                        return 2;
-                                      }
-                                      if (t.state.isPaused) {
-                                        return 3;
-                                      }
-                                      if (t.state.isFailed) {
-                                        return 4;
-                                      }
-                                      return 0;
-                                    },
+                                    [computed(task, (t) => t.name)],
                                   ),
-                                  cases: {
-                                    // 场景 1: 已完成 -> 显示打开按钮
-                                    1() {
-                                      return View(
-                                        {
-                                          type: "a",
-                                          class: "wx-download-item-open",
-                                          style: btnStyle,
-                                          onClick() {
-                                            vm$.methods.openTask(task);
-                                          },
-                                        },
-                                        [
-                                          Show({
-                                            when: !!isOpenExternal,
-                                            ok() {
-                                              return [
-                                                Timeless.Icon({
-                                                  name: "file-symlink",
-                                                  size: 20,
-                                                }),
-                                              ];
-                                            },
-                                            else() {
-                                              return [
-                                                Timeless.Icon({
-                                                  name: "folder",
-                                                  size: 20,
-                                                }),
-                                              ];
-                                            },
-                                          }),
-                                        ],
-                                      );
+                                  View(
+                                    {
+                                      class: "weui-cell__desc",
+                                      style: computed(state_, (d) => {
+                                        return {
+                                          "margin-top": "4px",
+                                          color: d.statusColor,
+                                          "font-size": "12px",
+                                        };
+                                      }),
                                     },
-                                    // 场景 2: 正在运行 -> 显示暂停按钮
-                                    2() {
-                                      return View(
-                                        {
-                                          type: "a",
-                                          class: "wx-download-item-pause",
-                                          style: btnStyle,
-                                          onClick() {
-                                            vm$.methods.pauseTask(task);
-                                          },
-                                        },
-                                        [
-                                          Timeless.Icon({
-                                            name: "pause",
-                                            size: 20,
-                                          }),
-                                        ],
-                                      );
-                                    },
-                                    // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
-                                    3() {
-                                      return View(
-                                        {
-                                          type: "a",
-                                          class: "wx-download-item-resume",
-                                          style: computed(
-                                            running_count_,
-                                            (t) => {
-                                              return {
-                                                ...btnStyle,
-                                                ...(t > WXU.config.MaxRunning
-                                                  ? {
-                                                      opacity: "0.6",
-                                                      cursor: "not-allowed",
-                                                    }
-                                                  : {}),
-                                              };
-                                            },
-                                          ),
-                                          onClick() {
-                                            vm$.methods.resumeTask(task);
-                                          },
-                                        },
-                                        [
-                                          Timeless.Icon({
-                                            name: "play",
-                                            size: 20,
-                                          }),
-                                        ],
-                                      );
-                                    },
-                                    4() {
-                                      return View(
-                                        {
-                                          type: "a",
-                                          class: "wx-download-item-resume",
-                                          style: computed(
-                                            running_count_,
-                                            (t) => {
-                                              return {
-                                                ...btnStyle,
-                                                ...(t > WXU.config.MaxRunning
-                                                  ? {
-                                                      opacity: "0.6",
-                                                      cursor: "not-allowed",
-                                                    }
-                                                  : {}),
-                                              };
-                                            },
-                                          ),
-                                          onClick() {
-                                            vm$.methods.resumeTask(task);
-                                          },
-                                        },
-                                        [
-                                          Timeless.Icon({
-                                            name: "refresh-ccw",
-                                            size: 20,
-                                          }),
-                                        ],
-                                      );
-                                    },
+                                    [
+                                      computed(state_, (d) => {
+                                        return d.statusText;
+                                      }),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              View(
+                                {
+                                  class: "weui-cell__ft",
+                                  style: {
+                                    display: "flex",
+                                    "align-items": "center",
                                   },
-                                }),
-                                View(
-                                  {
-                                    class: "wx-download-item-delete",
-                                    style: btnStyle,
-                                    onClick() {
-                                      vm$.methods.deleteTask(task);
-                                    },
-                                  },
-                                  [
-                                    Timeless.Icon({
-                                      name: "trash2",
-                                      size: 20,
+                                },
+                                (() => {
+                                  const btnStyle = {
+                                    color: "var(--weui-FG-0)",
+                                    opacity: "0.8",
+                                    "margin-left": "12px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    "align-items": "center",
+                                    "justify-content": "center",
+                                  };
+                                  return [
+                                    Match({
+                                      when: combine(
+                                        {
+                                          state: state_,
+                                          running_count: running_count_,
+                                        },
+                                        (t) => {
+                                          if (t.state.isCompleted) {
+                                            return 1;
+                                          }
+                                          if (t.state.isRunning) {
+                                            return 2;
+                                          }
+                                          if (t.state.isPaused) {
+                                            return 3;
+                                          }
+                                          if (t.state.isFailed) {
+                                            return 4;
+                                          }
+                                          return 0;
+                                        },
+                                      ),
+                                      cases: {
+                                        // 场景 1: 已完成 -> 显示打开按钮
+                                        1() {
+                                          return View(
+                                            {
+                                              type: "a",
+                                              class: "wx-download-item-open",
+                                              style: btnStyle,
+                                              onClick() {
+                                                vm$.methods.openTask(task);
+                                              },
+                                            },
+                                            [
+                                              Show({
+                                                when: !!isOpenExternal,
+                                                ok() {
+                                                  return [
+                                                    Timeless.Icon({
+                                                      name: "file-symlink",
+                                                      size: 20,
+                                                    }),
+                                                  ];
+                                                },
+                                                else() {
+                                                  return [
+                                                    Timeless.Icon({
+                                                      name: "folder",
+                                                      size: 20,
+                                                    }),
+                                                  ];
+                                                },
+                                              }),
+                                            ],
+                                          );
+                                        },
+                                        // 场景 2: 正在运行 -> 显示暂停按钮
+                                        2() {
+                                          return View(
+                                            {
+                                              type: "a",
+                                              class: "wx-download-item-pause",
+                                              style: btnStyle,
+                                              onClick() {
+                                                vm$.methods.pauseTask(task);
+                                              },
+                                            },
+                                            [
+                                              Timeless.Icon({
+                                                name: "pause",
+                                                size: 20,
+                                              }),
+                                            ],
+                                          );
+                                        },
+                                        // 场景 3: 暂停或失败且未达最大并发 -> 显示恢复按钮
+                                        3() {
+                                          return View(
+                                            {
+                                              type: "a",
+                                              class: "wx-download-item-resume",
+                                              style: computed(
+                                                running_count_,
+                                                (t) => {
+                                                  return {
+                                                    ...btnStyle,
+                                                    ...(t >
+                                                    WXU.config.MaxRunning
+                                                      ? {
+                                                          opacity: "0.6",
+                                                          cursor: "not-allowed",
+                                                        }
+                                                      : {}),
+                                                  };
+                                                },
+                                              ),
+                                              onClick() {
+                                                vm$.methods.resumeTask(task);
+                                              },
+                                            },
+                                            [
+                                              Timeless.Icon({
+                                                name: "play",
+                                                size: 20,
+                                              }),
+                                            ],
+                                          );
+                                        },
+                                        4() {
+                                          return View(
+                                            {
+                                              type: "a",
+                                              class: "wx-download-item-resume",
+                                              style: computed(
+                                                running_count_,
+                                                (t) => {
+                                                  return {
+                                                    ...btnStyle,
+                                                    ...(t >
+                                                    WXU.config.MaxRunning
+                                                      ? {
+                                                          opacity: "0.6",
+                                                          cursor: "not-allowed",
+                                                        }
+                                                      : {}),
+                                                  };
+                                                },
+                                              ),
+                                              onClick() {
+                                                vm$.methods.resumeTask(task);
+                                              },
+                                            },
+                                            [
+                                              Timeless.Icon({
+                                                name: "refresh-ccw",
+                                                size: 20,
+                                              }),
+                                            ],
+                                          );
+                                        },
+                                      },
                                     }),
-                                  ],
-                                ),
-                              ];
-                            })(),
-                          ),
-                        ]);
-                      },
-                    }),
-                  ];
-                },
-              }),
+                                    View(
+                                      {
+                                        class: "wx-download-item-delete",
+                                        style: btnStyle,
+                                        onClick() {
+                                          vm$.methods.deleteTask(task);
+                                        },
+                                      },
+                                      [
+                                        Timeless.Icon({
+                                          name: "trash2",
+                                          size: 20,
+                                        }),
+                                      ],
+                                    ),
+                                  ];
+                                })(),
+                              ),
+                            ],
+                          );
+                        },
+                      }),
+                    ];
+                  },
+                }),
               ];
             },
-                else() {
-                  return [
+            else() {
+              return [
+                View(
+                  {
+                    class: "weui-loadmore weui-loadmore_line",
+                  },
+                  [
                     View(
                       {
-                        class: "weui-loadmore weui-loadmore_line",
+                        class: "weui-loadmore__tips",
                       },
-                      [
-                        View(
-                          {
-                            class: "weui-loadmore__tips",
-                          },
-                          ["暂无下载任务"],
-                        ),
-                      ],
+                      ["暂无下载任务"],
                     ),
-                  ];
-                },
-              }),
+                  ],
+                ),
+              ];
+            },
+          }),
         ],
       ),
       renderConfirmDialog

@@ -14,12 +14,12 @@ var WXEnv = (() => {
   const defaults = {
     /** 本地接口 */
     localAPIServerProtocol: "http",
-    localAPIServerAddr: "100.78.198.69:2022",
+    localAPIServerAddr: "127.0.0.1:2022",
     /** 远端接口 */
     remoteAPIServerProtocol: "http",
-    remoteAPIServerAddr: "100.78.198.69:2022",
+    remoteAPIServerAddr: "127.0.0.1:2022",
     /** 下载面板接口地址 */
-    downloadPanelAPIServerAddr: "100.78.198.69:2022",
+    downloadPanelAPIServerAddr: "127.0.0.1:2022",
     downloadPanelAPIServerProtocol: "http",
     /** 静态资源 prefix */
     assetsFallbackBase: "http://127.0.0.1:2022/__wx_channels_assets",
