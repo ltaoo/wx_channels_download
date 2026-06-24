@@ -51,7 +51,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "env.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "components.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "downloaderv2.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "download/core.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "officialaccount.js"),
 				)
 				if cfg.PagespyEnabled {

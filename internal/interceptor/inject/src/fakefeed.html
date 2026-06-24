@@ -24,6 +24,11 @@
       __wx_fake_asset_url("/lib/timeless/0.26.3/timeless.shadcn.css") +
       '">'
     );
+    document.write(
+      '<link id="wx-components-style" rel="stylesheet" href="' +
+      __wx_fake_asset_url("/src/components.css") +
+      '">'
+    );
   </script>
   <style>
     :root {
@@ -426,7 +431,8 @@
       writeScript("/src/utils.js");
       writeScript("/src/components.js");
       writeScript("/src/feed.js");
-      writeScript("/src/downloaderv2.js");
+      writeScript("/src/download/core.js");
+      writeScript("/src/download/panel.js");
     })();
   </script>
   <script>

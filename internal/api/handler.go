@@ -972,31 +972,19 @@ func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-func (c *APIClient) handleIndex(ctx *gin.Context) {
-	read_asset := func(path string, defaultData []byte) string {
-		fullPath := filepath.Join("internal", "interceptor", path)
-		data, err := os.ReadFile(fullPath)
-		if err == nil {
-			return string(data)
-		}
-		return string(defaultData)
+func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
+	data, err := interceptor.Assets.ReadSrc("download/index.html")
+	if err != nil {
+		result.Err(ctx, http.StatusInternalServerError, err.Error())
+		return
 	}
-	// html := read_asset("inject/index.html", files.HTMLHome)
-	files := interceptor.Assets
-	var inserted_scripts string
-	cfg_byte, _ := json.Marshal(c.cfg)
-	inserted_scripts += fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "local";</script>`, string(cfg_byte))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/mitt.umd.js", files.JSMitt))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/eventbus.js", files.JSEventBus))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/env.js", files.JSEnv))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/utils.js", files.JSUtils))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", files.JSComponents))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", files.JSDownloader))
-
-	// html = strings.Replace(html, "<!-- INJECT_JS -->", inserted_scripts, 1)
+	cfgByte, _ := json.Marshal(c.cfg)
+	html := string(data)
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")
 
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, "<html><body><div id=\"app\"></div></body></html>")
+	ctx.String(http.StatusOK, html)
 }
 
 func (c *APIClient) handlePlay(ctx *gin.Context) {

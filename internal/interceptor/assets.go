@@ -33,8 +33,12 @@ type ChannelInjectedFiles struct {
 	JSTimelessShadcn        []byte
 	JSTimelessDOM           []byte
 	JSTimelessWeb           []byte
+	CSSComponents           []byte
 	JSComponents            []byte
 	JSChannels              []byte
+	JSDownloadCore          []byte
+	JSDownloadPanel         []byte
+	JSDownloadIndex         []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
 	JSError                 []byte
@@ -72,6 +76,7 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSTimelessShadcn = files.readLib("timeless/0.26.3/timeless.shadcn.umd.min.js")
 	files.JSTimelessDOM = files.readLib("timeless/0.26.3/timeless.dom.umd.min.js")
 	files.JSTimelessWeb = files.readLib("timeless/0.26.3/timeless.web.umd.min.js")
+	files.CSSComponents = files.readSrc("components.css")
 	files.JSDebug = files.readSrc("pagespy.js")
 	files.JSError = files.readSrc("error.js")
 	files.JSEventBus = files.readSrc("eventbus.js")
@@ -81,7 +86,10 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSComponents = files.readSrc("components.js")
 	files.JSUtils = files.readSrc("utils.js")
 	files.JSChannels = files.readSrc("channels.js")
-	files.JSDownloader = files.readSrc("downloaderv2.js")
+	files.JSDownloadCore = files.readSrc("download/core.js")
+	files.JSDownloadPanel = files.readSrc("download/panel.js")
+	files.JSDownloadIndex = files.readSrc("download/index.js")
+	files.JSDownloader = files.JSDownloadPanel
 	files.JSWechatOfficialAccount = files.readSrc("officialaccount.js")
 	files.JSHomePage = files.readSrc("home.js")
 	files.JSFeedProfilePage = files.readSrc("feed.js")

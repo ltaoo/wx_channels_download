@@ -226,8 +226,18 @@
     $container.appendChild($btn);
   }
   function DownloaderPanel(props) {
+    const vm$ = DownloaderPanelViewModel({
+      onRequestClose() {
+        props.dialog$.hide();
+      },
+    });
     return View({}, [
-      Dialog({ store: props.dialog$ }, [DownloaderPanelView({})]),
+      Dialog({ store: props.dialog$ }, [
+        DownloaderPanelView({
+          store: vm$,
+          showStatusCounts: false,
+        }),
+      ]),
     ]);
   }
   function insert_download_button() {

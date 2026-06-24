@@ -386,7 +386,12 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					ChannelSrcAssetURL(assetBaseURL, "components.js"),
 				)
 				if !cfg.DownloadInFrontend {
-					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL(assetBaseURL, "downloaderv2.js"))
+					AppendScriptSrcs(
+						&injected,
+						"",
+						ChannelSrcAssetURL(assetBaseURL, "download/core.js"),
+						ChannelSrcAssetURL(assetBaseURL, "download/panel.js"),
+					)
 				}
 				if cfg.InjectGlobalScript != "" {
 					AppendInlineScript(&injected, "", cfg.InjectGlobalScript)

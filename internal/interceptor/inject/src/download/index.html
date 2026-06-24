@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Downloads</title>
+  <link rel="stylesheet" href="/__wx_channels_assets/lib/timeless/0.26.3/timeless.shadcn.css" />
+  <link id="wx-components-style" rel="stylesheet" href="/__wx_channels_assets/src/components.css" />
+  <script>
+    window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;
+    window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";
+    window.WXVariable = {};
+  </script>
+  <script src="/__wx_channels_assets/lib/mitt.umd.js"></script>
+  <script src="/__wx_channels_assets/lib/timeless/0.26.3/timeless.umd.min.js"></script>
+  <script src="/__wx_channels_assets/lib/timeless/0.26.3/timeless.utils.umd.min.js"></script>
+  <script src="/__wx_channels_assets/lib/timeless/0.26.3/timeless.shadcn.umd.min.js"></script>
+  <script>
+    Object.assign(Timeless, Timeless.shadcn.kit);
+    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(window, Timeless);
+    Object.assign(window, Timeless.shadcn);
+  </script>
+  <script src="/__wx_channels_assets/lib/timeless/0.26.3/timeless.dom.umd.min.js"></script>
+  <script src="/__wx_channels_assets/lib/timeless/0.26.3/timeless.web.umd.min.js"></script>
+  <script src="/__wx_channels_assets/src/eventbus.js"></script>
+  <script src="/__wx_channels_assets/src/env.js"></script>
+  <script src="/__wx_channels_assets/src/env.mock.js"></script>
+  <script src="/__wx_channels_assets/src/utils.js"></script>
+  <script src="/__wx_channels_assets/src/components.js"></script>
+  <script src="/__wx_channels_assets/src/download/core.js"></script>
+  <script src="/__wx_channels_assets/src/download/index.js"></script>
+</head>
+
+<body class="wx-dl-page-body">
+  <div id="app"></div>
+</body>
+
+</html>

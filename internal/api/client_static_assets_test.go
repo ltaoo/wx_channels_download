@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -58,6 +59,40 @@ func TestAPIClientServesChannelSrcAssetWithETag(t *testing.T) {
 	}
 	if cachedResp.Body.Len() != 0 {
 		t.Fatalf("body length = %d, want 0", cachedResp.Body.Len())
+	}
+}
+
+func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
+	withTestChannelAssets(t, map[string]string{
+		"src/download/index.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/download/index.js"></script>`,
+	})
+	gin.SetMode(gin.TestMode)
+	client := &APIClient{
+		cfg:    &APIConfig{Protocol: "http", Hostname: "127.0.0.1", Port: 2022},
+		engine: gin.New(),
+	}
+	client.engine.GET("/download", client.handleDownloadPage)
+
+	resp := performStaticAssetRequest(client, http.MethodGet, "/download", nil)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.Code, http.StatusOK)
+	}
+	if got := resp.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got)
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, `"Protocol":"http"`) {
+		t.Fatalf("body = %q, want rendered API config", body)
+	}
+	if !strings.Contains(body, `/__wx_channels_assets/src/download/index.js`) {
+		t.Fatalf("body = %q, want download/index.js script", body)
+	}
+	if !strings.Contains(body, `/__wx_channels_assets/src/components.css`) {
+		t.Fatalf("body = %q, want components.css stylesheet", body)
+	}
+	if strings.Contains(body, "__WX_DOWNLOAD_CONFIG_JSON__") {
+		t.Fatalf("body = %q, want config placeholder replaced", body)
 	}
 }
 
