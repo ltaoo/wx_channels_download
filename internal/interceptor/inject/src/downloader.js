@@ -3,8 +3,6 @@
  * @deprecated
  */
 var __wx_username;
-var ua = navigator.userAgent || navigator.platform || "";
-var isWin = /Windows|Win/i.test(ua);
 (() => {
   const tasks = new Map();
   let ws_conn = null;
@@ -36,8 +34,7 @@ var isWin = /Windows|Win/i.test(ua);
     });
   }
   function connect_local_ws() {
-    const ws_url =
-      WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
+    const ws_url = WXEnv.channelsLocalWSURL;
     const ws = new WebSocket(ws_url);
     ws.onclose = (e) => {
       WXU.error({ msg: "本地ws连接已关闭，" + JSON.stringify(e) });
@@ -56,10 +53,10 @@ var isWin = /Windows|Win/i.test(ua);
     };
   }
   function connect(selector) {
-    console.log("[]download connect websocket", FakeAPIServerAddr);
+    console.log("[]download connect websocket", WXEnv.apiServerAddr);
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(
-        WSServerProtocol + "://" + FakeAPIServerAddr + "/ws/channels",
+        WXEnv.channelsWSURL,
       );
       ws_conn = ws;
 
@@ -143,7 +140,7 @@ var isWin = /Windows|Win/i.test(ua);
       const id = e.target.getAttribute("data-id");
       var [err, data] = await WXU.request({
         method: "POST",
-        url: APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/start",
+        url: WXEnv.apiOrigin + "/api/task/start",
         body: { id },
       });
       if (err) {
@@ -174,14 +171,14 @@ var isWin = /Windows|Win/i.test(ua);
         }
         if (WXU.config.remoteServerEnabled) {
           var u =
-            APIServerProtocol + "://" + FakeAPIServerAddr + "/preview?id=" + id;
+            WXEnv.apiOrigin + "/preview?id=" + id;
           window.open(u);
         } else {
           // Use original API for local file
           var [err, data] = await WXU.request({
             method: "POST",
             url:
-              APIServerProtocol + "://" + FakeAPIServerAddr + "/api/show_file",
+              WXEnv.apiOrigin + "/api/show_file",
             body: { path, name, id },
           });
           if (err) {
@@ -193,13 +190,13 @@ var isWin = /Windows|Win/i.test(ua);
         return;
       }
       let url =
-        APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/pause";
+        WXEnv.apiOrigin + "/api/task/pause";
       if (action === "resume") {
         url =
-          APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/resume";
+          WXEnv.apiOrigin + "/api/task/resume";
       } else if (action === "delete") {
         url =
-          APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/delete";
+          WXEnv.apiOrigin + "/api/task/delete";
       }
       var [err, data] = await WXU.request({
         method: "POST",
@@ -274,10 +271,7 @@ var isWin = /Windows|Win/i.test(ua);
                 await WXU.request({
                   method: "POST",
                   url:
-                    APIServerProtocol +
-                    "://" +
-                    FakeAPIServerAddr +
-                    "/api/open_download_dir",
+                    WXEnv.apiOrigin + "/api/open_download_dir",
                 });
                 moredropdown$.hide();
               },

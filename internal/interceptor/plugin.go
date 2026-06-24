@@ -155,17 +155,17 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 		b,
 		scriptAttr,
 		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.utils.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.utils.umd.min.js"),
 	)
-	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.shadcn.css"))
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.shadcn.umd.min.js"))
+	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.css"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.umd.min.js"))
 	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
 		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.dom.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.2/timeless.web.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.web.umd.min.js"),
 	)
 }
 
@@ -380,6 +380,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					&injected,
 					"",
 					ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
+					ChannelSrcAssetURL(assetBaseURL, "env.js"),
 					ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					ChannelSrcAssetURL(assetBaseURL, "components.js"),
 				)

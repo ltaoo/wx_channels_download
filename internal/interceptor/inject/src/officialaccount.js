@@ -55,7 +55,7 @@
       return;
     }
     WXU.emit(WXU.Events.OfficialAccountRefresh, acct);
-    var origin = `https://${FakeAPIServerAddr}`;
+    var origin = WXEnv.apiOrigin;
     var [err, res] = await WXU.request({
       method: "POST",
       url: `${origin}/api/mp/refresh?token=${
@@ -104,8 +104,7 @@
   }
   function connect(acct) {
     return new Promise((resolve, reject) => {
-      const protocol = "wss://";
-      const ws = new WebSocket(protocol + FakeAPIServerAddr + "/ws/mp");
+      const ws = new WebSocket(WXEnv.mpWSURL);
       let ping_timer = null;
       ws.onopen = () => {
         WXU.log({
@@ -175,21 +174,7 @@
     $btn.innerHTML = RSSIcon;
     $btn.onclick = function () {
       var origin = (() => {
-        if (WXU.config.officialRemoteServerHostname) {
-          origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
-          if (WXU.config.officialRemoteServerPort != 80) {
-            origin += `:${WXU.config.officialRemoteServerPort}`;
-          }
-          return origin;
-        }
-        if (WXU.config.apiServerHostname) {
-          origin = `${WXU.config.apiServerProtocol}://${WXU.config.apiServerHostname}`;
-          if (WXU.config.apiServerPort != 80) {
-            origin += `:${WXU.config.apiServerPort}`;
-          }
-          return origin;
-        }
-        return "";
+        return WXEnv.officialAccountOrigin;
       })();
       if (origin === "") {
         return;
@@ -213,7 +198,7 @@
     $btn.onclick = async function () {
       var [err, data] = await WXU.request({
         method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/create2",
+        url: WXEnv.apiOrigin + "/api/task/create2",
         body: {
           url: `officialaccount://${window.location.href}`,
           // filename: document.title,

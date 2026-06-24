@@ -57,7 +57,6 @@ export default [
         DeleteIcon: "writeable",
         download_icon1: "writable",
         download_icon2: "writable",
-        download_loading_icon: "writable",
         download_icon3: "writable",
         download_icon4: "writable",
         DownloadIcon5: "writable",

@@ -1,38 +1,8 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
-var FakeLocalAPIServerAddr = "kf.qq.com";
-var FakeRemoteAPIServerAddr = "weixin110.qq.com";
-var FakeRemoteAPIServerProtocol = "https";
-var FakeLocalAPIServerProtocol = "https";
-var WSServerProtocol = "wss";
-if (typeof window.__wx_channels_config__ === "undefined") {
-  __wx_channels_config__ = {};
-}
-if (typeof window.WXVariable === "undefined") {
-  WXVariable = {};
-}
-var __wx_assets_base = (function () {
-  var cfg = __wx_channels_config__;
-  if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
-    return (
-      cfg.apiServerProtocol +
-      "://" +
-      cfg.apiServerAddr +
-      "/__wx_channels_assets"
-    );
-  }
-  if (cfg && cfg.Protocol && cfg.Addr) {
-    return cfg.Protocol + "://" + cfg.Addr + "/__wx_channels_assets";
-  }
-  return "http://127.0.0.1:2022/__wx_channels_assets";
-})();
-function __wx_asset_url(path) {
-  if (path.startsWith("/lib/")) {
-    const version = encodeURIComponent(window.__wx_channels_version__ || "static");
-    return `${__wx_assets_base}${path}?v=${version}`;
-  }
-  return `${__wx_assets_base}${path}`;
+if (typeof WXEnv === "undefined") {
+  throw new Error("env.js must be loaded before utils.js");
 }
 var __wx_username;
 var __wx_channels_tip__ = {};
@@ -1493,11 +1463,7 @@ var WXU = (() => {
         const createTask = (overwrite) =>
           WXU.request({
             method: "POST",
-            url:
-              APIServerProtocol +
-              "://" +
-              FakeAPIServerAddr +
-              "/api/task/create",
+            url: WXEnv.apiOrigin + "/api/task/create",
             body: {
               ...requestBody,
               overwrite: !!overwrite,
@@ -1585,11 +1551,7 @@ var WXU = (() => {
         WXU.downloader.show();
         var [err, data] = await WXU.request({
           method: "POST",
-          url:
-            APIServerProtocol +
-            "://" +
-            FakeAPIServerAddr +
-            "/api/task/create_batch",
+          url: WXEnv.apiOrigin + "/api/task/create_batch",
           body,
         });
         if (err) {
@@ -1856,21 +1818,17 @@ var WXU = (() => {
      * @returns {ChannelsConfig}
      */
     get config() {
-      /** @type {ChannelsConfig} */
-      return {
-        ...(__wx_channels_config__ || {}),
-        ...(WXVariable || {}),
-      };
+      return WXEnv.config;
     },
     get version() {
       return __wx_channels_version__;
     },
     env: {
       get isChannels() {
-        return window.location.href.includes("weixin.qq.com");
+        return WXEnv.isChannels;
       },
       get isWxwork() {
-        return window.ua.includes("wxwork");
+        return WXEnv.isWxwork;
       },
     },
   };
@@ -2318,63 +2276,10 @@ function __wx_attach_download_dropdown_menu(trigger) {
   return dropdown$;
 }
 
-function __wx_download_loading_icon_html() {
-  if (typeof download_loading_icon === "string") {
-    return download_loading_icon;
-  }
-  return `<i class="weui-loading" style="display: inline-block;"></i>`;
-}
-
-function __wx_show_download_btn_click_feedback($btn) {
-  if (!$btn || typeof $btn.querySelector !== "function") {
-    return;
-  }
-  if ($btn.__wxDownloadBtnFeedbackTimer) {
-    clearTimeout($btn.__wxDownloadBtnFeedbackTimer);
-    if ($btn.__wxDownloadBtnFeedbackHTML) {
-      $btn.innerHTML = $btn.__wxDownloadBtnFeedbackHTML;
-    }
-  }
-  $btn.__wxDownloadBtnFeedbackHTML = $btn.innerHTML;
-  const loadingIcon = __wx_download_loading_icon_html();
-  const $icon = $btn.querySelector(".download-icon");
-  const $text = $btn.querySelector(".op-text, .text");
-  if ($icon) {
-    $icon.innerHTML = loadingIcon;
-  } else {
-    const $svg = $btn.querySelector("svg");
-    if ($svg) {
-      $svg.outerHTML = loadingIcon;
-    }
-  }
-  if ($text) {
-    $text.textContent = "...";
-  } else if (
-    !$btn.querySelector(".download-icon") &&
-    !$btn.querySelector("svg")
-  ) {
-    $btn.innerHTML = `<span class="wx-download-inline-feedback">${loadingIcon}<span>...</span></span>`;
-  }
-  if ($btn.classList) {
-    $btn.classList.add("weui-btn_loading");
-  }
-  $btn.__wxDownloadBtnFeedbackTimer = setTimeout(() => {
-    $btn.innerHTML = $btn.__wxDownloadBtnFeedbackHTML;
-    if ($btn.classList) {
-      $btn.classList.remove("weui-btn_loading");
-    }
-    delete $btn.__wxDownloadBtnFeedbackHTML;
-    delete $btn.__wxDownloadBtnFeedbackTimer;
-  }, 1200);
-}
-
 /** 下载图标 按钮，点击时的处理函数 */
-function __wx_download_btn_handler(event) {
+function __wx_download_btn_handler() {
   const [err, profile] = WXU.check_feed_existing();
   if (err) return;
-  __wx_show_download_btn_click_feedback(
-    (event && event.currentTarget) || this,
-  );
   var spec = (() => {
     if (WXU.config.defaultHighest) {
       return null;
@@ -2420,13 +2325,6 @@ if (typeof window.Timeless !== "undefined") {
   window.SVG = timeless.SVG;
   window.Circle = timeless.Circle;
 }
-
-var FakeAPIServerAddr = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerAddr
-  : FakeLocalAPIServerAddr;
-var APIServerProtocol = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerProtocol
-  : FakeLocalAPIServerProtocol;
 
 function getShortUri(data) {
   var u = new URL(decodeURIComponent(data.url));
@@ -2531,8 +2429,7 @@ async function fetchFeedProfileWith(data) {
 function ChannelsWebsocketClient() {
   const methods = {
     connect_local_ws() {
-      const ws_url =
-        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
+      const ws_url = WXEnv.channelsLocalWSURL;
       const ws = new WebSocket(ws_url);
       ws.onclose = (e) => {
         WXU.error({

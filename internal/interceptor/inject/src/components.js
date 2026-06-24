@@ -13,6 +13,9 @@ const inserted_style = `<style>
   --popup-content-bg-color: #e7e7e7;
   --popup-menu-bg-color: #dcdcdc;
   --popup-menu-hover-color: #d0d0d0;
+  --wx-dl-card-gap: 12px;
+  --wx-skeleton-bg: rgba(0, 0, 0, 0.08);
+  --wx-skeleton-highlight: rgba(255, 255, 255, 0.56);
 }
 body[data-weui-theme=dark] {
   --weui-BG-2: #191919;
@@ -26,6 +29,8 @@ body[data-weui-theme=dark] {
   --popup-content-bg-color: #323232;
   --popup-menu-bg-color: #3a3a3a;
   --popup-menu-hover-color: #444444;
+  --wx-skeleton-bg: rgba(255, 255, 255, 0.1);
+  --wx-skeleton-highlight: rgba(255, 255, 255, 0.16);
 }
 @media (prefers-color-scheme: dark) {
   body:not([data-weui-theme=light]) {
@@ -40,6 +45,8 @@ body[data-weui-theme=dark] {
     --popup-content-bg-color: #323232;
     --popup-menu-bg-color: #3a3a3a;
     --popup-menu-hover-color: #444444;
+    --wx-skeleton-bg: rgba(255, 255, 255, 0.1);
+    --wx-skeleton-highlight: rgba(255, 255, 255, 0.16);
   }
 }
 .flex {
@@ -119,25 +126,6 @@ body[data-weui-theme=dark] {
     transform: rotate(360deg);
   }
 }
-.wx-download-loading-icon {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  vertical-align: middle;
-  transform-origin: 50% 50%;
-  animation: wx-spin 0.8s linear infinite;
-}
-.wx-sider-tools-btn .wx-download-loading-icon,
-.click-box.op-item > .wx-download-loading-icon {
-  width: 28px;
-  height: 28px;
-}
-.wx-download-inline-feedback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
 .weui-cell {
   box-sizing: border-box;
   display: flex;
@@ -155,6 +143,38 @@ body[data-weui-theme=dark] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.wx-dl-item-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  max-height: 60px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 20px;
+}
+.wx-skeleton {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: var(--wx-skeleton-bg);
+}
+.wx-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--wx-skeleton-highlight), transparent);
+  animation: wx-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes wx-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 .weui-loadmore {
   color: var(--weui-FG-1);
@@ -365,15 +385,36 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
   min-height: 0;
   position: relative;
 }
+.wx-dl-list [data-list-view-root] {
+  height: 380px !important;
+  max-height: 380px !important;
+  overflow-y: auto !important;
+}
+.wx-dl-list [data-list-view-item] {
+  box-sizing: border-box;
+}
+.wx-dl-list [data-list-view-viewport] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wx-dl-card-gap);
+}
 .scroll-view-waterfall {
   overflow: visible !important;
   height: auto !important;
 }
 .wx-dl-item {
   padding: 16px;
+  min-height: 94px;
   background-color: var(--popup-content-bg-color);
   border-radius: 8px;
   align-items: center;
+}
+.wx-dl-item .weui-cell__desc {
+  line-height: 18px;
+}
+.wx-dl-item-skeleton {
+  pointer-events: none;
+  user-select: none;
 }
 </style>`;
 
@@ -388,7 +429,6 @@ function insert_channels_style() {
 
 var download_icon1 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;
 var download_icon2 = `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1567" width="1em" height="1em"><path d="M510.507 161c136.08 0 254.917 86.968 298.77 212.61l0.947 2.772 0.209 0.056c85.945 23.138 148.202 101.3 149.545 193.033L960 572.5c0 112.114-90.482 203-202.098 203-9.832 0-23.115-1.567-39.848-4.7-8.686-1.626-14.409-9.985-12.782-18.67a16 16 0 0 1 0.316-1.361l10.739-38.438c2.221-7.951 10.128-12.907 18.253-11.44 9.632 1.74 17.406 2.609 23.322 2.609 72.028 0 130.418-58.65 130.418-131 0-64.593-46.855-119.203-109.508-129.32l-1.904-0.293-23.48-3.436-6.02-23.055C719.407 309.16 622.489 233 510.507 233c-106.271 0-199.349 68.62-232.37 168.113l-0.982 3.024-6.578 20.706-21.305 3.796C183.982 440.275 135.68 497.59 135.68 565c0 76.492 61.733 138.5 137.884 138.5 4.118 0 9.58-0.435 16.386-1.305 8.178-1.045 15.812 4.296 17.633 12.337l8.838 39.024c1.952 8.618-3.452 17.187-12.07 19.139a16 16 0 0 1-1.327 0.242c-12.264 1.709-22.084 2.563-29.46 2.563C157.824 775.5 64 681.256 64 565c0-94.273 62.11-175.514 149.425-201.7l2.4-0.701 1.368-3.441c47.328-116.945 160.436-196.452 289.156-198.13l4.158-0.028z" fill="currentColor" p-id="1568"></path><path d="M505.744 860.925c3.186 4.1 9.358 4.1 12.544 0l111.502-141.8c4.082-5.2 0.399-12.9-6.272-12.9h-73.77l-1.909 0.003L547.84 464a8 8 0 0 0-8-8h-55.68a8 8 0 0 0-8 8v242.322l-2.075 0.003h-73.571c-6.67 0-10.354 7.7-6.272 12.9z" fill="currentColor" p-id="1569"></path></svg>`;
-var download_loading_icon = `<svg class="icon wx-download-loading-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5001" width="1em" height="1em"><path d="M511.882596 287.998081h-0.361244a31.998984 31.998984 0 0 1-31.659415-31.977309v-0.361244c0-0.104761 0.115598-11.722364 0.115598-63.658399V96.000564a31.998984 31.998984 0 1 1 64.001581 0V192.001129c0 52.586273-0.111986 63.88237-0.119211 64.337537a32.002596 32.002596 0 0 1-31.977309 31.659415zM511.998194 959.99842a31.998984 31.998984 0 0 1-31.998984-31.998984v-96.379871c0-51.610915-0.111986-63.174332-0.115598-63.286318s0-0.242033 0-0.361243a31.998984 31.998984 0 0 1 63.997968-0.314283c0 0.455167 0.11921 11.711527 0.11921 64.034093v96.307622a31.998984 31.998984 0 0 1-32.002596 31.998984zM330.899406 363.021212a31.897836 31.897836 0 0 1-22.866739-9.612699c-0.075861-0.075861-8.207461-8.370021-44.931515-45.094076L195.198137 240.429485a31.998984 31.998984 0 0 1 45.256635-45.253022L308.336112 263.057803c37.182834 37.182834 45.090463 45.253022 45.41197 45.578141A31.998984 31.998984 0 0 1 330.899406 363.021212zM806.137421 838.11473a31.901448 31.901448 0 0 1-22.628318-9.374279L715.624151 760.859111c-36.724054-36.724054-45.018214-44.859267-45.097687-44.93874a31.998984 31.998984 0 0 1 44.77618-45.729864c0.32512 0.317895 8.395308 8.229136 45.578142 45.411969l67.88134 67.88134a31.998984 31.998984 0 0 1-22.624705 54.630914zM224.000113 838.11473a31.901448 31.901448 0 0 0 22.628317-9.374279l67.88134-67.88134c36.724054-36.724054 45.021826-44.859267 45.097688-44.93874a31.998984 31.998984 0 0 0-44.776181-45.729864c-0.32512 0.317895-8.395308 8.229136-45.578142 45.411969l-67.88134 67.884953a31.998984 31.998984 0 0 0 22.628318 54.627301zM255.948523 544.058589h-0.361244c-0.104761 0-11.722364-0.115598-63.658399-0.115598H95.942765a31.998984 31.998984 0 1 1 0-64.00158h95.996952c52.586273 0 63.88237 0.111986 64.337538 0.11921a31.998984 31.998984 0 0 1 31.659414 31.97731v0.361244a32.002596 32.002596 0 0 1-31.988146 31.659414zM767.939492 544.058589a32.002596 32.002596 0 0 1-31.995372-31.666639v-0.361244a31.998984 31.998984 0 0 1 31.659415-31.970085c0.455167 0 11.754876-0.11921 64.34115-0.11921h96.000564a31.998984 31.998984 0 0 1 0 64.00158H831.944685c-51.936034 0-63.553638 0.111986-63.665624 0.115598h-0.335957zM692.999446 363.0176a31.998984 31.998984 0 0 1-22.863126-54.381656c0.317895-0.32512 8.229136-8.395308 45.41197-45.578141l67.88134-67.884953A31.998984 31.998984 0 1 1 828.693489 240.429485l-67.892177 67.88134c-31.020013 31.023625-41.644196 41.759794-44.241539 44.393262l-0.697201 0.722488a31.908673 31.908673 0 0 1-22.863126 9.591025z" fill="currentColor" p-id="5002"></path></svg>`;
 var download_icon3 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;
 var download_icon4 = `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 706.608L781.968 436.64a32 32 0 1 0-45.248-45.256L544 584.096V192a32 32 0 0 0-64 0v392.096l-192.712-192.72a32 32 0 0 0-45.256 45.256L512 706.608z" fill="currentColor"></path><path d="M824 640a32 32 0 0 0-32 32v128.36c0 3.112 0 8.496-0.48 11.472l-1.008 1.024c-0.952 0.984-2.104 2.168-3.112 3.152h-538.48c-2.448-0.664-7.808-3.56-10.608-6.36-2.776-2.784-5.656-8.128-6.32-10.568V672a32 32 0 0 0-64 0v128c0 20.632 12.608 42.456 25.088 54.912C205.584 867.4 227.408 880 248 880h544c22.496 0 36.208-14.112 44.408-22.536l2.48-2.528c17.128-17.088 17.12-41.472 17.12-54.928V672A32.016 32.016 0 0 0 824 640z" fill="currentColor"></path></svg>`;
 var DownloadIcon5 = `<svg class="icon" viewBox="0 0 1025 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em"><path d="M472.483146 751.161182c0.122866 0.124914 0.24778 0.248804 0.372694 0.370646 11.174684 10.873662 25.852081 16.831651 41.412066 16.831651 0.277473 0 0.554946-0.001024 0.832419-0.005119 15.837458-0.217064 30.643864-6.574368 41.702849-17.905707L891.545075 410.683475c9.525205-9.667525 9.408482-25.226487-0.259043-34.750668-9.666501-9.524181-25.227511-9.408482-34.750668 0.259043l-315.80719 320.551874L540.728174 87.434687c0-13.5716-11.001648-24.573248-24.573248-24.573248s-24.573248 11.001648-24.573248 24.573248l0 613.073864L170.858816 374.767626c-9.52111-9.670597-25.080071-9.791415-34.750668-0.269282-9.670597 9.52111-9.791415 25.080071-0.270306 34.750668L472.483146 751.161182z" fill="currentColor" p-id="1583"></path><path d="M879.012719 846.929272 149.753468 846.929272c-13.5716 0-24.573248 11.001648-24.573248 24.573248s11.001648 24.573248 24.573248 24.573248l729.260275 0c13.5716 0 24.573248-11.001648 24.573248-24.573248S892.584319 846.929272 879.012719 846.929272z" fill="currentColor" p-id="1584"></path></svg>`;
@@ -660,7 +700,7 @@ function __wx_refresh_downloader(selector, tasks, total) {
             ${iconInner}
           </div>
           <div class="weui-cell__bd" style="min-width:0;">
-            <p class="weui-ellipsis" style="color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
+            <p class="wx-dl-item-title" style="color: var(--weui-FG-0); font-weight: 500; font-size: 14px;" title="${filename}">${filename}</p>
             <div class="weui-cell__desc" style="margin-top: 4px; color: ${statusColor}; font-size: 12px;">${statusText}</div>
             ${
               typeof pr === "number" && !isCompleted

@@ -24,6 +24,7 @@ type ChannelInjectedFiles struct {
 	JSGetFeedInfo           []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
+	JSEnv                   []byte
 	JSTimeless              []byte
 	JSTimelessUtils         []byte
 	CSSTimelessShadcn       []byte
@@ -62,15 +63,16 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSMitt = files.readLib("mitt.umd.js")
 	files.JSAxios = files.readLib("axios.min.js")
 	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
-	files.JSTimeless = files.readLib("timeless/0.26.2/timeless.umd.min.js")
-	files.JSTimelessUtils = files.readLib("timeless/0.26.2/timeless.utils.umd.min.js")
-	files.CSSTimelessShadcn = files.readLib("timeless/0.26.2/timeless.shadcn.css")
-	files.JSTimelessShadcn = files.readLib("timeless/0.26.2/timeless.shadcn.umd.min.js")
-	files.JSTimelessDOM = files.readLib("timeless/0.26.2/timeless.dom.umd.min.js")
-	files.JSTimelessWeb = files.readLib("timeless/0.26.2/timeless.web.umd.min.js")
+	files.JSTimeless = files.readLib("timeless/0.26.3/timeless.umd.min.js")
+	files.JSTimelessUtils = files.readLib("timeless/0.26.3/timeless.utils.umd.min.js")
+	files.CSSTimelessShadcn = files.readLib("timeless/0.26.3/timeless.shadcn.css")
+	files.JSTimelessShadcn = files.readLib("timeless/0.26.3/timeless.shadcn.umd.min.js")
+	files.JSTimelessDOM = files.readLib("timeless/0.26.3/timeless.dom.umd.min.js")
+	files.JSTimelessWeb = files.readLib("timeless/0.26.3/timeless.web.umd.min.js")
 	files.JSDebug = files.readSrc("pagespy.js")
 	files.JSError = files.readSrc("error.js")
 	files.JSEventBus = files.readSrc("eventbus.js")
+	files.JSEnv = files.readSrc("env.js")
 	files.JSComponents = files.readSrc("components.js")
 	files.JSUtils = files.readSrc("utils.js")
 	files.JSDownloader = files.readSrc("downloaderv2.js")

@@ -9,12 +9,19 @@
     window.__wx_channels_assets_base__ =
       window.__wx_channels_assets_base__ ||
       "http://127.0.0.1:2022/__wx_channels_assets";
+    window.__wx_fake_asset_version__ =
+      new URLSearchParams(window.location.search).get("asset_v") || "";
     function __wx_fake_asset_url(path) {
-      return window.__wx_channels_assets_base__.replace(/\/$/, "") + path;
+      var url = window.__wx_channels_assets_base__.replace(/\/$/, "") + path;
+      if (window.__wx_fake_asset_version__) {
+        url += (url.indexOf("?") === -1 ? "?" : "&") +
+          "v=" + encodeURIComponent(window.__wx_fake_asset_version__);
+      }
+      return url;
     }
     document.write(
       '<link rel="stylesheet" href="' +
-      __wx_fake_asset_url("/lib/timeless/0.26.2/timeless.shadcn.css") +
+      __wx_fake_asset_url("/lib/timeless/0.26.3/timeless.shadcn.css") +
       '">'
     );
   </script>
@@ -324,19 +331,39 @@
   <script>
     window.ua = navigator.userAgent;
     window.__wx_channels_version__ = "fakefeed";
-    var __wx_fake_assets_url = new URL(window.__wx_channels_assets_base__);
+    var __wx_fake_params = new URLSearchParams(window.location.search);
+    var __wx_fake_use_mock_api =
+      __wx_fake_params.get("mock") === "1" ||
+      __wx_fake_params.get("api") === "mock";
+    var __wx_fake_api_base =
+      __wx_fake_params.get("api") ||
+      window.__wx_channels_api_base__ ||
+      window.__wx_channels_assets_base__;
+    if (__wx_fake_api_base === "mock") {
+      __wx_fake_api_base = window.__wx_channels_assets_base__;
+    }
+    var __wx_fake_api_url = new URL(__wx_fake_api_base, window.location.href);
+    window.__wx_fake_use_mock_api__ = __wx_fake_use_mock_api;
     window.__wx_channels_config__ = {
       defaultHighest: false,
       downloadFilenameTemplate: "{{title}}",
       downloadInFrontend: false,
       downloadPauseWhenDownload: false,
       remoteServerEnabled: false,
-      apiServerProtocol: __wx_fake_assets_url.protocol.replace(":", ""),
-      apiServerAddr: __wx_fake_assets_url.host,
+      apiServerProtocol: __wx_fake_api_url.protocol.replace(":", ""),
+      apiServerAddr: __wx_fake_api_url.host,
+    };
+    window.__wx_channels_env__ = {
+      downloadPanelAPIServerProtocol: __wx_fake_api_url.protocol.replace(":", ""),
+      downloadPanelAPIServerAddr: __wx_fake_api_url.host,
+      assetsFallbackBase: window.__wx_channels_assets_base__,
     };
     window.WXVariable = {};
 
     (function () {
+      if (!window.__wx_fake_use_mock_api__) {
+        return;
+      }
       var taskSeq = 3;
       var wsClients = [];
       var fakeTasks = [
@@ -398,6 +425,54 @@
           },
         },
       ];
+      var requestedTaskCount = Number(
+        __wx_fake_params.get("tasks") ||
+        __wx_fake_params.get("task_count") ||
+        fakeTasks.length,
+      );
+      if (!Number.isFinite(requestedTaskCount) || requestedTaskCount < fakeTasks.length) {
+        requestedTaskCount = fakeTasks.length;
+      }
+
+      function makeTask(index) {
+        var statuses = ["ready", "running", "wait", "pause", "error", "done"];
+        var status = statuses[index % statuses.length];
+        var filename = "Fake bulk task " + String(index + 1).padStart(5, "0") + ".mp4";
+        var size = 5242880 + (index % 20) * 1048576;
+        var downloaded =
+          status === "done"
+            ? size
+            : status === "running" || status === "pause"
+              ? Math.floor(size * ((index % 80) + 10) / 100)
+              : 0;
+        return {
+          id: "fake-bulk-task-" + (index + 1),
+          status: status,
+          progress: {
+            downloaded: downloaded,
+            speed: status === "running" ? 131072 + (index % 8) * 32768 : 0,
+          },
+          meta: {
+            opts: {
+              path: "/Users/fake/Downloads",
+              name: filename,
+            },
+            res: {
+              name: filename,
+              size: size,
+              files: [{ name: filename }],
+            },
+          },
+        };
+      }
+
+      for (var i = fakeTasks.length; i < requestedTaskCount; i++) {
+        fakeTasks.push(makeTask(i));
+      }
+      taskSeq = Math.max(taskSeq, fakeTasks.length);
+      var shouldSendWSBatch = !/^(0|false|off)$/i.test(
+        __wx_fake_params.get("ws_batch") || "",
+      );
 
       function clone(value) {
         return JSON.parse(JSON.stringify(value));
@@ -421,6 +496,30 @@
         } catch (err) {
           return String(url || "");
         }
+      }
+
+      function getURLSearchParams(url) {
+        try {
+          return new URL(url, window.location.href).searchParams;
+        } catch (err) {
+          return new URLSearchParams();
+        }
+      }
+
+      function getNumberParam(url, body, names, fallback) {
+        var params = getURLSearchParams(url);
+        for (var i = 0; i < names.length; i++) {
+          var name = names[i];
+          var value =
+            body && typeof body[name] !== "undefined"
+              ? body[name]
+              : params.get(name);
+          var numberValue = Number(value);
+          if (Number.isFinite(numberValue) && numberValue > 0) {
+            return Math.floor(numberValue);
+          }
+        }
+        return fallback;
       }
 
       function statusCounts() {
@@ -520,13 +619,16 @@
         var body = parseBody(rawBody);
         console.log("[fakefeed] api", path, body);
         if (path === "/api/task/list") {
+          var page = getNumberParam(url, body, ["page"], 1);
+          var pageSize = getNumberParam(url, body, ["page_size", "pageSize"], 50);
+          var start = (page - 1) * pageSize;
           return {
             code: 0,
             data: {
-              list: clone(fakeTasks),
+              list: clone(fakeTasks.slice(start, start + pageSize)),
               total: fakeTasks.length,
-              page: 1,
-              page_size: 50,
+              page: page,
+              page_size: pageSize,
               status_counts: statusCounts(),
             },
           };
@@ -713,12 +815,14 @@
             this.onopen({ target: this });
           }
           if (typeof this.onmessage === "function") {
-            this.onmessage({
-              data: JSON.stringify({
-                type: "batch_tasks",
-                data: clone(fakeTasks),
-              }),
-            });
+            if (shouldSendWSBatch) {
+              this.onmessage({
+                data: JSON.stringify({
+                  type: "batch_tasks",
+                  data: clone(fakeTasks),
+                }),
+              });
+            }
           }
         }, 30);
       };
@@ -756,15 +860,6 @@
         </div>
       </div>
     </header>
-
-    <div class="toolbar">
-      <button id="toggle-transform" type="button">Toggle transform</button>
-      <button id="scroll-page" type="button">Scroll page</button>
-      <button id="scroll-feed" type="button">Scroll feed</button>
-      <button id="toggle-downloader" type="button">Toggle downloader</button>
-      <button id="reinsert" type="button">Reinsert download</button>
-      <button id="log-rects" type="button">Log rects</button>
-    </div>
 
     <div class="workspace">
       <main class="fake-stage">
@@ -819,9 +914,9 @@
         );
       }
       writeScript("/lib/mitt.umd.js");
-      writeScript("/lib/timeless/0.26.2/timeless.umd.min.js");
-      writeScript("/lib/timeless/0.26.2/timeless.utils.umd.min.js");
-      writeScript("/lib/timeless/0.26.2/timeless.shadcn.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.utils.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.shadcn.umd.min.js");
     })();
   </script>
   <script>
@@ -837,9 +932,13 @@
           '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
         );
       }
-      writeScript("/lib/timeless/0.26.2/timeless.dom.umd.min.js");
-      writeScript("/lib/timeless/0.26.2/timeless.web.umd.min.js");
+      function writeInlineScript(source) {
+        document.write("<script>" + source + "<\/script>");
+      }
+      writeScript("/lib/timeless/0.26.3/timeless.dom.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.web.umd.min.js");
       writeScript("/src/eventbus.js");
+      writeScript("/src/env.js");
       writeScript("/src/utils.js");
       writeScript("/src/components.js");
       writeScript("/src/feed.js");
@@ -1074,61 +1173,62 @@
       function installFakeData() {
         if (!window.WXU || !window.WXE) return;
         WXU.set_feed(fakeFeed);
-        const originalCreate = WXU.downloader.create;
-        WXU.downloader.create = async function (feed, opt) {
-          console.log("[fakefeed] downloader.create", { feed, opt });
-          return originalCreate.call(this, feed, opt);
-        };
+        // const originalCreate = WXU.downloader.create;
+        // WXU.downloader.create = async function (feed, opt) {
+        //   console.log("[fakefeed] downloader.create", { feed, opt });
+        //   return originalCreate.call(this, feed, opt);
+        // };
         WXE.emit(WXE.Events.FeedProfileLoaded, fakeFeed);
         WXE.emit(WXE.Events.Feed, fakeFeed);
       }
 
       function bindControls() {
-        document.getElementById("toggle-transform").onclick = function () {
-          document.getElementById("app").classList.toggle("with-transform");
-          snapshot();
-        };
-        document.getElementById("scroll-page").onclick = function () {
-          window.scrollTo({
-            top: window.scrollY > 0 ? 0 : 260,
-            behavior: "smooth",
-          });
-        };
-        document.getElementById("scroll-feed").onclick = function () {
-          const scroller = document.querySelector(".slides-scroll");
-          scroller.scrollTo({
-            top: scroller.scrollTop > 0 ? 0 : 120,
-            behavior: "smooth",
-          });
-        };
-        document.getElementById("toggle-downloader").onclick = function () {
-          if (window.WXU && WXU.downloader) {
-            WXU.downloader.toggle();
-            setTimeout(snapshot, 50);
-          }
-        };
-        document.getElementById("reinsert").onclick = function () {
-          document.querySelectorAll(".download-icon").forEach((icon) => {
-            const wrap = icon.closest(".op-list > div");
-            if (wrap) wrap.remove();
-          });
-          if (window.__wx_insert_download_btn_to_feed_profile_page) {
-            window.__wx_insert_download_btn_to_feed_profile_page();
-          }
-          setTimeout(snapshot, 50);
-        };
-        document.getElementById("log-rects").onclick = function () {
-          console.log("[fakefeed] rect snapshot", snapshot());
-        };
+        // document.getElementById("toggle-transform").onclick = function () {
+        //   document.getElementById("app").classList.toggle("with-transform");
+        //   snapshot();
+        // };
+        // document.getElementById("scroll-page").onclick = function () {
+        //   window.scrollTo({
+        //     top: window.scrollY > 0 ? 0 : 260,
+        //     behavior: "smooth",
+        //   });
+        // };
+        // document.getElementById("scroll-feed").onclick = function () {
+        //   const scroller = document.querySelector(".slides-scroll");
+        //   scroller.scrollTo({
+        //     top: scroller.scrollTop > 0 ? 0 : 120,
+        //     behavior: "smooth",
+        //   });
+        // };
+        // document.getElementById("toggle-downloader").onclick = function () {
+        //   if (window.WXU && WXU.downloader) {
+        //     WXU.downloader.toggle();
+        //     setTimeout(snapshot, 50);
+        //   }
+        // };
+        // document.getElementById("reinsert").onclick = function () {
+        //   document.querySelectorAll(".download-icon").forEach((icon) => {
+        //     const wrap = icon.closest(".op-list > div");
+        //     if (wrap) wrap.remove();
+        //   });
+        //   if (window.__wx_insert_download_btn_to_feed_profile_page) {
+        //     window.__wx_insert_download_btn_to_feed_profile_page();
+        //   }
+        //   setTimeout(snapshot, 50);
+        // };
+        // document.getElementById("log-rects").onclick = function () {
+        //   console.log("[fakefeed] rect snapshot", snapshot());
+        // };
       }
 
       document.addEventListener("DOMContentLoaded", function () {
+        insert_channels_style();
         setTimeout(function () {
-          installFakeData();
-          renderTimelessProbe();
-          bindControls();
-          snapshot();
-          setInterval(snapshot, 300);
+          // installFakeData();
+          // renderTimelessProbe();
+          // bindControls();
+          // snapshot();
+          // setInterval(snapshot, 300);
         }, 60);
       });
     })();
