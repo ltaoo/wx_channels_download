@@ -48,6 +48,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					&injected,
 					script_attr,
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "env.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "components.js"),
 					interceptor.ChannelSrcAssetURL(assetBaseURL, "downloaderv2.js"),

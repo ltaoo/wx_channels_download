@@ -25,6 +25,8 @@ type ChannelInjectedFiles struct {
 	JSDebug                 []byte
 	JSEventBus              []byte
 	JSEnv                   []byte
+	JSEnvChannels           []byte
+	JSEnvMock               []byte
 	JSTimeless              []byte
 	JSTimelessUtils         []byte
 	CSSTimelessShadcn       []byte
@@ -32,6 +34,7 @@ type ChannelInjectedFiles struct {
 	JSTimelessDOM           []byte
 	JSTimelessWeb           []byte
 	JSComponents            []byte
+	JSChannels              []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
 	JSError                 []byte
@@ -73,8 +76,11 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSError = files.readSrc("error.js")
 	files.JSEventBus = files.readSrc("eventbus.js")
 	files.JSEnv = files.readSrc("env.js")
+	files.JSEnvChannels = files.readSrc("env.channels.js")
+	files.JSEnvMock = files.readSrc("env.mock.js")
 	files.JSComponents = files.readSrc("components.js")
 	files.JSUtils = files.readSrc("utils.js")
+	files.JSChannels = files.readSrc("channels.js")
 	files.JSDownloader = files.readSrc("downloaderv2.js")
 	files.JSWechatOfficialAccount = files.readSrc("officialaccount.js")
 	files.JSHomePage = files.readSrc("home.js")

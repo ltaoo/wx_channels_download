@@ -73,7 +73,7 @@ body[data-weui-theme=dark] {
 .p-4 {
   padding: 1rem;
 }
-.bg-black\/80 {
+.bg-black\\/80 {
   background-color: rgba(0, 0, 0, 0.8);
 }
 .w-full {

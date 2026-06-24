@@ -381,6 +381,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					"",
 					ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
 					ChannelSrcAssetURL(assetBaseURL, "env.js"),
+					ChannelSrcAssetURL(assetBaseURL, "env.channels.js"),
 					ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					ChannelSrcAssetURL(assetBaseURL, "components.js"),
 				)
