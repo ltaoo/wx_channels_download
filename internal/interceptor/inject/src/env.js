@@ -14,16 +14,21 @@ if (typeof window.__wx_channels_env__ === "undefined") {
 // console.log(window.__wx_channels_config__, window.WXVariable);
 
 var WXEnv = (() => {
+  //   var FakeLocalAPIServerAddr = "kf.qq.com";
+  // var FakeRemoteAPIServerAddr = "weixin110.qq.com";
+  // var FakeRemoteAPIServerProtocol = "https";
+  // var FakeLocalAPIServerProtocol = "https";
+  // var WSServerProtocol = "wss";
   const defaults = {
     /** 本地接口 */
-    localAPIServerProtocol: "http",
-    localAPIServerAddr: "127.0.0.1:2022",
+    localAPIServerProtocol: "https",
+    localAPIServerAddr: "kf.qq.com",
     /** 远端接口 */
-    remoteAPIServerProtocol: "http",
-    remoteAPIServerAddr: "127.0.0.1:2022",
+    remoteAPIServerProtocol: "https",
+    remoteAPIServerAddr: "weixin110.qq.com",
     /** 下载面板接口地址 */
-    downloadPanelAPIServerAddr: "127.0.0.1:2022",
-    downloadPanelAPIServerProtocol: "http",
+    downloadPanelAPIServerAddr: "kf.qq.com",
+    downloadPanelAPIServerProtocol: "https",
     /** 静态资源 prefix */
     assetsFallbackBase: "http://127.0.0.1:2022/__wx_channels_assets",
   };
@@ -70,7 +75,8 @@ var WXEnv = (() => {
   }
 
   function hostPort(hostname, port) {
-    if (!hostname) {
+    const host = normalizeHostname(hostname);
+    if (!host) {
       return "";
     }
     if (
@@ -79,9 +85,35 @@ var WXEnv = (() => {
       port === "" ||
       Number(port) === 0
     ) {
-      return hostname;
+      return host;
     }
-    return hostname + ":" + port;
+    return host + ":" + port;
+  }
+
+  function normalizeHostname(hostname) {
+    const value = String(hostname || "").trim();
+    if (!value) {
+      return "";
+    }
+    const unwrapped =
+      value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
+    if (unwrapped === "0.0.0.0" || unwrapped === "::") {
+      return "127.0.0.1";
+    }
+    return value;
+  }
+
+  function normalizeHostAddr(addr) {
+    const value = String(addr || "").trim();
+    if (!value) {
+      return "";
+    }
+    const match = value.match(/^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/);
+    if (!match) {
+      return value;
+    }
+    const host = normalizeHostname(match[1]);
+    return match[2] ? host + ":" + match[2] : host;
   }
 
   function origin(protocol, addr) {
@@ -246,6 +278,8 @@ var WXEnv = (() => {
       return window.ua && window.ua.includes("wxwork");
     },
     hostPort,
+    normalizeHostname,
+    normalizeHostAddr,
     origin,
     wsProtocol,
     get configuredAPI() {

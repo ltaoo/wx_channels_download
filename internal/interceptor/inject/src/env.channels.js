@@ -9,7 +9,7 @@ if (typeof WXEnv === "undefined") {
   const cfg = WXEnv.config;
   const localAPI = {
     addr:
-      cfg.apiServerAddr ||
+      WXEnv.normalizeHostAddr(cfg.apiServerAddr) ||
       WXEnv.hostPort(cfg.apiServerHostname, cfg.apiServerPort) ||
       WXEnv.defaults.localAPIServerAddr,
     protocol: cfg.apiServerProtocol || WXEnv.defaults.localAPIServerProtocol,
@@ -23,18 +23,20 @@ if (typeof WXEnv === "undefined") {
   };
   const panelAPI = cfg.remoteServerEnabled ? remoteAPI : localAPI;
   const env = {
-    localAPIServerAddr: localAPI.addr,
-    localAPIServerProtocol: localAPI.protocol,
-    remoteAPIServerAddr: remoteAPI.addr,
-    remoteAPIServerProtocol: remoteAPI.protocol,
-    downloadPanelAPIServerAddr: panelAPI.addr,
-    downloadPanelAPIServerProtocol: panelAPI.protocol,
+    localAPIServerAddr: "kf.qq.com",
+    localAPIServerProtocol: "https",
+    remoteAPIServerAddr: "kf.qq.com",
+    remoteAPIServerProtocol: "https",
+    downloadPanelAPIServerAddr: "kf.qq.com",
+    downloadPanelAPIServerProtocol: "https",
   };
 
   if (cfg.apiServerProtocol && cfg.apiServerAddr) {
     env.assetsFallbackBase =
-      WXEnv.origin(cfg.apiServerProtocol, cfg.apiServerAddr) +
-      "/__wx_channels_assets";
+      WXEnv.origin(
+        cfg.apiServerProtocol,
+        WXEnv.normalizeHostAddr(cfg.apiServerAddr),
+      ) + "/__wx_channels_assets";
   }
 
   WXEnv.applyRuntimeEnv(env);

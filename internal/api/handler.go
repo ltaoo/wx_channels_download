@@ -564,7 +564,23 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+func normalizeDownloadTaskStatus(status base.Status) string {
+	value := strings.ToLower(strings.TrimSpace(string(status)))
+	switch value {
+	case "paused":
+		return "pause"
+	case "failed", "fail", "failure", "errored":
+		return "error"
+	case "pending", "waiting", "queued":
+		return "wait"
+	case "completed", "success", "finished":
+		return "done"
+	default:
+		return value
+	}
+}
+
+func countDownloadTaskStatuses(tasks []*downloadpkg.Task) map[string]int {
 	counts := map[string]int{
 		"total":   0,
 		"ready":   0,
@@ -574,14 +590,25 @@ func (c *APIClient) downloadTaskStatusCounts() map[string]int {
 		"error":   0,
 		"done":    0,
 	}
-	for _, task := range c.downloader.GetTasks() {
+	for _, task := range tasks {
 		if task == nil {
 			continue
 		}
 		counts["total"]++
-		counts[string(task.Status)]++
+		status := normalizeDownloadTaskStatus(task.Status)
+		if status == "" {
+			continue
+		}
+		counts[status]++
 	}
 	return counts
+}
+
+func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+	if c == nil || c.downloader == nil {
+		return countDownloadTaskStatuses(nil)
+	}
+	return countDownloadTaskStatuses(c.downloader.GetTasks())
 }
 
 type LiveDownloadTaskBody struct {

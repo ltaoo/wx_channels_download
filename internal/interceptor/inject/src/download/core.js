@@ -6,6 +6,12 @@ var APIHostname = WXEnv.apiOrigin;
 var RemoteAPIHostname = WXEnv.remoteAPIOrigin;
 
 console.log("[]download/core.js - ", WXEnv.apiServerAddr, APIHostname);
+alert(
+  JSON.stringify({
+    a: WXEnv.apiServerAddr,
+    b: APIHostname,
+  }),
+);
 
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
@@ -221,19 +227,25 @@ const DOWNLOAD_STATUS_COUNT_ITEMS = [
   { key: "done", label: "已完成" },
 ];
 function normalize_download_status(status) {
-  if (status === "paused") return "pause";
-  if (status === "failed") return "error";
-  if (status === "pending" || status === "waiting" || status === "queued") {
+  const value = String(status || "")
+    .trim()
+    .toLowerCase();
+  if (value === "paused") return "pause";
+  if (
+    value === "failed" ||
+    value === "fail" ||
+    value === "failure" ||
+    value === "errored"
+  ) {
+    return "error";
+  }
+  if (value === "pending" || value === "waiting" || value === "queued") {
     return "wait";
   }
-  if (
-    status === "completed" ||
-    status === "success" ||
-    status === "finished"
-  ) {
+  if (value === "completed" || value === "success" || value === "finished") {
     return "done";
   }
-  return status;
+  return value;
 }
 function normalize_download_status_counts(counts) {
   const next = empty_download_status_counts();
@@ -277,6 +289,81 @@ function count_download_statuses(tasks) {
   });
   return counts;
 }
+function unwrap_download_task_list_response(data) {
+  let source = data;
+  for (let i = 0; i < 4; i += 1) {
+    if (Array.isArray(source)) {
+      return { list: source };
+    }
+    if (!source || typeof source !== "object") {
+      return {};
+    }
+    if (
+      Array.isArray(source.list) ||
+      Array.isArray(source.tasks) ||
+      Array.isArray(source.List) ||
+      Array.isArray(source.Tasks)
+    ) {
+      return source;
+    }
+    if (source.data && typeof source.data === "object") {
+      source = source.data;
+      continue;
+    }
+    if (source.Data && typeof source.Data === "object") {
+      source = source.Data;
+      continue;
+    }
+    return source;
+  }
+  return source && typeof source === "object" ? source : {};
+}
+function number_or_fallback(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function normalize_download_task_list_response(data, pageSize) {
+  const source = unwrap_download_task_list_response(data);
+  const list = Array.isArray(source.list)
+    ? source.list
+    : Array.isArray(source.tasks)
+      ? source.tasks
+      : Array.isArray(source.List)
+        ? source.List
+        : Array.isArray(source.Tasks)
+          ? source.Tasks
+          : [];
+  const normalizedPageSize =
+    number_or_fallback(
+      source.page_size || source.pageSize || source.PageSize,
+      pageSize,
+    ) || pageSize;
+  const normalizedTotal = number_or_fallback(
+    typeof source.total !== "undefined"
+      ? source.total
+      : typeof source.count !== "undefined"
+        ? source.count
+        : typeof source.Total !== "undefined"
+          ? source.Total
+          : list.length,
+    list.length,
+  );
+  return {
+    list,
+    total: Math.max(0, normalizedTotal),
+    page:
+      number_or_fallback(
+        source.page || source.page_num || source.pageNum || source.Page,
+        1,
+      ) || 1,
+    page_size: normalizedPageSize,
+    status_counts:
+      source.status_counts ||
+      source.statusCounts ||
+      source.StatusCounts ||
+      null,
+  };
+}
 
 function DownloaderPanelViewModel(props = {}) {
   const ITEM_HEIGHT = Number(props.itemHeight) || 94;
@@ -305,14 +392,17 @@ function DownloaderPanelViewModel(props = {}) {
         client: http_client,
         process(r) {
           if (r.error) {
-            return r.error;
+            return Timeless.Result.Err(r.error);
           }
-          setStatusCounts(r.data.status_counts);
+          const data = normalize_download_task_list_response(r.data, _pageSize);
+          const counts =
+            data.status_counts || count_download_statuses(data.list);
+          setStatusCounts(counts, data.total);
           return Timeless.Result.Ok({
-            list: (r.data.list || []).map((t) => methods.formatTask(t)),
-            total: r.data.total || 0,
-            page: r.data.page || 1,
-            page_size: r.data.page_size || _pageSize,
+            list: data.list.map((t) => methods.formatTask(t)),
+            total: data.total || 0,
+            page: data.page || 1,
+            page_size: data.page_size || _pageSize,
           });
         },
       },
@@ -365,10 +455,12 @@ function DownloaderPanelViewModel(props = {}) {
   });
   const status_counts_ = ref(empty_download_status_counts());
 
-  function setStatusCounts(counts) {
+  function setStatusCounts(counts, total) {
     const normalized = normalize_download_status_counts(counts);
     status_counts_.as(normalized);
-    task_count_.as(normalized.total);
+    task_count_.as(
+      typeof total === "undefined" ? normalized.total : normalizeTotal(total),
+    );
   }
   function adjustStatusCounts(fromStatus, toStatus, totalDelta) {
     status_counts_.as((prev) => {
@@ -1558,22 +1650,23 @@ function DownloadTaskListView(props) {
                       const state_ = computed(task, (t) => {
                         // console.log("the task is changed", t.status);
                         const pr = format_download_percent(t);
+                        const normalizedStatus = normalize_download_status(
+                          t.status,
+                        );
+                        const isPaused = normalizedStatus === "pause";
+                        const isRunning = normalizedStatus === "running";
+                        const isFailed = normalizedStatus === "error";
+                        const isPending = normalizedStatus === "wait";
                         const isCompleted =
-                          t.status === "done" ||
-                          t.status === "completed" ||
-                          t.status === "success" ||
-                          t.status === "finished" ||
-                          (pr === 100 && t.status !== "running");
-
-                        const isPaused =
-                          t.status === "paused" || t.status === "pause";
-                        const isRunning = t.status === "running";
+                          normalizedStatus === "done" ||
+                          (pr === 100 &&
+                            !isRunning &&
+                            !isFailed &&
+                            !isPaused &&
+                            !isPending);
 
                         let statusText = t.status;
                         let statusColor = "var(--weui-FG-1)";
-                        var isFailed =
-                          t.status === "failed" || t.status === "error";
-                        var isPending = t.status === "pending";
                         if (isRunning) {
                           const speed = format_download_speed(
                             t.progress ? t.progress.speed : 0,
@@ -1872,8 +1965,7 @@ function DownloadTaskListView(props) {
                                             (t) => {
                                               return {
                                                 ...btnStyle,
-                                                ...(t >
-                                                WXU.config.MaxRunning
+                                                ...(t > WXU.config.MaxRunning
                                                   ? {
                                                       opacity: "0.6",
                                                       cursor: "not-allowed",
@@ -1904,8 +1996,7 @@ function DownloadTaskListView(props) {
                                             (t) => {
                                               return {
                                                 ...btnStyle,
-                                                ...(t >
-                                                WXU.config.MaxRunning
+                                                ...(t > WXU.config.MaxRunning
                                                   ? {
                                                       opacity: "0.6",
                                                       cursor: "not-allowed",
@@ -1959,8 +2050,7 @@ function DownloadTaskListView(props) {
           return [
             View(
               {
-                class:
-                  props.emptyClass || "weui-loadmore weui-loadmore_line",
+                class: props.emptyClass || "weui-loadmore weui-loadmore_line",
               },
               [
                 View(
@@ -2019,7 +2109,9 @@ function DownloaderPanelView(props) {
                       {
                         class: [
                           "wx-dl-status-count",
-                          item.key === "error" ? "wx-dl-status-count-error" : "",
+                          item.key === "error"
+                            ? "wx-dl-status-count-error"
+                            : "",
                         ]
                           .filter(Boolean)
                           .join(" "),
