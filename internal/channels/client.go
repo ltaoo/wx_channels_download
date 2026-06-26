@@ -39,6 +39,7 @@ type ChannelsClient struct {
 	engine          *gin.Engine
 	requests        map[string]chan ClientWebsocketResponse
 	requests_mu     sync.RWMutex
+	liveInfoBusy    map[*Client]bool
 	cache           *cache.Cache
 	req_seq         uint64
 	refreshInterval int
@@ -48,8 +49,9 @@ type ChannelsClient struct {
 
 func NewChannelsClient(refreshInterval int) *ChannelsClient {
 	return &ChannelsClient{
-		ws_clients: make(map[*Client]bool),
-		requests:   make(map[string]chan ClientWebsocketResponse),
+		ws_clients:   make(map[*Client]bool),
+		requests:     make(map[string]chan ClientWebsocketResponse),
+		liveInfoBusy: make(map[*Client]bool),
 		// engine:     gin.Default(),
 		cache:           cache.New(),
 		req_seq:         uint64(time.Now().UnixNano()),
@@ -98,6 +100,7 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		c.ws_mu.Lock()
 		if _, ok := c.ws_clients[client]; ok {
 			delete(c.ws_clients, client)
+			delete(c.liveInfoBusy, client)
 			close(client.Send)
 		}
 		c.ws_mu.Unlock()
@@ -126,6 +129,7 @@ func (c *ChannelsClient) Stop() {
 	for client := range c.ws_clients {
 		close(client.Send)
 		delete(c.ws_clients, client)
+		delete(c.liveInfoBusy, client)
 	}
 	c.ws_mu.Unlock()
 }
@@ -142,6 +146,7 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
 		default:
 			close(client.Send)
 			delete(c.ws_clients, client)
+			delete(c.liveInfoBusy, client)
 		}
 	}
 }
@@ -178,13 +183,16 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	}()
 	c.ws_mu.Lock()
 	var client *Client
-	for c := range c.ws_clients {
-		client = c
+	for wsClient := range c.ws_clients {
+		if c.liveInfoBusy[wsClient] {
+			continue
+		}
+		client = wsClient
 		break
 	}
 	if client == nil {
 		c.ws_mu.Unlock()
-		return nil, errors.New("没有可用的客户端")
+		return nil, errors.New("没有空闲的客户端")
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -199,6 +207,79 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 		return nil, errors.New("发送缓冲区已满")
 	}
 	c.ws_mu.Unlock()
+	select {
+	case resp := <-resp_chan:
+		return &resp, nil
+	case <-time.After(timeout):
+		return nil, errors.New("请求超时")
+	}
+}
+
+func (c *ChannelsClient) RequestFrontendWithIdleLiveClient(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
+	req := ClientWebsocketRequestBody{
+		ID:   id,
+		Key:  endpoint,
+		Body: body,
+	}
+	msg := APIClientWSMessage{
+		Type: "api_call",
+		Data: req,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	resp_chan := make(chan ClientWebsocketResponse, 1)
+	c.requests_mu.Lock()
+	c.requests[id] = resp_chan
+	c.requests_mu.Unlock()
+
+	var client *Client
+	busyMarked := false
+	defer func() {
+		c.requests_mu.Lock()
+		delete(c.requests, id)
+		c.requests_mu.Unlock()
+		if busyMarked && client != nil {
+			c.ws_mu.Lock()
+			delete(c.liveInfoBusy, client)
+			c.ws_mu.Unlock()
+		}
+	}()
+
+	c.ws_mu.Lock()
+	if len(c.ws_clients) == 0 {
+		c.ws_mu.Unlock()
+		return nil, errors.New("请先初始化客户端 socket 连接")
+	}
+	if c.liveInfoBusy == nil {
+		c.liveInfoBusy = make(map[*Client]bool)
+	}
+	for wsClient := range c.ws_clients {
+		if c.liveInfoBusy[wsClient] {
+			continue
+		}
+		client = wsClient
+		c.liveInfoBusy[wsClient] = true
+		busyMarked = true
+		break
+	}
+	if client == nil {
+		c.ws_mu.Unlock()
+		return nil, errors.New("当前没有空闲的视频号页面，请等待直播信息任务完成")
+	}
+	select {
+	case client.Send <- data:
+	default:
+		delete(c.liveInfoBusy, client)
+		busyMarked = false
+		c.ws_mu.Unlock()
+		return nil, errors.New("发送缓冲区已满")
+	}
+	c.ws_mu.Unlock()
+
 	select {
 	case resp := <-resp_chan:
 		return &resp, nil
@@ -354,10 +435,10 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 		}
 	}
 	resp, err := c.RequestFrontend("key:channels:fetch_feed_comment_list", types.ChannelsFeedCommentListBody{
-		ObjectId:  oid,
+		ObjectId:      oid,
 		ObjectNonceId: nid,
-		CommentId: comment_id,
-		NextMarker: next_marker,
+		CommentId:     comment_id,
+		NextMarker:    next_marker,
 	}, 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -370,8 +451,11 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 	return &r, nil
 }
 
-
 func (c *ChannelsClient) ReloadChannels() error {
 	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
 	return err
+}
+
+func (c *ChannelsClient) GetLiveInfoChannels(url string) (*ClientWebsocketResponse, error) {
+	return c.RequestFrontendWithIdleLiveClient("key:channels:get_live_info", types.ChannelsSharedFeedProfileBody{URL: url}, 45*time.Second)
 }

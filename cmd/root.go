@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +24,7 @@ import (
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
+	"wx_channel/internal/master"
 	"wx_channel/internal/officialaccount"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
@@ -69,8 +70,8 @@ var root_cmd = &cobra.Command{
 			Cfg.Existing = true
 		}
 		if err := Cfg.LoadConfig(); err != nil {
-			 fmt.Println(fmt.Sprintf("%s加载配置文件失败 %v", error_prefix, err))
-			 os.Exit(0)
+			fmt.Println(fmt.Sprintf("%s加载配置文件失败 %v", error_prefix, err))
+			os.Exit(0)
 		}
 		need_admin_for_proxy := viper.GetBool("proxy.system") || viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet
 		is_admin := platform.IsAdmin()
@@ -226,6 +227,8 @@ func root_command(cfg *config.Config) {
 		os.Exit(0)
 	}
 	color.Green(fmt.Sprintf("代理服务启动成功, 地址: %v", interceptor_srv.Addr()))
+	master_client := master.NewClient(master.NewConfigFromViper(), &logger)
+	master_client.Start(ctx)
 
 	if !buildtags.UsingSunnyNet {
 		if interceptor_cfg.ProxyTun {

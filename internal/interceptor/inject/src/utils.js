@@ -1796,7 +1796,38 @@ function ChannelsWebsocketClient() {
       const ws_url =
         WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
       const ws = new WebSocket(ws_url);
+      window.__wx_channels_ws__ = ws;
+      window.__wx_channels_send_ws_response__ = function (id, body) {
+        if (!id || ws.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        try {
+          ws.send(JSON.stringify({
+            id,
+            data: body,
+          }));
+        } catch (err) {
+          console.warn("[DOWNLOADER]send ws response failed", err);
+          return false;
+        }
+        return true;
+      };
+      window.__wx_channels_send_ws_event__ = function (type, body) {
+        if (!type || ws.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        ws.send(
+          JSON.stringify({
+            type,
+            data: body,
+          }),
+        );
+        return true;
+      };
       ws.onclose = (e) => {
+        if (window.__wx_channels_ws__ === ws) {
+          window.__wx_channels_ws__ = null;
+        }
         WXU.error({
           msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}`,
         });
@@ -1984,6 +2015,23 @@ function ChannelsWebsocketClient() {
         }, 500);
         return;
       }
+      if (key === "key:channels:get_live_info") {
+        console.log("[DOWNLOADER]get_live_info");
+        if (!data || !data.url) {
+          resp({
+            errCode: 1011,
+            errMsg: "missing url",
+            payload: null,
+          });
+          return;
+        }
+        setTimeout(() => {
+          var u = new URL(data.url, window.location.href);
+          u.searchParams.set("did", id);
+          window.location.href = u.toString();
+        }, 200);
+        return;
+      }
       resp({
         errCode: 1000,
         errMsg: "未匹配的key",
@@ -2003,3 +2051,46 @@ WXU.onInit((data) => {
 
 const ws_client$ = ChannelsWebsocketClient();
 ws_client$.methods.connect_local_ws();
+
+
+// 辅助函数：将多个参数拼接成字符串
+function argsToString(...args) {
+  return args.map(arg => {
+    // 如果是对象，转为 JSON 字符串；否则转成普通字符串
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch (e) {
+        return String(arg);
+      }
+    }
+    return String(arg);
+  }).join(' '); // 用空格连接，你可以改成其他分隔符如 '|'
+}
+
+
+// 保存原始 console.log
+const originalLog = console.log;
+
+// 自定义的 console.log
+console.log = function(...args) {
+  // 1. 保持原有控制台输出（使用原始方法）
+  originalLog.apply(console, args);
+
+  // 2. 将参数转换为字符串发送
+  //    如果 args 里包含对象、数组等，直接放入 JSON 结构中即可
+  const payload = { data: argsToString(...args) };
+
+  // 3. 使用 fetch 发送（不等待结果，避免阻塞）
+  fetch("/__wx_channels_api/console", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }).catch(err => {
+    // 静默处理错误，避免影响业务代码
+    // 也可以使用原始 console.error 输出错误（注意不要再用 console.log）
+    originalLog.apply(console, ['[LogWrapper] fetch error:', err]);
+  });
+};

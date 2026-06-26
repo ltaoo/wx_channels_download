@@ -136,6 +136,17 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 				}, "{}")
 				return
 			}
+			if pathname == "/__wx_channels_api/console" {
+				var data ConsoleLog
+				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
+					fmt.Println("[ECHO]handler", err.Error())
+				}
+				color.Red(fmt.Sprintf("console: %s\n", data.Data))
+				ctx.Mock(200, map[string]string{
+					"Content-Type": "application/json",
+				}, "{}")
+				return
+			}
 		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
@@ -185,6 +196,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					return
 				}
 				html := string(resp_body)
+				// 强行加上版本号消除缓存
 				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 

@@ -2,7 +2,6 @@ package interceptor
 
 import "encoding/json"
 
-
 type ChannelMediaSpec struct {
 	FileFormat       string  `json:"file_format"`
 	FirstLoadBytes   int     `json:"first_load_bytes"`
@@ -52,4 +51,8 @@ type FrontendTip struct {
 type FrontendErrorTip struct {
 	Alert int    `json:"alert"`
 	Msg   string `json:"msg"`
+}
+
+type ConsoleLog struct {
+	Data string `json:"data"`
 }

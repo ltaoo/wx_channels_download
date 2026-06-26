@@ -10,7 +10,9 @@ import (
 )
 
 var AppVer = "260607"
-var Mode = "debug"
+
+// var Mode = "debug"
+var Mode = "release"
 
 func main() {
 	if Mode == "release" {

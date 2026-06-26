@@ -56,6 +56,40 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
   return [dropdown$, submenu$];
 }
 
+function __wx_reply_live_info_to_control(profile, live, attempts = 20) {
+  var send = window.__wx_channels_send_ws_response__;
+  const urlParams = new URLSearchParams(window.location.search);
+  const did = urlParams.get("did");
+  if (!did){
+    return;
+  }
+  // 判断是否在直播
+  if (profile.liveInfo.liveStatus == 1 && live) {
+    if (typeof send === "function" && send(did, live)) {
+      return;
+    }
+  }else if (profile.liveInfo.liveStatus == 2){
+    if (typeof send === "function" && send(did, profile)) {
+      return;
+    }
+  }
+  // // console.log("__wx_reply_live_info_to_control", payload);
+  // // 解参数
+  // const urlParams = new URLSearchParams(window.location.search);
+  // const did = urlParams.get("did");
+  // // const stackTrace = new Error().stack;
+  // // console.log(stackTrace);
+  // // console.log("数据", data); // 输出参数值，若不存在则 null
+  // if (typeof send === "function" && send(did, data)) {
+  //   return;
+  // }
+  // if (attempts > 0) {
+  //   setTimeout(() => {
+  //     __wx_reply_live_info_to_control(data, attempts - 1);
+  //   }, 250);
+  // }
+}
+
 (() => {
   insert_channels_style();
   var error_tip_timer = setTimeout(() => {
@@ -136,6 +170,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
         (vv) => vv.url,
       );
+      __wx_channels_live_store__.options = options;
       var [dropdown$] = __wx_attach_live_download_dropdown_menu($btn);
       const download_menus = [
         ...(() => {
@@ -160,13 +195,15 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
     }
   }
   WXU.onFetchFeedProfile((data) => {
-    console.log("[live.js]onFetchFeedProfile", data);
+    // console.log("[live.js]onFetchFeedProfile", data);
     profile = data;
     handleLoaded(profile, live);
+    __wx_reply_live_info_to_control(profile, live);
   });
   WXU.onJoinLive(async (data) => {
-    console.log("[live.js]onJoinLive", JSON.stringify(data));
+    // console.log("[live.js]onJoinLive", JSON.stringify(data));
     live = data;
-    handleLoaded(profile, live);
+    await handleLoaded(profile, live);
+    __wx_reply_live_info_to_control(profile, live);
   });
 })();

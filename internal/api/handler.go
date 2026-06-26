@@ -1082,3 +1082,25 @@ func (c *APIClient) handleTest(ctx *gin.Context) {
 	}
 	result.Ok(ctx, nil)
 }
+
+func (c *APIClient) handleGetLiveInfo(ctx *gin.Context) {
+	liveURL := strings.TrimSpace(ctx.Query("url"))
+	if liveURL == "" {
+		result.Err(ctx, 400, "url 不能为空")
+		return
+	}
+	if !strings.HasPrefix(liveURL, "http://") && !strings.HasPrefix(liveURL, "https://") {
+		liveURL = "https://" + liveURL
+	}
+	parsedURL, err := url.Parse(liveURL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		result.Err(ctx, 400, "url 无效")
+		return
+	}
+	resp, err := c.channels.GetLiveInfoChannels(liveURL)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, json.RawMessage(resp.Data))
+}

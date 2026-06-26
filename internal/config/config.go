@@ -462,6 +462,54 @@ func (c *Config) LoadConfig() error {
 		Title:       "同步间隔",
 		Group:       "FileHelper",
 	})
+	Register(ConfigItem{
+		Key:         "master.enable",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否启用 master 服务注册和心跳上报",
+		Title:       "启用 Master",
+		Group:       "Master",
+	})
+	Register(ConfigItem{
+		Key:         "master.url",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "master 服务地址，例如 https://example.com",
+		Title:       "Master 地址",
+		Group:       "Master",
+	})
+	Register(ConfigItem{
+		Key:         "master.token",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "请求 master 服务时使用的 token 请求头",
+		Title:       "Master Token",
+		Group:       "Master",
+	})
+	Register(ConfigItem{
+		Key:         "master.robot",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "注册到 master 的机器人标识",
+		Title:       "机器人标识",
+		Group:       "Master",
+	})
+	Register(ConfigItem{
+		Key:         "master.name",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "注册到 master 的机器人名称",
+		Title:       "机器人名称",
+		Group:       "Master",
+	})
+	Register(ConfigItem{
+		Key:         "master.heartbeatInterval",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "向 master 上报心跳的时间间隔（秒）",
+		Title:       "心跳间隔",
+		Group:       "Master",
+	})
 
 	if c.Existing {
 		// config.FilePath = config_filepath

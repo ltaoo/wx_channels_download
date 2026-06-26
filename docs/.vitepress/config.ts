@@ -121,6 +121,7 @@ export default defineConfig(async () => {
           { text: "指定文件名", link: "/feature/filename" },
           { text: "自定义菜单", link: "/feature/custom-menu" },
           { text: "监听事件", link: "/feature/event" },
+          { text: "视频号 WebSocket Keys", link: "/feature/channels-ws-keys" },
         ],
       },
       {
