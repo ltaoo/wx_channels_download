@@ -186,45 +186,7 @@ body[data-weui-theme=dark] {
 .weui-loadmore__tips {
   color: inherit;
 }
-.wx-simple-popover,
-.wx-simple-menu {
-  z-index: 99999;
-  box-sizing: border-box;
-  color: var(--weui-FG-0);
-}
-.wx-simple-menu {
-  min-width: 128px;
-  padding: 8px;
-  background: var(--popup-menu-bg-color);
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
-}
-.wx-simple-menu-item {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 30px;
-  min-width: 100%;
-  padding: 5px 8px;
-  border-radius: 4px;
-  color: var(--weui-FG-0);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 20px;
-  white-space: nowrap;
-}
-.wx-simple-menu-item:hover {
-  background: var(--popup-menu-hover-color);
-}
-.wx-simple-menu-item-label {
-  min-width: 0;
-}
-.wx-simple-menu-item-arrow {
-  flex: 0 0 auto;
-  opacity: 0.7;
-}
+
 .custom-menu {
   z-index: 99999;
   background: var(--popup-menu-bg-color);
@@ -451,7 +413,6 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
 }
 .wx-dl-item {
   padding: 16px;
-  min-height: 94px;
   background-color: var(--popup-content-bg-color);
   border-radius: 8px;
   align-items: center;

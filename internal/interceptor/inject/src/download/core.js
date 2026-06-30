@@ -6,12 +6,6 @@ var APIHostname = WXEnv.apiOrigin;
 var RemoteAPIHostname = WXEnv.remoteAPIOrigin;
 
 console.log("[]download/core.js - ", WXEnv.apiServerAddr, APIHostname);
-alert(
-  JSON.stringify({
-    a: WXEnv.apiServerAddr,
-    b: APIHostname,
-  }),
-);
 
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
@@ -1326,7 +1320,8 @@ function DownloaderPanelViewModel(props = {}) {
     props.enableDropdownMenu === false
       ? null
       : new Timeless.ui.DropdownMenuCore({
-          trigger: "hover",
+          // trigger: "hover",
+          trigger: "click",
           align: "end",
           items: [
             new Timeless.ui.MenuItemCore({

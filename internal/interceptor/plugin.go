@@ -150,6 +150,33 @@ func AppendInlineScript(b *strings.Builder, attr string, script string) {
 	b.WriteString(fmt.Sprintf(`<script%s>%s</script>`, attr, script))
 }
 
+func AppendInlineStyle(b *strings.Builder, attr string, css string) {
+	if css == "" {
+		return
+	}
+	css = strings.ReplaceAll(css, "</style", `<\/style`)
+	b.WriteString(fmt.Sprintf(`<style%s>%s</style>`, attr, css))
+}
+
+func AppendSharedLibAssetsWithInlineStyles(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string, shadcnCSS string) {
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.utils.umd.min.js"),
+	)
+	AppendInlineStyle(b, styleAttr, shadcnCSS)
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.umd.min.js"))
+	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.web.umd.min.js"),
+	)
+}
+
 func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string) {
 	AppendScriptSrcs(
 		b,
@@ -372,6 +399,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
 				AppendSharedLibAssets(&injected, assetBaseURL, version, "", "")
+				AppendStylesheetHrefs(&injected, "", ChannelSrcAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				variable_byte, _ := json.Marshal(variables)

@@ -528,88 +528,6 @@ var WXU = (() => {
     }
     return api;
   }
-  function OverwriteDownloadConfirmDialog(props) {
-    const { Dialog, View } = window;
-    return Dialog(
-      {
-        store: props.store,
-        style: [
-          "width: 320px;",
-          "max-width: calc(100vw - 32px);",
-          "box-sizing: border-box;",
-          "border-radius: 8px;",
-          "background: var(--popup-bg-color);",
-          "color: var(--weui-FG-0);",
-          "box-shadow: 0 8px 28px rgba(0,0,0,0.28);",
-          "overflow: hidden;",
-        ].join(""),
-      },
-      [
-        View({ style: "padding: 20px 20px 16px;" }, [
-          View(
-            {
-              style:
-                "font-size: 17px; font-weight: 600; line-height: 24px; margin-bottom: 8px;",
-            },
-            ["文件已存在"],
-          ),
-          View(
-            {
-              style:
-                "font-size: 14px; line-height: 20px; color: var(--weui-FG-1); margin-bottom: 4px;",
-            },
-            [props.content],
-          ),
-        ]),
-        View(
-          {
-            style:
-              "display: flex; border-top: 1px solid var(--weui-DIALOG-LINE-COLOR);",
-          },
-          [
-            View(
-              {
-                type: "button",
-                style: [
-                  "flex: 1;",
-                  "height: 48px;",
-                  "border: 0;",
-                  "background: transparent;",
-                  "color: var(--weui-FG-0);",
-                  "font-size: 16px;",
-                  "cursor: pointer;",
-                ].join(""),
-                onClick() {
-                  props.store.hide();
-                },
-              },
-              ["跳过"],
-            ),
-            View(
-              {
-                type: "button",
-                style: [
-                  "flex: 1;",
-                  "height: 48px;",
-                  "border: 0;",
-                  "border-left: 1px solid var(--weui-DIALOG-LINE-COLOR);",
-                  "background: transparent;",
-                  "color: #FA5151;",
-                  "font-size: 16px;",
-                  "font-weight: 500;",
-                  "cursor: pointer;",
-                ].join(""),
-                onClick() {
-                  props.onConfirm();
-                },
-              },
-              ["覆盖"],
-            ),
-          ],
-        ),
-      ],
-    );
-  }
   function confirm_overwrite_download(msg) {
     return new Promise((resolve) => {
       const content =
@@ -2151,7 +2069,8 @@ function __wx_attach_download_dropdown_menu(trigger) {
 
   const submenu$ = new Timeless.ui.MenuCore({
     items: [],
-    trigger: "hover",
+    // trigger: "hover",
+    trigger: "click",
   });
   let dropdown$ = null;
 
@@ -2234,7 +2153,8 @@ function __wx_attach_download_dropdown_menu(trigger) {
   }
 
   dropdown$ = new Timeless.ui.DropdownMenuCore({
-    trigger: "hover",
+    // trigger: "hover",
+    trigger: "click",
     align: "end",
     items: build_root_menu_items(),
   });

@@ -48,7 +48,6 @@ export default [
         FakeLocalAPIServerAddr: "readonly",
         FakeRemoteAPIServerAddr: "readonly",
         FakeOfficialAccountServerAddr: "writeable",
-        insert_channels_style: "writeable",
         MoreIcon: "writeable",
         FileIcon: "writeable",
         MP3Icon: "writeable",

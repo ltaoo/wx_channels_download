@@ -39,11 +39,12 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					/** 全局错误捕获并展示弹窗 */
 					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
+				interceptor.AppendSharedLibAssetsWithInlineStyles(&injected, assetBaseURL, version, script_attr, style_attr, string(files.CSSTimelessShadcn))
+				interceptor.AppendInlineStyle(&injected, style_attr, string(files.CSSComponents))
 				cfg_byte, _ := json.Marshal(cfg)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				variable_byte, _ := json.Marshal(variables)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
-				interceptor.AppendSharedLibAssets(&injected, assetBaseURL, version, script_attr, style_attr)
 				interceptor.AppendScriptSrcs(
 					&injected,
 					script_attr,

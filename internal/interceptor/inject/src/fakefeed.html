@@ -529,7 +529,7 @@
 
       function visibleMenus() {
         return Array.from(
-          document.querySelectorAll(".wx-simple-menu, .t1-popper"),
+          document.querySelectorAll(".t1-popper"),
         )
           .filter(isVisible)
           .map((el, index) => ({
@@ -712,7 +712,6 @@
       }
 
       document.addEventListener("DOMContentLoaded", function () {
-        insert_channels_style();
         setTimeout(function () {
           // installFakeData();
           // renderTimelessProbe();
