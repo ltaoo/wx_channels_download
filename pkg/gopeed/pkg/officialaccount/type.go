@@ -27,7 +27,7 @@ type CgiDataNew struct {
 	AdvertisementNum  int    `json:"advertisement_num"`
 	AdvertisementInfo []any  `json:"advertisement_info"`
 	OriCreateTime     int    `json:"ori_create_time"`
-	UserUin           int    `json:"user_uin"`
+	UserUin           any    `json:"user_uin"`
 	TotalItemNum      int    `json:"total_item_num"`
 	IsAsync           int    `json:"is_async"`
 	CommentID         string `json:"comment_id"`

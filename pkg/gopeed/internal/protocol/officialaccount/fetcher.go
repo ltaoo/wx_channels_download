@@ -2,7 +2,6 @@ package officialaccountdownload
 
 import (
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -194,13 +193,11 @@ func (fm *FetcherManager) Build() fetcher.Fetcher {
 }
 
 func (fm *FetcherManager) ParseName(u string) string {
-	// Simple parsing, actual name resolution happens in Resolve
-	parsed, err := url.Parse(u)
-	if err != nil {
+	articleID := officialaccountdownload.ExtractArticleID(u)
+	if articleID == "" {
 		return "article.html"
 	}
-	// Maybe extract something from URL if possible, but Resolve will do better
-	return parsed.Path
+	return articleID + ".html"
 }
 
 func (fm *FetcherManager) AutoRename() bool {
