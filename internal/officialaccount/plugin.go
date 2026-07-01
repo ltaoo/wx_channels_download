@@ -13,9 +13,14 @@ import (
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
 func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles, version string) *proxy.Plugin {
-	assetBaseURL := interceptor.ChannelAssetsBaseURL(cfg.Protocol, cfg.Hostname, cfg.Port)
+	assetBaseURL := interceptor.ChannelAssetsSameOriginBaseURL()
 	return &proxy.Plugin{
 		Match: "qq.com",
+		OnRequest: func(ctx proxy.Context) {
+			if ctx.Req().URL.Hostname() == "mp.weixin.qq.com" && interceptor.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+				return
+			}
+		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
@@ -27,7 +32,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 				}
 				variables := map[string]interface{}{}
 				html := string(resp_body)
-				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+				csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 				script_attr := ""
 				style_attr := ""
 				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
@@ -39,10 +44,15 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 					/** 全局错误捕获并展示弹窗 */
 					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
-				interceptor.AppendSharedLibAssetsWithInlineStyles(&injected, assetBaseURL, version, script_attr, style_attr, string(files.CSSTimelessShadcn))
-				interceptor.AppendInlineStyle(&injected, style_attr, string(files.CSSComponents))
+				var shadcnCSS []byte
+				if files != nil {
+					shadcnCSS = files.CSSTimelessShadcn
+				}
+				interceptor.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, script_attr, style_attr, shadcnCSS)
+				interceptor.AppendStylesheetHrefs(&injected, style_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
 				variable_byte, _ := json.Marshal(variables)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
 				interceptor.AppendScriptSrcs(

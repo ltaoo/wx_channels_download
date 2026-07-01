@@ -209,6 +209,10 @@ var WXEnv = (() => {
 
   function assetsBaseURL() {
     const cfg = window.__wx_channels_config__ || {};
+    const explicitBase = explicitEnvValue("assetsBaseURL");
+    if (explicitBase) {
+      return String(explicitBase).replace(/\/$/, "");
+    }
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
       return (
         origin(cfg.apiServerProtocol, cfg.apiServerAddr) +

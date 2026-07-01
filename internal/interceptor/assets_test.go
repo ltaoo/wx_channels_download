@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"wx_channel/internal/interceptor/proxy"
@@ -63,6 +64,45 @@ func TestMockChannelStaticAssetLibUsesThirtyDayStrongCache(t *testing.T) {
 	}
 	if got := ctx.body; got != "window.mitt = {};" {
 		t.Fatalf("body = %q, want lib asset content", got)
+	}
+}
+
+func TestMockChannelStaticAssetShadcnCSSStripsCascadeLayers(t *testing.T) {
+	files := newTestChannelInjectedFiles(t, map[string]string{
+		"lib/timeless/0.26.3/timeless.shadcn.css": `@layer theme{:root{--spacing:.25rem}}@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}@layer components;`,
+	})
+	ctx := newStaticAssetContext("/__wx_channels_assets/lib/timeless/0.26.3/timeless.shadcn.css", nil)
+
+	if !mockChannelStaticAsset(ctx, ctx.req.URL.Path, files) {
+		t.Fatal("expected shadcn CSS asset to be mocked")
+	}
+	if strings.Contains(ctx.body, "@layer") {
+		t.Fatalf("body should not contain cascade layer wrappers: %q", ctx.body)
+	}
+	if !strings.Contains(ctx.body, ":root{--spacing:.25rem}") {
+		t.Fatalf("body does not contain unwrapped theme variables: %q", ctx.body)
+	}
+	if !strings.Contains(ctx.body, ".tt-py-1{padding-block:calc(var(--spacing) * 1)}") {
+		t.Fatalf("body does not contain unwrapped utility rule: %q", ctx.body)
+	}
+}
+
+func TestStripTopLevelCascadeLayersPreservesNestedAtRules(t *testing.T) {
+	css := `/* keep */@layer utilities{@media (hover:hover){.tt-hover\:tt-bg-zinc-800:hover{background:#27272a}}.tt-content{content:"}"}}.plain{display:block}`
+
+	got := stripTopLevelCascadeLayers(css)
+
+	if strings.Contains(got, "@layer") {
+		t.Fatalf("got %q, want layer wrappers stripped", got)
+	}
+	if !strings.Contains(got, `@media (hover:hover){.tt-hover\:tt-bg-zinc-800:hover{background:#27272a}}`) {
+		t.Fatalf("got %q, want nested @media preserved", got)
+	}
+	if !strings.Contains(got, `.tt-content{content:"}"}`) {
+		t.Fatalf("got %q, want strings with braces preserved", got)
+	}
+	if !strings.Contains(got, `.plain{display:block}`) {
+		t.Fatalf("got %q, want unlayered rules preserved", got)
 	}
 }
 

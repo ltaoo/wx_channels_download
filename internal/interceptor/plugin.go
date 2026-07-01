@@ -114,6 +114,10 @@ func ChannelAssetsBaseURLFromConfig(cfg *InterceptorConfig) string {
 	return ChannelAssetsBaseURL(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
 }
 
+func ChannelAssetsSameOriginBaseURL() string {
+	return channelAssetsPath
+}
+
 func ChannelLibAssetURL(baseURL string, version string, rel string) string {
 	if version == "" {
 		version = "static"
@@ -158,25 +162,6 @@ func AppendInlineStyle(b *strings.Builder, attr string, css string) {
 	b.WriteString(fmt.Sprintf(`<style%s>%s</style>`, attr, css))
 }
 
-func AppendSharedLibAssetsWithInlineStyles(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string, shadcnCSS string) {
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.utils.umd.min.js"),
-	)
-	AppendInlineStyle(b, styleAttr, shadcnCSS)
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.umd.min.js"))
-	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.dom.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.web.umd.min.js"),
-	)
-}
-
 func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string) {
 	AppendScriptSrcs(
 		b,
@@ -196,12 +181,40 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 	)
 }
 
+func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string, shadcnCSS []byte) {
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.utils.umd.min.js"),
+	)
+	if len(shadcnCSS) > 0 {
+		shadcnCSS = ChannelStaticAssetResponseData("timeless.shadcn.css", shadcnCSS)
+		AppendInlineStyle(b, styleAttr, string(shadcnCSS))
+	} else {
+		AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.css"))
+	}
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.shadcn.umd.min.js"))
+	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
+	AppendScriptSrcs(
+		b,
+		scriptAttr,
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.26.3/timeless.web.umd.min.js"),
+	)
+}
+
 func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelInjectedFiles) bool {
+	if files == nil {
+		return false
+	}
 	if rel, ok := channelStaticAssetRel(pathname, "lib"); ok {
 		data, err := files.ReadLib(rel)
 		if err != nil {
 			return false
 		}
+		data = ChannelStaticAssetResponseData(rel, data)
 		ctx.Mock(200, map[string]string{
 			"Content-Type":  channelStaticAssetContentType(rel),
 			"Cache-Control": channelLibAssetCacheControl,
@@ -229,6 +242,146 @@ func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelIn
 		return true
 	}
 	return false
+}
+
+func MockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelInjectedFiles) bool {
+	return mockChannelStaticAsset(ctx, pathname, files)
+}
+
+func ChannelStaticAssetResponseData(rel string, data []byte) []byte {
+	if strings.HasSuffix(rel, "timeless.shadcn.css") {
+		return []byte(stripTopLevelCascadeLayers(string(data)))
+	}
+	return data
+}
+
+func stripTopLevelCascadeLayers(css string) string {
+	var b strings.Builder
+	for i := 0; i < len(css); {
+		if hasTopLevelLayerAt(css, i) {
+			end, contentStart, contentEnd, ok := topLevelLayerRule(css, i)
+			if ok {
+				if contentStart >= 0 {
+					b.WriteString(css[contentStart:contentEnd])
+				}
+				i = end
+				continue
+			}
+		}
+		next := copyCSSUnit(&b, css, i)
+		if next <= i {
+			next = i + 1
+		}
+		i = next
+	}
+	return b.String()
+}
+
+func hasTopLevelLayerAt(css string, i int) bool {
+	if !strings.HasPrefix(css[i:], "@layer") {
+		return false
+	}
+	end := i + len("@layer")
+	if end >= len(css) {
+		return true
+	}
+	return !isCSSIdentChar(css[end])
+}
+
+func topLevelLayerRule(css string, start int) (end int, contentStart int, contentEnd int, ok bool) {
+	i := start + len("@layer")
+	for i < len(css) {
+		switch css[i] {
+		case '\'', '"':
+			i = skipCSSString(css, i)
+		case '/':
+			if i+1 < len(css) && css[i+1] == '*' {
+				i = skipCSSComment(css, i)
+			} else {
+				i++
+			}
+		case ';':
+			return i + 1, -1, -1, true
+		case '{':
+			close := findMatchingCSSBrace(css, i)
+			if close < 0 {
+				return 0, 0, 0, false
+			}
+			return close + 1, i + 1, close, true
+		default:
+			i++
+		}
+	}
+	return 0, 0, 0, false
+}
+
+func copyCSSUnit(b *strings.Builder, css string, i int) int {
+	switch css[i] {
+	case '\'', '"':
+		next := skipCSSString(css, i)
+		b.WriteString(css[i:next])
+		return next
+	case '/':
+		if i+1 < len(css) && css[i+1] == '*' {
+			next := skipCSSComment(css, i)
+			b.WriteString(css[i:next])
+			return next
+		}
+	}
+	b.WriteByte(css[i])
+	return i + 1
+}
+
+func skipCSSString(css string, start int) int {
+	quote := css[start]
+	i := start + 1
+	for i < len(css) {
+		if css[i] == '\\' {
+			i += 2
+			continue
+		}
+		i++
+		if css[i-1] == quote {
+			return i
+		}
+	}
+	return len(css)
+}
+
+func skipCSSComment(css string, start int) int {
+	if end := strings.Index(css[start+2:], "*/"); end >= 0 {
+		return start + 2 + end + 2
+	}
+	return len(css)
+}
+
+func findMatchingCSSBrace(css string, open int) int {
+	depth := 0
+	for i := open; i < len(css); {
+		switch css[i] {
+		case '\'', '"':
+			i = skipCSSString(css, i)
+			continue
+		case '/':
+			if i+1 < len(css) && css[i+1] == '*' {
+				i = skipCSSComment(css, i)
+				continue
+			}
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+func isCSSIdentChar(c byte) bool {
+	return c == '-' || c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 func channelStaticAssetRel(pathname string, dir string) (string, bool) {
@@ -285,7 +438,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 	version := interceptor.Version
 	cfg := interceptor.Settings
 	variables := interceptor.FrontendVariables
-	assetBaseURL := ChannelAssetsBaseURLFromConfig(cfg)
+	assetBaseURL := ChannelAssetsSameOriginBaseURL()
 	v := "?t=" + version
 	plugin1 := &proxy.Plugin{
 		Match: "channels.weixin.qq.com",
@@ -398,10 +551,15 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					/** 全局错误捕获并展示弹窗 */
 					AppendScriptSrcs(&injected, "", ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
-				AppendSharedLibAssets(&injected, assetBaseURL, version, "", "")
+				var shadcnCSS []byte
+				if files != nil {
+					shadcnCSS = files.CSSTimelessShadcn
+				}
+				AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, "", "", shadcnCSS)
 				AppendStylesheetHrefs(&injected, "", ChannelSrcAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
+				AppendInlineScript(&injected, "", fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
 				variable_byte, _ := json.Marshal(variables)
 				AppendInlineScript(&injected, "", fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
 				AppendScriptSrcs(

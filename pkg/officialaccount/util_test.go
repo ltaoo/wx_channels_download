@@ -1,4 +1,4 @@
-package officialaccountdownload
+package officialaccount
 
 import "testing"
 

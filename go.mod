@@ -46,11 +46,11 @@ require (
 )
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown v1.4.1 // indirect
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
+	github.com/JohannesKaufmann/html-to-markdown v1.4.1
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
-	golang.org/x/image v0.23.0 // indirect
+	golang.org/x/image v0.23.0
 )
 
 replace github.com/GopeedLab/gopeed => ./pkg/gopeed
@@ -78,7 +78,7 @@ require (
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3 // indirect
+	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect

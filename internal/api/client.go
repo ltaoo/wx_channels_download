@@ -219,6 +219,7 @@ func (c *APIClient) handleChannelLibAsset(ctx *gin.Context) {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
+	data = interceptor.ChannelStaticAssetResponseData(rel, data)
 	ctx.Header("Content-Type", interceptor.ChannelStaticAssetContentType(rel))
 	ctx.Header("Cache-Control", interceptor.ChannelLibAssetCacheControl)
 	if ctx.Request.Method == http.MethodHead {

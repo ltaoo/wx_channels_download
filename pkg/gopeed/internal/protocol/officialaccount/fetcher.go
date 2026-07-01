@@ -11,7 +11,7 @@ import (
 	"github.com/GopeedLab/gopeed/internal/fetcher"
 	"github.com/GopeedLab/gopeed/pkg/base"
 
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
+	officialaccountdownload "wx_channel/pkg/officialaccount"
 )
 
 type Fetcher struct {

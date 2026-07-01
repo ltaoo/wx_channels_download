@@ -227,6 +227,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Debug",
 	})
 	Register(ConfigItem{
+		Key:         "debug.echolog",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否启用 Echo 代理日志",
+		Title:       "Echo 日志",
+		Group:       "Debug",
+	})
+	Register(ConfigItem{
 		Key:         "channels.disableLocationToHome",
 		Type:        ConfigTypeBool,
 		Default:     false,
@@ -345,6 +353,14 @@ func (c *Config) LoadConfig() error {
 		Description: "指定 API 服务的端口",
 		Title:       "API 服务端口",
 		Group:       "API",
+	})
+	Register(ConfigItem{
+		Key:         "mp.enabled",
+		Type:        ConfigTypeBool,
+		Default:     nil,
+		Description: "是否启用公众号本地服务，本地服务会提供接口、RSS 等功能",
+		Title:       "启用本地服务",
+		Group:       "OfficialAccount",
 	})
 	Register(ConfigItem{
 		Key:         "mp.disabled",
@@ -567,6 +583,13 @@ func (c *Config) GetString(path string) string   { return viper.GetString(path) 
 func (c *Config) GetInt(path string) int         { return viper.GetInt(path) }
 func (c *Config) GetBool(path string) bool       { return viper.GetBool(path) }
 func (c *Config) GetFloat64(path string) float64 { return viper.GetFloat64(path) }
+
+func IsMPEnabled() bool {
+	if viper.IsSet("mp.enabled") {
+		return viper.GetBool("mp.enabled")
+	}
+	return !viper.GetBool("mp.disabled")
+}
 
 func EnsureDirIfMissing(path string) error {
 	_, err := os.Stat(path)

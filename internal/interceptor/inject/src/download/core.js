@@ -1320,8 +1320,7 @@ function DownloaderPanelViewModel(props = {}) {
     props.enableDropdownMenu === false
       ? null
       : new Timeless.ui.DropdownMenuCore({
-          // trigger: "hover",
-          trigger: "click",
+          trigger: "hover",
           align: "end",
           items: [
             new Timeless.ui.MenuItemCore({

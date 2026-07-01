@@ -30,6 +30,9 @@
       align-items: center;
       justify-content: center;
     }
+    body.wx-officialaccount-download-menu-mounted .t1-popper {
+      z-index: 2147483647 !important;
+    }
     #__wx_channels_credentials__:hover,
     #__wx_channels_curl__:hover,
     #__wx_channels_api__:hover {
@@ -203,16 +206,10 @@
     // WXU.toast("开始下载");
     dialog$.show();
   }
-  function render_download_button(opt) {
+  function render_download_button() {
     var $btn = document.createElement("div");
-    // $btn.className = "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link";
-    $btn.style.cssText = `display: flex; align-items: center; margin-left: 16px; font-size: 14px; cursor: pointer;`;
-    var text = `<span class="sns_opr_gap" style="margin-left: 1px">下载</span>`;
-    if (opt.type === 2) {
-      $btn.style.cssText = `display: flex; align-items: center; flex-direction: column; margin-left: 4px; font-size: 14px; cursor: pointer;`;
-      var text = `<span class="" style="width: 39px; text-align: center; font-size: 12px;">下载</span>`;
-    }
-    $btn.innerHTML = `<span style="position: relative; top: -6px; width: 24px; height: 24px; font-size: 24px;">${DownloadIcon8}</span>${text}`;
+    $btn.className = "sns_opr_btn_con";
+    $btn.innerHTML = `<button aria-labelledby="__wx_download_bottom_text" class="sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link"><span id="__wx_download_bottom_text" class="sns_opr_gap"> 下载 </span></button>`;
     return $btn;
   }
   function insert_rss_button(acct) {
@@ -241,6 +238,8 @@
     ]);
   }
   function insert_download_button() {
+    insert_style();
+    document.body.classList.add("wx-officialaccount-download-menu-mounted");
     var $wraps = document.querySelectorAll(".interaction_bar");
     var $container = $wraps[$wraps.length - 1];
     if (window.cgiDataNew.page_type === 2) {
@@ -252,9 +251,9 @@
     const dialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
-    var $btn = render_download_button({ type: window.cgiDataNew.page_type });
+    var $btn = render_download_button();
     const dropdown$ = new Timeless.ui.DropdownMenuCore({
-      trigger: "click",
+      trigger: "hover",
       align: "end",
       items: [
         new Timeless.ui.MenuItemCore({
@@ -302,7 +301,7 @@
     dropdownRoot.style.display = "contents";
     document.body.appendChild(dropdownRoot);
     Timeless.DOM.render(
-      DropdownMenu({ store: dropdown$ }),
+      Timeless.shadcn.DropdownMenu({ store: dropdown$ }),
       dropdownRoot,
     );
     function set_dropdown_reference() {
@@ -316,30 +315,27 @@
         { force: true },
       );
     }
-    function is_dropdown_visible() {
-      return !!(dropdown$.state && dropdown$.state.visible);
+    function show_dropdown() {
+      set_dropdown_reference();
+      dropdown$.handleEnterTrigger();
     }
-    function toggle_dropdown(event) {
+    function hide_dropdown() {
+      dropdown$.handleLeaveTrigger();
+    }
+    async function handle_download_click(event) {
       event.preventDefault();
       event.stopPropagation();
-      set_dropdown_reference();
-      if (is_dropdown_visible()) {
-        dropdown$.hide({ reason: "download menu trigger click" });
-      } else if (typeof dropdown$.show === "function") {
-        dropdown$.show({ reason: "download menu trigger click" });
-      } else if (typeof dropdown$.handleEnterTrigger === "function") {
-        dropdown$.handleEnterTrigger();
-      }
+      dropdown$.hide({ reason: "download button click" });
+      await create_officialaccount_download_task(dialog$);
     }
-    $btn.addEventListener("click", toggle_dropdown);
+    $btn.addEventListener("mouseenter", show_dropdown);
+    $btn.addEventListener("mouseleave", hide_dropdown);
+    $btn.addEventListener("click", handle_download_click);
     $btn.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
     $container.insertBefore($btn, $container.lastElementChild);
-    const panel$ = DownloaderPanel({ dialog$ });
-    setTimeout(() => {
-      document.body.appendChild(panel$.render());
-    }, 0);
+    Timeless.DOM.render(DownloaderPanel({ dialog$ }), document.body);
   }
   window.insert_download_button = insert_download_button;
   async function main() {

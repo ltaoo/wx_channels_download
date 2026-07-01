@@ -48,7 +48,7 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		RemoteServerPort:          viper.GetInt("download.remoteServer.port"),
 		RefreshToken:              viper.GetString("mp.refreshToken"),
 		TokenFilepath:             viper.GetString("mp.tokenFilepath"),
-		Disabled:                  viper.GetBool("mp.disabled"),
+		Disabled:                  !config.IsMPEnabled(),
 		RefreshSkipMinutes:        viper.GetInt("mp.refreshSkipMinutes"),
 		MaxWebsocketClients:       viper.GetInt("mp.maxWebsocketClients"),
 		AccountIdsRefreshInterval: viper.GetStringSlice("mp.accountIdsRefreshInterval"),

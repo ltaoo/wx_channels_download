@@ -2069,8 +2069,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
 
   const submenu$ = new Timeless.ui.MenuCore({
     items: [],
-    // trigger: "hover",
-    trigger: "click",
+    trigger: "hover",
   });
   let dropdown$ = null;
 
@@ -2153,8 +2152,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
   }
 
   dropdown$ = new Timeless.ui.DropdownMenuCore({
-    // trigger: "hover",
-    trigger: "click",
+    trigger: "hover",
     align: "end",
     items: build_root_menu_items(),
   });

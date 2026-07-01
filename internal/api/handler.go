@@ -18,7 +18,6 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
@@ -26,6 +25,7 @@ import (
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
 	result "wx_channel/internal/util"
+	officialaccountdownload "wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
 )
 
