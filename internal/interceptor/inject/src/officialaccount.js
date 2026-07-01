@@ -403,7 +403,7 @@
     }
   }
   WXU.onWindowLoaded(() => {
-    if (WXU.config.officialServerDisabled) {
+    if (!WXU.config.officialAccountEnabled) {
       return;
     }
     main();

@@ -28,7 +28,7 @@ type InterceptorConfig struct {
 	RemoteServerHostname                string `json:"remoteServerHostname"`
 	RemoteServerPort                    int    `json:"remoteServerPort"`
 	OfficialAccountServerRefreshToken   string `json:"officialServerRefreshToken"`
-	OfficialAccountServerDisabled       bool   `json:"officialServerDisabled"`
+	OfficialAccountEnabled              bool   `json:"officialAccountEnabled"`
 	OfficialAccountRemoteServerProtocol string `json:"officialRemoteServerProtocol"`
 	OfficialAccountRemoteServerHostname string `json:"officialRemoteServerHostname"`
 	OfficialAccountRemoteServerPort     int    `json:"officialRemoteServerPort"`
@@ -80,7 +80,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		RemoteServerProtocol:                viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:                viper.GetString("download.remoteServer.hostname"),
 		RemoteServerPort:                    viper.GetInt("download.remoteServer.port"),
-		OfficialAccountServerDisabled:       !config.IsMPEnabled(),
+		OfficialAccountEnabled:              config.IsMPEnabled(),
 		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
 		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
 		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),

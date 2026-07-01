@@ -1004,7 +1004,7 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
-	data, err := interceptor.Assets.ReadSrc("download/index.html")
+	data, err := interceptor.Assets.ReadRoot("index.html")
 	if err != nil {
 		result.Err(ctx, http.StatusInternalServerError, err.Error())
 		return

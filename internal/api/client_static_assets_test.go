@@ -64,7 +64,7 @@ func TestAPIClientServesChannelSrcAssetWithETag(t *testing.T) {
 
 func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	withTestChannelAssets(t, map[string]string{
-		"src/download/index.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/download/index.js"></script>`,
+		"index.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/download/index.js"></script>`,
 	})
 	gin.SetMode(gin.TestMode)
 	client := &APIClient{
@@ -98,7 +98,7 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 
 func TestAPIClientServesDownloadPageAtRoot(t *testing.T) {
 	withTestChannelAssets(t, map[string]string{
-		"src/download/index.html": `<!doctype html><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;</script>`,
+		"index.html": `<!doctype html><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;</script>`,
 	})
 	gin.SetMode(gin.TestMode)
 	client := &APIClient{
