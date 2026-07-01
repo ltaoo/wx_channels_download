@@ -96,6 +96,30 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	}
 }
 
+func TestAPIClientServesDownloadPageAtRoot(t *testing.T) {
+	withTestChannelAssets(t, map[string]string{
+		"src/download/index.html": `<!doctype html><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;</script>`,
+	})
+	gin.SetMode(gin.TestMode)
+	client := &APIClient{
+		cfg:    &APIConfig{Protocol: "http", Hostname: "127.0.0.1", Port: 2022},
+		engine: gin.New(),
+	}
+	client.engine.GET("/", client.handleIndex)
+
+	resp := performStaticAssetRequest(client, http.MethodGet, "/", nil)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.Code, http.StatusOK)
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, `"Hostname":"127.0.0.1"`) {
+		t.Fatalf("body = %q, want rendered API config", body)
+	}
+	if strings.Contains(body, "__WX_DOWNLOAD_CONFIG_JSON__") {
+		t.Fatalf("body = %q, want config placeholder replaced", body)
+	}
+}
 func withTestChannelAssets(t *testing.T, assets map[string]string) {
 	t.Helper()
 

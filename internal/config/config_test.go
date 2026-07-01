@@ -96,6 +96,25 @@ func TestSaveDoesNotPersistMPEnabledDefault(t *testing.T) {
 	}
 }
 
+func TestMPDisabledConfigItemIsDeprecated(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+
+	cfg := &Config{Existing: false}
+	if err := cfg.LoadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	for _, item := range GetSchema() {
+		if item.Key == "mp.disabled" {
+			if !item.Deprecated {
+				t.Fatal("mp.disabled Deprecated = false, want true")
+			}
+			return
+		}
+	}
+	t.Fatal("mp.disabled config item not found")
+}
 func loadTestConfig(t *testing.T, data string) *Config {
 	t.Helper()
 

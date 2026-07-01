@@ -366,9 +366,10 @@ func (c *Config) LoadConfig() error {
 		Key:         "mp.disabled",
 		Type:        ConfigTypeBool,
 		Default:     true,
-		Description: "是否禁用公众号本地服务，本地服务会提供接口、RSS 等功能",
-		Title:       "启用本地服务",
+		Description: "Deprecated: use mp.enabled instead. This legacy option disables the OfficialAccount local service.",
+		Title:       "Disable local service (deprecated)",
 		Group:       "OfficialAccount",
+		Deprecated:  true,
 	})
 	Register(ConfigItem{
 		Key:         "mp.remoteServer.protocol",

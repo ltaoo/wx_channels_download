@@ -999,6 +999,10 @@ func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
+func (c *APIClient) handleIndex(ctx *gin.Context) {
+	c.handleDownloadPage(ctx)
+}
+
 func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
 	data, err := interceptor.Assets.ReadSrc("download/index.html")
 	if err != nil {
