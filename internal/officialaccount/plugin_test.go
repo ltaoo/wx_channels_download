@@ -57,6 +57,7 @@ func (ctx *officialAccountPluginContext) SetStatusCode(code int) {
 
 func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 	cfg := &OfficialAccountConfig{
+		Enabled:  true,
 		Protocol: "http",
 		Hostname: "127.0.0.1",
 		Port:     2022,
@@ -82,6 +83,10 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 	ctx.res.Header.Set("Content-Security-Policy", "default-src 'self'; script-src 'nonce-testnonce'; style-src 'self' 'unsafe-inline'")
 
 	plugin.OnResponse(ctx)
+
+	if !strings.Contains(ctx.body, `"officialAccountEnabled":true`) {
+		t.Fatalf("official account HTML does not expose officialAccountEnabled=true:\n%s", ctx.body)
+	}
 
 	if !strings.Contains(ctx.body, `<style nonce="testnonce">.tt-py-1{padding-block:calc(var(--spacing) * 1)}</style>`) {
 		t.Fatalf("official account HTML does not contain inline shadcn CSS:\n%s", ctx.body)

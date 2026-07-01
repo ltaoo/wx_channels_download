@@ -25,7 +25,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *i
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			// pathname := ctx.Req().URL.Path
-			if !cfg.Disabled && hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+			if cfg.Enabled && hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
 					return

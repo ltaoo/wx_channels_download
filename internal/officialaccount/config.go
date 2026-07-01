@@ -10,7 +10,7 @@ import (
 
 type OfficialAccountConfig struct {
 	RootDir                   string
-	Disabled                  bool `json:"officialServerDisabled"` // 是否禁用公众号服务
+	Enabled                   bool `json:"officialAccountEnabled"`
 	DebugShowError            bool
 	PagespyEnabled            bool
 	Protocol                  string
@@ -33,8 +33,10 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 	protocol := viper.GetString("api.protocol")
 	hostname := viper.GetString("api.hostname")
 	port := viper.GetInt("api.port")
+	enabled := config.IsMPEnabled()
 	cfg := &OfficialAccountConfig{
 		RootDir:                   c.RootDir,
+		Enabled:                   enabled,
 		DebugShowError:            viper.GetBool("debug.error"),
 		PagespyEnabled:            viper.GetBool("pagespy.enabled"),
 		Protocol:                  protocol,
@@ -48,7 +50,6 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		RemoteServerPort:          viper.GetInt("download.remoteServer.port"),
 		RefreshToken:              viper.GetString("mp.refreshToken"),
 		TokenFilepath:             viper.GetString("mp.tokenFilepath"),
-		Disabled:                  !config.IsMPEnabled(),
 		RefreshSkipMinutes:        viper.GetInt("mp.refreshSkipMinutes"),
 		MaxWebsocketClients:       viper.GetInt("mp.maxWebsocketClients"),
 		AccountIdsRefreshInterval: viper.GetStringSlice("mp.accountIdsRefreshInterval"),
