@@ -33,31 +33,43 @@ async function __wx_insert_live_download_btn($btn) {
  * @param {HTMLElement} trigger
  */
 function __wx_attach_live_download_dropdown_menu(trigger) {
-  const { DropdownMenu, Menu, MenuItem } = WUI;
-  const submenu$ = Menu({
-    children: [],
+  const dropdown$ = new Timeless.ui.DropdownMenuCore({
+    trigger: "hover",
+    align: "end",
+    items: [],
   });
-  const dropdown$ = DropdownMenu({
-    $trigger: trigger,
-    zIndex: 99999,
-    children: [],
-    onMouseEnter() {
-      if (submenu$.isOpen) {
-        submenu$.hide();
-      }
-    },
+  const mount = document.createElement("span");
+  mount.className = "wx-download-dropdown-menu-root";
+  mount.style.display = "contents";
+  document.body.appendChild(mount);
+  Timeless.DOM.render(Timeless.shadcn.DropdownMenu({ store: dropdown$ }), mount);
+
+  function set_reference() {
+    dropdown$.setReference(
+      {
+        $el: trigger,
+        getRect() {
+          return trigger.getBoundingClientRect();
+        },
+      },
+      { force: true },
+    );
+  }
+
+  trigger.addEventListener("mouseenter", () => {
+    set_reference();
+    dropdown$.handleEnterTrigger();
   });
-  dropdown$.ui.$trigger.onMouseLeave(() => {
-    if (dropdown$.isHover) {
-      return;
-    }
-    dropdown$.hide();
+  trigger.addEventListener("mouseleave", () => {
+    dropdown$.handleLeaveTrigger();
   });
-  return [dropdown$, submenu$];
+  trigger.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  return [dropdown$];
 }
 
 (() => {
-  insert_channels_style();
   var error_tip_timer = setTimeout(() => {
     WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
   }, 5000);
@@ -131,7 +143,6 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       "poll",
     );
     console.log("[live.js]has more options", i[1]);
-    var { MenuItem } = WUI;
     if (i && i[1] && i[1].payload.channelParams) {
       var options = i[1].payload.channelParams.cdn_trans_info.filter(
         (vv) => vv.url,
@@ -140,11 +151,11 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       const download_menus = [
         ...(() => {
           return options.map((opt) => {
-            var level_desc = opt.video_quality_level_desc
-              ? `<div style="inline-block;margin-left: 4px;">(${opt.video_quality_level_desc})</div>`
-              : "";
-            return MenuItem({
-              label: `<div class="flex"><div style="inline-block;width: 56px;">${opt.tag_name}</div><div style="inline-block;width: 32px;">${opt.rate}</div>${level_desc}</div>`,
+
+            return new Timeless.ui.MenuItemCore({
+              label: [opt.tag_name, opt.rate, opt.video_quality_level_desc]
+                .filter(Boolean)
+                .join(" "),
               onClick() {
                 __wx_copy_live_download_command(opt.url);
                 dropdown$.hide();
@@ -155,7 +166,7 @@ function __wx_attach_live_download_dropdown_menu(trigger) {
       ];
       dropdown$.setChildren(download_menus);
       dropdown$.ui.$trigger.onMouseEnter(() => {
-        dropdown$.show();
+        dropdown$.show($btn);
       });
     }
   }

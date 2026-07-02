@@ -1,29 +1,9 @@
 /**
  * @file 所有的工具函数 + API + 事件总线
  */
-var FakeLocalAPIServerAddr = "kf.qq.com";
-var FakeRemoteAPIServerAddr = "weixin110.qq.com";
-var FakeRemoteAPIServerProtocol = "https";
-var FakeLocalAPIServerProtocol = "https";
-var WSServerProtocol = "wss";
-if (typeof window.__wx_channels_config__ === "undefined") {
-  __wx_channels_config__ = {};
+if (typeof WXEnv === "undefined") {
+  throw new Error("env.js must be loaded before utils.js");
 }
-if (typeof window.WXVariable === "undefined") {
-  WXVariable = {};
-}
-var __wx_assets_base = (function () {
-  // var cfg = __wx_channels_config__;
-  // if (cfg && cfg.apiServerProtocol && cfg.apiServerAddr) {
-  //   return (
-  //     cfg.apiServerProtocol +
-  //     "://" +
-  //     cfg.apiServerAddr +
-  //     "/__wx_channels_assets"
-  //   );
-  // }
-  return "https://channels.weixin.qq.com/__wx_channels_assets";
-})();
 var __wx_username;
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
@@ -107,6 +87,447 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function __wx_ensure_feedback_style() {
+    if (document.getElementById("wx-feedback-style")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "wx-feedback-style";
+    style.textContent = `
+.wx-top-tip {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 2147483647;
+  max-width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #fa5151;
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
+  transform: translateX(-50%);
+}
+.wx-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  z-index: 2147483647;
+  max-width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+.wx-loading-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.08);
+}
+.wx-loading-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 14px;
+}
+.wx-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: wx-feedback-spin 0.8s linear infinite;
+}
+@keyframes wx-feedback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}`;
+    document.head.appendChild(style);
+  }
+  function __wx_top_tip(text) {
+    __wx_ensure_feedback_style();
+    const tip = document.createElement("div");
+    tip.className = "wx-top-tip";
+    tip.textContent = text || "";
+    document.body.appendChild(tip);
+    setTimeout(() => {
+      tip.remove();
+    }, 3000);
+    return {
+      hide() {
+        tip.remove();
+      },
+    };
+  }
+  function __wx_toast(text) {
+    __wx_ensure_feedback_style();
+    const toast = document.createElement("div");
+    toast.className = "wx-toast";
+    toast.textContent = text || "";
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.remove();
+    }, 2200);
+    return {
+      hide() {
+        toast.remove();
+      },
+    };
+  }
+  function __wx_loading(text = "加载中") {
+    __wx_ensure_feedback_style();
+    const mask = document.createElement("div");
+    mask.className = "wx-loading-mask";
+    mask.innerHTML = `<div class="wx-loading-box"><span class="wx-loading-spinner"></span><span>${text}</span></div>`;
+    document.body.appendChild(mask);
+    return {
+      hide() {
+        mask.remove();
+      },
+    };
+  }
+  function __wx_menu_item(options) {
+    return options || null;
+  }
+  function __wx_create_menu(options = {}) {
+    const root = document.createElement("div");
+    root.className = options.className || "wx-simple-menu";
+    root.style.position = "fixed";
+    root.style.display = "none";
+    root.style.zIndex = String(options.zIndex || 99999);
+    document.body.appendChild(root);
+
+    let anchor = null;
+    let placement = options.placement || "bottom-end";
+    let isHover = false;
+    let isOpen = false;
+    let hideTimer = null;
+    let childMenus = [];
+    let cleanupAutoUpdate = null;
+
+    function clearHideTimer() {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+    function normalizePlacement(value) {
+      if (value === "right") {
+        return "right-start";
+      }
+      if (value === "left") {
+        return "left-start";
+      }
+      return value || "bottom-end";
+    }
+    function stopAutoUpdate() {
+      if (typeof cleanupAutoUpdate === "function") {
+        cleanupAutoUpdate();
+      }
+      cleanupAutoUpdate = null;
+    }
+    function startAutoUpdate() {
+      stopAutoUpdate();
+      if (!anchor) {
+        return;
+      }
+      const update = () => {
+        if (isOpen) {
+          position();
+        }
+      };
+      window.addEventListener("resize", update);
+      window.addEventListener("scroll", update, true);
+      cleanupAutoUpdate = () => {
+        window.removeEventListener("resize", update);
+        window.removeEventListener("scroll", update, true);
+      };
+    }
+    function scheduleHide() {
+      clearHideTimer();
+      hideTimer = setTimeout(() => {
+        if (!isHover) {
+          api.hide();
+        }
+      }, 100);
+    }
+    function fallbackPosition() {
+      if (!anchor) {
+        return;
+      }
+      const rect = anchor.getBoundingClientRect();
+      const width = root.offsetWidth || 160;
+      const height = root.offsetHeight || 40;
+      const gap = 6;
+      const padding = 8;
+      const normalizedPlacement = normalizePlacement(placement);
+      const side = normalizedPlacement.split("-")[0];
+      const align = normalizedPlacement.split("-")[1] || "center";
+      let left = rect.left + rect.width / 2 - width / 2;
+      let top = rect.bottom + gap;
+
+      if (align === "start") {
+        left = side === "top" || side === "bottom" ? rect.left : left;
+        top = side === "left" || side === "right" ? rect.top : top;
+      } else if (align === "end") {
+        left = side === "top" || side === "bottom" ? rect.right - width : left;
+        top = side === "left" || side === "right" ? rect.bottom - height : top;
+      }
+
+      if (side === "top") {
+        top = rect.top - height - gap;
+      } else if (side === "left") {
+        left = rect.left - width - gap;
+        if (
+          left < padding &&
+          rect.right + gap + width <= window.innerWidth - padding
+        ) {
+          left = rect.right + gap;
+        }
+      } else if (side === "right") {
+        left = rect.right + gap;
+        if (
+          left + width > window.innerWidth - padding &&
+          rect.left - width - gap >= padding
+        ) {
+          left = rect.left - width - gap;
+        }
+      } else if (top + height > window.innerHeight - padding) {
+        const topSide = rect.top - height - gap;
+        if (topSide >= padding) {
+          top = topSide;
+        }
+      }
+
+      left = Math.max(
+        padding,
+        Math.min(left, window.innerWidth - width - padding),
+      );
+      top = Math.max(
+        padding,
+        Math.min(top, window.innerHeight - height - padding),
+      );
+      root.style.left = `${left}px`;
+      root.style.top = `${top}px`;
+    }
+    function position() {
+      if (!anchor) {
+        return Promise.resolve();
+      }
+      fallbackPosition();
+      return Promise.resolve();
+    }
+    function renderLabel(item, target) {
+      if (item.label instanceof Node) {
+        target.appendChild(item.label);
+        return;
+      }
+      target.innerHTML = item.label == null ? "" : String(item.label);
+    }
+    function renderItem(item) {
+      if (!item) {
+        return null;
+      }
+      const itemEl = document.createElement("div");
+      itemEl.className = "wx-simple-menu-item";
+      if (item.title) {
+        itemEl.title = item.title;
+      }
+      const labelEl = document.createElement("span");
+      labelEl.className = "wx-simple-menu-item-label";
+      renderLabel(item, labelEl);
+      itemEl.appendChild(labelEl);
+      if (item.submenu) {
+        const arrow = document.createElement("span");
+        arrow.className = "wx-simple-menu-item-arrow";
+        arrow.textContent = ">";
+        itemEl.appendChild(arrow);
+        itemEl.addEventListener("mouseenter", () => {
+          item.submenu.show(itemEl, "right");
+        });
+        itemEl.addEventListener("mouseleave", () => {
+          setTimeout(() => {
+            if (!item.submenu.isHover) {
+              item.submenu.hide();
+            }
+          }, 100);
+        });
+      }
+      if (typeof item.onMouseEnter === "function") {
+        itemEl.addEventListener("mouseenter", item.onMouseEnter);
+      }
+      if (typeof item.onMouseLeave === "function") {
+        itemEl.addEventListener("mouseleave", item.onMouseLeave);
+      }
+      if (typeof item.onClick === "function") {
+        itemEl.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          await item.onClick(event);
+        });
+      }
+      return itemEl;
+    }
+
+    root.addEventListener("mouseenter", () => {
+      isHover = true;
+      clearHideTimer();
+    });
+    root.addEventListener("mouseleave", () => {
+      isHover = false;
+      scheduleHide();
+    });
+
+    const api = {
+      ui: {
+        $trigger: {
+          onMouseEnter(fn) {
+            options.trigger?.addEventListener("mouseenter", fn);
+          },
+          onMouseLeave(fn) {
+            options.trigger?.addEventListener("mouseleave", (event) => {
+              setTimeout(() => {
+                fn(event);
+              }, 100);
+            });
+          },
+        },
+      },
+      get isHover() {
+        return isHover;
+      },
+      get isOpen() {
+        return isOpen;
+      },
+      setChildren(items) {
+        childMenus.forEach((menu) => menu.hide());
+        childMenus = [];
+        root.innerHTML = "";
+        (items || []).filter(Boolean).forEach((item) => {
+          if (item.submenu) {
+            childMenus.push(item.submenu);
+          }
+          const itemEl = renderItem(item);
+          if (itemEl) {
+            root.appendChild(itemEl);
+          }
+        });
+        if (isOpen) {
+          position();
+        }
+      },
+      show(nextAnchor, nextPlacement) {
+        anchor = nextAnchor || anchor || options.trigger || null;
+        placement = nextPlacement || options.placement || placement;
+        clearHideTimer();
+        stopAutoUpdate();
+        root.style.display = "block";
+        root.style.visibility = "hidden";
+        isOpen = true;
+        position().then(() => {
+          if (!isOpen) {
+            return;
+          }
+          root.style.visibility = "visible";
+          startAutoUpdate();
+        });
+      },
+      hide() {
+        clearHideTimer();
+        stopAutoUpdate();
+        childMenus.forEach((menu) => menu.hide());
+        root.style.display = "none";
+        isOpen = false;
+      },
+      destroy() {
+        api.hide();
+        root.remove();
+      },
+    };
+    api.setChildren(options.children || []);
+    return api;
+  }
+  function __wx_create_dropdown_menu(trigger, options = {}) {
+    return __wx_create_menu({
+      ...options,
+      trigger,
+      placement: options.placement || "bottom-end",
+    });
+  }
+  function __wx_create_popover(trigger, options = {}) {
+    const root = document.createElement("div");
+    root.className = options.className || "wx-simple-popover";
+    root.style.position = "fixed";
+    root.style.display = "none";
+    root.style.zIndex = String(options.zIndex || 99998);
+    root.innerHTML = options.content || "";
+    document.body.appendChild(root);
+    let isOpen = false;
+    function position() {
+      const rect = trigger.getBoundingClientRect();
+      const width = root.offsetWidth || 320;
+      const height = root.offsetHeight || 40;
+      let left = rect.right - width;
+      let top = rect.bottom + 6;
+      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+      root.style.left = `${left}px`;
+      root.style.top = `${top}px`;
+    }
+    const api = {
+      open() {
+        root.style.display = "block";
+        root.style.visibility = "hidden";
+        isOpen = true;
+        position();
+        root.style.visibility = "visible";
+      },
+      close() {
+        root.style.display = "none";
+        isOpen = false;
+      },
+      toggle() {
+        if (isOpen) {
+          api.close();
+        } else {
+          api.open();
+        }
+      },
+    };
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      api.toggle();
+    });
+    if (options.closeOnClickOutside) {
+      document.addEventListener("click", (event) => {
+        if (!isOpen) {
+          return;
+        }
+        if (root.contains(event.target) || trigger.contains(event.target)) {
+          return;
+        }
+        api.close();
+      });
+    }
+    return api;
+  }
   function confirm_overwrite_download(msg) {
     return new Promise((resolve) => {
       const content =
@@ -115,53 +536,61 @@ var WXU = (() => {
         resolve(window.confirm(content));
         return;
       }
+      const timeless = window.Timeless;
+      if (
+        !timeless ||
+        !timeless.ui ||
+        !timeless.ui.DialogCore ||
+        typeof timeless.render !== "function" ||
+        typeof window.Dialog !== "function" ||
+        typeof window.View !== "function"
+      ) {
+        resolve(window.confirm(content));
+        return;
+      }
+      const dialog$ = new timeless.ui.DialogCore({
+        closeable: true,
+      });
+      let settled = false;
       const $root = document.createElement("div");
-      const close = (overwrite) => {
-        document.removeEventListener("keydown", handleKeydown);
-        $root.remove();
-        resolve(overwrite);
-      };
-      const handleKeydown = (e) => {
+      let offStateChange = null;
+      const dialogView = OverwriteDownloadConfirmDialog({
+        store: dialog$,
+        content,
+        onConfirm() {
+          close(true);
+        },
+      });
+      function handleKeydown(e) {
         if (e.key === "Escape") {
           close(false);
         }
-      };
-      $root.innerHTML = `
-        <div class="fixed inset-0 z-50 bg-black/80" style="position: fixed; inset: 0; z-index: 999999; background-color: rgba(0, 0, 0, 0.8);"></div>
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="position: fixed; inset: 0; z-index: 1000000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
-          <div role="dialog" aria-modal="true" aria-label="文件已存在" style="width: 320px; max-width: calc(100vw - 32px); box-sizing: border-box; border-radius: 8px; background: var(--popup-bg-color); color: var(--weui-FG-0); box-shadow: 0 8px 28px rgba(0,0,0,0.28); overflow: hidden;">
-            <div style="padding: 20px 20px 16px;">
-              <div style="font-size: 17px; font-weight: 600; line-height: 24px; margin-bottom: 8px;">文件已存在</div>
-              <div style="font-size: 14px; line-height: 20px; color: var(--weui-FG-1); margin-bottom: 4px;">${escape_html(content)}</div>
-            </div>
-            <div style="display: flex; border-top: 1px solid var(--weui-DIALOG-LINE-COLOR);">
-              <button type="button" data-action="skip" style="flex: 1; height: 48px; border: 0; background: transparent; color: var(--weui-FG-0); font-size: 16px; cursor: pointer;">跳过</button>
-              <button type="button" data-action="overwrite" style="flex: 1; height: 48px; border: 0; border-left: 1px solid var(--weui-DIALOG-LINE-COLOR); background: transparent; color: #FA5151; font-size: 16px; font-weight: 500; cursor: pointer;">覆盖</button>
-            </div>
-          </div>
-        </div>
-      `;
-      $root.addEventListener("click", (e) => {
-        const action = e.target && e.target.getAttribute("data-action");
-        if (action === "overwrite") {
-          close(true);
+      }
+      function close(overwrite) {
+        if (settled) {
           return;
         }
-        if (action === "skip" || e.target === $root.children[1]) {
-          close(false);
+        settled = true;
+        document.removeEventListener("keydown", handleKeydown);
+        if (typeof offStateChange === "function") {
+          offStateChange();
         }
+        dialog$.hide();
+        dialogView.onUnmounted();
+        $root.remove();
+        resolve(overwrite);
+      }
+      offStateChange = dialog$.onStateChange((state) => {
+        if (settled || state.visible || state.enter) {
+          return;
+        }
+        close(false);
       });
+      timeless.render(dialogView, $root);
       document.addEventListener("keydown", handleKeydown);
       document.body.appendChild($root);
+      dialog$.show();
     });
-  }
-  function escape_html(text) {
-    return String(text)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
   }
   function get_media_url(media) {
     if (!media) {
@@ -395,7 +824,7 @@ var WXU = (() => {
       body: JSON.stringify(params),
     });
     if (_alert) {
-      weui.topTips(params.msg);
+      __wx_top_tip(params.msg);
     }
   }
   const script_loaded_map = {};
@@ -727,7 +1156,7 @@ var WXU = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
-      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);
@@ -952,11 +1381,7 @@ var WXU = (() => {
         const createTask = (overwrite) =>
           WXU.request({
             method: "POST",
-            url:
-              APIServerProtocol +
-              "://" +
-              FakeAPIServerAddr +
-              "/api/task/create",
+            url: WXEnv.apiOrigin + "/api/task/create",
             body: {
               ...requestBody,
               overwrite: !!overwrite,
@@ -1044,11 +1469,7 @@ var WXU = (() => {
         WXU.downloader.show();
         var [err, data] = await WXU.request({
           method: "POST",
-          url:
-            APIServerProtocol +
-            "://" +
-            FakeAPIServerAddr +
-            "/api/task/create_batch",
+          url: WXEnv.apiOrigin + "/api/task/create_batch",
           body,
         });
         if (err) {
@@ -1080,7 +1501,7 @@ var WXU = (() => {
      * 类型转换相关
      */
     async media_buffer_to_wav(...args) {
-      await __wx_load_script(__wx_assets_base + "/lib/recorder.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
       return mediaBufferToWav(...args);
     },
     wav_to_mp3_blob: wavBlobToMP3,
@@ -1138,11 +1559,14 @@ var WXU = (() => {
     log: __wx_log,
     error: __wx_error,
     loading() {
-      return weui.loading();
+      return __wx_loading();
     },
     toast(text) {
-      return weui.toast(text);
+      return __wx_toast(text);
     },
+    menu_item: __wx_menu_item,
+    create_dropdown_menu: __wx_create_dropdown_menu,
+    create_popover: __wx_create_popover,
     append_media_buf(buf) {
       __wx_channels_store__.buffers.push(buf);
     },
@@ -1280,11 +1704,11 @@ var WXU = (() => {
       });
     },
     async save(blob, filename) {
-      await __wx_load_script(__wx_assets_base + "/lib/FileSaver.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/FileSaver.min.js"));
       saveAs(blob, filename);
     },
     async Zip() {
-      await __wx_load_script(__wx_assets_base + "/lib/jszip.min.js");
+      await __wx_load_script(__wx_asset_url("/lib/jszip.min.js"));
       const zip = new JSZip();
       return zip;
     },
@@ -1312,21 +1736,17 @@ var WXU = (() => {
      * @returns {ChannelsConfig}
      */
     get config() {
-      /** @type {ChannelsConfig} */
-      return {
-        ...(__wx_channels_config__ || {}),
-        ...(WXVariable || {}),
-      };
+      return WXEnv.config;
     },
     get version() {
       return __wx_channels_version__;
     },
     env: {
       get isChannels() {
-        return window.location.href.includes("weixin.qq.com");
+        return WXEnv.isChannels;
       },
       get isWxwork() {
-        return window.ua.includes("wxwork");
+        return WXEnv.isWxwork;
       },
     },
   };
@@ -1596,86 +2016,117 @@ async function __wx_channels_handle_download_cover() {
   const blob = await response.blob();
   WXU.save(blob, filename + ".jpg");
 }
+
+function __wx_download_menu_label(label) {
+  if (typeof Node !== "undefined" && label instanceof Node) {
+    return label.textContent || "";
+  }
+  return label == null ? "" : String(label);
+}
+
+function __wx_download_menu_click_payload(trigger) {
+  const [err, profile] = WXU.check_feed_existing({
+    silence: true,
+  });
+  return {
+    profile: err ? null : profile,
+    trigger,
+  };
+}
+
+function __wx_create_timeless_download_menu_item(options, trigger, close) {
+  return new Timeless.ui.MenuItemCore({
+    label: __wx_download_menu_label(options.label),
+    tooltip: options.title,
+    disabled: !!options.disabled,
+    async onClick() {
+      if (typeof options.onClick === "function") {
+        await options.onClick(__wx_download_menu_click_payload(trigger));
+      }
+      close();
+    },
+  });
+}
+
+function __wx_render_extra_download_dropdown_items(items, trigger, close) {
+  return (items || [])
+    .filter((item) => {
+      return item.label && item.onClick;
+    })
+    .map((item) => {
+      return __wx_create_timeless_download_menu_item(item, trigger, close);
+    });
+}
+
 /**
  * 为指定按钮添加额外的下载选项菜单
  * @param {HTMLElement} trigger
  */
 function __wx_attach_download_dropdown_menu(trigger) {
-  const { DropdownMenu, Menu, MenuItem } = WUI;
-  const submenu$ = Menu({
-    children: [],
+  if (trigger.__wxTimelessDownloadDropdown) {
+    return trigger.__wxTimelessDownloadDropdown;
+  }
+
+  const submenu$ = new Timeless.ui.MenuCore({
+    items: [],
+    trigger: "hover",
   });
-  const dropdown$ = DropdownMenu({
-    $trigger: trigger,
-    zIndex: 99999,
-    children: [
-      ...(() => {
-        if (WXU.before_menu_items) {
-          return render_extra_menu_items(WXU.before_menu_items, {
-            hide() {
-              dropdown$.hide();
-            },
-          });
-        }
-        return [];
-      })(),
-      MenuItem({
+  let dropdown$ = null;
+
+  function close_dropdown() {
+    submenu$.hide({ reason: "download menu action" });
+    if (dropdown$) {
+      dropdown$.hide({ reason: "download menu action" });
+    }
+  }
+
+  function build_root_menu_items() {
+    return [
+      ...__wx_render_extra_download_dropdown_items(
+        WXU.before_menu_items,
+        trigger,
+        close_dropdown,
+      ),
+      new Timeless.ui.MenuItemCore({
         label: "更多下载",
-        submenu: submenu$,
-        onMouseEnter() {
-          submenu$.show();
-        },
-        onMouseLeave() {
-          if (!submenu$.isHover) {
-            submenu$.hide();
-          }
-        },
+        menu: submenu$,
       }),
-      MenuItem({
+      new Timeless.ui.MenuItemCore({
         label: "下载为MP3",
         onClick() {
           __wx_channels_handle_click_download__(null, true);
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      MenuItem({
+      new Timeless.ui.MenuItemCore({
         label: "下载封面",
         onClick() {
           __wx_channels_handle_download_cover();
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      MenuItem({
+      new Timeless.ui.MenuItemCore({
         label: "复制页面链接",
         onClick() {
           __wx_channels_handle_copy__();
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
-      ...(() => {
-        if (WXU.after_menu_items) {
-          return render_extra_menu_items(WXU.after_menu_items, {
-            hide() {
-              dropdown$.hide();
-            },
-          });
-        }
-        return [];
-      })(),
-    ],
-    onMouseEnter() {
-      if (submenu$.isOpen) {
-        submenu$.hide();
-      }
-    },
-  });
-  dropdown$.ui.$trigger.onMouseEnter(() => {
-    const download_menus = [
-      MenuItem({
+      ...__wx_render_extra_download_dropdown_items(
+        WXU.after_menu_items,
+        trigger,
+        close_dropdown,
+      ),
+    ];
+  }
+
+  function build_download_menu_items() {
+    return [
+      new Timeless.ui.MenuItemCore({
         label: "原始视频",
         onClick() {
           __wx_channels_handle_click_download__(null);
-          dropdown$.hide();
+          close_dropdown();
         },
       }),
       ...(() => {
@@ -1685,28 +2136,61 @@ function __wx_attach_download_dropdown_menu(trigger) {
         if (err) {
           return [];
         }
-        return profile.spec.map((spec) => {
+        return (profile.spec || []).map((spec) => {
           const title = WXU.format_media_spec_label(spec) || spec.fileFormat;
-          return MenuItem({
+          return new Timeless.ui.MenuItemCore({
             label: WXU.format_media_spec_short_label(spec),
-            title,
+            tooltip: title,
             onClick() {
               __wx_channels_handle_click_download__(spec.fileFormat);
-              dropdown$.hide();
+              close_dropdown();
             },
           });
         });
       })(),
     ];
-    submenu$.setChildren(download_menus);
-    dropdown$.show();
+  }
+
+  dropdown$ = new Timeless.ui.DropdownMenuCore({
+    trigger: "hover",
+    align: "end",
+    items: build_root_menu_items(),
   });
-  dropdown$.ui.$trigger.onMouseLeave(() => {
-    if (dropdown$.isHover) {
-      return;
-    }
-    dropdown$.hide();
+
+  const mount = document.createElement("span");
+  mount.className = "wx-download-dropdown-menu-root";
+  mount.style.display = "contents";
+  document.body.appendChild(mount);
+  Timeless.DOM.render(Timeless.shadcn.DropdownMenu({ store: dropdown$ }), mount);
+
+  function set_reference() {
+    dropdown$.setReference(
+      {
+        $el: trigger,
+        getRect() {
+          return trigger.getBoundingClientRect();
+        },
+      },
+      { force: true },
+    );
+  }
+
+  trigger.addEventListener("mouseenter", () => {
+    set_reference();
+    submenu$.setItems(build_download_menu_items());
+    dropdown$.handleEnterTrigger();
   });
+  trigger.addEventListener("mouseleave", () => {
+    dropdown$.handleLeaveTrigger();
+  });
+  trigger.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+
+  if (trigger.dataset) {
+    trigger.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
+  }
+  trigger.__wxTimelessDownloadDropdown = dropdown$;
   return dropdown$;
 }
 
@@ -1726,386 +2210,40 @@ function __wx_download_btn_handler() {
   __wx_channels_handle_click_download__(spec, false);
 }
 
-if (typeof window.Timeless !== undefined) {
-  Object.assign(Timeless, Timeless.kit);
-  Object.assign(Timeless, Timeless.headless);
+if (typeof window.Timeless !== "undefined") {
+  const timeless = window.Timeless;
+  Object.assign(timeless, timeless.kit);
+  Object.assign(timeless, timeless.headless);
   // Rendering
-  window.h = Timeless.h;
-  window.View = Timeless.View;
-  window.Fragment = Timeless.Fragment;
+  window.h = timeless.h;
+  window.View = timeless.View;
+  window.Fragment = timeless.Fragment;
   // Control flow
-  window.Show = Timeless.Show;
-  window.For = Timeless.For;
-  window.Switch = Timeless.Switch;
-  window.Match = Timeless.Match;
+  window.Show = timeless.Show;
+  window.For = timeless.For;
+  window.Switch = timeless.Switch;
+  window.Match = timeless.Match;
   // Reactivity
-  window.ref = Timeless.ref;
-  window.refobj = Timeless.refobj;
-  window.refarr = Timeless.refarr;
-  window.computed = Timeless.computed;
-  window.combine = Timeless.combine;
-  window.isElement = Timeless.isElement;
+  window.ref = timeless.ref;
+  window.refobj = timeless.refobj;
+  window.refarr = timeless.refarr;
+  window.computed = timeless.computed;
+  window.combine = timeless.combine;
+  window.isElement = timeless.isElement;
   // Styling
-  window.cn = Timeless.cn;
-  window.classNames = Timeless.classNames;
+  window.cn = timeless.cn;
+  window.classNames = timeless.classNames;
   // Primitives
-  window.PopoverPrimitive = Timeless.PopoverPrimitive;
-  window.DropdownMenuPrimitive = Timeless.DropdownMenuPrimitive;
-  window.WaterfallPrimitive = Timeless.WaterfallPrimitive;
-  window.ScrollViewPrimitive = Timeless.ScrollViewPrimitive;
-  window.DialogPrimitive = Timeless.DialogPrimitive;
+  window.PopoverPrimitive = timeless.PopoverPrimitive;
+  window.DropdownMenuPrimitive = timeless.DropdownMenuPrimitive;
+  window.WaterfallPrimitive = timeless.WaterfallPrimitive;
+  window.ScrollViewPrimitive = timeless.ScrollViewPrimitive;
+  window.DialogPrimitive = timeless.DialogPrimitive;
   // SVG helpers
-  window.SVG = Timeless.SVG;
-  window.Circle = Timeless.Circle;
-  // HTML injection
-  window.DangerouslyInnerHTML = Timeless.DangerouslyInnerHTML;
-}
-
-var FakeAPIServerAddr = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerAddr
-  : FakeLocalAPIServerAddr;
-var APIServerProtocol = WXU.config.remoteServerEnabled
-  ? FakeRemoteAPIServerProtocol
-  : FakeLocalAPIServerProtocol;
-
-function getShortUri(data) {
-  var u = new URL(decodeURIComponent(data.url));
-  var pathname = u.pathname;
-  var m = pathname.match(/\/sph\/([a-zA-Z0-9]{1,})/);
-  if (m) {
-    return m[1];
-  }
-  return u.searchParams.get("id");
-}
-async function fetchExportIdWithShareId(data) {
-  if (!data.url) {
-    return [new Error("missing url"), null];
-  }
-  var uri = getShortUri(data);
-  if (!uri) {
-    return [new Error("can't get the uri from url, " + data.url), null];
-  }
-  await WXU.load_script(__wx_assets_base + "/lib/axios.min.js");
-  await WXU.load_script(__wx_assets_base + "/lib/getFeedInfo.js");
-  // await WXU.load_script(__wx_assets_base + "/lib/merlin.js");
-  if (typeof getFeedInfo !== "function") {
-    return [new Error("the getFeedInfo is not a function"), null];
-  }
-  var payload = {
-    baseReq: {
-      generalToken: "",
-    },
-    shortUri: uri,
-  };
-  /** @type {SharedFeedProfileResp} */
-  try {
-    var shared = await getFeedInfo(payload);
-    if (shared.data) {
-      if (shared.data.sceneInfo) {
-        if (shared.data.sceneInfo.dynamicExportId) {
-          return [null, shared.data.sceneInfo.dynamicExportId];
-        }
-        return [new Error("missing 'sceneInfo.dynamicExportId'"), null];
-      }
-      if (shared.data.errMsg) {
-        if (shared.data.errMsg.title) {
-          return [new Error(shared.data.errMsg.title), null];
-        }
-      }
-    }
-    return [new Error("getFeedInfo failed"), null];
-  } catch (err) {
-    return [err, null];
-  }
-}
-async function fetchFeedProfileWith(data) {
-  if (data.url) {
-    if (data.url.match(/sph/)) {
-      var [err, eid] = await fetchExportIdWithShareId(data);
-      if (err) {
-        var m = data.url.match(/\/([a-zA-Z0-9]{1,})$/);
-        if (m[1]) {
-          data.eid = m[1];
-        } else {
-          return [err, null];
-        }
-      } else {
-        data.eid = eid;
-      }
-    } else {
-      var u = new URL(decodeURIComponent(data.url));
-      data.oid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("oid"));
-      data.nid = WXU.API.decodeBase64ToUint64String(u.searchParams.get("nid"));
-    }
-  }
-  let payload = {
-    needObject: 1,
-    lastBuffer: "",
-    scene: data.eid ? 141 : 146,
-    direction: 2,
-    identityScene: 2,
-    pullScene: 6,
-    objectid: (() => {
-      if (data.eid) {
-        return undefined;
-      }
-      if (data.oid.includes("_")) {
-        return data.oid.split("_")[0];
-      }
-      return data.oid;
-    })(),
-    objectNonceId: data.eid ? undefined : data.nid,
-    encrypted_objectid: data.eid || "",
-  };
-  if (data.eid) {
-    payload.traceBuffer = undefined;
-  }
-  try {
-    var r = await WXU.API.finderGetCommentDetail(payload);
-    return [null, r, payload];
-  } catch (err) {
-    return [err, null, null];
-  }
-}
-
-function ChannelsWebsocketClient() {
-  const methods = {
-    connect_local_ws() {
-      const ws_url =
-        WSServerProtocol + "://" + FakeLocalAPIServerAddr + "/ws/channels";
-      const ws = new WebSocket(ws_url);
-      ws.onclose = (e) => {
-        WXU.error({
-          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}`,
-        });
-      };
-      ws.onerror = (e) => {
-        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e) });
-      };
-      ws.onmessage = (ev) => {
-        const [err, msg] = WXU.parseJSON(ev.data);
-        if (err) {
-          return;
-        }
-        if (msg.type === "api_call") {
-          this.__wx_handle_api_call(msg.data, ws);
-        }
-      };
-    },
-    async __wx_handle_api_call(msg, socket) {
-      var { id, key, data } = msg;
-      console.log("[DOWNLOADER]__wx_handle_api_call", id, key, data);
-      function resp(body) {
-        socket.send(
-          JSON.stringify({
-            id,
-            data: body,
-          }),
-        );
-      }
-      if (key === "key:channels:contact_list") {
-        let payload = {
-          query: data.keyword,
-          scene: 13,
-          lastBuff: data.next_marker
-            ? decodeURIComponent(data.next_marker)
-            : "",
-          requestId: String(new Date().valueOf()),
-        };
-        var r = await WXU.API2.finderSearch(payload);
-        console.log("[DOWNLOADER]finderSearch", r, payload);
-        /** @type {SearchResp} */
-        var { infoList, objectList } = r.data;
-        resp({
-          ...r,
-          payload,
-        });
-        return;
-      }
-      if (key === "key:channels:feed_list") {
-        let payload = {
-          username: data.username,
-          finderUsername: __wx_username,
-          lastBuffer: data.next_marker
-            ? decodeURIComponent(data.next_marker)
-            : "",
-          needFansCount: 0,
-          objectId: "0",
-        };
-        let r = await WXU.API.finderUserPage(payload);
-        console.log("[DOWNLOADER]finderUserPage", r);
-        /** @type {ChannelsObject[]} */
-        const object = r.data.object || [];
-        resp({
-          ...r,
-          payload,
-        });
-        return;
-      }
-      if (key === "key:channels:live_replay_list") {
-        let payload = {
-          username: data.username,
-          finderUsername: __wx_username || data.username,
-          lastBuffer: data.next_marker
-            ? decodeURIComponent(data.next_marker)
-            : "",
-          needFansCount: 0,
-          objectId: "0",
-        };
-        var r = await WXU.API3.finderLiveUserPage(payload);
-        console.log("[DOWNLOADER]finderLiveUserPage", r);
-        resp({
-          ...r,
-          payload,
-        });
-        return;
-      }
-      if (key === "key:channels:interactioned_list") {
-        let payload = {
-          lastBuffer: data.next_marker
-            ? decodeURIComponent(data.next_marker)
-            : "",
-          tabFlag: data.flag ? Number(data.flag) : 7,
-        };
-        var r = await WXU.API4.finderGetInteractionedFeedList(payload);
-        console.log("[DOWNLOADER]finderGetInteractionedFeedList", r);
-        resp({
-          ...r,
-          payload,
-        });
-        return;
-      }
-      if (key === "key:channels:feed_profile") {
-        console.log("before finderGetCommentProfile", data);
-        var [err, r, payload] = await fetchFeedProfileWith(data);
-        if (err) {
-          resp({
-            errCode: 1011,
-            errMsg: err.message,
-            payload: null,
-          });
-          return;
-        }
-        /** @type {MediaProfileResp} */
-        var { object } = r.data;
-        resp({
-          ...r,
-          payload,
-        });
-        return;
-      }
-      if (key === "key:channels:fetch_feed_comment_list") {
-        // console.log("[DOWNLOADER]key:channels:fetch_feed_comment_list");
-        if (!data.oid) {
-          resp({
-            errCode: 1011,
-            errMsg: "missing oid",
-            payload: null,
-          });
-          return;
-        }
-        if (!data.nid && !data.comment_id) {
-          resp({
-            errCode: 1011,
-            errMsg: "missing nid or comment_id",
-            payload: null,
-          });
-          return;
-        }
-        try {
-          var payload = data.comment_id
-            ? {
-                direction: 2,
-                identityScene: 2,
-                objectId: data.oid,
-                lastBuffer:
-                  data.next_marker === "" ? undefined : data.next_marker,
-                rootCommentId: data.comment_id,
-              }
-            : {
-                finderBasereq: {
-                  scene: 140,
-                  ctxInfo: {
-                    clientReportBuff: '{"entranceId":"1002"}',
-                  },
-                  objectBaseInfos: [],
-                },
-                objectId: data.oid,
-                direction: 2,
-                objectNonceId: data.nid,
-                identityScene: 2,
-                lastBuffer:
-                  data.next_marker === "" ? undefined : data.next_marker,
-                enterSessionId: String(Date.now()),
-              };
-          var r = await WXU.API.finderGetCommentList(payload);
-          resp({
-            ...r,
-            payload,
-          });
-        } catch (err) {
-          resp({
-            errCode: 1011,
-            errMsg: err.message,
-            payload: null,
-          });
-        }
-        return;
-      }
-      if (key === "key:channels:feed_share_url") {
-        // console.log("[DOWNLOADER]fetchFeedShareUrl");
-        if (!data.oid) {
-          resp({
-            errCode: 1011,
-            errMsg: "missing oid",
-            payload: null,
-          });
-          return;
-        }
-        var payload = {
-          objectId: data.oid,
-        };
-        try {
-          var r = await WXU.API.finderGetFeedH5Url(payload);
-          resp({
-            ...r,
-            payload,
-          });
-        } catch (err) {
-          resp({
-            errCode: 1011,
-            errMsg: err.message,
-            payload,
-          });
-        }
-        return;
-      }
-      if (key === "key:channels:reload") {
-        console.log("[DOWNLOADER]reloading page");
-        resp({
-          msg: "reloading",
-        });
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-        return;
-      }
-      resp({
-        errCode: 1000,
-        errMsg: "未匹配的key",
-        payload: msg,
-      });
-      return;
-    },
-  };
-  return {
-    methods,
-  };
+  window.SVG = timeless.SVG;
+  window.Circle = timeless.Circle;
 }
 
 WXU.onInit((data) => {
   __wx_username = data.mainFinderUsername;
 });
-
-const ws_client$ = ChannelsWebsocketClient();
-ws_client$.methods.connect_local_ws();

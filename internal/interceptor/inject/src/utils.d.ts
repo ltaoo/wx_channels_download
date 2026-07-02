@@ -24,10 +24,8 @@ type ChannelsConfig = {
   downloadInFrontend: boolean;
   /** API 服务地址 */
   apiServerAddr: string;
-  remoteServerEnabled: string;
-  remoteServerProtocol: string;
-  remoteServerHostname: string;
-  remoteServerPort: number;
+  channelsHostname: string;
+  downloadHostname: string;
   MaxRunning: number;
   downloadForceCheckAllFeeds: boolean;
 };

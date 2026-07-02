@@ -59,7 +59,7 @@ https://dash.cloudflare.com/profile/api-tokens
 
 ```yaml
 mp:
-  disabled: false
+  enabled: true
   remoteServer:
     protocol: "https"
     hostname: "mp-rss-api.xx.workers.dev" # 这里填部署好的 cloudflare worker 访问域名
@@ -107,7 +107,7 @@ mp:
 ```yaml
 # config.yaml
 mp:
-  disabled: false
+  enabled: true
   remoteServer:
     protocol: "https"
     hostname: "rss.example.com"

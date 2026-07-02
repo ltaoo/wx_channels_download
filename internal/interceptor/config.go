@@ -28,7 +28,7 @@ type InterceptorConfig struct {
 	RemoteServerHostname                string `json:"remoteServerHostname"`
 	RemoteServerPort                    int    `json:"remoteServerPort"`
 	OfficialAccountServerRefreshToken   string `json:"officialServerRefreshToken"`
-	OfficialAccountServerDisabled       bool   `json:"officialServerDisabled"`
+	OfficialAccountEnabled              bool   `json:"officialAccountEnabled"`
 	OfficialAccountRemoteServerProtocol string `json:"officialRemoteServerProtocol"`
 	OfficialAccountRemoteServerHostname string `json:"officialRemoteServerHostname"`
 	OfficialAccountRemoteServerPort     int    `json:"officialRemoteServerPort"`
@@ -47,6 +47,7 @@ type InterceptorConfig struct {
 	PageppyServerProtocol               string `json:"pagespyServerProtocol"` // pagespy调试地址协议，如 http
 	PageppyServerAPI                    string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
 	DebugShowError                      bool
+	EchoLogEnabled                      bool
 	ChannelsDisableLocationToHome       bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain        string // 额外注入的 js
 	InjectGlobalScriptFilepath          string // 全局脚本路径
@@ -60,6 +61,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 	settings := &InterceptorConfig{
 		Version:                             c.Version,
 		DebugShowError:                      viper.GetBool("debug.error"),
+		EchoLogEnabled:                      viper.GetBool("debug.echolog"),
 		PagespyEnabled:                      viper.GetBool("pagespy.enabled"),
 		PageppyServerProtocol:               viper.GetString("pagespy.protocol"),
 		PageppyServerAPI:                    viper.GetString("pagespy.api"),
@@ -78,7 +80,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		RemoteServerProtocol:                viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:                viper.GetString("download.remoteServer.hostname"),
 		RemoteServerPort:                    viper.GetInt("download.remoteServer.port"),
-		OfficialAccountServerDisabled:       viper.GetBool("mp.disabled"),
+		OfficialAccountEnabled:              config.IsMPEnabled(),
 		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
 		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
 		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),

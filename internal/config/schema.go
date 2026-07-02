@@ -22,6 +22,7 @@ type ConfigItem struct {
 	Title       string      `json:"title"`
 	Group       string      `json:"group"`             // e.g., "Network", "Download"
 	Options     []string    `json:"options,omitempty"` // For select type
+	Deprecated  bool        `json:"deprecated,omitempty"`
 }
 
 var Registry []ConfigItem

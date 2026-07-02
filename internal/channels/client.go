@@ -296,6 +296,25 @@ func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker st
 	return &r, nil
 }
 
+func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*types.ChannelsFollowListResp, error) {
+	cache_key := "channels:follow_list:" + next_marker
+	if val, found := c.cache.Get(cache_key); found {
+		if resp, ok := val.(*types.ChannelsFollowListResp); ok {
+			return resp, nil
+		}
+	}
+	resp, err := c.RequestFrontend("key:channels:follow_list", types.ChannelsFollowListBody{NextMarker: next_marker}, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r types.ChannelsFollowListResp
+	if err := json.Unmarshal(resp.Data, &r); err != nil {
+		return nil, err
+	}
+	c.cache.Set(cache_key, &r, 5*time.Minute)
+	return &r, nil
+}
+
 func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*types.ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)

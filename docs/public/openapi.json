@@ -50,6 +50,9 @@
     "/api/channels/interactioned/list": {
       "$ref": "./openapi/paths/api_channels_interactioned_list.json"
     },
+    "/api/channels/follow/list": {
+      "$ref": "./openapi/paths/api_channels_follow_list.json"
+    },
     "/rss/channels": {
       "$ref": "./openapi/paths/rss_channels.json"
     },

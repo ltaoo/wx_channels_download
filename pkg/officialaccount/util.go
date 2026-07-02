@@ -1,20 +1,71 @@
-package officialaccountdownload
+package officialaccount
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
 	"golang.org/x/image/draw"
 )
+
+const wechatUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN"
+
+func setWechatHeaders(req *http.Request, referer string) {
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", wechatUserAgent)
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+}
+
+func normalizeMediaURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return ""
+	}
+	u = strings.ReplaceAll(u, "&amp;amp;", "&")
+	u = strings.ReplaceAll(u, "&amp;", "&")
+	u = html.UnescapeString(u)
+	if strings.HasPrefix(u, "//") {
+		u = "https:" + u
+	}
+	if strings.HasPrefix(u, "http://mmbiz.qpic.cn/") {
+		u = "https://" + strings.TrimPrefix(u, "http://")
+	}
+	return u
+}
+
+func formatPublishTime(createTime string, unixTime int) string {
+	createTime = strings.TrimSpace(createTime)
+	if createTime != "" {
+		if t, err := time.Parse("2006-01-02 15:04", createTime); err == nil {
+			return t.Format("2006年01月02日 15:04")
+		}
+		return createTime
+	}
+	if unixTime > 0 {
+		return time.Unix(int64(unixTime), 0).Format("2006年01月02日 15:04")
+	}
+	return ""
+}
+
+func isVerificationPage(body string) bool {
+	return strings.Contains(body, "环境异常") && strings.Contains(body, "完成验证后即可继续访问")
+}
 
 func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
@@ -133,6 +184,59 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	return data, nil
 }
 
+func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return nil, err
+	}
+
+	contentSel := doc.Find("#js_content").First()
+	if contentSel.Length() == 0 {
+		return nil, fmt.Errorf("article content not found")
+	}
+
+	content, err := contentSel.Html()
+	if err != nil {
+		return nil, err
+	}
+
+	title := strings.TrimSpace(doc.Find("#activity-name").First().Text())
+	if title == "" {
+		title = strings.TrimSpace(doc.Find(".rich_media_title").First().Text())
+	}
+	if title == "" {
+		if ogTitle, ok := doc.Find(`meta[property="og:title"]`).Attr("content"); ok {
+			title = strings.TrimSpace(ogTitle)
+		}
+	}
+	if title == "" {
+		return nil, fmt.Errorf("article title not found")
+	}
+
+	var images []string
+	contentSel.Find("img").Each(func(i int, s *goquery.Selection) {
+		imgURL := s.AttrOr("data-src", "")
+		if imgURL == "" {
+			imgURL = s.AttrOr("src", "")
+		}
+		imgURL = normalizeMediaURL(imgURL)
+		if imgURL != "" {
+			images = append(images, imgURL)
+		}
+	})
+
+	publishTime := strings.TrimSpace(doc.Find("#publish_time").First().Text())
+	return &WechatOfficialArticle{
+		Title:          title,
+		Content:        content,
+		ContentLength:  len(content),
+		Images:         images,
+		Creator:        strings.TrimSpace(doc.Find("#js_author_name").First().Text()),
+		AuthorNickname: strings.TrimSpace(doc.Find("#js_name").First().Text()),
+		PublishTimeStr: publishTime,
+	}, nil
+}
+
 func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
@@ -175,14 +279,14 @@ func compressImage(data []byte) ([]byte, string, error) {
 }
 
 func downloadImageBytes(imgURL string) ([]byte, string, error) {
+	imgURL = normalizeMediaURL(imgURL)
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", imgURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", "https://mp.weixin.qq.com/")
+	setWechatHeaders(req, "https://mp.weixin.qq.com/")
 
 	resp, err := client.Do(req)
 	if err != nil {
