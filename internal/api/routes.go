@@ -20,6 +20,7 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/api/channels/feed/profile", c.handleFetchFeedProfile)
 		c.engine.GET("/api/channels/live/replay/list", c.handleFetchLiveReplayList)
 		c.engine.GET("/api/channels/interactioned/list", c.handleFetchInteractionedFeedList)
+		c.engine.GET("/api/channels/follow/list", c.handleFetchFollowList)
 		c.engine.GET("/api/channels/shared_feed/profile", c.handleFetchSharedFeedProfile)
 		c.engine.GET("/api/channels/feed/comment/list", c.handleFetchFeedCommentList)
 		c.engine.GET("/api/channels/feed/share_url", c.handleFetchFeedShareUrl)

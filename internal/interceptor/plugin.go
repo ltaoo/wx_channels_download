@@ -42,6 +42,7 @@ var (
 	jsUserFeedsReg                      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
 	jsFinderPCSearchReg                 = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
 	jsFinderSearchReg                   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
+	jsFinderGetFollowListReg            = regexp.MustCompile(`async finderGetFollowList\((\w+)\)\{(.*?)\}async`)
 	jsFinderGetInteractionedFeedListReg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
 	jsFinderGetFeedH5Url                = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
 	jsGoToPrevFlowReg                   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
@@ -187,6 +188,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					ChannelSrcAssetURL(assetBaseURL, "env.channels.js"),
 					ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					ChannelSrcAssetURL(assetBaseURL, "components.js"),
+					ChannelSrcAssetURL(assetBaseURL, "channels.js"),
 				)
 				AppendScriptSrcs(
 					&injected,
@@ -342,6 +344,18 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					return result;
 				}async`
 						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
+					}
+
+					{
+						js_finder_get_follow_list := `async finderGetFollowList($1) {
+						console.log("finderGetFollowList payload", $1);
+						var result = await (async () => {
+							$2;
+						})();
+						console.log("finderGetFollowList result", result);
+						return result;
+					}async`
+						js_script = jsFinderGetFollowListReg.ReplaceAllString(js_script, js_finder_get_follow_list)
 					}
 					{
 						js_finder_interactioned := `async finderGetInteractionedFeedList($1) {

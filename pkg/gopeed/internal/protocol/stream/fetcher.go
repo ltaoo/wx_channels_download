@@ -43,14 +43,14 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 		return err
 	}
 	f.meta.Req = req
-	
+
 	// Since we are using ffmpeg, we might not get exact file details upfront easily without ffprobe.
 	// We will infer generic details.
 	res := &base.Resource{
 		Range: false, // Streams usually don't support range in the traditional sense
 		Files: []*base.FileInfo{},
 	}
-	
+
 	// Attempt to guess filename from URL
 	fileName := path.Base(req.URL)
 	if fileName == "" || fileName == "." || fileName == "/" {
@@ -60,15 +60,15 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 		}
 	}
 	// Append appropriate extension if missing (ffmpeg can often convert or mux)
-	// For simplicity, default to .mp4 if it looks like a video stream and has no extension, 
+	// For simplicity, default to .mp4 if it looks like a video stream and has no extension,
 	// or trust the user/system to name it.
 	// Ideally, the UI/User provides the name.
-	
+
 	res.Files = append(res.Files, &base.FileInfo{
 		Name: fileName,
 		Size: 0, // Unknown size
 	})
-	
+
 	f.meta.Res = res
 	return nil
 }
@@ -120,7 +120,7 @@ func (f *Fetcher) Start() (err error) {
 		newArgs = append(newArgs, args...)
 		args = newArgs
 	}
-	
+
 	// Add other headers if necessary (ffmpeg support for custom headers is via -headers key1:val1\r\nkey2:val2)
 	// Note: This is protocol specific in ffmpeg, mainly HTTP/HLS.
 	if f.meta.Req.Extra != nil {
@@ -128,7 +128,9 @@ func (f *Fetcher) Start() (err error) {
 		if len(extra.Header) > 0 {
 			var headerBuilder strings.Builder
 			for k, v := range extra.Header {
-				if k == "User-Agent" { continue } // Handled separately
+				if k == "User-Agent" {
+					continue
+				} // Handled separately
 				headerBuilder.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 			}
 			headers := headerBuilder.String()
@@ -141,7 +143,7 @@ func (f *Fetcher) Start() (err error) {
 	}
 
 	f.cmd = exec.Command(cmdPath, args...)
-	
+
 	// Capture stderr for progress
 	stderr, err := f.cmd.StderrPipe()
 	if err != nil {
@@ -161,9 +163,9 @@ func (f *Fetcher) Start() (err error) {
 		// Let's use custom split function or just read raw.
 		// Actually typical ffmpeg output (with -progress -) is easier, but without it default stderr is readable.
 		// Standard stderr output: size=     512kB time=00:00:15.12 bitrate= 277.3kbits/s speed=18.4x
-		
+
 		reSize := regexp.MustCompile(`size=\s*(\d+)(kB|mB|B)`)
-		
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			// Parse size
@@ -180,7 +182,7 @@ func (f *Fetcher) Start() (err error) {
 				case "B":
 					bytes = val
 				}
-				
+
 				f.lock.Lock()
 				f.downloaded = bytes
 				f.lock.Unlock()
@@ -202,7 +204,7 @@ func (f *Fetcher) Pause() (err error) {
 		// On Windows SIGTERM might not work well, Kill might be needed or 'q'.
 		// Trying to be gentle first.
 		_ = f.cmd.Process.Signal(os.Interrupt)
-		
+
 		// Wait a bit?
 		// For now simple kill if it's "Pause" which usually means stop for streams as they can't really "pause" and resume exactly same spot unless server supports execution history.
 		// Actually, if we "Pause", we might just want to stop the recording.

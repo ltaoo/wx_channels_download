@@ -99,6 +99,9 @@ func TestChannelInjectsShadcnCSSInlineAndOtherAssetsFromSameOrigin(t *testing.T)
 	jsIdx := strings.Index(ctx.body, "timeless.shadcn.umd.min.js?v=test-version")
 	envOverrideIdx := strings.Index(ctx.body, `assetsBaseURL: "/__wx_channels_assets"`)
 	envScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/env.js")
+	utilsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/utils.js")
+	channelsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/channels.js")
+	feedScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/feed.js")
 	if cssIdx < 0 || jsIdx < 0 {
 		t.Fatalf("expected both shadcn CSS and JS assets in injected HTML:\n%s", ctx.body)
 	}
@@ -107,5 +110,14 @@ func TestChannelInjectsShadcnCSSInlineAndOtherAssetsFromSameOrigin(t *testing.T)
 	}
 	if envOverrideIdx < 0 || envScriptIdx < 0 || envOverrideIdx > envScriptIdx {
 		t.Fatalf("runtime asset base URL override should be injected before env.js:\n%s", ctx.body)
+	}
+	if channelsScriptIdx < 0 {
+		t.Fatalf("channel HTML does not include channels.js:\n%s", ctx.body)
+	}
+	if utilsScriptIdx < 0 || channelsScriptIdx < utilsScriptIdx {
+		t.Fatalf("channels.js should be injected after utils.js:\n%s", ctx.body)
+	}
+	if feedScriptIdx < 0 || channelsScriptIdx > feedScriptIdx {
+		t.Fatalf("channels.js should be injected before page script:\n%s", ctx.body)
 	}
 }

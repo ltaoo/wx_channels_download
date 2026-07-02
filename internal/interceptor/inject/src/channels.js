@@ -204,6 +204,29 @@ function ChannelsWebsocketClient() {
         });
         return;
       }
+      if (key === "key:channels:follow_list") {
+        let payload = {
+          finderUsername: __wx_username,
+          lastBuffer: data.next_marker
+            ? decodeURIComponent(data.next_marker)
+            : "",
+        };
+        try {
+          var r = await WXU.API4.finderGetFollowList(payload);
+          console.log("[DOWNLOADER]finderGetFollowList", r, payload);
+          resp({
+            ...r,
+            payload,
+          });
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload,
+          });
+        }
+        return;
+      }
       if (key === "key:channels:feed_profile") {
         console.log("before finderGetCommentProfile", data);
         var [err, r, payload] = await fetchFeedProfileWith(data);
