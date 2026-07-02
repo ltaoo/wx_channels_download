@@ -67,16 +67,22 @@ func (c *Interceptor) Start() error {
 			},
 		})
 	}
-	if c.Settings.RemoteServerEnabled {
-		client.AddPlugin(&proxy.Plugin{
-			Match: "weixin110.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: c.Settings.RemoteServerProtocol,
-				Host:     c.Settings.RemoteServerHostname,
-				Port:     c.Settings.RemoteServerPort,
-			},
-		})
+	downloadTarget := &proxy.TargetConfig{
+		Protocol: c.Settings.APIServerProtocol,
+		Host:     c.Settings.APIServerHostname,
+		Port:     c.Settings.APIServerPort,
 	}
+	if c.Settings.RemoteServerEnabled {
+		downloadTarget = &proxy.TargetConfig{
+			Protocol: c.Settings.RemoteServerProtocol,
+			Host:     c.Settings.RemoteServerHostname,
+			Port:     c.Settings.RemoteServerPort,
+		}
+	}
+	client.AddPlugin(&proxy.Plugin{
+		Match:  "weixin110.qq.com",
+		Target: downloadTarget,
+	})
 	client.AddPlugin(&proxy.Plugin{
 		Match: "kf.qq.com",
 		Target: &proxy.TargetConfig{

@@ -68,7 +68,7 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	})
 	gin.SetMode(gin.TestMode)
 	client := &APIClient{
-		cfg:    &APIConfig{Protocol: "http", Hostname: "127.0.0.1", Port: 2022},
+		cfg:    &APIConfig{Protocol: "http", Hostname: "127.0.0.1", Port: 2022, RemoteServerEnabled: true},
 		engine: gin.New(),
 	}
 	client.engine.GET("/download", client.handleDownloadPage)
@@ -84,6 +84,9 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	body := resp.Body.String()
 	if !strings.Contains(body, `"Protocol":"http"`) {
 		t.Fatalf("body = %q, want rendered API config", body)
+	}
+	if !strings.Contains(body, `"remoteServerEnabled":true`) {
+		t.Fatalf("body = %q, want remoteServerEnabled rendered for frontend config", body)
 	}
 	if !strings.Contains(body, `/__wx_channels_assets/src/download/index.js`) {
 		t.Fatalf("body = %q, want download/index.js script", body)

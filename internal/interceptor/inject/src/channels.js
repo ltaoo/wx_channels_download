@@ -101,7 +101,7 @@ async function fetchFeedProfileWith(data) {
 function ChannelsWebsocketClient() {
   const methods = {
     connect_local_ws() {
-      const ws_url = WXEnv.channelsLocalWSURL;
+      const ws_url = WXEnv.channelsWSURL;
       const ws = new WebSocket(ws_url);
       ws.onclose = (e) => {
         WXU.error({

@@ -16,31 +16,22 @@ if (typeof WXEnv === "undefined") {
   var __wx_fake_api_base = "http://192.168.1.118:2022";
   var __wx_fake_api_url = new URL(__wx_fake_api_base, window.location.href);
   var __wx_fake_api_protocol = __wx_fake_api_url.protocol.replace(":", "");
-  var __wx_fake_api_port = Number(
-    __wx_fake_api_url.port || (__wx_fake_api_protocol === "https" ? 443 : 80),
-  );
   window.__wx_fake_use_mock_api__ = __wx_fake_use_mock_api;
   window.__wx_channels_config__ = {
     defaultHighest: false,
     downloadFilenameTemplate: "{{title}}",
     downloadInFrontend: false,
     downloadPauseWhenDownload: false,
-    remoteServerEnabled: true,
     apiServerProtocol: __wx_fake_api_protocol,
     apiServerAddr: __wx_fake_api_url.host,
-    remoteServerProtocol: __wx_fake_api_protocol,
-    remoteServerHostname: __wx_fake_api_url.hostname,
-    remoteServerPort: __wx_fake_api_port,
   };
   window.WXVariable = {};
 
   WXEnv.applyRuntimeEnv({
-    localAPIServerProtocol: __wx_fake_api_protocol,
-    localAPIServerAddr: __wx_fake_api_url.host,
-    remoteAPIServerProtocol: __wx_fake_api_protocol,
-    remoteAPIServerAddr: __wx_fake_api_url.host,
-    downloadPanelAPIServerProtocol: __wx_fake_api_protocol,
-    downloadPanelAPIServerAddr: __wx_fake_api_url.host,
+    channelsProtocol: __wx_fake_api_protocol,
+    channelsHostname: __wx_fake_api_url.host,
+    downloadProtocol: __wx_fake_api_protocol,
+    downloadHostname: __wx_fake_api_url.host,
     assetsFallbackBase: __wx_fake_api_base + "/__wx_channels_assets",
   });
 

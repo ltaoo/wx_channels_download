@@ -1,0 +1,310 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取我关注的视频号列表",
+    "description": "获取当前登录账号关注的视频号列表。调用时需要保持视频号页面打开，并可使用响应中的 data.lastBuffer 作为 next_marker 获取下一页。",
+    "parameters": [
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记，使用上一页响应 data.lastBuffer 的值"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 0
+                },
+                "msg": {
+                  "type": "string",
+                  "example": "成功"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "errCode": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "errMsg": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "BaseResponse": {
+                          "type": "object",
+                          "properties": {
+                            "Ret": {
+                              "type": "integer"
+                            },
+                            "ErrMsg": {
+                              "type": "object",
+                              "properties": {
+                                "String": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "contactList": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "username": {
+                                "type": "string"
+                              },
+                              "nickname": {
+                                "type": "string"
+                              },
+                              "headUrl": {
+                                "type": "string"
+                              },
+                              "signature": {
+                                "type": "string"
+                              },
+                              "followFlag": {
+                                "type": "integer"
+                              },
+                              "followTime": {
+                                "type": "integer"
+                              },
+                              "coverImgUrl": {
+                                "type": "string"
+                              },
+                              "spamStatus": {
+                                "type": "integer"
+                              },
+                              "extFlag": {
+                                "type": "integer"
+                              },
+                              "extInfo": {
+                                "type": "object",
+                                "properties": {
+                                  "country": {
+                                    "type": "string"
+                                  },
+                                  "province": {
+                                    "type": "string"
+                                  },
+                                  "city": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "liveStatus": {
+                                "type": "integer"
+                              },
+                              "liveCoverImgUrl": {
+                                "type": "string"
+                              },
+                              "liveInfo": {
+                                "type": "object",
+                                "properties": {
+                                  "anchorStatusFlag": {
+                                    "type": "string"
+                                  },
+                                  "switchFlag": {
+                                    "type": "integer"
+                                  },
+                                  "sourceType": {
+                                    "type": "integer"
+                                  },
+                                  "micSetting": {
+                                    "type": "object",
+                                    "properties": {
+                                      "settingFlag": {
+                                        "type": "integer"
+                                      },
+                                      "settingSwitchFlag": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  },
+                                  "lotterySetting": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                  },
+                                  "liveCoverImgs": {
+                                    "type": "array",
+                                    "items": {}
+                                  },
+                                  "replaySetting": {
+                                    "type": "object",
+                                    "properties": {
+                                      "canUseIntelligentlyGenReplayHighlight": {
+                                        "type": "boolean"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "bindInfo": {
+                                "type": "array",
+                                "items": {}
+                              },
+                              "menu": {
+                                "type": "array",
+                                "items": {}
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "additionalFlag": {
+                                "type": "string"
+                              },
+                              "referenceInfo": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "integer"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "lastBuffer": {
+                          "type": "string"
+                        },
+                        "continueFlag": {
+                          "type": "integer"
+                        },
+                        "followCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "lastBuffer": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "BaseResponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "String": ""
+                        }
+                      },
+                      "contactList": [
+                        {
+                          "username": "v2_060000231003b20faec8c4e28110c3d0cd02ea31b077bfece2b1f8d12160999c471277db5802@finder",
+                          "nickname": "这是小呆鸭",
+                          "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/OBy5tHHVw1j1GhdRCYFYictbUDDdTrd1rnFnLq2hYiaS9qCrTx11yOibGbzjfrXv6s513Dic9qicdmIJ7GWt6J3S6Qm7IG7SdYGPQ2MsAwDqIkF4/132",
+                          "signature": "",
+                          "followFlag": 1,
+                          "followTime": 1783003479,
+                          "coverImgUrl": "",
+                          "spamStatus": 0,
+                          "extFlag": 262148,
+                          "extInfo": {
+                            "country": "CN",
+                            "province": "Zhejiang",
+                            "city": "Hangzhou"
+                          },
+                          "liveStatus": 2,
+                          "liveCoverImgUrl": "",
+                          "liveInfo": {
+                            "anchorStatusFlag": "2048",
+                            "switchFlag": 4607,
+                            "sourceType": 0,
+                            "micSetting": {
+                              "settingFlag": 0,
+                              "settingSwitchFlag": 4
+                            },
+                            "lotterySetting": {},
+                            "liveCoverImgs": [],
+                            "replaySetting": {
+                              "canUseIntelligentlyGenReplayHighlight": true
+                            }
+                          },
+                          "bindInfo": [],
+                          "menu": [],
+                          "status": "0",
+                          "additionalFlag": "2",
+                          "referenceInfo": [
+                            {
+                              "type": 1,
+                              "name": "公众号/服务号",
+                              "status": 1
+                            },
+                            {
+                              "type": 2,
+                              "name": "小程序",
+                              "status": 1
+                            },
+                            {
+                              "type": 4,
+                              "name": "秒剪",
+                              "status": 2
+                            }
+                          ]
+                        }
+                      ],
+                      "lastBuffer": "CP///////////wEQAA==",
+                      "continueFlag": 0,
+                      "followCount": 1
+                    },
+                    "payload": {
+                      "lastBuffer": ""
+                    }
+                  }
+                }
+              },
+              "nosocket": {
+                "summary": "业务异常",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

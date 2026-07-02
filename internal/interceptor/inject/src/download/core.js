@@ -3,7 +3,7 @@
  * @file 下载管理核心逻辑、任务列表状态和共用视图
  */
 var APIHostname = WXEnv.apiOrigin;
-var RemoteAPIHostname = WXEnv.remoteAPIOrigin;
+var DownloadHostname = WXEnv.downloadOrigin;
 
 console.log("[]download/core.js - ", WXEnv.apiServerAddr, APIHostname);
 
@@ -360,14 +360,14 @@ function normalize_download_task_list_response(data, pageSize) {
 }
 
 function DownloaderPanelViewModel(props = {}) {
-  const ITEM_HEIGHT = Number(props.itemHeight) || 94;
+  const ITEM_HEIGHT = Number(props.itemHeight) || 82;
   const ITEM_TITLE_LINE_HEIGHT = 20;
   const ITEM_STATUS_LINE_HEIGHT = 18;
-  const ITEM_VERTICAL_PADDING = 32;
+  const ITEM_VERTICAL_PADDING = 24;
   const ITEM_TITLE_STATUS_GAP = 4;
   const ITEM_MAX_TITLE_LINES = 3;
   const ITEM_TITLE_UNITS_PER_LINE = 34;
-  const GUTTER = 12;
+  const GUTTER = 8;
   const fixed_list_height_ = props.fixedListHeight !== false;
   const sync_list_content_height_ = props.syncListContentHeight !== false;
   const LIST_HEIGHT = Number(props.listHeight) || 380;
@@ -432,10 +432,6 @@ function DownloaderPanelViewModel(props = {}) {
         delete_files: !!params.deleteFiles,
       });
     },
-    { client: http_client },
-  );
-  const showFileReq = new Timeless.RequestCore(
-    ({ path, name, id }) => request.post("/api/show_file", { path, name, id }),
     { client: http_client },
   );
 
@@ -1131,19 +1127,15 @@ function DownloaderPanelViewModel(props = {}) {
       }
     },
     async openTask(task) {
-      const { path, name } = task;
-      if (!path || !name) {
+      const { id } = task;
+      if (!id) {
         WXU.error({
-          msg: "path or name is empty",
+          msg: "task id is empty",
         });
         return;
       }
-      if (WXU.config.remoteServerEnabled) {
-        var u = RemoteAPIHostname + "/preview?id=" + task.id;
-        window.open(u);
-        return;
-      }
-      showFileReq.run({ path, name, id: task.id });
+      var u = DownloadHostname + "/preview?id=" + id;
+      window.open(u);
     },
     connect() {
       return new Promise((resolve, reject) => {
@@ -1693,7 +1685,8 @@ function DownloadTaskListView(props) {
                           statusColor,
                         };
                       });
-                      const isOpenExternal = WXU.config.remoteServerEnabled;
+                      const isOpenExternal =
+                        WXEnv.config.remoteServerEnabled === true;
                       const radius = 22;
                       const circumference = 2 * Math.PI * radius;
                       const offset = computed(state_, (d) => {

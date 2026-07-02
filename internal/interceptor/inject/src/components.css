@@ -412,7 +412,7 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
   height: auto !important;
 }
 .wx-dl-item {
-  padding: 16px;
+  padding: 12px 16px;
   background-color: var(--popup-content-bg-color);
   border-radius: 8px;
   align-items: center;

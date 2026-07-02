@@ -1,5 +1,5 @@
 /**
- * @file 注入脚本运行环境、服务地址和全局配置入口
+ * @file Injected runtime environment, service addresses, and global config entry.
  */
 if (typeof window.__wx_channels_config__ === "undefined") {
   window.__wx_channels_config__ = {};
@@ -11,25 +11,12 @@ if (typeof window.__wx_channels_env__ === "undefined") {
   window.__wx_channels_env__ = {};
 }
 
-// console.log(window.__wx_channels_config__, window.WXVariable);
-
 var WXEnv = (() => {
-  //   var FakeLocalAPIServerAddr = "kf.qq.com";
-  // var FakeRemoteAPIServerAddr = "weixin110.qq.com";
-  // var FakeRemoteAPIServerProtocol = "https";
-  // var FakeLocalAPIServerProtocol = "https";
-  // var WSServerProtocol = "wss";
   const defaults = {
-    /** 本地接口 */
-    localAPIServerProtocol: "https",
-    localAPIServerAddr: "kf.qq.com",
-    /** 远端接口 */
-    remoteAPIServerProtocol: "https",
-    remoteAPIServerAddr: "weixin110.qq.com",
-    /** 下载面板接口地址 */
-    downloadPanelAPIServerAddr: "kf.qq.com",
-    downloadPanelAPIServerProtocol: "https",
-    /** 静态资源 prefix */
+    channelsProtocol: "https",
+    channelsHostname: "kf.qq.com",
+    downloadProtocol: "https",
+    downloadHostname: "weixin110.qq.com",
     assetsFallbackBase: "http://127.0.0.1:2022/__wx_channels_assets",
   };
   const runtimeEnv = window.__wx_channels_env__;
@@ -127,83 +114,17 @@ var WXEnv = (() => {
     return protocol === "https" ? "wss" : "ws";
   }
 
-  function configuredAPIServer() {
-    const cfg = config();
-    if (cfg.remoteServerEnabled) {
-      return {
-        addr:
-          explicitEnvValue("remoteAPIServerAddr") ||
-          hostPort(cfg.remoteServerHostname, cfg.remoteServerPort) ||
-          defaults.remoteAPIServerAddr,
-        protocol:
-          explicitEnvValue("remoteAPIServerProtocol") ||
-          cfg.remoteServerProtocol ||
-          defaults.remoteAPIServerProtocol,
-      };
-    }
+  function channelsServer() {
     return {
-      addr:
-        explicitEnvValue("localAPIServerAddr") ||
-        cfg.apiServerAddr ||
-        hostPort(cfg.apiServerHostname, cfg.apiServerPort) ||
-        defaults.localAPIServerAddr,
-      protocol:
-        explicitEnvValue("localAPIServerProtocol") ||
-        cfg.apiServerProtocol ||
-        defaults.localAPIServerProtocol,
+      addr: envValue("channelsHostname") || defaults.channelsHostname,
+      protocol: envValue("channelsProtocol") || defaults.channelsProtocol,
     };
   }
 
-  function apiServer() {
-    const configured = configuredAPIServer();
-    const addr = explicitEnvValue("downloadPanelAPIServerAddr");
-    const protocol = explicitEnvValue("downloadPanelAPIServerProtocol");
+  function downloadServer() {
     return {
-      addr: addr || configured.addr || defaults.downloadPanelAPIServerAddr,
-      protocol:
-        protocol ||
-        configured.protocol ||
-        defaults.downloadPanelAPIServerProtocol,
-    };
-  }
-
-  function remoteAPIServer() {
-    const cfg = config();
-    return {
-      addr:
-        explicitEnvValue("remoteAPIServerAddr") ||
-        hostPort(cfg.remoteServerHostname, cfg.remoteServerPort) ||
-        defaults.remoteAPIServerAddr,
-      protocol:
-        explicitEnvValue("remoteAPIServerProtocol") ||
-        cfg.remoteServerProtocol ||
-        defaults.remoteAPIServerProtocol,
-    };
-  }
-
-  function configuredLocalAPIServer() {
-    const cfg = config();
-    return {
-      addr:
-        explicitEnvValue("localAPIServerAddr") ||
-        cfg.apiServerAddr ||
-        hostPort(cfg.apiServerHostname, cfg.apiServerPort) ||
-        defaults.localAPIServerAddr,
-      protocol:
-        explicitEnvValue("localAPIServerProtocol") ||
-        cfg.apiServerProtocol ||
-        defaults.localAPIServerProtocol,
-    };
-  }
-
-  function officialRemoteServer() {
-    const cfg = config();
-    return {
-      addr: hostPort(
-        cfg.officialRemoteServerHostname,
-        cfg.officialRemoteServerPort,
-      ),
-      protocol: cfg.officialRemoteServerProtocol || "https",
+      addr: envValue("downloadHostname") || defaults.downloadHostname,
+      protocol: envValue("downloadProtocol") || defaults.downloadProtocol,
     };
   }
 
@@ -237,16 +158,13 @@ var WXEnv = (() => {
   }
 
   function legacyGlobals() {
+    const channels = channelsServer();
+    const download = downloadServer();
     return {
-      FakeLocalAPIServerAddr: envValue("localAPIServerAddr"),
-      FakeRemoteAPIServerAddr: envValue("remoteAPIServerAddr"),
-      FakeRemoteAPIServerProtocol: envValue("remoteAPIServerProtocol"),
-      FakeLocalAPIServerProtocol: envValue("localAPIServerProtocol"),
-      DownloadPanelAPIServerAddr: apiServer().addr,
-      DownloadPanelAPIServerProtocol: apiServer().protocol,
-      FakeAPIServerAddr: apiServer().addr,
-      APIServerProtocol: apiServer().protocol,
-      WSServerProtocol: wsProtocol(apiServer().protocol),
+      ChannelsHostname: channels.addr,
+      DownloadHostname: download.addr,
+      APIServerProtocol: download.protocol,
+      WSServerProtocol: wsProtocol(download.protocol),
       WXUserAgent: ua,
       isWin: /Windows|Win/i.test(ua),
       __wx_assets_base: assetsBaseURL(),
@@ -287,66 +205,63 @@ var WXEnv = (() => {
     origin,
     wsProtocol,
     get configuredAPI() {
-      return configuredAPIServer();
+      return downloadServer();
     },
     get localAPI() {
-      return configuredLocalAPIServer();
+      return channelsServer();
     },
     get remoteAPI() {
-      return remoteAPIServer();
+      return downloadServer();
     },
     get api() {
-      return apiServer();
+      return downloadServer();
     },
     get apiServerAddr() {
-      return apiServer().addr;
+      return downloadServer().addr;
     },
     get apiServerProtocol() {
-      return apiServer().protocol;
+      return downloadServer().protocol;
     },
     get apiOrigin() {
-      const api = apiServer();
+      const api = downloadServer();
       return origin(api.protocol, api.addr);
     },
     get wsServerProtocol() {
-      return wsProtocol(apiServer().protocol);
+      return wsProtocol(downloadServer().protocol);
     },
     get remoteAPIOrigin() {
-      const remote = remoteAPIServer();
-      return origin(remote.protocol, remote.addr);
+      return this.downloadOrigin;
     },
     get localAPIOrigin() {
-      const local = configuredLocalAPIServer();
-      return origin(local.protocol, local.addr);
+      return this.channelsOrigin;
     },
     get officialAccountOrigin() {
-      const remote = officialRemoteServer();
-      if (remote.addr) {
-        return origin(remote.protocol, remote.addr);
-      }
-      return this.localAPIOrigin;
+      return this.downloadOrigin;
     },
     get assetsBaseURL() {
       return assetsBaseURL();
     },
     assetUrl,
-    get channelsLocalWSURL() {
-      return (
-        wsProtocol(configuredLocalAPIServer().protocol) +
-        "://" +
-        configuredLocalAPIServer().addr +
-        "/ws/channels"
-      );
+    get channelsHostname() {
+      return channelsServer().addr;
+    },
+    get downloadHostname() {
+      return downloadServer().addr;
+    },
+    get channelsOrigin() {
+      const channels = channelsServer();
+      return origin(channels.protocol, channels.addr);
+    },
+    get downloadOrigin() {
+      const download = downloadServer();
+      return origin(download.protocol, download.addr);
     },
     get channelsWSURL() {
-      return (
-        this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/channels"
-      );
+      const channels = channelsServer();
+      return wsProtocol(channels.protocol) + "://" + channels.addr + "/ws/channels";
     },
     get downloaderWSURL() {
-      return (
-        this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/downloader"
-      );
+      return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/downloader";
     },
     get mpWSURL() {
       return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/mp";
@@ -355,13 +270,8 @@ var WXEnv = (() => {
 })();
 
 WXEnv.refreshLegacyGlobals();
-var FakeLocalAPIServerAddr = window.FakeLocalAPIServerAddr;
-var FakeRemoteAPIServerAddr = window.FakeRemoteAPIServerAddr;
-var FakeRemoteAPIServerProtocol = window.FakeRemoteAPIServerProtocol;
-var FakeLocalAPIServerProtocol = window.FakeLocalAPIServerProtocol;
-var DownloadPanelAPIServerAddr = window.DownloadPanelAPIServerAddr;
-var DownloadPanelAPIServerProtocol = window.DownloadPanelAPIServerProtocol;
-var FakeAPIServerAddr = window.FakeAPIServerAddr;
+var ChannelsHostname = window.ChannelsHostname;
+var DownloadHostname = window.DownloadHostname;
 var APIServerProtocol = window.APIServerProtocol;
 var WSServerProtocol = window.WSServerProtocol;
 var WXUserAgent = window.WXUserAgent;
