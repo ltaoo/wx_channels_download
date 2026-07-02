@@ -1,5 +1,6 @@
 debug:
   error: false
+  echolog: false
 
 pagespy:
   enabled: false
@@ -44,7 +45,7 @@ channels:
   disableLocationToHome: false
 
 mp:
-  disabled: true
+  enabled: false
   remoteServer:
     protocol: "http"
     hostname: ""

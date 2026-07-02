@@ -30,6 +30,9 @@
       align-items: center;
       justify-content: center;
     }
+    body.wx-officialaccount-download-menu-mounted .t1-popper {
+      z-index: 2147483647 !important;
+    }
     #__wx_channels_credentials__:hover,
     #__wx_channels_curl__:hover,
     #__wx_channels_api__:hover {
@@ -55,7 +58,7 @@
       return;
     }
     WXU.emit(WXU.Events.OfficialAccountRefresh, acct);
-    var origin = `https://${FakeAPIServerAddr}`;
+    var origin = WXEnv.apiOrigin;
     var [err, res] = await WXU.request({
       method: "POST",
       url: `${origin}/api/mp/refresh?token=${
@@ -104,8 +107,7 @@
   }
   function connect(acct) {
     return new Promise((resolve, reject) => {
-      const protocol = "wss://";
-      const ws = new WebSocket(protocol + FakeAPIServerAddr + "/ws/mp");
+      const ws = new WebSocket(WXEnv.mpWSURL);
       let ping_timer = null;
       ws.onopen = () => {
         WXU.log({
@@ -175,21 +177,7 @@
     $btn.innerHTML = RSSIcon;
     $btn.onclick = function () {
       var origin = (() => {
-        if (WXU.config.officialRemoteServerHostname) {
-          origin = `${WXU.config.officialRemoteServerProtocol}://${WXU.config.officialRemoteServerHostname}`;
-          if (WXU.config.officialRemoteServerPort != 80) {
-            origin += `:${WXU.config.officialRemoteServerPort}`;
-          }
-          return origin;
-        }
-        if (WXU.config.apiServerHostname) {
-          origin = `${WXU.config.apiServerProtocol}://${WXU.config.apiServerHostname}`;
-          if (WXU.config.apiServerPort != 80) {
-            origin += `:${WXU.config.apiServerPort}`;
-          }
-          return origin;
-        }
-        return "";
+        return WXEnv.officialAccountOrigin;
       })();
       if (origin === "") {
         return;
@@ -200,34 +188,28 @@
     };
     return $btn;
   }
-  function render_download_button(opt, dialog$) {
-    var $btn = document.createElement("div");
-    // $btn.className = "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link";
-    $btn.style.cssText = `display: flex; align-items: center; margin-left: 16px; font-size: 14px; cursor: pointer;`;
-    var text = `<span class="sns_opr_gap" style="margin-left: 1px">下载</span>`;
-    if (opt.type === 2) {
-      $btn.style.cssText = `display: flex; align-items: center; flex-direction: column; margin-left: 4px; font-size: 14px; cursor: pointer;`;
-      var text = `<span class="" style="width: 39px; text-align: center; font-size: 12px;">下载</span>`;
-    }
-    $btn.innerHTML = `<span style="position: relative; top: -6px; width: 24px; height: 24px; font-size: 24px;">${DownloadIcon8}</span>${text}`;
-    $btn.onclick = async function () {
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: "https://" + FakeAPIServerAddr + "/api/task/create2",
-        body: {
-          url: `officialaccount://${window.location.href}`,
-          // filename: document.title,
-        },
+  async function create_officialaccount_download_task(dialog$) {
+    var [err, data] = await WXU.request({
+      method: "POST",
+      url: WXEnv.apiOrigin + "/api/task/create2",
+      body: {
+        url: `officialaccount://${window.location.href}`,
+        // filename: document.title,
+      },
+    });
+    if (err) {
+      WXU.error({
+        msg: err.message,
       });
-      if (err) {
-        WXU.error({
-          msg: err.message,
-        });
-        return;
-      }
-      // WXU.toast("开始下载");
-      dialog$.show();
-    };
+      return;
+    }
+    // WXU.toast("开始下载");
+    dialog$.show();
+  }
+  function render_download_button() {
+    var $btn = document.createElement("div");
+    $btn.className = "sns_opr_btn_con";
+    $btn.innerHTML = `<button aria-labelledby="__wx_download_bottom_text" class="sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link"><span id="__wx_download_bottom_text" class="sns_opr_gap"> 下载 </span></button>`;
     return $btn;
   }
   function insert_rss_button(acct) {
@@ -241,11 +223,23 @@
     $container.appendChild($btn);
   }
   function DownloaderPanel(props) {
+    const vm$ = DownloaderPanelViewModel({
+      onRequestClose() {
+        props.dialog$.hide();
+      },
+    });
     return View({}, [
-      Dialog({ store: props.dialog$ }, [DownloaderPanelView({})]),
+      Dialog({ store: props.dialog$ }, [
+        DownloaderPanelView({
+          store: vm$,
+          showStatusCounts: false,
+        }),
+      ]),
     ]);
   }
   function insert_download_button() {
+    insert_style();
+    document.body.classList.add("wx-officialaccount-download-menu-mounted");
     var $wraps = document.querySelectorAll(".interaction_bar");
     var $container = $wraps[$wraps.length - 1];
     if (window.cgiDataNew.page_type === 2) {
@@ -257,45 +251,44 @@
     const dialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
-    var $btn = render_download_button(
-      { type: window.cgiDataNew.page_type },
-      dialog$,
-    );
-    const { DropdownMenu, Menu, MenuItem } = WUI;
-    const dropdown$ = DropdownMenu({
-      $trigger: $btn,
-      zIndex: 99999,
-      children: [
-        // MenuItem({
-        //   label: "下载markdown",
-        //   onClick() {
-        //     dropdown$.hide();
-        //   },
-        // }),
-        MenuItem({
-          label: "复制文章HTML",
+    var $btn = render_download_button();
+    const dropdown$ = new Timeless.ui.DropdownMenuCore({
+      trigger: "hover",
+      align: "end",
+      items: [
+        new Timeless.ui.MenuItemCore({
+          label: "\u4e0b\u8f7d\u6587\u7ae0",
+          async onClick() {
+            dropdown$.hide();
+            await create_officialaccount_download_task(dialog$);
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "\u590d\u5236\u6587\u7ae0HTML",
           onClick() {
             const content = window.cgiDataNew.content_noencode;
             if (!content) {
-              WXU.toast("文章HTML为空，请使用「复制页面HTML」");
+              WXU.toast(
+                "\u6587\u7ae0HTML\u4e3a\u7a7a\uff0c\u8bf7\u4f7f\u7528\u300c\u590d\u5236\u9875\u9762HTML\u300d",
+              );
               return;
             }
             WXU.copy(content);
-            WXU.toast("复制成功");
+            WXU.toast("\u590d\u5236\u6210\u529f");
             dropdown$.hide();
           },
         }),
-        MenuItem({
-          label: "复制页面HTML",
+        new Timeless.ui.MenuItemCore({
+          label: "\u590d\u5236\u9875\u9762HTML",
           onClick() {
             const content = window.body.innerHTML;
             WXU.copy(content);
-            WXU.toast("复制成功");
+            WXU.toast("\u590d\u5236\u6210\u529f");
             dropdown$.hide();
           },
         }),
-        MenuItem({
-          label: "下载记录",
+        new Timeless.ui.MenuItemCore({
+          label: "\u4e0b\u8f7d\u8bb0\u5f55",
           onClick() {
             dialog$.show();
             dropdown$.hide();
@@ -303,24 +296,50 @@
         }),
       ],
     });
-    dropdown$.ui.$trigger.onMouseEnter(() => {
-      dropdown$.show();
-    });
-    dropdown$.ui.$trigger.onMouseLeave(() => {
-      if (dropdown$.isHover) {
-        return;
-      }
-      dropdown$.hide();
+    const dropdownRoot = document.createElement("span");
+    dropdownRoot.className = "wx-download-dropdown-menu-root";
+    dropdownRoot.style.display = "contents";
+    document.body.appendChild(dropdownRoot);
+    Timeless.DOM.render(
+      Timeless.shadcn.DropdownMenu({ store: dropdown$ }),
+      dropdownRoot,
+    );
+    function set_dropdown_reference() {
+      dropdown$.setReference(
+        {
+          $el: $btn,
+          getRect() {
+            return $btn.getBoundingClientRect();
+          },
+        },
+        { force: true },
+      );
+    }
+    function show_dropdown() {
+      set_dropdown_reference();
+      dropdown$.handleEnterTrigger();
+    }
+    function hide_dropdown() {
+      dropdown$.handleLeaveTrigger();
+    }
+    async function handle_download_click(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      dropdown$.hide({ reason: "download button click" });
+      await create_officialaccount_download_task(dialog$);
+    }
+    $btn.addEventListener("mouseenter", show_dropdown);
+    $btn.addEventListener("mouseleave", hide_dropdown);
+    $btn.addEventListener("click", handle_download_click);
+    $btn.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
     });
     $container.insertBefore($btn, $container.lastElementChild);
-    const panel$ = DownloaderPanel({ dialog$ });
-    setTimeout(() => {
-      document.body.appendChild(panel$.render());
-    }, 0);
+    Timeless.DOM.render(DownloaderPanel({ dialog$ }), document.body);
   }
   window.insert_download_button = insert_download_button;
   async function main() {
-    if (location.pathname === "/s") {
+    if (location.pathname.startsWith("/s")) {
       var _OfficialAccountCredentials = {
         nickname: (() => {
           if (window.nickname) {
@@ -376,16 +395,15 @@
       };
       WXU.observe_node(".wx_follow_media", () => {
         setTimeout(() => {
-          insert_style();
+          // insert_style();
           // insert_rss_button(_OfficialAccountCredentials);
           insert_download_button();
         }, 800);
       });
     }
   }
-  insert_channels_style();
   WXU.onWindowLoaded(() => {
-    if (WXU.config.officialServerDisabled) {
+    if (!WXU.config.officialAccountEnabled) {
       return;
     }
     main();

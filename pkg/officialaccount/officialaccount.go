@@ -1,4 +1,4 @@
-package officialaccountdownload
+package officialaccount
 
 import (
 	"crypto/md5"
@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
@@ -141,6 +140,7 @@ func (c *OfficialAccountDownload) ConvertHtmlToMarkdown(article *WechatOfficialA
 		if imgURL == "" {
 			imgURL = s.AttrOr("src", "")
 		}
+		imgURL = normalizeMediaURL(imgURL)
 
 		if imgURL != "" {
 			// Download image
@@ -186,6 +186,7 @@ func (c *OfficialAccountDownload) ConvertHtmlToMarkdown(article *WechatOfficialA
 	if len(article.Images) > 0 {
 		markdown += "\n\n"
 		for _, imgURL := range article.Images {
+			imgURL = normalizeMediaURL(imgURL)
 			localFileName, err := c.downloadImage(imgURL, imagesDirPath)
 			if err != nil {
 				fmt.Printf("Failed to download attached image %s: %v\n", imgURL, err)
@@ -384,6 +385,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 	if isImageArticle {
 		htmlContent.WriteString(`<div class="split-container"><div class="split-left"><div class="additional-images">`)
 		for _, imgURL := range article.Images {
+			imgURL = normalizeMediaURL(imgURL)
 			imgData, mimeType, err := downloadImageBytes(imgURL)
 			if err == nil {
 				c.reportProgress(int64(len(imgData)))
@@ -504,6 +506,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 		// Process images with data-src for base64 encoding
 		doc.Find("img").Each(func(i int, s *goquery.Selection) {
 			imgURL := s.AttrOr("data-src", "")
+			imgURL = normalizeMediaURL(imgURL)
 			if imgURL != "" {
 				imgData, mimeType, err := downloadImageBytes(imgURL)
 				if err == nil {
@@ -551,6 +554,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 }
 
 func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) (string, error) {
+	imgURL = normalizeMediaURL(imgURL)
 	// Generate filename based on hash of URL
 	hash := md5.Sum([]byte(imgURL))
 	hashStr := hex.EncodeToString(hash[:])
@@ -590,9 +594,7 @@ func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) 
 		return "", err
 	}
 
-	// Set headers similar to Scrape to avoid anti-hotlinking
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", "https://mp.weixin.qq.com/")
+	setWechatHeaders(req, "https://mp.weixin.qq.com/")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -629,17 +631,19 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 	re := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
 	matches := re.FindStringSubmatch(content_str)
 	if len(matches) > 1 {
-		createTime := matches[1]
-		t, err := time.Parse("2006-01-02 15:04", createTime)
-		if err == nil {
-			publish_time_str = t.Format("2006年01月02日 15:04")
-		} else {
-			publish_time_str = createTime
-		}
+		publish_time_str = formatPublishTime(matches[1], 0)
 	}
 	data, err := parse_cgi_datanew(content_str)
 	if err != nil {
-		return nil, err
+		article, fallbackErr := parseArticleFromDOM(content_str)
+		if fallbackErr != nil {
+			return nil, err
+		}
+		c.article = article
+		return article, nil
+	}
+	if publish_time_str == "" {
+		publish_time_str = formatPublishTime(data.CreateTime, data.OriCreateTime)
 	}
 	article := &WechatOfficialArticle{
 		Type:           data.PageType,
@@ -658,7 +662,7 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 	if len(data.PicturePageInfoList) > 1 {
 		for _, img := range data.PicturePageInfoList {
 			if img.CdnUrl != "" {
-				article.Images = append(article.Images, img.CdnUrl)
+				article.Images = append(article.Images, normalizeMediaURL(img.CdnUrl))
 			}
 		}
 	}
@@ -675,21 +679,7 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-	req.Header.Set("accept-language", "zh-CN,zh;q=0.9,en;q=0.8")
-	req.Header.Set("cache-control", "no-cache")
-	req.Header.Set("pragma", "no-cache")
-	req.Header.Set("priority", "u=0, i")
-	req.Header.Set("sec-ch-ua", `"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"`)
-	req.Header.Set("sec-ch-ua-mobile", "?0")
-	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
-	req.Header.Set("sec-fetch-dest", "document")
-	req.Header.Set("sec-fetch-mode", "navigate")
-	req.Header.Set("sec-fetch-site", "none")
-	req.Header.Set("sec-fetch-user", "?1")
-	req.Header.Set("upgrade-insecure-requests", "1")
-	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
-	req.Header.Set("cookie", "ua_id=zfRTujE0WVWbxqqCAAAAAL38AtjljAqWH0xPz_up8gw=; mm_lang=zh_CN; wxuin=69477998648217; xid=27df1e40bdcb601a449dc3afb35016ba; rewardsn=; wxtokenkey=777")
+	setWechatHeaders(req, "")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -699,6 +689,9 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if isVerificationPage(string(body)) {
+		return nil, fmt.Errorf("wechat verification page returned for %s", url)
 	}
 	return body, err
 }

@@ -18,7 +18,6 @@ import (
 
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
-	officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
@@ -26,6 +25,7 @@ import (
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
 	result "wx_channel/internal/util"
+	officialaccountdownload "wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
 )
 
@@ -65,6 +65,16 @@ func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 	flag := ctx.Query("flag")
 	next_marker := ctx.Query("next_marker")
 	resp, err := c.channels.FetchChannelsInteractionedFeedList(flag, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
+func (c *APIClient) handleFetchFollowList(ctx *gin.Context) {
+	next_marker := ctx.Query("next_marker")
+	resp, err := c.channels.FetchChannelsFollowList(next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -564,7 +574,23 @@ func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+func normalizeDownloadTaskStatus(status base.Status) string {
+	value := strings.ToLower(strings.TrimSpace(string(status)))
+	switch value {
+	case "paused":
+		return "pause"
+	case "failed", "fail", "failure", "errored":
+		return "error"
+	case "pending", "waiting", "queued":
+		return "wait"
+	case "completed", "success", "finished":
+		return "done"
+	default:
+		return value
+	}
+}
+
+func countDownloadTaskStatuses(tasks []*downloadpkg.Task) map[string]int {
 	counts := map[string]int{
 		"total":   0,
 		"ready":   0,
@@ -574,14 +600,25 @@ func (c *APIClient) downloadTaskStatusCounts() map[string]int {
 		"error":   0,
 		"done":    0,
 	}
-	for _, task := range c.downloader.GetTasks() {
+	for _, task := range tasks {
 		if task == nil {
 			continue
 		}
 		counts["total"]++
-		counts[string(task.Status)]++
+		status := normalizeDownloadTaskStatus(task.Status)
+		if status == "" {
+			continue
+		}
+		counts[status]++
 	}
 	return counts
+}
+
+func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+	if c == nil || c.downloader == nil {
+		return countDownloadTaskStatuses(nil)
+	}
+	return countDownloadTaskStatuses(c.downloader.GetTasks())
 }
 
 type LiveDownloadTaskBody struct {
@@ -973,35 +1010,22 @@ func (c *APIClient) handleClearTasks(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleIndex(ctx *gin.Context) {
-	read_asset := func(path string, defaultData []byte) string {
-		fullPath := filepath.Join("internal", "interceptor", path)
-		data, err := os.ReadFile(fullPath)
-		if err == nil {
-			return string(data)
-		}
-		return string(defaultData)
-	}
-	// html := read_asset("inject/index.html", files.HTMLHome)
-	files := interceptor.Assets
-	// css := read_asset("inject/lib/weui.min.css", files.CSSWeui)
-	// html = strings.Replace(html, "/* INJECT_CSS */", css, 1)
-	var inserted_scripts string
-	cfg_byte, _ := json.Marshal(c.cfg)
-	inserted_scripts += fmt.Sprintf(`<script>var __wx_channels_config__ = %s; var __wx_channels_version__ = "local";</script>`, string(cfg_byte))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/mitt.umd.js", files.JSMitt))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/eventbus.js", files.JSEventBus))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/utils.js", files.JSUtils))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.core.1.7.4.min.js", files.JSFloatingUICore))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/floating-ui.dom.1.7.4.min.js", files.JSFloatingUIDOM))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/weui.min.js", files.JSWeui))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/lib/wui.umd.js", files.JSWui))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/components.js", files.JSComponents))
-	inserted_scripts += fmt.Sprintf(`<script>%s</script>`, read_asset("inject/src/downloader.js", files.JSDownloader))
+	c.handleDownloadPage(ctx)
+}
 
-	// html = strings.Replace(html, "<!-- INJECT_JS -->", inserted_scripts, 1)
+func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
+	data, err := interceptor.Assets.ReadRoot("index.html")
+	if err != nil {
+		result.Err(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	cfgByte, _ := json.Marshal(c.cfg)
+	html := string(data)
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")
 
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, "<html><body><div id=\"app\"></div></body></html>")
+	ctx.String(http.StatusOK, html)
 }
 
 func (c *APIClient) handlePlay(ctx *gin.Context) {

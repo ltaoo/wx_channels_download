@@ -12,62 +12,64 @@ import (
 
 var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
 
-func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles) *proxy.Plugin {
+func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *interceptor.ChannelInjectedFiles, version string) *proxy.Plugin {
+	assetBaseURL := interceptor.ChannelAssetsSameOriginBaseURL()
 	return &proxy.Plugin{
 		Match: "qq.com",
+		OnRequest: func(ctx proxy.Context) {
+			if ctx.Req().URL.Hostname() == "mp.weixin.qq.com" && interceptor.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+				return
+			}
+		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			// pathname := ctx.Req().URL.Path
-			if !cfg.Disabled && hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+			if cfg.Enabled && hostname == "mp.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
 					return
 				}
 				variables := map[string]interface{}{}
 				html := string(resp_body)
-				csp := ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+				csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 				script_attr := ""
+				style_attr := ""
 				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
+					style_attr = fmt.Sprintf(` nonce="%s"`, match[1])
 				}
-				inserted_scripts := ""
+				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					script_error := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSError)
-					inserted_scripts += script_error
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "error.js"))
 				}
+				var shadcnCSS []byte
+				if files != nil {
+					shadcnCSS = files.CSSTimelessShadcn
+				}
+				interceptor.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, script_attr, style_attr, shadcnCSS)
+				interceptor.AppendStylesheetHrefs(&injected, style_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
-				script_config := fmt.Sprintf(`<script%s>var __wx_channels_config__ = %s</script>`, script_attr, string(cfg_byte))
-				inserted_scripts += script_config
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
 				variable_byte, _ := json.Marshal(variables)
-				script_variable := fmt.Sprintf(`<script%s>var WXVariable = %s;</script>`, script_attr, string(variable_byte))
-				inserted_scripts += script_variable
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSMitt)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessReactive)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessUI)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessKit)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessHeadless)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessIcons)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSTimelessProviderWeb)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUICore)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSFloatingUIDOM)
-				inserted_scripts += fmt.Sprintf(`<style>%s</style>`, files.CSSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWeui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWui)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSEventBus)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSUtils)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSComponents)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDownloader)
-				inserted_scripts += fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSWechatOfficialAccount)
+				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
+				interceptor.AppendScriptSrcs(
+					&injected,
+					script_attr,
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "env.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "utils.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "components.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "download/core.js"),
+					interceptor.ChannelSrcAssetURL(assetBaseURL, "officialaccount.js"),
+				)
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					script_pagespy := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSPageSpy)
-					script_pagespy2 := fmt.Sprintf(`<script%s>%s</script>`, script_attr, files.JSDebug)
-					inserted_scripts += script_pagespy + script_pagespy2
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), interceptor.ChannelSrcAssetURL(assetBaseURL, "pagespy.js"))
 				}
-				html = strings.Replace(html, "</body>", inserted_scripts+"</body>", 1)
+				html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 				ctx.SetResponseBody(html)
 				return
 			}

@@ -23,11 +23,11 @@ type APIConfig struct {
 	Protocol                     string
 	Hostname                     string
 	Port                         int
-	RemoteServerEnabled          bool
-	RemoteServerProtocol         string
-	RemoteServerHostname         string
-	RemoteServerPort             int
-	RemoteServerMode             bool // 是否为服务器模式
+	RemoteServerEnabled          bool   `json:"remoteServerEnabled"`
+	RemoteServerProtocol         string `json:"remoteServerProtocol"`
+	RemoteServerHostname         string `json:"remoteServerHostname"`
+	RemoteServerPort             int    `json:"remoteServerPort"`
+	RemoteServerMode             bool   `json:"remoteServerMode"` // 是否为服务器模式
 	OfficialAccountRefreshToken  string
 	OfficialAccountTokenFilepath string
 	ChannelsRefreshInterval      int

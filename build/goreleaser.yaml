@@ -101,6 +101,8 @@ archives:
     files:
       - src: internal/config/config.template.yaml
         dst: config.yaml
+      - internal/interceptor/inject/lib/**/*
+      - internal/interceptor/inject/src/**/*
       - src: LICENSE
       - src: '!README*.md'
     format_overrides:
@@ -116,6 +118,8 @@ archives:
     files:
       - src: internal/config/config.template.yaml
         dst: config.yaml
+      - internal/interceptor/inject/lib/**/*
+      - internal/interceptor/inject/src/**/*
       - src: LICENSE
       - src: '!README*.md'
   # TODO: Temporarily disabled SunnyNet build

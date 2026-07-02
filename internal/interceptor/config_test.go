@@ -50,3 +50,35 @@ func TestNewInterceptorSettingsPrefersConfiguredGlobalScript(t *testing.T) {
 		t.Fatalf("InjectGlobalScriptFilepath = %q, want %q", settings.InjectGlobalScriptFilepath, configuredScriptPath)
 	}
 }
+
+func TestNewInterceptorSettingsSeparatesEchoLogFromDebugError(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	rootDir := t.TempDir()
+	configPath := filepath.Join(rootDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("debug:\n  error: true\n  echolog: false\n"), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	viper.SetConfigFile(configPath)
+	cfg := &config.Config{
+		RootDir:  rootDir,
+		Filename: "config.yaml",
+		FullPath: configPath,
+		Existing: true,
+		Version:  "test",
+	}
+	if err := cfg.LoadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	settings := NewInterceptorSettings(cfg)
+
+	if !settings.DebugShowError {
+		t.Fatal("DebugShowError = false, want true")
+	}
+	if settings.EchoLogEnabled {
+		t.Fatal("EchoLogEnabled = true, want false")
+	}
+}

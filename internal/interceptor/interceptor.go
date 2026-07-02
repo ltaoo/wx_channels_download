@@ -43,7 +43,7 @@ func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile
 }
 
 func (c *Interceptor) Start() error {
-	echo.SetLogEnabled(c.Debug)
+	echo.SetLogEnabled(c.Settings.EchoLogEnabled)
 	client, err := proxy.NewProxy(c.Cert.Cert, c.Cert.PrivateKey, c.Settings.ProxyUpstreamProxy, c.Settings.ProxyTun, c.Settings.ProxyServerHostname, c.Settings.ProxyServerPort, c.Settings.ProxyDefaultInterface, &proxy.TCPRelayConfig{
 		Enabled:  c.Settings.ProxyTCPRelayEnabled,
 		Hostname: c.Settings.ProxyTCPRelayHostname,
@@ -67,16 +67,22 @@ func (c *Interceptor) Start() error {
 			},
 		})
 	}
-	if c.Settings.RemoteServerEnabled {
-		client.AddPlugin(&proxy.Plugin{
-			Match: "weixin110.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: c.Settings.RemoteServerProtocol,
-				Host:     c.Settings.RemoteServerHostname,
-				Port:     c.Settings.RemoteServerPort,
-			},
-		})
+	downloadTarget := &proxy.TargetConfig{
+		Protocol: c.Settings.APIServerProtocol,
+		Host:     c.Settings.APIServerHostname,
+		Port:     c.Settings.APIServerPort,
 	}
+	if c.Settings.RemoteServerEnabled {
+		downloadTarget = &proxy.TargetConfig{
+			Protocol: c.Settings.RemoteServerProtocol,
+			Host:     c.Settings.RemoteServerHostname,
+			Port:     c.Settings.RemoteServerPort,
+		}
+	}
+	client.AddPlugin(&proxy.Plugin{
+		Match:  "weixin110.qq.com",
+		Target: downloadTarget,
+	})
 	client.AddPlugin(&proxy.Plugin{
 		Match: "kf.qq.com",
 		Target: &proxy.TargetConfig{

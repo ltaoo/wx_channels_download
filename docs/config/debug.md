@@ -11,9 +11,12 @@ title: 调试与 PageSpy
 ```yaml
 debug:
   error: true
+  echolog: false
 ```
 
 是否全局捕获前端错误，出现错误时弹窗展示错误信息。默认 `true`。
+
+`echolog` 控制 Echo 代理日志，默认 `false`。设置为 `true` 时启用 Echo 日志。
 
 ## PageSpy 配置
 

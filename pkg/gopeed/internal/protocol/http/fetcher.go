@@ -605,7 +605,7 @@ func (f *Fetcher) buildClient() *http.Client {
 
 // parseFilename extracts filename from Content-Disposition header
 // It handles multiple encoding scenarios:
-// 1. RFC 5987/RFC 2231 format: filename*=UTF-8''%E6%B5%8B%E8%AF%95.zip (preferred, checked first)
+// 1. RFC 5987/RFC 2231 format: filename*=UTF-8”%E6%B5%8B%E8%AF%95.zip (preferred, checked first)
 // 2. MIME encoded-word: filename="=?UTF-8?B?5rWL6K+VLnppcA==?="
 // 3. URL-encoded: filename="%E6%B5%8B%E8%AF%95.zip"
 // 4. Plain ASCII filename
@@ -632,7 +632,7 @@ func parseFilename(contentDisposition string) string {
 }
 
 // parseFilenameExtended parses RFC 5987/RFC 2231 extended parameter format
-// Format: filename*=charset'language'value (e.g., UTF-8''%E6%B5%8B%E8%AF%95.zip)
+// Format: filename*=charset'language'value (e.g., UTF-8”%E6%B5%8B%E8%AF%95.zip)
 func parseFilenameExtended(cd string) string {
 	// Look for filename*= (case-insensitive)
 	lower := strings.ToLower(cd)

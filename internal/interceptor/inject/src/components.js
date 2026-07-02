@@ -1,239 +1,22 @@
-const inserted_style = `<style>
-:root {
-  --popup-bg-color: #f6f6f6;
-  --popup-content-bg-color: #e7e7e7;
-  --popup-menu-bg-color: #dcdcdc;
-  --popup-menu-hover-color: #d0d0d0;
-}
-body[data-weui-theme=dark] {
-  --popup-bg-color: #272727;
-  --popup-content-bg-color: #323232;
-  --popup-menu-bg-color: #3a3a3a;
-  --popup-menu-hover-color: #444444;
-}
-@media (prefers-color-scheme: dark) {
-  body:not([data-weui-theme=light]) {
-    --popup-bg-color: #272727;
-    --popup-content-bg-color: #323232;
-    --popup-menu-bg-color: #3a3a3a;
-    --popup-menu-hover-color: #444444;
+const cn = Timeless.classNames;
+
+const components_style_id = "wx-components-style";
+
+function components_style_href() {
+  if (typeof WXEnv !== "undefined" && WXEnv.assetUrl) {
+    return WXEnv.assetUrl("/src/components.css");
   }
-}
-.flex {
-  display: flex;
-}
-.fixed {
-  position: fixed;
-}
-.inset-0 {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-}
-.z-50 {
-  z-index: 50;
-}
-.items-center {
-  align-items: center;
-}
-.justify-center {
-  justify-content: center;
-}
-.p-4 {
-  padding: 1rem;
-}
-.bg-black\/80 {
-  background-color: rgba(0, 0, 0, 0.8);
-}
-.w-full {
- width: 100%;
-}
-.h-full {
- height: 100%;
-}
-.overflow-y-auto {
-  overflow-y: auto;
-}
-.custom-menu {
-  z-index: 99999;
-  background: var(--popup-menu-bg-color);
-  box-shadow: 0 0 6px rgb(0 0 0 / 20%);
-  border-radius: 4px;
-  color: var(--weui-FG-0);
-  padding: 8px;
-}
-.custom-menu-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  min-width: 6em;
-  transition: background .15s ease-in-out
-}
-.custom-menu-item:hover {
-  background: var(--popup-menu-hover-color);
-}
-.custom-menu-item-arrow {
-  position: absolute;
-  right: 4px;
-  top: 5px;
-  font-size: 18px;
-  line-height: 12px;
-}
-.custom-menu .weui-cells {
-  margin: 0;
-  background: transparent;
-}
-.custom-menu .weui-cell {
-  align-items: center;
-  padding: 8px;
-  border-radius: 4px;
-}
-.custom-menu .weui-cell:hover {
-  background: var(--weui-FG-6);
-}
-.custom-menu .weui-cell__bd p {
-  color: var(--weui-FG-0);
-  font-size: 14px;
-  line-height: 1.4;
-}
-.custom-menu .wx-download-item-open {
-  display: none;
-  margin-left: 8px;
-}
-.custom-menu .weui-cell:hover .wx-download-item-open {
-  display: inline-flex;
-}
-.wx-footer {
-  position: fixed;
-  right: 0;
-  bottom: 18px;
-  z-index: 99998;
-  text-align: center;
-  font-size: 14px;
-  padding: 4px 48px;
-}
-.wx-footer-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.wx-sider {
-  position: relative;
-  position: fixed;
-  right: 27px;
-  top: 50%;
-  z-index: 99998;
-  text-align: center;
-  font-size: 14px;
-}
-.wx-sider-bg {
-  z-index: 10;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.5;
-  background-color: var(--BG-0);
-}
-.wx-sider-tools {
-  z-index: 11;
-  position: relative;
-  color: var(--weui-FG-0);
-}
-.wx-sider-tools-btn {
-  z-index: 11;
-  position: relative;
-  padding: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.wx-sider-tools-btn:hover {
-  background: var(--weui-BG-COLOR-ACTIVE);
-}
-.wx-dl-panel-container { 
-  box-sizing: border-box;
-  display: flex; 
-  flex-direction: column; 
-  width: 400px; 
-  max-height: 450px; 
-  padding-bottom: 12px;
-  background-color: var(--popup-bg-color); 
-  border-radius: 8px;
-  color: var(--weui-FG-0);
-  box-shadow: 0 0 6px rgb(0 0 0 / 20%);
-}
-.wx-dl-dark-scroll::-webkit-scrollbar { width: 6px !important; }
-.wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent !important; border-radius: 3px !important; }
-.wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; border-radius: 3px !important; }
-.wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.35) !important; }
-.wx-dl-dark-scroll:focus-within::-webkit-scrollbar { width: 6px !important; }
-.wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
-.wx-dl-dark-scroll:focus::-webkit-scrollbar { width: 6px !important; }
-.wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
-.wx-dl-dark-scroll:active::-webkit-scrollbar { width: 6px !important; }
-.wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; }
-body[data-weui-theme=dark] .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-body[data-weui-theme=dark] .wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35) !important; }
-body[data-weui-theme=dark] .wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-body[data-weui-theme=dark] .wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-@media (prefers-color-scheme: dark) {
-  body:not([data-weui-theme=light]) .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-  body:not([data-weui-theme=light]) .wx-dl-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35) !important; }
-  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:focus-within::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:focus::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-  body:not([data-weui-theme=light]) .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2) !important; }
-}
-
-/* Custom Menu Styles */
-.wx-dl-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; padding-bottom: 8px; margin-bottom: 4px; flex-shrink: 0; }
-.wx-dl-title { font-size: 16px; font-weight: 600; color: var(--weui-FG-0); }
-.wx-dl-more-btn { display: flex; align-items: center; color: var(--weui-FG-0); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.8; transition: opacity 0.2s; position: relative; }
-.wx-dl-more-btn:hover { opacity: 1; background-color: var(--weui-BG-COLOR-ACTIVE); }
-
-.wx-dl-dropdown { 
-  position: absolute; top: 100%; right: 0; 
-  background-color: var(--weui-BG-2); border-radius: 8px; 
-  box-shadow: 0 0 6px rgb(0 0 0 / 20%);
-  width: 160px; z-index: 1000;
-  display: none; flex-direction: column; overflow: hidden;
-}
-.wx-dl-dropdown.show { display: flex; }
-.wx-dl-menu-item { padding: 10px 16px; color: var(--weui-FG-0); font-size: 14px; cursor: pointer; transition: background 0.2s; text-decoration: none; display: flex; align-items: center; }
-.wx-dl-menu-item:hover { background-color: var(--weui-BG-COLOR-ACTIVE); }
-.wx-dl-menu-item svg { margin-right: 8px; fill: currentColor; }
-
-.wx-dl-list {
-  height: 380px;
-  min-height: 0;
-  position: relative;
-}
-.scroll-view-waterfall {
-  overflow: visible !important;
-  height: auto !important;
-}
-.wx-dl-item {
-  padding: 16px;
-  background-color: var(--popup-content-bg-color);
-  border-radius: 8px;
-  align-items: center;
-}
-</style>`;
-
-let _the_style_inserted = false;
-function insert_channels_style() {
-  if (_the_style_inserted) {
-    return;
+  const scripts = Array.from(document.scripts || []);
+  const script = scripts.find((item) =>
+    item.src.includes("/__wx_channels_assets/src/components.js"),
+  );
+  if (script) {
+    return script.src.replace(
+      /\/src\/components\.js(?:\?.*)?$/,
+      "/src/components.css",
+    );
   }
-  document.head.insertAdjacentHTML("beforeend", inserted_style);
-  _the_style_inserted = true;
+  return "/__wx_channels_assets/src/components.css";
 }
 
 var download_icon1 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;
@@ -319,30 +102,6 @@ function download_btn7() {
   return $icon.firstChild;
 }
 
-/**
- * @param {DropdownMenuItemPayload[]} items
- * @param {{ hide: () => void }} $dropdown
- */
-function render_extra_menu_items(items, $dropdown) {
-  if (!window.WUI) {
-    return [];
-  }
-  const { MenuItem } = window.WUI;
-  return items
-    .filter((item) => {
-      return item.label && item.onClick;
-    })
-    .map((item) => {
-      return MenuItem({
-        label: item.label,
-        async onClick(event) {
-          await item.onClick(event);
-          $dropdown.hide();
-        },
-      });
-    });
-}
-
 function format_download_speed(bps) {
   const kb = 1024,
     mb = kb * 1024;
@@ -380,221 +139,52 @@ function total_speed(tasks) {
   return sum;
 }
 
-function __wx_refresh_downloader(selector, tasks, total) {
-  const container = document.querySelector(selector);
-  if (!container) return;
-  container.innerHTML = "";
-
-  const list = Array.from(tasks.values()).reverse(); // Newest first
-  const runningCount = list.filter((t) => t.status === "running").length;
-
-  const countEl = document.getElementById("wx-dl-count");
-  if (countEl) {
-    const count = total !== undefined ? total : list.length;
-    countEl.innerText = count > 0 ? `(${count})` : "";
-  }
-
-  if (list.length === 0) {
-    container.innerHTML = `<div class="weui-loadmore weui-loadmore_line"><span class="weui-loadmore__tips">暂无下载任务</span></div>`;
-    return;
-  }
-
-  list.forEach((t) => {
-    const item = document.createElement("div");
-    item.className = "weui-cell";
-
-    const pr = format_download_percent(t);
-    const isCompleted =
-      t.status === "completed" ||
-      t.status === "success" ||
-      t.status === "finished" ||
-      (pr === 100 && t.status !== "running");
-
-    const isPaused = t.status === "paused" || t.status === "pause";
-    const isRunning = t.status === "running";
-
-    let statusText = t.status;
-    let progressDisplay = "";
-    let statusColor = "var(--weui-FG-1)";
-
-    if (isRunning) {
-      const speed = format_download_speed(t.progress ? t.progress.speed : 0);
-      statusText = `${speed} • ${pr}%`;
-    } else if (isCompleted) {
-      statusText = "已完成";
-      // Calculate size
-      const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-      if (total) {
-        statusText = WXU.bytes_to_size(total);
-      }
-    } else if (t.status === "failed" || t.status === "error") {
-      statusText = "下载失败";
-      statusColor = "#FA5151";
-    } else if (t.status === "pending") {
-      statusText = "等待中...";
-    } else if (isPaused) {
-      statusText = `已暂停 • ${pr}%`;
-    }
-
-    // Action Buttons Logic
-    let actionButtons = "";
-    const btnStyle =
-      "color: var(--weui-FG-0); opacity: 0.8; margin-left: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;";
-
-    if (isCompleted) {
-      const isOpenExternal = WXU.config.remoteServerEnabled;
-      const openIcon = isOpenExternal ? ExternalLinkIcon : FolderIcon;
-      const openTitle = isOpenExternal ? "打开外部链接" : "打开文件夹";
-      actionButtons += `
-             <a href="javascript:" class="wx-download-item-open" aria-label="${openTitle}" title="${openTitle}" data-name="${t.name}" data-path="${t.path}" data-filepath="${t.filepath}" data-id="${t.id}" data-action="open" style="${btnStyle}">
-               ${openIcon}
-             </a>
-             <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">
-               ${DeleteIcon}
-             </a>
-           `;
-    } else {
-      if (isRunning) {
-        actionButtons += `
-                <a href="javascript:" class="wx-download-item-pause" aria-label="暂停" title="暂停" data-id="${t.id}" data-action="pause" style="${btnStyle}">
-                  ${PauseIcon}
-                </a>
-              `;
-      } else if (isPaused || t.status === "failed" || t.status === "error") {
-        // Allow resume if paused or failed
-        var MaxRunning = WXU.config.downloadMaxRunning;
-        if (runningCount < MaxRunning) {
-          const isFailed = t.status === "failed" || t.status === "error";
-          const label = isFailed ? "重试" : "继续";
-          const icon = isFailed ? RetryIcon : PlayIcon;
-          actionButtons += `
-                <a href="javascript:" class="wx-download-item-resume" aria-label="${label}" title="${label}" data-id="${t.id}" data-action="resume" style="${btnStyle}">
-                  ${icon}
-                </a>
-              `;
-        }
-      }
-      actionButtons += `
-             <a href="javascript:" class="wx-download-item-delete" aria-label="删除" title="删除" data-id="${t.id}" data-action="delete" style="${btnStyle}">
-               ${DeleteIcon}
-             </a>
-           `;
-    }
-
-    const actionHtml = `<div class="weui-cell__ft" style="display: flex; align-items: center;">${actionButtons}</div>`;
-
-    var filename = get_name_of_download_task(t);
-
-    // Custom dark theme styles inline for specific elements, plus classes
-    item.className = "weui-cell wx-dl-item";
-
-    // File Icon size increase
-    // We wrap the icon in a slightly larger container
-    const iconSize = "50px";
-
-    // Icon preparation
-    let selectedIcon = FileIcon;
-    if (filename) {
-      const ext = filename.split(".").pop().toLowerCase();
-      if (ext === "mp3") {
-        selectedIcon = MP3Icon;
-      } else if (ext === "mp4") {
-        selectedIcon = MP4Icon;
-      } else if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
-        selectedIcon = ImageIcon;
-      }
-    }
-
-    let iconInner = selectedIcon
-      .replace('width="20"', 'width="32"')
-      .replace('height="20"', 'height="32"');
-
-    if (isRunning || isPaused) {
-      const radius = 22;
-      const circumference = 2 * Math.PI * radius;
-      const offset = circumference - (pr / 100) * circumference;
-      const strokeColor = isPaused ? "#FBC02D" : "#07C160"; // Wechat Green or Warning Yellow for pause
-
-      iconInner = `
-        <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
-             <svg width="50" height="50" style="position: absolute; top: 0; left: 0; transform: rotate(-90deg);">
-                <circle cx="25" cy="25" r="${radius}" stroke="var(--weui-FG-3)" stroke-width="3" fill="none"></circle>
-                <circle cx="25" cy="25" r="${radius}" stroke="${strokeColor}" stroke-width="3" fill="none" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
-             </svg>
-             <div style="position: relative; z-index: 1; display: flex;">
-               ${iconInner}
-             </div>
-        </div>
-        `;
-    }
-
-    item.innerHTML = `
-          <div class="weui-cell__hd" aria-hidden="true" style="position: relative; margin-right: 16px; width: ${iconSize}; height: ${iconSize}; display: flex; align-items: center; justify-content: center; color: var(--weui-FG-0);">
-            ${iconInner}
-          </div>
-          <div class="weui-cell__bd" style="min-width:0;">
-            <p class="weui-ellipsis" style="color: var(--weui-FG-0); font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${filename}">${filename}</p>
-            <div class="weui-cell__desc" style="margin-top: 4px; color: ${statusColor}; font-size: 12px;">${statusText}</div>
-            ${
-              typeof pr === "number" && !isCompleted
-                ? `<div style="height: 4px; background: var(--weui-FG-3); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none;"><div style="width: ${pr}%; background: #07C160; height: 100%; transition: width 0.2s;"></div></div>`
-                : ""
-            }
-            ${progressDisplay}
-          </div>
-          ${actionHtml}
-      `;
-    container.appendChild(item);
-  });
-
-  if (list.length > 0) {
-    // const footer = document.createElement("div");
-    // footer.className = "weui-loadmore weui-loadmore_line";
-    // footer.style.marginTop = "20px";
-    // footer.innerHTML =
-    //   '<span class="weui-loadmore__tips">没有更多内容了</span>';
-    // container.appendChild(footer);
-  }
-}
-
-var { Menu, MenuItem } = WUI;
-MenuItem.setTemplate(
-  '<div class="custom-menu-item"><span class="label">{{ label }}</span></div>',
-);
-MenuItem.setIndicatorTemplate('<span class="custom-menu-item-arrow">›</span>');
-Menu.setTemplate('<div><div class="custom-menu">{{ list }}</div></div>');
-
 function Popover(props, children) {
-  const state_ = refobj(props.store.state);
-  const popper_state_ = refobj(props.store.popper.state);
+  const presence_state_ = refobj(props.store.presence.state);
+  const was_exiting_ = ref(false);
 
   const unlistens = [
-    props.store.onStateChange((v) => {
-      state_.as(v);
-    }),
-    props.store.popper.onStateChange((v) => {
-      popper_state_.as(v);
+    props.store.presence.onStateChange((v) => {
+      presence_state_.as(v);
+      if (v.exit) {
+        was_exiting_.as(true);
+      }
+      if (v.mounted) {
+        was_exiting_.as(false);
+      }
     }),
   ];
 
-  return PopoverPrimitive.Root(
+  return Timeless.shadcn.PopoverPrimitive.Root(
     {
       onUnmounted() {
-        unlistens.forEach((fn) => fn());
+        unlistens.forEach((fn) => {
+          if (typeof fn === "function") {
+            fn();
+          }
+        });
       },
     },
     [
-      PopoverPrimitive.Trigger({ store: props.store }, children),
-      PopoverPrimitive.Portal({ store: props.store }, [
-        PopoverPrimitive.Content(
+      Timeless.shadcn.PopoverPrimitive.Trigger(
+        { store: props.store },
+        children,
+      ),
+      Timeless.shadcn.PopoverPrimitive.Portal({ store: props.store }, [
+        Timeless.shadcn.PopoverPrimitive.Content(
           {
             ...props,
             zIndex: 9999,
-            class: computed(state_, (t) => {
+            class: computed(presence_state_, (t) => {
+              const inClass = "animate-in fade-in-0 zoom-in-95";
+              const outClass = "animate-out fade-out-0 zoom-out-95";
               return [
-                t.enter ? "animate-in fade-in-0 zoom-in-95" : "",
-                t.exit ? "animate-out fade-out-0 zoom-out-95" : "",
-              ].join(" ");
+                t.enter ? inClass : "",
+                t.exit ? outClass : "",
+                !t.mounted && was_exiting_.value ? outClass : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
             }),
           },
           props.content,
@@ -612,8 +202,8 @@ function Dialog(props, children) {
     state_.as(v);
   });
 
-  return DialogPrimitive.Root({ store }, [
-    DialogPrimitive.Overlay({
+  return Timeless.shadcn.DialogPrimitive.Root({ store }, [
+    Timeless.shadcn.DialogPrimitive.Overlay({
       store,
       class: "fixed inset-0 z-50 bg-black/80",
     }),
@@ -627,124 +217,113 @@ function Dialog(props, children) {
         },
       },
       [
-        DialogPrimitive.Content({ ...rest, store }, [
-          DialogPrimitive.Body({ store }, children || []),
+        Timeless.shadcn.DialogPrimitive.Content({ ...rest, store }, [
+          Timeless.shadcn.DialogPrimitive.Body({ store }, children || []),
         ]),
       ],
     ),
   ]);
 }
 
-function DropdownMenu(props, children) {
-  const state_ = refobj(props.store.state);
-
-  return Fragment({}, [
-    h(Show, { when: !!children }, [
-      DropdownMenuPrimitive.Trigger({ store: props.store }, children),
-    ]),
-    DropdownMenuPrimitive.Content(
-      {
-        ...props,
-        animation: {
-          in: "animate-in fade-in-0 zoom-in-95",
-          out: "animate-out fade-out-0 zoom-out-95",
-        },
+function OverwriteDownloadConfirmDialog(props) {
+  return Dialog(
+    {
+      store: props.store,
+      style: {
+        width: "320px",
+        "max-width": "calc(100vw - 32px)",
+        "box-sizing": "border-box",
+        "border-radius": "8px",
+        background: "var(--popup-bg-color)",
+        color: "var(--weui-FG-0)",
+        "box-shadow": "0 8px 28px rgba(0,0,0,0.28)",
+        overflow: "hidden",
       },
-      [
-        View({ class: "custom-menu" }, [
-          For({
-            each: computed(state_, (t) => {
-              return t.items;
-            }),
-            render(item) {
-              return DropdownMenuItem({ store: item });
+    },
+    [
+      View({ style: { padding: "20px 20px 16px" } }, [
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "8px",
             },
-          }),
-        ]),
-      ],
-    ),
-  ]);
-}
-
-function DropdownMenuItem(props) {
-  const state_ = refobj(props.store.state);
-  const has_submenu_ = ref(!!props.store.menu);
-  const menu_state_ = refobj(props.store.menu ? props.store.menu.state : {});
-  [
-    props.store.onStateChange((v) => {
-      state_.as(v);
-    }),
-    (() => {
-      if (props.store.menu) {
-        return props.store.menu.onStateChange((v) => {
-          menu_state_.as(v);
-        });
-      }
-      return () => {};
-    })(),
-  ];
-
-  return View({ class: "custom-menu-item" }, [
-    DropdownMenuPrimitive.Item(
-      {
-        store: props.store,
-        class: cn([
-          computed(state_, (t) => {
-            return t.focused
-              ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
-              : "";
-          }),
-          computed(state_, (t) => {
-            return t.disabled ? "pointer-events-none opacity-50" : "";
-          }),
-        ]),
-      },
-      [
-        props.store.label,
-        Show({ when: has_submenu_ }, [
-          View({ class: "p-2" }, [
-            Timeless.icons.ChevronRightOutlined({
-              class: "custom-menu-item-arrow",
-              style: "font-size: 18px;",
-            }),
-          ]),
-        ]),
-      ],
-    ),
-    (() => {
-      // console.log("DropdownMenuItem render", props.store.label);
-      const inner$ = props.store.menu
-        ? DropdownMenuPrimitive.SubMenuContent(
+          },
+          ["\u6587\u4ef6\u5df2\u5b58\u5728"],
+        ),
+        View(
+          {
+            style: {
+              "font-size": "14px",
+              "line-height": "20px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "4px",
+            },
+          },
+          [props.content],
+        ),
+      ]),
+      View(
+        {
+          style: {
+            display: "flex",
+            "border-top": "1px solid var(--weui-DIALOG-LINE-COLOR)",
+          },
+        },
+        [
+          View(
             {
-              store: props.store.menu,
-              animation: {
-                in: "animate-in fade-in-0 zoom-in-95",
-                out: "animate-out fade-out-0 zoom-out-95",
+              type: "button",
+              style: {
+                flex: "1",
+                height: "48px",
+                border: "0",
+                background: "transparent",
+                color: "var(--weui-FG-0)",
+                "font-size": "16px",
+                cursor: "pointer",
+              },
+              onClick() {
+                props.store.hide();
               },
             },
-            [
-              View({ class: "custom-menu" }, [
-                For({
-                  each: computed(menu_state_, (t) => {
-                    return t.items;
-                  }),
-                  render(item) {
-                    return DropdownMenuItem({ store: item });
-                  },
-                }),
-              ]),
-            ],
-          )
-        : null;
-      return View({}, [inner$]);
-    })(),
-  ]);
+            ["\u8df3\u8fc7"],
+          ),
+          View(
+            {
+              type: "button",
+              style: {
+                flex: "1",
+                height: "48px",
+                border: "0",
+                "border-left": "1px solid var(--weui-DIALOG-LINE-COLOR)",
+                background: "transparent",
+                color: "#FA5151",
+                "font-size": "16px",
+                "font-weight": "500",
+                cursor: "pointer",
+              },
+              onClick() {
+                props.onConfirm();
+              },
+            },
+            ["\u8986\u76d6"],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+function DropdownMenu(props, children) {
+  return Timeless.shadcn.DropdownMenu(props, children);
 }
 
 function Waterfall(props) {
   const { store, class: cls, render, ...rest } = props;
 
-  return WaterfallPrimitive.Root(
+  return Timeless.shadcn.WaterfallPrimitive.Root(
     {
       ...rest,
       store,
@@ -755,7 +334,7 @@ function Waterfall(props) {
         each: store.$columns,
         render(column) {
           const visible_cells = refarr([...column.$cells]);
-          return WaterfallPrimitive.Column({ store: column }, [
+          return Timeless.shadcn.WaterfallPrimitive.Column({ store: column }, [
             For({
               key: "id",
               each: visible_cells,
@@ -765,7 +344,7 @@ function Waterfall(props) {
                   ? render(payload, slot)
                   : null;
 
-                const cell$ = WaterfallPrimitive.Cell(
+                const cell$ = Timeless.shadcn.WaterfallPrimitive.Cell(
                   { store: slot },
                   user_content ? [user_content] : [],
                 );
@@ -814,7 +393,7 @@ function Waterfall(props) {
 function ScrollView(props, children) {
   const { store, class: cls, ...rest } = props;
 
-  return ScrollViewPrimitive.Root(
+  return Timeless.shadcn.ScrollViewPrimitive.Root(
     {
       ...rest,
       store,
@@ -822,7 +401,7 @@ function ScrollView(props, children) {
       style: "height: 100%; overflow-y: auto; padding: 0 12px;",
     },
     [
-      ScrollViewPrimitive.Indicator(
+      Timeless.shadcn.ScrollViewPrimitive.Indicator(
         {
           store,
           class: "scroll-view-indicator",
@@ -830,7 +409,7 @@ function ScrollView(props, children) {
             "position: relative; width: 100%; height: 0, overflow: hidden; text-align: center;",
         },
         [
-          ScrollViewPrimitive.Progress({
+          Timeless.shadcn.ScrollViewPrimitive.Progress({
             store,
             class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
             style:

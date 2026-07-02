@@ -2,7 +2,6 @@
  * @file 用户主页
  */
 (() => {
-  insert_channels_style();
   var my_username = "";
   function __wx_insert_batch_download_btn() {
     const $operation = document.querySelector(".opr-area");
