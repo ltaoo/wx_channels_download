@@ -403,7 +403,12 @@ function DownloaderPanelViewModel(props = {}) {
     );
   };
   const deleteReq = new Timeless.RequestCore(
-    (id) => request.post("/api/task/delete", { id }),
+    (params = {}) => {
+      return request.post("/api/task/delete", {
+        id: params.id,
+        delete_files: !!params.deleteFiles,
+      });
+    },
     { client: http_client },
   );
   const startReq = new Timeless.RequestCore(
@@ -438,6 +443,9 @@ function DownloaderPanelViewModel(props = {}) {
   const tasks_ = refarr([]);
   const task_count_ = ref(0);
   const list_render_enabled_ = ref(true);
+  const delete_task_ = ref(null);
+  const delete_delete_files_ = ref(false);
+  const deleting_task_ = ref(false);
   const clear_delete_files_ = ref(false);
   const clearing_tasks_ = ref(false);
   const running_count_ = computed(tasks_, (t) => {
@@ -1030,11 +1038,23 @@ function DownloaderPanelViewModel(props = {}) {
       }
       updateTaskStatus(task.id, "paused");
     },
-    async deleteTask(task) {
-      const r = await deleteReq.run(task.id);
+    requestDeleteTask(task, deleteFiles = false) {
+      if (!task || !task.id) {
+        WXU.error({ msg: "异常操作" });
+        return;
+      }
+      delete_task_.as(task);
+      delete_delete_files_.as(!!deleteFiles);
+      ui.deleteConfirmDialog$.show();
+    },
+    async deleteTask(task, params = {}) {
+      const r = await deleteReq.run({
+        id: task.id,
+        deleteFiles: params.deleteFiles,
+      });
       if (r.error) {
         WXU.error({ msg: r.error.message });
-        return;
+        return false;
       }
       const current = tasks_.value || [];
       const index = current.findIndex(
@@ -1042,7 +1062,7 @@ function DownloaderPanelViewModel(props = {}) {
       );
       if (index === -1) {
         WXU.error({ msg: "异常操作" });
-        return;
+        return false;
       }
       const oldStatus = current[index].status || "";
       const nextTotal = Math.max(0, (virtual_total || current.length) - 1);
@@ -1065,6 +1085,30 @@ function DownloaderPanelViewModel(props = {}) {
       tasks_.as(next);
       adjustStatusCounts(oldStatus, "", -1);
       setTimeout(maybeLoadMoreTasks, 0);
+      return true;
+    },
+    async confirmDeleteTask() {
+      if (deleting_task_.value) {
+        return;
+      }
+      const task = delete_task_.value;
+      if (!task || !task.id) {
+        WXU.error({ msg: "异常操作" });
+        ui.deleteConfirmDialog$.hide();
+        return;
+      }
+      deleting_task_.as(true);
+      try {
+        const ok = await methods.deleteTask(task, {
+          deleteFiles: delete_delete_files_.value,
+        });
+        if (ok) {
+          delete_task_.as(null);
+          ui.deleteConfirmDialog$.hide();
+        }
+      } finally {
+        deleting_task_.as(false);
+      }
     },
     async resumeTask(task) {
       const r = await resumeReq.run(task.id);
@@ -1341,6 +1385,9 @@ function DownloaderPanelViewModel(props = {}) {
         });
   const ui = {
     dropdown$,
+    deleteConfirmDialog$: new Timeless.ui.DialogCore({
+      closeable: true,
+    }),
     clearConfirmDialog$: new Timeless.ui.DialogCore({
       closeable: true,
     }),
@@ -1353,6 +1400,9 @@ function DownloaderPanelViewModel(props = {}) {
       task_count: task_count_,
       list_render_enabled: list_render_enabled_,
       running_count: running_count_,
+      delete_task: delete_task_,
+      delete_delete_files: delete_delete_files_,
+      deleting_task: deleting_task_,
       clear_delete_files: clear_delete_files_,
       clearing_tasks: clearing_tasks_,
       status_counts: status_counts_,
@@ -1403,9 +1453,15 @@ function DownloaderPanelViewModel(props = {}) {
   };
 }
 
-function ClearTasksConfirmDialog(props) {
+function DownloadDeleteConfirmDialog(props) {
   const deleteFiles_ = props.deleteFiles;
   const loading_ = props.loading;
+  const title = props.title || "删除下载记录";
+  const message = props.message || "确定删除下载任务记录？此操作不可恢复。";
+  const checkboxLabel = props.checkboxLabel || "同时删除视频文件";
+  const cancelText = props.cancelText || "取消";
+  const confirmText = props.confirmText || "确认删除";
+  const loadingText = props.loadingText || "删除中...";
   const checkboxStyle = computed(deleteFiles_, (checked) => {
     return {
       width: "18px",
@@ -1447,7 +1503,7 @@ function ClearTasksConfirmDialog(props) {
               "margin-bottom": "8px",
             },
           },
-          ["清空下载记录"],
+          [title],
         ),
         View(
           {
@@ -1458,7 +1514,7 @@ function ClearTasksConfirmDialog(props) {
               "margin-bottom": "16px",
             },
           },
-          ["确定删除全部下载任务记录？此操作不可恢复。"],
+          [message],
         ),
         View(
           {
@@ -1480,9 +1536,9 @@ function ClearTasksConfirmDialog(props) {
               "line-height": "20px",
             },
             onClick() {
-              // if (loading_.value) {
-              //   return;
-              // }
+              if (loading_.value) {
+                return;
+              }
               deleteFiles_.as((prev) => !prev);
             },
             onKeyDown(e) {
@@ -1504,7 +1560,7 @@ function ClearTasksConfirmDialog(props) {
                 },
               }),
             ]),
-            View({}, ["同时删除视频文件"]),
+            View({}, [checkboxLabel]),
           ],
         ),
       ]),
@@ -1538,7 +1594,7 @@ function ClearTasksConfirmDialog(props) {
                 props.store.hide();
               },
             },
-            ["取消"],
+            [cancelText],
           ),
           View(
             {
@@ -1566,7 +1622,7 @@ function ClearTasksConfirmDialog(props) {
             },
             [
               computed(loading_, (loading) =>
-                loading ? "清空中..." : "确认清空",
+                loading ? loadingText : confirmText,
               ),
             ],
           ),
@@ -1574,6 +1630,26 @@ function ClearTasksConfirmDialog(props) {
       ),
     ],
   );
+}
+
+function ClearTasksConfirmDialog(props) {
+  return DownloadDeleteConfirmDialog({
+    ...props,
+    title: "清空下载记录",
+    message: "确定删除全部下载任务记录？此操作不可恢复。",
+    confirmText: "确认清空",
+    loadingText: "清空中...",
+  });
+}
+
+function TaskDeleteConfirmDialog(props) {
+  return DownloadDeleteConfirmDialog({
+    ...props,
+    title: "删除下载记录",
+    message: "确定删除该下载任务记录？此操作不可恢复。",
+    confirmText: "确认删除",
+    loadingText: "删除中...",
+  });
 }
 
 function DownloadTaskListView(props) {
@@ -2011,7 +2087,7 @@ function DownloadTaskListView(props) {
                                     class: "wx-download-item-delete",
                                     style: btnStyle,
                                     onClick() {
-                                      vm$.methods.deleteTask(task);
+                                      vm$.methods.requestDeleteTask(task);
                                     },
                                   },
                                   [
@@ -2141,6 +2217,16 @@ function DownloaderPanelView(props) {
         ),
       ]),
       DownloadTaskListView({ store: vm$ }),
+      renderConfirmDialog
+        ? TaskDeleteConfirmDialog({
+            store: vm$.ui.deleteConfirmDialog$,
+            deleteFiles: vm$.state.delete_delete_files,
+            loading: vm$.state.deleting_task,
+            onConfirm() {
+              vm$.methods.confirmDeleteTask();
+            },
+          })
+        : null,
       renderConfirmDialog
         ? ClearTasksConfirmDialog({
             store: vm$.ui.clearConfirmDialog$,

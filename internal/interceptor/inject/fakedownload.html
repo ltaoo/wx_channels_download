@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fake Download Debug</title>
+  <script>
+    window.__wx_fake_params__ = new URLSearchParams(window.location.search);
+    window.__wx_fake_use_mock_api__ =
+      window.__wx_fake_params__.get("mock") === "1" ||
+      window.__wx_fake_params__.get("api") === "mock";
+    window.__wx_fakedownload_api_base__ =
+      window.__wx_fake_params__.get("api_base") ||
+      (/^https?:$/.test(window.location.protocol)
+        ? window.location.origin
+        : "http://127.0.0.1:2022");
+    (function () {
+      var apiURL;
+      try {
+        apiURL = new URL(window.__wx_fakedownload_api_base__);
+      } catch {
+        apiURL = new URL("http://127.0.0.1:2022");
+        window.__wx_fakedownload_api_base__ = apiURL.origin;
+      }
+      window.__wx_channels_config__ = {
+        apiServerProtocol: apiURL.protocol.replace(":", ""),
+        apiServerAddr: apiURL.host,
+      };
+      window.WXVariable = {};
+    })();
+    window.__wx_channels_assets_base__ =
+      window.__wx_channels_assets_base__ ||
+      window.__wx_fake_params__.get("assets_base") ||
+      window.__wx_fakedownload_api_base__.replace(/\/$/, "") +
+        "/__wx_channels_assets";
+    window.__wx_fake_asset_version__ =
+      new URLSearchParams(window.location.search).get("asset_v") || "";
+    function __wx_fake_asset_url(path) {
+      var url = window.__wx_channels_assets_base__.replace(/\/$/, "") + path;
+      if (window.__wx_fake_asset_version__) {
+        url +=
+          (url.indexOf("?") === -1 ? "?" : "&") +
+          "v=" +
+          encodeURIComponent(window.__wx_fake_asset_version__);
+      }
+      return url;
+    }
+    document.write(
+      '<link rel="stylesheet" href="' +
+        __wx_fake_asset_url("/lib/timeless/0.26.3/timeless.shadcn.css") +
+        '">'
+    );
+    document.write(
+      '<link id="wx-components-style" rel="stylesheet" href="' +
+        __wx_fake_asset_url("/src/components.css") +
+        '">'
+    );
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fake-bg: #17191d;
+      --fake-panel: #20242a;
+      --fake-panel-2: #292f37;
+      --fake-text: rgba(255, 255, 255, 0.9);
+      --fake-muted: rgba(255, 255, 255, 0.58);
+      --fake-line: rgba(255, 255, 255, 0.12);
+      --fake-green: #07c160;
+      --fake-blue: #4da3ff;
+      --fake-red: #fa5151;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(77, 163, 255, 0.08), transparent 34%),
+        var(--fake-bg);
+      color: var(--fake-text);
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 32px;
+    }
+
+    .home-header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 24px;
+      padding: 0 18px;
+      border: 1px solid var(--fake-line);
+      border-radius: 8px;
+      background: rgba(32, 36, 42, 0.96);
+    }
+
+    .home-header-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .home-header-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--fake-green);
+    }
+
+    .home-header-title {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .home-header-subtitle {
+      color: var(--fake-muted);
+      font-size: 12px;
+    }
+
+    .home-header-actions,
+    .home-header-action-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .home-header-action-wrap {
+      min-width: 136px;
+      min-height: 32px;
+    }
+
+    .home-header-placeholder {
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--fake-line);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .download-tool,
+    .debug-panel {
+      border: 1px solid var(--fake-line);
+      border-radius: 8px;
+      background: rgba(32, 36, 42, 0.96);
+      overflow: hidden;
+    }
+
+    .download-tool header,
+    .debug-panel header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--fake-line);
+    }
+
+    .download-tool h1,
+    .debug-panel h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .download-tool-body {
+      padding: 16px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--fake-muted);
+      font-size: 12px;
+    }
+
+    .url-input {
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      border: 1px solid var(--fake-line);
+      border-radius: 6px;
+      outline: none;
+      background: #14171b;
+      color: var(--fake-text);
+      padding: 12px;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .url-input:focus {
+      border-color: rgba(77, 163, 255, 0.72);
+      box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.16);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .action-button {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0 12px;
+      color: #fff;
+      background: var(--fake-green);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .action-button.secondary {
+      border-color: var(--fake-line);
+      background: var(--fake-panel-2);
+      color: var(--fake-text);
+    }
+
+    .action-button:disabled {
+      cursor: default;
+      opacity: 0.56;
+    }
+
+    .status-line {
+      min-height: 20px;
+      margin-top: 12px;
+      color: var(--fake-muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .status-line.error {
+      color: #ff8a8a;
+    }
+
+    .status-line.success {
+      color: #67d391;
+    }
+
+    .result-list {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .result-item {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 10px 12px;
+      border: 1px solid var(--fake-line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.035);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .result-state {
+      color: var(--fake-muted);
+      font-weight: 650;
+    }
+
+    .result-item.success .result-state {
+      color: #67d391;
+    }
+
+    .result-item.error .result-state {
+      color: #ff8a8a;
+    }
+
+    .result-url {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .debug-panel {
+      position: sticky;
+      top: 16px;
+    }
+
+    .debug-panel pre {
+      margin: 0;
+      min-height: 220px;
+      max-height: 520px;
+      overflow: auto;
+      padding: 12px 14px 16px;
+      color: rgba(255, 255, 255, 0.74);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 900px) {
+      .page {
+        padding: 18px;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .debug-panel {
+        position: static;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app" class="page">
+    <header class="home-header">
+      <div class="home-header-main">
+        <div class="home-header-logo" aria-hidden="true"></div>
+        <div>
+          <div class="home-header-title">Fake Download</div>
+          <div class="home-header-subtitle">download panel insertion target</div>
+        </div>
+      </div>
+      <div class="home-header-actions">
+        <div class="home-header-action-wrap">
+          <div class="home-header-placeholder" aria-hidden="true"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <main class="download-tool">
+        <header>
+          <h1>Batch Download</h1>
+        </header>
+        <div class="download-tool-body">
+          <label class="field-label" for="download-urls">文件地址</label>
+          <textarea
+            id="download-urls"
+            class="url-input"
+            spellcheck="false"
+            placeholder="https://example.com/video-a.mp4&#10;https://example.com/archive.zip"
+          ></textarea>
+          <div class="actions">
+            <button id="batch-start" class="action-button" type="button">
+              批量开始下载
+            </button>
+            <button
+              id="open-panel"
+              class="action-button secondary"
+              type="button"
+            >
+              打开面板
+            </button>
+          </div>
+          <div id="status-line" class="status-line"></div>
+          <div id="result-list" class="result-list"></div>
+        </div>
+      </main>
+
+      <aside class="debug-panel">
+        <header>
+          <h2>Runtime</h2>
+        </header>
+        <pre id="runtime-output">Waiting for scripts...</pre>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      function writeScript(path) {
+        document.write(
+          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
+        );
+      }
+      writeScript("/lib/mitt.umd.js");
+      writeScript("/lib/timeless/0.26.3/timeless.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.utils.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.shadcn.umd.min.js");
+    })();
+  </script>
+  <script>
+    Object.assign(Timeless, Timeless.shadcn.kit);
+    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(window, Timeless);
+    Object.assign(window, Timeless.shadcn);
+  </script>
+  <script>
+    (function () {
+      function writeScript(path) {
+        document.write(
+          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
+        );
+      }
+      writeScript("/lib/timeless/0.26.3/timeless.dom.umd.min.js");
+      writeScript("/lib/timeless/0.26.3/timeless.web.umd.min.js");
+      writeScript("/src/eventbus.js");
+      writeScript("/src/env.js");
+      if (window.__wx_fake_use_mock_api__) {
+        writeScript("/src/env.mock.js");
+      }
+      writeScript("/src/utils.js");
+      writeScript("/src/components.js");
+      writeScript("/src/download/core.js");
+      writeScript("/src/download/panel.js");
+    })();
+  </script>
+  <script>
+    (function () {
+      var sampleUrls = [
+        "https://example.com/fake-video-a.mp4",
+        "https://example.com/fake-video-b.mp4?token=debug",
+      ];
+
+      function byId(id) {
+        return document.getElementById(id);
+      }
+
+      function setStatus(message, kind) {
+        var status = byId("status-line");
+        status.textContent = message || "";
+        status.className = ["status-line", kind || ""].filter(Boolean).join(" ");
+      }
+
+      function setRuntime() {
+        var data = {
+          apiOrigin: window.WXEnv && WXEnv.apiOrigin,
+          downloaderWSURL: window.WXEnv && WXEnv.downloaderWSURL,
+          mockAPI: !!window.__wx_fake_use_mock_api__,
+          panelReady: !!(
+            window.WXU &&
+            WXU.downloader &&
+            typeof WXU.downloader.toggle === "function"
+          ),
+        };
+        byId("runtime-output").textContent = JSON.stringify(data, null, 2);
+      }
+
+      function parseUrls(text) {
+        var seen = {};
+        return String(text || "")
+          .split(/[\s,]+/)
+          .map(function (item) {
+            return item.trim();
+          })
+          .filter(function (item) {
+            if (!item || seen[item]) return false;
+            seen[item] = true;
+            return true;
+          });
+      }
+
+      function filenameFromUrl(url) {
+        try {
+          var parsed = new URL(url);
+          var pathname = parsed.pathname || "";
+          var last = pathname.split("/").filter(Boolean).pop() || "";
+          return decodeURIComponent(last);
+        } catch (err) {
+          return "";
+        }
+      }
+
+      function validateUrls(urls) {
+        var valid = [];
+        var invalid = [];
+        urls.forEach(function (url) {
+          try {
+            new URL(url);
+            valid.push(url);
+          } catch (err) {
+            invalid.push(url);
+          }
+        });
+        return { valid: valid, invalid: invalid };
+      }
+
+      function renderResults(results) {
+        var root = byId("result-list");
+        root.innerHTML = "";
+        results.forEach(function (result) {
+          var item = document.createElement("div");
+          item.className = "result-item " + (result.ok ? "success" : "error");
+          var state = document.createElement("div");
+          state.className = "result-state";
+          state.textContent = result.ok ? "已创建" : "失败";
+          var url = document.createElement("div");
+          url.className = "result-url";
+          url.textContent = result.ok
+            ? result.url
+            : result.url + " - " + result.message;
+          item.appendChild(state);
+          item.appendChild(url);
+          root.appendChild(item);
+        });
+      }
+
+      async function createDownloadTask(url) {
+        var filename = filenameFromUrl(url);
+        var body = { url: url };
+        if (filename) {
+          body.filename = filename;
+        }
+        return WXU.request({
+          method: "POST",
+          url: WXEnv.apiOrigin + "/api/task/create2",
+          body: body,
+        });
+      }
+
+      async function startAllTasks() {
+        return WXU.request({
+          method: "POST",
+          url: WXEnv.apiOrigin + "/api/task/start_all",
+          body: {},
+        });
+      }
+
+      async function handleBatchStart() {
+        var button = byId("batch-start");
+        var urls = parseUrls(byId("download-urls").value);
+        var checked = validateUrls(urls);
+        if (!checked.valid.length) {
+          setStatus("请输入至少一个有效文件地址", "error");
+          renderResults(
+            checked.invalid.map(function (url) {
+              return { ok: false, url: url, message: "URL 不合法" };
+            }),
+          );
+          return;
+        }
+
+        button.disabled = true;
+        setStatus("正在创建 " + checked.valid.length + " 个下载任务...");
+        renderResults([]);
+
+        var results = checked.invalid.map(function (url) {
+          return { ok: false, url: url, message: "URL 不合法" };
+        });
+        for (var i = 0; i < checked.valid.length; i += 1) {
+          var url = checked.valid[i];
+          var pair = await createDownloadTask(url);
+          var err = pair[0];
+          results.push({
+            ok: !err,
+            url: url,
+            message: err ? err.message || "创建任务失败" : "",
+          });
+          renderResults(results);
+        }
+
+        var createdCount = results.filter(function (result) {
+          return result.ok;
+        }).length;
+        if (createdCount > 0) {
+          var startPair = await startAllTasks();
+          if (startPair[0]) {
+            setStatus(startPair[0].message || "启动下载失败", "error");
+          } else {
+            setStatus("已创建并启动 " + createdCount + " 个下载任务", "success");
+            if (WXU.downloader && typeof WXU.downloader.show === "function") {
+              WXU.downloader.show();
+            }
+          }
+        } else {
+          setStatus("没有成功创建的下载任务", "error");
+        }
+        button.disabled = false;
+        setRuntime();
+      }
+
+      function bindControls() {
+        var input = byId("download-urls");
+        if (!input.value.trim()) {
+          input.value = sampleUrls.join("\n");
+        }
+        byId("batch-start").addEventListener("click", handleBatchStart);
+        byId("open-panel").addEventListener("click", function () {
+          if (WXU.downloader && typeof WXU.downloader.toggle === "function") {
+            WXU.downloader.toggle();
+            setStatus("已切换下载面板");
+          } else {
+            setStatus("下载面板尚未初始化", "error");
+          }
+          setRuntime();
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        bindControls();
+        setRuntime();
+        setInterval(setRuntime, 500);
+      });
+    })();
+  </script>
+</body>
+
+</html>

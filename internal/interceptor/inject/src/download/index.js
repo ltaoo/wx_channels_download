@@ -112,6 +112,14 @@ function DownloaderPageView(props) {
             size: 12,
           }),
         ]),
+        TaskDeleteConfirmDialog({
+          store: vm$.ui.deleteConfirmDialog$,
+          deleteFiles: vm$.state.delete_delete_files,
+          loading: vm$.state.deleting_task,
+          onConfirm() {
+            vm$.methods.confirmDeleteTask();
+          },
+        }),
         ClearTasksConfirmDialog({
           store: vm$.ui.clearConfirmDialog$,
           deleteFiles: vm$.state.clear_delete_files,
