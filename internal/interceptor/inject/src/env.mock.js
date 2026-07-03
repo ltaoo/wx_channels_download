@@ -13,7 +13,17 @@ if (typeof WXEnv === "undefined") {
   var __wx_fake_use_mock_api =
     __wx_fake_params.get("mock") === "1" ||
     __wx_fake_params.get("api") === "mock";
-  var __wx_fake_api_base = "http://192.168.1.118:2022";
+  function __wx_existing_api_base() {
+    var cfg = window.__wx_channels_config__ || {};
+    if (cfg.apiServerProtocol && cfg.apiServerAddr) {
+      return cfg.apiServerProtocol + "://" + cfg.apiServerAddr;
+    }
+    return "";
+  }
+  var __wx_fake_api_base =
+    __wx_fake_params.get("api_base") ||
+    __wx_existing_api_base() ||
+    "http://192.168.1.118:2022";
   var __wx_fake_api_url = new URL(__wx_fake_api_base, window.location.href);
   var __wx_fake_api_protocol = __wx_fake_api_url.protocol.replace(":", "");
   window.__wx_fake_use_mock_api__ = __wx_fake_use_mock_api;
@@ -162,7 +172,7 @@ if (typeof WXEnv === "undefined") {
     if (typeof body === "string") {
       try {
         return JSON.parse(body);
-      } catch (err) {
+      } catch {
         return {};
       }
     }
@@ -172,7 +182,7 @@ if (typeof WXEnv === "undefined") {
   function getPath(url) {
     try {
       return new URL(url, window.location.href).pathname;
-    } catch (err) {
+    } catch {
       return String(url || "");
     }
   }
@@ -180,7 +190,7 @@ if (typeof WXEnv === "undefined") {
   function getURLSearchParams(url) {
     try {
       return new URL(url, window.location.href).searchParams;
-    } catch (err) {
+    } catch {
       return new URLSearchParams();
     }
   }
@@ -228,8 +238,18 @@ if (typeof WXEnv === "undefined") {
 
   function createTask(body) {
     taskSeq += 1;
-    var suffix = body.suffix || ".mp4";
-    var filename = body.filename || body.title || "Fake created task";
+    var suffix = typeof body.suffix === "string" ? body.suffix : "";
+    var filename = body.filename || body.title || "";
+    if (!filename && body.url) {
+      try {
+        filename =
+          decodeURIComponent(new URL(body.url).pathname.split("/").pop()) ||
+          "";
+      } catch {
+        filename = "";
+      }
+    }
+    filename = filename || "Fake created task";
     if (filename && suffix && !filename.endsWith(suffix)) {
       filename += suffix;
     }
@@ -312,7 +332,7 @@ if (typeof WXEnv === "undefined") {
         },
       };
     }
-    if (path === "/api/task/create") {
+    if (path === "/api/task/create" || path === "/api/task/create2") {
       return { code: 0, data: clone(createTask(body)) };
     }
     if (path === "/api/task/create_batch") {

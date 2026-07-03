@@ -972,7 +972,8 @@ func (c *APIClient) handleResumeTask(ctx *gin.Context) {
 
 func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 	var body struct {
-		Id string `json:"id"`
+		Id          string `json:"id"`
+		DeleteFiles bool   `json:"delete_files"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
@@ -982,9 +983,12 @@ func (c *APIClient) handleDeleteTask(ctx *gin.Context) {
 		result.Err(ctx, 400, "缺少 feed id 参数")
 		return
 	}
-	c.downloader.Delete(&downloadpkg.TaskFilter{
+	if err := c.downloader.Delete(&downloadpkg.TaskFilter{
 		IDs: []string{body.Id},
-	}, true)
+	}, body.DeleteFiles); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
 	result.Ok(ctx, gin.H{"id": body.Id})
 }
 

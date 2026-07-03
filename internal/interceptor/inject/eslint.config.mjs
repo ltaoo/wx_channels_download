@@ -87,6 +87,7 @@ export default [
         Dialog: "readonly",
         Popover: "readonly",
         DropdownMenu: "readonly",
+        TaskDeleteConfirmDialog: "readonly",
         ClearTasksConfirmDialog: "readonly",
         DownloaderPanelViewModel: "readonly",
         DownloaderPanelView: "readonly",
