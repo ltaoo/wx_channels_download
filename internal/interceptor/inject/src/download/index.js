@@ -11,7 +11,7 @@ function DownloadPageActionButton(props) {
       onClick: props.onClick,
     },
     [
-      Timeless.Icon({ name: props.icon, size: 16 }),
+      Timeless.Icon({ name: props.icon, size: props.iconSize || 16 }),
       View({ class: "wx-dl-page-action-label" }, [props.label]),
     ],
   );
@@ -20,39 +20,74 @@ function DownloadPageActionButton(props) {
 function DownloadPageStatusCounts(props) {
   const vm$ = props.store;
   const status_counts_ = vm$.state.status_counts;
+  const active_status_ = vm$.state.active_status;
   return View({ class: "wx-dl-page-counts" }, [
-    View({ class: "wx-dl-page-count wx-dl-page-count-total" }, [
-      View({ class: "wx-dl-page-count-label" }, ["总计"]),
-      View({ class: "wx-dl-page-count-value" }, [
-        computed(vm$.state.task_count, (count) => String(count || 0)),
-      ]),
-    ]),
-    ...DOWNLOAD_STATUS_COUNT_ITEMS.map((item) => {
-      return View(
-        {
-          class: [
-            "wx-dl-page-count",
-            item.key === "error" ? "wx-dl-page-count-error" : "",
-          ]
-            .filter(Boolean)
-            .join(" "),
-        },
-        [
-          View({ class: "wx-dl-page-count-label" }, [item.label]),
-          View({ class: "wx-dl-page-count-value" }, [
-            computed(status_counts_, (counts) => {
-              const c = normalize_download_status_counts(counts);
-              return String(c[item.key] || 0);
-            }),
-          ]),
-        ],
-      );
+    For({
+      each: DOWNLOAD_STATUS_COUNT_ITEMS,
+      render(item) {
+        return View(
+          {
+            type: "button",
+            attributes: {
+              "aria-pressed": computed(active_status_, (status) =>
+                status === item.key ? "true" : "false",
+              ),
+            },
+            class: computed(active_status_, (status) =>
+              [
+                "wx-dl-page-count",
+                "wx-dl-page-count-filter",
+                status === item.key ? "wx-dl-page-count-active" : "",
+                item.key === "error" ? "wx-dl-page-count-error" : "",
+              ]
+                .filter(Boolean)
+                .join(" "),
+            ),
+            onClick() {
+              vm$.methods.setStatusFilter(item.key);
+            },
+          },
+          [
+            View({ class: "wx-dl-page-count-label" }, [item.label]),
+            View({ class: "wx-dl-page-count-value" }, [
+              computed(status_counts_, (counts) => {
+                return String(get_download_status_count(counts, item));
+              }),
+            ]),
+          ],
+        );
+      },
+    }),
+  ]);
+}
+
+function DownloadPageStatusActions(props) {
+  const vm$ = props.store;
+  return View({ class: "wx-dl-page-status-actions" }, [
+    DownloadPageActionButton({
+      icon: "play",
+      iconSize: 14,
+      label: "全部开始",
+      class: "wx-dl-page-action-compact",
+      onClick() {
+        vm$.methods.startAllTasks();
+      },
+    }),
+    DownloadPageActionButton({
+      icon: "pause",
+      iconSize: 14,
+      label: "全部暂停",
+      class: "wx-dl-page-action-compact",
+      onClick() {
+        vm$.methods.pauseAllTasks();
+      },
     }),
   ]);
 }
 
 function DownloadPageTopBar(props) {
   const vm$ = props.store;
+  const selected_task_count_ = vm$.state.selected_task_count;
   return View({ class: "wx-dl-page-topbar" }, [
     View({ class: "wx-dl-page-brand" }, [
       View({ class: "wx-dl-page-brand-icon" }, [
@@ -60,20 +95,22 @@ function DownloadPageTopBar(props) {
       ]),
       View({ class: "wx-dl-page-title" }, ["Downloads"]),
     ]),
-    DownloadPageStatusCounts({ store: vm$ }),
     View({ class: "wx-dl-page-actions" }, [
       DownloadPageActionButton({
-        icon: "play",
-        label: "全部开始",
+        icon: "plus",
+        label: "创建下载任务",
         onClick() {
-          vm$.methods.startAllTasks();
+          vm$.methods.requestCreateTask();
         },
       }),
       DownloadPageActionButton({
-        icon: "pause",
-        label: "全部暂停",
+        icon: "trash2",
+        label: computed(selected_task_count_, (count) => {
+          return count > 0 ? `删除选中 ${count}` : "删除选中";
+        }),
+        class: "wx-dl-page-action-danger",
         onClick() {
-          vm$.methods.pauseAllTasks();
+          vm$.methods.requestDeleteSelectedTasks(false);
         },
       }),
       DownloadPageActionButton({
@@ -100,6 +137,12 @@ function DownloaderPageView(props) {
     },
     [
       DownloadPageTopBar({ store: vm$ }),
+      View({ class: "wx-dl-page-statusbar" }, [
+        View({ class: "wx-dl-page-statusbar-inner" }, [
+          DownloadPageStatusCounts({ store: vm$ }),
+          DownloadPageStatusActions({ store: vm$ }),
+        ]),
+      ]),
       View({ class: "wx-dl-page-main" }, [
         View({ class: "wx-dl-page-list-wrap" }, [
           DownloadTaskListView({
@@ -110,12 +153,14 @@ function DownloaderPageView(props) {
             skeletonClass: "wx-dl-page-item",
             emptyClass: "wx-dl-page-empty",
             size: 12,
+            paddingBottom: 24,
           }),
         ]),
         TaskDeleteConfirmDialog({
           store: vm$.ui.deleteConfirmDialog$,
           deleteFiles: vm$.state.delete_delete_files,
           loading: vm$.state.deleting_task,
+          taskCount: vm$.state.pending_delete_task_count,
           onConfirm() {
             vm$.methods.confirmDeleteTask();
           },
@@ -126,6 +171,17 @@ function DownloaderPageView(props) {
           loading: vm$.state.clearing_tasks,
           onConfirm() {
             vm$.methods.confirmClearTasks();
+          },
+        }),
+        CreateDownloadTaskDialog({
+          store: vm$.ui.createTaskDialog$,
+          text: vm$.state.create_task_text,
+          loading: vm$.state.creating_task,
+          onInput(value) {
+            vm$.methods.setCreateTaskText(value);
+          },
+          onConfirm() {
+            vm$.methods.confirmCreateTask();
           },
         }),
       ]),
@@ -145,6 +201,8 @@ function DownloaderPageView(props) {
     const vm$ = DownloaderPanelViewModel({
       enableDropdownMenu: false,
       fixedListHeight: false,
+      initial_status: "all",
+      sort_by_status: false,
       syncListContentHeight: false,
     });
     Timeless.DOM.render(DownloaderPageView({ store: vm$ }), root);

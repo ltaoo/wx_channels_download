@@ -20,10 +20,11 @@ if (typeof WXEnv === "undefined") {
     }
     return "";
   }
-  var __wx_fake_api_base =
-    __wx_fake_params.get("api_base") ||
-    __wx_existing_api_base() ||
-    "http://192.168.1.118:2022";
+  var __wx_fake_api_base = "http://127.0.0.1:2022";
+  // var __wx_fake_api_base =
+  //   __wx_fake_params.get("api_base") ||
+  //   __wx_existing_api_base() ||
+  //   "http://192.168.1.118:2022";
   var __wx_fake_api_url = new URL(__wx_fake_api_base, window.location.href);
   var __wx_fake_api_protocol = __wx_fake_api_url.protocol.replace(":", "");
   window.__wx_fake_use_mock_api__ = __wx_fake_use_mock_api;
@@ -34,6 +35,7 @@ if (typeof WXEnv === "undefined") {
     downloadPauseWhenDownload: false,
     apiServerProtocol: __wx_fake_api_protocol,
     apiServerAddr: __wx_fake_api_url.host,
+    remoteServerEnabled: false,
   };
   window.WXVariable = {};
 
@@ -211,6 +213,53 @@ if (typeof WXEnv === "undefined") {
     return fallback;
   }
 
+  function getStringParam(url, body, names, fallback) {
+    var params = getURLSearchParams(url);
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i];
+      var value =
+        body && typeof body[name] !== "undefined"
+          ? body[name]
+          : params.get(name);
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    return fallback;
+  }
+
+  function normalizeStatus(status) {
+    var value = String(status || "")
+      .trim()
+      .toLowerCase();
+    if (value === "paused") return "pause";
+    if (
+      value === "failed" ||
+      value === "fail" ||
+      value === "failure" ||
+      value === "errored"
+    ) {
+      return "error";
+    }
+    if (value === "pending" || value === "waiting" || value === "queued") {
+      return "wait";
+    }
+    if (value === "completed" || value === "success" || value === "finished") {
+      return "done";
+    }
+    return value;
+  }
+
+  function matchesStatusFilter(task, status) {
+    var value = normalizeStatus(status);
+    if (!value || value === "all") return true;
+    var taskStatus = normalizeStatus(task && task.status);
+    if (value === "wait") {
+      return taskStatus === "ready" || taskStatus === "wait";
+    }
+    return taskStatus === value;
+  }
+
   function statusCounts() {
     var counts = {
       total: fakeTasks.length,
@@ -222,7 +271,7 @@ if (typeof WXEnv === "undefined") {
       done: 0,
     };
     fakeTasks.forEach(function (task) {
-      var status = task.status === "paused" ? "pause" : task.status;
+      var status = normalizeStatus(task.status);
       if (typeof counts[status] === "number") {
         counts[status] += 1;
       }
@@ -243,8 +292,7 @@ if (typeof WXEnv === "undefined") {
     if (!filename && body.url) {
       try {
         filename =
-          decodeURIComponent(new URL(body.url).pathname.split("/").pop()) ||
-          "";
+          decodeURIComponent(new URL(body.url).pathname.split("/").pop()) || "";
       } catch {
         filename = "";
       }
@@ -320,12 +368,21 @@ if (typeof WXEnv === "undefined") {
     if (path === "/api/task/list") {
       var page = getNumberParam(url, body, ["page"], 1);
       var pageSize = getNumberParam(url, body, ["page_size", "pageSize"], 50);
+      var status = normalizeStatus(
+        getStringParam(url, body, ["status"], "all"),
+      );
+      var list =
+        status && status !== "all"
+          ? fakeTasks.filter(function (task) {
+              return normalizeStatus(task.status) === status;
+            })
+          : fakeTasks;
       var start = (page - 1) * pageSize;
       return {
         code: 0,
         data: {
-          list: clone(fakeTasks.slice(start, start + pageSize)),
-          total: fakeTasks.length,
+          list: clone(list.slice(start, start + pageSize)),
+          total: list.length,
           page: page,
           page_size: pageSize,
           status_counts: statusCounts(),
@@ -334,6 +391,18 @@ if (typeof WXEnv === "undefined") {
     }
     if (path === "/api/task/create" || path === "/api/task/create2") {
       return { code: 0, data: clone(createTask(body)) };
+    }
+    if (path === "/api/task/create3") {
+      var text = String((body && body.text) || "");
+      var urls = Array.isArray(body && body.urls) ? body.urls : [];
+      text.split(/\r?\n/).forEach(function (line) {
+        var value = String(line || "").trim();
+        if (value) urls.push(value);
+      });
+      var ids = urls.map(function (url) {
+        return createTask({ url: url }).id;
+      });
+      return { code: 0, data: { ids: ids, skipped: [], failed: [] } };
     }
     if (path === "/api/task/create_batch") {
       var feeds = Array.isArray(body.feeds) ? body.feeds : [];
@@ -362,13 +431,25 @@ if (typeof WXEnv === "undefined") {
       return { code: 0, data: { ok: true } };
     }
     if (path === "/api/task/start_all") {
+      var startStatus = normalizeStatus(
+        getStringParam(url, body, ["status"], "all"),
+      );
       fakeTasks.forEach(function (task) {
+        if (!matchesStatusFilter(task, startStatus)) {
+          return;
+        }
         if (task.status !== "done") setTaskStatus(task.id, "running");
       });
       return { code: 0, data: { ok: true } };
     }
     if (path === "/api/task/pause_all") {
+      var pauseStatus = normalizeStatus(
+        getStringParam(url, body, ["status"], "all"),
+      );
       fakeTasks.forEach(function (task) {
+        if (!matchesStatusFilter(task, pauseStatus)) {
+          return;
+        }
         if (task.status === "running") setTaskStatus(task.id, "pause");
       });
       return { code: 0, data: { ok: true } };

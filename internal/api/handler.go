@@ -6,7 +6,12 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,6 +26,8 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/webp"
 
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
@@ -463,18 +470,106 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 }
 
 type DownloadTaskPayload struct {
-	URL      string
-	Filename string
-	Dir      string
-	Extra    map[string]string
+	URL      string            `json:"url"`
+	Filename string            `json:"filename"`
+	Dir      string            `json:"dir"`
+	Extra    map[string]string `json:"extra"`
 }
 
-// 创建常规下载任务
-func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
-	var body DownloadTaskPayload
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, "不合法的参数")
+type DownloadTaskBatchPayload struct {
+	Text  string                `json:"text"`
+	URLs  []string              `json:"urls"`
+	Tasks []DownloadTaskPayload `json:"tasks"`
+	Dir   string                `json:"dir"`
+	Extra map[string]string     `json:"extra"`
+}
+
+type DownloadTaskCreateFailure struct {
+	URL     string `json:"url"`
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message"`
+}
+
+func cloneDownloadTaskExtra(extra map[string]string) map[string]string {
+	if len(extra) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(extra))
+	for k, v := range extra {
+		clone[k] = v
+	}
+	return clone
+}
+
+func applyDownloadTaskDefaults(task DownloadTaskPayload, dir string, extra map[string]string) DownloadTaskPayload {
+	task.URL = strings.TrimSpace(task.URL)
+	if task.Dir == "" {
+		task.Dir = dir
+	}
+	labels := cloneDownloadTaskExtra(extra)
+	for k, v := range task.Extra {
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+		labels[k] = v
+	}
+	task.Extra = labels
+	return task
+}
+
+func parseDownloadTaskText(text string, dir string, extra map[string]string) []DownloadTaskPayload {
+	var tasks []DownloadTaskPayload
+	normalizedText := strings.ReplaceAll(text, "\r\n", "\n")
+	for _, line := range strings.Split(normalizedText, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "{") {
+			var task DownloadTaskPayload
+			if err := json.Unmarshal([]byte(line), &task); err == nil && strings.TrimSpace(task.URL) != "" {
+				tasks = append(tasks, applyDownloadTaskDefaults(task, dir, extra))
+				continue
+			}
+		}
+		tasks = append(tasks, DownloadTaskPayload{
+			URL:   line,
+			Dir:   dir,
+			Extra: cloneDownloadTaskExtra(extra),
+		})
+	}
+	return tasks
+}
+
+func appendDownloadTaskPayload(tasks []DownloadTaskPayload, task DownloadTaskPayload, dir string, extra map[string]string) []DownloadTaskPayload {
+	task = applyDownloadTaskDefaults(task, dir, extra)
+	if task.URL == "" {
+		return tasks
+	}
+	return append(tasks, task)
+}
+
+func (c *APIClient) broadcastCreatedDownloadTask(id string) {
+	task := c.downloader.GetTask(id)
+	if task == nil {
 		return
+	}
+	c.downloader_ws.Broadcast(APIClientWSMessage{
+		Type: "event",
+		Data: map[string]interface{}{
+			"task":          task,
+			"status_counts": c.downloadTaskStatusCounts(),
+		},
+	})
+}
+
+func (c *APIClient) createDownloadTask(body DownloadTaskPayload) (string, int, string) {
+	body.URL = strings.TrimSpace(body.URL)
+	if body.URL == "" {
+		return "", 400, "缺少 url 参数"
+	}
+	if c.downloader == nil {
+		return "", 500, "请先初始化 downloader"
 	}
 
 	// Extract article_id for officialaccount URLs
@@ -487,17 +582,15 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		}
 		// For officialaccount URLs, compare by article_id label
 		if articleID != "" && t.Meta.Req.Labels != nil && t.Meta.Req.Labels["article_id"] == articleID {
-			result.Err(ctx, 409, "已存在该下载内容")
-			return
+			return "", 409, "已存在该下载内容"
 		}
 		// For other URLs, compare by URL directly
 		if articleID == "" && t.Meta.Req.URL == body.URL {
-			result.Err(ctx, 409, "已存在该下载内容")
-			return
+			return "", 409, "已存在该下载内容"
 		}
 	}
 
-	labels := body.Extra
+	labels := cloneDownloadTaskExtra(body.Extra)
 	if labels == nil {
 		labels = make(map[string]string)
 	}
@@ -519,20 +612,87 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		},
 	)
 	if err != nil {
-		result.Err(ctx, 500, "创建任务失败："+err.Error())
+		return "", 500, "创建任务失败：" + err.Error()
+	}
+	c.broadcastCreatedDownloadTask(id)
+	return id, 0, ""
+}
+
+// 创建常规下载任务
+func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
+	var body DownloadTaskPayload
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
 		return
 	}
-	task := c.downloader.GetTask(id)
-	if task != nil {
-		c.downloader_ws.Broadcast(APIClientWSMessage{
-			Type: "event",
-			Data: map[string]interface{}{
-				"task":          task,
-				"status_counts": c.downloadTaskStatusCounts(),
-			},
-		})
+	id, code, msg := c.createDownloadTask(body)
+	if code != 0 {
+		result.Err(ctx, code, msg)
+		return
 	}
 	result.Ok(ctx, gin.H{"id": id})
+}
+
+// 批量创建常规下载任务
+func (c *APIClient) handleBatchCreateDownloadTask(ctx *gin.Context) {
+	var body DownloadTaskBatchPayload
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+
+	var tasks []DownloadTaskPayload
+	for _, task := range body.Tasks {
+		tasks = appendDownloadTaskPayload(tasks, task, body.Dir, body.Extra)
+	}
+	for _, rawURL := range body.URLs {
+		tasks = appendDownloadTaskPayload(tasks, DownloadTaskPayload{URL: rawURL}, body.Dir, body.Extra)
+	}
+	tasks = append(tasks, parseDownloadTaskText(body.Text, body.Dir, body.Extra)...)
+	if len(tasks) == 0 {
+		result.Err(ctx, 400, "请提供下载任务")
+		return
+	}
+
+	seen := make(map[string]bool)
+	ids := make([]string, 0, len(tasks))
+	skipped := make([]DownloadTaskCreateFailure, 0)
+	failed := make([]DownloadTaskCreateFailure, 0)
+	for _, task := range tasks {
+		if seen[task.URL] {
+			skipped = append(skipped, DownloadTaskCreateFailure{
+				URL:     task.URL,
+				Code:    409,
+				Message: "重复的下载地址",
+			})
+			continue
+		}
+		seen[task.URL] = true
+		id, code, msg := c.createDownloadTask(task)
+		if code == 0 {
+			ids = append(ids, id)
+			continue
+		}
+		item := DownloadTaskCreateFailure{
+			URL:     task.URL,
+			Code:    code,
+			Message: msg,
+		}
+		if code == 409 {
+			skipped = append(skipped, item)
+			continue
+		}
+		failed = append(failed, item)
+	}
+	if len(ids) == 0 && len(skipped) == 0 && len(failed) > 0 {
+		result.Err(ctx, failed[0].Code, failed[0].Message)
+		return
+	}
+	result.Ok(ctx, gin.H{
+		"ids":     ids,
+		"skipped": skipped,
+		"failed":  failed,
+	})
 }
 
 func (c *APIClient) handleFetchTaskList(ctx *gin.Context) {
@@ -587,6 +747,35 @@ func normalizeDownloadTaskStatus(status base.Status) string {
 		return "done"
 	default:
 		return value
+	}
+}
+
+func downloadTaskStatusFilter(status string) *downloadpkg.TaskFilter {
+	value := normalizeDownloadTaskStatus(base.Status(status))
+	if value == "" || value == "all" {
+		return nil
+	}
+	statuses := []base.Status{base.Status(value)}
+	if value == "wait" {
+		statuses = []base.Status{
+			base.DownloadStatusReady,
+			base.DownloadStatusWait,
+		}
+	}
+	return &downloadpkg.TaskFilter{Statuses: statuses}
+}
+
+func downloadTaskPauseAllFilter(status string) *downloadpkg.TaskFilter {
+	filter := downloadTaskStatusFilter(status)
+	if filter != nil {
+		return filter
+	}
+	return &downloadpkg.TaskFilter{
+		Statuses: []base.Status{
+			base.DownloadStatusReady,
+			base.DownloadStatusRunning,
+			base.DownloadStatusWait,
+		},
 	}
 }
 
@@ -913,7 +1102,16 @@ func (c *APIClient) handleStartTask(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleStartAllTasks(ctx *gin.Context) {
-	if err := c.downloader.Continue(nil); err != nil {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			result.Err(ctx, 400, "不合法的参数")
+			return
+		}
+	}
+	if err := c.downloader.Continue(downloadTaskStatusFilter(body.Status)); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -939,13 +1137,16 @@ func (c *APIClient) handlePauseTask(ctx *gin.Context) {
 }
 
 func (c *APIClient) handlePauseAllTasks(ctx *gin.Context) {
-	if err := c.downloader.Pause(&downloadpkg.TaskFilter{
-		Statuses: []base.Status{
-			base.DownloadStatusReady,
-			base.DownloadStatusRunning,
-			base.DownloadStatusWait,
-		},
-	}); err != nil {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			result.Err(ctx, 400, "不合法的参数")
+			return
+		}
+	}
+	if err := c.downloader.Pause(downloadTaskPauseAllFilter(body.Status)); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -1018,7 +1219,15 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
-	data, err := interceptor.Assets.ReadRoot("index.html")
+	c.renderInjectedRootHTML(ctx, "index.html")
+}
+
+func (c *APIClient) handleWaterfallPreviewPage(ctx *gin.Context) {
+	c.renderInjectedRootHTML(ctx, "preview.html")
+}
+
+func (c *APIClient) renderInjectedRootHTML(ctx *gin.Context, name string) {
+	data, err := interceptor.Assets.ReadRoot(name)
 	if err != nil {
 		result.Err(ctx, http.StatusInternalServerError, err.Error())
 		return
@@ -1158,8 +1367,112 @@ func (c *APIClient) handleFetchTaskProfile(ctx *gin.Context) {
 	})
 }
 
+type ImageFileInfo struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	URL     string `json:"url"`
+	Size    int64  `json:"size"`
+	Width   int    `json:"width,omitempty"`
+	Height  int    `json:"height,omitempty"`
+	ModTime string `json:"mod_time,omitempty"`
+}
+
+func (c *APIClient) imageFileInfo(root string, path string, info fs.FileInfo) ImageFileInfo {
+	name, err := filepath.Rel(root, path)
+	if err != nil {
+		name = filepath.Base(path)
+	}
+	name = filepath.ToSlash(name)
+	width, height := imageDimensions(path)
+	return ImageFileInfo{
+		Name:    name,
+		Path:    path,
+		URL:     "/file?path=" + url.QueryEscape(path),
+		Size:    info.Size(),
+		Width:   width,
+		Height:  height,
+		ModTime: info.ModTime().Format(time.RFC3339),
+	}
+}
+
+func imageDimensions(path string) (int, int) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, 0
+	}
+	defer file.Close()
+	cfg, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
+}
+
+func (c *APIClient) listImageFiles(root string) ([]ImageFileInfo, error) {
+	root = filepath.Clean(root)
+	images := make([]ImageFileInfo, 0)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !c.isImage(strings.ToLower(filepath.Ext(d.Name()))) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		images = append(images, c.imageFileInfo(root, path, info))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(images, func(i, j int) bool {
+		return images[i].Name < images[j].Name
+	})
+	return images, nil
+}
+
+func (c *APIClient) handleFetchImages(ctx *gin.Context) {
+	path := strings.TrimSpace(ctx.Query("path"))
+	if path == "" {
+		result.Err(ctx, 400, "missing path")
+		return
+	}
+	if !filepath.IsAbs(path) {
+		result.Err(ctx, 400, "path must be absolute")
+		return
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		result.Err(ctx, 404, "path not found")
+		return
+	}
+	if !fi.IsDir() {
+		result.Err(ctx, 400, "path is not a directory")
+		return
+	}
+	images, err := c.listImageFiles(path)
+	if err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, gin.H{
+		"type":   "directory",
+		"path":   filepath.Clean(path),
+		"images": images,
+	})
+}
+
 func (c *APIClient) handleFetchFile(ctx *gin.Context) {
-	path := ctx.Query("path")
+	path := strings.TrimSpace(ctx.Query("path"))
 	if path == "" {
 		result.Err(ctx, 400, "missing path")
 		return
@@ -1171,7 +1484,20 @@ func (c *APIClient) handleFetchFile(ctx *gin.Context) {
 		return
 	}
 	if fi.IsDir() {
-		result.Err(ctx, 400, "path is a directory")
+		if !filepath.IsAbs(path) {
+			result.Err(ctx, 400, "path must be absolute")
+			return
+		}
+		images, err := c.listImageFiles(path)
+		if err != nil {
+			result.Err(ctx, 500, err.Error())
+			return
+		}
+		result.Ok(ctx, gin.H{
+			"type":   "directory",
+			"path":   filepath.Clean(path),
+			"images": images,
+		})
 		return
 	}
 

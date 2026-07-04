@@ -35,6 +35,7 @@ function DownloaderEntry(props) {
       store: vm$.ui.deleteConfirmDialog$,
       deleteFiles: vm$.state.delete_delete_files,
       loading: vm$.state.deleting_task,
+      taskCount: vm$.state.pending_delete_task_count,
       onConfirm() {
         vm$.methods.confirmDeleteTask();
       },
