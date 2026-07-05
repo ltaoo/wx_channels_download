@@ -186,11 +186,52 @@
       return readPixelValue(props.paddingBottom, 0);
     }
 
+    function externalScrollEnabled() {
+      return (
+        readValue(props.externalScroll) === true ||
+        typeof props.scrollTop !== "undefined" ||
+        typeof props.viewportHeight !== "undefined"
+      );
+    }
+
+    function currentScrollTop() {
+      if (externalScrollEnabled()) {
+        return Math.max(0, readPixelValue(props.scrollTop, 0));
+      }
+      return Math.max(0, root.scrollTop || 0);
+    }
+
+    function currentViewportHeight() {
+      const fallback = root.clientHeight || estimatedViewportHeight();
+      if (externalScrollEnabled()) {
+        return Math.max(1, readPixelValue(props.viewportHeight, fallback));
+      }
+      return Math.max(1, fallback);
+    }
+
     function getKeyAt(index) {
       return getItemKey(items[index], index, props.key);
     }
 
+    function resolvedItemHeight(index) {
+      if (typeof props.itemHeight === "function") {
+        try {
+          const n = Number(props.itemHeight(items[index], index));
+          if (Number.isFinite(n) && n > 0) {
+            return n;
+          }
+        } catch (error) {
+          console.error("[VirtualListView] itemHeight failed", error);
+        }
+      }
+      return 0;
+    }
+
     function getItemHeight(index) {
+      const resolved = resolvedItemHeight(index);
+      if (resolved > 0) {
+        return resolved;
+      }
       const measured = measuredHeights.get(getKeyAt(index));
       return Number.isFinite(measured) && measured > 0
         ? measured
@@ -270,9 +311,9 @@
       if (typeof props.onScroll === "function") {
         props.onScroll({
           target: root,
-          scrollTop: root.scrollTop || 0,
-          clientHeight: root.clientHeight || 0,
-          scrollHeight: root.scrollHeight || 0,
+          scrollTop: currentScrollTop(),
+          clientHeight: currentViewportHeight(),
+          scrollHeight: scrollableHeight(),
         });
       }
     }
@@ -282,17 +323,19 @@
         return;
       }
       const height = scrollableHeight();
+      const scrollTop = currentScrollTop();
+      const viewportHeight = currentViewportHeight();
       const nearBottom =
         height > 0 &&
-        (root.scrollTop || 0) + (root.clientHeight || 0) >=
+        scrollTop + viewportHeight >=
           height - Math.max(estimatedItemHeight() * 2, gutter());
       if (nearBottom && !reachedBottom) {
         reachedBottom = true;
         props.onReachBottom({
           target: root,
-          scrollTop: root.scrollTop || 0,
-          clientHeight: root.clientHeight || 0,
-          scrollHeight: root.scrollHeight || 0,
+          scrollTop,
+          clientHeight: viewportHeight,
+          scrollHeight: height,
         });
       } else if (!nearBottom) {
         reachedBottom = false;
@@ -313,8 +356,8 @@
       if (!items.length) {
         return { start: 0, end: 0 };
       }
-      const scrollTop = Math.max(0, root.scrollTop || 0);
-      const viewportHeight = root.clientHeight || estimatedViewportHeight();
+      const scrollTop = currentScrollTop();
+      const viewportHeight = currentViewportHeight();
       const startIndex = findIndexAtOffset(scrollTop);
       const endIndex = findIndexAtOffset(scrollTop + viewportHeight) + 1;
       const rangeBuffer = buffer();
@@ -349,8 +392,15 @@
       }
       measuredHeights.set(entry.key, measured);
       markOffsetsDirty();
-      if (entry.index < lastRange.start && root.scrollTop > 0) {
-        root.scrollTop = Math.max(0, root.scrollTop + measured - previous);
+      if (entry.index < lastRange.start && currentScrollTop() > 0) {
+        const delta = measured - previous;
+        if (externalScrollEnabled()) {
+          if (typeof props.onScrollTopAdjust === "function") {
+            props.onScrollTopAdjust(delta);
+          }
+        } else {
+          root.scrollTop = Math.max(0, root.scrollTop + delta);
+        }
       }
       updateContentHeight();
       positionRows();
@@ -588,21 +638,37 @@
       );
     }
 
-    function subscribeLayoutProps() {
-      const source = props.paddingBottom;
+    function subscribeValue(source, callback) {
       if (!source || source === props.each || typeof source.subscribe !== "function") {
         return;
       }
       cleanups.push(
         source.subscribe({
           onPatch() {
-            scheduleRender(false);
+            callback();
           },
           onChange() {
-            scheduleRender(false);
+            callback();
           },
         }),
       );
+    }
+
+    function subscribeLayoutProps() {
+      subscribeValue(props.paddingBottom, () => {
+        markOffsetsDirty();
+        scheduleRender(false);
+      });
+      subscribeValue(props.scrollTop, () => scheduleRender(false));
+      subscribeValue(props.viewportHeight, () => scheduleRender(false));
+      subscribeValue(props.itemHeight, () => {
+        markOffsetsDirty();
+        scheduleRender(false);
+      });
+      subscribeValue(props.gutter, () => {
+        markOffsetsDirty();
+        scheduleRender(false);
+      });
     }
 
     function mount() {
@@ -615,7 +681,7 @@
       if (!root.style.position) {
         root.style.position = "relative";
       }
-      if (!root.style.overflowY) {
+      if (!externalScrollEnabled() && !root.style.overflowY) {
         root.style.overflowY = "auto";
       }
 
@@ -634,8 +700,10 @@
 
       content.appendChild(viewport);
       root.appendChild(content);
-      root.addEventListener("scroll", handleScroll, { passive: true });
-      cleanups.push(() => root.removeEventListener("scroll", handleScroll));
+      if (!externalScrollEnabled()) {
+        root.addEventListener("scroll", handleScroll, { passive: true });
+        cleanups.push(() => root.removeEventListener("scroll", handleScroll));
+      }
 
       if (typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(() => scheduleRender(false));
@@ -692,6 +760,10 @@
       buffer,
       gutter,
       itemHeight,
+      externalScroll,
+      scrollTop,
+      viewportHeight,
+      onScrollTopAdjust,
       onItemResize,
       onScroll,
       onReachBottom,
@@ -731,6 +803,10 @@
         buffer,
         gutter,
         itemHeight,
+        externalScroll,
+        scrollTop,
+        viewportHeight,
+        onScrollTopAdjust,
         onItemResize,
         onScroll,
         onReachBottom,

@@ -320,9 +320,7 @@ function download_task_updated_time(task) {
   );
 }
 function download_task_sort_time(task) {
-  return (
-    download_task_created_time(task) || download_task_updated_time(task)
-  );
+  return download_task_created_time(task) || download_task_updated_time(task);
 }
 function download_task_sort_id(task) {
   const value = get_download_task_field(task, [
@@ -369,9 +367,7 @@ function sort_download_task_list(tasks, options = {}) {
   const compare = options.sort_by_status
     ? compare_download_tasks_by_status
     : compare_download_tasks_by_time_desc;
-  return (Array.isArray(tasks) ? tasks : [])
-    .slice()
-    .sort(compare);
+  return (Array.isArray(tasks) ? tasks : []).slice().sort(compare);
 }
 function normalize_download_status_filter(status) {
   const value = normalize_download_status(status);
@@ -531,13 +527,14 @@ function DownloaderPanelViewModel(props = {}) {
       ? props.onRequestClose
       : () => {};
   const sort_by_status = props.sort_by_status === true;
-  const initial_status = normalize_download_status_filter(
-    typeof props.initial_status !== "undefined"
-      ? props.initial_status
-      : typeof props.initialStatus !== "undefined"
-        ? props.initialStatus
-        : "running",
-  );
+  // const initial_status = normalize_download_status_filter(
+  //   typeof props.initial_status !== "undefined"
+  //     ? props.initial_status
+  //     : typeof props.initialStatus !== "undefined"
+  //       ? props.initialStatus
+  //       : "running",
+  // );
+  const initial_status = undefined;
 
   const createTaskListReq = () => {
     return new Timeless.RequestCore(
@@ -2117,79 +2114,87 @@ function DownloadDeleteConfirmDialog(props) {
     };
   });
 
-  return Timeless.shadcn.Dialog({ store: props.store }, [
-    View({ style: { padding: "20px 20px 16px" } }, [
-      View(
-        {
-          style: {
-            "font-size": "17px",
-            "font-weight": "600",
-            "line-height": "24px",
-            "margin-bottom": "8px",
+  return Timeless.shadcn.Dialog(
+    {
+      store: props.store,
+      style: {
+        "z-index": "10000",
+      },
+    },
+    [
+      View({ style: { padding: "20px 20px 16px" } }, [
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "8px",
+            },
           },
-        },
-        [title],
-      ),
-      View(
-        {
-          style: {
-            "font-size": "14px",
-            "line-height": "20px",
-            color: "var(--weui-FG-1)",
-            "margin-bottom": "16px",
+          [title],
+        ),
+        View(
+          {
+            style: {
+              "font-size": "14px",
+              "line-height": "20px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "16px",
+            },
           },
-        },
-        [message],
-      ),
-      View(
-        {
-          role: "checkbox",
-          tabIndex: "0",
-          attributes: {
-            "aria-checked": computed(deleteFiles_, (checked) =>
-              checked ? "true" : "false",
-            ),
-          },
-          style: {
-            display: "flex",
-            "align-items": "center",
-            gap: "10px",
-            padding: "10px 0",
-            cursor: "pointer",
-            "user-select": "none",
-            "font-size": "14px",
-            "line-height": "20px",
-          },
-          onClick() {
-            if (loading_.value) {
-              return;
-            }
-            deleteFiles_.as((prev) => !prev);
-          },
-          onKeyDown(e) {
-            if (loading_.value) {
-              return;
-            }
-            if (e.key === " " || e.key === "Enter") {
-              e.preventDefault();
+          [message],
+        ),
+        View(
+          {
+            role: "checkbox",
+            tabIndex: "0",
+            attributes: {
+              "aria-checked": computed(deleteFiles_, (checked) =>
+                checked ? "true" : "false",
+              ),
+            },
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "10px",
+              padding: "10px 0",
+              cursor: "pointer",
+              "user-select": "none",
+              "font-size": "14px",
+              "line-height": "20px",
+            },
+            onClick() {
+              if (loading_.value) {
+                return;
+              }
               deleteFiles_.as((prev) => !prev);
-            }
+            },
+            onKeyDown(e) {
+              if (loading_.value) {
+                return;
+              }
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                deleteFiles_.as((prev) => !prev);
+              }
+            },
           },
-        },
-        [
-          View({ style: checkboxStyle }, [
-            Show({
-              when: deleteFiles_,
-              ok() {
-                return [Timeless.Icon({ name: "check", size: 14 })];
-              },
-            }),
-          ]),
-          View({}, [checkboxLabel]),
-        ],
-      ),
-    ]),
-  ]);
+          [
+            View({ style: checkboxStyle }, [
+              Show({
+                when: deleteFiles_,
+                ok() {
+                  return [Timeless.Icon({ name: "check", size: 14 })];
+                },
+              }),
+            ]),
+            View({}, [checkboxLabel]),
+          ],
+        ),
+      ]),
+    ],
+  );
 }
 
 function ClearTasksConfirmDialog(props) {

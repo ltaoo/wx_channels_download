@@ -12,8 +12,8 @@ func (c *APIClient) SetupRoutes() {
 	c.setupStaticAssetRoutes()
 	c.engine.GET("/", c.handleIndex)
 	c.engine.GET("/download", c.handleDownloadPage)
+	c.engine.GET("/channels", c.handleChannelsPage)
 	c.engine.GET("/waterfall", c.handleWaterfallPreviewPage)
-	c.engine.GET("/preview.html", c.handleWaterfallPreviewPage)
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
 		// 视频号接口

@@ -205,11 +205,13 @@ function Dialog(props, children) {
   return Timeless.shadcn.DialogPrimitive.Root({ store }, [
     Timeless.shadcn.DialogPrimitive.Overlay({
       store,
-      class: "fixed inset-0 z-50 bg-black/80",
+      class: "fixed inset-0 bg-black/80",
+      style: { "z-index": "10000" },
     }),
     View(
       {
-        class: "fixed inset-0 z-50 flex items-center justify-center p-4",
+        class: "fixed inset-0 flex items-center justify-center p-4",
+        style: { "z-index": "10000" },
         onClick(e) {
           if (e.target === e.currentTarget && store.closeable) {
             store.hide();

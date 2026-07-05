@@ -1222,6 +1222,10 @@ func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
 	c.renderInjectedRootHTML(ctx, "index.html")
 }
 
+func (c *APIClient) handleChannelsPage(ctx *gin.Context) {
+	c.renderInjectedRootHTML(ctx, "channels.html")
+}
+
 func (c *APIClient) handleWaterfallPreviewPage(ctx *gin.Context) {
 	c.renderInjectedRootHTML(ctx, "preview.html")
 }

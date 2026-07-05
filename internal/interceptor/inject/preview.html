@@ -134,19 +134,34 @@
       min-height: 0;
     }
 
-    .preview-virtual-list {
-      outline: none;
+    .preview-waterfall-scroll {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+      background-color: transparent;
       scrollbar-gutter: stable;
     }
 
-    .preview-band {
-      position: relative;
+    .preview-columns {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      align-items: start;
+      gap: 14px;
       width: 100%;
-      overflow: hidden;
+      min-height: 100%;
+    }
+
+    .preview-column-list {
+      min-width: 0;
+      outline: none;
     }
 
     .preview-card {
-      position: absolute;
+      position: relative;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
       border: 1px solid rgba(23, 33, 29, 0.12);
       border-radius: 8px;
@@ -510,8 +525,12 @@
         "photo_2025-01-17 21.29.38.jpeg",
       ];
 
-      const bandItems$ = refarr([]);
-      const bandItemHeight$ = ref(840);
+      const COLUMN_COUNT = 4;
+      const COLUMN_GAP = 14;
+      const columnItems$ = Array.from({ length: COLUMN_COUNT }, () => refarr([]));
+      const columnGutter$ = ref(COLUMN_GAP);
+      const scrollTop$ = ref(0);
+      const viewportHeight$ = ref(900);
       const statEl = document.getElementById("preview-stat");
       const metaEl = document.getElementById("preview-meta");
       const galleryEl = document.getElementById("gallery");
@@ -522,12 +541,12 @@
       const ratioSeeds = [1.24, 1.48, 0.92, 1.62, 1.16, 1.36, 1.78, 1.05];
       const objectURLs = [];
       let galleryItems = [];
-      let listRoot = null;
+      let scrollRoot = null;
+      const columnRoots = Array(COLUMN_COUNT).fill(null);
       let layoutFrame = 0;
-      let preloadGeneration = 0;
+      let scrollFrame = 0;
       let lastLayout = {
-        bands: 0,
-        columns: 0,
+        columns: COLUMN_COUNT,
         totalHeight: 0,
       };
 
@@ -570,21 +589,18 @@
         };
       }
 
-      function setGalleryItems(items, label, options = {}) {
-        preloadGeneration += 1;
+      function setGalleryItems(items, label) {
         galleryItems = items || [];
-        bandItems$.as([]);
-        if (listRoot) {
-          listRoot.scrollTop = 0;
+        columnItems$.forEach((columnItems) => columnItems.as([]));
+        if (scrollRoot) {
+          scrollRoot.scrollTop = 0;
+          scrollTop$.as(0);
         }
         if (metaEl && label) {
           metaEl.textContent = label;
         }
         scheduleLayout();
         syncStats();
-        if (!options.skipPreload) {
-          preloadImages(galleryItems, preloadGeneration);
-        }
       }
 
       async function loadDirectory(path) {
@@ -603,14 +619,7 @@
         const data = payload.data || {};
         const images = Array.isArray(data.images) ? data.images : [];
         const items = images.map(apiImageToItem);
-        const generation = preloadGeneration + 1;
-        preloadGeneration = generation;
-        statEl.textContent = "Preloading " + items.length + " images";
-        await preloadImages(items, generation, true);
-        if (generation !== preloadGeneration) {
-          return;
-        }
-        setGalleryItems(items, data.path || path, { skipPreload: true });
+        setGalleryItems(items, data.path || path);
       }
 
       function estimateRatio(index) {
@@ -640,16 +649,9 @@
         return null;
       }
 
-      function columnCount(width) {
-        if (width < 520) {
-          return 2;
-        }
-        return Math.max(2, Math.min(6, Math.floor(width / 230)));
-      }
-
       function getAvailableWidth() {
         const fallback = Math.max(320, window.innerWidth || 1024);
-        const width = listRoot && listRoot.clientWidth ? listRoot.clientWidth : fallback;
+        const width = scrollRoot && scrollRoot.clientWidth ? scrollRoot.clientWidth : fallback;
         return Math.max(280, width - 36);
       }
 
@@ -674,50 +676,36 @@
 
       function buildLayout() {
         const width = getAvailableWidth();
-        const columns = columnCount(width);
-        const gutter = width < 620 ? 10 : 14;
+        const columns = COLUMN_COUNT;
+        const gutter = COLUMN_GAP;
         const columnWidth = Math.floor((width - gutter * (columns - 1)) / columns);
         const heights = Array(columns).fill(0);
-        const placed = galleryItems.map((item) => {
+        const nextColumns = Array.from({ length: columns }, () => []);
+        galleryItems.forEach((item) => {
           const column = shortestColumn(heights);
-          const height = Math.max(116, Math.round(columnWidth * itemRatio(item)));
-          const left = column * (columnWidth + gutter);
-          const top = heights[column];
-          heights[column] += height + gutter;
-          return {
+          const height = Math.max(96, Math.round(columnWidth * itemRatio(item)));
+          nextColumns[column].push({
+            id: item.id,
             item,
-            left,
-            top,
-            width: columnWidth,
             height,
-            bottom: top + height,
-          };
-        });
-        const totalHeight = Math.max(0, Math.max(0, ...heights) - gutter);
-        const bandHeight = Math.max(720, Math.min(980, Math.round((window.innerHeight || 900) * 0.9)));
-        const bands = [];
-        if (bandItemHeight$.value !== bandHeight) {
-          bandItemHeight$.as(bandHeight);
-        }
-
-        for (let top = 0, index = 0; top < totalHeight; top += bandHeight, index += 1) {
-          const height = Math.min(bandHeight, Math.max(1, totalHeight - top));
-          const bottom = top + height;
-          bands.push({
-            id: "band-" + index,
-            index,
-            top,
-            height,
-            items: placed.filter((entry) => entry.top < bottom && entry.bottom > top),
           });
+          heights[column] += height + gutter;
+        });
+        const totalHeight = Math.max(
+          0,
+          ...heights.map((height) => Math.max(0, height - gutter)),
+        );
+        if (columnGutter$.value !== gutter) {
+          columnGutter$.as(gutter);
         }
 
         lastLayout = {
-          bands: bands.length,
           columns,
           totalHeight,
         };
-        bandItems$.as(bands);
+        columnItems$.forEach((columnItems, index) => {
+          columnItems.as(nextColumns[index]);
+        });
         syncStats();
       }
 
@@ -731,6 +719,31 @@
         });
       }
 
+      function syncScrollMetrics() {
+        if (!scrollRoot) {
+          return;
+        }
+        const nextScrollTop = scrollRoot.scrollTop || 0;
+        const nextViewportHeight = scrollRoot.clientHeight || window.innerHeight || 900;
+        if (Math.abs(scrollTop$.value - nextScrollTop) > 0.5) {
+          scrollTop$.as(nextScrollTop);
+        }
+        if (Math.abs(viewportHeight$.value - nextViewportHeight) > 0.5) {
+          viewportHeight$.as(nextViewportHeight);
+        }
+        syncStats();
+      }
+
+      function scheduleScrollMetrics() {
+        if (scrollFrame) {
+          return;
+        }
+        scrollFrame = requestAnimationFrame(() => {
+          scrollFrame = 0;
+          syncScrollMetrics();
+        });
+      }
+
       function loadedCount() {
         return galleryItems.filter((item) => item.loaded).length;
       }
@@ -739,109 +752,34 @@
         return galleryItems.filter((item) => item.failed).length;
       }
 
-      function syncStats(pos) {
-        const root = pos && pos.target ? pos.target : listRoot;
-        const rendered = root
-          ? root.getAttribute("data-virtual-list-rendered") || "0"
-          : "0";
+      function renderedCount() {
+        return columnRoots.reduce((count, root) => {
+          if (!root) {
+            return count;
+          }
+          return count + (Number(root.getAttribute("data-virtual-list-rendered")) || 0);
+        }, 0);
+      }
+
+      function totalColumnItems() {
+        return columnItems$.reduce((count, columnItems) => count + columnItems.value.length, 0);
+      }
+
+      function syncStats() {
         const suffix = failedCount() > 0 ? ", " + failedCount() + " failed" : "";
         statEl.textContent =
           galleryItems.length +
           " images, " +
           lastLayout.columns +
           " columns, " +
-          rendered +
+          renderedCount() +
           "/" +
-          lastLayout.bands +
-          " bands" +
+          totalColumnItems() +
+          " rendered" +
           suffix +
           ", " +
           loadedCount() +
           " loaded";
-      }
-
-      function preloadImage(item, generation, silent) {
-        return new Promise((resolve) => {
-          if (!item || item.loaded || item.failed) {
-            resolve();
-            return;
-          }
-          let settled = false;
-          const img = new Image();
-          img.decoding = "async";
-          const finishLoaded = () => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            if (generation === preloadGeneration) {
-              updateImageMetrics(item, img, null, silent);
-            }
-            resolve();
-          };
-          const finishFailed = () => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            if (generation === preloadGeneration) {
-              item.failed = true;
-              if (!silent) {
-                syncStats();
-              }
-            }
-            resolve();
-          };
-          const decodeThenFinish = () => {
-            if (typeof img.decode !== "function") {
-              finishLoaded();
-              return;
-            }
-            img.decode().then(finishLoaded).catch(() => {
-              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                finishLoaded();
-              } else {
-                finishFailed();
-              }
-            });
-          };
-          img.onload = decodeThenFinish;
-          img.onerror = () => {
-            finishFailed();
-          };
-          img.src = item.src;
-          if (img.complete) {
-            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-              decodeThenFinish();
-            } else {
-              finishFailed();
-            }
-          }
-        });
-      }
-
-      function preloadImages(items, generation, silent = false) {
-        const pending = (items || []).filter((item) => item && !item.loaded && !item.failed);
-        let cursor = 0;
-        const concurrency = Math.min(12, Math.max(1, pending.length));
-
-        function next() {
-          if (generation !== preloadGeneration) {
-            return Promise.resolve();
-          }
-          const item = pending[cursor];
-          cursor += 1;
-          if (!item) {
-            return Promise.resolve();
-          }
-          return preloadImage(item, generation, silent).then(next);
-        }
-
-        const workers = [];
-        for (let i = 0; i < concurrency; i += 1) {
-          workers.push(next());
-        }
-        return Promise.all(workers);
       }
 
       function updateImageMetrics(item, img, card, silent = false) {
@@ -901,127 +839,116 @@
         }
       }
 
-      function bindBandImages(root, band) {
-        if (!root || !band || !Array.isArray(band.items)) {
-          return;
-        }
-        const imageById = new Map();
-        band.items.forEach((entry) => {
-          if (entry && entry.item) {
-            imageById.set(entry.item.id, entry.item);
-          }
-        });
-        root.querySelectorAll(".preview-card img").forEach((img) => {
-          const card = img.closest ? img.closest(".preview-card") : null;
-          const id = card ? card.getAttribute("data-image-id") : "";
-          const item = imageById.get(id);
-          if (item) {
-            bindImageElement(img, item);
-          }
-        });
-      }
-
-      function ImageTile(entry, band) {
-        const top = entry.top - band.top;
+      function ImageTile(entry) {
+        const item = entry.item;
         return View(
           {
             class: "preview-card",
             attributes: {
-              title: entry.item.name,
-              "data-image-id": entry.item.id,
+              title: item.name,
+              "data-image-id": item.id,
             },
             style: {
-              left: entry.left + "px",
-              top: top + "px",
-              width: entry.width + "px",
               height: entry.height + "px",
             },
             onMounted(event) {
               const card = mountedElement(event);
               const img = card ? card.querySelector("img") : null;
               if (img) {
-                bindImageElement(img, entry.item);
+                bindImageElement(img, item);
               }
             },
           },
           [
             Timeless.Img({
-              src: entry.item.src,
+              src: item.src,
               attributes: {
-                alt: entry.item.name,
-                title: entry.item.name,
+                alt: item.name,
+                title: item.name,
                 loading: "eager",
                 decoding: "async",
                 draggable: "false",
               },
               onMounted(event) {
                 const img = mountedElement(event);
-                bindImageElement(img, entry.item);
+                bindImageElement(img, item);
               },
             }),
             View({ class: "preview-card-caption" }, [
-              View({}, [entry.item.name]),
+              View({}, [item.name]),
             ]),
           ],
         );
       }
 
-      function MasonryBand(band) {
-        if (!band) {
-          return View({ class: "preview-empty" }, ["No images"]);
-        }
-        return View(
-          {
-            class: "preview-band",
-            style: {
-              height: band.height + "px",
-            },
-            attributes: {
-              "data-band-index": String(band.index),
-              "data-band-top": String(band.top),
-            },
-            onMounted(event) {
-              bindBandImages(mountedElement(event), band);
-            },
+      function ColumnList(index) {
+        return VirtualListView({
+          class: "preview-column-list",
+          style: {
+            position: "relative",
+            overflow: "visible",
+            "background-color": "transparent",
           },
-          band.items.map((entry) => ImageTile(entry, band)),
-        );
+          key: "id",
+          size: 8,
+          buffer: 8,
+          gutter: columnGutter$,
+          itemHeight(entry) {
+            return entry && entry.height ? entry.height : 180;
+          },
+          externalScroll: true,
+          scrollTop: scrollTop$,
+          viewportHeight: viewportHeight$,
+          each: columnItems$[index],
+          onMounted(event) {
+            columnRoots[index] = mountedElement(event);
+            syncStats();
+          },
+          onUnmounted() {
+            columnRoots[index] = null;
+          },
+          onScrollTopAdjust(delta) {
+            if (scrollRoot) {
+              scrollRoot.scrollTop = Math.max(0, scrollRoot.scrollTop + delta);
+              syncScrollMetrics();
+            }
+          },
+          onItemResize() {
+            syncStats();
+          },
+          render(entry) {
+            return ImageTile(entry);
+          },
+        });
       }
 
       function renderGallery() {
         Timeless.DOM.render(
-          VirtualListView({
-            class: "preview-virtual-list wx-dl-dark-scroll",
-            style: {
-              height: "100%",
-              overflow: "auto",
-              position: "relative",
-              padding: "18px",
-              "box-sizing": "border-box",
-              "background-color": "transparent",
+          View(
+            {
+              class: "preview-waterfall-scroll wx-dl-dark-scroll",
+              onMounted(event) {
+                scrollRoot = mountedElement(event);
+                if (scrollRoot) {
+                  scrollRoot.addEventListener("scroll", scheduleScrollMetrics, { passive: true });
+                }
+                syncScrollMetrics();
+                scheduleLayout();
+              },
+              onUnmounted() {
+                if (scrollRoot) {
+                  scrollRoot.removeEventListener("scroll", scheduleScrollMetrics);
+                }
+                scrollRoot = null;
+              },
             },
-            key: "id",
-            size: 4,
-            buffer: 5,
-            gutter: 0,
-            itemHeight: bandItemHeight$,
-            paddingBottom: 22,
-            each: bandItems$,
-            onMounted(event) {
-              listRoot = mountedElement(event);
-              scheduleLayout();
-              syncStats();
-            },
-            onScroll(pos) {
-              syncStats(pos);
-            },
-            onItemResize() {
-              syncStats();
-            },
-            render(band) {
-              return MasonryBand(band);
-            },
-          }),
+            [
+              View(
+                { class: "preview-columns" },
+                Array.from({ length: COLUMN_COUNT }, (_, index) => ColumnList(index)),
+              ),
+            ],
+          ),
           galleryEl,
         );
       }
@@ -1055,14 +982,7 @@
         if (!images.length) {
           return;
         }
-        const generation = preloadGeneration + 1;
-        preloadGeneration = generation;
-        statEl.textContent = "Preloading " + images.length + " images";
-        await preloadImages(images, generation, true);
-        if (generation !== preloadGeneration) {
-          return;
-        }
-        setGalleryItems(images, "Selected local folder", { skipPreload: true });
+        setGalleryItems(images, "Selected local folder");
       }
 
       async function pickDirectory() {
@@ -1102,7 +1022,10 @@
         directoryInput.value = "";
       });
 
-      window.addEventListener("resize", scheduleLayout);
+      window.addEventListener("resize", () => {
+        syncScrollMetrics();
+        scheduleLayout();
+      });
       renderGallery();
       loadDirectory(initialDirectory).catch((error) => {
         console.error("[preview] load directory failed", error);
