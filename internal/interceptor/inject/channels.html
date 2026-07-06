@@ -21,7 +21,7 @@
     }
     document.write(
       '<link rel="stylesheet" href="' +
-      __wx_fake_asset_url("/lib/timeless/0.26.3/timeless.shadcn.css") +
+      __wx_fake_asset_url("/lib/timeless/0.27.1/timeless.weui.css") +
       '">'
     );
     document.write(
@@ -145,10 +145,7 @@
     }
 
     .workspace {
-      display: grid;
-      grid-template-columns: minmax(480px, 1fr) 380px;
-      gap: 20px;
-      align-items: start;
+      display: block;
     }
 
     .fake-stage {
@@ -201,6 +198,7 @@
       content: "";
       position: absolute;
       inset: 0;
+      pointer-events: none;
       background:
         linear-gradient(transparent 55%, rgba(0, 0, 0, 0.58)),
         repeating-linear-gradient(135deg,
@@ -360,29 +358,16 @@
         <div class="slides-scroll">
           <section class="slides-item">
             <div class="feed-shell">
-              <article class="video-card">
-                <div class="feed-copy">
-                  <p class="feed-title">Fake feed for download menu debug</p>
-                  <p class="feed-desc">
-                    This page keeps the same .slides-item and .click-box.op-item
-                    shape used by feed.js, then lets feed.js inject the download
-                    button by itself.
-                  </p>
-                </div>
-              </article>
+              <div class="video-card"
+                style="display: flex; align-items: center; justify-content: center; padding: 24px;">
+                <textarea id="create-task-input" placeholder="输入视频号链接，多个链接换行分隔"
+                  style="position: relative; z-index: 1; width: 100%; height: 100%; min-height: 512px; padding: 16px; border: none; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--fake-text); font-size: 14px; line-height: 1.6; resize: none; outline: none;"></textarea>
+              </div>
 
               <aside class="op-list" aria-label="feed operations">
-                <div class="click-box op-item" role="button" aria-label="赞">
-                  <div class="op-icon">♡</div>
-                  <div class="op-text">赞</div>
-                </div>
-                <div class="click-box op-item" role="button" aria-label="评论">
-                  <div class="op-icon">☰</div>
-                  <div class="op-text">评论</div>
-                </div>
-                <div class="click-box op-item" role="button" aria-label="分享">
-                  <div class="op-icon">↗</div>
-                  <div class="op-text">分享</div>
+                <div id="create-task-btn" class="click-box op-item" role="button" aria-label="下载">
+                  <div class="op-icon">⬇</div>
+                  <div class="op-text">下载</div>
                 </div>
               </aside>
             </div>
@@ -390,10 +375,6 @@
         </div>
       </main>
 
-      <aside class="debug-panel">
-        <header>Rect Inspector</header>
-        <pre id="rect-output">Waiting for scripts...</pre>
-      </aside>
     </div>
   </div>
 
@@ -405,16 +386,15 @@
         );
       }
       writeScript("/lib/mitt.umd.js");
-      writeScript("/lib/timeless/0.26.3/timeless.umd.min.js");
-      writeScript("/lib/timeless/0.26.3/timeless.utils.umd.min.js");
-      writeScript("/lib/timeless/0.26.3/timeless.shadcn.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.utils.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.weui.umd.min.js");
     })();
   </script>
   <script>
-    Object.assign(Timeless, Timeless.shadcn.kit);
-    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(Timeless, Timeless.weui.kit);
+    Object.assign(Timeless, Timeless.weui);
     Object.assign(window, Timeless);
-    Object.assign(window, Timeless.shadcn);
   </script>
   <script>
     (function () {
@@ -423,13 +403,15 @@
           '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
         );
       }
-      writeScript("/lib/timeless/0.26.3/timeless.dom.umd.min.js");
-      writeScript("/lib/timeless/0.26.3/timeless.web.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.dom.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.web.umd.min.js");
       writeScript("/src/eventbus.js");
       writeScript("/src/env.js");
+      // writeScript("/src/env.channels.js");
       writeScript("/src/env.mock.js");
       writeScript("/src/utils.js");
       writeScript("/src/components.js");
+      writeScript("/src/virtual-list-view.js");
       writeScript("/src/feed.js");
       writeScript("/src/download/core.js");
       writeScript("/src/download/panel.js");
@@ -620,46 +602,6 @@
         return data;
       }
 
-      function renderTimelessProbe() {
-        const mount = document.getElementById("timeless-probe");
-        const renderDropdownMenu =
-          window.Timeless &&
-          window.Timeless.shadcn &&
-          window.Timeless.shadcn.DropdownMenu;
-        if (!mount || !renderDropdownMenu) return;
-        mount.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
-        const subMenu = new Timeless.ui.MenuCore({
-          items: [
-            new Timeless.ui.MenuItemCore({ label: "1080p" }),
-            new Timeless.ui.MenuItemCore({ label: "720p" }),
-          ],
-        });
-        const menu = new Timeless.ui.DropdownMenuCore({
-          trigger: "hover",
-          align: "end",
-          items: [
-            new Timeless.ui.MenuItemCore({
-              label: "更多下载",
-              menu: subMenu,
-            }),
-            new Timeless.ui.MenuItemCore({ label: "下载为 MP3" }),
-            new Timeless.ui.MenuItemCore({ label: "复制页面链接" }),
-          ],
-        });
-        Timeless.DOM.render(
-          renderDropdownMenu({ store: menu }, [
-            View(
-              {
-                id: "timeless-probe-trigger",
-                class: "probe-trigger",
-              },
-              ["Timeless Dropdown Probe"],
-            ),
-          ]),
-          mount,
-        );
-      }
-
       function installFakeData() {
         if (!window.WXU || !window.WXE) return;
         WXU.set_feed(fakeFeed);
@@ -719,6 +661,51 @@
           // snapshot();
           // setInterval(snapshot, 300);
         }, 60);
+
+        var input = document.getElementById("create-task-input");
+        var btn = document.getElementById("create-task-btn");
+        var creating = false;
+        btn.addEventListener("click", async function () {
+          if (creating) return;
+          var text = (input.value || "").trim();
+          if (!text) {
+            alert("请输入下载地址");
+            return;
+          }
+          creating = true;
+          btn.querySelector(".op-text").textContent = "创建中...";
+          try {
+            var resp = await fetch(WXEnv.downloadOrigin + "/api/task/create3", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: text }),
+            });
+            var r = await resp.json();
+            if (r.code !== 0) {
+              alert(r.msg || "创建任务失败");
+              return;
+            }
+            var data = r.data || {};
+            var ids = Array.isArray(data.ids) ? data.ids : [];
+            var skipped = Array.isArray(data.skipped) ? data.skipped : [];
+            var failed = Array.isArray(data.failed) ? data.failed : [];
+            if (ids.length > 0) {
+              // alert("已创建 " + ids.length + " 个下载任务");
+            } else if (skipped.length > 0 && failed.length === 0) {
+              alert("没有新的下载任务");
+            } else if (failed.length > 0) {
+              alert(failed[0].message || "创建任务失败");
+              return;
+            }
+            input.value = "";
+            WXU.downloader.show();
+          } catch (err) {
+            alert("请求失败: " + (err.message || err));
+          } finally {
+            creating = false;
+            btn.querySelector(".op-text").textContent = "下载";
+          }
+        });
       });
     })();
   </script>

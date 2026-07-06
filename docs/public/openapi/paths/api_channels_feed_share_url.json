@@ -30,7 +30,7 @@
                   "data": {
                     "errCode": 0,
                     "errMsg": "ok",
-                    "Data": {
+                    "data": {
                       "BaseResponse": {
                         "Ret": 0,
                         "ErrMsg": {

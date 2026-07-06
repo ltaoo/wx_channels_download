@@ -12,6 +12,7 @@ func (c *APIClient) SetupRoutes() {
 	c.setupStaticAssetRoutes()
 	c.engine.GET("/", c.handleIndex)
 	c.engine.GET("/download", c.handleDownloadPage)
+	c.engine.GET("/channels", c.handleChannelsPage)
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
 		// 视频号接口
@@ -56,6 +57,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
 	// c.engine.POST("/api/task/create_live", c.handleCreateLiveTask)
 	c.engine.POST("/api/task/create2", c.handleCreateDownloadTask)
+	c.engine.POST("/api/task/create3", c.handleBatchCreateDownloadTask)
 	c.engine.POST("/api/task/start", c.handleStartTask)
 	c.engine.POST("/api/task/start_all", c.handleStartAllTasks)
 	c.engine.POST("/api/task/pause", c.handlePauseTask)

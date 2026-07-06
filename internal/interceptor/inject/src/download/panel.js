@@ -18,6 +18,7 @@ function DownloaderEntry(props) {
             store: vm$,
             renderConfirmDialog: false,
             showStatusCounts: false,
+            showViewAll: true,
           }),
         ],
       },
@@ -32,20 +33,10 @@ function DownloaderEntry(props) {
       ],
     ),
     TaskDeleteConfirmDialog({
-      store: vm$.ui.deleteConfirmDialog$,
-      deleteFiles: vm$.state.delete_delete_files,
-      loading: vm$.state.deleting_task,
-      onConfirm() {
-        vm$.methods.confirmDeleteTask();
-      },
+      store: vm$,
     }),
     ClearTasksConfirmDialog({
-      store: vm$.ui.clearConfirmDialog$,
-      deleteFiles: vm$.state.clear_delete_files,
-      loading: vm$.state.clearing_tasks,
-      onConfirm() {
-        vm$.methods.confirmClearTasks();
-      },
+      store: vm$,
     }),
   ]);
 }

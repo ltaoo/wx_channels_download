@@ -18,6 +18,7 @@ var WXEnv = (() => {
     downloadProtocol: "https",
     downloadHostname: "weixin110.qq.com",
     assetsFallbackBase: "http://127.0.0.1:2022/__wx_channels_assets",
+    MaxRunning: 5,
   };
   const runtimeEnv = window.__wx_channels_env__;
   const ua = navigator.userAgent || navigator.platform || "";
