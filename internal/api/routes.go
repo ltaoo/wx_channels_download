@@ -13,7 +13,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/", c.handleIndex)
 	c.engine.GET("/download", c.handleDownloadPage)
 	c.engine.GET("/channels", c.handleChannelsPage)
-	c.engine.GET("/waterfall", c.handleWaterfallPreviewPage)
 	// 只在本地有的接口
 	if !c.cfg.RemoteServerMode {
 		// 视频号接口
@@ -67,7 +66,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/task/delete", c.handleDeleteTask)
 	c.engine.POST("/api/task/clear", c.handleClearTasks)
 	c.engine.GET("/api/file", c.handleFetchFile)
-	c.engine.GET("/api/images", c.handleFetchImages)
 	// 文件操作
 	c.engine.GET("/play", c.handlePlay)
 	c.engine.GET("/file", c.handleStreamVideo)

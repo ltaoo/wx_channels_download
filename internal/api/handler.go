@@ -1226,10 +1226,6 @@ func (c *APIClient) handleChannelsPage(ctx *gin.Context) {
 	c.renderInjectedRootHTML(ctx, "channels.html")
 }
 
-func (c *APIClient) handleWaterfallPreviewPage(ctx *gin.Context) {
-	c.renderInjectedRootHTML(ctx, "preview.html")
-}
-
 func (c *APIClient) renderInjectedRootHTML(ctx *gin.Context, name string) {
 	data, err := interceptor.Assets.ReadRoot(name)
 	if err != nil {
@@ -1442,37 +1438,6 @@ func (c *APIClient) listImageFiles(root string) ([]ImageFileInfo, error) {
 		return images[i].Name < images[j].Name
 	})
 	return images, nil
-}
-
-func (c *APIClient) handleFetchImages(ctx *gin.Context) {
-	path := strings.TrimSpace(ctx.Query("path"))
-	if path == "" {
-		result.Err(ctx, 400, "missing path")
-		return
-	}
-	if !filepath.IsAbs(path) {
-		result.Err(ctx, 400, "path must be absolute")
-		return
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		result.Err(ctx, 404, "path not found")
-		return
-	}
-	if !fi.IsDir() {
-		result.Err(ctx, 400, "path is not a directory")
-		return
-	}
-	images, err := c.listImageFiles(path)
-	if err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, gin.H{
-		"type":   "directory",
-		"path":   filepath.Clean(path),
-		"images": images,
-	})
 }
 
 func (c *APIClient) handleFetchFile(ctx *gin.Context) {
