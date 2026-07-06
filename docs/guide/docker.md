@@ -9,7 +9,7 @@ title: 使用 Docker 运行
 镜像地址：
 
 ```text
-ghcr.io/ltaoo/wx_video_download:v260614
+ghcr.io/ltaoo/wx_video_download:latest
 ```
 
 ## 启动
@@ -53,7 +53,7 @@ docker run -d \
   -p 2022:2022 \
   -p 2023:2023 \
   -v ./wx_account1:/config \
-  ghcr.io/ltaoo/wx_video_download:v260614
+  ghcr.io/ltaoo/wx_video_download:latest
 ```
 
 打开浏览器访问：
@@ -69,6 +69,10 @@ http://127.0.0.1:3000
 ```
 
 不要启动多个容器运行多个微信帐号，没有经过测试可能封号风险很大
+
+## 修改配置
+
+在挂载的文件夹 `wx_account1` 中，有 `wx_video_download` 文件夹，修改其中的 `config.yaml`，然后，重启容器即可
 
 <!-- 
 ## 多账号
@@ -99,7 +103,7 @@ docker run -d \
   -p 2024:2022 \
   -p 2025:2023 \
   -v ./wx_account2:/config \
-  ghcr.io/ltaoo/wx_video_download:v260614
+  ghcr.io/ltaoo/wx_video_download:latest
 ```
 
 第二个帐号使用 3001 端口访问
@@ -110,7 +114,7 @@ docker run -d \
 
 不要让两个容器同时使用同一个数据卷。重建同一个账号的容器时，继续使用原来的数据卷。 -->
 
-## 常用命令
+<!-- ## 常用命令
 
 查看容器：
 
@@ -148,4 +152,4 @@ docker start wx_download
 docker rm wx_download
 ```
 
-删除容器不会删除 `wx_download_config` 数据卷。只要继续挂载同一个数据卷，WeChat 数据就会保留。
+删除容器不会删除 `wx_download_config` 数据卷。只要继续挂载同一个数据卷，WeChat 数据就会保留。 -->

@@ -9,17 +9,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml \
     WECHAT_BIN=/usr/bin/wechat
 
+# Copy files that rarely change and are needed by the install step
 COPY SunnyRoot.cer /usr/local/share/ca-certificates/SunnyRoot.crt
-COPY wx_video_download /usr/local/share/wx_video_download/wx_video_download
-COPY config.yaml /usr/local/share/wx_video_download/config.yaml
-COPY global.js /usr/local/share/wx_video_download/global.js
 COPY WeChatLinux_arm64.deb /tmp/WeChatLinux_arm64.deb
 
-RUN set -eux; \
-    sed -i '/^api:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
-    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
-    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  tun:[[:space:]]*\).*/\1true/' /usr/local/share/wx_video_download/config.yaml
-
+# Expensive layer: cached as long as base image, cert, and deb don't change
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -71,11 +65,21 @@ RUN set -eux; \
     if [ ! -f /etc/pki/nssdb/cert9.db ]; then certutil -d sql:/etc/pki/nssdb -N --empty-password; fi; \
     certutil -d sql:/etc/pki/nssdb -D -n SunnyRoot >/dev/null 2>&1 || true; \
     certutil -d sql:/etc/pki/nssdb -A -n SunnyRoot -t "CT,C,C" -i /usr/local/share/ca-certificates/SunnyRoot.crt; \
-    chmod +x /usr/local/share/wx_video_download/wx_video_download; \
-    setcap cap_net_admin,cap_net_raw+ep /usr/local/share/wx_video_download/wx_video_download || true; \
     rm -f /tmp/WeChatLinux_arm64.deb; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
+
+# Copy files that change on every release
+COPY wx_video_download /usr/local/share/wx_video_download/wx_video_download
+COPY config.yaml /usr/local/share/wx_video_download/config.yaml
+COPY global.js /usr/local/share/wx_video_download/global.js
+
+RUN set -eux; \
+    sed -i '/^api:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  hostname:[[:space:]]*\).*/\1"0.0.0.0"/' /usr/local/share/wx_video_download/config.yaml; \
+    sed -i '/^proxy:/,/^[^[:space:]]/s/^\(  tun:[[:space:]]*\).*/\1true/' /usr/local/share/wx_video_download/config.yaml; \
+    chmod +x /usr/local/share/wx_video_download/wx_video_download; \
+    setcap cap_net_admin,cap_net_raw+ep /usr/local/share/wx_video_download/wx_video_download || true
 
 COPY rootfs/ /
 RUN chmod +x /usr/local/bin/wx-* /custom-cont-init.d/*
