@@ -441,17 +441,27 @@ func ChannelStaticAssetETag(data []byte) string {
 }
 
 func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
-	if injectDir == "" {
-		injectDir = findChannelInjectDir()
-	}
-	if abs, err := filepath.Abs(injectDir); err == nil {
-		injectDir = abs
-	}
-	files := &ChannelInjectedFiles{
-		InjectDir: injectDir,
-		RootFS:    os.DirFS(injectDir),
-		LibFS:     os.DirFS(filepath.Join(injectDir, "lib")),
-		SrcFS:     os.DirFS(filepath.Join(injectDir, "src")),
+	var files *ChannelInjectedFiles
+	if rootFS := embeddedRootFS(); rootFS != nil {
+		files = &ChannelInjectedFiles{
+			InjectDir: "(embedded)",
+			RootFS:    rootFS,
+			LibFS:     embeddedLibFS(),
+			SrcFS:     embeddedSrcFS(),
+		}
+	} else {
+		if injectDir == "" {
+			injectDir = findChannelInjectDir()
+		}
+		if abs, err := filepath.Abs(injectDir); err == nil {
+			injectDir = abs
+		}
+		files = &ChannelInjectedFiles{
+			InjectDir: injectDir,
+			RootFS:    os.DirFS(injectDir),
+			LibFS:     os.DirFS(filepath.Join(injectDir, "lib")),
+			SrcFS:     os.DirFS(filepath.Join(injectDir, "src")),
+		}
 	}
 	files.JSFileSaver = files.readLib("FileSaver.min.js")
 	files.JSZip = files.readLib("jszip.min.js")
