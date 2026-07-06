@@ -123,6 +123,13 @@
     return { value: index };
   }
 
+  function createItemRef(item) {
+    if (typeof ref === "function") {
+      return ref(item);
+    }
+    return { value: item };
+  }
+
   function getItemKey(item, index, key) {
     if (typeof key === "function") {
       const value = key(item, index);
@@ -471,12 +478,14 @@
       const item = items[index];
       const row = document.createElement("div");
       const indexRef = createIndexRef(index);
+      const itemRef = createItemRef(item);
       const key = getKeyAt(index);
       const entry = {
         row,
         index,
         key,
         indexRef,
+        itemRef,
         elements: [],
         cleanups: [],
         measureCleanup: null,
@@ -496,7 +505,7 @@
 
       if (typeof props.render === "function") {
         try {
-          mountChild(props.render(item, indexRef), row, entry);
+          mountChild(props.render(itemRef, indexRef), row, entry);
         } catch (error) {
           console.error("[VirtualListView] render failed", error);
         }
@@ -544,6 +553,9 @@
       if (entry.indexRef && typeof entry.indexRef.destroy === "function") {
         entry.indexRef.destroy();
       }
+      if (entry.itemRef && typeof entry.itemRef.destroy === "function") {
+        entry.itemRef.destroy();
+      }
       if (entry.row.parentNode) {
         entry.row.parentNode.removeChild(entry.row);
       }
@@ -559,22 +571,36 @@
         return;
       }
       const nextItems = asArray(props.each);
-      if (force || nextItems !== items) {
+      const prevItems = items;
+      const itemsChanged = nextItems !== prevItems;
+      if (force || itemsChanged) {
         markOffsetsDirty();
       }
       items = nextItems;
       updateContentHeight();
 
-      if (force) {
-        clearRows();
-      }
-
       const range = getVisibleRange();
       lastRange = range;
       updateRenderAttributes(range);
+
+      // Remove out-of-range rows, and update itemRef for changed items
       Array.from(rows.keys()).forEach((index) => {
         if (index < range.start || index >= range.end) {
           removeRow(index);
+          return;
+        }
+        const entry = rows.get(index);
+        const newKey = getKeyAt(index);
+        if (entry.key !== newKey) {
+          // Key at this index changed — must remount
+          removeRow(index);
+        } else if (itemsChanged && items[index] !== prevItems[index]) {
+          // Same key but item object replaced — update the ref reactively
+          if (entry.itemRef && typeof entry.itemRef.as === "function") {
+            entry.itemRef.as(items[index]);
+          } else if (entry.itemRef) {
+            entry.itemRef.value = items[index];
+          }
         }
       });
 
@@ -628,11 +654,11 @@
         source.subscribe({
           onPatch() {
             markOffsetsDirty();
-            scheduleRender(true);
+            scheduleRender(false);
           },
           onChange() {
             markOffsetsDirty();
-            scheduleRender(true);
+            scheduleRender(false);
           },
         }),
       );

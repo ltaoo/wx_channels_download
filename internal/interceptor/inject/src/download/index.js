@@ -97,13 +97,6 @@ function DownloadPageTopBar(props) {
     ]),
     View({ class: "wx-dl-page-actions" }, [
       DownloadPageActionButton({
-        icon: "plus",
-        label: "创建下载任务",
-        onClick() {
-          vm$.methods.requestCreateTask();
-        },
-      }),
-      DownloadPageActionButton({
         icon: "trash2",
         label: computed(selected_task_count_, (count) => {
           return count > 0 ? `删除选中 ${count}` : "删除选中";
@@ -154,35 +147,14 @@ function DownloaderPageView(props) {
             emptyClass: "wx-dl-page-empty",
             size: 12,
             paddingBottom: 24,
+            showCheckbox: true,
           }),
         ]),
         TaskDeleteConfirmDialog({
-          store: vm$.ui.deleteConfirmDialog$,
-          deleteFiles: vm$.state.delete_delete_files,
-          loading: vm$.state.deleting_task,
-          taskCount: vm$.state.pending_delete_task_count,
-          onConfirm() {
-            vm$.methods.confirmDeleteTask();
-          },
+          store: vm$,
         }),
         ClearTasksConfirmDialog({
-          store: vm$.ui.clearConfirmDialog$,
-          deleteFiles: vm$.state.clear_delete_files,
-          loading: vm$.state.clearing_tasks,
-          onConfirm() {
-            vm$.methods.confirmClearTasks();
-          },
-        }),
-        CreateDownloadTaskDialog({
-          store: vm$.ui.createTaskDialog$,
-          text: vm$.state.create_task_text,
-          loading: vm$.state.creating_task,
-          onInput(value) {
-            vm$.methods.setCreateTaskText(value);
-          },
-          onConfirm() {
-            vm$.methods.confirmCreateTask();
-          },
+          store: vm$,
         }),
       ]),
     ],

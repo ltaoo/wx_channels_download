@@ -1551,7 +1551,6 @@ function DownloaderPanelViewModel(props = {}) {
       }
       delete_task_.as(task);
       delete_task_ids_.as([]);
-      delete_delete_files_.as(!!deleteFiles);
       ui.deleteConfirmDialog$.show();
     },
     requestDeleteSelectedTasks(deleteFiles = false) {
@@ -1915,7 +1914,17 @@ function DownloaderPanelViewModel(props = {}) {
       console.log("[]update task", task);
       const oldStatus = current[index].status || "";
       const next = current.slice();
-      next[index] = task;
+      const merged = Object.assign({}, current[index], task);
+      if (!merged.name && current[index].name) {
+        merged.name = current[index].name;
+      }
+      if (!merged.path && current[index].path) {
+        merged.path = current[index].path;
+      }
+      if (!merged.filepath && current[index].filepath) {
+        merged.filepath = current[index].filepath;
+      }
+      next[index] = merged;
       if (matchesFilter) {
         tasks_.as(sortTaskSlots(next, virtual_total || next.length));
       } else {
@@ -1965,46 +1974,50 @@ function DownloaderPanelViewModel(props = {}) {
         scheduleSyncListViewSlotHeights();
       }
     },
+    handleClickCheckboxConfirmDeleteFiles() {
+      // if (loading_.value) {
+      //   return;
+      // }
+      delete_delete_files_.as((prev) => !prev);
+    },
   };
 
+  const dropdownItems = [];
+  if (props.showBulkActions !== false) {
+    dropdownItems.push(
+      new Timeless.ui.MenuItemCore({
+        label: "开始所有任务",
+        async onClick() {
+          await methods.startAllTasks();
+          ui.dropdown$.hide();
+        },
+      }),
+      new Timeless.ui.MenuItemCore({
+        label: "暂停所有任务",
+        async onClick() {
+          await methods.pauseAllTasks();
+          ui.dropdown$.hide();
+        },
+      }),
+    );
+  }
+  dropdownItems.push(
+    new Timeless.ui.MenuItemCore({
+      label: "清空下载记录",
+      async onClick() {
+        ui.dropdown$.hide();
+        onRequestClose();
+        methods.requestClearTasks(false);
+      },
+    }),
+  );
   const dropdown$ =
     props.enableDropdownMenu === false
       ? null
       : new Timeless.ui.DropdownMenuCore({
           trigger: "hover",
           align: "end",
-          items: [
-            new Timeless.ui.MenuItemCore({
-              label: "开始所有任务",
-              async onClick() {
-                await methods.startAllTasks();
-                ui.dropdown$.hide();
-              },
-            }),
-            new Timeless.ui.MenuItemCore({
-              label: "暂停所有任务",
-              async onClick() {
-                await methods.pauseAllTasks();
-                ui.dropdown$.hide();
-              },
-            }),
-            new Timeless.ui.MenuItemCore({
-              label: "删除选中",
-              onClick() {
-                ui.dropdown$.hide();
-                onRequestClose();
-                methods.requestDeleteSelectedTasks(false);
-              },
-            }),
-            new Timeless.ui.MenuItemCore({
-              label: "清空下载记录",
-              async onClick() {
-                ui.dropdown$.hide();
-                onRequestClose();
-                methods.requestClearTasks(false);
-              },
-            }),
-          ],
+          items: dropdownItems,
         });
   const ui = {
     dropdown$,
@@ -2015,32 +2028,47 @@ function DownloaderPanelViewModel(props = {}) {
       },
     }),
     deleteConfirmDialog$: new Timeless.ui.DialogCore({
-      closeable: true,
+      onOk() {
+        methods.confirmDeleteTask();
+      },
     }),
     clearConfirmDialog$: new Timeless.ui.DialogCore({
-      closeable: true,
+      onOk() {
+        methods.confirmClearTasks();
+      },
     }),
   };
   let ready = false;
   return {
     ui,
     state: {
+      /** 下载任务记录列表 */
       tasks: tasks_,
+      /** 下载任务总数 */
       task_count: task_count_,
       list_render_enabled: list_render_enabled_,
+      /** 当前下载中的下载任务总数 */
       running_count: running_count_,
       delete_task: delete_task_,
       delete_task_ids: delete_task_ids_,
       pending_delete_task_count: pending_delete_task_count_,
+      /** 是否要同时删除文件 */
       delete_delete_files: delete_delete_files_,
       deleting_task: deleting_task_,
+      /** 选中的下载任务id列表 */
       selected_task_ids: selected_task_ids_,
+      /** 选中的下载任务总数 */
       selected_task_count: selected_task_count_,
+      /** 是否同时删除文件 */
       clear_delete_files: clear_delete_files_,
       clearing_tasks: clearing_tasks_,
+      /** 新增下载任务输入框内的文本 */
       create_task_text: create_task_text_,
+      /** 创建下载任务操作中 */
       creating_task: creating_task_,
+      /** 各个状态的下载任务数量 */
       status_counts: status_counts_,
+      /** 当前选中的状态 */
       active_status: active_status_,
       fixed_list_height: fixed_list_height_,
       list_item_height: ITEM_HEIGHT,
@@ -2089,34 +2117,32 @@ function DownloaderPanelViewModel(props = {}) {
   };
 }
 
-function DownloadDeleteConfirmDialog(props) {
-  const deleteFiles_ = props.deleteFiles;
-  const loading_ = props.loading;
-  const title = props.title || "删除下载记录";
-  const message = props.message || "确定删除下载任务记录？此操作不可恢复。";
-  const checkboxLabel = props.checkboxLabel || "同时删除视频文件";
-  const cancelText = props.cancelText || "取消";
-  const confirmText = props.confirmText || "确认删除";
-  const loadingText = props.loadingText || "删除中...";
-  const checkboxStyle = computed(deleteFiles_, (checked) => {
-    return {
-      width: "18px",
-      height: "18px",
-      "box-sizing": "border-box",
-      "border-radius": "4px",
-      border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
-      background: checked ? "#07C160" : "transparent",
-      color: "#fff",
-      display: "inline-flex",
-      "align-items": "center",
-      "justify-content": "center",
-      flex: "0 0 auto",
-    };
-  });
+function ClearTasksConfirmDialog(props) {
+  const title = "清空下载记录";
+  const message = "确定删除全部下载任务记录？此操作不可恢复。";
+  const checkboxLabel = "同时删除已下载的文件";
+  const checkboxStyle = computed(
+    props.store.state.delete_delete_files,
+    (checked) => {
+      return {
+        width: "18px",
+        height: "18px",
+        "box-sizing": "border-box",
+        "border-radius": "4px",
+        border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
+        background: checked ? "#07C160" : "transparent",
+        color: "#fff",
+        display: "inline-flex",
+        "align-items": "center",
+        "justify-content": "center",
+        flex: "0 0 auto",
+      };
+    },
+  );
 
   return Timeless.shadcn.Dialog(
     {
-      store: props.store,
+      store: props.store.ui.clearConfirmDialog$,
       style: {
         "z-index": "10000",
       },
@@ -2150,8 +2176,9 @@ function DownloadDeleteConfirmDialog(props) {
             role: "checkbox",
             tabIndex: "0",
             attributes: {
-              "aria-checked": computed(deleteFiles_, (checked) =>
-                checked ? "true" : "false",
+              "aria-checked": computed(
+                props.store.state.delete_delete_files,
+                (checked) => (checked ? "true" : "false"),
               ),
             },
             style: {
@@ -2165,27 +2192,28 @@ function DownloadDeleteConfirmDialog(props) {
               "line-height": "20px",
             },
             onClick() {
-              if (loading_.value) {
-                return;
-              }
-              deleteFiles_.as((prev) => !prev);
+              // if (loading_.value) {
+              //   return;
+              // }
+              // deleteFiles_.as((prev) => !prev);
+              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
             },
-            onKeyDown(e) {
-              if (loading_.value) {
-                return;
-              }
-              if (e.key === " " || e.key === "Enter") {
-                e.preventDefault();
-                deleteFiles_.as((prev) => !prev);
-              }
-            },
+            // onKeyDown(e) {
+            //   if (loading_.value) {
+            //     return;
+            //   }
+            //   if (e.key === " " || e.key === "Enter") {
+            //     e.preventDefault();
+            //     deleteFiles_.as((prev) => !prev);
+            //   }
+            // },
           },
           [
             View({ style: checkboxStyle }, [
               Show({
-                when: deleteFiles_,
+                when: props.store.state.delete_delete_files,
                 ok() {
-                  return [Timeless.Icon({ name: "check", size: 14 })];
+                  return Timeless.Icon({ name: "check", size: 14 });
                 },
               }),
             ]),
@@ -2197,31 +2225,107 @@ function DownloadDeleteConfirmDialog(props) {
   );
 }
 
-function ClearTasksConfirmDialog(props) {
-  return DownloadDeleteConfirmDialog({
-    ...props,
-    title: "清空下载记录",
-    message: "确定删除全部下载任务记录？此操作不可恢复。",
-    confirmText: "确认清空",
-    loadingText: "清空中...",
-  });
-}
-
 function TaskDeleteConfirmDialog(props) {
-  const taskCount_ = props.taskCount;
-  return DownloadDeleteConfirmDialog({
-    ...props,
-    title: "删除下载记录",
-    message: taskCount_
-      ? computed(taskCount_, (count) => {
-          return count > 1
-            ? `确定删除选中的 ${count} 个下载任务记录？此操作不可恢复。`
-            : "确定删除该下载任务记录？此操作不可恢复。";
-        })
-      : "确定删除该下载任务记录？此操作不可恢复。",
-    confirmText: "确认删除",
-    loadingText: "删除中...",
-  });
+  // const taskCount_ = props.taskCount;
+  // const deleteFiles_ = props.deleteFiles;
+  // const loading_ = props.loading;
+  // const state_ = refobj(props.store.state);
+
+  const title = "删除下载记录";
+  const message = "确定删除下载任务记录？此操作不可恢复。";
+  const checkboxLabel = "同时删除已下载的文件";
+  // const cancelText = props.cancelText || "取消";
+  // const confirmText = props.confirmText || "确认删除";
+  // const loadingText = props.loadingText || "删除中...";
+  const checkboxStyle = computed(
+    props.store.state.delete_delete_files,
+    (checked) => {
+      return {
+        width: "18px",
+        height: "18px",
+        "box-sizing": "border-box",
+        "border-radius": "4px",
+        border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
+        background: checked ? "#07C160" : "transparent",
+        color: "#fff",
+        display: "inline-flex",
+        "align-items": "center",
+        "justify-content": "center",
+        flex: "0 0 auto",
+      };
+    },
+  );
+
+  return Timeless.shadcn.Dialog(
+    {
+      store: props.store.ui.deleteConfirmDialog$,
+      style: {
+        "z-index": "10000",
+      },
+    },
+    [
+      View({ style: { padding: "20px 20px 16px" } }, [
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "8px",
+            },
+          },
+          [title],
+        ),
+        View(
+          {
+            style: {
+              "font-size": "14px",
+              "line-height": "20px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "16px",
+            },
+          },
+          [message],
+        ),
+        View(
+          {
+            role: "checkbox",
+            tabIndex: "0",
+            attributes: {
+              "aria-checked": computed(
+                props.store.state.delete_delete_files,
+                (checked) => (checked ? "true" : "false"),
+              ),
+            },
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "10px",
+              padding: "10px 0",
+              cursor: "pointer",
+              "user-select": "none",
+              "font-size": "14px",
+              "line-height": "20px",
+            },
+            onClick() {
+              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
+            },
+          },
+          [
+            View({ style: checkboxStyle }, [
+              Show({
+                when: props.store.state.delete_delete_files,
+                ok() {
+                  return Timeless.Icon({ name: "check", size: 14 });
+                },
+              }),
+            ]),
+            View({}, [checkboxLabel]),
+          ],
+        ),
+      ]),
+    ],
+  );
 }
 
 function CreateDownloadTaskDialog(props) {
@@ -2339,10 +2443,10 @@ function DownloadTaskSelectionCheckbox(props) {
 
 function DownloadTaskCard(props) {
   const vm$ = props.store;
-  const task = props.task;
+  const task_ = props.task;
   const running_count_ = vm$.state.running_count;
   const iconSize = "50px";
-  const state_ = computed(task, (t) => {
+  const state_ = computed(task_, (t) => {
     const pr = format_download_percent(t);
     const normalizedStatus = normalize_download_status(t.status);
     const isPaused = normalizedStatus === "pause";
@@ -2392,8 +2496,9 @@ function DownloadTaskCard(props) {
   const strokeColor = computed(state_, (d) => {
     return d.isPaused ? "#FBC02D" : "#07C160";
   });
+  const taskId = (task_ && task_.value !== undefined ? task_.value : task_).id;
   const selected_ = computed(vm$.state.selected_task_ids, (ids) => {
-    return (ids || []).some((id) => id === task.id);
+    return (ids || []).some((id) => id === taskId);
   });
   const btnStyle = {
     color: "var(--weui-FG-0)",
@@ -2413,15 +2518,23 @@ function DownloadTaskCard(props) {
       },
     },
     [
-      DownloadTaskSelectionCheckbox({
-        checked: selected_,
-        ariaLabel: "选择下载任务",
-        style: {
-          "margin-right": "10px",
-        },
-        onToggle(e) {
-          vm$.methods.toggleTaskSelected(task, {
-            shiftKey: !!(e && e.shiftKey),
+      Show({
+        when: props.showCheckbox,
+        ok() {
+          return DownloadTaskSelectionCheckbox({
+            checked: selected_,
+            ariaLabel: "选择下载任务",
+            style: {
+              "margin-right": "10px",
+            },
+            onToggle(e) {
+              vm$.methods.toggleTaskSelected(
+                task_.value !== undefined ? task_.value : task_,
+                {
+                  shiftKey: !!(e && e.shiftKey),
+                },
+              );
+            },
           });
         },
       }),
@@ -2446,85 +2559,52 @@ function DownloadTaskCard(props) {
             }),
             ok() {
               return [
-                View(
+                SVG.SVG(
                   {
                     style: {
-                      position: "relative",
-                      width: "50px",
-                      height: "50px",
-                      display: "flex",
-                      "align-items": "center",
-                      "justify-content": "center",
+                      position: "absolute",
+                      top: "0",
+                      left: "0",
+                      transform: "rotate(-90deg)",
+                    },
+                    attributes: {
+                      width: "50",
+                      height: "50",
+                      viewBox: "0 0 50 50",
                     },
                   },
                   [
-                    SVG.SVG(
-                      {
-                        style: {
-                          position: "absolute",
-                          top: "0",
-                          left: "0",
-                          transform: "rotate(-90deg)",
-                        },
-                        attributes: {
-                          width: "50",
-                          height: "50",
-                          viewBox: "0 0 50 50",
-                        },
+                    SVG.Circle({
+                      attributes: {
+                        cx: "25",
+                        cy: "25",
+                        r: radius,
+                        stroke: "var(--weui-FG-3)",
+                        "stroke-width": "3",
+                        fill: "none",
                       },
-                      [
-                        SVG.Circle({
-                          attributes: {
-                            cx: "25",
-                            cy: "25",
-                            r: radius,
-                            stroke: "var(--weui-FG-3)",
-                            "stroke-width": "3",
-                            fill: "none",
-                          },
-                        }),
-                        SVG.Circle({
-                          attributes: {
-                            cx: "25",
-                            cy: "25",
-                            r: radius,
-                            stroke: strokeColor,
-                            "stroke-width": "3",
-                            fill: "none",
-                            "stroke-dasharray": circumference,
-                            "stroke-dashoffset": offset,
-                            "stroke-linecap": "round",
-                          },
-                        }),
-                      ],
-                    ),
-                    View(
-                      {
-                        style: {
-                          position: "relative",
-                          "z-index": "1",
-                          display: "flex",
-                        },
+                    }),
+                    SVG.Circle({
+                      attributes: {
+                        cx: "25",
+                        cy: "25",
+                        r: radius,
+                        stroke: strokeColor,
+                        "stroke-width": "3",
+                        fill: "none",
+                        "stroke-dasharray": circumference,
+                        "stroke-dashoffset": offset,
+                        "stroke-linecap": "round",
                       },
-                      [
-                        DownloadTaskFileIcon({
-                          task,
-                          size: 32,
-                        }),
-                      ],
-                    ),
+                    }),
                   ],
                 ),
               ];
             },
-            else() {
-              return [
-                DownloadTaskFileIcon({
-                  task,
-                  size: 32,
-                }),
-              ];
-            },
+          }),
+          DownloadTaskFileIcon({
+            task: task_,
+            size: 32,
           }),
         ],
       ),
@@ -2543,7 +2623,7 @@ function DownloadTaskCard(props) {
                 "font-size": "14px",
               },
             },
-            [computed(task, (t) => t.name)],
+            [computed(task_, (t) => t.name)],
           ),
           View(
             {
@@ -2603,7 +2683,7 @@ function DownloadTaskCard(props) {
                     class: "wx-download-item-open",
                     style: btnStyle,
                     onClick() {
-                      vm$.methods.openTask(task);
+                      vm$.methods.openTask(task_.value);
                     },
                   },
                   [
@@ -2636,7 +2716,7 @@ function DownloadTaskCard(props) {
                     class: "wx-download-item-pause",
                     style: btnStyle,
                     onClick() {
-                      vm$.methods.pauseTask(task);
+                      vm$.methods.pauseTask(task_.value);
                     },
                   },
                   [
@@ -2655,16 +2735,24 @@ function DownloadTaskCard(props) {
                     style: computed(running_count_, (t) => {
                       return {
                         ...btnStyle,
-                        ...(t > WXU.config.MaxRunning
+                        ...(t >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
                           ? {
-                              opacity: "0.6",
+                              opacity: "0.4",
                               cursor: "not-allowed",
+                              "pointer-events": "none",
                             }
                           : {}),
                       };
                     }),
                     onClick() {
-                      vm$.methods.resumeTask(task);
+                      if (
+                        running_count_.value >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
+                      ) {
+                        return;
+                      }
+                      vm$.methods.resumeTask(task_.value);
                     },
                   },
                   [
@@ -2683,16 +2771,24 @@ function DownloadTaskCard(props) {
                     style: computed(running_count_, (t) => {
                       return {
                         ...btnStyle,
-                        ...(t > WXU.config.MaxRunning
+                        ...(t >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
                           ? {
-                              opacity: "0.6",
+                              opacity: "0.4",
                               cursor: "not-allowed",
+                              "pointer-events": "none",
                             }
                           : {}),
                       };
                     }),
                     onClick() {
-                      vm$.methods.resumeTask(task);
+                      if (
+                        running_count_.value >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
+                      ) {
+                        return;
+                      }
+                      vm$.methods.resumeTask(task_.value);
                     },
                   },
                   [
@@ -2710,7 +2806,7 @@ function DownloadTaskCard(props) {
               class: "wx-download-item-delete",
               style: btnStyle,
               onClick() {
-                vm$.methods.requestDeleteTask(task);
+                vm$.methods.requestDeleteTask(task_.value);
               },
             },
             [
@@ -2782,8 +2878,9 @@ function DownloadTaskListView(props) {
                   onScroll(pos) {
                     vm$.methods.handleListViewScroll(pos);
                   },
-                  render(task) {
-                    console.log("is render");
+                  render(task_) {
+                    const task =
+                      task_ && task_.value !== undefined ? task_.value : task_;
                     if (vm$.methods.isPlaceholderTask(task)) {
                       vm$.methods.ensureTaskPageForIndex(task.__index);
                       return DownloadTaskSkeletonCard({
@@ -2792,8 +2889,9 @@ function DownloadTaskListView(props) {
                     }
                     return DownloadTaskCard({
                       store: vm$,
-                      task,
+                      task: task_,
                       class: props.itemClass,
+                      showCheckbox: props.showCheckbox,
                     });
                   },
                 }),
@@ -2835,6 +2933,7 @@ function DownloaderPanelView(props) {
   return View(
     {
       class: "wx-dl-panel-container",
+      style: props.showViewAll ? { "padding-bottom": "0" } : {},
       onMounted() {
         vm$.ready();
       },
@@ -2973,32 +3072,49 @@ function DownloaderPanelView(props) {
       ]),
       DownloadTaskListView({
         store: vm$,
-        paddingBottom:
-          typeof props.listPaddingBottom !== "undefined"
-            ? props.listPaddingBottom
-            : props.paddingBottom,
+        paddingBottom: 12,
       }),
-      renderConfirmDialog
-        ? TaskDeleteConfirmDialog({
-            store: vm$.ui.deleteConfirmDialog$,
-            deleteFiles: vm$.state.delete_delete_files,
-            loading: vm$.state.deleting_task,
-            taskCount: vm$.state.pending_delete_task_count,
-            onConfirm() {
-              vm$.methods.confirmDeleteTask();
+      Show({
+        when: computed(task_count_, (count) => {
+          return count > 20;
+        }),
+        ok() {
+          return View(
+            {
+              class: "wx-dl-panel-footer",
+              style: {
+                "z-index": 100,
+                "flex-shrink": "0",
+                "text-align": "center",
+                padding: "12px 0",
+                "border-top": "1px solid var(--weui-FG-4)",
+                cursor: "pointer",
+                "font-size": "14px",
+              },
+              onClick() {
+                window.open(DownloadHostname + "/download", "_blank");
+              },
             },
-          })
-        : null,
-      renderConfirmDialog
-        ? ClearTasksConfirmDialog({
-            store: vm$.ui.clearConfirmDialog$,
-            deleteFiles: vm$.state.clear_delete_files,
-            loading: vm$.state.clearing_tasks,
-            onConfirm() {
-              vm$.methods.confirmClearTasks();
-            },
-          })
-        : null,
+            ["查看所有"],
+          );
+        },
+      }),
+      Show({
+        when: renderConfirmDialog,
+        ok() {
+          return TaskDeleteConfirmDialog({
+            store: vm$,
+          });
+        },
+      }),
+      Show({
+        when: renderConfirmDialog,
+        ok() {
+          return ClearTasksConfirmDialog({
+            store: vm$,
+          });
+        },
+      }),
     ],
   );
 }

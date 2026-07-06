@@ -288,7 +288,7 @@ body[data-weui-theme=dark] {
   display: flex; 
   flex-direction: column; 
   width: 400px; 
-  max-height: 450px; 
+  max-height: 512px; 
   padding-bottom: 12px;
   background-color: var(--popup-bg-color); 
   border-radius: 8px;

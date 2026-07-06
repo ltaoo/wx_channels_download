@@ -63,7 +63,7 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 		Port:     2022,
 	}
 	files := newOfficialAccountTestInjectedFiles(t, map[string]string{
-		"lib/timeless/0.26.3/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
+		"lib/timeless/0.27.1/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
 	})
 	plugin := CreateOfficialAccountInterceptorPlugin(cfg, files, "test-version")
 	ctx := &officialAccountPluginContext{
