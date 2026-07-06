@@ -6855,4 +6855,99 @@ body[data-weui-theme='dark'] .weui-agree__checkbox-check[aria-checked="true"] + 
   text-align: center;
   font-size: 14px;
 }
+.weui-dropdown-menu {
+  position: relative;
+  z-index: 50;
+  min-width: 140px;
+  overflow: hidden;
+  color: var(--weui-FG-0);
+  background: var(--weui-BG-2);
+  border: 1px solid var(--weui-FG-4);
+  filter: drop-shadow(0 0 32px rgba(0, 0, 0, 0.15));
+  border-radius: 8px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.weui-dropdown-menu__submenu {
+  min-width: 120px;
+}
+.weui-dropdown-menu__item {
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  position: relative;
+  color: var(--weui-FG-0);
+  gap: 8px;
+  transition: background 0.15s;
+}
+.weui-dropdown-menu__item .weui-dropdown-menu__icon-default {
+  display: block;
+}
+.weui-dropdown-menu__item .weui-dropdown-menu__icon-highlight {
+  display: none;
+}
+.weui-dropdown-menu__item--selected {
+  font-weight: 500;
+  color: var(--weui-BRAND-100);
+}
+.weui-dropdown-menu__item:hover {
+  font-weight: 500;
+  color: #fff;
+  background: var(--weui-BRAND-100);
+}
+.weui-dropdown-menu__item:hover .weui-dropdown-menu__icon-default {
+  display: none;
+}
+.weui-dropdown-menu__item:hover .weui-dropdown-menu__icon-highlight {
+  display: block;
+}
+.weui-dropdown-menu__item:active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--weui-STATELAYER-PRESSEDSTRENGTHENED);
+  border-radius: 4px;
+}
+.weui-dropdown-menu__item--focused {
+  background: var(--weui-BRAND-100);
+  color: #fff;
+}
+.weui-dropdown-menu__item--disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.weui-dropdown-menu__separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--weui-FG-3);
+}
+.weui-dropdown-menu__group-label {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--weui-FG-1);
+}
+.weui-dropdown-menu__icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.weui-dropdown-menu__label {
+  flex: 1;
+}
+.weui-dropdown-menu__chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
 /*$vite$:1*/
