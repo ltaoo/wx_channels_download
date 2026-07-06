@@ -257,38 +257,31 @@
       align: "end",
       items: [
         new Timeless.ui.MenuItemCore({
-          label: "\u4e0b\u8f7d\u6587\u7ae0",
-          async onClick() {
-            dropdown$.hide();
-            await create_officialaccount_download_task(dialog$);
-          },
-        }),
-        new Timeless.ui.MenuItemCore({
-          label: "\u590d\u5236\u6587\u7ae0HTML",
+          label: "复制文章HTML",
           onClick() {
             const content = window.cgiDataNew.content_noencode;
             if (!content) {
               WXU.toast(
-                "\u6587\u7ae0HTML\u4e3a\u7a7a\uff0c\u8bf7\u4f7f\u7528\u300c\u590d\u5236\u9875\u9762HTML\u300d",
+                "文章HTML为空，请使用「复制页面HTML」",
               );
               return;
             }
             WXU.copy(content);
-            WXU.toast("\u590d\u5236\u6210\u529f");
+            WXU.toast("复制成功");
             dropdown$.hide();
           },
         }),
         new Timeless.ui.MenuItemCore({
-          label: "\u590d\u5236\u9875\u9762HTML",
+          label: "复制页面HTML",
           onClick() {
             const content = window.body.innerHTML;
             WXU.copy(content);
-            WXU.toast("\u590d\u5236\u6210\u529f");
+            WXU.toast("复制成功");
             dropdown$.hide();
           },
         }),
         new Timeless.ui.MenuItemCore({
-          label: "\u4e0b\u8f7d\u8bb0\u5f55",
+          label: "下载面板",
           onClick() {
             dialog$.show();
             dropdown$.hide();
@@ -301,7 +294,7 @@
     dropdownRoot.style.display = "contents";
     document.body.appendChild(dropdownRoot);
     Timeless.DOM.render(
-      Timeless.shadcn.DropdownMenu({ store: dropdown$ }),
+      Timeless.DropdownMenu({ store: dropdown$ }),
       dropdownRoot,
     );
     function set_dropdown_reference() {

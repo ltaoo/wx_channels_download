@@ -99,6 +99,37 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	}
 }
 
+func TestAPIClientServesWaterfallPreviewPageTemplate(t *testing.T) {
+	withTestChannelAssets(t, map[string]string{
+		"preview.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/virtual-list-view.js"></script>`,
+	})
+	gin.SetMode(gin.TestMode)
+	client := &APIClient{
+		cfg:    &APIConfig{Protocol: "http", Hostname: "127.0.0.1", Port: 2022, RemoteServerEnabled: true},
+		engine: gin.New(),
+	}
+	client.engine.GET("/waterfall", client.handleWaterfallPreviewPage)
+
+	resp := performStaticAssetRequest(client, http.MethodGet, "/waterfall", nil)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.Code, http.StatusOK)
+	}
+	if got := resp.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got)
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, `"Protocol":"http"`) {
+		t.Fatalf("body = %q, want rendered API config", body)
+	}
+	if !strings.Contains(body, `/__wx_channels_assets/src/virtual-list-view.js`) {
+		t.Fatalf("body = %q, want virtual-list-view.js script", body)
+	}
+	if strings.Contains(body, "__WX_DOWNLOAD_CONFIG_JSON__") {
+		t.Fatalf("body = %q, want config placeholder replaced", body)
+	}
+}
+
 func TestAPIClientServesDownloadPageAtRoot(t *testing.T) {
 	withTestChannelAssets(t, map[string]string{
 		"index.html": `<!doctype html><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;</script>`,

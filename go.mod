@@ -59,6 +59,7 @@ replace github.com/GopeedLab/gopeed => ./pkg/gopeed
 
 // Downgrade golang.org/x/* to versions compatible with Go 1.20
 replace (
+	github.com/klauspost/compress => github.com/klauspost/compress v1.17.9
 	golang.org/x/exp => golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/image => golang.org/x/image v0.14.0
 	golang.org/x/net => golang.org/x/net v0.17.0

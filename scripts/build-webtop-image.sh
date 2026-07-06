@@ -46,7 +46,7 @@ echo "Building wx_video_download for ${PLATFORM}..."
 (
     cd "$ROOT_DIR"
     env GOCACHE="$GOCACHE" CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
-        go build -trimpath -tags with_gvisor -ldflags="-s -w -X main.Mode=release" \
+        go build -trimpath -tags "with_gvisor,embed_inject" -ldflags="-s -w -X main.Mode=release" \
         -o "$BUILD_DIR/wx_video_download" .
 )
 

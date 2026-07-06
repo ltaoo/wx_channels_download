@@ -188,6 +188,7 @@ func CreateChannelInterceptorPlugins(interceptor *Interceptor, files *ChannelInj
 					ChannelSrcAssetURL(assetBaseURL, "env.channels.js"),
 					ChannelSrcAssetURL(assetBaseURL, "utils.js"),
 					ChannelSrcAssetURL(assetBaseURL, "components.js"),
+					ChannelSrcAssetURL(assetBaseURL, "virtual-list-view.js"),
 					ChannelSrcAssetURL(assetBaseURL, "channels.js"),
 				)
 				AppendScriptSrcs(

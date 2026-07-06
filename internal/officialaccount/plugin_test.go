@@ -63,7 +63,7 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 		Port:     2022,
 	}
 	files := newOfficialAccountTestInjectedFiles(t, map[string]string{
-		"lib/timeless/0.26.3/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
+		"lib/timeless/0.27.1/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
 	})
 	plugin := CreateOfficialAccountInterceptorPlugin(cfg, files, "test-version")
 	ctx := &officialAccountPluginContext{
@@ -108,12 +108,12 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 		t.Fatalf("official account HTML does not override runtime asset base URL:\n%s", ctx.body)
 	}
 	cssIdx := strings.Index(ctx.body, ".tt-py-1")
-	jsIdx := strings.Index(ctx.body, "timeless.shadcn.umd.min.js?v=test-version")
+	jsIdx := strings.Index(ctx.body, "timeless.weui.umd.min.js?v=test-version")
 	if cssIdx < 0 || jsIdx < 0 {
-		t.Fatalf("expected both shadcn CSS and JS assets in injected HTML:\n%s", ctx.body)
+		t.Fatalf("expected both weui CSS and JS assets in injected HTML:\n%s", ctx.body)
 	}
 	if cssIdx > jsIdx {
-		t.Fatalf("shadcn CSS should be injected before shadcn JS")
+		t.Fatalf("weui CSS should be injected before weui JS")
 	}
 }
 
