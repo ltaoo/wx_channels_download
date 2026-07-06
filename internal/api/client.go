@@ -140,12 +140,16 @@ func (c *APIClient) Start() error {
 		if evt == nil || evt.Task == nil || evt.Task.ID == "" {
 			return
 		}
+		var errMsg string
+		if evt.Err != nil {
+			errMsg = evt.Err.Error()
+		}
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
 			Data: gin.H{
 				"Key":           evt.Key,
 				"Task":          evt.Task,
-				"Err":           evt.Err,
+				"Err":           errMsg,
 				"status_counts": c.downloadTaskStatusCounts(),
 			},
 		})

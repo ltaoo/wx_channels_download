@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Image Preview</title>
-  <link rel="stylesheet" href="/__wx_channels_assets/lib/timeless/0.27.1/timeless.shadcn.css" />
+  <link rel="stylesheet" href="/__wx_channels_assets/lib/timeless/0.27.1/timeless.weui.css" />
   <link id="wx-components-style" rel="stylesheet" href="/__wx_channels_assets/src/components.css" />
   <style>
     :root {
@@ -289,12 +289,11 @@
   <script src="/__wx_channels_assets/lib/mitt.umd.js"></script>
   <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.umd.min.js"></script>
   <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.utils.umd.min.js"></script>
-  <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.shadcn.umd.min.js"></script>
+  <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.weui.umd.min.js"></script>
   <script>
-    Object.assign(Timeless, Timeless.shadcn.kit);
-    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(Timeless, Timeless.weui.kit);
+    Object.assign(Timeless, Timeless.weui);
     Object.assign(window, Timeless);
-    Object.assign(window, Timeless.shadcn);
   </script>
   <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.dom.umd.min.js"></script>
   <script src="/__wx_channels_assets/lib/timeless/0.27.1/timeless.web.umd.min.js"></script>

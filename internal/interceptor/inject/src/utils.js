@@ -2161,7 +2161,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
   mount.className = "wx-download-dropdown-menu-root";
   mount.style.display = "contents";
   document.body.appendChild(mount);
-  Timeless.DOM.render(Timeless.shadcn.DropdownMenu({ store: dropdown$ }), mount);
+  Timeless.DOM.render(Timeless.DropdownMenu({ store: dropdown$ }), mount);
 
   function set_reference() {
     dropdown$.setReference(
@@ -2188,7 +2188,7 @@ function __wx_attach_download_dropdown_menu(trigger) {
   });
 
   if (trigger.dataset) {
-    trigger.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
+    trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
   }
   trigger.__wxTimelessDownloadDropdown = dropdown$;
   return dropdown$;

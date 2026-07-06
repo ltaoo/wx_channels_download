@@ -295,6 +295,8 @@ body[data-weui-theme=dark] {
   color: var(--weui-FG-0);
   box-shadow: 0 0 6px rgb(0 0 0 / 20%);
 }
+[data-list-view-root] { scrollbar-width: none; -ms-overflow-style: none; }
+[data-list-view-root]::-webkit-scrollbar { display: none; }
 .wx-dl-dark-scroll::-webkit-scrollbar { width: 6px !important; }
 .wx-dl-dark-scroll::-webkit-scrollbar-track { background: transparent !important; border-radius: 3px !important; }
 .wx-dl-dark-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2) !important; border-radius: 3px !important; }

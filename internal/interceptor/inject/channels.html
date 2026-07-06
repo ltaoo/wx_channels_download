@@ -21,7 +21,7 @@
     }
     document.write(
       '<link rel="stylesheet" href="' +
-      __wx_fake_asset_url("/lib/timeless/0.27.1/timeless.shadcn.css") +
+      __wx_fake_asset_url("/lib/timeless/0.27.1/timeless.weui.css") +
       '">'
     );
     document.write(
@@ -358,11 +358,10 @@
         <div class="slides-scroll">
           <section class="slides-item">
             <div class="feed-shell">
-              <div class="video-card" style="display: flex; align-items: center; justify-content: center; padding: 24px;">
-                <textarea id="create-task-input"
-                  placeholder="输入视频号链接，多个链接换行分隔"
-                  style="position: relative; z-index: 1; width: 100%; height: 100%; min-height: 512px; padding: 16px; border: none; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--fake-text); font-size: 14px; line-height: 1.6; resize: none; outline: none;"
-                ></textarea>
+              <div class="video-card"
+                style="display: flex; align-items: center; justify-content: center; padding: 24px;">
+                <textarea id="create-task-input" placeholder="输入视频号链接，多个链接换行分隔"
+                  style="position: relative; z-index: 1; width: 100%; height: 100%; min-height: 512px; padding: 16px; border: none; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--fake-text); font-size: 14px; line-height: 1.6; resize: none; outline: none;"></textarea>
               </div>
 
               <aside class="op-list" aria-label="feed operations">
@@ -389,14 +388,13 @@
       writeScript("/lib/mitt.umd.js");
       writeScript("/lib/timeless/0.27.1/timeless.umd.min.js");
       writeScript("/lib/timeless/0.27.1/timeless.utils.umd.min.js");
-      writeScript("/lib/timeless/0.27.1/timeless.shadcn.umd.min.js");
+      writeScript("/lib/timeless/0.27.1/timeless.weui.umd.min.js");
     })();
   </script>
   <script>
-    Object.assign(Timeless, Timeless.shadcn.kit);
-    Timeless.ui = Timeless.shadcn.ui;
+    Object.assign(Timeless, Timeless.weui.kit);
+    Object.assign(Timeless, Timeless.weui);
     Object.assign(window, Timeless);
-    Object.assign(window, Timeless.shadcn);
   </script>
   <script>
     (function () {
@@ -602,46 +600,6 @@
           2,
         );
         return data;
-      }
-
-      function renderTimelessProbe() {
-        const mount = document.getElementById("timeless-probe");
-        const renderDropdownMenu =
-          window.Timeless &&
-          window.Timeless.shadcn &&
-          window.Timeless.shadcn.DropdownMenu;
-        if (!mount || !renderDropdownMenu) return;
-        mount.dataset.dropdownMenuImpl = "Timeless.shadcn.DropdownMenu";
-        const subMenu = new Timeless.ui.MenuCore({
-          items: [
-            new Timeless.ui.MenuItemCore({ label: "1080p" }),
-            new Timeless.ui.MenuItemCore({ label: "720p" }),
-          ],
-        });
-        const menu = new Timeless.ui.DropdownMenuCore({
-          trigger: "hover",
-          align: "end",
-          items: [
-            new Timeless.ui.MenuItemCore({
-              label: "更多下载",
-              menu: subMenu,
-            }),
-            new Timeless.ui.MenuItemCore({ label: "下载为 MP3" }),
-            new Timeless.ui.MenuItemCore({ label: "复制页面链接" }),
-          ],
-        });
-        Timeless.DOM.render(
-          renderDropdownMenu({ store: menu }, [
-            View(
-              {
-                id: "timeless-probe-trigger",
-                class: "probe-trigger",
-              },
-              ["Timeless Dropdown Probe"],
-            ),
-          ]),
-          mount,
-        );
       }
 
       function installFakeData() {

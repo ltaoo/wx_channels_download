@@ -294,7 +294,7 @@
     dropdownRoot.style.display = "contents";
     document.body.appendChild(dropdownRoot);
     Timeless.DOM.render(
-      Timeless.shadcn.DropdownMenu({ store: dropdown$ }),
+      Timeless.DropdownMenu({ store: dropdown$ }),
       dropdownRoot,
     );
     function set_dropdown_reference() {

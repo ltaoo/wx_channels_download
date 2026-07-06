@@ -5,7 +5,6 @@
  */
 function DownloaderEntry(props) {
   const vm$ = DownloaderPanelViewModel({
-    showBulkActions: false,
     onRequestClose() {
       props.popover$.hide();
     },

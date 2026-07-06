@@ -66,10 +66,11 @@ const ChannelSrcAssetCacheControl = "no-cache"
 const channelLibAssetCacheControl = ChannelLibAssetCacheControl
 const channelSrcAssetCacheControl = ChannelSrcAssetCacheControl
 
-const timelessBridgeScript = `Object.assign(Timeless, Timeless.shadcn.kit);
-Timeless.ui = Timeless.shadcn.ui;
+const timelessBridgeScript = `
+Object.assign(Timeless, Timeless.weui.kit);
+Object.assign(Timeless, Timeless.weui);
 Object.assign(window, Timeless);
-Object.assign(window, Timeless.shadcn);`
+`
 
 func ChannelAssetsBaseURL(protocol string, hostname string, port int) string {
 	protocol = strings.TrimSpace(protocol)
@@ -175,8 +176,8 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.umd.min.js"),
 		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.utils.umd.min.js"),
 	)
-	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.shadcn.css"))
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.shadcn.umd.min.js"))
+	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.css"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.umd.min.js"))
 	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
@@ -195,12 +196,12 @@ func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string
 		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.utils.umd.min.js"),
 	)
 	if len(shadcnCSS) > 0 {
-		shadcnCSS = ChannelStaticAssetResponseData("timeless.shadcn.css", shadcnCSS)
+		shadcnCSS = ChannelStaticAssetResponseData("timeless.weui.css", shadcnCSS)
 		AppendInlineStyle(b, styleAttr, string(shadcnCSS))
 	} else {
-		AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.shadcn.css"))
+		AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.css"))
 	}
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.shadcn.umd.min.js"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.umd.min.js"))
 	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
@@ -461,8 +462,8 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
 	files.JSTimeless = files.readLib("timeless/0.27.1/timeless.umd.min.js")
 	files.JSTimelessUtils = files.readLib("timeless/0.27.1/timeless.utils.umd.min.js")
-	files.CSSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.shadcn.css")
-	files.JSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.shadcn.umd.min.js")
+	files.CSSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.weui.css")
+	files.JSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.weui.umd.min.js")
 	files.JSTimelessDOM = files.readLib("timeless/0.27.1/timeless.dom.umd.min.js")
 	files.JSTimelessWeb = files.readLib("timeless/0.27.1/timeless.web.umd.min.js")
 	files.CSSComponents = files.readSrc("components.css")

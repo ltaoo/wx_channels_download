@@ -155,7 +155,7 @@ function Popover(props, children) {
     }),
   ];
 
-  return Timeless.shadcn.PopoverPrimitive.Root(
+  return Timeless.PopoverPrimitive.Root(
     {
       onUnmounted() {
         unlistens.forEach((fn) => {
@@ -166,12 +166,12 @@ function Popover(props, children) {
       },
     },
     [
-      Timeless.shadcn.PopoverPrimitive.Trigger(
+      Timeless.PopoverPrimitive.Trigger(
         { store: props.store },
         children,
       ),
-      Timeless.shadcn.PopoverPrimitive.Portal({ store: props.store }, [
-        Timeless.shadcn.PopoverPrimitive.Content(
+      Timeless.PopoverPrimitive.Portal({ store: props.store }, [
+        Timeless.PopoverPrimitive.Content(
           {
             ...props,
             zIndex: 9999,
@@ -202,8 +202,8 @@ function Dialog(props, children) {
     state_.as(v);
   });
 
-  return Timeless.shadcn.DialogPrimitive.Root({ store }, [
-    Timeless.shadcn.DialogPrimitive.Overlay({
+  return Timeless.DialogPrimitive.Root({ store }, [
+    Timeless.DialogPrimitive.Overlay({
       store,
       class: "fixed inset-0 bg-black/80",
       style: { "z-index": "10000" },
@@ -219,8 +219,8 @@ function Dialog(props, children) {
         },
       },
       [
-        Timeless.shadcn.DialogPrimitive.Content({ ...rest, store }, [
-          Timeless.shadcn.DialogPrimitive.Body({ store }, children || []),
+        Timeless.DialogPrimitive.Content({ ...rest, store }, [
+          Timeless.DialogPrimitive.Body({ store }, children || []),
         ]),
       ],
     ),
@@ -319,13 +319,13 @@ function OverwriteDownloadConfirmDialog(props) {
   );
 }
 function DropdownMenu(props, children) {
-  return Timeless.shadcn.DropdownMenu(props, children);
+  return Timeless.DropdownMenu(props, children);
 }
 
 function Waterfall(props) {
   const { store, class: cls, render, ...rest } = props;
 
-  return Timeless.shadcn.WaterfallPrimitive.Root(
+  return Timeless.WaterfallPrimitive.Root(
     {
       ...rest,
       store,
@@ -336,7 +336,7 @@ function Waterfall(props) {
         each: store.$columns,
         render(column) {
           const visible_cells = refarr([...column.$cells]);
-          return Timeless.shadcn.WaterfallPrimitive.Column({ store: column }, [
+          return Timeless.WaterfallPrimitive.Column({ store: column }, [
             For({
               key: "id",
               each: visible_cells,
@@ -346,7 +346,7 @@ function Waterfall(props) {
                   ? render(payload, slot)
                   : null;
 
-                const cell$ = Timeless.shadcn.WaterfallPrimitive.Cell(
+                const cell$ = Timeless.WaterfallPrimitive.Cell(
                   { store: slot },
                   user_content ? [user_content] : [],
                 );
@@ -395,7 +395,7 @@ function Waterfall(props) {
 function ScrollView(props, children) {
   const { store, class: cls, ...rest } = props;
 
-  return Timeless.shadcn.ScrollViewPrimitive.Root(
+  return Timeless.ScrollViewPrimitive.Root(
     {
       ...rest,
       store,
@@ -403,7 +403,7 @@ function ScrollView(props, children) {
       style: "height: 100%; overflow-y: auto; padding: 0 12px;",
     },
     [
-      Timeless.shadcn.ScrollViewPrimitive.Indicator(
+      Timeless.ScrollViewPrimitive.Indicator(
         {
           store,
           class: "scroll-view-indicator",
@@ -411,7 +411,7 @@ function ScrollView(props, children) {
             "position: relative; width: 100%; height: 0, overflow: hidden; text-align: center;",
         },
         [
-          Timeless.shadcn.ScrollViewPrimitive.Progress({
+          Timeless.ScrollViewPrimitive.Progress({
             store,
             class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
             style:

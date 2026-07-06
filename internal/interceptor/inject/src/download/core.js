@@ -1811,6 +1811,13 @@ function DownloaderPanelViewModel(props = {}) {
             if (!task) {
               return;
             }
+            const errMsg = data.Err || data.err || "";
+            if (errMsg && key === "error") {
+              task._errMsg = errMsg;
+            }
+            if (key === "start") {
+              task._errMsg = "";
+            }
             methods.upsert(methods.formatTask(task), {
               prepend: key === "create" || !key,
             });
@@ -1983,24 +1990,6 @@ function DownloaderPanelViewModel(props = {}) {
   };
 
   const dropdownItems = [];
-  if (props.showBulkActions !== false) {
-    dropdownItems.push(
-      new Timeless.ui.MenuItemCore({
-        label: "开始所有任务",
-        async onClick() {
-          await methods.startAllTasks();
-          ui.dropdown$.hide();
-        },
-      }),
-      new Timeless.ui.MenuItemCore({
-        label: "暂停所有任务",
-        async onClick() {
-          await methods.pauseAllTasks();
-          ui.dropdown$.hide();
-        },
-      }),
-    );
-  }
   dropdownItems.push(
     new Timeless.ui.MenuItemCore({
       label: "清空下载记录",
@@ -2140,7 +2129,7 @@ function ClearTasksConfirmDialog(props) {
     },
   );
 
-  return Timeless.shadcn.Dialog(
+  return Timeless.Dialog(
     {
       store: props.store.ui.clearConfirmDialog$,
       style: {
@@ -2256,7 +2245,7 @@ function TaskDeleteConfirmDialog(props) {
     },
   );
 
-  return Timeless.shadcn.Dialog(
+  return Timeless.Dialog(
     {
       store: props.store.ui.deleteConfirmDialog$,
       style: {
@@ -2332,7 +2321,7 @@ function CreateDownloadTaskDialog(props) {
   const text_ = props.text;
   const loading_ = props.loading;
 
-  return Timeless.shadcn.Dialog({ store: props.store }, [
+  return Timeless.Dialog({ store: props.store }, [
     View({ style: { width: "520px", padding: "20px 20px 16px" } }, [
       View(
         {
@@ -2469,7 +2458,7 @@ function DownloadTaskCard(props) {
         statusText = WXU.bytes_to_size(total);
       }
     } else if (isFailed) {
-      statusText = "下载失败";
+      statusText = t._errMsg || "下载失败";
       statusColor = "#FA5151";
     } else if (isPending) {
       statusText = "等待中...";
@@ -3087,7 +3076,6 @@ function DownloaderPanelView(props) {
                 "flex-shrink": "0",
                 "text-align": "center",
                 padding: "12px 0",
-                "border-top": "1px solid var(--weui-FG-4)",
                 cursor: "pointer",
                 "font-size": "14px",
               },
