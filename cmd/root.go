@@ -244,17 +244,6 @@ func root_command(cfg *config.Config) {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(channels_interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
-	if official_cfg.Enabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets, cfg.Version))
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "official.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: official_cfg.RemoteServerProtocol,
-				Host:     official_cfg.RemoteServerHostname,
-				Port:     official_cfg.RemoteServerPort,
-			},
-		})
-	}
 	interceptor_srv.Interceptor.SetLog(log_file)
 	mgr.RegisterServer(interceptor_srv)
 	channels_interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
