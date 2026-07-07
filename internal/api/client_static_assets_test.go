@@ -35,11 +35,11 @@ func TestAPIClientServesChannelLibAsset(t *testing.T) {
 func TestAPIClientServesChannelSrcAssetWithETag(t *testing.T) {
 	body := "console.log('src');"
 	withTestChannelAssets(t, map[string]string{
-		"src/utils.js": body,
+		"inject/utils.js": body,
 	})
 	client := newStaticAssetTestClient()
 
-	resp := performStaticAssetRequest(client, http.MethodGet, "/__wx_channels_assets/src/utils.js", nil)
+	resp := performStaticAssetRequest(client, http.MethodGet, "/__wx_channels_assets/inject/utils.js", nil)
 	etag := interceptor.ChannelStaticAssetETag([]byte(body))
 
 	if resp.Code != http.StatusOK {
@@ -53,7 +53,7 @@ func TestAPIClientServesChannelSrcAssetWithETag(t *testing.T) {
 	}
 
 	headers := http.Header{"If-None-Match": []string{etag}}
-	cachedResp := performStaticAssetRequest(client, http.MethodGet, "/__wx_channels_assets/src/utils.js", headers)
+	cachedResp := performStaticAssetRequest(client, http.MethodGet, "/__wx_channels_assets/inject/utils.js", headers)
 	if cachedResp.Code != http.StatusNotModified {
 		t.Fatalf("status = %d, want %d", cachedResp.Code, http.StatusNotModified)
 	}
@@ -64,7 +64,7 @@ func TestAPIClientServesChannelSrcAssetWithETag(t *testing.T) {
 
 func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	withTestChannelAssets(t, map[string]string{
-		"index.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/download/index.js"></script>`,
+		"index.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/inject/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/inject/download/index.js"></script>`,
 	})
 	gin.SetMode(gin.TestMode)
 	client := &APIClient{
@@ -88,10 +88,10 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 	if !strings.Contains(body, `"remoteServerEnabled":true`) {
 		t.Fatalf("body = %q, want remoteServerEnabled rendered for frontend config", body)
 	}
-	if !strings.Contains(body, `/__wx_channels_assets/src/download/index.js`) {
+	if !strings.Contains(body, `/__wx_channels_assets/inject/download/index.js`) {
 		t.Fatalf("body = %q, want download/index.js script", body)
 	}
-	if !strings.Contains(body, `/__wx_channels_assets/src/components.css`) {
+	if !strings.Contains(body, `/__wx_channels_assets/inject/components.css`) {
 		t.Fatalf("body = %q, want components.css stylesheet", body)
 	}
 	if strings.Contains(body, "__WX_DOWNLOAD_CONFIG_JSON__") {
@@ -101,7 +101,7 @@ func TestAPIClientServesDownloadPageTemplate(t *testing.T) {
 
 func TestAPIClientServesWaterfallPreviewPageTemplate(t *testing.T) {
 	withTestChannelAssets(t, map[string]string{
-		"preview.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/src/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/src/virtual-list-view.js"></script>`,
+		"preview.html": `<!doctype html><link rel="stylesheet" href="/__wx_channels_assets/inject/components.css"><script>window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__; window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";</script><script src="/__wx_channels_assets/inject/virtual-list-view.js"></script>`,
 	})
 	gin.SetMode(gin.TestMode)
 	client := &APIClient{
@@ -122,7 +122,7 @@ func TestAPIClientServesWaterfallPreviewPageTemplate(t *testing.T) {
 	if !strings.Contains(body, `"Protocol":"http"`) {
 		t.Fatalf("body = %q, want rendered API config", body)
 	}
-	if !strings.Contains(body, `/__wx_channels_assets/src/virtual-list-view.js`) {
+	if !strings.Contains(body, `/__wx_channels_assets/inject/virtual-list-view.js`) {
 		t.Fatalf("body = %q, want virtual-list-view.js script", body)
 	}
 	if strings.Contains(body, "__WX_DOWNLOAD_CONFIG_JSON__") {

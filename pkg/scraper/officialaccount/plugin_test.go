@@ -97,7 +97,7 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 	if strings.Contains(ctx.body, "@layer") {
 		t.Fatalf("inline shadcn CSS should not contain cascade layer wrappers:\n%s", ctx.body)
 	}
-	componentsCSS := `href="/__wx_channels_assets/src/components.css"`
+	componentsCSS := `href="/__wx_channels_assets/inject/components.css"`
 	if !strings.Contains(ctx.body, `<link nonce="testnonce" rel="stylesheet" `+componentsCSS+`>`) {
 		t.Fatalf("official account HTML does not contain components CSS stylesheet link:\n%s", ctx.body)
 	}
@@ -119,13 +119,13 @@ func TestOfficialAccountInjectsTimelessShadcnCSSInline(t *testing.T) {
 
 func TestOfficialAccountMocksSameOriginStaticAssets(t *testing.T) {
 	files := newOfficialAccountTestInjectedFiles(t, map[string]string{
-		"src/components.css": ".wx-components{}",
+		"inject/components.css": ".wx-components{}",
 	})
 	plugin := CreateOfficialAccountInterceptorPlugin(&OfficialAccountConfig{}, files, "test-version")
 	ctx := &officialAccountPluginContext{
 		req: &proxy.ContextReq{
 			URL: &proxy.ContextURL{
-				Path:     "/__wx_channels_assets/src/components.css",
+				Path:     "/__wx_channels_assets/inject/components.css",
 				Hostname: func() string { return "mp.weixin.qq.com" },
 			},
 			Header: make(http.Header),

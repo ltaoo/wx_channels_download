@@ -109,9 +109,9 @@ func TestStripTopLevelCascadeLayersPreservesNestedAtRules(t *testing.T) {
 func TestMockChannelStaticAssetSrcUsesETagRevalidation(t *testing.T) {
 	body := "console.log('src');"
 	files := newTestChannelInjectedFiles(t, map[string]string{
-		"src/utils.js": body,
+		"inject/utils.js": body,
 	})
-	ctx := newStaticAssetContext("/__wx_channels_assets/src/utils.js", nil)
+	ctx := newStaticAssetContext("/__wx_channels_assets/inject/utils.js", nil)
 
 	if !mockChannelStaticAsset(ctx, ctx.req.URL.Path, files) {
 		t.Fatal("expected src asset to be mocked")
@@ -127,7 +127,7 @@ func TestMockChannelStaticAssetSrcUsesETagRevalidation(t *testing.T) {
 		t.Fatalf("ETag = %q, want %q", got, etag)
 	}
 
-	cachedCtx := newStaticAssetContext("/__wx_channels_assets/src/utils.js", http.Header{
+	cachedCtx := newStaticAssetContext("/__wx_channels_assets/inject/utils.js", http.Header{
 		"If-None-Match": []string{etag},
 	})
 	if !mockChannelStaticAsset(cachedCtx, cachedCtx.req.URL.Path, files) {

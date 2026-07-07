@@ -85,7 +85,7 @@ func TestChannelInjectsShadcnCSSInlineAndOtherAssetsFromSameOrigin(t *testing.T)
 	if strings.Contains(ctx.body, "@layer") {
 		t.Fatalf("inline shadcn CSS should not contain cascade layer wrappers:\n%s", ctx.body)
 	}
-	componentsCSS := `href="/__wx_channels_assets/src/components.css"`
+	componentsCSS := `href="/__wx_channels_assets/inject/components.css"`
 	if !strings.Contains(ctx.body, `<link rel="stylesheet" `+componentsCSS+`>`) {
 		t.Fatalf("channel HTML does not contain components CSS stylesheet link:\n%s", ctx.body)
 	}
@@ -98,10 +98,10 @@ func TestChannelInjectsShadcnCSSInlineAndOtherAssetsFromSameOrigin(t *testing.T)
 	cssIdx := strings.Index(ctx.body, ".tt-py-1")
 	jsIdx := strings.Index(ctx.body, "timeless.weui.umd.min.js?v=test-version")
 	envOverrideIdx := strings.Index(ctx.body, `assetsBaseURL: "/__wx_channels_assets"`)
-	envScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/env.js")
-	utilsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/utils.js")
-	channelsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/channels.js")
-	feedScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/src/feed.js")
+	envScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/inject/env.js")
+	utilsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/inject/utils.js")
+	channelsScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/inject/channels.js")
+	feedScriptIdx := strings.Index(ctx.body, "/__wx_channels_assets/inject/feed.js")
 	if cssIdx < 0 || jsIdx < 0 {
 		t.Fatalf("expected both weui CSS and JS assets in injected HTML:\n%s", ctx.body)
 	}

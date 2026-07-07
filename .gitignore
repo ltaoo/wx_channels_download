@@ -12,6 +12,7 @@ wx_channel*
 scraper_examples
 .asset-sync-store/
 .asset-sync.local.yaml
+workdir
 
 config.yaml
 global.js

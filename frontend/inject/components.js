@@ -4,19 +4,19 @@ const components_style_id = "wx-components-style";
 
 function components_style_href() {
   if (typeof WXEnv !== "undefined" && WXEnv.assetUrl) {
-    return WXEnv.assetUrl("/src/components.css");
+    return WXEnv.assetUrl("/inject/components.css");
   }
   const scripts = Array.from(document.scripts || []);
   const script = scripts.find((item) =>
-    item.src.includes("/__wx_channels_assets/src/components.js"),
+    item.src.includes("/__wx_channels_assets/inject/components.js"),
   );
   if (script) {
     return script.src.replace(
-      /\/src\/components\.js(?:\?.*)?$/,
-      "/src/components.css",
+      /\/inject\/components\.js(?:\?.*)?$/,
+      "/inject/components.css",
     );
   }
-  return "/__wx_channels_assets/src/components.css";
+  return "/__wx_channels_assets/inject/components.css";
 }
 
 var download_icon1 = `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`;

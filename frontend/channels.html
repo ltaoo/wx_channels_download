@@ -26,7 +26,7 @@
     );
     document.write(
       '<link id="wx-components-style" rel="stylesheet" href="' +
-      __wx_fake_asset_url("/src/components.css") +
+      __wx_fake_asset_url("/inject/components.css") +
       '">'
     );
   </script>
@@ -405,16 +405,16 @@
       }
       writeScript("/lib/timeless/0.27.1/timeless.dom.umd.min.js");
       writeScript("/lib/timeless/0.27.1/timeless.web.umd.min.js");
-      writeScript("/src/eventbus.js");
-      writeScript("/src/env.js");
-      // writeScript("/src/env.channels.js");
-      writeScript("/src/env.mock.js");
-      writeScript("/src/utils.js");
-      writeScript("/src/components.js");
-      writeScript("/src/virtual-list-view.js");
-      writeScript("/src/feed.js");
-      writeScript("/src/download/core.js");
-      writeScript("/src/download/panel.js");
+      writeScript("/inject/eventbus.js");
+      writeScript("/inject/env.js");
+      // writeScript("/inject/env.channels.js");
+      writeScript("/inject/env.mock.js");
+      writeScript("/inject/utils.js");
+      writeScript("/inject/components.js");
+      writeScript("/inject/virtual-list-view.js");
+      writeScript("/inject/feed.js");
+      writeScript("/inject/download/core.js");
+      writeScript("/inject/download/panel.js");
     })();
   </script>
   <script>

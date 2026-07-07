@@ -74,14 +74,14 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "error.js"))
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelInjectAssetURL(assetBaseURL, "error.js"))
 				}
 				var shadcnCSS []byte
 				if files != nil {
 					shadcnCSS = files.CSSTimelessShadcn
 				}
 				interceptor.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, script_attr, style_attr, shadcnCSS)
-				interceptor.AppendStylesheetHrefs(&injected, style_attr, interceptor.ChannelSrcAssetURL(assetBaseURL, "components.css"))
+				interceptor.AppendStylesheetHrefs(&injected, style_attr, interceptor.ChannelInjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				interceptor.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
@@ -90,17 +90,17 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 				interceptor.AppendScriptSrcs(
 					&injected,
 					script_attr,
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "eventbus.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "env.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "utils.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "components.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "virtual-list-view.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "download/core.js"),
-					interceptor.ChannelSrcAssetURL(assetBaseURL, "officialaccount.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "eventbus.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "env.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "utils.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "components.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "virtual-list-view.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "download/core.js"),
+					interceptor.ChannelInjectAssetURL(assetBaseURL, "officialaccount.js"),
 				)
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), interceptor.ChannelSrcAssetURL(assetBaseURL, "pagespy.js"))
+					interceptor.AppendScriptSrcs(&injected, script_attr, interceptor.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), interceptor.ChannelInjectAssetURL(assetBaseURL, "pagespy.js"))
 				}
 				html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 				ctx.SetResponseBody(html)

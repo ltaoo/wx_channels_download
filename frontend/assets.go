@@ -16,7 +16,7 @@ import (
 	"wx_channel/internal/interceptor/proxy"
 )
 
-const defaultChannelInjectDir = "internal/interceptor/inject"
+const defaultChannelInjectDir = "frontend"
 
 //go:embed public/tailwindcss@4.js
 var js_tailwindcss []byte
@@ -47,6 +47,7 @@ type ChannelInjectedFiles struct {
 	RootFS                  fs.FS
 	LibFS                   fs.FS
 	SrcFS                   fs.FS
+	InjectScriptFS          fs.FS
 	JSFileSaver             []byte
 	JSZip                   []byte
 	JSRecorder              []byte
@@ -169,6 +170,10 @@ func ChannelSrcAssetURL(baseURL string, rel string) string {
 	return strings.TrimRight(baseURL, "/") + "/src/" + rel
 }
 
+func ChannelInjectAssetURL(baseURL string, rel string) string {
+	return strings.TrimRight(baseURL, "/") + "/inject/" + rel
+}
+
 func AppendScriptSrcs(b *strings.Builder, attr string, srcs ...string) {
 	for _, src := range srcs {
 		if src == "" {
@@ -263,6 +268,26 @@ func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelIn
 	}
 	if rel, ok := channelStaticAssetRel(pathname, "src"); ok {
 		data, err := files.ReadSrc(rel)
+		if err != nil {
+			return false
+		}
+		etag := channelStaticAssetETag(data)
+		headers := map[string]string{
+			"Content-Type":  channelStaticAssetContentType(rel),
+			"Cache-Control": channelSrcAssetCacheControl,
+			"ETag":          etag,
+		}
+		if req := ctx.Req(); req != nil && req.Header != nil {
+			if strings.Contains(req.Header.Get("If-None-Match"), etag) {
+				ctx.Mock(304, headers, "")
+				return true
+			}
+		}
+		ctx.Mock(200, headers, string(data))
+		return true
+	}
+	if rel, ok := channelStaticAssetRel(pathname, "inject"); ok {
+		data, err := files.ReadInject(rel)
 		if err != nil {
 			return false
 		}
@@ -478,10 +503,11 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	var files *ChannelInjectedFiles
 	if rootFS := embeddedRootFS(); rootFS != nil {
 		files = &ChannelInjectedFiles{
-			InjectDir: "(embedded)",
-			RootFS:    rootFS,
-			LibFS:     embeddedLibFS(),
-			SrcFS:     embeddedSrcFS(),
+			InjectDir:      "(embedded)",
+			RootFS:         rootFS,
+			LibFS:          embeddedLibFS(),
+			SrcFS:          embeddedSrcFS(),
+			InjectScriptFS: embeddedInjectFS(),
 		}
 	} else {
 		if injectDir == "" {
@@ -491,10 +517,11 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 			injectDir = abs
 		}
 		files = &ChannelInjectedFiles{
-			InjectDir: injectDir,
-			RootFS:    os.DirFS(injectDir),
-			LibFS:     os.DirFS(filepath.Join(injectDir, "lib")),
-			SrcFS:     os.DirFS(filepath.Join(injectDir, "src")),
+			InjectDir:      injectDir,
+			RootFS:         os.DirFS(injectDir),
+			LibFS:          os.DirFS(filepath.Join(injectDir, "lib")),
+			SrcFS:          os.DirFS(filepath.Join(injectDir, "src")),
+			InjectScriptFS: os.DirFS(filepath.Join(injectDir, "inject")),
 		}
 	}
 	files.JSFileSaver = files.readLib("FileSaver.min.js")
@@ -510,25 +537,25 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.weui.umd.min.js")
 	files.JSTimelessDOM = files.readLib("timeless/0.27.1/timeless.dom.umd.min.js")
 	files.JSTimelessWeb = files.readLib("timeless/0.27.1/timeless.web.umd.min.js")
-	files.CSSComponents = files.readSrc("components.css")
-	files.JSDebug = files.readSrc("pagespy.js")
-	files.JSError = files.readSrc("error.js")
-	files.JSEventBus = files.readSrc("eventbus.js")
-	files.JSEnv = files.readSrc("env.js")
-	files.JSEnvChannels = files.readSrc("env.channels.js")
-	files.JSEnvMock = files.readSrc("env.mock.js")
-	files.JSComponents = files.readSrc("components.js")
-	files.JSUtils = files.readSrc("utils.js")
-	files.JSChannels = files.readSrc("channels.js")
-	files.JSDownloadCore = files.readSrc("download/core.js")
-	files.JSDownloadPanel = files.readSrc("download/panel.js")
-	files.JSDownloadIndex = files.readSrc("download/index.js")
+	files.CSSComponents = files.readInject("components.css")
+	files.JSDebug = files.readInject("pagespy.js")
+	files.JSError = files.readInject("error.js")
+	files.JSEventBus = files.readInject("eventbus.js")
+	files.JSEnv = files.readInject("env.js")
+	files.JSEnvChannels = files.readInject("env.channels.js")
+	files.JSEnvMock = files.readInject("env.mock.js")
+	files.JSComponents = files.readInject("components.js")
+	files.JSUtils = files.readInject("utils.js")
+	files.JSChannels = files.readInject("channels.js")
+	files.JSDownloadCore = files.readInject("download/core.js")
+	files.JSDownloadPanel = files.readInject("download/panel.js")
+	files.JSDownloadIndex = files.readInject("download/index.js")
 	files.JSDownloader = files.JSDownloadPanel
-	files.JSWechatOfficialAccount = files.readSrc("officialaccount.js")
-	files.JSHomePage = files.readSrc("home.js")
-	files.JSFeedProfilePage = files.readSrc("feed.js")
-	files.JSLiveProfilePage = files.readSrc("live.js")
-	files.JSContactPage = files.readSrc("profile.js")
+	files.JSWechatOfficialAccount = files.readInject("officialaccount.js")
+	files.JSHomePage = files.readInject("home.js")
+	files.JSFeedProfilePage = files.readInject("feed.js")
+	files.JSLiveProfilePage = files.readInject("live.js")
+	files.JSContactPage = files.readInject("profile.js")
 	return files
 }
 
@@ -538,6 +565,10 @@ func (files *ChannelInjectedFiles) ReadLib(rel string) ([]byte, error) {
 
 func (files *ChannelInjectedFiles) ReadSrc(rel string) ([]byte, error) {
 	return readChannelAsset(files.SrcFS, rel)
+}
+
+func (files *ChannelInjectedFiles) ReadInject(rel string) ([]byte, error) {
+	return readChannelAsset(files.InjectScriptFS, rel)
 }
 
 func (files *ChannelInjectedFiles) ReadRoot(rel string) ([]byte, error) {
@@ -551,6 +582,11 @@ func (files *ChannelInjectedFiles) readLib(rel string) []byte {
 
 func (files *ChannelInjectedFiles) readSrc(rel string) []byte {
 	data, _ := files.ReadSrc(rel)
+	return data
+}
+
+func (files *ChannelInjectedFiles) readInject(rel string) []byte {
+	data, _ := files.ReadInject(rel)
 	return data
 }
 
