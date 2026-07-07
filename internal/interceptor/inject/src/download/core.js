@@ -1756,7 +1756,7 @@ function DownloaderPanelViewModel(props = {}) {
         });
         return;
       }
-      if (WXU.config.remoteServerEnabled) {
+      if (WXU.config.remoteServerEnabled || WXU.config.inDocker) {
         var u = DownloadHostname + "/preview?id=" + id;
         window.open(u);
         return;
@@ -2476,7 +2476,7 @@ function DownloadTaskCard(props) {
       statusColor,
     };
   });
-  const isOpenExternal = WXEnv.config.remoteServerEnabled === true;
+  const isOpenExternal = WXEnv.config.remoteServerEnabled === true || WXEnv.config.inDocker === true;
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const offset = computed(state_, (d) => {
