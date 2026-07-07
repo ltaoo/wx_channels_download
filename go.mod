@@ -23,8 +23,8 @@ exclude (
 )
 
 require (
-	github.com/GopeedLab/gopeed v0.0.0-00010101000000-000000000000
 	github.com/Danny-Dasilva/CycleTLS/cycletls v1.0.23
+	github.com/GopeedLab/gopeed v0.0.0-00010101000000-000000000000
 	github.com/adrg/xdg v0.4.0
 	github.com/andybalholm/brotli v1.1.1
 	github.com/blang/semver v3.5.1+incompatible
@@ -95,8 +95,7 @@ require (
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
-	github.com/ebitengine/purego v0.9.0 // indirect
+	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
