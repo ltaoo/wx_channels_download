@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wx_channels_download — Download Task Architecture</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1a202c;
+    --muted: #718096;
+    --blue: #3182ce;
+    --blue-light: #ebf8ff;
+    --green: #38a169;
+    --green-light: #f0fff4;
+    --orange: #dd6b20;
+    --orange-light: #fffaf0;
+    --purple: #805ad5;
+    --purple-light: #faf5ff;
+    --red: #e53e3e;
+    --red-light: #fff5f5;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 40px 20px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 40px; font-size: 14px; }
+
+  /* Flow diagram */
+  .flow-section { margin-bottom: 48px; }
+  .flow-title {
+    font-size: 18px; font-weight: 700; margin-bottom: 20px;
+    padding: 8px 16px; border-radius: 8px; display: inline-block;
+  }
+  .flow-title.old { background: var(--red-light); color: var(--red); }
+  .flow-title.new { background: var(--green-light); color: var(--green); }
+
+  .flow-row {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .node {
+    padding: 14px 20px; border-radius: 10px; text-align: center;
+    font-size: 13px; font-weight: 600; min-width: 120px;
+    border: 2px solid var(--border); background: var(--card);
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .node.frontend { border-color: #63b3ed; background: var(--blue-light); color: #2b6cb0; }
+  .node.api      { border-color: #68d391; background: var(--green-light); color: #276749; }
+  .node.service  { border-color: #b794f4; background: var(--purple-light); color: #553c9a; }
+  .node.db       { border-color: #f6ad55; background: var(--orange-light); color: #9c4221; }
+  .node.dl       { border-color: #fc8181; background: var(--red-light); color: #9b2c2c; }
+  .node.ext      { border-color: #a0aec0; background: #f7fafc; color: #4a5568; }
+
+  .arrow {
+    font-size: 20px; color: var(--muted); margin: 0 4px;
+    flex-shrink: 0;
+  }
+  .arrow-down { display: flex; justify-content: center; padding: 0; margin: 0; }
+  .arrow-down .arrow { transform: rotate(90deg); }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 40px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 12px; height: 12px; border-radius: 3px;
+  }
+
+  /* Detail cards */
+  .detail-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  }
+  .detail-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .detail-card h3 {
+    font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .detail-card .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .detail-card code {
+    background: #edf2f7; padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; font-family: "SF Mono", "Menlo", monospace;
+  }
+  .detail-card ul { list-style: none; font-size: 13px; }
+  .detail-card li { padding: 4px 0; color: #4a5568; }
+  .detail-card li::before { content: "→ "; color: var(--muted); }
+
+  .db-schema {
+    background: #f7fafc; border-radius: 8px; padding: 16px;
+    font-family: "SF Mono", "Menlo", monospace; font-size: 12px;
+    line-height: 1.8; overflow-x: auto;
+  }
+  .db-schema .tbl { color: #2b6cb0; font-weight: 700; }
+  .db-schema .col { color: #4a5568; }
+  .db-schema .pk  { color: #e53e3e; }
+  .db-schema .fk  { color: #dd6b20; }
+
+  @media (max-width: 768px) {
+    .detail-grid { grid-template-columns: 1fr; }
+    .flow-row { gap: 8px; }
+    .arrow { display: none; }
+    .node { min-width: 100px; padding: 10px 14px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Download Task Architecture</h1>
+<p class="subtitle">Refactored: frontend sends raw ChannelsObject, backend handles all processing</p>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><span class="legend-dot" style="background:#63b3ed"></span>Frontend (injected JS)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#68d391"></span>API Handler</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#b794f4"></span>Service Layer</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#f6ad55"></span>Database</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#fc8181"></span>Downloader</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#a0aec0"></span>External/Config</div>
+</div>
+
+<!-- Old Flow -->
+<div class="flow-section">
+  <div class="flow-title old">Before: Duplicated Logic in Frontend</div>
+  <div class="flow-row">
+    <div class="node frontend">Injected JS<br><small>spec resolution</small><br><small>URL manipulation</small><br><small>filename building</small><br><small>picture → zip URL</small></div>
+    <span class="arrow">→</span>
+    <div class="node frontend" style="opacity:.7">build_task_body()<br><small>FeedDownloadTaskBody</small></div>
+    <span class="arrow">→</span>
+    <div class="node api">POST /api/task/create<br><small>thin handler</small></div>
+    <span class="arrow">→</span>
+    <div class="node service">DownloadService<br><small>BuildTaskOpts</small><br><small>BuildTaskLabels</small></div>
+    <span class="arrow">→</span>
+    <div class="node dl">Downloader<br><small>CreateDirect</small></div>
+  </div>
+</div>
+
+<!-- New Flow -->
+<div class="flow-section">
+  <div class="flow-title new">After: Server-Side Processing</div>
+  <div class="flow-row">
+    <div class="node frontend">Injected JS<br><small>pass raw feed</small></div>
+    <span class="arrow">→</span>
+    <div class="node frontend" style="opacity:.7">{ object, spec, suffix }<br><small>ChannelsDownloadRequest</small></div>
+    <span class="arrow">→</span>
+    <div class="node api">POST /api/task/create<br><small>handleCreateFeedDownloadTask</small></div>
+  </div>
+  <div class="arrow-down"><span class="arrow">↓</span></div>
+  <div class="flow-row">
+    <div class="node api">startDownloadChannelsObject()<br><small>the core processing hub</small></div>
+  </div>
+  <div class="arrow-down"><span class="arrow">↓</span></div>
+  <div class="flow-row" style="gap:12px">
+    <div class="node ext">ChannelsObjectTo<br>ChannelsFeedProfile()</div>
+    <span class="arrow">→</span>
+    <div class="node ext">BuildFilename()<br>ValidateAndSplitFilename()</div>
+    <span class="arrow">→</span>
+    <div class="node ext">URL build<br>spec apply<br>dedup</div>
+  </div>
+  <div class="arrow-down"><span class="arrow">↓</span></div>
+  <div class="flow-row" style="gap:12px">
+    <div class="node service">ChannelsUploadService<br><small>HandleChannelsFeed</small></div>
+    <span class="arrow">→</span>
+    <div class="node db">Account<br>Video<br>VideoAccount</div>
+    <span class="arrow" style="margin-left:20px">│</span>
+    <div class="node dl">Downloader<br><small>CreateDirect</small></div>
+    <span class="arrow">→</span>
+    <div class="node service">CreateDownloadTask<br>WithVideo</div>
+    <span class="arrow">→</span>
+    <div class="node db">DownloadTask</div>
+  </div>
+</div>
+
+<!-- autoCreateChannelsTask flow -->
+<div class="flow-section">
+  <div class="flow-title new">autoCreateChannelsTask (FileHelper callback)</div>
+  <div class="flow-row">
+    <div class="node ext">FileHelper<br><small>WeChat message</small></div>
+    <span class="arrow">→</span>
+    <div class="node api">autoCreateChannelsTask()</div>
+    <span class="arrow">→</span>
+    <div class="node ext">FetchChannelsFeedProfile<br><small>validate + get Object</small></div>
+    <span class="arrow">→</span>
+    <div class="node frontend">HTTP POST<br><small>{object, spec, suffix}</small></div>
+    <span class="arrow">→</span>
+    <div class="node api">/api/task/create<br><small>same handler!</small></div>
+  </div>
+</div>
+
+<!-- Detail Cards -->
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3><span class="dot" style="background:#68d391"></span>startDownloadChannelsObject</h3>
+    <ul>
+      <li><code>ChannelsObjectToChannelsFeedProfile(&obj)</code> → profile</li>
+      <li>Reject live (defer to live handler)</li>
+      <li>Resolve spec: user override → <code>download.defaultHighest</code> config</li>
+      <li><code>BuildFilename()</code> with template from config</li>
+      <li><code>ValidateAndSplitFilename()</code> → dir + name</li>
+      <li>Picture: <code>zip://weixin.qq.com?files=...</code></li>
+      <li>Video: media URL + spec flag / clean original</li>
+      <li>Disk dedup: stat-check loop with counter suffix</li>
+      <li>Downloader dedup: check existing tasks by id+spec+suffix</li>
+      <li>Build labels: <code>{id, nonce_id, title, key, spec, suffix}</code></li>
+      <li><code>downloader.CreateDirect()</code> with 4 connections</li>
+      <li>WS broadcast <code>"new_task"</code> event</li>
+    </ul>
+  </div>
+
+  <div class="detail-card">
+    <h3><span class="dot" style="background:#b794f4"></span>ChannelsUploadService</h3>
+    <p style="font-size:13px;color:#4a5568;margin-bottom:12px">
+      <code>internal/api/services/handlers.go</code>
+    </p>
+    <p style="font-size:13px;font-weight:700;margin-bottom:4px">HandleChannelsFeed(profile) → *Video</p>
+    <div class="db-schema">
+      <span class="tbl">Account</span> upsert by <span class="pk">(platform_id, external_id=username)</span><br>
+      <span class="tbl">Video</span> upsert by <span class="pk">(platform_id, external_id1=objectId)</span><br>
+      <span class="tbl">VideoAccount</span> insert if new <span class="pk">(video_id, account_id, role="owner")</span>
+    </div>
+    <p style="font-size:13px;font-weight:700;margin:12px 0 4px">CreateDownloadTaskWithVideo(video, task, reason) → *DownloadTask</p>
+    <div class="db-schema">
+      <span class="tbl">DownloadTask</span> upsert by <span class="pk">task_id</span><br>
+      fields: <span class="col">url, external_id, metadata2, title, cover_url, reason</span><br>
+      <span class="tbl">Video</span>.<span class="fk">download_task_id</span> ← task.Id
+    </div>
+  </div>
+
+  <div class="detail-card">
+    <h3><span class="dot" style="background:#63b3ed"></span>Frontend (utils.js)</h3>
+    <ul>
+      <li><strong>create(feed, opt)</strong>: POST <code>{object: feed, spec, suffix}</code></li>
+      <li><strong>create_batch(feeds, opt)</strong>: POST <code>{feeds: [{object, spec, suffix}, ...]}</code></li>
+      <li><strong>Removed</strong>: <code>build_task_body()</code></li>
+      <li><strong>Removed</strong>: spec resolution, URL manipulation, filename building, picture→zip conversion</li>
+      <li><strong>feed</strong> is the raw WeChat API response object (contains <code>id, contact, objectDesc, objectNonceId, type, files, liveInfo</code> etc.)</li>
+    </ul>
+  </div>
+
+  <div class="detail-card">
+    <h3><span class="dot" style="background:#f6ad55"></span>Database Relationships</h3>
+    <div class="db-schema">
+<span class="tbl">account</span>
+  <span class="pk">id</span> <span class="col">platform_id external_id username nickname avatar_url</span>
+
+<span class="tbl">video</span>
+  <span class="pk">id</span> <span class="col">platform_id external_id1(objectId) external_id2(nonceId)</span>
+  <span class="fk">download_task_id</span> <span class="col">title url source_url cover_url duration size</span>
+
+<span class="tbl">video_account</span>
+  <span class="pk">video_id account_id</span> <span class="col">role("owner")</span>
+
+<span class="tbl">download_task</span>
+  <span class="pk">id</span> <span class="col">task_id(unique) status protocol url external_id</span>
+  <span class="col">title cover_url size reason metadata2</span>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

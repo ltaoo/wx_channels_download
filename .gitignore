@@ -9,6 +9,9 @@ vendor
 
 wx_video_download*
 wx_channel*
+scraper_examples
+.asset-sync-store/
+.asset-sync.local.yaml
 
 config.yaml
 global.js
@@ -20,6 +23,7 @@ docs/.vitepress/cache
 docs/.vitepress/dist
 gopeed.db
 /*.json
+!.asset-sync.lock.json
 *.log
 
 .env

@@ -29,6 +29,13 @@ func NewInterceptorServer(settings *InterceptorConfig, cert *certificate.CertFil
 	}
 }
 
+func (s *InterceptorServer) ApplySettings(settings *InterceptorConfig, cert *certificate.CertFileAndKeyFile) {
+	s.Interceptor.Settings = settings
+	s.Interceptor.Cert = cert
+	s.HTTPServer.SetAddr(settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort))
+	s.HTTPServer.SetHandler(s.Interceptor)
+}
+
 func (s *InterceptorServer) Start() error {
 	if err := s.Interceptor.Start(); err != nil {
 		return fmt.Errorf("failed to start interceptor: %v", err)

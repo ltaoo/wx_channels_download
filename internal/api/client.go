@@ -3,12 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
-	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,13 +17,21 @@ import (
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
+	"wx_channel/internal/api/services"
+	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/assets"
-	"wx_channel/internal/channels"
+	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/officialaccount"
+	"wx_channel/internal/manager"
+	"wx_channel/internal/storage"
+	"wx_channel/pkg/browsermgr"
 	"wx_channel/pkg/decrypt"
+	"wx_channel/pkg/scraper/officialaccount"
+	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
@@ -33,25 +41,49 @@ type APIClient struct {
 	official      *officialaccount.OfficialAccountClient
 	channels      *channels.ChannelsClient
 	downloader_ws *downloaderclient.DownloaderClient
+	status_ws     *downloaderclient.DownloaderClient
 	filehelper    *FileHelperHandler
 	formatter     *util.FilenameProcessor
 	cfg           *APIConfig
 	engine        *gin.Engine
+	db            *gorm.DB
 	logger        *zerolog.Logger
+	httpHandler   http.Handler
+	serviceMgr    *manager.ServerManager
+	browserMgr    *browsermgr.Manager
+
+	// Services
+	downloadService       *services.DownloadService
+	channelsService       *services.ChannelsService
+	accountService        *services.AccountService
+	contentService        *services.ContentService
+	browseService         *services.BrowseService
+	channelsUploadService *services.ChannelsUploadService
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
-	data_dir := cfg.RootDir
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
+	data_dir := cfg.WorkDir
+	logger := parent_logger.With().Str("Client", "api_client").Logger()
+	var st downloadpkg.Storage
+	if db != nil {
+		st = storage.NewSqliteStorage(db, &logger, cfg.DownloadDir)
+	} else {
+		st = downloadpkg.NewBoltStorage(data_dir)
+	}
 	downloader := downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 		RefreshInterval: 360,
-		Storage:         downloadpkg.NewBoltStorage(data_dir),
+		Storage:         st,
 		StorageDir:      data_dir,
 	})
 	var channels_client *channels.ChannelsClient
 	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
 	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
 	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
+	if db != nil {
+		channels_client.SetDB(db)
+	}
 	downloader_ws := downloaderclient.NewDownloaderClient()
+	status_ws := downloaderclient.NewDownloaderClient()
 
 	// get_sorted_tasks := func() []*downloadpkg.Task {
 	// 	tasks := downloader.GetTasks()
@@ -78,26 +110,114 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger) *APIClient {
 
 	downloader_ws.OnMessage = func(client *downloaderclient.WSClient, message []byte) {
 	}
-	logger := parent_logger.With().Str("Client", "api_client").Logger()
-	client := &APIClient{
-		downloader:    downloader,
-		official:      officialaccount_client,
-		channels:      channels_client,
-		downloader_ws: downloader_ws,
-		filehelper:    NewFileHelperHandler(),
-		formatter:     util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
-		cfg:           cfg,
-		engine:        gin.Default(),
-		logger:        &logger,
+
+	// Initialize services
+	downloadService := services.NewDownloadService(downloader, db, cfg.DownloadDir, downloader_ws)
+	channelsService := services.NewChannelsService(channels_client)
+	accountService := services.NewAccountService(db)
+	contentService := services.NewContentService(db)
+	browseService := services.NewBrowseService(db)
+	channelsUploadService := services.NewChannelsUploadService(db, &logger)
+	browserMgr, browserMgrErr := browsermgr.New(browsermgr.Config{
+		WorkDir:          cfg.WorkDir,
+		DockerImage:      cfg.BrowserDockerImage,
+		DockerEntrypoint: cfg.BrowserDockerEntrypoint,
+		DockerNetwork:    cfg.BrowserDockerNetwork,
+		CDPPortMin:       cfg.BrowserCDPPortMin,
+		CDPPortMax:       cfg.BrowserCDPPortMax,
+		DesktopPortMin:   cfg.BrowserDesktopPortMin,
+		DesktopPortMax:   cfg.BrowserDesktopPortMax,
+		Resolution:       cfg.BrowserDesktopResolution,
+		ShmSize:          cfg.BrowserDockerShmSize,
+		MemoryLimit:      cfg.BrowserDockerMemoryLimit,
+		ChromeCommand:    cfg.BrowserDockerChromeCommand,
+	}, nil)
+	if browserMgrErr != nil {
+		logger.Warn().Err(browserMgrErr).Msg("初始化浏览器管理器失败")
+	}
+
+	apiClient := &APIClient{
+		downloader:            downloader,
+		official:              officialaccount_client,
+		channels:              channels_client,
+		downloader_ws:         downloader_ws,
+		status_ws:             status_ws,
+		filehelper:            NewFileHelperHandler(),
+		formatter:             util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
+		cfg:                   cfg,
+		engine:                gin.Default(),
+		db:                    db,
+		logger:                &logger,
+		browserMgr:            browserMgr,
+		downloadService:       downloadService,
+		channelsService:       channelsService,
+		accountService:        accountService,
+		contentService:        contentService,
+		browseService:         browseService,
+		channelsUploadService: channelsUploadService,
+	}
+
+	status_ws.OnConnected = func(wsClient *downloaderclient.WSClient) {
+		data, err := json.Marshal(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
+		if err != nil {
+			return
+		}
+		select {
+		case wsClient.Send <- data:
+		default:
+		}
+	}
+	channels_client.OnConnected = func(_ *channels.Client) {
+		status_ws.Broadcast(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
+	}
+	channels_client.OnDisconnected = func(_ *channels.Client) {
+		status_ws.Broadcast(APIClientWSMessage{
+			Type: "channels_status",
+			Data: apiClient.channelsStatusData(),
+		})
 	}
 
 	// 设置文件传输助手视频号自动下载回调
-	client.filehelper.SetFinderAutoDownloadCallback(client.autoCreateChannelsTask)
+	apiClient.filehelper.SetFinderAutoDownloadCallback(apiClient.autoCreateChannelsTask)
 	// 设置文件传输助手 SPH 自动下载回调
-	client.filehelper.SetSphAutoDownloadCallback(client.autoDownloadSphVideo)
+	apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
 
-	client.SetupRoutes()
-	return client
+	apiClient.SetupRoutes()
+	apiClient.httpHandler = apiClient.buildHTTPHandler()
+	return apiClient
+}
+
+func (c *APIClient) SetManager(mgr *manager.ServerManager) {
+	c.serviceMgr = mgr
+}
+
+func (c *APIClient) downloadTaskWSEventData(evt *downloadpkg.Event) any {
+	if evt == nil {
+		return evt
+	}
+	errText := ""
+	if evt.Err != nil {
+		errText = evt.Err.Error()
+	}
+	data := gin.H{
+		"Key":   evt.Key,
+		"Task":  evt.Task,
+		"Err":   errText,
+		"error": errText,
+	}
+	if c.db != nil && evt.Task != nil && evt.Task.ID != "" {
+		var rec model.DownloadTask
+		if err := c.db.Where("task_id = ?", evt.Task.ID).First(&rec).Error; err == nil {
+			data["download_task_id"] = rec.Id
+		}
+	}
+	return data
 }
 
 type APIClientWSMessage struct {
@@ -125,6 +245,7 @@ func (c *APIClient) Start() error {
 	if err := c.downloader.Setup(); err != nil {
 		return err
 	}
+	c.loadPersistedPlatformWorkflowRuns()
 	_ = c.downloader.PutConfig(&base.DownloaderStoreConfig{
 		DownloadDir: c.cfg.DownloadDir,
 		MaxRunning:  c.cfg.MaxRunning,
@@ -146,13 +267,9 @@ func (c *APIClient) Start() error {
 		}
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
-			Data: gin.H{
-				"Key":           evt.Key,
-				"Task":          evt.Task,
-				"Err":           errMsg,
-				"status_counts": c.downloadTaskStatusCounts(),
-			},
+			Data: c.downloadTaskWSEventData(evt),
 		})
+		c.recordDownloadTaskEvent(evt)
 		if evt.Key == downloadpkg.EventKeyDone {
 			if c.cfg.PlayDoneAudio {
 				go assets.PlayDoneAudio()
@@ -202,11 +319,141 @@ func (c *APIClient) Stop() error {
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
 	}
+	if c.status_ws != nil {
+		c.status_ws.Stop()
+	}
 	return nil
 }
 
+func (c *APIClient) Engine() *gin.Engine {
+	return c.engine
+}
+
+func (c *APIClient) HTTPHandler() http.Handler {
+	return withCORS(c)
+}
+
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c.engine.ServeHTTP(w, r)
+	if c.httpHandler == nil {
+		c.httpHandler = c.buildHTTPHandler()
+	}
+	c.httpHandler.ServeHTTP(w, r)
+}
+
+func (c *APIClient) recordDownloadTaskEvent(evt *downloadpkg.Event) {
+	if c.db == nil || evt == nil || evt.Task == nil || evt.Task.ID == "" {
+		return
+	}
+	if evt.Key == downloadpkg.EventKeyProgress {
+		return
+	}
+
+	var rec model.DownloadTask
+	if err := c.db.Where("task_id = ?", evt.Task.ID).First(&rec).Error; err != nil {
+		return
+	}
+
+	message := ""
+	if evt.Err != nil {
+		message = evt.Err.Error()
+	}
+	if evt.Key == downloadpkg.EventKeyError && message != "" {
+		outputPath := ""
+		if evt.Task.Meta != nil {
+			outputPath = evt.Task.Meta.SingleFilepath()
+		}
+		_ = c.db.Model(&model.DownloadTask{}).
+			Where("task_id = ?", evt.Task.ID).
+			Updates(map[string]any{
+				"status":      5,
+				"error":       message,
+				"output_path": outputPath,
+				"updated_at":  util.NowMillis(),
+			}).Error
+	}
+	data := map[string]any{
+		"task_id": evt.Task.ID,
+		"status":  string(evt.Task.Status),
+		"error":   message,
+	}
+	if evt.Task.Meta != nil && evt.Task.Meta.Opts != nil {
+		data["name"] = evt.Task.Meta.Opts.Name
+		data["path"] = evt.Task.Meta.Opts.Path
+	}
+	if evt.Task.Meta != nil && evt.Task.Meta.Req != nil && evt.Task.Meta.Req.Labels != nil {
+		data["labels"] = evt.Task.Meta.Req.Labels
+	}
+	dataBytes, _ := json.Marshal(data)
+
+	_ = c.db.Create(&model.DownloadTaskEvent{
+		TaskId:    rec.Id,
+		Type:      string(evt.Key),
+		Message:   message,
+		Data:      string(dataBytes),
+		CreatedAt: util.NowMillis(),
+	}).Error
+}
+
+func (c *APIClient) ensureDownloadTaskBaselineEvents(tasks []model.DownloadTask) {
+	if c.db == nil || len(tasks) == 0 {
+		return
+	}
+	for _, task := range tasks {
+		if task.Id == 0 {
+			continue
+		}
+		var count int64
+		if err := c.db.Model(&model.DownloadTaskEvent{}).Where("task_id = ?", task.Id).Count(&count).Error; err != nil || count > 0 {
+			continue
+		}
+		createdAt := task.CreatedAt
+		if createdAt == 0 {
+			createdAt = task.UpdatedAt
+		}
+		if createdAt == 0 {
+			createdAt = util.NowMillis()
+		}
+		_ = c.db.Create(&model.DownloadTaskEvent{
+			TaskId:    task.Id,
+			Type:      "create",
+			Message:   "创建下载任务",
+			CreatedAt: createdAt,
+		}).Error
+
+		statusEvent := downloadTaskStatusEventType(task.Status)
+		if statusEvent == "" {
+			continue
+		}
+		statusAt := task.UpdatedAt
+		if statusAt == 0 {
+			statusAt = createdAt
+		}
+		message := ""
+		if statusEvent == "error" {
+			message = task.Error
+		}
+		_ = c.db.Create(&model.DownloadTaskEvent{
+			TaskId:    task.Id,
+			Type:      statusEvent,
+			Message:   message,
+			CreatedAt: statusAt,
+		}).Error
+	}
+}
+
+func downloadTaskStatusEventType(status int) string {
+	switch status {
+	case 1:
+		return "start"
+	case 2:
+		return "pause"
+	case 4:
+		return "done"
+	case 5:
+		return "error"
+	default:
+		return ""
+	}
 }
 
 func (c *APIClient) setupStaticAssetRoutes() {
@@ -291,25 +538,39 @@ func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *Fe
 	return matches
 }
 
-func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*FeedDownloadTaskBody, error) {
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, *apitypes.ChannelsFeedProfile, error) {
 	// 获取视频详情
 	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
-		return nil, fmt.Errorf("获取详情失败: %w", err)
+		return nil, nil, fmt.Errorf("获取详情失败: %w", err)
 	}
 	if r.ErrCode != 0 {
-		return nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
-	}
-	if len(r.Data.Object.ObjectDesc.Media) == 0 {
-		return nil, fmt.Errorf("缺少可下载的视频内容")
+		return nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
 	}
 
-	media := r.Data.Object.ObjectDesc.Media[0]
+	feed := r.Data.Object
+	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&feed)
+	if err != nil {
+		return nil, nil, fmt.Errorf("解析视频号内容失败: %w", err)
+	}
+	if feed.LiveInfo != nil {
+		return nil, nil, fmt.Errorf("直播类型请使用直播下载")
+	}
+
+	isPicture := feed.Type == "picture" || feed.ObjectDesc.MediaType == 2
+	var media *apitypes.ChannelsMediaItem
+	if !isPicture {
+		if len(feed.ObjectDesc.Media) == 0 {
+			return nil, nil, fmt.Errorf("缺少可下载的视频内容")
+		}
+		media = &feed.ObjectDesc.Media[0]
+	}
+
 	key := 0
-	if media.DecodeKey != "" {
+	if media != nil && media.DecodeKey != "" {
 		k, err := strconv.Atoi(media.DecodeKey)
 		if err != nil {
-			return nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
+			return nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
 		}
 		key = k
 	}
@@ -318,17 +579,16 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	if len(customSpec) > 0 && customSpec[0] != "" {
 		spec = customSpec[0]
 	} else if !c.cfg.Original.GetBool("download.defaultHighest") {
-		if len(media.Spec) > 0 {
+		if media != nil && len(media.Spec) > 0 {
 			spec = media.Spec[0].FileFormat
 		}
 	}
 
 	// 构建文件名
-	feed := r.Data.Object
-	defaultName := feed.ObjectDesc.Description
+	defaultName := profile.Title
 	if defaultName == "" {
-		if feed.ID != "" {
-			defaultName = feed.ID
+		if profile.ObjectId != "" {
+			defaultName = profile.ObjectId
 		} else {
 			defaultName = util.NowSecondsStr()
 		}
@@ -338,12 +598,12 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	if template != "" {
 		params := map[string]string{
 			"filename":    defaultName,
-			"id":          feed.ID,
-			"title":       feed.ObjectDesc.Description,
+			"id":          profile.ObjectId,
+			"title":       profile.Title,
 			"spec":        spec,
-			"created_at":  strconv.Itoa(feed.CreateTime),
+			"created_at":  strconv.Itoa(profile.CreatedAt),
 			"download_at": util.NowSecondsStr(),
-			"author":      feed.Contact.Nickname,
+			"author":      profile.Contact.Nickname,
 		}
 		filename = template
 		for k, v := range params {
@@ -351,18 +611,22 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		}
 	}
 
-	payload := &FeedDownloadTaskBody{
-		Id:       feed.ID,
-		Title:    feed.ObjectDesc.Description,
+	payload := &services.FeedDownloadTaskBody{
+		Id:       profile.ObjectId,
+		NonceId:  profile.NonceId,
+		Title:    profile.Title,
 		Key:      key,
 		Spec:     spec,
 		Suffix:   ".mp4",
-		URL:      media.URL + media.URLToken,
+		URL:      profile.URL,
 		Filename: filename,
+	}
+	if payload.NonceId == "" {
+		payload.NonceId = nid
 	}
 
 	// 处理 URL：非空 spec 添加 X-snsvideoflag 参数，空 spec 则清理 URL 只保留 encfilekey 和 token
-	if !isCover {
+	if !isCover && !isPicture {
 		if spec != "" {
 			payload.URL += "&X-snsvideoflag=" + spec
 		} else {
@@ -382,15 +646,20 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		payload.Suffix = ".mp3"
 	}
 	if isCover {
-		payload.Suffix += ".jpg"
-		payload.URL = media.CoverUrl
+		payload.Suffix = ".jpg"
+		payload.URL = profile.CoverURL
 	}
 
 	// 处理图集类型
-	if feed.ObjectDesc.MediaType == 2 {
+	if isPicture {
 		payload.Suffix = ".zip"
+		payload.URL = ""
 		var files []map[string]string
-		for i, m := range feed.ObjectDesc.Media {
+		pictureFiles := feed.Files
+		if len(pictureFiles) == 0 {
+			pictureFiles = feed.ObjectDesc.Media
+		}
+		for i, m := range pictureFiles {
 			files = append(files, map[string]string{
 				"url":      m.URL + m.URLToken,
 				"filename": fmt.Sprintf("%d.jpg", i+1),
@@ -402,11 +671,14 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 				"filename": "bgm.mp3",
 			})
 		}
+		if len(files) == 0 {
+			return nil, nil, fmt.Errorf("图集类型缺少可下载图片")
+		}
 		data, _ := json.Marshal(files)
 		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}
 
-	return payload, nil
+	return payload, profile, nil
 }
 
 // autoCreateChannelsTask 根据视频号消息自动创建下载任务
@@ -416,26 +688,40 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Str("objectNonceID", objectNonceID).
 		Msg("收到视频号消息，开始自动创建下载任务")
 
-	payload, err := c.createFeedTaskBody(objectID, objectNonceID, "", "", false, false)
+	// 获取视频详情
+	r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
 	if err != nil {
 		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Msg("构建下载任务失败")
+		c.logger.Error().Err(err).Msg("获取详情失败")
+		c.sendMessageToFilehelper(errMsg)
+		return err
+	}
+	if r.ErrCode != 0 {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", r.ErrMsg)
+		c.logger.Error().Msgf("获取详情失败: %s", r.ErrMsg)
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+	}
+	if len(r.Data.Object.ObjectDesc.Media) == 0 {
+		errMsg := "✗ 视频号下载失败: 缺少可下载的视频内容"
+		c.logger.Error().Msg("缺少可下载的视频内容")
+		c.sendMessageToFilehelper(errMsg)
+		return fmt.Errorf("缺少可下载的视频内容")
+	}
+
+	object, err := convertAPIChannelsObject(r.Data.Object)
+	if err != nil {
+		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+		c.logger.Error().Err(err).Msg("转换视频号对象失败")
 		c.sendMessageToFilehelper(errMsg)
 		return err
 	}
 
-	// 记录 payload 内容
-	if payloadJSON, err := json.Marshal(payload); err == nil {
-		c.logger.Info().Str("payload", string(payloadJSON)).Msg("创建 payload 成功")
-	} else {
-		c.logger.Warn().Err(err).Msg("序列化 payload 用于日志记录失败")
-	}
-
-	if payload.Id == "" {
-		errMsg := "✗ 视频号下载失败: 缺少 feed id"
-		c.logger.Error().Msg("缺少 feed id")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("缺少 feed id")
+	// 构建请求，发送 ChannelsObject（后端处理全部逻辑）
+	req := ChannelsDownloadRequest{
+		Object: object,
+		Spec:   "",
+		Suffix: "",
 	}
 
 	// 发送创建任务请求
@@ -458,7 +744,7 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, hostname, c.cfg.Port)
 	}
 
-	jsonData, err := json.Marshal(payload)
+	jsonData, err := json.Marshal(req)
 	if err != nil {
 		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
 		c.logger.Error().Err(err).Msg("序列化请求参数失败")
@@ -488,10 +774,22 @@ func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error
 		Msg("自动创建下载任务请求发送成功")
 
 	// 发送成功消息
-	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", payload.Filename)
+	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", r.Data.Object.ObjectDesc.Description)
 	c.sendMessageToFilehelper(successMsg)
 
 	return nil
+}
+
+func convertAPIChannelsObject(obj interface{}) (apitypes.ChannelsObject, error) {
+	var converted apitypes.ChannelsObject
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return converted, fmt.Errorf("序列化视频号对象失败: %w", err)
+	}
+	if err := json.Unmarshal(data, &converted); err != nil {
+		return converted, fmt.Errorf("解析视频号对象失败: %w", err)
+	}
+	return converted, nil
 }
 
 // sendMessageToFilehelper 发送消息到 filehelper
@@ -610,4 +908,133 @@ func (c *APIClient) autoDownloadSphVideo(sphUrl string) error {
 	c.sendMessageToFilehelper(successMsg)
 
 	return nil
+}
+
+func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloadpkg.Task, reason string) (*model.DownloadTask, error) {
+	if content == nil {
+		return nil, errors.New("content is nil")
+	}
+	if t == nil {
+		return nil, errors.New("download task is nil")
+	}
+	if c.db == nil {
+		return nil, errors.New("db is nil")
+	}
+
+	db := c.db
+
+	title := ""
+	if t.Meta != nil && t.Meta.Opts != nil {
+		title = strings.TrimSpace(t.Meta.Opts.Name)
+	}
+	if title == "" {
+		title = strings.TrimSpace(content.Title)
+	}
+
+	taskURL := strings.TrimSpace(content.ContentURL)
+	if taskURL == "" {
+		taskURL = strings.TrimSpace(content.URL)
+	}
+	if taskURL == "" && t.Meta != nil && t.Meta.Req != nil {
+		taskURL = strings.TrimSpace(t.Meta.Req.URL)
+	}
+
+	size := content.Size
+	if size <= 0 {
+		size = content.FileSize
+	}
+
+	meta2Bytes, _ := json.Marshal(map[string]any{
+		"platform":    content.PlatformId,
+		"external_id": content.ExternalId,
+		"nonce_id":    content.ExternalId2,
+		"eid":         "",
+		"source_url":  content.SourceURL,
+		"url":         content.URL,
+		"content_url": content.ContentURL,
+	})
+
+	statusToInt := func(s base.Status) int {
+		switch s {
+		case base.DownloadStatusReady:
+			return 0
+		case base.DownloadStatusRunning:
+			return 1
+		case base.DownloadStatusPause:
+			return 2
+		case base.DownloadStatusWait:
+			return 3
+		case base.DownloadStatusDone:
+			return 4
+		case base.DownloadStatusError:
+			return 5
+		default:
+			return 0
+		}
+	}
+
+	var rec model.DownloadTask
+	err := db.Where("task_id = ?", t.ID).First(&rec).Error
+	updates := map[string]any{
+		"url":         taskURL,
+		"external_id": content.ExternalId,
+		"title":       title,
+		"cover_url":   content.CoverURL,
+		"metadata2":   string(meta2Bytes),
+		"reason":      reason,
+		"updated_at":  util.TimeToMillisInt64(t.UpdatedAt),
+	}
+	outputPath := ""
+	if t.Meta != nil {
+		outputPath = t.Meta.SingleFilepath()
+		updates["output_path"] = outputPath
+	}
+	if size > 0 {
+		updates["size"] = size
+	}
+
+	if err == nil {
+		if err := db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		rec = model.DownloadTask{
+			TaskId:     t.ID,
+			Status:     statusToInt(t.Status),
+			Protocol:   t.Protocol,
+			URL:        taskURL,
+			ExternalId: content.ExternalId,
+			Title:      title,
+			CoverURL:   content.CoverURL,
+			Size:       size,
+			OutputPath: outputPath,
+			Reason:     reason,
+			Metadata2:  string(meta2Bytes),
+			Timestamps: model.Timestamps{
+				CreatedAt: util.TimeToMillisInt64(t.CreatedAt),
+				UpdatedAt: util.TimeToMillisInt64(t.UpdatedAt),
+			},
+		}
+		if err := db.Create(&rec).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
+
+	now := util.NowMillis()
+	downloadPath := rec.OutputPath
+	if downloadPath == "" {
+		downloadPath = rec.Filepath
+	}
+	if err := db.Model(&model.Content{}).Where("id = ?", content.Id).Updates(map[string]any{
+		"download_task_id": rec.Id,
+		"download_status":  rec.Status,
+		"download_path":    downloadPath,
+		"updated_at":       now,
+	}).Error; err != nil {
+		return &rec, err
+	}
+
+	return &rec, nil
 }

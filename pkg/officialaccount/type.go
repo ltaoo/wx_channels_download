@@ -1,5 +1,36 @@
 package officialaccount
 
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+)
+
+type FlexibleInt int64
+
+func (v *FlexibleInt) UnmarshalJSON(data []byte) error {
+	var n int64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*v = FlexibleInt(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		*v = 0
+		return nil
+	}
+	parsed, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
+	*v = FlexibleInt(parsed)
+	return nil
+}
+
 type CgiDataNew struct {
 	BaseResp struct {
 		Ret         int    `json:"ret"`
@@ -8,66 +39,66 @@ type CgiDataNew struct {
 		CookieCount int    `json:"cookie_count"`
 		SessionID   string `json:"sessionid"`
 	} `json:"base_resp"`
-	UserName          string `json:"user_name"`
-	NickName          string `json:"nick_name"`
-	RoundHeadImg      string `json:"round_head_img"`
-	Title             string `json:"title"`
-	Desc              string `json:"desc"`
-	ContentNoEncode   string `json:"content_noencode"`
-	CreateTime        string `json:"create_time"`
-	CdnUrl            string `json:"cdn_url"`
-	Link              string `json:"link"`
-	SourceUrl         string `json:"source_url"`
-	CanShare          int    `json:"can_share"`
-	Alias             string `json:"alias"`
-	Type              int    `json:"type"`
-	Author            string `json:"author"`
-	IsLimitUser       int    `json:"is_limit_user"`
-	ShowCoverPic      int    `json:"show_cover_pic"`
-	AdvertisementNum  int    `json:"advertisement_num"`
-	AdvertisementInfo []any  `json:"advertisement_info"`
-	OriCreateTime     int    `json:"ori_create_time"`
-	UserUin           any    `json:"user_uin"`
-	TotalItemNum      int    `json:"total_item_num"`
-	IsAsync           int    `json:"is_async"`
-	CommentID         string `json:"comment_id"`
-	ImgFormat         string `json:"img_format"`
-	SvrTime           int    `json:"svr_time"`
+	UserName          string      `json:"user_name"`
+	NickName          string      `json:"nick_name"`
+	RoundHeadImg      string      `json:"round_head_img"`
+	Title             string      `json:"title"`
+	Desc              string      `json:"desc"`
+	ContentNoEncode   string      `json:"content_noencode"`
+	CreateTime        string      `json:"create_time"`
+	CdnUrl            string      `json:"cdn_url"`
+	Link              string      `json:"link"`
+	SourceUrl         string      `json:"source_url"`
+	CanShare          int         `json:"can_share"`
+	Alias             string      `json:"alias"`
+	Type              int         `json:"type"`
+	Author            string      `json:"author"`
+	IsLimitUser       int         `json:"is_limit_user"`
+	ShowCoverPic      int         `json:"show_cover_pic"`
+	AdvertisementNum  int         `json:"advertisement_num"`
+	AdvertisementInfo []any       `json:"advertisement_info"`
+	OriCreateTime     FlexibleInt `json:"ori_create_time"`
+	UserUin           FlexibleInt `json:"user_uin"`
+	TotalItemNum      int         `json:"total_item_num"`
+	IsAsync           int         `json:"is_async"`
+	CommentID         string      `json:"comment_id"`
+	ImgFormat         string      `json:"img_format"`
+	SvrTime           FlexibleInt `json:"svr_time"`
 	CopyrightInfo     struct {
 		CopyrightStat      int `json:"copyright_stat"`
 		IsCartoonCopyright int `json:"is_cartoon_copyright"`
 	} `json:"copyright_info"`
-	CanReward        int    `json:"can_reward"`
-	Signature        string `json:"signature"`
-	RewardWording    string `json:"reward_wording"`
-	InMm             int    `json:"in_mm"`
-	AppID            string `json:"app_id"`
-	ShowComment      int    `json:"show_comment"`
-	CanUsePage       int    `json:"can_use_page"`
-	HdHeadImg        string `json:"hd_head_img"`
-	DelReasonID      int    `json:"del_reason_id"`
-	SrcID            string `json:"srcid"`
-	IsWxgStuffUin    int    `json:"is_wxg_stuff_uin"`
-	NeedReportCost   int    `json:"need_report_cost"`
-	BizUin           string `json:"bizuin"`
-	Mid              int    `json:"mid"`
-	Idx              int    `json:"idx"`
-	Sn               string `json:"sn"`
-	UseTxVideoPlayer int    `json:"use_tx_video_player"`
-	IsOnlyRead       int    `json:"is_only_read"`
-	ReqID            string `json:"req_id"`
-	UseOuterLink     int    `json:"use_outer_link"`
-	BanScene         int    `json:"ban_scene"`
-	CspNonceStr      int    `json:"csp_nonce_str"`
-	MsgDailyIdx      int    `json:"msg_daily_idx"`
-	OriHeadImgUrl    string `json:"ori_head_img_url"`
-	FilterTime       int    `json:"filter_time"`
-	AppmsgFeFilter   string `json:"appmsg_fe_filter"`
-	IsLogin          int    `json:"is_login"`
-	RewardMoney      int    `json:"reward_money"`
-	PageType         int    `json:"page_type"`
-	ItemShowType     int    `json:"item_show_type"`
-	VoiceInAppmsg    []any  `json:"voice_in_appmsg"`
+	CanReward        int         `json:"can_reward"`
+	Signature        string      `json:"signature"`
+	RewardWording    string      `json:"reward_wording"`
+	InMm             int         `json:"in_mm"`
+	AppID            string      `json:"app_id"`
+	ShowComment      int         `json:"show_comment"`
+	CanUsePage       int         `json:"can_use_page"`
+	HdHeadImg        string      `json:"hd_head_img"`
+	DelReasonID      int         `json:"del_reason_id"`
+	SrcID            string      `json:"srcid"`
+	IsWxgStuffUin    int         `json:"is_wxg_stuff_uin"`
+	NeedReportCost   int         `json:"need_report_cost"`
+	BizUin           string      `json:"bizuin"`
+	Mid              FlexibleInt `json:"mid"`
+	Idx              FlexibleInt `json:"idx"`
+	Sn               string      `json:"sn"`
+	UseTxVideoPlayer int         `json:"use_tx_video_player"`
+	IsOnlyRead       int         `json:"is_only_read"`
+	ReqID            string      `json:"req_id"`
+	UseOuterLink     int         `json:"use_outer_link"`
+	BanScene         int         `json:"ban_scene"`
+	CspNonceStr      int         `json:"csp_nonce_str"`
+	MsgDailyIdx      FlexibleInt `json:"msg_daily_idx"`
+	OriHeadImgUrl    string      `json:"ori_head_img_url"`
+	FilterTime       FlexibleInt `json:"filter_time"`
+	AppmsgFeFilter   string      `json:"appmsg_fe_filter"`
+	IsLogin          int         `json:"is_login"`
+	RewardMoney      int         `json:"reward_money"`
+	PageType         int         `json:"page_type"`
+	ItemShowType     int         `json:"item_show_type"`
+	VoiceInAppmsg    []any       `json:"voice_in_appmsg"`
 	VideoPageInfo    struct {
 		MpVideoTransInfo []any `json:"mp_video_trans_info"`
 		DramaVideoInfo   struct {
@@ -154,15 +185,18 @@ type PicturePageInfo struct {
 }
 
 type WechatOfficialArticle struct {
-	Type           int                 `json:"type"`
-	Title          string              `json:"title"`
-	Content        string              `json:"content"`
-	ContentLength  int                 `json:"content_length"`
-	Images         []string            `json:"images"`
-	Creator        string              `json:"creator"`
-	AuthorNickname string              `json:"author_nickname"`
-	AuthorAvatar   string              `json:"author_avatar"`
-	AuthorID       string              `json:"author_id"`
-	PublishTimeStr string              `json:"publish_time_str"`
-	Videos         []VideoPageInfoItem `json:"videos"`
+	Type                int                 `json:"type"`
+	Title               string              `json:"title"`
+	Content             string              `json:"content"`
+	ContentLength       int                 `json:"content_length"`
+	Images              []string            `json:"images"`
+	Creator             string              `json:"creator"`
+	AuthorNickname      string              `json:"author_nickname"`
+	AuthorAvatar        string              `json:"author_avatar"`
+	AuthorID            string              `json:"author_id"`
+	PublishTimeStr      string              `json:"publish_time_str"`
+	Videos              []VideoPageInfoItem `json:"videos"`
+	PicturePageInfoList []PicturePageInfo   `json:"picture_page_info_list,omitempty"`
+	PageJSON            *CgiDataNew         `json:"-"`
+	PageHTML            string              `json:"-"`
 }

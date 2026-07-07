@@ -17,6 +17,7 @@ type APIConfig struct {
 	Mode                         string
 	Original                     *config.Config
 	RootDir                      string
+	WorkDir                      string
 	DownloadDir                  string
 	PlayDoneAudio                bool
 	MaxRunning                   int // 最多同时下载的任务数
@@ -32,15 +33,46 @@ type APIConfig struct {
 	OfficialAccountTokenFilepath string
 	ChannelsRefreshInterval      int
 	CloudflareSphCookie          string
+	Shuba69Cookie                string
+	BilibiliCookie               string
+	YouTubeCookie                string
+	YouTubePoToken               string
+	WeiboCookie                  string
+	Shuba69Fetcher               string
+	Shuba69CDPEndpoint           string
+	Shuba69CDPTimeout            int
+	Shuba69CDPWait               int
+	Shuba69SandboxAPIBaseURL     string
+	Shuba69SandboxID             string
+	BrowserDockerImage           string
+	BrowserDockerEntrypoint      string
+	BrowserDockerNetwork         string
+	BrowserCDPPortMin            int
+	BrowserCDPPortMax            int
+	BrowserDesktopPortMin        int
+	BrowserDesktopPortMax        int
+	BrowserDesktopResolution     string
+	BrowserDockerShmSize         string
+	BrowserDockerMemoryLimit     string
+	BrowserDockerChromeCommand   string
+
+	DBType         string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBPath         string
+	MigrationsPath string
 }
 
 func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
-	dir = strings.ReplaceAll(dir, "%CWD%", c.RootDir)
+	dir = strings.ReplaceAll(dir, "%CWD%", c.WorkDir)
 	dir = filepath.Clean(dir)
 	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(c.RootDir, dir)
+		dir = filepath.Join(c.WorkDir, dir)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
@@ -48,11 +80,33 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	mp_refresh_token := viper.GetString("mp.refreshToken")
 	mp_token_filepath := viper.GetString("mp.tokenFilepath")
 	cloudflare_sph_cookie := viper.GetString("cloudflare.sphCookie")
+	shuba69_cookie := viper.GetString("69shuba.cookie")
+	bilibili_cookie := viper.GetString("bilibili.cookie")
+	youtube_cookie := viper.GetString("youtube.cookie")
+	youtube_po_token := viper.GetString("youtube.poToken")
+	weibo_cookie := viper.GetString("weibo.cookie")
+	shuba69_fetcher := strings.ToLower(strings.TrimSpace(viper.GetString("69shuba.fetcher")))
+
+	dbPath := viper.GetString("db.filepath")
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
+	dbPath = filepath.Clean(dbPath)
+	if !filepath.IsAbs(dbPath) {
+		dbPath = filepath.Join(c.WorkDir, dbPath)
+	}
+
+	migPath := viper.GetString("db.migration")
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.WorkDir)
+	migPath = filepath.Clean(migPath)
+	if !filepath.IsAbs(migPath) {
+		migPath = filepath.Join(c.WorkDir, migPath)
+	}
+
 	api_cfg := &APIConfig{
 		Version:                      c.Version,
 		Mode:                         c.Mode,
 		Original:                     c,
 		RootDir:                      c.RootDir,
+		WorkDir:                      c.WorkDir,
 		DownloadDir:                  dir,
 		PlayDoneAudio:                viper.GetBool("download.playDoneAudio"),
 		MaxRunning:                   3,
@@ -68,6 +122,37 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		OfficialAccountRefreshToken:  mp_refresh_token,
 		ChannelsRefreshInterval:      viper.GetInt("channels.refreshInterval"),
 		CloudflareSphCookie:          cloudflare_sph_cookie,
+		Shuba69Cookie:                shuba69_cookie,
+		BilibiliCookie:               bilibili_cookie,
+		YouTubeCookie:                youtube_cookie,
+		YouTubePoToken:               youtube_po_token,
+		WeiboCookie:                  weibo_cookie,
+		Shuba69Fetcher:               shuba69_fetcher,
+		Shuba69CDPEndpoint:           viper.GetString("69shuba.cdpEndpoint"),
+		Shuba69CDPTimeout:            viper.GetInt("69shuba.cdpTimeout"),
+		Shuba69CDPWait:               viper.GetInt("69shuba.cdpWait"),
+		Shuba69SandboxAPIBaseURL:     viper.GetString("69shuba.sandboxAPIBaseURL"),
+		Shuba69SandboxID:             viper.GetString("69shuba.sandboxID"),
+		BrowserDockerImage:           viper.GetString("sandbox.dockerImage"),
+		BrowserDockerEntrypoint:      viper.GetString("sandbox.dockerEntrypoint"),
+		BrowserDockerNetwork:         viper.GetString("sandbox.dockerNetwork"),
+		BrowserCDPPortMin:            viper.GetInt("sandbox.cdpPortMin"),
+		BrowserCDPPortMax:            viper.GetInt("sandbox.cdpPortMax"),
+		BrowserDesktopPortMin:        viper.GetInt("sandbox.desktopPortMin"),
+		BrowserDesktopPortMax:        viper.GetInt("sandbox.desktopPortMax"),
+		BrowserDesktopResolution:     viper.GetString("sandbox.resolution"),
+		BrowserDockerShmSize:         viper.GetString("sandbox.shmSize"),
+		BrowserDockerMemoryLimit:     viper.GetString("sandbox.memoryLimit"),
+		BrowserDockerChromeCommand:   viper.GetString("sandbox.chromeCommand"),
+
+		DBType:         viper.GetString("db.type"),
+		DBHost:         viper.GetString("db.host"),
+		DBPort:         viper.GetString("db.port"),
+		DBUser:         viper.GetString("db.username"),
+		DBPassword:     viper.GetString("db.password"),
+		DBName:         viper.GetString("db.filename"),
+		DBPath:         dbPath,
+		MigrationsPath: migPath,
 	}
 	return api_cfg
 }

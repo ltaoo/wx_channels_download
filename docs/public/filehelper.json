@@ -1,0 +1,251 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WeChat Channels Download API - 文件传输助手接口",
+    "version": "v260330",
+    "description": "文件传输助手相关接口"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:2022",
+      "description": "本地服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "文件传输助手",
+      "description": "文件传输助手相关接口（仅本地模式可用）"
+    }
+  ],
+  "paths": {
+    "/filehelper": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "文件传输助手管理页面",
+        "description": "返回文件传输助手管理 HTML 页面",
+        "responses": {
+          "200": {
+            "description": "HTML 页面"
+          }
+        }
+      }
+    },
+    "/api/filehelper/qrcode": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "获取登录二维码",
+        "description": "获取微信文件传输助手登录二维码",
+        "responses": {
+          "200": {
+            "description": "二维码图片或状态",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "qrcode": "data:image/png;base64,...",
+                    "status": "waiting"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filehelper/login/wait": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "等待扫码登录",
+        "description": "轮询等待用户扫码登录",
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 30 },
+            "description": "等待超时时间（秒）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "登录结果",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "status": "logged_in"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filehelper/status": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "获取连接状态",
+        "description": "获取文件传输助手 WebSocket 连接状态",
+        "responses": {
+          "200": {
+            "description": "连接状态",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "connected": true,
+                    "username": "filehelper"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filehelper/synccheck": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "检查新消息",
+        "description": "检查文件传输助手是否有新消息",
+        "responses": {
+          "200": {
+            "description": "检查结果",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "ret": 0,
+                    "selector": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filehelper/sync": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "同步消息",
+        "description": "同步文件传输助手的最新消息",
+        "parameters": [
+          {
+            "name": "sync_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "同步 key"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "消息列表"
+          }
+        }
+      }
+    },
+    "/api/filehelper/messages": {
+      "get": {
+        "tags": ["文件传输助手"],
+        "summary": "获取历史消息",
+        "description": "获取文件传输助手的聊天记录",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20 },
+            "description": "消息数量限制"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0 },
+            "description": "消息偏移量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "消息列表"
+          }
+        }
+      }
+    },
+    "/api/filehelper/send": {
+      "post": {
+        "tags": ["文件传输助手"],
+        "summary": "发送消息",
+        "description": "通过文件传输助手发送文本消息",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string", "description": "消息内容" }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发送结果"
+          }
+        }
+      }
+    },
+    "/api/filehelper/logout": {
+      "post": {
+        "tags": ["文件传输助手"],
+        "summary": "登出",
+        "description": "退出文件传输助手登录",
+        "responses": {
+          "200": {
+            "description": "登出结果"
+          }
+        }
+      }
+    },
+    "/api/filehelper/parse_finder_feed": {
+      "post": {
+        "tags": ["文件传输助手"],
+        "summary": "解析视频号内容",
+        "description": "解析文件传输助手收到的视频号分享内容",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "description": "视频号分享链接" }
+                }
+              },
+              "required": ["url"]
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "解析结果"
+          }
+        }
+      }
+    }
+  }
+}

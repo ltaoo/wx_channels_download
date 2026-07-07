@@ -2,6 +2,7 @@ package zip
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,8 @@ type Fetcher struct {
 	downloaded int64
 	mu         sync.Mutex
 	closed     bool
+	cancel     context.CancelFunc
+	pauseDone  chan struct{}
 }
 
 func (f *Fetcher) Setup(ctl *controller.Controller) {
@@ -150,14 +153,27 @@ func (f *Fetcher) Create(opts *base.Options) error {
 }
 
 func (f *Fetcher) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	f.mu.Lock()
+	f.closed = false
+	f.downloaded = 0
+	f.cancel = cancel
+	f.pauseDone = done
+	f.mu.Unlock()
+
 	go func() {
-		err := f.downloadAndZip()
+		defer close(done)
+		err := f.downloadAndZip(ctx)
+		if errors.Is(err, context.Canceled) || f.isClosed() {
+			return
+		}
 		f.DoneCh <- err
 	}()
 	return nil
 }
 
-func (f *Fetcher) downloadAndZip() error {
+func (f *Fetcher) downloadAndZip(ctx context.Context) error {
 	// Ensure directory exists
 	if err := util.CreateDirIfNotExist(f.DefaultFetcher.Meta.Opts.Path); err != nil {
 		return err
@@ -176,11 +192,14 @@ func (f *Fetcher) downloadAndZip() error {
 	client := f.buildClient(f.DefaultFetcher.Meta.Req, 30*time.Second)
 
 	for _, item := range f.files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if f.isClosed() {
-			return errors.New("fetcher closed")
+			return context.Canceled
 		}
 
-		req, err := http.NewRequest("GET", item.Url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", item.Url, nil)
 		if err != nil {
 			return err
 		}
@@ -211,9 +230,13 @@ func (f *Fetcher) downloadAndZip() error {
 
 		buf := make([]byte, 32*1024)
 		for {
+			if err := ctx.Err(); err != nil {
+				resp.Body.Close()
+				return err
+			}
 			if f.isClosed() {
 				resp.Body.Close()
-				return errors.New("fetcher closed")
+				return context.Canceled
 			}
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
@@ -249,13 +272,22 @@ func (f *Fetcher) isClosed() bool {
 }
 
 func (f *Fetcher) Pause() error {
-	return nil
+	return f.Close()
 }
 
 func (f *Fetcher) Close() error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	cancel := f.cancel
+	done := f.pauseDone
 	f.closed = true
+	f.cancel = nil
+	f.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
 	return nil
 }
 

@@ -273,6 +273,15 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 		font-size: 15px;
 		-webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 	}
+	.rich_media_meta_avatar {
+		display: inline-block;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		object-fit: cover;
+		vertical-align: middle;
+		margin: 0 8px 10px 0;
+	}
 	.rich_media_meta_text.article_modify_tag, .rich_media_meta_nickname {
 		position: relative;
 	}
@@ -384,30 +393,7 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 
 	if isImageArticle {
 		htmlContent.WriteString(`<div class="split-container"><div class="split-left"><div class="additional-images">`)
-		for _, imgURL := range article.Images {
-			imgURL = normalizeMediaURL(imgURL)
-			imgData, mimeType, err := downloadImageBytes(imgURL)
-			if err == nil {
-				c.reportProgress(int64(len(imgData)))
-				if need_compress_img {
-					// Compress image to reduce size
-					compressedData, compressedMime, errCompress := compressImage(imgData)
-					if errCompress == nil {
-						fmt.Printf("Compressed image %s: %d -> %d bytes (%.2f%%)\n",
-							imgURL, len(imgData), len(compressedData), float64(len(compressedData))/float64(len(imgData))*100)
-						imgData = compressedData
-						mimeType = compressedMime
-					} else {
-						fmt.Printf("Failed to compress image %s: %v\n", imgURL, errCompress)
-					}
-				}
-				base64Str := base64.StdEncoding.EncodeToString(imgData)
-				imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
-				htmlContent.WriteString(fmt.Sprintf("        <img src=\"%s\" alt=\"\">\n", imgSrc))
-			} else {
-				fmt.Printf("Failed to download image for base64 %s: %v\n", imgURL, err)
-			}
-		}
+		c.writePictureArticleMedia(&htmlContent, article, need_compress_img)
 		htmlContent.WriteString(`</div></div><div class="split-right">`)
 	}
 
@@ -416,7 +402,14 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 	if article.Creator != "" {
 		creator_html = `<span class="rich_media_meta rich_media_meta_text">` + article.Creator + `</span>`
 	}
-	htmlContent.WriteString(`<div class="rich_media_meta_list">` + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.AuthorNickname + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article.PublishTimeStr + "</em></span></div>")
+	avatarHTML := ""
+	if article.AuthorAvatar != "" {
+		if imgData, mimeType, err := downloadImageBytes(article.AuthorAvatar); err == nil {
+			c.reportProgress(int64(len(imgData)))
+			avatarHTML = `<img class="rich_media_meta_avatar" src="data:` + mimeType + `;base64,` + base64.StdEncoding.EncodeToString(imgData) + `" alt="` + escapeHTML(article.AuthorNickname) + `">`
+		}
+	}
+	htmlContent.WriteString(`<div class="rich_media_meta_list">` + avatarHTML + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.AuthorNickname + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article.PublishTimeStr + "</em></span></div>")
 	htmlContent.WriteString(`<div class="rich_media_content js_underline_content autoTypeSetting24psection fix_apple_default_style">`)
 	// Process HTML content to handle newlines
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
@@ -553,6 +546,75 @@ func (c *OfficialAccountDownload) BuildHTMLFromArticle(article *WechatOfficialAr
 	return htmlContent.String(), nil
 }
 
+func (c *OfficialAccountDownload) writePictureArticleMedia(htmlContent *strings.Builder, article *WechatOfficialArticle, needCompressImg bool) {
+	if htmlContent == nil || article == nil {
+		return
+	}
+	if len(article.PicturePageInfoList) > 0 {
+		for _, item := range article.PicturePageInfoList {
+			if videoURL := picturePageInfoLivePhotoURL(item); videoURL != "" {
+				posterAttr := ""
+				if item.CdnUrl != "" {
+					posterAttr = fmt.Sprintf(` poster="%s"`, escapeHTML(item.CdnUrl))
+				}
+				htmlContent.WriteString(fmt.Sprintf(`        <video src="%s"%s controls="controls" playsinline style="width: 100%%; height: auto;"></video>`+"\n", escapeHTML(videoURL), posterAttr))
+				continue
+			}
+			c.writeInlineImage(htmlContent, item.CdnUrl, needCompressImg)
+		}
+		return
+	}
+	for _, imgURL := range article.Images {
+		c.writeInlineImage(htmlContent, imgURL, needCompressImg)
+	}
+}
+
+func (c *OfficialAccountDownload) writeInlineImage(htmlContent *strings.Builder, imgURL string, needCompressImg bool) {
+	if htmlContent == nil || imgURL == "" {
+		return
+	}
+	imgData, mimeType, err := downloadImageBytes(imgURL)
+	if err == nil {
+		c.reportProgress(int64(len(imgData)))
+		if needCompressImg {
+			compressedData, compressedMime, errCompress := compressImage(imgData)
+			if errCompress == nil {
+				fmt.Printf("Compressed image %s: %d -> %d bytes (%.2f%%)\n",
+					imgURL, len(imgData), len(compressedData), float64(len(compressedData))/float64(len(imgData))*100)
+				imgData = compressedData
+				mimeType = compressedMime
+			} else {
+				fmt.Printf("Failed to compress image %s: %v\n", imgURL, errCompress)
+			}
+		}
+		base64Str := base64.StdEncoding.EncodeToString(imgData)
+		imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
+		htmlContent.WriteString(fmt.Sprintf("        <img src=\"%s\" alt=\"\">\n", imgSrc))
+	} else {
+		fmt.Printf("Failed to download image for base64 %s: %v\n", imgURL, err)
+	}
+}
+
+func picturePageInfoLivePhotoURL(item PicturePageInfo) string {
+	for _, raw := range item.LivePhoto.FormatInfo {
+		if m, ok := raw.(map[string]any); ok {
+			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
+				if value, _ := m[key].(string); strings.TrimSpace(value) != "" {
+					return value
+				}
+			}
+		}
+		if m, ok := raw.(map[string]string); ok {
+			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
+				if value := strings.TrimSpace(m[key]); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) (string, error) {
 	imgURL = normalizeMediaURL(imgURL)
 	// Generate filename based on hash of URL
@@ -588,7 +650,7 @@ func (c *OfficialAccountDownload) downloadImage(imgURL string, save_dir string) 
 		return filename, nil
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 25 * time.Second}
 	req, err := http.NewRequest("GET", imgURL, nil)
 	if err != nil {
 		return "", err
@@ -645,39 +707,44 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 	if publish_time_str == "" {
 		publish_time_str = formatPublishTime(data.CreateTime, data.OriCreateTime)
 	}
-	article := &WechatOfficialArticle{
-		Type:           data.PageType,
-		Title:          data.Title,
-		Content:        data.ContentNoEncode,
-		PublishTimeStr: publish_time_str,
-		ContentLength:  len(data.ContentNoEncode),
-		Creator:        data.Author,
-		AuthorNickname: data.NickName,
-		AuthorAvatar:   data.RoundHeadImg,
-		AuthorID:       data.UserName,
-		Images:         make([]string, 0),
-		Videos:         data.VideoPageInfos,
-	}
-	if article.Creator == "" {
-		article.Creator = data.NickName
-	}
-	// isImageArticle := data.PageType == 2
-	if len(data.PicturePageInfoList) > 1 {
-		for _, img := range data.PicturePageInfoList {
-			if img.CdnUrl != "" {
-				article.Images = append(article.Images, normalizeMediaURL(img.CdnUrl))
-			}
-		}
-	}
+	article := newWechatOfficialArticle(data, publish_time_str)
+	article.PageJSON = data
+	article.PageHTML = content_str
 	c.article = article
 	return article, nil
+}
+
+func newWechatOfficialArticle(data *CgiDataNew, publishTimeStr string) *WechatOfficialArticle {
+	if data == nil {
+		return &WechatOfficialArticle{}
+	}
+	article := &WechatOfficialArticle{
+		Type:                data.PageType,
+		Title:               data.Title,
+		Content:             data.ContentNoEncode,
+		PublishTimeStr:      publishTimeStr,
+		ContentLength:       len(data.ContentNoEncode),
+		Creator:             data.Author,
+		AuthorNickname:      data.NickName,
+		AuthorAvatar:        firstNonEmpty(data.RoundHeadImg, data.OriHeadImgUrl, data.HdHeadImg),
+		AuthorID:            data.UserName,
+		Images:              make([]string, 0),
+		Videos:              data.VideoPageInfos,
+		PicturePageInfoList: data.PicturePageInfoList,
+	}
+	for _, item := range data.PicturePageInfoList {
+		if item.CdnUrl != "" {
+			article.Images = append(article.Images, item.CdnUrl)
+		}
+	}
+	return article
 }
 
 func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	if url == "" {
 		return nil, fmt.Errorf("url is empty")
 	}
-	client := &http.Client{}
+	client := &http.Client{Timeout: 25 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -688,6 +755,10 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("bad status: %s body=%s", resp.Status, strings.TrimSpace(string(body)))
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -701,7 +772,7 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 
 // ExtractArticleID extracts a unique article identifier from a WeChat official account URL.
 // For short URLs like https://mp.weixin.qq.com/s/2kaR8z-xO_IAO9TPSUecsQ, returns the path suffix.
-// For full URLs, returns mid+idx as the unique key.
+// For full URLs, returns mid+idx as the unique key, or a hash of __biz-style query links.
 // The rawURL may have an "officialaccount://" prefix.
 func ExtractArticleID(rawURL string) string {
 	u := rawURL
@@ -718,7 +789,7 @@ func ExtractArticleID(rawURL string) string {
 		return ""
 	}
 
-	if !strings.Contains(parsed.Host, "mp.weixin.qq.com") {
+	if !strings.EqualFold(parsed.Hostname(), "mp.weixin.qq.com") {
 		return ""
 	}
 
@@ -741,6 +812,23 @@ func ExtractArticleID(rawURL string) string {
 		}
 		return mid + "_" + idx
 	}
+	if q.Get("__biz") != "" {
+		sn := q.Get("sn")
+		if sn != "" {
+			return q.Get("__biz") + "_" + sn
+		}
+		sum := md5.Sum([]byte(parsed.EscapedPath() + "?" + parsed.RawQuery))
+		return q.Get("__biz") + "_" + hex.EncodeToString(sum[:8])
+	}
 
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
 	return ""
 }

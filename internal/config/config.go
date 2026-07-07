@@ -17,6 +17,7 @@ import (
 
 type Config struct {
 	RootDir  string // 二进制文件所在目录
+	WorkDir  string // 运行时数据目录
 	Filename string // 配置文件名
 	FullPath string // 配置文件完整路径
 	Existing bool   // 配置文件是否存在
@@ -24,6 +25,15 @@ type Config struct {
 	Debug    bool
 	Version  string
 	Mode     string
+
+	DBType         string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBPath         string
+	MigrationsPath string
 }
 
 const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
@@ -76,9 +86,13 @@ func New(ver string, mode string) *Config {
 			break
 		}
 	}
+	if config_filepath == "" {
+		config_filepath = filepath.Join(base_dir, filename)
+	}
 	viper.SetConfigFile(config_filepath)
 	c := &Config{
 		RootDir:  base_dir,
+		WorkDir:  base_dir,
 		Filename: filename,
 		FullPath: config_filepath,
 		Existing: has_config,
@@ -89,6 +103,14 @@ func New(ver string, mode string) *Config {
 }
 
 func (c *Config) LoadConfig() error {
+	Register(ConfigItem{
+		Key:         "workdir",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "运行时工作目录，日志、数据库等运行时文件将写入该目录",
+		Title:       "工作目录",
+		Group:       "General",
+	})
 	Register(ConfigItem{
 		Key:         "proxy.system",
 		Type:        ConfigTypeBool,
@@ -139,19 +161,21 @@ func (c *Config) LoadConfig() error {
 	})
 	Register(ConfigItem{
 		Key:         "cert.file",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeFile,
 		Default:     "",
 		Description: "自定义证书文件绝对路径",
 		Title:       "证书文件",
 		Group:       "Proxy",
+		Accept:      ".pem,.cer,.crt,.key",
 	})
 	Register(ConfigItem{
 		Key:         "cert.key",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeFile,
 		Default:     "",
 		Description: "自定义私钥文件绝对路径",
 		Title:       "私钥文件",
 		Group:       "Proxy",
+		Accept:      ".pem,.key",
 	})
 	Register(ConfigItem{
 		Key:         "cert.name",
@@ -331,12 +355,78 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 	})
 	Register(ConfigItem{
+		Key:         "db.type",
+		Type:        ConfigTypeSelect,
+		Default:     "sqlite",
+		Options:     []string{"sqlite", "mysql", "postgres"},
+		Description: "数据库类型",
+		Title:       "数据库类型",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.host",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库主机名",
+		Title:       "数据库主机",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.port",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库端口",
+		Title:       "数据库端口",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.username",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库用户名",
+		Title:       "数据库用户名",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.password",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库密码",
+		Title:       "数据库密码",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.filename",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "数据库名称（mysql/postgres）或文件名（sqlite）",
+		Title:       "数据库名称",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.filepath",
+		Type:        ConfigTypeString,
+		Default:     "%CWD%/wx_channels_download.db",
+		Description: "SQLite 数据库文件路径",
+		Title:       "SQLite 路径",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
+		Key:         "db.migration",
+		Type:        ConfigTypeString,
+		Default:     "%CWD%/migrations",
+		Description: "数据库迁移文件目录",
+		Title:       "迁移目录",
+		Group:       "Database",
+	})
+	Register(ConfigItem{
 		Key:         "api.protocol",
 		Type:        ConfigTypeString,
 		Default:     "http",
 		Description: "指定 API 服务的协议头",
 		Title:       "API 服务协议",
 		Group:       "API",
+		Readonly:    true,
 	})
 	Register(ConfigItem{
 		Key:         "api.hostname",
@@ -355,19 +445,27 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 	})
 	Register(ConfigItem{
-		Key:         "mp.enabled",
-		Type:        ConfigTypeBool,
-		Default:     nil,
-		Description: "是否启用公众号本地服务，本地服务会提供接口、RSS 等功能",
-		Title:       "启用本地服务",
-		Group:       "OfficialAccount",
+		Key:         "admin.hostname",
+		Type:        ConfigTypeString,
+		Default:     "127.0.0.1",
+		Description: "指定 GUI/Admin 服务的主机名",
+		Title:       "Admin 服务主机",
+		Group:       "Admin",
 	})
 	Register(ConfigItem{
-		Key:         "mp.disabled",
+		Key:         "admin.port",
+		Type:        ConfigTypeInt,
+		Default:     2021,
+		Description: "指定 GUI/Admin 服务的端口",
+		Title:       "Admin 服务端口",
+		Group:       "Admin",
+	})
+	Register(ConfigItem{
+		Key:         "mp.enabled",
 		Type:        ConfigTypeBool,
-		Default:     true,
-		Description: "Deprecated: use mp.enabled instead. This legacy option disables the OfficialAccount local service.",
-		Title:       "Disable local service (deprecated)",
+		Default:     false,
+		Description: "是否启用公众号本地服务，本地服务会提供接口、RSS 等功能",
+		Title:       "启用本地服务",
 		Group:       "OfficialAccount",
 		Deprecated:  true,
 	})
@@ -413,7 +511,7 @@ func (c *Config) LoadConfig() error {
 	})
 	Register(ConfigItem{
 		Key:         "mp.accountIdsRefreshInterval",
-		Type:        ConfigTypeString,
+		Type:        ConfigTypeText,
 		Default:     []string{},
 		Description: "需要定时刷新的帐号列表",
 		Title:       "定时刷新列表",
@@ -426,6 +524,231 @@ func (c *Config) LoadConfig() error {
 		Description: "刷新时若账号在最近 N 分钟已更新则跳过",
 		Title:       "刷新跳过时间（分钟）",
 		Group:       "OfficialAccount",
+	})
+	Register(ConfigItem{
+		Key:         "zhihu.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录知乎页面浏览记录",
+		Title:       "记录知乎浏览",
+		Group:       "Zhihu",
+	})
+	Register(ConfigItem{
+		Key:         "zhihu.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "知乎请求 Cookie，用于访问需要登录态的知乎接口",
+		Title:       "知乎 Cookie",
+		Group:       "Zhihu",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "69书吧请求 Cookie，用于访问 Cloudflare 验证后的页面",
+		Title:       "69书吧 Cookie",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.fetcher",
+		Type:        ConfigTypeSelect,
+		Default:     "clawreq",
+		Options:     []string{"clawreq", "http", "cdp", "sandbox"},
+		Description: "69书吧 HTML 抓取方式，clawreq 使用浏览器指纹 HTTP client，http 使用 Go client，cdp 使用 CDP 服务地址，sandbox 使用 webarchive 沙箱浏览器 API",
+		Title:       "69书吧抓取方式",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpEndpoint",
+		Type:        ConfigTypeString,
+		Default:     "http://127.0.0.1:9222",
+		Description: "CDP 服务地址，仅 fetcher=cdp 时使用；可以是本机浏览器或容器暴露的 CDP HTTP/WS 地址",
+		Title:       "69书吧 CDP 地址",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpTimeout",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "69书吧 CDP 单次页面抓取超时时间（秒）",
+		Title:       "69书吧 CDP 超时",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.cdpWait",
+		Type:        ConfigTypeInt,
+		Default:     8,
+		Description: "69书吧 CDP 页面加载完成后的额外等待时间（秒），用于等待 Cloudflare 跳转",
+		Title:       "69书吧 CDP 等待",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.sandboxAPIBaseURL",
+		Type:        ConfigTypeString,
+		Default:     "http://127.0.0.1:2021/api/v1",
+		Description: "webarchive 风格沙箱 API 地址，仅 fetcher=sandbox 时使用",
+		Title:       "69书吧沙箱 API",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "69shuba.sandboxID",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "用于抓取 69书吧页面的沙箱 ID，仅 fetcher=sandbox 时使用",
+		Title:       "69书吧沙箱 ID",
+		Group:       "69shuba",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerImage",
+		Type:        ConfigTypeString,
+		Default:     "lscr.io/linuxserver/chromium:latest",
+		Description: "浏览器沙箱 Docker 镜像，默认使用带 Web 桌面的 Chromium 镜像",
+		Title:       "沙箱镜像",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerEntrypoint",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker --entrypoint；默认留空以使用 webtop 镜像自己的桌面启动流程",
+		Title:       "沙箱 Entrypoint",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.dockerNetwork",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker 网络，留空使用默认网络",
+		Title:       "沙箱网络",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.cdpPortMin",
+		Type:        ConfigTypeInt,
+		Default:     39222,
+		Description: "浏览器沙箱 CDP 宿主机端口范围起点",
+		Title:       "CDP 端口起点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.cdpPortMax",
+		Type:        ConfigTypeInt,
+		Default:     39322,
+		Description: "浏览器沙箱 CDP 宿主机端口范围终点",
+		Title:       "CDP 端口终点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.desktopPortMin",
+		Type:        ConfigTypeInt,
+		Default:     39000,
+		Description: "浏览器沙箱 Web 桌面宿主机端口范围起点",
+		Title:       "桌面端口起点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.desktopPortMax",
+		Type:        ConfigTypeInt,
+		Default:     39122,
+		Description: "浏览器沙箱 Web 桌面宿主机端口范围终点",
+		Title:       "桌面端口终点",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.resolution",
+		Type:        ConfigTypeString,
+		Default:     "1920x1080x24",
+		Description: "浏览器沙箱 Web 桌面分辨率",
+		Title:       "桌面分辨率",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.shmSize",
+		Type:        ConfigTypeString,
+		Default:     "1g",
+		Description: "浏览器沙箱 Docker --shm-size",
+		Title:       "共享内存",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.memoryLimit",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "浏览器沙箱 Docker --memory，留空不限制",
+		Title:       "内存限制",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "sandbox.chromeCommand",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "浏览器沙箱容器启动命令，留空时自动查找 Chrome/Chromium 并启用 0.0.0.0:9222 remote debugging",
+		Title:       "Chrome 启动命令",
+		Group:       "Sandbox",
+	})
+	Register(ConfigItem{
+		Key:         "xiaohongshu.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录小红书页面浏览记录",
+		Title:       "记录小红书浏览",
+		Group:       "Xiaohongshu",
+	})
+	Register(ConfigItem{
+		Key:         "bilibili.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录 B 站页面浏览记录",
+		Title:       "记录 B 站浏览",
+		Group:       "Bilibili",
+	})
+	Register(ConfigItem{
+		Key:         "bilibili.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "B 站请求 Cookie，用于访问账号可看的高清清晰度；不会输出到日志",
+		Title:       "B 站 Cookie",
+		Group:       "Bilibili",
+	})
+	Register(ConfigItem{
+		Key:         "youtube.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录 YouTube 页面浏览记录",
+		Title:       "记录 YouTube 浏览",
+		Group:       "YouTube",
+	})
+	Register(ConfigItem{
+		Key:         "youtube.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "YouTube 请求 Cookie，用于访问需要登录态的视频；不会输出到日志",
+		Title:       "YouTube Cookie",
+		Group:       "YouTube",
+	})
+	Register(ConfigItem{
+		Key:         "youtube.poToken",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "YouTube GVS PO Token，兼容 yt-dlp 的 client.gvs+TOKEN 格式；用于避免部分 videoplayback 403",
+		Title:       "YouTube PO Token",
+		Group:       "YouTube",
+	})
+	Register(ConfigItem{
+		Key:         "weibo.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否记录微博页面浏览记录",
+		Title:       "记录微博浏览",
+		Group:       "Weibo",
+	})
+	Register(ConfigItem{
+		Key:         "weibo.cookie",
+		Type:        ConfigTypeText,
+		Default:     "",
+		Description: "微博请求 Cookie，用于访问需要登录态的微博列表接口；不会输出到日志",
+		Title:       "微博 Cookie",
+		Group:       "Weibo",
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.accountId",
@@ -537,6 +860,45 @@ func (c *Config) LoadConfig() error {
 			}
 		}
 	}
+
+	c.DBType = viper.GetString("db.type")
+	c.DBHost = viper.GetString("db.host")
+	c.DBPort = viper.GetString("db.port")
+	c.DBUser = viper.GetString("db.username")
+	c.DBPassword = viper.GetString("db.password")
+	c.DBName = viper.GetString("db.filename")
+
+	workDir := strings.TrimSpace(viper.GetString("workdir"))
+	if workDir == "" {
+		workDir = c.RootDir
+	}
+	workDir = strings.ReplaceAll(workDir, "%CWD%", c.RootDir)
+	workDir = filepath.Clean(workDir)
+	if !filepath.IsAbs(workDir) {
+		workDir = filepath.Join(c.RootDir, workDir)
+	}
+	c.WorkDir = workDir
+	if err := os.MkdirAll(c.WorkDir, 0755); err != nil {
+		c.Error = err
+		return err
+	}
+
+	dbPath := viper.GetString("db.filepath")
+	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
+	dbPath = filepath.Clean(dbPath)
+	if !filepath.IsAbs(dbPath) {
+		dbPath = filepath.Join(c.WorkDir, dbPath)
+	}
+	c.DBPath = dbPath
+
+	migPath := viper.GetString("db.migration")
+	migPath = strings.ReplaceAll(migPath, "%CWD%", c.WorkDir)
+	migPath = filepath.Clean(migPath)
+	if !filepath.IsAbs(migPath) {
+		migPath = filepath.Join(c.WorkDir, migPath)
+	}
+	c.MigrationsPath = migPath
+
 	return nil
 }
 
@@ -549,6 +911,7 @@ func (c *Config) GetDebugInfo() map[string]string {
 		"executable":    exe,
 		"exe_dir":       exe_dir,
 		"base_dir":      c.RootDir,
+		"work_dir":      c.WorkDir,
 		"config_path":   c.FullPath,
 		"config_exists": fmt.Sprintf("%v", c.Existing),
 	}
@@ -604,7 +967,9 @@ func EnsureDirIfMissing(path string) error {
 }
 
 func LoadCertFiles() *certificate.CertFileAndKeyFile {
-	cert := certificate.DefaultCertFiles
+	if cert, ok := loadConfiguredCertFiles(); ok {
+		return cert
+	}
 	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil {
 		dirs = append(dirs, filepath.Join(home, ".mitmproxy"))
@@ -657,19 +1022,26 @@ func LoadCertFiles() *certificate.CertFileAndKeyFile {
 			}
 		}
 	}
+	return certificate.DefaultCertFiles
+}
+
+func loadConfiguredCertFiles() (*certificate.CertFileAndKeyFile, bool) {
 	cert_filepath := viper.GetString("cert.file")
 	certkey_filepath := viper.GetString("cert.key")
 	if cert_filepath != "" && certkey_filepath != "" {
 		if cert_bytes, err := os.ReadFile(cert_filepath); err == nil {
 			if certkey_bytes, err2 := os.ReadFile(certkey_filepath); err2 == nil {
 				certname := viper.GetString("cert.name")
-				cert = &certificate.CertFileAndKeyFile{
+				if strings.TrimSpace(certname) == "" {
+					certname = certificate.DefaultCertFiles.Name
+				}
+				return &certificate.CertFileAndKeyFile{
 					Name:       certname,
 					Cert:       cert_bytes,
 					PrivateKey: certkey_bytes,
-				}
+				}, true
 			}
 		}
 	}
-	return cert
+	return nil, false
 }

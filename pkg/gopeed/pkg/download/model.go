@@ -10,6 +10,7 @@ import (
 	"github.com/GopeedLab/gopeed/internal/protocol/http"
 	officialaccountdownload "github.com/GopeedLab/gopeed/internal/protocol/officialaccount"
 	"github.com/GopeedLab/gopeed/internal/protocol/stream"
+	"github.com/GopeedLab/gopeed/internal/protocol/zhihu"
 	"github.com/GopeedLab/gopeed/internal/protocol/zip"
 	"github.com/GopeedLab/gopeed/pkg/base"
 	"github.com/GopeedLab/gopeed/pkg/util"
@@ -28,6 +29,7 @@ type Task struct {
 	Status    base.Status          `json:"status"`
 	Uploading bool                 `json:"uploading"`
 	Progress  *Progress            `json:"progress"`
+	Error     string               `json:"error,omitempty"`
 	CreatedAt time.Time            `json:"createdAt"`
 	UpdatedAt time.Time            `json:"updatedAt"`
 
@@ -160,6 +162,7 @@ func (cfg *DownloaderConfig) Init() *DownloaderConfig {
 			new(stream.FetcherManager),
 			new(zip.FetcherManager),
 			new(officialaccountdownload.FetcherManager),
+			new(zhihu.FetcherManager),
 		}
 	}
 	if cfg.RefreshInterval == 0 {

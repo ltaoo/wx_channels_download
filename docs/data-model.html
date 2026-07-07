@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Download Task Data Model — Gopeed × wx_channels</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --text: #1a202c;
+    --muted: #718096;
+    --border: #e2e8f0;
+    --blue: #3182ce; --blue-bg: #ebf8ff;
+    --green: #38a169; --green-bg: #f0fff4;
+    --orange: #dd6b20; --orange-bg: #fffaf0;
+    --purple: #805ad5; --purple-bg: #faf5ff;
+    --red: #e53e3e; --red-bg: #fff5f5;
+    --teal: #319795; --teal-bg: #e6fffa;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 40px 20px;
+  }
+  .container { max-width: 1060px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 26px; margin-bottom: 6px; }
+  .sub  { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 36px; }
+
+  /* ── dual-model layout ── */
+  .dual { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 36px; }
+  @media (max-width: 800px) { .dual { grid-template-columns: 1fr; } }
+
+  .model-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  .model-card h2 {
+    font-size: 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge.mem  { background: var(--green-bg); color: var(--green); }
+  .badge.db   { background: var(--orange-bg); color: var(--orange); }
+
+  .field-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  .field-table td { padding: 5px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  .field-table .name  { font-family: "SF Mono", Menlo, monospace; font-weight: 600; white-space: nowrap; width: 1%; }
+  .field-table .type  { color: var(--muted); font-size: 11px; white-space: nowrap; width: 1%; }
+  .field-table .desc  { color: #4a5568; }
+  .field-table .pk    { color: var(--red); font-size: 10px; }
+  .field-table .fk    { color: var(--orange); font-size: 10px; }
+
+  /* ── bridge section ── */
+  .bridge {
+    display: flex; align-items: center; justify-content: center; gap: 0;
+    margin-bottom: 36px; flex-wrap: wrap;
+  }
+  .bridge-card {
+    border: 2px dashed var(--purple); border-radius: 10px;
+    padding: 14px 24px; background: var(--purple-bg); text-align: center;
+    font-size: 13px;
+  }
+  .bridge-card code {
+    background: #e9d8fd; padding: 2px 8px; border-radius: 4px;
+    font-size: 13px; font-weight: 700;
+  }
+  .bridge-arrow { font-size: 28px; color: var(--purple); margin: 0 12px; }
+
+  /* ── realtime flow ── */
+  .section-title {
+    font-size: 16px; font-weight: 700; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .realtime-flow {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .rt-node {
+    padding: 10px 16px; border-radius: 8px; font-size: 12px;
+    font-weight: 600; text-align: center;
+    border: 1.5px solid;
+  }
+  .rt-gopeed  { background: var(--green-bg); border-color: #68d391; color: #276749; }
+  .rt-listener{ background: var(--purple-bg); border-color: #b794f4; color: #553c9a; }
+  .rt-ws      { background: var(--blue-bg); border-color: #63b3ed; color: #2b6cb0; }
+  .rt-db      { background: var(--orange-bg); border-color: #f6ad55; color: #9c4221; }
+  .rt-fs      { background: var(--red-bg); border-color: #fc8181; color: #9b2c2c; }
+  .rt-arrow   { font-size: 18px; color: var(--muted); }
+
+  /* ── code block ── */
+  .code-block {
+    background: #1a202c; color: #e2e8f0; border-radius: 10px;
+    padding: 18px 22px; font-family: "SF Mono", Menlo, monospace;
+    font-size: 12px; line-height: 1.8; overflow-x: auto; margin-top: 14px;
+  }
+  .code-block .kw  { color: #fc8181; }
+  .code-block .fn  { color: #f6ad55; }
+  .code-block .str { color: #68d391; }
+  .code-block .cm  { color: #718096; }
+
+  /* ── lifecycle ── */
+  .lifecycle {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap; margin: 20px 0;
+  }
+  .lc-node {
+    padding: 8px 18px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--border); background: var(--card);
+    border-radius: 6px;
+  }
+  .lc-arrow { margin: 0 6px; color: var(--muted); }
+
+  .note {
+    background: #fffff0; border-left: 3px solid #ecc94b;
+    padding: 12px 16px; border-radius: 6px; font-size: 13px;
+    color: #744210; margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Gopeed Task &harr; wx_channels DownloadTask</h1>
+<p class="sub">Two task systems, one bridge: <code>TaskId</code></p>
+
+<!-- ── Dual Model ── -->
+<div class="dual">
+
+  <!-- Gopeed side -->
+  <div class="model-card">
+    <h2>
+      downloadpkg.Task <span class="badge mem">In-Memory</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto">Gopeed 下载引擎</span>
+    </h2>
+    <table class="field-table">
+      <tr><td class="name">ID</td><td class="type">string</td><td class="desc">任务唯一标识，uuid</td></tr>
+      <tr><td class="name">Status</td><td class="type">base.Status</td><td class="desc">Ready → Running → Done / Error</td></tr>
+      <tr><td class="name">Protocol</td><td class="type">string</td><td class="desc">http / stream / zip</td></tr>
+      <tr><td class="name">Progress</td><td class="type">*atomicProgress</td><td class="desc"><strong>Downloaded</strong> (bytes), <strong>Speed</strong> (bytes/s), <strong>Percent</strong></td></tr>
+      <tr><td class="name">CreatedAt<br>UpdatedAt</td><td class="type">time.Time</td><td class="desc">任务时间戳</td></tr>
+      <tr><td colspan="3" style="padding-top:10px;font-weight:600;color:var(--muted)">Meta.Req</td></tr>
+      <tr><td class="name">URL</td><td class="type">string</td><td class="desc">下载 URL（含 spec flag / zip 协议）</td></tr>
+      <tr><td class="name">Labels</td><td class="type">map[string]string</td><td class="desc">{id, nonce_id, title, key, spec, suffix}</td></tr>
+      <tr><td colspan="3" style="padding-top:10px;font-weight:600;color:var(--muted)">Meta.Opts</td></tr>
+      <tr><td class="name">Name</td><td class="type">string</td><td class="desc">最终文件名（含去重后缀）</td></tr>
+      <tr><td class="name">Path</td><td class="type">string</td><td class="desc">存储目录绝对路径</td></tr>
+      <tr><td colspan="3" style="padding-top:10px;font-weight:600;color:var(--muted)">Meta.Res</td></tr>
+      <tr><td class="name">Size</td><td class="type">int64</td><td class="desc">文件总大小（解析后）</td></tr>
+    </table>
+  </div>
+
+  <!-- DB side -->
+  <div class="model-card">
+    <h2>
+      model.DownloadTask <span class="badge db">SQLite</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto">持久化记录</span>
+    </h2>
+    <table class="field-table">
+      <tr><td class="name">Id</td><td class="type">int <span class="pk">PK</span></td><td class="desc">自增主键</td></tr>
+      <tr><td class="name">TaskId</td><td class="type">string <span style="color:var(--red);font-size:10px">UNIQUE</span></td><td class="desc"><strong>← Gopeed Task.ID</strong>，关联桥梁</td></tr>
+      <tr><td class="name">Status</td><td class="type">int</td><td class="desc">0:Ready 1:Running 2:Pause 3:Wait 4:Done 5:Error</td></tr>
+      <tr><td class="name">Progress</td><td class="type">string</td><td class="desc">JSON: {downloaded, speed, percent} 快照</td></tr>
+      <tr><td class="name">Protocol</td><td class="type">string</td><td class="desc">http / stream / zip</td></tr>
+      <tr><td class="name">URL</td><td class="type">string</td><td class="desc">实际下载 URL</td></tr>
+      <tr><td class="name">ExternalId</td><td class="type">string</td><td class="desc">视频号 ObjectId</td></tr>
+      <tr><td class="name">Title</td><td class="type">string</td><td class="desc">文件/视频标题</td></tr>
+      <tr><td class="name">CoverURL</td><td class="type">string</td><td class="desc">封面图 URL</td></tr>
+      <tr><td class="name">Size</td><td class="type">int64</td><td class="desc">文件大小</td></tr>
+      <tr><td class="name">Filepath</td><td class="type">string</td><td class="desc">保存路径</td></tr>
+      <tr><td class="name">Error</td><td class="type">string</td><td class="desc">错误信息</td></tr>
+      <tr><td class="name">Reason</td><td class="type">string</td><td class="desc">创建来源："frontend" / "auto"</td></tr>
+      <tr><td class="name">Metadata2</td><td class="type">string</td><td class="desc">JSON: {platform, external_id, nonce_id, eid}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ── Bridge ── -->
+<div class="bridge">
+  <div class="bridge-card">
+    Gopeed<br><code>Task.ID</code><br><small style="color:var(--muted)">uuid string</small>
+  </div>
+  <div class="bridge-arrow">⟷</div>
+  <div class="bridge-card" style="text-align:left">
+    <strong>双向同步 ← TaskId</strong><br><br>
+    <strong>创建时</strong>：SqliteStorage 写入<br>download_task 行，<br>CreateDownloadTaskWithVideo<br>回填 metadata<br><br>
+    <strong>运行时</strong>：Listener 监听<br>Gopeed Event → 更新 DB Status<br>+ WS 推送实时进度
+  </div>
+  <div class="bridge-arrow">⟷</div>
+  <div class="bridge-card">
+    DB<br><code>DownloadTask.TaskId</code><br><small style="color:var(--muted)">unique index</small>
+  </div>
+</div>
+
+<!-- ── Video association ── -->
+<div class="dual" style="margin-bottom:36px">
+  <div class="model-card">
+    <h2>model.Video <span class="badge db">SQLite</span></h2>
+    <table class="field-table">
+      <tr><td class="name">Id</td><td class="type">int <span class="pk">PK</span></td><td class="desc">自增主键</td></tr>
+      <tr><td class="name">DownloadTaskId</td><td class="type">*int <span class="fk">FK</span></td><td class="desc">→ DownloadTask.Id，<strong>一个视频对应一个下载任务</strong></td></tr>
+      <tr><td class="name">PlatformId</td><td class="type">string</td><td class="desc">"wx_channels"</td></tr>
+      <tr><td class="name">ExternalId1</td><td class="type">string</td><td class="desc">ObjectId（视频号 feed ID）</td></tr>
+      <tr><td class="name">ExternalId2</td><td class="type">string</td><td class="desc">ObjectNonceId</td></tr>
+      <tr><td class="name">Title</td><td class="type">string</td><td class="desc">视频标题/描述</td></tr>
+      <tr><td class="name">URL</td><td class="type">string</td><td class="desc">原始 media URL</td></tr>
+      <tr><td class="name">CoverURL</td><td class="type">string</td><td class="desc">封面图</td></tr>
+      <tr><td class="name">Duration</td><td class="type">int64</td><td class="desc">时长（秒）</td></tr>
+      <tr><td class="name">Size</td><td class="type">int64</td><td class="desc">文件大小</td></tr>
+    </table>
+  </div>
+
+  <div class="model-card">
+    <h2>model.Account <span class="badge db">SQLite</span></h2>
+    <table class="field-table">
+      <tr><td class="name">Id</td><td class="type">int <span class="pk">PK</span></td><td class="desc">自增主键</td></tr>
+      <tr><td class="name">PlatformId</td><td class="type">string</td><td class="desc">"wx_channels"</td></tr>
+      <tr><td class="name">ExternalId</td><td class="type">string</td><td class="desc">Username（视频号作者 ID）</td></tr>
+      <tr><td class="name">Username</td><td class="type">string</td><td class="desc">finder username</td></tr>
+      <tr><td class="name">Nickname</td><td class="type">string</td><td class="desc">显示昵称</td></tr>
+      <tr><td class="name">AvatarURL</td><td class="type">string</td><td class="desc">头像</td></tr>
+    </table>
+    <div style="margin-top:16px">
+      <h2>model.VideoAccount <span class="badge db">SQLite</span></h2>
+      <table class="field-table">
+        <tr><td class="name">VideoId</td><td class="type">int <span class="pk">PK FK</span></td><td class="desc">→ Video.Id</td></tr>
+        <tr><td class="name">AccountId</td><td class="type">int <span class="pk">PK FK</span></td><td class="desc">→ Account.Id</td></tr>
+        <tr><td class="name">Role</td><td class="type">string</td><td class="desc">"owner"</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── ER diagram ── -->
+<div style="text-align:center;margin-bottom:36px;font-family:'SF Mono',Menlo,monospace;font-size:13px;line-height:2;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px">
+  <div style="display:inline-block;text-align:left">
+    <span style="color:#e53e3e">┌─────────────┐</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">┌──────────────────┐</span><br>
+    <span style="color:#e53e3e">│</span>&nbsp;&nbsp;Account&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;&nbsp;DownloadTask&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span><br>
+    <span style="color:#e53e3e">│</span>&nbsp;Id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;Id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span><br>
+    <span style="color:#e53e3e">│</span>&nbsp;PlatformId&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;TaskId&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>⟷&nbsp;Gopeed&nbsp;Task.ID<br>
+    <span style="color:#e53e3e">│</span>&nbsp;ExternalId&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;Status&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;&nbsp;&nbsp;0..5<br>
+    <span style="color:#e53e3e">│</span>&nbsp;Username&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;Progress&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;&nbsp;&nbsp;JSON&nbsp;快照<br>
+    <span style="color:#e53e3e">│</span>&nbsp;Nickname&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span><br>
+    <span style="color:#e53e3e">│</span>&nbsp;AvatarURL&nbsp;&nbsp;&nbsp;<span style="color:#e53e3e">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;Title&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span><br>
+    <span style="color:#e53e3e">└──────┬──────┘</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;Metadata2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">│</span>&nbsp;&nbsp;&nbsp;JSON&nbsp;元数据<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dd6b20">└────────┬─────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">│</span>&nbsp;1:N&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">│</span>&nbsp;1:1<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">│</span><br>
+    <span style="color:#805ad5">┌──────┴──────┐</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">┌───┴──────────────┐</span><br>
+    <span style="color:#805ad5">│</span>&nbsp;VideoAccount&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;Video&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span><br>
+    <span style="color:#805ad5">│</span>&nbsp;VideoId&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;Id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span><br>
+    <span style="color:#805ad5">│</span>&nbsp;AccountId&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;DownloadTaskId&nbsp;<span style="color:#805ad5">│</span>&nbsp;→&nbsp;DownloadTask.Id<br>
+    <span style="color:#805ad5">│</span>&nbsp;Role&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;PlatformId&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span><br>
+    <span style="color:#805ad5">└─────────────┘</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;ExternalId1&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;&nbsp;ObjectId<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;Title&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span>&nbsp;URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">│</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#805ad5">└──────────────────┘</span>
+  </div>
+</div>
+
+<!-- ── Real-time Progress Flow ── -->
+<div class="section-title">
+  <span style="font-size:20px">⚡</span> 实时进度获取流程
+</div>
+
+<div class="realtime-flow">
+  <div class="rt-node rt-gopeed">Gopeed<br>Downloader<br><small>Task 状态变更</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-listener">Listener<br><small>client.go:171</small><br><small>evt.Key / evt.Task</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-ws">WebSocket<br>Broadcast<br><small>"event" type</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-ws" style="border-style:dashed">Frontend<br><small>实时更新 UI</small><br><small>progress bar</small></div>
+</div>
+
+<div style="text-align:center;margin:12px 0">
+  <span class="rt-arrow" style="font-size:24px">+</span>
+</div>
+
+<div class="realtime-flow">
+  <div class="rt-node rt-listener">EventKeyDone<br><small>下载完成</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-db">SqliteStorage<br><small>更新 DB Status=4</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-fs" style="border-style:dashed">解密 DecryptData<br><small>key ≠ 0 时</small></div>
+  <span class="rt-arrow">→</span>
+  <div class="rt-node rt-fs" style="border-style:dashed">转码 ffmpeg<br><small>suffix=.mp3 时</small></div>
+</div>
+
+<div class="code-block" style="margin-top:20px">
+<span class="cm">// client.go — 实时进度监听 + 完成处理</span>
+<span class="kw">func</span> (<span class="kw">c</span> *APIClient) <span class="fn">Start</span>() <span class="kw">error</span> {
+    <span class="cm">// ...</span>
+    <span class="kw">c</span>.downloader.<span class="fn">Listener</span>(<span class="kw">func</span>(evt *downloadpkg.Event) {
+        <span class="cm">// 1. 实时推送进度到前端</span>
+        <span class="kw">c</span>.downloader_ws.<span class="fn">Broadcast</span>(APIClientWSMessage{
+            Type: <span class="str">"event"</span>,
+            Data: evt,  <span class="cm">// 包含 Task.ID, Progress.Downloaded, Progress.Speed</span>
+        })
+
+        <span class="cm">// 2. 下载完成 → 解密 + 转码</span>
+        <span class="kw">if</span> evt.Key == downloadpkg.EventKeyDone {
+            task := <span class="kw">c</span>.downloader.<span class="fn">GetTask</span>(evt.Task.ID)
+            file_path := task.Meta.<span class="fn">SingleFilepath</span>()
+
+            <span class="cm">// 解密：key 从 Labels["key"] 读取</span>
+            <span class="kw">if</span> key := task.Meta.Req.Labels[<span class="str">"key"</span>]; key != <span class="str">""</span> {
+                decrypt.<span class="fn">DecryptData</span>(data, <span class="str">131072</span>, key)
+            }
+
+            <span class="cm">// 转码：suffix=.mp3 → ffmpeg 提取音频</span>
+            <span class="kw">if</span> task.Meta.Req.Labels[<span class="str">"suffix"</span>] == <span class="str">".mp3"</span> {
+                system.<span class="fn">RunCommand</span>(<span class="str">"ffmpeg"</span>, <span class="str">"-i"</span>, temp, <span class="str">"-vn"</span>, <span class="str">"-acodec"</span>, <span class="str">"libmp3lame"</span>, ...)
+            }
+        }
+    })
+}
+</div>
+
+<!-- ── Query pattern ── -->
+<div class="section-title" style="margin-top:36px">
+  <span style="font-size:20px">🔍</span> 查询下载进度（按视频号 ObjectId）
+</div>
+
+<div class="code-block">
+<span class="cm">-- 通过 ObjectId 找到对应的下载任务及最新进度</span>
+<span class="kw">SELECT</span>
+    v.title,
+    v.external_id1 <span class="kw">AS</span> object_id,
+    dt.task_id,
+    <span class="kw">CASE</span> dt.status
+        <span class="kw">WHEN</span> 0 <span class="kw">THEN</span> <span class="str">'ready'</span>
+        <span class="kw">WHEN</span> 1 <span class="kw">THEN</span> <span class="str">'running'</span>
+        <span class="kw">WHEN</span> 2 <span class="kw">THEN</span> <span class="str">'paused'</span>
+        <span class="kw">WHEN</span> 4 <span class="kw">THEN</span> <span class="str">'done'</span>
+        <span class="kw">WHEN</span> 5 <span class="kw">THEN</span> <span class="str">'error'</span>
+    <span class="kw">END</span> <span class="kw">AS</span> status,
+    dt.progress,       <span class="cm">-- JSON: {"downloaded":1234,"speed":567}</span>
+    dt.filepath,
+    dt.error
+<span class="kw">FROM</span> video v
+<span class="kw">JOIN</span> download_task dt <span class="kw">ON</span> dt.id = v.download_task_id
+<span class="kw">WHERE</span> v.platform_id = <span class="str">'wx_channels'</span>
+  <span class="kw">AND</span> v.external_id1 = <span class="str">'&lt;objectId&gt;'</span>;
+</div>
+
+<div class="note">
+  <strong>实时进度获取方式：</strong><br>
+  1. <strong>WebSocket 推送</strong>（推荐）：前端连接 WS，Gopeed Listener 广播 <code>evt.Task</code> 对象，包含 <code>ID + Progress.Downloaded + Progress.Speed + Status</code><br>
+  2. <strong>DB 轮询</strong>：通过 <code>TaskId</code> 查询 <code>download_task</code> 表，SqliteStorage 会在每次进度变更时更新 status/progress 字段<br>
+  3. <strong>REST API</strong>：<code>GET /api/task/list</code> 返回所有任务最新状态，前端轮询（已有实现）
+</div>
+
+</div>
+</body>
+</html>
