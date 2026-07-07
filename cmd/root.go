@@ -244,7 +244,38 @@ func root_command(cfg *config.Config) {
 		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(channels_interceptor_cfg.InjectGlobalScriptFilepath))
 	}
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
+	if official_cfg.Enabled {
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, interceptor.Assets, cfg.Version))
+		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+			Match: "official.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: official_cfg.RemoteServerProtocol,
+				Host:     official_cfg.RemoteServerHostname,
+				Port:     official_cfg.RemoteServerPort,
+			},
+		})
+	}
 	interceptor_srv.Interceptor.SetLog(log_file)
+	interceptor_srv.Interceptor.AddPostPlugin(interceptor.CreateYuanbaoTencentPlugin(func(cookieStr string) {
+		allowedKeys := map[string]bool{"hy_source": true, "hy_user": true, "hy_token": true}
+		var filtered []string
+		for _, kv := range strings.Split(cookieStr, ";") {
+			kv = strings.TrimSpace(kv)
+			idx := strings.Index(kv, "=")
+			if idx == -1 {
+				continue
+			}
+			key := kv[:idx]
+			if allowedKeys[key] {
+				filtered = append(filtered, kv)
+			}
+		}
+		if len(filtered) > 0 {
+			api_cfg.CloudflareSphCookie = strings.Join(filtered, "; ")
+			fmt.Println("yuanbao cookie")
+			fmt.Println(api_cfg.CloudflareSphCookie)
+		}
+	}))
 	mgr.RegisterServer(interceptor_srv)
 	channels_interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
 	if api_cfg.RemoteServerEnabled {
@@ -292,7 +323,7 @@ func root_command(cfg *config.Config) {
 					"avatar_url": profile.Contact.AvatarURL,
 					"updated_at": now,
 				}).Error; err != nil {
-					logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update account failed")
+					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update account failed")
 				}
 			}
 		}
@@ -355,7 +386,7 @@ func root_command(cfg *config.Config) {
 					"avatar_url": profile.AvatarURL,
 					"updated_at": now,
 				}).Error; err != nil {
-					logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update official account failed")
+					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update official account failed")
 				}
 			}
 		}
@@ -399,9 +430,9 @@ func root_command(cfg *config.Config) {
 	onWeiboLoaded := func(profile *interceptor.PlatformBrowserProfile) {
 		platformweibo.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
 	}
-	if official_cfg.Enabled {
+	if !official_cfg.Disabled {
 		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountArticleLoadedPlugin(onOfficialAccountArticleLoaded))
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets, cfg.Version))
+		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets))
 		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
 			Match: "official.weixin.qq.com",
 			Target: &proxy.TargetConfig{

@@ -25,8 +25,8 @@ import (
 	"wx_channel/internal/assets"
 	"wx_channel/internal/database/model"
 	downloaderclient "wx_channel/internal/downloader"
-	"wx_channel/frontend"
-	// "wx_channel/internal/officialaccount"
+	"wx_channel/internal/interceptor"
+	"wx_channel/internal/officialaccount"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/storage"
 	"wx_channel/pkg/browsermgr"
@@ -268,12 +268,7 @@ func (c *APIClient) Start() error {
 		}
 		c.downloader_ws.Broadcast(APIClientWSMessage{
 			Type: "event",
-			Data: gin.H{
-				"Key":           evt.Key,
-				"Task":          evt.Task,
-				"Err":           errMsg,
-				// "status_counts": c.downloadTaskStatusCounts(),
-			},
+			Data: c.downloadTaskWSEventData(evt),
 		})
 		c.recordDownloadTaskEvent(evt)
 		if evt.Key == downloadpkg.EventKeyDone {
@@ -405,7 +400,8 @@ func (c *APIClient) ensureDownloadTaskBaselineEvents(tasks []model.DownloadTask)
 		return
 	}
 	for _, task := range tasks {
-		if task.Id == "" {			continue
+		if task.Id == 0 {
+			continue
 		}
 		var count int64
 		if err := c.db.Model(&model.DownloadTaskEvent{}).Where("task_id = ?", task.Id).Count(&count).Error; err != nil || count > 0 {
@@ -465,59 +461,36 @@ func (c *APIClient) setupStaticAssetRoutes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		c.engine.Handle(method, "/__wx_channels_assets/lib/*filepath", c.handleChannelLibAsset)
 		c.engine.Handle(method, "/__wx_channels_assets/src/*filepath", c.handleChannelSrcAsset)
-		c.engine.Handle(method, "/__wx_channels_assets/inject/*filepath", c.handleChannelInjectAsset)
 	}
 }
 
 func (c *APIClient) handleChannelLibAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadLib(rel)
+	data, err := interceptor.Assets.ReadLib(rel)
 	if err != nil {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
-	data = frontend.ChannelStaticAssetResponseData(rel, data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelLibAssetCacheControl)
+	data = interceptor.ChannelStaticAssetResponseData(rel, data)
+	ctx.Header("Content-Type", interceptor.ChannelStaticAssetContentType(rel))
+	ctx.Header("Cache-Control", interceptor.ChannelLibAssetCacheControl)
 	if ctx.Request.Method == http.MethodHead {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
-}
-
-func (c *APIClient) handleChannelInjectAsset(ctx *gin.Context) {
-	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadInject(rel)
-	if err != nil {
-		ctx.Status(http.StatusNotFound)
-		return
-	}
-	etag := frontend.ChannelStaticAssetETag(data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelSrcAssetCacheControl)
-	ctx.Header("ETag", etag)
-	if strings.Contains(ctx.GetHeader("If-None-Match"), etag) {
-		ctx.Status(http.StatusNotModified)
-		return
-	}
-	if ctx.Request.Method == http.MethodHead {
-		ctx.Status(http.StatusOK)
-		return
-	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, interceptor.ChannelStaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadSrc(rel)
+	data, err := interceptor.Assets.ReadSrc(rel)
 	if err != nil {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
-	etag := frontend.ChannelStaticAssetETag(data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelSrcAssetCacheControl)
+	etag := interceptor.ChannelStaticAssetETag(data)
+	ctx.Header("Content-Type", interceptor.ChannelStaticAssetContentType(rel))
+	ctx.Header("Cache-Control", interceptor.ChannelSrcAssetCacheControl)
 	ctx.Header("ETag", etag)
 	if strings.Contains(ctx.GetHeader("If-None-Match"), etag) {
 		ctx.Status(http.StatusNotModified)
@@ -527,7 +500,7 @@ func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, interceptor.ChannelStaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) resolve_connections(url string) int {
@@ -546,11 +519,11 @@ func (c *APIClient) resolve_connections(url string) int {
 	return 4
 }
 
-func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *services.FeedDownloadTaskBody) bool {
+func (c *APIClient) check_existing_feed(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) bool {
 	return len(c.find_existing_feed_tasks(tasks, body)) > 0
 }
 
-func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *services.FeedDownloadTaskBody) []*downloadpkg.Task {
+func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *FeedDownloadTaskBody) []*downloadpkg.Task {
 	var matches []*downloadpkg.Task
 	for _, t := range tasks {
 		if t == nil || t.Meta == nil || t.Meta.Req == nil || t.Meta.Req.Labels == nil {

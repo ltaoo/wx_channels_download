@@ -26,17 +26,17 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 	var body struct {
-		AccountId   *int       `form:"account_id"`
-		ContentType *string    `form:"content_type"`
-		Keyword     *string    `form:"keyword"`
-		StartAt     *time.Time `form:"start_at" time_format:"2006-01-02"`
-		EndAt       *time.Time `form:"end_at" time_format:"2006-01-02"`
-		Page        *int       `form:"page"`
-		PageSize    *int       `form:"page_size"`
-		Limit       *int       `form:"limit"`
-		Offset      *int       `form:"offset"`
+		AccountId   *int       `json:"account_id"`
+		ContentType *string    `json:"content_type"`
+		Keyword     *string    `json:"keyword"`
+		StartAt     *time.Time `json:"start_at"`
+		EndAt       *time.Time `json:"end_at"`
+		Page        *int       `json:"page"`
+		PageSize    *int       `json:"page_size"`
+		Limit       *int       `json:"limit"`
+		Offset      *int       `json:"offset"`
 	}
-	if err := ctx.ShouldBindQuery(&body); err != nil {
+	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
@@ -93,20 +93,20 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 
-	contentIDs := make([]string, 0, len(contents))
-	downloadTaskIDs := make([]string, 0, len(contents))
+	contentIDs := make([]int, 0, len(contents))
+	downloadTaskIDs := make([]int, 0, len(contents))
 	for _, content := range contents {
 		contentIDs = append(contentIDs, content.Id)
-		if content.DownloadTaskId != nil && *content.DownloadTaskId != "" {
+		if content.DownloadTaskId != nil && *content.DownloadTaskId > 0 {
 			downloadTaskIDs = append(downloadTaskIDs, *content.DownloadTaskId)
 		}
 	}
 
-	accountsByContentID := map[string][]gin.H{}
+	accountsByContentID := map[int][]gin.H{}
 	if len(contentIDs) > 0 {
 		type row struct {
-			ContentId  string
-			AccountId  string
+			ContentId  int
+			AccountId  int
 			Role       string
 			PlatformId string
 			ExternalId string
@@ -135,7 +135,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		}
 	}
 
-	tasksByID := map[string]model.DownloadTask{}
+	tasksByID := map[int]model.DownloadTask{}
 	if len(downloadTaskIDs) > 0 {
 		var tasks []model.DownloadTask
 		_ = db.Where("id IN ?", downloadTaskIDs).Find(&tasks).Error
@@ -172,6 +172,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		list = append(list, gin.H{
 			"id":                   content.Id,
 			"platform_id":          content.PlatformId,
+			"platform":             platformView(content.PlatformId),
 			"platform_name":        platformNameOf(content.PlatformId),
 			"platform_favicon_url": scraper.FaviconDataURL(content.PlatformId),
 			"content_type":         content.ContentType,

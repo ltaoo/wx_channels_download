@@ -12,8 +12,6 @@ wx_channel*
 scraper_examples
 .asset-sync-store/
 .asset-sync.local.yaml
-workdir
-cache
 
 scraper_examples
 cache

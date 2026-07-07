@@ -1,0 +1,242 @@
+type LogMsg = {
+  /** 消息内容 */
+  msg: string;
+  /** 日志前缀，默认是 [FRONTEND] */
+  prefix?: string;
+  ignore_prefix?: 1;
+  replace?: 1;
+  end?: 1;
+};
+type ErrorMsg = {
+  /** 是否同时调用 alert */
+  alert?: number;
+  /** 错误消息内容 */
+  msg: string;
+};
+type ChannelsConfig = {
+  /** 下载按钮默认下载原始视频 */
+  defaultHighest: boolean;
+  /** 下载文件名的模板，不带后缀 */
+  downloadFilenameTemplate: string;
+  /** 下载时暂停播放 */
+  downloadPauseWhenDownload: boolean;
+  /** 在前端下载 */
+  downloadInFrontend: boolean;
+  /** API 服务地址 */
+  apiServerAddr: string;
+  channelsHostname: string;
+  downloadHostname: string;
+  MaxRunning: number;
+  downloadForceCheckAllFeeds: boolean;
+};
+type DropdownMenuItemPayload = {
+  label: string;
+  onClick: (event: { feed: FeedProfile; href: string }) => void;
+};
+
+/** 视频号原始的视频数据 */
+type ChannelsFeed = {
+  id: string;
+  description?: string;
+  objectDesc: {
+    /** 2图片 4视频 9直播 */
+    mediaType: number;
+    description: string;
+    media: ChannelsMedia[];
+    flowCardDesc?: {
+      description: string;
+    };
+    finderNewlifeDesc?: {
+      richTextTitle: string;
+    };
+    followPostInfo?: {
+      musicInfo?: {
+        docId?: string;
+        docType?: number;
+        name?: string;
+        artist?: string;
+        mediaStreamingUrl?: string;
+      };
+    };
+  };
+  objectNonceId: string;
+  objectStatus: number;
+  createtime: number;
+  /** 转发数 */
+  forwardCount: number;
+  /** 点赞数 */
+  likeCount: number;
+  /** 评论数 */
+  commentCount: number;
+  favCount: number;
+  /** 发布者 */
+  contact: {
+    username: string;
+    headUrl: string;
+    nickname: string;
+    signature: string;
+  };
+  liveCover?: {
+    imgUrl: string;
+    imgUrlToken: string;
+  };
+  liveInfo?: {
+    streamUrl: string;
+  };
+  anchorContact?: {
+    username: string;
+    nickname: string;
+    headUrl: string;
+    signature: string;
+    liveCoverImgUrl: string;
+  };
+};
+/** 视频号原始的 media */
+type ChannelsMedia = {
+  url: string;
+  urlToken: string;
+  coverUrl: string;
+  thumbUrl?: string;
+  fullThumbUrl?: string;
+  fullUrl?: string;
+  fileSize: number;
+  decodeKey: number;
+  /** 时长 */
+  videoPlayLen: number;
+  width: number;
+  height: number;
+  spec: ChannelsMediaSpec[];
+};
+type ChannelsMediaSpec = {
+  /** 规格值 */
+  fileFormat: string;
+};
+type ChannelsBgm = {
+  url: string;
+  filename: string;
+  name: string;
+  artist: string;
+  doc_id: string;
+  doc_type: number;
+};
+/**
+ * 对原始 feed 做了一些提取后的
+ * 调用 WXU.check_profile_existing 获取到的就是这个类型的数据
+ */
+type FeedProfile = {
+  type: "media" | "picture" | "live";
+  id: string;
+  nonce_id: string;
+  /** 标题 */
+  title: string;
+  /** 下载地址 */
+  url: string;
+  key: number;
+  /** 封面地址 */
+  cover_url: string;
+  /** 视频来源地址（视频号地址） */
+  // source_url: string;
+  /** 视频发布时间 */
+  createtime: number;
+  /** 文件大小 */
+  size?: number;
+  /** 视频时长 */
+  duration?: number;
+  /** 图片列表，类型为 pictures 才有 */
+  files?: { url: string; urlToken?: string }[];
+  /** 背景音乐，图片动态可能有 */
+  bgm?: ChannelsBgm | null;
+  /** 规格列表，类型为 media 才有 */
+  spec?: ChannelsMediaSpec[];
+  /** 发布者 */
+  contact: {
+    id: string;
+    avatar_url: string;
+    nickname: string;
+  };
+};
+
+/**
+ * 对 FeedProfile 又增加了用于下载的一些字段
+ */
+type FeedProfilePayload = FeedProfile & {
+  /** 文件名 */
+  filename: string;
+  /** 原始 URL */
+  original_url: string;
+  /** 添加了 规格 后缀的视频下载地址 */
+  url: string;
+  /** 目标规格 */
+  target_spec?: ChannelsMediaSpec;
+  /** 源 URL */
+  source_url: string;
+  /** 已播放的视频内容（用于下载当前视频） */
+  data?: ArrayBuffer;
+  mp3: boolean;
+};
+
+type ChannelsAPIResp = {
+  errCode: number;
+  errMsg: string;
+  data: {
+    err: {
+      base_resp: {
+        err_msg: string;
+        ret: number;
+      };
+      err_msg: string;
+      jsapi_resp: {
+        error_msg: string;
+        resp_json: null;
+        ret: number;
+      };
+    };
+  };
+};
+
+type OfficialAccountMsgListResp = {
+  ret: number;
+  errmsg: string;
+  msg_count: number;
+  can_msg_continue: number;
+  general_msg_list: string;
+  next_offset: number;
+  video_count: number;
+  use_video_tab: number;
+  real_type: number;
+  home_page_list: unknown[];
+};
+
+type SharedFeedProfileResp = {
+  data: {
+    authorInfo: {
+      nickname: string;
+      headImgUrl: string;
+      authIconUrl: string;
+    };
+    feedInfo: {
+      picInfo: unknown[];
+      description: string;
+      favCountFmt: string;
+      likeCountFmt: string;
+      forwardCountFmt: string;
+      commentCountFmt: string;
+      createtime: number;
+      isHardAd: boolean;
+      coverUrl: string;
+    };
+    errMsg: {
+      type: number;
+    };
+    sceneInfo: {
+      dynamicExportId: string;
+      commentScene: number;
+      expiredTime: number;
+      requestScene: number;
+      entryScene: number;
+      entryCardType: number;
+    };
+  };
+  errCode: number;
+  errMsg: string;
+}

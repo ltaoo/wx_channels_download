@@ -3,13 +3,11 @@ package wxchannels
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"wx_channel/internal/database/model"
 	utilpkg "wx_channel/pkg/util"
 )
 
@@ -402,23 +400,6 @@ type RequestResponse struct {
 	Data interface{} `json:"data"`
 }
 
-// buildContentURL 从 media URL 中提取 scheme://host/path，仅保留 encfilekey 参数，再拼接 urlToken。
-func buildContentURL(mediaURL, urlToken string) string {
-	u, err := url.Parse(mediaURL)
-	if err != nil {
-		return mediaURL + urlToken
-	}
-	encfilekey := u.Query().Get("encfilekey")
-	base := u.Scheme + "://" + u.Host + u.Path
-	if encfilekey == "" {
-		if strings.HasPrefix(urlToken, "&") {
-			return base + "?" + urlToken[1:]
-		}
-		return base + urlToken
-	}
-	return base + "?encfilekey=" + encfilekey + urlToken
-}
-
 func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfile, error) {
 	if r == nil {
 		return nil, errors.New("channels object 为空")
@@ -515,7 +496,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 			ObjectId:    feed.ID,
 			NonceId:     feed.ObjectNonceId,
 			SourceURL:   feed.SourceURL,
-			URL:         buildContentURL(media.URL, media.URLToken),
+			URL:         media.URL + media.URLToken,
 			Title:       buildTitle(feed.ObjectDesc.Description, false),
 			DecryptKey:  media.DecodeKey,
 			CoverURL:    media.CoverUrl,
@@ -545,7 +526,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 		ObjectId:    feed.ID,
 		NonceId:     feed.ObjectNonceId,
 		SourceURL:   feed.SourceURL,
-		URL:         buildContentURL(media.URL, media.URLToken),
+		URL:         media.URL + media.URLToken,
 		Title:       buildTitle(feed.ObjectDesc.Description, false),
 		DecryptKey:  media.DecodeKey,
 		CoverURL:    media.CoverUrl,
@@ -669,8 +650,8 @@ type Baseresponse struct {
 	Errmsg Errmsg `json:"ErrMsg"`
 }
 
-type ChannelsFollowListBody struct {
-	NextMarker string `json:"next_marker"`
+type ChannelsFeedShareUrlBody struct {
+	ObjectId string `json:"oid"`
 }
 
 type ChannelsFeedShareUrlResp struct {
@@ -683,67 +664,6 @@ type ChannelsFeedShareUrlResp struct {
 	} `json:"data"`
 	Payload struct {
 		ObjectId string `json:"objectId"`
-	} `json:"payload"`
-}
-
-
-type ChannelsFeedShareUrlBody struct {
-	ObjectId string `json:"oid"`
-}
-
-type ChannelsFollowReferenceInfo struct {
-	Type   int    `json:"type"`
-	Name   string `json:"name"`
-	Status int    `json:"status"`
-}
-
-type ChannelsFollowLiveReplaySetting struct {
-	CanUseIntelligentlyGenReplayHighlight bool `json:"canUseIntelligentlyGenReplayHighlight"`
-}
-
-type ChannelsFollowLiveInfo struct {
-	AnchorStatusFlag string                           `json:"anchorStatusFlag"`
-	SwitchFlag       int                              `json:"switchFlag"`
-	SourceType       int                              `json:"sourceType"`
-	MicSetting       *ChannelsLiveMicSetting          `json:"micSetting,omitempty"`
-	LotterySetting   map[string]any                   `json:"lotterySetting"`
-	LiveCoverImgs    []any                            `json:"liveCoverImgs"`
-	ReplaySetting    *ChannelsFollowLiveReplaySetting `json:"replaySetting,omitempty"`
-}
-
-type ChannelsFollowContact struct {
-	Username        string                        `json:"username"`
-	Nickname        string                        `json:"nickname"`
-	HeadUrl         string                        `json:"headUrl"`
-	Signature       string                        `json:"signature"`
-	FollowFlag      int                           `json:"followFlag"`
-	FollowTime      int                           `json:"followTime"`
-	CoverImgUrl     string                        `json:"coverImgUrl"`
-	SpamStatus      int                           `json:"spamStatus"`
-	ExtFlag         int                           `json:"extFlag"`
-	ExtInfo         ChannelsContactExtInfo        `json:"extInfo"`
-	LiveStatus      int                           `json:"liveStatus"`
-	LiveCoverImgUrl string                        `json:"liveCoverImgUrl"`
-	LiveInfo        ChannelsFollowLiveInfo        `json:"liveInfo"`
-	BindInfo        []any                         `json:"bindInfo"`
-	Menu            []any                         `json:"menu"`
-	Status          string                        `json:"status"`
-	AdditionalFlag  string                        `json:"additionalFlag"`
-	ReferenceInfo   []ChannelsFollowReferenceInfo `json:"referenceInfo"`
-}
-
-type ChannelsFollowListResp struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    struct {
-		BaseResponse BaseResponse            `json:"BaseResponse"`
-		ContactList  []ChannelsFollowContact `json:"contactList"`
-		LastBuffer   string                  `json:"lastBuffer"`
-		ContinueFlag int                     `json:"continueFlag"`
-		FollowCount  int                     `json:"followCount"`
-	} `json:"data"`
-	Payload struct {
-		LastBuffer string `json:"lastBuffer"`
 	} `json:"payload"`
 }
 
@@ -877,84 +797,4 @@ func BuildJumpURL(feed *ChannelsFeedProfile) string {
 
 func BuildJumpUrl(feed *ChannelsFeedProfile) string {
 	return BuildJumpURL(feed)
-}
-
-// ToAccount converts ChannelsObject to a model.Account.
-func (r *ChannelsObject) ToAccount() (*model.Account, error) {
-	profile, err := ChannelsObjectToChannelsFeedProfile(r)
-	if err != nil {
-		return nil, err
-	}
-
-	contact := profile.Contact
-	now := utilpkg.NowMillis()
-	return &model.Account{
-		Id:         BuildAccountID(contact.Username),
-		PlatformId: PlatformID,
-		ExternalId: contact.Username,
-		Username:   contact.Username,
-		Nickname:   contact.Nickname,
-		AvatarURL:  contact.AvatarURL,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, nil
-}
-
-// ToContent converts ChannelsObject to a model.Content.
-func (r *ChannelsObject) ToContent() (*model.Content, error) {
-	profile, err := ChannelsObjectToChannelsFeedProfile(r)
-	if err != nil {
-		return nil, err
-	}
-
-	now := utilpkg.NowMillis()
-
-	// Determine content type from raw object fields
-	contentType := "video"
-	if r.LiveInfo != nil {
-		contentType = "live"
-	} else if r.Type == "picture" || r.ObjectDesc.MediaType == 2 {
-		contentType = "picture"
-	}
-
-	pub := int64(profile.CreatedAt)
-
-	return &model.Content{
-		Id:          BuildContentID(profile.ObjectId),
-		PlatformId:  PlatformID,
-		ContentType: contentType,
-		Title:       profile.Title,
-		Description: profile.Title,
-		ExternalId:  profile.ObjectId,
-		ExternalId2: profile.NonceId,
-		ExternalId3: profile.DecryptKey,
-		SourceURL:   profile.SourceURL,
-		ContentURL:  profile.URL,
-		URL:         profile.URL,
-		CoverURL:    profile.CoverURL,
-		CoverWidth:  strconv.Itoa(profile.CoverWidth),
-		CoverHeight: strconv.Itoa(profile.CoverHeight),
-		Duration:    int64(profile.Duration),
-		Size:        int64(profile.FileSize),
-		PublishTime: &pub,
-		Metadata:    fmt.Sprintf(`{"key":"%s"}`, profile.DecryptKey),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, nil
-}
-
-const PlatformID = "wx_channels"
-
-// BuildContentID 构建 content 表主键 ID
-func BuildContentID(externalID string) string {
-	return PlatformID + ":" + externalID
-}
-
-// BuildAccountID 构建 account 表主键 ID
-func BuildAccountID(externalID string) string {
-	return PlatformID + ":" + externalID
 }

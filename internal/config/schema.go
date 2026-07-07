@@ -27,7 +27,6 @@ type ConfigItem struct {
 	Deprecated  bool        `json:"deprecated,omitempty"`
 	Readonly    bool        `json:"readonly,omitempty"`
 	Accept      string      `json:"accept,omitempty"` // For file type
-	HotReload   bool        `json:"hotReload,omitempty"` // 是否支持热重载，true 表示修改后立即生效无需重启
 }
 
 var Registry []ConfigItem

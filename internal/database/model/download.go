@@ -1,11 +1,11 @@
 package model
 
 type DownloadTask struct {
-	Id             string `gorm:"primaryKey" json:"id"`
+	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskUID        string `gorm:"column:task_uid" json:"task_uid"`
 	TaskId         string `gorm:"uniqueIndex;not null" json:"task_id"`
-	ParentId       string `gorm:"index" json:"parent_id"`
-	RootId         string `gorm:"index" json:"root_id"`
+	ParentId       int    `gorm:"index" json:"parent_id"`
+	RootId         int    `gorm:"index" json:"root_id"`
 	NodeType       string `gorm:"column:node_type" json:"node_type"`
 	Engine         string `gorm:"column:engine" json:"engine"`
 	EngineTaskID   string `gorm:"column:engine_task_id" json:"engine_task_id"`
@@ -40,8 +40,8 @@ type DownloadTask struct {
 func (DownloadTask) TableName() string { return "download_task" }
 
 type DownloadTaskPiece struct {
-	Id             string `gorm:"primaryKey" json:"id"`
-	TaskId         string `gorm:"not null;uniqueIndex:idx_download_task_piece_unique,priority:1;index:idx_download_task_piece_status,priority:1" json:"task_id"`
+	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskId         int    `gorm:"not null;uniqueIndex:idx_download_task_piece_unique,priority:1;index:idx_download_task_piece_status,priority:1" json:"task_id"`
 	PieceIndex     int    `gorm:"not null;uniqueIndex:idx_download_task_piece_unique,priority:2" json:"piece_index"`
 	StartOffset    int64  `gorm:"not null" json:"start_offset"`
 	EndOffset      int64  `gorm:"not null" json:"end_offset"`
@@ -58,8 +58,8 @@ type DownloadTaskPiece struct {
 func (DownloadTaskPiece) TableName() string { return "download_task_piece" }
 
 type DownloadTaskEvent struct {
-	Id        string `gorm:"primaryKey" json:"id"`
-	TaskId    string `gorm:"not null;index:idx_download_task_event_task,priority:1" json:"task_id"`
+	Id        int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskId    int    `gorm:"not null;index:idx_download_task_event_task,priority:1" json:"task_id"`
 	Type      string `gorm:"not null" json:"type"`
 	Message   string `json:"message"`
 	Data      string `json:"data"`
@@ -69,10 +69,10 @@ type DownloadTaskEvent struct {
 func (DownloadTaskEvent) TableName() string { return "download_task_event" }
 
 type LiveDownloadTask struct {
-	Id             string  `gorm:"primaryKey" json:"id"`
+	Id             int     `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskId         string  `gorm:"uniqueIndex;not null" json:"task_id"`
 	PlatformId     string  `gorm:"not null" json:"platform_id"`
-	AccountId      *string `json:"account_id"`
+	AccountId      *int    `json:"account_id"`
 	LiveURL        string  `gorm:"not null" json:"live_url"`
 	Title          string  `json:"title"`
 	StreamerName   string  `json:"streamer_name"`

@@ -1,0 +1,194 @@
+/**
+ * @file 直播页
+ */
+window.__wx_channels_live_store__ = {};
+function __wx_copy_live_download_command(url) {
+  var filename = (() => {
+    return new Date().valueOf();
+  })();
+  var command = `ffmpeg -i "${url}" -c copy -y "live_${filename}.flv"`;
+  WXU.log({ prefix: "", msg: "" });
+  WXU.log({ prefix: "", msg: "直播下载命令" });
+  WXU.log({ prefix: "", msg: command });
+  WXU.copy(command);
+  WXU.toast("直播下载命令已复制到粘贴板");
+}
+
+async function __wx_insert_live_download_btn($btn) {
+  var $elm1 = await WXU.find_elm(function () {
+    return document.querySelector(".host__info .extra");
+  });
+  if ($elm1) {
+    var relative_node = $elm1.children[0];
+    if (!relative_node) {
+      return false;
+    }
+    $elm1.insertBefore($btn, relative_node);
+    return true;
+  }
+  return false;
+}
+/**
+ * 为指定按钮添加额外的下载选项菜单
+ * @param {HTMLElement} trigger
+ * @param {Array} options - 直播流选项列表
+ */
+function __wx_attach_live_download_dropdown_menu(trigger, options) {
+  if (trigger.__wxTimelessDownloadDropdown) {
+    return trigger.__wxTimelessDownloadDropdown;
+  }
+
+  function close_dropdown() {
+    if (dropdown$) {
+      dropdown$.hide({ reason: "download menu action" });
+    }
+  }
+
+  function build_menu_items() {
+    return options.map((opt) => {
+      return new Timeless.ui.MenuItemCore({
+        label: [opt.tag_name, opt.rate, opt.video_quality_level_desc]
+          .filter(Boolean)
+          .join(" "),
+        onClick() {
+          __wx_copy_live_download_command(opt.url);
+          close_dropdown();
+        },
+      });
+    });
+  }
+
+  const dropdown$ = new Timeless.ui.DropdownMenuCore({
+    trigger: "hover",
+    align: "end",
+    items: build_menu_items(),
+  });
+
+  const mount = document.createElement("span");
+  mount.className = "wx-download-dropdown-menu-root";
+  mount.style.display = "contents";
+  document.body.appendChild(mount);
+  Timeless.DOM.render(Timeless.DropdownMenu({ store: dropdown$ }), mount);
+
+  function set_reference() {
+    dropdown$.setReference(
+      {
+        $el: trigger,
+        getRect() {
+          return trigger.getBoundingClientRect();
+        },
+      },
+      { force: true },
+    );
+  }
+
+  trigger.addEventListener("mouseenter", () => {
+    set_reference();
+    dropdown$.handleEnterTrigger();
+  });
+  trigger.addEventListener("mouseleave", () => {
+    dropdown$.handleLeaveTrigger();
+  });
+  trigger.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+
+  if (trigger.dataset) {
+    trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
+  }
+  trigger.__wxTimelessDownloadDropdown = dropdown$;
+  return dropdown$;
+}
+
+(() => {
+  var error_tip_timer = setTimeout(() => {
+    WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
+  }, 5000);
+  var live_page_mounted = false;
+  var profile = null;
+  var live = null;
+  async function handleLoaded(profile, data) {
+    if (!data) {
+      return;
+    }
+    if (live_page_mounted) {
+      return;
+    }
+    live_page_mounted = true;
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
+    const feed = {
+      id: data.liveInfo.liveId,
+      liveInfo: data.liveInfo,
+      liveDescription: data.liveDescription,
+      objectDesc: {
+        description: data.liveDescription,
+      },
+      contact: (() => {
+        if (data.bizUserInfo) {
+          return {
+            nickname: data.bizUserInfo.bizNickname,
+            username: data.bizUserInfo.bizUsername,
+          };
+        }
+        if (profile) {
+          return {
+            nickname: profile.nickname,
+            username: profile.username,
+          };
+        }
+        return {
+          nickname: "",
+          username: "",
+        };
+      })(),
+      createtime: data.liveInfo.startTime,
+    };
+    WXU.set_live_feed(feed);
+    var $btn = download_btn4();
+    $btn.onclick = function () {
+      var profile = __wx_channels_live_store__.profile;
+      if (!profile) {
+        WXU.error({ msg: "检测不到视频，请将本工具更新到最新版" });
+        return;
+      }
+      __wx_copy_live_download_command(profile.url);
+    };
+    var success = await __wx_insert_live_download_btn($btn);
+    if (!success) {
+      return;
+    }
+    if (!WXU.API.finderJoinLiveMapper) {
+      // WXU.error({ msg: "missing WXU.API.finderJoinLiveMapper" });
+      console.log("missing WXU.API.finderJoinLiveMapper");
+      return;
+    }
+    if (!WXU.API.createAdapterFromGlobalMapper) {
+      console.log("missing WXU.API.createAdapterFromGlobalMapper");
+      return;
+    }
+    const i = WXU.API.createAdapterFromGlobalMapper(
+      data,
+      WXU.API.finderJoinLiveMapper,
+      ["room", "stream", "liveUser"],
+      "poll",
+    );
+    console.log("[live.js]has more options", i[1]);
+    if (i && i[1] && i[1].payload.channelParams) {
+      var options = i[1].payload.channelParams.cdn_trans_info.filter(
+        (vv) => vv.url,
+      );
+      __wx_attach_live_download_dropdown_menu($btn, options);
+    }
+  }
+  WXU.onFetchFeedProfile((data) => {
+    console.log("[live.js]onFetchFeedProfile", data);
+    profile = data;
+    handleLoaded(profile, live);
+  });
+  WXU.onJoinLive(async (data) => {
+    console.log("[live.js]onJoinLive", JSON.stringify(data));
+    live = data;
+    handleLoaded(profile, live);
+  });
+})();

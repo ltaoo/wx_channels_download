@@ -280,6 +280,7 @@ type FeedDownloadTaskBody struct {
 	Key       int    `json:"key"`
 	Spec      string `json:"spec"`
 	Suffix    string `json:"suffix"`
+	SourceURL string `json:"source_url"`
 	Overwrite bool   `json:"overwrite"`
 	Duplicate bool   `json:"duplicate"`
 }

@@ -1,0 +1,485 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WeChat Channels Download API - 下载器接口",
+    "version": "v260330",
+    "description": "下载器相关接口"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:2022",
+      "description": "本地服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "下载器",
+      "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
+    }
+  ],
+  "paths": {
+    "/api/task/create_channels": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建视频号下载任务",
+        "description": "其中 `body` 和详情接口一样，支持传 `oid`+`nid`，或者 `url`。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oid": { "type": "string", "description": "视频唯一 ID (配合 nid 使用)" },
+                  "nid": { "type": "string", "description": "视频唯一 ID (配合 oid 使用)" },
+                  "url": { "type": "string", "description": "视频号页面 URL" },
+                  "mp3": { "type": "boolean", "default": false, "description": "是否下载为 MP3，默认为 false" },
+                  "cover": { "type": "boolean", "default": false, "description": "是否下载为封面，默认为 false" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功"
+          }
+        }
+      }
+    },
+    "/api/task/create": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建下载任务",
+        "description": "创建单个下载任务，支持下载视频、音频等文件。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "description": "任务唯一标识 ID" },
+                  "url": { "type": "string", "description": "下载地址" },
+                  "title": { "type": "string", "description": "任务标题" },
+                  "filename": { "type": "string", "description": "文件名（不包含扩展名）" },
+                  "key": { "type": "integer", "description": "密钥" },
+                  "spec": { "type": "string", "description": "规格参数" },
+                  "suffix": { "type": "string", "description": "文件扩展名（如 .mp4, .mp3）" }
+                },
+                "required": ["id", "url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功"
+          }
+        }
+      }
+    },
+    "/api/task/create2": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建通用下载任务（公众号文章）",
+        "description": "创建单个通用下载任务。用于下载公众号文章等任意直链 URL",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "description": "下载地址，officialaccount://https://mp.weixin.qq.com/s/xxxxxxxxxxxxxxxxxxxxxx" },
+                  "filename": { "type": "string", "description": "文件名（包含扩展名）" },
+                  "dir": { "type": "string", "description": "保存目录（相对于下载目录，可为空）" },
+                  "extra": { "type": "object", "additionalProperties": { "type": "string" }, "description": "附加标签（可选）" }
+                },
+                "required": ["url"]
+              },
+              "examples": {
+                "mp_article": {
+                  "summary": "下载公众号文章",
+                  "value": { "url": "https://mp.weixin.qq.com/s/xxxxxxxxxxxxxxxxxxxxxx" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务创建成功"
+          }
+        }
+      }
+    },
+    "/api/task/create_batch": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "批量创建下载任务",
+        "description": "批量创建多个下载任务，支持下载视频、音频等文件。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "feeds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "description": "任务唯一标识 ID" },
+                        "url": { "type": "string", "description": "下载地址" },
+                        "title": { "type": "string", "description": "任务标题" },
+                        "filename": { "type": "string", "description": "文件名（不包含扩展名）" },
+                        "key": { "type": "integer", "description": "密钥" },
+                        "spec": { "type": "string", "description": "规格参数" },
+                        "suffix": { "type": "string", "description": "文件扩展名（如 .mp4, .mp3）" }
+                      },
+                      "required": ["id", "url"]
+                    },
+                    "description": "下载任务列表"
+                  }
+                },
+                "required": ["feeds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "批量任务创建成功"
+          }
+        }
+      }
+    },
+    "/api/browse_history/create": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "创建/更新浏览历史",
+        "description": "根据内容 id 进行 upsert：首次写入创建记录，重复写入会将 visited_times + 1，并更新内容/账号信息。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "description": "内容 id（视频号 object id）" },
+                  "contact": {
+                    "type": "object",
+                    "properties": {
+                      "username": { "type": "string", "description": "视频号账号 username（如 v2_xxx@finder）" },
+                      "nickname": { "type": "string", "description": "视频号昵称" },
+                      "headUrl": { "type": "string", "description": "视频号头像 URL" }
+                    },
+                    "required": ["username"]
+                  },
+                  "objectDesc": {
+                    "type": "object",
+                    "properties": {
+                      "description": { "type": "string", "description": "内容描述/标题" },
+                      "media": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": { "type": "string", "description": "媒体直链（不含 urlToken）" },
+                            "coverUrl": { "type": "string", "description": "封面 URL" },
+                            "decodeKey": { "type": "string", "description": "解密 key（视频号下载用）" },
+                            "urlToken": { "type": "string", "description": "媒体 token（拼接到 url 后）" }
+                          }
+                        },
+                        "description": "媒体列表（取第 1 个用于写入 content_url/content_cover_url）"
+                      }
+                    }
+                  },
+                  "objectNonceId": { "type": "string", "description": "nonce id（写入 extra_data）" },
+                  "source_url": { "type": "string", "description": "来源页面 URL" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "写入成功"
+          }
+        }
+      }
+    },
+    "/api/browse_history/list": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "获取浏览历史列表",
+        "description": "按 updated_at 倒序返回浏览历史。可选通过 username 过滤指定视频号账号。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string", "description": "视频号账号 username（如 v2_xxx@finder）。不传则返回全部。" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "浏览历史列表"
+          }
+        }
+      }
+    },
+    "/api/task/list": {
+      "get": {
+        "tags": ["下载器"],
+        "summary": "获取下载任务列表",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["all", "ready", "running", "pause", "error", "done"], "default": "all" },
+            "description": "任务状态过滤，可选值：`all` (默认), `ready`, `running`, `pause`, `error`, `done`"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1 },
+            "description": "页码，默认 1"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20 },
+            "description": "每页数量，默认 20"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务列表"
+          }
+        }
+      }
+    },
+    "/api/task/profile": {
+      "get": {
+        "tags": ["下载器"],
+        "summary": "获取单个任务详情",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "任务 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务详情"
+          }
+        }
+      }
+    },
+    "/api/task/start": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "开始任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "任务 ID" } },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/task/pause": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "暂停任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "任务 ID" } },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/task/resume": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "恢复任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "任务 ID" } },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/task/delete": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "删除任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "任务 ID" } },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/task/clear": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "清空所有任务",
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/file": {
+      "get": {
+        "tags": ["下载器"],
+        "summary": "获取下载文件",
+        "description": "获取已下载的文件，支持流式传输和预览",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "文件相对路径"
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "enum": [0, 1] },
+            "description": "是否强制下载 (1 为下载，否则预览)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件内容"
+          }
+        }
+      }
+    },
+    "/api/open_download_dir": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "打开下载目录",
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/show_file": {
+      "post": {
+        "tags": ["下载器"],
+        "summary": "在文件夹中显示文件",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string", "description": "文件所在目录绝对路径" },
+                  "name": { "type": "string", "description": "文件名" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": ["下载器"],
+        "summary": "获取服务状态",
+        "description": "获取当前服务状态信息",
+        "responses": {
+          "200": {
+            "description": "服务状态",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "version": "v260330",
+                    "channels": { "available": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

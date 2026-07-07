@@ -42,7 +42,7 @@ func DecodeBase64ToUint64String(base64URLNoPad string) string {
 	}
 	if len(raw) < 8 {
 		padded := make([]byte, 8)
-		copy(padded[8-len(raw):], raw)
+		copy(padded, raw)
 		raw = padded
 	} else if len(raw) > 8 {
 		raw = raw[:8]

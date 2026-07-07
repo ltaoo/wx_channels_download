@@ -2,12 +2,6 @@ version: 1
 manifest: .asset-sync.lock.json
 
 roots:
-  - path: cache
-    include:
-      - "**/*"
-    exclude:
-      - "**/.DS_Store"
-      - "**/*.tmp"
   - path: scraper_examples
     include:
       - "**/*"

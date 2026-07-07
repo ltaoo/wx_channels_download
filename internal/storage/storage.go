@@ -260,7 +260,7 @@ func (s *SqliteStorage) putTask(t *download.Task) error {
 		}
 	}
 
-	if rec.Id == "" {
+	if rec.Id == 0 {
 		if err := s.db.Create(&rec).Error; err != nil {
 			return err
 		}
