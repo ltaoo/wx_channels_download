@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
@@ -705,7 +706,7 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 		return article, nil
 	}
 	if publish_time_str == "" {
-		publish_time_str = formatPublishTime(data.CreateTime, data.OriCreateTime)
+		publish_time_str = formatPublishTime(data.CreateTime, int(data.OriCreateTime))
 	}
 	article := newWechatOfficialArticle(data, publish_time_str)
 	article.PageJSON = data

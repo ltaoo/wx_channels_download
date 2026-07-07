@@ -279,7 +279,7 @@ type FeedDownloadTaskBody struct {
 	Key       int    `json:"key"`
 	Spec      string `json:"spec"`
 	Suffix    string `json:"suffix"`
-	SourceURL string `json:"source_url"`
+	Overwrite bool   `json:"overwrite"`
 }
 
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {

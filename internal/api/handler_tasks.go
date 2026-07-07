@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 	"github.com/GopeedLab/gopeed/pkg/base"
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
@@ -865,6 +866,67 @@ type DownloadTaskPayload struct {
 	Extra    map[string]string
 }
 
+
+func (c *APIClient) createDownloadTask(body DownloadTaskPayload) (string, int, string) {
+	body.URL = strings.TrimSpace(body.URL)
+	if body.URL == "" {
+		return "", 400, "缺少 url 参数"
+	}
+	if c.downloader == nil {
+		return "", 500, "请先初始化 downloader"
+	}
+
+	// Extract article_id for officialaccount URLs
+	articleID := officialaccountdownload.ExtractArticleID(body.URL)
+
+	tasks := c.downloader.GetTasks()
+	for _, t := range tasks {
+		if t == nil || t.Meta == nil || t.Meta.Req == nil {
+			continue
+		}
+		// For officialaccount URLs, compare by article_id label
+		if articleID != "" && t.Meta.Req.Labels != nil && t.Meta.Req.Labels["article_id"] == articleID {
+			return "", 409, "已存在该下载内容"
+		}
+		// For other URLs, compare by URL directly
+		if articleID == "" && t.Meta.Req.URL == body.URL {
+			return "", 409, "已存在该下载内容"
+		}
+	}
+
+	labels := cloneDownloadTaskExtra(body.Extra)
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if articleID != "" {
+		labels["article_id"] = articleID
+		// Pass filename template to the officialaccount fetcher
+		filenameTemplate := c.cfg.Original.GetString("download.filenameTemplate")
+		if filenameTemplate != "" {
+			labels["filename_template"] = filenameTemplate
+		}
+	}
+
+	id, err := c.downloader.CreateDirect(
+		&base.Request{
+			URL:    body.URL,
+			Labels: labels,
+		},
+		&base.Options{
+			Name: body.Filename,
+			Path: filepath.Join(c.cfg.DownloadDir, body.Dir),
+			Extra: &gopeedhttp.OptsExtra{
+				Connections: 1,
+			},
+		},
+	)
+	if err != nil {
+		return "", 500, "创建任务失败：" + err.Error()
+	}
+	c.broadcastCreatedDownloadTask(id)
+	return id, 0, ""
+}
+
 func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 	var body DownloadTaskPayload
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -1040,6 +1102,200 @@ func (c *APIClient) handleBatchCreateTask(ctx *gin.Context) {
 	}
 
 	result.Ok(ctx, gin.H{"ids": ids})
+}
+
+type DownloadTaskCreateFailure struct {
+	URL     string `json:"url"`
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message"`
+}
+
+
+func cloneDownloadTaskExtra(extra map[string]string) map[string]string {
+	if len(extra) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(extra))
+	for k, v := range extra {
+		clone[k] = v
+	}
+	return clone
+}
+
+func applyDownloadTaskDefaults(task DownloadTaskPayload, dir string, extra map[string]string) DownloadTaskPayload {
+	task.URL = strings.TrimSpace(task.URL)
+	if task.Dir == "" {
+		task.Dir = dir
+	}
+	labels := cloneDownloadTaskExtra(extra)
+	for k, v := range task.Extra {
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+		labels[k] = v
+	}
+	task.Extra = labels
+	return task
+}
+
+func parseDownloadTaskText(text string, dir string, extra map[string]string) []DownloadTaskPayload {
+	var tasks []DownloadTaskPayload
+	normalizedText := strings.ReplaceAll(text, "\r\n", "\n")
+	for _, line := range strings.Split(normalizedText, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "{") {
+			var task DownloadTaskPayload
+			if err := json.Unmarshal([]byte(line), &task); err == nil && strings.TrimSpace(task.URL) != "" {
+				tasks = append(tasks, applyDownloadTaskDefaults(task, dir, extra))
+				continue
+			}
+		}
+		tasks = append(tasks, DownloadTaskPayload{
+			URL:   line,
+			Dir:   dir,
+			Extra: cloneDownloadTaskExtra(extra),
+		})
+	}
+	return tasks
+}
+
+func appendDownloadTaskPayload(tasks []DownloadTaskPayload, task DownloadTaskPayload, dir string, extra map[string]string) []DownloadTaskPayload {
+	task = applyDownloadTaskDefaults(task, dir, extra)
+	if task.URL == "" {
+		return tasks
+	}
+	return append(tasks, task)
+}
+
+func (c *APIClient) broadcastCreatedDownloadTask(id string) {
+	task := c.downloader.GetTask(id)
+	if task == nil {
+		return
+	}
+	c.downloader_ws.Broadcast(APIClientWSMessage{
+		Type: "event",
+		Data: map[string]interface{}{
+			"task":          task,
+			"status_counts": c.downloadTaskStatusCounts(),
+		},
+	})
+}
+
+
+type DownloadTaskBatchPayload struct {
+	Text  string                `json:"text"`
+	URLs  []string              `json:"urls"`
+	Tasks []DownloadTaskPayload `json:"tasks"`
+	Dir   string                `json:"dir"`
+	Extra map[string]string     `json:"extra"`
+}
+
+// 批量创建常规下载任务
+func (c *APIClient) handleBatchCreateDownloadTask(ctx *gin.Context) {
+	var body DownloadTaskBatchPayload
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的参数")
+		return
+	}
+
+	var tasks []DownloadTaskPayload
+	for _, task := range body.Tasks {
+		tasks = appendDownloadTaskPayload(tasks, task, body.Dir, body.Extra)
+	}
+	for _, rawURL := range body.URLs {
+		tasks = appendDownloadTaskPayload(tasks, DownloadTaskPayload{URL: rawURL}, body.Dir, body.Extra)
+	}
+	tasks = append(tasks, parseDownloadTaskText(body.Text, body.Dir, body.Extra)...)
+	if len(tasks) == 0 {
+		result.Err(ctx, 400, "请提供下载任务")
+		return
+	}
+
+	seen := make(map[string]bool)
+	ids := make([]string, 0, len(tasks))
+	skipped := make([]DownloadTaskCreateFailure, 0)
+	failed := make([]DownloadTaskCreateFailure, 0)
+	for _, task := range tasks {
+		if seen[task.URL] {
+			skipped = append(skipped, DownloadTaskCreateFailure{
+				URL:     task.URL,
+				Code:    409,
+				Message: "重复的下载地址",
+			})
+			continue
+		}
+		seen[task.URL] = true
+		id, code, msg := c.createDownloadTask(task)
+		if code == 0 {
+			ids = append(ids, id)
+			continue
+		}
+		item := DownloadTaskCreateFailure{
+			URL:     task.URL,
+			Code:    code,
+			Message: msg,
+		}
+		if code == 409 {
+			skipped = append(skipped, item)
+			continue
+		}
+		failed = append(failed, item)
+	}
+	if len(ids) == 0 && len(skipped) == 0 && len(failed) > 0 {
+		result.Err(ctx, failed[0].Code, failed[0].Message)
+		return
+	}
+	result.Ok(ctx, gin.H{
+		"ids":     ids,
+		"skipped": skipped,
+		"failed":  failed,
+	})
+}
+
+
+func (c *APIClient) handleDownloadAllOfficialAccountMsgs(ctx *gin.Context) {
+	var body struct {
+		Biz        string `json:"biz"`
+		Uin        string `json:"uin"`
+		Key        string `json:"key"`
+		PassTicket string `json:"pass_ticket"`
+		Token      string `json:"token"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "参数错误")
+		return
+	}
+	if valid := c.official.ValidateToken(body.Token); !valid {
+		result.Err(ctx, 401, "token 无效")
+		return
+	}
+	if body.Biz == "" {
+		result.Err(ctx, 400, "缺少 biz 参数")
+		return
+	}
+	acct := &officialaccountdownload.OfficialAccount{
+		Biz:        body.Biz,
+		Uin:        body.Uin,
+		Key:        body.Key,
+		PassTicket: body.PassTicket,
+	}
+	urls, err := c.official.FetchAllMsgURLs(acct)
+	if err != nil && len(urls) == 0 {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	count := 0
+	for _, u := range urls {
+		taskURL := "officialaccount://" + u
+		_, code, _ := c.createDownloadTask(DownloadTaskPayload{URL: taskURL})
+		if code == 0 {
+			count++
+		}
+	}
+	result.Ok(ctx, gin.H{"count": count, "total": len(urls)})
 }
 
 func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (string, error) {
@@ -1332,4 +1588,114 @@ func (c *APIClient) handleFetchTaskProfile(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, profile)
+}
+
+func normalizeDownloadTaskStatus(status base.Status) string {
+	value := strings.ToLower(strings.TrimSpace(string(status)))
+	switch value {
+	case "paused":
+		return "pause"
+	case "failed", "fail", "failure", "errored":
+		return "error"
+	case "pending", "waiting", "queued":
+		return "wait"
+	case "completed", "success", "finished":
+		return "done"
+	default:
+		return value
+	}
+}
+
+func downloadTaskStatusFilter(status string) *downloadpkg.TaskFilter {
+	value := normalizeDownloadTaskStatus(base.Status(status))
+	if value == "" || value == "all" {
+		return nil
+	}
+	statuses := []base.Status{base.Status(value)}
+	if value == "wait" {
+		statuses = []base.Status{
+			base.DownloadStatusReady,
+			base.DownloadStatusWait,
+		}
+	}
+	return &downloadpkg.TaskFilter{Statuses: statuses}
+}
+
+func downloadTaskPauseAllFilter(status string) *downloadpkg.TaskFilter {
+	filter := downloadTaskStatusFilter(status)
+	if filter != nil {
+		return filter
+	}
+	return &downloadpkg.TaskFilter{
+		Statuses: []base.Status{
+			base.DownloadStatusReady,
+			base.DownloadStatusRunning,
+			base.DownloadStatusWait,
+		},
+	}
+}
+
+func countDownloadTaskStatuses(tasks []*downloadpkg.Task) map[string]int {
+	counts := map[string]int{
+		"total":   0,
+		"ready":   0,
+		"running": 0,
+		"wait":    0,
+		"pause":   0,
+		"error":   0,
+		"done":    0,
+	}
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		counts["total"]++
+		status := normalizeDownloadTaskStatus(task.Status)
+		if status == "" {
+			continue
+		}
+		counts[status]++
+	}
+	return counts
+}
+
+func (c *APIClient) downloadTaskStatusCounts() map[string]int {
+	if c == nil || c.downloader == nil {
+		return countDownloadTaskStatuses(nil)
+	}
+	return countDownloadTaskStatuses(c.downloader.GetTasks())
+}
+
+func (c *APIClient) handleStartAllTasks(ctx *gin.Context) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			result.Err(ctx, 400, "不合法的参数")
+			return
+		}
+	}
+	if err := c.downloader.Continue(downloadTaskStatusFilter(body.Status)); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
+}
+
+func (c *APIClient) handlePauseAllTasks(ctx *gin.Context) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			result.Err(ctx, 400, "不合法的参数")
+			return
+		}
+	}
+	if err := c.downloader.Pause(downloadTaskPauseAllFilter(body.Status)); err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, nil)
 }

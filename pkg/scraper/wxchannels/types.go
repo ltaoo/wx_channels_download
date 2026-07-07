@@ -650,8 +650,8 @@ type Baseresponse struct {
 	Errmsg Errmsg `json:"ErrMsg"`
 }
 
-type ChannelsFeedShareUrlBody struct {
-	ObjectId string `json:"oid"`
+type ChannelsFollowListBody struct {
+	NextMarker string `json:"next_marker"`
 }
 
 type ChannelsFeedShareUrlResp struct {
@@ -664,6 +664,67 @@ type ChannelsFeedShareUrlResp struct {
 	} `json:"data"`
 	Payload struct {
 		ObjectId string `json:"objectId"`
+	} `json:"payload"`
+}
+
+
+type ChannelsFeedShareUrlBody struct {
+	ObjectId string `json:"oid"`
+}
+
+type ChannelsFollowReferenceInfo struct {
+	Type   int    `json:"type"`
+	Name   string `json:"name"`
+	Status int    `json:"status"`
+}
+
+type ChannelsFollowLiveReplaySetting struct {
+	CanUseIntelligentlyGenReplayHighlight bool `json:"canUseIntelligentlyGenReplayHighlight"`
+}
+
+type ChannelsFollowLiveInfo struct {
+	AnchorStatusFlag string                           `json:"anchorStatusFlag"`
+	SwitchFlag       int                              `json:"switchFlag"`
+	SourceType       int                              `json:"sourceType"`
+	MicSetting       *ChannelsLiveMicSetting          `json:"micSetting,omitempty"`
+	LotterySetting   map[string]any                   `json:"lotterySetting"`
+	LiveCoverImgs    []any                            `json:"liveCoverImgs"`
+	ReplaySetting    *ChannelsFollowLiveReplaySetting `json:"replaySetting,omitempty"`
+}
+
+type ChannelsFollowContact struct {
+	Username        string                        `json:"username"`
+	Nickname        string                        `json:"nickname"`
+	HeadUrl         string                        `json:"headUrl"`
+	Signature       string                        `json:"signature"`
+	FollowFlag      int                           `json:"followFlag"`
+	FollowTime      int                           `json:"followTime"`
+	CoverImgUrl     string                        `json:"coverImgUrl"`
+	SpamStatus      int                           `json:"spamStatus"`
+	ExtFlag         int                           `json:"extFlag"`
+	ExtInfo         ChannelsContactExtInfo        `json:"extInfo"`
+	LiveStatus      int                           `json:"liveStatus"`
+	LiveCoverImgUrl string                        `json:"liveCoverImgUrl"`
+	LiveInfo        ChannelsFollowLiveInfo        `json:"liveInfo"`
+	BindInfo        []any                         `json:"bindInfo"`
+	Menu            []any                         `json:"menu"`
+	Status          string                        `json:"status"`
+	AdditionalFlag  string                        `json:"additionalFlag"`
+	ReferenceInfo   []ChannelsFollowReferenceInfo `json:"referenceInfo"`
+}
+
+type ChannelsFollowListResp struct {
+	ErrCode int    `json:"errCode"`
+	ErrMsg  string `json:"errMsg"`
+	Data    struct {
+		BaseResponse BaseResponse            `json:"BaseResponse"`
+		ContactList  []ChannelsFollowContact `json:"contactList"`
+		LastBuffer   string                  `json:"lastBuffer"`
+		ContinueFlag int                     `json:"continueFlag"`
+		FollowCount  int                     `json:"followCount"`
+	} `json:"data"`
+	Payload struct {
+		LastBuffer string `json:"lastBuffer"`
 	} `json:"payload"`
 }
 

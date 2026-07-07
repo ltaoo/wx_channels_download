@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -267,4 +268,77 @@ func downloadImageBytes(imgURL string) ([]byte, string, error) {
 		contentType = http.DetectContentType(data)
 	}
 	return data, contentType, nil
+}
+
+func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return nil, err
+	}
+
+	article := &WechatOfficialArticle{}
+
+	// Extract title
+	title := doc.Find("meta[property=\"og:title\"]").AttrOr("content", "")
+	if title == "" {
+		title = doc.Find("h1.rich_media_title").Text()
+	}
+	if title == "" {
+		title = doc.Find("title").Text()
+	}
+	article.Title = strings.TrimSpace(title)
+
+	// Extract content from rich_media_content or js_content
+	contentHTML := ""
+	doc.Find("#js_content, .rich_media_content").Each(func(i int, s *goquery.Selection) {
+		if contentHTML == "" {
+			contentHTML, _ = s.Html()
+		}
+	})
+	article.Content = contentHTML
+
+	// Extract author nickname
+	nickname := doc.Find("meta[name=\"author\"]").AttrOr("content", "")
+	if nickname == "" {
+		nickname = doc.Find(".rich_media_meta_nickname").First().Text()
+	}
+	if nickname == "" {
+		nickname = doc.Find(".profile_nickname").First().Text()
+	}
+	article.AuthorNickname = strings.TrimSpace(nickname)
+
+	// Extract author avatar
+	avatar := doc.Find(".rich_media_meta_avatar, .js_wx_tap_highlight img").First().AttrOr("src", "")
+	article.AuthorAvatar = normalizeMediaURL(avatar)
+
+	// Extract publish time from script or meta
+	publishTimeStr := ""
+	doc.Find("script").Each(func(i int, s *goquery.Selection) {
+		if publishTimeStr != "" {
+			return
+		}
+		text := s.Text()
+		if strings.Contains(text, "createTime") {
+			re := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
+			matches := re.FindStringSubmatch(text)
+			if len(matches) > 1 {
+				publishTimeStr = formatPublishTime(matches[1], 0)
+			}
+		}
+	})
+	article.PublishTimeStr = publishTimeStr
+
+	// Extract image URLs
+	doc.Find("#js_content img, .rich_media_content img").Each(func(i int, s *goquery.Selection) {
+		imgURL := s.AttrOr("data-src", "")
+		if imgURL == "" {
+			imgURL = s.AttrOr("src", "")
+		}
+		imgURL = normalizeMediaURL(imgURL)
+		if imgURL != "" {
+			article.Images = append(article.Images, imgURL)
+		}
+	})
+
+	return article, nil
 }

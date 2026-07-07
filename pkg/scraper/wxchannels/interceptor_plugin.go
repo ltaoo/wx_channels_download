@@ -62,7 +62,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 	if variables == nil {
 		variables = map[string]any{}
 	}
-	assetBaseURL := ChannelAssetsSameOriginBaseURL()
+	assetBaseURL := frontend.ChannelAssetsSameOriginBaseURL()
 	v := "?t=" + version
 	plugins := make([]*proxy.Plugin, 0, 5)
 	if cfg.DebugShowError {
@@ -75,16 +75,22 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 			},
 		})
 	}
-	if cfg.RemoteServerEnabled {
-		plugins = append(plugins, &proxy.Plugin{
-			Match: "weixin110.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: cfg.RemoteServerProtocol,
-				Host:     cfg.RemoteServerHostname,
-				Port:     cfg.RemoteServerPort,
-			},
-		})
+	downloadTarget := &proxy.TargetConfig{
+		Protocol: cfg.APIServerProtocol,
+		Host:     cfg.APIServerHostname,
+		Port:     cfg.APIServerPort,
 	}
+	if cfg.RemoteServerEnabled {
+		downloadTarget = &proxy.TargetConfig{
+			Protocol: cfg.RemoteServerProtocol,
+			Host:     cfg.RemoteServerHostname,
+			Port:     cfg.RemoteServerPort,
+		}
+	}
+	plugins = append(plugins, &proxy.Plugin{
+		Match:  "weixin110.qq.com",
+		Target: downloadTarget,
+	})
 	plugins = append(plugins, &proxy.Plugin{
 		Match: "kf.qq.com",
 		Target: &proxy.TargetConfig{
@@ -97,7 +103,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if mockChannelStaticAsset(ctx, pathname, files) {
+			if frontend.MockChannelStaticAsset(ctx, pathname, files) {
 				return
 			}
 			if pathname == "/__wx_channels_api/profile" {
@@ -206,66 +212,66 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "error.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "error.js"))
 				}
 				var shadcnCSS []byte
 				if files != nil {
 					shadcnCSS = files.CSSTimelessShadcn
 				}
-				AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, "", "", shadcnCSS)
-				AppendStylesheetHrefs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "components.css"))
+				frontend.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, "", "", shadcnCSS)
+				frontend.AppendStylesheetHrefs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
-				AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
-				AppendInlineScript(&injected, "", fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
+				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
+				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
 				variable_byte, _ := json.Marshal(variables)
-				AppendInlineScript(&injected, "", fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
-				AppendScriptSrcs(
+				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
+				frontend.AppendScriptSrcs(
 					&injected,
 					"",
-					ChannelInjectAssetURL(assetBaseURL, "eventbus.js"),
-					ChannelInjectAssetURL(assetBaseURL, "env.js"),
-					ChannelInjectAssetURL(assetBaseURL, "env.channels.js"),
-					ChannelInjectAssetURL(assetBaseURL, "utils.js"),
-					ChannelInjectAssetURL(assetBaseURL, "components.js"),
-					ChannelInjectAssetURL(assetBaseURL, "virtual-list-view.js"),
-					ChannelInjectAssetURL(assetBaseURL, "channels.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "eventbus.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "env.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "env.channels.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "utils.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "components.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "virtual-list-view.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "channels.js"),
 				)
-				AppendScriptSrcs(
+				frontend.AppendScriptSrcs(
 					&injected,
 					"",
-					ChannelInjectAssetURL(assetBaseURL, "download/core.js"),
-					ChannelInjectAssetURL(assetBaseURL, "download/panel.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "download/core.js"),
+					frontend.ChannelInjectAssetURL(assetBaseURL, "download/panel.js"),
 				)
 				if cfg.InjectGlobalScript != "" {
-					AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
+					frontend.AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
 				}
 				// 必须放在 JSUtils 后面
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					AppendScriptSrcs(&injected, "", ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), ChannelInjectAssetURL(assetBaseURL, "pagespy.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), frontend.ChannelInjectAssetURL(assetBaseURL, "pagespy.js"))
 				}
 				if pathname == "/web/pages/home" {
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "home.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "home.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
+						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/feed" {
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "feed.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "feed.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
+						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/live" {
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "live.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "live.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
+						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/profile" {
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "profile.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "profile.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
-						AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
+						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
@@ -595,14 +601,14 @@ func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy
 	}
 }
 
-func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *ChannelInjectedFiles) *proxy.Plugin {
-	version := interceptor.Version
-	assetBaseURL := ChannelAssetsBaseURLFromConfig(interceptor.Settings)
+func CreateSimpleChannelInterceptorPlugin(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
+	version := cfg.Version
+	assetBaseURL := frontend.ChannelAssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
 	v := "?t=" + version
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx proxy.Context) {
-			if mockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+			if frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
 				return
 			}
 		},
@@ -622,7 +628,7 @@ func CreateSimpleChannelInterceptorPlugin(interceptor *Interceptor, files *Chann
 				var injected strings.Builder
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 					/** 核心逻辑 */
-					AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "home.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "home.js"))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

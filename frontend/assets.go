@@ -18,30 +18,6 @@ import (
 
 const defaultChannelInjectDir = "frontend"
 
-//go:embed public/tailwindcss@4.js
-var js_tailwindcss []byte
-
-//go:embed public/avatar.jpeg
-var avatar_jpeg []byte
-
-//go:embed public/timeless/0.26.0/timeless.umd.min.js
-var js_public_timeless_umd []byte
-
-//go:embed public/timeless/0.26.0/timeless.dom.umd.min.js
-var js_public_timeless_dom []byte
-
-//go:embed public/timeless/0.26.0/timeless.shadcn.umd.min.js
-var js_public_timeless_shadcn []byte
-
-//go:embed public/timeless/0.26.0/timeless.shadcn.css
-var css_public_timeless_shadcn []byte
-
-//go:embed public/timeless/0.26.0/timeless.web.umd.min.js
-var js_public_timeless_web []byte
-
-//go:embed public/timeless/0.26.0/timeless.utils.umd.min.js
-var js_public_timeless_utils []byte
-
 type ChannelInjectedFiles struct {
 	InjectDir               string
 	RootFS                  fs.FS
@@ -75,22 +51,12 @@ type ChannelInjectedFiles struct {
 	JSDownloadIndex         []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
-	JSBase64                []byte
-	JSRouter                []byte
 	JSError                 []byte
 	JSHomePage              []byte
 	JSFeedProfilePage       []byte
 	JSLiveProfilePage       []byte
 	JSContactPage           []byte
 	JSWechatOfficialAccount []byte
-	JSTailwindcss           []byte
-	Avatar                  []byte
-	JSPublicTimelessUMD     []byte
-	JSPublicTimelessDOM     []byte
-	JSPublicTimelessShadcn  []byte
-	CSSPublicTimelessShadcn []byte
-	JSPublicTimelessWeb     []byte
-	JSPublicTimelessUtils   []byte
 }
 
 var Assets = NewChannelInjectedFiles("")
@@ -148,11 +114,8 @@ func normalizeChannelAssetHostname(hostname string) string {
 	}
 }
 
-func ChannelAssetsBaseURLFromConfig(cfg *InterceptorConfig) string {
-	if cfg == nil {
-		return ChannelAssetsBaseURL("", "", 0)
-	}
-	return ChannelAssetsBaseURL(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
+func ChannelAssetsBaseURLFromConfig(protocol string, hostname string, port int) string {
+	return ChannelAssetsBaseURL(protocol, hostname, port)
 }
 
 func ChannelAssetsSameOriginBaseURL() string {

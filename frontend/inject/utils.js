@@ -1329,8 +1329,7 @@ var WXU = (() => {
         console.log("[downloader.create]create", feed);
         var [err, data] = await WXU.request({
           method: "POST",
-          url:
-            APIServerProtocol + "://" + FakeAPIServerAddr + "/api/task/create",
+          url: WXEnv.apiOrigin + "/api/task/create",
           body: { object: feed, spec: opt.spec, suffix: opt.suffix },
         });
         WXU.downloader.show();

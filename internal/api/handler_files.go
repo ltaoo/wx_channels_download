@@ -19,11 +19,6 @@ import (
 	"wx_channel/pkg/system"
 )
 
-func (c *APIClient) handleIndex(ctx *gin.Context) {
-	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, string(files.HTMLHome))
-}
-
 func (c *APIClient) handlePlay(ctx *gin.Context) {
 	targetURL := ctx.Query("url")
 	if targetURL == "" {

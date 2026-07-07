@@ -32,7 +32,7 @@ func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile
 	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", cfg.Version).Logger()
 	return &Interceptor{
 		Version:  cfg.Version,
-		Debug:    cfg.Debug,
+		Debug:    cfg.DebugShowError,
 		Settings: cfg,
 		Cert:     cert,
 		log:      &log,

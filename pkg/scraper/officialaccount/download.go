@@ -1,6 +1,6 @@
 package officialaccount
 
-import officialaccountdownload "github.com/GopeedLab/gopeed/pkg/officialaccount"
+import officialaccountdownload "wx_channel/pkg/officialaccount"
 
 type OfficialAccountDownload = officialaccountdownload.OfficialAccountDownload
 type WechatOfficialArticle = officialaccountdownload.WechatOfficialArticle
