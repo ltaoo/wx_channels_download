@@ -31,6 +31,7 @@ import (
 
 	"wx_channel/internal/channels"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/officialaccount"
 	result "wx_channel/internal/util"
 	officialaccountdownload "wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
@@ -596,6 +597,11 @@ func (c *APIClient) createDownloadTask(body DownloadTaskPayload) (string, int, s
 	}
 	if articleID != "" {
 		labels["article_id"] = articleID
+		// Pass filename template to the officialaccount fetcher
+		filenameTemplate := c.cfg.Original.GetString("download.filenameTemplate")
+		if filenameTemplate != "" {
+			labels["filename_template"] = filenameTemplate
+		}
 	}
 
 	id, err := c.downloader.CreateDirect(
@@ -1598,4 +1604,46 @@ func (c *APIClient) handleTest(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, nil)
+}
+
+func (c *APIClient) handleDownloadAllOfficialAccountMsgs(ctx *gin.Context) {
+	var body struct {
+		Biz        string `json:"biz"`
+		Uin        string `json:"uin"`
+		Key        string `json:"key"`
+		PassTicket string `json:"pass_ticket"`
+		Token      string `json:"token"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "参数错误")
+		return
+	}
+	if valid := c.official.ValidateToken(body.Token); !valid {
+		result.Err(ctx, 401, "token 无效")
+		return
+	}
+	if body.Biz == "" {
+		result.Err(ctx, 400, "缺少 biz 参数")
+		return
+	}
+	acct := &officialaccount.OfficialAccount{
+		Biz:        body.Biz,
+		Uin:        body.Uin,
+		Key:        body.Key,
+		PassTicket: body.PassTicket,
+	}
+	urls, err := c.official.FetchAllMsgURLs(acct)
+	if err != nil && len(urls) == 0 {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	count := 0
+	for _, u := range urls {
+		taskURL := "officialaccount://" + u
+		_, code, _ := c.createDownloadTask(DownloadTaskPayload{URL: taskURL})
+		if code == 0 {
+			count++
+		}
+	}
+	result.Ok(ctx, gin.H{"count": count, "total": len(urls)})
 }

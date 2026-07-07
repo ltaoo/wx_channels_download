@@ -31,6 +31,7 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
 		c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
 		c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
+		c.engine.POST("/api/mp/download_all", c.handleDownloadAllOfficialAccountMsgs)
 		// 文件传输助手接口
 		c.engine.GET("/filehelper", c.filehelper.HandlePage)
 		c.engine.GET("/api/filehelper/qrcode", c.filehelper.HandleGetQRCode)
