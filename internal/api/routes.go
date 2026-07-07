@@ -25,6 +25,7 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.GET("/api/channels/shared_feed/profile", c.handleFetchSharedFeedProfile)
 		c.engine.GET("/api/channels/feed/comment/list", c.handleFetchFeedCommentList)
 		c.engine.GET("/api/channels/feed/share_url", c.handleFetchFeedShareUrl)
+		c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
 		// 公众号接口
 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
@@ -80,8 +81,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
 	c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
 	c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
-	// sph 接口
-	c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
 	// 其他
 	c.engine.GET("/api/status", c.handleStatus)
 	// c.engine.GET("/api/test", c.handleTest)

@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=zh_CN.UTF-8 \
     LC_ALL=zh_CN.UTF-8 \
     LIBGL_ALWAYS_SOFTWARE=1 \
+    WX_IN_DOCKER=1 \
     WX_VIDEO_HOME=/config/wx_video_download \
     WX_VIDEO_SEED_HOME=/usr/local/share/wx_video_download \
     WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml \
