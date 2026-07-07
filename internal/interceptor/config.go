@@ -48,6 +48,7 @@ type InterceptorConfig struct {
 	PageppyServerAPI                    string `json:"pagespyServerAPI"`      // pagespy调试地址，如 debug.weixin.qq.com
 	DebugShowError                      bool
 	EchoLogEnabled                      bool
+	InDocker                            bool   `json:"inDocker"` // 是否在 Docker 容器中运行
 	ChannelsDisableLocationToHome       bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain        string // 额外注入的 js
 	InjectGlobalScriptFilepath          string // 全局脚本路径
@@ -97,6 +98,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		ProxyUpstreamProxy:                  viper.GetString("proxy.upstreamProxy"),
 		InjectExtraScriptAfterJSMain:        viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScriptFilepath:          viper.GetString("inject.globalScript"),
+		InDocker:                            os.Getenv("WX_IN_DOCKER") == "1",
 		t:                                   c,
 	}
 	if viper.GetBool("channels.disableLocationToHome") {
