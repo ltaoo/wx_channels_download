@@ -397,25 +397,20 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 		return
 	}
 	c.backfillCompatDownloadTaskParentLinks()
-	var body struct {
-		Page     *int `json:"page"`
-		PageSize *int `json:"pageSize"`
-		Status   any  `json:"status"`
-	}
-	_ = ctx.ShouldBindJSON(&body)
 	page := 1
 	size := 20
-	if body.Page != nil && *body.Page > 0 {
-		page = *body.Page
+	if v, err := strconv.Atoi(ctx.Query("page")); err == nil && v > 0 {
+		page = v
 	}
-	if body.PageSize != nil && *body.PageSize > 0 {
-		size = *body.PageSize
+	if v, err := strconv.Atoi(ctx.Query("page_size")); err == nil && v > 0 {
+		size = v
 	}
+	statusParam := ctx.Query("status")
 	offset := (page - 1) * size
 
 	db := c.db.Model(&model.DownloadTask{})
 	db = db.Where("parent_id IS NULL OR parent_id = 0")
-	if statuses, ok := parseCompatDownloadTaskStatuses(body.Status); ok {
+	if statuses, ok := parseCompatDownloadTaskStatuses(statusParam); ok {
 		if len(statuses) == 1 {
 			db = db.Where("status = ?", statuses[0])
 		} else {

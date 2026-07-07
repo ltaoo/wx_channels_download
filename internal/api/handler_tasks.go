@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
+	"go.etcd.io/bbolt"
 	"gorm.io/gorm"
 	officialaccountdownload "wx_channel/pkg/scraper/officialaccount"
 
@@ -1698,4 +1700,85 @@ func (c *APIClient) handlePauseAllTasks(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, nil)
+}
+
+// handleFetchBoltTaskList 返回 gopeed.db (BoltDB) 中保存的下载任务列表
+func (c *APIClient) handleFetchBoltTaskList(ctx *gin.Context) {
+	pageStr := ctx.Query("page")
+	pageSizeStr := ctx.Query("page_size")
+	status := ctx.Query("status")
+
+	pageNum := 1
+	pageSizeNum := 20
+	if pageStr != "" {
+		if v, err := strconv.Atoi(pageStr); err == nil && v > 0 {
+			pageNum = v
+		}
+	}
+	if pageSizeStr != "" {
+		if v, err := strconv.Atoi(pageSizeStr); err == nil && v > 0 {
+			pageSizeNum = v
+		}
+	}
+
+	boltPath := filepath.Join(c.cfg.WorkDir, "gopeed.db")
+	if _, err := os.Stat(boltPath); err != nil {
+		result.Err(ctx, 404, "gopeed.db 文件不存在")
+		return
+	}
+
+	boltDB, err := bbolt.Open(boltPath, 0600, &bbolt.Options{ReadOnly: true})
+	if err != nil {
+		result.Err(ctx, 500, "无法打开 gopeed.db: "+err.Error())
+		return
+	}
+	defer boltDB.Close()
+
+	var tasks []*downloadpkg.Task
+	err = boltDB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("task"))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(k, v []byte) error {
+			var task downloadpkg.Task
+			if err := json.Unmarshal(v, &task); err != nil {
+				return nil // skip broken tasks
+			}
+			if status != "" && status != "all" {
+				normalized := normalizeDownloadTaskStatus(task.Status)
+				if normalized != normalizeDownloadTaskStatus(base.Status(status)) {
+					return nil
+				}
+			}
+			tasks = append(tasks, &task)
+			return nil
+		})
+	})
+	if err != nil {
+		result.Err(ctx, 500, "读取 gopeed.db 失败: "+err.Error())
+		return
+	}
+
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+	})
+
+	total := len(tasks)
+	start := (pageNum - 1) * pageSizeNum
+	if start > total {
+		start = total
+	}
+	end := start + pageSizeNum
+	if end > total {
+		end = total
+	}
+
+	result.Ok(ctx, gin.H{
+		"list":          tasks[start:end],
+		"total":         total,
+		"page":          pageNum,
+		"page_size":     pageSizeNum,
+		"status_counts": countDownloadTaskStatuses(tasks),
+	})
 }
