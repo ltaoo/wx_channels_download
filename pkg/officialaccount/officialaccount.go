@@ -658,6 +658,9 @@ func (c *OfficialAccountDownload) FetchArticle(url string) (*WechatOfficialArtic
 		Images:         make([]string, 0),
 		Videos:         data.VideoPageInfos,
 	}
+	if article.Creator == "" {
+		article.Creator = data.NickName
+	}
 	// isImageArticle := data.PageType == 2
 	if len(data.PicturePageInfoList) > 1 {
 		for _, img := range data.PicturePageInfoList {

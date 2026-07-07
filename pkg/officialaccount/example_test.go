@@ -16,7 +16,7 @@ func TestFetchOfficialAccountArticle(t *testing.T) {
 
 	fmt.Printf("Title: %s\n", article.Title)
 	fmt.Printf("Type: %d\n", article.Type)
-	fmt.Printf("Creator: %s\n", article.Creator)
+	fmt.Printf("Creator: %s\n", article.AuthorNickname)
 	fmt.Printf("Content length: %d\n", len(article.Content))
 	fmt.Printf("Images count: %d\n", len(article.Images))
 	fmt.Printf("Videos count: %d\n", len(article.Videos))
