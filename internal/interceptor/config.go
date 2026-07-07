@@ -1,6 +1,9 @@
 package interceptor
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/spf13/viper"
 
 	"wx_channel/internal/config"
@@ -8,7 +11,8 @@ import (
 
 type InterceptorConfig struct {
 	Version                  string
-	Debug                    bool
+	DebugShowError           bool
+	EchoLogEnabled           bool
 	ProxyDevice              string
 	ProxySetSystem           bool
 	ProxyTun                 bool
@@ -25,7 +29,8 @@ type InterceptorConfig struct {
 func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 	return &InterceptorConfig{
 		Version:                  c.Version,
-		Debug:                    viper.GetBool("debug.error"),
+		DebugShowError:           viper.GetBool("debug.error"),
+		EchoLogEnabled:           viper.GetBool("debug.echolog"),
 		ProxySetSystem:           viper.GetBool("proxy.system"),
 		ProxyTun:                 viper.GetBool("proxy.tun"),
 		ProxyDefaultInterface:    viper.GetString("proxy.defaultInterface"),

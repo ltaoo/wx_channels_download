@@ -1980,78 +1980,14 @@ function DownloaderPanelViewModel(props = {}) {
     },
     async createDownloadTask(feed, opt = {}) {
       console.log("[downloader.create]create", feed);
-      var spec = (() => {
-        if (opt.spec) {
-          return opt.spec;
-        }
-        if (WXU.config.defaultHighest || opt.spec === null) {
-          return null;
-        }
-        if (feed.spec && feed.spec[0]) {
-          return feed.spec[0].fileFormat;
-        }
-        return null;
-      })();
-      var filename = WXU.build_filename(
-        feed,
-        spec,
-        WXU.config.downloadFilenameTemplate,
-      );
-      if (!filename) {
-        return [new Error("filename 为空"), null];
-      }
-      if (feed.type === "picture") {
-        opt.suffix = ".zip";
-        feed.url = WXU.build_picture_zip_url(feed);
-        console.log("[]feed.url", feed.url);
-      }
-      if (opt.suffix !== ".jpg") {
-        if (spec) {
-          feed.url = feed.url + "&X-snsvideoflag=" + spec;
-        } else {
-          var u = new URL(decodeURIComponent(feed.url));
-          var filekey = u.searchParams.get("encfilekey");
-          var token = u.searchParams.get("token");
-          if (filekey && token) {
-            var new_url = new URL(u.origin + u.pathname);
-            new_url.searchParams.set("encfilekey", filekey);
-            new_url.searchParams.set("token", token);
-            feed.url = new_url.toString();
-          }
-        }
-      }
-      const requestBody = {
-        id: feed.id,
-        nonce_id: feed.nonce_id || feed.objectNonceId || "",
-        url: feed.url,
-        title: feed.title,
-        filename: filename,
-        key: Number(feed.key),
-        spec,
-        suffix: opt.suffix,
-      };
-      const createTask = ({ overwrite, duplicate } = {}) =>
-        WXU.request({
-          method: "POST",
-          url: WXEnv.apiOrigin + "/api/task/create",
-          body: {
-            ...requestBody,
-            overwrite: !!overwrite,
-            duplicate: !!duplicate,
-          },
-        });
-      var [createErr, data] = await createTask({
-        overwrite: opt.overwrite,
-        duplicate: opt.duplicate,
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: WXEnv.apiOrigin + "/api/task/create",
+        body: { object: feed, spec: opt.spec, suffix: opt.suffix },
       });
-      if (createErr && createErr.code === 409) {
-        duplicated_feed_prepare_download = requestBody;
-        ui.overwriteConfirmDialog$.show();
-        return [null, { skipped: true }];
-      }
       WXU.downloader.show();
-      if (createErr) {
-        return [createErr, null];
+      if (err) {
+        return [err, null];
       }
       return [null, data];
     },

@@ -309,18 +309,18 @@ func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker st
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*types.ChannelsFollowListResp, error) {
+func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*ChannelsFollowListResp, error) {
 	cache_key := "channels:follow_list:" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*types.ChannelsFollowListResp); ok {
+		if resp, ok := val.(*ChannelsFollowListResp); ok {
 			return resp, nil
 		}
 	}
-	resp, err := c.RequestFrontend("key:channels:follow_list", types.ChannelsFollowListBody{NextMarker: next_marker}, 10*time.Second)
+	resp, err := c.RequestFrontend("key:channels:follow_list", ChannelsFollowListBody{NextMarker: next_marker}, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	var r types.ChannelsFollowListResp
+	var r ChannelsFollowListResp
 	if err := json.Unmarshal(resp.Data, &r); err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*types.Cha
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*types.ChannelsFeedProfileResp, error) {
+func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)
 	cache_key := "channels:feed_profile:" + kk
