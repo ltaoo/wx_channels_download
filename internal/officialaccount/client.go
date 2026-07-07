@@ -366,7 +366,22 @@ func (c *OfficialAccountClient) HandleFetchMsgList(ctx *gin.Context) {
 		Str("biz", biz).
 		Int("offset", _offset).
 		Logger()
-	data, err := c.fetchMsgList(logger, biz, _offset)
+	// 如果页面传入了完整的凭证信息，直接使用，无需查找本地 account
+	uin := ctx.Query("uin")
+	key := ctx.Query("key")
+	passTicket := ctx.Query("pass_ticket")
+	var data *OfficialMsgListResp
+	if uin != "" && key != "" {
+		inline := &OfficialAccount{
+			Biz:        biz,
+			Uin:        uin,
+			Key:        key,
+			PassTicket: passTicket,
+		}
+		data, err = c.fetchMsgListWithAccount(logger, inline, _offset)
+	} else {
+		data, err = c.fetchMsgList(logger, biz, _offset)
+	}
 	if err != nil {
 		code := result.CodeFetchMsgFailed
 		msg := result.GetMsg(code)
@@ -2266,6 +2281,106 @@ func (c *OfficialAccountClient) fetchArticleList(biz string) (*ArticleListRespon
 	}
 
 	return &data, nil
+}
+
+func (c *OfficialAccountClient) fetchMsgListWithAccount(logger zerolog.Logger, acct *OfficialAccount, offset int) (*OfficialMsgListResp, error) {
+	logger.Info().Msg("fetch msg list (inline): start")
+	if acct.Biz == "" {
+		return nil, newCodedError(result.CodeMissingBiz, result.GetMsg(result.CodeMissingBiz), nil)
+	}
+	target_url := c.BuildMsgListURL(acct, offset)
+	params := url.Values{}
+	params.Add("action", "home")
+	params.Add("__biz", acct.Biz)
+	params.Add("scene", "124")
+	params.Add("uin", acct.Uin)
+	params.Add("key", acct.Key)
+	params.Add("devicetype", "UnifiedPCWindows")
+	params.Add("version", "f2541022")
+	params.Add("lang", "zh_CN")
+	params.Add("a8scene", "1")
+	params.Add("acctmode", "0")
+	params.Add("pass_ticket", acct.PassTicket)
+	referer := `https://mp.weixin.qq.com/mp/profile_ext?` + params.Encode()
+	resp, err := c.Fetch(target_url, referer)
+	if err != nil {
+		fmt.Printf("c.Fetch msg list (inline): error: %s\n", err.Error())
+		code := result.CodeFetchMsgFailed
+		msg := result.GetMsg(code)
+		reason := safeNetReason(err)
+		if reason == result.GetMsg(result.CodeTimeout) {
+			code = result.CodeTimeout
+			msg = reason
+		} else if reason != "" {
+			msg = fmt.Sprintf("%s: %s", msg, reason)
+		}
+		return nil, newCodedError(code, msg, err)
+	}
+	defer resp.Body.Close()
+	resp_bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, newCodedError(result.CodeFetchMsgFailed, "读取响应失败", err)
+	}
+	var data OfficialMsgListResp
+	err = json.Unmarshal(resp_bytes, &data)
+	if err != nil {
+		fmt.Printf("json.Unmarshal msg list (inline): error: %s\n", err.Error())
+		return nil, newCodedError(result.CodeDataParseFailed, result.GetMsg(result.CodeDataParseFailed), err)
+	}
+	if data.Ret != 0 {
+		fmt.Printf("data.Ret != 0 msg list (inline): error: %s\n", string(resp_bytes))
+		msg := data.ErrMsg
+		if strings.TrimSpace(msg) == "" {
+			msg = result.GetMsg(result.CodeFetchMsgFailed)
+		}
+		return nil, newCodedError(result.CodeFetchMsgFailed, msg, nil)
+	}
+	logger.Info().Int("ret", data.Ret).Msg("fetch msg list (inline): completed")
+	return &data, nil
+}
+
+// FetchAllMsgURLs 循环获取公众号所有推送的文章链接
+func (c *OfficialAccountClient) FetchAllMsgURLs(acct *OfficialAccount) ([]string, error) {
+	var urls []string
+	offset := 0
+	logger := c.logger.With().Str("biz", acct.Biz).Logger()
+	buildURL := func(u string) string {
+		if u == "" {
+			return ""
+		}
+		u = html.UnescapeString(u)
+		if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+			return u
+		}
+		return "https://mp.weixin.qq.com" + u
+	}
+	for {
+		data, err := c.fetchMsgListWithAccount(logger, acct, offset)
+		if err != nil {
+			return urls, err
+		}
+		var msgList struct {
+			List []OfficialAccountMsgListRespItem `json:"list"`
+		}
+		if err := json.Unmarshal([]byte(data.MsgList), &msgList); err != nil {
+			return urls, fmt.Errorf("解析推送列表失败: %w", err)
+		}
+		for _, item := range msgList.List {
+			if u := buildURL(item.MsgExtInfo.ContentUrl); u != "" {
+				urls = append(urls, u)
+			}
+			for _, sub := range item.MsgExtInfo.MultiAppMsgItemList {
+				if u := buildURL(sub.ContentUrl); u != "" {
+					urls = append(urls, u)
+				}
+			}
+		}
+		if data.HasMore == 0 {
+			break
+		}
+		offset = data.NextOffset
+	}
+	return urls, nil
 }
 
 func (c *OfficialAccountClient) fetchMsgList(logger zerolog.Logger, biz string, offset int) (*OfficialMsgListResp, error) {

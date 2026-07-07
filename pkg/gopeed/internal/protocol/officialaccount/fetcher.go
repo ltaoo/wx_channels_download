@@ -48,10 +48,17 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 		return err
 	}
 
-	// Sanitize filename
-	filename := strings.ReplaceAll(article.Title, "/", "_")
-	filename = strings.ReplaceAll(filename, "\\", "_")
-	filename = filename + ".html"
+	// Build filename from template if available
+	author := article.Creator
+	if author == "" {
+		author = article.AuthorNickname
+	}
+	rawName := buildArticleFilename(article.Title, author, req.Labels) + ".html"
+	// Split into dir and filename, sanitize each part (same logic as processTaskFilename)
+	dir, filename := normalizeArticlePath(rawName)
+	if dir != "" && f.DefaultFetcher.Meta.Opts != nil {
+		f.DefaultFetcher.Meta.Opts.Path = filepath.Join(f.DefaultFetcher.Meta.Opts.Path, dir)
+	}
 	size := int64(article.ContentLength)
 	if len(article.Images) > 0 {
 		var wg sync.WaitGroup
@@ -109,7 +116,14 @@ func (f *Fetcher) Start() error {
 			f.addProgress(downloaded)
 		}
 		// Use the URL from the request and Path from options
-		destPath := filepath.Join(f.DefaultFetcher.Meta.Opts.Path, f.DefaultFetcher.Meta.Opts.Name)
+		name := f.DefaultFetcher.Meta.Opts.Name
+		if name == "" {
+			name = f.DefaultFetcher.Meta.Res.Name
+		}
+		if name == "" && len(f.DefaultFetcher.Meta.Res.Files) > 0 {
+			name = f.DefaultFetcher.Meta.Res.Files[0].Name
+		}
+		destPath := filepath.Join(f.DefaultFetcher.Meta.Opts.Path, name)
 		needCompress := false
 		if f.DefaultFetcher.Meta.Req.Labels != nil && f.DefaultFetcher.Meta.Req.Labels["compress"] == "true" {
 			needCompress = true
@@ -218,4 +232,81 @@ func (fm *FetcherManager) Restore() (v any, f func(meta *fetcher.FetcherMeta, v 
 
 func (fm *FetcherManager) Close() error {
 	return nil
+}
+
+// buildArticleFilename applies the filename template to generate the article filename.
+// If no template is provided in labels, falls back to the article title.
+func buildArticleFilename(title string, author string, labels map[string]string) string {
+	template := ""
+	if labels != nil {
+		template = labels["filename_template"]
+	}
+	if template == "" {
+		return title
+	}
+
+	defaultName := title
+	if defaultName == "" {
+		defaultName = "article"
+	}
+
+	params := map[string]string{
+		"filename": defaultName,
+		"title":    title,
+		"spec":     "html",
+		"author":   author,
+	}
+	if labels != nil {
+		if v, ok := labels["article_id"]; ok {
+			params["id"] = v
+		}
+	}
+
+	result := template
+	for k, v := range params {
+		result = strings.ReplaceAll(result, "{{"+k+"}}", v)
+	}
+	return result
+}
+
+// normalizeArticlePath splits a raw filename (which may contain "/" for subdirectories)
+// into a directory part and a sanitized filename part.
+// This replicates the same behavior as processTaskFilename in the API handler.
+func normalizeArticlePath(rawName string) (dir string, filename string) {
+	rawName = strings.ReplaceAll(rawName, "//", "_")
+	dirPart, namePart := filepath.Split(rawName)
+	filename = sanitizeFilenameComponent(namePart)
+	if filename == "" {
+		filename = "article.html"
+	}
+	if dirPart != "" {
+		dirPart = strings.TrimSuffix(dirPart, string(filepath.Separator))
+		components := strings.Split(dirPart, string(filepath.Separator))
+		validDirs := make([]string, 0, len(components))
+		for _, comp := range components {
+			clean := sanitizeFilenameComponent(comp)
+			if clean != "" {
+				validDirs = append(validDirs, clean)
+			}
+		}
+		dir = filepath.Join(validDirs...)
+	}
+	return
+}
+
+// sanitizeFilenameComponent removes invalid characters from a single filename component.
+func sanitizeFilenameComponent(name string) string {
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '<', '>', ':', '"', '\\', '|', '?', '*':
+			return -1
+		}
+		if r < 0x20 {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.TrimSpace(name)
+	name = strings.Trim(name, ".")
+	return name
 }
