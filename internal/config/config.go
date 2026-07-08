@@ -118,6 +118,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否设置系统代理为代理服务",
 		Title:       "设置系统代理",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.hostname",
@@ -142,6 +143,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否启用 TCP relay，用于接收 iptables/nftables 透明重定向的原始 TCP 流量",
 		Title:       "启用 TCP Relay",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.tcpRelay.hostname",
@@ -150,6 +152,7 @@ func (c *Config) LoadConfig() error {
 		Description: "TCP relay 监听主机名",
 		Title:       "TCP Relay 主机",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.tcpRelay.port",
@@ -158,6 +161,7 @@ func (c *Config) LoadConfig() error {
 		Description: "TCP relay 监听端口，必须与代理端口不同",
 		Title:       "TCP Relay 端口",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cert.file",
@@ -167,6 +171,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "证书文件",
 		Group:       "Proxy",
 		Accept:      ".pem,.cer,.crt,.key",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cert.key",
@@ -176,6 +181,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "私钥文件",
 		Group:       "Proxy",
 		Accept:      ".pem,.key",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cert.name",
@@ -184,6 +190,7 @@ func (c *Config) LoadConfig() error {
 		Description: "自定义证书名称",
 		Title:       "证书名称",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.tun",
@@ -192,6 +199,7 @@ func (c *Config) LoadConfig() error {
 		Description: "启用 TUN 模式（网络层流量转发），开启后不会设置系统代理",
 		Title:       "TUN 模式",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.defaultInterface",
@@ -200,6 +208,7 @@ func (c *Config) LoadConfig() error {
 		Description: "TUN 模式下指定默认出口网卡名称，留空时自动检测",
 		Title:       "默认网卡",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.skipInstallRootCert",
@@ -208,6 +217,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否跳过安装根证书（需要自行手动信任/导入证书）",
 		Title:       "不安装根证书",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "proxy.upstreamProxy",
@@ -216,6 +226,7 @@ func (c *Config) LoadConfig() error {
 		Description: "上游代理地址，用于转发所有请求到指定代理（如 http://127.0.0.1:7890）",
 		Title:       "上游代理",
 		Group:       "Proxy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "pagespy.enabled",
@@ -224,6 +235,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否开启 PageSpy",
 		Title:       "启用",
 		Group:       "Pagespy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "pagespy.protocol",
@@ -233,6 +245,7 @@ func (c *Config) LoadConfig() error {
 		Description: "PageSpy 调试协议",
 		Title:       "协议头",
 		Group:       "Pagespy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "pagespy.api",
@@ -241,6 +254,7 @@ func (c *Config) LoadConfig() error {
 		Description: "PageSpy 调试 API 地址",
 		Title:       "API 地址",
 		Group:       "Pagespy",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "debug.error",
@@ -249,6 +263,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否全局捕获前端错误，出现错误时弹窗展示错误信息",
 		Title:       "错误展示",
 		Group:       "Debug",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "debug.echolog",
@@ -257,6 +272,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否启用 Echo 代理日志",
 		Title:       "Echo 日志",
 		Group:       "Debug",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "channels.disableLocationToHome",
@@ -265,6 +281,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否禁止从视频号详情页重定向到首页（视频号默认行为）",
 		Title:       "禁止重定向",
 		Group:       "Channels",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "channel.disableLocationToHome",
@@ -273,6 +290,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否禁止从视频号详情页重定向到首页（视频号默认行为）",
 		Title:       "禁止重定向",
 		Group:       "Channels",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "channels.refreshInterval",
@@ -281,6 +299,7 @@ func (c *Config) LoadConfig() error {
 		Description: "视频号页面定时刷新时间间隔（秒），0 为不刷新",
 		Title:       "定时刷新间隔",
 		Group:       "Channels",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "inject.extraScript.afterJSMain",
@@ -289,6 +308,7 @@ func (c *Config) LoadConfig() error {
 		Description: "额外注入的 JS 脚本路径",
 		Title:       "注入脚本",
 		Group:       "Inject",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "inject.globalScript",
@@ -297,6 +317,7 @@ func (c *Config) LoadConfig() error {
 		Description: "全局用户脚本",
 		Title:       "全局脚本",
 		Group:       "Inject",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.dir",
@@ -313,6 +334,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否通过前端解密、下载，不调用后台下载能力",
 		Title:       "前端下载",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.defaultHighest",
@@ -321,6 +343,7 @@ func (c *Config) LoadConfig() error {
 		Description: "点击下载图标时是否下载原始视频（该配置不再生效）",
 		Title:       "原始视频",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.filenameTemplate",
@@ -329,6 +352,7 @@ func (c *Config) LoadConfig() error {
 		Description: "用于配置下载文件的名称，支持 {{filename}} 和 {{spec}} 等变量",
 		Title:       "文件名模板",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.forceCheckAllFeeds",
@@ -337,6 +361,7 @@ func (c *Config) LoadConfig() error {
 		Description: "批量下载时是否强制检查所有视频",
 		Title:       "检查所有视频",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.pauseWhenDownload",
@@ -345,6 +370,7 @@ func (c *Config) LoadConfig() error {
 		Description: "点击下载时是否暂停播放",
 		Title:       "暂停播放",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "download.playDoneAudio",
@@ -353,6 +379,7 @@ func (c *Config) LoadConfig() error {
 		Description: "下载完成时是否播放完成音效",
 		Title:       "播放完成音效",
 		Group:       "Download",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "db.type",
@@ -500,6 +527,7 @@ func (c *Config) LoadConfig() error {
 		Description: "公众号远端服务刷新凭证",
 		Title:       "刷新凭证",
 		Group:       "OfficialAccount",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "mp.tokenFilepath",
@@ -508,6 +536,7 @@ func (c *Config) LoadConfig() error {
 		Description: "公众号远端服务授权凭证",
 		Title:       "授权凭证",
 		Group:       "OfficialAccount",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "mp.accountIdsRefreshInterval",
@@ -516,6 +545,7 @@ func (c *Config) LoadConfig() error {
 		Description: "需要定时刷新的帐号列表",
 		Title:       "定时刷新列表",
 		Group:       "OfficialAccount",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "mp.refreshSkipMinutes",
@@ -524,6 +554,7 @@ func (c *Config) LoadConfig() error {
 		Description: "刷新时若账号在最近 N 分钟已更新则跳过",
 		Title:       "刷新跳过时间（分钟）",
 		Group:       "OfficialAccount",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "zhihu.enabled",
@@ -540,6 +571,7 @@ func (c *Config) LoadConfig() error {
 		Description: "知乎请求 Cookie，用于访问需要登录态的知乎接口",
 		Title:       "知乎 Cookie",
 		Group:       "Zhihu",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "69shuba.cookie",
@@ -548,6 +580,7 @@ func (c *Config) LoadConfig() error {
 		Description: "69书吧请求 Cookie，用于访问 Cloudflare 验证后的页面",
 		Title:       "69书吧 Cookie",
 		Group:       "69shuba",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "69shuba.fetcher",
@@ -709,6 +742,7 @@ func (c *Config) LoadConfig() error {
 		Description: "B 站请求 Cookie，用于访问账号可看的高清清晰度；不会输出到日志",
 		Title:       "B 站 Cookie",
 		Group:       "Bilibili",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "youtube.enabled",
@@ -725,6 +759,7 @@ func (c *Config) LoadConfig() error {
 		Description: "YouTube 请求 Cookie，用于访问需要登录态的视频；不会输出到日志",
 		Title:       "YouTube Cookie",
 		Group:       "YouTube",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "youtube.poToken",
@@ -733,6 +768,7 @@ func (c *Config) LoadConfig() error {
 		Description: "YouTube GVS PO Token，兼容 yt-dlp 的 client.gvs+TOKEN 格式；用于避免部分 videoplayback 403",
 		Title:       "YouTube PO Token",
 		Group:       "YouTube",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "weibo.enabled",
@@ -749,6 +785,7 @@ func (c *Config) LoadConfig() error {
 		Description: "微博请求 Cookie，用于访问需要登录态的微博列表接口；不会输出到日志",
 		Title:       "微博 Cookie",
 		Group:       "Weibo",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.accountId",
@@ -757,6 +794,7 @@ func (c *Config) LoadConfig() error {
 		Description: "Cloudflare 帐号 ID",
 		Title:       "Account ID",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.apiToken",
@@ -765,6 +803,7 @@ func (c *Config) LoadConfig() error {
 		Description: "Cloudflare Worker 认证 Token",
 		Title:       "API Token",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.refreshToken",
@@ -773,6 +812,7 @@ func (c *Config) LoadConfig() error {
 		Description: "调用 mp-rss 凭证刷新接口所需的 token",
 		Title:       "Refresh Token",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.adminToken",
@@ -781,6 +821,7 @@ func (c *Config) LoadConfig() error {
 		Description: "调用 mp-rss 管理员接口所需的凭证",
 		Title:       "Admin Token",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.workerName",
@@ -789,6 +830,7 @@ func (c *Config) LoadConfig() error {
 		Description: "Cloudflare mp-rss Worker 名称",
 		Title:       "Worker Name",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.d1Id",
@@ -797,6 +839,7 @@ func (c *Config) LoadConfig() error {
 		Description: "Cloudflare mp-rss d1数据库 ID",
 		Title:       "D1 Database ID",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "cloudflare.d1Name",
@@ -805,6 +848,7 @@ func (c *Config) LoadConfig() error {
 		Description: "Cloudflare mp-rss d1数据库 Name",
 		Title:       "D1 Database Name",
 		Group:       "Cloudflare",
+		HotReload:   true,
 	})
 	// Update 自更新配置
 	Register(ConfigItem{
@@ -814,6 +858,7 @@ func (c *Config) LoadConfig() error {
 		Description: "update 命令从 GitHub 下载更新时使用的代理地址（如 http://127.0.0.1:7890），与 proxy.upstreamProxy 不同",
 		Title:       "更新代理",
 		Group:       "Update",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "update.mirror",
@@ -822,6 +867,7 @@ func (c *Config) LoadConfig() error {
 		Description: "update 命令从 GitHub 下载更新时使用的镜像地址（如 https://ghproxy.com/），会拼接在原始 URL 之前",
 		Title:       "更新镜像",
 		Group:       "Update",
+		HotReload:   true,
 	})
 
 	// FileHelper 微信文件传输助手配置
@@ -832,6 +878,7 @@ func (c *Config) LoadConfig() error {
 		Description: "是否开启文件传输助手自动下载视频号功能",
 		Title:       "自动下载",
 		Group:       "FileHelper",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "filehelper.callbackUrl",
@@ -840,6 +887,7 @@ func (c *Config) LoadConfig() error {
 		Description: "文件传输助手消息回调地址",
 		Title:       "回调地址",
 		Group:       "FileHelper",
+		HotReload:   true,
 	})
 	Register(ConfigItem{
 		Key:         "filehelper.syncInterval",
@@ -848,6 +896,7 @@ func (c *Config) LoadConfig() error {
 		Description: "消息同步间隔（秒）",
 		Title:       "同步间隔",
 		Group:       "FileHelper",
+		HotReload:   true,
 	})
 
 	if c.Existing {
