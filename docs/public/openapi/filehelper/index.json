@@ -1,0 +1,14 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "文件传输助手管理页面",
+    "description": "返回文件传输助手管理 HTML 页面",
+    "responses": {
+      "200": {
+        "description": "HTML 页面"
+      }
+    }
+  }
+}

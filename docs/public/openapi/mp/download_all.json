@@ -1,0 +1,74 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "批量下载公众号所有消息中的媒体",
+    "description": "遍历指定公众号的所有消息，提取媒体链接并创建下载任务",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "biz": {
+                "type": "string",
+                "description": "公众号 biz 标识"
+              },
+              "uin": {
+                "type": "string",
+                "description": "uin 参数"
+              },
+              "key": {
+                "type": "string",
+                "description": "key 参数"
+              },
+              "pass_ticket": {
+                "type": "string",
+                "description": "pass_ticket 参数"
+              },
+              "token": {
+                "type": "string",
+                "description": "API token 用于鉴权"
+              }
+            },
+            "required": [
+              "biz",
+              "token"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "下载结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "count": 10,
+                    "total": 15
+                  }
+                }
+              },
+              "invalid_token": {
+                "summary": "token 无效",
+                "value": {
+                  "code": 401,
+                  "msg": "token 无效"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "get": {
+    "tags": [
+      "平台"
+    ],
+    "summary": "查询任务状态（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "状态信息"
+      }
+    }
+  }
+}

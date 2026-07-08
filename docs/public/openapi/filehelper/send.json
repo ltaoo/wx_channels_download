@@ -1,0 +1,53 @@
+{
+  "post": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "发送消息",
+    "description": "通过文件传输助手发送文本消息（仅本地模式可用）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "要发送的文本内容"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "发送结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "发送成功"
+                }
+              },
+              "not_logged_in": {
+                "summary": "未登录",
+                "value": {
+                  "code": 401,
+                  "msg": "未登录"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

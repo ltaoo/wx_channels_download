@@ -1,0 +1,90 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取任务列表（Bolt/Gopeed 格式）",
+    "description": "从 gopeed.db 读取任务列表，支持分页和状态过滤",
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1
+        },
+        "description": "页码"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20
+        },
+        "description": "每页条数"
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "default": "all",
+          "enum": [
+            "all",
+            "ready",
+            "running",
+            "pause",
+            "wait",
+            "done",
+            "error"
+          ]
+        },
+        "description": "按任务状态过滤"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "任务列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "list": [],
+                    "total": 0,
+                    "page": 1,
+                    "page_size": 20,
+                    "status_counts": {
+                      "total": 0,
+                      "ready": 0,
+                      "running": 0,
+                      "wait": 0,
+                      "pause": 0,
+                      "error": 0,
+                      "done": 0
+                    }
+                  }
+                }
+              },
+              "db_not_found": {
+                "summary": "数据库不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "gopeed.db 文件不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

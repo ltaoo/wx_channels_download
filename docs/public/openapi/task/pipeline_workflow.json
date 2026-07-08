@@ -1,0 +1,58 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取下载工作流状态",
+    "description": "查询指定工作流的当前状态、节点列表和是否需要用户交互",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "工作流 run ID（也可使用 probe_id）"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "工作流状态",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "run_id": "abc123",
+                    "probe_id": "abc123",
+                    "workflow": {
+                      "id": "abc123",
+                      "url": "https://example.com/video",
+                      "platform": "bilibili",
+                      "status": "completed",
+                      "current_node": "download",
+                      "nodes": []
+                    },
+                    "requires_user_input": false
+                  }
+                }
+              },
+              "not_found": {
+                "summary": "流程不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "流程不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

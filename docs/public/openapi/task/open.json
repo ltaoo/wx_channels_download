@@ -1,0 +1,61 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "在系统浏览器中打开 URL",
+    "description": "调用系统默认浏览器打开指定 URL（仅本地模式可用）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "要打开的 URL"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": null
+                }
+              },
+              "missing_url": {
+                "summary": "缺少 URL",
+                "value": {
+                  "code": 400,
+                  "msg": "Missing the `url`"
+                }
+              },
+              "invalid_url": {
+                "summary": "无效 URL",
+                "value": {
+                  "code": 400,
+                  "msg": "Invalid URL"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

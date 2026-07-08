@@ -1,0 +1,70 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "代理请求到远端服务",
+    "description": "将请求转发到配置的远端下载服务器（download.remoteServer.*），用于本地客户端操作远端任务",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD"
+                ],
+                "default": "GET",
+                "description": "HTTP 方法"
+              },
+              "path": {
+                "type": "string",
+                "description": "API 路径（必须以 / 开头）"
+              },
+              "query": {
+                "type": "object",
+                "description": "查询参数"
+              },
+              "body": {
+                "type": "object",
+                "description": "请求体（仅 POST/PUT/PATCH）"
+              },
+              "headers": {
+                "type": "object",
+                "description": "自定义请求头"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "examples": {
+            "get_tasks": {
+              "summary": "获取远端任务列表",
+              "value": {
+                "method": "GET",
+                "path": "/api/task/list",
+                "query": {
+                  "page": "1"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "远端服务的原始响应（透传）"
+      }
+    }
+  }
+}

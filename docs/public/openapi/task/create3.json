@@ -1,0 +1,131 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "批量创建下载任务（通用）",
+    "description": "支持通过文本（换行分隔 URL）、URL 数组或详细任务数组批量创建下载任务",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "换行分隔的 URL 列表"
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "URL 数组"
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "下载 URL"
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "文件名"
+                    },
+                    "dir": {
+                      "type": "string",
+                      "description": "子目录"
+                    },
+                    "extra": {
+                      "type": "object",
+                      "description": "额外标签"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ]
+                }
+              },
+              "dir": {
+                "type": "string",
+                "description": "所有任务的默认子目录"
+              },
+              "extra": {
+                "type": "object",
+                "description": "所有任务的默认标签"
+              }
+            }
+          },
+          "examples": {
+            "urls": {
+              "summary": "URL 数组",
+              "value": {
+                "urls": [
+                  "https://example.com/video1.mp4",
+                  "https://example.com/video2.mp4"
+                ],
+                "dir": "批量下载"
+              }
+            },
+            "text": {
+              "summary": "文本换行",
+              "value": {
+                "text": "https://example.com/video1.mp4\nhttps://example.com/video2.mp4"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "创建结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "ids": [
+                      "task1",
+                      "task2"
+                    ],
+                    "skipped": [],
+                    "failed": []
+                  }
+                }
+              },
+              "partial": {
+                "summary": "部分失败",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "ids": [
+                      "task1"
+                    ],
+                    "skipped": [
+                      {
+                        "url": "https://example.com/dup.mp4",
+                        "code": 409,
+                        "message": "already exists"
+                      }
+                    ],
+                    "failed": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

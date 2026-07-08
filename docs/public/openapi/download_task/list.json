@@ -1,0 +1,98 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "获取下载任务列表（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": false,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "description": "页码（从 1 开始）"
+              },
+              "pageSize": {
+                "type": "integer",
+                "default": 20,
+                "description": "每页条数"
+              },
+              "status": {
+                "type": "integer",
+                "description": "按 download_task.status 过滤"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "任务列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "list": [
+                      {
+                        "id": 1,
+                        "task_id": "fqG2OhiJFRYpnELqZmPRW",
+                        "type": 1,
+                        "status": 4,
+                        "external_id": "14545102784038246591",
+                        "protocol": "http",
+                        "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
+                        "title": "示例标题.mp4",
+                        "cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                        "size": 1462345,
+                        "progress": "{\"downloaded\":1462345}",
+                        "filepath": "苏苏是猪猪/示例标题.mp4",
+                        "error": "",
+                        "reason": "",
+                        "metadata1": "{}",
+                        "metadata2": "{\"platform\":\"wx_channels\"}",
+                        "idx": 0,
+                        "created_at": "1760000000000",
+                        "updated_at": "1760000001000",
+                        "events": [
+                          {
+                            "id": 1,
+                            "task_id": 1,
+                            "type": "started",
+                            "message": "",
+                            "data": "",
+                            "created_at": "1760000000000"
+                          }
+                        ]
+                      }
+                    ],
+                    "page": 1,
+                    "page_size": 20,
+                    "total": 1
+                  }
+                }
+              },
+              "no_db": {
+                "summary": "数据库未初始化",
+                "value": {
+                  "code": 500,
+                  "msg": "数据库未初始化",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

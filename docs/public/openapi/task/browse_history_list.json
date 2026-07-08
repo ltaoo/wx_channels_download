@@ -1,0 +1,97 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取浏览历史列表",
+    "description": "按 updated_at 倒序返回浏览历史。可选通过 username 过滤指定视频号账号。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "description": "视频号账号 username（如 v2_xxx@finder）。不传则返回全部。"
+              }
+            }
+          },
+          "examples": {
+            "all": {
+              "summary": "查询全部",
+              "value": {}
+            },
+            "by_username": {
+              "summary": "按账号过滤",
+              "value": {
+                "username": "v2_xxx@finder"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "浏览历史列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "list": [
+                      {
+                        "id": 1,
+                        "platform_id": "wx_channels",
+                        "visited_times": 3,
+                        "account_id": null,
+                        "influencer_id": null,
+                        "account_external_id": "v2_xxx@finder",
+                        "account_username": "v2_xxx@finder",
+                        "account_nickname": "示例账号",
+                        "account_avatar_url": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132",
+                        "content_id": null,
+                        "content_type": "video",
+                        "content_external_id": "14545102784038246591",
+                        "content_title": "示例内容标题",
+                        "content_url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                        "content_source_url": "https://channels.weixin.qq.com/xxx",
+                        "content_cover_url": "https://wx.qlogo.cn/finder/xxx/0",
+                        "extra_data": "{\"nonce_id\":\"nonce_id_xxx\",\"decodeKey\":\"81721112\",\"urlToken\":\"&token=xxx\"}",
+                        "created_at": 1710000000000,
+                        "updated_at": 1710000000000,
+                        "deleted_at": null
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid": {
+                "summary": "参数不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "EOF",
+                  "data": {}
+                }
+              },
+              "no_db": {
+                "summary": "数据库未初始化",
+                "value": {
+                  "code": 500,
+                  "msg": "数据库未初始化",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

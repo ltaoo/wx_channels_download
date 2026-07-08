@@ -1,0 +1,79 @@
+{
+  "get": {
+    "tags": [
+      "媒体"
+    ],
+    "summary": "获取文件信息",
+    "description": "根据文件路径返回文件预览信息，支持图片、视频、HTML、ZIP 和目录",
+    "parameters": [
+      {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "文件或目录的绝对路径"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "文件信息",
+        "content": {
+          "application/json": {
+            "examples": {
+              "video": {
+                "summary": "视频文件",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "type": "video",
+                    "url": "/file?path=%2FUsers%2Fxxx%2Fvideo.mp4"
+                  }
+                }
+              },
+              "image": {
+                "summary": "图片文件",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "type": "image",
+                    "url": "/file?path=%2FUsers%2Fxxx%2Fphoto.jpg"
+                  }
+                }
+              },
+              "directory": {
+                "summary": "目录",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "type": "directory",
+                    "path": "/Users/xxx/images",
+                    "images": []
+                  }
+                }
+              },
+              "missing_path": {
+                "summary": "缺少路径",
+                "value": {
+                  "code": 400,
+                  "msg": "missing path"
+                }
+              },
+              "not_found": {
+                "summary": "文件不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "file not found"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

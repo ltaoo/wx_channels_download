@@ -1,0 +1,63 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "探测/解析下载链接",
+    "description": "与 /api/task/pipeline/start 功能相同，输入 URL 解析出可下载的内容信息。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "要解析的内容 URL"
+              },
+              "run_id": {
+                "type": "string",
+                "description": "已有的工作流 run ID"
+              },
+              "probe_id": {
+                "type": "string",
+                "description": "run_id 的别名"
+              },
+              "extra": {
+                "type": "object",
+                "description": "平台特定的额外参数"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "解析结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "run_id": "abc123",
+                    "probe_id": "abc123",
+                    "platform": "bilibili"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
