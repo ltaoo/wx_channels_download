@@ -26,17 +26,17 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 	var body struct {
-		AccountId   *int       `json:"account_id"`
-		ContentType *string    `json:"content_type"`
-		Keyword     *string    `json:"keyword"`
-		StartAt     *time.Time `json:"start_at"`
-		EndAt       *time.Time `json:"end_at"`
-		Page        *int       `json:"page"`
-		PageSize    *int       `json:"page_size"`
-		Limit       *int       `json:"limit"`
-		Offset      *int       `json:"offset"`
+		AccountId   *int       `form:"account_id"`
+		ContentType *string    `form:"content_type"`
+		Keyword     *string    `form:"keyword"`
+		StartAt     *time.Time `form:"start_at" time_format:"2006-01-02"`
+		EndAt       *time.Time `form:"end_at" time_format:"2006-01-02"`
+		Page        *int       `form:"page"`
+		PageSize    *int       `form:"page_size"`
+		Limit       *int       `form:"limit"`
+		Offset      *int       `form:"offset"`
 	}
-	if err := ctx.ShouldBindJSON(&body); err != nil {
+	if err := ctx.ShouldBindQuery(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
@@ -172,7 +172,6 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		list = append(list, gin.H{
 			"id":                   content.Id,
 			"platform_id":          content.PlatformId,
-			"platform":             platformView(content.PlatformId),
 			"platform_name":        platformNameOf(content.PlatformId),
 			"platform_favicon_url": scraper.FaviconDataURL(content.PlatformId),
 			"content_type":         content.ContentType,

@@ -118,12 +118,12 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/influencers", c.handleCompatInfluencerCreate)
 	// c.engine.PUT("/influencers/:id", c.handleCompatInfluencerUpdate)
 
-	// c.engine.POST("/api/account/list", c.handleCompatAccountList)
+	c.engine.GET("/api/account/list", c.handleCompatAccountList)
 	// c.engine.POST("/api/account/synchronize", c.handleCompatAccountSynchronize)
 	// c.engine.POST("/account/list", c.handleCompatAccountList)
 	// c.engine.POST("/account/synchronize", c.handleCompatAccountSynchronize)
 
-	// c.engine.POST("/api/content/list", c.handleCompatContentList)
+	c.engine.GET("/api/content/list", c.handleCompatContentList)
 	// c.engine.POST("/content/list", c.handleCompatContentList)
 	// c.engine.POST("/api/video/list", c.handleCompatVideoList)
 	// c.engine.POST("/video/list", c.handleCompatVideoList)

@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"io"
 	"strconv"
 	"strings"
 
@@ -133,16 +132,12 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		HasContent    *bool  `json:"has_content"`
-		ContentFilter string `json:"content_filter"`
+		HasContent    *bool  `form:"has_content"`
+		ContentFilter string `form:"content_filter"`
 	}
-	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
-		if err := ctx.ShouldBindJSON(&body); err != nil {
-			if !errors.Is(err, io.EOF) {
-				result.Err(ctx, 400, err.Error())
-				return
-			}
-		}
+	if err := ctx.ShouldBindQuery(&body); err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
 	}
 
 	contentFilter := strings.ToLower(strings.TrimSpace(body.ContentFilter))
@@ -178,28 +173,6 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 		return
 	}
 
-	platformIDs := make([]string, 0, len(accounts))
-	seenPlatformIDs := map[string]struct{}{}
-	for _, acc := range accounts {
-		if acc.PlatformId == "" {
-			continue
-		}
-		if _, ok := seenPlatformIDs[acc.PlatformId]; ok {
-			continue
-		}
-		seenPlatformIDs[acc.PlatformId] = struct{}{}
-		platformIDs = append(platformIDs, acc.PlatformId)
-	}
-
-	platformByID := map[string]model.Platform{}
-	if len(platformIDs) > 0 {
-		var platforms []model.Platform
-		_ = c.db.Where("id IN ?", platformIDs).Find(&platforms).Error
-		for _, p := range platforms {
-			platformByID[p.Id] = p
-		}
-	}
-
 	list := make([]gin.H, 0, len(accounts))
 	for _, acc := range accounts {
 		type caRow struct {
@@ -229,28 +202,12 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			}
 		}
 
-		platform := platformByID[acc.PlatformId]
-		platformName := platform.Name
-		if platformName == "" {
-			platformName = platformNameOf(acc.PlatformId)
-		}
 		var contentAccountCount int64
 		_ = c.db.Table("content_account").Where("account_id = ?", acc.Id).Count(&contentAccountCount).Error
 
 		list = append(list, gin.H{
-			"id":          acc.Id,
-			"platform_id": acc.PlatformId,
-			"platform": gin.H{
-				"id":          acc.PlatformId,
-				"code":        firstNonEmpty(platform.Code, acc.PlatformId),
-				"name":        platformName,
-				"homepage":    platform.Homepage,
-				"logo_url":    platform.LogoURL,
-				"favicon_url": scraper.FaviconDataURL(acc.PlatformId),
-				"entry_url":   platform.EntryURL,
-			},
-			"platform_name": platformName,
-			"nickname":      acc.Nickname,
+			"id":       acc.Id,
+			"nickname": acc.Nickname,
 			"avatar_url":    acc.AvatarURL,
 			"external_id":   acc.ExternalId,
 			"created_at":    acc.CreatedAt,
@@ -301,10 +258,6 @@ func accountContentPayload(content model.Content) gin.H {
 	title := firstNonEmpty(content.Title, content.Description, content.ExternalId)
 	return gin.H{
 		"id":                   content.Id,
-		"platform_id":          content.PlatformId,
-		"platform":             platformView(content.PlatformId),
-		"platform_name":        platformNameOf(content.PlatformId),
-		"platform_favicon_url": scraper.FaviconDataURL(content.PlatformId),
 		"content_type":         mediaType,
 		"media_type":           mediaType,
 		"source_content_type":  sourceContentType,
