@@ -1,13 +1,19 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 	"go.etcd.io/bbolt"
 	"gorm.io/gorm"
@@ -17,6 +23,7 @@ import (
 
 	"wx_channel/internal/database/model"
 	pkgdatabase "wx_channel/pkg/database"
+	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 )
 
@@ -24,6 +31,7 @@ var (
 	migrateSource   string
 	migrateTarget   string
 	migratePlatform string
+	enrichCacheDir  string
 )
 
 var migrateGopeedCmd = &cobra.Command{
@@ -38,6 +46,7 @@ func init() {
 	migrateGopeedCmd.Flags().StringVar(&migrateSource, "source", "gopeed.db", "源 BoltDB 文件路径")
 	migrateGopeedCmd.Flags().StringVar(&migrateTarget, "target", "", "目标 SQLite 数据库文件路径（必需）")
 	migrateGopeedCmd.Flags().StringVar(&migratePlatform, "platform", "wx_channels", "迁移时使用的默认平台标识")
+	migrateGopeedCmd.Flags().StringVar(&enrichCacheDir, "cache-file", "cache/channels_feed_profile.json", "API 响应缓存文件路径（单文件 Map 结构，可读可同步）")
 	migrateGopeedCmd.MarkFlagRequired("target")
 	root_cmd.AddCommand(migrateGopeedCmd)
 }
@@ -216,6 +225,11 @@ func runGopeedMigration() {
 			} else {
 				contentCount++
 			}
+
+			// 调用 API 补充 content 和 account 信息（nonce_id 可为空）
+		if err := enrichContentFromAPI(db, enrichCacheDir, externalID, nonceID); err != nil {
+			fmt.Printf("[警告] 任务 %s: 补充 content 信息失败 - %v\n", task.ID, err)
+		}
 		}
 
 		taskCount++
@@ -427,4 +441,405 @@ func ensureContentVideo(db *gorm.DB, contentID int, nonceID string, labels map[s
 		DecodeKey: getLabel(labels, "key"),
 	}
 	db.Create(&video)
+}
+
+// enrichCache 单文件缓存结构，key 为 "oid:nid"
+type enrichCache struct {
+	mu      sync.RWMutex
+	Entries map[string]enrichCacheEntry `json:"entries"`
+}
+
+type enrichCacheEntry struct {
+	CachedAt int64           `json:"cached_at"`
+	Response json.RawMessage `json:"response"`
+}
+
+// enrichContentFromAPI 调用本地 API 获取 feed profile，补充 content 和 account 信息
+// cacheFile 为单个缓存文件路径，为空则不使用缓存
+func enrichContentFromAPI(db *gorm.DB, cacheFile, externalID, nonceID string) error {
+	platformID := "wx_channels"
+
+	// nonce_id 可能含下划线后缀（如 "5073863920001900660_0_146_0_0"），只取第一部分
+	nidClean := nonceID
+	if idx := strings.IndexByte(nonceID, '_'); idx > 0 {
+		nidClean = nonceID[:idx]
+	}
+
+	cacheKey := externalID + ":" + nidClean
+	var body []byte
+
+	if cacheFile != "" {
+		cc := loadEnrichCache(cacheFile)
+		cc.mu.RLock()
+		if entry, ok := cc.Entries[cacheKey]; ok {
+			body = entry.Response
+		}
+		cc.mu.RUnlock()
+	}
+
+	// 缓存未命中，调用 API
+	if body == nil {
+		url := fmt.Sprintf("http://127.0.0.1:3022/api/channels/feed/profile?oid=%s&nid=%s", externalID, nidClean)
+		resp, err := http.Get(url)
+		if err != nil {
+			return fmt.Errorf("API 请求失败: %w", err)
+		}
+		defer resp.Body.Close()
+
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("读取响应失败: %w", err)
+		}
+	}
+
+	// 解析 API 响应
+	var apiResp struct {
+		Code int                                `json:"code"`
+		Msg  string                             `json:"msg"`
+		Data wxchannels.ChannelsFeedProfileResp `json:"data"`
+	}
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if apiResp.Code != 0 {
+		return fmt.Errorf("API 错误 (code=%d): %s", apiResp.Code, apiResp.Msg)
+	}
+
+	if apiResp.Data.ErrCode != 0 {
+		return fmt.Errorf("API 业务错误 (errCode=%d): %s", apiResp.Data.ErrCode, apiResp.Data.ErrMsg)
+	}
+
+	// 成功后写入缓存
+	if cacheFile != "" && len(body) > 0 {
+		cc := loadEnrichCache(cacheFile)
+		cc.mu.Lock()
+		cc.Entries[cacheKey] = enrichCacheEntry{
+			CachedAt: util.NowMillis(),
+			Response: body,
+		}
+		data, _ := json.MarshalIndent(cc, "", "  ")
+		cc.mu.Unlock()
+		os.MkdirAll(filepath.Dir(cacheFile), 0755)
+		os.WriteFile(cacheFile, data, 0644)
+	}
+
+	obj := apiResp.Data.Data.Object
+	if obj.ID == "" {
+		return fmt.Errorf("API 返回的 Object ID 为空")
+	}
+
+	// 提取 coverUrl
+	var coverURL string
+	if len(obj.ObjectDesc.Media) > 0 {
+		coverURL = obj.ObjectDesc.Media[0].CoverUrl
+	}
+
+	// 生成 source_url 和 content_url
+	encodedOid := util.EncodeUint64ToBase64(externalID)
+	encodedNid := util.EncodeUint64ToBase64(nidClean)
+	feedURL := fmt.Sprintf("https://channels.weixin.qq.com/web/pages/feed?oid=%s&nid=%s", encodedOid, encodedNid)
+
+	now := util.NowMillis()
+
+	// 更新 content 的 cover_url、source_url、content_url
+	updates := map[string]any{
+		"updated_at":  now,
+		"source_url":  feedURL,
+		"content_url": feedURL,
+	}
+	if coverURL != "" {
+		updates["cover_url"] = coverURL
+	}
+	if err := db.Model(&model.Content{}).
+		Where("platform_id = ? AND external_id = ?", platformID, externalID).
+		Updates(updates).Error; err != nil {
+		return fmt.Errorf("更新 content 失败: %w", err)
+	}
+
+	// 处理 account
+	contact := obj.Contact
+	if contact.Username != "" {
+		acc := model.Account{
+			PlatformId: platformID,
+			ExternalId: contact.Username,
+			Username:   contact.Username,
+			Nickname:   contact.Nickname,
+			AvatarURL:  contact.HeadUrl,
+			Timestamps: model.Timestamps{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		}
+
+		var existingAccount model.Account
+		if err := db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(&existingAccount).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := db.Create(&acc).Error; err != nil {
+					return fmt.Errorf("创建 account 失败: %w", err)
+				}
+				existingAccount = acc
+			} else {
+				return fmt.Errorf("查询 account 失败: %w", err)
+			}
+		} else {
+			if err := db.Model(&existingAccount).Updates(map[string]any{
+				"username":   acc.Username,
+				"nickname":   acc.Nickname,
+				"avatar_url": acc.AvatarURL,
+				"updated_at": now,
+			}).Error; err != nil {
+				return fmt.Errorf("更新 account 失败: %w", err)
+			}
+		}
+
+		// 创建 content_account 关联
+		var content model.Content
+		if err := db.Where("platform_id = ? AND external_id = ?", platformID, externalID).First(&content).Error; err != nil {
+			return fmt.Errorf("查询 content 失败: %w", err)
+		}
+
+		contentAccount := model.ContentAccount{
+			ContentId: content.Id,
+			AccountId: existingAccount.Id,
+			Role:      "owner",
+			CreatedAt: now,
+		}
+		if err := db.Where("content_id = ? AND account_id = ?", content.Id, existingAccount.Id).
+			FirstOrCreate(&contentAccount).Error; err != nil {
+			return fmt.Errorf("创建 content_account 关联失败: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// loadEnrichCache 加载缓存文件（不存在则返回空缓存）
+func loadEnrichCache(path string) *enrichCache {
+	cc := &enrichCache{Entries: make(map[string]enrichCacheEntry)}
+	if data, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(data, cc)
+	}
+	if cc.Entries == nil {
+		cc.Entries = make(map[string]enrichCacheEntry)
+	}
+	return cc
+}
+
+// --- enrich-download-contents 命令 ---
+
+var (
+	enrichTarget string
+	enrichLimit  int
+	enrichDryRun bool
+	enrichPort   int
+)
+
+var enrichDownloadContentsCmd = &cobra.Command{
+	Use:   "enrich-download-contents",
+	Short: "遍历下载记录并通过 API 补充 content / author 信息",
+	Run: func(cmd *cobra.Command, args []string) {
+		runEnrichDownloadContents()
+	},
+}
+
+func init() {
+	enrichDownloadContentsCmd.Flags().StringVar(&enrichTarget, "target", "", "目标 SQLite 数据库文件路径（必需）")
+	enrichDownloadContentsCmd.Flags().IntVar(&enrichLimit, "limit", 0, "最大处理数量（0表示不限制）")
+	enrichDownloadContentsCmd.Flags().BoolVar(&enrichDryRun, "dry-run", false, "只读取和分析，不写库")
+	enrichDownloadContentsCmd.Flags().IntVar(&enrichPort, "port", 8025, "WebSocket 服务端口")
+	enrichDownloadContentsCmd.MarkFlagRequired("target")
+	root_cmd.AddCommand(enrichDownloadContentsCmd)
+}
+
+func runEnrichDownloadContents() {
+	fmt.Println("=== 补充下载内容信息 ===")
+	fmt.Printf("目标数据库: %s\n", enrichTarget)
+	if enrichDryRun {
+		fmt.Println("模式: dry-run（只读不写）")
+	}
+	if enrichLimit > 0 {
+		fmt.Printf("限制数量: %d\n", enrichLimit)
+	}
+
+	if _, err := os.Stat(enrichTarget); err != nil {
+		fmt.Printf("[错误] 目标文件不存在: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 连接目标数据库
+	db, err := pkgdatabase.NewDatabase(&pkgdatabase.DatabaseConfig{
+		DBType: "sqlite",
+		DBPath: enrichTarget,
+	}, nil)
+	if err != nil {
+		fmt.Printf("[错误] 无法连接目标数据库: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 创建 ChannelsClient
+	channelsClient := wxchannels.NewChannelsClient(0)
+	channelsClient.SetDB(db)
+
+	// 设置 HTTP 服务用于 WebSocket
+	engine := gin.New()
+	engine.GET("/ws/channels", channelsClient.HandleChannelsWebsocket)
+
+	addr := fmt.Sprintf(":%d", enrichPort)
+	srv := &http.Server{Addr: addr, Handler: engine}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("[错误] HTTP 服务启动失败: %v\n", err)
+			os.Exit(1)
+		}
+	}()
+
+	fmt.Printf("WebSocket 服务地址: ws://localhost:%d/ws/channels\n", enrichPort)
+	fmt.Println("请在浏览器中打开前端页面并确保已登录视频号，浏览器会自动连接此 WebSocket...")
+	fmt.Println("等待 WebSocket 客户端连接...")
+
+	// 等待 WebSocket 客户端连接（最多 60 秒）
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer waitCancel()
+
+	connected := false
+	for !connected {
+		select {
+		case <-waitCtx.Done():
+			fmt.Println("[错误] 等待 WebSocket 客户端连接超时")
+			srv.Close()
+			os.Exit(1)
+		default:
+			if channelsClient.Available() {
+				connected = true
+			} else {
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+	}
+	fmt.Println("WebSocket 客户端已连接，开始处理...")
+	fmt.Println()
+
+	// 查询 download_task 记录
+	var tasks []model.DownloadTask
+	query := db.Where("external_id != ''")
+	if enrichLimit > 0 {
+		query = query.Limit(enrichLimit)
+	}
+	if err := query.Find(&tasks).Error; err != nil {
+		fmt.Printf("[错误] 查询 download_task 失败: %v\n", err)
+		srv.Close()
+		os.Exit(1)
+	}
+
+	fmt.Printf("找到 %d 条记录\n\n", len(tasks))
+
+	var successCount, skipCount, errorCount int
+
+	for i, task := range tasks {
+		externalID := task.ExternalId
+
+		// 解析 metadata2 获取 nonce_id
+		var metadata2 map[string]string
+		nonceID := ""
+		if task.Metadata2 != "" {
+			if err := json.Unmarshal([]byte(task.Metadata2), &metadata2); err == nil {
+				nonceID = metadata2["nonce_id"]
+			} else {
+				fmt.Printf("[%d/%d] 警告 %s: metadata2 解析失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			}
+		}
+
+		if externalID == "" || nonceID == "" {
+			fmt.Printf("[%d/%d] 跳过 %s: external_id 或 nonce_id 为空\n", i+1, len(tasks), task.TaskId)
+			skipCount++
+			continue
+		}
+
+		// 检查 content 是否已有丰富数据
+		var content model.Content
+		if err := db.Where("platform_id = ? AND external_id = ?", "wx_channels", externalID).First(&content).Error; err == nil {
+			if content.Description != "" && content.Description != content.Title {
+				fmt.Printf("[%d/%d] 跳过 %s: content 已有丰富数据\n", i+1, len(tasks), task.TaskId)
+				skipCount++
+				continue
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			fmt.Printf("[%d/%d] 错误 %s: 查询 content 失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			errorCount++
+			continue
+		}
+
+		if enrichDryRun {
+			fmt.Printf("[%d/%d] [DRY-RUN] 将处理 %s (external_id=%s, nonce_id=%s)\n", i+1, len(tasks), task.TaskId, externalID, nonceID)
+			continue
+		}
+
+		// 检查 WebSocket 连接是否仍然可用
+		if !channelsClient.Available() {
+			fmt.Printf("[%d/%d] 错误: WebSocket 连接已断开\n", i+1, len(tasks))
+			errorCount++
+			srv.Close()
+			os.Exit(1)
+		}
+
+		// 调用 API 获取 feed profile
+		fmt.Printf("[%d/%d] 处理 %s (external_id=%s)...\n", i+1, len(tasks), task.TaskId, externalID)
+		resp, err := channelsClient.FetchChannelsFeedProfile(externalID, nonceID, "", "")
+		if err != nil {
+			fmt.Printf("[%d/%d] 错误 %s: API 调用失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			errorCount++
+			continue
+		}
+
+		if resp.ErrCode != 0 {
+			fmt.Printf("[%d/%d] 错误 %s: API 返回错误 (code=%d) - %s\n", i+1, len(tasks), task.TaskId, resp.ErrCode, resp.ErrMsg)
+			errorCount++
+			continue
+		}
+
+		if resp.Data.Object.ID == "" {
+			fmt.Printf("[%d/%d] 错误 %s: API 返回的 Object ID 为空\n", i+1, len(tasks), task.TaskId)
+			errorCount++
+			continue
+		}
+
+		// 转换为 ChannelsFeedProfile
+		profile, err := wxchannels.ChannelsObjectToChannelsFeedProfile(&resp.Data.Object)
+		if err != nil {
+			fmt.Printf("[%d/%d] 错误 %s: 转换 profile 失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			errorCount++
+			continue
+		}
+
+		// 写入数据库（content + account + content_account）
+		if _, err := channelsClient.UpsertChannelsFeed(profile); err != nil {
+			fmt.Printf("[%d/%d] 错误 %s: 写入数据库失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			errorCount++
+			continue
+		}
+
+		successCount++
+	}
+
+	fmt.Println()
+	fmt.Println("=== 处理完成 ===")
+	fmt.Printf("成功: %d\n", successCount)
+	fmt.Printf("跳过: %d\n", skipCount)
+	fmt.Printf("失败: %d\n", errorCount)
+
+	// 验证
+	var contentCount int64
+	db.Model(&model.Content{}).Where("description IS NOT NULL AND description != '' AND description != title").Count(&contentCount)
+	fmt.Printf("数据库中已补充丰富信息的 content 总数: %d\n", contentCount)
+	var accountCount int64
+	db.Model(&model.Account{}).Where("platform_id = ?", "wx_channels").Count(&accountCount)
+	fmt.Printf("数据库中 wx_channels account 总数: %d\n", accountCount)
+	var contentAccountCount int64
+	db.Model(&model.ContentAccount{}).Where("role = ?", "owner").Count(&contentAccountCount)
+	fmt.Printf("数据库中 owner 关联总数: %d\n", contentAccountCount)
+
+	// 关闭 HTTP 服务
+	srv.Close()
 }
