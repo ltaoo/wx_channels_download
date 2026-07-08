@@ -51,256 +51,256 @@
   ],
   "paths": {
     "/api/channels/contact/search": {
-      "$ref": "./openapi/channels/contact_search.json"
+      "$ref": "./channels/contact_search.json"
     },
     "/api/channels/contact/feed/list": {
-      "$ref": "./openapi/channels/contact_feed_list.json"
+      "$ref": "./channels/contact_feed_list.json"
     },
     "/api/channels/feed/profile": {
-      "$ref": "./openapi/channels/feed_profile.json"
+      "$ref": "./channels/feed_profile.json"
     },
     "/api/channels/feed/share_url": {
-      "$ref": "./openapi/channels/feed_share_url.json"
+      "$ref": "./channels/feed_share_url.json"
     },
     "/api/channels/parse_sph": {
-      "$ref": "./openapi/channels/parse_sph.json"
+      "$ref": "./channels/parse_sph.json"
     },
     "/api/channels/feed/comment/list": {
-      "$ref": "./openapi/channels/feed_comment_list.json"
+      "$ref": "./channels/feed_comment_list.json"
     },
     "/api/channels/live/replay/list": {
-      "$ref": "./openapi/channels/live_replay_list.json"
+      "$ref": "./channels/live_replay_list.json"
     },
     "/api/channels/interactioned/list": {
-      "$ref": "./openapi/channels/interactioned_list.json"
+      "$ref": "./channels/interactioned_list.json"
     },
     "/api/channels/follow/list": {
-      "$ref": "./openapi/channels/follow_list.json"
+      "$ref": "./channels/follow_list.json"
     },
     "/rss/channels": {
-      "$ref": "./openapi/channels/rss.json"
+      "$ref": "./channels/rss.json"
     },
     "/play": {
-      "$ref": "./openapi/channels/play.json"
+      "$ref": "./channels/play.json"
     },
     "/api/mp/list": {
-      "$ref": "./openapi/mp/list.json"
+      "$ref": "./mp/list.json"
     },
     "/api/mp/msg/list": {
-      "$ref": "./openapi/mp/msg_list.json"
+      "$ref": "./mp/msg_list.json"
     },
     "/api/mp/delete": {
-      "$ref": "./openapi/mp/delete.json"
+      "$ref": "./mp/delete.json"
     },
     "/api/mp/refresh_with_frontend": {
-      "$ref": "./openapi/mp/refresh_with_frontend.json"
+      "$ref": "./mp/refresh_with_frontend.json"
     },
     "/api/mp/refresh": {
-      "$ref": "./openapi/mp/refresh.json"
+      "$ref": "./mp/refresh.json"
     },
     "/rss/mp": {
-      "$ref": "./openapi/mp/rss.json"
+      "$ref": "./mp/rss.json"
     },
     "/mp/proxy": {
-      "$ref": "./openapi/mp/proxy.json"
+      "$ref": "./mp/proxy.json"
     },
     "/api/task/create_channels": {
-      "$ref": "./openapi/task/create_channels.json"
+      "$ref": "./task/create_channels.json"
     },
     "/api/task/create": {
-      "$ref": "./openapi/task/create.json"
+      "$ref": "./task/create.json"
     },
     "/api/task/create2": {
-      "$ref": "./openapi/task/create2.json"
+      "$ref": "./task/create2.json"
     },
     "/api/task/create_batch": {
-      "$ref": "./openapi/task/create_batch.json"
+      "$ref": "./task/create_batch.json"
     },
     "/api/browse_history/create": {
-      "$ref": "./openapi/task/browse_history_create.json"
+      "$ref": "./task/browse_history_create.json"
     },
     "/api/browse_history/list": {
-      "$ref": "./openapi/task/browse_history_list.json"
+      "$ref": "./task/browse_history_list.json"
     },
     "/api/task/list": {
-      "$ref": "./openapi/task/list.json"
+      "$ref": "./task/list.json"
     },
     "/api/task/start": {
-      "$ref": "./openapi/task/start.json"
+      "$ref": "./task/start.json"
     },
     "/api/task/start_all": {
-      "$ref": "./openapi/task/start_all.json"
+      "$ref": "./task/start_all.json"
     },
     "/api/task/pause": {
-      "$ref": "./openapi/task/pause.json"
+      "$ref": "./task/pause.json"
     },
     "/api/task/pause_all": {
-      "$ref": "./openapi/task/pause_all.json"
+      "$ref": "./task/pause_all.json"
     },
     "/api/task/resume": {
-      "$ref": "./openapi/task/resume.json"
+      "$ref": "./task/resume.json"
     },
     "/api/task/delete": {
-      "$ref": "./openapi/task/delete.json"
+      "$ref": "./task/delete.json"
     },
     "/api/task/clear": {
-      "$ref": "./openapi/task/clear.json"
+      "$ref": "./task/clear.json"
     },
     "/api/open_download_dir": {
-      "$ref": "./openapi/task/open_download_dir.json"
+      "$ref": "./task/open_download_dir.json"
     },
     "/api/show_file": {
-      "$ref": "./openapi/task/show_file.json"
+      "$ref": "./task/show_file.json"
     },
     "/api/download_task/list": {
-      "$ref": "./openapi/download_task/list.json"
+      "$ref": "./download_task/list.json"
     },
     "/api/download_task/start": {
-      "$ref": "./openapi/download_task/start.json"
+      "$ref": "./download_task/start.json"
     },
     "/api/download_task/profile": {
-      "$ref": "./openapi/download_task/profile.json"
+      "$ref": "./download_task/profile.json"
     },
     "/api/download_task/create": {
-      "$ref": "./openapi/download_task/create.json"
+      "$ref": "./download_task/create.json"
     },
     "/api/download_task/batch_create": {
-      "$ref": "./openapi/download_task/batch_create.json"
+      "$ref": "./download_task/batch_create.json"
     },
     "/api/download_task/delete": {
-      "$ref": "./openapi/download_task/delete.json"
+      "$ref": "./download_task/delete.json"
     },
     "/api/download_task/retry": {
-      "$ref": "./openapi/download_task/retry.json"
+      "$ref": "./download_task/retry.json"
     },
     "/api/download_task/pause_all": {
-      "$ref": "./openapi/download_task/pause_all.json"
+      "$ref": "./download_task/pause_all.json"
     },
     "/api/download_task/start_all": {
-      "$ref": "./openapi/download_task/start_all.json"
+      "$ref": "./download_task/start_all.json"
     },
     "/api/download_task/highlight_file": {
-      "$ref": "./openapi/download_task/highlight_file.json"
+      "$ref": "./download_task/highlight_file.json"
     },
     "/api/download_task/play": {
-      "$ref": "./openapi/download_task/play.json"
+      "$ref": "./download_task/play.json"
     },
     "/api/influencers": {
-      "$ref": "./openapi/influencer/list.json"
+      "$ref": "./influencer/list.json"
     },
     "/api/influencers/{id}": {
-      "$ref": "./openapi/influencer/profile.json"
+      "$ref": "./influencer/profile.json"
     },
     "/api/account/list": {
-      "$ref": "./openapi/platform/list.json"
+      "$ref": "./platform/list.json"
     },
     "/api/account/synchronize": {
-      "$ref": "./openapi/platform/synchronize.json"
+      "$ref": "./platform/synchronize.json"
     },
     "/api/video/list": {
-      "$ref": "./openapi/content/list.json"
+      "$ref": "./content/list.json"
     },
     "/api/channels/search/author": {
-      "$ref": "./openapi/platform/search_author.json"
+      "$ref": "./platform/search_author.json"
     },
     "/api/channels/author/videos": {
-      "$ref": "./openapi/platform/author_videos.json"
+      "$ref": "./platform/author_videos.json"
     },
     "/api/channels/media/profile": {
-      "$ref": "./openapi/platform/media_profile.json"
+      "$ref": "./platform/media_profile.json"
     },
     "/api/channels/task/status": {
-      "$ref": "./openapi/platform/task_status.json"
+      "$ref": "./platform/task_status.json"
     },
     "/api/channels/task/start": {
-      "$ref": "./openapi/platform/task_start.json"
+      "$ref": "./platform/task_start.json"
     },
     "/api/channels/shared_feed/profile": {
-      "$ref": "./openapi/channels/shared_feed_profile.json"
+      "$ref": "./channels/shared_feed_profile.json"
     },
     "/api/status": {
-      "$ref": "./openapi/task/status.json"
+      "$ref": "./task/status.json"
     },
     "/api/mp/ws_pool": {
-      "$ref": "./openapi/mp/ws_pool.json"
+      "$ref": "./mp/ws_pool.json"
     },
     "/api/mp/article/list": {
-      "$ref": "./openapi/mp/article_list.json"
+      "$ref": "./mp/article_list.json"
     },
     "/api/mp/download_all": {
-      "$ref": "./openapi/mp/download_all.json"
+      "$ref": "./mp/download_all.json"
     },
     "/api/task/profile": {
-      "$ref": "./openapi/task/profile.json"
+      "$ref": "./task/profile.json"
     },
     "/api/task/pipeline/start": {
-      "$ref": "./openapi/task/pipeline_start.json"
+      "$ref": "./task/pipeline_start.json"
     },
     "/api/task/probe": {
-      "$ref": "./openapi/task/probe.json"
+      "$ref": "./task/probe.json"
     },
     "/api/task/pipeline/workflow": {
-      "$ref": "./openapi/task/pipeline_workflow.json"
+      "$ref": "./task/pipeline_workflow.json"
     },
     "/api/task/pipeline/resume": {
-      "$ref": "./openapi/task/pipeline_resume.json"
+      "$ref": "./task/pipeline_resume.json"
     },
     "/api/task/create3": {
-      "$ref": "./openapi/task/create3.json"
+      "$ref": "./task/create3.json"
     },
     "/api/v0/task/list": {
-      "$ref": "./openapi/task/v0_task_list.json"
+      "$ref": "./task/v0_task_list.json"
     },
     "/api/remote/proxy": {
-      "$ref": "./openapi/task/remote_proxy.json"
+      "$ref": "./task/remote_proxy.json"
     },
     "/api/remote/task/list": {
-      "$ref": "./openapi/task/remote_task_list.json"
+      "$ref": "./task/remote_task_list.json"
     },
     "/api/file": {
-      "$ref": "./openapi/media/file.json"
+      "$ref": "./task/file.json"
     },
     "/file": {
-      "$ref": "./openapi/media/file.json"
+      "$ref": "./media/file.json"
     },
     "/preview": {
-      "$ref": "./openapi/media/preview.json"
+      "$ref": "./media/preview.json"
     },
     "/api/open": {
-      "$ref": "./openapi/task/open.json"
+      "$ref": "./task/open.json"
     },
     "/api/filehelper/qrcode": {
-      "$ref": "./openapi/filehelper/qrcode.json"
+      "$ref": "./filehelper/qrcode.json"
     },
     "/api/filehelper/login/wait": {
-      "$ref": "./openapi/filehelper/login_wait.json"
+      "$ref": "./filehelper/login_wait.json"
     },
     "/api/filehelper/status": {
-      "$ref": "./openapi/filehelper/status.json"
+      "$ref": "./filehelper/status.json"
     },
     "/api/filehelper/synccheck": {
-      "$ref": "./openapi/filehelper/synccheck.json"
+      "$ref": "./filehelper/synccheck.json"
     },
     "/api/filehelper/sync": {
-      "$ref": "./openapi/filehelper/sync.json"
+      "$ref": "./filehelper/sync.json"
     },
     "/api/filehelper/messages": {
-      "$ref": "./openapi/filehelper/messages.json"
+      "$ref": "./filehelper/messages.json"
     },
     "/api/filehelper/send": {
-      "$ref": "./openapi/filehelper/send.json"
+      "$ref": "./filehelper/send.json"
     },
     "/api/filehelper/logout": {
-      "$ref": "./openapi/filehelper/logout.json"
+      "$ref": "./filehelper/logout.json"
     },
     "/api/filehelper/parse_finder_feed": {
-      "$ref": "./openapi/filehelper/parse_finder_feed.json"
+      "$ref": "./filehelper/parse_finder_feed.json"
     },
     "/filehelper": {
-      "$ref": "./openapi/filehelper/index.json"
+      "$ref": "./filehelper/index.json"
     },
     "/mp/home": {
-      "$ref": "./openapi/mp/home.json"
+      "$ref": "./mp/home.json"
     }
   }
 }

@@ -17,7 +17,7 @@ const loadError = ref('')
 const sourceUrl = computed(() => (
   props.configuration.url ??
   props.configuration.spec?.url ??
-  withBase('/openapi.json')
+  withBase('/openapi/index.json')
 ))
 
 function clone(value) {
