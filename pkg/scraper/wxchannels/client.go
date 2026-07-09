@@ -591,3 +591,156 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 	}
 	return &content, nil
 }
+
+// DownloadTaskOpts 创建 download_task 时的可选参数
+type DownloadTaskOpts struct {
+	TaskId     string // 任务唯一标识，为空则自动生成
+	Status     int    // 下载状态: 0=ready, 1=running, 2=pause, 3=wait, 4=done, 5=error
+	Protocol   string // 协议，默认 "http"
+	Filepath   string // 文件保存路径
+	OutputPath string // 文件输出路径
+	Downloaded int64  // 已下载字节数，为 0 且 Status=done 时自动使用 Size
+	Reason     string // 下载原因（如 "migrate", "manual", "batch"）
+	Error      string // 错误信息（Status=error 时使用）
+}
+
+// UpsertFeedWithDownloadTask 从 ChannelsFeedProfile 生成 account、content、download_task 三种记录并关联
+// 返回创建/更新后的 content 和 download_task
+func (c *ChannelsClient) UpsertFeedWithDownloadTask(feed *ChannelsFeedProfile, opts *DownloadTaskOpts) (*model.Content, *model.DownloadTask, error) {
+	if c.db == nil {
+		return nil, nil, errors.New("db is nil")
+	}
+	if feed == nil {
+		return nil, nil, errors.New("feed is nil")
+	}
+	if opts == nil {
+		opts = &DownloadTaskOpts{}
+	}
+
+	// 1. Upsert account + content
+	content, err := c.UpsertChannelsFeed(feed)
+	if err != nil {
+		return nil, nil, fmt.Errorf("upsert feed 失败: %w", err)
+	}
+
+	// 2. 准备 download_task
+	now := util.NowMillis()
+
+	taskId := opts.TaskId
+	if taskId == "" {
+		taskId = fmt.Sprintf("channels_%s_%d", feed.ObjectId, now)
+	}
+
+	protocol := opts.Protocol
+	if protocol == "" {
+		protocol = "http"
+	}
+
+	taskURL := feed.URL
+	if taskURL == "" {
+		taskURL = content.ContentURL
+	}
+	if taskURL == "" {
+		taskURL = content.URL
+	}
+
+	size := int64(feed.FileSize)
+	if size <= 0 {
+		size = content.Size
+	}
+
+	downloaded := opts.Downloaded
+	if downloaded == 0 && opts.Status == 4 && size > 0 {
+		downloaded = size
+	}
+
+	meta2Bytes, _ := json.Marshal(map[string]any{
+		"platform":    content.PlatformId,
+		"external_id": content.ExternalId,
+		"nonce_id":    content.ExternalId2,
+		"source_url":  content.SourceURL,
+		"url":         content.URL,
+		"content_url": content.ContentURL,
+	})
+
+	// 3. 查找或创建 download_task
+	var rec model.DownloadTask
+	err = c.db.Where("task_id = ?", taskId).First(&rec).Error
+
+	if err == nil {
+		// 已存在，更新
+		updates := map[string]any{
+			"url":         taskURL,
+			"external_id": content.ExternalId,
+			"title":       content.Title,
+			"cover_url":   content.CoverURL,
+			"metadata2":   string(meta2Bytes),
+			"updated_at":  now,
+		}
+		if opts.Status > 0 {
+			updates["status"] = opts.Status
+		}
+		if size > 0 {
+			updates["size"] = size
+		}
+		if downloaded > 0 {
+			updates["downloaded"] = downloaded
+		}
+		if opts.Filepath != "" {
+			updates["filepath"] = opts.Filepath
+		}
+		if opts.OutputPath != "" {
+			updates["output_path"] = opts.OutputPath
+		}
+		if opts.Reason != "" {
+			updates["reason"] = opts.Reason
+		}
+		if err := c.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(updates).Error; err != nil {
+			return content, nil, fmt.Errorf("更新 download_task 失败: %w", err)
+		}
+		rec.Status = opts.Status
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 新建
+		rec = model.DownloadTask{
+			TaskId:     taskId,
+			Status:     opts.Status,
+			Protocol:   protocol,
+			URL:        taskURL,
+			ExternalId: content.ExternalId,
+			Title:      content.Title,
+			CoverURL:   content.CoverURL,
+			Size:       size,
+			Downloaded: downloaded,
+			Filepath:   opts.Filepath,
+			OutputPath: opts.OutputPath,
+			Reason:     opts.Reason,
+			Error:      opts.Error,
+			Metadata2:  string(meta2Bytes),
+			Timestamps: model.Timestamps{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		}
+		if err := c.db.Create(&rec).Error; err != nil {
+			return content, nil, fmt.Errorf("创建 download_task 失败: %w", err)
+		}
+	} else {
+		return content, nil, fmt.Errorf("查询 download_task 失败: %w", err)
+	}
+
+	// 4. 关联 content -> download_task
+	downloadPath := rec.OutputPath
+	if downloadPath == "" {
+		downloadPath = rec.Filepath
+	}
+	if err := c.db.Model(&model.Content{}).Where("id = ?", content.Id).Updates(map[string]any{
+		"download_task_id": rec.Id,
+		"download_status":  rec.Status,
+		"download_path":    downloadPath,
+		"updated_at":       now,
+	}).Error; err != nil {
+		return content, &rec, fmt.Errorf("关联 content 和 download_task 失败: %w", err)
+	}
+
+	return content, &rec, nil
+}

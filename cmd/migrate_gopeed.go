@@ -457,8 +457,6 @@ type enrichCacheEntry struct {
 // enrichContentFromAPI 调用本地 API 获取 feed profile，补充 content 和 account 信息
 // cacheFile 为单个缓存文件路径，为空则不使用缓存
 func enrichContentFromAPI(db *gorm.DB, cacheFile, externalID, nonceID string) error {
-	platformID := "wx_channels"
-
 	// nonce_id 可能含下划线后缀（如 "5073863920001900660_0_146_0_0"），只取第一部分
 	nidClean := nonceID
 	if idx := strings.IndexByte(nonceID, '_'); idx > 0 {
@@ -529,86 +527,26 @@ func enrichContentFromAPI(db *gorm.DB, cacheFile, externalID, nonceID string) er
 		return fmt.Errorf("API 返回的 Object ID 为空")
 	}
 
-	// 提取 coverUrl
-	var coverURL string
-	if len(obj.ObjectDesc.Media) > 0 {
-		coverURL = obj.ObjectDesc.Media[0].CoverUrl
+	// 转换为 ChannelsFeedProfile
+	profile, err := wxchannels.ChannelsObjectToChannelsFeedProfile(&obj)
+	if err != nil {
+		return fmt.Errorf("转换 profile 失败: %w", err)
 	}
 
-	// 生成 source_url 和 content_url
-	encodedOid := util.EncodeUint64ToBase64(externalID)
-	encodedNid := util.EncodeUint64ToBase64(nidClean)
-	feedURL := fmt.Sprintf("https://channels.weixin.qq.com/web/pages/feed?oid=%s&nid=%s", encodedOid, encodedNid)
-
-	now := util.NowMillis()
-
-	// 更新 content 的 cover_url、source_url、content_url
-	updates := map[string]any{
-		"updated_at":  now,
-		"source_url":  feedURL,
-		"content_url": feedURL,
-	}
-	if coverURL != "" {
-		updates["cover_url"] = coverURL
-	}
-	if err := db.Model(&model.Content{}).
-		Where("platform_id = ? AND external_id = ?", platformID, externalID).
-		Updates(updates).Error; err != nil {
-		return fmt.Errorf("更新 content 失败: %w", err)
+	// 确保 SourceURL 已设置
+	if profile.SourceURL == "" {
+		profile.SourceURL = wxchannels.BuildJumpURL(profile)
 	}
 
-	// 处理 account
-	contact := obj.Contact
-	if contact.Username != "" {
-		acc := model.Account{
-			PlatformId: platformID,
-			ExternalId: contact.Username,
-			Username:   contact.Username,
-			Nickname:   contact.Nickname,
-			AvatarURL:  contact.HeadUrl,
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		}
+	// 若 URL 为空（非视频类型），使用 SourceURL 作为回退
+	if profile.URL == "" {
+		profile.URL = profile.SourceURL
+	}
 
-		var existingAccount model.Account
-		if err := db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(&existingAccount).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				if err := db.Create(&acc).Error; err != nil {
-					return fmt.Errorf("创建 account 失败: %w", err)
-				}
-				existingAccount = acc
-			} else {
-				return fmt.Errorf("查询 account 失败: %w", err)
-			}
-		} else {
-			if err := db.Model(&existingAccount).Updates(map[string]any{
-				"username":   acc.Username,
-				"nickname":   acc.Nickname,
-				"avatar_url": acc.AvatarURL,
-				"updated_at": now,
-			}).Error; err != nil {
-				return fmt.Errorf("更新 account 失败: %w", err)
-			}
-		}
-
-		// 创建 content_account 关联
-		var content model.Content
-		if err := db.Where("platform_id = ? AND external_id = ?", platformID, externalID).First(&content).Error; err != nil {
-			return fmt.Errorf("查询 content 失败: %w", err)
-		}
-
-		contentAccount := model.ContentAccount{
-			ContentId: content.Id,
-			AccountId: existingAccount.Id,
-			Role:      "owner",
-			CreatedAt: now,
-		}
-		if err := db.Where("content_id = ? AND account_id = ?", content.Id, existingAccount.Id).
-			FirstOrCreate(&contentAccount).Error; err != nil {
-			return fmt.Errorf("创建 content_account 关联失败: %w", err)
-		}
+	// 使用 ChannelsClient 写入数据库（content + account + content_account）
+	client := newChannelsClientWithDB(db)
+	if _, err := client.UpsertChannelsFeed(profile); err != nil {
+		return fmt.Errorf("写入数据库失败: %w", err)
 	}
 
 	return nil
@@ -624,6 +562,13 @@ func loadEnrichCache(path string) *enrichCache {
 		cc.Entries = make(map[string]enrichCacheEntry)
 	}
 	return cc
+}
+
+// newChannelsClientWithDB 创建一个仅用于数据库操作的 ChannelsClient
+func newChannelsClientWithDB(db *gorm.DB) *wxchannels.ChannelsClient {
+	client := wxchannels.NewChannelsClient(0)
+	client.SetDB(db)
+	return client
 }
 
 // --- enrich-download-contents 命令 ---
