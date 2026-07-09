@@ -1,7 +1,7 @@
 package model
 
 type ChatSession struct {
-	Id            int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Id            string `gorm:"primaryKey" json:"id"`
 	Name          string `gorm:"not null;index:idx_chat_session_platform_name,priority:2" json:"name"`
 	Platform      string `gorm:"not null;index:idx_chat_session_platform_type,priority:1;index:idx_chat_session_platform_name,priority:1" json:"platform"`
 	Type          string `gorm:"not null;index:idx_chat_session_platform_type,priority:2" json:"type"`
@@ -18,8 +18,8 @@ type ChatSession struct {
 func (ChatSession) TableName() string { return "chat_session" }
 
 type ChatMember struct {
-	Id            int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	SessionId     int    `gorm:"not null;uniqueIndex:idx_chat_member_session_platform_id,priority:1;index:idx_chat_member_session" json:"session_id"`
+	Id            string `gorm:"primaryKey" json:"id"`
+	SessionId     string `gorm:"not null;uniqueIndex:idx_chat_member_session_platform_id,priority:1;index:idx_chat_member_session" json:"session_id"`
 	PlatformId    string `gorm:"not null;uniqueIndex:idx_chat_member_session_platform_id,priority:2" json:"platform_id"`
 	AccountName   string `gorm:"not null" json:"account_name"`
 	GroupNickname string `json:"group_nickname"`
@@ -31,8 +31,8 @@ type ChatMember struct {
 func (ChatMember) TableName() string { return "chat_member" }
 
 type ChatMessage struct {
-	Id              int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	SessionId       int    `gorm:"not null;uniqueIndex:idx_chat_message_session_source_message_id,priority:1;index:idx_chat_message_session_time,priority:1;index:idx_chat_message_session_sender_time,priority:1" json:"session_id"`
+	Id              string `gorm:"primaryKey" json:"id"`
+	SessionId       string `gorm:"not null;uniqueIndex:idx_chat_message_session_source_message_id,priority:1;index:idx_chat_message_session_time,priority:1;index:idx_chat_message_session_sender_time,priority:1" json:"session_id"`
 	SourceMessageId string `gorm:"uniqueIndex:idx_chat_message_session_source_message_id,priority:2" json:"source_message_id"`
 	Sender          string `gorm:"not null;index:idx_chat_message_session_sender_time,priority:2" json:"sender"`
 	AccountName     string `gorm:"not null" json:"account_name"`

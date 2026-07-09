@@ -41,14 +41,13 @@ func (c *APIClient) handleCompatInfluencerList(ctx *gin.Context) {
 
 func (c *APIClient) handleCompatInfluencerGet(ctx *gin.Context) {
 	idStr := ctx.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil || id <= 0 {
+	if idStr == "" {
 		result.Err(ctx, 400, "invalid id")
 		return
 	}
 
 	// Use service
-	influencer, err := c.accountService.GetInfluencer(id)
+	influencer, err := c.accountService.GetInfluencer(idStr)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, err.Error())
@@ -98,8 +97,7 @@ type influencerUpdateBody struct {
 
 func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
 	idStr := ctx.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil || id <= 0 {
+	if idStr == "" {
 		result.Err(ctx, 400, "invalid id")
 		return
 	}
@@ -110,7 +108,7 @@ func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.accountService.UpdateInfluencer(id, &services.UpdateInfluencerInput{
+	influencer, err := c.accountService.UpdateInfluencer(idStr, &services.UpdateInfluencerInput{
 		Name:        body.Name,
 		AvatarURL:   body.AvatarURL,
 		Description: body.Description,
@@ -176,8 +174,8 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 	list := make([]gin.H, 0, len(accounts))
 	for _, acc := range accounts {
 		type caRow struct {
-			ContentId int    `json:"content_id"`
-			AccountId int    `json:"account_id"`
+			ContentId string `json:"content_id"`
+			AccountId string `json:"account_id"`
 			Role      string `json:"role"`
 		}
 		var contentRows []caRow
@@ -189,11 +187,11 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			Limit(24).
 			Scan(&contentRows).Error
 
-		contentIDs := make([]int, 0, len(contentRows))
+		contentIDs := make([]string, 0, len(contentRows))
 		for _, r := range contentRows {
 			contentIDs = append(contentIDs, r.ContentId)
 		}
-		contentByID := map[int]gin.H{}
+		contentByID := map[string]gin.H{}
 		if len(contentIDs) > 0 {
 			var contents []model.Content
 			_ = c.db.Where("id IN ?", contentIDs).Find(&contents).Error

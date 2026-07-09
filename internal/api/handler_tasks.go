@@ -793,8 +793,8 @@ func upsertContentByPlatformExternalID(tx *gorm.DB, content *model.Content, now 
 	return tx.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(updates).Error
 }
 
-func upsertContentArticle(tx *gorm.DB, contentID int, article model.ContentArticle) error {
-	if contentID <= 0 {
+func upsertContentArticle(tx *gorm.DB, contentID string, article model.ContentArticle) error {
+	if contentID == "" {
 		return fmt.Errorf("content id is empty")
 	}
 	article.ContentId = contentID
@@ -817,8 +817,8 @@ func upsertContentArticle(tx *gorm.DB, contentID int, article model.ContentArtic
 	}).Error
 }
 
-func upsertContentOwner(tx *gorm.DB, contentID int, accountID int, now int64) error {
-	if contentID <= 0 || accountID <= 0 {
+func upsertContentOwner(tx *gorm.DB, contentID string, accountID string, now int64) error {
+	if contentID == "" || accountID == "" {
 		return nil
 	}
 	if err := tx.Where("content_id = ? AND account_id <> ? AND role = ?", contentID, accountID, "owner").Delete(&model.ContentAccount{}).Error; err != nil {

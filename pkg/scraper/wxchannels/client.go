@@ -474,7 +474,7 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		return nil, errors.New("missing url")
 	}
 
-	platformID := "wx_channels"
+	platformID := PlatformID
 	now := util.NowMillis()
 	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(c.db, platformID, feed.ObjectId, model.AccountIdentity{
 		ExternalId: feed.Contact.Username,
@@ -483,7 +483,9 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		AvatarURL:  feed.Contact.AvatarURL,
 	})
 
+	accID := BuildAccountID(accountIdentity.ExternalId)
 	acc := &model.Account{
+		Id:         accID,
 		PlatformId: platformID,
 		ExternalId: accountIdentity.ExternalId,
 		Username:   accountIdentity.Username,
@@ -495,8 +497,8 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		},
 	}
 	existingAccount := &model.Account{}
-	if acc.ExternalId != "" {
-		if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(existingAccount).Error; err != nil {
+	if acc.ExternalId != "" && acc.Id != "" {
+		if err := c.db.Where("id = ?", acc.Id).First(existingAccount).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				if err := c.db.Create(acc).Error; err != nil {
 					return nil, err
@@ -518,8 +520,9 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 	}
 
 	media := feed
+	contentID := BuildContentID(media.ObjectId)
 	var existing model.Content
-	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, media.ObjectId).First(&existing).Error; err != nil {
+	if err := c.db.Where("id = ?", contentID).First(&existing).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
@@ -527,15 +530,17 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 
 	pub := int64(media.CreatedAt)
 	content := model.Content{
+		Id:          contentID,
 		PlatformId:  platformID,
 		ContentType: "video",
 		Title:       media.Title,
+		Description: media.Title,
 		ExternalId:  media.ObjectId,
 		ExternalId2: media.NonceId,
 		ExternalId3: media.DecryptKey,
 		SourceURL:   media.SourceURL,
 		ContentURL:  media.URL,
-		URL:         media.SourceURL,
+		URL:         media.URL,
 		CoverURL:    media.CoverURL,
 		CoverWidth:  strconv.Itoa(media.CoverWidth),
 		CoverHeight: strconv.Itoa(media.CoverHeight),
@@ -549,7 +554,7 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		},
 	}
 
-	if existing.Id == 0 {
+	if existing.Id == "" {
 		if err := c.db.Create(&content).Error; err != nil {
 			return nil, err
 		}
@@ -557,20 +562,26 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		content.Id = existing.Id
 		if err := c.db.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(map[string]any{
 			"title":        content.Title,
+			"description":  content.Description,
 			"content_url":  content.ContentURL,
 			"url":          content.URL,
+			"source_url":   content.SourceURL,
 			"cover_url":    content.CoverURL,
 			"cover_width":  content.CoverWidth,
 			"cover_height": content.CoverHeight,
 			"duration":     content.Duration,
 			"size":         content.Size,
+			"publish_time": content.PublishTime,
+			"metadata":     content.Metadata,
+			"external_id2": content.ExternalId2,
+			"external_id3": content.ExternalId3,
 			"update_time":  content.UpdateTime,
 			"updated_at":   now,
 		}).Error; err != nil {
 			return nil, err
 		}
 	}
-	if existingAccount.Id != 0 {
+	if existingAccount.Id != "" {
 		if err := c.db.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, existingAccount.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
 			return nil, err
 		}

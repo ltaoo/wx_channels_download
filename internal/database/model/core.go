@@ -19,7 +19,7 @@ type Platform struct {
 func (Platform) TableName() string { return "platform" }
 
 type AuthCredential struct {
-	Id         int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Id         string `gorm:"primaryKey" json:"id"`
 	PlatformId string `gorm:"not null;index:idx_auth_credential_platform_status_default,priority:1" json:"platform_id"`
 	Name       string `gorm:"not null" json:"name"`
 	Kind       string `gorm:"not null" json:"kind"`
@@ -35,7 +35,7 @@ type AuthCredential struct {
 func (AuthCredential) TableName() string { return "auth_credential" }
 
 type Influencer struct {
-	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Id          string `gorm:"primaryKey" json:"id"`
 	Name        string `gorm:"not null" json:"name"`
 	AvatarURL   string `json:"avatar_url"`
 	Sex         int    `json:"sex"`
@@ -46,27 +46,27 @@ type Influencer struct {
 func (Influencer) TableName() string { return "influencer" }
 
 type Account struct {
-	Id            int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	PlatformId    string `gorm:"not null;index:idx_account_platform_external,priority:1" json:"platform_id"`
-	InfluencerId  *int   `json:"influencer_id"`
-	ExternalId    string `gorm:"not null;index:idx_account_platform_external,priority:2" json:"external_id"`
-	Username      string `json:"username"`
-	Alias         string `json:"alias"`
-	Nickname      string `json:"nickname"`
-	AvatarURL     string `json:"avatar_url"`
-	ProfileURL    string `json:"profile_url"`
-	IsListen      int    `json:"is_listen"`
-	FollowerCount int64  `json:"follower_count"`
-	PastNames     string `json:"past_names"`
-	PastAvatars   string `json:"past_avatars"`
+	Id            string  `gorm:"primaryKey" json:"id"`
+	PlatformId    string  `gorm:"not null;index:idx_account_platform_external,priority:1" json:"platform_id"`
+	InfluencerId  *string `json:"influencer_id"`
+	ExternalId    string  `gorm:"not null;index:idx_account_platform_external,priority:2" json:"external_id"`
+	Username      string  `json:"username"`
+	Alias         string  `json:"alias"`
+	Nickname      string  `json:"nickname"`
+	AvatarURL     string  `json:"avatar_url"`
+	ProfileURL    string  `json:"profile_url"`
+	IsListen      int     `json:"is_listen"`
+	FollowerCount int64   `json:"follower_count"`
+	PastNames     string  `json:"past_names"`
+	PastAvatars   string  `json:"past_avatars"`
 	Timestamps
 }
 
 func (Account) TableName() string { return "account" }
 
 type WXVideoAccess struct {
-	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	AccountId   int    `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:1" json:"account_id"`
+	Id          string `gorm:"primaryKey" json:"id"`
+	AccountId   string `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:1" json:"account_id"`
 	URL         string `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:2" json:"url"`
 	Description string `json:"description"`
 	CoverURL    string `json:"cover_url"`
@@ -76,23 +76,23 @@ type WXVideoAccess struct {
 func (WXVideoAccess) TableName() string { return "wx_video_access" }
 
 type BrowseHistory struct {
-	Id                int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	PlatformId        string `gorm:"not null" json:"platform_id"`
-	VisitedTimes      int64  `gorm:"not null" json:"visited_times"`
-	AccountId         *int   `json:"account_id"`
-	InfluencerId      *int   `json:"influencer_id"`
-	AccountExternalId string `json:"account_external_id"`
-	AccountUsername   string `json:"account_username"`
-	AccountNickname   string `json:"account_nickname"`
-	AccountAvatarURL  string `json:"account_avatar_url"`
-	ContentId         *int   `json:"content_id"`
-	ContentType       string `json:"content_type"`
-	ContentExternalId string `json:"content_external_id"`
-	ContentTitle      string `json:"content_title"`
-	ContentURL        string `json:"content_url"`
-	ContentSourceURL  string `json:"content_source_url"`
-	ContentCoverURL   string `json:"content_cover_url"`
-	ExtraData         string `json:"extra_data"`
+	Id                string  `gorm:"primaryKey" json:"id"`
+	PlatformId        string  `gorm:"not null" json:"platform_id"`
+	VisitedTimes      int64   `gorm:"not null" json:"visited_times"`
+	AccountId         *string `json:"account_id"`
+	InfluencerId      *string `json:"influencer_id"`
+	AccountExternalId string  `json:"account_external_id"`
+	AccountUsername   string  `json:"account_username"`
+	AccountNickname   string  `json:"account_nickname"`
+	AccountAvatarURL  string  `json:"account_avatar_url"`
+	ContentId         *string `json:"content_id"`
+	ContentType       string  `json:"content_type"`
+	ContentExternalId string  `json:"content_external_id"`
+	ContentTitle      string  `json:"content_title"`
+	ContentURL        string  `json:"content_url"`
+	ContentSourceURL  string  `json:"content_source_url"`
+	ContentCoverURL   string  `json:"content_cover_url"`
+	ExtraData         string  `json:"extra_data"`
 	Timestamps
 }
 

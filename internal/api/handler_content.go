@@ -93,20 +93,20 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 
-	contentIDs := make([]int, 0, len(contents))
-	downloadTaskIDs := make([]int, 0, len(contents))
+	contentIDs := make([]string, 0, len(contents))
+	downloadTaskIDs := make([]string, 0, len(contents))
 	for _, content := range contents {
 		contentIDs = append(contentIDs, content.Id)
-		if content.DownloadTaskId != nil && *content.DownloadTaskId > 0 {
+		if content.DownloadTaskId != nil && *content.DownloadTaskId != "" {
 			downloadTaskIDs = append(downloadTaskIDs, *content.DownloadTaskId)
 		}
 	}
 
-	accountsByContentID := map[int][]gin.H{}
+	accountsByContentID := map[string][]gin.H{}
 	if len(contentIDs) > 0 {
 		type row struct {
-			ContentId  int
-			AccountId  int
+			ContentId  string
+			AccountId  string
 			Role       string
 			PlatformId string
 			ExternalId string
@@ -135,7 +135,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		}
 	}
 
-	tasksByID := map[int]model.DownloadTask{}
+	tasksByID := map[string]model.DownloadTask{}
 	if len(downloadTaskIDs) > 0 {
 		var tasks []model.DownloadTask
 		_ = db.Where("id IN ?", downloadTaskIDs).Find(&tasks).Error

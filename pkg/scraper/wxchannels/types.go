@@ -3,11 +3,13 @@ package wxchannels
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"wx_channel/internal/database/model"
 	utilpkg "wx_channel/pkg/util"
 )
 
@@ -858,4 +860,84 @@ func BuildJumpURL(feed *ChannelsFeedProfile) string {
 
 func BuildJumpUrl(feed *ChannelsFeedProfile) string {
 	return BuildJumpURL(feed)
+}
+
+// ToAccount converts ChannelsObject to a model.Account.
+func (r *ChannelsObject) ToAccount() (*model.Account, error) {
+	profile, err := ChannelsObjectToChannelsFeedProfile(r)
+	if err != nil {
+		return nil, err
+	}
+
+	contact := profile.Contact
+	now := utilpkg.NowMillis()
+	return &model.Account{
+		Id:         BuildAccountID(contact.Username),
+		PlatformId: PlatformID,
+		ExternalId: contact.Username,
+		Username:   contact.Username,
+		Nickname:   contact.Nickname,
+		AvatarURL:  contact.AvatarURL,
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}, nil
+}
+
+// ToContent converts ChannelsObject to a model.Content.
+func (r *ChannelsObject) ToContent() (*model.Content, error) {
+	profile, err := ChannelsObjectToChannelsFeedProfile(r)
+	if err != nil {
+		return nil, err
+	}
+
+	now := utilpkg.NowMillis()
+
+	// Determine content type from raw object fields
+	contentType := "video"
+	if r.LiveInfo != nil {
+		contentType = "live"
+	} else if r.Type == "picture" || r.ObjectDesc.MediaType == 2 {
+		contentType = "picture"
+	}
+
+	pub := int64(profile.CreatedAt)
+
+	return &model.Content{
+		Id:          BuildContentID(profile.ObjectId),
+		PlatformId:  PlatformID,
+		ContentType: contentType,
+		Title:       profile.Title,
+		Description: profile.Title,
+		ExternalId:  profile.ObjectId,
+		ExternalId2: profile.NonceId,
+		ExternalId3: profile.DecryptKey,
+		SourceURL:   profile.SourceURL,
+		ContentURL:  profile.URL,
+		URL:         profile.URL,
+		CoverURL:    profile.CoverURL,
+		CoverWidth:  strconv.Itoa(profile.CoverWidth),
+		CoverHeight: strconv.Itoa(profile.CoverHeight),
+		Duration:    int64(profile.Duration),
+		Size:        int64(profile.FileSize),
+		PublishTime: &pub,
+		Metadata:    fmt.Sprintf(`{"key":"%s"}`, profile.DecryptKey),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}, nil
+}
+
+const PlatformID = "wx_channels"
+
+// BuildContentID 构建 content 表主键 ID
+func BuildContentID(externalID string) string {
+	return PlatformID + ":" + externalID
+}
+
+// BuildAccountID 构建 account 表主键 ID
+func BuildAccountID(externalID string) string {
+	return PlatformID + ":" + externalID
 }

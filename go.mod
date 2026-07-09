@@ -33,6 +33,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/ltaoo/echo v0.11.1
@@ -46,8 +47,10 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
 	github.com/zeebo/blake3 v0.2.4
+	go.etcd.io/bbolt v1.3.8
 	golang.org/x/net v0.47.0
 	golang.org/x/text v0.31.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0
@@ -55,7 +58,7 @@ require (
 )
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown v1.4.1 // indirect
+	github.com/JohannesKaufmann/html-to-markdown v1.4.1
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
@@ -107,7 +110,6 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
@@ -141,7 +143,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
-	github.com/onsi/gomega v1.27.6 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -175,7 +176,6 @@ require (
 	github.com/xiaoqidun/setft v0.0.0-20220310121541-be86327699ad // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.etcd.io/bbolt v1.3.8 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
@@ -186,5 +186,4 @@ require (
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

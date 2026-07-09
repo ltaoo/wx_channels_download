@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +95,11 @@ func runGopeedMigration() {
 		os.Exit(1)
 	}
 
+	// 按创建时间升序排列，确保最早的任务先迁移
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].CreatedAt.Before(tasks[j].CreatedAt)
+	})
+
 	fmt.Printf("从 BoltDB 读取到 %d 个任务\n", len(tasks))
 	if len(tasks) == 0 {
 		fmt.Println("没有需要迁移的数据。")
@@ -108,18 +116,26 @@ func runGopeedMigration() {
 		os.Exit(1)
 	}
 
-	// Verify target database has required tables
-	if !db.Migrator().HasTable(&model.DownloadTask{}) {
-		fmt.Println("[错误] 目标数据库缺少 download_task 表，请先运行主程序初始化数据库，或使用一个已有的数据库文件")
+	// Auto-migrate tables
+	if err := db.AutoMigrate(
+		&model.DownloadTask{},
+		&model.DownloadTaskEvent{},
+		&model.Content{},
+		&model.ContentVideo{},
+		&model.ContentAccount{},
+		&model.Account{},
+	); err != nil {
+		fmt.Printf("[错误] 数据库表迁移失败: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("数据库表初始化完成")
 
 	// Migrate tasks
 	var (
-		taskCount   int
+		taskCount    int
 		contentCount int
-		skipCount   int
-		errorCount  int
+		skipCount    int
+		errorCount   int
 	)
 
 	for _, task := range tasks {
@@ -192,6 +208,7 @@ func runGopeedMigration() {
 		}
 
 		downloadTask := model.DownloadTask{
+			Id:         newRandomID(),
 			TaskId:     task.ID,
 			Status:     status,
 			Protocol:   task.Protocol,
@@ -227,9 +244,9 @@ func runGopeedMigration() {
 			}
 
 			// 调用 API 补充 content 和 account 信息（nonce_id 可为空）
-		if err := enrichContentFromAPI(db, enrichCacheDir, externalID, nonceID); err != nil {
-			fmt.Printf("[警告] 任务 %s: 补充 content 信息失败 - %v\n", task.ID, err)
-		}
+			if err := enrichContentFromAPI(db, enrichCacheDir, externalID, nonceID); err != nil {
+				fmt.Printf("[警告] 任务 %s: 补充 content 信息失败 - %v\n", task.ID, err)
+			}
 		}
 
 		taskCount++
@@ -258,6 +275,12 @@ func getLabel(labels map[string]string, key string) string {
 		return ""
 	}
 	return labels[key]
+}
+
+func newRandomID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func timeToMillis(t time.Time) int64 {
@@ -312,8 +335,9 @@ func mapToContentDownloadStatus(status base.Status) int {
 	}
 }
 
-func createTaskEvents(db *gorm.DB, taskID int, task *download.Task) {
+func createTaskEvents(db *gorm.DB, taskID string, task *download.Task) {
 	createEvent := model.DownloadTaskEvent{
+		Id:        newRandomID(),
 		TaskId:    taskID,
 		Type:      "create",
 		Message:   fmt.Sprintf("从 gopeed.db 迁移，原始任务ID: %s", task.ID),
@@ -344,6 +368,7 @@ func createTaskEvents(db *gorm.DB, taskID int, task *download.Task) {
 	}
 
 	statusEvent := model.DownloadTaskEvent{
+		Id:        newRandomID(),
 		TaskId:    taskID,
 		Type:      eventType,
 		Message:   message,
@@ -354,15 +379,26 @@ func createTaskEvents(db *gorm.DB, taskID int, task *download.Task) {
 	}
 }
 
-func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title string, labels map[string]string, createdAt, updatedAt int64, downloadTaskID int) error {
+func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title string, labels map[string]string, createdAt, updatedAt int64, downloadTaskID string) error {
+	platformID := wxchannels.PlatformID
+	contentID := wxchannels.BuildContentID(externalID)
+
+	// Build source URL from external_id and nonce_id
+	sourceURL := wxchannels.BuildJumpURL(&wxchannels.ChannelsFeedProfile{
+		ObjectId: externalID,
+		NonceId:  nonceID,
+	})
+
 	// Check for existing content
 	var existing model.Content
-	if err := db.Where("platform_id = ? AND external_id = ?", migratePlatform, externalID).First(&existing).Error; err == nil {
+	if err := db.Where("id = ?", contentID).First(&existing).Error; err == nil {
 		// Content already exists, update it
 		updates := map[string]any{
 			"title":           title,
 			"description":     title,
 			"external_id2":    nonceID,
+			"source_url":      sourceURL,
+			"url":             sourceURL,
 			"download_status": mapToContentDownloadStatus(task.Status),
 			"updated_at":      updatedAt,
 		}
@@ -372,14 +408,14 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 		if task.Meta.Res != nil {
 			updates["file_size"] = task.Meta.Res.Size
 		}
-		if downloadTaskID > 0 {
+		if downloadTaskID != "" {
 			updates["download_task_id"] = downloadTaskID
 		}
 		if err := db.Model(&existing).Updates(updates).Error; err != nil {
 			return err
 		}
 		// Also update/create ContentVideo
-		ensureContentVideo(db, existing.Id, nonceID, labels)
+		ensureContentVideo(db, contentID, nonceID, labels)
 		return nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
@@ -387,12 +423,15 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 
 	// Create new content
 	content := model.Content{
-		PlatformId:     migratePlatform,
-		ContentType:    "video",
-		ExternalId:     externalID,
-		ExternalId2:    nonceID,
-		Title:          title,
-		Description:    title,
+		Id:          contentID,
+		PlatformId:  platformID,
+		ContentType: "video",
+		ExternalId:  externalID,
+		ExternalId2: nonceID,
+		Title:       title,
+		Description: title,
+		URL:         sourceURL,
+		SourceURL:   sourceURL,
 		DownloadTaskId: &downloadTaskID,
 		DownloadStatus: mapToContentDownloadStatus(task.Status),
 		Timestamps: model.Timestamps{
@@ -413,12 +452,12 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 	}
 
 	// Create ContentVideo
-	ensureContentVideo(db, content.Id, nonceID, labels)
+	ensureContentVideo(db, contentID, nonceID, labels)
 
 	return nil
 }
 
-func ensureContentVideo(db *gorm.DB, contentID int, nonceID string, labels map[string]string) {
+func ensureContentVideo(db *gorm.DB, contentID string, nonceID string, labels map[string]string) {
 	var existing model.ContentVideo
 	if err := db.Where("content_id = ?", contentID).First(&existing).Error; err == nil {
 		// Update existing
@@ -704,7 +743,7 @@ func runEnrichDownloadContents() {
 
 		// 检查 content 是否已有丰富数据
 		var content model.Content
-		if err := db.Where("platform_id = ? AND external_id = ?", "wx_channels", externalID).First(&content).Error; err == nil {
+		if err := db.Where("platform_id = ? AND external_id = ?", wxchannels.PlatformID, externalID).First(&content).Error; err == nil {
 			if content.Description != "" && content.Description != content.Title {
 				fmt.Printf("[%d/%d] 跳过 %s: content 已有丰富数据\n", i+1, len(tasks), task.TaskId)
 				skipCount++
@@ -779,7 +818,7 @@ func runEnrichDownloadContents() {
 	db.Model(&model.Content{}).Where("description IS NOT NULL AND description != '' AND description != title").Count(&contentCount)
 	fmt.Printf("数据库中已补充丰富信息的 content 总数: %d\n", contentCount)
 	var accountCount int64
-	db.Model(&model.Account{}).Where("platform_id = ?", "wx_channels").Count(&accountCount)
+	db.Model(&model.Account{}).Where("platform_id = ?", wxchannels.PlatformID).Count(&accountCount)
 	fmt.Printf("数据库中 wx_channels account 总数: %d\n", accountCount)
 	var contentAccountCount int64
 	db.Model(&model.ContentAccount{}).Where("role = ?", "owner").Count(&contentAccountCount)

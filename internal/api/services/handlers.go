@@ -126,7 +126,7 @@ func (s *ChannelsUploadService) HandleChannelsFeed(feed *apitypes.ChannelsFeedPr
 		}
 	}
 
-	if account.Id == 0 {
+	if account.Id == "" {
 		return &content, nil
 	}
 	if err := s.db.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, account.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {

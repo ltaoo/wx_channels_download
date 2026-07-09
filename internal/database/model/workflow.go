@@ -7,7 +7,7 @@ type PlatformWorkflowRun struct {
 	Status         string `gorm:"index" json:"status"`
 	CurrentNode    string `gorm:"column:current_node" json:"current_node"`
 	TaskID         string `gorm:"column:task_id;index" json:"task_id"`
-	DownloadTaskID int    `gorm:"column:download_task_id;index" json:"download_task_id"`
+	DownloadTaskID string `gorm:"column:download_task_id;index" json:"download_task_id"`
 	Extra          string `gorm:"column:extra;type:text" json:"extra"`
 	Output         string `gorm:"column:output;type:text" json:"output"`
 	Selection      string `gorm:"column:selection;type:text" json:"selection"`

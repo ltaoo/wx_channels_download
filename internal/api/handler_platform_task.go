@@ -112,7 +112,7 @@ type platformWorkflowRun struct {
 	Existing       []gin.H                          `json:"-"`
 	Resolved       *contentdownload.ResolvedRequest `json:"-"`
 	TaskID         string                           `json:"task_id,omitempty"`
-	DownloadTaskID int                              `json:"download_task_id,omitempty"`
+	DownloadTaskID string                              `json:"download_task_id,omitempty"`
 	Extra          map[string]any                   `json:"extra,omitempty"`
 	Output         map[string]any                   `json:"output,omitempty"`
 	Selection      map[string]any                   `json:"selection,omitempty"`
@@ -131,7 +131,7 @@ var platformActiveDownloads sync.Map
 type platformActiveDownload struct {
 	downloader *contentdownload.Downloader
 	taskID     string
-	recID      int
+	recID      string
 	run        *platformWorkflowRun
 
 	mu      sync.Mutex
@@ -340,7 +340,7 @@ func (c *APIClient) resumePlatformWorkflow(ctx context.Context, run *platformWor
 		id, err := c.startPlatformDownloadTask(ctx, body)
 		return id, false, err
 	}
-	if taskID != "" || downloadTaskID > 0 {
+	if taskID != "" || downloadTaskID != "" {
 		id, err := c.resumePlatformWorkflowDownloadTask(ctx, run)
 		if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
 			return id, false, err
@@ -372,7 +372,7 @@ func (c *APIClient) resumePlatformWorkflowDownloadTask(ctx context.Context, run 
 	var rec model.DownloadTask
 	var err error
 	switch {
-	case downloadTaskID > 0:
+	case downloadTaskID != "":
 		err = c.db.First(&rec, "id = ?", downloadTaskID).Error
 	case taskID != "":
 		err = c.db.First(&rec, "task_id = ?", taskID).Error
@@ -554,7 +554,7 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 	if c.cfg != nil {
 		downloadDir = c.cfg.DownloadDir
 	}
-	var recID int
+	var recID string
 	downloader := contentdownload.NewDownloader(
 		router,
 		downloadDir,
@@ -564,7 +564,7 @@ func (c *APIClient) startPlatformDownloadTask(ctx context.Context, body platform
 		contentdownload.WithExecutor(contentshuba69.NewPDFExecutor()),
 		contentdownload.WithExecutor(contentttk.NewExecutor(nil)),
 		contentdownload.WithEventHandler(func(evt contentdownload.Event) {
-			if recID <= 0 || evt.Task == nil {
+			if recID == "" || evt.Task == nil {
 				return
 			}
 			if evt.Kind != contentdownload.EventTaskProgress {
@@ -709,7 +709,7 @@ func (c *APIClient) restartPlatformDownloadTaskRecordWithFilePathsAndRun(ctx con
 		contentdownload.WithExecutor(contentshuba69.NewPDFExecutor()),
 		contentdownload.WithExecutor(contentttk.NewExecutor(nil)),
 		contentdownload.WithEventHandler(func(evt contentdownload.Event) {
-			if recID <= 0 || evt.Task == nil || evt.Kind != contentdownload.EventTaskProgress {
+			if recID == "" || evt.Task == nil || evt.Kind != contentdownload.EventTaskProgress {
 				return
 			}
 			progressBytes, _ := json.Marshal(map[string]any{
@@ -972,7 +972,7 @@ func compatPlatformRetrySuffix(rec model.DownloadTask) string {
 
 type platformPlanExecution struct {
 	Resolved       *contentdownload.ResolvedRequest
-	DownloadTaskID int
+	DownloadTaskID string
 	Account        *model.Account
 }
 
@@ -1094,11 +1094,11 @@ func (c *APIClient) upsertPlatformResolvedAccount(resolved *contentdownload.Reso
 	return account, err
 }
 
-func (c *APIClient) upsertPlatformResolvedContent(resolved *contentdownload.ResolvedRequest, downloadTaskID int, account *model.Account) (*model.Content, error) {
+func (c *APIClient) upsertPlatformResolvedContent(resolved *contentdownload.ResolvedRequest, downloadTaskID string, account *model.Account) (*model.Content, error) {
 	if c.db == nil || resolved == nil {
 		return nil, nil
 	}
-	if downloadTaskID > 0 && c.db.Migrator().HasTable(&model.DownloadTask{}) {
+	if downloadTaskID != "" && c.db.Migrator().HasTable(&model.DownloadTask{}) {
 		var children []model.DownloadTask
 		if err := c.db.Where("parent_id = ?", downloadTaskID).Order("idx ASC").Find(&children).Error; err != nil {
 			if !platformDownloadTaskTableMissing(err) {
@@ -1117,7 +1117,7 @@ func (c *APIClient) upsertPlatformResolvedContent(resolved *contentdownload.Reso
 	return c.upsertPlatformResolvedSingleContent(resolved, downloadTaskID, account)
 }
 
-func (c *APIClient) upsertPlatformResolvedSingleContent(resolved *contentdownload.ResolvedRequest, downloadTaskID int, account *model.Account) (*model.Content, error) {
+func (c *APIClient) upsertPlatformResolvedSingleContent(resolved *contentdownload.ResolvedRequest, downloadTaskID string, account *model.Account) (*model.Content, error) {
 	if c.db == nil || resolved == nil {
 		return nil, nil
 	}
@@ -1176,7 +1176,7 @@ func (c *APIClient) upsertPlatformResolvedSingleContent(resolved *contentdownloa
 }
 
 func (c *APIClient) upsertPlatformDownloadTaskRecordContent(resolved *contentdownload.ResolvedRequest, rec model.DownloadTask, account *model.Account) (*model.Content, error) {
-	if c.db == nil || resolved == nil || rec.Id <= 0 {
+	if c.db == nil || resolved == nil || rec.Id == "" {
 		return nil, nil
 	}
 	now := util.NowMillis()
@@ -1195,8 +1195,8 @@ func (c *APIClient) upsertPlatformDownloadTaskRecordContent(resolved *contentdow
 	return &content, err
 }
 
-func (c *APIClient) upsertPlatformDownloadTaskFileContents(resolved *contentdownload.ResolvedRequest, parentTaskID int, children []model.DownloadTask, account *model.Account) (*model.Content, error) {
-	if c.db == nil || resolved == nil || parentTaskID <= 0 || len(children) == 0 {
+func (c *APIClient) upsertPlatformDownloadTaskFileContents(resolved *contentdownload.ResolvedRequest, parentTaskID string, children []model.DownloadTask, account *model.Account) (*model.Content, error) {
+	if c.db == nil || resolved == nil || parentTaskID == "" || len(children) == 0 {
 		return nil, nil
 	}
 	var parent model.DownloadTask
@@ -1235,7 +1235,7 @@ func (c *APIClient) upsertPlatformDownloadTaskFileContents(resolved *contentdown
 	return &first, nil
 }
 
-func deletePlatformContainerContents(tx *gorm.DB, parentTaskID int) error {
+func deletePlatformContainerContents(tx *gorm.DB, parentTaskID string) error {
 	var ids []int
 	if err := tx.Model(&model.Content{}).Where("download_task_id = ?", parentTaskID).Pluck("id", &ids).Error; err != nil {
 		return err
@@ -1343,7 +1343,7 @@ func platformDownloadTaskTreePath(rec model.DownloadTask) string {
 	if treePath := platformDownloadTaskMetadataString(rec, "tree_path"); treePath != "" {
 		return treePath
 	}
-	if rec.ParentId > 0 {
+	if rec.ParentId != "" {
 		return firstNonEmpty(rec.Filename, filepath.Base(rec.Filepath), filepath.Base(rec.OutputPath))
 	}
 	return ""
@@ -1804,7 +1804,7 @@ func platformPipelineStageNode(task *contentdownload.Task, stage string, fallbac
 	return fallbackID, fallbackType
 }
 
-func (c *APIClient) broadcastPlatformDownloadTask(task *contentdownload.Task, recID int) {
+func (c *APIClient) broadcastPlatformDownloadTask(task *contentdownload.Task, recID string) {
 	if c.downloader_ws == nil || task == nil || task.Resolved == nil {
 		return
 	}
@@ -2205,15 +2205,15 @@ func (c *APIClient) createPlatformDownloadTaskRecord(task *contentdownload.Task)
 	return &rec, nil
 }
 
-func (c *APIClient) updatePlatformDownloadTask(id int, updates map[string]any) error {
+func (c *APIClient) updatePlatformDownloadTask(id string, updates map[string]any) error {
 	if c.db == nil {
 		return nil
 	}
 	return c.db.Model(&model.DownloadTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
-func (c *APIClient) syncPlatformDownloadTaskChildren(parentID int, task *contentdownload.Task) {
-	if c.db == nil || parentID <= 0 || task == nil {
+func (c *APIClient) syncPlatformDownloadTaskChildren(parentID string, task *contentdownload.Task) {
+	if c.db == nil || parentID == "" || task == nil {
 		return
 	}
 	files := platformTaskFiles(task)
@@ -2226,7 +2226,7 @@ func (c *APIClient) syncPlatformDownloadTaskChildren(parentID int, task *content
 		return
 	}
 	rootID := parent.RootId
-	if rootID == 0 {
+	if rootID == "" {
 		rootID = parent.Id
 	}
 	leaves := platformFileNodeLeaves(files)
@@ -2321,12 +2321,12 @@ func (c *APIClient) syncPlatformDownloadTaskChildren(parentID int, task *content
 		_ = c.db.Create(&child).Error
 	}
 	if err := c.syncPlatformDownloadTaskFileContents(parent.Id, task); err != nil && c.logger != nil {
-		c.logger.Warn().Err(err).Int("download_task_id", parent.Id).Msg("sync platform file contents failed")
+		c.logger.Warn().Err(err).Str("download_task_id", parent.Id).Msg("sync platform file contents failed")
 	}
 }
 
-func (c *APIClient) syncPlatformSingleDownloadTaskContent(taskID int, task *contentdownload.Task) {
-	if c.db == nil || taskID <= 0 || task == nil || task.Resolved == nil {
+func (c *APIClient) syncPlatformSingleDownloadTaskContent(taskID string, task *contentdownload.Task) {
+	if c.db == nil || taskID == "" || task == nil || task.Resolved == nil {
 		return
 	}
 	var rec model.DownloadTask
@@ -2336,17 +2336,17 @@ func (c *APIClient) syncPlatformSingleDownloadTaskContent(taskID int, task *cont
 	account, err := c.upsertPlatformResolvedAccount(task.Resolved)
 	if err != nil {
 		if c.logger != nil {
-			c.logger.Warn().Err(err).Int("download_task_id", taskID).Msg("sync platform content account failed")
+			c.logger.Warn().Err(err).Str("download_task_id", taskID).Msg("sync platform content account failed")
 		}
 		return
 	}
 	if _, err := c.upsertPlatformDownloadTaskRecordContent(task.Resolved, rec, account); err != nil && c.logger != nil {
-		c.logger.Warn().Err(err).Int("download_task_id", taskID).Msg("sync platform content failed")
+		c.logger.Warn().Err(err).Str("download_task_id", taskID).Msg("sync platform content failed")
 	}
 }
 
-func (c *APIClient) syncPlatformDownloadTaskFileContents(parentID int, task *contentdownload.Task) error {
-	if c.db == nil || parentID <= 0 || task == nil || task.Resolved == nil {
+func (c *APIClient) syncPlatformDownloadTaskFileContents(parentID string, task *contentdownload.Task) error {
+	if c.db == nil || parentID == "" || task == nil || task.Resolved == nil {
 		return nil
 	}
 	var children []model.DownloadTask
@@ -2569,7 +2569,7 @@ func platformFileNodeStatus(status string) int {
 	}
 }
 
-func platformFileNodeTaskID(parentID int, treePath string) string {
+func platformFileNodeTaskID(parentID string, treePath string) string {
 	sum := sha1.Sum([]byte(treePath))
 	return fmt.Sprintf("download-%d-file-%s", parentID, hex.EncodeToString(sum[:])[:16])
 }

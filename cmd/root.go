@@ -292,7 +292,7 @@ func root_command(cfg *config.Config) {
 					"avatar_url": profile.Contact.AvatarURL,
 					"updated_at": now,
 				}).Error; err != nil {
-					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update account failed")
+					logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update account failed")
 				}
 			}
 		}
@@ -355,7 +355,7 @@ func root_command(cfg *config.Config) {
 					"avatar_url": profile.AvatarURL,
 					"updated_at": now,
 				}).Error; err != nil {
-					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update official account failed")
+					logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update official account failed")
 				}
 			}
 		}

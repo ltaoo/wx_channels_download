@@ -20,7 +20,7 @@ func NewAccountService(db *gorm.DB) *AccountService {
 }
 
 type Influencer struct {
-	Id          int    `json:"id"`
+	Id          string `json:"id"`
 	Name        string `json:"name"`
 	AvatarURL   string `json:"avatar_url"`
 	Sex         int    `json:"sex"`
@@ -63,7 +63,7 @@ func (s *AccountService) ListInfluencers(page, pageSize int) (*PageResult, error
 	}, nil
 }
 
-func (s *AccountService) GetInfluencer(id int) (*Influencer, error) {
+func (s *AccountService) GetInfluencer(id string) (*Influencer, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
@@ -124,7 +124,7 @@ type UpdateInfluencerInput struct {
 	Description string
 }
 
-func (s *AccountService) UpdateInfluencer(id int, input *UpdateInfluencerInput) (*Influencer, error) {
+func (s *AccountService) UpdateInfluencer(id string, input *UpdateInfluencerInput) (*Influencer, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}

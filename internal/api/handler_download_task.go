@@ -429,7 +429,7 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	}
 	counts, allTotal := c.compatDownloadTaskStatusCounts()
 
-	ids := make([]int, 0, len(tasks))
+	ids := make([]string, 0, len(tasks))
 	for _, t := range tasks {
 		ids = append(ids, t.Id)
 	}
@@ -438,25 +438,25 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 	if len(ids) > 0 {
 		_ = c.db.Where("task_id IN ?", ids).Order("id ASC").Find(&events).Error
 	}
-	evMap := map[int][]model.DownloadTaskEvent{}
+	evMap := map[string][]model.DownloadTaskEvent{}
 	for _, e := range events {
 		evMap[e.TaskId] = append(evMap[e.TaskId], e)
 	}
 
 	type DownloadTaskEventResp struct {
-		Id        int    `json:"id"`
-		TaskId    int    `json:"task_id"`
+		Id        string `json:"id"`
+		TaskId    string `json:"task_id"`
 		Type      string `json:"type"`
 		Message   string `json:"message"`
 		Data      string `json:"data"`
 		CreatedAt string `json:"created_at"`
 	}
 	type DownloadTaskResp struct {
-		Id           int                `json:"id"`
+		Id           string             `json:"id"`
 		TaskUID      string             `json:"task_uid"`
 		TaskId       string             `json:"task_id"`
-		ParentId     int                `json:"parent_id"`
-		RootId       int                `json:"root_id"`
+		ParentId     string             `json:"parent_id"`
+		RootId       string             `json:"root_id"`
 		NodeType     string             `json:"node_type"`
 		Engine       string             `json:"engine"`
 		EngineTaskID string             `json:"engine_task_id"`
@@ -688,11 +688,11 @@ func (c *APIClient) handleCompatDownloadTaskProfile(ctx *gin.Context) {
 		return
 	}
 	type DownloadTaskResp struct {
-		Id           int                `json:"id"`
+		Id           string             `json:"id"`
 		TaskUID      string             `json:"task_uid"`
 		TaskId       string             `json:"task_id"`
-		ParentId     int                `json:"parent_id"`
-		RootId       int                `json:"root_id"`
+		ParentId     string             `json:"parent_id"`
+		RootId       string             `json:"root_id"`
 		NodeType     string             `json:"node_type"`
 		Engine       string             `json:"engine"`
 		EngineTaskID string             `json:"engine_task_id"`
@@ -896,8 +896,7 @@ func (c *APIClient) retryCompatDownloadTaskRecord(rec model.DownloadTask) (strin
 		return "", err
 	}
 	now := utilpkg.NowMillis()
-	if c.db != nil && rec.Id != 0 {
-		outputPath := downloadTaskOutputPath(c.cfg.DownloadDir, rec)
+	if c.db != nil && rec.Id != "" {		outputPath := downloadTaskOutputPath(c.cfg.DownloadDir, rec)
 		if task := c.downloader.GetTask(newTaskID); task != nil && task.Meta != nil {
 			outputPath = task.Meta.SingleFilepath()
 		}
@@ -932,7 +931,7 @@ func (c *APIClient) retryCompatDownloadTaskRecordWithFilePaths(rec model.Downloa
 }
 
 func compatDownloadTaskIsPlatformFileSubtask(rec model.DownloadTask) bool {
-	if rec.ParentId <= 0 {
+	if rec.ParentId == "" {
 		return false
 	}
 	if strings.EqualFold(strings.TrimSpace(rec.NodeType), "file") && strings.TrimSpace(rec.Engine) != "" {
@@ -1092,8 +1091,7 @@ func (c *APIClient) pauseCompatDownloadTaskRecord(rec model.DownloadTask) error 
 }
 
 func (c *APIClient) updateCompatDownloadTaskManualStatus(rec model.DownloadTask, status int, eventType string, message string) error {
-	if c.db == nil || rec.Id == 0 {
-		return nil
+	if c.db == nil || rec.Id == "" {		return nil
 	}
 	now := utilpkg.NowMillis()
 	if err := c.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(map[string]any{
@@ -1119,17 +1117,17 @@ func (c *APIClient) compatDownloadTaskGroup(root model.DownloadTask) []model.Dow
 	if c.db == nil {
 		return records
 	}
-	seenIDs := map[int]bool{}
+	seenIDs := map[string]bool{}
 	seenTaskIDs := map[string]bool{}
 	addChild := func(child model.DownloadTask) {
-		if child.Id != 0 && seenIDs[child.Id] {
+		if child.Id != "" && seenIDs[child.Id] {
 			return
 		}
 		if child.TaskId != "" && seenTaskIDs[child.TaskId] {
 			return
 		}
 		records = append(records, child)
-		if child.Id != 0 {
+		if child.Id != "" {
 			seenIDs[child.Id] = true
 		}
 		if child.TaskId != "" {
@@ -1137,7 +1135,7 @@ func (c *APIClient) compatDownloadTaskGroup(root model.DownloadTask) []model.Dow
 		}
 	}
 	for _, rec := range records {
-		if rec.Id != 0 {
+		if rec.Id != "" {
 			seenIDs[rec.Id] = true
 		}
 		if rec.TaskId != "" {
@@ -1146,7 +1144,7 @@ func (c *APIClient) compatDownloadTaskGroup(root model.DownloadTask) []model.Dow
 	}
 
 	var nativeChildren []model.DownloadTask
-	if root.Id > 0 {
+	if root.Id != "" {
 		if err := c.db.Where("parent_id = ?", root.Id).Order("idx ASC, id ASC").Find(&nativeChildren).Error; err == nil {
 			for _, child := range nativeChildren {
 				addChild(child)
@@ -1177,9 +1175,9 @@ func (c *APIClient) compatDownloadTaskGroup(root model.DownloadTask) []model.Dow
 		return records
 	}
 	for _, child := range children {
-		if root.Id > 0 && child.Id != root.Id && child.ParentId == 0 {
+		if root.Id != "" && child.Id != root.Id && child.ParentId == "" {
 			rootID := root.RootId
-			if rootID == 0 {
+			if rootID == "" {
 				rootID = root.Id
 			}
 			_ = c.db.Model(&model.DownloadTask{}).Where("id = ?", child.Id).Updates(map[string]any{
@@ -1205,7 +1203,7 @@ func (c *APIClient) backfillCompatDownloadTaskParentLinks() {
 		return
 	}
 	for _, root := range roots {
-		if root.Id == 0 {
+		if root.Id == "" {
 			continue
 		}
 		taskIDs, dbIDs := compatDownloadTaskChildRefs(root.Metadata1, root.Metadata2)
@@ -1226,7 +1224,7 @@ func (c *APIClient) backfillCompatDownloadTaskParentLinks() {
 			}
 		}
 		rootID := root.RootId
-		if rootID == 0 {
+		if rootID == "" {
 			rootID = root.Id
 		}
 		_ = db.
@@ -1236,11 +1234,11 @@ func (c *APIClient) backfillCompatDownloadTaskParentLinks() {
 	}
 }
 
-func compatDownloadTaskChildRefs(values ...string) ([]string, []int) {
+func compatDownloadTaskChildRefs(values ...string) ([]string, []string) {
 	taskIDs := make([]string, 0)
-	dbIDs := make([]int, 0)
+	dbIDs := make([]string, 0)
 	seenTaskIDs := map[string]bool{}
-	seenDBIDs := map[int]bool{}
+	seenDBIDs := map[string]bool{}
 
 	addTaskID := func(value any) {}
 	addDBID := func(value any) {}
@@ -1268,25 +1266,25 @@ func compatDownloadTaskChildRefs(values ...string) ([]string, []int) {
 	addDBID = func(value any) {
 		switch v := value.(type) {
 		case float64:
-			id := int(v)
-			if id > 0 && !seenDBIDs[id] {
+			id := fmt.Sprintf("%.0f", v)
+			if id != "" && id != "0" && !seenDBIDs[id] {
 				seenDBIDs[id] = true
 				dbIDs = append(dbIDs, id)
 			}
 		case int:
-			if v > 0 && !seenDBIDs[v] {
-				seenDBIDs[v] = true
-				dbIDs = append(dbIDs, v)
+			id := strconv.Itoa(v)
+			if id != "" && id != "0" && !seenDBIDs[id] {
+				seenDBIDs[id] = true
+				dbIDs = append(dbIDs, id)
 			}
 		case string:
 			for _, part := range strings.Split(v, ",") {
 				part = strings.TrimSpace(part)
-				id, err := strconv.Atoi(part)
-				if err != nil || id <= 0 || seenDBIDs[id] {
+				if part == "" || seenDBIDs[part] {
 					continue
 				}
-				seenDBIDs[id] = true
-				dbIDs = append(dbIDs, id)
+				seenDBIDs[part] = true
+				dbIDs = append(dbIDs, part)
 			}
 		case []any:
 			for _, item := range v {
@@ -1511,13 +1509,13 @@ func (c *APIClient) handleCompatDownloadTaskRetry(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		Id int `json:"id"`
+		Id string `json:"id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if body.Id == 0 {
+	if body.Id == "" {
 		result.Err(ctx, 400, "缺少 id")
 		return
 	}
@@ -1580,19 +1578,19 @@ func (c *APIClient) retryCompatDownloadTaskChildren(rec model.DownloadTask, reco
 	skipped := 0
 	total := 0
 	platformRetryPaths := compatDownloadTaskPlatformRetryPathsByParent(rec, records)
-	restartedPlatformParents := map[int]bool{}
+	restartedPlatformParents := map[string]bool{}
 	process := func(item model.DownloadTask) error {
 		total++
 		if compatDownloadTaskShouldRestartPlatformOnRetryChildren(item) {
 			parentKey := compatDownloadTaskPlatformRestartKey(item)
-			if parentKey > 0 && restartedPlatformParents[parentKey] {
+			if parentKey != "" && restartedPlatformParents[parentKey] {
 				skipped++
 				return nil
 			}
 			if _, err := c.retryCompatDownloadTaskRecordWithFilePaths(item, platformRetryPaths[parentKey]); err != nil {
 				return err
 			}
-			if parentKey > 0 {
+			if parentKey != "" {
 				restartedPlatformParents[parentKey] = true
 			}
 			retried++
@@ -1630,7 +1628,7 @@ func (c *APIClient) retryCompatDownloadTaskChildren(rec model.DownloadTask, reco
 		}
 		if err := process(item); err != nil {
 			if c.logger != nil {
-				c.logger.Error().Err(err).Int("download_task_id", rec.Id).Int("child_task_id", item.Id).Msg("重新开始子任务失败")
+				c.logger.Error().Err(err).Str("download_task_id", rec.Id).Str("child_task_id", item.Id).Msg("重新开始子任务失败")
 			}
 			return
 		}
@@ -1638,7 +1636,7 @@ func (c *APIClient) retryCompatDownloadTaskChildren(rec model.DownloadTask, reco
 	if retried == 0 && resumed == 0 && hasChildren && compatDownloadTaskShouldRetryParentAfterChildrenSkipped(rec) {
 		if err := process(rec); err != nil {
 			if c.logger != nil {
-				c.logger.Error().Err(err).Int("download_task_id", rec.Id).Msg("重新开始子任务失败")
+				c.logger.Error().Err(err).Str("download_task_id", rec.Id).Msg("重新开始子任务失败")
 			}
 			return
 		}
@@ -1646,7 +1644,7 @@ func (c *APIClient) retryCompatDownloadTaskChildren(rec model.DownloadTask, reco
 
 	if c.logger != nil {
 		c.logger.Info().
-			Int("download_task_id", rec.Id).
+			Str("download_task_id", rec.Id).
 			Int("total", total).
 			Int("retried", retried).
 			Int("resumed", resumed).
@@ -1672,9 +1670,9 @@ func compatDownloadTaskShouldRetryParentAfterChildrenSkipped(rec model.DownloadT
 	return compatDownloadTaskShouldRestartPlatformOnRetryChildren(rec)
 }
 
-func compatDownloadTaskPlatformRetryPathsByParent(root model.DownloadTask, records []model.DownloadTask) map[int][]string {
-	out := map[int][]string{}
-	seen := map[int]map[string]bool{}
+func compatDownloadTaskPlatformRetryPathsByParent(root model.DownloadTask, records []model.DownloadTask) map[string][]string {
+	out := map[string][]string{}
+	seen := map[string]map[string]bool{}
 	for _, item := range records {
 		if item.Id == root.Id && len(records) > 1 {
 			continue
@@ -1683,7 +1681,7 @@ func compatDownloadTaskPlatformRetryPathsByParent(root model.DownloadTask, recor
 			continue
 		}
 		parentKey := compatDownloadTaskPlatformRestartKey(item)
-		if parentKey <= 0 {
+		if parentKey == "" {
 			continue
 		}
 		paths := compatDownloadTaskRetryFilePaths(item)
@@ -1704,8 +1702,8 @@ func compatDownloadTaskPlatformRetryPathsByParent(root model.DownloadTask, recor
 	return out
 }
 
-func compatDownloadTaskPlatformRestartKey(item model.DownloadTask) int {
-	if item.ParentId > 0 {
+func compatDownloadTaskPlatformRestartKey(item model.DownloadTask) string {
+	if item.ParentId != "" {
 		return item.ParentId
 	}
 	return item.Id
@@ -1771,13 +1769,12 @@ func (c *APIClient) handleCompatDownloadTaskDelete(ctx *gin.Context) {
 		_ = c.downloader.Delete(&downloadpkg.TaskFilter{IDs: []string{task.TaskId}}, body.DeleteFile)
 	}
 	records := c.compatDownloadTaskGroup(task)
-	ids := make([]int, 0, len(records))
+	ids := make([]string, 0, len(records))
 	for _, rec := range records {
 		if rec.TaskId != "" && rec.TaskId != task.TaskId {
 			_ = c.downloader.Delete(&downloadpkg.TaskFilter{IDs: []string{rec.TaskId}}, body.DeleteFile)
 		}
-		if rec.Id > 0 {
-			ids = append(ids, rec.Id)
+		if rec.Id != "" {			ids = append(ids, rec.Id)
 		}
 	}
 	_ = c.db.Delete(&model.Content{}, "download_task_id IN ?", ids).Error
@@ -1995,7 +1992,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	}
 
 	now := utilpkg.NowMillis()
-	accId := 0
+	accId := ""
 	{
 		var acc model.Account
 		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", username).First(&acc).Error
@@ -2005,7 +2002,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		}
 		nickname := resp.Data.Contact.Nickname
 		avatar := resp.Data.Contact.HeadUrl
-		if acc.Id == 0 {
+		if acc.Id == "" {
 			acc = model.Account{
 				PlatformId:   "wx_channels",
 				ExternalId:   username,
@@ -2071,7 +2068,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}
-		if existing.Id == 0 {
+		if existing.Id == "" {
 			if err := c.db.Create(&content).Error; err == nil {
 				added++
 				existing = content
@@ -2096,7 +2093,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 				updated++
 			}
 		}
-		if accId > 0 && existing.Id > 0 {
+		if accId != "" && existing.Id != "" {
 			link := model.ContentAccount{ContentId: existing.Id, AccountId: accId, Role: "owner", CreatedAt: now}
 			_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 		}

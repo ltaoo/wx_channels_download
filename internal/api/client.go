@@ -404,8 +404,7 @@ func (c *APIClient) ensureDownloadTaskBaselineEvents(tasks []model.DownloadTask)
 		return
 	}
 	for _, task := range tasks {
-		if task.Id == 0 {
-			continue
+		if task.Id == "" {			continue
 		}
 		var count int64
 		if err := c.db.Model(&model.DownloadTaskEvent{}).Where("task_id = ?", task.Id).Count(&count).Error; err != nil || count > 0 {
