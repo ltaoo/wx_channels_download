@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/html"
+	"gorm.io/gorm"
 
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/cache"
@@ -120,6 +121,7 @@ type OfficialAccountClient struct {
 	wait_mu                   sync.Mutex
 	refresh_mu                sync.Mutex
 	is_refreshing             bool
+	db                        *gorm.DB
 }
 
 func (c *OfficialAccountClient) next_trace_id(prefix string) string {
