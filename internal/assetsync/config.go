@@ -4,10 +4,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+// expandEnvStrict expands environment variables in s but returns an error
+// if any referenced variable is not set.
+func expandEnvStrict(s string) (string, error) {
+	for _, match := range envVarRe.FindAllStringSubmatch(s, -1) {
+		name := match[1] // ${VAR} form
+		if name == "" {
+			name = match[2] // $VAR form
+		}
+		if _, ok := os.LookupEnv(name); !ok {
+			return "", fmt.Errorf("environment variable %q is not set (referenced in config)", name)
+		}
+	}
+	return os.ExpandEnv(s), nil
+}
 
 const (
 	DefaultConfigPath   = ".asset-sync.yaml"
@@ -169,11 +187,31 @@ func (c *Config) Normalize(deviceOverride string) error {
 		root.Include = cleanPatterns(root.Include)
 		root.Exclude = cleanPatterns(root.Exclude)
 	}
-	c.Storage.Type = strings.ToLower(strings.TrimSpace(os.ExpandEnv(c.Storage.Type)))
-	c.Storage.LocalPath = os.ExpandEnv(c.Storage.LocalPath)
-	c.Storage.RcloneBinary = os.ExpandEnv(c.Storage.RcloneBinary)
-	c.Storage.RcloneRemote = os.ExpandEnv(c.Storage.RcloneRemote)
-	c.Storage.Prefix = strings.Trim(cleanSlashPath(os.ExpandEnv(c.Storage.Prefix)), "/")
+	storageType, err := expandEnvStrict(c.Storage.Type)
+	if err != nil {
+		return fmt.Errorf("storage.type: %w", err)
+	}
+	c.Storage.Type = strings.ToLower(strings.TrimSpace(storageType))
+	localPath, err := expandEnvStrict(c.Storage.LocalPath)
+	if err != nil {
+		return fmt.Errorf("storage.local_path: %w", err)
+	}
+	c.Storage.LocalPath = localPath
+	rcloneBinary, err := expandEnvStrict(c.Storage.RcloneBinary)
+	if err != nil {
+		return fmt.Errorf("storage.rclone_binary: %w", err)
+	}
+	c.Storage.RcloneBinary = rcloneBinary
+	rcloneRemote, err := expandEnvStrict(c.Storage.RcloneRemote)
+	if err != nil {
+		return fmt.Errorf("storage.rclone_remote: %w", err)
+	}
+	c.Storage.RcloneRemote = rcloneRemote
+	prefix, err := expandEnvStrict(c.Storage.Prefix)
+	if err != nil {
+		return fmt.Errorf("storage.prefix: %w", err)
+	}
+	c.Storage.Prefix = strings.Trim(cleanSlashPath(prefix), "/")
 	if c.Storage.Type == "" {
 		c.Storage.Type = "rclone"
 	}
@@ -232,7 +270,11 @@ func (c *Config) applyDevice(deviceOverride string) error {
 		return fmt.Errorf("asset-sync device %q is not configured", deviceName)
 	}
 	c.ResolvedDevice = deviceName
-	storageRoot := strings.TrimSpace(os.ExpandEnv(device.StorageRoot))
+	storageRootExpanded, err := expandEnvStrict(device.StorageRoot)
+	if err != nil {
+		return fmt.Errorf("devices.%s.storage_root: %w", deviceName, err)
+	}
+	storageRoot := strings.TrimSpace(storageRootExpanded)
 	if storageRoot == "" {
 		return nil
 	}
