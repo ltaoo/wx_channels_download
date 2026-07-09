@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -76,7 +77,9 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	var scripts []string
 	doc.Find("script").Each(func(i int, s *goquery.Selection) {
 		text := s.Text()
-		if strings.Contains(text, "window.cgiDataNew =") || strings.Contains(text, "var videoPageInfos =") {
+		if strings.Contains(text, "window.cgiDataNew =") ||
+			strings.Contains(text, "var videoPageInfos =") ||
+			strings.Contains(text, "picture_page_info_list") {
 			scripts = append(scripts, text)
 		}
 	})
@@ -155,18 +158,12 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 		return nil, fmt.Errorf("failed to unmarshal cgiDataNew: %v", err)
 	}
 
-	// Check if PicturePageInfoList is empty, if so check global window.picture_page_info_list
+	// Check if PicturePageInfoList is empty, if so check global picture_page_info_list.
 	if len(data.PicturePageInfoList) == 0 {
-		valList := vm.Get("window").ToObject(vm).Get("picture_page_info_list")
-		if valList != nil && !goja.IsNull(valList) && !goja.IsUndefined(valList) {
-			jsonList, err := vm.RunString("JSON.stringify(window.picture_page_info_list)")
-			if err == nil {
-				var list []PicturePageInfo
-				if err := json.Unmarshal([]byte(jsonList.String()), &list); err == nil {
-					data.PicturePageInfoList = list
-				}
-			}
-		}
+		data.PicturePageInfoList = readPicturePageInfoList(vm, "window.picture_page_info_list")
+	}
+	if len(data.PicturePageInfoList) == 0 {
+		data.PicturePageInfoList = readPicturePageInfoList(vm, "picture_page_info_list")
 	}
 
 	// Check for videoPageInfos
@@ -184,57 +181,20 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	return data, nil
 }
 
-func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+func readPicturePageInfoList(vm *goja.Runtime, expr string) []PicturePageInfo {
+	val, err := vm.RunString(expr)
+	if err != nil || val == nil || goja.IsNull(val) || goja.IsUndefined(val) {
+		return nil
+	}
+	jsonList, err := vm.RunString("JSON.stringify(" + expr + ")")
 	if err != nil {
-		return nil, err
+		return nil
 	}
-
-	contentSel := doc.Find("#js_content").First()
-	if contentSel.Length() == 0 {
-		return nil, fmt.Errorf("article content not found")
+	var list []PicturePageInfo
+	if err := json.Unmarshal([]byte(jsonList.String()), &list); err != nil {
+		return nil
 	}
-
-	content, err := contentSel.Html()
-	if err != nil {
-		return nil, err
-	}
-
-	title := strings.TrimSpace(doc.Find("#activity-name").First().Text())
-	if title == "" {
-		title = strings.TrimSpace(doc.Find(".rich_media_title").First().Text())
-	}
-	if title == "" {
-		if ogTitle, ok := doc.Find(`meta[property="og:title"]`).Attr("content"); ok {
-			title = strings.TrimSpace(ogTitle)
-		}
-	}
-	if title == "" {
-		return nil, fmt.Errorf("article title not found")
-	}
-
-	var images []string
-	contentSel.Find("img").Each(func(i int, s *goquery.Selection) {
-		imgURL := s.AttrOr("data-src", "")
-		if imgURL == "" {
-			imgURL = s.AttrOr("src", "")
-		}
-		imgURL = normalizeMediaURL(imgURL)
-		if imgURL != "" {
-			images = append(images, imgURL)
-		}
-	})
-
-	publishTime := strings.TrimSpace(doc.Find("#publish_time").First().Text())
-	return &WechatOfficialArticle{
-		Title:          title,
-		Content:        content,
-		ContentLength:  len(content),
-		Images:         images,
-		Creator:        strings.TrimSpace(doc.Find("#js_author_name").First().Text()),
-		AuthorNickname: strings.TrimSpace(doc.Find("#js_name").First().Text()),
-		PublishTimeStr: publishTime,
-	}, nil
+	return list
 }
 
 func escapeHTML(s string) string {
@@ -298,7 +258,7 @@ func downloadImageBytes(imgURL string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 	if err != nil {
 		return nil, "", err
 	}
@@ -308,4 +268,77 @@ func downloadImageBytes(imgURL string) ([]byte, string, error) {
 		contentType = http.DetectContentType(data)
 	}
 	return data, contentType, nil
+}
+
+func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return nil, err
+	}
+
+	article := &WechatOfficialArticle{}
+
+	// Extract title
+	title := doc.Find("meta[property=\"og:title\"]").AttrOr("content", "")
+	if title == "" {
+		title = doc.Find("h1.rich_media_title").Text()
+	}
+	if title == "" {
+		title = doc.Find("title").Text()
+	}
+	article.Title = strings.TrimSpace(title)
+
+	// Extract content from rich_media_content or js_content
+	contentHTML := ""
+	doc.Find("#js_content, .rich_media_content").Each(func(i int, s *goquery.Selection) {
+		if contentHTML == "" {
+			contentHTML, _ = s.Html()
+		}
+	})
+	article.Content = contentHTML
+
+	// Extract author nickname
+	nickname := doc.Find("meta[name=\"author\"]").AttrOr("content", "")
+	if nickname == "" {
+		nickname = doc.Find(".rich_media_meta_nickname").First().Text()
+	}
+	if nickname == "" {
+		nickname = doc.Find(".profile_nickname").First().Text()
+	}
+	article.AuthorNickname = strings.TrimSpace(nickname)
+
+	// Extract author avatar
+	avatar := doc.Find(".rich_media_meta_avatar, .js_wx_tap_highlight img").First().AttrOr("src", "")
+	article.AuthorAvatar = normalizeMediaURL(avatar)
+
+	// Extract publish time from script or meta
+	publishTimeStr := ""
+	doc.Find("script").Each(func(i int, s *goquery.Selection) {
+		if publishTimeStr != "" {
+			return
+		}
+		text := s.Text()
+		if strings.Contains(text, "createTime") {
+			re := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
+			matches := re.FindStringSubmatch(text)
+			if len(matches) > 1 {
+				publishTimeStr = formatPublishTime(matches[1], 0)
+			}
+		}
+	})
+	article.PublishTimeStr = publishTimeStr
+
+	// Extract image URLs
+	doc.Find("#js_content img, .rich_media_content img").Each(func(i int, s *goquery.Selection) {
+		imgURL := s.AttrOr("data-src", "")
+		if imgURL == "" {
+			imgURL = s.AttrOr("src", "")
+		}
+		imgURL = normalizeMediaURL(imgURL)
+		if imgURL != "" {
+			article.Images = append(article.Images, imgURL)
+		}
+	})
+
+	return article, nil
 }

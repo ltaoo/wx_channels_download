@@ -1,0 +1,29 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "开始全部下载任务（兼容 wx_channels_api）",
+    "responses": {
+      "200": {
+        "description": "操作结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "message": "已开始全部任务"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

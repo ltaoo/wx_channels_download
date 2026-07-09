@@ -1,0 +1,60 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "获取单个下载任务（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "下载器 task id（download_task.task_id）"
+              }
+            },
+            "required": [
+              "task_id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "任务详情",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "id": 1,
+                    "task_id": "fqG2OhiJFRYpnELqZmPRW",
+                    "status": 4,
+                    "url": "https://finder.video.qq.com/xxx",
+                    "title": "示例标题.mp4"
+                  }
+                }
+              },
+              "not_found": {
+                "summary": "任务不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "未找到下载任务",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

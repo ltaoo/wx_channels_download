@@ -33,6 +33,10 @@ type ServiceStatus struct {
 		Addr      string `json:"addr"`
 		Listening bool   `json:"listening"`
 	} `json:"api"`
+	Admin struct {
+		Addr      string `json:"addr"`
+		Listening bool   `json:"listening"`
+	} `json:"admin"`
 	Proxy struct {
 		Addr      string `json:"addr"`
 		Listening bool   `json:"listening"`
@@ -60,10 +64,21 @@ func status_command() {
 		apiHost = "127.0.0.1"
 	}
 	if apiPort == 0 {
-		apiPort = 2710
+		apiPort = 2022
 	}
 	s.API.Addr = fmt.Sprintf("%s:%d", apiHost, apiPort)
 	s.API.Listening = checkPort(s.API.Addr)
+
+	adminHost := viper.GetString("admin.hostname")
+	adminPort := viper.GetInt("admin.port")
+	if adminHost == "" {
+		adminHost = "127.0.0.1"
+	}
+	if adminPort == 0 {
+		adminPort = 2021
+	}
+	s.Admin.Addr = fmt.Sprintf("%s:%d", adminHost, adminPort)
+	s.Admin.Listening = checkPort(s.Admin.Addr)
 
 	proxyHost := viper.GetString("proxy.hostname")
 	proxyPort := viper.GetInt("proxy.port")
@@ -90,6 +105,11 @@ func status_command() {
 		color.Green("API服务: 运行中 (%s)", s.API.Addr)
 	} else {
 		color.Red("API服务: 未运行")
+	}
+	if s.Admin.Listening {
+		color.Green("GUI/Admin服务: 运行中 (%s)", s.Admin.Addr)
+	} else {
+		color.Red("GUI/Admin服务: 未运行")
 	}
 	if s.Proxy.Listening {
 		color.Green("代理服务: 运行中 (%s)", s.Proxy.Addr)

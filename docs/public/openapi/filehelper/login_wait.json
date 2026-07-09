@@ -1,0 +1,61 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "等待扫码登录",
+    "description": "阻塞等待用户扫码确认登录，返回当前登录状态（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "登录状态",
+        "content": {
+          "application/json": {
+            "examples": {
+              "logged_in": {
+                "summary": "登录成功",
+                "value": {
+                  "code": 0,
+                  "msg": "登录成功",
+                  "data": {
+                    "status": "logged_in"
+                  }
+                }
+              },
+              "scanned": {
+                "summary": "已扫码",
+                "value": {
+                  "code": 0,
+                  "msg": "已扫码，等待确认",
+                  "data": {
+                    "status": "scanned",
+                    "user_avatar": "https://wx.qlogo.cn/xxx"
+                  }
+                }
+              },
+              "expired": {
+                "summary": "二维码过期",
+                "value": {
+                  "code": 0,
+                  "msg": "二维码已过期",
+                  "data": {
+                    "status": "expired"
+                  }
+                }
+              },
+              "waiting": {
+                "summary": "等待扫码",
+                "value": {
+                  "code": 0,
+                  "msg": "等待扫码",
+                  "data": {
+                    "status": "waiting"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

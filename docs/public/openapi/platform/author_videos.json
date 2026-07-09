@@ -1,0 +1,31 @@
+{
+  "get": {
+    "tags": [
+      "平台"
+    ],
+    "summary": "获取视频号账号的视频列表（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "username",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "列表结果（结构与 /api/channels/contact/feed/list 相同）"
+      }
+    }
+  }
+}

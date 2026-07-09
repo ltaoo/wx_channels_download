@@ -57,6 +57,12 @@ func (sm *ServerManager) GetStatus(name string) (ServerStatus, error) {
 	return server.Status(), nil
 }
 
+func (sm *ServerManager) GetServer(name string) Server {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.servers[name]
+}
+
 func (sm *ServerManager) GetAllStatus() map[string]ServerStatus {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()

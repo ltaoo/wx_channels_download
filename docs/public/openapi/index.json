@@ -1,0 +1,306 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WeChat Channels Download API",
+    "version": "v260613",
+    "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:2022",
+      "description": "本地服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "视频号",
+      "description": "调用时保持视频号页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开视频号页面即可，如果已经打开，刷新一下。"
+    },
+    {
+      "name": "公众号",
+      "description": "部分接口需要保持任意文章页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开任意公众号文章页面即可，如果已经打开，刷新一下。"
+    },
+    {
+      "name": "下载器",
+      "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
+    },
+    {
+      "name": "下载任务",
+      "description": "兼容 wx_channels_api 的下载任务接口（/api/download_task/*），底层复用本项目的下载器与 download_task 表"
+    },
+    {
+      "name": "平台",
+      "description": "兼容 wx_channels_api 的平台/账号/视频号相关接口（/account/*、/channels/*）"
+    },
+    {
+      "name": "达人",
+      "description": "兼容 wx_channels_api 的达人接口（/influencers*）"
+    },
+    {
+      "name": "内容",
+      "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
+    },
+    {
+      "name": "文件传输助手",
+      "description": "文件传输助手相关接口（仅本地模式可用）"
+    },
+    {
+      "name": "媒体",
+      "description": "媒体文件预览与播放接口"
+    }
+  ],
+  "paths": {
+    "/api/channels/contact/search": {
+      "$ref": "./channels/contact_search.json"
+    },
+    "/api/channels/contact/feed/list": {
+      "$ref": "./channels/contact_feed_list.json"
+    },
+    "/api/channels/feed/profile": {
+      "$ref": "./channels/feed_profile.json"
+    },
+    "/api/channels/feed/share_url": {
+      "$ref": "./channels/feed_share_url.json"
+    },
+    "/api/channels/parse_sph": {
+      "$ref": "./channels/parse_sph.json"
+    },
+    "/api/channels/feed/comment/list": {
+      "$ref": "./channels/feed_comment_list.json"
+    },
+    "/api/channels/live/replay/list": {
+      "$ref": "./channels/live_replay_list.json"
+    },
+    "/api/channels/interactioned/list": {
+      "$ref": "./channels/interactioned_list.json"
+    },
+    "/api/channels/follow/list": {
+      "$ref": "./channels/follow_list.json"
+    },
+    "/rss/channels": {
+      "$ref": "./channels/rss.json"
+    },
+    "/play": {
+      "$ref": "./channels/play.json"
+    },
+    "/api/mp/list": {
+      "$ref": "./mp/list.json"
+    },
+    "/api/mp/msg/list": {
+      "$ref": "./mp/msg_list.json"
+    },
+    "/api/mp/delete": {
+      "$ref": "./mp/delete.json"
+    },
+    "/api/mp/refresh_with_frontend": {
+      "$ref": "./mp/refresh_with_frontend.json"
+    },
+    "/api/mp/refresh": {
+      "$ref": "./mp/refresh.json"
+    },
+    "/rss/mp": {
+      "$ref": "./mp/rss.json"
+    },
+    "/mp/proxy": {
+      "$ref": "./mp/proxy.json"
+    },
+    "/api/task/create_channels": {
+      "$ref": "./task/create_channels.json"
+    },
+    "/api/task/create": {
+      "$ref": "./task/create.json"
+    },
+    "/api/task/create2": {
+      "$ref": "./task/create2.json"
+    },
+    "/api/task/create_batch": {
+      "$ref": "./task/create_batch.json"
+    },
+    "/api/browse_history/create": {
+      "$ref": "./task/browse_history_create.json"
+    },
+    "/api/browse_history/list": {
+      "$ref": "./task/browse_history_list.json"
+    },
+    "/api/task/list": {
+      "$ref": "./task/list.json"
+    },
+    "/api/task/start": {
+      "$ref": "./task/start.json"
+    },
+    "/api/task/start_all": {
+      "$ref": "./task/start_all.json"
+    },
+    "/api/task/pause": {
+      "$ref": "./task/pause.json"
+    },
+    "/api/task/pause_all": {
+      "$ref": "./task/pause_all.json"
+    },
+    "/api/task/resume": {
+      "$ref": "./task/resume.json"
+    },
+    "/api/task/delete": {
+      "$ref": "./task/delete.json"
+    },
+    "/api/task/clear": {
+      "$ref": "./task/clear.json"
+    },
+    "/api/open_download_dir": {
+      "$ref": "./task/open_download_dir.json"
+    },
+    "/api/show_file": {
+      "$ref": "./task/show_file.json"
+    },
+    "/api/download_task/list": {
+      "$ref": "./download_task/list.json"
+    },
+    "/api/download_task/start": {
+      "$ref": "./download_task/start.json"
+    },
+    "/api/download_task/profile": {
+      "$ref": "./download_task/profile.json"
+    },
+    "/api/download_task/create": {
+      "$ref": "./download_task/create.json"
+    },
+    "/api/download_task/batch_create": {
+      "$ref": "./download_task/batch_create.json"
+    },
+    "/api/download_task/delete": {
+      "$ref": "./download_task/delete.json"
+    },
+    "/api/download_task/retry": {
+      "$ref": "./download_task/retry.json"
+    },
+    "/api/download_task/pause_all": {
+      "$ref": "./download_task/pause_all.json"
+    },
+    "/api/download_task/start_all": {
+      "$ref": "./download_task/start_all.json"
+    },
+    "/api/download_task/highlight_file": {
+      "$ref": "./download_task/highlight_file.json"
+    },
+    "/api/download_task/play": {
+      "$ref": "./download_task/play.json"
+    },
+    "/api/influencers": {
+      "$ref": "./influencer/list.json"
+    },
+    "/api/influencers/{id}": {
+      "$ref": "./influencer/profile.json"
+    },
+    "/api/account/list": {
+      "$ref": "./platform/list.json"
+    },
+    "/api/account/synchronize": {
+      "$ref": "./platform/synchronize.json"
+    },
+    "/api/video/list": {
+      "$ref": "./content/list.json"
+    },
+    "/api/channels/search/author": {
+      "$ref": "./platform/search_author.json"
+    },
+    "/api/channels/author/videos": {
+      "$ref": "./platform/author_videos.json"
+    },
+    "/api/channels/media/profile": {
+      "$ref": "./platform/media_profile.json"
+    },
+    "/api/channels/task/status": {
+      "$ref": "./platform/task_status.json"
+    },
+    "/api/channels/task/start": {
+      "$ref": "./platform/task_start.json"
+    },
+    "/api/channels/shared_feed/profile": {
+      "$ref": "./channels/shared_feed_profile.json"
+    },
+    "/api/status": {
+      "$ref": "./task/status.json"
+    },
+    "/api/mp/ws_pool": {
+      "$ref": "./mp/ws_pool.json"
+    },
+    "/api/mp/article/list": {
+      "$ref": "./mp/article_list.json"
+    },
+    "/api/mp/download_all": {
+      "$ref": "./mp/download_all.json"
+    },
+    "/api/task/profile": {
+      "$ref": "./task/profile.json"
+    },
+    "/api/task/pipeline/start": {
+      "$ref": "./task/pipeline_start.json"
+    },
+    "/api/task/probe": {
+      "$ref": "./task/probe.json"
+    },
+    "/api/task/pipeline/workflow": {
+      "$ref": "./task/pipeline_workflow.json"
+    },
+    "/api/task/pipeline/resume": {
+      "$ref": "./task/pipeline_resume.json"
+    },
+    "/api/task/create3": {
+      "$ref": "./task/create3.json"
+    },
+    "/api/v0/task/list": {
+      "$ref": "./task/v0_task_list.json"
+    },
+    "/api/remote/proxy": {
+      "$ref": "./task/remote_proxy.json"
+    },
+    "/api/remote/task/list": {
+      "$ref": "./task/remote_task_list.json"
+    },
+    "/api/file": {
+      "$ref": "./task/file.json"
+    },
+    "/file": {
+      "$ref": "./media/file.json"
+    },
+    "/preview": {
+      "$ref": "./media/preview.json"
+    },
+    "/api/open": {
+      "$ref": "./task/open.json"
+    },
+    "/api/filehelper/qrcode": {
+      "$ref": "./filehelper/qrcode.json"
+    },
+    "/api/filehelper/login/wait": {
+      "$ref": "./filehelper/login_wait.json"
+    },
+    "/api/filehelper/status": {
+      "$ref": "./filehelper/status.json"
+    },
+    "/api/filehelper/synccheck": {
+      "$ref": "./filehelper/synccheck.json"
+    },
+    "/api/filehelper/sync": {
+      "$ref": "./filehelper/sync.json"
+    },
+    "/api/filehelper/messages": {
+      "$ref": "./filehelper/messages.json"
+    },
+    "/api/filehelper/send": {
+      "$ref": "./filehelper/send.json"
+    },
+    "/api/filehelper/logout": {
+      "$ref": "./filehelper/logout.json"
+    },
+    "/api/filehelper/parse_finder_feed": {
+      "$ref": "./filehelper/parse_finder_feed.json"
+    },
+    "/filehelper": {
+      "$ref": "./filehelper/index.json"
+    },
+    "/mp/home": {
+      "$ref": "./mp/home.json"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "获取最近消息",
+    "description": "获取最近 50 条文件传输助手消息（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "消息列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "messages": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

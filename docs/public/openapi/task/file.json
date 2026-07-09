@@ -1,0 +1,38 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取下载文件",
+    "description": "获取已下载的文件，支持流式传输和预览",
+    "parameters": [
+      {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "文件相对路径"
+      },
+      {
+        "name": "download",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "description": "是否强制下载 (1 为下载，否则预览)"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "文件内容"
+      }
+    }
+  }
+}

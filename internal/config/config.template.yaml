@@ -2,6 +2,8 @@ debug:
   error: false
   echolog: false
 
+workdir: ""
+
 pagespy:
   enabled: false
 
@@ -24,9 +26,23 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+admin:
+  hostname: "127.0.0.1"
+  port: 2021
+
 update:
   proxy: ""
   mirror: ""
+
+db:
+  type: "sqlite"
+  host: ""
+  port: ""
+  username: ""
+  password: ""
+  filename: ""
+  filepath: "%CWD%/wx_channels_download.db"
+  migration: "%CWD%/migrations"
 
 proxy:
   system: true
@@ -54,6 +70,48 @@ mp:
   tokenFilepath: ""
   refreshSkipMinutes: 20
   maxWebsocketClients: 5
+
+zhihu:
+  enabled: false
+  cookie: ""
+
+69shuba:
+  cookie: ""
+  fetcher: "clawreq"
+  cdpEndpoint: "http://127.0.0.1:9222"
+  cdpTimeout: 30
+  cdpWait: 8
+  sandboxAPIBaseURL: "http://127.0.0.1:2021/api/v1"
+  sandboxID: ""
+
+sandbox:
+  dockerImage: "lscr.io/linuxserver/chromium:latest"
+  dockerEntrypoint: ""
+  dockerNetwork: ""
+  cdpPortMin: 39222
+  cdpPortMax: 39322
+  desktopPortMin: 39000
+  desktopPortMax: 39122
+  resolution: "1920x1080x24"
+  shmSize: "1g"
+  memoryLimit: ""
+  chromeCommand: ""
+
+xiaohongshu:
+  enabled: false
+
+bilibili:
+  enabled: false
+  cookie: ""
+
+youtube:
+  enabled: false
+  cookie: ""
+  poToken: ""
+
+weibo:
+  enabled: false
+  cookie: ""
 
 cloudflare:
   accountId: ""

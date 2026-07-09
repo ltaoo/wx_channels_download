@@ -1,0 +1,107 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "继续下载工作流",
+    "description": "向已有的工作流提交用户选择（如清晰度、文件名等）以继续下载流程",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL（可选覆盖）"
+              },
+              "run_id": {
+                "type": "string",
+                "description": "工作流 run ID"
+              },
+              "probe_id": {
+                "type": "string",
+                "description": "run_id 的别名"
+              },
+              "variant_id": {
+                "type": "string",
+                "description": "内容变体 ID"
+              },
+              "spec": {
+                "type": "string",
+                "description": "下载规格/清晰度"
+              },
+              "suffix": {
+                "type": "string",
+                "description": "文件后缀覆盖"
+              },
+              "filename": {
+                "type": "string",
+                "description": "文件名覆盖"
+              },
+              "cover": {
+                "type": "boolean",
+                "description": "是否下载封面"
+              },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "variant_id": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "download_dir": {
+                    "type": "string"
+                  },
+                  "skip_existing": {
+                    "type": "boolean"
+                  },
+                  "task_labels": {
+                    "type": "object"
+                  }
+                }
+              },
+              "extra": {
+                "type": "object",
+                "description": "平台特定数据"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "继续结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "run_id": "abc123",
+                    "probe_id": "abc123",
+                    "id": "task_id_xxx"
+                  }
+                }
+              },
+              "not_found": {
+                "summary": "流程不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "流程不存在或已过期，请重新解析链接"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -37,7 +37,15 @@ func (s *HTTPServer) Name() string {
 }
 
 func (s *HTTPServer) Addr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.addr
+}
+
+func (s *HTTPServer) SetAddr(addr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addr = addr
 }
 
 func (s *HTTPServer) SetHandler(handler http.Handler) {
@@ -124,7 +132,7 @@ func (s *HTTPServer) HealthCheck() error {
 		return fmt.Errorf("server not running")
 	}
 
-	resp, err := http.Get(fmt.Sprintf("http://%s/health", s.addr))
+	resp, err := http.Get(fmt.Sprintf("http://%s/health", s.Addr()))
 	if err != nil {
 		return err
 	}

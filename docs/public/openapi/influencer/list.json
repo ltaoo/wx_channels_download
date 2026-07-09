@@ -1,0 +1,97 @@
+{
+  "get": {
+    "tags": [
+      "达人"
+    ],
+    "summary": "达人列表（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1
+        }
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "分页列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "list": [
+                      {
+                        "id": 1,
+                        "name": "示例达人",
+                        "avatar_url": "",
+                        "sex": 0,
+                        "description": "",
+                        "created_at": "1760000000000",
+                        "updated_at": "1760000000000"
+                      }
+                    ],
+                    "page": 1,
+                    "page_size": 20,
+                    "total": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "post": {
+    "tags": [
+      "达人"
+    ],
+    "summary": "创建达人（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "avatar_url": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "创建结果"
+      }
+    }
+  }
+}

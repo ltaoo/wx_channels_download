@@ -1,3 +1,5 @@
+//go:build legacy_api_handler
+
 package api
 
 import (
@@ -26,14 +28,11 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/webp"
+	officialaccountdownload "wx_channel/pkg/scraper/officialaccount"
 
-	"wx_channel/internal/channels"
-	"wx_channel/internal/interceptor"
-	"wx_channel/internal/officialaccount"
+	"wx_channel/frontend"
 	result "wx_channel/internal/util"
-	officialaccountdownload "wx_channel/pkg/officialaccount"
+	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 )
 
@@ -283,97 +282,6 @@ type FeedDownloadTaskBody struct {
 	Overwrite bool   `json:"overwrite"`
 }
 
-type CreateTaskResp struct {
-	ID       string `json:"id"`
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	FilePath string `json:"file_path"`
-}
-
-func newCreateTaskResp(id, path, name string) CreateTaskResp {
-	return CreateTaskResp{
-		ID:       id,
-		Path:     path,
-		Name:     name,
-		FilePath: filepath.Join(path, name),
-	}
-}
-
-func (c *APIClient) processTaskFilename(filename, suffix string) (string, string, error) {
-	return c.formatter.ProcessFilename(filename + suffix)
-}
-
-func (c *APIClient) deleteTasks(tasks []*downloadpkg.Task, deleteFiles bool) error {
-	if len(tasks) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(tasks))
-	for _, task := range tasks {
-		if task == nil || task.ID == "" {
-			continue
-		}
-		ids = append(ids, task.ID)
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	return c.downloader.Delete(&downloadpkg.TaskFilter{IDs: ids}, deleteFiles)
-}
-
-func findTasksByDownloadFile(tasks []*downloadpkg.Task, taskPath, taskName, taskFilePath string) []*downloadpkg.Task {
-	var matches []*downloadpkg.Task
-	seen := make(map[string]bool)
-	cleanTaskPath := filepath.Clean(taskPath)
-	cleanTaskFilePath := filepath.Clean(taskFilePath)
-	for _, task := range tasks {
-		if task == nil || task.ID == "" || seen[task.ID] || task.Meta == nil {
-			continue
-		}
-		if task.Meta.Opts != nil {
-			samePath := filepath.Clean(task.Meta.Opts.Path) == cleanTaskPath
-			if samePath && task.Meta.Opts.Name == taskName {
-				matches = append(matches, task)
-				seen[task.ID] = true
-				continue
-			}
-		}
-		if task.Meta.Res != nil && len(task.Meta.Res.Files) > 0 && filepath.Clean(task.Meta.SingleFilepath()) == cleanTaskFilePath {
-			matches = append(matches, task)
-			seen[task.ID] = true
-		}
-	}
-	return matches
-}
-
-func mergeTasks(taskLists ...[]*downloadpkg.Task) []*downloadpkg.Task {
-	var merged []*downloadpkg.Task
-	seen := make(map[string]bool)
-	for _, tasks := range taskLists {
-		for _, task := range tasks {
-			if task == nil || task.ID == "" || seen[task.ID] {
-				continue
-			}
-			merged = append(merged, task)
-			seen[task.ID] = true
-		}
-	}
-	return merged
-}
-
-func removeExistingDownloadFile(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if info.IsDir() {
-		return fmt.Errorf("目标路径是文件夹：%s", path)
-	}
-	return os.Remove(path)
-}
-
 func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	var body FeedDownloadTaskBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -436,12 +344,13 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 			URL:            body.URL,
 			SkipVerifyCert: true,
 			Labels: map[string]string{
-				"id":       body.Id,
-				"nonce_id": body.NonceId,
-				"title":    body.Title,
-				"key":      strconv.Itoa(body.Key),
-				"spec":     body.Spec,
-				"suffix":   body.Suffix,
+				"id":         body.Id,
+				"nonce_id":   body.NonceId,
+				"title":      body.Title,
+				"key":        strconv.Itoa(body.Key),
+				"spec":       body.Spec,
+				"suffix":     body.Suffix,
+				"source_url": body.SourceURL,
 			},
 		},
 		&base.Options{
@@ -1020,7 +929,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 			}
 		}
 	}
-	payload, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
+	payload, _, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return

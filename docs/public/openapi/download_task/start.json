@@ -1,0 +1,64 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "开始/恢复下载任务（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "download_task_id": {
+                "type": "integer",
+                "description": "download_task 表主键 id"
+              }
+            },
+            "required": [
+              "download_task_id"
+            ]
+          },
+          "examples": {
+            "start": {
+              "summary": "开始任务",
+              "value": {
+                "download_task_id": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "操作结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "message": "开始下载"
+                  }
+                }
+              },
+              "not_found": {
+                "summary": "任务不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "未找到下载任务",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

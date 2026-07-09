@@ -838,8 +838,10 @@ func (d *Downloader) watch(task *Task) {
 
 func (d *Downloader) doOnError(task *Task, err error) {
 	d.Logger.Warn().Err(err).Msgf("task download failed, task id: %s", task.ID)
+	task.Error = err.Error()
 	task.updateStatus(base.DownloadStatusError)
 	if task.Status == base.DownloadStatusError {
+		_ = d.storage.Put(bucketTask, task.ID, task.clone())
 		d.emit(EventKeyError, task, err)
 		d.emit(EventKeyFinally, task, err)
 		d.notifyRunning()
@@ -978,6 +980,7 @@ func (d *Downloader) doStart(task *Task) (err error) {
 			return
 		}
 		isCreate = task.Status == base.DownloadStatusReady
+		task.Error = ""
 		task.updateStatus(base.DownloadStatusRunning)
 
 		return
@@ -989,6 +992,7 @@ func (d *Downloader) doStart(task *Task) (err error) {
 	if isReturn {
 		return
 	}
+	d.emit(EventKeyStart, task)
 
 	handler := func() error {
 		task.lock.Lock()
@@ -1038,7 +1042,6 @@ func (d *Downloader) doStart(task *Task) (err error) {
 		if err := d.saveTask(task); err != nil {
 			return err
 		}
-		d.emit(EventKeyStart, task)
 		return nil
 	}
 	go func() {

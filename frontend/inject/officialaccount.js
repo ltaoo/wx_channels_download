@@ -1,0 +1,673 @@
+(() => {
+  var style = document.createElement("style");
+  style.textContent = `
+    #wechat-tools-container {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 160px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    #__wx_channels_credentials__,
+    #__wx_channels_curl__,
+    #__wx_channels_api__ {
+      padding: 12px;
+      background-color: var(--weui-BG-2, #fff);
+      color: var(--weui-FG-0, #000);
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      font-size: 11px;
+      line-height: 1.4;
+      cursor: pointer;
+      transition: all 0.2s;
+      backdrop-filter: blur(10px);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.wx-officialaccount-download-menu-mounted .t1-popper {
+      z-index: 2147483647 !important;
+    }
+    #__wx_channels_credentials__:hover,
+    #__wx_channels_curl__:hover,
+    #__wx_channels_api__:hover {
+      opacity: 1;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    @media (prefers-color-scheme: dark) {
+      #__wx_channels_credentials__,
+      #__wx_channels_curl__,
+      #__wx_channels_api__ {
+        background-color: var(--weui-BG-2, #2c2c2c);
+        color: var(--weui-FG-0, #fff);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      }
+    }
+  `;
+  function insert_style() {
+    document.head.appendChild(style);
+  }
+  function first_non_empty() {
+    for (var i = 0; i < arguments.length; i++) {
+      var value = arguments[i];
+      if (value === undefined || value === null) {
+        continue;
+      }
+      value = String(value).trim();
+      if (value) {
+        return value;
+      }
+    }
+    return "";
+  }
+  function get_page_data_value(key) {
+    if (window.cgiDataNew && window.cgiDataNew[key] !== undefined) {
+      return window.cgiDataNew[key];
+    }
+    if (window.cgiData && window.cgiData[key] !== undefined) {
+      return window.cgiData[key];
+    }
+    return "";
+  }
+  function get_url_param(raw_url, key) {
+    if (!raw_url) {
+      return "";
+    }
+    try {
+      return new URL(raw_url, window.location.href).searchParams.get(key) || "";
+    } catch {
+      return "";
+    }
+  }
+  function build_refresh_uri() {
+    var current_url = window.location.href || "";
+    var page_link = first_non_empty(get_page_data_value("link"));
+    var biz = first_non_empty(
+      get_url_param(current_url, "__biz"),
+      get_url_param(page_link, "__biz"),
+    );
+    var mid = first_non_empty(
+      get_url_param(current_url, "mid"),
+      get_url_param(page_link, "mid"),
+    );
+    var idx = first_non_empty(
+      get_url_param(current_url, "idx"),
+      get_url_param(page_link, "idx"),
+      "1",
+    );
+    var sn = first_non_empty(
+      get_url_param(current_url, "sn"),
+      get_url_param(page_link, "sn"),
+    );
+    if (biz && mid && sn) {
+      return `https://mp.weixin.qq.com/s?__biz=${encodeURIComponent(biz)}&mid=${encodeURIComponent(mid)}&idx=${encodeURIComponent(idx)}&sn=${encodeURIComponent(sn)}`;
+    }
+    return first_non_empty(page_link, current_url);
+  }
+  function get_official_account_biz() {
+    var refresh_uri = build_refresh_uri();
+    return first_non_empty(
+      window.biz,
+      window.__biz,
+      get_page_data_value("bizuin"),
+      get_url_param(window.location.href, "__biz"),
+      get_url_param(get_page_data_value("link"), "__biz"),
+      get_url_param(refresh_uri, "__biz"),
+    );
+  }
+  async function submit_credential(acct) {
+    if (!acct.biz || !acct.key) {
+      return;
+    }
+    WXU.emit(WXU.Events.OfficialAccountRefresh, acct);
+    var origin = WXEnv.apiOrigin;
+    var [err, res] = await WXU.request({
+      method: "POST",
+      url: `${origin}/api/mp/refresh?token=${
+        WXU.config.officialServerRefreshToken ?? ""
+      }`,
+      body: acct,
+    });
+    if (err) {
+      WXU.error({
+        msg: err.message,
+      });
+      return;
+    }
+  }
+
+  async function handle_api_call(msg, socket) {
+    var { id, key, data } = msg;
+    function resp(body) {
+      socket.send(
+        JSON.stringify({
+          id,
+          data: body,
+        }),
+      );
+    }
+    if (key === "key:fetch_account_home") {
+      var [error, res] = await fetchAccountHome(data);
+      if (error) {
+        resp({
+          errCode: 1001,
+          errMsg: error.message,
+        });
+        return;
+      }
+      resp({
+        errCode: 0,
+        data: res,
+      });
+      return;
+    }
+    resp({
+      errCode: 1000,
+      errMsg: "未匹配的key",
+      payload: msg,
+    });
+  }
+  function connect(acct) {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(WXEnv.mpWSURL);
+      let ping_timer = null;
+      ws.onopen = () => {
+        WXU.log({
+          msg: "ws/mp connected",
+        });
+        submit_credential(acct);
+        var page_title = document.title || acct.nickname || "公众号页面";
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "ping",
+              data: page_title,
+            }),
+          );
+        } catch (e) {
+          // ...
+        }
+        ping_timer = setInterval(() => {
+          console.log("[]ping");
+          if (ws.readyState === 1) {
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "ping",
+                  data: page_title,
+                }),
+              );
+            } catch (e) {
+              // ...
+            }
+          }
+        }, 5 * 1000);
+        resolve(true);
+      };
+      ws.onclose = () => {
+        console.log("ws/mp disconnected");
+        if (ping_timer) {
+          clearInterval(ping_timer);
+          ping_timer = null;
+        }
+      };
+      ws.onerror = (e) => {
+        console.error("ws/mp error", e);
+        reject(e);
+      };
+      ws.onmessage = (ev) => {
+        const [err, msg] = WXU.parseJSON(ev.data);
+        if (err) {
+          return;
+        }
+        if (msg.type === "api_call") {
+          handle_api_call(msg.data, ws);
+        }
+      };
+    });
+  }
+  async function fetchAccountHome(params) {
+    console.log("[]fetchAccountHome", params);
+    return new Promise((resolve) => {
+      window.location.href = params.refresh_uri;
+      resolve([null, params.refresh_uri]);
+    });
+  }
+  function report_article_loaded() {
+    console.log(
+      "report_article_loaded",
+      window.cgiDataNew,
+      window.__wx_official_account_article_reported__,
+    );
+    if (!window.cgiDataNew || window.__wx_official_account_article_reported__) {
+      return;
+    }
+    window.__wx_official_account_article_reported__ = true;
+    fetch("/__wx_channels_api/officialaccount/article", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(window.cgiDataNew),
+    });
+  }
+  function render_rss_button(acct) {
+    var $btn = document.createElement("div");
+    $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; margin-left: 6px; cursor: pointer;`;
+    $btn.innerHTML = RSSIcon;
+    $btn.onclick = function () {
+      var origin = (() => {
+        return WXEnv.officialAccountOrigin;
+      })();
+      if (origin === "") {
+        return;
+      }
+      var url = `${origin}/rss/mp?biz=${acct.biz}`;
+      WXU.copy(url);
+      WXU.toast("RSS 地址已复制");
+    };
+    return $btn;
+  }
+  async function create_officialaccount_download_task(dialog$) {
+    var [err, data] = await WXU.request({
+      method: "POST",
+      url: WXEnv.apiOrigin + "/api/task/create2",
+      body: {
+        url: `officialaccount://${window.location.href}`,
+        // filename: document.title,
+      },
+    });
+    if (err) {
+      WXU.error({
+        msg: err.message,
+      });
+      return;
+    }
+    // WXU.toast("开始下载");
+    dialog$.show();
+  }
+  function render_download_button() {
+    var $btn = document.createElement("div");
+    $btn.className = "sns_opr_btn_con";
+    $btn.innerHTML = `<button aria-labelledby="__wx_download_bottom_text" class="sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link"><span id="__wx_download_bottom_text" class="sns_opr_gap"> 下载 </span></button>`;
+    return $btn;
+  }
+  function insert_rss_button(acct) {
+    if (!acct.biz || !acct.key) {
+      return;
+    }
+    var $wraps = document.querySelectorAll(".wx_follow_media");
+    var $container = $wraps[$wraps.length - 1];
+    console.log("$container", $container);
+    var $btn = render_rss_button(acct);
+    $container.appendChild($btn);
+  }
+  function DownloaderPanel(props) {
+    const vm$ = DownloaderPanelViewModel({
+      onRequestClose() {
+        props.dialog$.hide();
+      },
+    });
+    return View({}, [
+      Dialog({ store: props.dialog$ }, [
+        DownloaderPanelView({
+          store: vm$,
+          showStatusCounts: false,
+        }),
+      ]),
+    ]);
+  }
+  function MsgListPanel(props) {
+    const { dialog$ } = props;
+    const biz = window.biz || window.__biz || "";
+    const token = WXU.config.officialServerRefreshToken ?? "";
+    const uin = window.uin || "";
+    const key = window.key || "";
+    const passTicket = window.pass_ticket || "";
+    const origin = WXEnv.apiOrigin;
+
+    let currentOffset = 0;
+    let loading = false;
+    let msgList = [];
+    let canLoadMore = true;
+    const pageSize = 10;
+
+    const container = document.createElement("div");
+    container.className = "wx-dl-panel-container";
+    container.style.cssText = "width: 400px; max-height: 512px;";
+
+    const header = document.createElement("div");
+    header.className = "wx-dl-header";
+    const heading = document.createElement("div");
+    heading.className = "wx-dl-heading";
+    const title = document.createElement("div");
+    title.className = "wx-dl-title";
+    title.textContent = "推送列表";
+    heading.appendChild(title);
+    header.appendChild(heading);
+    const closeBtn = document.createElement("div");
+    closeBtn.className = "wx-dl-more-btn";
+    closeBtn.style.cssText =
+      "cursor: pointer; font-size: 18px; padding: 4px 8px; line-height: 1;";
+    closeBtn.textContent = "✕";
+    closeBtn.onclick = () => dialog$.hide();
+    header.appendChild(closeBtn);
+    container.appendChild(header);
+
+    const listEl = document.createElement("div");
+    listEl.className = "wx-dl-dark-scroll";
+    listEl.style.cssText =
+      "display: flex; flex-direction: column; gap: 8px; padding: 0 12px; overflow-y: auto; flex: 1; min-height: 0;";
+    container.appendChild(listEl);
+
+    const loadMoreBtn = document.createElement("button");
+    loadMoreBtn.textContent = "加载更多";
+    loadMoreBtn.style.cssText =
+      "margin: 12px; padding: 8px 16px; border: 1px solid var(--weui-FG-6, #eee); border-radius: 4px; background: var(--popup-content-bg-color, #f7f7f7); color: var(--weui-FG-0); cursor: pointer; width: calc(100% - 24px); font-size: 13px; flex-shrink: 0;";
+    loadMoreBtn.onclick = () => fetchList();
+    container.appendChild(loadMoreBtn);
+
+    function renderItem(item) {
+      const el = document.createElement("div");
+      el.style.cssText =
+        "padding: 10px 12px; border-radius: 6px; background: var(--popup-content-bg-color, var(--weui-BG-2, #f7f7f7));";
+      const msgInfo = item.app_msg_ext_info || {};
+      const title = msgInfo.title || "无标题";
+      const digest = msgInfo.digest || "";
+      const link = msgInfo.content_url || "";
+      const time = item.comm_msg_info?.datetime
+        ? new Date(item.comm_msg_info.datetime * 1000).toLocaleString()
+        : "";
+      el.innerHTML = `
+        <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px; color: var(--weui-FG-0);">
+          ${link ? `<a href="${escapeHtml(link)}" target="_blank" style="color: inherit; text-decoration: none;">${escapeHtml(unescapeHtml(title))}</a>` : escapeHtml(unescapeHtml(title))}
+        </div>
+        ${digest ? `<div style="font-size: 12px; color: var(--weui-FG-1, #888); margin-bottom: 4px;">${unescapeHtml(digest)}</div>` : ""}
+        ${time ? `<div style="font-size: 11px; color: var(--weui-FG-1, #aaa);">${time}</div>` : ""}
+      `;
+      return el;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function unescapeHtml(str) {
+      const div = document.createElement("div");
+      div.innerHTML = str;
+      return div.textContent;
+    }
+
+    async function fetchList() {
+      if (loading) return;
+      loading = true;
+      loadMoreBtn.textContent = "加载中...";
+      loadMoreBtn.disabled = true;
+      const url = `${origin}/api/mp/msg/list?biz=${encodeURIComponent(biz)}&offset=${currentOffset}&count=${pageSize}&token=${encodeURIComponent(token)}&uin=${encodeURIComponent(uin)}&key=${encodeURIComponent(key)}&pass_ticket=${encodeURIComponent(passTicket)}`;
+      const [err, res] = await WXU.request({ method: "GET", url });
+      loading = false;
+      loadMoreBtn.disabled = false;
+      if (err) {
+        WXU.error({ msg: "获取推送列表失败: " + err.message });
+        loadMoreBtn.textContent = "重试";
+        return;
+      }
+      const data = res.data || res;
+      const rawList = data.general_msg_list || "";
+      let list = [];
+      if (rawList) {
+        try {
+          const parsed =
+            typeof rawList === "string" ? JSON.parse(rawList) : rawList;
+          list = parsed.list || [];
+        } catch (e) {
+          list = [];
+        }
+      }
+      if (list.length === 0 || list.length < pageSize) {
+        canLoadMore = false;
+        loadMoreBtn.textContent = "没有更多了";
+        loadMoreBtn.disabled = true;
+        if (list.length === 0) return;
+      }
+      msgList = msgList.concat(list);
+      list.forEach((item) => {
+        listEl.appendChild(renderItem(item));
+      });
+      if (data.next_offset !== undefined) {
+        currentOffset = data.next_offset;
+      } else {
+        currentOffset += list.length;
+      }
+      if (canLoadMore) {
+        loadMoreBtn.textContent = "加载更多";
+      }
+    }
+
+    dialog$.onStateChange((state) => {
+      if (state.visible && msgList.length === 0) {
+        fetchList();
+      }
+    });
+
+    return container;
+  }
+
+  function insert_download_button() {
+    insert_style();
+    document.body.classList.add("wx-officialaccount-download-menu-mounted");
+    var $wraps = document.querySelectorAll(".interaction_bar");
+    var $container = $wraps[$wraps.length - 1];
+    if (window.cgiDataNew.page_type === 2) {
+      $container = $wraps[0];
+    }
+    if (!$container || !$container.lastElementChild) {
+      return;
+    }
+    const dialog$ = new Timeless.ui.DialogCore({
+      offsetY: 4,
+    });
+    const msgListDialog$ = new Timeless.ui.DialogCore({
+      offsetY: 4,
+    });
+    var $btn = render_download_button();
+    const dropdown$ = new Timeless.ui.DropdownMenuCore({
+      trigger: "hover",
+      align: "end",
+      items: [
+        new Timeless.ui.MenuItemCore({
+          label: "复制文章HTML",
+          onClick() {
+            const content = window.cgiDataNew.content_noencode;
+            if (!content) {
+              WXU.toast("文章HTML为空，请使用「复制页面HTML」");
+              return;
+            }
+            WXU.copy(content);
+            WXU.toast("复制成功");
+            dropdown$.hide();
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "复制页面HTML",
+          onClick() {
+            const content = window.body.innerHTML;
+            WXU.copy(content);
+            WXU.toast("复制成功");
+            dropdown$.hide();
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "推送列表",
+          onClick() {
+            msgListDialog$.show();
+            dropdown$.hide();
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "下载所有推送",
+          onClick() {
+            const biz = window.biz || window.__biz || "";
+            const token = WXU.config.officialServerRefreshToken ?? "";
+            const uin = window.uin || "";
+            const key = window.key || "";
+            const passTicket = window.pass_ticket || "";
+            if (!biz) { WXU.error("缺少 biz 参数"); return; }
+            WXU.toast("正在提交批量下载...");
+            var origin = WXEnv.apiOrigin;
+            WXU.request({
+              method: "POST",
+              url: `${origin}/api/mp/download_all`,
+              body: { biz, uin, key, pass_ticket: passTicket, token },
+            });
+            dropdown$.hide();
+            dialog$.show();
+          },
+        }),
+        new Timeless.ui.MenuItemCore({
+          label: "下载面板",
+          onClick() {
+            dialog$.show();
+            dropdown$.hide();
+          },
+        }),
+      ],
+    });
+    const dropdownRoot = document.createElement("span");
+    dropdownRoot.className = "wx-download-dropdown-menu-root";
+    dropdownRoot.style.display = "contents";
+    document.body.appendChild(dropdownRoot);
+    Timeless.DOM.render(
+      Timeless.DropdownMenu({ store: dropdown$ }),
+      dropdownRoot,
+    );
+    function set_dropdown_reference() {
+      dropdown$.setReference(
+        {
+          $el: $btn,
+          getRect() {
+            return $btn.getBoundingClientRect();
+          },
+        },
+        { force: true },
+      );
+    }
+    function show_dropdown() {
+      set_dropdown_reference();
+      dropdown$.handleEnterTrigger();
+    }
+    function hide_dropdown() {
+      dropdown$.handleLeaveTrigger();
+    }
+    async function handle_download_click(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      dropdown$.hide({ reason: "download button click" });
+      await create_officialaccount_download_task(dialog$);
+    }
+    $btn.addEventListener("mouseenter", show_dropdown);
+    $btn.addEventListener("mouseleave", hide_dropdown);
+    $btn.addEventListener("click", handle_download_click);
+    $btn.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    $container.insertBefore($btn, $container.lastElementChild);
+    Timeless.DOM.render(DownloaderPanel({ dialog$ }), document.body);
+    // 推送列表面板
+    const msgListPanel = MsgListPanel({ dialog$: msgListDialog$ });
+    const msgListOverlay = document.createElement("div");
+    msgListOverlay.style.cssText =
+      "display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
+    msgListOverlay.appendChild(msgListPanel);
+    msgListOverlay.addEventListener("click", (e) => {
+      if (e.target === msgListOverlay) msgListDialog$.hide();
+    });
+    document.body.appendChild(msgListOverlay);
+    msgListDialog$.onStateChange((state) => {
+      msgListOverlay.style.display = state.visible ? "flex" : "none";
+    });
+  }
+  window.insert_download_button = insert_download_button;
+  async function main() {
+    console.log('page location pathname', location.pathname);
+    if (location.pathname.match(/\/s\/[0-9a-zA-Z-_]{1,}/) || location.pathname === '/s') {
+      report_article_loaded();
+      var _OfficialAccountCredentials = {
+        nickname: (() => {
+          if (window.nickname) {
+            return window.nickname;
+          }
+          if (window.cgiData) {
+            if (window.cgiData.nick_name) {
+              return window.cgiData.nick_name;
+            }
+          }
+          if (window.cgiDataNew) {
+            if (window.cgiDataNew.nick_name) {
+              return window.cgiDataNew.nick_name;
+            }
+          }
+          return "";
+        })(),
+        avatar_url: (() => {
+          if (window.headimg) {
+            return window.headimg;
+          }
+          if (window.cgiData) {
+            if (window.cgiData.round_head_img) {
+              return window.cgiData.round_head_img;
+            }
+            if (window.cgiData.hd_head_img) {
+              return window.cgiData.hd_head_img;
+            }
+          }
+          if (window.cgiDataNew) {
+            if (window.cgiDataNew.round_head_img) {
+              return window.cgiDataNew.round_head_img;
+            }
+            if (window.cgiDataNew.hd_head_img) {
+              return window.cgiDataNew.hd_head_img;
+            }
+          }
+          return "";
+        })(),
+        biz: get_official_account_biz(),
+        author_id: first_non_empty(
+          window.author_id,
+          window.authorId,
+          get_page_data_value("author_id"),
+          get_page_data_value("user_name"),
+        ),
+        uin: first_non_empty(window.uin, get_page_data_value("user_uin")),
+        key: window.key,
+        refresh_uri: build_refresh_uri(),
+        pass_ticket: window.pass_ticket,
+        appmsg_token: window.appmsg_token,
+      };
+      connect(_OfficialAccountCredentials).catch((e) => {
+        console.error("ws/mp connect failed", e);
+      });
+      WXU.observe_node(".wx_follow_media", () => {
+        setTimeout(() => {
+          // insert_style();
+          // insert_rss_button(_OfficialAccountCredentials);
+          insert_download_button();
+        }, 800);
+      });
+    }
+  }
+  WXU.onWindowLoaded(() => {
+    if (!WXU.config.officialAccountEnabled) {
+      return;
+    }
+    main();
+  });
+})();

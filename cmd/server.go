@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -16,9 +17,13 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"github.com/ltaoo/velo"
+	velodatabase "github.com/ltaoo/velo/database"
+
 	"wx_channel/internal/api"
+	"wx_channel/internal/database"
 	"wx_channel/internal/manager"
-	"wx_channel/internal/officialaccount"
+	"wx_channel/pkg/scraper/officialaccount"
 	"wx_channel/pkg/system"
 )
 
@@ -62,8 +67,19 @@ func serve_command() {
 	cfg := Cfg
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
+	fmt.Printf("workdir %s\n", color.New(color.Underline).Sprint(cfg.WorkDir))
+	fmt.Printf("data path %s\n", color.New(color.Underline).Sprint(cfg.DBPath))
 
-	log_filepath := filepath.Join(cfg.RootDir, "app.log")
+	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
+
+	dbPath := cfg.DBPath
+	dbCfg := &velodatabase.DBConfig{Type: velodatabase.DBTypeSQLite, Path: dbPath}
+	if err := b.UseDatabase(dbCfg, &database.Migrations); err != nil {
+		color.Red(fmt.Sprintf("数据库初始化失败，%s\n\n", err))
+		os.Exit(0)
+	}
+
+	log_filepath := filepath.Join(cfg.WorkDir, "app.log")
 	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		color.Red(fmt.Sprintf("创建日志文件失败，%s\n\n", err))
@@ -82,14 +98,8 @@ func serve_command() {
 		fmt.Printf("公众号授权凭证文件 %s\n", color.New(color.Underline).Sprint(mp_token_filepath))
 	}
 	addr := fmt.Sprintf("%s:%d", api_cfg.Hostname, api_cfg.Port)
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		color.Red(fmt.Sprintf("启动API服务失败，%s 被占用\n\n", addr))
-		os.Exit(0)
-		return
-	}
-	l.Close()
-	api_srv := api.NewAPIServer(api_cfg, &logger)
+	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
+	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
 	if daemon_child {
 		_ = write_wx_pidfile(os.Getpid())
@@ -97,6 +107,7 @@ func serve_command() {
 			_ = remove_wx_pidfile()
 		}()
 	}
+
 	cleanup := func() {
 		fmt.Printf("\n正在关闭服务...\n")
 		if err := mgr.StopServer("api"); err != nil {
@@ -104,15 +115,31 @@ func serve_command() {
 		}
 		color.Green("服务已关闭")
 	}
-	if err := mgr.StartServer("api"); err != nil {
+
+	if err := api_srv.APIClient.Start(); err != nil {
 		color.Red(fmt.Sprintf("ERROR 启动API服务失败: %v\n", err.Error()))
 		cleanup()
 		os.Exit(0)
 		return
 	}
+
+	handler := api_srv.APIClient.HTTPHandler()
+	api_srv.SetHandler(handler)
+
 	color.Green(fmt.Sprintf("API服务启动成功, 地址: %v", api_srv.Addr()))
 	fmt.Println("\n按 Ctrl+C 退出...")
-	<-ctx.Done()
+
+	httpSrv := &http.Server{Addr: addr, Handler: handler}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(shutdownCtx)
+	}()
+
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		color.Red(fmt.Sprintf("HTTP 服务错误: %v\n", err))
+	}
 	cleanup()
 }
 
@@ -122,14 +149,21 @@ func start_daemon() {
 		color.Red(fmt.Sprintf("ERROR 获取可执行文件失败: %v\n", err))
 		return
 	}
-	log_fp := filepath.Join(Cfg.RootDir, "wx.log")
+	log_fp := filepath.Join(Cfg.WorkDir, "wx.log")
 	log_file, err := os.OpenFile(log_fp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		color.Red(fmt.Sprintf("ERROR 打开日志文件失败: %v\n", err))
 		return
 	}
 	defer log_file.Close()
-	c := exec.Command(exe, "server", "--daemon-child")
+	args := []string{"server", "--daemon-child"}
+	if Cfg.FullPath != "" {
+		args = append(args, "--config", Cfg.FullPath)
+	}
+	if Cfg.WorkDir != "" {
+		args = append(args, "--workdir", Cfg.WorkDir)
+	}
+	c := exec.Command(exe, args...)
 	c.Stdout = log_file
 	c.Stderr = log_file
 	c.SysProcAttr = system.SetSysProcAttrForDaemon()
@@ -146,7 +180,7 @@ func start_daemon() {
 }
 
 func wx_pidfile_path() string {
-	return filepath.Join(Cfg.RootDir, "wx.pid")
+	return filepath.Join(Cfg.WorkDir, "wx.pid")
 }
 
 func write_wx_pidfile(pid int) error {

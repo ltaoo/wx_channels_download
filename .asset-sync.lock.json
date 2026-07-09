@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-09T00:53:03+08:00",
+  "roots": [
+    "cache",
+    "scraper_examples"
+  ],
+  "files": [
+    {
+      "root": "cache",
+      "path": "channels_feed_profile.json",
+      "size": 521088,
+      "sha256": "10bc460d1fc905533f2b8a9be3b3a35423e77dac0e8693de1aa92cb630319534",
+      "storage_key": "cache/channels_feed_profile.json",
+      "mod_time": "2026-07-08T16:36:01Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "0xs/260619/book.html",
+      "size": 21816,
+      "sha256": "dbecdbe1594d02de97324316ccac83dc55e456418372e3129d325c959e7b8708",
+      "storage_key": "scraper_examples/0xs/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "69shuba/260614/69shuba_260614.html",
+      "size": 8447,
+      "sha256": "290d64b10ebcc3712d6b79a24aacac962b938fea0bfc9c844a41111f6b0d4fdb",
+      "storage_key": "scraper_examples/69shuba/260614/69shuba_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "aliyunpan/260618/curl.sh",
+      "size": 1724,
+      "sha256": "c6fb8de7cde29c6648772bbb894f36cc36f5a1e0712b1a34ae0b17c7179cd28f",
+      "storage_key": "scraper_examples/aliyunpan/260618/curl.sh",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "aliyunpan/260618/files.html",
+      "size": 4939,
+      "sha256": "bd856689c43fd64402aa5e74c7d729608cff6355547c6cddf99b0b79bc11b64e",
+      "storage_key": "scraper_examples/aliyunpan/260618/files.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "aliyunpan/260618/folder.html",
+      "size": 4633,
+      "sha256": "40c3800847cec57023b7c01317d9187005442d94459eca7d27b34a230e9192da",
+      "storage_key": "scraper_examples/aliyunpan/260618/folder.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "aliyunpan/260618/share.html",
+      "size": 4939,
+      "sha256": "bd856689c43fd64402aa5e74c7d729608cff6355547c6cddf99b0b79bc11b64e",
+      "storage_key": "scraper_examples/aliyunpan/260618/share.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "bilibili/260617.html/bilibili_article_260617.html",
+      "size": 216259,
+      "sha256": "fe4f0ef702316c1bd4fe0d32d8366af1aa0adc5c10c19fcc02b7ab3e41d2be35",
+      "storage_key": "scraper_examples/bilibili/260617.html/bilibili_article_260617.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "biquge365/260619/book.html",
+      "size": 337242,
+      "sha256": "13f55f2748b7b13dd44e1734ddabb550c6c52a4e2be388e722de1610014fc614",
+      "storage_key": "scraper_examples/biquge365/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "biquge365/260619/chapter.html",
+      "size": 11879,
+      "sha256": "7438841034b11fcabd50756f7c35033b4f2a895b93438afb93e62372093a2594",
+      "storage_key": "scraper_examples/biquge365/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "ciweimao/260619/book.html",
+      "size": 111328,
+      "sha256": "fcd236e7b2d9c0937b052d33912adf5daa2556c9377147c9682390ba04465df3",
+      "storage_key": "scraper_examples/ciweimao/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "douyinweb/260619/post.md",
+      "size": 1549770,
+      "sha256": "12b6564058e082449ff42cd1c5144f7422f952d7a62e264d451baf4aa3039c16",
+      "storage_key": "scraper_examples/douyinweb/260619/post.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "douyinweb/260619/user.html",
+      "size": 929587,
+      "sha256": "e252ae1c1b5c86e3eaa2dc2382d17d851990628ae325f1fe1653481c5d445a9e",
+      "storage_key": "scraper_examples/douyinweb/260619/user.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "fanqienovel/260614/fanqienovel_260614.html",
+      "size": 70508,
+      "sha256": "84d4a434cf9f5a86ffa5dfef7129d321100ce91a23692c1964ef4b438cba77f1",
+      "storage_key": "scraper_examples/fanqienovel/260614/fanqienovel_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "instagram/260618/author.html",
+      "size": 2892491,
+      "sha256": "d4502c4b80218996541dfedf1ee7a0a42a46cfdbfde8c8e79d5ceaae639fea69",
+      "storage_key": "scraper_examples/instagram/260618/author.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "instagram/260618/img.md",
+      "size": 1293,
+      "sha256": "f3c0e43a2861d9617d7388276580913fd7b51c13fcbb91e0718f20b0456b8bf2",
+      "storage_key": "scraper_examples/instagram/260618/img.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "instagram/260618/stories.html",
+      "size": 1962453,
+      "sha256": "34f2ac1e62b01bcee54dc6c0830470dbc8796a044b66d3c1b28c60a4b0b46be2",
+      "storage_key": "scraper_examples/instagram/260618/stories.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "iqiyi/260619/baseinfo.md",
+      "size": 338303,
+      "sha256": "0a5cc06489c3fc78e3d12d4bb8b479bfb90c0c8f69dac4d535ecc9c2e3982b23",
+      "storage_key": "scraper_examples/iqiyi/260619/baseinfo.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "iqiyi/260619/tv.html",
+      "size": 98387,
+      "sha256": "a025c5e95507b48067f62aec43c3a328ff0fc9af93c09b4ec687f7704768e4e3",
+      "storage_key": "scraper_examples/iqiyi/260619/tv.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "jjwxc/260619/book.html",
+      "size": 23048,
+      "sha256": "dc1309368fc2ffd0e0b679b141528d39ffa955c98c57c3a1d620a7ef1c251243",
+      "storage_key": "scraper_examples/jjwxc/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "mgtv/260619/b.html",
+      "size": 184608,
+      "sha256": "f9e473464e150e7fb281b11103e713513bcb3e8a2ea7d2d0a7d132eb4b1355c9",
+      "storage_key": "scraper_examples/mgtv/260619/b.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "mgtv/260619/info.md",
+      "size": 154169,
+      "sha256": "3da94fa98856ddbd67af1e7d6ef430366d3533b2e73b9981a63cd64438d3d1a0",
+      "storage_key": "scraper_examples/mgtv/260619/info.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "mgtv/260619/stream.md",
+      "size": 23875,
+      "sha256": "da7c13d83703652423b77f7081e6611348fba020bec6abd9bb9aac56e8ce4b2f",
+      "storage_key": "scraper_examples/mgtv/260619/stream.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "mqidian/260614/qidian_260614.html",
+      "size": 5565451,
+      "sha256": "79aaf3f56b83f3e1fa271f0356d1906cdebece84ea6222bd2c95973a4fe100a1",
+      "storage_key": "scraper_examples/mqidian/260614/qidian_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "qidian/260619/book.html",
+      "size": 2072688,
+      "sha256": "ea0d206b050b421839d6161adb6e46d1298ac328a14d9643adead1c909031882",
+      "storage_key": "scraper_examples/qidian/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "qidian/260619/catalog.html",
+      "size": 1230789,
+      "sha256": "a0d44d1892b0305c24803998ec7ba98b88adbe3b204ebe7b93269fb58e1c3432",
+      "storage_key": "scraper_examples/qidian/260619/catalog.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "qidian/260619/img.md",
+      "size": 768,
+      "sha256": "878f33f0cffde0eb310a5027484d9c4ff441b5ceed355a418108de8b610d2eff",
+      "storage_key": "scraper_examples/qidian/260619/img.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "quanben5/260619/book.html",
+      "size": 10350,
+      "sha256": "f42d9f85177d7bfc19ae5a1d2a7e31a148b3a3948f528d53fe460cce3eda8cb8",
+      "storage_key": "scraper_examples/quanben5/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "quanben5/260619/chapter.html",
+      "size": 18723,
+      "sha256": "ce2fe3b196d4dc7509b24ec4e6dcb65835196ed0621701d888939cca9ea572bc",
+      "storage_key": "scraper_examples/quanben5/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "sfacg/260619/book.html",
+      "size": 69363,
+      "sha256": "b3e2152de43b1386a0a9a4866141a898798173e43b2a660834e0d981a9cc97a5",
+      "storage_key": "scraper_examples/sfacg/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "shuhaige/260619/book.html",
+      "size": 76937,
+      "sha256": "e6e5b5a2b462955e8827167d7eaf2f527b13ac79f3063a539e69abe7287deec1",
+      "storage_key": "scraper_examples/shuhaige/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "shuhaige/260619/chapter.html",
+      "size": 19764,
+      "sha256": "4aad054068de269e70dbc4821b04bdfa71f6146ab458ea4d02e91397ad432536",
+      "storage_key": "scraper_examples/shuhaige/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "soundgasm/260617/soundgasm_260617.html",
+      "size": 4300,
+      "sha256": "1ca46ce9ccd8abc10944be1899ab0dad0fde654141c39c5fb365e6733045635d",
+      "storage_key": "scraper_examples/soundgasm/260617/soundgasm_260617.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "sudugu/260619/chapter.html",
+      "size": 11710,
+      "sha256": "0183fb67164ab7e9b76937cf1b8720476bf23b9766592cfa5fdebbb4c35a1eaa",
+      "storage_key": "scraper_examples/sudugu/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "ttk/260618/chapters.html",
+      "size": 415228,
+      "sha256": "a431a79ff8bc9c648f81d6e505bb197bb3a5f977d0941db67a4876a4c2104e3a",
+      "storage_key": "scraper_examples/ttk/260618/chapters.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "ttkan/260619/book.html",
+      "size": 419777,
+      "sha256": "a11ffd1d42c65eec128275c220f639eb0da2c203d23e4b1b29fcd4e69db12da4",
+      "storage_key": "scraper_examples/ttkan/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "ttkan/260619/chapter.html",
+      "size": 93221,
+      "sha256": "d2bceee63525e701ba75f9c885525df589ce932b0c2e1ea08ed28b9082ab234d",
+      "storage_key": "scraper_examples/ttkan/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "v2ex/260614.html/v2ex_260614.html",
+      "size": 35161,
+      "sha256": "2df35896a8fb565a139f08eed031af8356d6811bf1b08ec15eb119916dad6342",
+      "storage_key": "scraper_examples/v2ex/260614.html/v2ex_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "vqq/260619/cover.html",
+      "size": 351573,
+      "sha256": "2aad98512d539d56fef0ba42d58f4dc06a030c447b7c0e5fe89e2954ed346de2",
+      "storage_key": "scraper_examples/vqq/260619/cover.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "vqq/260619/getpage.md",
+      "size": 626851,
+      "sha256": "c70ac84b7032d76e565d0955abb9e9b03966d8e9e054f3975c8d2ea61a4eff16",
+      "storage_key": "scraper_examples/vqq/260619/getpage.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "weibo/260618/img.md",
+      "size": 774,
+      "sha256": "3f63b10cffece2750c749e5e776a82f73c73c20a0b77ab17d5c7dfe4e67ff37b",
+      "storage_key": "scraper_examples/weibo/260618/img.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "weibo/260618/mymblog.md",
+      "size": 556106,
+      "sha256": "2dee801cf4e35b65a3f63090defab2c4a69fec6600c3a1195da1cbc1bfdca9b1",
+      "storage_key": "scraper_examples/weibo/260618/mymblog.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "weibo/260618/u.html",
+      "size": 7494,
+      "sha256": "79fe56c875017a5f293839061036e555c1e12f7ee8fdc71bf2aaf8da2f3b3821",
+      "storage_key": "scraper_examples/weibo/260618/u.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "x/260620/profile.md",
+      "size": 542048,
+      "sha256": "24efd6f4a9ea9b7d32a530baaa74815c01e6d339076d42ef6d30b9d26c2f5b40",
+      "storage_key": "scraper_examples/x/260620/profile.md",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "xiaohongshu/260614/xiaohongshu_260614.html",
+      "size": 1182437,
+      "sha256": "ec6e00b83e0e0f016a3ef9149a2ca03ee0dbfb6fce08b19213404b181540a84f",
+      "storage_key": "scraper_examples/xiaohongshu/260614/xiaohongshu_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "xiaoshuohu/260619/book.html",
+      "size": 118095,
+      "sha256": "29fe005296f36b1550503ad8bf6870750df24393a14c09ffd88fdf62fbbb1ae8",
+      "storage_key": "scraper_examples/xiaoshuohu/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "xszj/260619/book.html",
+      "size": 36564,
+      "sha256": "a62273bb3eda67ca36bb226d28cd5f3c91e73961e6d7c759aa83a8658c91134c",
+      "storage_key": "scraper_examples/xszj/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "xszj/260619/chapter.html",
+      "size": 10012,
+      "sha256": "7051c09e07f372e0e9fb5c9ae178115e721a5eb00aaa7056b9971a71986d381e",
+      "storage_key": "scraper_examples/xszj/260619/chapter.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "youku/260617/youku_tv_260617.html",
+      "size": 1291330,
+      "sha256": "2e383a89673027c426973f434998478142cc0247c61ebd33fdfe4ae3c13406f5",
+      "storage_key": "scraper_examples/youku/260617/youku_tv_260617.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "youtube/260614/youtube_260614.html",
+      "size": 4466981,
+      "sha256": "4bf80eb30e144d04031e77eea028b9373af24e9c2e9e2ee350b8fbd86af1d25d",
+      "storage_key": "scraper_examples/youtube/260614/youtube_260614.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "zhihu/260614/zhihu.html",
+      "size": 454106,
+      "sha256": "cf33c09055d55d811c1997c7e64a94eb9c5bcc2077a9cadc242fc72e5fd486c5",
+      "storage_key": "scraper_examples/zhihu/260614/zhihu.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    },
+    {
+      "root": "scraper_examples",
+      "path": "zongheng/260619/book.html",
+      "size": 39684,
+      "sha256": "5828ef8d5de72c9faa22e19374888aaabdbf2869daef71cd9812c4315f0a4be4",
+      "storage_key": "scraper_examples/zongheng/260619/book.html",
+      "mod_time": "2026-07-08T16:48:44Z"
+    }
+  ]
+}

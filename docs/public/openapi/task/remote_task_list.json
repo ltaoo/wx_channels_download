@@ -1,0 +1,43 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取远端任务列表",
+    "description": "从配置的远端服务器获取下载任务列表（转发到远端 /api/task/list）",
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "页码"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "每页条数"
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "状态过滤"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "远端任务列表（透传远端响应）"
+      }
+    }
+  }
+}

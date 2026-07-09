@@ -1,0 +1,24 @@
+{
+  "get": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "在线播放已下载文件（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "download_task 表主键 id"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "文件流（或业务错误时返回 JSON）"
+      }
+    }
+  }
+}

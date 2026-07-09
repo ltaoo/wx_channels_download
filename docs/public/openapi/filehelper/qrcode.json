@@ -1,0 +1,38 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "获取登录二维码",
+    "description": "获取微信网页版登录二维码 URL（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "二维码信息",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "qrcode_url": "https://login.weixin.qq.com/qrcode/xxx",
+                    "uuid": "xxx"
+                  }
+                }
+              },
+              "error": {
+                "summary": "失败",
+                "value": {
+                  "code": 500,
+                  "msg": "获取二维码失败"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
