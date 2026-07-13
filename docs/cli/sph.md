@@ -36,6 +36,8 @@ cloudflare:
 | `cloudflare.sphWorkerName` | Worker 名称，部署后标识该 Worker |
 | `cloudflare.sphCookie` | 视频号接口所需的元宝 Web 端 Cookie |
 
+元宝Web端 指 https://yuanbao.tencent.com/ 网站，登录后，获取 `cookie` 作为配置即可
+
 ## 说明
 
 - 部署内容为 `internal/api/sph/` 目录下的 `worker.js` 和 `index.html`
