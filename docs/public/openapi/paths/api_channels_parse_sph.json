@@ -4,7 +4,7 @@
       "视频号"
     ],
     "summary": "解析视频号分享链接",
-    "description": "通过视频号分享链接解析视频详情，支持 `weixin.qq.com/sph/xxx` 格式。",
+    "description": "通过视频号分享链接解析视频详情，支持 `weixin.qq.com/sph/xxx` 格式。需要在 元宝Web端 https://yuanbao.tencent.com/ 登录后，获取 `cookie` 填入 `cloudflare.sphCookie` 才能正常使用",
     "parameters": [
       {
         "name": "url",
@@ -80,13 +80,24 @@
                 }
               },
               "error": {
-                "summary": "错误",
+                "summary": "解析失败",
                 "value": {
                   "code": 400,
                   "msg": "解析失败",
                   "data": {}
                 }
               }
+            }
+          }
+        }
+      },
+      "未配置": {
+        "description": "未配置 sphCookie",
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 400,
+              "msg": "cloudflare.sphCookie not configured"
             }
           }
         }
