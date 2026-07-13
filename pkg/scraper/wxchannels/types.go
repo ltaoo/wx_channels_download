@@ -402,6 +402,23 @@ type RequestResponse struct {
 	Data interface{} `json:"data"`
 }
 
+// buildContentURL 从 media URL 中提取 scheme://host/path，仅保留 encfilekey 参数，再拼接 urlToken。
+func buildContentURL(mediaURL, urlToken string) string {
+	u, err := url.Parse(mediaURL)
+	if err != nil {
+		return mediaURL + urlToken
+	}
+	encfilekey := u.Query().Get("encfilekey")
+	base := u.Scheme + "://" + u.Host + u.Path
+	if encfilekey == "" {
+		if strings.HasPrefix(urlToken, "&") {
+			return base + "?" + urlToken[1:]
+		}
+		return base + urlToken
+	}
+	return base + "?encfilekey=" + encfilekey + urlToken
+}
+
 func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfile, error) {
 	if r == nil {
 		return nil, errors.New("channels object 为空")
@@ -498,7 +515,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 			ObjectId:    feed.ID,
 			NonceId:     feed.ObjectNonceId,
 			SourceURL:   feed.SourceURL,
-			URL:         media.URL + media.URLToken,
+			URL:         buildContentURL(media.URL, media.URLToken),
 			Title:       buildTitle(feed.ObjectDesc.Description, false),
 			DecryptKey:  media.DecodeKey,
 			CoverURL:    media.CoverUrl,
@@ -528,7 +545,7 @@ func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfil
 		ObjectId:    feed.ID,
 		NonceId:     feed.ObjectNonceId,
 		SourceURL:   feed.SourceURL,
-		URL:         media.URL + media.URLToken,
+		URL:         buildContentURL(media.URL, media.URLToken),
 		Title:       buildTitle(feed.ObjectDesc.Description, false),
 		DecryptKey:  media.DecodeKey,
 		CoverURL:    media.CoverUrl,

@@ -273,3 +273,5 @@ func TestPlatformIDOfficialAccount(t *testing.T) {
 		t.Errorf("platformIDOfficialAccount = %q, want \"wx_official_account\"", platformIDOfficialAccount)
 	}
 }
+
+// Fixture tests → upsert_fixture_test.go
