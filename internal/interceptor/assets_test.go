@@ -69,9 +69,9 @@ func TestMockChannelStaticAssetLibUsesThirtyDayStrongCache(t *testing.T) {
 
 func TestMockChannelStaticAssetShadcnCSSStripsCascadeLayers(t *testing.T) {
 	files := newTestChannelInjectedFiles(t, map[string]string{
-		"lib/timeless/0.27.1/timeless.shadcn.css": `@layer theme{:root{--spacing:.25rem}}@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}@layer components;`,
+		"lib/timeless/0.28.0/timeless.shadcn.css": `@layer theme{:root{--spacing:.25rem}}@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}@layer components;`,
 	})
-	ctx := newStaticAssetContext("/__wx_channels_assets/lib/timeless/0.27.1/timeless.shadcn.css", nil)
+	ctx := newStaticAssetContext("/__wx_channels_assets/lib/timeless/0.28.0/timeless.shadcn.css", nil)
 
 	if !mockChannelStaticAsset(ctx, ctx.req.URL.Path, files) {
 		t.Fatal("expected shadcn CSS asset to be mocked")

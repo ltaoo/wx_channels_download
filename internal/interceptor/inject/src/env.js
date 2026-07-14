@@ -168,6 +168,7 @@ var WXEnv = (() => {
       WSServerProtocol: wsProtocol(download.protocol),
       WXUserAgent: ua,
       isWin: /Windows|Win/i.test(ua),
+      isWeChatBrowser: /MicroMessenger/i.test(ua),
       __wx_assets_base: assetsBaseURL(),
     };
   }
@@ -193,6 +194,9 @@ var WXEnv = (() => {
     },
     get isWin() {
       return /Windows|Win/i.test(ua);
+    },
+    get isWeChatBrowser() {
+      return /MicroMessenger/i.test(ua);
     },
     get isChannels() {
       return window.location.href.includes("weixin.qq.com");
@@ -277,6 +281,7 @@ var APIServerProtocol = window.APIServerProtocol;
 var WSServerProtocol = window.WSServerProtocol;
 var WXUserAgent = window.WXUserAgent;
 var isWin = window.isWin;
+var isWeChatBrowser = window.isWeChatBrowser;
 var __wx_assets_base = window.__wx_assets_base;
 function __wx_asset_url(path) {
   return WXEnv.assetUrl(path);

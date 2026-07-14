@@ -9,36 +9,45 @@ function DownloaderEntry(props) {
       props.popover$.hide();
     },
   });
-  return Fragment({}, [
-    Popover(
-      {
-        store: props.popover$,
-        content: [
-          DownloaderPanelView({
-            store: vm$,
-            renderConfirmDialog: false,
-            showStatusCounts: false,
-            showViewAll: true,
-          }),
-        ],
+  return Fragment(
+    {
+      onMounted() {
+        props.onMounted(vm$);
       },
-      [
-        View(
-          {
-            class:
-              "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
-          },
-          [Timeless.Icon({ name: "download", size: 20 })],
-        ),
-      ],
-    ),
-    TaskDeleteConfirmDialog({
-      store: vm$,
-    }),
-    ClearTasksConfirmDialog({
-      store: vm$,
-    }),
-  ]);
+    },
+    [
+      Popover(
+        {
+          store: props.popover$,
+          content: [
+            DownloaderPanelView({
+              store: vm$,
+              showStatusCounts: false,
+              showViewAll: true,
+            }),
+          ],
+        },
+        [
+          View(
+            {
+              class:
+                "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
+            },
+            [Timeless.Icon({ name: "download", size: 20 })],
+          ),
+        ],
+      ),
+      TaskDeleteConfirmDialog({
+        store: vm$,
+      }),
+      ClearTasksConfirmDialog({
+        store: vm$,
+      }),
+      OverwriteDownloadConfirmDialog({
+        store: vm$,
+      }),
+    ],
+  );
 }
 
 (() => {
@@ -57,7 +66,18 @@ function DownloaderEntry(props) {
     WXU.downloader.toggle = function () {
       popover$.toggle();
     };
-    Timeless.DOM.render(DownloaderEntry({ popover$ }), $trigger);
+    Timeless.DOM.render(
+      DownloaderEntry({
+        popover$,
+        onMounted(vm$) {
+          WXU.downloader.create = (feed, opt) =>
+            vm$.methods.createDownloadTask(feed, opt);
+          WXU.downloader.create_batch = (feeds, opt) =>
+            vm$.methods.createDownloadTaskBatch(feeds, opt);
+        },
+      }),
+      $trigger,
+    );
   }
   let mounted = false;
   if (window.location.pathname === "/web/pages/profile") {

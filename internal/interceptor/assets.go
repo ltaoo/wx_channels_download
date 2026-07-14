@@ -173,17 +173,17 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 		b,
 		scriptAttr,
 		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.utils.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.utils.umd.min.js"),
 	)
-	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.css"))
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.umd.min.js"))
+	AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.css"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.umd.min.js"))
 	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
 		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.dom.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.web.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.web.umd.min.js"),
 	)
 }
 
@@ -192,22 +192,22 @@ func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string
 		b,
 		scriptAttr,
 		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.utils.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.utils.umd.min.js"),
 	)
 	if len(shadcnCSS) > 0 {
 		shadcnCSS = ChannelStaticAssetResponseData("timeless.weui.css", shadcnCSS)
 		AppendInlineStyle(b, styleAttr, string(shadcnCSS))
 	} else {
-		AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.css"))
+		AppendStylesheetHrefs(b, styleAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.css"))
 	}
-	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.weui.umd.min.js"))
+	AppendScriptSrcs(b, scriptAttr, ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.umd.min.js"))
 	AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
 		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.dom.umd.min.js"),
-		ChannelLibAssetURL(baseURL, version, "timeless/0.27.1/timeless.web.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.dom.umd.min.js"),
+		ChannelLibAssetURL(baseURL, version, "timeless/0.28.0/timeless.web.umd.min.js"),
 	)
 }
 
@@ -470,12 +470,12 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSMitt = files.readLib("mitt.umd.js")
 	files.JSAxios = files.readLib("axios.min.js")
 	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
-	files.JSTimeless = files.readLib("timeless/0.27.1/timeless.umd.min.js")
-	files.JSTimelessUtils = files.readLib("timeless/0.27.1/timeless.utils.umd.min.js")
-	files.CSSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.weui.css")
-	files.JSTimelessShadcn = files.readLib("timeless/0.27.1/timeless.weui.umd.min.js")
-	files.JSTimelessDOM = files.readLib("timeless/0.27.1/timeless.dom.umd.min.js")
-	files.JSTimelessWeb = files.readLib("timeless/0.27.1/timeless.web.umd.min.js")
+	files.JSTimeless = files.readLib("timeless/0.28.0/timeless.umd.min.js")
+	files.JSTimelessUtils = files.readLib("timeless/0.28.0/timeless.utils.umd.min.js")
+	files.CSSTimelessShadcn = files.readLib("timeless/0.28.0/timeless.weui.css")
+	files.JSTimelessShadcn = files.readLib("timeless/0.28.0/timeless.weui.umd.min.js")
+	files.JSTimelessDOM = files.readLib("timeless/0.28.0/timeless.dom.umd.min.js")
+	files.JSTimelessWeb = files.readLib("timeless/0.28.0/timeless.web.umd.min.js")
 	files.CSSComponents = files.readSrc("components.css")
 	files.JSDebug = files.readSrc("pagespy.js")
 	files.JSError = files.readSrc("error.js")
