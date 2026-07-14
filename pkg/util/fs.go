@@ -62,7 +62,7 @@ func ValidateAndSplitFilename(input string) (string, string, error) {
 }
 
 func EnsureFilename(name string, dir string, download_dir string) (string, error) {
-	if !strings.HasSuffix(strings.ToLower(name), ".mp4") {
+	if filepath.Ext(name) == "" {
 		name = name + ".mp4"
 	}
 	latest_download_dir := download_dir
@@ -79,7 +79,7 @@ func EnsureFilename(name string, dir string, download_dir string) (string, error
 	counter := 1
 	for {
 		if _, err := os.Stat(filepath.Join(latest_download_dir, base_name)); err == nil {
-			base_name = fmt.Sprintf("%s_%d%s", name_without_ext, counter, ext)
+			base_name = fmt.Sprintf("%s(%d)%s", name_without_ext, counter, ext)
 			counter++
 		} else {
 			break

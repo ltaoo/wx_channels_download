@@ -5,8 +5,6 @@
 var APIHostname = WXEnv.apiOrigin;
 var DownloadHostname = WXEnv.downloadOrigin;
 
-console.log("[]download/core.js - ", WXEnv.apiServerAddr, APIHostname);
-
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
   hostname: APIHostname,
@@ -1768,7 +1766,6 @@ function DownloaderPanelViewModel(props = {}) {
     },
     connect() {
       return new Promise((resolve, reject) => {
-        console.log("connect -----");
         const ws = new WebSocket(WXEnv.downloaderWSURL);
         ws.onopen = () => {
           if (WXU.downloader) {
@@ -1899,7 +1896,7 @@ function DownloaderPanelViewModel(props = {}) {
         ) {
           return;
         }
-        console.log("[]insert task", task);
+        // console.log("[]insert task", task);
         const nextTotal =
           (virtual_total || current.length || task_count_.value) + 1;
         const next = [task, ...current].slice(0, nextTotal);
@@ -1921,7 +1918,7 @@ function DownloaderPanelViewModel(props = {}) {
         setTimeout(maybeLoadMoreTasks, 0);
         return;
       }
-      console.log("[]update task", task);
+      // console.log("[]update task", task);
       const oldStatus = current[index].status || "";
       const next = current.slice();
       const merged = Object.assign({}, current[index], task);
@@ -2142,7 +2139,6 @@ function DownloaderPanelViewModel(props = {}) {
       label: "清空下载记录",
       async onClick() {
         ui.dropdown$.hide();
-        onRequestClose();
         methods.requestClearTasks(false);
       },
     }),
@@ -2197,6 +2193,8 @@ function DownloaderPanelViewModel(props = {}) {
         }
         duplicated_feed_prepare_download = null;
         ui.overwriteConfirmDialog$.hide();
+        WXU.downloader.show();
+        await reloadTasks();
         return;
       },
     }),
@@ -2390,32 +2388,11 @@ function ClearTasksConfirmDialog(props) {
 }
 
 function OverwriteDownloadConfirmDialog(props) {
-  // var selectedAction_ = refobj({ value: "overwrite" });
   var selectedAction_ = props.store.state.overwrite;
 
-  var radioOuterStyle = function (actionValue) {
-    return computed(selectedAction_, function (selected) {
-      var checked = selected.value === actionValue;
-      return {
-        width: "18px",
-        height: "18px",
-        "box-sizing": "border-box",
-        "border-radius": "50%",
-        border: "2px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
-        background: checked ? "#07C160" : "transparent",
-        display: "inline-flex",
-        "align-items": "center",
-        "justify-content": "center",
-        "flex-shrink": "0",
-      };
-    });
-  };
-
   function select(actionValue) {
+    console.log("select overwrite type", actionValue);
     selectedAction_.as({ value: actionValue });
-    if (typeof props.onChange === "function") {
-      props.onChange({ value: actionValue });
-    }
   }
 
   return Timeless.Dialog(
@@ -2480,23 +2457,44 @@ function OverwriteDownloadConfirmDialog(props) {
               },
             },
             [
-              View({ style: radioOuterStyle("overwrite") }, [
-                Show({
-                  when: computed(selectedAction_, function (s) {
-                    return s.value === "overwrite";
+              View(
+                {
+                  style: computed(selectedAction_, function (selected) {
+                    var checked = selected.value === "overwrite";
+                    return {
+                      width: "18px",
+                      height: "18px",
+                      "box-sizing": "border-box",
+                      "border-radius": "50%",
+                      border:
+                        "2px solid " +
+                        (checked ? "#07C160" : "var(--weui-FG-3)"),
+                      background: checked ? "#07C160" : "transparent",
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                      "flex-shrink": "0",
+                    };
                   }),
-                  ok: function () {
-                    return View({
-                      style: {
-                        width: "8px",
-                        height: "8px",
-                        "border-radius": "50%",
-                        background: "#fff",
-                      },
-                    });
-                  },
-                }),
-              ]),
+                },
+                [
+                  Show({
+                    when: computed(selectedAction_, function (s) {
+                      return s.value === "overwrite";
+                    }),
+                    ok: function () {
+                      return View({
+                        style: {
+                          width: "8px",
+                          height: "8px",
+                          "border-radius": "50%",
+                          background: "#fff",
+                        },
+                      });
+                    },
+                  }),
+                ],
+              ),
               View({}, ["覆盖"]),
             ],
           ),
@@ -2524,23 +2522,44 @@ function OverwriteDownloadConfirmDialog(props) {
               },
             },
             [
-              View({ style: radioOuterStyle("duplicate") }, [
-                Show({
-                  when: computed(selectedAction_, function (s) {
-                    return s.value === "duplicate";
+              View(
+                {
+                  style: computed(selectedAction_, function (selected) {
+                    var checked = selected.value === "duplicate";
+                    return {
+                      width: "18px",
+                      height: "18px",
+                      "box-sizing": "border-box",
+                      "border-radius": "50%",
+                      border:
+                        "2px solid " +
+                        (checked ? "#07C160" : "var(--weui-FG-3)"),
+                      background: checked ? "#07C160" : "transparent",
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                      "flex-shrink": "0",
+                    };
                   }),
-                  ok: function () {
-                    return View({
-                      style: {
-                        width: "8px",
-                        height: "8px",
-                        "border-radius": "50%",
-                        background: "#fff",
-                      },
-                    });
-                  },
-                }),
-              ]),
+                },
+                [
+                  Show({
+                    when: computed(selectedAction_, function (s) {
+                      return s.value === "duplicate";
+                    }),
+                    ok: function () {
+                      return View({
+                        style: {
+                          width: "8px",
+                          height: "8px",
+                          "border-radius": "50%",
+                          background: "#fff",
+                        },
+                      });
+                    },
+                  }),
+                ],
+              ),
               View({}, ["重复下载"]),
             ],
           ),
@@ -2551,17 +2570,9 @@ function OverwriteDownloadConfirmDialog(props) {
 }
 
 function TaskDeleteConfirmDialog(props) {
-  // const taskCount_ = props.taskCount;
-  // const deleteFiles_ = props.deleteFiles;
-  // const loading_ = props.loading;
-  // const state_ = refobj(props.store.state);
-
   const title = "删除下载记录";
   const message = "确定删除下载任务记录？此操作不可恢复。";
   const checkboxLabel = "同时删除已下载的文件";
-  // const cancelText = props.cancelText || "取消";
-  // const confirmText = props.confirmText || "确认删除";
-  // const loadingText = props.loadingText || "删除中...";
   const checkboxStyle = computed(
     props.store.state.delete_delete_files,
     (checked) => {
