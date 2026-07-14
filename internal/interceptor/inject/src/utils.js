@@ -528,70 +528,6 @@ var WXU = (() => {
     }
     return api;
   }
-  function confirm_overwrite_download(msg) {
-    return new Promise((resolve) => {
-      const content =
-        (msg || "已存在该下载内容") + "，是否重新下载并覆盖已存在文件？";
-      if (typeof document === "undefined" || !document.body) {
-        resolve(window.confirm(content));
-        return;
-      }
-      const timeless = window.Timeless;
-      if (
-        !timeless ||
-        !timeless.ui ||
-        !timeless.ui.DialogCore ||
-        typeof timeless.render !== "function" ||
-        typeof window.Dialog !== "function" ||
-        typeof window.View !== "function"
-      ) {
-        resolve(window.confirm(content));
-        return;
-      }
-      const dialog$ = new timeless.ui.DialogCore({
-        closeable: true,
-      });
-      let settled = false;
-      const $root = document.createElement("div");
-      let offStateChange = null;
-      const dialogView = OverwriteDownloadConfirmDialog({
-        store: dialog$,
-        content,
-        onConfirm() {
-          close(true);
-        },
-      });
-      function handleKeydown(e) {
-        if (e.key === "Escape") {
-          close(false);
-        }
-      }
-      function close(overwrite) {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        document.removeEventListener("keydown", handleKeydown);
-        if (typeof offStateChange === "function") {
-          offStateChange();
-        }
-        dialog$.hide();
-        dialogView.onUnmounted();
-        $root.remove();
-        resolve(overwrite);
-      }
-      offStateChange = dialog$.onStateChange((state) => {
-        if (settled || state.visible || state.enter) {
-          return;
-        }
-        close(false);
-      });
-      timeless.render(dialogView, $root);
-      document.addEventListener("keydown", handleKeydown);
-      document.body.appendChild($root);
-      dialog$.show();
-    });
-  }
   function get_media_url(media) {
     if (!media) {
       return "";
@@ -902,6 +838,9 @@ var WXU = (() => {
         params.spec = matched.fileFormat;
       }
     }
+    // if (!params.spec) {
+    //   params.spec = "original";
+    // }
     var filename = template
       ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) =>
           params[key] === null || params[key] === undefined ? "" : params[key],
@@ -1318,164 +1257,11 @@ var WXU = (() => {
       show() {},
       hide() {},
       toggle() {},
-      /**
-       * 提交下载任务
-       * @param {FeedProfile} feed
-       * @param {object} opt 配置
-       * @param {string} [opt.spec] 规格
-       * @param {string} [opt.suffix] 后缀
-       */
-      async create(feed, opt = {}) {
-        console.log("[downloader.create]create", feed);
-        var spec = (() => {
-          if (opt.spec) {
-            return opt.spec;
-          }
-          if (WXU.config.defaultHighest || opt.spec === null) {
-            return null;
-          }
-          if (feed.spec && feed.spec[0]) {
-            return feed.spec[0].fileFormat;
-          }
-          return null;
-        })();
-        var filename = WXU.build_filename(
-          feed,
-          spec,
-          WXU.config.downloadFilenameTemplate,
-        );
-        if (!filename) {
-          return [new Error("filename 为空"), null];
-        }
-        if (feed.type === "picture") {
-          opt.suffix = ".zip";
-          feed.url = build_picture_zip_url(feed);
-          console.log("[]feed.url", feed.url);
-        }
-        if (opt.suffix !== ".jpg") {
-          if (spec) {
-            feed.url = feed.url + "&X-snsvideoflag=" + spec;
-          } else {
-            // 该下载原始视频逻辑参考自 https://github.com/putyy/res-downloader/blob/master/core/resource.go#L142
-            var u = new URL(decodeURIComponent(feed.url));
-            var filekey = u.searchParams.get("encfilekey");
-            var token = u.searchParams.get("token");
-            if (filekey && token) {
-              var new_url = new URL(u.origin + u.pathname);
-              new_url.searchParams.set("encfilekey", filekey);
-              new_url.searchParams.set("token", token);
-              feed.url = new_url.toString();
-            }
-          }
-        }
-        const requestBody = {
-          id: feed.id,
-          nonce_id: feed.nonce_id || feed.objectNonceId || "",
-          url: feed.url,
-          title: feed.title,
-          filename: filename,
-          key: Number(feed.key),
-          spec,
-          suffix: opt.suffix,
-        };
-        const createTask = (overwrite) =>
-          WXU.request({
-            method: "POST",
-            url: WXEnv.apiOrigin + "/api/task/create",
-            body: {
-              ...requestBody,
-              overwrite: !!overwrite,
-            },
-          });
-        // console.log("[downloader.create]before WXU.request");
-        var [err, data] = await createTask(false);
-        if (err && err.code === 409) {
-          const overwrite = await confirm_overwrite_download(err.message);
-          if (!overwrite) {
-            return [null, { skipped: true }];
-          }
-          [err, data] = await createTask(true);
-        }
-        WXU.downloader.show();
-        if (err) {
-          return [err, null];
-        }
-        return [null, data];
+      async create(feed, opt) {
+        return [new Error("downloader not ready"), null];
       },
-      /**
-       * 批量提交下载任务
-       * @param {FeedProfile[]} feeds
-       * @param {object} opt 配置
-       * @param {string} [opt.spec] 规格
-       * @param {string} [opt.suffix] 后缀
-       * @returns
-       */
-      async create_batch(feeds, opt = {}) {
-        var body = {
-          feeds: [],
-        };
-        for (let i = 0; i < feeds.length; i += 1) {
-          var feed = feeds[i];
-          var spec = (() => {
-            if (opt.spec) {
-              return opt.spec;
-            }
-            if (WXU.config.defaultHighest || opt.spec === null) {
-              return null;
-            }
-            if (feed.spec && feed.spec[0]) {
-              return feed.spec[0].fileFormat;
-            }
-            return null;
-          })();
-          var filename = WXU.build_filename(
-            feed,
-            spec,
-            WXU.config.downloadFilenameTemplate,
-          );
-          if (filename) {
-            var suffix = opt.suffix;
-            if (feed.type === "picture") {
-              suffix = ".zip";
-              feed.url = build_picture_zip_url(feed);
-            }
-            if (suffix !== ".jpg") {
-              if (spec) {
-                feed.url = feed.url + "&X-snsvideoflag=" + spec;
-              } else {
-                var u = new URL(decodeURIComponent(feed.url));
-                var filekey = u.searchParams.get("encfilekey");
-                var token = u.searchParams.get("token");
-                if (filekey && token) {
-                  var new_url = new URL(u.origin + u.pathname);
-                  new_url.searchParams.set("encfilekey", filekey);
-                  new_url.searchParams.set("token", token);
-                  feed.url = new_url.toString();
-                }
-              }
-            }
-            body.feeds.push({
-              id: feed.id,
-              nonce_id: feed.nonce_id || feed.objectNonceId || "",
-              url: feed.url,
-              title: feed.title,
-              key: Number(feed.key),
-              filename,
-              spec,
-              suffix,
-            });
-          }
-        }
-        WXU.downloader.show();
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: WXEnv.apiOrigin + "/api/task/create_batch",
-          body,
-        });
-        if (err) {
-          return [err, null];
-        }
-        return [null, data];
+      async create_batch(feeds, opt) {
+        return [new Error("downloader not ready"), null];
       },
     },
     /**
@@ -2094,7 +1880,18 @@ function __wx_attach_download_dropdown_menu(trigger) {
       new Timeless.ui.MenuItemCore({
         label: "下载为MP3",
         onClick() {
-          __wx_channels_handle_click_download__(null, true);
+          const [err, profile] = WXU.check_feed_existing({ silence: true });
+          if (err) return;
+          var spec = (() => {
+            if (WXU.config.defaultHighest) {
+              return null;
+            }
+            if (profile.spec[0]) {
+              return profile.spec[0].fileFormat;
+            }
+            return null;
+          })();
+          __wx_channels_handle_click_download__(spec, true);
           close_dropdown();
         },
       }),

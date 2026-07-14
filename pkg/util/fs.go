@@ -10,57 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-func BuildFilename(feed struct {
-	Title     string
-	ObjectId  string
-	CreatedAt string
-	Contact   struct {
-		Nickname string
-		Username string
-	}
-}, spec *struct{ FileFormat string }, cfg struct{ FilenameTemplate string }) string {
-	default_name := func() string {
-		if feed.Title != "" {
-			return feed.Title
-		}
-		if feed.ObjectId != "" {
-			return feed.ObjectId
-		}
-		return NowMillisStr()
-	}()
-
-	params := map[string]string{
-		"filename":    default_name,
-		"id":          feed.ObjectId,
-		"title":       feed.Title,
-		"spec":        "",
-		"created_at":  string(feed.CreatedAt),
-		"download_at": NowMillisStr(),
-	}
-	if feed.Contact.Nickname != "" {
-		params["author"] = feed.Contact.Nickname
-	}
-	if spec != nil && spec.FileFormat != "" {
-		params["spec"] = spec.FileFormat
-	}
-
-	template := cfg.FilenameTemplate
-	if strings.TrimSpace(template) == "" {
-		return default_name
-	}
-	re := regexp.MustCompile(`\{\{([^}]+)\}\}`)
-	filename := re.ReplaceAllStringFunc(template, func(m string) string {
-		sub := re.FindStringSubmatch(m)
-		if len(sub) > 1 {
-			if v, ok := params[sub[1]]; ok {
-				return v
-			}
-		}
-		return ""
-	})
-	return filename
-}
-
 func ValidateAndSplitFilename(input string) (string, string, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
@@ -113,7 +62,7 @@ func ValidateAndSplitFilename(input string) (string, string, error) {
 }
 
 func EnsureFilename(name string, dir string, download_dir string) (string, error) {
-	if !strings.HasSuffix(strings.ToLower(name), ".mp4") {
+	if filepath.Ext(name) == "" {
 		name = name + ".mp4"
 	}
 	latest_download_dir := download_dir
@@ -130,7 +79,7 @@ func EnsureFilename(name string, dir string, download_dir string) (string, error
 	counter := 1
 	for {
 		if _, err := os.Stat(filepath.Join(latest_download_dir, base_name)); err == nil {
-			base_name = fmt.Sprintf("%s_%d%s", name_without_ext, counter, ext)
+			base_name = fmt.Sprintf("%s(%d)%s", name_without_ext, counter, ext)
 			counter++
 		} else {
 			break
@@ -287,6 +236,12 @@ func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string,
 		fp.usedFilenames[path_key] = 0
 	}
 	return clean_name, dir, nil
+}
+
+// 从已使用的文件名列表中移除指定文件，用于 overwrite 场景
+func (fp *FilenameProcessor) RemoveFilename(name, dir string) {
+	pathKey := filepath.Clean(filepath.Join(dir, name))
+	delete(fp.usedFilenames, pathKey)
 }
 
 // 主处理函数

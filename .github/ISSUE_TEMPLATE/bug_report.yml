@@ -14,6 +14,25 @@ body:
           required: true
         - label: 我已阅读快速开始指南 https://ltaoo.github.io/wx_channels_download/guide/start.html
           required: true
+  - type: input
+    id: version
+    attributes:
+      label: 下载器版本号
+      description: 运行 `wx_channels_download --version` 获取
+      placeholder: 例如：v260704
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 详细描述
+      description: 详细描述遇到的问题，包括复现步骤、期望行为与实际行为的差异
+      placeholder: |
+        1. 执行 ... 操作
+        2. 出现 ... 错误
+        3. 期望结果是 ...
+    validations:
+      required: false
   - type: textarea
     id: terminal
     attributes:

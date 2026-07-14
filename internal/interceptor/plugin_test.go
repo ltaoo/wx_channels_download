@@ -52,7 +52,7 @@ func TestChannelInjectsShadcnCSSInlineAndOtherAssetsFromSameOrigin(t *testing.T)
 		APIServerAddr:     "127.0.0.1:2022",
 	}
 	files := newTestChannelInjectedFiles(t, map[string]string{
-		"lib/timeless/0.27.1/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
+		"lib/timeless/0.28.0/timeless.shadcn.css": `@layer utilities{.tt-py-1{padding-block:calc(var(--spacing) * 1)}}`,
 	})
 	plugins := CreateChannelInterceptorPlugins(&Interceptor{
 		Version:           "test-version",
