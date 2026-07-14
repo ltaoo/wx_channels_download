@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"os"
 	// "sort"
 	"strconv"
@@ -345,10 +346,14 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 			"download_at": util.NowSecondsStr(),
 			"author":      feed.Contact.Nickname,
 		}
-		filename = template
-		for k, v := range params {
-			filename = strings.ReplaceAll(filename, "{{"+k+"}}", v)
-		}
+		re := regexp.MustCompile(`\{\{(\w+)\}\}`)
+		filename = re.ReplaceAllStringFunc(template, func(m string) string {
+			key := m[2 : len(m)-2]
+			if v, ok := params[key]; ok {
+				return v
+			}
+			return ""
+		})
 	}
 
 	payload := &FeedDownloadTaskBody{

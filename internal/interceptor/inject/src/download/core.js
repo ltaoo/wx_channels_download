@@ -636,6 +636,9 @@ function DownloaderPanelViewModel(props = {}) {
   });
   const status_counts_ = ref(empty_download_status_counts());
   const active_status_ = ref(initial_status);
+  const overwrite_ = refobj({ value: "overwrite" });
+
+  let duplicated_feed_prepare_download = null;
 
   function setStatusCounts(counts, total) {
     const normalized = normalize_download_status_counts(counts);
@@ -1987,6 +1990,150 @@ function DownloaderPanelViewModel(props = {}) {
       // }
       delete_delete_files_.as((prev) => !prev);
     },
+    async createDownloadTask(feed, opt = {}) {
+      console.log("[downloader.create]create", feed);
+      var spec = (() => {
+        if (opt.spec) {
+          return opt.spec;
+        }
+        if (WXU.config.defaultHighest || opt.spec === null) {
+          return null;
+        }
+        if (feed.spec && feed.spec[0]) {
+          return feed.spec[0].fileFormat;
+        }
+        return null;
+      })();
+      var filename = WXU.build_filename(
+        feed,
+        spec,
+        WXU.config.downloadFilenameTemplate,
+      );
+      if (!filename) {
+        return [new Error("filename 为空"), null];
+      }
+      if (feed.type === "picture") {
+        opt.suffix = ".zip";
+        feed.url = WXU.build_picture_zip_url(feed);
+        console.log("[]feed.url", feed.url);
+      }
+      if (opt.suffix !== ".jpg") {
+        if (spec) {
+          feed.url = feed.url + "&X-snsvideoflag=" + spec;
+        } else {
+          var u = new URL(decodeURIComponent(feed.url));
+          var filekey = u.searchParams.get("encfilekey");
+          var token = u.searchParams.get("token");
+          if (filekey && token) {
+            var new_url = new URL(u.origin + u.pathname);
+            new_url.searchParams.set("encfilekey", filekey);
+            new_url.searchParams.set("token", token);
+            feed.url = new_url.toString();
+          }
+        }
+      }
+      const requestBody = {
+        id: feed.id,
+        nonce_id: feed.nonce_id || feed.objectNonceId || "",
+        url: feed.url,
+        title: feed.title,
+        filename: filename,
+        key: Number(feed.key),
+        spec,
+        suffix: opt.suffix,
+      };
+      const createTask = ({ overwrite, duplicate } = {}) =>
+        WXU.request({
+          method: "POST",
+          url: WXEnv.apiOrigin + "/api/task/create",
+          body: {
+            ...requestBody,
+            overwrite: !!overwrite,
+            duplicate: !!duplicate,
+          },
+        });
+      var [createErr, data] = await createTask({
+        overwrite: opt.overwrite,
+        duplicate: opt.duplicate,
+      });
+      if (createErr && createErr.code === 409) {
+        duplicated_feed_prepare_download = requestBody;
+        ui.overwriteConfirmDialog$.show();
+        return [null, { skipped: true }];
+      }
+      WXU.downloader.show();
+      if (createErr) {
+        return [createErr, null];
+      }
+      return [null, data];
+    },
+    async createDownloadTaskBatch(feeds, opt = {}) {
+      var body = {
+        feeds: [],
+      };
+      for (let i = 0; i < feeds.length; i += 1) {
+        var feed = feeds[i];
+        var spec = (() => {
+          if (opt.spec) {
+            return opt.spec;
+          }
+          if (WXU.config.defaultHighest || opt.spec === null) {
+            return null;
+          }
+          if (feed.spec && feed.spec[0]) {
+            return feed.spec[0].fileFormat;
+          }
+          return null;
+        })();
+        var filename = WXU.build_filename(
+          feed,
+          spec,
+          WXU.config.downloadFilenameTemplate,
+        );
+        if (filename) {
+          var suffix = opt.suffix;
+          if (feed.type === "picture") {
+            suffix = ".zip";
+            feed.url = WXU.build_picture_zip_url(feed);
+          }
+          if (suffix !== ".jpg") {
+            if (spec) {
+              feed.url = feed.url + "&X-snsvideoflag=" + spec;
+            } else {
+              var u = new URL(decodeURIComponent(feed.url));
+              var filekey = u.searchParams.get("encfilekey");
+              var token = u.searchParams.get("token");
+              if (filekey && token) {
+                var new_url = new URL(u.origin + u.pathname);
+                new_url.searchParams.set("encfilekey", filekey);
+                new_url.searchParams.set("token", token);
+                feed.url = new_url.toString();
+              }
+            }
+          }
+          body.feeds.push({
+            id: feed.id,
+            nonce_id: feed.nonce_id || feed.objectNonceId || "",
+            url: feed.url,
+            title: feed.title,
+            key: Number(feed.key),
+            filename,
+            spec,
+            suffix,
+          });
+        }
+      }
+      WXU.downloader.show();
+      var [err, data] = await WXU.request({
+        method: "POST",
+        url: WXEnv.apiOrigin + "/api/task/create_batch",
+        body,
+      });
+      if (err) {
+        return [err, null];
+      }
+      return [null, data];
+    },
   };
 
   const dropdownItems = [];
@@ -2026,6 +2173,33 @@ function DownloaderPanelViewModel(props = {}) {
         methods.confirmClearTasks();
       },
     }),
+    overwriteConfirmDialog$: new Timeless.ui.DialogCore({
+      async onOk() {
+        const action = overwrite_.value.value;
+        if (!action) {
+          return;
+        }
+        if (!duplicated_feed_prepare_download) {
+          return;
+        }
+        const [err, data] = await WXU.request({
+          method: "POST",
+          url: WXEnv.apiOrigin + "/api/task/create",
+          body: {
+            ...duplicated_feed_prepare_download,
+            overwrite: action === "overwrite",
+            duplicate: action === "duplicate",
+          },
+        });
+        if (err) {
+          WXU.error({ msg: err.message });
+          return;
+        }
+        duplicated_feed_prepare_download = null;
+        ui.overwriteConfirmDialog$.hide();
+        return;
+      },
+    }),
   };
   let ready = false;
   return {
@@ -2059,6 +2233,7 @@ function DownloaderPanelViewModel(props = {}) {
       status_counts: status_counts_,
       /** 当前选中的状态 */
       active_status: active_status_,
+      overwrite: overwrite_,
       fixed_list_height: fixed_list_height_,
       list_item_height: ITEM_HEIGHT,
       list_gutter: GUTTER,
@@ -2210,6 +2385,167 @@ function ClearTasksConfirmDialog(props) {
           ],
         ),
       ]),
+    ],
+  );
+}
+
+function OverwriteDownloadConfirmDialog(props) {
+  // var selectedAction_ = refobj({ value: "overwrite" });
+  var selectedAction_ = props.store.state.overwrite;
+
+  var radioOuterStyle = function (actionValue) {
+    return computed(selectedAction_, function (selected) {
+      var checked = selected.value === actionValue;
+      return {
+        width: "18px",
+        height: "18px",
+        "box-sizing": "border-box",
+        "border-radius": "50%",
+        border: "2px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
+        background: checked ? "#07C160" : "transparent",
+        display: "inline-flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "flex-shrink": "0",
+      };
+    });
+  };
+
+  function select(actionValue) {
+    selectedAction_.as({ value: actionValue });
+    if (typeof props.onChange === "function") {
+      props.onChange({ value: actionValue });
+    }
+  }
+
+  return Timeless.Dialog(
+    {
+      store: props.store.ui.overwriteConfirmDialog$,
+      style: {
+        "z-index": "10000",
+      },
+    },
+    [
+      View(
+        {
+          style: {
+            "max-width": "calc(100vw - 32px)",
+            "padding-top": "20px",
+            "text-align": "center",
+          },
+        },
+        [
+          View(
+            {
+              style: {
+                "font-size": "17px",
+                "font-weight": "600",
+                "line-height": "24px",
+                "margin-bottom": "8px",
+              },
+            },
+            ["文件已存在"],
+          ),
+          View(
+            {
+              style: {
+                "font-size": "14px",
+                "line-height": "20px",
+                color: "var(--weui-FG-1)",
+                "margin-bottom": "16px",
+              },
+            },
+            ["已存在该下载内容，请选择操作"],
+          ),
+          View(
+            {
+              role: "radio",
+              tabIndex: "0",
+              attributes: {
+                "aria-checked": computed(selectedAction_, function (s) {
+                  return s.value === "overwrite" ? "true" : "false";
+                }),
+              },
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "10px",
+                cursor: "pointer",
+                "user-select": "none",
+                "font-size": "14px",
+                "line-height": "20px",
+              },
+              onClick: function () {
+                select("overwrite");
+              },
+            },
+            [
+              View({ style: radioOuterStyle("overwrite") }, [
+                Show({
+                  when: computed(selectedAction_, function (s) {
+                    return s.value === "overwrite";
+                  }),
+                  ok: function () {
+                    return View({
+                      style: {
+                        width: "8px",
+                        height: "8px",
+                        "border-radius": "50%",
+                        background: "#fff",
+                      },
+                    });
+                  },
+                }),
+              ]),
+              View({}, ["覆盖"]),
+            ],
+          ),
+          View(
+            {
+              role: "radio",
+              tabIndex: "0",
+              attributes: {
+                "aria-checked": computed(selectedAction_, function (s) {
+                  return s.value === "duplicate" ? "true" : "false";
+                }),
+              },
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "10px",
+                "padding-top": "10px",
+                cursor: "pointer",
+                "user-select": "none",
+                "font-size": "14px",
+                "line-height": "20px",
+              },
+              onClick: function () {
+                select("duplicate");
+              },
+            },
+            [
+              View({ style: radioOuterStyle("duplicate") }, [
+                Show({
+                  when: computed(selectedAction_, function (s) {
+                    return s.value === "duplicate";
+                  }),
+                  ok: function () {
+                    return View({
+                      style: {
+                        width: "8px",
+                        height: "8px",
+                        "border-radius": "50%",
+                        background: "#fff",
+                      },
+                    });
+                  },
+                }),
+              ]),
+              View({}, ["重复下载"]),
+            ],
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -2476,7 +2812,8 @@ function DownloadTaskCard(props) {
       statusColor,
     };
   });
-  const isOpenExternal = WXEnv.config.remoteServerEnabled === true || WXEnv.config.inDocker === true;
+  const isOpenExternal =
+    WXEnv.config.remoteServerEnabled === true || WXEnv.config.inDocker === true;
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const offset = computed(state_, (d) => {
@@ -3085,22 +3422,6 @@ function DownloaderPanelView(props) {
             },
             ["查看所有"],
           );
-        },
-      }),
-      Show({
-        when: renderConfirmDialog,
-        ok() {
-          return TaskDeleteConfirmDialog({
-            store: vm$,
-          });
-        },
-      }),
-      Show({
-        when: renderConfirmDialog,
-        ok() {
-          return ClearTasksConfirmDialog({
-            store: vm$,
-          });
         },
       }),
     ],

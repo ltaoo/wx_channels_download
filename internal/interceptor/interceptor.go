@@ -57,16 +57,6 @@ func (c *Interceptor) Start() error {
 			client.AddPlugin(plugin)
 		}
 	}
-	if c.Debug {
-		client.AddPlugin(&proxy.Plugin{
-			Match: "debug.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: "http",
-				Host:     "127.0.0.1",
-				Port:     6752,
-			},
-		})
-	}
 	downloadTarget := &proxy.TargetConfig{
 		Protocol: c.Settings.APIServerProtocol,
 		Host:     c.Settings.APIServerHostname,

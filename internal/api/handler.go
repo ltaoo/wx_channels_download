@@ -35,6 +35,7 @@ import (
 	result "wx_channel/internal/util"
 	officialaccountdownload "wx_channel/pkg/officialaccount"
 	"wx_channel/pkg/system"
+	pkgutil "wx_channel/pkg/util"
 )
 
 func (c *APIClient) handleSearchChannelsContact(ctx *gin.Context) {
@@ -281,6 +282,7 @@ type FeedDownloadTaskBody struct {
 	Spec      string `json:"spec"`
 	Suffix    string `json:"suffix"`
 	Overwrite bool   `json:"overwrite"`
+	Duplicate bool   `json:"duplicate"`
 }
 
 type CreateTaskResp struct {
@@ -400,7 +402,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
 	}
-	taskName := filename + body.Suffix
+	taskName := filename
 	taskPath := filepath.Join(c.cfg.DownloadDir, dir)
 	taskFilePath := filepath.Join(taskPath, taskName)
 	tasks := c.downloader.GetTasks()
@@ -415,19 +417,39 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		return
 	}
 	if len(existingTasks) > 0 || fileExists {
-		if !body.Overwrite {
-			result.Err(ctx, 409, "已存在该下载内容")
-			return
-		}
-		if err := c.deleteTasks(existingTasks, true); err != nil {
-			result.Err(ctx, 500, "删除已存在任务失败："+err.Error())
-			return
-		}
-		if fileExists {
-			if err := removeExistingDownloadFile(taskFilePath); err != nil {
-				result.Err(ctx, 500, "覆盖已存在文件失败："+err.Error())
+		if body.Duplicate {
+			// 重复下载：跳过冲突检查，用 EnsureFilename 找到不重名的文件名
+			uniqueName, err := pkgutil.EnsureFilename(taskName, dir, c.cfg.DownloadDir)
+			if err != nil {
+				result.Err(ctx, 500, "生成唯一文件名失败："+err.Error())
 				return
 			}
+			taskName = uniqueName
+			taskFilePath = filepath.Join(taskPath, taskName)
+		} else if !body.Overwrite {
+			result.Err(ctx, 409, "已存在该下载内容")
+			return
+		} else {
+			if err := c.deleteTasks(existingTasks, true); err != nil {
+				result.Err(ctx, 500, "删除已存在任务失败："+err.Error())
+				return
+			}
+			if fileExists {
+				if err := removeExistingDownloadFile(taskFilePath); err != nil {
+					result.Err(ctx, 500, "覆盖已存在文件失败："+err.Error())
+					return
+				}
+			}
+			// overwrite 后重新构建文件名，避免旧文件存在时 dedup 添加的计数器
+			c.formatter.RemoveFilename(taskName, dir)
+			filename, dir, err = c.processTaskFilename(body.Filename, body.Suffix)
+			if err != nil {
+				result.Err(ctx, 409, "不合法的文件名，"+err.Error())
+				return
+			}
+			taskName = filename
+			taskPath = filepath.Join(c.cfg.DownloadDir, dir)
+			taskFilePath = filepath.Join(taskPath, taskName)
 		}
 	}
 	connections := c.resolve_connections(body.URL)
@@ -1049,7 +1071,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
 		return
 	}
-	taskName := filename + payload.Suffix
+	taskName := filename
 	taskPath := filepath.Join(c.cfg.DownloadDir, dir)
 	connections := c.resolve_connections(payload.URL)
 	id, err := c.downloader.CreateDirect(
