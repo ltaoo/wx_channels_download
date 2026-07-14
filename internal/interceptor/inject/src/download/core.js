@@ -3265,7 +3265,6 @@ function DownloaderPanelView(props) {
   const active_status_ = vm$.state.active_status;
   const selected_task_count_ = vm$.state.selected_task_count;
   const showStatusCounts = props.showStatusCounts === true;
-  const renderConfirmDialog = props.renderConfirmDialog !== false;
 
   return View(
     {

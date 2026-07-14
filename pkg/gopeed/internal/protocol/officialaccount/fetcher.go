@@ -16,6 +16,7 @@ import (
 
 type Fetcher struct {
 	fetcher.DefaultFetcher
+	oa         *officialaccountdownload.OfficialAccountDownload
 	mu         sync.Mutex
 	closed     bool
 	downloaded int64
@@ -40,10 +41,10 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	}
 	f.DefaultFetcher.Meta.Req = req
 
-	oa := &officialaccountdownload.OfficialAccountDownload{}
+	f.oa = &officialaccountdownload.OfficialAccountDownload{}
 
 	// Fetch the article to get the title
-	article, err := oa.FetchArticle(resolveRealURL(req.URL))
+	article, err := f.oa.FetchArticle(resolveRealURL(req.URL))
 	if err != nil {
 		return err
 	}
@@ -111,8 +112,10 @@ func (f *Fetcher) Create(opts *base.Options) error {
 
 func (f *Fetcher) Start() error {
 	go func() {
-		oa := &officialaccountdownload.OfficialAccountDownload{}
-		oa.OnProgress = func(downloaded int64) {
+		if f.oa == nil {
+			f.oa = &officialaccountdownload.OfficialAccountDownload{}
+		}
+		f.oa.OnProgress = func(downloaded int64) {
 			f.addProgress(downloaded)
 		}
 		// Use the URL from the request and Path from options
@@ -128,7 +131,7 @@ func (f *Fetcher) Start() error {
 		if f.DefaultFetcher.Meta.Req.Labels != nil && f.DefaultFetcher.Meta.Req.Labels["compress"] == "true" {
 			needCompress = true
 		}
-		content, err := oa.BuildHTMLFromURL(resolveRealURL(f.DefaultFetcher.Meta.Req.URL), needCompress)
+		content, err := f.oa.BuildHTMLFromURL(resolveRealURL(f.DefaultFetcher.Meta.Req.URL), needCompress)
 		if err != nil {
 			f.DoneCh <- err
 			return

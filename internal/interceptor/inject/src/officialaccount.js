@@ -235,6 +235,15 @@
           showStatusCounts: false,
         }),
       ]),
+      TaskDeleteConfirmDialog({
+        store: vm$,
+      }),
+      ClearTasksConfirmDialog({
+        store: vm$,
+      }),
+      OverwriteDownloadConfirmDialog({
+        store: vm$,
+      }),
     ]);
   }
   function MsgListPanel(props) {
@@ -434,7 +443,10 @@
             const uin = window.uin || "";
             const key = window.key || "";
             const passTicket = window.pass_ticket || "";
-            if (!biz) { WXU.error("缺少 biz 参数"); return; }
+            if (!biz) {
+              WXU.error("缺少 biz 参数");
+              return;
+            }
             WXU.toast("正在提交批量下载...");
             var origin = WXEnv.apiOrigin;
             WXU.request({

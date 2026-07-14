@@ -22,7 +22,6 @@ function DownloaderEntry(props) {
           content: [
             DownloaderPanelView({
               store: vm$,
-              renderConfirmDialog: false,
               showStatusCounts: false,
               showViewAll: true,
             }),
