@@ -54,7 +54,10 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	if author == "" {
 		author = article.AuthorNickname
 	}
-	rawName := buildArticleFilename(article.Title, author, req.Labels) + ".html"
+	rawName := buildArticleFilename(article.Title, author, req.Labels)
+	if ext := strings.ToLower(filepath.Ext(rawName)); ext != ".html" && ext != ".htm" {
+		rawName += ".html"
+	}
 	// Split into dir and filename, sanitize each part (same logic as processTaskFilename)
 	dir, filename := normalizeArticlePath(rawName)
 	if dir != "" && f.DefaultFetcher.Meta.Opts != nil {
@@ -256,12 +259,14 @@ func buildArticleFilename(title string, author string, labels map[string]string)
 	params := map[string]string{
 		"filename": defaultName,
 		"title":    title,
-		"spec":     "html",
 		"author":   author,
 	}
 	if labels != nil {
 		if v, ok := labels["article_id"]; ok {
 			params["id"] = v
+		}
+		if v, ok := labels["created_at"]; ok {
+			params["created_at"] = v
 		}
 	}
 
