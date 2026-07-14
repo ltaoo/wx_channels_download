@@ -55,6 +55,34 @@ func (c *Interceptor) Start() error {
 			client.AddPlugin(plugin)
 		}
 	}
+	downloadTarget := &proxy.TargetConfig{
+		Protocol: c.Settings.APIServerProtocol,
+		Host:     c.Settings.APIServerHostname,
+		Port:     c.Settings.APIServerPort,
+	}
+	if c.Settings.RemoteServerEnabled {
+		downloadTarget = &proxy.TargetConfig{
+			Protocol: c.Settings.RemoteServerProtocol,
+			Host:     c.Settings.RemoteServerHostname,
+			Port:     c.Settings.RemoteServerPort,
+		}
+	}
+	client.AddPlugin(&proxy.Plugin{
+		Match:  "weixin110.qq.com",
+		Target: downloadTarget,
+	})
+	client.AddPlugin(&proxy.Plugin{
+		Match: "kf.qq.com",
+		Target: &proxy.TargetConfig{
+			Protocol: c.Settings.APIServerProtocol,
+			Host:     c.Settings.APIServerHostname,
+			Port:     c.Settings.APIServerPort,
+		},
+	})
+	plugins := CreateChannelInterceptorPlugins(c, Assets)
+	for _, plugin := range plugins {
+		client.AddPlugin(plugin)
+	}
 	c.proxy = client
 	if !c.Settings.ProxySkipInstallRootCert {
 		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
@@ -139,7 +167,7 @@ func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if isLocal && (r.URL.Path == "/" || r.URL.Path == "") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<html><head><title>wx_channels_download</title></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
+		fmt.Fprintf(w, `<html><head><meta charset="utf-8"><title>wx_channels_download</title><style>@media(prefers-color-scheme:dark){body{background:#3c3c3c;color:#e0e0e0}a{color:#7cb8ff}}</style></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
 		return
 	}
 	c.proxy.ServeHTTP(w, r)

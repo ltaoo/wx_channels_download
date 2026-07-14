@@ -528,70 +528,6 @@ var WXU = (() => {
     }
     return api;
   }
-  function confirm_overwrite_download(msg) {
-    return new Promise((resolve) => {
-      const content =
-        (msg || "已存在该下载内容") + "，是否重新下载并覆盖已存在文件？";
-      if (typeof document === "undefined" || !document.body) {
-        resolve(window.confirm(content));
-        return;
-      }
-      const timeless = window.Timeless;
-      if (
-        !timeless ||
-        !timeless.ui ||
-        !timeless.ui.DialogCore ||
-        typeof timeless.render !== "function" ||
-        typeof window.Dialog !== "function" ||
-        typeof window.View !== "function"
-      ) {
-        resolve(window.confirm(content));
-        return;
-      }
-      const dialog$ = new timeless.ui.DialogCore({
-        closeable: true,
-      });
-      let settled = false;
-      const $root = document.createElement("div");
-      let offStateChange = null;
-      const dialogView = OverwriteDownloadConfirmDialog({
-        store: dialog$,
-        content,
-        onConfirm() {
-          close(true);
-        },
-      });
-      function handleKeydown(e) {
-        if (e.key === "Escape") {
-          close(false);
-        }
-      }
-      function close(overwrite) {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        document.removeEventListener("keydown", handleKeydown);
-        if (typeof offStateChange === "function") {
-          offStateChange();
-        }
-        dialog$.hide();
-        dialogView.onUnmounted();
-        $root.remove();
-        resolve(overwrite);
-      }
-      offStateChange = dialog$.onStateChange((state) => {
-        if (settled || state.visible || state.enter) {
-          return;
-        }
-        close(false);
-      });
-      timeless.render(dialogView, $root);
-      document.addEventListener("keydown", handleKeydown);
-      document.body.appendChild($root);
-      dialog$.show();
-    });
-  }
   function get_media_url(media) {
     if (!media) {
       return "";
@@ -902,6 +838,9 @@ var WXU = (() => {
         params.spec = matched.fileFormat;
       }
     }
+    // if (!params.spec) {
+    //   params.spec = "original";
+    // }
     var filename = template
       ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) =>
           params[key] === null || params[key] === undefined ? "" : params[key],
@@ -1318,50 +1257,11 @@ var WXU = (() => {
       show() {},
       hide() {},
       toggle() {},
-      /**
-       * 提交下载任务（后端处理全部逻辑：spec 解析、URL 构建、文件名生成）
-       * @param {FeedProfile} feed
-       * @param {object} opt 配置
-       * @param {string} [opt.spec] 规格
-       * @param {string} [opt.suffix] 后缀
-       */
-      async create(feed, opt = {}) {
-        console.log("[downloader.create]create", feed);
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: WXEnv.apiOrigin + "/api/task/create",
-          body: { object: feed, spec: opt.spec, suffix: opt.suffix },
-        });
-        WXU.downloader.show();
-        if (err) {
-          return [err, null];
-        }
-        return [null, data];
+      async create(feed, opt) {
+        return [new Error("downloader not ready"), null];
       },
-      /**
-       * 批量提交下载任务（后端处理全部逻辑）
-       * @param {FeedProfile[]} feeds
-       * @param {object} opt 配置
-       * @param {string} [opt.spec] 规格
-       * @param {string} [opt.suffix] 后缀
-       * @returns
-       */
-      async create_batch(feeds, opt = {}) {
-        var body = {
-          feeds: feeds.map(function (feed) {
-            return { object: feed, spec: opt.spec, suffix: opt.suffix };
-          }),
-        };
-        WXU.downloader.show();
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: WXEnv.apiOrigin + "/api/task/create_batch",
-          body,
-        });
-        if (err) {
-          return [err, null];
-        }
-        return [null, data];
+      async create_batch(feeds, opt) {
+        return [new Error("downloader not ready"), null];
       },
     },
     /**
@@ -1983,7 +1883,18 @@ function __wx_attach_download_dropdown_menu(trigger) {
       new Timeless.ui.MenuItemCore({
         label: "下载为MP3",
         onClick() {
-          __wx_channels_handle_click_download__(null, true);
+          const [err, profile] = WXU.check_feed_existing({ silence: true });
+          if (err) return;
+          var spec = (() => {
+            if (WXU.config.defaultHighest) {
+              return null;
+            }
+            if (profile.spec[0]) {
+              return profile.spec[0].fileFormat;
+            }
+            return null;
+          })();
+          __wx_channels_handle_click_download__(spec, true);
           close_dropdown();
         },
       }),

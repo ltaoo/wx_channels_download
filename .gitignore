@@ -15,6 +15,10 @@ scraper_examples
 workdir
 cache
 
+scraper_examples
+cache
+workdir
+
 config.yaml
 global.js
 downloads

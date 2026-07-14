@@ -31,7 +31,7 @@
       justify-content: center;
     }
     body.wx-officialaccount-download-menu-mounted .t1-popper {
-      z-index: 2147483647 !important;
+      z-index: 900 !important;
     }
     #__wx_channels_credentials__:hover,
     #__wx_channels_curl__:hover,
@@ -274,14 +274,21 @@
     };
     return $btn;
   }
-  async function create_officialaccount_download_task(dialog$) {
+  async function create_officialaccount_download_task(popover$, $btn) {
+    var body = {
+      url: `officialaccount://${window.location.href}`,
+      extra: {},
+    };
+    if (
+      window.cgiDataNew &&
+      window.cgiDataNew.create_time
+    ) {
+      body.extra.created_at = window.cgiDataNew.create_time;
+    }
     var [err, data] = await WXU.request({
       method: "POST",
       url: WXEnv.apiOrigin + "/api/task/create2",
-      body: {
-        url: `officialaccount://${window.location.href}`,
-        // filename: document.title,
-      },
+      body: body,
     });
     if (err) {
       WXU.error({
@@ -289,14 +296,8 @@
       });
       return;
     }
-    // WXU.toast("开始下载");
-    dialog$.show();
-  }
-  function render_download_button() {
-    var $btn = document.createElement("div");
-    $btn.className = "sns_opr_btn_con";
-    $btn.innerHTML = `<button aria-labelledby="__wx_download_bottom_text" class="sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link"><span id="__wx_download_bottom_text" class="sns_opr_gap"> 下载 </span></button>`;
-    return $btn;
+
+    popover$.show(popover_pos($btn));
   }
   function insert_rss_button(acct) {
     if (!acct.biz || !acct.key) {
@@ -311,16 +312,31 @@
   function DownloaderPanel(props) {
     const vm$ = DownloaderPanelViewModel({
       onRequestClose() {
-        props.dialog$.hide();
+        props.popover$.hide();
       },
     });
     return View({}, [
-      Dialog({ store: props.dialog$ }, [
-        DownloaderPanelView({
-          store: vm$,
-          showStatusCounts: false,
-        }),
-      ]),
+      Popover(
+        {
+          store: props.popover$,
+          content: [
+            DownloaderPanelView({
+              store: vm$,
+              showStatusCounts: false,
+            }),
+          ],
+        },
+        [props.btn$],
+      ),
+      TaskDeleteConfirmDialog({
+        store: vm$,
+      }),
+      ClearTasksConfirmDialog({
+        store: vm$,
+      }),
+      OverwriteDownloadConfirmDialog({
+        store: vm$,
+      }),
     ]);
   }
   function MsgListPanel(props) {
@@ -460,7 +476,13 @@
 
     return container;
   }
-
+  function popover_pos($btn) {
+    const { x, y, width } = $btn.getBoundingClientRect();
+    return {
+      x: x + width,
+      y: y - 48,
+    };
+  }
   function insert_download_button() {
     insert_style();
     document.body.classList.add("wx-officialaccount-download-menu-mounted");
@@ -472,13 +494,37 @@
     if (!$container || !$container.lastElementChild) {
       return;
     }
-    const dialog$ = new Timeless.ui.DialogCore({
+    const popover$ = new Timeless.ui.PopoverCore({
       offsetY: 4,
+      destroyOnClose: false,
     });
     const msgListDialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
-    var $btn = render_download_button();
+    const elm = View({ class: "sns_opr_btn_con" }, [
+      View(
+        {
+          as: "button",
+          attributes: {
+            "aria-labelledby": "__wx_download_bottom_text",
+          },
+          class:
+            "sns_opr_btn sns_write_comment_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link",
+        },
+        [
+          View(
+            {
+              as: "span",
+              attributes: { id: "__wx_download_bottom_text" },
+              class: "sns_opr_gap",
+            },
+            ["下载"],
+          ),
+        ],
+      ),
+    ]);
+    var vnode = Timeless.DOM.build(elm);
+    const $btn = vnode.render(elm);
     const dropdown$ = new Timeless.ui.DropdownMenuCore({
       trigger: "hover",
       align: "end",
@@ -505,37 +551,44 @@
             dropdown$.hide();
           },
         }),
-        new Timeless.ui.MenuItemCore({
-          label: "推送列表",
-          onClick() {
-            msgListDialog$.show();
-            dropdown$.hide();
-          },
-        }),
-        new Timeless.ui.MenuItemCore({
-          label: "下载所有推送",
-          onClick() {
-            const biz = window.biz || window.__biz || "";
-            const token = WXU.config.officialServerRefreshToken ?? "";
-            const uin = window.uin || "";
-            const key = window.key || "";
-            const passTicket = window.pass_ticket || "";
-            if (!biz) { WXU.error("缺少 biz 参数"); return; }
-            WXU.toast("正在提交批量下载...");
-            var origin = WXEnv.apiOrigin;
-            WXU.request({
-              method: "POST",
-              url: `${origin}/api/mp/download_all`,
-              body: { biz, uin, key, pass_ticket: passTicket, token },
-            });
-            dropdown$.hide();
-            dialog$.show();
-          },
-        }),
+        ...(WXEnv.isWeChatBrowser
+          ? [
+              new Timeless.ui.MenuItemCore({
+                label: "推送列表",
+                onClick() {
+                  msgListDialog$.show();
+                  dropdown$.hide();
+                },
+              }),
+              new Timeless.ui.MenuItemCore({
+                label: "下载所有推送",
+                onClick() {
+                  const biz = window.biz || window.__biz || "";
+                  const token = WXU.config.officialServerRefreshToken ?? "";
+                  const uin = window.uin || "";
+                  const key = window.key || "";
+                  const passTicket = window.pass_ticket || "";
+                  if (!biz) {
+                    WXU.error("缺少 biz 参数");
+                    return;
+                  }
+                  WXU.toast("正在提交批量下载...");
+                  var origin = WXEnv.apiOrigin;
+                  WXU.request({
+                    method: "POST",
+                    url: `${origin}/api/mp/download_all`,
+                    body: { biz, uin, key, pass_ticket: passTicket, token },
+                  });
+                  dropdown$.hide();
+                  popover$.show(popover_pos($btn));
+                },
+              }),
+            ]
+          : []),
         new Timeless.ui.MenuItemCore({
           label: "下载面板",
           onClick() {
-            dialog$.show();
+            popover$.show(popover_pos($btn));
             dropdown$.hide();
           },
         }),
@@ -571,7 +624,7 @@
       event.preventDefault();
       event.stopPropagation();
       dropdown$.hide({ reason: "download button click" });
-      await create_officialaccount_download_task(dialog$);
+      await create_officialaccount_download_task(popover$, $btn);
     }
     $btn.addEventListener("mouseenter", show_dropdown);
     $btn.addEventListener("mouseleave", hide_dropdown);
@@ -580,7 +633,10 @@
       event.stopPropagation();
     });
     $container.insertBefore($btn, $container.lastElementChild);
-    Timeless.DOM.render(DownloaderPanel({ dialog$ }), document.body);
+    Timeless.DOM.render(
+      DownloaderPanel({ popover$, btn$: vnode }),
+      document.body,
+    );
     // 推送列表面板
     const msgListPanel = MsgListPanel({ dialog$: msgListDialog$ });
     const msgListOverlay = document.createElement("div");
@@ -652,15 +708,13 @@
         pass_ticket: window.pass_ticket,
         appmsg_token: window.appmsg_token,
       };
-      connect(_OfficialAccountCredentials).catch((e) => {
-        console.error("ws/mp connect failed", e);
-      });
-      WXU.observe_node(".wx_follow_media", () => {
-        setTimeout(() => {
-          // insert_style();
-          // insert_rss_button(_OfficialAccountCredentials);
-          insert_download_button();
-        }, 800);
+      var __download_btn_inserted = false;
+      WXU.observe_node(".interaction_bar", () => {
+        if (__download_btn_inserted) {
+          return;
+        }
+        __download_btn_inserted = true;
+        insert_download_button();
       });
     }
   }

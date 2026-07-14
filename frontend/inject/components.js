@@ -166,10 +166,7 @@ function Popover(props, children) {
       },
     },
     [
-      Timeless.PopoverPrimitive.Trigger(
-        { store: props.store },
-        children,
-      ),
+      Timeless.PopoverPrimitive.Trigger({ store: props.store }, children),
       Timeless.PopoverPrimitive.Portal({ store: props.store }, [
         Timeless.PopoverPrimitive.Content(
           {
@@ -228,97 +225,6 @@ function Dialog(props, children) {
   ]);
 }
 
-function OverwriteDownloadConfirmDialog(props) {
-  return Dialog(
-    {
-      store: props.store,
-      style: {
-        width: "320px",
-        "max-width": "calc(100vw - 32px)",
-        "box-sizing": "border-box",
-        "border-radius": "8px",
-        background: "var(--popup-bg-color)",
-        color: "var(--weui-FG-0)",
-        "box-shadow": "0 8px 28px rgba(0,0,0,0.28)",
-        overflow: "hidden",
-      },
-    },
-    [
-      View({ style: { padding: "20px 20px 16px" } }, [
-        View(
-          {
-            style: {
-              "font-size": "17px",
-              "font-weight": "600",
-              "line-height": "24px",
-              "margin-bottom": "8px",
-            },
-          },
-          ["\u6587\u4ef6\u5df2\u5b58\u5728"],
-        ),
-        View(
-          {
-            style: {
-              "font-size": "14px",
-              "line-height": "20px",
-              color: "var(--weui-FG-1)",
-              "margin-bottom": "4px",
-            },
-          },
-          [props.content],
-        ),
-      ]),
-      View(
-        {
-          style: {
-            display: "flex",
-            "border-top": "1px solid var(--weui-DIALOG-LINE-COLOR)",
-          },
-        },
-        [
-          View(
-            {
-              type: "button",
-              style: {
-                flex: "1",
-                height: "48px",
-                border: "0",
-                background: "transparent",
-                color: "var(--weui-FG-0)",
-                "font-size": "16px",
-                cursor: "pointer",
-              },
-              onClick() {
-                props.store.hide();
-              },
-            },
-            ["\u8df3\u8fc7"],
-          ),
-          View(
-            {
-              type: "button",
-              style: {
-                flex: "1",
-                height: "48px",
-                border: "0",
-                "border-left": "1px solid var(--weui-DIALOG-LINE-COLOR)",
-                background: "transparent",
-                color: "#FA5151",
-                "font-size": "16px",
-                "font-weight": "500",
-                cursor: "pointer",
-              },
-              onClick() {
-                props.onConfirm();
-              },
-            },
-            ["\u8986\u76d6"],
-          ),
-        ],
-      ),
-    ],
-  );
-}
 function DropdownMenu(props, children) {
   return Timeless.DropdownMenu(props, children);
 }

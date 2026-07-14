@@ -16,6 +16,7 @@ import (
 
 type Fetcher struct {
 	fetcher.DefaultFetcher
+	oa         *officialaccountdownload.OfficialAccountDownload
 	mu         sync.Mutex
 	closed     bool
 	downloaded int64
@@ -40,10 +41,10 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	}
 	f.DefaultFetcher.Meta.Req = req
 
-	oa := &officialaccountdownload.OfficialAccountDownload{}
+	f.oa = &officialaccountdownload.OfficialAccountDownload{}
 
 	// Fetch the article to get the title
-	article, err := oa.FetchArticle(resolveRealURL(req.URL))
+	article, err := f.oa.FetchArticle(resolveRealURL(req.URL))
 	if err != nil {
 		return err
 	}
@@ -53,7 +54,10 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	if author == "" {
 		author = article.AuthorNickname
 	}
-	rawName := buildArticleFilename(article.Title, author, req.Labels) + ".html"
+	rawName := buildArticleFilename(article.Title, author, req.Labels)
+	if ext := strings.ToLower(filepath.Ext(rawName)); ext != ".html" && ext != ".htm" {
+		rawName += ".html"
+	}
 	// Split into dir and filename, sanitize each part (same logic as processTaskFilename)
 	dir, filename := normalizeArticlePath(rawName)
 	if dir != "" && f.DefaultFetcher.Meta.Opts != nil {
@@ -111,8 +115,10 @@ func (f *Fetcher) Create(opts *base.Options) error {
 
 func (f *Fetcher) Start() error {
 	go func() {
-		oa := &officialaccountdownload.OfficialAccountDownload{}
-		oa.OnProgress = func(downloaded int64) {
+		if f.oa == nil {
+			f.oa = &officialaccountdownload.OfficialAccountDownload{}
+		}
+		f.oa.OnProgress = func(downloaded int64) {
 			f.addProgress(downloaded)
 		}
 		// Use the URL from the request and Path from options
@@ -128,7 +134,7 @@ func (f *Fetcher) Start() error {
 		if f.DefaultFetcher.Meta.Req.Labels != nil && f.DefaultFetcher.Meta.Req.Labels["compress"] == "true" {
 			needCompress = true
 		}
-		content, err := oa.BuildHTMLFromURL(resolveRealURL(f.DefaultFetcher.Meta.Req.URL), needCompress)
+		content, err := f.oa.BuildHTMLFromURL(resolveRealURL(f.DefaultFetcher.Meta.Req.URL), needCompress)
 		if err != nil {
 			f.DoneCh <- err
 			return
@@ -253,12 +259,14 @@ func buildArticleFilename(title string, author string, labels map[string]string)
 	params := map[string]string{
 		"filename": defaultName,
 		"title":    title,
-		"spec":     "html",
 		"author":   author,
 	}
 	if labels != nil {
 		if v, ok := labels["article_id"]; ok {
 			params["id"] = v
+		}
+		if v, ok := labels["created_at"]; ok {
+			params["created_at"] = v
 		}
 	}
 

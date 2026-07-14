@@ -5,6 +5,8 @@ debug:
 workdir: ""
 
 pagespy:
+  protocol: http
+  api: 127.0.0.1:6752
   enabled: false
 
 download:
@@ -120,3 +122,4 @@ cloudflare:
   adminToken: ""
   workerName: "mp-rss-api"
   d1Name: "mp-rss-db"
+  sphCookie: ""
