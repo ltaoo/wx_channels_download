@@ -308,7 +308,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	// 先用 NormalizeFilename（不做去重）计算初始路径，用于冲突检测
 	filename, dir, err := c.formatter.NormalizeFilename(body.Filename + body.Suffix)
 	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
+		result.Err(ctx, 410, "不合法的文件名，"+err.Error())
 		return
 	}
 	taskName := filename
@@ -331,8 +331,9 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 	// - overwrite 模式：需要（处理并发 overwrite 请求）
 	needDedup := len(existingTasks) > 0 || fileExists
 	if len(existingTasks) > 0 || fileExists {
-		if body.Duplicate {
+		if body.Duplicate || (len(existingTasks) == 0 && fileExists) {
 			// 重复下载：跳过冲突检查，用 EnsureFilename 找到不重名的文件名
+			// 本地已有同名文件时也默认走重复下载模式，自动追加 (n)
 			uniqueName, err := pkgutil.EnsureFilename(taskName, dir, c.cfg.DownloadDir)
 			if err != nil {
 				result.Err(ctx, 500, "生成唯一文件名失败："+err.Error())
@@ -363,7 +364,7 @@ func (c *APIClient) handleCreateFeedDownloadTask(ctx *gin.Context) {
 		// 并发去重：防止两个请求同时创建同名任务时文件名冲突
 		filename, dir, err = c.processTaskFilename(body.Filename, body.Suffix)
 		if err != nil {
-			result.Err(ctx, 409, "不合法的文件名，"+err.Error())
+			result.Err(ctx, 410, "不合法的文件名，"+err.Error())
 			return
 		}
 		taskName = filename
@@ -987,7 +988,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 	}
 	filename, dir, err := c.processTaskFilename(payload.Filename, payload.Suffix)
 	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
+		result.Err(ctx, 410, "不合法的文件名，"+err.Error())
 		return
 	}
 	taskName := filename

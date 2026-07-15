@@ -1545,7 +1545,7 @@ function DownloaderPanelViewModel(props = {}) {
       selected_task_ids_.as([]);
       selection_anchor_task_id = null;
     },
-    requestDeleteTask(task, deleteFiles = false) {
+    requestDeleteTask(task) {
       if (!task || !task.id) {
         WXU.error({ msg: "异常操作" });
         return;
@@ -1554,7 +1554,7 @@ function DownloaderPanelViewModel(props = {}) {
       delete_task_ids_.as([]);
       ui.deleteConfirmDialog$.show();
     },
-    requestDeleteSelectedTasks(deleteFiles = false) {
+    requestDeleteSelectedTasks() {
       const ids = getSelectedTaskIds();
       if (!ids.length) {
         WXU.error({ msg: "请选择要删除的下载任务" });
@@ -1562,7 +1562,6 @@ function DownloaderPanelViewModel(props = {}) {
       }
       delete_task_.as(null);
       delete_task_ids_.as(ids);
-      delete_delete_files_.as(!!deleteFiles);
       ui.deleteConfirmDialog$.show();
     },
     async deleteTask(task, params = {}) {
@@ -1674,10 +1673,6 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: reloadResult.error.message });
       }
     },
-    requestClearTasks(deleteFiles = false) {
-      clear_delete_files_.as(!!deleteFiles);
-      ui.clearConfirmDialog$.show();
-    },
     async clearTasks(params = {}) {
       const r = await clearReq.run(params);
       if (r.error) {
@@ -1689,13 +1684,9 @@ function DownloaderPanelViewModel(props = {}) {
       return true;
     },
     async confirmClearTasks() {
-      if (clearing_tasks_.value) {
-        return;
-      }
-      clearing_tasks_.as(true);
       try {
         const ok = await methods.clearTasks({
-          deleteFiles: clear_delete_files_.value,
+          deleteFiles: delete_delete_files_.value,
         });
         if (ok) {
           ui.clearConfirmDialog$.hide();
@@ -2089,7 +2080,7 @@ function DownloaderPanelViewModel(props = {}) {
       label: "清空下载记录",
       async onClick() {
         ui.dropdown$.hide();
-        methods.requestClearTasks(false);
+        ui.clearConfirmDialog$.show();
       },
     }),
   );
@@ -2170,8 +2161,6 @@ function DownloaderPanelViewModel(props = {}) {
       selected_task_ids: selected_task_ids_,
       /** 选中的下载任务总数 */
       selected_task_count: selected_task_count_,
-      /** 是否同时删除文件 */
-      clear_delete_files: clear_delete_files_,
       clearing_tasks: clearing_tasks_,
       /** 新增下载任务输入框内的文本 */
       create_task_text: create_task_text_,
