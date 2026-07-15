@@ -17,7 +17,7 @@ import (
 	contentshuba69 "wx_channel/pkg/contentplatform/69shuba"
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	contentoa "wx_channel/pkg/contentplatform/officialaccount"
-	officialaccountpkg "wx_channel/pkg/scraper/officialaccount"
+	officialaccountpkg "wx_channel/internal/webcontent/officialaccount"
 )
 
 func TestPlatformWorkflowUserConfirmationNode(t *testing.T) {

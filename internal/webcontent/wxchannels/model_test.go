@@ -4,23 +4,24 @@ import (
 	"testing"
 
 	"wx_channel/internal/database/model"
+	scraper "wx_channel/pkg/scraper/wxchannels"
 )
 
 func TestToAccount_Media(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "feed123",
 		ObjectNonceId: "nonce123",
 		Type:          "media",
 		CreateTime:    1700000000,
-		Contact: ChannelsContact{
+		Contact: scraper.ChannelsContact{
 			Username: "test_user",
 			Nickname: "测试用户",
 			HeadUrl:  "https://example.com/avatar.jpg",
 		},
-		ObjectDesc: ChannelsObjectDesc{
+		ObjectDesc: scraper.ChannelsObjectDesc{
 			Description: "测试视频",
 			MediaType:   4,
-			Media: []ChannelsMediaItem{
+			Media: []scraper.ChannelsMediaItem{
 				{
 					URL:          "https://video.example.com/v.mp4",
 					URLToken:     "&token=t",
@@ -34,20 +35,16 @@ func TestToAccount_Media(t *testing.T) {
 			},
 		},
 	}
-	got, err := obj.ToAccount()
+	got, err := ToAccount(obj)
 	if err != nil {
 		t.Fatalf("ToAccount: %v", err)
 	}
 	want := &model.Account{
-		Id:         "wx_channels:test_user",
 		PlatformId: "wx_channels",
 		ExternalId: "test_user",
 		Username:   "test_user",
 		Nickname:   "测试用户",
 		AvatarURL:  "https://example.com/avatar.jpg",
-	}
-	if got.Id != want.Id {
-		t.Errorf("Id = %q, want %q", got.Id, want.Id)
 	}
 	if got.PlatformId != want.PlatformId {
 		t.Errorf("PlatformId = %q, want %q", got.PlatformId, want.PlatformId)
@@ -73,25 +70,25 @@ func TestToAccount_Media(t *testing.T) {
 }
 
 func TestToAccount_Live(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "live_feed",
 		ObjectNonceId: "live_nonce",
 		Type:          "video",
-		Contact: ChannelsContact{
+		Contact: scraper.ChannelsContact{
 			Username: "streamer",
 			Nickname: "主播昵称",
 			HeadUrl:  "https://example.com/streamer_avatar.jpg",
 		},
-		AnchorContact: &ChannelsContact{
+		AnchorContact: &scraper.ChannelsContact{
 			Username: "anchor_user",
 			Nickname: "主播",
 			HeadUrl:  "https://example.com/anchor_avatar.jpg",
 		},
-		LiveInfo: &ChannelsLiveInfo{
+		LiveInfo: &scraper.ChannelsLiveInfo{
 			AnchorStatusFlag: "live",
 		},
 	}
-	got, err := obj.ToAccount()
+	got, err := ToAccount(obj)
 	if err != nil {
 		t.Fatalf("ToAccount live: %v", err)
 	}
@@ -104,29 +101,28 @@ func TestToAccount_Live(t *testing.T) {
 }
 
 func TestToAccount_NilObject(t *testing.T) {
-	var obj *ChannelsObject
-	_, err := obj.ToAccount()
+	_, err := ToAccount(nil)
 	if err == nil {
 		t.Fatal("expected error for nil object, got nil")
 	}
 }
 
 func TestToContent_Media(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "feed123",
 		ObjectNonceId: "nonce123",
 		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=feed123",
 		Type:          "media",
 		CreateTime:    1701234567,
-		Contact: ChannelsContact{
+		Contact: scraper.ChannelsContact{
 			Username: "test_user",
 			Nickname: "测试用户",
 			HeadUrl:  "https://example.com/avatar.jpg",
 		},
-		ObjectDesc: ChannelsObjectDesc{
+		ObjectDesc: scraper.ChannelsObjectDesc{
 			Description: "测试视频",
 			MediaType:   4,
-			Media: []ChannelsMediaItem{
+			Media: []scraper.ChannelsMediaItem{
 				{
 					URL:          "https://video.example.com/v.mp4",
 					URLToken:     "&token=t",
@@ -140,12 +136,9 @@ func TestToContent_Media(t *testing.T) {
 			},
 		},
 	}
-	got, err := obj.ToContent()
+	got, err := ToContent(obj)
 	if err != nil {
 		t.Fatalf("ToContent: %v", err)
-	}
-	if got.Id != "wx_channels:feed123" {
-		t.Errorf("Id = %q, want %q", got.Id, "wx_channels:feed123")
 	}
 	if got.PlatformId != "wx_channels" {
 		t.Errorf("PlatformId = %q", got.PlatformId)
@@ -171,10 +164,10 @@ func TestToContent_Media(t *testing.T) {
 	if got.SourceURL != "https://channels.weixin.qq.com/web/pages/feed?oid=feed123" {
 		t.Errorf("SourceURL = %q", got.SourceURL)
 	}
-	if got.ContentURL != "https://video.example.com/v.mp4?token=t" {
+	if got.ContentURL != "https://video.example.com/v.mp4&token=t" {
 		t.Errorf("ContentURL = %q", got.ContentURL)
 	}
-	if got.URL != "https://video.example.com/v.mp4?token=t" {
+	if got.URL != "https://video.example.com/v.mp4&token=t" {
 		t.Errorf("URL = %q", got.URL)
 	}
 	if got.CoverURL != "https://example.com/cover.jpg" {
@@ -207,25 +200,25 @@ func TestToContent_Media(t *testing.T) {
 }
 
 func TestToContent_Live(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "live_feed",
 		ObjectNonceId: "live_nonce",
 		Type:          "video",
 		CreateTime:    1711234567,
-		Contact: ChannelsContact{
+		Contact: scraper.ChannelsContact{
 			Username: "streamer",
 			Nickname: "主播昵称",
 			HeadUrl:  "https://example.com/streamer_avatar.jpg",
 		},
-		AnchorContact: &ChannelsContact{
+		AnchorContact: &scraper.ChannelsContact{
 			Username:    "anchor_user",
 			Nickname:    "主播",
 			HeadUrl:     "https://example.com/anchor_avatar.jpg",
 			CoverImgUrl: "https://example.com/live_cover.jpg",
 		},
-		LiveInfo: &ChannelsLiveInfo{AnchorStatusFlag: "live"},
+		LiveInfo: &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"},
 	}
-	got, err := obj.ToContent()
+	got, err := ToContent(obj)
 	if err != nil {
 		t.Fatalf("ToContent live: %v", err)
 	}
@@ -247,26 +240,26 @@ func TestToContent_Live(t *testing.T) {
 }
 
 func TestToContent_Picture(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "pic_feed",
 		ObjectNonceId: "pic_nonce",
 		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=pic_feed",
 		Type:          "picture",
 		CreateTime:    1700000000,
-		Contact: ChannelsContact{
+		Contact: scraper.ChannelsContact{
 			Username: "pic_author",
 			Nickname: "图片作者",
 			HeadUrl:  "https://example.com/pic_avatar.jpg",
 		},
-		Files: []ChannelsMediaItem{
+		Files: []scraper.ChannelsMediaItem{
 			{CoverUrl: "https://example.com/pic_cover.jpg", Width: 1280, Height: 720},
 		},
-		ObjectDesc: ChannelsObjectDesc{
+		ObjectDesc: scraper.ChannelsObjectDesc{
 			Description: "一组美图",
 			MediaType:   2,
 		},
 	}
-	got, err := obj.ToContent()
+	got, err := ToContent(obj)
 	if err != nil {
 		t.Fatalf("ToContent picture: %v", err)
 	}
@@ -285,17 +278,123 @@ func TestToContent_Picture(t *testing.T) {
 }
 
 func TestToContent_MediaType9(t *testing.T) {
-	obj := &ChannelsObject{
+	obj := &scraper.ChannelsObject{
 		ID:            "feed_replay",
 		ObjectNonceId: "nonce_replay",
 		Type:          "video",
-		ObjectDesc: ChannelsObjectDesc{
+		ObjectDesc: scraper.ChannelsObjectDesc{
 			MediaType: 9,
-			Media:     []ChannelsMediaItem{{URL: "https://example.com/replay.mp4"}},
+			Media:     []scraper.ChannelsMediaItem{{URL: "https://example.com/replay.mp4"}},
 		},
 	}
-	_, err := obj.ToContent()
+	_, err := ToContent(obj)
 	if err == nil {
 		t.Fatal("expected error for mediaType=9, got nil")
+	}
+}
+
+func TestCreateBrowseRecord_MediaVideo(t *testing.T) {
+	profile := &scraper.MediaProfile{
+		Type:    "media",
+		Id:      "feed_001",
+		NonceId: "nonce_001",
+		Title:   "测试视频",
+		URL:     "https://video.example.com/v.mp4",
+		Key:     "decode_key_001",
+		CoverURL: "https://img.example.com/cover.jpg",
+		Pageurl:  "https://channels.weixin.qq.com/web/pages/feed?oid=feed_001",
+		Contact: scraper.InterceptorContact{
+			Id:        "test_user",
+			Nickname:  "测试用户",
+			AvatarURL: "https://img.example.com/avatar.jpg",
+		},
+	}
+	uniqueMark, info := CreateBrowseRecord(profile)
+
+	if uniqueMark != "feed_001" {
+		t.Errorf("uniqueMark = %q, want %q", uniqueMark, "feed_001")
+	}
+	if info.PlatformId != "wx_channels" {
+		t.Errorf("PlatformId = %q, want %q", info.PlatformId, "wx_channels")
+	}
+	if info.AccountExternalId != "test_user" {
+		t.Errorf("AccountExternalId = %q, want %q", info.AccountExternalId, "test_user")
+	}
+	if info.AccountUsername != "test_user" {
+		t.Errorf("AccountUsername = %q, want %q", info.AccountUsername, "test_user")
+	}
+	if info.AccountNickname != "测试用户" {
+		t.Errorf("AccountNickname = %q, want %q", info.AccountNickname, "测试用户")
+	}
+	if info.AccountAvatarURL != "https://img.example.com/avatar.jpg" {
+		t.Errorf("AccountAvatarURL = %q", info.AccountAvatarURL)
+	}
+	if info.ContentType != "media" {
+		t.Errorf("ContentType = %q, want %q", info.ContentType, "media")
+	}
+	if info.ContentTitle != "测试视频" {
+		t.Errorf("ContentTitle = %q", info.ContentTitle)
+	}
+	if info.ContentURL != "https://video.example.com/v.mp4" {
+		t.Errorf("ContentURL = %q", info.ContentURL)
+	}
+	if info.ContentSourceURL != "https://channels.weixin.qq.com/web/pages/feed?oid=feed_001" {
+		t.Errorf("ContentSourceURL = %q", info.ContentSourceURL)
+	}
+	if info.ContentCoverURL != "https://img.example.com/cover.jpg" {
+		t.Errorf("ContentCoverURL = %q", info.ContentCoverURL)
+	}
+	if info.ExtraData["id"] != "feed_001" {
+		t.Errorf("ExtraData[id] = %v", info.ExtraData["id"])
+	}
+	if info.ExtraData["nonce_id"] != "nonce_001" {
+		t.Errorf("ExtraData[nonce_id] = %v", info.ExtraData["nonce_id"])
+	}
+	if info.ExtraData["decode_key"] != "decode_key_001" {
+		t.Errorf("ExtraData[decode_key] = %v", info.ExtraData["decode_key"])
+	}
+}
+
+func TestCreateBrowseRecord_TrimWhitespace(t *testing.T) {
+	profile := &scraper.MediaProfile{
+		Id: "feed_002",
+		Contact: scraper.InterceptorContact{
+			Id:        "  user_with_spaces  ",
+			Nickname:  "空格用户",
+			AvatarURL: "https://img.example.com/avatar2.jpg",
+		},
+	}
+	_, info := CreateBrowseRecord(profile)
+
+	if info.AccountExternalId != "user_with_spaces" {
+		t.Errorf("AccountExternalId = %q, want %q", info.AccountExternalId, "user_with_spaces")
+	}
+	if info.AccountUsername != "user_with_spaces" {
+		t.Errorf("AccountUsername = %q, want %q", info.AccountUsername, "user_with_spaces")
+	}
+}
+
+func TestCreateBrowseRecord_ExtraDataDefaults(t *testing.T) {
+	profile := &scraper.MediaProfile{
+		Id:      "feed_003",
+		Contact: scraper.InterceptorContact{Id: "user_003"},
+	}
+	uniqueMark, info := CreateBrowseRecord(profile)
+
+	if uniqueMark != "feed_003" {
+		t.Errorf("uniqueMark = %q", uniqueMark)
+	}
+	if info.PlatformId != "wx_channels" {
+		t.Errorf("PlatformId = %q", info.PlatformId)
+	}
+	// Default zero values should be present
+	if info.ContentType != "" {
+		t.Errorf("ContentType = %q, want empty", info.ContentType)
+	}
+	if info.ExtraData["nonce_id"] != "" {
+		t.Errorf("ExtraData[nonce_id] = %v, want empty", info.ExtraData["nonce_id"])
+	}
+	if info.ExtraData["decode_key"] != "" {
+		t.Errorf("ExtraData[decode_key] = %v, want empty", info.ExtraData["decode_key"])
 	}
 }

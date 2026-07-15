@@ -55,34 +55,34 @@ func (c *Interceptor) Start() error {
 			client.AddPlugin(plugin)
 		}
 	}
-	downloadTarget := &proxy.TargetConfig{
-		Protocol: c.Settings.APIServerProtocol,
-		Host:     c.Settings.APIServerHostname,
-		Port:     c.Settings.APIServerPort,
-	}
-	if c.Settings.RemoteServerEnabled {
-		downloadTarget = &proxy.TargetConfig{
-			Protocol: c.Settings.RemoteServerProtocol,
-			Host:     c.Settings.RemoteServerHostname,
-			Port:     c.Settings.RemoteServerPort,
-		}
-	}
-	client.AddPlugin(&proxy.Plugin{
-		Match:  "weixin110.qq.com",
-		Target: downloadTarget,
-	})
-	client.AddPlugin(&proxy.Plugin{
-		Match: "kf.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: c.Settings.APIServerProtocol,
-			Host:     c.Settings.APIServerHostname,
-			Port:     c.Settings.APIServerPort,
-		},
-	})
-	plugins := CreateChannelInterceptorPlugins(c, Assets)
-	for _, plugin := range plugins {
-		client.AddPlugin(plugin)
-	}
+	// downloadTarget := &proxy.TargetConfig{
+	// 	Protocol: c.Settings.APIServerProtocol,
+	// 	Host:     c.Settings.APIServerHostname,
+	// 	Port:     c.Settings.APIServerPort,
+	// }
+	// if c.Settings.RemoteServerEnabled {
+	// 	downloadTarget = &proxy.TargetConfig{
+	// 		Protocol: c.Settings.RemoteServerProtocol,
+	// 		Host:     c.Settings.RemoteServerHostname,
+	// 		Port:     c.Settings.RemoteServerPort,
+	// 	}
+	// }
+	// client.AddPlugin(&proxy.Plugin{
+	// 	Match:  "weixin110.qq.com",
+	// 	Target: downloadTarget,
+	// })
+	// client.AddPlugin(&proxy.Plugin{
+	// 	Match: "kf.qq.com",
+	// 	Target: &proxy.TargetConfig{
+	// 		Protocol: c.Settings.APIServerProtocol,
+	// 		Host:     c.Settings.APIServerHostname,
+	// 		Port:     c.Settings.APIServerPort,
+	// 	},
+	// })
+	// plugins := CreateChannelInterceptorPlugins(c, Assets)
+	// for _, plugin := range plugins {
+	// 	client.AddPlugin(plugin)
+	// }
 	c.proxy = client
 	if !c.Settings.ProxySkipInstallRootCert {
 		existing, err := certificate.CheckHasCertificate(c.Cert.Name)

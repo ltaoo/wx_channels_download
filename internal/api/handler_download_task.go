@@ -397,25 +397,30 @@ func (c *APIClient) handleCompatDownloadTaskList(ctx *gin.Context) {
 		return
 	}
 	c.backfillCompatDownloadTaskParentLinks()
-	var body struct {
-		Page     *int `json:"page"`
-		PageSize *int `json:"pageSize"`
-		Status   any  `json:"status"`
-	}
-	_ = ctx.ShouldBindJSON(&body)
 	page := 1
 	size := 20
-	if body.Page != nil && *body.Page > 0 {
-		page = *body.Page
+	if p := ctx.Query("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
 	}
-	if body.PageSize != nil && *body.PageSize > 0 {
-		size = *body.PageSize
+	if ps := ctx.Query("pageSize"); ps != "" {
+		if n, err := strconv.Atoi(ps); err == nil && n > 0 {
+			size = n
+		}
+	}
+	statusValues := ctx.QueryArray("status")
+	var statusRaw any
+	if len(statusValues) > 0 {
+		statusRaw = statusValues
+	} else {
+		statusRaw = ctx.Query("status")
 	}
 	offset := (page - 1) * size
 
 	db := c.db.Model(&model.DownloadTask{})
 	db = db.Where("parent_id IS NULL OR parent_id = 0")
-	if statuses, ok := parseCompatDownloadTaskStatuses(body.Status); ok {
+	if statuses, ok := parseCompatDownloadTaskStatuses(statusRaw); ok {
 		if len(statuses) == 1 {
 			db = db.Where("status = ?", statuses[0])
 		} else {
@@ -609,6 +614,10 @@ func parseCompatDownloadTaskStatuses(raw any) ([]int, bool) {
 		case []int:
 			for _, item := range v {
 				statuses = appendStatus(statuses, item)
+			}
+		case []string:
+			for _, item := range v {
+				parseOne(item)
 			}
 		}
 	}

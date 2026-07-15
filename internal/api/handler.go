@@ -28,7 +28,7 @@ import (
 	gopeedhttp "github.com/GopeedLab/gopeed/pkg/protocol/http"
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
-	officialaccountdownload "wx_channel/pkg/scraper/officialaccount"
+	officialaccountdownload "wx_channel/internal/webcontent/officialaccount"
 
 	"wx_channel/frontend"
 	result "wx_channel/internal/util"

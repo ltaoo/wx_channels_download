@@ -44,7 +44,7 @@
 - `internal/api/services/`: 数据库相关服务层，负责账号、内容、浏览历史、下载任务等业务持久化。
 - `internal/database/`: 数据库接入、embed migration、GORM model。
 - `internal/interceptor/`: 本地代理服务、系统代理/TUN 设置、证书使用、代理插件容器。
-- `internal/platformbrowser/`: 通过代理注入脚本记录“用户打开过的内容”，主要写入账号和浏览历史；不是新版下载平台适配层。
+- `internal/webcontent/`: 通过代理注入脚本记录"用户打开过的内容"，主要写入账号和浏览历史；不是新版下载平台适配层。
 - `internal/pipeline/`: 通用 pipeline 执行器，供平台下载工作流复用。
 - `pkg/scraper/`: 各平台底层抓取/解析客户端和平台注册表，按平台子目录组织，例如视频号、公众号、优酷、知乎等。
 - `pkg/contentplatform/`: 新版跨平台下载适配层。每个平台一个包，公共 contract 在 `pkg/contentplatform/download`。
@@ -94,8 +94,8 @@ API 路由集中在 `internal/api/routes.go`。新增或修改接口时先确认
 
 - 视频号注入插件在 `pkg/scraper/wxchannels/interceptor_plugin.go`，会改写 HTML/JS、注入 `frontend` 资源、接收 `__wx_channels_api/*` 回调。
 - 公众号注入在 `pkg/scraper/officialaccount`。
-- 知乎/小红书/B 站/YouTube/微博的“打开内容记录”插件在 `internal/platformbrowser/<platform>`。
-- `internal/platformbrowser` 只负责浏览记录、账号 upsert、cookie 捕获等页面侧行为；真正下载适配应放在 `pkg/contentplatform/<platform>`。
+- 知乎/小红书/B 站/YouTube/微博的"打开内容记录"插件在 `internal/webcontent/<platform>`。
+- `internal/webcontent` 只负责浏览记录、账号 upsert、cookie 捕获等页面侧行为；真正下载适配应放在 `pkg/contentplatform/<platform>`。
 
 ## 数据库和迁移
 

@@ -31,7 +31,7 @@ import (
 	"wx_channel/internal/storage"
 	"wx_channel/pkg/browsermgr"
 	"wx_channel/pkg/decrypt"
-	"wx_channel/pkg/scraper/officialaccount"
+	"wx_channel/internal/webcontent/officialaccount"
 	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"

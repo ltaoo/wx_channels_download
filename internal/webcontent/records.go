@@ -1,4 +1,4 @@
-package platformbrowser
+package webcontent
 
 import (
 	"errors"

@@ -1,18 +1,18 @@
-package weibo
+package bilibili
 
 import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"wx_channel/internal/interceptor"
-	platformbrowser "wx_channel/internal/platformbrowser"
+	webcontent "wx_channel/internal/webcontent"
 )
 
 const (
-	PlatformId   = "weibo"
-	PlatformName = "微博"
-	Match        = "weibo.com"
-	ContentType  = "article"
+	PlatformId   = "bilibili"
+	PlatformName = "B站"
+	Match        = "bilibili.com"
+	ContentType  = "video"
 )
 
 func Config() interceptor.PlatformBrowserConfig {
@@ -28,6 +28,6 @@ func FormatProfile(profile *Profile) *Profile {
 	return profile
 }
 
-func HandleLoaded(db *gorm.DB, recorder platformbrowser.BrowseRecorder, logger zerolog.Logger, profile *Profile) {
-	platformbrowser.RecordLoadedProfile(db, recorder, logger, FormatProfile(profile))
+func HandleLoaded(db *gorm.DB, recorder webcontent.BrowseRecorder, logger zerolog.Logger, profile *Profile) {
+	webcontent.RecordLoadedProfile(db, recorder, logger, FormatProfile(profile))
 }

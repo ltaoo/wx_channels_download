@@ -23,7 +23,7 @@ import (
 	"wx_channel/internal/api"
 	"wx_channel/internal/database"
 	"wx_channel/internal/manager"
-	"wx_channel/pkg/scraper/officialaccount"
+	"wx_channel/internal/webcontent/officialaccount"
 	"wx_channel/pkg/system"
 )
 

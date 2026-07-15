@@ -115,7 +115,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					profile := data
 					go onFeedProfileLoaded(&profile)
 				}
-				fmt.Printf("\n打开了视频\n%s\n", data.Title)
+				// fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
 				}, "{}")

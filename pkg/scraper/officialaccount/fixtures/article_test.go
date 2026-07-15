@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	officialaccount "wx_channel/pkg/scraper/officialaccount"
+	officialaccount "wx_channel/internal/webcontent/officialaccount"
 )
 
 const articleJSON = `{

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	contentdownload "wx_channel/pkg/contentplatform/download"
-	officialaccountpkg "wx_channel/pkg/scraper/officialaccount"
+	officialaccountpkg "wx_channel/internal/webcontent/officialaccount"
 )
 
 const PlatformID = "officialaccount"

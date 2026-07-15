@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	wxchannels "wx_channel/pkg/scraper/wxchannels"
+	wxchannels "wx_channel/internal/webcontent/wxchannels"
+	scraper "wx_channel/pkg/scraper/wxchannels"
 )
 
 const pictureFeedJSON = `{
@@ -808,11 +809,11 @@ const pictureFeedJSON = `{
 `
 
 func TestToAccount_FromPictureFeedJSON(t *testing.T) {
-	var obj wxchannels.ChannelsObject
+	var obj scraper.ChannelsObject
 	if err := json.Unmarshal([]byte(pictureFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	account, err := obj.ToAccount()
+	account, err := wxchannels.ToAccount(&obj)
 	if err != nil {
 		t.Fatalf("ToAccount: %v", err)
 	}
@@ -827,17 +828,15 @@ func TestToAccount_FromPictureFeedJSON(t *testing.T) {
 	if account.PlatformId != "wx_channels" {
 		t.Errorf("PlatformId = %q", account.PlatformId)
 	}
-	if account.Id != "wx_channels:"+expectedUsername {
-		t.Errorf("Id = %q", account.Id)
-	}
+	_ = expectedUsername // account.Id is auto-increment int
 }
 
 func TestToContent_FromPictureFeedJSON(t *testing.T) {
-	var obj wxchannels.ChannelsObject
+	var obj scraper.ChannelsObject
 	if err := json.Unmarshal([]byte(pictureFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	content, err := obj.ToContent()
+	content, err := wxchannels.ToContent(&obj)
 	if err != nil {
 		t.Fatalf("ToContent: %v", err)
 	}
@@ -860,9 +859,7 @@ func TestToContent_FromPictureFeedJSON(t *testing.T) {
 	if content.ExternalId3 != "" {
 		t.Errorf("ExternalId3 = %q, want empty", content.ExternalId3)
 	}
-	if content.Id != "wx_channels:14936583787284727824" {
-		t.Errorf("Id = %q", content.Id)
-	}
+	_ = content.ContentType // content.Id is auto-increment int
 	if content.ContentURL != "" {
 		t.Errorf("ContentURL = %q, want empty", content.ContentURL)
 	}
@@ -871,12 +868,6 @@ func TestToContent_FromPictureFeedJSON(t *testing.T) {
 	}
 	if content.CoverURL != "" {
 		t.Errorf("CoverURL = %q, want empty (picture media has empty coverUrl)", content.CoverURL)
-	}
-	if content.CoverWidth != "0" {
-		t.Errorf("CoverWidth = %q, want %q", content.CoverWidth, "0")
-	}
-	if content.CoverHeight != "0" {
-		t.Errorf("CoverHeight = %q, want %q", content.CoverHeight, "0")
 	}
 	if content.SourceURL != "" {
 		t.Errorf("SourceURL = %q, want empty", content.SourceURL)

@@ -2,24 +2,21 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 
 	"github.com/ltaoo/velo"
 	velodatabase "github.com/ltaoo/velo/database"
@@ -31,21 +28,15 @@ import (
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/interceptor"
-	"wx_channel/internal/interceptor/proxy"
+	// "wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/manager"
-	platformbilibili "wx_channel/internal/platformbrowser/bilibili"
-	platformweibo "wx_channel/internal/platformbrowser/weibo"
-	platformxiaohongshu "wx_channel/internal/platformbrowser/xiaohongshu"
-	platformyoutube "wx_channel/internal/platformbrowser/youtube"
-	platformzhihu "wx_channel/internal/platformbrowser/zhihu"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
-	"wx_channel/pkg/scraper/officialaccount"
+	// "wx_channel/pkg/scraper/officialaccount"
 	channels "wx_channel/pkg/scraper/wxchannels"
+	webchannels "wx_channel/internal/webcontent/wxchannels"
 	"wx_channel/pkg/system"
-	"wx_channel/pkg/util"
 )
 
 var (
@@ -201,8 +192,6 @@ func root_command(cfg *config.Config) {
 
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
-	fmt.Printf("workdir %s\n", color.New(color.Underline).Sprint(cfg.WorkDir))
-	fmt.Printf("data path %s\n", color.New(color.Underline).Sprint(cfg.DBPath))
 
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	zerolog.TimeFieldFormat = time.RFC3339Nano
@@ -220,9 +209,6 @@ func root_command(cfg *config.Config) {
 		Str("version", cfg.Version).
 		Logger()
 
-	if cfg.FullPath != "" {
-		fmt.Printf("配置文件 %s\n", color.New(color.Underline).Sprint(cfg.FullPath))
-	}
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	dbCfg := &velodatabase.DBConfig{Type: velodatabase.DBTypeSQLite, Path: cfg.DBPath}
 	if err := b.UseDatabase(dbCfg, &database.Migrations); err != nil {
@@ -239,204 +225,63 @@ func root_command(cfg *config.Config) {
 	api_cfg := api.NewAPIConfig(Cfg, false)
 	interceptor_cfg := interceptor.NewInterceptorSettings(cfg)
 	channels_interceptor_cfg := channels.NewInterceptorSettings(cfg)
-	official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
-	if script_byte := channels_interceptor_cfg.InjectGlobalScript; script_byte != "" {
-		fmt.Printf("全局脚本 %s\n", color.New(color.Underline).Sprint(channels_interceptor_cfg.InjectGlobalScriptFilepath))
-	}
+	// official_cfg := officialaccount.NewOfficialAccountConfig(Cfg, false)
+
 	interceptor_srv := interceptor.NewInterceptorServer(interceptor_cfg, CertFiles)
-	if official_cfg.Enabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets, cfg.Version))
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "official.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: official_cfg.RemoteServerProtocol,
-				Host:     official_cfg.RemoteServerHostname,
-				Port:     official_cfg.RemoteServerPort,
-			},
-		})
-	}
 	interceptor_srv.Interceptor.SetLog(log_file)
 	mgr.RegisterServer(interceptor_srv)
-	channels_interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
-	if api_cfg.RemoteServerEnabled {
-		fmt.Printf("启用了远端服务，视频将下载至远端服务器目录\n\n")
-	} else {
-		fmt.Printf("下载目录 %s\n\n", color.New(color.Underline).Sprint(api_cfg.DownloadDir))
+	// channels_interceptor_cfg.DownloadMaxRunning = api_cfg.MaxRunning
+
+	// Build and render path info table
+	tableData := pterm.TableData{
+		{"项目", "路径"},
+		{"工作目录", cfg.WorkDir},
+		{"数据路径", cfg.DBPath},
 	}
+	if cfg.FullPath != "" {
+		tableData = append(tableData, []string{"配置文件", cfg.FullPath})
+	}
+	if channels_interceptor_cfg.InjectGlobalScript != "" {
+		tableData = append(tableData, []string{"全局脚本", channels_interceptor_cfg.InjectGlobalScriptFilepath})
+	}
+	if api_cfg.RemoteServerEnabled {
+		tableData = append(tableData, []string{"下载目录", "远端服务器"})
+	} else {
+		tableData = append(tableData, []string{"下载目录", api_cfg.DownloadDir})
+	}
+	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	fmt.Println()
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB)
 	api_srv.SetManager(mgr)
 	mgr.RegisterServer(api_srv)
-	channels_interceptor_cfg.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
-	channels_interceptor_cfg.AddVariable("downloadDir", api_cfg.DownloadDir)
-	onChannelsFeedProfileLoaded := func(profile *channels.MediaProfile) {
-		if profile == nil || profile.Id == "" {
-			return
-		}
-		platformID := "wx_channels"
-		accountUsername := strings.TrimSpace(profile.Contact.Id)
-		if accountUsername != "" {
-			now := util.NowMillis()
-			acc := model.Account{
-				PlatformId: platformID,
-				ExternalId: accountUsername,
-				Username:   accountUsername,
-				Nickname:   profile.Contact.Nickname,
-				AvatarURL:  profile.Contact.AvatarURL,
-				Timestamps: model.Timestamps{
-					CreatedAt: now,
-					UpdatedAt: now,
-				},
-			}
-			var existingAccount model.Account
-			if err := b.DB.Where("platform_id = ? AND external_id = ?", platformID, accountUsername).First(&existingAccount).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					if err := b.DB.Create(&acc).Error; err != nil {
-						logger.Error().Err(err).Str("platform_id", platformID).Str("username", accountUsername).Msg("create account failed")
-					}
-				} else {
-					logger.Error().Err(err).Str("platform_id", platformID).Str("username", accountUsername).Msg("find account failed")
-				}
-			} else {
-				if err := b.DB.Model(&existingAccount).Updates(map[string]any{
-					"username":   accountUsername,
-					"nickname":   profile.Contact.Nickname,
-					"avatar_url": profile.Contact.AvatarURL,
-					"updated_at": now,
-				}).Error; err != nil {
-					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update account failed")
-				}
-			}
-		}
-		if err := api_srv.APIClient.RecordBrowseHistory(profile.Id, services.BrowseHistoryInfo{
-			PlatformId:        platformID,
-			AccountExternalId: accountUsername,
-			AccountUsername:   accountUsername,
-			AccountNickname:   profile.Contact.Nickname,
-			AccountAvatarURL:  profile.Contact.AvatarURL,
-			ContentType:       profile.Type,
-			ContentTitle:      profile.Title,
-			ContentURL:        profile.URL,
-			ContentSourceURL:  profile.Pageurl,
-			ContentCoverURL:   profile.CoverURL,
-			ExtraData: map[string]any{
-				"id":         profile.Id,
-				"nonce_id":   profile.NonceId,
-				"decode_key": profile.Key,
-			},
-		}); err != nil {
-			logger.Error().Err(err).Str("content_external_id", profile.Id).Msg("create browse history failed")
-		}
-	}
-	onOfficialAccountArticleLoaded := func(profile *interceptor.OfficialAccountArticleProfile) {
-		if profile == nil || profile.UniqueMark == "" {
-			return
-		}
-		platformID := "wx_official_account"
-		accountExternalID := strings.TrimSpace(profile.Biz)
-		accountUsername := strings.TrimSpace(profile.Username)
-		if accountExternalID == "" {
-			accountExternalID = accountUsername
-		}
-		if accountExternalID != "" {
-			now := util.NowMillis()
-			acc := model.Account{
-				PlatformId: platformID,
-				ExternalId: accountExternalID,
-				Username:   accountUsername,
-				Nickname:   profile.Nickname,
-				AvatarURL:  profile.AvatarURL,
-				Timestamps: model.Timestamps{
-					CreatedAt: now,
-					UpdatedAt: now,
-				},
-			}
-			var existingAccount model.Account
-			if err := b.DB.Where("platform_id = ? AND external_id = ?", platformID, accountExternalID).First(&existingAccount).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					if err := b.DB.Create(&acc).Error; err != nil {
-						logger.Error().Err(err).Str("platform_id", platformID).Str("account_external_id", accountExternalID).Msg("create official account failed")
-					}
-				} else {
-					logger.Error().Err(err).Str("platform_id", platformID).Str("account_external_id", accountExternalID).Msg("find official account failed")
-				}
-			} else {
-				if err := b.DB.Model(&existingAccount).Updates(map[string]any{
-					"username":   accountUsername,
-					"nickname":   profile.Nickname,
-					"avatar_url": profile.AvatarURL,
-					"updated_at": now,
-				}).Error; err != nil {
-					logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update official account failed")
-				}
-			}
-		}
+	// channels_interceptor_cfg.AddVariable("downloadMaxRunning", api_cfg.MaxRunning)
+	// channels_interceptor_cfg.AddVariable("downloadDir", api_cfg.DownloadDir)
 
-		extraDataBytes, _ := json.Marshal(map[string]any{
-			"biz":        profile.Biz,
-			"username":   profile.Username,
-			"mid":        profile.Mid,
-			"idx":        profile.Idx,
-			"sn":         profile.Sn,
-			"cgiDataNew": profile.RawCgiDataNew,
-		})
-		if err := api_srv.APIClient.RecordBrowseHistory(profile.UniqueMark, services.BrowseHistoryInfo{
-			PlatformId:        platformID,
-			AccountExternalId: accountExternalID,
-			AccountUsername:   accountUsername,
-			AccountNickname:   profile.Nickname,
-			AccountAvatarURL:  profile.AvatarURL,
-			ContentType:       "article",
-			ContentTitle:      profile.Title,
-			ContentURL:        profile.URL,
-			ContentSourceURL:  profile.SourceURL,
-			ContentCoverURL:   profile.CoverURL,
-			ExtraDataJSON:     string(extraDataBytes),
-		}); err != nil {
-			logger.Error().Err(err).Str("content_external_id", profile.UniqueMark).Msg("create official account article browse history failed")
+	onChannelsFeedProfileLoaded := func(profile *channels.MediaProfile) {
+		webchannels.HandleFeedProfileLoaded(b.DB, logger, profile)
+		uniqueMark, info := webchannels.CreateBrowseRecord(profile)
+		if err := api_srv.APIClient.RecordBrowseHistory(uniqueMark, services.BrowseHistoryInfo(info)); err != nil {
+			logger.Error().Err(err).Str("content_external_id", uniqueMark).Msg("create browse history failed")
 		}
 	}
-	onZhihuLoaded := func(profile *interceptor.PlatformBrowserProfile) {
-		platformzhihu.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
-	}
-	onXiaohongshuLoaded := func(profile *interceptor.PlatformBrowserProfile) {
-		platformxiaohongshu.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
-	}
-	onBilibiliLoaded := func(profile *interceptor.PlatformBrowserProfile) {
-		platformbilibili.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
-	}
-	onYoutubeLoaded := func(profile *interceptor.PlatformBrowserProfile) {
-		platformyoutube.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
-	}
-	onWeiboLoaded := func(profile *interceptor.PlatformBrowserProfile) {
-		platformweibo.HandleLoaded(b.DB, api_srv.APIClient, logger, profile)
-	}
-	if official_cfg.Enabled {
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountArticleLoadedPlugin(onOfficialAccountArticleLoaded))
-		interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets, cfg.Version))
-		interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
-			Match: "official.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: official_cfg.RemoteServerProtocol,
-				Host:     official_cfg.RemoteServerHostname,
-				Port:     official_cfg.RemoteServerPort,
-			},
-		})
-	}
-	if viper.GetBool("zhihu.enabled") {
-		interceptor_srv.Interceptor.AddPostPlugin(platformzhihu.CreatePlugin(onZhihuLoaded))
-	}
-	if viper.GetBool("xiaohongshu.enabled") {
-		interceptor_srv.Interceptor.AddPostPlugin(platformxiaohongshu.CreatePlugin(onXiaohongshuLoaded))
-	}
-	if viper.GetBool("bilibili.enabled") {
-		interceptor_srv.Interceptor.AddPostPlugin(platformbilibili.CreatePlugin(onBilibiliLoaded))
-	}
-	if viper.GetBool("youtube.enabled") {
-		interceptor_srv.Interceptor.AddPostPlugin(platformyoutube.CreatePlugin(onYoutubeLoaded))
-	}
-	if viper.GetBool("weibo.enabled") {
-		interceptor_srv.Interceptor.AddPostPlugin(platformweibo.CreatePlugin(onWeiboLoaded))
-	}
+	// onOfficialAccountArticleLoaded := func(profile *interceptor.OfficialAccountArticleProfile) {
+	// 	officialaccount.HandleArticleProfileLoaded(b.DB, logger, profile)
+	// 	if err := api_srv.APIClient.RecordBrowseHistory(profile.UniqueMark, officialaccount.CreateBrowseHistory(profile)); err != nil {
+	// 		logger.Error().Err(err).Str("content_external_id", profile.UniqueMark).Msg("create official account article browse history failed")
+	// 	}
+	// }
+	// if official_cfg.Enabled {
+	// 	interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountArticleLoadedPlugin(onOfficialAccountArticleLoaded))
+	// 	interceptor_srv.Interceptor.AddPostPlugin(officialaccount.CreateOfficialAccountInterceptorPlugin(official_cfg, frontend.Assets, cfg.Version))
+	// 	interceptor_srv.Interceptor.AddPostPlugin(&proxy.Plugin{
+	// 		Match: "official.weixin.qq.com",
+	// 		Target: &proxy.TargetConfig{
+	// 			Protocol: official_cfg.RemoteServerProtocol,
+	// 			Host:     official_cfg.RemoteServerHostname,
+	// 			Port:     official_cfg.RemoteServerPort,
+	// 		},
+	// 	})
+	// }
 	for _, plugin := range channels.CreateInterceptorPlugins(channels_interceptor_cfg, frontend.Assets, onChannelsFeedProfileLoaded) {
 		interceptor_srv.Interceptor.AddPostPlugin(plugin)
 	}

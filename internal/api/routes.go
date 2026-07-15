@@ -91,7 +91,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/file", c.handleFetchFile)
 
 
-	// c.engine.POST("/api/download_task/list", c.handleCompatDownloadTaskList)
+	c.engine.GET("/api/download_task/list", c.handleCompatDownloadTaskList)
 	// c.engine.POST("/api/download_task/start", c.handleCompatDownloadTaskStart)
 	// c.engine.POST("/api/download_task/profile", c.handleCompatDownloadTaskProfile)
 	// c.engine.POST("/api/download_task/create", c.handleCompatDownloadTaskCreate)

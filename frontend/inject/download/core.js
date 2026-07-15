@@ -536,7 +536,7 @@ function DownloaderPanelViewModel(props = {}) {
 
   const createTaskListReq = () => {
     return new Timeless.RequestCore(
-      (params) => request.get("/api/task/list", params),
+      (params) => request.get("/api/download_task/list", params),
       {
         client: http_client,
         process(r) {

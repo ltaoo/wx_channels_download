@@ -19,7 +19,7 @@ import (
 	gopeedstream "github.com/GopeedLab/gopeed/pkg/protocol/stream"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	officialaccountdownload "wx_channel/pkg/scraper/officialaccount"
+	officialaccountdownload "wx_channel/internal/webcontent/officialaccount"
 
 	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/database/model"

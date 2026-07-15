@@ -16,7 +16,7 @@ import (
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/interceptor"
-	platformbrowser "wx_channel/internal/platformbrowser"
+	webcontent "wx_channel/internal/webcontent"
 	utilpkg "wx_channel/pkg/util"
 )
 
@@ -123,9 +123,9 @@ func FormatRecords(profile *Profile, now int64) *FormattedRecords {
 	}
 }
 
-func HandleLoaded(db *gorm.DB, recorder platformbrowser.BrowseRecorder, logger zerolog.Logger, profile *Profile) {
+func HandleLoaded(db *gorm.DB, recorder webcontent.BrowseRecorder, logger zerolog.Logger, profile *Profile) {
 	profile = FormatProfile(profile)
-	result := platformbrowser.RecordLoadedProfile(db, recorder, logger, profile)
+	result := webcontent.RecordLoadedProfile(db, recorder, logger, profile)
 	// fmt.Println("after RecordLoadedProfile", result.AccountReady)
 	if result.AccountReady {
 		EnrichAccountAsync(db, logger, result.AccountExternalID)

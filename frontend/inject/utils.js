@@ -1703,11 +1703,11 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
   payload.original_url = feed.url;
   payload.target_spec = spec;
   payload.source_url = location.href;
-  WXU.log({
-    msg: `${payload.source_url}
-${payload.original_url}
-${payload.key || ""}`,
-  });
+//   WXU.log({
+//     msg: `${payload.source_url}
+// ${payload.original_url}
+// ${payload.key || ""}`,
+//   });
   WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
   var suffix = ".mp4";
   if (mp3) {
