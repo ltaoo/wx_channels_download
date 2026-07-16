@@ -134,6 +134,21 @@ func (fp *FilenameProcessor) truncateString(s string, maxBytes int) string {
 	return s
 }
 
+// 截断文件名主体，但保留扩展名。
+func (fp *FilenameProcessor) truncateFilenamePreservingExtension(filename string, maxBytes int) string {
+	if len(filename) <= maxBytes {
+		return filename
+	}
+
+	ext := filepath.Ext(filename)
+	if ext == "" || len(ext) >= maxBytes {
+		return fp.truncateString(filename, maxBytes)
+	}
+
+	name := strings.TrimSuffix(filename, ext)
+	return fp.truncateString(name, maxBytes-len(ext)) + ext
+}
+
 // 验证和清理文件名
 func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 	// fmt.Println("SanitizeFilename", filename)
@@ -142,7 +157,7 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 	}
 
 	// 检查长度
-	filename = fp.truncateString(filename, fp.maxFilenameLength)
+	filename = fp.truncateFilenamePreservingExtension(filename, fp.maxFilenameLength)
 
 	// 移除非法字符
 	filename = fp.forbiddenChars.ReplaceAllString(filename, "")
