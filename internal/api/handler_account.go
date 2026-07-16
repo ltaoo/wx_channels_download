@@ -176,8 +176,8 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 	list := make([]gin.H, 0, len(accounts))
 	for _, acc := range accounts {
 		type caRow struct {
-			ContentId int    `json:"content_id"`
-			AccountId int    `json:"account_id"`
+			ContentId string `json:"content_id"`
+			AccountId string `json:"account_id"`
 			Role      string `json:"role"`
 		}
 		var contentRows []caRow
@@ -189,11 +189,11 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 			Limit(24).
 			Scan(&contentRows).Error
 
-		contentIDs := make([]int, 0, len(contentRows))
+		contentIDs := make([]string, 0, len(contentRows))
 		for _, r := range contentRows {
 			contentIDs = append(contentIDs, r.ContentId)
 		}
-		contentByID := map[int]gin.H{}
+		contentByID := map[string]gin.H{}
 		if len(contentIDs) > 0 {
 			var contents []model.Content
 			_ = c.db.Where("id IN ?", contentIDs).Find(&contents).Error

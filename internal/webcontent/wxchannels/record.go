@@ -1,6 +1,7 @@
 package wxchannels
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -11,22 +12,6 @@ import (
 	scraper "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 )
-
-// BrowseRecordInfo carries the information needed to record a browse history entry.
-type BrowseRecordInfo struct {
-	PlatformId        string
-	AccountExternalId string
-	AccountUsername   string
-	AccountNickname   string
-	AccountAvatarURL  string
-	ContentType       string
-	ContentTitle      string
-	ContentURL        string
-	ContentSourceURL  string
-	ContentCoverURL   string
-	ExtraData         map[string]any
-	ExtraDataJSON     string
-}
 
 // HandleFeedProfileLoaded upserts the account for a wechat channels feed profile.
 func HandleFeedProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *scraper.MediaProfile) {
@@ -42,6 +27,7 @@ func HandleFeedProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *scrape
 func upsertChannelsAccount(db *gorm.DB, logger zerolog.Logger, profile *scraper.MediaProfile, accountUsername string) {
 	now := util.NowMillis()
 	acc := model.Account{
+		Id:         BuildAccountID(accountUsername),
 		PlatformId: platformIDWxChannels,
 		ExternalId: accountUsername,
 		Username:   accountUsername,
@@ -69,28 +55,43 @@ func upsertChannelsAccount(db *gorm.DB, logger zerolog.Logger, profile *scraper.
 		"avatar_url": profile.Contact.AvatarURL,
 		"updated_at": now,
 	}).Error; err != nil {
-		logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update account failed")
+		logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update account failed")
 	}
 }
 
-// CreateBrowseRecord builds a BrowseRecordInfo from the feed profile.
-func CreateBrowseRecord(profile *scraper.MediaProfile) (uniqueMark string, info BrowseRecordInfo) {
+// BuildBrowseRecord constructs a model.BrowseHistory from the feed profile.
+func BuildBrowseRecord(profile *scraper.MediaProfile) *model.BrowseHistory {
 	accountUsername := strings.TrimSpace(profile.Contact.Id)
-	return profile.Id, BrowseRecordInfo{
+	now := util.NowMillis()
+	extraData, _ := json.Marshal(map[string]any{
+		"id":         profile.Id,
+		"nonce_id":   profile.NonceId,
+		"decode_key": profile.Key,
+	})
+	browseID := platformIDWxChannels + ":" + profile.Id
+	contentSourceURL := profile.Pageurl
+	if contentSourceURL == "" {
+		contentSourceURL = BuildJumpURLFromParts(profile.Id, profile.NonceId, "", accountUsername)
+	}
+
+	return &model.BrowseHistory{
+		Id:                browseID,
 		PlatformId:        platformIDWxChannels,
+		VisitedTimes:      1,
 		AccountExternalId: accountUsername,
 		AccountUsername:   accountUsername,
 		AccountNickname:   profile.Contact.Nickname,
 		AccountAvatarURL:  profile.Contact.AvatarURL,
 		ContentType:       profile.Type,
+		ContentExternalId: profile.Id,
 		ContentTitle:      profile.Title,
 		ContentURL:        profile.URL,
-		ContentSourceURL:  profile.Pageurl,
+		ContentSourceURL:  contentSourceURL,
 		ContentCoverURL:   profile.CoverURL,
-		ExtraData: map[string]any{
-			"id":         profile.Id,
-			"nonce_id":   profile.NonceId,
-			"decode_key": profile.Key,
+		ExtraData:         string(extraData),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/GopeedLab/gopeed/pkg/download"
 
 	"wx_channel/internal/database/model"
+	wxchelpers "wx_channel/internal/webcontent/wxchannels"
 	pkgdatabase "wx_channel/pkg/database"
 	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
@@ -373,10 +374,7 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 	platformID := "wx_channels"
 
 	// Build source URL from external_id and nonce_id
-	sourceURL := wxchannels.BuildJumpURL(&wxchannels.ChannelsFeedProfile{
-		ObjectId: externalID,
-		NonceId:  nonceID,
-	})
+	sourceURL := wxchelpers.BuildJumpURLFromParts(externalID, nonceID, "", "")
 
 	// Check for existing content
 	var existing model.Content
@@ -412,6 +410,7 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 
 	// Create new content
 	content := model.Content{
+		Id:          platformID + ":" + externalID,
 		PlatformId:  platformID,
 		ContentType: "video",
 		ExternalId:  externalID,
@@ -445,7 +444,7 @@ func createContent(db *gorm.DB, task *download.Task, externalID, nonceID, title 
 	return nil
 }
 
-func ensureContentVideo(db *gorm.DB, contentID int, nonceID string, labels map[string]string) {
+func ensureContentVideo(db *gorm.DB, contentID string, nonceID string, labels map[string]string) {
 	var existing model.ContentVideo
 	if err := db.Where("content_id = ?", contentID).First(&existing).Error; err == nil {
 		// Update existing
@@ -554,25 +553,29 @@ func enrichContentFromAPI(db *gorm.DB, cacheFile, externalID, nonceID string) er
 		return fmt.Errorf("API 返回的 Object ID 为空")
 	}
 
-	// 转换为 ChannelsFeedProfile
-	profile, err := wxchannels.ChannelsObjectToChannelsFeedProfile(&obj)
+	// 转换为 Content + Account
+	content, err := wxchelpers.ToContent(&obj)
 	if err != nil {
-		return fmt.Errorf("转换 profile 失败: %w", err)
+		return fmt.Errorf("转换 content 失败: %w", err)
+	}
+	account, err := wxchelpers.ToAccount(&obj)
+	if err != nil {
+		return fmt.Errorf("转换 account 失败: %w", err)
 	}
 
 	// 确保 SourceURL 已设置
-	if profile.SourceURL == "" {
-		profile.SourceURL = wxchannels.BuildJumpURL(profile)
+	if content.SourceURL == "" {
+		content.SourceURL = wxchelpers.BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, obj.SourceURL, obj.Contact.Username)
 	}
 
 	// 若 URL 为空（非视频类型），使用 SourceURL 作为回退
-	if profile.URL == "" {
-		profile.URL = profile.SourceURL
+	if content.URL == "" {
+		content.URL = content.SourceURL
 	}
 
 	// 使用 ChannelsClient 写入数据库（content + account + content_account）
 	client := newChannelsClientWithDB(db)
-	if _, err := client.UpsertChannelsFeed(profile); err != nil {
+	if _, err := client.UpsertChannelsFeed(content, account); err != nil {
 		return fmt.Errorf("写入数据库失败: %w", err)
 	}
 
@@ -777,16 +780,23 @@ func runEnrichDownloadContents() {
 			continue
 		}
 
-		// 转换为 ChannelsFeedProfile
-		profile, err := wxchannels.ChannelsObjectToChannelsFeedProfile(&resp.Data.Object)
+		// 转换为 Content + Account
+		obj := resp.Data.Object
+		content, err := wxchelpers.ToContent(&obj)
 		if err != nil {
-			fmt.Printf("[%d/%d] 错误 %s: 转换 profile 失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			fmt.Printf("[%d/%d] 错误 %s: 转换 content 失败 - %v\n", i+1, len(tasks), task.TaskId, err)
+			errorCount++
+			continue
+		}
+		account, err := wxchelpers.ToAccount(&obj)
+		if err != nil {
+			fmt.Printf("[%d/%d] 错误 %s: 转换 account 失败 - %v\n", i+1, len(tasks), task.TaskId, err)
 			errorCount++
 			continue
 		}
 
 		// 写入数据库（content + account + content_account）
-		if _, err := channelsClient.UpsertChannelsFeed(profile); err != nil {
+		if _, err := channelsClient.UpsertChannelsFeed(content, account); err != nil {
 			fmt.Printf("[%d/%d] 错误 %s: 写入数据库失败 - %v\n", i+1, len(tasks), task.TaskId, err)
 			errorCount++
 			continue

@@ -9,7 +9,7 @@ import (
 
 	"wx_channel/internal/database/model"
 	wxchannels "wx_channel/internal/webcontent/wxchannels"
-	scraper "wx_channel/pkg/scraper/wxchannels"
+	wxchannelspkg "wx_channel/pkg/scraper/wxchannels"
 )
 
 const videoFeedJSON = `{
@@ -501,7 +501,7 @@ const videoFeedJSON = `{
 `
 
 func TestToAccount_FromVideoFeedJSON(t *testing.T) {
-	var obj scraper.ChannelsObject
+	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -520,11 +520,11 @@ func TestToAccount_FromVideoFeedJSON(t *testing.T) {
 	if account.PlatformId != "wx_channels" {
 		t.Errorf("PlatformId = %q", account.PlatformId)
 	}
-	_ = expectedUsername // account.Id is auto-increment int, not string
+	_ = expectedUsername // account.Id is a string primary key
 }
 
 func TestToContent_FromVideoFeedJSON(t *testing.T) {
-	var obj scraper.ChannelsObject
+	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -551,7 +551,7 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 	if content.ExternalId3 != "1522886121" {
 		t.Errorf("ExternalId3 = %q, want %q", content.ExternalId3, "1522886121")
 	}
-	_ = content.ContentType // content.Id is auto-increment int, not string
+	_ = content.ContentType // content.Id is set by ToContent as string
 	expectedContentURL := "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&hy=SZ&idx=1&m=414c8b10462c8fa97a904c3d999a0476&uzid=7a206&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350"
 	if content.ContentURL != expectedContentURL {
 		t.Errorf("ContentURL = %q, want %q", content.ContentURL, expectedContentURL)
@@ -588,11 +588,41 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 }
 
 // videoChannelsObjectToMediaProfile converts a ChannelsObject from videoFeedJSON
-// into a scraper.MediaProfile.  This mirrors how the frontend interceptor
+// into a wxchannelspkg.MediaProfile.  This mirrors how the frontend interceptor
 // constructs a MediaProfile from a feed object when the user opens a video page.
-func videoChannelsObjectToMediaProfile(obj *scraper.ChannelsObject) *scraper.MediaProfile {
+func mustMarshalJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func assertEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+	actualJSON, _ := json.MarshalIndent(actual, "", "  ")
+	if string(expectedJSON) != string(actualJSON) {
+		t.Errorf("mismatch:\n--- expected\n+++ actual\n%s\n%s",
+			string(expectedJSON), string(actualJSON))
+	}
+}
+
+func assertMapEqual(t *testing.T, expected, actual map[string]string) bool {
+	t.Helper()
+	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+	actualJSON, _ := json.MarshalIndent(actual, "", "  ")
+	if string(expectedJSON) != string(actualJSON) {
+		t.Errorf("labels mismatch:\n--- expected\n+++ actual\n%s\n%s",
+			string(expectedJSON), string(actualJSON))
+		return false
+	}
+	return true
+}
+
+func videoChannelsObjectToMediaProfile(obj *wxchannelspkg.ChannelsObject) *wxchannelspkg.MediaProfile {
 	media := obj.ObjectDesc.Media[0]
-	return &scraper.MediaProfile{
+	return &wxchannelspkg.MediaProfile{
 		Type:    "video",
 		Id:      obj.ID,
 		NonceId: obj.ObjectNonceId,
@@ -600,7 +630,7 @@ func videoChannelsObjectToMediaProfile(obj *scraper.ChannelsObject) *scraper.Med
 		URL:     media.URL + media.URLToken,
 		Key:     media.DecodeKey,
 		CoverURL: media.CoverUrl,
-		Contact: scraper.InterceptorContact{
+		Contact: wxchannelspkg.InterceptorContact{
 			Id:        obj.Contact.Username,
 			Nickname:  obj.Contact.Nickname,
 			AvatarURL: obj.Contact.HeadUrl,
@@ -608,68 +638,39 @@ func videoChannelsObjectToMediaProfile(obj *scraper.ChannelsObject) *scraper.Med
 	}
 }
 
-func TestCreateBrowseRecord_FromVideoFeedJSON(t *testing.T) {
-	var obj scraper.ChannelsObject
+func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
+	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
 	profile := videoChannelsObjectToMediaProfile(&obj)
+	r := wxchannels.BuildBrowseRecord(profile)
 
-	uniqueMark, info := wxchannels.CreateBrowseRecord(profile)
-
-	if uniqueMark != "14962486294771997060" {
-		t.Errorf("uniqueMark = %q, want %q", uniqueMark, "14962486294771997060")
-	}
-
-	// PlatformId
-	if info.PlatformId != "wx_channels" {
-		t.Errorf("PlatformId = %q, want %q", info.PlatformId, "wx_channels")
-	}
-
-	// Account fields
-	expectedExternalId := "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder"
-	if info.AccountExternalId != expectedExternalId {
-		t.Errorf("AccountExternalId = %q, want %q", info.AccountExternalId, expectedExternalId)
-	}
-	if info.AccountUsername != expectedExternalId {
-		t.Errorf("AccountUsername = %q, want %q", info.AccountUsername, expectedExternalId)
-	}
-	if info.AccountNickname != "迷人的大嘴猴" {
-		t.Errorf("AccountNickname = %q, want %q", info.AccountNickname, "迷人的大嘴猴")
-	}
-	if info.AccountAvatarURL != "https://wx.qlogo.cn/finderhead/ver_1/6Tb4IdXSgHeMiaInfddhMkcUpPVnibc60ofHpia1hSUfepsmeuFibGSicicTDN3r8cU4LG9Ef73YyfY3X1mibOGtNgpBKTficKq9tEgaBZTtnNMaviam6JySau4JCnYIibcK9aMicWsJC6IqJCU7gjKwsniaNRlncw/132" {
-		t.Errorf("AccountAvatarURL mismatch")
+	expected := model.BrowseHistory{
+		Id:                "wx_channels:14962486294771997060",
+		PlatformId:        "wx_channels",
+		VisitedTimes:      1,
+		AccountExternalId: "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
+		AccountUsername:   "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
+		AccountNickname:   "迷人的大嘴猴",
+		AccountAvatarURL:  "https://wx.qlogo.cn/finderhead/ver_1/6Tb4IdXSgHeMiaInfddhMkcUpPVnibc60ofHpia1hSUfepsmeuFibGSicicTDN3r8cU4LG9Ef73YyfY3X1mibOGtNgpBKTficKq9tEgaBZTtnNMaviam6JySau4JCnYIibcK9aMicWsJC6IqJCU7gjKwsniaNRlncw/132",
+		ContentType:       "video",
+		ContentExternalId: "14962486294771997060",
+		ContentTitle:      "讨厌我有什么用 有本事弄死我",
+		ContentURL:        profile.URL,
+		ContentSourceURL:  "https://channels.weixin.qq.com/web/pages/feed?username=v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665%40finder&oid=z6VuAqyJGYQ",
+		ContentCoverURL:   profile.CoverURL,
+		ExtraData:         string(mustMarshalJSON(map[string]any{"id": "14962486294771997060", "nonce_id": "4390481592474233535_0_146_0_0", "decode_key": "1522886121"})),
+		Timestamps:        r.Timestamps,
 	}
 
-	// Content fields
-	if info.ContentType != "video" {
-		t.Errorf("ContentType = %q, want %q", info.ContentType, "video")
-	}
-	if info.ContentTitle != "讨厌我有什么用 有本事弄死我" {
-		t.Errorf("ContentTitle = %q", info.ContentTitle)
-	}
-	if info.ContentURL != profile.URL {
-		t.Errorf("ContentURL = %q, want %q", info.ContentURL, profile.URL)
-	}
-	// ContentSourceURL is empty because ChannelsObject has no SourceURL field
-	// (the page URL is injected by the frontend interceptor at browse time).
-	if info.ContentSourceURL != "" {
-		t.Errorf("ContentSourceURL = %q, want empty (ChannelsObject has no source_url)", info.ContentSourceURL)
-	}
-	if info.ContentCoverURL != profile.CoverURL {
-		t.Errorf("ContentCoverURL = %q, want %q", info.ContentCoverURL, profile.CoverURL)
-	}
+	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+	actualJSON, _ := json.MarshalIndent(r, "", "  ")
 
-	// ExtraData
-	if info.ExtraData["id"] != "14962486294771997060" {
-		t.Errorf("ExtraData[id] = %v", info.ExtraData["id"])
-	}
-	if info.ExtraData["nonce_id"] != "4390481592474233535_0_146_0_0" {
-		t.Errorf("ExtraData[nonce_id] = %v", info.ExtraData["nonce_id"])
-	}
-	if info.ExtraData["decode_key"] != "1522886121" {
-		t.Errorf("ExtraData[decode_key] = %v", info.ExtraData["decode_key"])
+	if string(expectedJSON) != string(actualJSON) {
+		t.Errorf("BrowseHistory mismatch:\n--- expected\n+++ actual\n%s\n%s",
+			string(expectedJSON), string(actualJSON))
 	}
 }
 
@@ -806,7 +807,7 @@ func assertContentConversion(t *testing.T, c *model.Content, expectedTitle strin
 //   1. Parse the JSON into ChannelsObject.
 //   2. Build an Account record from the contact info.
 //   3. Build a Content record from the media metadata.
-//   4. Build a ChannelsFeedProfile (the download-task blueprint).
+//   4. Build download-task parameters directly from ChannelsObject.
 //   5. Build download-task parameters (URL, spec, suffix, labels) the same
 //      way handleCompatDownloadTaskCreate does.
 //   6. Simulate a DownloadTask record (without actually starting the download)
@@ -814,7 +815,7 @@ func assertContentConversion(t *testing.T, c *model.Content, expectedTitle strin
 // This test does not require a running database or downloader.
 func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	// ---- Step 1: Parse the fixture ----
-	var obj scraper.ChannelsObject
+	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -824,144 +825,60 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToAccount: %v", err)
 	}
-	const platformId = "wx_channels"
-	expectedAccountExternalId := "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder"
-	expectedNickname := "迷人的大嘴猴"
-	expectedAvatar := "https://wx.qlogo.cn/finderhead/ver_1/6Tb4IdXSgHeMiaInfddhMkcUpPVnibc60ofHpia1hSUfepsmeuFibGSicicTDN3r8cU4LG9Ef73YyfY3X1mibOGtNgpBKTficKq9tEgaBZTtnNMaviam6JySau4JCnYIibcK9aMicWsJC6IqJCU7gjKwsniaNRlncw/132"
 
-	if account.PlatformId != platformId {
-		t.Errorf("Account.PlatformId = %q, want %q", account.PlatformId, platformId)
+	expectedAccount := model.Account{
+		Id:         "wx_channels:v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
+		PlatformId: "wx_channels",
+		ExternalId: "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
+		Username:   "v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
+		Nickname:   "迷人的大嘴猴",
+		AvatarURL:  "https://wx.qlogo.cn/finderhead/ver_1/6Tb4IdXSgHeMiaInfddhMkcUpPVnibc60ofHpia1hSUfepsmeuFibGSicicTDN3r8cU4LG9Ef73YyfY3X1mibOGtNgpBKTficKq9tEgaBZTtnNMaviam6JySau4JCnYIibcK9aMicWsJC6IqJCU7gjKwsniaNRlncw/132",
+		Timestamps: account.Timestamps,
 	}
-	if account.ExternalId != expectedAccountExternalId {
-		t.Errorf("Account.ExternalId = %q, want %q", account.ExternalId, expectedAccountExternalId)
-	}
-	if account.Username != expectedAccountExternalId {
-		t.Errorf("Account.Username = %q, want %q", account.Username, expectedAccountExternalId)
-	}
-	if account.Nickname != expectedNickname {
-		t.Errorf("Account.Nickname = %q, want %q", account.Nickname, expectedNickname)
-	}
-	if account.AvatarURL != expectedAvatar {
-		t.Errorf("Account.AvatarURL = %q, want %q", account.AvatarURL, expectedAvatar)
-	}
+	assertEqual(t, expectedAccount, *account)
 
 	// ---- Step 3: Build Content record ----
 	content, err := wxchannels.ToContent(&obj)
 	if err != nil {
 		t.Fatalf("ToContent: %v", err)
 	}
-	expectedContentExternalId := "14962486294771997060"
-	expectedNonceId := "4390481592474233535_0_146_0_0"
-	expectedDecodeKey := "1522886121"
-	expectedTitle := "讨厌我有什么用 有本事弄死我"
-	expectedContentType := "video"
-	expectedSize := int64(9613487)
-	expectedDuration := int64(9)
 
-	if content.PlatformId != platformId {
-		t.Errorf("Content.PlatformId = %q, want %q", content.PlatformId, platformId)
+	expectedContent := model.Content{
+		Id:          "wx_channels:14962486294771997060",
+		PlatformId:  "wx_channels",
+		ContentType: "video",
+		ExternalId:  "14962486294771997060",
+		ExternalId2: "4390481592474233535_0_146_0_0",
+		ExternalId3: "1522886121",
+		Title:       "讨厌我有什么用 有本事弄死我",
+		Description: "讨厌我有什么用 有本事弄死我",
+		ContentURL:  "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
+		URL:         "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
+		SourceURL:   "https://channels.weixin.qq.com/web/pages/feed?oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
+		CoverURL:    "https://finder.video.qq.com/251/20350/stodownload?encfilekey=2fG3V4WwQPnQr0gxUocFa2h6q3eoq4hXzG39ub5SWukSZAsfOaRiadTuuGIYouJicfpVpzk12gN6RJ2mlOl26YUBWWTVupMcpSIhJDGZaKiaRI&token=ic1n0xDG6awibhOHyNxbvz6nLNtsL3qg5UrFPrz5Jj4TMUicLBbchc6FxnZm5WybqCJGmyeCPokfKqLKqgia6PpXIc7oxANHcCfUGvZ2tkcIfe9Gnz8pKU6G2fVsHnRmVYqPkoqyLdic9MrwTdQWmCLTamzeQ40lL8sTUiaaMgr0QibWm7wQAbtMvUalYywFOoiaotMxjeEHU4mg8GLIS33rP8iaUwuyIrBiandouT&hy=SZ&idx=1&m=7b022855f315b6aa0a3dd30f631d1d4a&picformat=200&wxampicformat=503",
+		CoverWidth:  "1080",
+		CoverHeight: "2128",
+		Duration:    9,
+		Size:        9613487,
+		PublishTime: "1783667361",
+		Metadata:    `{"key":"1522886121"}`,
+		Timestamps:  content.Timestamps,
 	}
-	if content.ExternalId != expectedContentExternalId {
-		t.Errorf("Content.ExternalId = %q, want %q", content.ExternalId, expectedContentExternalId)
-	}
-	if content.ExternalId2 != expectedNonceId {
-		t.Errorf("Content.ExternalId2 = %q, want %q", content.ExternalId2, expectedNonceId)
-	}
-	if content.ExternalId3 != expectedDecodeKey {
-		t.Errorf("Content.ExternalId3 = %q, want %q", content.ExternalId3, expectedDecodeKey)
-	}
-	if content.ContentType != expectedContentType {
-		t.Errorf("Content.ContentType = %q, want %q", content.ContentType, expectedContentType)
-	}
-	if content.Title != expectedTitle {
-		t.Errorf("Content.Title = %q, want %q", content.Title, expectedTitle)
-	}
-	if content.Size != expectedSize {
-		t.Errorf("Content.Size = %d, want %d", content.Size, expectedSize)
-	}
-	if content.Duration != expectedDuration {
-		t.Errorf("Content.Duration = %d, want %d", content.Duration, expectedDuration)
-	}
-	if content.ContentURL == "" {
-		t.Error("Content.ContentURL should not be empty")
-	}
-	if content.URL != content.ContentURL {
-		t.Errorf("Content.URL = %q should equal ContentURL = %q", content.URL, content.ContentURL)
-	}
-	if content.CoverURL == "" {
-		t.Error("Content.CoverURL should not be empty")
-	}
-	if content.CoverWidth != "1080" {
-		t.Errorf("Content.CoverWidth = %q, want %q", content.CoverWidth, "1080")
-	}
-	if content.CoverHeight != "2128" {
-		t.Errorf("Content.CoverHeight = %q, want %q", content.CoverHeight, "2128")
-	}
-	if content.PublishTime == nil || *content.PublishTime != 1783667361 {
-		t.Errorf("Content.PublishTime = %v, want ptr to 1783667361", content.PublishTime)
-	}
-	if content.Metadata != `{"key":"1522886121"}` {
-		t.Errorf("Content.Metadata = %q", content.Metadata)
-	}
+	assertEqual(t, expectedContent, *content)
 
-	// Assert videoFeedJSON → model.Content conversion is structurally correct.
-	// This verifies the fixture data round-trips through the Content struct.
-	assertContentConversion(t, content, expectedTitle)
-
-	// ---- Step 4: Build ChannelsFeedProfile (download blueprint) ----
-	feed, err := scraper.ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile: %v", err)
-	}
-	if feed.ObjectId != expectedContentExternalId {
-		t.Errorf("FeedProfile.ObjectId = %q, want %q", feed.ObjectId, expectedContentExternalId)
-	}
-	if feed.NonceId != expectedNonceId {
-		t.Errorf("FeedProfile.NonceId = %q, want %q", feed.NonceId, expectedNonceId)
-	}
-	if feed.Title != expectedTitle {
-		t.Errorf("FeedProfile.Title = %q, want %q", feed.Title, expectedTitle)
-	}
-	if feed.DecryptKey != expectedDecodeKey {
-		t.Errorf("FeedProfile.DecryptKey = %q, want %q", feed.DecryptKey, expectedDecodeKey)
-	}
-	if feed.CoverURL == "" {
-		t.Error("FeedProfile.CoverURL should not be empty")
-	}
-	if feed.Duration != 9 {
-		t.Errorf("FeedProfile.Duration = %d, want 9", feed.Duration)
-	}
-	if feed.FileSize != 9613487 {
-		t.Errorf("FeedProfile.FileSize = %d, want 9613487", feed.FileSize)
-	}
-	if feed.Contact.Username != expectedAccountExternalId {
-		t.Errorf("FeedProfile.Contact.Username = %q, want %q", feed.Contact.Username, expectedAccountExternalId)
-	}
-	if feed.Contact.Nickname != expectedNickname {
-		t.Errorf("FeedProfile.Contact.Nickname = %q, want %q", feed.Contact.Nickname, expectedNickname)
-	}
-	if feed.Contact.AvatarURL != expectedAvatar {
-		t.Errorf("FeedProfile.Contact.AvatarURL = %q", feed.Contact.AvatarURL)
-	}
-
-	// ---- Step 5: Build download-task parameters (mirrors handleCompatDownloadTaskCreate) ----
+	// ---- Step 4: Build download-task parameters directly from ChannelsObject ----
+	title := wxchannels.ObjectTitle(&obj)
 	spec := "xWT111"
-	// Pick first spec format (highest quality h264), same logic as handler
-	if len(feed.Spec) > 0 {
-		spec = feed.Spec[0].FileFormat
+	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
+		spec = obj.ObjectDesc.Media[0].Spec[0].FileFormat
 	}
 	suffix := ".mp4"
-	downloadURL := strings.TrimSpace(feed.URL)
-	if downloadURL == "" {
-		downloadURL = content.ContentURL
-	}
-	// Append spec flag for non-original specs
+	downloadURL := wxchannels.ObjectURL(&obj)
 	if spec != "original" && !strings.Contains(downloadURL, "zip://") {
 		downloadURL = downloadURL + "&X-snsvideoflag=" + spec
 	}
 
-	// Feed.Title is guaranteed non-empty by ChannelsObjectToChannelsFeedProfile
-	filename := strings.TrimSpace(feed.Title)
+	filename := strings.TrimSpace(title)
 	hasQualifier := false
 	if strings.HasSuffix(strings.ToLower(filename), ".mp4") {
 		suffix = ""
@@ -969,21 +886,16 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	}
 	expectedFilename := filename + suffix
 
-	sourceURL := feed.SourceURL
+	sourceURL := obj.SourceURL
 	if sourceURL == "" {
-		sourceURL = scraper.BuildJumpUrl(feed)
+		sourceURL = wxchannels.BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, obj.SourceURL, obj.Contact.Username)
 	}
 
-	key := 0
-	if strings.TrimSpace(feed.DecryptKey) != "" {
-		if v, errConv := strconv.Atoi(feed.DecryptKey); errConv == nil {
-			key = v
-		}
-	}
+	key := wxchannels.DecryptKeyInt(&obj)
 	labels := map[string]string{
-		"id":         feed.ObjectId,
-		"nonce_id":   feed.NonceId,
-		"title":      feed.Title,
+		"id":         obj.ID,
+		"nonce_id":   obj.ObjectNonceId,
+		"title":      title,
 		"key":        strconv.Itoa(key),
 		"spec":       spec,
 		"suffix":     suffix,
@@ -998,10 +910,9 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 		Title:      filename,
 		CoverURL:   content.CoverURL,
 		Size:       content.Size,
-		Status:     0, // ready
+		Status:     0,
 		Reason:     "video_download_via_feed",
 	}
-	// Simulate CreateContentDownloadTask-style metadata
 	meta2, _ := json.Marshal(map[string]any{
 		"platform":    content.PlatformId,
 		"external_id": content.ExternalId,
@@ -1013,34 +924,21 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	})
 	task.Metadata2 = string(meta2)
 
-	// ---- Assert all three records and their relationships ----
+	expectedTask := model.DownloadTask{
+		ExternalId: content.ExternalId,
+		Protocol:   "https",
+		URL:        downloadURL,
+		Title:      filename,
+		CoverURL:   content.CoverURL,
+		Size:       content.Size,
+		Status:     0,
+		Reason:     "video_download_via_feed",
+		Metadata2:  string(meta2),
+	}
+	assertEqual(t, expectedTask, task)
 
-	// 6a. DownloadTask fields derived from Content
-	if task.ExternalId != content.ExternalId {
-		t.Errorf("DownloadTask.ExternalId = %q, should match Content.ExternalId = %q", task.ExternalId, content.ExternalId)
-	}
-	if task.Size != content.Size {
-		t.Errorf("DownloadTask.Size = %d, should match Content.Size = %d", task.Size, content.Size)
-	}
-	if task.URL == "" {
-		t.Error("DownloadTask.URL should not be empty (built from Content.ContentURL + spec)")
-	}
-	if !strings.Contains(task.URL, content.ContentURL) {
-		t.Errorf("DownloadTask.URL should contain Content.ContentURL as prefix:\n  taskURL: %s\n  contentURL: %s", task.URL, content.ContentURL)
-	}
-	if !strings.HasSuffix(task.URL, spec) {
-		t.Errorf("DownloadTask.URL should end with spec %q, got %q", spec, task.URL)
-	}
-	if task.CoverURL != content.CoverURL {
-		t.Errorf("DownloadTask.CoverURL = %q, should match Content.CoverURL = %q", task.CoverURL, content.CoverURL)
-	}
-	if task.Title == "" {
-		t.Error("DownloadTask.Title should not be empty")
-	}
-
-	// 6b. Content knows about DownloadTask via DownloadTaskId (simulated)
-	// In real code Content.DownloadTaskId = task.Id after db insert
-	tmpTaskId := 42 // placeholder auto-increment id
+	// ---- Content ↔ DownloadTask linkage ----
+	tmpTaskId := 42
 	task.Id = tmpTaskId
 	content.DownloadTaskId = &tmpTaskId
 
@@ -1048,92 +946,65 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 		t.Errorf("Content.DownloadTaskId should point to DownloadTask.Id; got %v, want %d", content.DownloadTaskId, task.Id)
 	}
 
-	// 6c. Content ↔ Account relationship via ContentAccount bridge
-	// Both share PlatformId + external identifiers that link them
+	// ---- Content ↔ Account relationship via ContentAccount bridge ----
 	ca := model.ContentAccount{
-		ContentId: content.Id, // set after db insert
-		AccountId: account.Id, // set after db insert
+		ContentId: content.Id,
+		AccountId: account.Id,
 		Role:      "owner",
 	}
 	if ca.Role != "owner" {
 		t.Errorf("ContentAccount.Role = %q, want %q", ca.Role, "owner")
 	}
-	// The linkage is established by platform_id + external_id:
-	//   Account:  (platformId="wx_channels", externalId=contact.username)
-	//   Content:  (platformId="wx_channels", externalId=object.id)
-	//   ContentAccount: (content_id → Content.Id, account_id → Account.Id)
 	if content.PlatformId != account.PlatformId {
 		t.Errorf("Content and Account must share the same PlatformId to be linked; Content=%q Account=%q",
 			content.PlatformId, account.PlatformId)
 	}
 
-	// 6d. BrowseRecordInfo (used by the interceptor to track browsing)
-	// Build a MediaProfile directly from the parsed ChannelsObject, same
-	// conversion used by TestCreateBrowseRecord_FromVideoFeedJSON.
+	// ---- BrowseHistory ----
 	profile := videoChannelsObjectToMediaProfile(&obj)
-	uniqueMark, info := wxchannels.CreateBrowseRecord(profile)
-	if uniqueMark != content.ExternalId {
-		t.Errorf("Browse uniqueMark = %q, should equal Content.ExternalId = %q", uniqueMark, content.ExternalId)
+	r := wxchannels.BuildBrowseRecord(profile)
+	if r.ContentExternalId != content.ExternalId {
+		t.Errorf("Browse.ContentExternalId = %q, should equal Content.ExternalId = %q", r.ContentExternalId, content.ExternalId)
 	}
-	if info.AccountExternalId != account.ExternalId {
-		t.Errorf("Browse.AccountExternalId = %q, should equal Account.ExternalId = %q", info.AccountExternalId, account.ExternalId)
+	if r.AccountExternalId != account.ExternalId {
+		t.Errorf("Browse.AccountExternalId = %q, should equal Account.ExternalId = %q", r.AccountExternalId, account.ExternalId)
 	}
-	if info.ContentURL != content.ContentURL {
-		t.Errorf("Browse.ContentURL = %q, should equal Content.ContentURL = %q", info.ContentURL, content.ContentURL)
-	}
-
-	// 6e. FeedDownloadTaskBody labels mirror DownloadTask's request labels
-	// (these are assigned to the download engine request, not stored in DownloadTask table directly)
-	for lbl, want := range labels {
-		if lbl == "source_url" {
-			// source_url is in labels but `hasQualifier` can change suffix; still check the URL
-			continue
-		}
-		got, ok := labels[lbl]
-		if !ok || got != want {
-			t.Errorf("labels[%s] = %q, should be present and equal %q", lbl, got, want)
-		}
+	if r.ContentURL != content.ContentURL {
+		t.Errorf("Browse.ContentURL = %q, should equal Content.ContentURL = %q", r.ContentURL, content.ContentURL)
 	}
 
-	// Verify filename is built correctly (matches handler logic)
+	// ---- Labels ----
+	expectedLabels := map[string]string{
+		"id":         obj.ID,
+		"nonce_id":   obj.ObjectNonceId,
+		"title":      title,
+		"key":        strconv.Itoa(key),
+		"spec":       spec,
+		"suffix":     suffix,
+		"source_url": sourceURL,
+	}
+	if !assertMapEqual(t, expectedLabels, labels) {
+		return
+	}
 	if labels["title"] != filename {
 		t.Errorf("labels[title] = %q, should equal filename base = %q", labels["title"], filename)
 	}
 	if hasQualifier {
-		// When title already ends with .mp4, suffix is stripped
 		if labels["suffix"] != "" {
-			t.Errorf("labels[suffix] = %q, want empty (title already ends with .mp4)", labels["suffix"])
+			t.Errorf("labels[suffix] = %q, want empty", labels["suffix"])
 		}
 	} else {
-		// Default suffix is .mp4
 		if labels["suffix"] != ".mp4" {
 			t.Errorf("labels[suffix] = %q, want %q", labels["suffix"], ".mp4")
 		}
 	}
 
-	// ---- Summary: Verify the three-record linkage is consistent ----
-	//
-	//  DownloadTask                       Content                         Account
-	//  ┌──────────────────┐              ┌──────────────────┐            ┌──────────────────┐
-	//  │ Id          = 42  │◄────────────│ DownloadTaskId    │            │ Id                │
-	//  │ ExternalId  ="14.."│──matches──►│ ExternalId       │            │ ExternalId        │
-	//  │ URL                │──from─────►│ ContentURL        │            │ Username          │
-	//  │ Title              │──from─────►│ Title             │            │ Nickname  ="迷人的.."│
-	//  │ CoverURL           │──from─────►│ CoverURL          │            │ AvatarURL         │
-	//  │ Size          =9MB │──from─────►│ Size              │            │ PlatformId="wx_.." │
-	//  │ Metadata2          │            │ ContentType=video  │            └──────────────────┘
-	//  └──────────────────┘              │ PlatformId="wx_.." │                     ▲
-	//                                    └──────────────────┘                     │
-	//                                       │  ContentAccount ────────────────────┘
-	//                                       │  {content_id, account_id, "owner"}
-	//
 	t.Logf("Account:  platform=%s externalId=%s nickname=%s", account.PlatformId, account.ExternalId, account.Nickname)
 	t.Logf("Content:  platform=%s externalId=%s type=%s size=%d duration=%ds", content.PlatformId, content.ExternalId, content.ContentType, content.Size, content.Duration)
 	t.Logf("Task:     url prefix=%s spec=%s suffix=%q filename=%q", downloadURL, spec, suffix, expectedFilename)
-	t.Logf("Linkages: Content(%d)→Account(%d) via ContentAccount; Content→Task(%d) via DownloadTaskId; uniqueMark=%s",
-		content.Id, account.Id, task.Id, uniqueMark)
+	t.Logf("Linkages: Content(%s)→Account(%s) via ContentAccount; Content→Task(%d) via DownloadTaskId; browseContentExternalId=%s",
+		content.Id, account.Id, task.Id, r.ContentExternalId)
 
-	// Avoid "unused variable" compilation errors since records are constructed without real db ids
 	_ = fmt.Sprintf("account=%v content=%v task=%v ca=%v", account, content, task, ca)
 }
 
@@ -1147,7 +1018,7 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 // the download task tree demonstrates how a single content record links to a
 // multi-file batch download.
 func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
-	var obj scraper.ChannelsObject
+	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -1161,18 +1032,13 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToContent: %v", err)
 	}
-	feed, err := scraper.ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile: %v", err)
-	}
-
 	const platformId = "wx_channels"
 	media := obj.ObjectDesc.Media[0]
 
 	// Identify spec (same logic as handler: first non-original h264 spec)
 	spec := "xWT111"
-	if len(feed.Spec) > 0 {
-		spec = feed.Spec[0].FileFormat
+	if len(media.Spec) > 0 {
+		spec = media.Spec[0].FileFormat
 	}
 	suffix := ".mp4"
 
@@ -1201,7 +1067,7 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 		ExternalId: content.ExternalId,
 		Protocol:   "https",
 		URL:        videoURL,
-		SourceURI:  feed.SourceURL,
+		SourceURI:  obj.SourceURL,
 		Title:      content.Title,
 		Filename:   content.Title + suffix,
 		CoverURL:   content.CoverURL,
@@ -1411,11 +1277,11 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 	t.Logf("=== Multi-file Download Tree ===")
 	t.Logf("Account : %s (%s)", account.Nickname, account.ExternalId)
 	t.Logf("Content : %s | %s | %d bytes | %ds", content.Title, content.ContentType, content.Size, content.Duration)
-	t.Logf("Parent  : id=%d type=container -> Content(%d) via DownloadTaskId", parent.Id, content.Id)
+	t.Logf("Parent  : id=%d type=container -> Content(%s) via DownloadTaskId", parent.Id, content.Id)
 	t.Logf("  ├── [0] id=%d url=%s (video)", children[0].Id, children[0].Protocol)
 	t.Logf("  ├── [1] id=%d url=%s (cover)", children[1].Id, children[1].Protocol)
 	t.Logf("  └── [2] id=%d url=%s (audio)", children[2].Id, children[2].Protocol)
-	t.Logf("Linkage : ContentAccount(role=%q) binds Content(%d) ↔ Account(%d)", ca.Role, ca.ContentId, ca.AccountId)
+	t.Logf("Linkage : ContentAccount(role=%q) binds Content(%s) ↔ Account(%s)", ca.Role, ca.ContentId, ca.AccountId)
 
 	// Avoid unused variable errors
 	_ = fmt.Sprintf("parent=%v children=%v content=%v account=%v", parent, children, content, account)

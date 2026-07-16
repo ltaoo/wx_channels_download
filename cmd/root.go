@@ -259,9 +259,21 @@ func root_command(cfg *config.Config) {
 
 	onChannelsFeedProfileLoaded := func(profile *channels.MediaProfile) {
 		webchannels.HandleFeedProfileLoaded(b.DB, logger, profile)
-		uniqueMark, info := webchannels.CreateBrowseRecord(profile)
-		if err := api_srv.APIClient.RecordBrowseHistory(uniqueMark, services.BrowseHistoryInfo(info)); err != nil {
-			logger.Error().Err(err).Str("content_external_id", uniqueMark).Msg("create browse history failed")
+		browse := webchannels.BuildBrowseRecord(profile)
+		if err := api_srv.APIClient.RecordBrowseHistory(browse.ContentExternalId, services.BrowseHistoryInfo{
+			PlatformId:        browse.PlatformId,
+			AccountExternalId: browse.AccountExternalId,
+			AccountUsername:   browse.AccountUsername,
+			AccountNickname:   browse.AccountNickname,
+			AccountAvatarURL:  browse.AccountAvatarURL,
+			ContentType:       browse.ContentType,
+			ContentTitle:      browse.ContentTitle,
+			ContentURL:        browse.ContentURL,
+			ContentSourceURL:  browse.ContentSourceURL,
+			ContentCoverURL:   browse.ContentCoverURL,
+			ExtraDataJSON:     browse.ExtraData,
+		}); err != nil {
+			logger.Error().Err(err).Str("content_external_id", browse.ContentExternalId).Msg("create browse history failed")
 		}
 	}
 	// onOfficialAccountArticleLoaded := func(profile *interceptor.OfficialAccountArticleProfile) {

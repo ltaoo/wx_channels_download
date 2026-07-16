@@ -828,7 +828,7 @@ func TestToAccount_FromPictureFeedJSON(t *testing.T) {
 	if account.PlatformId != "wx_channels" {
 		t.Errorf("PlatformId = %q", account.PlatformId)
 	}
-	_ = expectedUsername // account.Id is auto-increment int
+	_ = expectedUsername // account.Id is a string primary key
 }
 
 func TestToContent_FromPictureFeedJSON(t *testing.T) {
@@ -859,7 +859,7 @@ func TestToContent_FromPictureFeedJSON(t *testing.T) {
 	if content.ExternalId3 != "" {
 		t.Errorf("ExternalId3 = %q, want empty", content.ExternalId3)
 	}
-	_ = content.ContentType // content.Id is auto-increment int
+	_ = content.ContentType // content.Id is set by ToContent as string
 	if content.ContentURL != "" {
 		t.Errorf("ContentURL = %q, want empty", content.ContentURL)
 	}

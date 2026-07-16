@@ -72,7 +72,7 @@ type LiveDownloadTask struct {
 	Id             int     `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskId         string  `gorm:"uniqueIndex;not null" json:"task_id"`
 	PlatformId     string  `gorm:"not null" json:"platform_id"`
-	AccountId      *int    `json:"account_id"`
+	AccountId      *string `json:"account_id"`
 	LiveURL        string  `gorm:"not null" json:"live_url"`
 	Title          string  `json:"title"`
 	StreamerName   string  `json:"streamer_name"`

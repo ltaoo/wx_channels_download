@@ -168,7 +168,7 @@
   </div>
   <div class="arrow-down"><span class="arrow">↓</span></div>
   <div class="flow-row" style="gap:12px">
-    <div class="node ext">ChannelsObjectTo<br>ChannelsFeedProfile()</div>
+    <div class="node ext">wxchannels.ToContent()<br>wxchannels.ToAccount()</div>
     <span class="arrow">→</span>
     <div class="node ext">BuildFilename()<br>ValidateAndSplitFilename()</div>
     <span class="arrow">→</span>
@@ -209,7 +209,7 @@
   <div class="detail-card">
     <h3><span class="dot" style="background:#68d391"></span>startDownloadChannelsObject</h3>
     <ul>
-      <li><code>ChannelsObjectToChannelsFeedProfile(&obj)</code> → profile</li>
+      <li><code>wxchannels.ToContent(&obj)</code> + <code>wxchannels.ToAccount(&obj)</code> → content + account</li>
       <li>Reject live (defer to live handler)</li>
       <li>Resolve spec: user override → <code>download.defaultHighest</code> config</li>
       <li><code>BuildFilename()</code> with template from config</li>

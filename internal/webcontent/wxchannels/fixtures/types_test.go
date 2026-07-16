@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 
 	scraper "wx_channel/pkg/scraper/wxchannels"
 	webcontent "wx_channel/internal/webcontent/wxchannels"
@@ -44,8 +43,8 @@ func TestParseSphShareURL(t *testing.T) {
 	}
 }
 
-func TestChannelsObjectToChannelsFeedProfile(t *testing.T) {
-	obj := &scraper.ChannelsObject{
+func makeVideoObject() *scraper.ChannelsObject {
+	return &scraper.ChannelsObject{
 		ID:            "feed123",
 		ObjectNonceId: "nonce123",
 		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=feed123",
@@ -60,8 +59,8 @@ func TestChannelsObjectToChannelsFeedProfile(t *testing.T) {
 			MediaType:   4,
 			Media: []scraper.ChannelsMediaItem{
 				{
-					URL:          "https://video.example.com/video.mp4?encfilekey=filekey",
-					URLToken:     "&token=token",
+					URL:          "https://video.example.com/video.mp4?",
+					URLToken:     "encfilekey=filekey&token=token",
 					CoverUrl:     "https://image.example.com/cover.jpg",
 					DecodeKey:    "decode123",
 					VideoPlayLen: 5,
@@ -72,80 +71,205 @@ func TestChannelsObjectToChannelsFeedProfile(t *testing.T) {
 			},
 		},
 	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile: %v", err)
-	}
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:    "feed123",
-		NonceId:     "nonce123",
-		SourceURL:   "https://channels.weixin.qq.com/web/pages/feed?oid=feed123",
-		URL:         "https://video.example.com/video.mp4?encfilekey=filekey&token=token",
-		Title:       "测试视频",
-		DecryptKey:  "decode123",
-		CoverURL:    "https://image.example.com/cover.jpg",
-		CoverWidth:  1920,
-		CoverHeight: 1080,
-		Duration:    5,
-		FileSize:    100,
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "author",
-			Nickname:  "作者",
-			AvatarURL: "https://image.example.com/avatar.jpg",
-		},
-	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("ChannelsObjectToChannelsFeedProfile mismatch (-want +got):\n%s", diff)
+}
+
+func TestPickSpec_NoSpec(t *testing.T) {
+	obj := makeVideoObject()
+	got := webcontent.PickSpec(obj)
+	if got != "original" {
+		t.Errorf("PickSpec(no spec) = %q, want \"original\"", got)
 	}
 }
 
-func TestChannelsObjectToChannelsFeedProfile_Live(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "live_feed_001",
-		ObjectNonceId: "live_nonce_001",
-		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=live_feed_001",
-		Type:          "video",
-		CreateTime:    1711234567,
-		Contact: scraper.ChannelsContact{
-			Username: "streamer",
-			Nickname: "主播昵称",
-			HeadUrl:  "https://example.com/streamer_avatar.jpg",
-		},
-		AnchorContact: &scraper.ChannelsContact{
-			Username:    "anchor_user",
-			Nickname:    "主播",
-			HeadUrl:     "https://example.com/anchor_avatar.jpg",
-			CoverImgUrl: "https://example.com/live_cover.jpg",
-		},
-		LiveInfo: &scraper.ChannelsLiveInfo{
-			AnchorStatusFlag: "live",
-			SwitchFlag:       1,
-			SourceType:       1,
-		},
+func TestPickSpec_FromMedia(t *testing.T) {
+	obj := makeVideoObject()
+	obj.ObjectDesc.Media[0].Spec = []scraper.ChannelsMediaSpec{
+		{FileFormat: "h264", Width: 1920, Height: 1080},
 	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile live: %v", err)
-	}
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:  "live_feed_001",
-		NonceId:   "live_nonce_001",
-		SourceURL: "https://channels.weixin.qq.com/web/pages/feed?oid=live_feed_001",
-		Title:     "直播",
-		CoverURL:  "https://example.com/live_cover.jpg",
-		CreatedAt: 1711234567,
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "anchor_user",
-			Nickname:  "主播",
-			AvatarURL: "https://example.com/anchor_avatar.jpg",
-		},
-	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("live profile mismatch (-want +got):\n%s", diff)
+	got := webcontent.PickSpec(obj)
+	if got != "h264" {
+		t.Errorf("PickSpec(media spec) = %q, want \"h264\"", got)
 	}
 }
 
-func TestChannelsObjectToChannelsFeedProfile_Picture(t *testing.T) {
+func TestPickSpec_FromObject(t *testing.T) {
+	obj := makeVideoObject()
+	obj.Spec = []scraper.ChannelsMediaSpec{
+		{FileFormat: "mp4", Width: 1920, Height: 1080},
+	}
+	got := webcontent.PickSpec(obj)
+	if got != "mp4" {
+		t.Errorf("PickSpec(object spec) = %q, want \"mp4\"", got)
+	}
+}
+
+func TestDecryptKeyInt(t *testing.T) {
+	obj := makeVideoObject()
+	got := webcontent.DecryptKeyInt(obj)
+	if got != 0 {
+		t.Errorf("DecryptKeyInt(non-numeric) = %d, want 0", got)
+	}
+
+	obj.ObjectDesc.Media[0].DecodeKey = "42"
+	got = webcontent.DecryptKeyInt(obj)
+	if got != 42 {
+		t.Errorf("DecryptKeyInt(42) = %d, want 42", got)
+	}
+}
+
+func TestDecryptKeyInt_NoMedia(t *testing.T) {
+	obj := &scraper.ChannelsObject{ID: "test"}
+	got := webcontent.DecryptKeyInt(obj)
+	if got != 0 {
+		t.Errorf("DecryptKeyInt(no media) = %d, want 0", got)
+	}
+}
+
+func TestObjectTitle_WithDescription(t *testing.T) {
+	obj := makeVideoObject()
+	got := webcontent.ObjectTitle(obj)
+	if got != "测试视频" {
+		t.Errorf("ObjectTitle = %q, want \"测试视频\"", got)
+	}
+}
+
+func TestObjectTitle_EmptyDescription(t *testing.T) {
+	obj := makeVideoObject()
+	obj.ObjectDesc.Description = ""
+	got := webcontent.ObjectTitle(obj)
+	if got != "feed123" {
+		t.Errorf("ObjectTitle(no desc) = %q, want \"feed123\"", got)
+	}
+}
+
+func TestObjectTitle_EmptyDescriptionAndID(t *testing.T) {
+	obj := makeVideoObject()
+	obj.ObjectDesc.Description = ""
+	obj.ID = ""
+	got := webcontent.ObjectTitle(obj)
+	if got == "" {
+		t.Error("ObjectTitle should not be empty (should fallback to timestamp)")
+	}
+}
+
+func TestObjectTitle_Live(t *testing.T) {
+	obj := makeVideoObject()
+	obj.LiveInfo = &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"}
+	got := webcontent.ObjectTitle(obj)
+	if got != "直播" {
+		t.Errorf("ObjectTitle(live) = %q, want \"直播\"", got)
+	}
+}
+
+func TestObjectURL_Video(t *testing.T) {
+	obj := makeVideoObject()
+	got := webcontent.ObjectURL(obj)
+	if got != "https://video.example.com/video.mp4?encfilekey=filekey&token=token" {
+		t.Errorf("ObjectURL = %q", got)
+	}
+}
+
+func TestObjectURL_Live(t *testing.T) {
+	obj := makeVideoObject()
+	obj.LiveInfo = &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"}
+	got := webcontent.ObjectURL(obj)
+	if got != "" {
+		t.Errorf("ObjectURL(live) = %q, want \"\"", got)
+	}
+}
+
+func TestObjectURL_Picture(t *testing.T) {
+	obj := makeVideoObject()
+	obj.Type = "picture"
+	got := webcontent.ObjectURL(obj)
+	if got != "" {
+		t.Errorf("ObjectURL(picture) = %q, want \"\"", got)
+	}
+}
+
+func TestBuildJumpURLFromParts_WithSourceURL(t *testing.T) {
+	got := webcontent.BuildJumpURLFromParts("oid123", "nid456", "https://channels.weixin.qq.com/web/pages/feed?oid=abc", "user")
+	if got != "https://channels.weixin.qq.com/web/pages/feed?oid=abc" {
+		t.Errorf("BuildJumpURLFromParts(sourceURL) = %q", got)
+	}
+}
+
+func TestBuildJumpURLFromParts_WithUsername(t *testing.T) {
+	got := webcontent.BuildJumpURLFromParts("feed_jump_001", "", "", "test_user")
+	if got != "https://channels.weixin.qq.com/web/pages/feed?username=test_user" {
+		t.Errorf("BuildJumpURLFromParts(username) = %q", got)
+	}
+}
+
+func TestBuildJumpURLFromParts_NilLike(t *testing.T) {
+	got := webcontent.BuildJumpURLFromParts("", "", "", "")
+	if got != "https://channels.weixin.qq.com/web/pages/feed" {
+		t.Errorf("BuildJumpURLFromParts(empty) = %q", got)
+	}
+}
+
+func TestToContent_Video(t *testing.T) {
+	obj := makeVideoObject()
+	got, err := webcontent.ToContent(obj)
+	if err != nil {
+		t.Fatalf("ToContent: %v", err)
+	}
+	if got.ExternalId != "feed123" {
+		t.Errorf("ExternalId = %q", got.ExternalId)
+	}
+	if got.ContentType != "video" {
+		t.Errorf("ContentType = %q", got.ContentType)
+	}
+	if got.ContentURL != "https://video.example.com/video.mp4?encfilekey=filekey&token=token" {
+		t.Errorf("ContentURL = %q", got.ContentURL)
+	}
+	if got.Duration != 5 {
+		t.Errorf("Duration = %d", got.Duration)
+	}
+	if got.Size != 100 {
+		t.Errorf("Size = %d", got.Size)
+	}
+}
+
+func TestToContent_Nil(t *testing.T) {
+	_, err := webcontent.ToContent(nil)
+	if err == nil {
+		t.Fatal("expected error for nil object")
+	}
+}
+
+func TestToContent_EmptyID(t *testing.T) {
+	_, err := webcontent.ToContent(&scraper.ChannelsObject{})
+	if err == nil {
+		t.Fatal("expected error for empty ID")
+	}
+}
+
+func TestToContent_MediaType9(t *testing.T) {
+	obj := makeVideoObject()
+	obj.ObjectDesc.MediaType = 9
+	_, err := webcontent.ToContent(obj)
+	if err == nil {
+		t.Fatal("expected error for mediaType=9")
+	}
+}
+
+func TestToContent_Live(t *testing.T) {
+	obj := makeVideoObject()
+	obj.LiveInfo = &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"}
+	got, err := webcontent.ToContent(obj)
+	if err != nil {
+		t.Fatalf("ToContent(live): %v", err)
+	}
+	if got.ContentType != "live" {
+		t.Errorf("ContentType = %q, want \"live\"", got.ContentType)
+	}
+	if got.Title != "直播" {
+		t.Errorf("Title = %q, want \"直播\"", got.Title)
+	}
+}
+
+func TestToContent_Picture(t *testing.T) {
 	obj := &scraper.ChannelsObject{
 		ID:            "pic_feed_001",
 		ObjectNonceId: "pic_nonce_001",
@@ -165,187 +289,19 @@ func TestChannelsObjectToChannelsFeedProfile_Picture(t *testing.T) {
 			MediaType:   2,
 		},
 	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
+	got, err := webcontent.ToContent(obj)
 	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile picture: %v", err)
+		t.Fatalf("ToContent(picture): %v", err)
 	}
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:  "pic_feed_001",
-		NonceId:   "pic_nonce_001",
-		SourceURL: "https://channels.weixin.qq.com/web/pages/feed?oid=pic_feed_001",
-		Title:     "一组美图",
-		CoverURL:  "https://example.com/pic_cover.jpg",
-		CreatedAt: 1700000000,
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "pic_author",
-			Nickname:  "图片作者",
-			AvatarURL: "https://example.com/pic_avatar.jpg",
-		},
+	if got.ContentType != "picture" {
+		t.Errorf("ContentType = %q, want \"picture\"", got.ContentType)
 	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("picture profile mismatch (-want +got):\n%s", diff)
+	if got.CoverURL != "https://example.com/pic_cover.jpg" {
+		t.Errorf("CoverURL = %q", got.CoverURL)
 	}
 }
 
-func TestChannelsObjectToChannelsFeedProfile_WithoutType(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "feed_no_type",
-		ObjectNonceId: "nonce_no_type",
-		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=feed_no_type",
-		Contact: scraper.ChannelsContact{
-			Username: "author3",
-			Nickname: "作者三",
-			HeadUrl:  "https://example.com/avatar3.jpg",
-		},
-		ObjectDesc: scraper.ChannelsObjectDesc{
-			Description: "默认类型视频",
-			MediaType:   0,
-			Media: []scraper.ChannelsMediaItem{
-				{
-					URL:          "https://video.example.com/v3.mp4",
-					URLToken:     "&token=v3token",
-					CoverUrl:     "https://example.com/cover3.jpg",
-					DecodeKey:    "key3",
-					VideoPlayLen: 60,
-					FileSize:     5000,
-					Width:        640,
-					Height:       480,
-				},
-			},
-		},
-	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile without type: %v", err)
-	}
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:    "feed_no_type",
-		NonceId:     "nonce_no_type",
-		SourceURL:   "https://channels.weixin.qq.com/web/pages/feed?oid=feed_no_type",
-		URL:         "https://video.example.com/v3.mp4&token=v3token",
-		Title:       "默认类型视频",
-		DecryptKey:  "key3",
-		CoverURL:    "https://example.com/cover3.jpg",
-		CoverWidth:  640,
-		CoverHeight: 480,
-		Duration:    60,
-		FileSize:    5000,
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "author3",
-			Nickname:  "作者三",
-			AvatarURL: "https://example.com/avatar3.jpg",
-		},
-	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("no-type profile mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_NilObject(t *testing.T) {
-	_, err := scraper.ChannelsObjectToChannelsFeedProfile(nil)
-	if err == nil {
-		t.Fatal("expected error for nil object, got nil")
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_EmptyID(t *testing.T) {
-	obj := &scraper.ChannelsObject{ID: "  "}
-	_, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err == nil {
-		t.Fatal("expected error for empty ID, got nil")
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_MediaType9(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "feed_replay",
-		ObjectNonceId: "nonce_replay",
-		Type:          "video",
-		ObjectDesc: scraper.ChannelsObjectDesc{
-			MediaType: 9,
-			Media:     []scraper.ChannelsMediaItem{{URL: "https://example.com/replay.mp4"}},
-		},
-	}
-	_, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err == nil {
-		t.Fatal("expected error for mediaType=9, got nil")
-	}
-	if err.Error() != "不支持直播回放（mediaType=9）" {
-		t.Fatalf("error message = %q", err.Error())
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_PictureNoFiles(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "pic_no_files",
-		ObjectNonceId: "nonce_no_files",
-		Type:          "picture",
-		ObjectDesc:    scraper.ChannelsObjectDesc{MediaType: 2},
-	}
-	_, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err == nil {
-		t.Fatal("expected error for picture without files, got nil")
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_MediaNoMedia(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "media_no_data",
-		ObjectNonceId: "nonce_no_data",
-		Type:          "media",
-		ObjectDesc:    scraper.ChannelsObjectDesc{MediaType: 4},
-	}
-	_, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err == nil {
-		t.Fatal("expected error for media without media data, got nil")
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_SpecFromObject(t *testing.T) {
-	obj := &scraper.ChannelsObject{
-		ID:            "feed_with_spec",
-		ObjectNonceId: "nonce_spec",
-		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=feed_with_spec",
-		Type:          "media",
-		Spec: []scraper.ChannelsMediaSpec{
-			{FileFormat: "mp4", Width: 1920, Height: 1080, DurationMs: 30000},
-		},
-		Contact: scraper.ChannelsContact{
-			Username: "spec_author",
-			Nickname: "规格作者",
-			HeadUrl:  "https://example.com/spec_avatar.jpg",
-		},
-		ObjectDesc: scraper.ChannelsObjectDesc{
-			Description: "使用对象级 spec",
-			MediaType:   4,
-			Media: []scraper.ChannelsMediaItem{
-				{
-					URL:          "https://video.example.com/spec.mp4",
-					URLToken:     "&token=spec_token",
-					CoverUrl:     "https://example.com/spec_cover.jpg",
-					DecodeKey:    "spec_key",
-					VideoPlayLen: 120,
-					FileSize:     10000,
-					Width:        0,
-					Height:       0,
-				},
-			},
-		},
-	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile spec: %v", err)
-	}
-	if len(got.Spec) != 1 {
-		t.Fatalf("spec length = %d, want 1", len(got.Spec))
-	}
-	wantSpec := scraper.ChannelsMediaSpec{FileFormat: "mp4", Width: 1920, Height: 1080, DurationMs: 30000}
-	if diff := cmp.Diff(wantSpec, got.Spec[0]); diff != "" {
-		t.Errorf("spec mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestChannelsObjectToChannelsFeedProfile_LiveAnchorContactFallback(t *testing.T) {
+func TestToContent_LiveAnchorContactFallback(t *testing.T) {
 	obj := &scraper.ChannelsObject{
 		ID:            "live_no_anchor",
 		ObjectNonceId: "nonce_live_no_anchor",
@@ -361,24 +317,96 @@ func TestChannelsObjectToChannelsFeedProfile_LiveAnchorContactFallback(t *testin
 		},
 		LiveInfo: &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"},
 	}
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
+	content, err := webcontent.ToContent(obj)
 	if err != nil {
-		t.Fatalf("ChannelsObjectToChannelsFeedProfile live fallback: %v", err)
+		t.Fatalf("ToContent(live fallback): %v", err)
 	}
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:  "live_no_anchor",
-		NonceId:   "nonce_live_no_anchor",
-		SourceURL: "https://channels.weixin.qq.com/web/pages/feed?oid=live_no_anchor",
-		Title:     "直播",
-		CoverURL:  "https://example.com/media_cover.jpg",
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "fallback_user",
-			Nickname:  "回退主播",
-			AvatarURL: "https://example.com/fallback_avatar.jpg",
+	if content.CoverURL != "https://example.com/media_cover.jpg" {
+		t.Errorf("CoverURL = %q", content.CoverURL)
+	}
+	account, err := webcontent.ToAccount(obj)
+	if err != nil {
+		t.Fatalf("ToAccount(live fallback): %v", err)
+	}
+	if account.ExternalId != "fallback_user" {
+		t.Errorf("Account ExternalId = %q", account.ExternalId)
+	}
+}
+
+func TestToContent_FullConversion(t *testing.T) {
+	obj := &scraper.ChannelsObject{
+		ID:            "14885057406549363320",
+		ObjectNonceId: "nonce_full_test",
+		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=14885057406549363320&nid=nonce_full_test",
+		Type:          "media",
+		CreateTime:    1701234567,
+		Contact: scraper.ChannelsContact{
+			Username: "v2_060000231003b20f@finder",
+			Nickname: "测试视频号主",
+			HeadUrl:  "https://example.com/real_avatar.jpg",
+		},
+		ObjectDesc: scraper.ChannelsObjectDesc{
+			Description: "这是一条真实的测试视频",
+			MediaType:   4,
+			Media: []scraper.ChannelsMediaItem{
+				{
+					URL:          "https://finder.video.qq.com/251/20302/stodownload?encfilekey=actual_key",
+					URLToken:     "&token=actual_token",
+					CoverUrl:     "https://finder.video.qq.com/251/cover.jpg",
+					DecodeKey:    "actual_decode_key",
+					VideoPlayLen: 125,
+					FileSize:     8388608,
+					Width:        1920,
+					Height:       1080,
+					Spec: []scraper.ChannelsMediaSpec{
+						{FileFormat: "mp4", Width: 1920, Height: 1080, DurationMs: 125000},
+						{FileFormat: "mp4", Width: 1280, Height: 720, DurationMs: 125000},
+					},
+				},
+			},
 		},
 	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("live fallback profile mismatch (-want +got):\n%s", diff)
+
+	got, err := webcontent.ToContent(obj)
+	if err != nil {
+		t.Fatalf("ToContent(full): %v", err)
+	}
+
+	wantExternalId := "14885057406549363320"
+	wantURL := "https://finder.video.qq.com/251/20302/stodownload?encfilekey=actual_key&token=actual_token"
+	if got.ExternalId != wantExternalId {
+		t.Errorf("ExternalId = %q, want %q", got.ExternalId, wantExternalId)
+	}
+	if got.ContentURL != wantURL {
+		t.Errorf("ContentURL = %q, want %q", got.ContentURL, wantURL)
+	}
+	if got.Duration != 125 {
+		t.Errorf("Duration = %d, want 125", got.Duration)
+	}
+	if got.Size != 8388608 {
+		t.Errorf("Size = %d, want 8388608", got.Size)
+	}
+
+	// Verify ID building
+	if id := webcontent.BuildContentID(got.ExternalId); id != "wx_channels:14885057406549363320" {
+		t.Errorf("BuildContentID = %q", id)
+	}
+}
+
+func TestToAccount(t *testing.T) {
+	obj := makeVideoObject()
+	got, err := webcontent.ToAccount(obj)
+	if err != nil {
+		t.Fatalf("ToAccount: %v", err)
+	}
+	if got.ExternalId != "author" {
+		t.Errorf("ExternalId = %q, want \"author\"", got.ExternalId)
+	}
+	if got.Nickname != "作者" {
+		t.Errorf("Nickname = %q, want \"作者\"", got.Nickname)
+	}
+	if id := webcontent.BuildAccountID(got.ExternalId); id != "wx_channels:author" {
+		t.Errorf("BuildAccountID = %q, want \"wx_channels:author\"", id)
 	}
 }
 
@@ -415,121 +443,154 @@ func TestBuildAccountID(t *testing.T) {
 	}
 }
 
-func TestBuildJumpURL(t *testing.T) {
-	tests := []struct {
-		name string
-		feed *scraper.ChannelsFeedProfile
-		want string
-	}{
-		{
-			name: "with source_url",
-			feed: &scraper.ChannelsFeedProfile{
-				SourceURL: "https://channels.weixin.qq.com/web/pages/feed?oid=abc&nid=def",
-			},
-			want: "https://channels.weixin.qq.com/web/pages/feed?oid=abc&nid=def",
-		},
-		{
-			name: "with username",
-			feed: &scraper.ChannelsFeedProfile{
-				ObjectId: "feed_jump_001",
-				Contact:  scraper.ChannelsFeedAccount{Username: "test_user"},
-			},
-			want: "https://channels.weixin.qq.com/web/pages/feed?username=test_user",
-		},
-		{
-			name: "nil feed",
-			feed: nil,
-			want: "https://channels.weixin.qq.com/web/pages/feed",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := scraper.BuildJumpURL(tt.feed)
-			if got != tt.want {
-				t.Errorf("BuildJumpURL() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestPlatformID(t *testing.T) {
 	if webcontent.PlatformID != "wx_channels" {
 		t.Errorf("PlatformID = %q, want \"wx_channels\"", webcontent.PlatformID)
 	}
 }
 
-// TestChannelsObjectToChannelsFeedProfile_FullConversion 模拟完整的 JSON → Profile → ID 生成流程
-func TestChannelsObjectToChannelsFeedProfile_FullConversion(t *testing.T) {
+func TestObjectTitle_LiveAnchorContactFallback(t *testing.T) {
 	obj := &scraper.ChannelsObject{
-		ID:            "14885057406549363320",
-		ObjectNonceId: "nonce_full_test",
-		SourceURL:     "https://channels.weixin.qq.com/web/pages/feed?oid=14885057406549363320&nid=nonce_full_test",
-		Type:          "media",
-		CreateTime:    1701234567,
-		Contact: scraper.ChannelsContact{
-			Username: "v2_060000231003b20f@finder",
-			Nickname: "测试视频号主",
-			HeadUrl:  "https://example.com/real_avatar.jpg",
-		},
-		ObjectDesc: scraper.ChannelsObjectDesc{
-			Description: "这是一条真实的测试视频",
-			MediaType:   4,
-			Media: []scraper.ChannelsMediaItem{
-				{
-					URL:          "https://finder.video.qq.com/251/20302/stodownload?encfilekey=actual_key",
-					URLToken:     "&token=actual_token",
-					CoverUrl:     "https://finder.video.qq.com/251/cover.jpg",
-					DecodeKey:    "actual_decode_key",
-					VideoPlayLen: 125,
-					FileSize:     8388608,
-					Width:        1920,
-					Height:       1080,
-					Spec: []scraper.ChannelsMediaSpec{
-						{FileFormat: "mp4", Width: 1920, Height: 1080, DurationMs: 125000},
-						{FileFormat: "mp4", Width: 1280, Height: 720, DurationMs: 125000},
-					},
-				},
-			},
-		},
+		ID:            "live_no_anchor",
+		ObjectNonceId: "nonce_live_no_anchor",
+		LiveInfo:      &scraper.ChannelsLiveInfo{AnchorStatusFlag: "live"},
 	}
-
-	got, err := scraper.ChannelsObjectToChannelsFeedProfile(obj)
-	if err != nil {
-		t.Fatalf("conversion failed: %v", err)
-	}
-
-	want := &scraper.ChannelsFeedProfile{
-		ObjectId:    "14885057406549363320",
-		NonceId:     "nonce_full_test",
-		SourceURL:   "https://channels.weixin.qq.com/web/pages/feed?oid=14885057406549363320&nid=nonce_full_test",
-		URL:         "https://finder.video.qq.com/251/20302/stodownload?encfilekey=actual_key&token=actual_token",
-		Title:       "这是一条真实的测试视频",
-		DecryptKey:  "actual_decode_key",
-		CoverURL:    "https://finder.video.qq.com/251/cover.jpg",
-		CoverWidth:  1920,
-		CoverHeight: 1080,
-		Duration:    125,
-		FileSize:    8388608,
-		CreatedAt:   1701234567,
-		Spec: []scraper.ChannelsMediaSpec{
-			{FileFormat: "mp4", Width: 1920, Height: 1080, DurationMs: 125000},
-			{FileFormat: "mp4", Width: 1280, Height: 720, DurationMs: 125000},
-		},
-		Contact: scraper.ChannelsFeedAccount{
-			Username:  "v2_060000231003b20f@finder",
-			Nickname:  "测试视频号主",
-			AvatarURL: "https://example.com/real_avatar.jpg",
-		},
-	}
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("full conversion profile mismatch (-want +got):\n%s", diff)
-	}
-
-	// 验证 ID 构建
-	if id := webcontent.BuildContentID(got.ObjectId); id != "wx_channels:14885057406549363320" {
-		t.Errorf("BuildContentID = %q", id)
-	}
-	if id := webcontent.BuildAccountID(got.Contact.Username); id != "wx_channels:v2_060000231003b20f@finder" {
-		t.Errorf("BuildAccountID = %q", id)
+	got := webcontent.ObjectTitle(obj)
+	if got != "直播" {
+		t.Errorf("ObjectTitle(live fallback) = %q, want \"直播\"", got)
 	}
 }
+
+func TestPickSpec_MediaSpecsVsObjectSpecs(t *testing.T) {
+	obj := makeVideoObject()
+	obj.ObjectDesc.Media[0].Spec = []scraper.ChannelsMediaSpec{
+		{FileFormat: "h264", Width: 1920},
+	}
+	obj.Spec = []scraper.ChannelsMediaSpec{
+		{FileFormat: "h265", Width: 3840},
+	}
+	// Media specs should take precedence
+	got := webcontent.PickSpec(obj)
+	if got != "h264" {
+		t.Errorf("PickSpec = %q, want \"h264\" (media spec takes priority)", got)
+	}
+}
+
+func TestObjectURL_NoMedia(t *testing.T) {
+	obj := &scraper.ChannelsObject{ID: "test", Type: "media"}
+	got := webcontent.ObjectURL(obj)
+	if got != "" {
+		t.Errorf("ObjectURL(no media) = %q, want \"\"", got)
+	}
+}
+
+func TestBuildJumpURLFromParts_WithObjectIdAndNonceId(t *testing.T) {
+	tests := []struct {
+		name     string
+		objectId string
+		nonceId  string
+		sourceURL string
+		username string
+		want     string
+	}{
+		{
+			name:     "numeric objectId",
+			objectId: "14962486294771997060",
+			nonceId:  "",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?oid=z6VuAqyJGYQ",
+		},
+		{
+			name:     "numeric objectId with username",
+			objectId: "14962486294771997060",
+			username: "test_user",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user&oid=z6VuAqyJGYQ",
+		},
+		{
+			name:     "non-numeric nonceId ignored",
+			objectId: "14962486294771997060",
+			nonceId:  "4390481592474233535_0_146_0_0",
+			username: "test_user",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user&oid=z6VuAqyJGYQ",
+		},
+		{
+			name:     "non-numeric objectId ignored",
+			objectId: "feed_001",
+			username: "test_user",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user",
+		},
+		{
+			name: "sourceURL overrides",
+			objectId: "oid123",
+			sourceURL: "https://channels.weixin.qq.com/web/pages/feed?oid=abc",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?oid=abc",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := webcontent.BuildJumpURLFromParts(tt.objectId, tt.nonceId, tt.sourceURL, tt.username)
+			if got != tt.want {
+				t.Errorf("got  %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToContent_PictureNoFiles(t *testing.T) {
+	obj := &scraper.ChannelsObject{
+		ID:            "pic_no_files",
+		ObjectNonceId: "nonce_no_files",
+		Type:          "picture",
+		ObjectDesc:    scraper.ChannelsObjectDesc{MediaType: 2},
+	}
+	_, err := webcontent.ToContent(obj)
+	if err == nil {
+		t.Fatal("expected error for picture without files")
+	}
+}
+
+func TestToContent_MediaNoMedia(t *testing.T) {
+	obj := &scraper.ChannelsObject{
+		ID:            "media_no_data",
+		ObjectNonceId: "nonce_no_data",
+		Type:          "media",
+		ObjectDesc:    scraper.ChannelsObjectDesc{MediaType: 4},
+	}
+	_, err := webcontent.ToContent(obj)
+	if err == nil {
+		t.Fatal("expected error for media without media data")
+	}
+}
+
+func TestToAccount_Nil(t *testing.T) {
+	_, err := webcontent.ToAccount(nil)
+	if err == nil {
+		t.Fatal("expected error for nil object")
+	}
+}
+
+func TestObjectTitle_EmptyDescriptionWithID(t *testing.T) {
+	obj := &scraper.ChannelsObject{
+		ID: "only_id_123",
+		ObjectDesc: scraper.ChannelsObjectDesc{
+			Description: "   ",
+		},
+	}
+	got := webcontent.ObjectTitle(obj)
+	if got != "only_id_123" {
+		t.Errorf("ObjectTitle = %q, want \"only_id_123\"", got)
+	}
+}
+
+func TestPickSpec_NoMediaSpecFallsBackToObjectSpec(t *testing.T) {
+	obj := makeVideoObject()
+	obj.Spec = []scraper.ChannelsMediaSpec{
+		{FileFormat: "h265", Width: 3840},
+	}
+	got := webcontent.PickSpec(obj)
+	if got != "h265" {
+		t.Errorf("PickSpec(fallback to object spec) = %q, want \"h265\"", got)
+	}
+}
+
+// Ensure imports are used
+var _ = cmp.Diff

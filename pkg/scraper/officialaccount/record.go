@@ -32,6 +32,7 @@ func HandleArticleProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *int
 func upsertOfficialAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.OfficialAccountArticleProfile, accountExternalID, accountUsername string) {
 	now := util.NowMillis()
 	acc := model.Account{
+		Id:         platformIDOfficialAccount + ":" + accountExternalID,
 		PlatformId: platformIDOfficialAccount,
 		ExternalId: accountExternalID,
 		Username:   accountUsername,
@@ -59,7 +60,7 @@ func upsertOfficialAccount(db *gorm.DB, logger zerolog.Logger, profile *intercep
 		"avatar_url": profile.AvatarURL,
 		"updated_at": now,
 	}).Error; err != nil {
-		logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update official account failed")
+		logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update official account failed")
 	}
 }
 

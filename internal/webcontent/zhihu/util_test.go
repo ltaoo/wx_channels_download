@@ -151,6 +151,7 @@ func TestEnrichAccountUpdatesAccountAndBrowseHistory(t *testing.T) {
 
 	accountID := "e40c4495e66937d3e085ff1b5f2d03a6"
 	if err := db.Create(&model.Account{
+		Id:         PlatformId + ":" + accountID,
 		PlatformId: PlatformId,
 		ExternalId: accountID,
 		Username:   accountID,
@@ -159,6 +160,7 @@ func TestEnrichAccountUpdatesAccountAndBrowseHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.BrowseHistory{
+		Id:                PlatformId + ":zhihu:answer:1:1",
 		PlatformId:        PlatformId,
 		ContentExternalId: "zhihu:answer:1",
 		AccountExternalId: accountID,

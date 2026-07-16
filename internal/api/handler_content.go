@@ -26,7 +26,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 	var body struct {
-		AccountId   *int       `form:"account_id"`
+		AccountId   *string    `form:"account_id"`
 		ContentType *string    `form:"content_type"`
 		Keyword     *string    `form:"keyword"`
 		StartAt     *time.Time `form:"start_at" time_format:"2006-01-02"`
@@ -64,7 +64,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 	if contentType != "" {
 		baseQuery = baseQuery.Where("content_type = ?", contentType)
 	}
-	if body.AccountId != nil && *body.AccountId > 0 {
+	if body.AccountId != nil && *body.AccountId != "" {
 		baseQuery = baseQuery.Joins("JOIN content_account ON content_account.content_id = content.id").
 			Where("content_account.account_id = ?", *body.AccountId)
 	}
@@ -93,7 +93,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		return
 	}
 
-	contentIDs := make([]int, 0, len(contents))
+	contentIDs := make([]string, 0, len(contents))
 	downloadTaskIDs := make([]int, 0, len(contents))
 	for _, content := range contents {
 		contentIDs = append(contentIDs, content.Id)
@@ -102,11 +102,11 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		}
 	}
 
-	accountsByContentID := map[int][]gin.H{}
+	accountsByContentID := map[string][]gin.H{}
 	if len(contentIDs) > 0 {
 		type row struct {
-			ContentId  int
-			AccountId  int
+			ContentId  string
+			AccountId  string
 			Role       string
 			PlatformId string
 			ExternalId string

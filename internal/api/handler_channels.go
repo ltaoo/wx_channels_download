@@ -168,7 +168,7 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		}
 	}
 
-	payload, profile, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
+	payload, content, account, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -247,12 +247,12 @@ func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
 		return
 	}
 	task := c.downloader.GetTask(id)
-	if task != nil && profile != nil && c.channelsUploadService != nil {
-		content, err := c.channelsUploadService.HandleChannelsFeed(profile)
+	if task != nil && content != nil && account != nil && c.channelsUploadService != nil {
+		ct, err := c.channelsUploadService.HandleChannelsFeed(content, account)
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
-		} else if content != nil {
-			if _, err := c.CreateContentDownloadTask(content, task, "admin"); err != nil {
+		} else if ct != nil {
+			if _, err := c.CreateContentDownloadTask(ct, task, "admin"); err != nil {
 				c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
 			}
 		}

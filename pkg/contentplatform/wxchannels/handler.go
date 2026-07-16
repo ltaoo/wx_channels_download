@@ -10,6 +10,7 @@ import (
 
 	contentdownload "wx_channel/pkg/contentplatform/download"
 	channelspkg "wx_channel/pkg/scraper/wxchannels"
+	wxchelpers "wx_channel/internal/webcontent/wxchannels"
 )
 
 const PlatformID = "wx_channels"
@@ -92,44 +93,68 @@ func (h *Handler) Probe(ctx context.Context, input contentdownload.ProbeInput) (
 	}
 
 	obj := resp.Data.Object
-	profile, err := channelspkg.ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		return nil, err
-	}
 
 	isPicture := obj.Type == "picture" || obj.ObjectDesc.MediaType == 2
 	contentType := ContentTypeVideo
 	if isPicture {
 		contentType = ContentTypeImageAlbum
 	}
-	authorHomepageURL := channelsAuthorProfileURL(profile.Contact.Username, profile.SourceURL)
-	probe.ContentID = profile.ObjectId
+
+	title := wxchelpers.ObjectTitle(&obj)
+	url := wxchelpers.ObjectURL(&obj)
+	coverURL := ""
+	duration := 0
+	nonceID := obj.ObjectNonceId
+	decryptKey := ""
+	authorNickname := obj.Contact.Nickname
+	authorAvatarURL := obj.Contact.HeadUrl
+	username := obj.Contact.Username
+
+	if obj.LiveInfo != nil {
+		if obj.AnchorContact != nil {
+			coverURL = obj.AnchorContact.CoverImgUrl
+			username = obj.AnchorContact.Username
+			authorNickname = obj.AnchorContact.Nickname
+			authorAvatarURL = obj.AnchorContact.HeadUrl
+		}
+		if coverURL == "" && len(obj.ObjectDesc.Media) > 0 {
+			coverURL = obj.ObjectDesc.Media[0].CoverUrl
+		}
+	} else if len(obj.ObjectDesc.Media) > 0 {
+		media := obj.ObjectDesc.Media[0]
+		coverURL = media.CoverUrl
+		duration = media.VideoPlayLen
+		decryptKey = media.DecodeKey
+	}
+
+	authorHomepageURL := channelsAuthorProfileURL(username, obj.SourceURL)
+	probe.ContentID = obj.ID
 	probe.Content = NewFeedContentEnvelope(
 		contentdownload.ContentSummary{
 			Platform:        PlatformID,
 			Type:            contentType,
-			ID:              profile.ObjectId,
-			Title:           profile.Title,
-			Author:          profile.Contact.Nickname,
-			URL:             profile.URL,
-			SourceURL:       profile.SourceURL,
-			AuthorNickname:  profile.Contact.Nickname,
-			AuthorAvatarURL: profile.Contact.AvatarURL,
-			CoverURL:        profile.CoverURL,
-			Duration:        int64(profile.Duration),
+			ID:              obj.ID,
+			Title:           title,
+			Author:          authorNickname,
+			URL:             url,
+			SourceURL:       obj.SourceURL,
+			AuthorNickname:  authorNickname,
+			AuthorAvatarURL: authorAvatarURL,
+			CoverURL:        coverURL,
+			Duration:        int64(duration),
 		},
 		obj,
 		FeedMetadata{
 			OID:               parts.Oid,
 			NID:               parts.Nid,
 			EID:               parts.Eid,
-			NonceID:           profile.NonceId,
-			AuthorAvatarURL:   profile.Contact.AvatarURL,
+			NonceID:           nonceID,
+			AuthorAvatarURL:   authorAvatarURL,
 			AuthorHomepageURL: authorHomepageURL,
-			SourceURL:         profile.SourceURL,
+			SourceURL:         obj.SourceURL,
 		},
 	)
-	probe.Internal["decode_key"] = profile.DecryptKey
+	probe.Internal["decode_key"] = decryptKey
 	probe.Internal["pagejson"] = resp
 
 	if isPicture {
@@ -296,17 +321,25 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 	if obj.ID == "" {
 		return nil, contentdownload.ErrResolveUnavailable
 	}
-	profile, err := channelspkg.ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		return nil, err
+
+	title := wxchelpers.ObjectTitle(&obj)
+	objectURL := wxchelpers.ObjectURL(&obj)
+	coverURL := ""
+	username := obj.Contact.Username
+	if obj.LiveInfo != nil && obj.AnchorContact != nil {
+		username = obj.AnchorContact.Username
+		coverURL = obj.AnchorContact.CoverImgUrl
 	}
-	authorHomepageURL := channelsAuthorProfileURL(profile.Contact.Username, profile.SourceURL)
+	if coverURL == "" && len(obj.ObjectDesc.Media) > 0 {
+		coverURL = obj.ObjectDesc.Media[0].CoverUrl
+	}
+	authorHomepageURL := channelsAuthorProfileURL(username, obj.SourceURL)
 
 	content := probe.Content
 	filename := firstNonEmpty(input.Options.Filename, contentdownload.ContentTitle(content), probe.ContentID)
 	suffix := firstNonEmpty(input.Options.Suffix, variant.Suffix, ".mp4")
 	spec := firstNonEmpty(input.Options.Spec, variant.Spec)
-	downloadURL := profile.URL
+	downloadURL := objectURL
 	protocol := "http"
 
 	isPicture := obj.Type == "picture" || obj.ObjectDesc.MediaType == 2
@@ -328,7 +361,7 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		protocol = "zip"
 	} else if variant.ID == "cover" {
 		suffix = ".jpg"
-		downloadURL = profile.CoverURL
+		downloadURL = coverURL
 	} else {
 		if len(obj.ObjectDesc.Media) == 0 {
 			return nil, fmt.Errorf("channels media is empty")
@@ -355,8 +388,8 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		Platform:     PlatformID,
 		SourceURL:    firstNonEmpty(probe.SourceURL, input.URL),
 		CanonicalURL: probe.CanonicalURL,
-		ContentID:    profile.ObjectId,
-		Title:        firstNonEmpty(profile.Title, contentdownload.ContentTitle(content)),
+		ContentID:    obj.ID,
+		Title:        firstNonEmpty(title, contentdownload.ContentTitle(content)),
 		Filename:     filename,
 		Suffix:       suffix,
 		Download: contentdownload.DownloadSpec{
@@ -367,13 +400,13 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		},
 		Labels: map[string]string{
 			"platform":   PlatformID,
-			"id":         profile.ObjectId,
-			"nonce_id":   profile.NonceId,
-			"title":      profile.Title,
+			"id":         obj.ID,
+			"nonce_id":   obj.ObjectNonceId,
+			"title":      title,
 			"key":        key,
 			"spec":       spec,
 			"suffix":     suffix,
-			"source_url": profile.SourceURL,
+			"source_url": obj.SourceURL,
 		},
 		Metadata: map[string]any{
 			"variant_id":          variant.ID,
@@ -384,14 +417,14 @@ func (h *Handler) Resolve(ctx context.Context, input contentdownload.ResolveInpu
 		Content: channelsContentWithSummary(content, contentdownload.ContentSummary{
 			Platform:        PlatformID,
 			Type:            contentdownload.ContentType(content),
-			ID:              profile.ObjectId,
-			Title:           profile.Title,
-			URL:             profile.URL,
-			SourceURL:       profile.SourceURL,
+			ID:              obj.ID,
+			Title:           title,
+			URL:             objectURL,
+			SourceURL:       obj.SourceURL,
 			Author:          contentdownload.ContentAuthor(content),
 			AuthorNickname:  contentdownload.ContentAuthorNickname(content),
 			AuthorAvatarURL: contentdownload.ContentAuthorAvatarURL(content),
-			CoverURL:        profile.CoverURL,
+			CoverURL:        coverURL,
 			Duration:        contentdownload.ContentDuration(content),
 		}),
 	}

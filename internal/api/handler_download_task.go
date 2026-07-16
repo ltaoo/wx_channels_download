@@ -26,6 +26,7 @@ import (
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
+	wxchannels "wx_channel/internal/webcontent/wxchannels"
 	channels "wx_channel/pkg/scraper/wxchannels"
 	utilpkg "wx_channel/pkg/util"
 )
@@ -154,20 +155,15 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 		return
 	}
 
-	feed, err := channels.ChannelsObjectToChannelsFeedProfile(&body)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if strings.TrimSpace(feed.ObjectId) == "" || strings.TrimSpace(feed.URL) == "" {
+	obj := &body
+	objectId := obj.ID
+	downloadURL := wxchannels.ObjectURL(obj)
+	if strings.TrimSpace(objectId) == "" || strings.TrimSpace(downloadURL) == "" {
 		result.Err(ctx, 400, "不合法的参数：缺少 objectId 或 url")
 		return
 	}
 
-	spec := "original"
-	if len(feed.Spec) > 0 {
-		spec = feed.Spec[0].FileFormat
-	}
+	spec := wxchannels.PickSpec(obj)
 
 	suffix := ".mp4"
 
@@ -181,18 +177,17 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 				}
 			}
 			filesJSON, _ := json.Marshal(files)
-			feed.URL = "zip://weixin.qq.com?files=" + string(filesJSON)
+			downloadURL = "zip://weixin.qq.com?files=" + string(filesJSON)
 			suffix = ".zip"
 		}
 	}
 
-	downloadURL := strings.TrimSpace(feed.URL)
 	if suffix != ".zip" && !strings.Contains(downloadURL, "zip://") && spec != "original" {
 		downloadURL = downloadURL + "&X-snsvideoflag=" + spec
 	}
 
-	// feed.Title 已在 ChannelsObjectToChannelsFeedProfile 中保证不为空
-	filenameBase := strings.TrimSpace(feed.Title)
+	title := wxchannels.ObjectTitle(obj)
+	filenameBase := strings.TrimSpace(title)
 	filename, dir, err := c.formatter.ProcessFilename(filenameBase)
 	if err != nil || strings.TrimSpace(filename) == "" {
 		filename = filenameBase
@@ -202,21 +197,16 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 		suffix = ""
 	}
 
-	sourceURL := strings.TrimSpace(feed.SourceURL)
+	sourceURL := strings.TrimSpace(obj.SourceURL)
 	if sourceURL == "" {
-		sourceURL = channels.BuildJumpUrl(feed)
+		sourceURL = wxchannels.BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, obj.SourceURL, obj.Contact.Username)
 	}
 
-	key := 0
-	if strings.TrimSpace(feed.DecryptKey) != "" {
-		if v, err := strconv.Atoi(feed.DecryptKey); err == nil {
-			key = v
-		}
-	}
+	key := wxchannels.DecryptKeyInt(obj)
 
 	tasks := c.downloader.GetTasks()
 	existing := c.check_existing_feed(tasks, &services.FeedDownloadTaskBody{
-		Id:     feed.ObjectId,
+		Id:     objectId,
 		Spec:   spec,
 		Suffix: suffix,
 	})
@@ -229,9 +219,9 @@ func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
 		&base.Request{
 			URL: downloadURL,
 			Labels: map[string]string{
-				"id":         feed.ObjectId,
-				"nonce_id":   feed.NonceId,
-				"title":      feed.Title,
+				"id":         objectId,
+				"nonce_id":   obj.ObjectNonceId,
+				"title":      title,
 				"key":        strconv.Itoa(key),
 				"spec":       spec,
 				"suffix":     suffix,
@@ -282,18 +272,14 @@ func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
 
 	batch := base.CreateTaskBatch{}
 	for _, raw := range body {
-		feed, err := channels.ChannelsObjectToChannelsFeedProfile(&raw)
-		if err != nil {
-			continue
-		}
-		if strings.TrimSpace(feed.ObjectId) == "" || strings.TrimSpace(feed.URL) == "" {
+		obj := &raw
+		objectId := obj.ID
+		downloadURL := wxchannels.ObjectURL(obj)
+		if strings.TrimSpace(objectId) == "" || strings.TrimSpace(downloadURL) == "" {
 			continue
 		}
 
-		spec := "original"
-		if len(feed.Spec) > 0 {
-			spec = feed.Spec[0].FileFormat
-		}
+		spec := wxchannels.PickSpec(obj)
 
 		suffix := ".mp4"
 
@@ -307,18 +293,17 @@ func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
 					}
 				}
 				filesJSON, _ := json.Marshal(files)
-				feed.URL = "zip://weixin.qq.com?files=" + string(filesJSON)
+				downloadURL = "zip://weixin.qq.com?files=" + string(filesJSON)
 				suffix = ".zip"
 			}
 		}
 
-		downloadURL := strings.TrimSpace(feed.URL)
 		if suffix != ".zip" && !strings.Contains(downloadURL, "zip://") {
 			downloadURL = downloadURL + "&X-snsvideoflag=" + spec
 		}
 
-		// feed.Title 已在 ChannelsObjectToChannelsFeedProfile 中保证不为空
-		filenameBase := strings.TrimSpace(feed.Title)
+		title := wxchannels.ObjectTitle(obj)
+		filenameBase := strings.TrimSpace(title)
 		name, dir, err := c.formatter.ProcessFilename(filenameBase)
 		if err != nil || strings.TrimSpace(name) == "" {
 			name = filenameBase
@@ -328,25 +313,20 @@ func (c *APIClient) handleCompatDownloadTaskBatchCreate(ctx *gin.Context) {
 			suffix = ""
 		}
 
-		sourceURL := strings.TrimSpace(feed.SourceURL)
+		sourceURL := strings.TrimSpace(obj.SourceURL)
 		if sourceURL == "" {
-			sourceURL = channels.BuildJumpUrl(feed)
+			sourceURL = wxchannels.BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, obj.SourceURL, obj.Contact.Username)
 		}
 
-		key := 0
-		if strings.TrimSpace(feed.DecryptKey) != "" {
-			if v, err := strconv.Atoi(feed.DecryptKey); err == nil {
-				key = v
-			}
-		}
+		key := wxchannels.DecryptKeyInt(obj)
 
 		batch.Reqs = append(batch.Reqs, &base.CreateTaskBatchItem{
 			Req: &base.Request{
 				URL: downloadURL,
 				Labels: map[string]string{
-					"id":         feed.ObjectId,
-					"nonce_id":   feed.NonceId,
-					"title":      feed.Title,
+					"id":         objectId,
+					"nonce_id":   obj.ObjectNonceId,
+					"title":      title,
 					"key":        strconv.Itoa(key),
 					"spec":       spec,
 					"suffix":     suffix,
@@ -1975,7 +1955,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		AccountId *int    `json:"account_id"`
+		AccountId *string `json:"account_id"`
 		Username  *string `json:"username"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -1986,7 +1966,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	if body.Username != nil && strings.TrimSpace(*body.Username) != "" {
 		username = strings.TrimSpace(*body.Username)
 	}
-	if username == "" && body.AccountId != nil && *body.AccountId > 0 {
+	if username == "" && body.AccountId != nil && *body.AccountId != "" {
 		var acc model.Account
 		if err := c.db.First(&acc, *body.AccountId).Error; err != nil {
 			result.Err(ctx, 404, err.Error())
@@ -2009,7 +1989,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 	}
 
 	now := utilpkg.NowMillis()
-	accId := 0
+	accId := ""
 	{
 		var acc model.Account
 		err := c.db.Where("platform_id = ? AND external_id = ?", "wx_channels", username).First(&acc).Error
@@ -2019,8 +1999,9 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		}
 		nickname := resp.Data.Contact.Nickname
 		avatar := resp.Data.Contact.HeadUrl
-		if acc.Id == 0 {
+		if acc.Id == "" {
 			acc = model.Account{
+				Id:           "wx_channels:" + username,
 				PlatformId:   "wx_channels",
 				ExternalId:   username,
 				Username:     username,
@@ -2085,7 +2066,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}
-		if existing.Id == 0 {
+		if existing.Id == "" {
 			if err := c.db.Create(&content).Error; err == nil {
 				added++
 				existing = content
@@ -2110,7 +2091,7 @@ func (c *APIClient) handleCompatAccountSynchronize(ctx *gin.Context) {
 				updated++
 			}
 		}
-		if accId > 0 && existing.Id > 0 {
+		if accId != "" && existing.Id != "" {
 			link := model.ContentAccount{ContentId: existing.Id, AccountId: accId, Role: "owner", CreatedAt: now}
 			_ = c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
 		}

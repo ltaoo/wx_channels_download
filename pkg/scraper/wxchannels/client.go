@@ -362,15 +362,10 @@ func (c *ChannelsClient) FetchFeedPage(rawURL string) (*FeedPage, error) {
 		return nil, fmt.Errorf("fetch channels feed profile: %s", resp.ErrMsg)
 	}
 	obj := resp.Data.Object
-	profile, err := ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		return nil, err
-	}
 	return &FeedPage{
-		URL:     *parts,
-		Resp:    resp,
-		Object:  obj,
-		Profile: *profile,
+		URL:    *parts,
+		Resp:   resp,
+		Object: obj,
 	}, nil
 }
 
@@ -458,58 +453,41 @@ func (c *ChannelsClient) ReloadChannels() error {
 	return err
 }
 
-// 保存 channels feed profile 到数据库，返回 model.Content 实例
-func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.Content, error) {
+// UpsertChannelsFeed upserts content and account records into the database and links them.
+func (c *ChannelsClient) UpsertChannelsFeed(content *model.Content, account *model.Account) (*model.Content, error) {
 	if c.db == nil {
 		return nil, errors.New("db is nil")
 	}
-
-	if feed == nil {
-		return nil, errors.New("feed is nil")
+	if content == nil {
+		return nil, errors.New("content is nil")
 	}
-	if strings.TrimSpace(feed.ObjectId) == "" {
-		return nil, errors.New("missing object_id")
+	if account == nil {
+		return nil, errors.New("account is nil")
 	}
-	if strings.TrimSpace(feed.URL) == "" {
-		return nil, errors.New("missing url")
+	if strings.TrimSpace(content.ExternalId) == "" {
+		return nil, errors.New("missing external_id")
 	}
 
 	platformID := "wx_channels"
 	now := util.NowMillis()
-	accountIdentity := model.ResolveAccountIdentityFromBrowseHistory(c.db, platformID, feed.ObjectId, model.AccountIdentity{
-		ExternalId: feed.Contact.Username,
-		Username:   feed.Contact.Username,
-		Nickname:   feed.Contact.Nickname,
-		AvatarURL:  feed.Contact.AvatarURL,
-	})
 
-	acc := &model.Account{
-		PlatformId: platformID,
-		ExternalId: accountIdentity.ExternalId,
-		Username:   accountIdentity.Username,
-		Nickname:   accountIdentity.Nickname,
-		AvatarURL:  accountIdentity.AvatarURL,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
 	existingAccount := &model.Account{}
-	if acc.ExternalId != "" {
-		if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, acc.ExternalId).First(existingAccount).Error; err != nil {
+	if account.ExternalId != "" {
+		if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, account.ExternalId).First(existingAccount).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				if err := c.db.Create(acc).Error; err != nil {
+				account.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
+				if err := c.db.Create(account).Error; err != nil {
 					return nil, err
 				}
-				existingAccount = acc
+				existingAccount = account
 			} else {
 				return nil, err
 			}
 		} else {
 			if err := c.db.Model(existingAccount).Updates(map[string]any{
-				"username":   acc.Username,
-				"nickname":   acc.Nickname,
-				"avatar_url": acc.AvatarURL,
+				"username":   account.Username,
+				"nickname":   account.Nickname,
+				"avatar_url": account.AvatarURL,
 				"updated_at": now,
 			}).Error; err != nil {
 				return nil, err
@@ -517,40 +495,16 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 		}
 	}
 
-	media := feed
 	var existing model.Content
-	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, media.ObjectId).First(&existing).Error; err != nil {
+	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, content.ExternalId).First(&existing).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
 	}
 
-	pub := int64(media.CreatedAt)
-	content := model.Content{
-		PlatformId:  platformID,
-		ContentType: "video",
-		Title:       media.Title,
-		ExternalId:  media.ObjectId,
-		ExternalId2: media.NonceId,
-		ExternalId3: media.DecryptKey,
-		SourceURL:   media.SourceURL,
-		ContentURL:  media.URL,
-		URL:         media.SourceURL,
-		CoverURL:    media.CoverURL,
-		CoverWidth:  strconv.Itoa(media.CoverWidth),
-		CoverHeight: strconv.Itoa(media.CoverHeight),
-		Duration:    int64(media.Duration),
-		Size:        int64(media.FileSize),
-		PublishTime: &pub,
-		Metadata:    fmt.Sprintf(`{"key":"%s"}`, media.DecryptKey),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	if existing.Id == 0 {
-		if err := c.db.Create(&content).Error; err != nil {
+	content.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
+	if existing.Id == "" {
+		if err := c.db.Create(content).Error; err != nil {
 			return nil, err
 		}
 	} else {
@@ -570,7 +524,7 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 			return nil, err
 		}
 	}
-	if existingAccount.Id != 0 {
+	if existingAccount.Id != "" {
 		if err := c.db.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, existingAccount.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
 			return nil, err
 		}
@@ -589,5 +543,5 @@ func (c *ChannelsClient) UpsertChannelsFeed(feed *ChannelsFeedProfile) (*model.C
 			}
 		}
 	}
-	return &content, nil
+	return content, nil
 }

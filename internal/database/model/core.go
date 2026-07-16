@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"strconv"
 
 	"gorm.io/gorm"
 )
@@ -46,7 +47,7 @@ type Influencer struct {
 func (Influencer) TableName() string { return "influencer" }
 
 type Account struct {
-	Id            int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Id            string `gorm:"primaryKey" json:"id"`
 	PlatformId    string `gorm:"not null;index:idx_account_platform_external,priority:1" json:"platform_id"`
 	InfluencerId  *int   `json:"influencer_id"`
 	ExternalId    string `gorm:"not null;index:idx_account_platform_external,priority:2" json:"external_id"`
@@ -64,9 +65,16 @@ type Account struct {
 
 func (Account) TableName() string { return "account" }
 
+func (a *Account) BeforeCreate(tx *gorm.DB) error {
+	if a.Id == "" {
+		a.Id = a.PlatformId + ":" + a.ExternalId
+	}
+	return nil
+}
+
 type WXVideoAccess struct {
 	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	AccountId   int    `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:1" json:"account_id"`
+	AccountId   string `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:1" json:"account_id"`
 	URL         string `gorm:"not null;uniqueIndex:idx_wx_video_access_account_url,priority:2" json:"url"`
 	Description string `json:"description"`
 	CoverURL    string `json:"cover_url"`
@@ -76,16 +84,16 @@ type WXVideoAccess struct {
 func (WXVideoAccess) TableName() string { return "wx_video_access" }
 
 type BrowseHistory struct {
-	Id                int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	PlatformId        string `gorm:"not null" json:"platform_id"`
-	VisitedTimes      int64  `gorm:"not null" json:"visited_times"`
-	AccountId         *int   `json:"account_id"`
-	InfluencerId      *int   `json:"influencer_id"`
-	AccountExternalId string `json:"account_external_id"`
-	AccountUsername   string `json:"account_username"`
-	AccountNickname   string `json:"account_nickname"`
-	AccountAvatarURL  string `json:"account_avatar_url"`
-	ContentId         *int   `json:"content_id"`
+	Id                string  `gorm:"primaryKey" json:"id"`
+	PlatformId        string  `gorm:"not null" json:"platform_id"`
+	VisitedTimes      int64   `gorm:"not null" json:"visited_times"`
+	AccountId         *string `json:"account_id"`
+	InfluencerId      *int    `json:"influencer_id"`
+	AccountExternalId string  `json:"account_external_id"`
+	AccountUsername   string  `json:"account_username"`
+	AccountNickname   string  `json:"account_nickname"`
+	AccountAvatarURL  string  `json:"account_avatar_url"`
+	ContentId         *string `json:"content_id"`
 	ContentType       string `json:"content_type"`
 	ContentExternalId string `json:"content_external_id"`
 	ContentTitle      string `json:"content_title"`
@@ -138,6 +146,9 @@ func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
+	}
+	if b.Id == "" {
+		b.Id = b.PlatformId + ":" + b.ContentExternalId + ":" + strconv.FormatInt(b.CreatedAt, 10)
 	}
 	return db.Create(b).Error
 }

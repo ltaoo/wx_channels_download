@@ -184,24 +184,26 @@ js_feed_profile := `async finderGetCommentDetail($1) {
 #### 3.1 下载任务创建
 
 ```go
-// handler_download_task.go:27-156
+// handler_download_task.go
 func (c *APIClient) handleCompatDownloadTaskCreate(ctx *gin.Context) {
     // 1. 解析请求体，获取视频信息
     var body channels.ChannelsObject
     ctx.ShouldBindJSON(&body)
-    
-    // 2. 转换为 Feed 格式
-    feed, _ := channels.ChannelsObjectToChannelsFeedProfile(&body)
-    
+
+    // 2. 直接使用 wxchannels 包辅助函数
+    downloadURL := wxchannels.ObjectURL(&body)
+    spec := wxchannels.PickSpec(&body)
+    title := wxchannels.ObjectTitle(&body)
+
     // 3. 处理视频格式 (图片/视频)
     if body.Type == "picture" {
         // 图片转为 zip 下载
-        feed.URL = "zip://weixin.qq.com?files=" + filesJSON
+        downloadURL = "zip://weixin.qq.com?files=" + filesJSON
     }
-    
+
     // 4. 添加质量参数
     downloadURL = downloadURL + "&X-snsvideoflag=" + spec
-    
+
     // 5. 使用 Gopeed 创建下载任务
     taskId, err := c.downloader.CreateDirect(
         &base.Request{
@@ -391,21 +393,30 @@ WS     /ws/downloader             // WebSocket 实时更新
 │ anchorContact      ChannelsContact │ 主播信息 (live 类型)        │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼ 转换
+                              ▼ 转换 (wxchannels 包)
 ┌─────────────────────────────────────────────────────────────────┐
-│                 ChannelsFeedProfile (下载用数据)                  │
+│                 model.Content (内容记录)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│ ObjectId    string              │ 视频 ID                       │
-│ NonceId     string              │ 随机 ID                       │
-│ URL         string              │ 下载 URL                      │
-│ Title       string              │ 标题                          │
-│ DecryptKey  string              │ 解密密钥                      │
-│ CoverURL    string              │ 封面 URL                      │
-│ Duration    int                 │ 时长 (毫秒)                   │
-│ FileSize    int                 │ 文件大小 (字节)                │
-│ Spec        ChannelsMediaSpec[] │ 规格列表                      │
-│ Contact     ChannelsFeedAccount │ 发布者                        │
+│ Id            string              │ 主键                         │
+│ PlatformId    string              │ 平台: "wx_channels"          │
+│ ExternalId    string              │ 外部 ID (视频 ID)            │
+│ ExternalId2   string              │ NonceId                      │
+│ ExternalId3   string              │ DecodeKey                    │
+│ ContentType   string              │ video / picture / live       │
+│ Title         string              │ 标题                         │
+│ ContentURL    string              │ 下载 URL                     │
+│ CoverURL      string              │ 封面 URL                     │
+│ Duration      int64               │ 时长                         │
+│ Size          int64               │ 文件大小                     │
+│ PublishTime   *int64              │ 发布时间                     │
 └─────────────────────────────────────────────────────────────────┘
+                              │
+                     ┌────────┴────────┐
+                     ▼                 ▼
+            ┌───────────────┐  ┌───────────────┐
+            │ model.Account │  │ DownloadTask  │
+            │ (发布者)       │  │ (下载任务)    │
+            └───────────────┘  └───────────────┘
                               │
                               ▼ 前端处理
 ┌─────────────────────────────────────────────────────────────────┐
@@ -514,27 +525,28 @@ type ChannelsMediaSpec = {
 };
 ```
 
-#### 4.2 下载转换数据
+#### 4.2 转换辅助函数
 
-**ChannelsFeedProfile** (Go) - 后端下载用
+ChannelsObject 通过 `wxchannels` 包直接转换为 model 结构，无需中间类型：
+
 ```go
-// internal/channels/type.go:294-309
-type ChannelsFeedProfile struct {
-    ObjectId    string              `json:"id"`
-    NonceId     string              `json:"nonce_id"`
-    SourceURL   string              `json:"source_url"`
-    URL         string              `json:"url"`
-    Title       string              `json:"title"`
-    DecryptKey  string              `json:"decrypt_key"`
-    CoverURL    string              `json:"cover_url"`
-    CoverWidth  int                 `json:"cover_width"`
-    CoverHeight int                 `json:"cover_height"`
-    Duration    int                 `json:"duration"`
-    FileSize    int                 `json:"file_size"`
-    CreatedAt   int                 `json:"created_at"`
-    Spec        []ChannelsMediaSpec `json:"spec"`
-    Contact     ChannelsFeedAccount `json:"contact"`
-}
+// internal/webcontent/wxchannels/model.go
+
+// 转换为 model.Content (内容记录)
+func ToContent(obj *ChannelsObject) (*model.Content, error)
+
+// 转换为 model.Account (发布者记录)
+func ToAccount(obj *ChannelsObject) (*model.Account, error)
+
+// 辅助取值函数
+func ObjectTitle(obj *ChannelsObject) string  // 标题
+func ObjectURL(obj *ChannelsObject) string    // 下载 URL
+func PickSpec(obj *ChannelsObject) string      // 编码规格
+func DecryptKeyInt(obj *ChannelsObject) int     // 解密密钥
+func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string  // 页面跳转 URL
+
+// 浏览记录构造
+func BuildBrowseRecord(profile *MediaProfile) *model.BrowseHistory
 ```
 
 **FeedProfile** (TS) - 前端展示用

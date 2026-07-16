@@ -113,25 +113,3 @@ type FeedDownloadTaskBody struct {
 	Suffix   string `json:"suffix"`
 }
 
-type ChannelsFeedProfile struct {
-	ObjectId    string
-	NonceId     string
-	SourceURL   string
-	URL         string
-	Title       string
-	DecryptKey  string
-	CoverURL    string
-	CoverWidth  int
-	CoverHeight int
-	Duration    int
-	FileSize    int
-	CreatedAt   int
-	Spec        []interface{}
-	Contact     FeedContact
-}
-
-type FeedContact struct {
-	Username  string
-	Nickname  string
-	AvatarURL string
-}

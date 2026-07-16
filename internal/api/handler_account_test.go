@@ -26,6 +26,7 @@ func TestHandleCompatAccountListIncludesContentDisplayFields(t *testing.T) {
 	}
 
 	account := model.Account{
+		Id:         "zhihu:author_1",
 		PlatformId: "zhihu",
 		ExternalId: "author_1",
 		Nickname:   "作者",
@@ -35,6 +36,7 @@ func TestHandleCompatAccountListIncludesContentDisplayFields(t *testing.T) {
 		t.Fatalf("create account: %v", err)
 	}
 	content := model.Content{
+		Id:           "zhihu:answer_1#mp3",
 		PlatformId:   "zhihu",
 		ContentType:  "audio",
 		ExternalId:   "answer_1#mp3",

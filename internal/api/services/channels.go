@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strconv"
 
 	"wx_channel/internal/api/types"
+	"wx_channel/internal/database/model"
 	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
+
+	"wx_channel/internal/webcontent/wxchannels"
 )
 
 type ChannelsService struct {
@@ -64,7 +66,7 @@ type FeedDownloadParams struct {
 	Filename string
 }
 
-func (s *ChannelsService) BuildDownloadTask(params *FeedDownloadParams) (*types.ChannelsFeedProfile, *FeedDownloadTaskBody, error) {
+func (s *ChannelsService) BuildDownloadTask(params *FeedDownloadParams) (*model.Content, *FeedDownloadTaskBody, error) {
 	resp, err := s.client.FetchChannelsFeedProfile(params.Oid, params.Nid, params.URL, params.Eid)
 	if err != nil {
 		return nil, nil, fmt.Errorf("获取详情失败: %w", err)
@@ -80,14 +82,7 @@ func (s *ChannelsService) BuildDownloadTask(params *FeedDownloadParams) (*types.
 	}
 
 	media := obj.ObjectDesc.Media[0]
-	key := 0
-	if media.DecodeKey != "" {
-		k, err := strconv.Atoi(media.DecodeKey)
-		if err != nil {
-			return nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
-		}
-		key = k
-	}
+	key := wxchannels.DecryptKeyInt(&obj)
 
 	spec := "original"
 	if params.Spec != "" {
@@ -120,25 +115,9 @@ func (s *ChannelsService) BuildDownloadTask(params *FeedDownloadParams) (*types.
 		suffix = ".mp3"
 	}
 
-	feed := &types.ChannelsFeedProfile{
-		ObjectId:    obj.ID,
-		NonceId:     obj.ObjectNonceId,
-		SourceURL:   obj.SourceURL,
-		URL:         downloadURL,
-		Title:       obj.ObjectDesc.Description,
-		DecryptKey:  media.DecodeKey,
-		CoverURL:    media.CoverUrl,
-		CoverWidth:  int(media.Width),
-		CoverHeight: int(media.Height),
-		Duration:    media.VideoPlayLen,
-		FileSize:    media.FileSize,
-		CreatedAt:   obj.CreateTime,
-		Spec:        media.Spec,
-		Contact: types.ChannelsFeedAccount{
-			Username:  obj.Contact.Username,
-			Nickname:  obj.Contact.Nickname,
-			AvatarURL: obj.Contact.HeadUrl,
-		},
+	content, err := wxchannels.ToContent(&obj)
+	if err != nil {
+		return nil, nil, fmt.Errorf("转换 content 失败: %w", err)
 	}
 
 	body := &FeedDownloadTaskBody{
@@ -152,7 +131,7 @@ func (s *ChannelsService) BuildDownloadTask(params *FeedDownloadParams) (*types.
 		Filename: filename,
 	}
 
-	return feed, body, nil
+	return content, body, nil
 }
 
 func (s *ChannelsService) BuildPictureDownloadTask(obj *types.ChannelsObject) (*FeedDownloadTaskBody, error) {
@@ -213,31 +192,4 @@ func (s *ChannelsService) BuildLiveDownloadTask(obj *types.ChannelsObject) (*Fee
 	}
 
 	return body, nil
-}
-
-func BuildJumpURL(feed *types.ChannelsFeedProfile) string {
-	if feed == nil {
-		return "https://channels.weixin.qq.com/web/pages/feed"
-	}
-	if feed.SourceURL != "" {
-		return feed.SourceURL
-	}
-	origin := "https://channels.weixin.qq.com"
-	u := origin + "/web/pages/feed"
-	if feed.Contact.Username != "" {
-		u += "?username=" + feed.Contact.Username
-	}
-	if feed.ObjectId != "" {
-		encodedOid := util.EncodeUint64ToBase64(feed.ObjectId)
-		if encodedOid != "" {
-			u += "&oid=" + encodedOid
-		}
-	}
-	if feed.NonceId != "" {
-		encodedNid := util.EncodeUint64ToBase64(feed.NonceId)
-		if encodedNid != "" {
-			u += "&nid=" + encodedNid
-		}
-	}
-	return u
 }

@@ -47,6 +47,7 @@ func RecordLoadedProfile(db *gorm.DB, recorder BrowseRecorder, logger zerolog.Lo
 func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.PlatformBrowserProfile, accountExternalID, accountUsername string) bool {
 	now := util.NowMillis()
 	acc := model.Account{
+		Id:         profile.PlatformId + ":" + accountExternalID,
 		PlatformId: profile.PlatformId,
 		ExternalId: accountExternalID,
 		Username:   accountUsername,
@@ -76,7 +77,7 @@ func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.Plat
 		"avatar_url": profile.AccountAvatarURL,
 		"updated_at": now,
 	}).Error; err != nil {
-		logger.Error().Err(err).Int("account_id", existingAccount.Id).Msg("update platform account failed")
+		logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update platform account failed")
 	}
 	return true
 }

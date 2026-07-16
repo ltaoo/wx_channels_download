@@ -3,7 +3,10 @@ package wxchannels
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"wx_channel/internal/database/model"
 	scraper "wx_channel/pkg/scraper/wxchannels"
@@ -39,6 +42,7 @@ func ToAccount(obj *scraper.ChannelsObject) (*model.Account, error) {
 
 	now := util.NowMillis()
 	acc := &model.Account{
+		Id:         BuildAccountID(accountUsername),
 		PlatformId: platformIDWxChannels,
 		ExternalId: accountUsername,
 		Username:   accountUsername,
@@ -73,6 +77,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, error) {
 
 	now := util.NowMillis()
 	c := &model.Content{
+		Id:          BuildContentID(obj.ID),
 		PlatformId:  platformIDWxChannels,
 		ExternalId:  obj.ID,
 		ExternalId2: obj.ObjectNonceId,
@@ -154,4 +159,90 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, error) {
 	c.Metadata = string(md)
 
 	return c, nil
+}
+
+// PickSpec returns the first h264 spec's FileFormat from the object, or "original" if none.
+func PickSpec(obj *scraper.ChannelsObject) string {
+	specs := obj.Spec
+	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
+		specs = obj.ObjectDesc.Media[0].Spec
+	}
+	if len(specs) > 0 {
+		return specs[0].FileFormat
+	}
+	return "original"
+}
+
+// DecryptKeyInt returns the video decrypt key as int, or 0 on failure.
+func DecryptKeyInt(obj *scraper.ChannelsObject) int {
+	if len(obj.ObjectDesc.Media) == 0 {
+		return 0
+	}
+	key, err := strconv.Atoi(obj.ObjectDesc.Media[0].DecodeKey)
+	if err != nil {
+		return 0
+	}
+	return key
+}
+
+// ObjectTitle returns the object title with fallback logic (description → ID → timestamp).
+func ObjectTitle(obj *scraper.ChannelsObject) string {
+	if obj.LiveInfo != nil {
+		return "直播"
+	}
+	title := strings.TrimSpace(obj.ObjectDesc.Description)
+	if title != "" {
+		return title
+	}
+	if strings.TrimSpace(obj.ID) != "" {
+		return obj.ID
+	}
+	return strconv.FormatInt(time.Now().Unix(), 10)
+}
+
+// ObjectURL returns the download URL (video = media.URL + URLToken, picture/live returns "").
+func ObjectURL(obj *scraper.ChannelsObject) string {
+	if obj.LiveInfo != nil {
+		return ""
+	}
+	if obj.Type == "picture" || obj.ObjectDesc.MediaType == 2 {
+		return ""
+	}
+	if len(obj.ObjectDesc.Media) == 0 {
+		return ""
+	}
+	return obj.ObjectDesc.Media[0].URL + obj.ObjectDesc.Media[0].URLToken
+}
+
+// BuildJumpURLFromParts builds a channels.weixin.qq.com feed page URL from individual fields.
+func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string {
+	origin := "https://channels.weixin.qq.com"
+	if sourceURL != "" {
+		return sourceURL
+	}
+
+	oid := objectId
+	nid := nonceId
+	u := origin + "/web/pages/feed"
+	if username != "" {
+		u += "?username=" + url.QueryEscape(username)
+	} else {
+		u += "?"
+	}
+
+	if oid != "" {
+		encodedOid := util.EncodeUint64ToBase64(oid)
+		if encodedOid != "" {
+			u += "&oid=" + url.QueryEscape(encodedOid)
+		}
+	}
+
+	if nid != "" {
+		encodedNid := util.EncodeUint64ToBase64(nid)
+		if encodedNid != "" {
+			u += "&nid=" + url.QueryEscape(encodedNid)
+		}
+	}
+
+	return strings.TrimSuffix(strings.Replace(u, "?&", "?", 1), "?")
 }

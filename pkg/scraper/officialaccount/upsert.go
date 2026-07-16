@@ -125,6 +125,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 	var existingAccount model.Account
 	if profile.Author.ExternalId != "" {
 		acc := model.Account{
+			Id:         platformIDOfficialAccount + ":" + profile.Author.ExternalId,
 			PlatformId: platformIDOfficialAccount,
 			ExternalId: profile.Author.ExternalId,
 			Username:   profile.Author.ExternalId,
@@ -173,6 +174,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 	}
 
 	content := model.Content{
+		Id:          platformIDOfficialAccount + ":" + profile.ArticleID,
 		PlatformId:  platformIDOfficialAccount,
 		ContentType: "article",
 		ExternalId:  profile.ArticleID,
@@ -189,7 +191,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 		},
 	}
 
-	if existing.Id == 0 {
+	if existing.Id == "" {
 		if err := c.db.Create(&content).Error; err != nil {
 			return nil, fmt.Errorf("创建 content 失败: %w", err)
 		}
@@ -213,7 +215,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 	}
 
 	// 3. Link content_account
-	if existingAccount.Id != 0 {
+	if existingAccount.Id != "" {
 		ac := model.ContentAccount{
 			AccountId: existingAccount.Id,
 			ContentId: content.Id,

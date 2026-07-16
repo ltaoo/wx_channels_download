@@ -20,10 +20,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	officialaccountdownload "wx_channel/internal/webcontent/officialaccount"
+	wxchannels "wx_channel/internal/webcontent/wxchannels"
 
 	apitypes "wx_channel/internal/api/types"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
+	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/scraper/douyin"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/system"
@@ -595,6 +597,7 @@ func (c *APIClient) upsertDouyinContent(info *douyin.VideoInfo, sourceURL string
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			account = model.Account{
+				Id:         "douyin:" + accountExternalID,
 				PlatformId: "douyin",
 				ExternalId: accountExternalID,
 				Username:   accountUsername,
@@ -628,6 +631,7 @@ func (c *APIClient) upsertDouyinContent(info *douyin.VideoInfo, sourceURL string
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			content = model.Content{
+				Id:          "douyin:" + info.VideoID,
 				PlatformId:  "douyin",
 				ContentType: "video",
 				ExternalId:  info.VideoID,
@@ -703,6 +707,9 @@ func upsertContentAccount(tx *gorm.DB, next model.Account, now int64) (*model.Ac
 		return nil, err
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if next.Id == "" {
+			next.Id = next.PlatformId + ":" + next.ExternalId
+		}
 		if next.CreatedAt == 0 {
 			next.CreatedAt = now
 		}
@@ -745,6 +752,9 @@ func upsertContentByPlatformExternalID(tx *gorm.DB, content *model.Content, now 
 		return err
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if content.Id == "" {
+			content.Id = content.PlatformId + ":" + content.ExternalId
+		}
 		if content.CreatedAt == 0 {
 			content.CreatedAt = now
 		}
@@ -791,8 +801,8 @@ func upsertContentByPlatformExternalID(tx *gorm.DB, content *model.Content, now 
 	return tx.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(updates).Error
 }
 
-func upsertContentArticle(tx *gorm.DB, contentID int, article model.ContentArticle) error {
-	if contentID <= 0 {
+func upsertContentArticle(tx *gorm.DB, contentID string, article model.ContentArticle) error {
+	if contentID == "" {
 		return fmt.Errorf("content id is empty")
 	}
 	article.ContentId = contentID
@@ -815,8 +825,8 @@ func upsertContentArticle(tx *gorm.DB, contentID int, article model.ContentArtic
 	}).Error
 }
 
-func upsertContentOwner(tx *gorm.DB, contentID int, accountID int, now int64) error {
-	if contentID <= 0 || accountID <= 0 {
+func upsertContentOwner(tx *gorm.DB, contentID string, accountID string, now int64) error {
+	if contentID == "" || accountID == "" {
 		return nil
 	}
 	if err := tx.Where("content_id = ? AND account_id <> ? AND role = ?", contentID, accountID, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
@@ -1301,21 +1311,30 @@ func (c *APIClient) handleDownloadAllOfficialAccountMsgs(ctx *gin.Context) {
 func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (string, error) {
 	obj := body.Object
 
-	// 1. Convert to profile (validates the object)
-	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&obj)
-	if err != nil {
-		return "", fmt.Errorf("转换失败: %w", err)
-	}
-
-	// 2. Live is not supported here
+	// 1. Live is not supported here
 	if obj.LiveInfo != nil {
 		return "", fmt.Errorf("直播类型请使用直播下载")
 	}
 
-	// 3. Upsert Account/Content/ContentAccount in DB (non-fatal)
-	content, err := c.channelsUploadService.HandleChannelsFeed(profile)
+	// 2. Convert to content + account for DB operations
+	content, err := wxchannels.ToContent((*channels.ChannelsObject)(&obj))
 	if err != nil {
-		c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
+		// Object validation failed; cannot proceed
+		return "", fmt.Errorf("转换失败: %w", err)
+	}
+	account, err := wxchannels.ToAccount((*channels.ChannelsObject)(&obj))
+	if err != nil {
+		account = nil // non-fatal for account
+	}
+
+	// 3. Upsert Account/Content/ContentAccount in DB (non-fatal)
+	if c.channelsUploadService != nil && content != nil && account != nil {
+		dbContent, err := c.channelsUploadService.HandleChannelsFeed(content, account)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
+		} else {
+			content = dbContent
+		}
 	}
 
 	// 4. Resolve spec: request override > config default
@@ -1333,6 +1352,8 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 		}
 	}
 
+	title := wxchannels.ObjectTitle((*channels.ChannelsObject)(&obj))
+
 	// 5. Build filename using the template
 	filenameTemplate := c.cfg.Original.GetString("download.filenameTemplate")
 	filename := util.BuildFilename(
@@ -1345,15 +1366,15 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 				Username string
 			}
 		}{
-			Title:     profile.Title,
-			ObjectId:  profile.ObjectId,
-			CreatedAt: strconv.Itoa(profile.CreatedAt),
+			Title:     title,
+			ObjectId:  obj.ID,
+			CreatedAt: strconv.Itoa(obj.CreateTime),
 			Contact: struct {
 				Nickname string
 				Username string
 			}{
-				Nickname: profile.Contact.Nickname,
-				Username: profile.Contact.Username,
+				Nickname: obj.Contact.Nickname,
+				Username: obj.Contact.Username,
 			},
 		},
 		func() *struct{ FileFormat string } {
@@ -1445,18 +1466,13 @@ func (c *APIClient) startDownloadChannelsObject(body *ChannelsDownloadRequest) (
 	}
 
 	// 11. Extract decrypt key
-	key := 0
-	if objMedia != nil && objMedia.DecodeKey != "" {
-		if k, err := strconv.Atoi(objMedia.DecodeKey); err == nil {
-			key = k
-		}
-	}
+	key := wxchannels.DecryptKeyInt((*channels.ChannelsObject)(&obj))
 
 	// 12. Build labels (preserves listener decrypt+mp3)
 	labels := map[string]string{
 		"id":       obj.ID,
 		"nonce_id": obj.ObjectNonceId,
-		"title":    profile.Title,
+		"title":    title,
 		"key":      strconv.Itoa(key),
 		"spec":     spec,
 		"suffix":   suffix,

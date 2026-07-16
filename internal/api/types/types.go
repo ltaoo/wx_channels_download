@@ -44,9 +44,6 @@ type ChannelsLiveReplayListBody = channelspkg.ChannelsLiveReplayListBody
 type ChannelsInteractionedFeedListBody = channelspkg.ChannelsInteractionedFeedListBody
 type ChannelsFeedProfileBody = channelspkg.ChannelsFeedProfileBody
 type ChannelsSharedFeedProfileBody = channelspkg.ChannelsSharedFeedProfileBody
-type ChannelsFeedList = channelspkg.ChannelsFeedList
-type ChannelsFeedAccount = channelspkg.ChannelsFeedAccount
-type ChannelsFeedProfile = channelspkg.ChannelsFeedProfile
 type RequestResponse = channelspkg.RequestResponse
 type ChannelsFeedCommentListBody = channelspkg.ChannelsFeedCommentListBody
 type ChannelsFeedCommentListResp = channelspkg.ChannelsFeedCommentListResp
@@ -61,7 +58,3 @@ type Authorcontact = channelspkg.Authorcontact
 type Baseresponse = channelspkg.Baseresponse
 type ChannelsFeedShareUrlBody = channelspkg.ChannelsFeedShareUrlBody
 type ChannelsFeedShareUrlResp = channelspkg.ChannelsFeedShareUrlResp
-
-func ChannelsObjectToChannelsFeedProfile(r *ChannelsObject) (*ChannelsFeedProfile, error) {
-	return channelspkg.ChannelsObjectToChannelsFeedProfile(r)
-}

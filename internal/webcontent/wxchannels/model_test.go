@@ -1,6 +1,7 @@
 package wxchannels
 
 import (
+	"encoding/json"
 	"testing"
 
 	"wx_channel/internal/database/model"
@@ -293,7 +294,7 @@ func TestToContent_MediaType9(t *testing.T) {
 	}
 }
 
-func TestCreateBrowseRecord_MediaVideo(t *testing.T) {
+func TestBuildBrowseRecord_MediaVideo(t *testing.T) {
 	profile := &scraper.MediaProfile{
 		Type:    "media",
 		Id:      "feed_001",
@@ -309,53 +310,30 @@ func TestCreateBrowseRecord_MediaVideo(t *testing.T) {
 			AvatarURL: "https://img.example.com/avatar.jpg",
 		},
 	}
-	uniqueMark, info := CreateBrowseRecord(profile)
+	r := BuildBrowseRecord(profile)
 
-	if uniqueMark != "feed_001" {
-		t.Errorf("uniqueMark = %q, want %q", uniqueMark, "feed_001")
+	expected := model.BrowseHistory{
+		Id:                "wx_channels:feed_001",
+		PlatformId:        "wx_channels",
+		VisitedTimes:      1,
+		AccountExternalId: "test_user",
+		AccountUsername:   "test_user",
+		AccountNickname:   "测试用户",
+		AccountAvatarURL:  "https://img.example.com/avatar.jpg",
+		ContentType:       "media",
+		ContentExternalId: "feed_001",
+		ContentTitle:      "测试视频",
+		ContentURL:        "https://video.example.com/v.mp4",
+		ContentSourceURL:  "https://channels.weixin.qq.com/web/pages/feed?oid=feed_001",
+		ContentCoverURL:   "https://img.example.com/cover.jpg",
+		ExtraData:         `{"decode_key":"decode_key_001","id":"feed_001","nonce_id":"nonce_001"}`,
+		Timestamps:        r.Timestamps,
 	}
-	if info.PlatformId != "wx_channels" {
-		t.Errorf("PlatformId = %q, want %q", info.PlatformId, "wx_channels")
-	}
-	if info.AccountExternalId != "test_user" {
-		t.Errorf("AccountExternalId = %q, want %q", info.AccountExternalId, "test_user")
-	}
-	if info.AccountUsername != "test_user" {
-		t.Errorf("AccountUsername = %q, want %q", info.AccountUsername, "test_user")
-	}
-	if info.AccountNickname != "测试用户" {
-		t.Errorf("AccountNickname = %q, want %q", info.AccountNickname, "测试用户")
-	}
-	if info.AccountAvatarURL != "https://img.example.com/avatar.jpg" {
-		t.Errorf("AccountAvatarURL = %q", info.AccountAvatarURL)
-	}
-	if info.ContentType != "media" {
-		t.Errorf("ContentType = %q, want %q", info.ContentType, "media")
-	}
-	if info.ContentTitle != "测试视频" {
-		t.Errorf("ContentTitle = %q", info.ContentTitle)
-	}
-	if info.ContentURL != "https://video.example.com/v.mp4" {
-		t.Errorf("ContentURL = %q", info.ContentURL)
-	}
-	if info.ContentSourceURL != "https://channels.weixin.qq.com/web/pages/feed?oid=feed_001" {
-		t.Errorf("ContentSourceURL = %q", info.ContentSourceURL)
-	}
-	if info.ContentCoverURL != "https://img.example.com/cover.jpg" {
-		t.Errorf("ContentCoverURL = %q", info.ContentCoverURL)
-	}
-	if info.ExtraData["id"] != "feed_001" {
-		t.Errorf("ExtraData[id] = %v", info.ExtraData["id"])
-	}
-	if info.ExtraData["nonce_id"] != "nonce_001" {
-		t.Errorf("ExtraData[nonce_id] = %v", info.ExtraData["nonce_id"])
-	}
-	if info.ExtraData["decode_key"] != "decode_key_001" {
-		t.Errorf("ExtraData[decode_key] = %v", info.ExtraData["decode_key"])
-	}
+
+	assertBrowseHistoryEqual(t, expected, *r)
 }
 
-func TestCreateBrowseRecord_TrimWhitespace(t *testing.T) {
+func TestBuildBrowseRecord_TrimWhitespace(t *testing.T) {
 	profile := &scraper.MediaProfile{
 		Id: "feed_002",
 		Contact: scraper.InterceptorContact{
@@ -364,37 +342,51 @@ func TestCreateBrowseRecord_TrimWhitespace(t *testing.T) {
 			AvatarURL: "https://img.example.com/avatar2.jpg",
 		},
 	}
-	_, info := CreateBrowseRecord(profile)
+	r := BuildBrowseRecord(profile)
 
-	if info.AccountExternalId != "user_with_spaces" {
-		t.Errorf("AccountExternalId = %q, want %q", info.AccountExternalId, "user_with_spaces")
+	if r.AccountExternalId != "user_with_spaces" {
+		t.Errorf("AccountExternalId = %q, want %q", r.AccountExternalId, "user_with_spaces")
 	}
-	if info.AccountUsername != "user_with_spaces" {
-		t.Errorf("AccountUsername = %q, want %q", info.AccountUsername, "user_with_spaces")
+	if r.AccountUsername != "user_with_spaces" {
+		t.Errorf("AccountUsername = %q, want %q", r.AccountUsername, "user_with_spaces")
 	}
 }
 
-func TestCreateBrowseRecord_ExtraDataDefaults(t *testing.T) {
+func TestBuildBrowseRecord_ExtraDataDefaults(t *testing.T) {
 	profile := &scraper.MediaProfile{
 		Id:      "feed_003",
 		Contact: scraper.InterceptorContact{Id: "user_003"},
 	}
-	uniqueMark, info := CreateBrowseRecord(profile)
+	r := BuildBrowseRecord(profile)
 
-	if uniqueMark != "feed_003" {
-		t.Errorf("uniqueMark = %q", uniqueMark)
+	expected := model.BrowseHistory{
+		Id:                "wx_channels:feed_003",
+		PlatformId:        "wx_channels",
+		VisitedTimes:      1,
+		AccountExternalId: "user_003",
+		AccountUsername:   "user_003",
+		AccountNickname:   "",
+		AccountAvatarURL:  "",
+		ContentType:       "",
+		ContentExternalId: "feed_003",
+		ContentTitle:      "",
+		ContentURL:        "",
+		ContentSourceURL:  "https://channels.weixin.qq.com/web/pages/feed?username=user_003",
+		ContentCoverURL:   "",
+		ExtraData:         `{"decode_key":"","id":"feed_003","nonce_id":""}`,
+		Timestamps:        r.Timestamps,
 	}
-	if info.PlatformId != "wx_channels" {
-		t.Errorf("PlatformId = %q", info.PlatformId)
-	}
-	// Default zero values should be present
-	if info.ContentType != "" {
-		t.Errorf("ContentType = %q, want empty", info.ContentType)
-	}
-	if info.ExtraData["nonce_id"] != "" {
-		t.Errorf("ExtraData[nonce_id] = %v, want empty", info.ExtraData["nonce_id"])
-	}
-	if info.ExtraData["decode_key"] != "" {
-		t.Errorf("ExtraData[decode_key] = %v, want empty", info.ExtraData["decode_key"])
+
+	assertBrowseHistoryEqual(t, expected, *r)
+}
+
+func assertBrowseHistoryEqual(t *testing.T, expected, actual model.BrowseHistory) {
+	t.Helper()
+	// Zero out Timestamps before comparing (they are set to time.Now)
+	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+	actualJSON, _ := json.MarshalIndent(actual, "", "  ")
+	if string(expectedJSON) != string(actualJSON) {
+		t.Errorf("BrowseHistory mismatch:\n--- expected\n+++ actual\n%s\n%s",
+			string(expectedJSON), string(actualJSON))
 	}
 }

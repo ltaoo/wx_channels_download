@@ -19,7 +19,7 @@ INSERT OR IGNORE INTO `platform` (
   'wx_channels',
   '微信视频号',
   'https://channels.weixin.qq.com',
-  "/public/WechatChannels_A.png",
+  '/assets/platform/wx_channels/logo.png',
   'https://channels.weixin.qq.com'
 );
 
@@ -30,7 +30,7 @@ INSERT OR IGNORE INTO `platform` (
   'tiktok',
   'TikTok',
   'https://www.tiktok.com',
-  "/public/Tiktok_A.png",
+  '/assets/platform/tiktok/logo.png',
   'https://www.tiktok.com'
 );
 
@@ -41,7 +41,7 @@ INSERT OR IGNORE INTO `platform` (
   'douyin',
   '抖音',
   'https://www.douyin.com',
-  "/public/Tiktok_A.png",
+  '/assets/platform/douyin/logo.png',
   'https://www.douyin.com'
 );
 
@@ -52,7 +52,7 @@ INSERT OR IGNORE INTO `platform` (
   'bilibili',
   'Bilibili',
   'https://www.bilibili.com',
-  "/public/Bilibili_A.png",
+  '/assets/platform/bilibili/logo.png',
   'https://www.bilibili.com'
 );
 
@@ -63,7 +63,7 @@ INSERT OR IGNORE INTO `platform` (
   'x',
   'X',
   'https://x.com',
-  "/public/Twitter_A.png",
+  '/assets/platform/x/logo.png',
   'https://x.com'
 );
 
@@ -74,7 +74,7 @@ INSERT OR IGNORE INTO `platform` (
   'youtube',
   'YouTube',
   'https://www.youtube.com',
-  "/public/Youtube_C.png",
+  '/assets/platform/youtube/logo.png',
   'https://www.youtube.com'
 );
 
@@ -85,7 +85,7 @@ INSERT OR IGNORE INTO `platform` (
   'zhihu',
   '知乎',
   'https://www.zhihu.com',
-  NULL,
+  '/assets/platform/zhihu/logo.png',
   'https://www.zhihu.com'
 );
 
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS `influencer` (
 
 -- 平台帐号表 (Account) - 具体在某个平台上的注册帐号
 CREATE TABLE IF NOT EXISTS `account` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `id` TEXT PRIMARY KEY,
   `platform_id` TEXT NOT NULL, -- 所属平台
   `influencer_id` INTEGER, -- 归属的网红 (可为空，表示尚未归纳或独立帐号)
   `external_id` TEXT NOT NULL, -- 平台侧的用户ID (如 openid, uid)
@@ -299,7 +299,7 @@ ON `chat_message` (`session_id`, `sender`, `timestamp`);
 
 CREATE TABLE IF NOT EXISTS `wx_video_access` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `account_id` INTEGER NOT NULL,
+  `account_id` TEXT NOT NULL,
   `url` TEXT NOT NULL,
   `description` TEXT,
   `cover_url` TEXT,
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS `live_download_task` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `task_id` TEXT NOT NULL UNIQUE, -- 任务唯一标识
   `platform_id` TEXT NOT NULL, -- 平台ID (可选)
-  `account_id` INTEGER, -- 帐号ID (可选)
+  `account_id` TEXT, -- 帐号ID (可选)
   
   -- 直播信息
   `live_url` TEXT NOT NULL, -- 直播流地址
@@ -359,7 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_live_download_task_created ON `live_download_task
 
 -- 内容主表 (Content) - 存储所有类型内容的通用字段
 CREATE TABLE IF NOT EXISTS `content` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `id` TEXT PRIMARY KEY,
   `platform_id` TEXT NOT NULL, -- 发布平台
   `content_type` TEXT NOT NULL, -- 内容类型: 'video', 'short_video', 'image', 'image_set', 'novel', 'blog', 'podcast', 'music', 'article'
   
@@ -418,7 +418,7 @@ CREATE TABLE IF NOT EXISTS `content` (
 
 -- 视频内容扩展表 (ContentVideo) - 视频/短视频特定字段
 CREATE TABLE IF NOT EXISTS `content_video` (
-  `content_id` INTEGER PRIMARY KEY,
+  `content_id` TEXT PRIMARY KEY,
   `duration` INTEGER, -- 时长 (秒)
   `width` INTEGER, -- 视频宽度
   `height` INTEGER, -- 视频高度
@@ -438,7 +438,7 @@ CREATE TABLE IF NOT EXISTS `content_video` (
 
 -- 图片内容扩展表 (ContentImage) - 图片/图集特定字段
 CREATE TABLE IF NOT EXISTS `content_image` (
-  `content_id` INTEGER PRIMARY KEY,
+  `content_id` TEXT PRIMARY KEY,
   `image_count` INTEGER DEFAULT 1, -- 图片数量 (图集)
   `images` TEXT, -- 图片列表 (JSON array: [{url, width, height, size}, ...])
   `width` INTEGER, -- 主图宽度
@@ -450,7 +450,7 @@ CREATE TABLE IF NOT EXISTS `content_image` (
 
 -- 音频内容扩展表 (ContentAudio) - 播客/音乐特定字段
 CREATE TABLE IF NOT EXISTS `content_audio` (
-  `content_id` INTEGER PRIMARY KEY,
+  `content_id` TEXT PRIMARY KEY,
   `duration` INTEGER, -- 时长 (秒)
   `bitrate` INTEGER, -- 码率 (kbps)
   `format` TEXT, -- 音频格式 (mp3, aac, flac, etc.)
@@ -470,7 +470,7 @@ CREATE TABLE IF NOT EXISTS `content_audio` (
 
 -- 文章内容扩展表 (ContentArticle) - 小说/博客/文章特定字段
 CREATE TABLE IF NOT EXISTS `content_article` (
-  `content_id` INTEGER PRIMARY KEY,
+  `content_id` TEXT PRIMARY KEY,
   `word_count` INTEGER, -- 字数
   `reading_time` INTEGER, -- 预计阅读时间 (分钟)
   `content_text` TEXT, -- 文章正文 (纯文本)
@@ -490,8 +490,8 @@ CREATE TABLE IF NOT EXISTS `content_article` (
 
 -- 内容与帐号关联表 (多对多) - 记录内容归属的帐号
 CREATE TABLE IF NOT EXISTS `content_account` (
-  `content_id` INTEGER NOT NULL,
-  `account_id` INTEGER NOT NULL,
+  `content_id` TEXT NOT NULL,
+  `account_id` TEXT NOT NULL,
   `role` TEXT DEFAULT 'author', -- 角色: 'author'(作者), 'co_author'(联合作者), 'featured'(出镜), 'mentioned'(提及)
   `created_at` INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (`content_id`, `account_id`)
@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS `content_account` (
 
 -- 内容与网红关联表 (多对多) - 记录内容关联的网红
 CREATE TABLE IF NOT EXISTS `content_influencer` (
-  `content_id` INTEGER NOT NULL,
+  `content_id` TEXT NOT NULL,
   `influencer_id` INTEGER NOT NULL,
   `role` TEXT DEFAULT 'creator', -- 角色: 'creator'(创作者), 'featured'(出镜), 'mentioned'(提及)
   `created_at` INTEGER NOT NULL DEFAULT 0,
@@ -516,16 +516,16 @@ CREATE INDEX IF NOT EXISTS idx_content_account_account ON `content_account` (`ac
 CREATE INDEX IF NOT EXISTS idx_content_influencer_influencer ON `content_influencer` (`influencer_id`);
 
 CREATE TABLE IF NOT EXISTS `browse_history` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `id` TEXT PRIMARY KEY,
   `platform_id` TEXT NOT NULL,
   `visited_times` INTEGER NOT NULL DEFAULT 1, --访问次数
-  `account_id` INTEGER,
+  `account_id` TEXT,
   `influencer_id` INTEGER,
   `account_external_id` TEXT,
   `account_username` TEXT,
   `account_nickname` TEXT,
   `account_avatar_url` TEXT,
-  `content_id` INTEGER,
+  `content_id` TEXT,
   `content_type` TEXT,
   `content_external_id` TEXT,
   `content_title` TEXT,
@@ -547,3 +547,33 @@ CREATE INDEX IF NOT EXISTS idx_browse_history_platform_account_updated
 ON `browse_history` (`platform_id`, `account_id`, `updated_at`);
 CREATE INDEX IF NOT EXISTS idx_browse_history_platform_influencer_updated
 ON `browse_history` (`platform_id`, `influencer_id`, `updated_at`);
+
+CREATE TABLE IF NOT EXISTS `platform_workflow_run` (
+  `id` TEXT PRIMARY KEY,
+  `url` TEXT NOT NULL,
+  `platform` TEXT,
+  `status` TEXT,
+  `current_node` TEXT,
+  `task_id` TEXT,
+  `download_task_id` INTEGER DEFAULT 0,
+  `extra` TEXT,
+  `output` TEXT,
+  `selection` TEXT,
+  `nodes` TEXT,
+  `error` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_status
+ON `platform_workflow_run` (`status`);
+
+CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_platform
+ON `platform_workflow_run` (`platform`);
+
+CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_task_id
+ON `platform_workflow_run` (`task_id`);
+
+CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_download_task_id
+ON `platform_workflow_run` (`download_task_id`);

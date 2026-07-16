@@ -1,7 +1,11 @@
 package model
 
+import (
+	"gorm.io/gorm"
+)
+
 type Content struct {
-	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Id             string `gorm:"primaryKey" json:"id"`
 	PlatformId     string `gorm:"not null;index:idx_content_platform_type,priority:1;index:idx_content_external_id,priority:1" json:"platform_id"`
 	ContentType    string `gorm:"not null;index:idx_content_platform_type,priority:2;index:idx_content_type" json:"content_type"`
 	ExternalId     string `gorm:"not null;index:idx_content_external_id,priority:2" json:"external_id"`
@@ -45,8 +49,15 @@ type Content struct {
 
 func (Content) TableName() string { return "content" }
 
+func (c *Content) BeforeCreate(tx *gorm.DB) error {
+	if c.Id == "" {
+		c.Id = c.PlatformId + ":" + c.ExternalId
+	}
+	return nil
+}
+
 type ContentVideo struct {
-	ContentId       int    `gorm:"primaryKey" json:"content_id"`
+	ContentId       string `gorm:"primaryKey" json:"content_id"`
 	Duration        int64  `json:"duration"`
 	Width           int    `json:"width"`
 	Height          int    `json:"height"`
@@ -65,7 +76,7 @@ type ContentVideo struct {
 func (ContentVideo) TableName() string { return "content_video" }
 
 type ContentImage struct {
-	ContentId  int    `gorm:"primaryKey" json:"content_id"`
+	ContentId  string `gorm:"primaryKey" json:"content_id"`
 	ImageCount int    `json:"image_count"`
 	Images     string `json:"images"`
 	Width      int    `json:"width"`
@@ -78,7 +89,7 @@ type ContentImage struct {
 func (ContentImage) TableName() string { return "content_image" }
 
 type ContentAudio struct {
-	ContentId     int    `gorm:"primaryKey" json:"content_id"`
+	ContentId     string `gorm:"primaryKey" json:"content_id"`
 	Duration      int64  `json:"duration"`
 	Bitrate       int    `json:"bitrate"`
 	Format        string `json:"format"`
@@ -95,7 +106,7 @@ type ContentAudio struct {
 func (ContentAudio) TableName() string { return "content_audio" }
 
 type ContentArticle struct {
-	ContentId       int    `gorm:"primaryKey" json:"content_id"`
+	ContentId       string `gorm:"primaryKey" json:"content_id"`
 	WordCount       int    `json:"word_count"`
 	ReadingTime     int    `json:"reading_time"`
 	ContentText     string `json:"content_text"`
@@ -112,8 +123,8 @@ type ContentArticle struct {
 func (ContentArticle) TableName() string { return "content_article" }
 
 type ContentAccount struct {
-	ContentId int    `gorm:"primaryKey;index:idx_content_account_account" json:"content_id"`
-	AccountId int    `gorm:"primaryKey;index:idx_content_account_account" json:"account_id"`
+	ContentId string `gorm:"primaryKey;index:idx_content_account_account" json:"content_id"`
+	AccountId string `gorm:"primaryKey;index:idx_content_account_account" json:"account_id"`
 	Role      string `json:"role"`
 	CreatedAt int64  `json:"created_at"`
 }
@@ -121,7 +132,7 @@ type ContentAccount struct {
 func (ContentAccount) TableName() string { return "content_account" }
 
 type ContentInfluencer struct {
-	ContentId    int    `gorm:"primaryKey;index:idx_content_influencer_influencer" json:"content_id"`
+	ContentId    string `gorm:"primaryKey;index:idx_content_influencer_influencer" json:"content_id"`
 	InfluencerId int    `gorm:"primaryKey;index:idx_content_influencer_influencer" json:"influencer_id"`
 	Role         string `json:"role"`
 	CreatedAt    int64  `json:"created_at"`

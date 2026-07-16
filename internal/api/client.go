@@ -32,6 +32,7 @@ import (
 	"wx_channel/pkg/browsermgr"
 	"wx_channel/pkg/decrypt"
 	"wx_channel/internal/webcontent/officialaccount"
+	wxchannels "wx_channel/internal/webcontent/wxchannels"
 	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
@@ -567,30 +568,26 @@ func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *se
 	return matches
 }
 
-func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, *apitypes.ChannelsFeedProfile, error) {
+func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, *model.Content, *model.Account, error) {
 	// 获取视频详情
 	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
 	if err != nil {
-		return nil, nil, fmt.Errorf("获取详情失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("获取详情失败: %w", err)
 	}
 	if r.ErrCode != 0 {
-		return nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+		return nil, nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
 	}
 
 	feed := r.Data.Object
-	profile, err := apitypes.ChannelsObjectToChannelsFeedProfile(&feed)
-	if err != nil {
-		return nil, nil, fmt.Errorf("解析视频号内容失败: %w", err)
-	}
 	if feed.LiveInfo != nil {
-		return nil, nil, fmt.Errorf("直播类型请使用直播下载")
+		return nil, nil, nil, fmt.Errorf("直播类型请使用直播下载")
 	}
 
 	isPicture := feed.Type == "picture" || feed.ObjectDesc.MediaType == 2
-	var media *apitypes.ChannelsMediaItem
+	var media *channels.ChannelsMediaItem
 	if !isPicture {
 		if len(feed.ObjectDesc.Media) == 0 {
-			return nil, nil, fmt.Errorf("缺少可下载的视频内容")
+			return nil, nil, nil, fmt.Errorf("缺少可下载的视频内容")
 		}
 		media = &feed.ObjectDesc.Media[0]
 	}
@@ -599,7 +596,7 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	if media != nil && media.DecodeKey != "" {
 		k, err := strconv.Atoi(media.DecodeKey)
 		if err != nil {
-			return nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
+			return nil, nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
 		}
 		key = k
 	}
@@ -613,26 +610,19 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		}
 	}
 
-	// 构建文件名
-	defaultName := profile.Title
-	if defaultName == "" {
-		if profile.ObjectId != "" {
-			defaultName = profile.ObjectId
-		} else {
-			defaultName = util.NowSecondsStr()
-		}
-	}
+	title := wxchannels.ObjectTitle(&feed)
+	defaultName := title
 	template := c.cfg.Original.GetString("download.filenameTemplate")
 	filename := defaultName
 	if template != "" {
 		params := map[string]string{
 			"filename":    defaultName,
-			"id":          profile.ObjectId,
-			"title":       profile.Title,
+			"id":          feed.ID,
+			"title":       title,
 			"spec":        spec,
-			"created_at":  strconv.Itoa(profile.CreatedAt),
+			"created_at":  strconv.Itoa(feed.CreateTime),
 			"download_at": util.NowSecondsStr(),
-			"author":      profile.Contact.Nickname,
+			"author":      feed.Contact.Nickname,
 		}
 		re := regexp.MustCompile(`\{\{(\w+)\}\}`)
 		filename = re.ReplaceAllStringFunc(template, func(m string) string {
@@ -644,14 +634,23 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 		})
 	}
 
+	downloadURL := wxchannels.ObjectURL(&feed)
+	coverURL := ""
+	if len(feed.ObjectDesc.Media) > 0 {
+		coverURL = feed.ObjectDesc.Media[0].CoverUrl
+	}
+	if isCover {
+		downloadURL = coverURL
+	}
+
 	payload := &services.FeedDownloadTaskBody{
-		Id:       profile.ObjectId,
-		NonceId:  profile.NonceId,
-		Title:    profile.Title,
+		Id:       feed.ID,
+		NonceId:  feed.ObjectNonceId,
+		Title:    title,
 		Key:      key,
 		Spec:     spec,
 		Suffix:   ".mp4",
-		URL:      profile.URL,
+		URL:      downloadURL,
 		Filename: filename,
 	}
 	if payload.NonceId == "" {
@@ -680,7 +679,6 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 	}
 	if isCover {
 		payload.Suffix = ".jpg"
-		payload.URL = profile.CoverURL
 	}
 
 	// 处理图集类型
@@ -705,13 +703,22 @@ func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCo
 			})
 		}
 		if len(files) == 0 {
-			return nil, nil, fmt.Errorf("图集类型缺少可下载图片")
+			return nil, nil, nil, fmt.Errorf("图集类型缺少可下载图片")
 		}
 		data, _ := json.Marshal(files)
 		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
 	}
 
-	return payload, profile, nil
+	content, err := wxchannels.ToContent(&feed)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("转换 content 失败: %w", err)
+	}
+	account, err := wxchannels.ToAccount(&feed)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("转换 account 失败: %w", err)
+	}
+
+	return payload, content, account, nil
 }
 
 // autoCreateChannelsTask 根据视频号消息自动创建下载任务
