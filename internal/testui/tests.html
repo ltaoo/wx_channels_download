@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>单测管理</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card-bg: #fff;
+    --border: #e0e0e0;
+    --text: #333;
+    --text-secondary: #666;
+    --primary: #07c160;
+    --primary-hover: #06ad56;
+    --danger: #e84040;
+    --danger-hover: #d43636;
+    --warn: #f5a623;
+    --code-bg: #f7f7f7;
+    --success-bg: #f0faf4;
+    --fail-bg: #fef0ef;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .header .subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .header .actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .search-input {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    width: 220px;
+    outline: none;
+  }
+  .search-input:focus {
+    border-color: var(--primary);
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-danger {
+    background: var(--danger);
+    color: #fff;
+  }
+  .btn-danger:hover { background: var(--danger-hover); }
+  .btn-sm { padding: 3px 10px; font-size: 12px; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-outline:hover { background: #eee; }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Left panel: test list */
+  .test-list {
+    width: 45%;
+    min-width: 360px;
+    overflow-y: auto;
+    padding: 12px 16px;
+    background: var(--card-bg);
+    border-right: 1px solid var(--border);
+  }
+
+  .pkg-group {
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .pkg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #fafafa;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s;
+  }
+  .pkg-header:hover { background: #f0f0f0; }
+  .pkg-header .arrow {
+    transition: transform .2s;
+    font-size: 10px;
+    color: var(--text-secondary);
+    width: 14px;
+    text-align: center;
+  }
+  .pkg-header .arrow.open { transform: rotate(90deg); }
+  .pkg-header .pkg-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pkg-header .pkg-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: #eee;
+    padding: 1px 8px;
+    border-radius: 10px;
+  }
+  .pkg-header .pkg-run-all {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+
+  .test-body { display: none; }
+  .test-body.open { display: block; }
+
+  .test-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 28px;
+    border-top: 1px solid #f0f0f0;
+    transition: background .1s;
+  }
+  .test-item:hover { background: #fafafa; }
+  .test-item .test-name {
+    flex: 1;
+    font-size: 13px;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    min-width: 48px;
+  }
+  .badge-idle { background: #eee; color: var(--text-secondary); }
+  .badge-running {
+    background: #e3f2fd;
+    color: #1565c0;
+    position: relative;
+  }
+  .badge-running::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 4px;
+    border: 2px solid #1565c0;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .badge-pass { background: var(--success-bg); color: #1a7d36; }
+  .badge-fail { background: var(--fail-bg); color: #c62828; }
+  .badge-error { background: #fff3e0; color: #e65100; }
+
+  /* Right panel: output */
+  .output-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+  }
+  .output-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .output-title {
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .output-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .output-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+
+  .output-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: #1e1e1e;
+    color: #d4d4d4;
+  }
+  .output-body .pass-line { color: #4ec9a0; }
+  .output-body .fail-line { color: #f48771; }
+  .output-body .info-line { color: #9cdcfe; }
+  .output-body .timeout-line { color: #f5a623; font-weight: bold; }
+  .output-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #888;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+
+  /* Empty / loading states */
+  .loading-state, .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    gap: 8px;
+  }
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #eee;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+
+  /* No tests in package */
+  .no-tests {
+    padding: 12px 12px 12px 28px;
+    border-top: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  @media (max-width: 720px) {
+    .main { flex-direction: column; }
+    .test-list {
+      width: 100%;
+      min-width: 0;
+      max-height: 40vh;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .output-panel { flex: 1; min-height: 300px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>🧪 单测管理</h1>
+    <span class="subtitle" id="modDirDisplay"></span>
+    <div class="actions">
+      <input type="text" class="search-input" id="searchInput" placeholder="搜索测试名称..." oninput="filterTests()" />
+      <button class="btn btn-outline btn-sm" onclick="runAllVisible()">运行全部可见</button>
+      <button class="btn btn-outline btn-sm" onclick="refreshTests()">刷新</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="test-list" id="testList">
+      <div class="loading-state" id="loadingState">
+        <div class="spinner"></div>
+        <div>正在扫描项目中的单测...</div>
+      </div>
+    </div>
+    <div class="output-panel">
+      <div class="output-header">
+        <span class="output-title" id="outputTitle">输出</span>
+        <span class="output-meta" id="outputMeta"></span>
+        <div class="output-actions">
+          <button class="btn btn-sm btn-outline" onclick="clearOutput()">清空</button>
+        </div>
+      </div>
+      <div class="output-body" id="outputBody">
+        <div class="output-empty">选择测试并点击「运行」查看输出</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- State ----
+let allPackages = [];
+let searchTerm = '';
+const badgeMap = {}; // "pkg:testName" -> { badge element, status }
+const currentRun = { runId: null, interval: null };
+
+// ---- API ----
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  const body = await res.json();
+  if (body.code !== 0) throw new Error(body.msg || 'API error');
+  return body.data;
+}
+
+// ---- Discover Tests ----
+async function refreshTests() {
+  const listEl = document.getElementById('testList');
+  listEl.innerHTML = `<div class="loading-state"><div class="spinner"></div><div>正在扫描...</div></div>`;
+
+  try {
+    const data = await api('/api/tests');
+    allPackages = data.packages || [];
+    document.getElementById('modDirDisplay').textContent = '📁 ' + (data.mod_dir || '');
+    renderTestList();
+  } catch (err) {
+    listEl.innerHTML = `<div class="empty-state">❌ 扫描失败: ${err.message}</div>`;
+  }
+}
+
+// ---- Render ----
+function renderTestList() {
+  const listEl = document.getElementById('testList');
+  const filtered = getFilteredPackages();
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="empty-state">🔍 ${searchTerm ? '没有匹配的单测' : '项目中没有发现单测'}</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const pkg of filtered) {
+    const pkgKey = pkg.import_path;
+    html += `<div class="pkg-group" data-pkg="${escAttr(pkg.import_path)}">`;
+    html += `<div class="pkg-header" onclick="togglePkg(this)">`;
+    html += `<span class="arrow">▶</span>`;
+    html += `<span class="pkg-name">${escHtml(pkg.name)}</span>`;
+    html += `<span class="pkg-count">${pkg.tests.length} 个</span>`;
+    html += `<span class="badge badge-idle" data-badge-pkg="${escAttr(pkgKey)}">待运行</span>`;
+    html += `<button class="btn btn-primary btn-sm pkg-run-all" onclick="event.stopPropagation(); runPkg('${escAttr(pkg.import_path)}')">运行全部</button>`;
+    html += `</div>`;
+    html += `<div class="test-body open">`;
+
+    if (pkg.tests.length === 0) {
+      html += `<div class="no-tests">无测试</div>`;
+    } else {
+      for (const t of pkg.tests) {
+        const key = `${pkg.import_path}:${t.name}`;
+        html += `<div class="test-item" data-key="${escAttr(key)}">`;
+        html += `<span class="test-name" title="${escAttr(t.name)}">${escHtml(t.name)}</span>`;
+        html += `<span class="badge badge-idle" data-badge="${escAttr(key)}">待运行</span>`;
+        html += `<button class="btn btn-primary btn-sm" onclick="runTest('${escAttr(pkg.import_path)}','${escAttr(t.name)}',this)">运行</button>`;
+        html += `</div>`;
+      }
+    }
+
+    html += `</div></div>`;
+  }
+  listEl.innerHTML = html;
+}
+
+// ---- Filter ----
+function filterTests() {
+  searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+  renderTestList();
+}
+
+function getFilteredPackages() {
+  if (!searchTerm) return allPackages;
+  return allPackages
+    .map(pkg => ({
+      ...pkg,
+      tests: pkg.tests.filter(t => t.name.toLowerCase().includes(searchTerm)),
+    }))
+    .filter(pkg => pkg.tests.length > 0);
+}
+
+function togglePkg(header) {
+  const body = header.nextElementSibling;
+  const arrow = header.querySelector('.arrow');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+// ---- Test Execution ----
+async function runTest(pkg, testName, btn) {
+  btn.disabled = true;
+  const key = `${pkg}:${testName}`;
+  setBadge(key, 'running', '运行中');
+
+  try {
+    const { run_id } = await api('/api/tests/run', {
+      method: 'POST',
+      body: JSON.stringify({ pkg, test: testName }),
+    });
+    pollRun(run_id, key, btn);
+  } catch (err) {
+    setBadge(key, 'error', err.message);
+    btn.disabled = false;
+  }
+}
+
+async function runPkg(pkg) {
+  // set all tests in package to running
+  const pkgData = allPackages.find(p => p.import_path === pkg);
+  if (!pkgData) return;
+
+  const btn = document.querySelector(`[data-pkg="${escAttr(pkg)}"] .pkg-run-all`);
+  if (btn) btn.disabled = true;
+  setPkgBadge(pkg, 'running', '运行中');
+
+  // mark all child tests as running
+  for (const t of pkgData.tests) {
+    setBadge(`${pkg}:${t.name}`, 'running', '运行中');
+  }
+
+  try {
+    const { run_id } = await api('/api/tests/run', {
+      method: 'POST',
+      body: JSON.stringify({ pkg, test: '' }),
+    });
+    // poll for completion
+    pollPkgRun(run_id, pkg, pkgData, btn);
+  } catch (err) {
+    setPkgBadge(pkg, 'error', err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function runAllVisible() {
+  const filtered = getFilteredPackages();
+  for (const pkg of filtered) {
+    // Run each test individually for better progress tracking
+    for (const t of pkg.tests) {
+      const key = `${pkg.import_path}:${t.name}`;
+      const btn = document.querySelector(`[data-key="${escAttr(key)}"] .btn`);
+      if (btn && !btn.disabled) {
+        runTest(pkg.import_path, t.name, btn);
+      }
+    }
+  }
+}
+
+// ---- Polling ----
+function pollRun(runId, key, btn) {
+  const interval = setInterval(async () => {
+    try {
+      const result = await api(`/api/tests/run/${runId}`);
+
+      // update output panel for the currently selected run
+      if (currentRun.runId === runId) {
+        displayOutput(result);
+      }
+
+      if (result.status !== 'running') {
+        clearInterval(interval);
+        showOutputForRun(result); // auto-show on completion
+
+        if (result.status === 'passed') {
+          setBadge(key, 'pass', '通过');
+        } else if (result.status === 'failed') {
+          setBadge(key, 'fail', '失败');
+        } else {
+          setBadge(key, 'error', '错误');
+        }
+
+        if (btn) btn.disabled = false;
+      }
+    } catch (err) {
+      clearInterval(interval);
+      setBadge(key, 'error', err.message);
+      if (btn) btn.disabled = false;
+    }
+  }, 500);
+}
+
+function pollPkgRun(runId, pkg, pkgData, btn) {
+  const interval = setInterval(async () => {
+    try {
+      const result = await api(`/api/tests/run/${runId}`);
+
+      if (currentRun.runId === runId) {
+        displayOutput(result);
+      }
+
+      if (result.status !== 'running') {
+        clearInterval(interval);
+        showOutputForRun(result);
+
+        // Determine individual test results from output
+        const output = result.output || '';
+        for (const t of pkgData.tests) {
+          const key = `${pkg}:${t.name}`;
+          const re = new RegExp(`--- (PASS|FAIL):\\s+${escapeRegex(t.name)}\\b`);
+          const m = output.match(re);
+          if (m) {
+            setBadge(key, m[1] === 'PASS' ? 'pass' : 'fail', m[1] === 'PASS' ? '通过' : '失败');
+          } else {
+            // Mark as error if no match found
+            setBadge(key, 'error', '未知');
+          }
+        }
+
+        if (result.status === 'passed') {
+          setPkgBadge(pkg, 'pass', '通过');
+        } else if (result.status === 'failed') {
+          setPkgBadge(pkg, 'fail', '失败');
+        } else {
+          setPkgBadge(pkg, 'error', '错误');
+        }
+
+        if (btn) btn.disabled = false;
+      }
+    } catch (err) {
+      clearInterval(interval);
+      setPkgBadge(pkg, 'error', err.message);
+      if (btn) btn.disabled = false;
+    }
+  }, 500);
+}
+
+// ---- Output Display ----
+function showOutputForRun(result) {
+  currentRun.runId = result.run_id;
+  displayOutput(result);
+}
+
+function displayOutput(result) {
+  const titleEl = document.getElementById('outputTitle');
+  const metaEl = document.getElementById('outputMeta');
+  const bodyEl = document.getElementById('outputBody');
+
+  const testLabel = result.test || (result.pkg ? result.pkg.split('/').pop() : '');
+  titleEl.textContent = `🧪 ${testLabel}`;
+
+  const duration = result.duration_ms ? `${result.duration_ms}ms` : '-';
+  const statusMap = { running: '运行中', passed: '✅ 通过', failed: '❌ 失败', error: '⚠️ 错误' };
+  metaEl.textContent = `状态: ${statusMap[result.status] || result.status} | 耗时: ${duration}`;
+
+  if (result.output && result.output.trim()) {
+    bodyEl.innerHTML = ansiToHtml(escapeHtml(result.output));
+  } else if (result.status === 'running') {
+    bodyEl.innerHTML = '<span class="info-line">等待测试输出...</span>\n';
+  } else {
+    bodyEl.innerHTML = '(无输出)';
+  }
+
+  // auto-scroll to bottom
+  bodyEl.scrollTop = bodyEl.scrollHeight;
+}
+
+function clearOutput() {
+  document.getElementById('outputTitle').textContent = '输出';
+  document.getElementById('outputMeta').textContent = '';
+  document.getElementById('outputBody').innerHTML = `<div class="output-empty">选择测试并点击「运行」查看输出</div>`;
+  currentRun.runId = null;
+}
+
+// ---- Helpers ----
+function setBadge(key, status, label) {
+  const el = document.querySelector(`[data-badge="${escAttr(key)}"]`);
+  if (!el) return;
+  el.className = `badge badge-${status}`;
+  el.textContent = label;
+}
+
+function setPkgBadge(pkg, status, label) {
+  const el = document.querySelector(`[data-badge-pkg="${escAttr(pkg)}"]`);
+  if (!el) return;
+  el.className = `badge badge-${status}`;
+  el.textContent = label;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(s) {
+  if (!s) return '';
+  return escHtml(s).replace(/'/g, '&#39;');
+}
+
+function escapeRegex(s) {
+  if (!s) return '';
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ansiToHtml(text) {
+  return text
+    .split('\n')
+    .map(line => {
+      let cls = '';
+      if (/^--- PASS:/i.test(line)) cls = 'pass-line';
+      else if (/^--- FAIL:/i.test(line)) cls = 'fail-line';
+      else if (/^=== RUN/i.test(line)) cls = 'info-line';
+      else if (/^PASS$/i.test(line)) cls = 'pass-line';
+      else if (/^FAIL/i.test(line)) cls = 'fail-line';
+      else if (/TIMEOUT/i.test(line)) cls = 'timeout-line';
+      else if (/^ok\s+/i.test(line)) cls = 'pass-line';
+      else if (/^--- TIMEOUT/i.test(line)) cls = 'timeout-line';
+
+      if (cls) return `<span class="${cls}">${escHtml(line)}</span>`;
+      return escHtml(line);
+    })
+    .join('\n');
+}
+
+// ---- Init ----
+refreshTests();
+</script>
+</body>
+</html>

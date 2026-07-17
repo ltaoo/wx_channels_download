@@ -12,6 +12,8 @@ import (
 	wxchannelspkg "wx_channel/pkg/scraper/wxchannels"
 )
 
+func ptr(v int64) *int64 { return &v }
+
 const videoFeedJSON = `{
 	"id": "14962486294771997060",
 	"nickname": "迷人的大嘴猴",
@@ -860,7 +862,7 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 		CoverHeight: "2128",
 		Duration:    9,
 		Size:        9613487,
-		PublishTime: "1783667361",
+		PublishTime: ptr(1783667361),
 		Metadata:    `{"key":"1522886121"}`,
 		Timestamps:  content.Timestamps,
 	}
