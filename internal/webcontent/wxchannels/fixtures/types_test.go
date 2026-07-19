@@ -506,11 +506,11 @@ func TestBuildJumpURLFromParts_WithObjectIdAndNonceId(t *testing.T) {
 			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user&oid=z6VuAqyJGYQ",
 		},
 		{
-			name:     "non-numeric nonceId ignored",
+			name:     "underscore-separated nonceId uses first segment",
 			objectId: "14962486294771997060",
 			nonceId:  "4390481592474233535_0_146_0_0",
 			username: "test_user",
-			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user&oid=z6VuAqyJGYQ",
+			want:     "https://channels.weixin.qq.com/web/pages/feed?username=test_user&oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
 		},
 		{
 			name:     "non-numeric objectId ignored",

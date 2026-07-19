@@ -1,5 +1,15 @@
 package model
 
+// DownloadTask status enum — kept in sync with internal/storage/storage.go statusToInt/statusFromInt.
+const (
+	DownloadTaskStatusReady   = 0 // task created, not started
+	DownloadTaskStatusRunning = 1
+	DownloadTaskStatusPause   = 2
+	DownloadTaskStatusWait    = 3 // task waiting to run
+	DownloadTaskStatusDone    = 4
+	DownloadTaskStatusError   = 5
+)
+
 type DownloadTask struct {
 	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskUID        string `gorm:"column:task_uid" json:"task_uid"`

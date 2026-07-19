@@ -16,14 +16,17 @@ import {
 } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
+/** V1 下载任务状态 */
 export const DownloadTaskStatus = {
-  Ready: 0,
-  Running: 1,
-  Paused: 2,
-  Wait: 3,
-  Done: 4,
-  Error: 5,
-  Unknown: 6,
+  Waiting: 0,
+  Preparing: 1,
+  Downloading: 2,
+  Paused: 3,
+  Merging: 4,
+  Finished: 5,
+  Failed: 6,
+  Cancelled: 7,
+  Unknown: 99,
 };
 
 export const DownloadTaskTabs = {
@@ -36,36 +39,38 @@ export const DownloadTaskTabs = {
 };
 
 const STATUS_TEXT = {
-  [DownloadTaskStatus.Ready]: "待下载",
-  [DownloadTaskStatus.Running]: "下载中",
+  [DownloadTaskStatus.Waiting]: "等待中",
+  [DownloadTaskStatus.Preparing]: "准备中",
+  [DownloadTaskStatus.Downloading]: "下载中",
   [DownloadTaskStatus.Paused]: "已暂停",
-  [DownloadTaskStatus.Wait]: "排队中",
-  [DownloadTaskStatus.Done]: "已完成",
-  [DownloadTaskStatus.Error]: "失败",
+  [DownloadTaskStatus.Merging]: "合并中",
+  [DownloadTaskStatus.Finished]: "已完成",
+  [DownloadTaskStatus.Failed]: "失败",
+  [DownloadTaskStatus.Cancelled]: "已取消",
   [DownloadTaskStatus.Unknown]: "未知",
 };
 
 const REMOTE_STATUS_MAP = {
-  ready: DownloadTaskStatus.Ready,
-  running: DownloadTaskStatus.Running,
-  downloading: DownloadTaskStatus.Running,
+  ready: DownloadTaskStatus.Waiting,
+  running: DownloadTaskStatus.Downloading,
+  downloading: DownloadTaskStatus.Downloading,
   pause: DownloadTaskStatus.Paused,
   paused: DownloadTaskStatus.Paused,
-  wait: DownloadTaskStatus.Wait,
-  waiting: DownloadTaskStatus.Wait,
-  pending: DownloadTaskStatus.Wait,
-  done: DownloadTaskStatus.Done,
-  completed: DownloadTaskStatus.Done,
-  success: DownloadTaskStatus.Done,
-  finished: DownloadTaskStatus.Done,
-  error: DownloadTaskStatus.Error,
-  failed: DownloadTaskStatus.Error,
+  wait: DownloadTaskStatus.Waiting,
+  waiting: DownloadTaskStatus.Waiting,
+  pending: DownloadTaskStatus.Waiting,
+  done: DownloadTaskStatus.Finished,
+  completed: DownloadTaskStatus.Finished,
+  success: DownloadTaskStatus.Finished,
+  finished: DownloadTaskStatus.Finished,
+  error: DownloadTaskStatus.Failed,
+  failed: DownloadTaskStatus.Failed,
 };
 
 const TAB_DEFS = [
   { label: "全部", value: DownloadTaskTabs.All, countKey: "total" },
   { label: "下载中", value: DownloadTaskTabs.Running, countKey: "running" },
-  { label: "待下载", value: DownloadTaskTabs.Queued, countKey: "queued" },
+  { label: "等待中", value: DownloadTaskTabs.Queued, countKey: "queued" },
   { label: "已完成", value: DownloadTaskTabs.Done, countKey: "done" },
   { label: "失败", value: DownloadTaskTabs.Error, countKey: "error" },
   { label: "已暂停", value: DownloadTaskTabs.Paused, countKey: "paused" },
@@ -230,35 +235,41 @@ function taskEventError(task) {
 }
 
 export function normalizeTask(task) {
+  // V1: 解析 config_json 获取平台元数据
+  const config = parseJSONValue(task.config_json || task.ConfigJSON);
   const metadata = parseJSONValue(task.metadata || task.Metadata);
   const metadata2 = parseJSONValue(task.metadata2 || task.Metadata2);
-  const taskMetadata = Object.keys(metadata).length ? metadata : metadata2;
+  const taskMetadata = Object.keys(metadata).length ? metadata : (Object.keys(metadata2).length ? metadata2 : config);
   const files = normalizeFileNodes(
     task.files || task.Files || taskMetadata.files || taskMetadata.Files,
   );
-  const subtasks = normalizeSubtasks(task.subtasks || task.Subtasks);
+  const subtasks = normalizeSubtasks(task.subtasks || task.Subtasks || task.resources);
   const fileSize = fileNodesSize(files);
-  const fileErrors = fileNodeErrors(files);
-  const fileProblems = fileNodeProblems(files);
-  const size = Number(task.size || task.Size || fileSize || 0);
-  const progress = parseProgress(task.progress, size);
+  const totalSize = Number(task.size || task.Size || config.size || fileSize || 0);
+  const progress = parseProgress(task.progress, totalSize);
   const percent =
-    task.status === DownloadTaskStatus.Done ? 100 : progress.percent;
+    (task.status === DownloadTaskStatus.Finished || task.status === DownloadTaskStatus.Done) ? 100 : progress.percent;
   const error =
     task.error ||
     task.Error ||
     task.err ||
     task.Err ||
     taskEventError(task) ||
-    (task.status === DownloadTaskStatus.Error ? fileErrors[0]?.error : "") ||
+    (task.status === DownloadTaskStatus.Failed ? fileErrors[0]?.error : "") ||
     "";
   return {
     ...task,
+    id: task.id || task.ID || 0,
+    task_id: String(task.id || task.ID || ""),
+    title: task.name || task.Name || task.title || task.Title || "unknown",
+    name: task.name || task.Name || task.title || task.Title || "unknown",
+    url: config.content_url || config.source_url || task.url || task.URL || "",
+    cover_url: task.cover_url || task.CoverURL || task.display_cover_url || config.cover_url || "",
     error,
-    size,
+    size: totalSize,
     files,
     subtasks,
-    output_path: task.output_path || task.outputPath || task.OutputPath || task.filepath || "",
+    output_path: task.output_path || task.outputPath || task.OutputPath || task.save_path || task.filepath || "",
     file_error_count: fileErrors.length,
     file_error: fileErrors[0] || null,
     file_problem_count: fileProblems.length,
@@ -268,17 +279,18 @@ export function normalizeTask(task) {
         task.fileCount ||
         taskMetadata.file_count ||
         taskMetadata.fileCount ||
-        taskMetadata.aggregate?.file_count ||
-        fileNodesCount(files),
+        config.file_count ||
+        fileNodesCount(files) ||
+        1,
     ),
     progress_info: progress,
     percent,
     status_text: STATUS_TEXT[task.status] || "未知",
-    size_text: formatBytes(size),
+    size_text: formatBytes(totalSize),
     speed_text: `${formatBytes(progress.speed)}/s`,
     created_at_text: formatDate(task.created_at),
     updated_at_text: formatDate(task.updated_at),
-    display_cover_url: task.cover_url || task.CoverURL || "",
+    display_cover_url: task.cover_url || task.CoverURL || config.cover_url || "",
   };
 }
 
@@ -556,27 +568,25 @@ export function DownloadTaskPanelModel(props) {
   let pipeline_ws_ = null;
 
   function statusesForTab(tab) {
-    if (tab === DownloadTaskTabs.Running) return [DownloadTaskStatus.Running];
+    if (tab === DownloadTaskTabs.Running) return [DownloadTaskStatus.Downloading, DownloadTaskStatus.Preparing, DownloadTaskStatus.Merging];
     if (tab === DownloadTaskTabs.Queued)
-      return [DownloadTaskStatus.Ready, DownloadTaskStatus.Wait];
-    if (tab === DownloadTaskTabs.Done) return [DownloadTaskStatus.Done];
-    if (tab === DownloadTaskTabs.Error) return [DownloadTaskStatus.Error];
+      return [DownloadTaskStatus.Waiting];
+    if (tab === DownloadTaskTabs.Done) return [DownloadTaskStatus.Finished];
+    if (tab === DownloadTaskTabs.Error) return [DownloadTaskStatus.Failed];
     if (tab === DownloadTaskTabs.Paused) return [DownloadTaskStatus.Paused];
     return null;
   }
 
   function normalizeCounts(data, list) {
-    const counts = data?.counts || {};
-    const total = Number(
-      data?.all_total ?? counts.total ?? data?.total ?? list.length,
-    );
+    const total = Number(data?.total || list.length);
+    // V1: 从列表统计各状态数量
     return {
       total,
-      running: Number(counts.running || 0),
-      queued: Number(counts.queued || 0),
-      done: Number(counts.done || 0),
-      error: Number(counts.error || 0),
-      paused: Number(counts.paused || 0),
+      running: list.filter((t) => t.status === DownloadTaskStatus.Downloading || t.status === DownloadTaskStatus.Preparing || t.status === DownloadTaskStatus.Merging).length,
+      queued: list.filter((t) => t.status === DownloadTaskStatus.Waiting).length,
+      done: list.filter((t) => t.status === DownloadTaskStatus.Finished).length,
+      error: list.filter((t) => t.status === DownloadTaskStatus.Failed).length,
+      paused: list.filter((t) => t.status === DownloadTaskStatus.Paused).length,
     };
   }
 
@@ -587,13 +597,15 @@ export function DownloadTaskPanelModel(props) {
 
   function sortTasks(list) {
     const order = {
-      [DownloadTaskStatus.Running]: 1,
-      [DownloadTaskStatus.Wait]: 2,
-      [DownloadTaskStatus.Ready]: 3,
-      [DownloadTaskStatus.Paused]: 4,
-      [DownloadTaskStatus.Error]: 5,
-      [DownloadTaskStatus.Done]: 6,
-      [DownloadTaskStatus.Unknown]: 7,
+      [DownloadTaskStatus.Downloading]: 1,
+      [DownloadTaskStatus.Preparing]: 2,
+      [DownloadTaskStatus.Merging]: 3,
+      [DownloadTaskStatus.Waiting]: 4,
+      [DownloadTaskStatus.Paused]: 5,
+      [DownloadTaskStatus.Failed]: 6,
+      [DownloadTaskStatus.Finished]: 7,
+      [DownloadTaskStatus.Cancelled]: 8,
+      [DownloadTaskStatus.Unknown]: 9,
     };
     return [...list].sort((a, b) => {
       if (order[a.status] !== order[b.status])
@@ -603,14 +615,10 @@ export function DownloadTaskPanelModel(props) {
   }
 
   function countKeyForStatus(status) {
-    if (status === DownloadTaskStatus.Running) return "running";
-    if (
-      status === DownloadTaskStatus.Ready ||
-      status === DownloadTaskStatus.Wait
-    )
-      return "queued";
-    if (status === DownloadTaskStatus.Done) return "done";
-    if (status === DownloadTaskStatus.Error) return "error";
+    if (status === DownloadTaskStatus.Downloading || status === DownloadTaskStatus.Preparing || status === DownloadTaskStatus.Merging) return "running";
+    if (status === DownloadTaskStatus.Waiting) return "queued";
+    if (status === DownloadTaskStatus.Finished) return "done";
+    if (status === DownloadTaskStatus.Failed) return "error";
     if (status === DownloadTaskStatus.Paused) return "paused";
     return null;
   }
@@ -719,7 +727,8 @@ export function DownloadTaskPanelModel(props) {
   }
 
   function downloadTaskID(task) {
-    const id = Number(task?.id || 0);
+    // V1: task.id 就是数据库主键
+    const id = Number(task?.id || task?.Id || 0);
     return Number.isFinite(id) && id > 0 ? id : 0;
   }
 
@@ -754,14 +763,34 @@ export function DownloadTaskPanelModel(props) {
 
   function handleWSMessage(message) {
     if (!message || !message.type) return;
+    // V1: task_snapshot / task_progress
+    if (message.type === "task_snapshot" || message.type === "task_progress") {
+      const task = {
+        id: message.task_id,
+        status: message.status,
+        resources: message.resources || [],
+      };
+      // 聚合 resources 的下载进度
+      if (task.resources.length > 0) {
+        const mainRes = task.resources[0];
+        task.size = mainRes.size || 0;
+        task.speed = mainRes.speed || 0;
+        task.downloaded = mainRes.downloaded || 0;
+        task.name = mainRes.name || "";
+        task.progress = {
+          downloaded: mainRes.downloaded || 0,
+          total: mainRes.size || 0,
+          speed: mainRes.speed || 0,
+        };
+      }
+      mergeRuntimeTask(task);
+      return;
+    }
     if (message.type === "event") {
       const data = message.data || {};
       const task = data.Task || data.task;
       if (task && (data.error || data.Err)) {
         task.error = data.error || data.Err;
-      }
-      if (task && (data.download_task_id || data.downloadTaskID)) {
-        task.download_task_id = data.download_task_id || data.downloadTaskID;
       }
       mergeRuntimeTask(task);
       return;
@@ -805,7 +834,7 @@ export function DownloadTaskPanelModel(props) {
     ws_closed_ = false;
     const wsURL = new URL(getDownloaderHostname());
     wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
-    wsURL.pathname = "/ws/downloader";
+    wsURL.pathname = "/ws/v1/download_task";
     wsURL.search = "";
     const ws = new WebSocket(wsURL.toString());
     ws_ = ws;
@@ -986,12 +1015,12 @@ export function DownloadTaskPanelModel(props) {
   async function load(page = 1) {
     loading_.as(true);
     error_.as("");
-    const body = { page, pageSize: page_size_ };
+    const params = { page, page_size: page_size_ };
     const statuses = statusesForTab(active_tab_.value);
-    if (statuses) {
-      body.status = statuses;
+    if (statuses && statuses.length === 1) {
+      params.status = statuses[0];
     }
-    const r = await reqs.list.run(body);
+    const r = await reqs.list.run(params);
     loading_.as(false);
     if (r.error) {
       error_.as(r.error.message || String(r.error));
@@ -1093,7 +1122,7 @@ export function DownloadTaskPanelModel(props) {
         });
         return null;
       }
-      return act(() => reqs.start.run({ download_task_id: id }), "已开始下载");
+      return act(() => reqs.start.run({ task_id: id }), "已开始下载");
     },
     pause(task) {
       const id = downloadTaskID(task);
@@ -1104,7 +1133,7 @@ export function DownloadTaskPanelModel(props) {
         });
         return null;
       }
-      return act(() => reqs.pause.run({ download_task_id: id }), "已暂停下载");
+      return act(() => reqs.pause.run({ task_id: id }), "已暂停下载");
     },
     resume(task) {
       const id = downloadTaskID(task);
@@ -1115,10 +1144,11 @@ export function DownloadTaskPanelModel(props) {
         });
         return null;
       }
-      return act(() => reqs.resume.run({ download_task_id: id }), "已继续下载");
+      return act(() => reqs.resume.run({ task_id: id }), "已继续下载");
     },
     retry(task) {
-      return act(() => reqs.retry.run({ id: task.id }), "已重试下载");
+      const id = downloadTaskID(task);
+      return act(() => reqs.retry.run({ task_id: id }), "已重试下载");
     },
     retryChildren(task) {
       const id = downloadTaskID(task);
@@ -1130,7 +1160,7 @@ export function DownloadTaskPanelModel(props) {
         return null;
       }
       return act(
-        () => reqs.retryChildren.run({ download_task_id: id }),
+        () => reqs.retryChildren.run({ task_id: id }),
         "已重新开始异常子任务",
       );
     },
@@ -1146,7 +1176,7 @@ export function DownloadTaskPanelModel(props) {
       return act(
         () =>
           reqs.remove.run({
-            download_task_id: id,
+            task_id: id,
             delete_file: !!deleteFile,
           }),
         "已删除下载任务",
@@ -1290,14 +1320,14 @@ export function DownloadTaskPanelModel(props) {
         (d) => d.tasks.length >= d.total,
       ),
       runningCount: computed(tasks_, (list) => {
-        return list.filter((t) => t.status === DownloadTaskStatus.Running)
+        return list.filter((t) => t.status === DownloadTaskStatus.Downloading || t.status === DownloadTaskStatus.Preparing)
           .length;
       }),
       totalSpeed: computed(tasks_, (list) => {
         return (
           formatBytes(
             list.reduce((sum, t) => {
-              if (t.status !== DownloadTaskStatus.Running) return sum;
+              if (t.status !== DownloadTaskStatus.Downloading && t.status !== DownloadTaskStatus.Preparing) return sum;
               return sum + Number(t.progress_info?.speed || 0);
             }, 0),
           ) + "/s"

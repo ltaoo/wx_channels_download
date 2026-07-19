@@ -59,6 +59,56 @@ func upsertChannelsAccount(db *gorm.DB, logger zerolog.Logger, profile *scraper.
 	}
 }
 
+// BuildBrowseRecordFromObject constructs a model.BrowseHistory directly from a ChannelsObject,
+// performing the conversion to browse record internally without an intermediate MediaProfile.
+func BuildBrowseRecordFromObject(obj *scraper.ChannelsObject) *model.BrowseHistory {
+	accountUsername := strings.TrimSpace(obj.Contact.Username)
+	now := util.NowMillis()
+
+	var key string
+	if len(obj.ObjectDesc.Media) > 0 {
+		key = obj.ObjectDesc.Media[0].DecodeKey
+	}
+
+	extraData, _ := json.Marshal(map[string]any{
+		"id":         obj.ID,
+		"nonce_id":   obj.ObjectNonceId,
+		"decode_key": key,
+	})
+
+	browseID := platformIDWxChannels + ":" + obj.ID
+	contentSourceURL := obj.SourceURL
+	if contentSourceURL == "" {
+		contentSourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", accountUsername)
+	}
+
+	coverURL := ""
+	if len(obj.ObjectDesc.Media) > 0 {
+		coverURL = obj.ObjectDesc.Media[0].ThumbUrl
+	}
+
+	return &model.BrowseHistory{
+		Id:                browseID,
+		PlatformId:        platformIDWxChannels,
+		VisitedTimes:      1,
+		AccountExternalId: accountUsername,
+		AccountUsername:   accountUsername,
+		AccountNickname:   obj.Contact.Nickname,
+		AccountAvatarURL:  obj.Contact.HeadUrl,
+		ContentType:       "video",
+		ContentExternalId: obj.ID,
+		ContentTitle:      obj.ObjectDesc.Description,
+		ContentURL:        ObjectURL(obj),
+		ContentSourceURL:  contentSourceURL,
+		ContentCoverURL:   coverURL,
+		ExtraData:         string(extraData),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+}
+
 // BuildBrowseRecord constructs a model.BrowseHistory from the feed profile.
 func BuildBrowseRecord(profile *scraper.MediaProfile) *model.BrowseHistory {
 	accountUsername := strings.TrimSpace(profile.Contact.Id)

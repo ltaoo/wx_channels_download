@@ -266,7 +266,7 @@ var WXEnv = (() => {
       return wsProtocol(channels.protocol) + "://" + channels.addr + "/ws/channels";
     },
     get downloaderWSURL() {
-      return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/downloader";
+      return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/v1/download_task";
     },
     get mpWSURL() {
       return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/mp";

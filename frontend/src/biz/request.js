@@ -77,12 +77,12 @@ export function searchFruits(body) {
 
 /** @param {Record<string, any>} params */
 export function fetchDownloadList(params) {
-  return request.post("/api/download_task/list", params);
+  return request.get("/api/v1/download_task/list", params);
 }
 
 /** @param {Record<string, any>} params */
 export function fetchDownloadProfile(params) {
-  return request.post("/api/download_task/profile", params);
+  return request.get("/api/v1/download_task/list", { task_id: params.task_id || params.download_task_id });
 }
 
 /** @param {Record<string, any>} params */
@@ -361,34 +361,34 @@ export function resumeTaskPipeline(body) {
   });
 }
 
-/** @param {{ download_task_id: number }} body */
+/** @param {{ download_task_id?: number; task_id?: number }} body */
 export function startDownloadTask(body) {
-  return request.post("/api/download_task/start", body);
+  return request.post("/api/v1/download_task/start", { task_id: body.task_id || body.download_task_id });
 }
 
-/** @param {{ download_task_id: number }} body */
+/** @param {{ download_task_id?: number; task_id?: number }} body */
 export function pauseDownloadTask(body) {
-  return request.post("/api/download_task/pause", body);
+  return request.post("/api/v1/download_task/pause", { task_id: body.task_id || body.download_task_id });
 }
 
-/** @param {{ download_task_id: number }} body */
+/** @param {{ download_task_id?: number; task_id?: number }} body */
 export function resumeDownloadTask(body) {
-  return request.post("/api/download_task/resume", body);
+  return request.post("/api/v1/download_task/resume", { task_id: body.task_id || body.download_task_id });
 }
 
-/** @param {{ id: number }} body */
+/** @param {{ id?: number; task_id?: number }} body */
 export function retryDownloadTask(body) {
-  return request.post("/api/download_task/retry", body);
+  return request.post("/api/v1/download_task/start", { task_id: body.task_id || body.id });
 }
 
-/** @param {{ download_task_id: number }} body */
+/** @param {{ download_task_id?: number; task_id?: number }} body */
 export function retryDownloadTaskChildren(body) {
-  return request.post("/api/download_task/retry_children", body);
+  return request.post("/api/v1/download_task/start", { task_id: body.task_id || body.download_task_id });
 }
 
-/** @param {{ download_task_id: number; delete_file?: boolean }} body */
+/** @param {{ download_task_id?: number; task_id?: number; delete_file?: boolean }} body */
 export function deleteDownloadTask(body) {
-  return request.post("/api/download_task/delete", body);
+  return request.post("/api/v1/download_task/delete", { task_id: body.task_id || body.download_task_id });
 }
 
 /** @param {{ file_path: string }} body */

@@ -74,6 +74,7 @@ type ChannelsMediaCdnInfo struct {
 
 type ChannelsMediaItem struct {
 	URL          string              `json:"url"`
+	ThumbUrl     string              `json:"thumbUrl"`
 	MediaType    int                 `json:"mediaType"`
 	VideoPlayLen int                 `json:"videoPlayLen"`
 	Width        float32             `json:"width"`

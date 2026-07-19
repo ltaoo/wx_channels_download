@@ -577,3 +577,115 @@ ON `platform_workflow_run` (`task_id`);
 
 CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_download_task_id
 ON `platform_workflow_run` (`download_task_id`);
+
+-- ========================================
+-- 多协议下载器 V1 表
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS `download_task_v1` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `name` TEXT NOT NULL,
+  `resource_type` TEXT NOT NULL DEFAULT 'FILE',
+  `status` INTEGER NOT NULL DEFAULT 0,
+  `save_path` TEXT NOT NULL,
+  `config_json` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_task_v1_status ON `download_task_v1` (`status`);
+
+CREATE TABLE IF NOT EXISTS `download_resource` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `task_id` INTEGER NOT NULL,
+  `name` TEXT,
+  `kind` TEXT NOT NULL DEFAULT 'file',
+  `size` INTEGER,
+  `status` INTEGER DEFAULT 0,
+  `merge_order` INTEGER DEFAULT 0,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_resource_task ON `download_resource` (`task_id`);
+
+CREATE TABLE IF NOT EXISTS `download_endpoint` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `resource_id` INTEGER NOT NULL,
+  `protocol` TEXT NOT NULL,
+  `url` TEXT NOT NULL,
+  `priority` INTEGER DEFAULT 0,
+  `enabled` INTEGER DEFAULT 1,
+  `headers` TEXT,
+  `cookies` TEXT,
+  `status` INTEGER DEFAULT 0,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_endpoint_resource ON `download_endpoint` (`resource_id`);
+
+CREATE TABLE IF NOT EXISTS `download_segment` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `resource_id` INTEGER NOT NULL,
+  `index` INTEGER NOT NULL,
+  `url` TEXT,
+  `offset_start` INTEGER,
+  `offset_end` INTEGER,
+  `size` INTEGER,
+  `downloaded` INTEGER DEFAULT 0,
+  `status` INTEGER DEFAULT 0,
+  `retry` INTEGER DEFAULT 0,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_segment_resource ON `download_segment` (`resource_id`);
+
+CREATE TABLE IF NOT EXISTS `download_connection` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `endpoint_id` INTEGER NOT NULL,
+  `worker_id` TEXT,
+  `host` TEXT,
+  `ip` TEXT,
+  `speed` INTEGER DEFAULT 0,
+  `bytes` INTEGER DEFAULT 0,
+  `status` INTEGER DEFAULT 0,
+  `last_active` INTEGER,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_conn_endpoint ON `download_connection` (`endpoint_id`);
+
+CREATE TABLE IF NOT EXISTS `download_live` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `task_id` INTEGER NOT NULL,
+  `stream_url` TEXT NOT NULL,
+  `record_start` INTEGER,
+  `record_end` INTEGER,
+  `duration` INTEGER DEFAULT 0,
+  `rotate_minutes` INTEGER DEFAULT 0,
+  `rotate_size` INTEGER DEFAULT 0,
+  `is_live` INTEGER DEFAULT 0,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_task ON `download_live` (`task_id`);
+
+CREATE TABLE IF NOT EXISTS `download_log` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `task_id` INTEGER NOT NULL,
+  `level` TEXT NOT NULL DEFAULT 'info',
+  `message` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_log_task ON `download_log` (`task_id`);

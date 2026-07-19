@@ -1,3 +1,11 @@
+DROP TABLE IF EXISTS `download_log`;
+DROP TABLE IF EXISTS `download_live`;
+DROP TABLE IF EXISTS `download_connection`;
+DROP TABLE IF EXISTS `download_segment`;
+DROP TABLE IF EXISTS `download_endpoint`;
+DROP TABLE IF EXISTS `download_resource`;
+DROP TABLE IF EXISTS `download_task_v1`;
+
 DROP TABLE IF EXISTS `platform_workflow_run`;
 DROP TABLE IF EXISTS `browse_history`;
 DROP TABLE IF EXISTS `content_influencer`;

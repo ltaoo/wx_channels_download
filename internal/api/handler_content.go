@@ -8,7 +8,7 @@ import (
 
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/scraper"
+	// "wx_channel/pkg/scraper"
 )
 
 func (c *APIClient) handleCompatVideoList(ctx *gin.Context) {
@@ -150,34 +150,34 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		if content.PublishTime != nil {
 			publishTime = *content.PublishTime
 		}
-		metadata := platformJSONMap(content.Metadata)
+		// metadata := platformJSONMap(content.Metadata)
 		var task model.DownloadTask
 		if content.DownloadTaskId != nil {
 			task = tasksByID[*content.DownloadTaskId]
 		}
 		downloadPath := firstNonEmpty(content.DownloadPath, task.Filepath, task.OutputPath)
-		mimeType := firstNonEmpty(
-			toCompatString(metadata["mime_type"]),
-			task.MimeType,
-			platformMimeTypeFromOutputFormat(platformOutputFormatFromPath(downloadPath)),
-		)
-		outputFormat := firstNonEmpty(
-			toCompatString(metadata["output_format"]),
-			platformOutputFormatFromPath(downloadPath),
-			platformOutputFormatFromPath(task.Filename),
-			platformOutputFormatFromPath(task.Filepath),
-			platformOutputFormatFromPath(task.OutputPath),
-			platformOutputFormatFromMimeType(mimeType),
-		)
+		// mimeType := firstNonEmpty(
+		// 	toCompatString(metadata["mime_type"]),
+		// 	task.MimeType,
+		// 	platformMimeTypeFromOutputFormat(platformOutputFormatFromPath(downloadPath)),
+		// )
+		// outputFormat := firstNonEmpty(
+		// 	toCompatString(metadata["output_format"]),
+		// 	platformOutputFormatFromPath(downloadPath),
+		// 	platformOutputFormatFromPath(task.Filename),
+		// 	platformOutputFormatFromPath(task.Filepath),
+		// 	platformOutputFormatFromPath(task.OutputPath),
+		// 	platformOutputFormatFromMimeType(mimeType),
+		// )
 		list = append(list, gin.H{
 			"id":                   content.Id,
 			"platform_id":          content.PlatformId,
 			"platform_name":        platformNameOf(content.PlatformId),
-			"platform_favicon_url": scraper.FaviconDataURL(content.PlatformId),
+			// "platform_favicon_url": scraper.FaviconDataURL(content.PlatformId),
 			"content_type":         content.ContentType,
-			"source_content_type":  toCompatString(metadata["source_content_type"]),
-			"output_format":        outputFormat,
-			"mime_type":            mimeType,
+			// "source_content_type":  toCompatString(metadata["source_content_type"]),
+			// "output_format":        outputFormat,
+			// "mime_type":            mimeType,
 			"external_id":          content.ExternalId,
 			"external_id1":         content.ExternalId,
 			"external_id2":         content.ExternalId2,

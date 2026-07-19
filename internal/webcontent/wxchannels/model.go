@@ -32,6 +32,21 @@ type metadataKV struct {
 	Key string `json:"key"`
 }
 
+// cleanMediaURL removes CDN routing parameters (hy, idx, m, uzid) from the media URL.
+func cleanMediaURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u == nil {
+		return rawURL
+	}
+	q := u.Query()
+	q.Del("hy")
+	q.Del("idx")
+	q.Del("m")
+	q.Del("uzid")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // ToAccount converts a ChannelsObject into a model.Account.
 func ToAccount(obj *scraper.ChannelsObject) (*model.Account, error) {
 	if obj == nil {
@@ -141,9 +156,13 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, error) {
 	c.ContentType = "video"
 	c.Title = obj.ObjectDesc.Description
 	c.Description = obj.ObjectDesc.Description
-	c.ContentURL = media.URL + media.URLToken
-	c.URL = media.URL + media.URLToken
-	c.CoverURL = media.CoverUrl
+	c.ContentURL = cleanMediaURL(media.URL) + media.URLToken
+	c.URL = cleanMediaURL(media.URL) + media.URLToken
+	c.CoverURL = media.ThumbUrl
+	if c.SourceURL == "" {
+		_, contactUsername := pickAccountContact(obj)
+		c.SourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", contactUsername)
+	}
 	c.CoverWidth = strconv.Itoa(int(media.Width))
 	c.CoverHeight = strconv.Itoa(int(media.Height))
 	c.Duration = int64(media.VideoPlayLen)
@@ -171,6 +190,16 @@ func PickSpec(obj *scraper.ChannelsObject) string {
 		return specs[0].FileFormat
 	}
 	return "original"
+}
+
+// BuildDownloadURLWithSpec appends the X-snsvideoflag spec parameter to the base ObjectURL.
+// Returns the unmodified ObjectURL if spec is empty, "original", or the URL is a zip:// scheme.
+func BuildDownloadURLWithSpec(obj *scraper.ChannelsObject, spec string) string {
+	baseURL := ObjectURL(obj)
+	if spec == "" || spec == "original" || strings.Contains(baseURL, "zip://") {
+		return baseURL
+	}
+	return baseURL + "&X-snsvideoflag=" + spec
 }
 
 // DecryptKeyInt returns the video decrypt key as int, or 0 on failure.
@@ -211,7 +240,7 @@ func ObjectURL(obj *scraper.ChannelsObject) string {
 	if len(obj.ObjectDesc.Media) == 0 {
 		return ""
 	}
-	return obj.ObjectDesc.Media[0].URL + obj.ObjectDesc.Media[0].URLToken
+	return cleanMediaURL(obj.ObjectDesc.Media[0].URL) + obj.ObjectDesc.Media[0].URLToken
 }
 
 // BuildJumpURLFromParts builds a channels.weixin.qq.com feed page URL from individual fields.
@@ -238,6 +267,11 @@ func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string
 	}
 
 	if nid != "" {
+		// NonceId may contain underscore-separated segments (e.g. "123_0_146_0_0").
+		// The first segment is the numeric ID used for encoding.
+		if idx := strings.IndexByte(nid, '_'); idx >= 0 {
+			nid = nid[:idx]
+		}
 		encodedNid := util.EncodeUint64ToBase64(nid)
 		if encodedNid != "" {
 			u += "&nid=" + url.QueryEscape(encodedNid)

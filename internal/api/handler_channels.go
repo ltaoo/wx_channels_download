@@ -72,26 +72,27 @@ func (c *APIClient) handleFetchInteractionedFeedList(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleFetchFollowList(ctx *gin.Context) {
-	next_marker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsFollowList(next_marker)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, resp)
+	// next_marker := ctx.Query("next_marker")
+	// resp, err := c.channels.FetchChannelsFollowList(next_marker)
+	// if err != nil {
+	// 	result.Err(ctx, 400, err.Error())
+	// 	return
+	// }
+	// result.Ok(ctx, resp)
+	result.Ok(ctx, nil)
 }
 
 func (c *APIClient) handleFetchFeedCommentList(ctx *gin.Context) {
-	oid := ctx.Query("oid")
-	nid := ctx.Query("nid")
-	commentID := ctx.Query("comment_id")
-	nextMarker := ctx.Query("next_marker")
-	resp, err := c.channels.FetchChannelsFeedCommentList(oid, nid, commentID, nextMarker)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, resp)
+	// oid := ctx.Query("oid")
+	// nid := ctx.Query("nid")
+	// commentID := ctx.Query("comment_id")
+	// nextMarker := ctx.Query("next_marker")
+	// resp, err := c.channels.FetchChannelsFeedCommentList(oid, nid, commentID, nextMarker)
+	// if err != nil {
+	// 	result.Err(ctx, 400, err.Error())
+	// 	return
+	// }
+	// result.Ok(ctx, resp)
 }
 
 func (c *APIClient) handleFetchFeedShareUrl(ctx *gin.Context) {
@@ -100,12 +101,14 @@ func (c *APIClient) handleFetchFeedShareUrl(ctx *gin.Context) {
 		result.Err(ctx, 400, "missing oid")
 		return
 	}
-	resp, err := c.channels.FetchChannelsFeedShareUrl(oid)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, resp)
+	result.Err(ctx, 400, "need to process")
+	return
+	// resp, err := c.channels.FetchChannelsFeedShareUrl(oid)
+	// if err != nil {
+	// 	result.Err(ctx, 400, err.Error())
+	// 	return
+	// }
+	// result.Ok(ctx, resp)
 }
 
 // 获取指定视频详情
@@ -131,12 +134,13 @@ func (c *APIClient) handleFetchSharedFeedProfile(ctx *gin.Context) {
 		result.Err(ctx, 400, "missing url")
 		return
 	}
-	resp, err := c.channels.FetchChannelsSharedFeedProfile(_url)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, resp)
+	result.Err(ctx, 400, "need to process")
+	// resp, err := c.channels.FetchChannelsSharedFeedProfile(_url)
+	// if err != nil {
+	// 	result.Err(ctx, 400, err.Error())
+	// 	return
+	// }
+	// result.Ok(ctx, resp)
 }
 
 type ChannelsDownloadPayload struct {

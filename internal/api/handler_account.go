@@ -11,7 +11,7 @@ import (
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/scraper"
+	// "wx_channel/pkg/scraper"
 )
 
 func (c *APIClient) handleCompatInfluencerList(ctx *gin.Context) {
@@ -232,81 +232,83 @@ func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
 }
 
 func accountContentPayload(content model.Content) gin.H {
-	metadata := platformJSONMap(content.Metadata)
-	outputFormat := firstNonEmpty(
-		toCompatString(metadata["output_format"]),
-		platformOutputFormatFromPath(content.DownloadPath),
-		platformOutputFormatFromPath(content.URL),
-		platformOutputFormatFromPath(content.ContentURL),
-		platformOutputFormatFromPath(content.SourceURL),
-		platformOutputFormatFromMimeType(toCompatString(metadata["mime_type"])),
-	)
-	mimeType := firstNonEmpty(
-		toCompatString(metadata["mime_type"]),
-		platformMimeTypeFromOutputFormat(outputFormat),
-	)
-	sourceContentType := firstNonEmpty(
-		toCompatString(metadata["source_content_type"]),
-		content.ContentType,
-	)
-	mediaType := platformContentTypeFromOutput(outputFormat, mimeType, content.ContentType)
-	displayType := accountContentDisplayType(sourceContentType, outputFormat, mimeType, content.ContentType)
-	publishTime := int64(0)
-	if content.PublishTime != nil {
-		publishTime = *content.PublishTime
-	}
-	title := firstNonEmpty(content.Title, content.Description, content.ExternalId)
-	return gin.H{
-		"id":                   content.Id,
-		"content_type":         mediaType,
-		"media_type":           mediaType,
-		"source_content_type":  sourceContentType,
-		"output_format":        outputFormat,
-		"mime_type":            mimeType,
-		"type_label":           displayType,
-		"display_type":         displayType,
-		"external_id":          content.ExternalId,
-		"external_id1":         content.ExternalId,
-		"external_id2":         content.ExternalId2,
-		"external_id3":         content.ExternalId3,
-		"title":                title,
-		"description":          content.Description,
-		"url":                  firstNonEmpty(content.URL, content.ContentURL),
-		"content_url":          content.ContentURL,
-		"source_url":           content.SourceURL,
-		"cover_url":            content.CoverURL,
-		"file_size":            content.FileSize,
-		"size":                 content.Size,
-		"duration":             content.Duration,
-		"publish_time":         publishTime,
-		"download_task_id":     content.DownloadTaskId,
-		"download_status":      content.DownloadStatus,
-		"download_path":        content.DownloadPath,
-		"error_msg":            content.ErrorMsg,
-	}
+	// metadata := platformJSONMap(content.Metadata)
+	// outputFormat := firstNonEmpty(
+	// 	toCompatString(metadata["output_format"]),
+	// 	platformOutputFormatFromPath(content.DownloadPath),
+	// 	platformOutputFormatFromPath(content.URL),
+	// 	platformOutputFormatFromPath(content.ContentURL),
+	// 	platformOutputFormatFromPath(content.SourceURL),
+	// 	platformOutputFormatFromMimeType(toCompatString(metadata["mime_type"])),
+	// )
+	// mimeType := firstNonEmpty(
+	// 	toCompatString(metadata["mime_type"]),
+	// 	platformMimeTypeFromOutputFormat(outputFormat),
+	// )
+	// sourceContentType := firstNonEmpty(
+	// 	toCompatString(metadata["source_content_type"]),
+	// 	content.ContentType,
+	// )
+	// mediaType := platformContentTypeFromOutput(outputFormat, mimeType, content.ContentType)
+	// displayType := accountContentDisplayType(sourceContentType, outputFormat, mimeType, content.ContentType)
+	// publishTime := int64(0)
+	// if content.PublishTime != nil {
+	// 	publishTime = *content.PublishTime
+	// }
+	// title := firstNonEmpty(content.Title, content.Description, content.ExternalId)
+	// return gin.H{
+	// 	"id":                   content.Id,
+	// 	"content_type":         mediaType,
+	// 	"media_type":           mediaType,
+	// 	"source_content_type":  sourceContentType,
+	// 	"output_format":        outputFormat,
+	// 	"mime_type":            mimeType,
+	// 	"type_label":           displayType,
+	// 	"display_type":         displayType,
+	// 	"external_id":          content.ExternalId,
+	// 	"external_id1":         content.ExternalId,
+	// 	"external_id2":         content.ExternalId2,
+	// 	"external_id3":         content.ExternalId3,
+	// 	"title":                title,
+	// 	"description":          content.Description,
+	// 	"url":                  firstNonEmpty(content.URL, content.ContentURL),
+	// 	"content_url":          content.ContentURL,
+	// 	"source_url":           content.SourceURL,
+	// 	"cover_url":            content.CoverURL,
+	// 	"file_size":            content.FileSize,
+	// 	"size":                 content.Size,
+	// 	"duration":             content.Duration,
+	// 	"publish_time":         publishTime,
+	// 	"download_task_id":     content.DownloadTaskId,
+	// 	"download_status":      content.DownloadStatus,
+	// 	"download_path":        content.DownloadPath,
+	// 	"error_msg":            content.ErrorMsg,
+	// }
+	return gin.H{}
 }
 
 func accountContentDisplayType(sourceContentType string, outputFormat string, mimeType string, fallback string) string {
-	normalize := func(value string) string {
-		return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, ".")))
-	}
-	sourceContentType = normalize(sourceContentType)
-	outputFormat = normalize(firstNonEmpty(outputFormat, platformOutputFormatFromMimeType(mimeType)))
-	fallback = normalize(fallback)
-	if outputFormat == "" {
-		return firstNonEmpty(sourceContentType, fallback, "file")
-	}
-	switch sourceContentType {
-	case "", "file", "download":
-		return outputFormat
-	case "video", "audio", "image", "article", "text":
-		return outputFormat
-	default:
-		if sourceContentType == outputFormat {
-			return outputFormat
-		}
-		return sourceContentType + " " + outputFormat
-	}
+	return ""
+	// normalize := func(value string) string {
+	// 	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, ".")))
+	// }
+	// sourceContentType = normalize(sourceContentType)
+	// outputFormat = normalize(firstNonEmpty(outputFormat, platformOutputFormatFromMimeType(mimeType)))
+	// fallback = normalize(fallback)
+	// if outputFormat == "" {
+	// 	return firstNonEmpty(sourceContentType, fallback, "file")
+	// }
+	// switch sourceContentType {
+	// case "", "file", "download":
+	// 	return outputFormat
+	// case "video", "audio", "image", "article", "text":
+	// 	return outputFormat
+	// default:
+	// 	if sourceContentType == outputFormat {
+	// 		return outputFormat
+	// 	}
+	// 	return sourceContentType + " " + outputFormat
+	// }
 }
 
 func firstNonEmpty(values ...string) string {
@@ -319,5 +321,6 @@ func firstNonEmpty(values ...string) string {
 }
 
 func platformNameOf(platformID string) string {
-	return scraper.DisplayName(platformID)
+	// return scraper.DisplayName(platformID)
+	return ""
 }

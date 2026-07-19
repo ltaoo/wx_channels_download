@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"regexp"
+	// "net/url"
+	// "regexp"
 	"os"
 	"strconv"
 	"strings"
@@ -31,17 +31,17 @@ import (
 	"wx_channel/internal/storage"
 	"wx_channel/pkg/browsermgr"
 	"wx_channel/pkg/decrypt"
-	"wx_channel/internal/webcontent/officialaccount"
-	wxchannels "wx_channel/internal/webcontent/wxchannels"
-	channels "wx_channel/pkg/scraper/wxchannels"
+	// "wx_channel/internal/webcontent/officialaccount"
+	// wxchannels "wx_channel/internal/webcontent/wxchannels"
+	// channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 	"wx_channel/pkg/util"
 )
 
 type APIClient struct {
 	downloader    *downloadpkg.Downloader
-	official      *officialaccount.OfficialAccountClient
-	channels      *channels.ChannelsClient
+	// official      *officialaccount.OfficialAccountClient
+	// channels      *channels.ChannelsClient
 	downloader_ws *downloaderclient.DownloaderClient
 	status_ws     *downloaderclient.DownloaderClient
 	filehelper    *FileHelperHandler
@@ -77,13 +77,13 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		Storage:         st,
 		StorageDir:      data_dir,
 	})
-	var channels_client *channels.ChannelsClient
-	official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
-	officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
-	channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
-	if db != nil {
-		channels_client.SetDB(db)
-	}
+	// var channels_client *channels.ChannelsClient
+	// official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
+	// officialaccount_client := officialaccount.NewOfficialAccountClient(official_cfg, parent_logger)
+	// channels_client = channels.NewChannelsClient(cfg.ChannelsRefreshInterval)
+	// if db != nil {
+	// 	channels_client.SetDB(db)
+	// }
 	downloader_ws := downloaderclient.NewDownloaderClient()
 	status_ws := downloaderclient.NewDownloaderClient()
 
@@ -115,7 +115,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 
 	// Initialize services
 	downloadService := services.NewDownloadService(downloader, db, cfg.DownloadDir, downloader_ws)
-	channelsService := services.NewChannelsService(channels_client)
+	// channelsService := services.NewChannelsService(channels_client)
 	accountService := services.NewAccountService(db)
 	contentService := services.NewContentService(db)
 	browseService := services.NewBrowseService(db)
@@ -140,11 +140,11 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 
 	apiClient := &APIClient{
 		downloader:            downloader,
-		official:              officialaccount_client,
-		channels:              channels_client,
 		downloader_ws:         downloader_ws,
+		// official:              officialaccount_client,
+		// channels:              channels_client,
 		status_ws:             status_ws,
-		filehelper:            NewFileHelperHandler(),
+		// filehelper:            NewFileHelperHandler(),
 		formatter:             util.NewFilenameProcessor(cfg.DownloadDir, make(map[string]int)),
 		cfg:                   cfg,
 		engine:                gin.Default(),
@@ -152,7 +152,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		logger:                &logger,
 		browserMgr:            browserMgr,
 		downloadService:       downloadService,
-		channelsService:       channelsService,
+		// channelsService:       channelsService,
 		accountService:        accountService,
 		contentService:        contentService,
 		browseService:         browseService,
@@ -172,26 +172,26 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		default:
 		}
 	}
-	channels_client.OnConnected = func(_ *channels.Client) {
-		status_ws.Broadcast(APIClientWSMessage{
-			Type: "channels_status",
-			Data: apiClient.channelsStatusData(),
-		})
-	}
-	channels_client.OnDisconnected = func(_ *channels.Client) {
-		status_ws.Broadcast(APIClientWSMessage{
-			Type: "channels_status",
-			Data: apiClient.channelsStatusData(),
-		})
-	}
+	// channels_client.OnConnected = func(_ *channels.Client) {
+	// 	status_ws.Broadcast(APIClientWSMessage{
+	// 		Type: "channels_status",
+	// 		Data: apiClient.channelsStatusData(),
+	// 	})
+	// }
+	// channels_client.OnDisconnected = func(_ *channels.Client) {
+	// 	status_ws.Broadcast(APIClientWSMessage{
+	// 		Type: "channels_status",
+	// 		Data: apiClient.channelsStatusData(),
+	// 	})
+	// }
 
-	// 设置文件传输助手视频号自动下载回调
-	apiClient.filehelper.SetFinderAutoDownloadCallback(apiClient.autoCreateChannelsTask)
-	// 设置文件传输助手 SPH 自动下载回调
-	apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
+	// // 设置文件传输助手视频号自动下载回调
+	// apiClient.filehelper.SetFinderAutoDownloadCallback(apiClient.autoCreateChannelsTask)
+	// // 设置文件传输助手 SPH 自动下载回调
+	// apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
 
-	apiClient.SetupRoutes()
-	apiClient.httpHandler = apiClient.buildHTTPHandler()
+	// apiClient.SetupRoutes()
+	// apiClient.httpHandler = apiClient.buildHTTPHandler()
 	return apiClient
 }
 
@@ -247,7 +247,7 @@ func (c *APIClient) Start() error {
 	if err := c.downloader.Setup(); err != nil {
 		return err
 	}
-	c.loadPersistedPlatformWorkflowRuns()
+	// c.loadPersistedPlatformWorkflowRuns()
 	_ = c.downloader.PutConfig(&base.DownloaderStoreConfig{
 		DownloadDir: c.cfg.DownloadDir,
 		MaxRunning:  c.cfg.MaxRunning,
@@ -320,9 +320,9 @@ func (c *APIClient) Stop() error {
 	if c.downloader != nil {
 		c.downloader.Pause(nil)
 	}
-	if c.channels != nil {
-		c.channels.Stop()
-	}
+	// if c.channels != nil {
+	// 	c.channels.Stop()
+	// }
 	if c.downloader_ws != nil {
 		c.downloader_ws.Stop()
 	}
@@ -569,254 +569,256 @@ func (c *APIClient) find_existing_feed_tasks(tasks []*downloadpkg.Task, body *se
 }
 
 func (c *APIClient) createFeedTaskBody(oid, nid, reqUrl, eid string, isMp3, isCover bool, customSpec ...string) (*services.FeedDownloadTaskBody, *model.Content, *model.Account, error) {
+	return nil, nil, nil, fmt.Errorf("need to process")
 	// 获取视频详情
-	r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("获取详情失败: %w", err)
-	}
-	if r.ErrCode != 0 {
-		return nil, nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
-	}
+	// r, err := c.channels.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
+	// if err != nil {
+	// 	return nil, nil, nil, fmt.Errorf("获取详情失败: %w", err)
+	// }
+	// if r.ErrCode != 0 {
+	// 	return nil, nil, nil, fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+	// }
 
-	feed := r.Data.Object
-	if feed.LiveInfo != nil {
-		return nil, nil, nil, fmt.Errorf("直播类型请使用直播下载")
-	}
+	// feed := r.Data.Object
+	// if feed.LiveInfo != nil {
+	// 	return nil, nil, nil, fmt.Errorf("直播类型请使用直播下载")
+	// }
 
-	isPicture := feed.Type == "picture" || feed.ObjectDesc.MediaType == 2
-	var media *channels.ChannelsMediaItem
-	if !isPicture {
-		if len(feed.ObjectDesc.Media) == 0 {
-			return nil, nil, nil, fmt.Errorf("缺少可下载的视频内容")
-		}
-		media = &feed.ObjectDesc.Media[0]
-	}
+	// isPicture := feed.Type == "picture" || feed.ObjectDesc.MediaType == 2
+	// var media *channels.ChannelsMediaItem
+	// if !isPicture {
+	// 	if len(feed.ObjectDesc.Media) == 0 {
+	// 		return nil, nil, nil, fmt.Errorf("缺少可下载的视频内容")
+	// 	}
+	// 	media = &feed.ObjectDesc.Media[0]
+	// }
 
-	key := 0
-	if media != nil && media.DecodeKey != "" {
-		k, err := strconv.Atoi(media.DecodeKey)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
-		}
-		key = k
-	}
+	// key := 0
+	// if media != nil && media.DecodeKey != "" {
+	// 	k, err := strconv.Atoi(media.DecodeKey)
+	// 	if err != nil {
+	// 		return nil, nil, nil, fmt.Errorf("解析 DecodeKey 失败: %w", err)
+	// 	}
+	// 	key = k
+	// }
 
-	spec := ""
-	if len(customSpec) > 0 && customSpec[0] != "" {
-		spec = customSpec[0]
-	} else if !c.cfg.Original.GetBool("download.defaultHighest") {
-		if media != nil && len(media.Spec) > 0 {
-			spec = media.Spec[0].FileFormat
-		}
-	}
+	// spec := ""
+	// if len(customSpec) > 0 && customSpec[0] != "" {
+	// 	spec = customSpec[0]
+	// } else if !c.cfg.Original.GetBool("download.defaultHighest") {
+	// 	if media != nil && len(media.Spec) > 0 {
+	// 		spec = media.Spec[0].FileFormat
+	// 	}
+	// }
 
-	title := wxchannels.ObjectTitle(&feed)
-	defaultName := title
-	template := c.cfg.Original.GetString("download.filenameTemplate")
-	filename := defaultName
-	if template != "" {
-		params := map[string]string{
-			"filename":    defaultName,
-			"id":          feed.ID,
-			"title":       title,
-			"spec":        spec,
-			"created_at":  strconv.Itoa(feed.CreateTime),
-			"download_at": util.NowSecondsStr(),
-			"author":      feed.Contact.Nickname,
-		}
-		re := regexp.MustCompile(`\{\{(\w+)\}\}`)
-		filename = re.ReplaceAllStringFunc(template, func(m string) string {
-			key := m[2 : len(m)-2]
-			if v, ok := params[key]; ok {
-				return v
-			}
-			return ""
-		})
-	}
+	// title := wxchannels.ObjectTitle(&feed)
+	// defaultName := title
+	// template := c.cfg.Original.GetString("download.filenameTemplate")
+	// filename := defaultName
+	// if template != "" {
+	// 	params := map[string]string{
+	// 		"filename":    defaultName,
+	// 		"id":          feed.ID,
+	// 		"title":       title,
+	// 		"spec":        spec,
+	// 		"created_at":  strconv.Itoa(feed.CreateTime),
+	// 		"download_at": util.NowSecondsStr(),
+	// 		"author":      feed.Contact.Nickname,
+	// 	}
+	// 	re := regexp.MustCompile(`\{\{(\w+)\}\}`)
+	// 	filename = re.ReplaceAllStringFunc(template, func(m string) string {
+	// 		key := m[2 : len(m)-2]
+	// 		if v, ok := params[key]; ok {
+	// 			return v
+	// 		}
+	// 		return ""
+	// 	})
+	// }
 
-	downloadURL := wxchannels.ObjectURL(&feed)
-	coverURL := ""
-	if len(feed.ObjectDesc.Media) > 0 {
-		coverURL = feed.ObjectDesc.Media[0].CoverUrl
-	}
-	if isCover {
-		downloadURL = coverURL
-	}
+	// downloadURL := wxchannels.ObjectURL(&feed)
+	// coverURL := ""
+	// if len(feed.ObjectDesc.Media) > 0 {
+	// 	coverURL = feed.ObjectDesc.Media[0].CoverUrl
+	// }
+	// if isCover {
+	// 	downloadURL = coverURL
+	// }
 
-	payload := &services.FeedDownloadTaskBody{
-		Id:       feed.ID,
-		NonceId:  feed.ObjectNonceId,
-		Title:    title,
-		Key:      key,
-		Spec:     spec,
-		Suffix:   ".mp4",
-		URL:      downloadURL,
-		Filename: filename,
-	}
-	if payload.NonceId == "" {
-		payload.NonceId = nid
-	}
+	// payload := &services.FeedDownloadTaskBody{
+	// 	Id:       feed.ID,
+	// 	NonceId:  feed.ObjectNonceId,
+	// 	Title:    title,
+	// 	Key:      key,
+	// 	Spec:     spec,
+	// 	Suffix:   ".mp4",
+	// 	URL:      downloadURL,
+	// 	Filename: filename,
+	// }
+	// if payload.NonceId == "" {
+	// 	payload.NonceId = nid
+	// }
 
-	// 处理 URL：非空 spec 添加 X-snsvideoflag 参数，空 spec 则清理 URL 只保留 encfilekey 和 token
-	if !isCover && !isPicture {
-		if spec != "" {
-			payload.URL += "&X-snsvideoflag=" + spec
-		} else {
-			if u, err := url.Parse(payload.URL); err == nil {
-				filekey := u.Query().Get("encfilekey")
-				token := u.Query().Get("token")
-				if filekey != "" && token != "" {
-					newURL := u.Scheme + "://" + u.Host + u.Path
-					newURL += "?encfilekey=" + filekey + "&token=" + token
-					payload.URL = newURL
-				}
-			}
-		}
-	}
+	// // 处理 URL：非空 spec 添加 X-snsvideoflag 参数，空 spec 则清理 URL 只保留 encfilekey 和 token
+	// if !isCover && !isPicture {
+	// 	if spec != "" {
+	// 		payload.URL += "&X-snsvideoflag=" + spec
+	// 	} else {
+	// 		if u, err := url.Parse(payload.URL); err == nil {
+	// 			filekey := u.Query().Get("encfilekey")
+	// 			token := u.Query().Get("token")
+	// 			if filekey != "" && token != "" {
+	// 				newURL := u.Scheme + "://" + u.Host + u.Path
+	// 				newURL += "?encfilekey=" + filekey + "&token=" + token
+	// 				payload.URL = newURL
+	// 			}
+	// 		}
+	// 	}
+	// }
 
-	if isMp3 {
-		payload.Suffix = ".mp3"
-	}
-	if isCover {
-		payload.Suffix = ".jpg"
-	}
+	// if isMp3 {
+	// 	payload.Suffix = ".mp3"
+	// }
+	// if isCover {
+	// 	payload.Suffix = ".jpg"
+	// }
 
-	// 处理图集类型
-	if isPicture {
-		payload.Suffix = ".zip"
-		payload.URL = ""
-		var files []map[string]string
-		pictureFiles := feed.Files
-		if len(pictureFiles) == 0 {
-			pictureFiles = feed.ObjectDesc.Media
-		}
-		for i, m := range pictureFiles {
-			files = append(files, map[string]string{
-				"url":      m.URL + m.URLToken,
-				"filename": fmt.Sprintf("%d.jpg", i+1),
-			})
-		}
-		if bgmURL := feed.ObjectDesc.FollowPostInfo.MusicInfo.MediaStreamingUrl; bgmURL != "" {
-			files = append(files, map[string]string{
-				"url":      bgmURL,
-				"filename": "bgm.mp3",
-			})
-		}
-		if len(files) == 0 {
-			return nil, nil, nil, fmt.Errorf("图集类型缺少可下载图片")
-		}
-		data, _ := json.Marshal(files)
-		payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
-	}
+	// // 处理图集类型
+	// if isPicture {
+	// 	payload.Suffix = ".zip"
+	// 	payload.URL = ""
+	// 	var files []map[string]string
+	// 	pictureFiles := feed.Files
+	// 	if len(pictureFiles) == 0 {
+	// 		pictureFiles = feed.ObjectDesc.Media
+	// 	}
+	// 	for i, m := range pictureFiles {
+	// 		files = append(files, map[string]string{
+	// 			"url":      m.URL + m.URLToken,
+	// 			"filename": fmt.Sprintf("%d.jpg", i+1),
+	// 		})
+	// 	}
+	// 	if bgmURL := feed.ObjectDesc.FollowPostInfo.MusicInfo.MediaStreamingUrl; bgmURL != "" {
+	// 		files = append(files, map[string]string{
+	// 			"url":      bgmURL,
+	// 			"filename": "bgm.mp3",
+	// 		})
+	// 	}
+	// 	if len(files) == 0 {
+	// 		return nil, nil, nil, fmt.Errorf("图集类型缺少可下载图片")
+	// 	}
+	// 	data, _ := json.Marshal(files)
+	// 	payload.URL = fmt.Sprintf("zip://weixin.qq.com?files=%s", url.QueryEscape(string(data)))
+	// }
 
-	content, err := wxchannels.ToContent(&feed)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("转换 content 失败: %w", err)
-	}
-	account, err := wxchannels.ToAccount(&feed)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("转换 account 失败: %w", err)
-	}
+	// content, err := wxchannels.ToContent(&feed)
+	// if err != nil {
+	// 	return nil, nil, nil, fmt.Errorf("转换 content 失败: %w", err)
+	// }
+	// account, err := wxchannels.ToAccount(&feed)
+	// if err != nil {
+	// 	return nil, nil, nil, fmt.Errorf("转换 account 失败: %w", err)
+	// }
 
-	return payload, content, account, nil
+	// return payload, content, account, nil
 }
 
 // autoCreateChannelsTask 根据视频号消息自动创建下载任务
 func (c *APIClient) autoCreateChannelsTask(objectID, objectNonceID string) error {
-	c.logger.Info().
-		Str("objectID", objectID).
-		Str("objectNonceID", objectNonceID).
-		Msg("收到视频号消息，开始自动创建下载任务")
+	// c.logger.Info().
+	// 	Str("objectID", objectID).
+	// 	Str("objectNonceID", objectNonceID).
+	// 	Msg("收到视频号消息，开始自动创建下载任务")
 
-	// 获取视频详情
-	r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
-	if err != nil {
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Msg("获取详情失败")
-		c.sendMessageToFilehelper(errMsg)
-		return err
-	}
-	if r.ErrCode != 0 {
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", r.ErrMsg)
-		c.logger.Error().Msgf("获取详情失败: %s", r.ErrMsg)
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
-	}
-	if len(r.Data.Object.ObjectDesc.Media) == 0 {
-		errMsg := "✗ 视频号下载失败: 缺少可下载的视频内容"
-		c.logger.Error().Msg("缺少可下载的视频内容")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("缺少可下载的视频内容")
-	}
+	// // 获取视频详情
+	// r, err := c.channels.FetchChannelsFeedProfile(objectID, objectNonceID, "", "")
+	// if err != nil {
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+	// 	c.logger.Error().Err(err).Msg("获取详情失败")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return err
+	// }
+	// if r.ErrCode != 0 {
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", r.ErrMsg)
+	// 	c.logger.Error().Msgf("获取详情失败: %s", r.ErrMsg)
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return fmt.Errorf("获取详情失败: %s", r.ErrMsg)
+	// }
+	// if len(r.Data.Object.ObjectDesc.Media) == 0 {
+	// 	errMsg := "✗ 视频号下载失败: 缺少可下载的视频内容"
+	// 	c.logger.Error().Msg("缺少可下载的视频内容")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return fmt.Errorf("缺少可下载的视频内容")
+	// }
 
-	object, err := convertAPIChannelsObject(r.Data.Object)
-	if err != nil {
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Msg("转换视频号对象失败")
-		c.sendMessageToFilehelper(errMsg)
-		return err
-	}
+	// object, err := convertAPIChannelsObject(r.Data.Object)
+	// if err != nil {
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+	// 	c.logger.Error().Err(err).Msg("转换视频号对象失败")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return err
+	// }
 
-	// 构建请求，发送 ChannelsObject（后端处理全部逻辑）
-	req := ChannelsDownloadRequest{
-		Object: object,
-		Spec:   "",
-		Suffix: "",
-	}
+	// // 构建请求，发送 ChannelsObject（后端处理全部逻辑）
+	// req := ChannelsDownloadRequest{
+	// 	Object: object,
+	// 	Spec:   "",
+	// 	Suffix: "",
+	// }
 
-	// 发送创建任务请求
-	var targetURL string
-	if c.cfg.RemoteServerEnabled {
-		protocol := c.cfg.RemoteServerProtocol
-		if protocol == "" {
-			protocol = "http"
-		}
-		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
-	} else {
-		protocol := c.cfg.Protocol
-		if protocol == "" {
-			protocol = "http"
-		}
-		hostname := c.cfg.Hostname
-		if hostname == "0.0.0.0" {
-			hostname = "127.0.0.1"
-		}
-		targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, hostname, c.cfg.Port)
-	}
+	// // 发送创建任务请求
+	// var targetURL string
+	// if c.cfg.RemoteServerEnabled {
+	// 	protocol := c.cfg.RemoteServerProtocol
+	// 	if protocol == "" {
+	// 		protocol = "http"
+	// 	}
+	// 	targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
+	// } else {
+	// 	protocol := c.cfg.Protocol
+	// 	if protocol == "" {
+	// 		protocol = "http"
+	// 	}
+	// 	hostname := c.cfg.Hostname
+	// 	if hostname == "0.0.0.0" {
+	// 		hostname = "127.0.0.1"
+	// 	}
+	// 	targetURL = fmt.Sprintf("%s://%s:%d/api/task/create", protocol, hostname, c.cfg.Port)
+	// }
 
-	jsonData, err := json.Marshal(req)
-	if err != nil {
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Msg("序列化请求参数失败")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("序列化请求参数失败: %w", err)
-	}
+	// jsonData, err := json.Marshal(req)
+	// if err != nil {
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+	// 	c.logger.Error().Err(err).Msg("序列化请求参数失败")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return fmt.Errorf("序列化请求参数失败: %w", err)
+	// }
 
-	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
-		c.logger.Error().Err(err).Str("url", targetURL).Msg("请求创建任务接口失败")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("请求创建任务接口失败: %w", err)
-	}
-	defer resp.Body.Close()
+	// resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	// if err != nil {
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", err.Error())
+	// 	c.logger.Error().Err(err).Str("url", targetURL).Msg("请求创建任务接口失败")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return fmt.Errorf("请求创建任务接口失败: %w", err)
+	// }
+	// defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", string(bodyBytes))
-		c.logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("创建任务失败")
-		c.sendMessageToFilehelper(errMsg)
-		return fmt.Errorf("创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
-	}
+	// if resp.StatusCode != http.StatusOK {
+	// 	bodyBytes, _ := io.ReadAll(resp.Body)
+	// 	errMsg := fmt.Sprintf("✗ 视频号下载失败: %s", string(bodyBytes))
+	// 	c.logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("创建任务失败")
+	// 	c.sendMessageToFilehelper(errMsg)
+	// 	return fmt.Errorf("创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	// }
 
-	c.logger.Info().
-		Str("url", targetURL).
-		Msg("自动创建下载任务请求发送成功")
+	// c.logger.Info().
+	// 	Str("url", targetURL).
+	// 	Msg("自动创建下载任务请求发送成功")
 
-	// 发送成功消息
-	successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", r.Data.Object.ObjectDesc.Description)
-	c.sendMessageToFilehelper(successMsg)
+	// // 发送成功消息
+	// successMsg := fmt.Sprintf("✓ 视频号已开始下载: %s", r.Data.Object.ObjectDesc.Description)
+	// c.sendMessageToFilehelper(successMsg)
 
+	// return nil
 	return nil
 }
 

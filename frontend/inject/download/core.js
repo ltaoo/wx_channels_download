@@ -223,19 +223,27 @@ function normalize_download_status(status) {
   const value = String(status || "")
     .trim()
     .toLowerCase();
-  if (value === "paused") return "pause";
+  // V1 numeric statuses: 0=waiting,1=preparing,2=downloading,3=paused,4=merging,5=finished,6=failed,7=cancelled
+  if (value === "0" || value === "waiting") return "wait";
+  if (value === "1" || value === "preparing") return "wait";
+  if (value === "2" || value === "downloading") return "running";
+  if (value === "3" || value === "paused") return "pause";
+  if (value === "4" || value === "merging") return "running";
+  if (value === "5" || value === "finished") return "done";
+  if (value === "6" || value === "failed") return "error";
+  if (value === "7" || value === "cancelled") return "error";
+  // legacy string statuses
   if (
-    value === "failed" ||
     value === "fail" ||
     value === "failure" ||
     value === "errored"
   ) {
     return "error";
   }
-  if (value === "pending" || value === "waiting" || value === "queued") {
+  if (value === "pending" || value === "queued") {
     return "wait";
   }
-  if (value === "completed" || value === "success" || value === "finished") {
+  if (value === "completed" || value === "success") {
     return "done";
   }
   return value;
@@ -243,6 +251,18 @@ function normalize_download_status(status) {
 function is_download_waiting_status(status) {
   const normalized = normalize_download_status(status);
   return DOWNLOAD_WAITING_STATUS_KEYS.includes(normalized);
+}
+// Map UI status filters to V1 numeric status query values
+const V1_STATUS_FILTER_MAP = {
+  wait: "0,1",    // Waiting(0), Preparing(1)
+  running: "2,4", // Downloading(2), Merging(4)
+  pause: "3",     // Paused(3)
+  done: "5",      // Finished(5)
+  error: "6,7",   // Failed(6), Cancelled(7)
+};
+function v1_status_filter(status) {
+  const normalized = normalize_download_status(status);
+  return V1_STATUS_FILTER_MAP[normalized] || normalized;
 }
 const DOWNLOAD_TASK_STATUS_ORDER = {
   running: 1,
@@ -536,7 +556,7 @@ function DownloaderPanelViewModel(props = {}) {
 
   const createTaskListReq = () => {
     return new Timeless.RequestCore(
-      (params) => request.get("/api/download_task/list", params),
+      (params) => request.get("/api/v1/download_task/list", params),
       {
         client: http_client,
         process(r) {
@@ -559,15 +579,14 @@ function DownloaderPanelViewModel(props = {}) {
   };
   const deleteReq = new Timeless.RequestCore(
     (params = {}) => {
-      return request.post("/api/task/delete", {
-        id: params.id,
-        delete_files: !!params.deleteFiles,
+      return request.post("/api/v1/download_task/delete", {
+        task_id: params.id,
       });
     },
     { client: http_client },
   );
   const startReq = new Timeless.RequestCore(
-    (id) => request.post("/api/task/start", { id }),
+    (id) => request.post("/api/v1/download_task/start", { task_id: id }),
     { client: http_client },
   );
   const startAllReq = new Timeless.RequestCore(
@@ -581,7 +600,7 @@ function DownloaderPanelViewModel(props = {}) {
     { client: http_client },
   );
   const pauseReq = new Timeless.RequestCore(
-    (id) => request.post("/api/task/pause", { id }),
+    (id) => request.post("/api/v1/download_task/pause", { task_id: id }),
     { client: http_client },
   );
   const pauseAllReq = new Timeless.RequestCore(
@@ -595,7 +614,7 @@ function DownloaderPanelViewModel(props = {}) {
     { client: http_client },
   );
   const resumeReq = new Timeless.RequestCore(
-    (id) => request.post("/api/task/resume", { id }),
+    (id) => request.post("/api/v1/download_task/resume", { task_id: id }),
     { client: http_client },
   );
   const showFileReq = new Timeless.RequestCore(
@@ -1193,12 +1212,12 @@ function DownloaderPanelViewModel(props = {}) {
       createTaskListReq().run({
         page: 1,
         page_size: pageSize,
-        status: "wait",
+        status: "0",
       }),
       createTaskListReq().run({
         page: 1,
         page_size: pageSize,
-        status: "ready",
+        status: "1",
       }),
     ]);
     if (waitResult && waitResult.error) {
@@ -1245,7 +1264,7 @@ function DownloaderPanelViewModel(props = {}) {
       };
       const activeStatus = getActiveStatusFilter();
       if (activeStatus !== "all") {
-        params.status = activeStatus;
+        params.status = v1_status_filter(activeStatus);
       }
       const r =
         activeStatus === "wait"
@@ -1463,20 +1482,33 @@ function DownloaderPanelViewModel(props = {}) {
       const r = {
         ...task,
         ...(() => {
-          if (!task.meta || !task.meta.opts) {
-            return {};
+          // Old format: meta.opts.name / meta.opts.path
+          if (task.meta && task.meta.opts) {
+            var p = task.meta.opts.path || "";
+            var n = task.meta.opts.name || "";
+            var sep = isWin ? "\\" : "/";
+            if (p && n) {
+              return {
+                path: p,
+                name: n,
+                filepath: p.endsWith(sep) ? p + n : p + sep + n,
+              };
+            }
           }
-          var p = task.meta.opts.path || "";
-          var n = task.meta.opts.name || "";
-          var sep = isWin ? "\\" : "/";
-          if (!p || !n) {
-            return {};
+          // V1 format: direct name + save_path
+          const filename = task.name;
+          const savePath = task.save_path || task.path || "";
+          if (filename && !task.filepath) {
+            const sep = isWin ? "\\" : "/";
+            const fp = savePath
+              ? (savePath.endsWith(sep) ? savePath + filename : savePath + sep + filename)
+              : filename;
+            return {
+              path: savePath || filename,
+              filepath: fp,
+            };
           }
-          return {
-            path: p,
-            name: n,
-            filepath: p.endsWith(sep) ? p + n : p + sep + n,
-          };
+          return {};
         })(),
       };
       r.height = estimateTaskItemHeight(r);
@@ -1778,6 +1810,40 @@ function DownloaderPanelViewModel(props = {}) {
         ws.onmessage = (ev) => {
           const [err, msg] = WXU.parseJSON(ev.data);
           if (err) {
+            return;
+          }
+          if (msg.type === "task_snapshot") {
+            // V1 task progress snapshot
+            const taskId = msg.task_id;
+            if (!taskId) {
+              return;
+            }
+            // Convert V1 snapshot to task object the UI expects
+            const snapshot = {
+              id: taskId,
+              status: msg.status,
+              name: msg.name || "",
+            };
+            if (msg.resources && msg.resources.length > 0) {
+              const totalSize = msg.resources.reduce(
+                (sum, r) => sum + (r.size || 0),
+                0,
+              );
+              const totalDownloaded = msg.resources.reduce(
+                (sum, r) => sum + (r.downloaded || 0),
+                0,
+              );
+              const totalSpeed = msg.resources.reduce(
+                (sum, r) => sum + (r.speed || 0),
+                0,
+              );
+              snapshot.progress = {
+                downloaded: totalDownloaded,
+                size: totalSize,
+                speed: totalSpeed,
+              };
+            }
+            methods.upsert(methods.formatTask(snapshot));
             return;
           }
           if (msg.type === "batch_tasks") {

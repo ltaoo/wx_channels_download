@@ -84,11 +84,11 @@ func (c *APIClient) handlePlatformWorkflowWebsocket(ctx *gin.Context) {
 	}
 	platformWorkflowWS.add(client)
 	go client.writePump()
-	if client.runID != "" {
-		if run := c.lookupPlatformWorkflow(client.runID); run != nil {
-			client.enqueue(platformWorkflowMessage("snapshot", run, ""))
-		}
-	}
+	// if client.runID != "" {
+	// 	if run := c.lookupPlatformWorkflow(client.runID); run != nil {
+	// 		client.enqueue(platformWorkflowMessage("snapshot", run, ""))
+	// 	}
+	// }
 	client.readPump()
 	platformWorkflowWS.remove(client)
 }
@@ -161,21 +161,21 @@ func (c *platformWorkflowWSClient) writePump() {
 	}
 }
 
-func platformBroadcastWorkflowRun(run *platformWorkflowRun, event string, nodeID string) {
-	if run == nil {
-		return
-	}
-	platformWorkflowWS.broadcast(run.ID, platformWorkflowMessage(event, run, nodeID))
-}
+// func platformBroadcastWorkflowRun(run *platformWorkflowRun, event string, nodeID string) {
+// 	if run == nil {
+// 		return
+// 	}
+// 	platformWorkflowWS.broadcast(run.ID, platformWorkflowMessage(event, run, nodeID))
+// }
 
-func platformWorkflowMessage(event string, run *platformWorkflowRun, nodeID string) gin.H {
-	return gin.H{
-		"type":   "pipeline_workflow",
-		"event":  event,
-		"run_id": run.ID,
-		"data": gin.H{
-			"workflow": run.snapshot(),
-			"node":     run.nodeSnapshot(nodeID),
-		},
-	}
-}
+// func platformWorkflowMessage(event string, run *platformWorkflowRun, nodeID string) gin.H {
+// 	return gin.H{
+// 		"type":   "pipeline_workflow",
+// 		"event":  event,
+// 		"run_id": run.ID,
+// 		"data": gin.H{
+// 			"workflow": run.snapshot(),
+// 			"node":     run.nodeSnapshot(nodeID),
+// 		},
+// 	}
+// }

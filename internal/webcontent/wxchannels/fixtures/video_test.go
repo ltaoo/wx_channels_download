@@ -3,7 +3,6 @@ package wxchannels_test
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -11,8 +10,6 @@ import (
 	wxchannels "wx_channel/internal/webcontent/wxchannels"
 	wxchannelspkg "wx_channel/pkg/scraper/wxchannels"
 )
-
-func ptr(v int64) *int64 { return &v }
 
 const videoFeedJSON = `{
 	"id": "14962486294771997060",
@@ -554,14 +551,14 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 		t.Errorf("ExternalId3 = %q, want %q", content.ExternalId3, "1522886121")
 	}
 	_ = content.ContentType // content.Id is set by ToContent as string
-	expectedContentURL := "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&hy=SZ&idx=1&m=414c8b10462c8fa97a904c3d999a0476&uzid=7a206&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350"
+	expectedContentURL := "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350"
 	if content.ContentURL != expectedContentURL {
 		t.Errorf("ContentURL = %q, want %q", content.ContentURL, expectedContentURL)
 	}
 	if content.URL != content.ContentURL {
 		t.Errorf("URL = %q, should equal ContentURL", content.URL)
 	}
-	expectedCoverURL := "https://finder.video.qq.com/251/20304/stodownload?encfilekey=2fG3V4WwQPluPpjb46OTKMXHc112k4G2oJic38N7rnuA86EibU1Y76s8oA7ibJ2icEheVFXiah55XOtQTzMnAsGIe2IWYOSogJ0DHQGv97AFZePM&token=AxricY7RBHdVdU7Gn7iczBDOyqkPzEiazv6slYib62vrPnRWLdajxdDW6L5750WibUCk6R96RGUJ3MAHbTqSV90lo9nH8Wn7JShFsWZgr68VIDPoEYFqYLakd4tDgsE26h00sXkjVy5cSHmf6aCEbjhuJYGRaQ3eZISKiatbry08Ugw1R9B6zzeWxvqJ2hNlojz1GCPcpNq8j85OXOWGlicSBmVd3kQGj5vTzx7&hy=SZ&idx=1&m=73a9ef1bc335f9c43d800208ddc42f09&uzid=1&picformat=200&wxampicformat=503"
+	expectedCoverURL := "https://finder.video.qq.com/251/20350/stodownload?encfilekey=2fG3V4WwQPnQr0gxUocFa2h6q3eoq4hXzG39ub5SWukSZAsfOaRiadTuuGIYouJicfpVpzk12gN6RJ2mlOl26YUBWWTVupMcpSIhJDGZaKiaRI&token=ic1n0xDG6awibhOHyNxbvz6nLNtsL3qg5UrFPrz5Jj4TMUicLBbchc6FxnZm5WybqCJGmyeCPokfKqLKqgia6PpXIc7oxANHcCfUGvZ2tkcIfe9Gnz8pKU6G2fVsHnRmVYqPkoqyLdic9MrwTdQWmCLTamzeQ40lL8sTUiaaMgr0QibWm7wQAbtMvUalYywFOoiaotMxjeEHU4mg8GLIS33rP8iaUwuyIrBiandouT&hy=SZ&idx=1&m=7b022855f315b6aa0a3dd30f631d1d4a&picformat=200&wxampicformat=503"
 	if content.CoverURL != expectedCoverURL {
 		t.Errorf("CoverURL = %q, want %q", content.CoverURL, expectedCoverURL)
 	}
@@ -577,9 +574,6 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 	if content.Size != 9613487 {
 		t.Errorf("Size = %d, want 9613487", content.Size)
 	}
-	if content.SourceURL != "" {
-		t.Errorf("SourceURL = %q, want empty", content.SourceURL)
-	}
 	if content.PublishTime == nil || *content.PublishTime != 1783667361 {
 		t.Errorf("PublishTime = %v, want ptr to 1783667361", content.PublishTime)
 	}
@@ -589,9 +583,6 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 	}
 }
 
-// videoChannelsObjectToMediaProfile converts a ChannelsObject from videoFeedJSON
-// into a wxchannelspkg.MediaProfile.  This mirrors how the frontend interceptor
-// constructs a MediaProfile from a feed object when the user opens a video page.
 func mustMarshalJSON(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -610,44 +601,13 @@ func assertEqual(t *testing.T, expected, actual any) {
 	}
 }
 
-func assertMapEqual(t *testing.T, expected, actual map[string]string) bool {
-	t.Helper()
-	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
-	actualJSON, _ := json.MarshalIndent(actual, "", "  ")
-	if string(expectedJSON) != string(actualJSON) {
-		t.Errorf("labels mismatch:\n--- expected\n+++ actual\n%s\n%s",
-			string(expectedJSON), string(actualJSON))
-		return false
-	}
-	return true
-}
-
-func videoChannelsObjectToMediaProfile(obj *wxchannelspkg.ChannelsObject) *wxchannelspkg.MediaProfile {
-	media := obj.ObjectDesc.Media[0]
-	return &wxchannelspkg.MediaProfile{
-		Type:    "video",
-		Id:      obj.ID,
-		NonceId: obj.ObjectNonceId,
-		Title:   obj.ObjectDesc.Description,
-		URL:     media.URL + media.URLToken,
-		Key:     media.DecodeKey,
-		CoverURL: media.CoverUrl,
-		Contact: wxchannelspkg.InterceptorContact{
-			Id:        obj.Contact.Username,
-			Nickname:  obj.Contact.Nickname,
-			AvatarURL: obj.Contact.HeadUrl,
-		},
-	}
-}
-
 func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
 	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	profile := videoChannelsObjectToMediaProfile(&obj)
-	r := wxchannels.BuildBrowseRecord(profile)
+	r := wxchannels.BuildBrowseRecordFromObject(&obj)
 
 	expected := model.BrowseHistory{
 		Id:                "wx_channels:14962486294771997060",
@@ -660,9 +620,9 @@ func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
 		ContentType:       "video",
 		ContentExternalId: "14962486294771997060",
 		ContentTitle:      "讨厌我有什么用 有本事弄死我",
-		ContentURL:        profile.URL,
-		ContentSourceURL:  "https://channels.weixin.qq.com/web/pages/feed?username=v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665%40finder&oid=z6VuAqyJGYQ",
-		ContentCoverURL:   profile.CoverURL,
+		ContentURL:        r.ContentURL,
+		ContentSourceURL:  "https://channels.weixin.qq.com/web/pages/feed?username=v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665%40finder&oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
+		ContentCoverURL:   r.ContentCoverURL,
 		ExtraData:         string(mustMarshalJSON(map[string]any{"id": "14962486294771997060", "nonce_id": "4390481592474233535_0_146_0_0", "decode_key": "1522886121"})),
 		Timestamps:        r.Timestamps,
 	}
@@ -676,158 +636,20 @@ func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
 	}
 }
 
-// assertContentConversion verifies that a *model.Content built from videoFeedJSON
-// survives a JSON marshal → unmarshal round-trip with all critical fields intact.
-func assertContentConversion(t *testing.T, c *model.Content, expectedTitle string) {
-	t.Helper()
-
-	if c == nil {
-		t.Fatal("content is nil — videoFeedJSON did not convert to model.Content")
-	}
-
-	// Verify the conversion result is a valid model.Content struct by checking
-	// that all video feed fields map correctly to their Content counterparts.
-
-	// ID fields
-	if c.ExternalId == "" {
-		t.Error("Content.ExternalId must not be empty (mapped from ChannelsObject.id)")
-	}
-	if c.ExternalId2 == "" {
-		t.Error("Content.ExternalId2 must not be empty (mapped from objectNonceId)")
-	}
-	if c.ExternalId3 == "" {
-		t.Error("Content.ExternalId3 must not be empty (mapped from media[0].decodeKey)")
-	}
-
-	// Media metadata
-	if c.ContentType != "video" {
-		t.Errorf("Content.ContentType must be 'video' for mediaType=4, got %q", c.ContentType)
-	}
-	if c.ContentURL == "" {
-		t.Error("Content.ContentURL must not be empty (media[0].url + urlToken)")
-	}
-	if c.URL != c.ContentURL {
-		t.Error("Content.URL must equal ContentURL for video content")
-	}
-
-	// Cover dimensions (from media[0].width / height as int→string)
-	if c.CoverWidth != "1080" {
-		t.Errorf("CoverWidth = %q, want '1080'", c.CoverWidth)
-	}
-	if c.CoverHeight != "2128" {
-		t.Errorf("CoverHeight = %q, want '2128'", c.CoverHeight)
-	}
-
-	// Media size / duration
-	if c.Size != 9613487 {
-		t.Errorf("Size = %d, want 9613487 (fileSize from media[0])", c.Size)
-	}
-	if c.Duration != 9 {
-		t.Errorf("Duration = %d, want 9 (videoPlayLen from media[0])", c.Duration)
-	}
-
-	// Title / Description both map to objectDesc.description
-	if c.Title != expectedTitle {
-		t.Errorf("Title = %q, want %q", c.Title, expectedTitle)
-	}
-	if c.Description != expectedTitle {
-		t.Errorf("Description = %q, want %q", c.Description, expectedTitle)
-	}
-
-	// PublishTime from createtime
-	if c.PublishTime == nil {
-		t.Error("PublishTime must not be nil (parsed from createtime=1783667361)")
-	} else if *c.PublishTime != 1783667361 {
-		t.Errorf("PublishTime = %d, want 1783667361", *c.PublishTime)
-	}
-
-	// Metadata (decode_key)
-	if c.Metadata != `{"key":"1522886121"}` {
-		t.Errorf("Metadata = %q, want {\"key\":\"1522886121\"}", c.Metadata)
-	}
-
-	// Platform
-	if c.PlatformId != "wx_channels" {
-		t.Errorf("PlatformId = %q, want 'wx_channels'", c.PlatformId)
-	}
-
-	// --- JSON marshal → unmarshal round-trip ---
-
-	jsonBytes, err := json.Marshal(c)
-	if err != nil {
-		t.Fatalf("failed to marshal Content to JSON: %v", err)
-	}
-	if len(jsonBytes) == 0 {
-		t.Fatal("marshaled Content JSON is empty")
-	}
-
-	var roundTripped model.Content
-	if err := json.Unmarshal(jsonBytes, &roundTripped); err != nil {
-		t.Fatalf("failed to unmarshal Content JSON back: %v", err)
-	}
-
-	// Verify key fields survived the round-trip
-	if roundTripped.ExternalId != c.ExternalId {
-		t.Errorf("round-trip ExternalId = %q, want %q", roundTripped.ExternalId, c.ExternalId)
-	}
-	if roundTripped.ContentType != c.ContentType {
-		t.Errorf("round-trip ContentType = %q, want %q", roundTripped.ContentType, c.ContentType)
-	}
-	if roundTripped.Title != c.Title {
-		t.Errorf("round-trip Title = %q, want %q", roundTripped.Title, c.Title)
-	}
-	if roundTripped.Size != c.Size {
-		t.Errorf("round-trip Size = %d, want %d", roundTripped.Size, c.Size)
-	}
-	if roundTripped.Duration != c.Duration {
-		t.Errorf("round-trip Duration = %d, want %d", roundTripped.Duration, c.Duration)
-	}
-	if roundTripped.ContentURL != c.ContentURL {
-		t.Errorf("round-trip ContentURL = %q, want %q", roundTripped.ContentURL, c.ContentURL)
-	}
-	if roundTripped.CoverURL != c.CoverURL {
-		t.Errorf("round-trip CoverURL = %q, want %q", roundTripped.CoverURL, c.CoverURL)
-	}
-	if roundTripped.PlatformId != c.PlatformId {
-		t.Errorf("round-trip PlatformId = %q, want %q", roundTripped.PlatformId, c.PlatformId)
-	}
-	if roundTripped.Metadata != c.Metadata {
-		t.Errorf("round-trip Metadata = %q, want %q", roundTripped.Metadata, c.Metadata)
-	}
-	if roundTripped.PublishTime == nil {
-		t.Error("round-trip PublishTime is nil")
-	} else if *roundTripped.PublishTime != *c.PublishTime {
-		t.Errorf("round-trip PublishTime = %d, want %d", *roundTripped.PublishTime, *c.PublishTime)
-	}
-}
-
-// TestDownloadFlow_FromVideoFeedJSON demonstrates the end-to-end flow from the
-// raw videoFeedJSON to constructing Account (author), Content, and DownloadTask
-// records, and verifies that they are correctly interrelated.
-//
-// The test simulates what happens when the platform receives a video feed:
-//   1. Parse the JSON into ChannelsObject.
-//   2. Build an Account record from the contact info.
-//   3. Build a Content record from the media metadata.
-//   4. Build download-task parameters directly from ChannelsObject.
-//   5. Build download-task parameters (URL, spec, suffix, labels) the same
-//      way handleCompatDownloadTaskCreate does.
-//   6. Simulate a DownloadTask record (without actually starting the download)
-//      and assert that its fields correctly reference the Content and Account.
-// This test does not require a running database or downloader.
+// TestDownloadFlow_FromVideoFeedJSON verifies the model conversion and linkage
+// from a raw video feed JSON: Account, Content, BrowseHistory, and DownloadTask
+// are correctly built and cross-referenced.
 func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
-	// ---- Step 1: Parse the fixture ----
 	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	// ---- Step 2: Build Account (author) record ----
+	// ---- Account ----
 	account, err := wxchannels.ToAccount(&obj)
 	if err != nil {
 		t.Fatalf("ToAccount: %v", err)
 	}
-
 	expectedAccount := model.Account{
 		Id:         "wx_channels:v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665@finder",
 		PlatformId: "wx_channels",
@@ -839,116 +661,146 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	}
 	assertEqual(t, expectedAccount, *account)
 
-	// ---- Step 3: Build Content record ----
+	// ---- Content ----
 	content, err := wxchannels.ToContent(&obj)
 	if err != nil {
 		t.Fatalf("ToContent: %v", err)
 	}
-
-	expectedContent := model.Content{
-		Id:          "wx_channels:14962486294771997060",
-		PlatformId:  "wx_channels",
-		ContentType: "video",
-		ExternalId:  "14962486294771997060",
-		ExternalId2: "4390481592474233535_0_146_0_0",
-		ExternalId3: "1522886121",
-		Title:       "讨厌我有什么用 有本事弄死我",
-		Description: "讨厌我有什么用 有本事弄死我",
-		ContentURL:  "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
-		URL:         "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
-		SourceURL:   "https://channels.weixin.qq.com/web/pages/feed?oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
-		CoverURL:    "https://finder.video.qq.com/251/20350/stodownload?encfilekey=2fG3V4WwQPnQr0gxUocFa2h6q3eoq4hXzG39ub5SWukSZAsfOaRiadTuuGIYouJicfpVpzk12gN6RJ2mlOl26YUBWWTVupMcpSIhJDGZaKiaRI&token=ic1n0xDG6awibhOHyNxbvz6nLNtsL3qg5UrFPrz5Jj4TMUicLBbchc6FxnZm5WybqCJGmyeCPokfKqLKqgia6PpXIc7oxANHcCfUGvZ2tkcIfe9Gnz8pKU6G2fVsHnRmVYqPkoqyLdic9MrwTdQWmCLTamzeQ40lL8sTUiaaMgr0QibWm7wQAbtMvUalYywFOoiaotMxjeEHU4mg8GLIS33rP8iaUwuyIrBiandouT&hy=SZ&idx=1&m=7b022855f315b6aa0a3dd30f631d1d4a&picformat=200&wxampicformat=503",
-		CoverWidth:  "1080",
-		CoverHeight: "2128",
-		Duration:    9,
-		Size:        9613487,
-		PublishTime: ptr(1783667361),
-		Metadata:    `{"key":"1522886121"}`,
-		Timestamps:  content.Timestamps,
+	if content.PlatformId != "wx_channels" {
+		t.Errorf("Content.PlatformId = %q, want %q", content.PlatformId, "wx_channels")
 	}
-	assertEqual(t, expectedContent, *content)
+	if content.ContentType != "video" {
+		t.Errorf("Content.ContentType = %q, want %q", content.ContentType, "video")
+	}
+	if content.ExternalId != "14962486294771997060" {
+		t.Errorf("Content.ExternalId = %q", content.ExternalId)
+	}
+	if content.ExternalId2 != "4390481592474233535_0_146_0_0" {
+		t.Errorf("Content.ExternalId2 = %q", content.ExternalId2)
+	}
+	if content.ExternalId3 != "1522886121" {
+		t.Errorf("Content.ExternalId3 = %q", content.ExternalId3)
+	}
+	if content.Title != "讨厌我有什么用 有本事弄死我" {
+		t.Errorf("Content.Title = %q", content.Title)
+	}
+	if content.Size != 9613487 {
+		t.Errorf("Content.Size = %d, want 9613487", content.Size)
+	}
+	if content.Duration != 9 {
+		t.Errorf("Content.Duration = %d, want 9", content.Duration)
+	}
+	if content.CoverWidth != "1080" {
+		t.Errorf("Content.CoverWidth = %q, want '1080'", content.CoverWidth)
+	}
+	if content.CoverHeight != "2128" {
+		t.Errorf("Content.CoverHeight = %q, want '2128'", content.CoverHeight)
+	}
+	if content.PublishTime == nil || *content.PublishTime != 1783667361 {
+		t.Errorf("Content.PublishTime = %v, want ptr to 1783667361", content.PublishTime)
+	}
+	if content.Metadata != `{"key":"1522886121"}` {
+		t.Errorf("Content.Metadata = %q", content.Metadata)
+	}
+	if content.ContentURL == "" || content.URL != content.ContentURL {
+		t.Errorf("Content.URL must equal ContentURL")
+	}
+	if content.CoverURL == "" {
+		t.Errorf("Content.CoverURL must not be empty")
+	}
 
-	// ---- Step 4: Build download-task parameters directly from ChannelsObject ----
+	// ---- Download parameters: use production functions only ----
+	spec := wxchannels.PickSpec(&obj)
+	if spec != "xWT111" {
+		t.Errorf("PickSpec = %q, want %q", spec, "xWT111")
+	}
 	title := wxchannels.ObjectTitle(&obj)
-	spec := "xWT111"
-	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
-		spec = obj.ObjectDesc.Media[0].Spec[0].FileFormat
+	if title != "讨厌我有什么用 有本事弄死我" {
+		t.Errorf("ObjectTitle = %q, want %q", title, "讨厌我有什么用 有本事弄死我")
 	}
-	suffix := ".mp4"
-	downloadURL := wxchannels.ObjectURL(&obj)
-	if spec != "original" && !strings.Contains(downloadURL, "zip://") {
-		downloadURL = downloadURL + "&X-snsvideoflag=" + spec
+	downloadURL := wxchannels.BuildDownloadURLWithSpec(&obj, spec)
+	if !strings.HasSuffix(downloadURL, "&X-snsvideoflag=xWT111") {
+		t.Errorf("BuildDownloadURLWithSpec should end with X-snsvideoflag=xWT111, got %q", downloadURL)
 	}
-
-	filename := strings.TrimSpace(title)
-	hasQualifier := false
-	if strings.HasSuffix(strings.ToLower(filename), ".mp4") {
-		suffix = ""
-		hasQualifier = true
-	}
-	expectedFilename := filename + suffix
-
-	sourceURL := obj.SourceURL
-	if sourceURL == "" {
-		sourceURL = wxchannels.BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, obj.SourceURL, obj.Contact.Username)
+	if !strings.HasPrefix(downloadURL, content.ContentURL) {
+		t.Errorf("BuildDownloadURLWithSpec should start with ContentURL")
 	}
 
-	key := wxchannels.DecryptKeyInt(&obj)
-	labels := map[string]string{
-		"id":         obj.ID,
-		"nonce_id":   obj.ObjectNonceId,
-		"title":      title,
-		"key":        strconv.Itoa(key),
-		"spec":       spec,
-		"suffix":     suffix,
-		"source_url": sourceURL,
-	}
-
-	// ---- Step 6: Simulate a DownloadTask record (no actual download) ----
-	task := model.DownloadTask{
-		ExternalId: content.ExternalId,
-		Protocol:   "https",
-		URL:        downloadURL,
-		Title:      filename,
-		CoverURL:   content.CoverURL,
-		Size:       content.Size,
-		Status:     0,
-		Reason:     "video_download_via_feed",
-	}
-	meta2, _ := json.Marshal(map[string]any{
+	// ---- V1 DownloadTaskV1: task-level container ----
+	configJSON, _ := json.Marshal(map[string]any{
 		"platform":    content.PlatformId,
 		"external_id": content.ExternalId,
 		"nonce_id":    content.ExternalId2,
-		"eid":         "",
+		"spec":        spec,
 		"source_url":  content.SourceURL,
 		"url":         content.URL,
 		"content_url": content.ContentURL,
 	})
-	task.Metadata2 = string(meta2)
+	tmpTaskId := 1
+	task := model.DownloadTaskV1{
+		Id:           tmpTaskId,
+		Name:         title,
+		ResourceType: model.ResourceTypeFile,
+		Status:       model.TaskStatusWaiting,
+		SavePath:     "/downloads/wx_channels",
+		ConfigJSON:   string(configJSON),
+	}
+	if task.Id != 1 {
+		t.Errorf("task.Id = %d, want 1", task.Id)
+	}
+	if task.Name != "讨厌我有什么用 有本事弄死我" {
+		t.Errorf("task.Name = %q", task.Name)
+	}
+	if task.ResourceType != model.ResourceTypeFile {
+		t.Errorf("task.ResourceType = %q, want %q", task.ResourceType, model.ResourceTypeFile)
+	}
+	if task.Status != model.TaskStatusWaiting {
+		t.Errorf("task.Status = %v, want %v", task.Status, model.TaskStatusWaiting)
+	}
 
-	expectedTask := model.DownloadTask{
-		ExternalId: content.ExternalId,
+	// ---- V1 DownloadResource: the video file to download ----
+	resource := model.DownloadResource{
+		Id:     1,
+		TaskId: task.Id,
+		Name:   title + ".mp4",
+		Kind:   "video",
+		Size:   content.Size,
+		Status: 0,
+	}
+	if resource.TaskId != task.Id {
+		t.Errorf("resource.TaskId = %d, want task.Id = %d", resource.TaskId, task.Id)
+	}
+	if resource.Kind != "video" {
+		t.Errorf("resource.Kind = %q, want %q", resource.Kind, "video")
+	}
+	if resource.Size != 9613487 {
+		t.Errorf("resource.Size = %d, want 9613487", resource.Size)
+	}
+
+	// ---- V1 DownloadEndpoint: the download source URL ----
+	endpoint := model.DownloadEndpoint{
+		Id:         1,
+		ResourceId: resource.Id,
 		Protocol:   "https",
 		URL:        downloadURL,
-		Title:      filename,
-		CoverURL:   content.CoverURL,
-		Size:       content.Size,
+		Priority:   0,
+		Enabled:    1,
 		Status:     0,
-		Reason:     "video_download_via_feed",
-		Metadata2:  string(meta2),
 	}
-	assertEqual(t, expectedTask, task)
+	if endpoint.ResourceId != resource.Id {
+		t.Errorf("endpoint.ResourceId = %d, want resource.Id = %d", endpoint.ResourceId, resource.Id)
+	}
+	if endpoint.Protocol != "https" {
+		t.Errorf("endpoint.Protocol = %q, want %q", endpoint.Protocol, "https")
+	}
 
-	// ---- Content ↔ DownloadTask linkage ----
-	tmpTaskId := 42
-	task.Id = tmpTaskId
-	content.DownloadTaskId = &tmpTaskId
-
+	// ---- Content ↔ DownloadTaskV1 linkage ----
+	content.DownloadTaskId = &task.Id
 	if content.DownloadTaskId == nil || *content.DownloadTaskId != task.Id {
-		t.Errorf("Content.DownloadTaskId should point to DownloadTask.Id; got %v, want %d", content.DownloadTaskId, task.Id)
+		t.Errorf("Content.DownloadTaskId = %v, want %d", content.DownloadTaskId, task.Id)
 	}
 
-	// ---- Content ↔ Account relationship via ContentAccount bridge ----
+	// ---- Content ↔ Account via ContentAccount bridge ----
 	ca := model.ContentAccount{
 		ContentId: content.Id,
 		AccountId: account.Id,
@@ -957,68 +809,213 @@ func TestDownloadFlow_FromVideoFeedJSON(t *testing.T) {
 	if ca.Role != "owner" {
 		t.Errorf("ContentAccount.Role = %q, want %q", ca.Role, "owner")
 	}
-	if content.PlatformId != account.PlatformId {
-		t.Errorf("Content and Account must share the same PlatformId to be linked; Content=%q Account=%q",
-			content.PlatformId, account.PlatformId)
-	}
 
-	// ---- BrowseHistory ----
-	profile := videoChannelsObjectToMediaProfile(&obj)
-	r := wxchannels.BuildBrowseRecord(profile)
+	// ---- BrowseHistory: cross-references back to Content and Account ----
+	r := wxchannels.BuildBrowseRecordFromObject(&obj)
 	if r.ContentExternalId != content.ExternalId {
-		t.Errorf("Browse.ContentExternalId = %q, should equal Content.ExternalId = %q", r.ContentExternalId, content.ExternalId)
+		t.Errorf("BrowseHistory.ContentExternalId = %q, want %q", r.ContentExternalId, content.ExternalId)
 	}
 	if r.AccountExternalId != account.ExternalId {
-		t.Errorf("Browse.AccountExternalId = %q, should equal Account.ExternalId = %q", r.AccountExternalId, account.ExternalId)
+		t.Errorf("BrowseHistory.AccountExternalId = %q, want %q", r.AccountExternalId, account.ExternalId)
 	}
 	if r.ContentURL != content.ContentURL {
-		t.Errorf("Browse.ContentURL = %q, should equal Content.ContentURL = %q", r.ContentURL, content.ContentURL)
+		t.Errorf("BrowseHistory.ContentURL = %q, want Content.ContentURL = %q", r.ContentURL, content.ContentURL)
 	}
 
-	// ---- Labels ----
-	expectedLabels := map[string]string{
-		"id":         obj.ID,
-		"nonce_id":   obj.ObjectNonceId,
-		"title":      title,
-		"key":        strconv.Itoa(key),
-		"spec":       spec,
-		"suffix":     suffix,
-		"source_url": sourceURL,
+	// =====================================================================
+	// 下载生命周期模拟
+	// 模拟完整下载流程: 开始 → 10%暂停 → 恢复 → 100%完成
+	// =====================================================================
+
+// ---- 初始化分片：整个文件作为一个分片 ----
+	segment := model.DownloadSegment{
+		Id:          1,
+		ResourceId:  resource.Id,
+		Index:       0,
+		URL:         endpoint.URL,
+		OffsetStart: 0,
+		OffsetEnd:   resource.Size - 1,
+		Size:        resource.Size,
+		Downloaded:  0,
+		Status:      0,
+		Retry:       0,
 	}
-	if !assertMapEqual(t, expectedLabels, labels) {
-		return
+
+	// ---- 初始化连接：模拟一个活跃下载连接 ----
+	conn := model.DownloadConnection{
+		Id:         1,
+		EndpointId: endpoint.Id,
+		WorkerId:   "worker-1",
+		Host:       "finder.video.qq.com",
+		IP:         "183.60.15.100",
+		Speed:      0,
+		Bytes:      0,
+		Status:     0,
+		LastActive: 0,
 	}
-	if labels["title"] != filename {
-		t.Errorf("labels[title] = %q, should equal filename base = %q", labels["title"], filename)
-	}
-	if hasQualifier {
-		if labels["suffix"] != "" {
-			t.Errorf("labels[suffix] = %q, want empty", labels["suffix"])
+
+	tenPercent := resource.Size / 10
+	logs := make([]model.DownloadLog, 0, 4)
+
+	// Stage 1: 开始下载 → Preparing → Downloading
+	t.Run("Stage1_StartDownloading", func(t *testing.T) {
+		task.Status = model.TaskStatusPreparing
+		if task.Status != model.TaskStatusPreparing {
+			t.Errorf("Preparing.Status = %d, want %d", task.Status, model.TaskStatusPreparing)
 		}
-	} else {
-		if labels["suffix"] != ".mp4" {
-			t.Errorf("labels[suffix] = %q, want %q", labels["suffix"], ".mp4")
+
+		task.Status = model.TaskStatusDownloading
+		conn.Status = 1
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "download started",
+		})
+
+		if task.Status != model.TaskStatusDownloading {
+			t.Errorf("Stage1 task.Status = %d, want %d (Downloading)", task.Status, model.TaskStatusDownloading)
+		}
+		if conn.Status != 1 {
+			t.Errorf("Stage1 conn.Status = %d, want 1 (active)", conn.Status)
+		}
+		if len(logs) != 1 {
+			t.Errorf("Stage1 logs count = %d, want 1", len(logs))
+		}
+	})
+
+	// Stage 2: 下载到 10% → 暂停
+	t.Run("Stage2_Download10PercentAndPause", func(t *testing.T) {
+		segment.Downloaded = tenPercent
+		conn.Bytes = tenPercent
+		conn.Speed = 1024 * 1024 // 1 MB/s
+
+		task.Status = model.TaskStatusPaused
+		resource.Status = 1
+		segment.Status = 1
+		conn.Status = 2
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "download paused at 10%",
+		})
+
+		if segment.Downloaded != tenPercent {
+			t.Errorf("Stage2 segment.Downloaded = %d, want %d (10%%)", segment.Downloaded, tenPercent)
+		}
+		if conn.Bytes != tenPercent {
+			t.Errorf("Stage2 conn.Bytes = %d, want %d", conn.Bytes, tenPercent)
+		}
+		if task.Status != model.TaskStatusPaused {
+			t.Errorf("Stage2 task.Status = %d, want %d (Paused)", task.Status, model.TaskStatusPaused)
+		}
+		if resource.Status != 1 {
+			t.Errorf("Stage2 resource.Status = %d, want 1 (partial)", resource.Status)
+		}
+		if conn.Status != 2 {
+			t.Errorf("Stage2 conn.Status = %d, want 2 (paused)", conn.Status)
+		}
+	})
+
+	// Stage 3: 恢复下载 → 继续到 100%
+	t.Run("Stage3_ResumeAndDownloadTo100Percent", func(t *testing.T) {
+		task.Status = model.TaskStatusDownloading
+		conn.Status = 1
+		conn.Speed = 2 * 1024 * 1024 // 2 MB/s
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "download resumed",
+		})
+
+		if task.Status != model.TaskStatusDownloading {
+			t.Errorf("Stage3 task.Status = %d, want %d (Downloading)", task.Status, model.TaskStatusDownloading)
+		}
+		if conn.Status != 1 {
+			t.Errorf("Stage3 conn.Status = %d, want 1 (active)", conn.Status)
+		}
+
+		// 下载到 100%
+		segment.Downloaded = resource.Size
+		conn.Bytes = resource.Size
+		segment.Status = 2
+		conn.Speed = 0
+		conn.Status = 0
+
+		if segment.Downloaded != resource.Size {
+			t.Errorf("Stage3 segment.Downloaded = %d, want %d (100%%)", segment.Downloaded, resource.Size)
+		}
+		if conn.Bytes != resource.Size {
+			t.Errorf("Stage3 conn.Bytes = %d, want %d", conn.Bytes, resource.Size)
+		}
+		if segment.Status != 2 {
+			t.Errorf("Stage3 segment.Status = %d, want 2 (completed)", segment.Status)
+		}
+	})
+
+	// Stage 4: Merging → Finished
+	t.Run("Stage4_MergingAndFinished", func(t *testing.T) {
+		task.Status = model.TaskStatusMerging
+		if task.Status != model.TaskStatusMerging {
+			t.Errorf("Stage4 merging status = %d, want %d", task.Status, model.TaskStatusMerging)
+		}
+
+		task.Status = model.TaskStatusFinished
+		resource.Status = 2
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "download finished",
+		})
+
+		if task.Status != model.TaskStatusFinished {
+			t.Errorf("Stage4 task.Status = %d, want %d (Finished)", task.Status, model.TaskStatusFinished)
+		}
+		if resource.Status != 2 {
+			t.Errorf("Stage4 resource.Status = %d, want 2 (completed)", resource.Status)
+		}
+		if len(logs) != 4 {
+			t.Errorf("Stage4 logs count = %d, want 4", len(logs))
+		}
+	})
+
+	// 最终验证：检查完整的下载生命周期链
+	expectedLogLevels := []string{"started", "paused", "resumed", "finished"}
+	for i, l := range logs {
+		if !strings.Contains(l.Message, expectedLogLevels[i]) {
+			t.Errorf("log[%d].Message = %q, should contain %q", i, l.Message, expectedLogLevels[i])
+		}
+		if l.TaskId != task.Id {
+			t.Errorf("log[%d].TaskId = %d, want %d", i, l.TaskId, task.Id)
+		}
+		if l.Level != "info" {
+			t.Errorf("log[%d].Level = %q, want %q", i, l.Level, "info")
 		}
 	}
 
-	t.Logf("Account:  platform=%s externalId=%s nickname=%s", account.PlatformId, account.ExternalId, account.Nickname)
-	t.Logf("Content:  platform=%s externalId=%s type=%s size=%d duration=%ds", content.PlatformId, content.ExternalId, content.ContentType, content.Size, content.Duration)
-	t.Logf("Task:     url prefix=%s spec=%s suffix=%q filename=%q", downloadURL, spec, suffix, expectedFilename)
-	t.Logf("Linkages: Content(%s)→Account(%s) via ContentAccount; Content→Task(%d) via DownloadTaskId; browseContentExternalId=%s",
-		content.Id, account.Id, task.Id, r.ContentExternalId)
-
-	_ = fmt.Sprintf("account=%v content=%v task=%v ca=%v", account, content, task, ca)
+	// 验证状态机完整性
+	if task.Status != model.TaskStatusFinished {
+		t.Errorf("final task.Status = %d, want %d (Finished)", task.Status, model.TaskStatusFinished)
+	}
+	if segment.Downloaded != resource.Size {
+		t.Errorf("final segment.Downloaded = %d, want %d (full)", segment.Downloaded, resource.Size)
+	}
+	if segment.Size != resource.Size {
+		t.Errorf("segment.Size = %d, want resource.Size = %d", segment.Size, resource.Size)
+	}
+	if segment.ResourceId != resource.Id {
+		t.Errorf("segment.ResourceId = %d, want resource.Id = %d", segment.ResourceId, resource.Id)
+	}
+	if segment.OffsetStart != 0 {
+		t.Errorf("segment.OffsetStart = %d, want 0", segment.OffsetStart)
+	}
+	if segment.OffsetEnd != resource.Size-1 {
+		t.Errorf("segment.OffsetEnd = %d, want %d", segment.OffsetEnd, resource.Size-1)
+	}
 }
 
 // TestDownloadFlowWithSubtasks_FromVideoFeedJSON extends TestDownloadFlow_FromVideoFeedJSON
-// by creating a parent download task that contains three child subtasks:
-//   - Subtask 0: download the .mp4 video
-//   - Subtask 1: download the cover .jpg image
-//   - Subtask 2: download the extracted .mp3 audio
+// by creating a V1 download task that contains three resources (video, cover, audio),
+// each with its own endpoint. This demonstrates how a single content record links
+// to a multi-file batch download via the layered V1 model.
 //
 // The Content and Account records are identical to the single-task scenario, but
-// the download task tree demonstrates how a single content record links to a
-// multi-file batch download.
+// the download structure demonstrates three resources under one task.
 func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 	var obj wxchannelspkg.ChannelsObject
 	if err := json.Unmarshal([]byte(videoFeedJSON), &obj); err != nil {
@@ -1037,114 +1034,49 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 	const platformId = "wx_channels"
 	media := obj.ObjectDesc.Media[0]
 
-	// Identify spec (same logic as handler: first non-original h264 spec)
-	spec := "xWT111"
-	if len(media.Spec) > 0 {
-		spec = media.Spec[0].FileFormat
-	}
-	suffix := ".mp4"
+	// ---- Build download URLs for the three resources via production functions ----
+	spec := wxchannels.PickSpec(&obj)
 
-	// ---- Build download URLs for the three subtasks ----
-	videoURL := strings.TrimSpace(media.URL + media.URLToken)
-	if spec != "original" {
-		videoURL = videoURL + "&X-snsvideoflag=" + spec
-	}
+	videoURL := wxchannels.BuildDownloadURLWithSpec(&obj, spec)
 	coverURL := strings.TrimSpace(media.CoverUrl)
 	// Audio is not directly available in the feed.  A real pipeline would
 	// extract the audio track from the video media.  Here we simulate it
 	// as a separate download whose URL is derived from the video feed.
 	audioURL := media.URL + "&X-snsvideoflag=" + spec + "&audio_only=1"
 
-	// ---- Create parent (container) DownloadTask ----
-	parentTaskId := 100 // simulated auto-increment id
-	parent := model.DownloadTask{
-		Id:         parentTaskId,
-		TaskId:     "parent-task-uid-100",
-		ParentId:   0,
-		RootId:     0, // root container has no parent/root above itself
-		NodeType:   "container",
-		Engine:     "http",
-		Type:       0,
-		Status:     0, // ready
-		ExternalId: content.ExternalId,
-		Protocol:   "https",
-		URL:        videoURL,
-		SourceURI:  obj.SourceURL,
-		Title:      content.Title,
-		Filename:   content.Title + suffix,
-		CoverURL:   content.CoverURL,
-		Size:       content.Size,
-		Reason:     "multi_file_download",
+	// ---- Create V1 DownloadTaskV1: task-level container ----
+	taskId := 100
+	taskConfig, _ := json.Marshal(map[string]any{
+		"platform":    platformId,
+		"external_id": content.ExternalId,
+		"nonce_id":    content.ExternalId2,
+		"spec":        spec,
+	})
+	task := model.DownloadTaskV1{
+		Id:           taskId,
+		Name:         content.Title,
+		ResourceType: model.ResourceTypeFile,
+		Status:       model.TaskStatusWaiting,
+		SavePath:     "/downloads/wx_channels",
+		ConfigJSON:   string(taskConfig),
 	}
-	// Build metadata that references child task ids (same pattern as
-	// compatDownloadTaskChildRefs reads from JSON keys like "childTaskIds").
-	parent.Metadata2 = fmt.Sprintf(
-		`{"platform":"%s","external_id":"%s","nonce_id":"%s","childTaskIds":["sub-video","sub-cover","sub-audio"],"childDownloadTaskIds":["","",""]}`,
-		platformId, content.ExternalId, content.ExternalId2,
-	)
 
-	// ---- Create three child subtasks ----
-	childVideo := model.DownloadTask{
-		Id:         101,
-		TaskId:     "sub-video",
-		ParentId:   parent.Id,
-		RootId:     parent.Id,
-		NodeType:   "file",
-		Engine:     "http",
-		Type:       parent.Type,
-		Status:     0,
-		ExternalId: content.ExternalId,
-		Protocol:   "https",
-		URL:        videoURL,
-		Title:      content.Title + ".mp4",
-		Filename:   content.Title + ".mp4",
-		CoverURL:   content.CoverURL,
-		Size:       content.Size,
-		Reason:     "platform_file",
-		Idx:        0,
+	// ---- Create three V1 DownloadResources (one per file type) ----
+	resources := []model.DownloadResource{
+		{Id: 101, TaskId: task.Id, Name: content.Title + ".mp4", Kind: "video", Size: content.Size, Status: 0, MergeOrder: 0},
+		{Id: 102, TaskId: task.Id, Name: content.Title + "_cover.jpg", Kind: "cover", Size: 0, Status: 0, MergeOrder: 1},
+		{Id: 103, TaskId: task.Id, Name: content.Title + ".mp3", Kind: "audio", Size: 0, Status: 0, MergeOrder: 2},
 	}
-	childCover := model.DownloadTask{
-		Id:         102,
-		TaskId:     "sub-cover",
-		ParentId:   parent.Id,
-		RootId:     parent.Id,
-		NodeType:   "file",
-		Engine:     "http",
-		Type:       parent.Type,
-		Status:     0,
-		ExternalId: content.ExternalId,
-		Protocol:   "image",
-		URL:        coverURL,
-		Title:      content.Title + "_cover.jpg",
-		Filename:   content.Title + "_cover.jpg",
-		CoverURL:   content.CoverURL,
-		Size:       0,
-		Reason:     "platform_file",
-		Idx:        1,
-	}
-	childAudio := model.DownloadTask{
-		Id:         103,
-		TaskId:     "sub-audio",
-		ParentId:   parent.Id,
-		RootId:     parent.Id,
-		NodeType:   "file",
-		Engine:     "http",
-		Type:       parent.Type,
-		Status:     0,
-		ExternalId: content.ExternalId,
-		Protocol:   "audio",
-		URL:        audioURL,
-		Title:      content.Title + ".mp3",
-		Filename:   content.Title + ".mp3",
-		CoverURL:   content.CoverURL,
-		Size:       0,
-		Reason:     "platform_file",
-		Idx:        2,
-	}
-	children := []model.DownloadTask{childVideo, childCover, childAudio}
 
-	// ---- Link Content to the parent DownloadTask ----
-	content.DownloadTaskId = &parent.Id
+	// ---- Create three V1 DownloadEndpoints (one per resource) ----
+	endpoints := []model.DownloadEndpoint{
+		{Id: 201, ResourceId: 101, Protocol: "https", URL: videoURL, Priority: 0, Enabled: 1, Status: 0},
+		{Id: 202, ResourceId: 102, Protocol: "https", URL: coverURL, Priority: 0, Enabled: 1, Status: 0},
+		{Id: 203, ResourceId: 103, Protocol: "https", URL: audioURL, Priority: 0, Enabled: 1, Status: 0},
+	}
+
+	// ---- Link Content to the DownloadTaskV1 ----
+	content.DownloadTaskId = &task.Id
 
 	// ---- Link Content to Account via ContentAccount bridge ----
 	ca := model.ContentAccount{
@@ -1174,12 +1106,12 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 		t.Errorf("Content.ContentType = %q, want %q", content.ContentType, "video")
 	}
 
-	// 2. Content → parent DownloadTask linkage
+	// 2. Content → DownloadTaskV1 linkage
 	if content.DownloadTaskId == nil {
-		t.Fatal("Content.DownloadTaskId should point to parent task")
+		t.Fatal("Content.DownloadTaskId should point to task")
 	}
-	if *content.DownloadTaskId != parent.Id {
-		t.Errorf("Content.DownloadTaskId = %d, want parent.Id = %d", *content.DownloadTaskId, parent.Id)
+	if *content.DownloadTaskId != task.Id {
+		t.Errorf("Content.DownloadTaskId = %d, want task.Id = %d", *content.DownloadTaskId, task.Id)
 	}
 
 	// 3. Content → Account linkage
@@ -1187,104 +1119,331 @@ func TestDownloadFlowWithSubtasks_FromVideoFeedJSON(t *testing.T) {
 		t.Errorf("ContentAccount.Role = %q, want 'owner'", ca.Role)
 	}
 
-	// 4. Parent task shape
-	if parent.NodeType != "container" {
-		t.Errorf("Parent.NodeType = %q, want 'container'", parent.NodeType)
+	// 4. DownloadTaskV1 shape
+	if task.Id != taskId {
+		t.Errorf("task.Id = %d, want %d", task.Id, taskId)
 	}
-	if parent.ParentId != 0 {
-		t.Errorf("Parent.ParentId = %d, want 0 (root container)", parent.ParentId)
+	if task.Name != content.Title {
+		t.Errorf("task.Name = %q, want %q", task.Name, content.Title)
 	}
-	if parent.ExternalId != content.ExternalId {
-		t.Errorf("Parent.ExternalId = %q, should match Content.ExternalId = %q", parent.ExternalId, content.ExternalId)
+	if task.ResourceType != model.ResourceTypeFile {
+		t.Errorf("task.ResourceType = %q, want %q", task.ResourceType, model.ResourceTypeFile)
 	}
-	if parent.Reason != "multi_file_download" {
-		t.Errorf("Parent.Reason = %q, want 'multi_file_download'", parent.Reason)
+	if task.Status != model.TaskStatusWaiting {
+		t.Errorf("task.Status = %v, want %v", task.Status, model.TaskStatusWaiting)
+	}
+	if task.SavePath != "/downloads/wx_channels" {
+		t.Errorf("task.SavePath = %q", task.SavePath)
 	}
 
-	// 5. Each child is properly linked to parent
-	expectedChildIDs := []int{101, 102, 103}
-	expectedProtocols := []string{"https", "image", "audio"}
-	expectedFilenames := []string{
+	// 5. Each resource is correctly linked to the task
+	expectedResourceIDs := []int{101, 102, 103}
+	expectedKinds := []string{"video", "cover", "audio"}
+	expectedNames := []string{
 		content.Title + ".mp4",
 		content.Title + "_cover.jpg",
 		content.Title + ".mp3",
 	}
+	for i, r := range resources {
+		sub := fmt.Sprintf("resource[%d]", i)
+
+		if r.TaskId != task.Id {
+			t.Errorf("%s.TaskId = %d, want task.Id = %d", sub, r.TaskId, task.Id)
+		}
+		if r.Id != expectedResourceIDs[i] {
+			t.Errorf("%s.Id = %d, want %d", sub, r.Id, expectedResourceIDs[i])
+		}
+		if r.Kind != expectedKinds[i] {
+			t.Errorf("%s.Kind = %q, want %q", sub, r.Kind, expectedKinds[i])
+		}
+		if r.Name != expectedNames[i] {
+			t.Errorf("%s.Name = %q, want %q", sub, r.Name, expectedNames[i])
+		}
+		if r.MergeOrder != i {
+			t.Errorf("%s.MergeOrder = %d, want %d", sub, r.MergeOrder, i)
+		}
+	}
+
+	// 6. Each endpoint is correctly linked to its resource
+	expectedEndpointIDs := []int{201, 202, 203}
 	expectedURLs := []string{videoURL, coverURL, audioURL}
-	for i, child := range children {
-		sub := fmt.Sprintf("child[%d]", i)
+	for i, ep := range endpoints {
+		sub := fmt.Sprintf("endpoint[%d]", i)
 
-		if child.ParentId != parent.Id {
-			t.Errorf("%s.ParentId = %d, want parent.Id = %d", sub, child.ParentId, parent.Id)
+		if ep.ResourceId != resources[i].Id {
+			t.Errorf("%s.ResourceId = %d, want resource.Id = %d", sub, ep.ResourceId, resources[i].Id)
 		}
-		if child.RootId != parent.Id {
-			t.Errorf("%s.RootId = %d, want parent.Id = %d", sub, child.RootId, parent.Id)
+		if ep.Id != expectedEndpointIDs[i] {
+			t.Errorf("%s.Id = %d, want %d", sub, ep.Id, expectedEndpointIDs[i])
 		}
-		if child.NodeType != "file" {
-			t.Errorf("%s.NodeType = %q, want 'file'", sub, child.NodeType)
+		if ep.Protocol != "https" {
+			t.Errorf("%s.Protocol = %q, want %q", sub, ep.Protocol, "https")
 		}
-		if child.ExternalId != content.ExternalId {
-			t.Errorf("%s.ExternalId = %q, should match Content.ExternalId", sub, child.ExternalId)
+		if ep.URL != expectedURLs[i] {
+			t.Errorf("%s.URL mismatch:\n  got  %s\n  want %s", sub, ep.URL, expectedURLs[i])
 		}
-		if child.Id != expectedChildIDs[i] {
-			t.Errorf("%s.Id = %d, want %d", sub, child.Id, expectedChildIDs[i])
-		}
-		if child.Protocol != expectedProtocols[i] {
-			t.Errorf("%s.Protocol = %q, want %q", sub, child.Protocol, expectedProtocols[i])
-		}
-		if child.Filename != expectedFilenames[i] {
-			t.Errorf("%s.Filename = %q, want %q", sub, child.Filename, expectedFilenames[i])
-		}
-		if child.Idx != i {
-			t.Errorf("%s.Idx = %d, want %d", sub, child.Idx, i)
-		}
-		if child.URL != expectedURLs[i] {
-			t.Errorf("%s.URL mismatch:\n  got  %s\n  want %s", sub, child.URL, expectedURLs[i])
+		if ep.Enabled != 1 {
+			t.Errorf("%s.Enabled = %d, want 1", sub, ep.Enabled)
 		}
 	}
 
-	// 6. Unique ExternalId ties parent + children + content together
-	allTasks := append([]model.DownloadTask{parent}, children...)
-	for _, task := range allTasks {
-		if task.ExternalId != content.ExternalId {
-			t.Errorf("Task(id=%d, nodeType=%s).ExternalId = %q, want %q (all must share same ExternalId)",
-				task.Id, task.NodeType, task.ExternalId, content.ExternalId)
+	// 7. ConfigJSON carries key signals for lineage resolution
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(task.ConfigJSON), &cfg); err != nil {
+		t.Fatalf("task.ConfigJSON is not valid JSON: %v", err)
+	}
+	if cfg["platform"] != platformId {
+		t.Errorf("ConfigJSON.platform = %v, want %q", cfg["platform"], platformId)
+	}
+	if cfg["external_id"] != content.ExternalId {
+		t.Errorf("ConfigJSON.external_id = %v, want %q", cfg["external_id"], content.ExternalId)
+	}
+	if cfg["spec"] != spec {
+		t.Errorf("ConfigJSON.spec = %v, want %q", cfg["spec"], spec)
+	}
+
+	t.Logf("=== Multi-file Download Tree (V1) ===")
+	t.Logf("Account  : %s (%s)", account.Nickname, account.ExternalId)
+	t.Logf("Content  : %s | %s | %d bytes | %ds", content.Title, content.ContentType, content.Size, content.Duration)
+	t.Logf("Task     : id=%d name=%q type=%s -> Content(%s) via DownloadTaskId", task.Id, task.Name, task.ResourceType, content.Id)
+	for i, r := range resources {
+		t.Logf("  ├── resource[%d] id=%d kind=%s size=%d", i, r.Id, r.Kind, r.Size)
+		t.Logf("  │   └── endpoint[%d] id=%d protocol=%s", i, endpoints[i].Id, endpoints[i].Protocol)
+	}
+	t.Logf("Linkage  : ContentAccount(role=%q) binds Content(%s) ↔ Account(%s)", ca.Role, ca.ContentId, ca.AccountId)
+
+	// =====================================================================
+	// 多文件下载生命周期模拟
+	// 场景: 三个资源(video/cover/audio)并行下载，中途暂停后恢复全量完成
+	// =====================================================================
+
+	// ---- 初始化分片：每个资源一个分片 ----
+	segments := []model.DownloadSegment{
+		{Id: 301, ResourceId: 101, Index: 0, URL: endpoints[0].URL, OffsetStart: 0,
+			OffsetEnd: resources[0].Size - 1, Size: resources[0].Size, Downloaded: 0, Status: 0, Retry: 0},
+		{Id: 302, ResourceId: 102, Index: 0, URL: endpoints[1].URL, OffsetStart: 0,
+			OffsetEnd: 0, Size: 0, Downloaded: 0, Status: 0, Retry: 0},
+		{Id: 303, ResourceId: 103, Index: 0, URL: endpoints[2].URL, OffsetStart: 0,
+			OffsetEnd: 0, Size: 0, Downloaded: 0, Status: 0, Retry: 0},
+	}
+
+	// ---- 初始化连接：每个端点一个连接 ----
+	connections := []model.DownloadConnection{
+		{Id: 401, EndpointId: 201, WorkerId: "w-video", Host: "finder.video.qq.com",
+			IP: "183.60.15.100", Speed: 0, Bytes: 0, Status: 0, LastActive: 0},
+		{Id: 402, EndpointId: 202, WorkerId: "w-cover", Host: "finder.video.qq.com",
+			IP: "183.60.15.101", Speed: 0, Bytes: 0, Status: 0, LastActive: 0},
+		{Id: 403, EndpointId: 203, WorkerId: "w-audio", Host: "finder.video.qq.com",
+			IP: "183.60.15.102", Speed: 0, Bytes: 0, Status: 0, LastActive: 0},
+	}
+
+	logs := make([]model.DownloadLog, 0, 5)
+
+	// Stage 1: 所有资源开始下载
+	t.Run("Stage1_MultiStartDownloading", func(t *testing.T) {
+		task.Status = model.TaskStatusPreparing
+		task.Status = model.TaskStatusDownloading
+
+		for i := range resources {
+			resources[i].Status = 1
+		}
+		for i := range connections {
+			connections[i].Status = 1
+		}
+		for i := range segments {
+			segments[i].Status = 1
+		}
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "multi-file download started (video+cover+audio)",
+		})
+
+		if task.Status != model.TaskStatusDownloading {
+			t.Errorf("Stage1 task.Status = %d, want %d", task.Status, model.TaskStatusDownloading)
+		}
+		for i, conn := range connections {
+			if conn.Status != 1 {
+				t.Errorf("Stage1 conn[%d].Status = %d, want 1", i, conn.Status)
+			}
+		}
+		if len(logs) != 1 {
+			t.Errorf("Stage1 logs = %d, want 1", len(logs))
+		}
+	})
+
+	// Stage 2: video进度100%(video是主资源), cover 100%, audio 100%
+	//         所有并行下载，以video为主：video到10%后暂停
+	tenPctVideo := resources[0].Size / 10
+	t.Run("Stage2_Progress10PercentAndPause", func(t *testing.T) {
+		// video 到 10%
+		segments[0].Downloaded = tenPctVideo
+		connections[0].Bytes = tenPctVideo
+		connections[0].Speed = 3 * 1024 * 1024 // 3 MB/s for video
+
+		// cover 已完成 (小文件)
+		segments[1].Downloaded = 0
+		segments[1].Status = 2 // completed
+		resources[1].Status = 2
+		connections[1].Status = 0 // idle
+
+		// audio 到 50%
+		segments[2].Downloaded = 0
+		resources[2].Status = 1
+
+		// 暂停全部
+		task.Status = model.TaskStatusPaused
+		segments[0].Status = 1 // paused
+		connections[0].Status = 2
+		resources[0].Status = 1
+
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "download paused at video 10%, cover completed, audio partial",
+		})
+
+		if segments[0].Downloaded != tenPctVideo {
+			t.Errorf("Stage2 segment[0].Downloaded = %d, want %d", segments[0].Downloaded, tenPctVideo)
+		}
+		if connections[0].Bytes != tenPctVideo {
+			t.Errorf("Stage2 conn[0].Bytes = %d, want %d", connections[0].Bytes, tenPctVideo)
+		}
+		if task.Status != model.TaskStatusPaused {
+			t.Errorf("Stage2 task.Status = %d, want %d", task.Status, model.TaskStatusPaused)
+		}
+		if resources[1].Status != 2 {
+			t.Errorf("Stage2 resource[1].Status = %d, want 2 (cover completed)", resources[1].Status)
+		}
+	})
+
+	// Stage 3: 恢复 → 全部完成
+	t.Run("Stage3_ResumeAndAllComplete", func(t *testing.T) {
+		task.Status = model.TaskStatusDownloading
+
+		// video: 从10%恢复到100%
+		segments[0].Downloaded = resources[0].Size
+		connections[0].Bytes = resources[0].Size
+		segments[0].Status = 2
+		resources[0].Status = 2
+		connections[0].Status = 0
+		connections[0].Speed = 0
+
+		// audio: 完成
+		segments[2].Downloaded = 0
+		segments[2].Status = 2
+		resources[2].Status = 2
+		connections[2].Status = 0
+
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "all resources resumed and fully downloaded",
+		})
+
+		if segments[0].Downloaded != resources[0].Size {
+			t.Errorf("Stage3 segment[0].Downloaded = %d, want %d", segments[0].Downloaded, resources[0].Size)
+		}
+		for i := range segments {
+			if segments[i].Status != 2 {
+				t.Errorf("Stage3 segment[%d].Status = %d, want 2", i, segments[i].Status)
+			}
+		}
+		for i := range resources {
+			if resources[i].Status != 2 {
+				t.Errorf("Stage3 resource[%d].Status = %d, want 2", i, resources[i].Status)
+			}
+		}
+	})
+
+	// Stage 4: Merging → Finished
+	t.Run("Stage4_MergingAndFinished", func(t *testing.T) {
+		task.Status = model.TaskStatusMerging
+		if task.Status != model.TaskStatusMerging {
+			t.Errorf("Stage4 merging status = %d, want %d", task.Status, model.TaskStatusMerging)
+		}
+
+		// 按 MergeOrder 合并: video(0)→cover(1)→audio(2)
+		for _, r := range resources {
+			if r.Status != 2 {
+				t.Errorf("merge: resource[%d] (kind=%s, order=%d) should be completed before merging",
+					r.MergeOrder, r.Kind, r.MergeOrder)
+			}
+		}
+
+		task.Status = model.TaskStatusFinished
+		logs = append(logs, model.DownloadLog{
+			Id: len(logs) + 1, TaskId: task.Id, Level: "info",
+			Message: "multi-file download finished and merged",
+		})
+
+		if task.Status != model.TaskStatusFinished {
+			t.Errorf("Stage4 task.Status = %d, want %d", task.Status, model.TaskStatusFinished)
+		}
+		if len(logs) != 4 {
+			t.Errorf("Stage4 logs = %d, want 4", len(logs))
+		}
+	})
+
+	// =====================================================================
+	// 最终验证
+	// =====================================================================
+
+	// 日志链完整性
+	expectedKeywords := []string{"started", "paused", "resumed", "finished"}
+	for i, l := range logs {
+		if !strings.Contains(l.Message, expectedKeywords[i]) {
+			t.Errorf("log[%d].Message = %q, should contain %q", i, l.Message, expectedKeywords[i])
+		}
+		if l.TaskId != task.Id {
+			t.Errorf("log[%d].TaskId = %d, want %d", i, l.TaskId, task.Id)
 		}
 	}
 
-	// 7. Cover URL is consistent across parent and children
-	if parent.CoverURL != content.CoverURL {
-		t.Errorf("Parent.CoverURL should match Content.CoverURL")
+	// 验证主资源分片完整性
+	mainSeg := segments[0] // video
+	if mainSeg.ResourceId != resources[0].Id {
+		t.Errorf("mainSeg.ResourceId = %d, want %d", mainSeg.ResourceId, resources[0].Id)
 	}
-	for _, child := range children {
-		if child.CoverURL != content.CoverURL {
-			t.Errorf("child[%d].CoverURL should match Content.CoverURL", child.Idx)
+	if mainSeg.Size != resources[0].Size {
+		t.Errorf("mainSeg.Size = %d, want %d", mainSeg.Size, resources[0].Size)
+	}
+	if mainSeg.OffsetStart != 0 {
+		t.Errorf("mainSeg.OffsetStart = %d, want 0", mainSeg.OffsetStart)
+	}
+	if mainSeg.OffsetEnd != resources[0].Size-1 {
+		t.Errorf("mainSeg.OffsetEnd = %d, want %d", mainSeg.OffsetEnd, resources[0].Size-1)
+	}
+
+	// 验证三表关联链: endpoint → resource → task
+	for i := range resources {
+		if endpoints[i].ResourceId != resources[i].Id {
+			t.Errorf("chain: endpoint[%d].ResourceId(%d) != resource[%d].Id(%d)",
+				i, endpoints[i].ResourceId, i, resources[i].Id)
+		}
+		if resources[i].TaskId != task.Id {
+			t.Errorf("chain: resource[%d].TaskId(%d) != task.Id(%d)",
+				i, resources[i].TaskId, task.Id)
+		}
+		if segments[i].ResourceId != resources[i].Id {
+			t.Errorf("chain: segment[%d].ResourceId(%d) != resource[%d].Id(%d)",
+				i, segments[i].ResourceId, i, resources[i].Id)
+		}
+		if connections[i].EndpointId != endpoints[i].Id {
+			t.Errorf("chain: conn[%d].EndpointId(%d) != endpoint[%d].Id(%d)",
+				i, connections[i].EndpointId, i, endpoints[i].Id)
 		}
 	}
 
-	// 8. Metadata2 on parent carries key signals for lineage resolution
-	var meta2 map[string]any
-	if err := json.Unmarshal([]byte(parent.Metadata2), &meta2); err != nil {
-		t.Fatalf("Parent.Metadata2 is not valid JSON: %v", err)
+	// 验证最终任务状态
+	if task.Status != model.TaskStatusFinished {
+		t.Errorf("final task.Status = %d, want %d (Finished)", task.Status, model.TaskStatusFinished)
 	}
-	if meta2["platform"] != platformId {
-		t.Errorf("Metadata2.platform = %v, want %q", meta2["platform"], platformId)
+	// 所有资源已完成
+	totalCompleted := 0
+	for _, r := range resources {
+		if r.Status == 2 {
+			totalCompleted++
+		}
 	}
-	if meta2["external_id"] != content.ExternalId {
-		t.Errorf("Metadata2.external_id = %v, want %q", meta2["external_id"], content.ExternalId)
+	if totalCompleted != 3 {
+		t.Errorf("total completed resources = %d, want 3", totalCompleted)
 	}
-	if meta2["childTaskIds"] == nil {
-		t.Error("Metadata2.childTaskIds should reference child task ids")
-	}
-
-	t.Logf("=== Multi-file Download Tree ===")
-	t.Logf("Account : %s (%s)", account.Nickname, account.ExternalId)
-	t.Logf("Content : %s | %s | %d bytes | %ds", content.Title, content.ContentType, content.Size, content.Duration)
-	t.Logf("Parent  : id=%d type=container -> Content(%s) via DownloadTaskId", parent.Id, content.Id)
-	t.Logf("  ├── [0] id=%d url=%s (video)", children[0].Id, children[0].Protocol)
-	t.Logf("  ├── [1] id=%d url=%s (cover)", children[1].Id, children[1].Protocol)
-	t.Logf("  └── [2] id=%d url=%s (audio)", children[2].Id, children[2].Protocol)
-	t.Logf("Linkage : ContentAccount(role=%q) binds Content(%s) ↔ Account(%s)", ca.Role, ca.ContentId, ca.AccountId)
-
-	// Avoid unused variable errors
-	_ = fmt.Sprintf("parent=%v children=%v content=%v account=%v", parent, children, content, account)
 }
