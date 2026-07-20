@@ -28,11 +28,42 @@ const (
 
 // TaskInfo 下载器需要的任务信息（由外部通过 LoadTask 提供）
 type TaskInfo struct {
-	ID       int    // 任务 ID
-	Name     string // 文件名
-	SavePath string // 保存目录
-	URL      string // 下载端点 URL
+	ID         int    // 任务 ID
+	Name       string // 文件名
+	SavePath   string // 保存目录
+	URL        string // 下载端点 URL
+	ResourceID int    // 资源 ID（用于创建分片）
 }
+
+// SegmentRange 分片范围信息
+type SegmentRange struct {
+	Index       int
+	OffsetStart int64
+	OffsetEnd   int64
+	Size        int64
+}
+
+// segmentInfo 分片下载任务信息（用于 downloadSegment goroutine）
+type segmentInfo struct {
+	ID          int
+	Index       int
+	URL         string
+	OffsetStart int64
+	OffsetEnd   int64
+	Size        int64
+	Downloaded  int64
+}
+
+// segmentProgress 分片下载进度
+type segmentProgress struct {
+	index      int
+	downloaded int64
+	speed      int64
+	done       bool
+	err        error
+}
+
+const defaultSegmentCount = 10 // 默认分片数
 
 // DownloadTaskStore 任务持久化接口，由外部实现（例如数据库）。
 // 下载引擎不直接访问数据库，所有持久化操作通过此接口完成。
@@ -45,6 +76,8 @@ type DownloadTaskStore interface {
 	DeactivateConnections(taskID int) error
 	FinishTask(taskID int) error
 	WriteLog(taskID int, level string, message string) error
+	CreateSegments(resourceID int, url string, ranges []SegmentRange) ([]int, error)
+	LoadSegmentInfo(resourceID int) ([]segmentInfo, error)
 }
 
 // v1NativeDownloader 原生 HTTP 下载引擎
@@ -206,18 +239,96 @@ func (d *v1NativeDownloader) run(taskID int, job *nativeJob) {
 	default:
 	}
 
-	fmt.Println("before d.downloadFile", taskID, filePath)
-	// 下载文件
-	completed := d.downloadFile(ctx, info.URL, filePath, existingSize, taskID)
-	if completed {
-		d.finishTask(taskID, filePath)
-	} else {
-		select {
-		case <-ctx.Done():
-			d.pauseTask(taskID)
-		default:
+	// 如果文件大小未知，使用单分片下载路径；否则按固定分片数多段并发下载
+	if contentLength <= 0 {
+		fmt.Println("before d.downloadFile", taskID, filePath)
+		completed := d.downloadFile(ctx, info.URL, filePath, existingSize, taskID)
+		if completed {
+			d.finishTask(taskID, filePath)
+		} else {
+			select {
+			case <-ctx.Done():
+				d.pauseTask(taskID)
+			default:
+			}
 		}
+		return
 	}
+
+	// 多分片并发下载路径
+	fmt.Println("multi-segment download: taskID", taskID, "fileSize", contentLength)
+
+	// 检查是否已有分片信息（断点续传）
+	segInfos, err := d.store.LoadSegmentInfo(info.ResourceID)
+	if err != nil {
+		d.failTask(taskID, "加载分片信息失败: "+err.Error())
+		return
+	}
+
+	var file *os.File
+	if len(segInfos) == 0 {
+		// 首次下载，创建分片记录
+		ranges := splitFile(contentLength, defaultSegmentCount)
+		segIDs, err := d.store.CreateSegments(info.ResourceID, info.URL, ranges)
+		if err != nil {
+			d.failTask(taskID, "创建分片记录失败: "+err.Error())
+			return
+		}
+
+		// 构建 segmentInfo
+		for i := range ranges {
+			segInfos = append(segInfos, segmentInfo{
+				ID:          segIDs[i],
+				Index:       ranges[i].Index,
+				URL:         info.URL,
+				OffsetStart: ranges[i].OffsetStart,
+				OffsetEnd:   ranges[i].OffsetEnd,
+				Size:        ranges[i].Size,
+				Downloaded:  0,
+			})
+		}
+
+		// 创建文件并预分配大小
+		file, err = os.Create(filePath)
+		if err != nil {
+			d.failTask(taskID, "创建文件失败: "+err.Error())
+			return
+		}
+		if err := file.Truncate(contentLength); err != nil {
+			file.Close()
+			d.failTask(taskID, "预分配文件大小失败: "+err.Error())
+			return
+		}
+		file.Close()
+	} else {
+		// 断点续传：文件应已存在
+		fmt.Println("multi-segment resume: found", len(segInfos), "existing segments")
+	}
+
+	numSegments := len(segInfos)
+	progressCh := make(chan segmentProgress, numSegments*2)
+	var wg sync.WaitGroup
+
+	for i := range segInfos {
+		// 跳过已完成的分片
+		if segInfos[i].Downloaded >= segInfos[i].Size {
+			fmt.Println("segment", segInfos[i].Index, "already completed, skip")
+			progressCh <- segmentProgress{index: segInfos[i].Index, downloaded: segInfos[i].Size, speed: 0, done: true}
+			continue
+		}
+		wg.Add(1)
+		go func(seg segmentInfo) {
+			defer wg.Done()
+			d.downloadSegment(ctx, info.URL, filePath, seg, taskID, progressCh)
+		}(segInfos[i])
+	}
+
+	go func() {
+		wg.Wait()
+		close(progressCh)
+	}()
+
+	d.aggregateProgress(ctx, progressCh, numSegments, taskID, filePath)
 }
 
 // newDownloadClient 创建带超时配置的 HTTP 客户端。
@@ -249,6 +360,32 @@ func (d *v1NativeDownloader) headContentLength(url string) int64 {
 		return 0
 	}
 	return resp.ContentLength
+}
+
+// splitFile 将文件等分为 n 个分片范围，余数分散到前面的分片中。
+func splitFile(fileSize int64, n int) []SegmentRange {
+	if n <= 0 || fileSize <= 0 {
+		return nil
+	}
+	baseSize := fileSize / int64(n)
+	remainder := fileSize % int64(n)
+	ranges := make([]SegmentRange, n)
+	var offset int64
+	for i := 0; i < n; i++ {
+		size := baseSize
+		if int64(i) < remainder {
+			size++
+		}
+		end := offset + size - 1
+		ranges[i] = SegmentRange{
+			Index:       i,
+			OffsetStart: offset,
+			OffsetEnd:   end,
+			Size:        size,
+		}
+		offset += size
+	}
+	return ranges
 }
 
 // downloadFile 下载文件，返回是否完整下载。
@@ -453,6 +590,163 @@ func (d *v1NativeDownloader) downloadFileWithoutRange(ctx context.Context, url, 
 			fmt.Println("downloadFileWithoutRange read error:", readErr)
 			d.failTask(taskID, "下载读取失败: "+readErr.Error())
 			return false
+		}
+	}
+}
+
+// downloadSegment 下载单个分片，将进度通过 channel 发送给汇总 goroutine。
+func (d *v1NativeDownloader) downloadSegment(ctx context.Context, url, filePath string, seg segmentInfo, taskID int, progressCh chan<- segmentProgress) {
+	fmt.Println("downloadSegment enter: taskID", taskID, "index", seg.Index, "offset", seg.OffsetStart, "downloaded", seg.Downloaded)
+
+	startOffset := seg.OffsetStart + seg.Downloaded
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", startOffset, seg.OffsetEnd)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		fmt.Println("downloadSegment NewRequest error:", err)
+		progressCh <- segmentProgress{index: seg.Index, done: true, err: err}
+		return
+	}
+	req.Header.Set("Range", rangeHeader)
+
+	client := newDownloadClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("downloadSegment client.Do error:", err)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		progressCh <- segmentProgress{index: seg.Index, done: true, err: err}
+		return
+	}
+	defer resp.Body.Close()
+	fmt.Println("downloadSegment resp: status", resp.StatusCode, "content-length", resp.ContentLength, "index", seg.Index)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+			fmt.Println("downloadSegment: 416, segment already downloaded, index", seg.Index)
+			progressCh <- segmentProgress{index: seg.Index, downloaded: seg.Size, speed: 0, done: true}
+			return
+		}
+		fmt.Println("downloadSegment: bad status code", resp.StatusCode, "index", seg.Index)
+		progressCh <- segmentProgress{index: seg.Index, done: true, err: fmt.Errorf("服务器返回错误状态码: %d", resp.StatusCode)}
+		return
+	}
+
+	file, err := os.OpenFile(filePath, os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("downloadSegment file open error:", err, "index", seg.Index)
+		progressCh <- segmentProgress{index: seg.Index, done: true, err: err}
+		return
+	}
+	defer file.Close()
+
+	buf := make([]byte, 32*1024)
+	downloaded := seg.Downloaded
+	lastProgress := time.Time{}
+	lastDownloaded := downloaded
+	totalReads := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("downloadSegment: ctx.Done(), index", seg.Index)
+			return
+		default:
+		}
+
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			writeOffset := seg.OffsetStart + downloaded
+			if _, writeErr := file.WriteAt(buf[:n], writeOffset); writeErr != nil {
+				fmt.Println("downloadSegment write error:", writeErr, "index", seg.Index)
+				progressCh <- segmentProgress{index: seg.Index, done: true, err: writeErr}
+				return
+			}
+			downloaded += int64(n)
+			totalReads++
+		}
+
+		now := time.Now()
+		if n == 0 || now.Sub(lastProgress) >= 500*time.Millisecond || readErr == io.EOF {
+			elapsed := now.Sub(lastProgress).Seconds()
+			var speed int64
+			if elapsed > 0 {
+				speed = int64(float64(downloaded-lastDownloaded) / elapsed)
+			}
+
+			fmt.Println("downloadSegment progress: index", seg.Index, "downloaded", downloaded, "speed", speed, "B/s, reads:", totalReads, "err:", readErr)
+			progressCh <- segmentProgress{index: seg.Index, downloaded: downloaded, speed: speed}
+
+			lastProgress = now
+			lastDownloaded = downloaded
+		}
+
+		if readErr != nil {
+			if readErr == io.EOF {
+				fmt.Println("downloadSegment: EOF, index", seg.Index, "total", downloaded, "bytes")
+				progressCh <- segmentProgress{index: seg.Index, downloaded: downloaded, speed: 0, done: true}
+				return
+			}
+			if errors.Is(readErr, context.Canceled) {
+				fmt.Println("downloadSegment: context.Canceled, index", seg.Index)
+				return
+			}
+			fmt.Println("downloadSegment read error:", readErr, "index", seg.Index)
+			progressCh <- segmentProgress{index: seg.Index, done: true, err: readErr}
+			return
+		}
+	}
+}
+
+// aggregateProgress 汇总所有分片的下载进度，统一写入数据库并推送事件。
+func (d *v1NativeDownloader) aggregateProgress(ctx context.Context, progressCh <-chan segmentProgress, numSegments int, taskID int, filePath string) {
+	perSegment := make([]segmentProgress, numSegments)
+	doneCount := 0
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	emitAggregate := func() {
+		var totalDownloaded int64
+		var totalSpeed int64
+		for _, s := range perSegment {
+			totalDownloaded += s.downloaded
+			totalSpeed += s.speed
+		}
+		d.store.UpdateProgress(taskID, totalDownloaded, totalSpeed)
+		d.emit(taskID, EventProgress)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.pauseTask(taskID)
+			return
+		case prog, ok := <-progressCh:
+			if !ok {
+				// 所有分片 goroutine 已退出
+				for _, s := range perSegment {
+					if s.err != nil {
+						d.failTask(taskID, "分片下载失败: "+s.err.Error())
+						return
+					}
+				}
+				emitAggregate()
+				d.finishTask(taskID, filePath)
+				return
+			}
+			perSegment[prog.index] = prog
+			if prog.done {
+				doneCount++
+				if prog.err != nil {
+					d.failTask(taskID, "分片下载失败: "+prog.err.Error())
+					return
+				}
+			}
+		case <-ticker.C:
+			emitAggregate()
 		}
 	}
 }

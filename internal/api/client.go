@@ -998,10 +998,11 @@ func (s *dbTaskStore) LoadTask(taskID int) (*TaskInfo, error) {
 		return nil, err
 	}
 	return &TaskInfo{
-		ID:       task.Id,
-		Name:     task.Name,
-		SavePath: task.SavePath,
-		URL:      ep.URL,
+		ID:         task.Id,
+		Name:       task.Name,
+		SavePath:   task.SavePath,
+		URL:        ep.URL,
+		ResourceID: ep.ResourceId,
 	}, nil
 }
 
@@ -1085,6 +1086,50 @@ func (s *dbTaskStore) WriteLog(taskID int, level string, message string) error {
 		Message:   message,
 		CreatedAt: now,
 	}).Error
+}
+
+func (s *dbTaskStore) CreateSegments(resourceID int, url string, ranges []SegmentRange) ([]int, error) {
+	now := time.Now().UnixMilli()
+	var ids []int
+	for _, r := range ranges {
+		seg := model.DownloadSegment{
+			ResourceId:  resourceID,
+			Index:       r.Index,
+			URL:         url,
+			OffsetStart: r.OffsetStart,
+			OffsetEnd:   r.OffsetEnd,
+			Size:        r.Size,
+			Downloaded:  0,
+			Status:      1,
+		}
+		seg.CreatedAt = now
+		seg.UpdatedAt = now
+		if err := s.db.Create(&seg).Error; err != nil {
+			return nil, err
+		}
+		ids = append(ids, seg.Id)
+	}
+	return ids, nil
+}
+
+func (s *dbTaskStore) LoadSegmentInfo(resourceID int) ([]segmentInfo, error) {
+	var segs []model.DownloadSegment
+	if err := s.db.Where("resource_id = ?", resourceID).Order("`index` ASC").Find(&segs).Error; err != nil {
+		return nil, err
+	}
+	infos := make([]segmentInfo, len(segs))
+	for i, s := range segs {
+		infos[i] = segmentInfo{
+			ID:          s.Id,
+			Index:       s.Index,
+			URL:         s.URL,
+			OffsetStart: s.OffsetStart,
+			OffsetEnd:   s.OffsetEnd,
+			Size:        s.Size,
+			Downloaded:  s.Downloaded,
+		}
+	}
+	return infos, nil
 }
 
 func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloadpkg.Task, reason string) (*model.DownloadTask, error) {

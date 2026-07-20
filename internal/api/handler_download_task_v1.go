@@ -223,21 +223,6 @@ func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
 		return
 	}
 
-	// 创建分片记录（供进度更新使用）
-	segment := model.DownloadSegment{
-		ResourceId:  resource.Id,
-		Index:       0,
-		URL:         body.URL,
-		OffsetStart: 0,
-		OffsetEnd:   0,
-		Size:        0,
-		Downloaded:  0,
-		Status:      1,
-	}
-	segment.CreatedAt = now
-	segment.UpdatedAt = now
-	c.db.Create(&segment)
-
 	// 创建连接记录（供速度更新使用）
 	conn := model.DownloadConnection{
 		EndpointId: endpoint.Id,

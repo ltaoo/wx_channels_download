@@ -99,6 +99,18 @@ func (m *mockTaskStore) WriteLog(taskID int, level string, message string) error
 	return nil
 }
 
+func (m *mockTaskStore) CreateSegments(resourceID int, url string, ranges []SegmentRange) ([]int, error) {
+	var ids []int
+	for i := range ranges {
+		ids = append(ids, i+1)
+	}
+	return ids, nil
+}
+
+func (m *mockTaskStore) LoadSegmentInfo(resourceID int) ([]segmentInfo, error) {
+	return nil, nil
+}
+
 func (m *mockTaskStore) lastStatus() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -460,6 +472,79 @@ func TestV1NativeDownloader_EventSequence(t *testing.T) {
 	}
 
 	assert.True(t, foundStarted && foundFinished, "应包含 started 和 finished 事件")
+}
+
+func TestV1NativeDownloader_MultiSegmentConcurrent(t *testing.T) {
+	// 测试多分片并发下载：默认 10 个分片，文件 10MB 时分片各 1MB
+	tmpDir := t.TempDir()
+	saveDir := filepath.Join(tmpDir, "downloads")
+	os.MkdirAll(saveDir, 0755)
+
+	// 创建一个 10MB 的临时文件（10 个分片，每个约 1MB）
+	fileSize := int64(10 * 1024 * 1024)
+	tmpFile := filepath.Join(tmpDir, "multi_seg.bin")
+	if err := createTempFile(tmpFile, fileSize); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+
+	ts := startFileServer(t, tmpFile, "multi_seg.bin")
+	defer ts.Close()
+
+	store := &mockTaskStore{
+		taskInfo: &TaskInfo{
+			ID:         1,
+			Name:       "multi_seg.bin",
+			SavePath:   saveDir,
+			URL:        ts.URL,
+			ResourceID: 1,
+		},
+	}
+
+	tracker := &eventTracker{}
+	d := newV1NativeDownloader(store, tracker.record, 10)
+
+	if err := d.Start(1); err != nil {
+		t.Fatalf("启动下载失败: %v", err)
+	}
+
+	// 等待下载完成
+	if !tracker.waitFor(EventFinished, 30*time.Second) {
+		events := tracker.snapshot()
+		t.Fatalf("下载未在超时时间内完成, 事件: %v", events)
+	}
+
+	events := tracker.snapshot()
+
+	assert.Contains(t, events, EventStarted, "应收到 started 事件")
+	assert.Contains(t, events, EventFinished, "应收到 finished 事件")
+
+	progressCount := tracker.count(EventProgress)
+	assert.GreaterOrEqual(t, progressCount, 1, "应收到 progress 事件")
+	t.Logf("多分片下载收到 %d 次 progress 事件", progressCount)
+
+	// 断言 store 方法被调用
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	assert.Equal(t, 1, store.activateCalls, "ActivateTask 应被调用 1 次")
+	assert.Equal(t, 1, store.finishCalls, "FinishTask 应被调用 1 次")
+
+	// 断言下载文件存在且大小正确
+	downloadedFile := filepath.Join(saveDir, "multi_seg.bin")
+	fi, err := os.Stat(downloadedFile)
+	assert.NoError(t, err, "下载文件应存在")
+	if err == nil {
+		assert.Equal(t, fileSize, fi.Size(), "下载文件大小应正确")
+	}
+
+	// 断言 progress 更新了 downloaded
+	assert.Greater(t, len(store.progressCalls), 0, "应有进度更新回调")
+	if len(store.progressCalls) > 0 {
+		last := store.progressCalls[len(store.progressCalls)-1]
+		assert.Equal(t, fileSize, last.downloaded, "最终 downloaded 应等于文件大小")
+	}
+
+	t.Logf("总共 %d 个事件, 顺序: %v", len(events), events)
 }
 
 // ---------------------------------------------------------------------------
