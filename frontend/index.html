@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/__wx_channels_assets/lib/timeless/0.28.0/timeless.weui.css" />
   <link id="wx-components-style" rel="stylesheet" href="/__wx_channels_assets/inject/components.css" />
   <script>
-    window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;
+    window.__wx_channels_config__ = window.__WX_DOWNLOAD_CONFIG_JSON__;
     window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";
     window.WXVariable = {};
   </script>
@@ -18,8 +18,10 @@
   <script src="/__wx_channels_assets/lib/timeless/0.28.0/timeless.weui.umd.min.js"></script>
   <script>
     Object.assign(Timeless, Timeless.weui.kit);
+    const Input = Timeless.Input;
     Object.assign(Timeless, Timeless.weui);
     Object.assign(window, Timeless);
+    window.Input = Input;
   </script>
   <script src="/__wx_channels_assets/lib/timeless/0.28.0/timeless.dom.umd.min.js"></script>
   <script src="/__wx_channels_assets/lib/timeless/0.28.0/timeless.web.umd.min.js"></script>

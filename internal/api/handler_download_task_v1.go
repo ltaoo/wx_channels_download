@@ -2,9 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 
@@ -32,6 +35,14 @@ type DownloadConfig struct {
 // taskV1IDBody 通用 task_id 请求体
 type taskV1IDBody struct {
 	TaskID int `json:"task_id"`
+}
+
+// CreateDownloadTaskByURLBody 通过资源地址创建下载任务请求体
+type CreateDownloadTaskByURLBody struct {
+	URL      string         `json:"url"`      // 资源下载地址，必填
+	SavePath string         `json:"save_path"` // 保存路径
+	Filename string         `json:"filename"`  // 文件名（可选，默认从URL提取）
+	Config   DownloadConfig `json:"config"`    // 下载配置
 }
 
 func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
@@ -99,6 +110,164 @@ func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
 	})
 }
 
+// handleCreateDownloadTaskByURLV1 通过资源地址创建下载任务
+// POST /api/v1/download_task/create_by_url
+func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
+	var body CreateDownloadTaskByURLBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+
+	if body.URL == "" {
+		result.Err(ctx, 400, "url 不能为空")
+		return
+	}
+
+	parsedURL, err := url.Parse(body.URL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		result.Err(ctx, 400, "无效的下载地址")
+		return
+	}
+
+	protocol := strings.ToUpper(parsedURL.Scheme)
+
+	savePath := body.SavePath
+	if savePath == "" {
+		savePath = body.Config.SavePath
+	}
+	if savePath == "" && c.cfg != nil {
+		savePath = c.cfg.DownloadDir
+	}
+	filename := body.Filename
+	if filename == "" {
+		filename = body.Config.Filename
+	}
+	if filename == "" {
+		// 从 URL 路径提取文件名
+		base := filepath.Base(parsedURL.Path)
+		if base != "" && base != "." && base != "/" {
+			if decoded, err := url.QueryUnescape(base); err == nil {
+				filename = decoded
+			} else {
+				filename = base
+			}
+		}
+	}
+	// 如果仍然无法提取文件名，使用 URL 作为名称
+	if filename == "" {
+		filename = body.URL
+	}
+
+	taskName := filename
+
+	// 存储原始下载地址到 config_json
+	configJSON, _ := json.Marshal(map[string]string{
+		"url": body.URL,
+	})
+
+	// 数据库未初始化
+	if c.db == nil {
+		result.Err(ctx, 500, "应用未初始化，数据库不可用")
+		return
+	}
+
+	now := time.Now().UnixMilli()
+
+	// 创建任务
+	task := model.DownloadTaskV1{
+		Name:         taskName,
+		ResourceType: model.ResourceTypeFile,
+		Status:       model.TaskStatusWaiting,
+		SavePath:     savePath,
+		ConfigJSON:   string(configJSON),
+	}
+	task.CreatedAt = now
+	task.UpdatedAt = now
+
+	if err := c.db.Create(&task).Error; err != nil {
+		result.Err(ctx, 500, "创建下载任务失败: "+err.Error())
+		return
+	}
+
+	// 创建资源
+	resource := model.DownloadResource{
+		TaskId:     task.Id,
+		Name:       filename,
+		Kind:       "file",
+		Status:     0,
+		MergeOrder: 0,
+	}
+	resource.CreatedAt = now
+	resource.UpdatedAt = now
+
+	if err := c.db.Create(&resource).Error; err != nil {
+		result.Err(ctx, 500, "创建资源失败: "+err.Error())
+		return
+	}
+
+	// 创建端点
+	endpoint := model.DownloadEndpoint{
+		ResourceId: resource.Id,
+		Protocol:   protocol,
+		URL:        body.URL,
+		Priority:   0,
+		Enabled:    1,
+		Status:     0,
+	}
+	endpoint.CreatedAt = now
+	endpoint.UpdatedAt = now
+
+	if err := c.db.Create(&endpoint).Error; err != nil {
+		result.Err(ctx, 500, "创建端点失败: "+err.Error())
+		return
+	}
+
+	// 创建分片记录（供进度更新使用）
+	segment := model.DownloadSegment{
+		ResourceId:  resource.Id,
+		Index:       0,
+		URL:         body.URL,
+		OffsetStart: 0,
+		OffsetEnd:   0,
+		Size:        0,
+		Downloaded:  0,
+		Status:      1,
+	}
+	segment.CreatedAt = now
+	segment.UpdatedAt = now
+	c.db.Create(&segment)
+
+	// 创建连接记录（供速度更新使用）
+	conn := model.DownloadConnection{
+		EndpointId: endpoint.Id,
+		WorkerId:   "worker-" + strconv.Itoa(endpoint.Id),
+		Host:       parsedURL.Host,
+		Status:     1,
+		LastActive: now,
+	}
+	conn.CreatedAt = now
+	conn.UpdatedAt = now
+	c.db.Create(&conn)
+
+	// 启动原生下载（阻塞直到获取并发槽位，确保下载已开始）
+	c.v1Nat.Start(task.Id)
+
+	// 标记任务为下载中
+	c.db.Model(&task).Updates(map[string]any{
+		"status": model.TaskStatusDownloading, "updated_at": time.Now().UnixMilli(),
+	})
+	task.Status = model.TaskStatusDownloading
+
+	c.broadcastTaskProgress(task.Id)
+
+	result.Ok(ctx, gin.H{
+		"task":     task,
+		"resource": resource,
+		"endpoint": endpoint,
+	})
+}
+
 // handleStartDownloadTaskV1 启动下载任务
 // POST /api/v1/download_task/start
 func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
@@ -130,71 +299,36 @@ func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 
-	now := time.Now().UnixMilli()
-
-	// 更新任务状态到 Downloading
-	if err := c.db.Model(&task).Updates(map[string]any{
-		"status":     model.TaskStatusDownloading,
-		"updated_at": now,
-	}).Error; err != nil {
-		result.Err(ctx, 500, "更新任务状态失败: "+err.Error())
+	// 获取端点 URL
+	var ep model.DownloadEndpoint
+	if err := c.db.Table("download_endpoint").
+		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task.Id).
+		Order("priority ASC").First(&ep).Error; err != nil {
+		result.Err(ctx, 500, "未找到下载端点")
 		return
 	}
+
+	// 启动原生下载（阻塞直到获取并发槽位，确保下载已开始）
+	c.v1Nat.Start(task.Id)
+
+	now := time.Now().UnixMilli()
+
+	// 标记为下载中，前端立即看到状态变化；下载引擎内部会激活资源
+	c.db.Model(&task).Updates(map[string]any{
+		"status":     model.TaskStatusDownloading,
+		"updated_at": now,
+	})
 	task.Status = model.TaskStatusDownloading
 
-	// 激活 resources
-	c.db.Model(&model.DownloadResource{}).Where("task_id = ? AND status = 0", task.Id).
-		Updates(map[string]any{"status": 1, "updated_at": now})
-
-	// 为每个 resource 创建或激活 segment
-	var resources []model.DownloadResource
-	c.db.Where("task_id = ?", task.Id).Find(&resources)
-	for _, r := range resources {
-		var count int64
-		c.db.Model(&model.DownloadSegment{}).Where("resource_id = ?", r.Id).Count(&count)
-		if count == 0 && r.Size > 0 {
-			// 初始化分片
-			c.db.Create(&model.DownloadSegment{
-				ResourceId:  r.Id,
-				Index:       0,
-				URL:         "",
-				OffsetStart: 0,
-				OffsetEnd:   r.Size - 1,
-				Size:        r.Size,
-				Downloaded:  0,
-				Status:      1,
-			})
-		} else {
-			c.db.Model(&model.DownloadSegment{}).Where("resource_id = ? AND status IN (0,1)", r.Id).
-				Updates(map[string]any{"status": 1, "updated_at": now})
-		}
-	}
-
-	// 激活 endpoints 和 connections
-	var endpoints []model.DownloadEndpoint
-	c.db.Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task.Id).Find(&endpoints)
-	for _, ep := range endpoints {
-		c.db.Model(&model.DownloadEndpoint{}).Where("id = ?", ep.Id).
-			Updates(map[string]any{"status": 1, "updated_at": now})
-
-		var connCount int64
-		c.db.Model(&model.DownloadConnection{}).Where("endpoint_id = ?", ep.Id).Count(&connCount)
-		if connCount == 0 {
-			c.db.Create(&model.DownloadConnection{
-				EndpointId: ep.Id,
-				WorkerId:   "worker-" + strconv.Itoa(ep.Id),
-				Status:     1,
-			})
-		} else {
-			c.db.Model(&model.DownloadConnection{}).Where("endpoint_id = ?", ep.Id).
-				Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now})
-		}
-	}
+	// 激活连接
+	c.db.Model(&model.DownloadConnection{}).
+		Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", task.Id).
+		Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now})
 
 	c.db.Create(&model.DownloadLog{
-		TaskId:    task.Id,
-		Level:     "info",
-		Message:   "task started",
+		TaskId:  task.Id,
+		Level:   "info",
+		Message: "task started",
 		CreatedAt: now,
 	})
 
@@ -232,6 +366,9 @@ func (c *APIClient) handlePauseDownloadTaskV1(ctx *gin.Context) {
 	}
 
 	now := time.Now().UnixMilli()
+
+	// 暂停原生下载引擎
+	c.v1Nat.Pause(task.Id)
 
 	// 暂停任务
 	c.db.Model(&task).Updates(map[string]any{
@@ -295,22 +432,17 @@ func (c *APIClient) handleResumeDownloadTaskV1(ctx *gin.Context) {
 
 	now := time.Now().UnixMilli()
 
-	// 恢复下载
+	// 恢复原生下载引擎（阻塞直到获取并发槽位，确保下载已开始）
+	c.v1Nat.Start(task.Id)
+
+	// 标记为下载中，前端立即看到状态变化
 	c.db.Model(&task).Updates(map[string]any{
 		"status":     model.TaskStatusDownloading,
 		"updated_at": now,
 	})
 	task.Status = model.TaskStatusDownloading
 
-	// 恢复 resources
-	c.db.Model(&model.DownloadResource{}).Where("task_id = ? AND status = 1", task.Id).
-		Updates(map[string]any{"status": 1, "updated_at": now})
-
-	// 恢复 segments
-	c.db.Model(&model.DownloadSegment{}).Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?) AND status = 1", task.Id).
-		Updates(map[string]any{"status": 1, "updated_at": now})
-
-	// 恢复 connections
+	// 激活连接状态
 	c.db.Model(&model.DownloadConnection{}).
 		Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", task.Id).
 		Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now})
@@ -352,6 +484,9 @@ func (c *APIClient) handleDeleteDownloadTaskV1(ctx *gin.Context) {
 
 	now := time.Now().UnixMilli()
 
+	// 停止原生下载引擎任务
+	c.v1Nat.Delete(task.Id)
+
 	// 先标记 task 为取消状态，再软删除
 	c.db.Model(&task).Updates(map[string]any{
 		"status":     model.TaskStatusCancelled,
@@ -389,6 +524,23 @@ func (c *APIClient) handleDeleteDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"task_id": task.Id, "status_text": "cancelled"})
 }
 
+// taskListItem 列表项，包含任务及其关联的资源和端点信息
+type taskListItem struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	ResourceType string `json:"resource_type"`
+	Status       int    `json:"status"`
+	SavePath     string `json:"save_path"`
+	ConfigJSON   string `json:"config_json"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+	// 关联信息
+	URL      string `json:"url"`
+	Size     int64  `json:"size"`
+	Speed    int64  `json:"speed"`
+	Progress int    `json:"progress"`
+}
+
 // handleListDownloadTaskV1 查询下载任务列表
 // GET /api/v1/download_task/list
 func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
@@ -414,21 +566,98 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 	query := c.db.Model(&model.DownloadTaskV1{}).Where("deleted_at IS NULL")
 	if statusFilter != "" {
 		parts := strings.Split(statusFilter, ",")
-		if len(parts) == 1 {
-			query = query.Where("status = ?", strings.TrimSpace(parts[0]))
-		} else {
-			trimmed := make([]string, 0, len(parts))
-			for _, p := range parts {
-				trimmed = append(trimmed, strings.TrimSpace(p))
+		ints := make([]int, 0, len(parts))
+		for _, p := range parts {
+			if v, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+				ints = append(ints, v)
 			}
-			query = query.Where("status IN ?", trimmed)
+		}
+		if len(ints) == 1 {
+			query = query.Where("status = ?", ints[0])
+		} else if len(ints) > 1 {
+			query = query.Where("status IN ?", ints)
 		}
 	}
 	query.Count(&total)
 	query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks)
 
+	// 收集 task IDs
+	taskIDs := make([]int, len(tasks))
+	for i, t := range tasks {
+		taskIDs[i] = t.Id
+	}
+
+	// 查询关联的 resources 和 endpoints
+	type resInfo struct {
+		TaskId int
+		Size   int64
+	}
+	type epInfo struct {
+		ResourceId int
+		URL        string
+	}
+	var resources []resInfo
+	var endpoints []epInfo
+
+	if len(taskIDs) > 0 {
+		c.db.Table("download_resource").Select("task_id, size").Where("task_id IN ? AND deleted_at IS NULL", taskIDs).Scan(&resources)
+		var resIDs []int
+		for _, r := range resources {
+			resIDs = append(resIDs, r.TaskId)
+		}
+		if len(resIDs) > 0 {
+			c.db.Table("download_endpoint").Select("resource_id, url").Where("resource_id IN (SELECT id FROM download_resource WHERE task_id IN ? AND deleted_at IS NULL)", taskIDs).Scan(&endpoints)
+		}
+	}
+
+	// 按资源聚合 URL
+	urlByTask := map[int]string{}
+	sizeByTask := map[int]int64{}
+	for _, res := range resources {
+		if _, ok := sizeByTask[res.TaskId]; !ok {
+			sizeByTask[res.TaskId] = res.Size
+		}
+	}
+	// 按 task_id 聚合 endpoint URL（取第一个）
+	for _, ep := range endpoints {
+		if _, ok := urlByTask[ep.ResourceId]; !ok {
+			urlByTask[ep.ResourceId] = ep.URL
+		}
+	}
+
+	// 查询连接获取速度
+	type connInfo struct {
+		ResourceId int
+		Speed      int64
+	}
+	var speeds []connInfo
+	if len(taskIDs) > 0 {
+		c.db.Table("download_connection").Select("endpoint_id, speed").
+			Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id IN ? AND deleted_at IS NULL))", taskIDs).
+			Scan(&speeds)
+	}
+
+	// 构建响应列表
+	list := make([]taskListItem, len(tasks))
+	for i, t := range tasks {
+		list[i] = taskListItem{
+			ID:           t.Id,
+			Name:         t.Name,
+			ResourceType: t.ResourceType,
+			Status:       t.Status,
+			SavePath:     t.SavePath,
+			ConfigJSON:   t.ConfigJSON,
+			CreatedAt:    t.CreatedAt,
+			UpdatedAt:    t.UpdatedAt,
+			URL:          urlByTask[t.Id],
+			Size:         sizeByTask[t.Id],
+			Speed:        0,
+			Progress:     0,
+		}
+	}
+
 	result.Ok(ctx, gin.H{
-		"list":      tasks,
+		"list":      list,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
@@ -438,6 +667,7 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 // broadcastTaskProgress 推送任务进度到 WebSocket 客户端
 func (c *APIClient) broadcastTaskProgress(taskID int) {
 	snapshot := c.buildTaskProgressSnapshot(taskID)
+	fmt.Println("after buildTaskProgressSnapshot", snapshot)
 	if snapshot != nil {
 		v1TaskHub.BroadcastProgress(taskID, snapshot)
 	}

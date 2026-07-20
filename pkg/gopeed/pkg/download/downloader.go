@@ -807,6 +807,14 @@ func (d *Downloader) watch(task *Task) {
 
 	err := task.fetcher.Wait()
 	if err != nil {
+		// If the task was paused (e.g., by Pause() sending to doneCh),
+		// don't overwrite the status with Error — just exit cleanly.
+		task.statusLock.Lock()
+		isPaused := task.Status == base.DownloadStatusPause
+		task.statusLock.Unlock()
+		if isPaused {
+			return
+		}
 		d.doOnError(task, err)
 		return
 	}

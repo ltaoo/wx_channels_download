@@ -433,7 +433,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "db.filepath",
 		Type:        ConfigTypeString,
-		Default:     "%CWD%/wx_channels_download.db",
+		Default:     "%CWD%/data.db",
 		Description: "SQLite 数据库文件路径",
 		Title:       "SQLite 路径",
 		Group:       "Database",

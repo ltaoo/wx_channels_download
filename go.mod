@@ -46,8 +46,8 @@ require (
 	github.com/signintech/gopdf v0.36.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
+	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
-	go.etcd.io/bbolt v1.3.8
 	golang.org/x/net v0.47.0
 	golang.org/x/text v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -97,6 +97,7 @@ require (
 	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/containerd/console v1.0.5 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -146,6 +147,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/quic-go/quic-go v0.40.0 // indirect
 	github.com/refraction-networking/utls v1.5.4 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -176,6 +178,7 @@ require (
 	github.com/xiaoqidun/setft v0.0.0-20220310121541-be86327699ad // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	go.etcd.io/bbolt v1.3.8 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect

@@ -106,8 +106,9 @@ func (c *APIClient) buildTaskProgressSnapshot(taskID int) *V1TaskProgress {
 	var task struct {
 		Id     int
 		Status int
+		Name   string
 	}
-	if err := c.db.Table("download_task_v1").Select("id, status").Where("id = ?", taskID).Scan(&task).Error; err != nil || task.Id == 0 {
+	if err := c.db.Table("download_task_v1").Select("id, status, name").Where("id = ?", taskID).Scan(&task).Error; err != nil || task.Id == 0 {
 		return nil
 	}
 
@@ -115,6 +116,7 @@ func (c *APIClient) buildTaskProgressSnapshot(taskID int) *V1TaskProgress {
 		Type:   "task_snapshot",
 		TaskID: task.Id,
 		Status: task.Status,
+		Name:   task.Name,
 	}
 
 	// 查询 resources
@@ -211,6 +213,7 @@ type V1TaskProgress struct {
 	Type      string              `json:"type"`
 	TaskID    int                 `json:"task_id"`
 	Status    int                 `json:"status"`
+	Name      string              `json:"name"`
 	Resources []V1ResourceProgress `json:"resources"`
 }
 

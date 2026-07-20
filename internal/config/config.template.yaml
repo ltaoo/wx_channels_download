@@ -43,7 +43,7 @@ db:
   username: ""
   password: ""
   filename: ""
-  filepath: "%CWD%/wx_channels_download.db"
+  filepath: "%CWD%/data.db"
   migration: "%CWD%/migrations"
 
 proxy:

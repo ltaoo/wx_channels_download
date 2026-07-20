@@ -220,7 +220,7 @@ const DOWNLOAD_STATUS_COUNT_ITEMS = [
   { key: "error", label: "失败" },
 ];
 function normalize_download_status(status) {
-  const value = String(status || "")
+  const value = String(status ?? "")
     .trim()
     .toLowerCase();
   // V1 numeric statuses: 0=waiting,1=preparing,2=downloading,3=paused,4=merging,5=finished,6=failed,7=cancelled
@@ -233,11 +233,7 @@ function normalize_download_status(status) {
   if (value === "6" || value === "failed") return "error";
   if (value === "7" || value === "cancelled") return "error";
   // legacy string statuses
-  if (
-    value === "fail" ||
-    value === "failure" ||
-    value === "errored"
-  ) {
+  if (value === "fail" || value === "failure" || value === "errored") {
     return "error";
   }
   if (value === "pending" || value === "queued") {
@@ -254,15 +250,25 @@ function is_download_waiting_status(status) {
 }
 // Map UI status filters to V1 numeric status query values
 const V1_STATUS_FILTER_MAP = {
-  wait: "0,1",    // Waiting(0), Preparing(1)
+  wait: "0,1", // Waiting(0), Preparing(1)
   running: "2,4", // Downloading(2), Merging(4)
-  pause: "3",     // Paused(3)
-  done: "5",      // Finished(5)
-  error: "6,7",   // Failed(6), Cancelled(7)
+  pause: "3", // Paused(3)
+  done: "5", // Finished(5)
+  error: "6,7", // Failed(6), Cancelled(7)
 };
 function v1_status_filter(status) {
   const normalized = normalize_download_status(status);
   return V1_STATUS_FILTER_MAP[normalized] || normalized;
+}
+function extract_filename_from_url(url) {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length > 0) {
+      return decodeURIComponent(parts[parts.length - 1]);
+    }
+  } catch (e) {}
+  return "";
 }
 const DOWNLOAD_TASK_STATUS_ORDER = {
   running: 1,
@@ -630,7 +636,25 @@ function DownloaderPanelViewModel(props = {}) {
     { client: http_client },
   );
   const createTaskReq = new Timeless.RequestCore(
-    (params = {}) => request.post("/api/task/create3", params),
+    (params = {}) =>
+      request.post("/api/v1/download_task/create_by_url", {
+        url: params.url,
+        filename: params.filename || "",
+        save_path: params.save_path || "",
+      }),
+    { client: http_client },
+  );
+  const createPlatformTaskReq = new Timeless.RequestCore(
+    (params = {}) =>
+      request.post("/api/v1/download_task/create", {
+        platform: params.platform || "",
+        content: params.content || {},
+        config: {
+          save_path: params.save_path || "",
+          filename: params.filename || "",
+          spec: params.spec || "",
+        },
+      }),
     { client: http_client },
   );
 
@@ -644,6 +668,11 @@ function DownloaderPanelViewModel(props = {}) {
   const clear_delete_files_ = ref(false);
   const clearing_tasks_ = ref(false);
   const create_task_text_ = ref("");
+  const create_task_filename_ = ref("");
+  const create_platform_text_ = ref("");
+  const create_platform_json_ = ref("");
+  const create_platform_save_path_ = ref("");
+  const create_platform_filename_ = ref("");
   const creating_task_ = ref(false);
   const selected_task_ids_ = refarr([]);
   const running_count_ = computed(tasks_, (t) => {
@@ -1501,7 +1530,9 @@ function DownloaderPanelViewModel(props = {}) {
           if (filename && !task.filepath) {
             const sep = isWin ? "\\" : "/";
             const fp = savePath
-              ? (savePath.endsWith(sep) ? savePath + filename : savePath + sep + filename)
+              ? savePath.endsWith(sep)
+                ? savePath + filename
+                : savePath + sep + filename
               : filename;
             return {
               path: savePath || filename,
@@ -1729,10 +1760,63 @@ function DownloaderPanelViewModel(props = {}) {
     },
     requestCreateTask() {
       create_task_text_.as("");
+      create_task_filename_.as("");
       ui.createTaskDialog$.show();
+    },
+    requestCreatePlatformTask() {
+      create_platform_text_.as("");
+      create_platform_json_.as("");
+      create_platform_save_path_.as("");
+      create_platform_filename_.as("");
+      ui.createPlatformTaskDialog$.show();
+    },
+    async confirmCreatePlatformTask() {
+      if (creating_task_.value) {
+        return;
+      }
+      const platform = String(create_platform_text_.value || "").trim();
+      if (!platform) {
+        WXU.error({ msg: "请输入平台名称" });
+        return;
+      }
+      const jsonStr = String(create_platform_json_.value || "").trim();
+      var content = {};
+      if (jsonStr) {
+        try {
+          content = JSON.parse(jsonStr);
+        } catch (e) {
+          WXU.error({ msg: "内容 JSON 格式错误: " + e.message });
+          return;
+        }
+      }
+      creating_task_.as(true);
+      try {
+        const r = await createPlatformTaskReq.run({
+          platform: platform,
+          content: content,
+          save_path: create_platform_save_path_.value || "",
+          filename: create_platform_filename_.value || "",
+        });
+        if (r.error) {
+          WXU.error({ msg: r.error.message });
+          return;
+        }
+        ui.createPlatformTaskDialog$.hide();
+        WXU.toast("平台下载任务创建成功");
+        const reloadResult = await reloadTasks();
+        if (reloadResult && reloadResult.error) {
+          WXU.error({ msg: reloadResult.error.message });
+        }
+      } finally {
+        creating_task_.as(false);
+      }
     },
     setCreateTaskText(value) {
       create_task_text_.as(value || "");
+      const filename = extract_filename_from_url(value || "");
+      if (filename) {
+        create_task_filename_.as(filename);
+      }
     },
     async confirmCreateTask() {
       if (creating_task_.value) {
@@ -1745,25 +1829,14 @@ function DownloaderPanelViewModel(props = {}) {
       }
       creating_task_.as(true);
       try {
-        const r = await createTaskReq.run({ text });
+        const r = await createTaskReq.run({ url: text, filename: create_task_filename_.value || "" });
         if (r.error) {
           WXU.error({ msg: r.error.message });
           return;
         }
-        const data = r.data || {};
-        const ids = Array.isArray(data.ids) ? data.ids : [];
-        const skipped = Array.isArray(data.skipped) ? data.skipped : [];
-        const failed = Array.isArray(data.failed) ? data.failed : [];
-        if (ids.length > 0) {
-          WXU.toast(`已创建 ${ids.length} 个下载任务`);
-        } else if (skipped.length > 0 && failed.length === 0) {
-          WXU.toast("没有新的下载任务");
-        } else if (failed.length > 0) {
-          WXU.error({ msg: failed[0].message || "创建任务失败" });
-          return;
-        }
         create_task_text_.as("");
         ui.createTaskDialog$.hide();
+        WXU.toast("下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
           WXU.error({ msg: reloadResult.error.message });
@@ -2102,6 +2175,15 @@ function DownloaderPanelViewModel(props = {}) {
         methods.confirmCreateTask();
       },
     }),
+    createPlatformTaskDialog$: new Timeless.ui.DialogCore({
+      closeable: true,
+      onOk() {
+        methods.confirmCreatePlatformTask();
+      },
+    }),
+    input_create_download_task$: new Timeless.ui.InputCore({
+      defaultValue: "",
+    }),
     deleteConfirmDialog$: new Timeless.ui.DialogCore({
       onOk() {
         methods.confirmDeleteTask();
@@ -2166,6 +2248,16 @@ function DownloaderPanelViewModel(props = {}) {
       clearing_tasks: clearing_tasks_,
       /** 新增下载任务输入框内的文本 */
       create_task_text: create_task_text_,
+      /** 自动识别或手动输入的文件名 */
+      create_task_filename: create_task_filename_,
+      /** 平台任务创建：平台名称 */
+      create_platform_text: create_platform_text_,
+      /** 平台任务创建：内容 JSON */
+      create_platform_json: create_platform_json_,
+      /** 平台任务创建：保存路径 */
+      create_platform_save_path: create_platform_save_path_,
+      /** 平台任务创建：文件名 */
+      create_platform_filename: create_platform_filename_,
       /** 创建下载任务操作中 */
       creating_task: creating_task_,
       /** 各个状态的下载任务数量 */
@@ -2218,6 +2310,159 @@ function DownloaderPanelViewModel(props = {}) {
       status_counts_.as(empty_download_status_counts());
     },
   };
+}
+
+function CreateTaskDialogView(props) {
+  const title = "创建下载任务";
+  const urlPlaceholder = "请输入下载地址，例如 https://example.com/file.mp4";
+  const vm$ = props.store;
+  const inputStyle = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "10px 12px",
+    "font-size": "14px",
+    "line-height": "20px",
+    border: "1px solid var(--weui-FG-3)",
+    "border-radius": "6px",
+    background: "var(--weui-BG-1)",
+    color: "var(--weui-FG-0)",
+    outline: "none",
+  };
+
+  return Timeless.Dialog(
+    {
+      store: vm$.ui.createTaskDialog$,
+      style: { "z-index": "10000" },
+    },
+    [
+      View({ style: { padding: "20px 20px 16px" } }, [
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "12px",
+            },
+          },
+          [title],
+        ),
+        Input({
+          placeholder: urlPlaceholder,
+          style: { ...inputStyle, "margin-bottom": "12px" },
+          onInput(e) {
+            vm$.methods.setCreateTaskText(e && e.target ? e.target.value : "");
+          },
+        }),
+        View(
+          {
+            style: {
+              "font-size": "13px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "6px",
+            },
+          },
+          ["文件名"],
+        ),
+        Input({
+          placeholder: "自动识别，可手动修改",
+          value: computed(vm$.state.create_task_filename, (f) => f),
+          style: inputStyle,
+          onInput(e) {
+            vm$.state.create_task_filename.as(
+              e && e.target ? e.target.value : "",
+            );
+          },
+        }),
+      ]),
+    ],
+  );
+}
+
+function CreatePlatformTaskDialogView(props) {
+  const title = "平台创建下载任务";
+  const vm$ = props.store;
+  const inputStyle = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "10px 12px",
+    "font-size": "14px",
+    "line-height": "20px",
+    border: "1px solid var(--weui-FG-3)",
+    "border-radius": "6px",
+    background: "var(--weui-BG-1)",
+    color: "var(--weui-FG-0)",
+    outline: "none",
+    "margin-bottom": "12px",
+  };
+  const labelStyle = {
+    "font-size": "13px",
+    color: "var(--weui-FG-1)",
+    "margin-bottom": "6px",
+  };
+
+  return Timeless.Dialog(
+    {
+      store: vm$.ui.createPlatformTaskDialog$,
+      style: { "z-index": "10000" },
+    },
+    [
+      View({ style: { padding: "20px 20px 16px" } }, [
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "12px",
+            },
+          },
+          [title],
+        ),
+        View({ style: labelStyle }, ["平台名称"]),
+        Input({
+          placeholder: "如 wx_channels、bilibili",
+          style: inputStyle,
+          onInput(e) {
+            vm$.state.create_platform_text.as(
+              e && e.target ? e.target.value : "",
+            );
+          },
+        }),
+        View({ style: labelStyle }, ["内容 JSON"]),
+        Input({
+          type: "textarea",
+          placeholder: '平台内容原始 JSON，如 {"feed_id":"xxx"}',
+          style: { ...inputStyle, "min-height": "80px", resize: "vertical" },
+          onInput(e) {
+            vm$.state.create_platform_json.as(
+              e && e.target ? e.target.value : "",
+            );
+          },
+        }),
+        View({ style: labelStyle }, ["保存路径（可选）"]),
+        Input({
+          placeholder: "留空则使用默认下载目录",
+          style: inputStyle,
+          onInput(e) {
+            vm$.state.create_platform_save_path.as(
+              e && e.target ? e.target.value : "",
+            );
+          },
+        }),
+        View({ style: labelStyle }, ["文件名（可选）"]),
+        Input({
+          placeholder: "留空则自动命名",
+          style: { ...inputStyle, "margin-bottom": "0" },
+          onInput(e) {
+            vm$.state.create_platform_filename.as(
+              e && e.target ? e.target.value : "",
+            );
+          },
+        }),
+      ]),
+    ],
+  );
 }
 
 function ClearTasksConfirmDialog(props) {
@@ -2954,6 +3199,42 @@ function DownloadTaskCard(props) {
               },
             ),
             cases: {
+              0() {
+                return View(
+                  {
+                    type: "a",
+                    class: "wx-download-item-start",
+                    style: computed(running_count_, (t) => {
+                      return {
+                        ...btnStyle,
+                        ...(t >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
+                          ? {
+                              opacity: "0.4",
+                              cursor: "not-allowed",
+                              "pointer-events": "none",
+                            }
+                          : {}),
+                      };
+                    }),
+                    onClick() {
+                      if (
+                        running_count_.value >=
+                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
+                      ) {
+                        return;
+                      }
+                      vm$.methods.startTask(task_.value);
+                    },
+                  },
+                  [
+                    Timeless.Icon({
+                      name: "play",
+                      size: 20,
+                    }),
+                  ],
+                );
+              },
               1() {
                 return View(
                   {

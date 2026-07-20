@@ -241,6 +241,13 @@ func (f *Fetcher) Pause() (err error) {
 		// wait for pause handle complete
 		f.eg.Wait()
 		f.file.Close()
+		// Signal doneCh so the watch goroutine can exit and clean up watchedTasks.
+		// Without this, watch stays blocked on <-doneCh forever, preventing
+		// a new watch goroutine from being started on resume (due to LoadOrStore).
+		select {
+		case f.doneCh <- errors.New("task paused"):
+		default:
+		}
 	}
 	return
 }

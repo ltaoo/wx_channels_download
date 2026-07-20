@@ -119,3 +119,5 @@ type DownloadLog struct {
 	Message   string `json:"message"`
 	CreatedAt int64  `json:"created_at"`
 }
+
+func (DownloadLog) TableName() string { return "download_log" }

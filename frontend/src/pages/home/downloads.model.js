@@ -768,6 +768,7 @@ export function DownloadTaskPanelModel(props) {
       const task = {
         id: message.task_id,
         status: message.status,
+        name: message.name || "",
         resources: message.resources || [],
       };
       // 聚合 resources 的下载进度
@@ -1017,8 +1018,8 @@ export function DownloadTaskPanelModel(props) {
     error_.as("");
     const params = { page, page_size: page_size_ };
     const statuses = statusesForTab(active_tab_.value);
-    if (statuses && statuses.length === 1) {
-      params.status = statuses[0];
+    if (statuses && statuses.length >= 1) {
+      params.status = statuses.join(",");
     }
     const r = await reqs.list.run(params);
     loading_.as(false);

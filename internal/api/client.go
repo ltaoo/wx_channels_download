@@ -61,6 +61,9 @@ type APIClient struct {
 	contentService        *services.ContentService
 	browseService         *services.BrowseService
 	channelsUploadService *services.ChannelsUploadService
+
+	// V1 native downloader (replaces gopeed for V1 tasks)
+	v1Nat *v1NativeDownloader
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
@@ -159,6 +162,12 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 		channelsUploadService: channelsUploadService,
 	}
 
+	apiClient.v1Nat = newV1NativeDownloader(&dbTaskStore{db: db},
+		func(taskID int, event EventType) {
+			fmt.Println("handle event", taskID)
+			apiClient.broadcastTaskProgress(taskID)
+		}, cfg.MaxRunning)
+
 	status_ws.OnConnected = func(wsClient *downloaderclient.WSClient) {
 		data, err := json.Marshal(APIClientWSMessage{
 			Type: "channels_status",
@@ -190,7 +199,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	// // 设置文件传输助手 SPH 自动下载回调
 	// apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
 
-	// apiClient.SetupRoutes()
+	apiClient.SetupRoutes()
 	// apiClient.httpHandler = apiClient.buildHTTPHandler()
 	return apiClient
 }
@@ -318,7 +327,24 @@ func (c *APIClient) Start() error {
 
 func (c *APIClient) Stop() error {
 	if c.downloader != nil {
+		// 暂停所有 gopeed 下载任务（旧系统）
 		c.downloader.Pause(nil)
+		// 等待 listener 处理完 pause 事件
+		time.Sleep(100 * time.Millisecond)
+	}
+	// 暂停所有 V1 原生下载任务
+	if c.v1Nat != nil {
+		c.v1Nat.PauseAll()
+	}
+	// 直接更新 V1 数据库：将进行中的下载任务置为暂停状态
+	if c.db != nil {
+		now := time.Now().UnixMilli()
+		c.db.Model(&model.DownloadTaskV1{}).
+			Where("status = ? AND deleted_at IS NULL", model.TaskStatusDownloading).
+			Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": now})
+		c.db.Model(&model.DownloadConnection{}).
+			Where("status = 1 AND deleted_at IS NULL").
+			Updates(map[string]any{"status": 0, "speed": 0, "last_active": now, "updated_at": now})
 	}
 	// if c.channels != nil {
 	// 	c.channels.Stop()
@@ -952,6 +978,115 @@ func (c *APIClient) autoDownloadSphVideo(sphUrl string) error {
 	return nil
 }
 
+// ---------------------------------------------------------------------------
+// dbTaskStore — DownloadTaskStore 的 gorm 数据库实现
+// ---------------------------------------------------------------------------
+
+type dbTaskStore struct {
+	db *gorm.DB
+}
+
+func (s *dbTaskStore) LoadTask(taskID int) (*TaskInfo, error) {
+	var task model.DownloadTaskV1
+	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return nil, err
+	}
+	var ep model.DownloadEndpoint
+	if err := s.db.Table("download_endpoint").
+		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task.Id).
+		Order("priority ASC").First(&ep).Error; err != nil {
+		return nil, err
+	}
+	return &TaskInfo{
+		ID:       task.Id,
+		Name:     task.Name,
+		SavePath: task.SavePath,
+		URL:      ep.URL,
+	}, nil
+}
+
+func (s *dbTaskStore) UpdateStatus(taskID int, status int) error {
+	now := time.Now().UnixMilli()
+	return s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", taskID).
+		Updates(map[string]any{"status": status, "updated_at": now}).Error
+}
+
+func (s *dbTaskStore) ActivateTask(taskID int) error {
+	now := time.Now().UnixMilli()
+	s.db.Model(&model.DownloadResource{}).
+		Where("task_id = ? AND status IN (0,1)", taskID).
+		Updates(map[string]any{"status": 1, "updated_at": now})
+	s.db.Model(&model.DownloadEndpoint{}).
+		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", taskID).
+		Updates(map[string]any{"status": 1, "updated_at": now})
+	s.db.Model(&model.DownloadConnection{}).
+		Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", taskID).
+		Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now})
+	return nil
+}
+
+func (s *dbTaskStore) UpdateProgress(taskID int, downloaded int64, speed int64) error {
+	now := time.Now().UnixMilli()
+	s.db.Exec(`UPDATE download_segment SET downloaded = ?, updated_at = ?
+		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`,
+		downloaded, now, taskID)
+	s.db.Exec(`UPDATE download_connection SET speed = ?, bytes = ?, last_active = ?, updated_at = ?
+		WHERE endpoint_id IN (
+			SELECT id FROM download_endpoint WHERE resource_id IN (
+				SELECT id FROM download_resource WHERE task_id = ?
+			)
+		)`, speed, downloaded, now, now, taskID)
+	s.db.Exec(`UPDATE download_resource SET status = 1, updated_at = ? WHERE task_id = ? AND status IN (0,1)`,
+		now, taskID)
+	return nil
+}
+
+func (s *dbTaskStore) UpdateResourceSize(taskID int, size int64) error {
+	now := time.Now().UnixMilli()
+	s.db.Exec(`UPDATE download_resource SET size = ?, updated_at = ? WHERE task_id = ? AND size = 0`,
+		size, now, taskID)
+	s.db.Exec(`UPDATE download_segment SET size = ?, offset_end = ?, updated_at = ?
+		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`,
+		size, size-1, now, taskID)
+	return nil
+}
+
+func (s *dbTaskStore) DeactivateConnections(taskID int) error {
+	now := time.Now().UnixMilli()
+	return s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
+		WHERE endpoint_id IN (
+			SELECT id FROM download_endpoint WHERE resource_id IN (
+				SELECT id FROM download_resource WHERE task_id = ?
+			)
+		)`, now, taskID).Error
+}
+
+func (s *dbTaskStore) FinishTask(taskID int) error {
+	now := time.Now().UnixMilli()
+	s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", taskID).
+		Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
+	s.db.Exec(`UPDATE download_segment SET downloaded = size, status = 2, updated_at = ?
+		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`, now, taskID)
+	s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
+		WHERE endpoint_id IN (
+			SELECT id FROM download_endpoint WHERE resource_id IN (
+				SELECT id FROM download_resource WHERE task_id = ?
+			)
+		)`, now, taskID)
+	s.db.Exec(`UPDATE download_resource SET status = 2, updated_at = ? WHERE task_id = ?`, now, taskID)
+	return nil
+}
+
+func (s *dbTaskStore) WriteLog(taskID int, level string, message string) error {
+	now := time.Now().UnixMilli()
+	return s.db.Create(&model.DownloadLog{
+		TaskId:    taskID,
+		Level:     level,
+		Message:   message,
+		CreatedAt: now,
+	}).Error
+}
+
 func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloadpkg.Task, reason string) (*model.DownloadTask, error) {
 	if content == nil {
 		return nil, errors.New("content is nil")
@@ -1080,3 +1215,5 @@ func (c *APIClient) CreateContentDownloadTask(content *model.Content, t *downloa
 
 	return &rec, nil
 }
+
+

@@ -97,6 +97,20 @@ function DownloadPageTopBar(props) {
     ]),
     View({ class: "wx-dl-page-actions" }, [
       DownloadPageActionButton({
+        icon: "plus",
+        label: "创建任务",
+        onClick() {
+          vm$.methods.requestCreateTask();
+        },
+      }),
+      DownloadPageActionButton({
+        icon: "package-plus",
+        label: "平台创建",
+        onClick() {
+          vm$.methods.requestCreatePlatformTask();
+        },
+      }),
+      DownloadPageActionButton({
         icon: "trash2",
         label: computed(selected_task_count_, (count) => {
           return count > 0 ? `删除选中 ${count}` : "删除选中";
@@ -150,6 +164,12 @@ function DownloaderPageView(props) {
             showCheckbox: true,
           }),
         ]),
+        CreateTaskDialogView({
+          store: vm$,
+        }),
+        CreatePlatformTaskDialogView({
+          store: vm$,
+        }),
         TaskDeleteConfirmDialog({
           store: vm$,
         }),
