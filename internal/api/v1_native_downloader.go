@@ -78,6 +78,7 @@ type DownloadTaskStore interface {
 	WriteLog(taskID int, level string, message string) error
 	CreateSegments(resourceID int, url string, ranges []SegmentRange) ([]int, error)
 	LoadSegmentInfo(resourceID int) ([]segmentInfo, error)
+	UpdateSegmentProgress(segID int, downloaded int64) error
 }
 
 // v1NativeDownloader 原生 HTTP 下载引擎
@@ -241,6 +242,10 @@ func (d *v1NativeDownloader) run(taskID int, job *nativeJob) {
 
 	// 如果文件大小未知，使用单分片下载路径；否则按固定分片数多段并发下载
 	if contentLength <= 0 {
+		// 创建单个分片记录，供 UpdateProgress 写入 downloaded
+		ranges := []SegmentRange{{Index: 0, OffsetStart: 0, OffsetEnd: 0, Size: 0}}
+		d.store.CreateSegments(info.ResourceID, info.URL, ranges)
+
 		fmt.Println("before d.downloadFile", taskID, filePath)
 		completed := d.downloadFile(ctx, info.URL, filePath, existingSize, taskID)
 		if completed {
@@ -328,7 +333,7 @@ func (d *v1NativeDownloader) run(taskID int, job *nativeJob) {
 		close(progressCh)
 	}()
 
-	d.aggregateProgress(ctx, progressCh, numSegments, taskID, filePath)
+	d.aggregateProgress(ctx, progressCh, segInfos, taskID, filePath)
 }
 
 // newDownloadClient 创建带超时配置的 HTTP 客户端。
@@ -702,7 +707,8 @@ func (d *v1NativeDownloader) downloadSegment(ctx context.Context, url, filePath 
 }
 
 // aggregateProgress 汇总所有分片的下载进度，统一写入数据库并推送事件。
-func (d *v1NativeDownloader) aggregateProgress(ctx context.Context, progressCh <-chan segmentProgress, numSegments int, taskID int, filePath string) {
+func (d *v1NativeDownloader) aggregateProgress(ctx context.Context, progressCh <-chan segmentProgress, segInfos []segmentInfo, taskID int, filePath string) {
+	numSegments := len(segInfos)
 	perSegment := make([]segmentProgress, numSegments)
 	doneCount := 0
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -715,7 +721,13 @@ func (d *v1NativeDownloader) aggregateProgress(ctx context.Context, progressCh <
 			totalDownloaded += s.downloaded
 			totalSpeed += s.speed
 		}
+		// 先写入聚合的总量（连接、资源），再按分片单独修正 downloaded
 		d.store.UpdateProgress(taskID, totalDownloaded, totalSpeed)
+		for i, s := range perSegment {
+			if s.downloaded > 0 {
+				d.store.UpdateSegmentProgress(segInfos[i].ID, s.downloaded)
+			}
+		}
 		d.emit(taskID, EventProgress)
 	}
 

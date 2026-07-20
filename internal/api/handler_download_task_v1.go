@@ -520,10 +520,11 @@ type taskListItem struct {
 	CreatedAt    int64  `json:"created_at"`
 	UpdatedAt    int64  `json:"updated_at"`
 	// 关联信息
-	URL      string `json:"url"`
-	Size     int64  `json:"size"`
-	Speed    int64  `json:"speed"`
-	Progress int    `json:"progress"`
+	URL        string `json:"url"`
+	Size       int64  `json:"size"`
+	Downloaded int64  `json:"downloaded"`
+	Speed      int64  `json:"speed"`
+	Progress   int    `json:"progress"`
 }
 
 // handleListDownloadTaskV1 查询下载任务列表
@@ -572,59 +573,95 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 		taskIDs[i] = t.Id
 	}
 
-	// 查询关联的 resources 和 endpoints
-	type resInfo struct {
-		TaskId int
-		Size   int64
-	}
+	// 查询关联的 endpoints 和资源映射（获取 URL）
 	type epInfo struct {
-		ResourceId int
-		URL        string
+		TaskId int    `gorm:"column:task_id"`
+		URL    string `gorm:"column:url"`
+	}
+	var endpoints []epInfo
+	if len(taskIDs) > 0 {
+		c.db.Raw(`SELECT r.task_id, e.url FROM download_endpoint e
+			JOIN download_resource r ON e.resource_id = r.id
+			WHERE r.task_id IN ? AND r.deleted_at IS NULL AND e.deleted_at IS NULL AND e.enabled = 1
+			ORDER BY e.priority ASC`, taskIDs).Scan(&endpoints)
+	}
+	urlByTask := map[int]string{}
+	for _, ep := range endpoints {
+		if _, ok := urlByTask[ep.TaskId]; !ok {
+			urlByTask[ep.TaskId] = ep.URL
+		}
+	}
+
+	// 查询资源大小（download_resource.size）
+	type resInfo struct {
+		TaskId int   `gorm:"column:task_id"`
+		Size   int64 `gorm:"column:size"`
 	}
 	var resources []resInfo
-	var endpoints []epInfo
-
 	if len(taskIDs) > 0 {
-		c.db.Table("download_resource").Select("task_id, size").Where("task_id IN ? AND deleted_at IS NULL", taskIDs).Scan(&resources)
-		var resIDs []int
-		for _, r := range resources {
-			resIDs = append(resIDs, r.TaskId)
-		}
-		if len(resIDs) > 0 {
-			c.db.Table("download_endpoint").Select("resource_id, url").Where("resource_id IN (SELECT id FROM download_resource WHERE task_id IN ? AND deleted_at IS NULL)", taskIDs).Scan(&endpoints)
-		}
+		c.db.Table("download_resource").
+			Select("task_id, size").
+			Where("task_id IN ? AND deleted_at IS NULL", taskIDs).
+			Scan(&resources)
 	}
-
-	// 按资源聚合 URL
-	urlByTask := map[int]string{}
 	sizeByTask := map[int]int64{}
-	for _, res := range resources {
-		if _, ok := sizeByTask[res.TaskId]; !ok {
-			sizeByTask[res.TaskId] = res.Size
-		}
-	}
-	// 按 task_id 聚合 endpoint URL（取第一个）
-	for _, ep := range endpoints {
-		if _, ok := urlByTask[ep.ResourceId]; !ok {
-			urlByTask[ep.ResourceId] = ep.URL
+	for _, r := range resources {
+		if _, ok := sizeByTask[r.TaskId]; !ok || r.Size > 0 {
+			sizeByTask[r.TaskId] = r.Size
 		}
 	}
 
-	// 查询连接获取速度
-	type connInfo struct {
-		ResourceId int
-		Speed      int64
+	// 从分片汇总下载进度
+	type segAgg struct {
+		TaskId         int   `gorm:"column:task_id"`
+		TotalSize      int64 `gorm:"column:total_size"`
+		TotalDownloaded int64 `gorm:"column:total_downloaded"`
 	}
-	var speeds []connInfo
+	var segAggs []segAgg
 	if len(taskIDs) > 0 {
-		c.db.Table("download_connection").Select("endpoint_id, speed").
-			Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id IN ? AND deleted_at IS NULL))", taskIDs).
-			Scan(&speeds)
+		c.db.Raw(`SELECT r.task_id, SUM(s.size) as total_size, SUM(s.downloaded) as total_downloaded
+			FROM download_segment s
+			JOIN download_resource r ON s.resource_id = r.id
+			WHERE r.task_id IN ? AND r.deleted_at IS NULL
+			GROUP BY r.task_id`, taskIDs).Scan(&segAggs)
+	}
+	progressByTask := map[int]int{}
+	downloadedByTask := map[int]int64{}
+	for _, a := range segAggs {
+		downloadedByTask[a.TaskId] = a.TotalDownloaded
+		if a.TotalSize > 0 {
+			progressByTask[a.TaskId] = int(a.TotalDownloaded * 100 / a.TotalSize)
+		}
+	}
+
+	// 从连接汇总下载速度
+	type speedAgg struct {
+		TaskId int   `gorm:"column:task_id"`
+		Speed  int64 `gorm:"column:speed"`
+	}
+	var speedAggs []speedAgg
+	if len(taskIDs) > 0 {
+		c.db.Raw(`SELECT r.task_id, COALESCE(SUM(c.speed), 0) as speed
+			FROM download_connection c
+			JOIN download_endpoint e ON c.endpoint_id = e.id
+			JOIN download_resource r ON e.resource_id = r.id
+			WHERE r.task_id IN ? AND r.deleted_at IS NULL
+			GROUP BY r.task_id`, taskIDs).Scan(&speedAggs)
+	}
+	speedByTask := map[int]int64{}
+	for _, s := range speedAggs {
+		speedByTask[s.TaskId] = s.Speed
 	}
 
 	// 构建响应列表
 	list := make([]taskListItem, len(tasks))
 	for i, t := range tasks {
+		tid := t.Id
+		prog := progressByTask[tid]
+		// 已完成的任务进度为 100
+		if t.Status == model.TaskStatusFinished {
+			prog = 100
+		}
 		list[i] = taskListItem{
 			ID:           t.Id,
 			Name:         t.Name,
@@ -636,8 +673,9 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 			UpdatedAt:    t.UpdatedAt,
 			URL:          urlByTask[t.Id],
 			Size:         sizeByTask[t.Id],
-			Speed:        0,
-			Progress:     0,
+			Downloaded:   downloadedByTask[tid],
+			Speed:        speedByTask[tid],
+			Progress:     prog,
 		}
 	}
 

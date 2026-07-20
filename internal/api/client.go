@@ -1112,6 +1112,12 @@ func (s *dbTaskStore) CreateSegments(resourceID int, url string, ranges []Segmen
 	return ids, nil
 }
 
+func (s *dbTaskStore) UpdateSegmentProgress(segID int, downloaded int64) error {
+	now := time.Now().UnixMilli()
+	return s.db.Model(&model.DownloadSegment{}).Where("id = ?", segID).
+		Updates(map[string]any{"downloaded": downloaded, "updated_at": now}).Error
+}
+
 func (s *dbTaskStore) LoadSegmentInfo(resourceID int) ([]segmentInfo, error) {
 	var segs []model.DownloadSegment
 	if err := s.db.Where("resource_id = ?", resourceID).Order("`index` ASC").Find(&segs).Error; err != nil {

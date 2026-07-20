@@ -107,6 +107,10 @@ func (m *mockTaskStore) CreateSegments(resourceID int, url string, ranges []Segm
 	return ids, nil
 }
 
+func (m *mockTaskStore) UpdateSegmentProgress(segID int, downloaded int64) error {
+	return nil
+}
+
 func (m *mockTaskStore) LoadSegmentInfo(resourceID int) ([]segmentInfo, error) {
 	return nil, nil
 }
