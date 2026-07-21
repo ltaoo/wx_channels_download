@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import (
 	"encoding/json"
@@ -16,14 +16,14 @@ const platformIDOfficialAccount = "wx_official_account"
 
 // ArticleProfile 公众号文章的标准化数据，可直接用于插入 account、content、download_task
 type ArticleProfile struct {
-	ArticleID   string `json:"article_id"`   // 文章唯一标识（mid_idx 或短链 ID）
-	Title       string `json:"title"`        // 文章标题
-	Description string `json:"description"`  // 文章摘要/描述
-	SourceURL   string `json:"source_url"`   // 文章原始链接
-	CoverURL    string `json:"cover_url"`    // 封面图 URL
-	ContentHTML string `json:"content_html"` // 文章正文 HTML
-	ContentSize int    `json:"content_size"` // 正文长度
-	PublishTime int64  `json:"publish_time"` // 发布时间（秒级时间戳）
+	ArticleID   string        `json:"article_id"`   // 文章唯一标识（mid_idx 或短链 ID）
+	Title       string        `json:"title"`        // 文章标题
+	Description string        `json:"description"`  // 文章摘要/描述
+	SourceURL   string        `json:"source_url"`   // 文章原始链接
+	CoverURL    string        `json:"cover_url"`    // 封面图 URL
+	ContentHTML string        `json:"content_html"` // 文章正文 HTML
+	ContentSize int           `json:"content_size"` // 正文长度
+	PublishTime int64         `json:"publish_time"` // 发布时间（秒级时间戳）
 	Author      ArticleAuthor `json:"author"`
 }
 
@@ -94,7 +94,7 @@ func ArticleToProfile(article *WechatOfficialArticle, sourceURL string) (*Articl
 		CoverURL:    coverURL,
 		ContentHTML: article.Content,
 		ContentSize: contentSize,
-		PublishTime:  publishTime,
+		PublishTime: publishTime,
 		Author: ArticleAuthor{
 			ExternalId: authorExternalId,
 			Nickname:   authorNickname,
@@ -365,4 +365,3 @@ func (c *OfficialAccountClient) UpsertArticleWithDownloadTask(profile *ArticlePr
 
 	return content, &rec, nil
 }
-

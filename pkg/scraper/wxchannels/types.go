@@ -496,7 +496,6 @@ type ChannelsFeedShareUrlResp struct {
 	} `json:"payload"`
 }
 
-
 type ChannelsFeedShareUrlBody struct {
 	ObjectId string `json:"oid"`
 }
@@ -570,9 +569,9 @@ type SphURLParts struct {
 }
 
 type FeedPage struct {
-	URL     FeedURLParts
-	Resp    *ChannelsFeedProfileResp
-	Object  ChannelsObject
+	URL    FeedURLParts
+	Resp   *ChannelsFeedProfileResp
+	Object ChannelsObject
 }
 
 type SphProfile struct {
@@ -642,4 +641,3 @@ func ParseSphShareURL(rawURL string) (*SphURLParts, error) {
 	}
 	return &SphURLParts{URL: rawURL, ID: id}, nil
 }
-

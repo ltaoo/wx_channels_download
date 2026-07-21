@@ -80,7 +80,7 @@ export function createDownloadTaskByURL(body) {
   return request.post("/api/v1/download_task/create_by_url", body);
 }
 
-/** @param {{ platform: string; content: any; config?: { save_path?: string; filename?: string; spec?: string } }} body */
+/** @param {{ platform: string; content: any; config?: { save_path?: string; filename?: string; spec?: string; download_cover?: boolean } }} body */
 export function createDownloadTaskV1(body) {
   return request.post("/api/v1/download_task/create", body);
 }

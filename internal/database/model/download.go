@@ -1,6 +1,6 @@
 package model
 
-// DownloadTask status enum — kept in sync with internal/storage/storage.go statusToInt/statusFromInt.
+// DownloadTask status enum for the retired task model.
 const (
 	DownloadTaskStatusReady   = 0 // task created, not started
 	DownloadTaskStatusRunning = 1

@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import (
 	"encoding/json"
@@ -10,12 +10,11 @@ import (
 
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/util"
 )
 
 // HandleArticleProfileLoaded upserts the account for a wechat official account article profile.
-func HandleArticleProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *interceptor.OfficialAccountArticleProfile) {
+func HandleArticleProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *OfficialAccountArticleProfile) {
 	if profile == nil || profile.UniqueMark == "" {
 		return
 	}
@@ -29,7 +28,7 @@ func HandleArticleProfileLoaded(db *gorm.DB, logger zerolog.Logger, profile *int
 	}
 }
 
-func upsertOfficialAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.OfficialAccountArticleProfile, accountExternalID, accountUsername string) {
+func upsertOfficialAccount(db *gorm.DB, logger zerolog.Logger, profile *OfficialAccountArticleProfile, accountExternalID, accountUsername string) {
 	now := util.NowMillis()
 	acc := model.Account{
 		Id:         platformIDOfficialAccount + ":" + accountExternalID,
@@ -65,7 +64,7 @@ func upsertOfficialAccount(db *gorm.DB, logger zerolog.Logger, profile *intercep
 }
 
 // CreateBrowseHistory builds a BrowseHistoryInfo from the article profile.
-func CreateBrowseHistory(profile *interceptor.OfficialAccountArticleProfile) services.BrowseHistoryInfo {
+func CreateBrowseHistory(profile *OfficialAccountArticleProfile) services.BrowseHistoryInfo {
 	accountExternalID := strings.TrimSpace(profile.Biz)
 	accountUsername := strings.TrimSpace(profile.Username)
 	if accountExternalID == "" {

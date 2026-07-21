@@ -7,35 +7,32 @@ import {
 } from "./downloads.model.js";
 
 function mapStatusClassName(status) {
-  if (status === DownloadTaskStatus.Running) {
+  if (status === DownloadTaskStatus.Downloading) {
     return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
   }
-  if (status === DownloadTaskStatus.Done) {
+  if (status === DownloadTaskStatus.Finished) {
     return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
   }
-  if (status === DownloadTaskStatus.Error) {
+  if (status === DownloadTaskStatus.Failed) {
     return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
   }
   if (status === DownloadTaskStatus.Paused) {
     return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
   }
-  if (
-    status === DownloadTaskStatus.Wait ||
-    status === DownloadTaskStatus.Ready
-  ) {
+  if (status === DownloadTaskStatus.Waiting) {
     return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
   }
   return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
 }
 
 function mapProgressClassName(status) {
-  if (status === DownloadTaskStatus.Running) {
+  if (status === DownloadTaskStatus.Downloading) {
     return "bg-blue-500 dark:bg-blue-400";
   }
-  if (status === DownloadTaskStatus.Done) {
+  if (status === DownloadTaskStatus.Finished) {
     return "bg-emerald-500 dark:bg-emerald-400";
   }
-  if (status === DownloadTaskStatus.Error) {
+  if (status === DownloadTaskStatus.Failed) {
     return "bg-red-500 dark:bg-red-400";
   }
   if (status === DownloadTaskStatus.Paused) {
@@ -95,19 +92,23 @@ function countForTab(stats, tab) {
   return Number(stats[tab.countKey] || 0);
 }
 
+function formatPercent(value) {
+  const percent = Math.min(100, Math.max(0, Number(value || 0)));
+  return Number(percent.toFixed(2)).toString();
+}
+
 function isStartableStatus(status) {
   return (
-    status === DownloadTaskStatus.Ready ||
-    status === DownloadTaskStatus.Wait ||
-    status === DownloadTaskStatus.Error
+    status === DownloadTaskStatus.Waiting ||
+    status === DownloadTaskStatus.Failed
   );
 }
 
 function isPausableStatus(status) {
   return (
-    status === DownloadTaskStatus.Running ||
-    status === DownloadTaskStatus.Wait ||
-    status === DownloadTaskStatus.Ready
+    status === DownloadTaskStatus.Preparing ||
+    status === DownloadTaskStatus.Downloading ||
+    status === DownloadTaskStatus.Merging
   );
 }
 
@@ -118,13 +119,13 @@ function hasRetryableSubtasks(task) {
   if (problemCount > 0) return true;
   return (
     Number(task.file_count || 0) > 1 &&
-    (task.status === DownloadTaskStatus.Error ||
+    (task.status === DownloadTaskStatus.Failed ||
       task.status === DownloadTaskStatus.Paused)
   );
 }
 
 function isPlayableStatus(status) {
-  return status === DownloadTaskStatus.Done;
+  return status === DownloadTaskStatus.Finished;
 }
 
 function parseTaskJSON(value) {
@@ -260,7 +261,7 @@ function DownloadInfoBar(task) {
             },
             [
               computed(task, (t) => {
-                return `${Math.floor(t.percent ?? t.progress_info.percent)}%`;
+                return `${formatPercent(t.percent ?? t.progress_info.percent)}%`;
               }),
             ],
           ),
@@ -319,7 +320,7 @@ function DownloadInfoBar(task) {
           DownloadInfoItem({
             label: "速度",
             value: computed(task, (t) =>
-              t.status === DownloadTaskStatus.Running ? t.speed_text : "-",
+              t.status === DownloadTaskStatus.Downloading ? t.speed_text : "-",
             ),
             icon: "tabular-nums",
           }),
@@ -331,7 +332,7 @@ function DownloadInfoBar(task) {
           Show({
             when: computed(
               task,
-              (t) => t.status === DownloadTaskStatus.Error && !!t.error,
+              (t) => t.status === DownloadTaskStatus.Failed && !!t.error,
             ),
             ok() {
               return [
@@ -350,29 +351,306 @@ function DownloadInfoBar(task) {
   );
 }
 
-function collectTaskFilePreview(files, out = []) {
-  if (!Array.isArray(files) || out.length >= 4) return out;
-  for (const file of files) {
-    if (out.length >= 4) break;
-    const children = Array.isArray(file.children) ? file.children : [];
-    if (children.length) {
-      collectTaskFilePreview(children, out);
-      continue;
-    }
-    out.push(file.path || file.name);
-  }
-  return out;
+function taskResourceCount(task) {
+  const files = Array.isArray(task.files) ? task.files : [];
+  return Number(task.file_count || files.length || 0);
 }
 
-function taskFileSummary(task) {
-  const count = Number(task.file_count || 0);
-  if (count <= 1) return "";
-  const preview = collectTaskFilePreview(task.files || [])
-    .filter(Boolean)
-    .slice(0, 3);
-  const size = Number(task.size || 0) ? `，${formatBytes(task.size)}` : "";
-  const names = preview.length ? `：${preview.join("、")}` : "";
-  return `${count} 个文件${size}${names}`;
+function resourceKindLabel(kind) {
+  const value = String(kind || "").toLowerCase();
+  if (value === "video") return "视频";
+  if (value === "cover") return "封面";
+  if (value === "audio") return "音频";
+  if (value === "subtitle") return "字幕";
+  return "文件";
+}
+
+function resourceStatusText(file) {
+  const status = String(file?.status || "").toLowerCase();
+  const progress = Number(file?.progress || 0);
+  if (status === "finished" || status === "done") return "已完成";
+  if (status === "error" || status === "failed") return "失败";
+  if (status === "paused" || status === "pause") return "已暂停";
+  if (status === "cancelled" || status === "canceled") return "已取消";
+  if (status === "downloading" || status === "running") {
+    return progress > 0 ? `下载中 ${progress.toFixed(2)}%` : "下载中";
+  }
+  return "等待中";
+}
+
+function resourceStatusClassName(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "finished" || value === "done") {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  }
+  if (value === "error" || value === "failed") {
+    return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+  }
+  if (value === "downloading" || value === "running") {
+    return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  }
+  if (value === "paused" || value === "pause") {
+    return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  }
+  if (value === "cancelled" || value === "canceled") {
+    return "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400";
+  }
+  return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+}
+
+function resourceProgressClassName(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "finished" || value === "done") {
+    return "bg-emerald-500 dark:bg-emerald-400";
+  }
+  if (value === "error" || value === "failed") {
+    return "bg-red-500 dark:bg-red-400";
+  }
+  if (value === "downloading" || value === "running") {
+    return "bg-blue-500 dark:bg-blue-400";
+  }
+  return "bg-amber-500 dark:bg-amber-400";
+}
+
+function ResourceMetric(props) {
+  return View(
+    {
+      class:
+        "min-w-0 rounded-md bg-zinc-50 px-2.5 py-2 dark:bg-zinc-900/80",
+    },
+    [
+      View(
+        {
+          class: "text-[10px] text-zinc-400 dark:text-zinc-500",
+        },
+        [props.label],
+      ),
+      View(
+        {
+          class:
+            "mt-0.5 truncate text-xs font-medium tabular-nums text-zinc-700 dark:text-zinc-200",
+        },
+        [props.value],
+      ),
+    ],
+  );
+}
+
+function ResourceCard(file) {
+  return View(
+    {
+      class:
+        "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950",
+    },
+    [
+      View(
+        {
+          class: "flex min-w-0 items-start gap-3",
+        },
+        [
+          View(
+            {
+              class:
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300",
+            },
+            [
+              Icon({
+                name: computed(file, (item) => {
+                  const kind = String(item.kind || "").toLowerCase();
+                  if (kind === "cover") return "image";
+                  if (kind === "video") return "video";
+                  if (kind === "audio") return "music";
+                  return "file";
+                }),
+                size: 17,
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "min-w-0 flex-1",
+            },
+            [
+              View(
+                {
+                  class: "flex min-w-0 items-center gap-2",
+                },
+                [
+                  View(
+                    {
+                      class:
+                        "min-w-0 flex-1 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100",
+                      attributes: {
+                        title: computed(
+                          file,
+                          (item) => item.output_path || item.name || "",
+                        ),
+                      },
+                    },
+                    [computed(file, (item) => item.name || "未命名文件")],
+                  ),
+                  View(
+                    {
+                      class:
+                        "shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+                    },
+                    [computed(file, (item) => resourceKindLabel(item.kind))],
+                  ),
+                  View(
+                    {
+                      class: classNames([
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                        computed(file, (item) =>
+                          resourceStatusClassName(item.status),
+                        ),
+                      ]),
+                    },
+                    [computed(file, resourceStatusText)],
+                  ),
+                ],
+              ),
+              View(
+                {
+                  class:
+                    "mt-1 truncate text-[11px] text-zinc-400 dark:text-zinc-500",
+                  attributes: {
+                    title: computed(file, (item) => item.output_path || ""),
+                  },
+                },
+                [computed(file, (item) => item.output_path || item.url || "-")],
+              ),
+            ],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "mt-3",
+        },
+        [
+          View(
+            {
+              class:
+                "mb-1.5 flex items-center justify-between text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400",
+            },
+            [
+              computed(file, (item) => {
+                const downloaded = formatBytes(item.downloaded || 0);
+                const size = formatBytes(item.size || 0);
+                return `${downloaded} / ${size}`;
+              }),
+              computed(file, (item) => `${formatPercent(item.progress)}%`),
+            ],
+          ),
+          View(
+            {
+              class:
+                "h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800",
+            },
+            [
+              View({
+                class: classNames([
+                  "h-full rounded-full transition-[width] duration-300",
+                  computed(file, (item) =>
+                    resourceProgressClassName(item.status),
+                  ),
+                ]),
+                style: {
+                  width: computed(
+                    file,
+                    (item) => `${formatPercent(item.progress)}%`,
+                  ),
+                },
+              }),
+            ],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "mt-3 grid grid-cols-3 gap-2",
+        },
+        [
+          ResourceMetric({
+            label: "文件大小",
+            value: computed(file, (item) => formatBytes(item.size || 0)),
+          }),
+          ResourceMetric({
+            label: "已下载",
+            value: computed(file, (item) =>
+              formatBytes(item.downloaded || 0),
+            ),
+          }),
+          ResourceMetric({
+            label: "下载速度",
+            value: computed(
+              file,
+              (item) => `${formatBytes(item.speed || 0)}/s`,
+            ),
+          }),
+        ],
+      ),
+      Show({
+        when: computed(file, (item) => !!item.error),
+        ok() {
+          return View(
+            {
+              class:
+                "mt-2 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-300",
+            },
+            [
+              Icon({ name: "circle-alert", size: 14 }),
+              View(
+                {
+                  class: "min-w-0 break-words",
+                },
+                [computed(file, (item) => item.error)],
+              ),
+            ],
+          );
+        },
+      }),
+    ],
+  );
+}
+
+function MultiResourceList(task) {
+  return View(
+    {
+      class:
+        "rounded-lg border border-zinc-200 bg-zinc-50/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/40",
+    },
+    [
+      View(
+        {
+          class:
+            "mb-2 flex items-center justify-between text-xs font-medium text-zinc-600 dark:text-zinc-300",
+        },
+        [
+          View(
+            {
+              class: "flex items-center gap-1.5",
+            },
+            [Icon({ name: "folder-tree", size: 14 }), "资源文件"],
+          ),
+          computed(task, (item) => `${taskResourceCount(item)} 个资源`),
+        ],
+      ),
+      View(
+        {
+          class: "grid gap-2 xl:grid-cols-2",
+        },
+        [
+          For({
+            each: computed(task, (item) => item.files || []),
+            render(file) {
+              return ResourceCard(file);
+            },
+          }),
+        ],
+      ),
+    ],
+  );
 }
 
 function normalizeTreePath(path) {
@@ -449,13 +727,16 @@ function collectFileTreeLeaves(files, out = [], parentPath = "") {
     }
     out.push({
       kind: "file",
+      resource_kind: file.kind || "file",
       title: file.name || file.path || file.output_path || "文件",
       tree_path: treePath || file.name || "文件",
       output_path: file.output_path || "",
       status: file.status,
-      status_text: file.status === "error" ? "失败" : file.status || "",
+      status_text: resourceStatusText(file),
       error: file.error || "",
       size: Number(file.size || 0),
+      downloaded: Number(file.downloaded || 0),
+      progress: Number(file.progress || 0),
     });
   }
   return out;
@@ -549,10 +830,18 @@ function sortTreeNodes(nodes) {
 }
 
 function treeStatusClassName(status) {
-  if (status === DownloadTaskStatus.Error || status === "error") {
+  if (
+    status === DownloadTaskStatus.Failed ||
+    status === "failed" ||
+    status === "error"
+  ) {
     return "text-red-600 dark:text-red-300";
   }
-  if (status === DownloadTaskStatus.Done || status === "done") {
+  if (
+    status === DownloadTaskStatus.Finished ||
+    status === "finished" ||
+    status === "done"
+  ) {
     return "text-emerald-600 dark:text-emerald-300";
   }
   if (
@@ -579,7 +868,7 @@ function taskSubtaskCount(task) {
 }
 
 function shouldShowSubtaskToggle(task) {
-  return taskSubtaskCount(task) > 0 || Number(task.file_count || 0) > 1;
+  return taskSubtaskCount(task) > 0;
 }
 
 function SubtaskTreeNode(node, vm$, level = 0) {
@@ -630,7 +919,7 @@ function SubtaskTreeNode(node, vm$, level = 0) {
   const leaf = node.leaf || {};
   const leafTask = leaf.task;
   const failed =
-    leaf.status === DownloadTaskStatus.Error || leaf.status === "error";
+    leaf.status === DownloadTaskStatus.Failed || leaf.status === "error";
   return View(
     {
       dataset: { t: "home-downloads-page-subtask-tree-file-node-row" },
@@ -638,7 +927,15 @@ function SubtaskTreeNode(node, vm$, level = 0) {
       style: { "padding-left": indent },
     },
     [
-      Icon({ name: "file", size: 14 }),
+      Icon({
+        name:
+          leaf.resource_kind === "cover"
+            ? "image"
+            : leaf.resource_kind === "video"
+              ? "video"
+              : "file",
+        size: 14,
+      }),
       View(
         {
           dataset: {
@@ -678,6 +975,15 @@ function SubtaskTreeNode(node, vm$, level = 0) {
         },
         [leaf.status_text || ""],
       ),
+      leaf.resource_kind
+        ? View(
+            {
+              class:
+                "shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+            },
+            [resourceKindLabel(leaf.resource_kind)],
+          )
+        : null,
       leaf.size
         ? View(
             {
@@ -750,7 +1056,11 @@ function SubtaskTree(task, vm$) {
             },
             [
               Icon({ name: "folder-tree", size: 14 }),
-              computed(task, (t) => `子任务 ${taskSubtaskCount(t) || ""}`),
+              computed(task, (t) => {
+                const fileCount = taskResourceCount(t);
+                if (fileCount > 1) return `下载文件 ${fileCount}`;
+                return `子任务 ${taskSubtaskCount(t) || ""}`;
+              }),
             ],
           ),
           Button(
@@ -873,11 +1183,21 @@ function SubtaskToggle(task, vm$) {
                 ),
                 size: 14,
               }),
-              computed(vm$.state.expandedTaskIDs, (ids) =>
-                ids?.[key] ? "收起子任务" : "查看子任务",
+              combine(
+                { expanded: vm$.state.expandedTaskIDs, task },
+                ({ expanded, task: current }) => {
+                  const hasMultipleFiles = taskResourceCount(current) > 1;
+                  if (expanded?.[key]) {
+                    return hasMultipleFiles ? "收起文件" : "收起子任务";
+                  }
+                  return hasMultipleFiles ? "查看文件" : "查看子任务";
+                },
               ),
               computed(task, (t) => {
-                const count = taskSubtaskCount(t);
+                const count =
+                  taskResourceCount(t) > 1
+                    ? taskResourceCount(t)
+                    : taskSubtaskCount(t);
                 return count ? `(${count})` : "";
               }),
             ],
@@ -1018,7 +1338,7 @@ function TaskCard(task, vm$) {
                           Show({
                             when: computed(
                               task,
-                              (t) => Number(t.file_count || 0) > 1,
+                              (t) => taskResourceCount(t) > 1,
                             ),
                             ok() {
                               return View(
@@ -1038,7 +1358,41 @@ function TaskCard(task, vm$) {
                                       },
                                       class: "min-w-0 truncate",
                                     },
-                                    [computed(task, taskFileSummary)],
+                                    [
+                                      computed(
+                                        task,
+                                        (t) =>
+                                          `多资源任务 · ${taskResourceCount(t)} 个资源`,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          }),
+                          Show({
+                            when: computed(
+                              task,
+                              (t) =>
+                                t.status === DownloadTaskStatus.Failed &&
+                                !!t.error,
+                            ),
+                            ok() {
+                              return View(
+                                {
+                                  dataset: {
+                                    t: "home-downloads-page-task-card-task-error-row",
+                                  },
+                                  class:
+                                    "mt-2 flex min-w-0 items-start gap-1.5 text-xs text-red-600 dark:text-red-300",
+                                },
+                                [
+                                  Icon({ name: "circle-alert", size: 14 }),
+                                  View(
+                                    {
+                                      class: "min-w-0 break-words",
+                                    },
+                                    [computed(task, (t) => t.error)],
                                   ),
                                 ],
                               );
@@ -1130,7 +1484,7 @@ function TaskCard(task, vm$) {
                               Show({
                                 when: computed(
                                   task,
-                                  (t) => t.status === DownloadTaskStatus.Done,
+                                  (t) => t.status === DownloadTaskStatus.Finished,
                                 ),
                                 ok() {
                                   return Button(
@@ -1168,6 +1522,12 @@ function TaskCard(task, vm$) {
                 ],
               ),
               DownloadInfoBar(task),
+              Show({
+                when: computed(task, (t) => taskResourceCount(t) > 1),
+                ok() {
+                  return MultiResourceList(task);
+                },
+              }),
               View(
                 {
                   dataset: {
@@ -1178,7 +1538,7 @@ function TaskCard(task, vm$) {
                 [
                   Show({
                     when: computed(task, (t) => {
-                      return t.status === DownloadTaskStatus.Error;
+                      return t.status === DownloadTaskStatus.Failed;
                     }),
                     ok() {
                       return Button(
@@ -1475,7 +1835,7 @@ function RemoteTaskCard(task) {
                       computed(task, (t) => `${t.progress_info.percent}%`),
                       computed(task, (t) => t.size_text),
                       computed(task, (t) =>
-                        t.status === DownloadTaskStatus.Running
+                        t.status === DownloadTaskStatus.Downloading
                           ? t.speed_text
                           : "",
                       ),
@@ -5762,6 +6122,28 @@ function PlatformCreatePanel(vm$) {
                         ["文件名"],
                       ),
                       Input({ store: vm$.ui.filenameInput }),
+                    ],
+                  ),
+                  View(
+                    {
+                      dataset: {
+                        t: "home-downloads-page-platform-create-panel-download-cover",
+                      },
+                      class: "flex items-center gap-2",
+                    },
+                    [
+                      Checkbox({
+                        id: "platform-download-cover",
+                        store: vm$.ui.downloadCoverCheckbox,
+                      }),
+                      Label(
+                        {
+                          for: "platform-download-cover",
+                          class:
+                            "cursor-pointer text-sm text-zinc-700 dark:text-zinc-300",
+                        },
+                        ["同时下载封面"],
+                      ),
                     ],
                   ),
                 ],

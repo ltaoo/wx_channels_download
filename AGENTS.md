@@ -12,7 +12,7 @@
 - 使用 Gopeed 下载引擎执行传统 HTTP 下载；新版平台下载使用 `pkg/contentplatform/download` 的 Probe/Resolve/Plan 工作流。
 - 使用 SQLite/GORM 持久化账号、内容、浏览历史、下载任务和平台工作流。
 
-入口是 `main.go`，模块名是 `wx_channel`，Go 版本目标为 `go 1.20`。
+入口是 `main.go`，模块名是 `wx_channel`，Go 版本目标为 `go 1.24.1`，项目通过 mise 固定该工具链。
 
 ## 运行模式和主入口
 
@@ -44,7 +44,8 @@
 - `internal/api/services/`: 数据库相关服务层，负责账号、内容、浏览历史、下载任务等业务持久化。
 - `internal/database/`: 数据库接入、embed migration、GORM model。
 - `internal/interceptor/`: 本地代理服务、系统代理/TUN 设置、证书使用、代理插件容器。
-- `internal/webcontent/`: 通过代理注入脚本记录"用户打开过的内容"，主要写入账号和浏览历史；不是新版下载平台适配层。
+- `internal/adapter/`: 将 `pkg/scraper` 和代理注入得到的平台对象适配为 `internal/database/model`，包括内容、账号、浏览历史和下载任务模型。
+- `internal/download/`: 下载域的内部协调层：`registry` 管理平台下载任务构建器，`websocket.go` 管理状态推送；下载执行和输出文件名处理由 `pkg/hermes` 负责。
 - `internal/pipeline/`: 通用 pipeline 执行器，供平台下载工作流复用。
 - `pkg/scraper/`: 各平台底层抓取/解析客户端和平台注册表，按平台子目录组织，例如视频号、公众号、优酷、知乎等。
 - `pkg/contentplatform/`: 新版跨平台下载适配层。每个平台一个包，公共 contract 在 `pkg/contentplatform/download`。
@@ -94,8 +95,8 @@ API 路由集中在 `internal/api/routes.go`。新增或修改接口时先确认
 
 - 视频号注入插件在 `pkg/scraper/wxchannels/interceptor_plugin.go`，会改写 HTML/JS、注入 `frontend` 资源、接收 `__wx_channels_api/*` 回调。
 - 公众号注入在 `pkg/scraper/officialaccount`。
-- 知乎/小红书/B 站/YouTube/微博的"打开内容记录"插件在 `internal/webcontent/<platform>`。
-- `internal/webcontent` 只负责浏览记录、账号 upsert、cookie 捕获等页面侧行为；真正下载适配应放在 `pkg/contentplatform/<platform>`。
+- 平台抓取对象到内容、账号、浏览历史模型的转换在 `internal/adapter/<platform>`。
+- `internal/adapter` 只负责 `pkg/scraper` 或代理注入结果到数据库模型的适配；真正下载工作流适配应放在 `pkg/contentplatform/<platform>`。
 
 ## 数据库和迁移
 

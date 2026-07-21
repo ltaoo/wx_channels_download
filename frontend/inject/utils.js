@@ -4,59 +4,6 @@
 if (typeof WXEnv === "undefined") {
   throw new Error("env.js must be loaded before utils.js");
 }
-var __wx_username;
-var __wx_channels_tip__ = {};
-var __wx_channels_cur_video = null;
-/** 全局的存储 */
-var __wx_channels_store__ = {
-  profile: null,
-  buffers: [],
-};
-var __wx_channels_live_store__ = {
-  profile: null,
-};
-function __wx_channels_video_decrypt(t, e, p) {
-  for (
-    var r = new Uint8Array(t), n = 0;
-    n < t.byteLength && e + n < p.decryptor_array.length;
-    n++
-  )
-    r[n] ^= p.decryptor_array[n];
-  return r;
-}
-window.VTS_WASM_URL =
-  "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.wasm";
-window.MAX_HEAP_SIZE = 33554432;
-var decryptor_array;
-let decryptor;
-/** t 是要解码的视频内容长度    e 是 decryptor_array 的长度 */
-function wasm_isaac_generate(t, e) {
-  decryptor_array = new Uint8Array(e);
-  var r = new Uint8Array(Module.HEAPU8.buffer, t, e);
-  decryptor_array.set(r.reverse());
-  if (decryptor) {
-    decryptor.delete();
-  }
-}
-let loaded = false;
-/** 获取 decrypt_array */
-async function __wx_channels_decrypt(seed) {
-  if (!loaded) {
-    await WXU.load_script(
-      "https://res.wx.qq.com/t/wx_fed/cdn_libs/res/decrypt-video-core/1.3.0/wasm_video_decode.js",
-    );
-    loaded = true;
-  }
-  await WXU.sleep();
-  decryptor = new Module.WxIsaac64(seed);
-  // 调用该方法时，会调用 wasm_isaac_generate 方法
-  // 131072 是 decryptor_array 的长度
-  decryptor.generate(131072);
-  // decryptor.delete();
-  // const r = Uint8ArrayToBase64(decryptor_array);
-  // decryptor_array = undefined;
-  return decryptor_array;
-}
 var WXU = (() => {
   var defaultRandomAlphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -528,188 +475,10 @@ var WXU = (() => {
     }
     return api;
   }
-  function get_media_url(media) {
-    if (!media) {
-      return "";
-    }
-    return (media.url || "") + (media.urlToken || "");
-  }
-  function get_picture_cover_url(media) {
-    if (!media) {
-      return "";
-    }
-    return (
-      media.coverUrl ||
-      media.thumbUrl ||
-      media.fullThumbUrl ||
-      media.fullUrl ||
-      get_media_url(media)
-    );
-  }
-  function get_feed_title(feed) {
-    if (feed.objectDesc && feed.objectDesc.description) {
-      return feed.objectDesc.description;
-    }
-    if (
-      feed.objectDesc &&
-      feed.objectDesc.flowCardDesc &&
-      feed.objectDesc.flowCardDesc.description
-    ) {
-      return feed.objectDesc.flowCardDesc.description;
-    }
-    if (
-      feed.objectDesc &&
-      feed.objectDesc.finderNewlifeDesc &&
-      feed.objectDesc.finderNewlifeDesc.richTextTitle
-    ) {
-      return feed.objectDesc.finderNewlifeDesc.richTextTitle;
-    }
-    return feed.description || feed.id || "";
-  }
-  function format_bgm(feed) {
-    var musicInfo =
-      feed.objectDesc &&
-      feed.objectDesc.followPostInfo &&
-      feed.objectDesc.followPostInfo.musicInfo;
-    if (!musicInfo || !musicInfo.mediaStreamingUrl) {
-      return null;
-    }
-    return {
-      url: musicInfo.mediaStreamingUrl,
-      filename: "bgm.mp3",
-      name: musicInfo.name || "",
-      artist: musicInfo.artist || "",
-      doc_id: musicInfo.docId || "",
-      doc_type: musicInfo.docType || 0,
-    };
-  }
-  function build_picture_zip_files(feed) {
-    var files = [];
-    var mediaList = feed.files || [];
-    for (let i = 0; i < mediaList.length; i += 1) {
-      var item = mediaList[i];
-      var media_url = get_media_url(item);
-      if (!media_url) {
-        continue;
-      }
-      files.push({
-        url: media_url,
-        filename: `${files.length + 1}.jpg`,
-      });
-    }
-    if (feed.bgm && feed.bgm.url) {
-      files.push({
-        url: feed.bgm.url,
-        filename: feed.bgm.filename || "bgm.mp3",
-      });
-    }
-    return files;
-  }
-  function build_picture_zip_url(feed) {
-    return `zip://weixin.qq.com?files=${encodeURIComponent(
-      JSON.stringify(build_picture_zip_files(feed)),
-    )}`;
-  }
-  /**
-   * 格式化 FeedProfile，增加了一些字段
-   * @param {ChannelsFeed} feed
-   * @returns {FeedProfile | null}
-   */
-  function format_feed(feed) {
-    if (feed.liveInfo) {
-      return {
-        ...feed,
-        type: "live",
-        // id: feed.id,
-        title: feed.description || "直播",
-        url: feed.liveInfo.streamUrl,
-        cover_url: (() => {
-          if (feed.anchorContact) {
-            return feed.anchorContact.liveCoverImgUrl;
-          }
-          if (
-            feed.objectDesc &&
-            feed.objectDesc.media &&
-            feed.objectDesc.media[0]
-          ) {
-            return feed.objectDesc.media[0].coverUrl;
-          }
-          return "";
-        })(),
-        contact: (() => {
-          if (feed.anchorContact) {
-            return {
-              id: feed.anchorContact.username,
-              avatar_url: feed.anchorContact.headUrl,
-              nickname: feed.anchorContact.nickname,
-            };
-          }
-          return {
-            id: feed.contact.username,
-            nickname: feed.contact.nickname,
-            avatar_url: feed.contact.headUrl,
-          };
-        })(),
-      };
-    }
-    if (!feed.objectDesc) {
-      return null;
-    }
-    var type = feed.objectDesc.mediaType;
-    if (type === 9) {
-      // 直播没有 media
-      return null;
-    }
-    var mediaList = feed.objectDesc.media || [];
-    var media = mediaList[0];
-    if (type === 2) {
-      // 图片视频
-      return {
-        ...feed,
-        type: "picture",
-        id: feed.id,
-        nonce_id: feed.objectNonceId,
-        cover_url: get_picture_cover_url(media),
-        title: get_feed_title(feed),
-        files: mediaList,
-        bgm: format_bgm(feed),
-        url: "",
-        key: 0,
-        spec: [],
-        contact: {
-          id: feed.contact.username,
-          avatar_url: feed.contact.headUrl,
-          nickname: feed.contact.nickname,
-        },
-      };
-    }
-    if (type === 4) {
-      return {
-        ...feed,
-        type: "media",
-        id: feed.id,
-        nonce_id: feed.objectNonceId,
-        title: get_feed_title(feed),
-        url: get_media_url(media),
-        key: media.decodeKey,
-        cover_url: media.coverUrl,
-        createtime: feed.createtime,
-        spec: media.spec || [],
-        size: media.fileSize,
-        duration: media.videoPlayLen,
-        contact: {
-          id: feed.contact.username,
-          avatar_url: feed.contact.headUrl,
-          nickname: feed.contact.nickname,
-        },
-      };
-    }
-    return null;
-  }
   /**
    * @param {string} text
    */
-  function __wx_channels_copy(text) {
+  function __wx_copy(text) {
     var textArea = document.createElement("textarea");
     textArea.value = text;
     textArea.style.cssText = "position: absolute; top: -999px; left: -999px;";
@@ -717,22 +486,6 @@ var WXU = (() => {
     textArea.select();
     document.execCommand("copy");
     document.body.removeChild(textArea);
-  }
-  function __wx_channels_play_cur_video() {
-    if (
-      __wx_channels_cur_video &&
-      typeof __wx_channels_cur_video.player.play === "function"
-    ) {
-      __wx_channels_cur_video.player.play();
-    }
-  }
-  function __wx_channels_pause_cur_video() {
-    if (
-      __wx_channels_cur_video &&
-      typeof __wx_channels_cur_video.player.pause === "function"
-    ) {
-      __wx_channels_cur_video.player.pause();
-    }
   }
   /**
    * @param {LogMsg} params
@@ -1167,23 +920,6 @@ var WXU = (() => {
   }
 
   /**
-   * 检查是否存在视频
-   * @param {{ silence?: boolean }} opt
-   * @returns {[boolean, FeedProfile]}
-   */
-  function __wx_check_feed_existing(opt = {}) {
-    var profile = __wx_channels_store__.profile;
-    if (!profile) {
-      WXU.error({
-        alert: Number(!opt.silence),
-        msg: "检测不到视频，请提交 issue 反馈",
-      });
-      return [true, null];
-    }
-    return [false, profile];
-  }
-
-  /**
    * @param {RequestInfo | URL} url
    * @returns {Promise<[null, Response] | [Error, null]>}
    */
@@ -1196,63 +932,8 @@ var WXU = (() => {
     }
   }
 
-  var before_menus_items = [];
-  var after_menus_items = [];
-  var before_level2_menus_items = [];
-  var after_level2_menus_items = [];
-  var WXAPI = {};
-  var WXAPI2 = {};
-  var WXAPI3 = {};
-  var WXAPI4 = {};
-
-  WXE.onAPILoaded((variables) => {
-    const keys = Object.keys(variables);
-    for (let i = 0; i < keys.length; i++) {
-      (() => {
-        const variable = keys[i];
-        const methods = variables[variable];
-        // console.log("variable", {
-        //   api: typeof methods.finderGetCommentDetail,
-        //   api2: typeof methods.finderSearch,
-        //   api3: typeof methods.finderLiveUserPage,
-        //   api4: typeof methods.finderGetFollowList,
-        // });
-        if (typeof methods.finderGetFollowList === "function") {
-          WXAPI4 = methods;
-          return;
-        }
-        if (typeof methods.finderGetCommentDetail === "function") {
-          WXAPI = methods;
-          return;
-        }
-        if (typeof methods.finderSearch === "function") {
-          WXAPI2 = methods;
-          return;
-        }
-        if (typeof methods.finderLiveUserPage === "function") {
-          WXAPI3 = methods;
-          return;
-        }
-      })();
-    }
-  });
-  WXE.onUtilsLoaded((methods) => {
-    Object.assign(WXAPI, methods);
-  });
   return {
     ...WXE,
-    get API() {
-      return WXAPI;
-    },
-    get API2() {
-      return WXAPI2;
-    },
-    get API3() {
-      return WXAPI3;
-    },
-    get API4() {
-      return WXAPI4;
-    },
     downloader: {
       show() {},
       hide() {},
@@ -1263,25 +944,6 @@ var WXU = (() => {
       async create_batch(feeds, opt) {
         return [new Error("downloader not ready"), null];
       },
-    },
-    /**
-     * 视频解密
-     */
-    build_decrypt_arr: __wx_channels_decrypt,
-    video_decrypt: __wx_channels_video_decrypt,
-    async decrypt_video(buf, key) {
-      try {
-        const r = await __wx_channels_decrypt(key);
-        if (r) {
-          buf = __wx_channels_video_decrypt(buf, 0, {
-            decryptor_array: r,
-          });
-          return [null, buf];
-        }
-        return [new Error("前端解密失败"), null];
-      } catch (err) {
-        return [err, null];
-      }
     },
     /**
      * 类型转换相关
@@ -1304,7 +966,6 @@ var WXU = (() => {
         });
       });
     },
-    download_with_progress,
     /**  */
     sleep,
     resultify(fn) {
@@ -1322,8 +983,6 @@ var WXU = (() => {
     },
     uid: __wx_uid__,
     bytes_to_size,
-    format_media_spec_label,
-    format_media_spec_short_label,
     parseJSON(v) {
       try {
         var r = JSON.parse(v);
@@ -1333,15 +992,13 @@ var WXU = (() => {
       }
     },
     build_filename,
-    build_picture_zip_files,
-    build_picture_zip_url,
     load_script: __wx_load_script,
     find_elm: __wx_find_elm,
     get_queries,
     /**
      * 提示相关
      */
-    copy: __wx_channels_copy,
+    copy: __wx_copy,
     log: __wx_log,
     error: __wx_error,
     loading() {
@@ -1353,66 +1010,6 @@ var WXU = (() => {
     menu_item: __wx_menu_item,
     create_dropdown_menu: __wx_create_dropdown_menu,
     create_popover: __wx_create_popover,
-    append_media_buf(buf) {
-      __wx_channels_store__.buffers.push(buf);
-    },
-    set_cur_video() {
-      setTimeout(() => {
-        window.__wx_channels_cur_video = document.querySelector(
-          ".feed-video.video-js",
-        );
-      }, 800);
-    },
-    /**
-     * @param {ChannelsFeed} feed
-     */
-    set_feed(feed) {
-      var profile = format_feed(feed);
-      if (!profile) {
-        return;
-      }
-      fetch("/__wx_channels_api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...profile,
-          pageurl: window.location.href,
-        }),
-      });
-      __wx_channels_store__.profile = profile;
-    },
-    /**
-     *
-     * @param {ChannelsFeed} feed
-     */
-    set_live_feed(feed) {
-      var profile = format_feed(feed);
-      if (!profile) {
-        return;
-      }
-      fetch("/__wx_channels_api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(profile),
-      });
-      __wx_channels_live_store__.profile = profile;
-    },
-    /**
-     *
-     * @param {ChannelsFeed} feed
-     * @returns
-     */
-    format_feed,
-    get cur_video() {
-      return __wx_channels_cur_video;
-    },
-    pause_cur_video: __wx_channels_pause_cur_video,
-    play_cur_video: __wx_channels_play_cur_video,
-    check_feed_existing: __wx_check_feed_existing,
     fetch: __wx_fetch,
     observe_node(selector, cb, error_cb) {
       var $existing = document.querySelector(selector);
@@ -1500,26 +1097,6 @@ var WXU = (() => {
       await __wx_load_script(__wx_asset_url("/lib/jszip.min.js"));
       const zip = new JSZip();
       return zip;
-    },
-    /**
-     * 向菜单前面插入额外菜单
-     * @param {{label: string; onClick?:(event: { profile: ChannelsMedia }) => void}[]} items
-     */
-    unshiftMenuItems(items) {
-      before_menus_items = items.concat(before_menus_items);
-    },
-    /**
-     * 向菜单后面插入额外菜单
-     * @param {{label: string; onClick?:(event: { profile: ChannelsMedia }) => void}[]} items
-     */
-    pushMenuItems(items) {
-      after_menus_items = after_menus_items.concat(items);
-    },
-    get before_menu_items() {
-      return before_menus_items;
-    },
-    get after_menu_items() {
-      return after_menus_items;
     },
     /**
      * @returns {ChannelsConfig}

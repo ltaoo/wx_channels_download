@@ -101,24 +101,51 @@ export function formatDate(value) {
   return new Date(n).toLocaleString();
 }
 
-function parseProgress(raw, size) {
-  if (!raw) {
-    return { downloaded: 0, total: Number(size || 0), speed: 0, percent: 0 };
+function normalizePercent(value) {
+  const percent = Number(value || 0);
+  if (!Number.isFinite(percent)) return 0;
+  return Math.min(100, Math.max(0, Math.round(percent * 100) / 100));
+}
+
+function parseProgress(raw, size, fallbackDownloaded = 0, fallbackSpeed = 0) {
+  const fallbackTotal = Number(size || 0);
+  const fallback = {
+    downloaded: Number(fallbackDownloaded || 0),
+    total: fallbackTotal,
+    speed: Number(fallbackSpeed || 0),
+    percent: 0,
+  };
+  if (fallbackTotal > 0) {
+    fallback.percent = normalizePercent(
+      (fallback.downloaded * 100) / fallbackTotal,
+    );
   }
+  if (typeof raw === "number") {
+    fallback.percent = normalizePercent(raw);
+    return fallback;
+  }
+  if (!raw) return fallback;
   try {
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (typeof data === "number") {
+      fallback.percent = normalizePercent(data);
+      return fallback;
+    }
     const downloaded = Number(data.downloaded || 0);
     const total = Number(data.total || size || 0);
     return {
       downloaded,
       total,
       speed: Number(data.speed || 0),
-      percent: total
-        ? Math.min(100, Math.floor((downloaded / total) * 100))
-        : 0,
+      percent:
+        data.percent != null
+          ? normalizePercent(data.percent)
+          : total
+            ? normalizePercent((downloaded / total) * 100)
+            : 0,
     };
   } catch {
-    return { downloaded: 0, total: Number(size || 0), speed: 0, percent: 0 };
+    return fallback;
   }
 }
 
@@ -137,8 +164,15 @@ function normalizeFileNodes(files) {
   return files
     .map((file) => {
       const children = normalizeFileNodes(file.children || file.Children);
+      const rawProgress = file.progress ?? file.Progress ?? 0;
+      const progress =
+        typeof rawProgress === "object"
+          ? Number(rawProgress.percent || rawProgress.Percent || 0)
+          : Number(rawProgress || 0);
       return {
+        id: Number(file.id || file.ID || 0),
         name: String(file.name || file.Name || ""),
+        kind: String(file.kind || file.Kind || "file"),
         path: String(file.path || file.Path || ""),
         output_path: String(
           file.output_path ||
@@ -148,6 +182,10 @@ function normalizeFileNodes(files) {
         ),
         type: String(file.type || file.Type || (children.length ? "dir" : "file")),
         size: Number(file.size || file.Size || 0),
+        downloaded: Number(file.downloaded || file.Downloaded || 0),
+        speed: Number(file.speed || file.Speed || 0),
+        progress,
+        url: String(file.url || file.URL || ""),
         status: String(file.status || file.Status || ""),
         error: String(file.error || file.Error || ""),
         children,
@@ -243,12 +281,19 @@ export function normalizeTask(task) {
   const files = normalizeFileNodes(
     task.files || task.Files || taskMetadata.files || taskMetadata.Files,
   );
+  const fileErrors = fileNodeErrors(files);
+  const fileProblems = fileNodeProblems(files);
   const subtasks = normalizeSubtasks(task.subtasks || task.Subtasks || task.resources);
   const fileSize = fileNodesSize(files);
   const totalSize = Number(task.size || task.Size || config.size || fileSize || 0);
-  const progress = parseProgress(task.progress, totalSize);
+  const progress = parseProgress(
+    task.progress,
+    totalSize,
+    task.downloaded || task.Downloaded,
+    task.speed || task.Speed,
+  );
   const percent =
-    (task.status === DownloadTaskStatus.Finished || task.status === DownloadTaskStatus.Done) ? 100 : progress.percent;
+    task.status === DownloadTaskStatus.Finished ? 100 : progress.percent;
   const error =
     task.error ||
     task.Error ||
@@ -331,7 +376,7 @@ export function normalizeRemoteTask(task) {
     total: progressTotal,
     speed: Number(task.progress?.speed || 0),
     percent: progressTotal
-      ? Math.min(100, Math.floor((downloaded / progressTotal) * 100))
+      ? normalizePercent((downloaded / progressTotal) * 100)
       : 0,
   };
   const path = task.meta?.opts?.path || "";
@@ -420,10 +465,10 @@ function normalizeRuntimeTask(raw) {
     total: progressTotal,
     speed,
     percent:
-      status === DownloadTaskStatus.Done
+      status === DownloadTaskStatus.Finished
         ? 100
         : progressTotal
-          ? Math.min(100, Math.floor((downloaded / progressTotal) * 100))
+          ? normalizePercent((downloaded / progressTotal) * 100)
           : 0,
   };
   const path = opts.path || opts.Path || "";
@@ -563,6 +608,7 @@ export function DownloadTaskPanelModel(props) {
   const create_creating_ = ref(false);
   const create_variant_id_ = ref("");
   const create_filename_ = ref("");
+  const create_download_cover_ = ref(false);
   let probe_timer_ = null;
   let probe_seq_ = 0;
   let pipeline_ws_ = null;
@@ -713,6 +759,42 @@ export function DownloadTaskPanelModel(props) {
     total_.as(total_.value + 1);
   }
 
+  function upsertTaskRecord(record) {
+    if (!record) return;
+    const nextTask = normalizeTask(record);
+    const nextID = downloadTaskID(nextTask);
+    if (!nextID) return;
+
+    const current = tasks_.value || [];
+    const idx = current.findIndex(
+      (task) => downloadTaskID(task) === nextID,
+    );
+    const matches = tabMatchesStatus(active_tab_.value, nextTask.status);
+    if (idx >= 0) {
+      const previous = current[idx];
+      const merged = normalizeTask({
+        ...previous,
+        ...record,
+        files: Array.isArray(record.files) ? record.files : previous.files,
+        subtasks: Array.isArray(record.subtasks)
+          ? record.subtasks
+          : previous.subtasks,
+      });
+      const nextList = matches
+        ? current.map((task, index) => (index === idx ? merged : task))
+        : current.filter((_, index) => index !== idx);
+      tasks_.as(sortTasks(nextList));
+      if (!matches) total_.as(Math.max(0, total_.value - 1));
+      updateCounts(previous.status, merged.status);
+      return;
+    }
+
+    updateCounts(null, nextTask.status, true);
+    if (!matches) return;
+    tasks_.as(sortTasks([nextTask, ...current]));
+    total_.as(total_.value + 1);
+  }
+
   function removeRuntimeTask(rawTask) {
     const id =
       rawTask?.task_id || readTaskField(rawTask, "id", "ID") || rawTask;
@@ -763,28 +845,12 @@ export function DownloadTaskPanelModel(props) {
 
   function handleWSMessage(message) {
     if (!message || !message.type) return;
-    // V1: task_snapshot / task_progress
-    if (message.type === "task_snapshot" || message.type === "task_progress") {
-      const task = {
-        id: message.task_id,
-        status: message.status,
-        name: message.name || "",
-        resources: message.resources || [],
-      };
-      // 聚合 resources 的下载进度
-      if (task.resources.length > 0) {
-        const mainRes = task.resources[0];
-        task.size = mainRes.size || 0;
-        task.speed = mainRes.speed || 0;
-        task.downloaded = mainRes.downloaded || 0;
-        task.name = mainRes.name || "";
-        task.progress = {
-          downloaded: mainRes.downloaded || 0,
-          total: mainRes.size || 0,
-          speed: mainRes.speed || 0,
-        };
-      }
-      mergeRuntimeTask(task);
+    if (message.type === "task_upsert") {
+      upsertTaskRecord(message.task);
+      return;
+    }
+    if (message.type === "task_delete") {
+      removeRuntimeTask(message.task);
       return;
     }
     if (message.type === "event") {
@@ -941,9 +1007,11 @@ export function DownloadTaskPanelModel(props) {
     create_error_.as("");
     create_variant_id_.as("");
     create_filename_.as("");
+    create_download_cover_.as(false);
     ui.variantSelect.setOptions([]);
     ui.variantSelect.setValue("");
     ui.filenameInput.setValue("");
+    ui.downloadCoverCheckbox.as(false);
   }
 
   function clearCreateDraft() {
@@ -1089,7 +1157,10 @@ export function DownloadTaskPanelModel(props) {
         return;
       }
       setObjectFlag(expanded_task_ids_, key, true);
-      if (Array.isArray(task.subtasks) && task.subtasks.length > 0) {
+      if (
+        (Array.isArray(task.files) && task.files.length > 0) ||
+        (Array.isArray(task.subtasks) && task.subtasks.length > 0)
+      ) {
         return;
       }
       const id = downloadTaskID(task);
@@ -1233,7 +1304,9 @@ export function DownloadTaskPanelModel(props) {
           spec: variant?.spec || variant?.Spec || "",
           suffix: variant?.suffix || variant?.Suffix || "",
           filename: create_filename_.value,
+          download_cover: create_download_cover_.value,
         },
+        download_cover: create_download_cover_.value,
       });
       create_creating_.as(false);
       if (r.error) {
@@ -1295,6 +1368,12 @@ export function DownloadTaskPanelModel(props) {
         create_filename_.as(value);
       },
     }),
+    downloadCoverCheckbox: new Timeless.ui.CheckboxCore({
+      defaultValue: false,
+      onChange(value) {
+        create_download_cover_.as(!!value);
+      },
+    }),
     btnCreatePlatformTask: new Timeless.ui.ButtonCore({
       onClick() {
         methods.createFromURL();
@@ -1345,6 +1424,7 @@ export function DownloadTaskPanelModel(props) {
       createCreating: create_creating_,
       createVariantID: create_variant_id_,
       createFilename: create_filename_,
+      createDownloadCover: create_download_cover_,
     },
     ui,
     methods,
@@ -1436,14 +1516,14 @@ export function DownloadsPageModel(props) {
       remoteRunningCount: computed(
         remote_tasks_,
         (list) =>
-          list.filter((t) => t.status === DownloadTaskStatus.Running).length,
+          list.filter((t) => t.status === DownloadTaskStatus.Downloading).length,
       ),
       remoteTotalSpeed: computed(
         remote_tasks_,
         (list) =>
           formatBytes(
             list.reduce((sum, t) => {
-              if (t.status !== DownloadTaskStatus.Running) return sum;
+              if (t.status !== DownloadTaskStatus.Downloading) return sum;
               return sum + Number(t.progress_info?.speed || 0);
             }, 0),
           ) + "/s",

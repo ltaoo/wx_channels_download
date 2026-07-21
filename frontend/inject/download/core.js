@@ -33,10 +33,22 @@ function format_download_speed(bps) {
   return bps + " B/s";
 }
 function format_download_percent(t) {
-  const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-  const cur = t.progress ? t.progress.downloaded : 0;
-  if (!total) return 0;
-  return Math.min(100, Math.floor((cur * 100) / total));
+  const direct = Number(t && t.progress);
+  if (Number.isFinite(direct)) {
+    return Math.min(100, Math.max(0, Math.round(direct * 100) / 100));
+  }
+  const detail = t && t.progress && typeof t.progress === "object"
+    ? t.progress
+    : {};
+  const total = Number(t.size || detail.total || detail.size || 0);
+  const downloaded = Number(t.downloaded || detail.downloaded || 0);
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(
+    100,
+    Math.max(0, Math.round(((downloaded * 100) / total) * 100) / 100),
+  );
 }
 function get_name_of_download_task(t) {
   if (t.meta && t.meta.opts && t.meta.opts.name) {
@@ -189,12 +201,17 @@ function DownloadTaskSkeletonCard(props = {}) {
 function total_speed(tasks) {
   let sum = 0;
   tasks.forEach((t) => {
-    if (
-      t.status === "running" &&
-      t.progress &&
-      typeof t.progress.speed === "number"
-    ) {
-      sum += t.progress.speed;
+    if (normalize_download_status(t && t.status) === "running") {
+      const speed = Number(
+        t.speed ||
+          (t.progress && typeof t.progress === "object"
+            ? t.progress.speed
+            : 0) ||
+          0,
+      );
+      if (Number.isFinite(speed)) {
+        sum += speed;
+      }
     }
   });
   return sum;
@@ -243,6 +260,27 @@ function normalize_download_status(status) {
     return "done";
   }
   return value;
+}
+
+function download_resource_status_text(file) {
+  const status = String(file && file.status || "").toLowerCase();
+  if (status === "finished" || status === "done") return "已完成";
+  if (status === "error" || status === "failed") return "失败";
+  if (status === "downloading" || status === "running") return "下载中";
+  if (status === "paused" || status === "pause") return "已暂停";
+  if (status === "cancelled" || status === "canceled") return "已取消";
+  return "等待中";
+}
+
+function download_resource_metrics(file) {
+  const size = WXU.bytes_to_size(Number(file && file.size || 0));
+  const downloaded = WXU.bytes_to_size(Number(file && file.downloaded || 0));
+  const speed = format_download_speed(Number(file && file.speed || 0));
+  const progress = Math.min(
+    100,
+    Math.max(0, Number(file && file.progress || 0)),
+  );
+  return `${downloaded} / ${size} · ${speed} · ${progress.toFixed(2)}%`;
 }
 function is_download_waiting_status(status) {
   const normalized = normalize_download_status(status);
@@ -653,6 +691,7 @@ function DownloaderPanelViewModel(props = {}) {
           save_path: params.save_path || "",
           filename: params.filename || "",
           spec: params.spec || "",
+          download_cover: !!params.download_cover,
         },
       }),
     { client: http_client },
@@ -673,6 +712,7 @@ function DownloaderPanelViewModel(props = {}) {
   const create_platform_json_ = ref("");
   const create_platform_save_path_ = ref("");
   const create_platform_filename_ = ref("");
+  const create_platform_download_cover_ = ref(false);
   const creating_task_ = ref(false);
   const selected_task_ids_ = refarr([]);
   const running_count_ = computed(tasks_, (t) => {
@@ -815,10 +855,23 @@ function DownloaderPanelViewModel(props = {}) {
   };
   const estimateTaskItemHeight = (task) => {
     const lines = estimateTitleLineCount(task && task.name);
+    const errorLineHeight =
+      normalize_download_status(task && task.status) === "error"
+        ? ITEM_STATUS_LINE_HEIGHT * 2 + 4
+        : 0;
+    const resourceCount = Array.isArray(task && task.files)
+      ? task.files.length
+      : 0;
+    const resourceLineHeight =
+      resourceCount > 1
+        ? resourceCount * 34 + 6
+        : 0;
     const textHeight =
       lines * ITEM_TITLE_LINE_HEIGHT +
       ITEM_TITLE_STATUS_GAP +
-      ITEM_STATUS_LINE_HEIGHT;
+      ITEM_STATUS_LINE_HEIGHT +
+      errorLineHeight +
+      resourceLineHeight;
     return Math.max(ITEM_HEIGHT, ITEM_VERTICAL_PADDING + textHeight);
   };
   const getTaskEstimatedHeight = (task) => {
@@ -1524,19 +1577,39 @@ function DownloaderPanelViewModel(props = {}) {
               };
             }
           }
-          // V1 format: direct name + save_path
+          // V1 FILE format: save_path is the complete output file path.
           const filename = task.name;
           const savePath = task.save_path || task.path || "";
           if (filename && !task.filepath) {
-            const sep = isWin ? "\\" : "/";
-            const fp = savePath
-              ? savePath.endsWith(sep)
-                ? savePath + filename
-                : savePath + sep + filename
+            const isFileTask =
+              String(task.resource_type || "FILE").toUpperCase() === "FILE";
+            if (!isFileTask) {
+              const firstFile = Array.isArray(task.files) ? task.files[0] : null;
+              const firstFileName = firstFile && firstFile.name
+                ? firstFile.name
+                : filename;
+              return {
+                path: savePath,
+                file_name: firstFileName,
+                filepath: firstFile && firstFile.output_path
+                  ? firstFile.output_path
+                  : savePath,
+              };
+            }
+            const separatorIndex = Math.max(
+              savePath.lastIndexOf("/"),
+              savePath.lastIndexOf("\\"),
+            );
+            const fileName = separatorIndex >= 0
+              ? savePath.slice(separatorIndex + 1)
               : filename;
+            const dir = separatorIndex >= 0
+              ? savePath.slice(0, separatorIndex)
+              : "";
             return {
-              path: savePath || filename,
-              filepath: fp,
+              path: dir,
+              file_name: fileName || filename,
+              filepath: savePath || filename,
             };
           }
           return {};
@@ -1636,11 +1709,8 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: r.error.message });
         return false;
       }
-      const removedCount = applyDeletedTaskIds([task.id]);
-      if (!removedCount) {
-        WXU.error({ msg: "异常操作" });
-        return false;
-      }
+      // task_delete 可能先于 HTTP 响应到达；重复移除应视为删除成功。
+      applyDeletedTaskIds([task.id]);
       return true;
     },
     async deleteTasksByIds(ids, params = {}) {
@@ -1768,6 +1838,7 @@ function DownloaderPanelViewModel(props = {}) {
       create_platform_json_.as("");
       create_platform_save_path_.as("");
       create_platform_filename_.as("");
+      create_platform_download_cover_.as(false);
       ui.createPlatformTaskDialog$.show();
     },
     async confirmCreatePlatformTask() {
@@ -1796,6 +1867,7 @@ function DownloaderPanelViewModel(props = {}) {
           content: content,
           save_path: create_platform_save_path_.value || "",
           filename: create_platform_filename_.value || "",
+          download_cover: create_platform_download_cover_.value,
         });
         if (r.error) {
           WXU.error({ msg: r.error.message });
@@ -1829,7 +1901,10 @@ function DownloaderPanelViewModel(props = {}) {
       }
       creating_task_.as(true);
       try {
-        const r = await createTaskReq.run({ url: text, filename: create_task_filename_.value || "" });
+        const r = await createTaskReq.run({
+          url: text,
+          filename: create_task_filename_.value || "",
+        });
         if (r.error) {
           WXU.error({ msg: r.error.message });
           return;
@@ -1858,7 +1933,7 @@ function DownloaderPanelViewModel(props = {}) {
         window.open(u);
         return;
       }
-      showFileReq.run({ path, name, id });
+      showFileReq.run({ path, name: task.file_name || name, id });
     },
     connect() {
       return new Promise((resolve, reject) => {
@@ -1883,6 +1958,21 @@ function DownloaderPanelViewModel(props = {}) {
         ws.onmessage = (ev) => {
           const [err, msg] = WXU.parseJSON(ev.data);
           if (err) {
+            return;
+          }
+          if (msg.type === "task_upsert") {
+            const task = msg.task;
+            if (!task || !task.id) {
+              return;
+            }
+            methods.upsert(methods.formatTask(task));
+            return;
+          }
+          if (msg.type === "task_delete") {
+            const taskId = msg.task && msg.task.id;
+            if (taskId) {
+              applyDeletedTaskIds([taskId]);
+            }
             return;
           }
           if (msg.type === "task_snapshot") {
@@ -2014,7 +2104,8 @@ function DownloaderPanelViewModel(props = {}) {
       const current = tasks_.value || [];
       const matchesFilter = matchesActiveStatusFilter(task);
       const index = current.findIndex(
-        (v) => isLoadedTask(v) && v.id === task.id,
+        (v) =>
+          isLoadedTask(v) && String(v.id) === String(task.id),
       );
       if (index === -1) {
         if (!matchesFilter) {
@@ -2258,6 +2349,8 @@ function DownloaderPanelViewModel(props = {}) {
       create_platform_save_path: create_platform_save_path_,
       /** 平台任务创建：文件名 */
       create_platform_filename: create_platform_filename_,
+      /** 平台任务创建：同时下载封面 */
+      create_platform_download_cover: create_platform_download_cover_,
       /** 创建下载任务操作中 */
       creating_task: creating_task_,
       /** 各个状态的下载任务数量 */
@@ -2453,13 +2546,34 @@ function CreatePlatformTaskDialogView(props) {
         View({ style: labelStyle }, ["文件名（可选）"]),
         Input({
           placeholder: "留空则自动命名",
-          style: { ...inputStyle, "margin-bottom": "0" },
+          style: inputStyle,
           onInput(e) {
             vm$.state.create_platform_filename.as(
               e && e.target ? e.target.value : "",
             );
           },
         }),
+        View(
+          {
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "8px",
+              "font-size": "13px",
+              color: "var(--weui-FG-0)",
+            },
+          },
+          [
+            DownloadTaskSelectionCheckbox({
+              checked: vm$.state.create_platform_download_cover,
+              ariaLabel: "同时下载封面",
+              onToggle() {
+                vm$.state.create_platform_download_cover.toggle();
+              },
+            }),
+            View({}, ["同时下载封面"]),
+          ],
+        ),
       ]),
     ],
   );
@@ -2981,8 +3095,14 @@ function DownloadTaskCard(props) {
 
     let statusText = t.status;
     let statusColor = "var(--weui-FG-1)";
+    let errorText = "";
     if (isRunning) {
-      const speed = format_download_speed(t.progress ? t.progress.speed : 0);
+      const speed = format_download_speed(
+        t.speed ||
+          (t.progress && typeof t.progress === "object"
+            ? t.progress.speed
+            : 0),
+      );
       statusText = `${speed} • ${pr}%`;
     } else if (isCompleted) {
       statusText = "已完成";
@@ -2991,7 +3111,8 @@ function DownloadTaskCard(props) {
         statusText = WXU.bytes_to_size(total);
       }
     } else if (isFailed) {
-      statusText = t._errMsg || "下载失败";
+      statusText = "失败";
+      errorText = t.error || t._errMsg || "下载失败";
       statusColor = "#FA5151";
     } else if (isPending) {
       statusText = "等待中...";
@@ -3007,6 +3128,7 @@ function DownloadTaskCard(props) {
       canResume: isFailed || isPaused,
       statusText,
       statusColor,
+      errorText,
     };
   });
   const isOpenExternal =
@@ -3165,6 +3287,116 @@ function DownloadTaskCard(props) {
               }),
             ],
           ),
+          Show({
+            when: computed(state_, (d) => d.isFailed && !!d.errorText),
+            ok() {
+              return View(
+                {
+                  class: "weui-cell__desc wx-dl-item-error",
+                  style: {
+                    "margin-top": "2px",
+                    color: "#FA5151",
+                    "font-size": "11px",
+                    "line-height": "16px",
+                    display: "-webkit-box",
+                    overflow: "hidden",
+                    "word-break": "break-word",
+                    "-webkit-box-orient": "vertical",
+                    "-webkit-line-clamp": "2",
+                  },
+                  attributes: {
+                    title: computed(state_, (d) => d.errorText),
+                  },
+                },
+                [computed(state_, (d) => d.errorText)],
+              );
+            },
+          }),
+          Show({
+            when: computed(
+              task_,
+              (t) => Array.isArray(t.files) && t.files.length > 1,
+            ),
+            ok() {
+              return View(
+                {
+                  class: "weui-cell__desc wx-dl-item-resources",
+                  style: {
+                    "margin-top": "6px",
+                    display: "grid",
+                    gap: "4px",
+                  },
+                },
+                [
+                  For({
+                    each: computed(task_, (t) => t.files || []),
+                    render(file_) {
+                      return View(
+                        {
+                          style: {
+                            padding: "3px 6px",
+                            "border-radius": "4px",
+                            background: "var(--weui-BG-1)",
+                          },
+                        },
+                        [
+                          View(
+                            {
+                              style: {
+                                display: "flex",
+                                "align-items": "center",
+                                "justify-content": "space-between",
+                                gap: "8px",
+                                "font-size": "11px",
+                              },
+                            },
+                            [
+                              View(
+                                {
+                                  style: {
+                                    overflow: "hidden",
+                                    "text-overflow": "ellipsis",
+                                    "white-space": "nowrap",
+                                  },
+                                  attributes: {
+                                    title: computed(
+                                      file_,
+                                      (file) => file.output_path || file.name,
+                                    ),
+                                  },
+                                },
+                                [computed(file_, (file) => file.name || "文件")],
+                              ),
+                              View(
+                                {
+                                  style: {
+                                    "flex-shrink": "0",
+                                    color: "var(--weui-FG-1)",
+                                  },
+                                },
+                                [computed(file_, download_resource_status_text)],
+                              ),
+                            ],
+                          ),
+                          View(
+                            {
+                              style: {
+                                "margin-top": "1px",
+                                color: "var(--weui-FG-1)",
+                                "font-size": "10px",
+                                "font-variant-numeric": "tabular-nums",
+                              },
+                            },
+                            [computed(file_, download_resource_metrics)],
+                          ),
+                        ],
+                      );
+                    },
+                  }),
+                ],
+              );
+            },
+          }),
         ],
       ),
       View(

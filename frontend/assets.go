@@ -51,6 +51,7 @@ type ChannelInjectedFiles struct {
 	JSDownloadIndex         []byte
 	JSDownloader            []byte
 	JSUtils                 []byte
+	JSChannelsUtils         []byte
 	JSError                 []byte
 	JSHomePage              []byte
 	JSFeedProfilePage       []byte
@@ -133,7 +134,7 @@ func ChannelSrcAssetURL(baseURL string, rel string) string {
 	return strings.TrimRight(baseURL, "/") + "/src/" + rel
 }
 
-func ChannelInjectAssetURL(baseURL string, rel string) string {
+func InjectAssetURL(baseURL string, rel string) string {
 	return strings.TrimRight(baseURL, "/") + "/inject/" + rel
 }
 
@@ -505,20 +506,21 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSError = files.readInject("error.js")
 	files.JSEventBus = files.readInject("eventbus.js")
 	files.JSEnv = files.readInject("env.js")
-	files.JSEnvChannels = files.readInject("env.channels.js")
+	files.JSEnvChannels = files.readInject("channels.env.js")
 	files.JSEnvMock = files.readInject("env.mock.js")
 	files.JSComponents = files.readInject("components.js")
 	files.JSUtils = files.readInject("utils.js")
-	files.JSChannels = files.readInject("channels.js")
+	files.JSChannelsUtils = files.readInject("channels.utils.js")
+	files.JSChannels = files.readInject("channels.ws.js")
 	files.JSDownloadCore = files.readInject("download/core.js")
 	files.JSDownloadPanel = files.readInject("download/panel.js")
 	files.JSDownloadIndex = files.readInject("download/index.js")
 	files.JSDownloader = files.JSDownloadPanel
-	files.JSWechatOfficialAccount = files.readInject("officialaccount.js")
-	files.JSHomePage = files.readInject("home.js")
-	files.JSFeedProfilePage = files.readInject("feed.js")
-	files.JSLiveProfilePage = files.readInject("live.js")
-	files.JSContactPage = files.readInject("profile.js")
+	files.JSWechatOfficialAccount = files.readInject("mp.ws.js")
+	files.JSHomePage = files.readInject("channels.home.js")
+	files.JSFeedProfilePage = files.readInject("channels.feed.js")
+	files.JSLiveProfilePage = files.readInject("channels.live.js")
+	files.JSContactPage = files.readInject("channels.profile.js")
 	return files
 }
 

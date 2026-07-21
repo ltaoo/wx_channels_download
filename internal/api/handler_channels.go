@@ -1,18 +1,9 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-
-	"github.com/GopeedLab/gopeed/pkg/base"
 	"github.com/gin-gonic/gin"
 
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/system"
 )
 
 // 搜索视频号作者
@@ -154,116 +145,6 @@ type ChannelsDownloadPayload struct {
 }
 
 // 创建视频号视频下载任务
-func (c *APIClient) handleCreateChannelsTask(ctx *gin.Context) {
-	var body ChannelsDownloadPayload
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, "不合法的参数")
-		return
-	}
-	if body.Oid == "" && body.Nid == "" && body.URL == "" && body.Eid == "" {
-		result.Err(ctx, 400, "缺少参数")
-		return
-	}
-	if body.Eid == "" && body.URL != "" {
-		if parsedURL, err := url.Parse(body.URL); err == nil {
-			if eid := parsedURL.Query().Get("eid"); eid != "" {
-				body.Eid = eid
-			}
-		}
-	}
-
-	payload, content, account, err := c.createFeedTaskBody(body.Oid, body.Nid, body.URL, body.Eid, body.MP3, body.Cover, body.Spec)
-	if err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-
-	if payload.Id == "" {
-		result.Err(ctx, 400, "缺少 feed id 参数")
-		return
-	}
-	if payload.Suffix == ".mp3" {
-		hasFFmpeg := system.ExistingCommand("ffmpeg")
-		if !hasFFmpeg {
-			result.Err(ctx, 3001, "下载 mp3 需要支持 ffmpeg 命令")
-			return
-		}
-	}
-
-	if c.cfg.RemoteServerEnabled {
-		protocol := c.cfg.RemoteServerProtocol
-		if protocol == "" {
-			protocol = "http"
-		}
-		targetURL := fmt.Sprintf("%s://%s:%d/api/task/create", protocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort)
-
-		jsonData, err := json.Marshal(payload)
-		if err != nil {
-			result.Err(ctx, 500, "序列化请求参数失败")
-			return
-		}
-
-		resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			result.Err(ctx, 500, "请求远程服务器失败: "+err.Error())
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			bodyBytes, _ := io.ReadAll(resp.Body)
-			result.Err(ctx, 500, fmt.Sprintf("远程服务器创建任务失败, status: %d, body: %s", resp.StatusCode, string(bodyBytes)))
-			return
-		}
-
-		var respBody struct {
-			Id string `json:"id"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-			result.Err(ctx, 500, "解析远程服务器响应失败")
-			return
-		}
-
-		result.Ok(ctx, gin.H{"id": respBody.Id})
-		return
-	}
-
-	// Use download service
-	existing := c.downloadService.CheckExisting(payload.Id, payload.Spec, payload.Suffix)
-	if existing {
-		result.Err(ctx, 409, "已存在该下载内容")
-		return
-	}
-
-	opts, err := c.downloadService.BuildTaskOpts(payload)
-	if err != nil {
-		result.Err(ctx, 409, "不合法的文件名，"+err.Error())
-		return
-	}
-
-	labels := c.downloadService.BuildTaskLabels(payload)
-	id, err := c.downloadService.CreateTask(&base.Request{
-		URL:    payload.URL,
-		Labels: labels,
-	}, opts)
-	if err != nil {
-		result.Err(ctx, 500, "下载失败")
-		return
-	}
-	task := c.downloader.GetTask(id)
-	if task != nil && content != nil && account != nil && c.channelsUploadService != nil {
-		ct, err := c.channelsUploadService.HandleChannelsFeed(content, account)
-		if err != nil {
-			c.logger.Warn().Err(err).Msg("HandleChannelsFeed failed, continuing without DB records")
-		} else if ct != nil {
-			if _, err := c.CreateContentDownloadTask(ct, task, "admin"); err != nil {
-				c.logger.Warn().Err(err).Msg("CreateContentDownloadTask failed")
-			}
-		}
-	}
-	result.Ok(ctx, gin.H{"id": id})
-}
-
 func (c *APIClient) handleCompatChannelsSearchAuthor(ctx *gin.Context) {
 	c.handleSearchChannelsContact(ctx)
 }

@@ -212,14 +212,14 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** 全局错误捕获并展示弹窗 */
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "error.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "error.js"))
 				}
 				var shadcnCSS []byte
 				if files != nil {
 					shadcnCSS = files.CSSTimelessShadcn
 				}
 				frontend.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, "", "", shadcnCSS)
-				frontend.AppendStylesheetHrefs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "components.css"))
+				frontend.AppendStylesheetHrefs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
 				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
@@ -228,19 +228,20 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				frontend.AppendScriptSrcs(
 					&injected,
 					"",
-					frontend.ChannelInjectAssetURL(assetBaseURL, "eventbus.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "env.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "env.channels.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "utils.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "components.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "virtual-list-view.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "channels.js"),
+					frontend.InjectAssetURL(assetBaseURL, "eventbus.js"),
+					frontend.InjectAssetURL(assetBaseURL, "env.js"),
+					frontend.InjectAssetURL(assetBaseURL, "utils.js"),
+					frontend.InjectAssetURL(assetBaseURL, "components.js"),
+					frontend.InjectAssetURL(assetBaseURL, "virtual-list-view.js"),
+					ChannelInjectAssetURL(assetBaseURL, "channels.env.js"),
+					ChannelInjectAssetURL(assetBaseURL, "channels.utils.js"),
+					ChannelInjectAssetURL(assetBaseURL, "channels.ws.js"),
 				)
 				frontend.AppendScriptSrcs(
 					&injected,
 					"",
-					frontend.ChannelInjectAssetURL(assetBaseURL, "download/core.js"),
-					frontend.ChannelInjectAssetURL(assetBaseURL, "download/panel.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/core.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/panel.js"),
 				)
 				if cfg.InjectGlobalScript != "" {
 					frontend.AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
@@ -248,28 +249,28 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				// 必须放在 JSUtils 后面
 				if cfg.PagespyEnabled {
 					/** 在线调试 */
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), frontend.ChannelInjectAssetURL(assetBaseURL, "pagespy.js"))
+					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), frontend.InjectAssetURL(assetBaseURL, "pagespy.js"))
 				}
 				if pathname == "/web/pages/home" {
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "home.js"))
+					frontend.AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "channels.home.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "feed.js"))
+					frontend.AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "channels.feed.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "live.js"))
+					frontend.AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "channels.live.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "profile.js"))
+					frontend.AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "channels.profile.js"))
 					if cfg.InjectExtraScriptAfterJSMain != "" {
 						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
 					}
@@ -628,7 +629,7 @@ func CreateSimpleChannelInterceptorPlugin(cfg *InterceptorConfig, files *fronten
 				var injected strings.Builder
 				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
 					/** 核心逻辑 */
-					frontend.AppendScriptSrcs(&injected, "", frontend.ChannelInjectAssetURL(assetBaseURL, "home.js"))
+					frontend.AppendScriptSrcs(&injected, "", ChannelInjectAssetURL(assetBaseURL, "channels.home.js"))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

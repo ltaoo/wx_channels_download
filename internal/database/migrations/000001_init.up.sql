@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS `download_task` (
   `parent_id` INTEGER DEFAULT 0,
   `root_id` INTEGER DEFAULT 0,
   `node_type` TEXT, -- container | file
-  `engine` TEXT, -- http | cdp | sandbox_cdp | browser_pool_cdp | gopeed | aria2 | fs
+  `engine` TEXT, -- http | cdp | sandbox_cdp | browser_pool_cdp | aria2 | fs
   `engine_task_id` TEXT,
   `type` INTEGER, -- 任务类型 (1:视频, 2:直播)
   `status` INTEGER DEFAULT 1, --下载状态

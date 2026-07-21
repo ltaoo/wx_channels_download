@@ -1,10 +1,10 @@
-package officialaccount_test
+package wxmp_test
 
 import (
 	"encoding/json"
 	"testing"
 
-	officialaccount "wx_channel/internal/webcontent/officialaccount"
+	wxmp "wx_channel/internal/adapter/officialaccount"
 )
 
 const channelsFeedJSON = `{
@@ -449,15 +449,15 @@ const channelsFeedJSON = `{
 }`
 
 func TestArticleToProfile_FromChannelsFeedJSON(t *testing.T) {
-	var pageJSON officialaccount.CgiDataNew
+	var pageJSON wxmp.CgiDataNew
 	if err := json.Unmarshal([]byte(channelsFeedJSON), &pageJSON); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	article := &officialaccount.WechatOfficialArticle{
+	article := &wxmp.WechatOfficialArticle{
 		PageJSON: &pageJSON,
 	}
-	profile, err := officialaccount.ArticleToProfile(article, pageJSON.Link)
+	profile, err := wxmp.ArticleToProfile(article, pageJSON.Link)
 	if err != nil {
 		t.Fatalf("ArticleToProfile: %v", err)
 	}

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	// "wx_channel/pkg/scraper/douban"
 	// "wx_channel/pkg/scraper/instagram"
 	// "wx_channel/pkg/scraper/qidian"
@@ -60,39 +59,19 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/open", c.handleOpenURL)
 	}
 	// c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
-	// 下载任务接口
-	c.engine.GET("/ws/downloader", c.downloader_ws.HandleDownloaderWebsocket)
-	c.engine.GET("/ws/status", c.status_ws.HandleDownloaderWebsocket)
+	// 状态与 Hermes 下载任务接口
+	c.engine.GET("/ws/status", c.status_ws.HandleWebsocket)
 	c.engine.GET("/ws/admin", c.handlePlatformWorkflowWebsocket)
 	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
 	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
-	c.engine.GET("/api/task/list", c.handleFetchTaskList)
-	c.engine.GET("/api/task/profile", c.handleFetchTaskProfile)
 	// c.engine.POST("/api/task/pipeline/start", c.handleProbePlatformDownloadTask)
 	// c.engine.POST("/api/task/probe", c.handleProbePlatformDownloadTask)
 	// c.engine.GET("/api/task/pipeline/workflow", c.handleFetchPlatformDownloadWorkflow)
 	// c.engine.POST("/api/task/pipeline/resume", c.handleResumePlatformDownloadPipeline)
-	c.engine.POST("/api/task/create", c.handleCreateFeedDownloadTask)
-	// c.engine.POST("/api/task/create2", c.handleCreateDownloadTask)
-	// c.engine.POST("/api/task/create_batch", c.handleBatchCreateTask)
-	// c.engine.POST("/api/task/create_channels", c.handleCreateChannelsTask)
-	// c.engine.POST("/api/task/create_live", c.handleCreateLiveTask)
-	c.engine.POST("/api/task/start", c.handleStartTask)
-	c.engine.POST("/api/task/pause", c.handlePauseTask)
-	c.engine.POST("/api/task/resume", c.handleResumeTask)
-	c.engine.POST("/api/task/delete", c.handleDeleteTask)
-	c.engine.POST("/api/task/clear", c.handleClearTasks)
-	c.engine.POST("/api/task/create3", c.handleBatchCreateDownloadTask)
-	c.engine.POST("/api/task/start_all", c.handleStartAllTasks)
-	c.engine.POST("/api/task/pause_all", c.handlePauseAllTasks)
 	c.engine.POST("/api/remote/proxy", c.handleRemoteProxyRequest)
 	c.engine.GET("/api/remote/task/list", c.handleFetchRemoteTaskList)
 	c.engine.GET("/api/file", c.handleFetchFile)
 
-
-	// c.engine.GET("/api/download_task/list", c.handleCompatDownloadTaskList)
-	// c.engine.POST("/api/download_task/start", c.handleCompatDownloadTaskStart)
-	// c.engine.POST("/api/download_task/profile", c.handleCompatDownloadTaskProfile)
 	c.engine.POST("/api/v1/download_task/create", c.handleCreateDownloadTaskV1)
 	c.engine.POST("/api/v1/download_task/create_by_url", c.handleCreateDownloadTaskByURLV1)
 	c.engine.POST("/api/v1/download_task/start", c.handleStartDownloadTaskV1)
@@ -101,17 +80,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/download_task/delete", c.handleDeleteDownloadTaskV1)
 	c.engine.GET("/api/v1/download_task/list", c.handleListDownloadTaskV1)
 	c.engine.GET("/ws/v1/download_task", c.handleDownloadTaskV1WS)
-	// c.engine.POST("/api/download_task/batch_create", c.handleCompatDownloadTaskBatchCreate)
-	// c.engine.POST("/api/download_task/delete", c.handleCompatDownloadTaskDelete)
-	// c.engine.POST("/api/download_task/retry", c.handleCompatDownloadTaskRetry)
-	// c.engine.POST("/api/download_task/retry_children", c.handleCompatDownloadTaskRetryChildren)
-	// c.engine.POST("/api/download_task/pause", c.handleCompatDownloadTaskPause)
-	// c.engine.POST("/api/download_task/resume", c.handleCompatDownloadTaskResume)
-	// c.engine.POST("/api/download_task/pause_all", c.handleCompatDownloadTaskPauseAll)
-	// c.engine.POST("/api/download_task/start_all", c.handleCompatDownloadTaskStartAll)
-	// c.engine.POST("/api/download_task/highlight_file", c.handleCompatDownloadTaskHighlightFile)
-	// c.engine.GET("/api/download_task/play", c.handleCompatDownloadTaskPlay)
-
 	// c.engine.POST("/browse_history/create", c.handleCreateBrowseHistory)
 	// c.engine.POST("/browse_history/list", c.handleFetchBrowseHistoryList)
 

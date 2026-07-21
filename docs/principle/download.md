@@ -530,7 +530,7 @@ type ChannelsMediaSpec = {
 ChannelsObject 通过 `wxchannels` 包直接转换为 model 结构，无需中间类型：
 
 ```go
-// internal/webcontent/wxchannels/model.go
+// internal/adapter/wxchannels/model.go
 
 // 转换为 model.Content (内容记录)
 func ToContent(obj *ChannelsObject) (*model.Content, error)

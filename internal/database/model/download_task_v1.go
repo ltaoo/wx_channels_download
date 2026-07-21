@@ -2,14 +2,14 @@ package model
 
 // TaskStatus enum for DownloadTaskV1
 const (
-	TaskStatusWaiting    = 0
-	TaskStatusPreparing  = 1
+	TaskStatusWaiting     = 0
+	TaskStatusPreparing   = 1
 	TaskStatusDownloading = 2
-	TaskStatusPaused     = 3
-	TaskStatusMerging    = 4
-	TaskStatusFinished   = 5
-	TaskStatusFailed     = 6
-	TaskStatusCancelled  = 7
+	TaskStatusPaused      = 3
+	TaskStatusMerging     = 4
+	TaskStatusFinished    = 5
+	TaskStatusFailed      = 6
+	TaskStatusCancelled   = 7
 )
 
 // ResourceType enum
@@ -25,8 +25,9 @@ type DownloadTaskV1 struct {
 	Name         string `gorm:"not null" json:"name"`
 	ResourceType string `gorm:"not null;default:FILE" json:"resource_type"`
 	Status       int    `gorm:"not null;default:0" json:"status"`
-	SavePath     string `gorm:"not null" json:"save_path"`
-	ConfigJSON   string `gorm:"column:config_json" json:"config_json"`
+	// SavePath 对 FILE 是完整文件路径，对 COLLECTION/STREAM 是输出根目录。
+	SavePath   string `gorm:"not null" json:"save_path"`
+	ConfigJSON string `gorm:"column:config_json" json:"config_json"`
 	Timestamps
 }
 

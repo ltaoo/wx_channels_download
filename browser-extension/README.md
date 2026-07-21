@@ -7,7 +7,7 @@
 - `manifest.json`: Manifest V3 配置，`content_scripts.matches` 为 `<all_urls>`。
 - `background.js`: 接收 content script 的上报消息，并在 content 直接上报失败时转发请求。
 - `content/common.js`: 通用工具层，包含 DOM 监听、上报、日志、URL/JSON/属性解析等函数。
-- `content/sites/zhihu.js`: 知乎首页推荐流采集逻辑，参考 `internal/webcontent/zhihu/scripts/topstory_recommend.js`。
+- `content/sites/zhihu.js`: 知乎首页推荐流采集逻辑，参考 `internal/adapter/zhihu/scripts/topstory_recommend.js`。
 - `content/dispatcher.js`: 执行已注册且匹配当前域名的站点脚本。
 
 ## 通用函数

@@ -1,6 +1,6 @@
 module wx_channel
 
-go 1.20
+go 1.24.1
 
 exclude (
 	github.com/andybalholm/brotli v1.2.0
@@ -24,10 +24,11 @@ exclude (
 
 require (
 	github.com/Danny-Dasilva/CycleTLS/cycletls v1.0.23
-	github.com/GopeedLab/gopeed v0.0.0-00010101000000-000000000000
 	github.com/adrg/xdg v0.4.0
 	github.com/andybalholm/brotli v1.1.1
 	github.com/blang/semver v3.5.1+incompatible
+	github.com/bogdanfinn/fhttp v0.6.8
+	github.com/bogdanfinn/tls-client v1.15.1
 	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/fatih/color v1.16.0
@@ -48,8 +49,8 @@ require (
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/net v0.47.0
-	golang.org/x/text v0.31.0
+	golang.org/x/net v0.48.0
+	golang.org/x/text v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
@@ -65,25 +66,9 @@ require (
 	golang.org/x/image v0.23.0
 )
 
-replace (
-	github.com/GopeedLab/gopeed => ./pkg/gopeed
-	github.com/ltaoo/velo => ../velo
-)
+replace github.com/ltaoo/velo => ../velo
 
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
-
-// Downgrade golang.org/x/* to versions compatible with Go 1.20
-replace (
-	github.com/klauspost/compress => github.com/klauspost/compress v1.17.9
-	golang.org/x/crypto => golang.org/x/crypto v0.17.0
-	golang.org/x/exp => golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/image => golang.org/x/image v0.14.0
-	golang.org/x/net => golang.org/x/net v0.17.0
-	golang.org/x/sync => golang.org/x/sync v0.5.0
-	golang.org/x/sys => golang.org/x/sys v0.22.0
-	golang.org/x/term => golang.org/x/term v0.14.0
-	golang.org/x/text => golang.org/x/text v0.14.0
-)
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
@@ -92,6 +77,11 @@ require (
 	github.com/Danny-Dasilva/fhttp v0.0.0-20231127034941-9494939f30fa // indirect
 	github.com/Trisia/gosysproxy v1.1.0 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
+	github.com/bdandy/go-errors v1.2.2 // indirect
+	github.com/bdandy/go-socks4 v1.2.3 // indirect
+	github.com/bogdanfinn/quic-go-utls v1.0.9-utls // indirect
+	github.com/bogdanfinn/utls v1.7.7-barnius // indirect
+	github.com/bogdanfinn/websocket v1.5.5-barnius // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect
@@ -126,7 +116,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -148,6 +138,7 @@ require (
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.40.0 // indirect
 	github.com/refraction-networking/utls v1.5.4 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -164,6 +155,7 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tam7t/hpkp v0.0.0-20160821193359-2b70b4024ed5 // indirect
 	github.com/tcnksm/go-gitconfig v0.1.2 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -181,11 +173,11 @@ require (
 	go.etcd.io/bbolt v1.3.8 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

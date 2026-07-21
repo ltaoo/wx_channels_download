@@ -34,8 +34,8 @@ import (
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
 	// "wx_channel/pkg/scraper/officialaccount"
+	webchannels "wx_channel/internal/adapter/wxchannels"
 	channels "wx_channel/pkg/scraper/wxchannels"
-	webchannels "wx_channel/internal/webcontent/wxchannels"
 	"wx_channel/pkg/system"
 )
 
@@ -276,7 +276,7 @@ func root_command(cfg *config.Config) {
 			logger.Error().Err(err).Str("content_external_id", browse.ContentExternalId).Msg("create browse history failed")
 		}
 	}
-	// onOfficialAccountArticleLoaded := func(profile *interceptor.OfficialAccountArticleProfile) {
+	// onOfficialAccountArticleLoaded := func(profile *officialaccount.OfficialAccountArticleProfile) {
 	// 	officialaccount.HandleArticleProfileLoaded(b.DB, logger, profile)
 	// 	if err := api_srv.APIClient.RecordBrowseHistory(profile.UniqueMark, officialaccount.CreateBrowseHistory(profile)); err != nil {
 	// 		logger.Error().Err(err).Str("content_external_id", profile.UniqueMark).Msg("create official account article browse history failed")

@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import (
 	"encoding/json"

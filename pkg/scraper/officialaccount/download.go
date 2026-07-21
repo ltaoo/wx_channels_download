@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import officialaccountdownload "wx_channel/pkg/officialaccount"
 

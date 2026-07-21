@@ -10,7 +10,7 @@ import (
 	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 
-	"wx_channel/internal/webcontent/wxchannels"
+	"wx_channel/internal/adapter/wxchannels"
 )
 
 type ChannelsService struct {

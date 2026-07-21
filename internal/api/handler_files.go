@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/database/model"
 	result "wx_channel/internal/util"
 	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
@@ -114,9 +115,18 @@ func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
 	if path == "" {
 		taskID := ctx.Query("id")
 		if taskID != "" {
-			task := c.downloader.GetTask(taskID)
-			if task != nil && task.Meta != nil && task.Meta.Opts != nil {
-				path = filepath.Join(task.Meta.Opts.Path, task.Meta.Opts.Name)
+			id, err := strconv.Atoi(taskID)
+			if err == nil && c.db != nil {
+				var task model.DownloadTaskV1
+				var resource model.DownloadResource
+				if c.db.First(&task, id).Error == nil &&
+					c.db.Where("task_id = ?", id).Order("merge_order ASC, id ASC").First(&resource).Error == nil {
+					path = task.SavePath
+					// 兼容曾经仅保存目录的任务记录。
+					if task.ResourceType != model.ResourceTypeFile || filepath.Base(path) != filepath.Base(resource.Name) {
+						path = filepath.Join(path, filepath.Base(resource.Name))
+					}
+				}
 			}
 		}
 	}
