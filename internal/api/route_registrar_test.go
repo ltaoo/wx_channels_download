@@ -21,3 +21,18 @@ func TestAPIClientRegisterGET(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
 	}
 }
+
+func TestAPIClientRegisterPOST(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client := &APIClient{engine: gin.New()}
+	client.RegisterPOST("/adapter-post-route", func(ctx *gin.Context) {
+		ctx.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/adapter-post-route", nil)
+	client.engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+}

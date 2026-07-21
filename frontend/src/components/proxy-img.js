@@ -8,7 +8,7 @@ const DOUBAN_IMAGE_HOSTS = ["doubanio.com"];
 const INSTAGRAM_IMAGE_HOSTS = ["cdninstagram.com", "fbcdn.net"];
 const QIDIAN_IMAGE_HOSTS = ["ccportrait.yuewen.com"];
 const WEIBO_IMAGE_HOSTS = ["sinaimg.cn", "sinaimg.com"];
-const OFFICIAL_ACCOUNT_PLATFORMS = ["wx_official_account", "officialaccount"];
+const OFFICIAL_ACCOUNT_PLATFORMS = ["wxmp", "officialaccount"];
 
 function getConfig() {
   if (typeof WXU !== "undefined" && WXU.config) return WXU.config;

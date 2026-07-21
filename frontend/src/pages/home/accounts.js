@@ -221,7 +221,7 @@ function OfficialAccountMessageItem(message, vm$) {
                 class: "h-full w-full object-cover",
                 src: coverURL,
                 alt: message.title || "cover",
-                platformId: "wx_official_account",
+                platformId: "wxmp",
                 contentType: "article",
               });
             },

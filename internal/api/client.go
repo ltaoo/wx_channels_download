@@ -254,6 +254,11 @@ func (c *APIClient) RegisterGET(path string, handler gin.HandlerFunc) {
 	c.engine.GET(path, handler)
 }
 
+// RegisterPOST exposes POST route registration for platform adapters.
+func (c *APIClient) RegisterPOST(path string, handler gin.HandlerFunc) {
+	c.engine.POST(path, handler)
+}
+
 func (c *APIClient) HTTPHandler() http.Handler {
 	return withCORS(c)
 }

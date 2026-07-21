@@ -243,12 +243,12 @@
     console.log(
       "report_article_loaded",
       window.cgiDataNew,
-      window.__wx_official_account_article_reported__,
+      window.__wxmp_article_reported__,
     );
-    if (!window.cgiDataNew || window.__wx_official_account_article_reported__) {
+    if (!window.cgiDataNew || window.__wxmp_article_reported__) {
       return;
     }
-    window.__wx_official_account_article_reported__ = true;
+    window.__wxmp_article_reported__ = true;
     fetch("/__wx_channels_api/officialaccount/article", {
       method: "POST",
       headers: {

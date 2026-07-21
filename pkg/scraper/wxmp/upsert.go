@@ -12,7 +12,7 @@ import (
 	"wx_channel/pkg/util"
 )
 
-const platformIDOfficialAccount = "wx_official_account"
+const platformIDOfficialAccount = "wxmp"
 
 // ArticleProfile 公众号文章的标准化数据，可直接用于插入 account、content、download_task
 type ArticleProfile struct {

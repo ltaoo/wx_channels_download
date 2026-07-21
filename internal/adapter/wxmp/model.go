@@ -1,37 +1,38 @@
-package wxchannels
+package wxmp
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
-	// "time"
 
 	"wx_channel/internal/database/model"
 	wxmp "wx_channel/pkg/scraper/wxmp"
 	"wx_channel/pkg/util"
 )
 
-const platformIDWxChannels = "wx_mp"
+const platformIDWxMP = "wxmp"
 
-// PlatformID is the platform identifier for wechat channels.
-const PlatformID = platformIDWxChannels
+// PlatformID is the platform identifier for WeChat official accounts.
+const PlatformID = platformIDWxMP
 
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
-	return platformIDWxChannels + ":" + externalID
+	return PlatformID + ":" + externalID
 }
 
 // BuildAccountID builds an account identifier from an external ID.
 func BuildAccountID(externalID string) string {
-	return platformIDWxChannels + ":" + externalID
+	return PlatformID + ":" + externalID
 }
 
 // ArticleExternalID builds a unique external identifier for an official account article.
 func ArticleExternalID(data *wxmp.ArticleCgiData) string {
-	return fmt.Sprintf("%s_%d_%d", data.Bizuin, data.Mid, data.Idx)
+	if data == nil || strings.TrimSpace(data.Bizuin) == "" || data.Mid <= 0 || data.Idx <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s_%d_%d", strings.TrimSpace(data.Bizuin), data.Mid, data.Idx)
 }
 
 // articleCoverURL picks the best cover image URL from the article data.
@@ -67,14 +68,14 @@ func ToContent(data *wxmp.ArticleCgiData) (*model.Content, error) {
 		return nil, errors.New("article data is nil")
 	}
 	externalID := ArticleExternalID(data)
-	if externalID == "__" {
+	if externalID == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	now := util.NowMillis()
 	c := &model.Content{
 		Id:          BuildContentID(externalID),
-		PlatformId:  platformIDWxChannels,
+		PlatformId:  PlatformID,
 		ContentType: "article",
 		ExternalId:  externalID,
 		ExternalId2: data.CommentID,
@@ -115,15 +116,16 @@ func ToAccount(data *wxmp.ArticleCgiData) (*model.Account, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
-	if data.Bizuin == "" {
+	externalID := strings.TrimSpace(data.Bizuin)
+	if externalID == "" {
 		return nil, errors.New("missing bizuin in article data")
 	}
 
 	now := util.NowMillis()
 	return &model.Account{
-		Id:         BuildAccountID(data.Bizuin),
-		PlatformId: platformIDWxChannels,
-		ExternalId: data.Bizuin,
+		Id:         BuildAccountID(externalID),
+		PlatformId: PlatformID,
+		ExternalId: externalID,
 		Username:   strings.TrimSpace(data.UserName),
 		Alias:      strings.TrimSpace(data.Alias),
 		Nickname:   strings.TrimSpace(data.NickName),
@@ -142,19 +144,19 @@ func ArticleToHistory(data *wxmp.ArticleCgiData) (*model.BrowseHistory, error) {
 		return nil, errors.New("article data is nil")
 	}
 	externalID := ArticleExternalID(data)
-	if externalID == "__" {
+	if externalID == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	contentID := BuildContentID(externalID)
-	accountID := BuildAccountID(data.Bizuin)
+	accountID := BuildAccountID(strings.TrimSpace(data.Bizuin))
 	now := util.NowMillis()
 
 	return &model.BrowseHistory{
-		PlatformId:        platformIDWxChannels,
+		PlatformId:        PlatformID,
 		VisitedTimes:      1,
 		AccountId:         &accountID,
-		AccountExternalId: data.Bizuin,
+		AccountExternalId: strings.TrimSpace(data.Bizuin),
 		AccountUsername:   strings.TrimSpace(data.UserName),
 		AccountNickname:   strings.TrimSpace(data.NickName),
 		AccountAvatarURL:  articleAvatarURL(data),
@@ -178,7 +180,7 @@ func ArticleToContentArticle(data *wxmp.ArticleCgiData) (*model.ContentArticle, 
 		return nil, errors.New("article data is nil")
 	}
 	externalID := ArticleExternalID(data)
-	if externalID == "__" {
+	if externalID == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
@@ -195,13 +197,13 @@ func ArticleToContentAccount(data *wxmp.ArticleCgiData) (*model.ContentAccount, 
 		return nil, errors.New("article data is nil")
 	}
 	externalID := ArticleExternalID(data)
-	if externalID == "__" {
+	if externalID == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	return &model.ContentAccount{
 		ContentId: BuildContentID(externalID),
-		AccountId: BuildAccountID(data.Bizuin),
+		AccountId: BuildAccountID(strings.TrimSpace(data.Bizuin)),
 		Role:      "publisher",
 		CreatedAt: util.NowMillis(),
 	}, nil
@@ -215,37 +217,4 @@ func firstNonEmptyStr(values ...string) string {
 		}
 	}
 	return ""
-}
-
-// BuildJumpURLFromParts builds a channels.weixin.qq.com feed page URL from individual fields.
-func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string {
-	origin := "https://channels.weixin.qq.com"
-	if sourceURL != "" {
-		return sourceURL
-	}
-
-	oid := objectId
-	nid := nonceId
-	u := origin + "/web/pages/feed"
-	if username != "" {
-		u += "?username=" + url.QueryEscape(username)
-	} else {
-		u += "?"
-	}
-
-	if oid != "" {
-		encodedOid := util.EncodeUint64ToBase64(oid)
-		if encodedOid != "" {
-			u += "&oid=" + url.QueryEscape(encodedOid)
-		}
-	}
-
-	if nid != "" {
-		encodedNid := util.EncodeUint64ToBase64(nid)
-		if encodedNid != "" {
-			u += "&nid=" + url.QueryEscape(encodedNid)
-		}
-	}
-
-	return strings.TrimSuffix(strings.Replace(u, "?&", "?", 1), "?")
 }

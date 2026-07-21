@@ -53,7 +53,7 @@ function normalizePlatformId(item) {
 
 function platformLabelOf(platformId) {
   switch (platformId) {
-    case "wx_official_account":
+    case "wxmp":
       return "公众号";
     case "wx_channels":
       return "视频号";

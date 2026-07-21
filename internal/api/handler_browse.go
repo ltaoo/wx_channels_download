@@ -102,7 +102,7 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 		platformIds = []string{body.PlatformId}
 	}
 	if len(platformIds) == 0 {
-		platformIds = []string{"wx_channels", "wx_official_account", "zhihu", "xiaohongshu", "bilibili", "youtube", "weibo"}
+		platformIds = []string{"wx_channels", "wxmp", "zhihu", "xiaohongshu", "bilibili", "youtube", "weibo"}
 	}
 	browseHistories, err := c.browseService.ListPlatforms(platformIds, body.Username)
 	if err != nil {

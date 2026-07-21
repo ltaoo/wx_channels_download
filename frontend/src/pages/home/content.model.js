@@ -37,7 +37,7 @@ function accountFromContent(content, fallback) {
 
 function platformNameOf(platformId) {
   switch (platformId) {
-    case "wx_official_account":
+    case "wxmp":
     case "officialaccount":
       return "公众号";
     case "wx_channels":

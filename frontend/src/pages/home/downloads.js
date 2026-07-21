@@ -2026,7 +2026,7 @@ function RemoteServerPanel(vm$) {
 function platformLabel(platform) {
   const map = {
     wx_channels: "视频号",
-    wx_official_account: "公众号",
+    wxmp: "公众号",
     douyin: "抖音",
     zhihu: "知乎",
     officialaccount: "公众号",
@@ -2502,7 +2502,7 @@ function pipelineWorkflowText(raw) {
 }
 
 function inferContentType(platform, content) {
-  if (platform === "officialaccount" || platform === "wx_official_account") {
+  if (platform === "officialaccount" || platform === "wxmp") {
     return "article";
   }
   if (platform === "xiaohongshu") return "note";
@@ -2886,7 +2886,7 @@ function normalizePlatformID(platform) {
     .toLowerCase();
   const aliases = {
     officialaccount: "officialaccount",
-    wx_official_account: "officialaccount",
+    wxmp: "officialaccount",
     xhs: "xiaohongshu",
     rednote: "xiaohongshu",
   };

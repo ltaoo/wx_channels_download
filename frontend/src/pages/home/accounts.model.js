@@ -9,7 +9,7 @@ import { api_client$ } from "@/store/index.js";
 
 function isOfficialAccount(account) {
   const platformId = String(account.platform_id || account.platform?.id || "");
-  return platformId === "wx_official_account" || platformId === "officialaccount";
+  return platformId === "wxmp" || platformId === "officialaccount";
 }
 
 function normalizeContent(content, context = {}) {
@@ -177,7 +177,7 @@ function sortAccountsByCreatedAtDesc(accounts) {
 
 function platformNameOf(platformId) {
   switch (platformId) {
-    case "wx_official_account":
+    case "wxmp":
       return "公众号";
     case "wx_channels":
       return "视频号";

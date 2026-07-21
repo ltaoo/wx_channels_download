@@ -79,7 +79,7 @@ func TestBrowseHistoryListPlatforms(t *testing.T) {
 
 	for _, history := range []model.BrowseHistory{
 		{PlatformId: "wx_channels", VisitedTimes: 1, ContentExternalId: "video_1", Timestamps: model.Timestamps{CreatedAt: 1000, UpdatedAt: 1000}},
-		{PlatformId: "wx_official_account", VisitedTimes: 1, ContentExternalId: "article_1", Timestamps: model.Timestamps{CreatedAt: 2000, UpdatedAt: 2000}},
+		{PlatformId: "wxmp", VisitedTimes: 1, ContentExternalId: "article_1", Timestamps: model.Timestamps{CreatedAt: 2000, UpdatedAt: 2000}},
 		{PlatformId: "douyin", VisitedTimes: 1, ContentExternalId: "douyin_1", Timestamps: model.Timestamps{CreatedAt: 3000, UpdatedAt: 3000}},
 	} {
 		if err := history.Upsert(db); err != nil {
@@ -87,7 +87,7 @@ func TestBrowseHistoryListPlatforms(t *testing.T) {
 		}
 	}
 
-	histories, err := NewBrowseService(db).ListPlatforms([]string{"wx_channels", "wx_official_account"}, nil)
+	histories, err := NewBrowseService(db).ListPlatforms([]string{"wx_channels", "wxmp"}, nil)
 	if err != nil {
 		t.Fatalf("list platforms: %v", err)
 	}

@@ -18,6 +18,7 @@ import (
 	velodatabase "github.com/ltaoo/velo/database"
 
 	webchannels "wx_channel/internal/adapter/wxchannels"
+	webmp "wx_channel/internal/adapter/wxmp"
 	"wx_channel/internal/admin"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
@@ -27,7 +28,7 @@ import (
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/scraper/wxchannels"
-	"wx_channel/pkg/scraper/wxmp"
+	scraperwxmp "wx_channel/pkg/scraper/wxmp"
 	"wx_channel/pkg/system"
 )
 
@@ -70,7 +71,7 @@ func Start(cfg *config.Config) {
 		color.Red(fmt.Sprintf("注册视频号静态资源失败: %v", err))
 		return
 	}
-	if err := wxmp.RegisterStaticAssets(staticAssets); err != nil {
+	if err := scraperwxmp.RegisterStaticAssets(staticAssets); err != nil {
 		color.Red(fmt.Sprintf("注册公众号静态资源失败: %v", err))
 		return
 	}
@@ -90,6 +91,8 @@ func Start(cfg *config.Config) {
 	}
 	channels_interceptor_cfg := webchannels.NewConfig(cfg)
 	channels_interceptor_cfg.RegisterPlugins(interceptor_srv.Interceptor, b.DB, logger, bus)
+	mp_interceptor_cfg := webmp.NewConfig(cfg)
+	mp_interceptor_cfg.RegisterPlugins(interceptor_srv.Interceptor, b.DB, logger, bus)
 	if channels_interceptor_cfg.HasGlobalScript() {
 		tableData = append(tableData, []string{"全局脚本", channels_interceptor_cfg.GlobalScriptFilepath()})
 	}
@@ -99,6 +102,8 @@ func Start(cfg *config.Config) {
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB, staticAssets)
 	channelsWebsocketRoutes := webchannels.NewWebsocketRoutes(api_cfg.ChannelsRefreshInterval, b.DB)
 	channelsWebsocketRoutes.RegisterRoutes(api_srv.APIClient)
+	mpRoutes := webmp.NewRoutes(cfg, false, &logger, b.DB)
+	mpRoutes.RegisterRoutes(api_srv.APIClient)
 	api_srv.SubscribeEvents(bus)
 	api_srv.APIClient.SubscribeEvents(bus)
 	admin_srv := admin.NewAdminServer(cfg, b, bus)
@@ -106,6 +111,7 @@ func Start(cfg *config.Config) {
 	cleanup := func() {
 		fmt.Printf("\n正在关闭下载器...\n")
 		channelsWebsocketRoutes.Stop()
+		mpRoutes.Stop()
 		if err := interceptor_srv.Stop(); err != nil {
 			color.Red(fmt.Sprintf("⚠️ 关闭代理服务失败: %v\n", err))
 		}
