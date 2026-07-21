@@ -24,6 +24,7 @@ import (
 	"wx_channel/internal/manager"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
+	"wx_channel/pkg/hermes/protocol"
 	// "wx_channel/internal/adapter/officialaccount"
 	// wxchannels "wx_channel/internal/adapter/wxchannels"
 )
@@ -97,8 +98,9 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 	apiClient.downloader = hermes.New(&dbTaskStore{db: db},
 		func(taskID int, event hermes.EventType) {
 			logger.Debug().Int("task_id", taskID).Str("event", string(event)).Msg("Hermes task event")
-			apiClient.broadcastDownloadTaskUpsert(taskID)
+			apiClient.broadcastDownloadTaskUpsert([]int{taskID})
 		}, cfg.MaxRunning)
+	apiClient.downloader.RegisterProtocol(protocol.NewHTTPDriver())
 
 	status_ws.OnConnected = func(wsClient *download.StatusWSClient) {
 		data, err := json.Marshal(APIClientWSMessage{

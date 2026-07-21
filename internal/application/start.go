@@ -100,7 +100,7 @@ func Start(cfg *config.Config) {
 	fmt.Println()
 
 	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB, staticAssets)
-	channelsWebsocketRoutes := webchannels.NewWebsocketRoutes(api_cfg.ChannelsRefreshInterval, b.DB)
+	channelsWebsocketRoutes := webchannels.NewWebsocketRoutes(api_cfg.ChannelsRefreshInterval, b.DB, api_cfg.CloudflareSphCookie, api_cfg.RemoteServerMode)
 	channelsWebsocketRoutes.RegisterRoutes(api_srv.APIClient)
 	mpRoutes := webmp.NewRoutes(cfg, false, &logger, b.DB)
 	mpRoutes.RegisterRoutes(api_srv.APIClient)

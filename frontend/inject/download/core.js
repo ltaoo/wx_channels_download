@@ -675,16 +675,16 @@ function DownloaderPanelViewModel(props = {}) {
   );
   const createTaskReq = new Timeless.RequestCore(
     (params = {}) =>
-      request.post("/api/v1/download_task/create_by_url", {
+      request.post("/api/v1/download_task/create_by_url", [{
         url: params.url,
         filename: params.filename || "",
         save_path: params.save_path || "",
-      }),
+      }]),
     { client: http_client },
   );
   const createPlatformTaskReq = new Timeless.RequestCore(
     (params = {}) =>
-      request.post("/api/v1/download_task/create", {
+      request.post("/api/v1/download_task/create", [{
         platform: params.platform || "",
         content: params.content || {},
         config: {
@@ -693,7 +693,7 @@ function DownloaderPanelViewModel(props = {}) {
           spec: params.spec || "",
           download_cover: !!params.download_cover,
         },
-      }),
+      }]),
     { client: http_client },
   );
 
@@ -1961,17 +1961,26 @@ function DownloaderPanelViewModel(props = {}) {
             return;
           }
           if (msg.type === "task_upsert") {
-            const task = msg.task;
-            if (!task || !task.id) {
-              return;
+            const tasks = msg.tasks;
+            if (tasks && tasks.length) {
+              tasks.forEach((task) => {
+                if (task && task.id) {
+                  methods.upsert(methods.formatTask(task));
+                }
+              });
             }
-            methods.upsert(methods.formatTask(task));
             return;
           }
           if (msg.type === "task_delete") {
-            const taskId = msg.task && msg.task.id;
-            if (taskId) {
-              applyDeletedTaskIds([taskId]);
+            const tasks = msg.tasks;
+            if (tasks && tasks.length) {
+              const taskIds = [];
+              tasks.forEach((t) => {
+                if (t && t.id) taskIds.push(t.id);
+              });
+              if (taskIds.length) {
+                applyDeletedTaskIds(taskIds);
+              }
             }
             return;
           }

@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import (
 	"crypto/md5"
@@ -771,10 +771,6 @@ func (c *OfficialAccountDownload) Scrape(url string) ([]byte, error) {
 	return body, err
 }
 
-// ExtractArticleID extracts a unique article identifier from a WeChat official account URL.
-// For short URLs like https://mp.weixin.qq.com/s/2kaR8z-xO_IAO9TPSUecsQ, returns the path suffix.
-// For full URLs, returns mid+idx as the unique key, or a hash of __biz-style query links.
-// The rawURL may have an "officialaccount://" prefix.
 func ExtractArticleID(rawURL string) string {
 	u := rawURL
 	lower := strings.ToLower(u)

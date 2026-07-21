@@ -1,4 +1,4 @@
-package hermes
+package protocol_test
 
 import (
 	"context"
@@ -10,9 +10,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"wx_channel/pkg/hermes"
+	"wx_channel/pkg/hermes/protocol"
 )
 
-func TestHTTPProtocolPrepareDoesNotWaitForHEAD(t *testing.T) {
+func TestHTTPPrepareDoesNotWaitForHEAD(t *testing.T) {
 	headCalled := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
@@ -34,7 +37,7 @@ func TestHTTPProtocolPrepareDoesNotWaitForHEAD(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	prepared, err := newHTTPProtocolDriver().Prepare(ctx, Endpoint{URL: server.URL})
+	prepared, err := protocol.NewHTTPDriver().Prepare(ctx, hermes.Endpoint{URL: server.URL})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1024), prepared.Size)
 	assert.True(t, prepared.SupportsRange)
@@ -46,7 +49,7 @@ func TestHTTPProtocolPrepareDoesNotWaitForHEAD(t *testing.T) {
 	}
 }
 
-func TestHTTPProtocolOpenStreamsRange(t *testing.T) {
+func TestHTTPOpenStreamsRange(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "bytes=1-3", r.Header.Get("Range"))
 		assert.Equal(t, "identity", r.Header.Get("Accept-Encoding"))
@@ -57,7 +60,7 @@ func TestHTTPProtocolOpenStreamsRange(t *testing.T) {
 	}))
 	defer server.Close()
 
-	body, err := newHTTPProtocolDriver().Open(context.Background(), Endpoint{URL: server.URL}, ReadRequest{
+	body, err := protocol.NewHTTPDriver().Open(context.Background(), hermes.Endpoint{URL: server.URL}, hermes.ReadRequest{
 		OffsetStart: 1,
 		OffsetEnd:   3,
 		UseRange:    true,

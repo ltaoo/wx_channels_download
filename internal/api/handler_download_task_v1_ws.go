@@ -16,10 +16,10 @@ const (
 	downloadTaskWSDelete = "task_delete"
 )
 
-// DownloadTaskWSMessage 只负责事件类型；Task 与 REST data.list[] 完全同构。
+// DownloadTaskWSMessage 只负责事件类型；Tasks 数组与 REST data.list[] 完全同构。
 type DownloadTaskWSMessage struct {
-	Type string             `json:"type"`
-	Task DownloadTaskRecord `json:"task"`
+	Type  string               `json:"type"`
+	Tasks []DownloadTaskRecord `json:"tasks"`
 }
 
 var v1DownloadTaskUpgrader = websocket.Upgrader{
@@ -55,16 +55,20 @@ func (h *taskWSPool) remove(client *v1TaskClient) {
 	}
 }
 
-// BroadcastTask 向订阅指定 taskID 的客户端推送统一任务记录。
-func (h *taskWSPool) BroadcastTask(taskID int, payload DownloadTaskWSMessage) {
+// BroadcastTasks 向订阅指定 taskIDs 的客户端推送统一任务记录数组。
+func (h *taskWSPool) BroadcastTasks(taskIDs []int, payload DownloadTaskWSMessage) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
+	taskIDSet := make(map[int]bool, len(taskIDs))
+	for _, id := range taskIDs {
+		taskIDSet[id] = true
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
-		if client.taskID != 0 && client.taskID != taskID {
+		if client.taskID != 0 && !taskIDSet[client.taskID] {
 			continue
 		}
 		select {
@@ -99,7 +103,7 @@ func (c *APIClient) handleDownloadTaskV1WS(ctx *gin.Context) {
 
 	if client.taskID != 0 {
 		if record, recordErr := c.buildDownloadTaskRecord(client.taskID); recordErr == nil && record != nil {
-			client.enqueue(DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Task: *record})
+			client.enqueue(DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Tasks: []DownloadTaskRecord{*record}})
 		}
 	}
 
@@ -107,21 +111,35 @@ func (c *APIClient) handleDownloadTaskV1WS(ctx *gin.Context) {
 	v1TaskHub.remove(client)
 }
 
-func (c *APIClient) broadcastDownloadTaskUpsert(taskID int) {
-	record, err := c.buildDownloadTaskRecord(taskID)
-	if err != nil || record == nil {
+func (c *APIClient) broadcastDownloadTaskUpsert(taskIDs []int) {
+	records := make([]DownloadTaskRecord, 0, len(taskIDs))
+	for _, id := range taskIDs {
+		record, err := c.buildDownloadTaskRecord(id)
+		if err != nil || record == nil {
+			continue
+		}
+		records = append(records, *record)
+	}
+	if len(records) == 0 {
 		return
 	}
-	v1TaskHub.BroadcastTask(taskID, DownloadTaskWSMessage{
-		Type: downloadTaskWSUpsert,
-		Task: *record,
+	v1TaskHub.BroadcastTasks(taskIDs, DownloadTaskWSMessage{
+		Type:  downloadTaskWSUpsert,
+		Tasks: records,
 	})
 }
 
-func (c *APIClient) broadcastDownloadTaskDelete(record DownloadTaskRecord) {
-	v1TaskHub.BroadcastTask(record.ID, DownloadTaskWSMessage{
-		Type: downloadTaskWSDelete,
-		Task: record,
+func (c *APIClient) broadcastDownloadTaskDelete(records []DownloadTaskRecord) {
+	if len(records) == 0 {
+		return
+	}
+	taskIDs := make([]int, len(records))
+	for i, r := range records {
+		taskIDs[i] = r.ID
+	}
+	v1TaskHub.BroadcastTasks(taskIDs, DownloadTaskWSMessage{
+		Type:  downloadTaskWSDelete,
+		Tasks: records,
 	})
 }
 

@@ -1,7 +1,9 @@
-package officialaccount
+package wxmp
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -54,7 +56,6 @@ func TestSaveURLAsMarkdown(t *testing.T) {
 		t.Fatalf("SaveURLAsMarkdown failed: %v", err)
 	}
 }
-
 
 func TestExtractArticleID(t *testing.T) {
 	tests := []struct {

@@ -1,4 +1,4 @@
-package officialaccount
+package wxmp
 
 import (
 	"bytes"
@@ -94,8 +94,8 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	vm.RunString("var window = {};")
 	// Mock document and basic DOM/jQuery environment to prevent script errors
 	vm.RunString(`
-		var document = { 
-			getElementById: function() { return {}; }, 
+		var document = {
+			getElementById: function() { return {}; },
 			getElementsByTagName: function() { return []; },
 			createElement: function() { return {}; },
 			head: {}
@@ -120,7 +120,7 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 
 	// Mock JsDecode
 	// In the browser, JsDecode seems to decode strings, but the strings in the script
-	// are often already just string literals. If they contain escape sequences,
+	// are often just string literals. If they contain escape sequences,
 	// the JS parser handles them.
 	// We'll treat it as an identity function for now.
 	vm.Set("JsDecode", func(call goja.FunctionCall) goja.Value {

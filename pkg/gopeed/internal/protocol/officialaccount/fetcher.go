@@ -11,12 +11,12 @@ import (
 	"github.com/GopeedLab/gopeed/internal/fetcher"
 	"github.com/GopeedLab/gopeed/pkg/base"
 
-	officialaccountdownload "wx_channel/pkg/officialaccount"
+	wxmp "wx_channel/pkg/scraper/wxmp"
 )
 
 type Fetcher struct {
 	fetcher.DefaultFetcher
-	oa         *officialaccountdownload.OfficialAccountDownload
+	oa         *wxmp.OfficialAccountDownload
 	mu         sync.Mutex
 	closed     bool
 	downloaded int64
@@ -41,7 +41,7 @@ func (f *Fetcher) Resolve(req *base.Request) error {
 	}
 	f.DefaultFetcher.Meta.Req = req
 
-	f.oa = &officialaccountdownload.OfficialAccountDownload{}
+	f.oa = &wxmp.OfficialAccountDownload{}
 
 	// Fetch the article to get the title
 	article, err := f.oa.FetchArticle(resolveRealURL(req.URL))
@@ -116,7 +116,7 @@ func (f *Fetcher) Create(opts *base.Options) error {
 func (f *Fetcher) Start() error {
 	go func() {
 		if f.oa == nil {
-			f.oa = &officialaccountdownload.OfficialAccountDownload{}
+			f.oa = &wxmp.OfficialAccountDownload{}
 		}
 		f.oa.OnProgress = func(downloaded int64) {
 			f.addProgress(downloaded)
@@ -213,7 +213,7 @@ func (fm *FetcherManager) Build() fetcher.Fetcher {
 }
 
 func (fm *FetcherManager) ParseName(u string) string {
-	articleID := officialaccountdownload.ExtractArticleID(u)
+	articleID := wxmp.ExtractArticleID(u)
 	if articleID == "" {
 		return "article.html"
 	}

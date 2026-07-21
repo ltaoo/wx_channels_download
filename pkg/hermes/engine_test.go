@@ -224,6 +224,52 @@ func (d *flakyPrepareDriver) prepareAttempts() int {
 	return d.attempts
 }
 
+// testHTTPDriver 是供 engine 测试使用的轻量 HTTP 协议驱动。
+// 它使用标准 net/http 库而非 tls-client，因此可以与 httptest.Server 兼容。
+type testHTTPDriver struct{}
+
+func (d *testHTTPDriver) Protocols() []string { return []string{"http", "https"} }
+
+func (d *testHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (PreparedResource, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return PreparedResource{}, err
+	}
+	defer resp.Body.Close()
+	prepared := PreparedResource{ContentType: resp.Header.Get("Content-Type")}
+	if resp.StatusCode == http.StatusPartialContent {
+		var start, end, total int64
+		if _, err := fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &total); err == nil && start == 0 && end == 0 && total > 0 {
+			prepared.Size = total
+			prepared.SupportsRange = true
+			return prepared, nil
+		}
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if resp.ContentLength > 0 {
+			prepared.Size = resp.ContentLength
+		}
+		return prepared, nil
+	}
+	return PreparedResource{}, fmt.Errorf("HTTP probe returned status %d", resp.StatusCode)
+}
+
+func (d *testHTTPDriver) Open(ctx context.Context, endpoint Endpoint, request ReadRequest) (io.ReadCloser, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+	req.Header.Set("Accept-Encoding", "identity")
+	if request.UseRange {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", request.OffsetStart, request.OffsetEnd))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
 func (t *eventTracker) record(taskID int, event EventType) {
 	t.mu.Lock()
 	t.events = append(t.events, event)
@@ -454,6 +500,7 @@ func TestEngine_DownloadWithProgress(t *testing.T) {
 	tracker := &eventTracker{}
 
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 
 	// 启动下载
 	if err := d.Start(1); err != nil {
@@ -526,6 +573,7 @@ func TestEngine_FileSmallerThanBuffer(t *testing.T) {
 
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 
 	if err := d.Start(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
@@ -554,6 +602,7 @@ func TestEngine_EmptyFile(t *testing.T) {
 	}}
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 	if err := d.Start(1); err != nil {
 		t.Fatal(err)
 	}
@@ -602,6 +651,7 @@ func TestEngine_ConcurrencyLimit(t *testing.T) {
 	// 启动多个下载任务验证并发限制不阻塞
 	for i := 0; i < 3; i++ {
 		d := New(stores[i], trackers[i].record, 3)
+		d.RegisterProtocol(&testHTTPDriver{})
 		if err := d.Start(i + 1); err != nil {
 			t.Fatalf("启动任务 %d 失败: %v", i+1, err)
 		}
@@ -640,6 +690,7 @@ func TestEngine_PauseAndResume(t *testing.T) {
 
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 
 	if err := d.Start(1); err != nil {
 		t.Fatalf("启动失败: %v", err)
@@ -663,6 +714,7 @@ func TestEngine_PauseAndResume(t *testing.T) {
 
 	// 恢复
 	d2 := New(store, tracker.record, 1)
+	d2.RegisterProtocol(&testHTTPDriver{})
 	if err := d2.Start(1); err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -721,6 +773,7 @@ func TestEngine_EventSequence(t *testing.T) {
 
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 
 	if err := d.Start(1); err != nil {
 		t.Fatalf("启动失败: %v", err)
@@ -784,6 +837,7 @@ func TestEngine_MultiSegmentConcurrent(t *testing.T) {
 
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 10)
+	d.RegisterProtocol(&testHTTPDriver{})
 
 	if err := d.Start(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
@@ -856,6 +910,7 @@ func TestEngine_ServerWithoutRangeUsesSingleDownload(t *testing.T) {
 	}}
 	tracker := &eventTracker{}
 	d := New(store, tracker.record, 1)
+	d.RegisterProtocol(&testHTTPDriver{})
 	if err := d.Start(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
@@ -886,6 +941,10 @@ func TestTaskFilePathCannotEscapeSaveDirectory(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, filepath.Join("/downloads", "video.mp4"), path)
 
+	path, err = taskFilePath(&Task{Name: "../video.mp4", SavePath: "/downloads"}, "https://example.com/ignored")
+	assert.NoError(t, err)
+	assert.Equal(t, filepath.Join("/downloads", "video.mp4"), path)
+
 	path, err = taskFilePath(&Task{
 		Name:         "video.mp4",
 		SavePath:     filepath.Join("/downloads", "video.mp4"),
@@ -896,6 +955,13 @@ func TestTaskFilePathCannotEscapeSaveDirectory(t *testing.T) {
 
 	_, err = taskFilePath(&Task{Name: "..", SavePath: "/downloads"}, "https://example.com/ignored")
 	assert.Error(t, err)
+
+	_, err = taskFilePath(&Task{Name: ".", SavePath: "/downloads"}, "https://example.com/ignored")
+	assert.Error(t, err)
+
+	path, err = taskFilePath(&Task{Name: "chapters/0001.html", SavePath: "/downloads"}, "https://example.com/ignored")
+	assert.NoError(t, err)
+	assert.Equal(t, filepath.Join("/downloads", "chapters", "0001.html"), path)
 }
 
 func TestEngine_RegisteredProtocolAndEndpointFallback(t *testing.T) {

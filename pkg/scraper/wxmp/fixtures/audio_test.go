@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	wxmp "wx_channel/internal/adapter/officialaccount"
+	wxmp "wx_channel/pkg/scraper/wxmp"
 )
 
 const audioJSON = `{

@@ -846,11 +846,17 @@ export function DownloadTaskPanelModel(props) {
   function handleWSMessage(message) {
     if (!message || !message.type) return;
     if (message.type === "task_upsert") {
-      upsertTaskRecord(message.task);
+      const tasks = message.tasks;
+      if (tasks && tasks.length) {
+        tasks.forEach((task) => upsertTaskRecord(task));
+      }
       return;
     }
     if (message.type === "task_delete") {
-      removeRuntimeTask(message.task);
+      const tasks = message.tasks;
+      if (tasks && tasks.length) {
+        tasks.forEach((task) => removeRuntimeTask(task));
+      }
       return;
     }
     if (message.type === "event") {

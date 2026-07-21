@@ -99,7 +99,7 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	client.downloader = hermes.New(&dbTaskStore{db: db}, nil, 1)
 	defer client.downloader.PauseAll()
 
-	body := []byte(`{"platform":"api_test_save_path","content":{},"config":{"download_cover":true}}`)
+	body := []byte(`[{"platform":"api_test_save_path","content":{},"config":{"download_cover":true}}]`)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create", bytes.NewReader(body))
@@ -109,25 +109,35 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	var response struct {
 		Code int `json:"code"`
 		Data struct {
-			Task      model.DownloadTaskV1     `json:"task"`
-			Resources []model.DownloadResource `json:"resources"`
-			Endpoints []model.DownloadEndpoint `json:"endpoints"`
+			Tasks []struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Task      model.DownloadTaskV1     `json:"task"`
+					Resources []model.DownloadResource `json:"resources"`
+					Endpoints []model.DownloadEndpoint `json:"endpoints"`
+				} `json:"data"`
+				Error string `json:"error"`
+			} `json:"tasks"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 	assert.Zero(t, response.Code, recorder.Body.String())
-	assert.Equal(t, model.TaskStatusPreparing, response.Data.Task.Status)
-	assert.Equal(t, model.ResourceTypeCollection, response.Data.Task.ResourceType)
+	require.Len(t, response.Data.Tasks, 1)
+	require.True(t, response.Data.Tasks[0].Success)
+
+	result := response.Data.Tasks[0].Data
+	assert.Equal(t, model.TaskStatusPreparing, result.Task.Status)
+	assert.Equal(t, model.ResourceTypeCollection, result.Task.ResourceType)
 	assert.True(t, savePathTestHandler.config.DownloadCover)
 	assert.Equal(t, expectedSaveDir, savePathTestHandler.config.SavePath)
-	assert.Equal(t, expectedSaveDir, response.Data.Task.SavePath)
-	require.Len(t, response.Data.Resources, 2)
-	require.Len(t, response.Data.Endpoints, 2)
-	assert.Equal(t, "video", response.Data.Resources[0].Kind)
-	assert.Equal(t, "cover", response.Data.Resources[1].Kind)
+	assert.Equal(t, expectedSaveDir, result.Task.SavePath)
+	require.Len(t, result.Resources, 2)
+	require.Len(t, result.Endpoints, 2)
+	assert.Equal(t, "video", result.Resources[0].Kind)
+	assert.Equal(t, "cover", result.Resources[1].Kind)
 
 	var persisted model.DownloadTaskV1
-	require.NoError(t, db.First(&persisted, response.Data.Task.Id).Error)
+	require.NoError(t, db.First(&persisted, result.Task.Id).Error)
 	assert.Equal(t, expectedSaveDir, persisted.SavePath)
 	assert.DirExists(t, expectedSaveDir)
 
@@ -187,22 +197,30 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create_by_url", bytes.NewBufferString(`{"url":"`+testServer.URL+`/image","filename":"cover"}`))
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create_by_url", bytes.NewBufferString(`[{"url":"`+testServer.URL+`/image","filename":"cover"}]`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	client.handleCreateDownloadTaskByURLV1(ctx)
 
 	var response struct {
 		Code int `json:"code"`
 		Data struct {
-			Task model.DownloadTaskV1 `json:"task"`
+			Tasks []struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Task model.DownloadTaskV1 `json:"task"`
+				} `json:"data"`
+				Error string `json:"error"`
+			} `json:"tasks"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 	require.Zero(t, response.Code, recorder.Body.String())
+	require.Len(t, response.Data.Tasks, 1)
+	require.True(t, response.Data.Tasks[0].Success)
 
 	var task model.DownloadTaskV1
 	require.Eventually(t, func() bool {
-		if err := db.First(&task, response.Data.Task.Id).Error; err != nil {
+		if err := db.First(&task, response.Data.Tasks[0].Data.Task.Id).Error; err != nil {
 			return false
 		}
 		return task.Status == model.TaskStatusFinished
@@ -265,8 +283,8 @@ func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 	require.NotNil(t, record)
 	assert.Equal(t, "latest error", record.Error)
 
-	message := DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Task: *record}
-	assert.Equal(t, response.Data.List[0], message.Task)
+	message := DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Tasks: []DownloadTaskRecord{*record}}
+	assert.Equal(t, response.Data.List[0], message.Tasks[0])
 }
 
 func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {

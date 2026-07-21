@@ -1,4 +1,4 @@
-package api
+package wxchannels
 
 import (
 	"encoding/json"
@@ -10,9 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
-	result "wx_channel/internal/util"
 )
 
 // ParseResponse represents the response from tencent yuanbao API
@@ -109,7 +106,7 @@ func generateRid() string {
 	return timestampHex + "-" + string(randomHex)
 }
 
-func parseShareUrl(shareUrl string, cookie string) (*ParseResponse, error) {
+func ParseShareUrl(shareUrl string, cookie string) (*ParseResponse, error) {
 	log.Println("[parseShareUrl] start, url:", shareUrl)
 	client := &http.Client{}
 	payload := fmt.Sprintf(`{"type":"video_channel_url","url":"%s","scene":1}`, shareUrl)
@@ -219,11 +216,11 @@ func getFeedInfo(exportId, generalToken string) (*FeedResponse, error) {
 	return &feedResp, nil
 }
 
-func fetchVideoProfileWithShareUrl(shareUrl string, cookie string) (*FeedResponse, error) {
+func FetchVideoProfileWithShareUrl(shareUrl string, cookie string) (*FeedResponse, error) {
 	log.Println("[fetch] start, shareUrl:", shareUrl)
 
 	log.Println("[fetch] step 1/2: parseShareUrl...")
-	parseResult, err := parseShareUrl(shareUrl, cookie)
+	parseResult, err := ParseShareUrl(shareUrl, cookie)
 	if err != nil {
 		log.Println("[fetch] step 1/2 failed:", err)
 		return nil, fmt.Errorf("parse share url: %w", err)
@@ -256,35 +253,7 @@ func fetchVideoProfileWithShareUrl(shareUrl string, cookie string) (*FeedRespons
 	return feedResult, nil
 }
 
-func (c *APIClient) handleParseSph(ctx *gin.Context) {
-	shareUrl := ctx.Query("url")
-	if shareUrl == "" {
-		result.Err(ctx, 400, "url parameter is required")
-		return
-	}
-
-	// 从 APIClient 配置中获取 cookie
-	cookie := c.cfg.CloudflareSphCookie
-	if cookie == "" {
-		result.Err(ctx, 400, "cloudflare.sphCookie not configured")
-		return
-	}
-
-	feedResp, err := fetchVideoProfileWithShareUrl(shareUrl, cookie)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-
-	// 处理 video URL：仅保留 encfilekey 和 token 参数，存储为 originVideoUrl
-	if feedResp != nil && feedResp.Data.Feedinfo.Videourl != "" {
-		feedResp.Data.Feedinfo.OriginVideoUrl = cleanVideoURL(feedResp.Data.Feedinfo.Videourl)
-	}
-
-	result.Ok(ctx, feedResp)
-}
-
-func cleanVideoURL(videoURL string) string {
+func CleanVideoURL(videoURL string) string {
 	u, err := url.Parse(videoURL)
 	if err != nil {
 		return ""

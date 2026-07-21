@@ -237,7 +237,6 @@ func New(store Store, onEvent EventHandler, maxConcurrent int) *Engine {
 		onEvent:       onEvent,
 		drivers:       make(map[string]ProtocolDriver),
 	}
-	d.RegisterProtocol(newHTTPProtocolDriver())
 	return d
 }
 
@@ -388,7 +387,11 @@ func (d *Engine) run(taskID int, ctx context.Context) error {
 	}
 	resources := info.Resources
 	if len(resources) == 0 {
-		resources = []Resource{{ID: info.ResourceID, Name: info.Name, Endpoints: info.Endpoints}}
+		endpoints := info.Endpoints
+		if len(endpoints) == 0 && strings.TrimSpace(info.URL) != "" {
+			endpoints = []Endpoint{{URL: info.URL}}
+		}
+		resources = []Resource{{ID: info.ResourceID, Name: info.Name, Endpoints: endpoints}}
 	}
 	if len(resources) == 0 {
 		return errors.New("任务没有可下载资源")
@@ -675,8 +678,14 @@ func taskFilePath(info *Task, endpointURL string) (string, error) {
 			name = filepath.Base(parsed.Path)
 		}
 	}
-	name = filepath.Base(name)
-	if name == "" || name == "." || name == ".." || name == string(filepath.Separator) {
+	name = filepath.Clean(name)
+	name = strings.TrimLeft(name, "/")
+	// Strip leading path traversal prefixes (same effect as filepath.Base but preserves subdirectories)
+	for strings.HasPrefix(name, "../") {
+		name = name[3:]
+	}
+	// Prevent path traversal attacks
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, string(filepath.Separator)+"..") {
 		return "", errors.New("无法确定下载文件名")
 	}
 
