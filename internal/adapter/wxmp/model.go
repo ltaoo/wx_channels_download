@@ -10,7 +10,7 @@ import (
 	// "time"
 
 	"wx_channel/internal/database/model"
-	wxmp "wx_channel/pkg/scraper/officialaccount"
+	wxmp "wx_channel/pkg/scraper/wxmp"
 	"wx_channel/pkg/util"
 )
 

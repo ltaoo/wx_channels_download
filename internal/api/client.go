@@ -8,6 +8,7 @@ import (
 	// "net/url"
 	// "regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,27 +20,33 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/download"
 	// "wx_channel/internal/officialaccount"
+	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
+	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
-	wxmp "wx_channel/pkg/scraper/officialaccount"
-	channels "wx_channel/pkg/scraper/wxchannels"
 	// "wx_channel/internal/adapter/officialaccount"
 	// wxchannels "wx_channel/internal/adapter/wxchannels"
-	// channels "wx_channel/pkg/scraper/wxchannels"
 )
 
 type APIClient struct {
 	downloader *hermes.Engine
 	// official      *officialaccount.OfficialAccountClient
 	// channels      *channels.ChannelsClient
-	status_ws   *download.StatusHub
-	filehelper  *FileHelperHandler
-	cfg         *APIConfig
-	engine      *gin.Engine
-	db          *gorm.DB
-	logger      *zerolog.Logger
-	httpHandler http.Handler
-	serviceMgr  *manager.ServerManager
+	status_ws    *download.StatusHub
+	filehelper   *FileHelperHandler
+	cfg          *APIConfig
+	engine       *gin.Engine
+	db           *gorm.DB
+	logger       *zerolog.Logger
+	httpHandler  http.Handler
+	staticAssets *webassets.Registry
+
+	bus               *events.Bus
+	proxyStatusMu     sync.RWMutex
+	cachedProxyStatus string
+	cachedProxyAddr   string
+	svcStatusMu       sync.RWMutex
+	svcStatuses       map[string]events.ServiceStatusChanged
 
 	// Services
 	channelsService       *services.ChannelsService
@@ -49,7 +56,7 @@ type APIClient struct {
 	channelsUploadService *services.ChannelsUploadService
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *APIClient {
+func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, staticAssets *webassets.Registry) *APIClient {
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
 	// var channels_client *channels.ChannelsClient
 	// official_cfg := officialaccount.NewOfficialAccountConfig(cfg.Original, cfg.RemoteServerMode)
@@ -66,16 +73,20 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	contentService := services.NewContentService(db)
 	browseService := services.NewBrowseService(db)
 	channelsUploadService := services.NewChannelsUploadService(db, &logger)
+	if staticAssets == nil {
+		staticAssets = webassets.NewRegistry()
+	}
 
 	apiClient := &APIClient{
 		// official:              officialaccount_client,
 		// channels:              channels_client,
 		status_ws: status_ws,
 		// filehelper:            NewFileHelperHandler(),
-		cfg:    cfg,
-		engine: gin.Default(),
-		db:     db,
-		logger: &logger,
+		cfg:          cfg,
+		engine:       gin.Default(),
+		db:           db,
+		logger:       &logger,
+		staticAssets: staticAssets,
 		// channelsService:       channelsService,
 		accountService:        accountService,
 		contentService:        contentService,
@@ -125,8 +136,52 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB) *A
 	return apiClient
 }
 
-func (c *APIClient) SetManager(mgr *manager.ServerManager) {
-	c.serviceMgr = mgr
+func (c *APIClient) SubscribeEvents(bus *events.Bus) {
+	c.bus = bus
+	bus.Subscribe(events.TypeProxyStatusChanged, func(e events.Event) {
+		ev, ok := e.(events.ProxyStatusChanged)
+		if !ok {
+			return
+		}
+		c.proxyStatusMu.Lock()
+		c.cachedProxyStatus = ev.Status
+		c.cachedProxyAddr = ev.Addr
+		c.proxyStatusMu.Unlock()
+	})
+	bus.Subscribe(events.TypeBrowseHistoryRecorded, func(e events.Event) {
+		ev, ok := e.(events.BrowseHistoryRecorded)
+		if !ok || ev.Browse == nil {
+			return
+		}
+		b := ev.Browse
+		if err := c.RecordBrowseHistory(b.ContentExternalId, services.BrowseHistoryInfo{
+			PlatformId:        b.PlatformId,
+			AccountExternalId: b.AccountExternalId,
+			AccountUsername:   b.AccountUsername,
+			AccountNickname:   b.AccountNickname,
+			AccountAvatarURL:  b.AccountAvatarURL,
+			ContentType:       b.ContentType,
+			ContentTitle:      b.ContentTitle,
+			ContentURL:        b.ContentURL,
+			ContentSourceURL:  b.ContentSourceURL,
+			ContentCoverURL:   b.ContentCoverURL,
+			ExtraDataJSON:     b.ExtraData,
+		}); err != nil {
+			c.logger.Error().Err(err).Str("content_external_id", b.ContentExternalId).Msg("create browse history failed")
+		}
+	})
+	bus.Subscribe(events.TypeServiceStatusChanged, func(e events.Event) {
+		ev, ok := e.(events.ServiceStatusChanged)
+		if !ok {
+			return
+		}
+		c.svcStatusMu.Lock()
+		if c.svcStatuses == nil {
+			c.svcStatuses = make(map[string]events.ServiceStatusChanged)
+		}
+		c.svcStatuses[ev.Name] = ev
+		c.svcStatusMu.Unlock()
+	})
 }
 
 type APIClientWSMessage struct {
@@ -148,6 +203,16 @@ type ClientWebsocketResponse struct {
 	Id string `json:"id"`
 	// 调用 wx api 原始响应
 	Data json.RawMessage `json:"data"`
+}
+
+func (c *APIClient) serviceStatusesMap() map[string]manager.ServerStatus {
+	c.svcStatusMu.RLock()
+	defer c.svcStatusMu.RUnlock()
+	result := make(map[string]manager.ServerStatus, len(c.svcStatuses))
+	for name, s := range c.svcStatuses {
+		result[name] = manager.ServerStatus(s.Status)
+	}
+	return result
 }
 
 func (c *APIClient) Start() error {
@@ -182,6 +247,13 @@ func (c *APIClient) Engine() *gin.Engine {
 	return c.engine
 }
 
+// RegisterGET exposes the narrow route-registration capability used by
+// platform adapters. It deliberately keeps platform packages from importing
+// APIClient or reaching into its Gin engine.
+func (c *APIClient) RegisterGET(path string, handler gin.HandlerFunc) {
+	c.engine.GET(path, handler)
+}
+
 func (c *APIClient) HTTPHandler() http.Handler {
 	return withCORS(c)
 }
@@ -195,9 +267,10 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (c *APIClient) setupStaticAssetRoutes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		c.engine.Handle(method, "/__wx_channels_assets/lib/*filepath", c.handleChannelLibAsset)
-		c.engine.Handle(method, "/__wx_channels_assets/src/*filepath", c.handleChannelSrcAsset)
-		c.engine.Handle(method, "/__wx_channels_assets/inject/*filepath", c.handleChannelInjectAsset)
+		c.engine.Handle(method, "/__assets/lib/*filepath", c.handleChannelLibAsset)
+		c.engine.Handle(method, "/__assets/src/*filepath", c.handleChannelSrcAsset)
+		c.engine.Handle(method, "/__assets/inject/*filepath", c.handleFrontendInjectAsset)
+		c.engine.Handle(method, "/__assets/platform/*filepath", c.handlePlatformStaticAsset)
 	}
 }
 
@@ -218,17 +291,11 @@ func (c *APIClient) handleChannelLibAsset(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
 }
 
-func (c *APIClient) handleChannelInjectAsset(ctx *gin.Context) {
+func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
 	data, err := frontend.Assets.ReadInject(rel)
 	if err != nil {
-		data, err = channels.Assets.ReadInject(rel)
-	}
-	if err != nil {
-		data, err = wxmp.Assets.ReadInject(rel)
-	}
-	if err != nil {
-		ctx.Status(http.StatusNotFound)
+		c.staticAssets.ServeHTTP(ctx.Writer, ctx.Request)
 		return
 	}
 	etag := frontend.ChannelStaticAssetETag(data)
@@ -244,6 +311,10 @@ func (c *APIClient) handleChannelInjectAsset(ctx *gin.Context) {
 		return
 	}
 	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+}
+
+func (c *APIClient) handlePlatformStaticAsset(ctx *gin.Context) {
+	c.staticAssets.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {

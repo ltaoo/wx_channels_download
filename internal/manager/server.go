@@ -11,29 +11,21 @@ import (
 
 // HTTPServer 实现
 type HTTPServer struct {
-	title     string
-	key       string
-	addr      string
-	status    ServerStatus
-	mux       http.Handler
-	server    *http.Server
-	disabled  bool
-	mu        sync.RWMutex
-	stop_chan chan struct{}
+	title    string
+	addr     string
+	status   ServerStatus
+	mux      http.Handler
+	server   *http.Server
+	disabled bool
+	mu       sync.RWMutex
 }
 
-func NewHTTPServer(title string, key string, addr string) *HTTPServer {
+func NewHTTPServer(title string, addr string) *HTTPServer {
 	return &HTTPServer{
-		title:     title,
-		key:       key,
-		addr:      addr,
-		status:    StatusStopped,
-		stop_chan: make(chan struct{}),
+		title:  title,
+		addr:   addr,
+		status: StatusStopped,
 	}
-}
-
-func (s *HTTPServer) Name() string {
-	return s.key
 }
 
 func (s *HTTPServer) Addr() string {
@@ -58,10 +50,6 @@ func (s *HTTPServer) Disable() {
 	s.disabled = true
 }
 
-func (s *HTTPServer) Mux() http.Handler {
-	return s.mux
-}
-
 func (s *HTTPServer) Start() error {
 	if s.disabled {
 		return nil
@@ -69,7 +57,7 @@ func (s *HTTPServer) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.status == StatusRunning || s.status == StatusStarting {
+	if s.status == StatusRunning {
 		return fmt.Errorf("server is already %s", s.status)
 	}
 	ln, err := net.Listen("tcp", s.addr)
@@ -125,22 +113,4 @@ func (s *HTTPServer) Status() ServerStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.status
-}
-
-func (s *HTTPServer) HealthCheck() error {
-	if s.Status() != StatusRunning {
-		return fmt.Errorf("server not running")
-	}
-
-	resp, err := http.Get(fmt.Sprintf("http://%s/health", s.Addr()))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check failed: %s", resp.Status)
-	}
-
-	return nil
 }

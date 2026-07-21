@@ -1,4 +1,4 @@
-package wxchannels
+package wxmp
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"wx_channel/internal/webassets"
 )
 
-// Assets contains the scripts owned by the video-channel scraper.
+// Assets contains the scripts owned by the wxmp scraper.
 var Assets = NewAssets()
 
 type InjectedAssets struct {
@@ -18,10 +18,8 @@ type InjectedAssets struct {
 	InjectFS fs.FS
 }
 
-// StaticAssetsPath is the HTTP mount owned by the video-channel scraper.
-// Keeping platform assets in a namespace prevents filename collisions with
-// shared frontend assets and other scraper packages.
-const StaticAssetsPath = "/__assets/platform/wxchannels"
+// StaticAssetsPath is the HTTP mount owned by the official-account scraper.
+const StaticAssetsPath = "/__assets/platform/wxmp"
 
 func NewAssets() *InjectedAssets {
 	return &InjectedAssets{RootFS: embeddedRootFS(), InjectFS: embeddedInjectFS()}
@@ -32,15 +30,11 @@ func (a *InjectedAssets) ReadInject(name string) ([]byte, error) {
 }
 
 // RegisterStaticAssets registers the assets owned by this package with the
-// application asset registry. The scraper package depends only on the neutral
-// registry, never on the API server implementation.
+// application asset registry.
 func RegisterStaticAssets(registry *webassets.Registry) error {
 	if err := registry.Register(StaticAssetsPath, Assets.InjectFS); err != nil {
 		return err
 	}
-	// Keep explicit aliases for pages injected before the platform namespace was
-	// introduced. Unlike the old API fallback chain, aliases remain owned by
-	// this package and duplicate filenames fail during application setup.
 	entries, err := fs.ReadDir(Assets.InjectFS, ".")
 	if err != nil {
 		return fmt.Errorf("read legacy asset aliases: %w", err)
@@ -56,10 +50,8 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	return nil
 }
 
-// MockStaticAsset serves a platform-owned asset when the browser requests it
-// from channels.weixin.qq.com through the local interceptor. Those same-origin
-// requests never reach the local API server, so they must be handled here as
-// well as registered with the API asset registry.
+// MockStaticAsset serves a platform-owned asset for same-origin requests
+// intercepted on mp.weixin.qq.com.
 func MockStaticAsset(ctx proxy.Context, pathname string) bool {
 	const prefix = StaticAssetsPath + "/"
 	if !strings.HasPrefix(pathname, prefix) {
@@ -88,8 +80,6 @@ func MockStaticAsset(ctx proxy.Context, pathname string) bool {
 }
 
 // ChannelInjectAssetURL builds a URL for an asset owned by this package.
-// The endpoint is shared with the frontend asset server, but ownership stays
-// in the wxchannels package.
 func ChannelInjectAssetURL(baseURL, name string) string {
-	return strings.TrimRight(baseURL, "/") + "/platform/wxchannels/" + strings.TrimLeft(name, "/")
+	return strings.TrimRight(baseURL, "/") + "/platform/wxmp/" + strings.TrimLeft(name, "/")
 }

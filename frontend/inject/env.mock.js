@@ -44,7 +44,7 @@ if (typeof WXEnv === "undefined") {
     channelsHostname: __wx_fake_api_url.host,
     downloadProtocol: __wx_fake_api_protocol,
     downloadHostname: __wx_fake_api_url.host,
-    assetsFallbackBase: __wx_fake_api_base + "/__wx_channels_assets",
+    assetsFallbackBase: __wx_fake_api_base + "/__assets",
   });
 
   if (!window.__wx_fake_use_mock_api__) {

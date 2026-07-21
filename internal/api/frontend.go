@@ -82,7 +82,7 @@ func shouldServeByAPI(path string) bool {
 		"/douban/",
 		"/instagram/",
 		"/weibo/",
-		"/__wx_channels_assets/",
+		"/__assets/",
 	}
 	for _, prefix := range apiPrefixes {
 		if strings.HasPrefix(path, prefix) {

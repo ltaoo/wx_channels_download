@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"wx_channel/internal/events"
 )
 
 func (s *AdminServer) handleDaemonStatus(w http.ResponseWriter, r *http.Request) {
@@ -24,9 +26,8 @@ func (s *AdminServer) handleDaemonStart(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	name := adminAPIBodyName(r)
-	if err := s.controller.StartService(name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
-		return
+	if s.bus != nil {
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name, "started": true})
 }
@@ -41,9 +42,8 @@ func (s *AdminServer) handleDaemonStop(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "admin service cannot stop itself from HTTP"})
 		return
 	}
-	if err := s.controller.StopService(name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
-		return
+	if s.bus != nil {
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name, "stopped": true})
 }
@@ -58,13 +58,9 @@ func (s *AdminServer) handleDaemonRestart(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "admin service cannot restart itself from HTTP"})
 		return
 	}
-	if err := s.controller.StopService(name); err != nil && s.serviceRunning(name) {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
-		return
-	}
-	if err := s.controller.StartService(name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
-		return
+	if s.bus != nil {
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name, "restarted": true})
 }
@@ -147,9 +143,9 @@ func (s *AdminServer) handleAppTaskUnsupported(w http.ResponseWriter, r *http.Re
 }
 
 func (s *AdminServer) serviceRunning(name string) bool {
-	for _, svc := range s.controller.ListServices() {
+	for _, svc := range s.listServices() {
 		if normalizeServiceName(svc.Name) == normalizeServiceName(name) {
-			return svc.Status == "running"
+			return string(svc.Status) == "running"
 		}
 	}
 	return false

@@ -17,7 +17,7 @@ var WXEnv = (() => {
     channelsHostname: "kf.qq.com",
     downloadProtocol: "https",
     downloadHostname: "weixin110.qq.com",
-    assetsFallbackBase: "http://127.0.0.1:2022/__wx_channels_assets",
+    assetsFallbackBase: "http://127.0.0.1:2022/__assets",
     MaxRunning: 5,
   };
   const runtimeEnv = window.__wx_channels_env__;
@@ -138,11 +138,11 @@ var WXEnv = (() => {
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
       return (
         origin(cfg.apiServerProtocol, cfg.apiServerAddr) +
-        "/__wx_channels_assets"
+        "/__assets"
       );
     }
     if (cfg.Protocol && cfg.Addr) {
-      return origin(cfg.Protocol, cfg.Addr) + "/__wx_channels_assets";
+      return origin(cfg.Protocol, cfg.Addr) + "/__assets";
     }
     return envValue("assetsFallbackBase");
   }

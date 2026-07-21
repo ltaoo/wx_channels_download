@@ -17,8 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/config"
-	"wx_channel/internal/interceptor"
-	"wx_channel/internal/manager"
+	"wx_channel/internal/events"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
@@ -250,15 +249,12 @@ func (c *APIClient) proxyConfigData() gin.H {
 }
 
 func (c *APIClient) proxyServiceStatusData() gin.H {
-	status := manager.StatusStopped
-	addr := ""
-	if c.serviceMgr != nil {
-		if server := c.serviceMgr.GetServer("interceptor"); server != nil {
-			addr = server.Addr()
-			if serverStatus, err := c.serviceMgr.GetStatus("interceptor"); err == nil {
-				status = serverStatus
-			}
-		}
+	c.proxyStatusMu.RLock()
+	addr := c.cachedProxyAddr
+	status := c.cachedProxyStatus
+	c.proxyStatusMu.RUnlock()
+	if status == "" {
+		status = "stopped"
 	}
 	if addr == "" {
 		cfg := c.proxyConfigData()
@@ -267,7 +263,7 @@ func (c *APIClient) proxyServiceStatusData() gin.H {
 	return gin.H{
 		"name":      "interceptor",
 		"addr":      addr,
-		"status":    string(status),
+		"status":    status,
 		"listening": addr != "" && checkPort(addr),
 	}
 }
@@ -400,45 +396,25 @@ func (c *APIClient) saveConfigValues(values map[string]interface{}) error {
 }
 
 func (c *APIClient) proxyServiceRunning() bool {
-	if c.serviceMgr == nil {
-		return false
-	}
-	status, err := c.serviceMgr.GetStatus("interceptor")
-	if err != nil {
-		return false
-	}
-	return status == manager.StatusRunning || status == manager.StatusStarting || status == manager.StatusStopping
+	c.proxyStatusMu.RLock()
+	status := c.cachedProxyStatus
+	c.proxyStatusMu.RUnlock()
+	return status == "running" || status == "stopping"
 }
 
 func (c *APIClient) restartProxyService() error {
-	if c.serviceMgr == nil {
-		return fmt.Errorf("service manager not initialized")
+	if c.bus == nil {
+		return fmt.Errorf("event bus not initialized")
 	}
-	status, _ := c.serviceMgr.GetStatus("interceptor")
-	if status == manager.StatusRunning || status == manager.StatusStarting || status == manager.StatusStopping {
-		if err := c.serviceMgr.StopServer("interceptor"); err != nil {
-			return err
-		}
-	}
-	if err := c.applyProxySettingsFromConfig(); err != nil {
-		return err
-	}
-	return c.serviceMgr.StartServer("interceptor")
+	c.bus.Publish(events.ProxyCommand{Action: events.ProxyRestart})
+	return nil
 }
 
 func (c *APIClient) applyProxySettingsFromConfig() error {
-	if c.serviceMgr == nil {
+	if c.bus == nil {
 		return nil
 	}
-	server := c.serviceMgr.GetServer("interceptor")
-	if server == nil {
-		return nil
-	}
-	interceptorServer, ok := server.(*interceptor.InterceptorServer)
-	if !ok {
-		return fmt.Errorf("interceptor service type mismatch")
-	}
-	interceptorServer.ApplySettings(interceptor.NewInterceptorSettings(c.cfg.Original), config.LoadCertFiles())
+	c.bus.Publish(events.ProxyCommand{Action: events.ProxyApplySettings})
 	return nil
 }
 

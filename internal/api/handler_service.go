@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/config"
+	"wx_channel/internal/events"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
 )
@@ -26,15 +27,12 @@ func (c *APIClient) handleServiceStart(ctx *gin.Context) {
 		result.Err(ctx, 400, "service is required")
 		return
 	}
-	if c.serviceMgr == nil {
-		result.Err(ctx, 500, "service manager not initialized")
+	if c.bus == nil {
+		result.Err(ctx, 500, "event bus not initialized")
 		return
 	}
-	if err := c.serviceMgr.StartServer(name); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, c.serviceMgr.GetAllStatus())
+	c.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
+	result.Ok(ctx, c.serviceStatusesMap())
 }
 
 func (c *APIClient) handleServiceStop(ctx *gin.Context) {
@@ -47,15 +45,12 @@ func (c *APIClient) handleServiceStop(ctx *gin.Context) {
 		result.Err(ctx, 400, "api service cannot stop itself from HTTP")
 		return
 	}
-	if c.serviceMgr == nil {
-		result.Err(ctx, 500, "service manager not initialized")
+	if c.bus == nil {
+		result.Err(ctx, 500, "event bus not initialized")
 		return
 	}
-	if err := c.serviceMgr.StopServer(name); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	result.Ok(ctx, c.serviceMgr.GetAllStatus())
+	c.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
+	result.Ok(ctx, c.serviceStatusesMap())
 }
 
 func (c *APIClient) requestServiceName(ctx *gin.Context) string {

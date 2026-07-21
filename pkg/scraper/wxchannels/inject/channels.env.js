@@ -7,10 +7,14 @@ if (typeof WXEnv === "undefined") {
 
 (() => {
   const env = {
-    channelsHostname: "kf.qq.com",
-    channelsProtocol: "https",
-    downloadHostname: "weixin110.qq.com",
-    downloadProtocol: "https",
+    // channelsHostname: "kf.qq.com",
+    // channelsProtocol: "https",
+    // downloadHostname: "weixin110.qq.com",
+    // downloadProtocol: "https",
+    channelsHostname: "127.0.0.1:2022",
+    channelsProtocol: "http",
+    downloadHostname: "127.0.0.1:2022",
+    downloadProtocol: "http",
   };
 
   const cfg = WXEnv.config;
@@ -19,7 +23,7 @@ if (typeof WXEnv === "undefined") {
       WXEnv.origin(
         cfg.apiServerProtocol,
         WXEnv.normalizeHostAddr(cfg.apiServerAddr),
-      ) + "/__wx_channels_assets";
+      ) + "/__assets";
   }
 
   WXEnv.applyRuntimeEnv(env);

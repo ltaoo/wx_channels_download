@@ -62,7 +62,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 	if variables == nil {
 		variables = map[string]any{}
 	}
-	assetBaseURL := frontend.ChannelAssetsSameOriginBaseURL()
+	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
 	v := "?t=" + version
 	plugins := make([]*proxy.Plugin, 0, 5)
 	if cfg.DebugShowError {
@@ -103,7 +103,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if frontend.MockChannelStaticAsset(ctx, pathname, files) {
+			if frontend.MockChannelStaticAsset(ctx, pathname, files) || MockStaticAsset(ctx, pathname) {
 				return
 			}
 			if pathname == "/__wx_channels_api/profile" {
@@ -604,12 +604,12 @@ func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy
 
 func CreateSimpleChannelInterceptorPlugin(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
 	version := cfg.Version
-	assetBaseURL := frontend.ChannelAssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
+	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
 	v := "?t=" + version
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx proxy.Context) {
-			if frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+			if frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) || MockStaticAsset(ctx, ctx.Req().URL.Path) {
 				return
 			}
 		},

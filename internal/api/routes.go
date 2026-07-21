@@ -58,7 +58,6 @@ func (c *APIClient) SetupRoutes() {
 		c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 		c.engine.POST("/api/open", c.handleOpenURL)
 	}
-	// c.engine.GET("/ws/channels", c.channels.HandleChannelsWebsocket)
 	// 状态与 Hermes 下载任务接口
 	c.engine.GET("/ws/status", c.status_ws.HandleWebsocket)
 	c.engine.GET("/ws/admin", c.handlePlatformWorkflowWebsocket)
@@ -188,10 +187,8 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 	}
 	apiAddr := fmt.Sprintf("%s:%d", apiHost, apiPort)
 	statuses := gin.H{}
-	if c.serviceMgr != nil {
-		for name, status := range c.serviceMgr.GetAllStatus() {
-			statuses[name] = string(status)
-		}
+	for name, status := range c.serviceStatusesMap() {
+		statuses[name] = string(status)
 	}
 	data := gin.H{
 		"version":         c.cfg.Version,

@@ -20,7 +20,7 @@
 - `cmd/root.go` 是默认本地模式：同时启动 `admin`、`api`、`interceptor` 三个服务。
 - `cmd/server.go` 是服务器模式：只启动 API 相关能力，不启动本地代理注入。
 - 其他 CLI 子命令在 `cmd/*.go`，例如 `download`、`decrypt`、`sph`、`update`、`uninstall`。
-- 服务生命周期统一由 `internal/manager` 管理，服务 key 主要是 `admin`、`api`、`interceptor`。
+- `internal/application/start.go` 显式创建、启动和关闭 `admin`、`api`、`interceptor` 三个固定服务；运行时服务控制也在该层的 `serviceController` 中实现。
 
 默认本地模式的大致启动链路：
 
@@ -38,7 +38,7 @@
 
 - `cmd/`: Cobra CLI 命令和本地/服务器模式启动逻辑。
 - `internal/config/`: 配置 schema、默认值、配置文件加载/保存。新增配置要在 `LoadConfig` 中注册，并同步模板文件。
-- `internal/manager/`: HTTP 服务抽象和服务状态控制。
+- `internal/manager/`: 共享的 HTTP 服务封装和服务状态类型。
 - `internal/admin/`: 管理 GUI 服务和管理 API，前端由 `frontend` 目录或 embed FS 提供。
 - `internal/api/`: Gin API、WebSocket、下载任务、平台工作流、兼容接口、文件预览、RSS 等。
 - `internal/api/services/`: 数据库相关服务层，负责账号、内容、浏览历史、下载任务等业务持久化。
@@ -94,7 +94,7 @@ API 路由集中在 `internal/api/routes.go`。新增或修改接口时先确认
 本地代理在 `internal/interceptor`，底层通过 `internal/interceptor/proxy` 和 `github.com/ltaoo/echo` 插件能力工作。
 
 - 视频号注入插件在 `pkg/scraper/wxchannels/interceptor_plugin.go`，会改写 HTML/JS、注入 `frontend` 资源、接收 `__wx_channels_api/*` 回调。
-- 公众号注入在 `pkg/scraper/officialaccount`。
+- 公众号注入在 `pkg/scraper/wxmp`。
 - 平台抓取对象到内容、账号、浏览历史模型的转换在 `internal/adapter/<platform>`。
 - `internal/adapter` 只负责 `pkg/scraper` 或代理注入结果到数据库模型的适配；真正下载工作流适配应放在 `pkg/contentplatform/<platform>`。
 

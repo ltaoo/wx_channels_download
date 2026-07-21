@@ -172,7 +172,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 	return &proxy.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx proxy.Context) {
-			if ctx.Req().URL.Hostname() == "mp.weixin.qq.com" && frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) {
+			if ctx.Req().URL.Hostname() == "mp.weixin.qq.com" && (frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) || MockStaticAsset(ctx, ctx.Req().URL.Path)) {
 				return
 			}
 		},

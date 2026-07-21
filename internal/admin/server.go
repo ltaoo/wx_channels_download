@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ltaoo/velo"
 	"github.com/ltaoo/velo/frontendserver"
@@ -14,6 +15,7 @@ import (
 
 	"wx_channel/frontend"
 	"wx_channel/internal/config"
+	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
 	"wx_channel/pkg/browsermgr"
 )
@@ -25,12 +27,6 @@ type ServiceSnapshot struct {
 	Status manager.ServerStatus `json:"status"`
 }
 
-type ServiceController interface {
-	ListServices() []ServiceSnapshot
-	StartService(name string) error
-	StopService(name string) error
-}
-
 type AdminConfig struct {
 	Hostname string
 	Port     int
@@ -40,18 +36,20 @@ type AdminServer struct {
 	*manager.HTTPServer
 	cfg        *config.Config
 	app        *velo.Box
-	controller ServiceController
+	bus        *events.Bus
 	browserMgr *browsermgr.Manager
+	svcMu      sync.RWMutex
+	svcCache   map[string]events.ServiceStatusChanged
 }
 
-func NewAdminServer(cfg *config.Config, app *velo.Box, controller ServiceController) *AdminServer {
+func NewAdminServer(cfg *config.Config, app *velo.Box, bus *events.Bus) *AdminServer {
 	adminCfg := NewAdminConfig()
-	srv := manager.NewHTTPServer("GUI/Admin服务", "admin", adminCfg.Hostname+":"+strconv.Itoa(adminCfg.Port))
+	srv := manager.NewHTTPServer("GUI/Admin服务", adminCfg.Hostname+":"+strconv.Itoa(adminCfg.Port))
 	admin := &AdminServer{
 		HTTPServer: srv,
 		cfg:        cfg,
 		app:        app,
-		controller: controller,
+		bus:        bus,
 	}
 	browserMgr, _ := browsermgr.New(browsermgr.Config{
 		WorkDir:          cfg.WorkDir,
@@ -68,8 +66,51 @@ func NewAdminServer(cfg *config.Config, app *velo.Box, controller ServiceControl
 		ChromeCommand:    viper.GetString("sandbox.chromeCommand"),
 	}, nil)
 	admin.browserMgr = browserMgr
+	admin.subscribeEvents(bus)
 	srv.SetHandler(admin.routes())
 	return admin
+}
+
+func (s *AdminServer) subscribeEvents(bus *events.Bus) {
+	bus.Subscribe(events.TypeServiceStatusChanged, func(e events.Event) {
+		ev, ok := e.(events.ServiceStatusChanged)
+		if !ok {
+			return
+		}
+		s.svcMu.Lock()
+		if s.svcCache == nil {
+			s.svcCache = make(map[string]events.ServiceStatusChanged)
+		}
+		s.svcCache[ev.Name] = ev
+		s.svcMu.Unlock()
+	})
+	bus.Subscribe(events.TypeServiceCommand, func(e events.Event) {
+		cmd, ok := e.(events.ServiceCommand)
+		if !ok || cmd.Name != "admin" {
+			return
+		}
+		switch cmd.Action {
+		case "start":
+			_ = s.Start()
+		case "stop":
+			_ = s.Stop()
+		}
+	})
+}
+
+func (s *AdminServer) listServices() []ServiceSnapshot {
+	s.svcMu.RLock()
+	defer s.svcMu.RUnlock()
+	snapshots := make([]ServiceSnapshot, 0, len(s.svcCache))
+	for _, ev := range s.svcCache {
+		snapshots = append(snapshots, ServiceSnapshot{
+			Name:   ev.Name,
+			Title:  ev.Title,
+			Addr:   ev.Addr,
+			Status: manager.ServerStatus(ev.Status),
+		})
+	}
+	return snapshots
 }
 
 func NewAdminConfig() *AdminConfig {
@@ -111,6 +152,34 @@ func (s *AdminServer) routes() http.Handler {
 	return mux
 }
 
+func (s *AdminServer) Start() error {
+	if err := s.HTTPServer.Start(); err != nil {
+		return err
+	}
+	s.publishStatus()
+	return nil
+}
+
+func (s *AdminServer) Stop() error {
+	if err := s.HTTPServer.Stop(); err != nil {
+		return err
+	}
+	s.publishStatus()
+	return nil
+}
+
+func (s *AdminServer) publishStatus() {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(events.ServiceStatusChanged{
+		Name:   "admin",
+		Title:  "GUI/Admin服务",
+		Addr:   s.Addr(),
+		Status: string(s.Status()),
+	})
+}
+
 func (s *AdminServer) frontendHandler() http.Handler {
 	root := filepath.Join(s.cfg.RootDir, "frontend")
 	if s.cfg.Mode == "debug" {
@@ -139,12 +208,12 @@ func (s *AdminServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"configPath":   s.configPath(),
 		"veloVersion":  velo.GetVersion(),
 		"veloDatabase": s.app != nil && s.app.DB != nil,
-		"services":     s.controller.ListServices(),
+		"services":     s.listServices(),
 	})
 }
 
 func (s *AdminServer) handleServices(w http.ResponseWriter, r *http.Request) {
-	s.writeOK(w, s.controller.ListServices())
+	s.writeOK(w, s.listServices())
 }
 
 func (s *AdminServer) handleServiceStart(w http.ResponseWriter, r *http.Request) {
@@ -153,11 +222,10 @@ func (s *AdminServer) handleServiceStart(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadRequest, "service is required")
 		return
 	}
-	if err := s.controller.StartService(name); err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if s.bus != nil {
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
 	}
-	s.writeOK(w, s.controller.ListServices())
+	s.writeOK(w, s.listServices())
 }
 
 func (s *AdminServer) handleServiceStop(w http.ResponseWriter, r *http.Request) {
@@ -170,11 +238,10 @@ func (s *AdminServer) handleServiceStop(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "admin service cannot stop itself from HTTP")
 		return
 	}
-	if err := s.controller.StopService(name); err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if s.bus != nil {
+		s.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
 	}
-	s.writeOK(w, s.controller.ListServices())
+	s.writeOK(w, s.listServices())
 }
 
 func (s *AdminServer) handleConfigRepair(w http.ResponseWriter, r *http.Request) {

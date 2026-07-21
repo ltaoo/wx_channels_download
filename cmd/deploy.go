@@ -90,7 +90,7 @@ func deploy() {
 	}
 	spinner.Success("D1 数据库连接验证成功")
 
-	worker_dir := filepath.Join(Cfg.RootDir, "internal", "officialaccount", "worker")
+	worker_dir := filepath.Join(Cfg.RootDir, "pkg", "scraper", "wxmp", "worker")
 
 	// 1.6 执行数据库迁移
 	spinner, _ = pterm.DefaultSpinner.Start("正在检查并执行数据库迁移...")

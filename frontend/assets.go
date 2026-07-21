@@ -62,7 +62,7 @@ type ChannelInjectedFiles struct {
 
 var Assets = NewChannelInjectedFiles("")
 
-const channelAssetsPath = "/__wx_channels_assets"
+const channelAssetsPath = "/__assets"
 const ChannelLibAssetCacheControl = "public, max-age=2592000, immutable"
 const ChannelSrcAssetCacheControl = "no-cache"
 const channelLibAssetCacheControl = ChannelLibAssetCacheControl
@@ -115,7 +115,7 @@ func normalizeChannelAssetHostname(hostname string) string {
 	}
 }
 
-func ChannelAssetsBaseURLFromConfig(protocol string, hostname string, port int) string {
+func AssetsBaseURLFromConfig(protocol string, hostname string, port int) string {
 	return ChannelAssetsBaseURL(protocol, hostname, port)
 }
 
