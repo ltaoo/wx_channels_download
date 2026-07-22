@@ -19,6 +19,7 @@ import (
 
 	webchannels "wx_channel/internal/adapter/wxchannels"
 	webmp "wx_channel/internal/adapter/wxmp"
+	_ "wx_channel/internal/adapter/69shuba"
 	"wx_channel/internal/admin"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"

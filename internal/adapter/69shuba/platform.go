@@ -19,12 +19,10 @@ type handler struct{}
 func (h *handler) PlatformID() string { return platformID }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, config registry.DownloadConfig) (*registry.DownloadInfo, *model.Content, *model.Account, error) {
-	var novel NovelDetail
-	if err := json.Unmarshal(contentJSON, &novel); err != nil {
-		return nil, nil, nil, err
-	}
+	// 使用 mock 数据，用于前端测试
+	novel := MockNovel()
 
-	info, err := BuildDownloadTask(&novel, config)
+	info, err := BuildDownloadTask(novel, config)
 	if err != nil {
 		return nil, nil, nil, err
 	}

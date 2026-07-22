@@ -345,15 +345,6 @@ func isIdentPart(ch rune) bool {
 	return isIdentStart(ch) || unicode.IsDigit(ch)
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 // ArticleCgiData represents the window.cgiDataNew object on an official account article page.
 type ArticleCgiData struct {
 	BaseResp                 BaseResp            `json:"base_resp"`

@@ -782,7 +782,7 @@ func (s *MockDownloadServer) handleTasks(w http.ResponseWriter, r *http.Request)
 
 	hasTasks := false
 	s.activeTasks.Range(func(key, value interface{}) bool {
-		if task, ok := value.(*DownloadTask); ok {
+		if _, ok := value.(*DownloadTask); ok {
 			hasTasks = true
 		}
 		return false

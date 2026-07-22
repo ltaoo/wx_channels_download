@@ -52,10 +52,6 @@ type Sceneinfo struct {
 	Entrycardtype   int    `json:"entryCardType"`
 }
 
-type Errmsg struct {
-	Type int `json:"type"`
-}
-
 type Feedinfo struct {
 	Picinfo         []interface{} `json:"picInfo"`
 	Videourl        string        `json:"videoUrl"`

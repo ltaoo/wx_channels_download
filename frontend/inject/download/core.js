@@ -37,9 +37,8 @@ function format_download_percent(t) {
   if (Number.isFinite(direct)) {
     return Math.min(100, Math.max(0, Math.round(direct * 100) / 100));
   }
-  const detail = t && t.progress && typeof t.progress === "object"
-    ? t.progress
-    : {};
+  const detail =
+    t && t.progress && typeof t.progress === "object" ? t.progress : {};
   const total = Number(t.size || detail.total || detail.size || 0);
   const downloaded = Number(t.downloaded || detail.downloaded || 0);
   if (total <= 0) {
@@ -263,7 +262,7 @@ function normalize_download_status(status) {
 }
 
 function download_resource_status_text(file) {
-  const status = String(file && file.status || "").toLowerCase();
+  const status = String((file && file.status) || "").toLowerCase();
   if (status === "finished" || status === "done") return "已完成";
   if (status === "error" || status === "failed") return "失败";
   if (status === "downloading" || status === "running") return "下载中";
@@ -273,12 +272,12 @@ function download_resource_status_text(file) {
 }
 
 function download_resource_metrics(file) {
-  const size = WXU.bytes_to_size(Number(file && file.size || 0));
-  const downloaded = WXU.bytes_to_size(Number(file && file.downloaded || 0));
-  const speed = format_download_speed(Number(file && file.speed || 0));
+  const size = WXU.bytes_to_size(Number((file && file.size) || 0));
+  const downloaded = WXU.bytes_to_size(Number((file && file.downloaded) || 0));
+  const speed = format_download_speed(Number((file && file.speed) || 0));
   const progress = Math.min(
     100,
-    Math.max(0, Number(file && file.progress || 0)),
+    Math.max(0, Number((file && file.progress) || 0)),
   );
   return `${downloaded} / ${size} · ${speed} · ${progress.toFixed(2)}%`;
 }
@@ -675,25 +674,54 @@ function DownloaderPanelViewModel(props = {}) {
   );
   const createTaskReq = new Timeless.RequestCore(
     (params = {}) =>
-      request.post("/api/v1/download_task/create_by_url", [{
-        url: params.url,
-        filename: params.filename || "",
-        save_path: params.save_path || "",
-      }]),
+      request.post("/api/v1/download_task/create_by_url", [
+        {
+          url: params.url,
+          filename: params.filename || "",
+          save_path: params.save_path || "",
+        },
+      ]),
     { client: http_client },
   );
   const createPlatformTaskReq = new Timeless.RequestCore(
     (params = {}) =>
-      request.post("/api/v1/download_task/create", [{
-        platform: params.platform || "",
-        content: params.content || {},
-        config: {
-          save_path: params.save_path || "",
-          filename: params.filename || "",
-          spec: params.spec || "",
-          download_cover: !!params.download_cover,
+      request.post("/api/v1/download_task/create", [
+        {
+          platform: params.platform || "",
+          content: params.content || {},
+          config: {
+            save_path: params.save_path || "",
+            filename: params.filename || "",
+            spec: params.spec || "",
+            download_cover: !!params.download_cover,
+          },
         },
-      }]),
+      ]),
+    { client: http_client },
+  );
+  const prepareTaskReq = new Timeless.RequestCore(
+    (params = {}) =>
+      request.post("/api/v1/download_task/prepare_by_url", [
+        {
+          url: params.url,
+          filename: params.filename || "",
+        },
+      ]),
+    { client: http_client },
+  );
+  const preparePlatformTaskReq = new Timeless.RequestCore(
+    (params = {}) =>
+      request.post("/api/v1/download_task/prepare", [
+        {
+          platform: params.platform || "",
+          content: params.content || {},
+          config: {
+            save_path: params.save_path || "",
+            filename: params.filename || "",
+            download_cover: !!params.download_cover,
+          },
+        },
+      ]),
     { client: http_client },
   );
 
@@ -714,6 +742,8 @@ function DownloaderPanelViewModel(props = {}) {
   const create_platform_filename_ = ref("");
   const create_platform_download_cover_ = ref(false);
   const creating_task_ = ref(false);
+  const create_task_preview_ = ref(null);
+  const create_platform_preview_ = ref(null);
   const selected_task_ids_ = refarr([]);
   const running_count_ = computed(tasks_, (t) => {
     return t.filter(
@@ -862,10 +892,7 @@ function DownloaderPanelViewModel(props = {}) {
     const resourceCount = Array.isArray(task && task.files)
       ? task.files.length
       : 0;
-    const resourceLineHeight =
-      resourceCount > 1
-        ? resourceCount * 34 + 6
-        : 0;
+    const resourceLineHeight = resourceCount > 1 ? resourceCount * 34 + 6 : 0;
     const textHeight =
       lines * ITEM_TITLE_LINE_HEIGHT +
       ITEM_TITLE_STATUS_GAP +
@@ -1584,28 +1611,30 @@ function DownloaderPanelViewModel(props = {}) {
             const isFileTask =
               String(task.resource_type || "FILE").toUpperCase() === "FILE";
             if (!isFileTask) {
-              const firstFile = Array.isArray(task.files) ? task.files[0] : null;
-              const firstFileName = firstFile && firstFile.name
-                ? firstFile.name
-                : filename;
+              const firstFile = Array.isArray(task.files)
+                ? task.files[0]
+                : null;
+              const firstFileName =
+                firstFile && firstFile.name ? firstFile.name : filename;
               return {
                 path: savePath,
                 file_name: firstFileName,
-                filepath: firstFile && firstFile.output_path
-                  ? firstFile.output_path
-                  : savePath,
+                filepath:
+                  firstFile && firstFile.output_path
+                    ? firstFile.output_path
+                    : savePath,
               };
             }
             const separatorIndex = Math.max(
               savePath.lastIndexOf("/"),
               savePath.lastIndexOf("\\"),
             );
-            const fileName = separatorIndex >= 0
-              ? savePath.slice(separatorIndex + 1)
-              : filename;
-            const dir = separatorIndex >= 0
-              ? savePath.slice(0, separatorIndex)
-              : "";
+            const fileName =
+              separatorIndex >= 0
+                ? savePath.slice(separatorIndex + 1)
+                : filename;
+            const dir =
+              separatorIndex >= 0 ? savePath.slice(0, separatorIndex) : "";
             return {
               path: dir,
               file_name: fileName || filename,
@@ -1862,7 +1891,7 @@ function DownloaderPanelViewModel(props = {}) {
       }
       creating_task_.as(true);
       try {
-        const r = await createPlatformTaskReq.run({
+        const r = await preparePlatformTaskReq.run({
           platform: platform,
           content: content,
           save_path: create_platform_save_path_.value || "",
@@ -1873,12 +1902,13 @@ function DownloaderPanelViewModel(props = {}) {
           WXU.error({ msg: r.error.message });
           return;
         }
+        const platformPreview =
+          r.data && r.data.previews && r.data.previews[0]
+            ? r.data.previews[0].data
+            : null;
+        create_platform_preview_.as(platformPreview);
         ui.createPlatformTaskDialog$.hide();
-        WXU.toast("平台下载任务创建成功");
-        const reloadResult = await reloadTasks();
-        if (reloadResult && reloadResult.error) {
-          WXU.error({ msg: reloadResult.error.message });
-        }
+        ui.createPlatformTaskPreviewDialog$.show();
       } finally {
         creating_task_.as(false);
       }
@@ -1901,7 +1931,7 @@ function DownloaderPanelViewModel(props = {}) {
       }
       creating_task_.as(true);
       try {
-        const r = await createTaskReq.run({
+        const r = await prepareTaskReq.run({
           url: text,
           filename: create_task_filename_.value || "",
         });
@@ -1909,9 +1939,75 @@ function DownloaderPanelViewModel(props = {}) {
           WXU.error({ msg: r.error.message });
           return;
         }
-        create_task_text_.as("");
+        const taskPreview =
+          r.data && r.data.previews && r.data.previews[0]
+            ? r.data.previews[0].data
+            : null;
+        create_task_preview_.as(taskPreview);
         ui.createTaskDialog$.hide();
+        ui.createTaskPreviewDialog$.show();
+      } finally {
+        creating_task_.as(false);
+      }
+    },
+    async confirmCreateTaskFromPreview() {
+      const preview = create_task_preview_.value;
+      if (!preview) {
+        return;
+      }
+      if (creating_task_.value) {
+        return;
+      }
+      creating_task_.as(true);
+      try {
+        const url = create_task_text_.value || preview.url || "";
+        const filename = create_task_filename_.value || preview.task_name || "";
+        const r = await createTaskReq.run({
+          url: url,
+          filename: filename,
+        });
+        if (r.error) {
+          WXU.error({ msg: r.error.message });
+          return;
+        }
+        ui.createTaskPreviewDialog$.hide();
         WXU.toast("下载任务创建成功");
+        const reloadResult = await reloadTasks();
+        if (reloadResult && reloadResult.error) {
+          WXU.error({ msg: reloadResult.error.message });
+        }
+      } finally {
+        creating_task_.as(false);
+      }
+    },
+    async confirmCreatePlatformTaskFromPreview() {
+      const preview = create_platform_preview_.value;
+      if (!preview) {
+        return;
+      }
+      if (creating_task_.value) {
+        return;
+      }
+      creating_task_.as(true);
+      try {
+        const platform = create_platform_text_.value || preview.platform || "";
+        var content = {};
+        try {
+          content = JSON.parse(create_platform_json_.value || "{}");
+        } catch (e) {}
+        const r = await createPlatformTaskReq.run({
+          platform: platform,
+          content: content,
+          save_path: create_platform_save_path_.value || "",
+          filename: create_platform_filename_.value || "",
+          download_cover: create_platform_download_cover_.value,
+        });
+        if (r.error) {
+          WXU.error({ msg: r.error.message });
+          return;
+        }
+        ui.createPlatformTaskPreviewDialog$.hide();
+        WXU.toast("平台下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
           WXU.error({ msg: reloadResult.error.message });
@@ -2113,8 +2209,7 @@ function DownloaderPanelViewModel(props = {}) {
       const current = tasks_.value || [];
       const matchesFilter = matchesActiveStatusFilter(task);
       const index = current.findIndex(
-        (v) =>
-          isLoadedTask(v) && String(v.id) === String(task.id),
+        (v) => isLoadedTask(v) && String(v.id) === String(task.id),
       );
       if (index === -1) {
         if (!matchesFilter) {
@@ -2281,6 +2376,18 @@ function DownloaderPanelViewModel(props = {}) {
         methods.confirmCreatePlatformTask();
       },
     }),
+    createTaskPreviewDialog$: new Timeless.ui.DialogCore({
+      closeable: true,
+      onOk() {
+        methods.confirmCreateTaskFromPreview();
+      },
+    }),
+    createPlatformTaskPreviewDialog$: new Timeless.ui.DialogCore({
+      closeable: true,
+      onOk() {
+        methods.confirmCreatePlatformTaskFromPreview();
+      },
+    }),
     input_create_download_task$: new Timeless.ui.InputCore({
       defaultValue: "",
     }),
@@ -2362,6 +2469,10 @@ function DownloaderPanelViewModel(props = {}) {
       create_platform_download_cover: create_platform_download_cover_,
       /** 创建下载任务操作中 */
       creating_task: creating_task_,
+      /** URL任务预览数据 */
+      create_task_preview: create_task_preview_,
+      /** 平台任务预览数据 */
+      create_platform_preview: create_platform_preview_,
       /** 各个状态的下载任务数量 */
       status_counts: status_counts_,
       /** 当前选中的状态 */
@@ -2584,6 +2695,448 @@ function CreatePlatformTaskDialogView(props) {
           ],
         ),
       ]),
+    ],
+  );
+}
+
+function CreateTaskPreviewDialogView(props) {
+  const title = "下载任务预览";
+  const vm$ = props.store;
+  const preview_ = vm$.state.create_task_preview;
+  const labelStyle = {
+    "font-size": "13px",
+    color: "var(--weui-FG-1)",
+    "margin-bottom": "4px",
+  };
+  const valueStyle = {
+    "font-size": "14px",
+    color: "var(--weui-FG-0)",
+    "line-height": "20px",
+    "word-break": "break-all",
+  };
+  const sectionStyle = { "margin-bottom": "12px" };
+  const tableStyle = {
+    width: "100%",
+    "border-collapse": "collapse",
+    "font-size": "13px",
+  };
+  const thStyle = {
+    padding: "6px 8px",
+    "text-align": "left",
+    "border-bottom": "1px solid var(--weui-FG-3)",
+    color: "var(--weui-FG-1)",
+    "font-weight": "500",
+  };
+  const tdStyle = {
+    padding: "6px 8px",
+    "border-bottom": "1px solid var(--weui-FG-3)",
+    color: "var(--weui-FG-0)",
+    "vertical-align": "top",
+  };
+
+  return Timeless.Dialog(
+    {
+      store: vm$.ui.createTaskPreviewDialog$,
+      style: { "z-index": "10000", width: "560px" },
+    },
+    [
+      View(
+        {
+          style: {
+            padding: "20px 20px 16px",
+            "max-height": "60vh",
+            overflow: "auto",
+          },
+        },
+        [
+          View(
+            {
+              style: {
+                "font-size": "17px",
+                "font-weight": "600",
+                "line-height": "24px",
+                "margin-bottom": "16px",
+              },
+            },
+            [title],
+          ),
+          Show({
+            when: preview_,
+            ok() {
+              return [
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["任务名称"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.task_name || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["协议"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.protocol || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["资源类型"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.resource_type || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["保存路径"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.save_path || "-");
+                    }),
+                  ]),
+                ]),
+                Show({
+                  when: computed(preview_, function (p) {
+                    return p && p.resources && p.resources.length > 0;
+                  }),
+                  ok() {
+                    return View({ style: sectionStyle }, [
+                      View(
+                        { style: { ...labelStyle, "margin-bottom": "8px" } },
+                        [
+                          computed(preview_, function (p) {
+                            return (
+                              "资源列表（共 " +
+                              (p && p.resources ? p.resources.length : 0) +
+                              " 项）"
+                            );
+                          }),
+                        ],
+                      ),
+                      View({ style: { "overflow-x": "auto" } }, [
+                        Element("table", { style: tableStyle }, [
+                          Element("thead", {}, [
+                            Element("tr", {}, [
+                              Element(
+                                "th",
+                                { style: { ...thStyle, width: "35%" } },
+                                ["名称"],
+                              ),
+                              Element("th", { style: thStyle }, [
+                                "端点 (协议 / URL)",
+                              ]),
+                            ]),
+                          ]),
+                          Element("tbody", {}, [
+                            computed(preview_, function (p) {
+                              if (!p || !p.resources) return [];
+                              return p.resources.map(function (res, i) {
+                                return Element("tr", { key: i }, [
+                                  Element("td", { style: tdStyle }, [
+                                    res.name || "-",
+                                  ]),
+                                  Element("td", { style: tdStyle }, [
+                                    (res.endpoints || []).map(function (ep, j) {
+                                      return View(
+                                        {
+                                          key: j,
+                                          style: {
+                                            "margin-bottom":
+                                              j <
+                                              (res.endpoints || []).length - 1
+                                                ? "4px"
+                                                : "0",
+                                          },
+                                        },
+                                        [
+                                          View(
+                                            {
+                                              style: {
+                                                display: "inline-block",
+                                                "font-size": "12px",
+                                                padding: "1px 6px",
+                                                "border-radius": "3px",
+                                                background: "var(--weui-BG-2)",
+                                                color: "var(--weui-FG-1)",
+                                                "margin-right": "4px",
+                                              },
+                                            },
+                                            [ep.protocol || "-"],
+                                          ),
+                                          View(
+                                            {
+                                              style: {
+                                                display: "inline",
+                                                "word-break": "break-all",
+                                              },
+                                            },
+                                            [ep.url || "-"],
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                  ]),
+                                ]);
+                              });
+                            }),
+                          ]),
+                        ]),
+                      ]),
+                    ]);
+                  },
+                }),
+              ];
+            },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
+function CreatePlatformTaskPreviewDialogView(props) {
+  const title = "平台任务预览";
+  const vm$ = props.store;
+  const preview_ = vm$.state.create_platform_preview;
+  const labelStyle = {
+    "font-size": "13px",
+    color: "var(--weui-FG-1)",
+    "margin-bottom": "4px",
+  };
+  const valueStyle = {
+    "font-size": "14px",
+    color: "var(--weui-FG-0)",
+    "line-height": "20px",
+    "word-break": "break-all",
+  };
+  const sectionStyle = { "margin-bottom": "12px" };
+  const tableStyle = {
+    width: "100%",
+    "border-collapse": "collapse",
+    "font-size": "13px",
+  };
+  const thStyle = {
+    padding: "6px 8px",
+    "text-align": "left",
+    "border-bottom": "1px solid var(--weui-FG-3)",
+    color: "var(--weui-FG-1)",
+    "font-weight": "500",
+  };
+  const tdStyle = {
+    padding: "6px 8px",
+    "border-bottom": "1px solid var(--weui-FG-3)",
+    color: "var(--weui-FG-0)",
+    "vertical-align": "top",
+  };
+
+  return Timeless.Dialog(
+    {
+      store: vm$.ui.createPlatformTaskPreviewDialog$,
+      style: { "z-index": "10000", width: "560px" },
+    },
+    [
+      View(
+        {
+          style: {
+            padding: "20px 20px 16px",
+            "max-height": "60vh",
+            overflow: "auto",
+          },
+        },
+        [
+          View(
+            {
+              style: {
+                "font-size": "17px",
+                "font-weight": "600",
+                "line-height": "24px",
+                "margin-bottom": "16px",
+              },
+            },
+            [title],
+          ),
+          Show({
+            when: preview_,
+            ok() {
+              return [
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["平台"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.platform || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["任务名称"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.task_name || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["资源类型"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.resource_type || "-");
+                    }),
+                  ]),
+                ]),
+                View({ style: sectionStyle }, [
+                  View({ style: labelStyle }, ["保存路径"]),
+                  View({ style: valueStyle }, [
+                    computed(preview_, function (p) {
+                      return p && (p.save_path || "-");
+                    }),
+                  ]),
+                ]),
+                View(
+                  {
+                    style: {
+                      display: "flex",
+                      gap: "24px",
+                      "margin-bottom": "12px",
+                    },
+                  },
+                  [
+                    View({ style: sectionStyle }, [
+                      View({ style: labelStyle }, ["资源数量"]),
+                      View({ style: valueStyle }, [
+                        computed(preview_, function (p) {
+                          return String(
+                            p && p.resource_count != null
+                              ? p.resource_count
+                              : "-",
+                          );
+                        }),
+                      ]),
+                    ]),
+                    View({ style: sectionStyle }, [
+                      View({ style: labelStyle }, ["端点数量"]),
+                      View({ style: valueStyle }, [
+                        computed(preview_, function (p) {
+                          return String(
+                            p && p.endpoint_count != null
+                              ? p.endpoint_count
+                              : "-",
+                          );
+                        }),
+                      ]),
+                    ]),
+                  ],
+                ),
+                Show({
+                  when: computed(preview_, function (p) {
+                    return p && p.resources && p.resources.length > 0;
+                  }),
+                  ok() {
+                    return View({ style: sectionStyle }, [
+                      View(
+                        { style: { ...labelStyle, "margin-bottom": "8px" } },
+                        [
+                          computed(preview_, function (p) {
+                            return (
+                              "资源列表（共 " +
+                              (p && p.resources ? p.resources.length : 0) +
+                              " 项）"
+                            );
+                          }),
+                        ],
+                      ),
+                      View({ style: { "overflow-x": "auto" } }, [
+                        View({ style: tableStyle }, [
+                          View({}, [
+                            View({ class: "flex" }, [
+                              View({ style: { ...thStyle, width: "35%" } }, [
+                                "名称",
+                              ]),
+                              View({ style: thStyle }, ["端点 (协议 / URL)"]),
+                            ]),
+                          ]),
+                          View({}, [
+                            Show({
+                              when: computed(preview_, (t) => {
+                                return t && t.resources;
+                              }),
+                              ok() {
+                                return View({}, [
+                                  For({
+                                    each: computed(preview_, (t) => {
+                                      return t.resources;
+                                    }),
+                                    render(res, i) {
+                                      return View({ key: i, class: "flex" }, [
+                                        View({ style: tdStyle }, [
+                                          res.name || "-",
+                                        ]),
+                                        View({ style: tdStyle }, [
+                                          For({
+                                            each: res.endpoints,
+                                            render(ep, j) {
+                                              return View(
+                                                {
+                                                  key: j,
+                                                  style: {
+                                                    "margin-bottom":
+                                                      j <
+                                                      (res.endpoints || [])
+                                                        .length -
+                                                        1
+                                                        ? "4px"
+                                                        : "0",
+                                                  },
+                                                },
+                                                [
+                                                  View(
+                                                    {
+                                                      style: {
+                                                        display: "inline-block",
+                                                        "font-size": "12px",
+                                                        padding: "1px 6px",
+                                                        "border-radius": "3px",
+                                                        background:
+                                                          "var(--weui-BG-2)",
+                                                        color:
+                                                          "var(--weui-FG-1)",
+                                                        "margin-right": "4px",
+                                                      },
+                                                    },
+                                                    [ep.protocol || "-"],
+                                                  ),
+                                                  View(
+                                                    {
+                                                      style: {
+                                                        display: "inline",
+                                                        "word-break":
+                                                          "break-all",
+                                                      },
+                                                    },
+                                                    [ep.url || "-"],
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          }),
+                                        ]),
+                                      ]);
+                                    },
+                                  }),
+                                ]);
+                              },
+                            }),
+                          ]),
+                        ]),
+                      ]),
+                    ]);
+                  },
+                }),
+              ];
+            },
+          }),
+        ],
+      ),
     ],
   );
 }
@@ -3108,9 +3661,7 @@ function DownloadTaskCard(props) {
     if (isRunning) {
       const speed = format_download_speed(
         t.speed ||
-          (t.progress && typeof t.progress === "object"
-            ? t.progress.speed
-            : 0),
+          (t.progress && typeof t.progress === "object" ? t.progress.speed : 0),
       );
       statusText = `${speed} • ${pr}%`;
     } else if (isCompleted) {
@@ -3374,7 +3925,12 @@ function DownloadTaskCard(props) {
                                     ),
                                   },
                                 },
-                                [computed(file_, (file) => file.name || "文件")],
+                                [
+                                  computed(
+                                    file_,
+                                    (file) => file.name || "文件",
+                                  ),
+                                ],
                               ),
                               View(
                                 {
@@ -3383,7 +3939,12 @@ function DownloadTaskCard(props) {
                                     color: "var(--weui-FG-1)",
                                   },
                                 },
-                                [computed(file_, download_resource_status_text)],
+                                [
+                                  computed(
+                                    file_,
+                                    download_resource_status_text,
+                                  ),
+                                ],
                               ),
                             ],
                           ),

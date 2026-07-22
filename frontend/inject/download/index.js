@@ -170,6 +170,12 @@ function DownloaderPageView(props) {
         CreatePlatformTaskDialogView({
           store: vm$,
         }),
+        CreateTaskPreviewDialogView({
+          store: vm$,
+        }),
+        CreatePlatformTaskPreviewDialogView({
+          store: vm$,
+        }),
         TaskDeleteConfirmDialog({
           store: vm$,
         }),

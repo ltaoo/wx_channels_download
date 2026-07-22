@@ -23,6 +23,25 @@ type NovelDetail struct {
 	Chapters   []NovelChapter `json:"chapters"`
 }
 
+// MockNovel returns a hardcoded NovelDetail for frontend testing.
+// All endpoints point to the fsmock server at http://127.0.0.1:7001
+func MockNovel() *NovelDetail {
+	base := "http://127.0.0.1:7001/download"
+	return &NovelDetail{
+		Name:       "斗破苍穹",
+		Author:     "天蚕土豆",
+		CoverURL:   base + "?filename=%E6%96%97%E7%A0%B4%E8%8B%8D%E7%A9%B9_cover.jpg&size=50K",
+		ProfileURL: base + "?filename=%E6%96%97%E7%A0%B4%E8%8B%8D%E7%A9%B9_profile.html&size=10K",
+		Chapters: []NovelChapter{
+			{Title: "第一章 陨落的天才", URL: base + "?filename=%E7%AC%AC%E4%B8%80%E7%AB%A0_%E9%99%A8%E8%90%BD%E7%9A%84%E5%A4%A9%E6%89%8D.html&size=15K", Index: 1},
+			{Title: "第二章 斗气大陆", URL: base + "?filename=%E7%AC%AC%E4%BA%8C%E7%AB%A0_%E6%96%97%E6%B0%94%E5%A4%A7%E9%99%86.html&size=15K", Index: 2},
+			{Title: "第三章 客人", URL: base + "?filename=%E7%AC%AC%E4%B8%89%E7%AB%A0_%E5%AE%A2%E4%BA%BA.html&size=15K", Index: 3},
+			{Title: "第四章 云岚宗", URL: base + "?filename=%E7%AC%AC%E5%9B%9B%E7%AB%A0_%E4%BA%91%E5%B2%9A%E5%AE%97.html&size=15K", Index: 4},
+			{Title: "第五章 聚气散", URL: base + "?filename=%E7%AC%AC%E4%BA%94%E7%AB%A0_%E8%81%9A%E6%B0%94%E6%95%A3.html&size=15K", Index: 5},
+		},
+	}
+}
+
 // BuildDownloadTask builds a COLLECTION download task from a NovelDetail.
 // It creates resources for profile.html, cover.jpg, and each chapter
 // (saved under chapters/0001.html etc.).
@@ -45,7 +64,7 @@ func BuildDownloadTask(novel *NovelDetail, config registry.DownloadConfig) (*reg
 			Kind: "profile",
 		},
 		Endpoints: []model.DownloadEndpoint{{
-			Protocol: "https",
+			Protocol: "http",
 			URL:      novel.ProfileURL,
 			Enabled:  1,
 		}},
@@ -59,7 +78,7 @@ func BuildDownloadTask(novel *NovelDetail, config registry.DownloadConfig) (*reg
 				Kind: "cover",
 			},
 			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
+				Protocol: "http",
 				URL:      novel.CoverURL,
 				Enabled:  1,
 			}},
@@ -74,7 +93,7 @@ func BuildDownloadTask(novel *NovelDetail, config registry.DownloadConfig) (*reg
 				Kind: "chapter",
 			},
 			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
+				Protocol: "http",
 				URL:      ch.URL,
 				Enabled:  1,
 			}},
