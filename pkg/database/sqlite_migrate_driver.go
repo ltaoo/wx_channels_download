@@ -8,11 +8,10 @@ import (
 	"sync"
 
 	"github.com/golang-migrate/migrate/v4/database"
-	_ "modernc.org/sqlite"
 )
 
-// sqliteMigrateDriver implements database.Driver from golang-migrate using
-// modernc.org/sqlite (pure Go, no CGO).
+// sqliteMigrateDriver implements database.Driver using the pure-Go "sqlite"
+// driver registered by github.com/glebarez/go-sqlite (via github.com/glebarez/sqlite).
 type sqliteMigrateDriver struct {
 	db *sql.DB
 
