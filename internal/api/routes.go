@@ -58,6 +58,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/remote/task/list", c.handleFetchRemoteTaskList)
 	c.engine.GET("/api/file", c.handleFetchFile)
 
+	c.engine.POST("/api/v1/download_task/prepare", c.handlePrepareDownloadTaskV1)
+	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handlePrepareDownloadTaskByURLV1)
 	c.engine.POST("/api/v1/download_task/create", c.handleCreateDownloadTaskV1)
 	c.engine.POST("/api/v1/download_task/create_by_url", c.handleCreateDownloadTaskByURLV1)
 	c.engine.POST("/api/v1/download_task/start", c.handleStartDownloadTaskV1)

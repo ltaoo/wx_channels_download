@@ -133,6 +133,214 @@ func (c *APIClient) startCreatedDownloadTask(task *model.DownloadTaskV1, endpoin
 	return nil
 }
 
+// prepareDownloadTaskV1Single 预览单个平台下载任务（不写入数据库、不启动下载），返回将要创建的任务信息。
+func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (gin.H, error) {
+	if body.Platform == "" {
+		return nil, fmt.Errorf("platform 不能为空")
+	}
+
+	h := registry.Get(body.Platform)
+	if h == nil {
+		return nil, fmt.Errorf("不支持的平台: " + body.Platform)
+	}
+
+	saveDir, err := c.resolveDownloadSaveDir(body.Config.SavePath)
+	if err != nil {
+		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+	}
+
+	info, content, account, err := h.BuildDownloadTask(body.Content, registry.DownloadConfig{
+		SavePath:      saveDir,
+		Filename:      body.Config.Filename,
+		Spec:          body.Config.Spec,
+		DownloadCover: body.Config.DownloadCover,
+		Overwrite:     body.Config.Overwrite,
+		SkipDuplicate: body.Config.SkipDuplicate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("构建下载任务失败: %w", err)
+	}
+	if info == nil {
+		return nil, fmt.Errorf("构建下载任务失败: 平台未返回下载任务")
+	}
+
+	resourceInfos := info.Resources
+	if len(resourceInfos) == 0 {
+		resourceInfos = []registry.DownloadResourceInfo{{
+			Resource:  info.Resource,
+			Endpoints: []model.DownloadEndpoint{info.Endpoint},
+		}}
+	}
+	if len(resourceInfos) > 1 {
+		info.Task.ResourceType = model.ResourceTypeCollection
+	}
+	for _, resourceInfo := range resourceInfos {
+		if len(resourceInfo.Endpoints) == 0 {
+			return nil, fmt.Errorf("资源 " + resourceInfo.Resource.Name + " 没有下载端点")
+		}
+	}
+
+	info.Task.SavePath, err = downloadTaskSavePath(saveDir, info.Task.ResourceType, resourceInfos[0].Resource.Name)
+	if err != nil {
+		return nil, fmt.Errorf("生成保存路径失败: %w", err)
+	}
+
+	// 构建预览数据（不写入数据库）
+	resources := make([]gin.H, 0, len(resourceInfos))
+	totalEndpoints := 0
+	for i, ri := range resourceInfos {
+		eps := make([]gin.H, 0, len(ri.Endpoints))
+		for _, ep := range ri.Endpoints {
+			eps = append(eps, gin.H{
+				"protocol": ep.Protocol,
+				"url":      ep.URL,
+				"priority": ep.Priority,
+			})
+		}
+		resources = append(resources, gin.H{
+			"index":     i,
+			"name":      ri.Resource.Name,
+			"kind":      ri.Resource.Kind,
+			"task_name": ri.Resource.TaskName,
+			"endpoints": eps,
+		})
+		totalEndpoints += len(ri.Endpoints)
+	}
+
+	return gin.H{
+		"platform":        body.Platform,
+		"task_name":       info.Task.Name,
+		"resource_type":   info.Task.ResourceType,
+		"save_path":       info.Task.SavePath,
+		"resources":       resources,
+		"resource_count":  len(resourceInfos),
+		"endpoint_count":  totalEndpoints,
+		"content":         content,
+		"account":         account,
+	}, nil
+}
+
+// handlePrepareDownloadTaskV1 批量预览平台下载任务
+// POST /api/v1/download_task/prepare
+func (c *APIClient) handlePrepareDownloadTaskV1(ctx *gin.Context) {
+	var bodies []CreateDownloadTaskV1Body
+	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	if len(bodies) == 0 {
+		result.Err(ctx, 400, "请求体不能为空数组")
+		return
+	}
+
+	previews := make([]gin.H, 0, len(bodies))
+	for _, body := range bodies {
+		data, err := c.prepareDownloadTaskV1Single(body)
+		if err != nil {
+			previews = append(previews, gin.H{"success": false, "error": err.Error()})
+		} else {
+			previews = append(previews, gin.H{"success": true, "data": data})
+		}
+	}
+
+	result.Ok(ctx, gin.H{"previews": previews})
+}
+
+// prepareDownloadTaskByURLV1Single 预览通过资源地址创建的下载任务（不写入数据库、不启动下载）。
+func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByURLBody) (gin.H, error) {
+	if body.URL == "" {
+		return nil, fmt.Errorf("url 不能为空")
+	}
+
+	parsedURL, err := url.Parse(body.URL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return nil, fmt.Errorf("无效的下载地址")
+	}
+
+	protocol := strings.ToUpper(parsedURL.Scheme)
+
+	requestedSavePath := body.SavePath
+	if requestedSavePath == "" {
+		requestedSavePath = body.Config.SavePath
+	}
+	saveDir, err := c.resolveDownloadSaveDir(requestedSavePath)
+	if err != nil {
+		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+	}
+	filename := body.Filename
+	if filename == "" {
+		filename = body.Config.Filename
+	}
+	if filename == "" {
+		base := filepath.Base(parsedURL.Path)
+		if base != "" && base != "." && base != "/" {
+			if decoded, err := url.QueryUnescape(base); err == nil {
+				filename = decoded
+			} else {
+				filename = base
+			}
+		}
+	}
+	if filename == "" {
+		filename = body.URL
+	}
+	filename = filepath.Base(filename)
+	if filename == "" || filename == "." || filename == ".." || filename == string(filepath.Separator) {
+		return nil, fmt.Errorf("无法确定下载文件名")
+	}
+
+	savePath, err := downloadTaskSavePath(saveDir, model.ResourceTypeFile, filename)
+	if err != nil {
+		return nil, fmt.Errorf("生成保存路径失败: %w", err)
+	}
+
+	return gin.H{
+		"url":           body.URL,
+		"protocol":      protocol,
+		"task_name":     filename,
+		"resource_type": model.ResourceTypeFile,
+		"save_path":     savePath,
+		"resources": []gin.H{{
+			"index": 0,
+			"name":  filename,
+			"kind":  "file",
+			"endpoints": []gin.H{{
+				"protocol": protocol,
+				"url":      body.URL,
+				"priority": 0,
+			}},
+		}},
+		"resource_count": 1,
+		"endpoint_count": 1,
+	}, nil
+}
+
+// handlePrepareDownloadTaskByURLV1 批量预览通过资源地址创建的下载任务
+// POST /api/v1/download_task/prepare_by_url
+func (c *APIClient) handlePrepareDownloadTaskByURLV1(ctx *gin.Context) {
+	var bodies []CreateDownloadTaskByURLBody
+	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	if len(bodies) == 0 {
+		result.Err(ctx, 400, "请求体不能为空数组")
+		return
+	}
+
+	previews := make([]gin.H, 0, len(bodies))
+	for _, body := range bodies {
+		data, err := c.prepareDownloadTaskByURLV1Single(body)
+		if err != nil {
+			previews = append(previews, gin.H{"success": false, "error": err.Error()})
+		} else {
+			previews = append(previews, gin.H{"success": true, "data": data})
+		}
+	}
+
+	result.Ok(ctx, gin.H{"previews": previews})
+}
+
 // createDownloadTaskV1Single 创建单个平台下载任务，返回结果数据或错误。
 func (c *APIClient) createDownloadTaskV1Single(body CreateDownloadTaskV1Body) (gin.H, error) {
 	if body.Platform == "" {
