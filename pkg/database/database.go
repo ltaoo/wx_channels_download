@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/rs/zerolog"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"wx_channel/pkg/util"
@@ -50,7 +50,7 @@ func NewDatabase(cfg *DatabaseConfig, parent_logger *zerolog.Logger) (*gorm.DB, 
 			}
 		}
 		// fmt.Printf("[INTERNAL]db/database - SQLite database path: %s\n", cfg.DBPath)
-		dialector = sqlite.Open(cfg.DBPath + "?_busy_timeout=5000&_journal=WAL&_synchronous=NORMAL")
+		dialector = sqlite.Open(cfg.DBPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.DBType)
 	}

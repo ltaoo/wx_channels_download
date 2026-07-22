@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"
@@ -66,7 +66,7 @@ func (h *savePathTestPlatformHandler) BuildDownloadTask(_ json.RawMessage, confi
 
 func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.DownloadTaskV1{},
@@ -169,7 +169,7 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 
 func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.DownloadTaskV1{},
@@ -238,7 +238,7 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 
 func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.DownloadTaskV1{},
@@ -289,7 +289,7 @@ func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 
 func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.DownloadTaskV1{},

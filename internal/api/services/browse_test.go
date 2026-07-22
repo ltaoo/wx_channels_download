@@ -3,7 +3,7 @@ package services
 import (
 	"testing"
 
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"

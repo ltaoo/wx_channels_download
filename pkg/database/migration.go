@@ -10,7 +10,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/golang-migrate/migrate/v4/source/httpfs"
 	"github.com/rs/zerolog/log"
@@ -137,15 +136,12 @@ func (m *Migrator) createMigrator() (*migrate.Migrate, error) {
 		}
 		driver = "postgres"
 	case "sqlite":
-		db, err = sql.Open("sqlite3", m.config.DBPath)
+		var sqliteDrv sqliteMigrateDriver
+		instance, err = sqliteDrv.Open(m.config.DBPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sqlite connection: %w", err)
 		}
-		instance, err = sqlite3.WithInstance(db, &sqlite3.Config{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create sqlite instance: %w", err)
-		}
-		driver = "sqlite3"
+		driver = "sqlite"
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", m.config.DBType)
 	}

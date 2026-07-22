@@ -201,7 +201,6 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 			"index":     i,
 			"name":      ri.Resource.Name,
 			"kind":      ri.Resource.Kind,
-			"task_name": ri.Resource.TaskName,
 			"endpoints": eps,
 		})
 		totalEndpoints += len(ri.Endpoints)
