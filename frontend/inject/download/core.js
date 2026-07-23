@@ -2316,8 +2316,19 @@ function DownloaderPanelViewModel(props = {}) {
       console.log("[downloader.create]create", feed);
       var [err, data] = await WXU.request({
         method: "POST",
-        url: WXEnv.apiOrigin + "/api/task/create",
-        body: { object: feed, spec: opt.spec, suffix: opt.suffix },
+        url: WXEnv.apiOrigin + "/api/v1/download_task/create",
+        body: {
+          objects: [
+            {
+              platform: "wx_channels",
+              content: feed,
+              config: {
+                spec: opt.spec,
+                suffix: opt.suffix,
+              },
+            },
+          ],
+        },
       });
       WXU.downloader.show();
       if (err) {
@@ -2327,14 +2338,21 @@ function DownloaderPanelViewModel(props = {}) {
     },
     async createDownloadTaskBatch(feeds, opt = {}) {
       var body = {
-        feeds: feeds.map(function (feed) {
-          return { object: feed, spec: opt.spec, suffix: opt.suffix };
+        objects: feeds.map(function (feed) {
+          return {
+            platform: "wx_channels",
+            content: feed,
+            config: {
+              spec: opt.spec,
+              suffix: opt.suffix,
+            },
+          };
         }),
       };
       WXU.downloader.show();
       var [err, data] = await WXU.request({
         method: "POST",
-        url: WXEnv.apiOrigin + "/api/task/create_batch",
+        url: WXEnv.apiOrigin + "/api/v1/download_task/create",
         body,
       });
       if (err) {
@@ -2700,7 +2718,10 @@ function CreatePlatformTaskDialogView(props) {
 }
 
 function resourceFileEmoji(name) {
-  var ext = String(name || "").split(".").pop().toLowerCase();
+  var ext = String(name || "")
+    .split(".")
+    .pop()
+    .toLowerCase();
   if (/^(jpe?g|png|gif|webp|svg|bmp|ico)$/.test(ext)) return "🖼️";
   if (/^(mp4|avi|mkv|mov|webm|flv|wmv|m4v)$/.test(ext)) return "🎬";
   if (/^(mp3|wav|aac|flac|ogg|wma|m4a)$/.test(ext)) return "🎵";

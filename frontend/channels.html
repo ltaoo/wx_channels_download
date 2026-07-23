@@ -5,30 +5,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fake Feed Debug</title>
+  <link rel="stylesheet" href="/__assets/lib/timeless/0.28.0/timeless.weui.css" />
+  <link id="wx-components-style" rel="stylesheet" href="/__assets/inject/components.css" />
   <script>
-    window.__wx_channels_assets_base__ =
-      window.__wx_channels_assets_base__ ||
-      "http://127.0.0.1:2022/__assets";
-    window.__wx_fake_asset_version__ =
-      new URLSearchParams(window.location.search).get("asset_v") || "";
-    function __wx_fake_asset_url(path) {
-      var url = window.__wx_channels_assets_base__.replace(/\/$/, "") + path;
-      if (window.__wx_fake_asset_version__) {
-        url += (url.indexOf("?") === -1 ? "?" : "&") +
-          "v=" + encodeURIComponent(window.__wx_fake_asset_version__);
-      }
-      return url;
-    }
-    document.write(
-      '<link rel="stylesheet" href="' +
-      __wx_fake_asset_url("/lib/timeless/0.28.0/timeless.weui.css") +
-      '">'
-    );
-    document.write(
-      '<link id="wx-components-style" rel="stylesheet" href="' +
-      __wx_fake_asset_url("/inject/components.css") +
-      '">'
-    );
+    window.__wx_channels_config__ = window.__WX_DOWNLOAD_CONFIG_JSON__;
+    window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";
+    window.WXVariable = {};
   </script>
   <style>
     :root {
@@ -378,45 +360,27 @@
     </div>
   </div>
 
-  <script>
-    (function () {
-      function writeScript(path) {
-        document.write(
-          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
-        );
-      }
-      writeScript("/lib/mitt.umd.js");
-      writeScript("/lib/timeless/0.28.0/timeless.umd.min.js");
-      writeScript("/lib/timeless/0.28.0/timeless.utils.umd.min.js");
-      writeScript("/lib/timeless/0.28.0/timeless.weui.umd.min.js");
-    })();
-  </script>
+  <script src="/__assets/lib/mitt.umd.js"></script>
+  <script src="/__assets/lib/timeless/0.28.0/timeless.umd.min.js"></script>
+  <script src="/__assets/lib/timeless/0.28.0/timeless.utils.umd.min.js"></script>
+  <script src="/__assets/lib/timeless/0.28.0/timeless.weui.umd.min.js"></script>
   <script>
     Object.assign(Timeless, Timeless.weui.kit);
     Object.assign(Timeless, Timeless.weui);
     Object.assign(window, Timeless);
   </script>
-  <script>
-    (function () {
-      function writeScript(path) {
-        document.write(
-          '<script src="' + __wx_fake_asset_url(path) + '"><\/script>'
-        );
-      }
-      writeScript("/lib/timeless/0.28.0/timeless.dom.umd.min.js");
-      writeScript("/lib/timeless/0.28.0/timeless.web.umd.min.js");
-      writeScript("/inject/eventbus.js");
-      writeScript("/inject/env.js");
-      // writeScript("/inject/channels.env.js");
-      writeScript("/inject/env.mock.js");
-      writeScript("/inject/utils.js");
-      writeScript("/inject/components.js");
-      writeScript("/inject/virtual-list-view.js");
-      writeScript("/inject/feed.js");
-      writeScript("/inject/download/core.js");
-      writeScript("/inject/download/panel.js");
-    })();
-  </script>
+  <script src="/__assets/lib/timeless/0.28.0/timeless.dom.umd.min.js"></script>
+  <script src="/__assets/lib/timeless/0.28.0/timeless.web.umd.min.js"></script>
+  <script src="/__assets/inject/eventbus.js"></script>
+  <script src="/__assets/inject/env.js"></script>
+  <!-- <script src="/__assets/inject/channels.env.js"></script> -->
+  <script src="/__assets/inject/env.mock.js"></script>
+  <script src="/__assets/inject/utils.js"></script>
+  <script src="/__assets/inject/components.js"></script>
+  <script src="/__assets/inject/virtual-list-view.js"></script>
+  <script src="/__assets/inject/feed.js"></script>
+  <script src="/__assets/inject/download/core.js"></script>
+  <script src="/__assets/inject/download/panel.js"></script>
   <script>
     (function () {
       const fakeFeed = {

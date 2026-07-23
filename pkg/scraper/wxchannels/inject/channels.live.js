@@ -34,8 +34,8 @@ async function __wx_insert_live_download_btn($btn) {
  * @param {Array} options - 直播流选项列表
  */
 function __wx_attach_live_download_dropdown_menu(trigger, options) {
-  if (trigger.__wxTimelessDownloadDropdown) {
-    return trigger.__wxTimelessDownloadDropdown;
+  if (trigger.__attacheddropdown) {
+    return trigger.__attacheddropdown;
   }
 
   function close_dropdown() {
@@ -96,7 +96,7 @@ function __wx_attach_live_download_dropdown_menu(trigger, options) {
   if (trigger.dataset) {
     trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
   }
-  trigger.__wxTimelessDownloadDropdown = dropdown$;
+  trigger.__attacheddropdown = dropdown$;
   return dropdown$;
 }
 

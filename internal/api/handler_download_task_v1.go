@@ -18,6 +18,11 @@ import (
 	result "wx_channel/internal/util"
 )
 
+// CreateDownloadTaskV1Request 创建下载任务请求
+type CreateDownloadTaskV1Request struct {
+	Objects []CreateDownloadTaskV1Body `json:"objects"`
+}
+
 // CreateDownloadTaskV1Body 创建下载任务请求体
 type CreateDownloadTaskV1Body struct {
 	Platform string          `json:"platform"` // 内容平台
@@ -30,6 +35,7 @@ type DownloadConfig struct {
 	SavePath      string `json:"save_path"`
 	Filename      string `json:"filename"`
 	Spec          string `json:"spec"`
+	Suffix        string `json:"suffix"`
 	DownloadCover bool   `json:"download_cover"`
 	Overwrite     bool   `json:"overwrite"`
 	SkipDuplicate bool   `json:"skip_duplicate"`
@@ -38,6 +44,11 @@ type DownloadConfig struct {
 // taskV1IDBody 通用 task_id 请求体
 type taskV1IDBody struct {
 	TaskID int `json:"task_id"`
+}
+
+// CreateDownloadTaskByURLRequest 通过资源地址创建下载任务请求
+type CreateDownloadTaskByURLRequest struct {
+	Objects []CreateDownloadTaskByURLBody `json:"objects"`
 }
 
 // CreateDownloadTaskByURLBody 通过资源地址创建下载任务请求体
@@ -224,18 +235,18 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 // handlePrepareDownloadTaskV1 批量预览平台下载任务
 // POST /api/v1/download_task/prepare
 func (c *APIClient) handlePrepareDownloadTaskV1(ctx *gin.Context) {
-	var bodies []CreateDownloadTaskV1Body
-	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+	var req CreateDownloadTaskV1Request
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if len(bodies) == 0 {
+	if len(req.Objects) == 0 {
 		result.Err(ctx, 400, "请求体不能为空数组")
 		return
 	}
 
-	previews := make([]gin.H, 0, len(bodies))
-	for _, body := range bodies {
+	previews := make([]gin.H, 0, len(req.Objects))
+	for _, body := range req.Objects {
 		data, err := c.prepareDownloadTaskV1Single(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
@@ -319,18 +330,18 @@ func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByUR
 // handlePrepareDownloadTaskByURLV1 批量预览通过资源地址创建的下载任务
 // POST /api/v1/download_task/prepare_by_url
 func (c *APIClient) handlePrepareDownloadTaskByURLV1(ctx *gin.Context) {
-	var bodies []CreateDownloadTaskByURLBody
-	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+	var req CreateDownloadTaskByURLRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if len(bodies) == 0 {
+	if len(req.Objects) == 0 {
 		result.Err(ctx, 400, "请求体不能为空数组")
 		return
 	}
 
-	previews := make([]gin.H, 0, len(bodies))
-	for _, body := range bodies {
+	previews := make([]gin.H, 0, len(req.Objects))
+	for _, body := range req.Objects {
 		data, err := c.prepareDownloadTaskByURLV1Single(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
@@ -462,18 +473,18 @@ func (c *APIClient) createDownloadTaskV1Single(body CreateDownloadTaskV1Body) (g
 // handleCreateDownloadTaskV1 批量创建平台下载任务
 // POST /api/v1/download_task/create
 func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
-	var bodies []CreateDownloadTaskV1Body
-	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+	var req CreateDownloadTaskV1Request
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if len(bodies) == 0 {
+	if len(req.Objects) == 0 {
 		result.Err(ctx, 400, "请求体不能为空数组")
 		return
 	}
 
-	tasks := make([]gin.H, 0, len(bodies))
-	for _, body := range bodies {
+	tasks := make([]gin.H, 0, len(req.Objects))
+	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskV1Single(body)
 		if err != nil {
 			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})
@@ -610,18 +621,18 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 // handleCreateDownloadTaskByURLV1 批量通过资源地址创建下载任务
 // POST /api/v1/download_task/create_by_url
 func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
-	var bodies []CreateDownloadTaskByURLBody
-	if err := ctx.ShouldBindJSON(&bodies); err != nil {
+	var req CreateDownloadTaskByURLRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if len(bodies) == 0 {
+	if len(req.Objects) == 0 {
 		result.Err(ctx, 400, "请求体不能为空数组")
 		return
 	}
 
-	tasks := make([]gin.H, 0, len(bodies))
-	for _, body := range bodies {
+	tasks := make([]gin.H, 0, len(req.Objects))
+	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskByURLV1Single(body)
 		if err != nil {
 			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})

@@ -437,6 +437,7 @@ var WXU = (() => {
     },
     uid: __wx_uid__,
     bytes_to_size,
+    remove_zero,
     parseJSON(v) {
       try {
         var r = JSON.parse(v);

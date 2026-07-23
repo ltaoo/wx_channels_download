@@ -16,6 +16,7 @@ var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
 var __wx_channels_store__ = {
+  feed: null,
   profile: null,
   buffers: [],
 };
@@ -272,55 +273,21 @@ async function __wx_channels_decrypt(seed) {
       __wx_channels_cur_video.player.pause();
     }
   }
-
-  function set_feed(feed) {
-    var profile = format_feed(feed);
-    if (!profile) {
-      return;
-    }
-    fetch("/__wx_channels_api/profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(profile),
-    });
-    __wx_channels_store__.profile = profile;
-  }
-  /**
-   *
-   * @param {ChannelsFeed} feed
-   */
-  function set_live_feed(feed) {
-    var profile = format_feed(feed);
-    if (!profile) {
-      return;
-    }
-    fetch("/__wx_channels_api/profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(profile),
-    });
-    __wx_channels_live_store__.profile = profile;
-  }
-
   /**
    * 检查是否存在视频
    * @param {{ silence?: boolean }} opt
    * @returns {[boolean, FeedProfile]}
    */
   function __wx_check_feed_existing(opt = {}) {
-    var profile = __wx_channels_store__.profile;
-    if (!profile) {
+    var feed = __wx_channels_store__.feed;
+    if (!feed) {
       WXU.error({
         alert: Number(!opt.silence),
         msg: "检测不到视频，请提交 issue 反馈",
       });
       return [true, null];
     }
-    return [false, profile];
+    return [false, feed];
   }
   /**
    *
@@ -392,15 +359,15 @@ async function __wx_channels_decrypt(seed) {
     const v = Number(kbps);
     if (!Number.isFinite(v) || v <= 0) return "";
     if (v >= 1000) {
-      return `${remove_zero((v / 1000).toFixed(1))}Mbps`;
+      return `${WXU.remove_zero((v / 1000).toFixed(1))}Mbps`;
     }
-    return `${remove_zero(v.toFixed(0))}Kbps`;
+    return `${WXU.remove_zero(v.toFixed(0))}Kbps`;
   }
   function format_mbps_from_kb_per_s(kbPerS) {
     const v = Number(kbPerS);
     if (!Number.isFinite(v) || v <= 0) return "";
     const mbps = (v * 8) / 1024;
-    return `${remove_zero(mbps.toFixed(1))}Mbps`;
+    return `${WXU.remove_zero(mbps.toFixed(1))}Mbps`;
   }
   function format_quality_label(levelOrder) {
     const v = Number(levelOrder);
@@ -503,8 +470,8 @@ async function __wx_channels_decrypt(seed) {
    * @param {HTMLElement} trigger
    */
   function __wx_attach_download_dropdown_menu(trigger) {
-    if (trigger.__wxTimelessDownloadDropdown) {
-      return trigger.__wxTimelessDownloadDropdown;
+    if (trigger.__attacheddropdown) {
+      return trigger.__attacheddropdown;
     }
 
     const submenu$ = new Timeless.ui.MenuCore({
@@ -582,17 +549,17 @@ async function __wx_channels_decrypt(seed) {
           },
         }),
         ...(() => {
-          const [err, profile] = WXU.check_feed_existing({
+          const [err, feed] = WXU.check_feed_existing({
             silence: true,
           });
           if (err) {
             return [];
           }
+          const profile = WXU.format_feed(feed);
           return (profile.spec || []).map((spec) => {
-            const title = WXU.format_media_spec_label(spec) || spec.fileFormat;
             return new Timeless.ui.MenuItemCore({
-              label: WXU.format_media_spec_short_label(spec),
-              tooltip: title,
+              label: format_media_spec_short_label(spec),
+              tooltip: format_media_spec_label(spec) || spec.fileFormat,
               onClick() {
                 __wx_channels_handle_click_download__(spec.fileFormat);
                 close_dropdown();
@@ -626,7 +593,6 @@ async function __wx_channels_decrypt(seed) {
         { force: true },
       );
     }
-
     trigger.addEventListener("mouseenter", () => {
       set_reference();
       submenu$.setItems(build_download_menu_items());
@@ -638,11 +604,7 @@ async function __wx_channels_decrypt(seed) {
     trigger.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
-
-    if (trigger.dataset) {
-      trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
-    }
-    trigger.__wxTimelessDownloadDropdown = dropdown$;
+    trigger.__attacheddropdown = dropdown$;
     return dropdown$;
   }
 
@@ -744,36 +706,38 @@ async function __wx_channels_decrypt(seed) {
      * @param {ChannelsFeed} feed
      */
     set_feed(feed) {
-      var profile = format_feed(feed);
-      if (!profile) {
-        return;
-      }
-      fetch("/__wx_channels_api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(profile),
-      });
-      __wx_channels_store__.profile = profile;
+      // var profile = format_feed(feed);
+      // if (!profile) {
+      //   return;
+      // }
+      // fetch("/__wx_channels_api/profile", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //   },
+      //   body: JSON.stringify(profile),
+      // });
+      // __wx_channels_store__.profile = profile;
+      __wx_channels_store__.feed = feed;
     },
     /**
      *
      * @param {ChannelsFeed} feed
      */
     set_live_feed(feed) {
-      var profile = format_feed(feed);
-      if (!profile) {
-        return;
-      }
-      fetch("/__wx_channels_api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(profile),
-      });
-      __wx_channels_live_store__.profile = profile;
+      // var profile = format_feed(feed);
+      // if (!profile) {
+      //   return;
+      // }
+      // fetch("/__wx_channels_api/profile", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //   },
+      //   body: JSON.stringify(profile),
+      // });
+      // __wx_channels_live_store__.profile = profile;
+      __wx_channels_live_store__.feed = feed;
     },
     /**
      *
@@ -962,9 +926,6 @@ async function __wx_channels_decrypt(seed) {
     const [err, feed] = WXU.check_feed_existing();
     if (err) return;
     const payload = { ...feed };
-    payload.mp3 = !!mp3;
-    payload.original_url = feed.url;
-    payload.target_spec = spec;
     payload.source_url = location.href;
     WXU.log({
       msg: `${payload.source_url}
