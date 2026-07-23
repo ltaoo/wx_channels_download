@@ -205,6 +205,7 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 		})
 		totalEndpoints += len(ri.Endpoints)
 	}
+	tree := buildResourceTree(resources)
 
 	return gin.H{
 		"platform":        body.Platform,
@@ -212,6 +213,7 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 		"resource_type":   info.Task.ResourceType,
 		"save_path":       info.Task.SavePath,
 		"resources":       resources,
+		"tree":            tree,
 		"resource_count":  len(resourceInfos),
 		"endpoint_count":  totalEndpoints,
 		"content":         content,
@@ -943,4 +945,57 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// ResourceTreeNode 资源树节点，用于前端渲染文件目录结构。
+type ResourceTreeNode struct {
+	Name     string              `json:"name"`
+	Type     string              `json:"type"` // "file" | "directory"
+	Kind     string              `json:"kind,omitempty"`
+	Endpoints []gin.H            `json:"endpoints,omitempty"`
+	Children []*ResourceTreeNode `json:"children,omitempty"`
+}
+
+// buildResourceTree 将扁平的资源列表按路径拆分为目录树。
+// 资源 name 如 "chapters/0001.html" 会被归入 "chapters" 目录。
+func buildResourceTree(resources []gin.H) *ResourceTreeNode {
+	root := &ResourceTreeNode{Name: "", Type: "directory", Children: []*ResourceTreeNode{}}
+	for _, r := range resources {
+		name, _ := r["name"].(string)
+		kind, _ := r["kind"].(string)
+		eps, _ := r["endpoints"].([]gin.H)
+		parts := strings.Split(name, "/")
+
+		node := root
+		for i, part := range parts {
+			if i == len(parts)-1 {
+				// 文件节点
+				node.Children = append(node.Children, &ResourceTreeNode{
+					Name:      part,
+					Type:      "file",
+					Kind:      kind,
+					Endpoints: eps,
+				})
+			} else {
+				// 目录节点，查找或创建
+				var dir *ResourceTreeNode
+				for _, child := range node.Children {
+					if child.Type == "directory" && child.Name == part {
+						dir = child
+						break
+					}
+				}
+				if dir == nil {
+					dir = &ResourceTreeNode{
+						Name:     part,
+						Type:     "directory",
+						Children: []*ResourceTreeNode{},
+					}
+					node.Children = append(node.Children, dir)
+				}
+				node = dir
+			}
+		}
+	}
+	return root
 }

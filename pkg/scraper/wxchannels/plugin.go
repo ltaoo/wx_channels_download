@@ -65,16 +65,6 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
 	v := "?t=" + version
 	plugins := make([]*proxy.Plugin, 0, 5)
-	if cfg.DebugShowError {
-		plugins = append(plugins, &proxy.Plugin{
-			Match: "debug.weixin.qq.com",
-			Target: &proxy.TargetConfig{
-				Protocol: "http",
-				Host:     "127.0.0.1",
-				Port:     6752,
-			},
-		})
-	}
 	downloadTarget := &proxy.TargetConfig{
 		Protocol: cfg.APIServerProtocol,
 		Host:     cfg.APIServerHostname,
@@ -214,11 +204,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					/** 全局错误捕获并展示弹窗 */
 					frontend.AppendScriptSrcs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "error.js"))
 				}
-				var shadcnCSS []byte
-				if files != nil {
-					shadcnCSS = files.CSSTimelessShadcn
-				}
-				frontend.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, "", "", shadcnCSS)
+				frontend.AppendSharedLibAssets(&injected, assetBaseURL, version, "", "")
 				frontend.AppendStylesheetHrefs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
@@ -303,15 +289,6 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				js_script = jsLazyImportReg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
-				if strings.Contains(pathname, "index.publish") {
-					// 已经废弃了
-					buffer_js := `(() => {
-					WXU.append_media_buf($1);
-					})(),this.sourceBuffer.appendBuffer($1),`
-					js_script = jsSourceBufferReg.ReplaceAllString(js_script, buffer_js)
-					ctx.SetResponseBody(js_script)
-					return
-				}
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
 					{
 						js_init := `async finderInit() {

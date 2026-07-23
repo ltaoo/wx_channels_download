@@ -240,7 +240,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "pagespy.protocol",
 		Type:        ConfigTypeSelect,
-		Default:     "https",
+		Default:     "http",
 		Options:     []string{"http", "https"},
 		Description: "PageSpy 调试协议",
 		Title:       "协议头",
@@ -250,7 +250,7 @@ func (c *Config) LoadConfig() error {
 	Register(ConfigItem{
 		Key:         "pagespy.api",
 		Type:        ConfigTypeString,
-		Default:     "debug.weixin.qq.com",
+		Default:     "127.0.0.1:6752",
 		Description: "PageSpy 调试 API 地址",
 		Title:       "API 地址",
 		Group:       "Pagespy",

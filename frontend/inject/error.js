@@ -165,6 +165,9 @@ class ErrorModal {
 window.errorModal = new ErrorModal();
 var errors = [];
 window.addEventListener("error", function (event) {
+  if (event.error === null) {
+    return;
+  }
   event.preventDefault();
   var r = parse_error_stack(event.error.stack);
   if (r) {

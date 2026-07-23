@@ -260,7 +260,7 @@
   function render_rss_button(acct) {
     var $btn = document.createElement("div");
     $btn.style.cssText = `position: relative; top: -3px; width: 16px; height: 16px; margin-left: 6px; cursor: pointer;`;
-    $btn.innerHTML = RSSIcon;
+    $btn.innerHTML = Icons.RSSIcon;
     $btn.onclick = function () {
       var origin = (() => {
         return WXEnv.officialAccountOrigin;

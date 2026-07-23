@@ -199,11 +199,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 					/** 全局错误捕获并展示弹窗 */
 					frontend.AppendScriptSrcs(&injected, script_attr, frontend.InjectAssetURL(assetBaseURL, "error.js"))
 				}
-				var shadcnCSS []byte
-				if files != nil {
-					shadcnCSS = files.CSSTimelessShadcn
-				}
-				frontend.AppendSharedLibAssetsWithInlineShadcnCSS(&injected, assetBaseURL, version, script_attr, style_attr, shadcnCSS)
+				frontend.AppendSharedLibAssets(&injected, assetBaseURL, version, script_attr, style_attr)
 				frontend.AppendStylesheetHrefs(&injected, style_attr, frontend.InjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))

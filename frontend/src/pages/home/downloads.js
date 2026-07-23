@@ -1,5 +1,6 @@
 /* global classNames, Select */
 import { ProxyImg } from "@/components/proxy-img.js";
+import { ResourceTree, buildFileTree, ResourceTreeNode } from "@/components/resource-tree.js";
 import {
   DownloadTaskStatus,
   DownloadsPageModel,
@@ -607,6 +608,47 @@ function ResourceCard(file) {
                 [computed(file, (item) => item.error)],
               ),
             ],
+          );
+        },
+      }),
+    ],
+  );
+}
+
+function ResourcesTree(task) {
+  const nodes = computed(task, (t) => buildFileTree(t.files || []));
+  return View(
+    {
+      class:
+        "mt-2 rounded-md border border-zinc-200 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-950/60",
+    },
+    [
+      View(
+        {
+          class:
+            "mb-1 flex items-center justify-between gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400",
+        },
+        [
+          View(
+            { class: "flex min-w-0 items-center gap-1.5" },
+            [
+              Icon({ name: "folder-tree", size: 14 }),
+              computed(task, (t) => `${taskResourceCount(t)} 个资源`),
+            ],
+          ),
+        ],
+      ),
+      Show({
+        when: computed(nodes, (items) => items.length > 0),
+        ok() {
+          return View(
+            { class: "space-y-0.5" },
+            For({
+              each: nodes,
+              render(node) {
+                return ResourceTreeNode(node);
+              },
+            }),
           );
         },
       }),
@@ -1525,7 +1567,7 @@ function TaskCard(task, vm$) {
               Show({
                 when: computed(task, (t) => taskResourceCount(t) > 1),
                 ok() {
-                  return MultiResourceList(task);
+                  return ResourcesTree(task);
                 },
               }),
               View(

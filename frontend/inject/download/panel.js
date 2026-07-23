@@ -106,7 +106,7 @@ function DownloaderEntry(props) {
       if (!$btn_wrap) {
         $btn_wrap = $box;
       }
-      var $download_panel_button = download_btn7();
+      var $download_panel_button = Icons.download_btn7();
       insert_downloader($btn_wrap, $download_panel_button);
       mounted = true;
     });

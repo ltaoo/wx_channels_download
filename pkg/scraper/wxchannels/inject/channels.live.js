@@ -145,7 +145,7 @@ function __wx_attach_live_download_dropdown_menu(trigger, options) {
       createtime: data.liveInfo.startTime,
     };
     WXU.set_live_feed(feed);
-    var $btn = download_btn4();
+    var $btn = Icons.download_btn4();
     $btn.onclick = function () {
       var profile = __wx_channels_live_store__.profile;
       if (!profile) {

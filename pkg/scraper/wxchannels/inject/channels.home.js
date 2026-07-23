@@ -7,9 +7,9 @@
  * @param {HTMLElement} $parent
  */
 function __wx_insert_download_btn($parent) {
-  var $btn = download_btn2();
-  __wx_attach_download_dropdown_menu($btn);
-  $btn.onclick = __wx_download_btn_handler;
+  var $btn = Icons.download_btn2();
+  WXU.attach_download_dropdown_menu($btn);
+  $btn.onclick = WXU.downloadBtnHandler;
   $parent.appendChild($btn);
 }
 
@@ -25,9 +25,9 @@ function __wx_render_sider_tools() {
   $tools.className = "wx-sider-tools";
   const $btn = document.createElement("div");
   $btn.className = "wx-sider-tools-btn";
-  $btn.innerHTML = download_icon1;
-  $btn.onclick = __wx_download_btn_handler;
-  __wx_attach_download_dropdown_menu($btn);
+  $btn.innerHTML = Icons.download_icon1;
+  $btn.onclick = WXU.downloadBtnHandler;
+  WXU.attach_download_dropdown_menu($btn);
   document.body.appendChild($fixed_sider);
   $fixed_sider.appendChild($sider_bg);
   $fixed_sider.appendChild($tools);

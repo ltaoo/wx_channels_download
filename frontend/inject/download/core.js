@@ -2699,6 +2699,195 @@ function CreatePlatformTaskDialogView(props) {
   );
 }
 
+function resourceFileEmoji(name) {
+  var ext = String(name || "").split(".").pop().toLowerCase();
+  if (/^(jpe?g|png|gif|webp|svg|bmp|ico)$/.test(ext)) return "🖼️";
+  if (/^(mp4|avi|mkv|mov|webm|flv|wmv|m4v)$/.test(ext)) return "🎬";
+  if (/^(mp3|wav|aac|flac|ogg|wma|m4a)$/.test(ext)) return "🎵";
+  if (/^(html?|css|js|json|xml)$/.test(ext)) return "🌐";
+  return "📄";
+}
+
+function buildPreviewTree(preview) {
+  if (preview && preview.tree) {
+    return preview.tree;
+  }
+  var resources = (preview && preview.resources) || [];
+  var root = { type: "directory", name: "", children: [] };
+  for (var i = 0; i < resources.length; i++) {
+    var res = resources[i];
+    var name = res.name || "";
+    var parts = name.split("/").filter(Boolean);
+    if (parts.length === 0) {
+      root.children.push({
+        type: "file",
+        name: name,
+        kind: res.kind,
+        endpoints: res.endpoints,
+      });
+      continue;
+    }
+    var node = root;
+    for (var j = 0; j < parts.length; j++) {
+      var part = parts[j];
+      if (j === parts.length - 1) {
+        node.children.push({
+          type: "file",
+          name: part,
+          kind: res.kind,
+          endpoints: res.endpoints,
+        });
+      } else {
+        var dir = null;
+        for (var k = 0; k < node.children.length; k++) {
+          if (
+            node.children[k].type === "directory" &&
+            node.children[k].name === part
+          ) {
+            dir = node.children[k];
+            break;
+          }
+        }
+        if (!dir) {
+          dir = { type: "directory", name: part, children: [] };
+          node.children.push(dir);
+        }
+        node = dir;
+      }
+    }
+  }
+  return root;
+}
+
+function PreviewResourceNode(props) {
+  const { node, level } = props;
+  var indent = Math.min(level * 18, 90) + "px";
+  return Show({
+    when: node.type === "directory",
+    ok() {
+      return View(
+        {
+          key: node.name + "-dir-" + level,
+          style: { "margin-left": indent, "margin-bottom": "2px" },
+        },
+        [
+          View(
+            {
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "4px",
+                "font-size": "13px",
+                color: "var(--weui-FG-1)",
+                "font-weight": "500",
+                cursor: "default",
+                "border-radius": "4px",
+                padding: "3px 6px",
+              },
+            },
+            [
+              View(
+                {
+                  style: {
+                    "flex-shrink": "0",
+                    width: "16px",
+                    "text-align": "center",
+                  },
+                },
+                ["📁"],
+              ),
+              View(
+                {
+                  style: {
+                    flex: "1",
+                    overflow: "hidden",
+                    "text-overflow": "ellipsis",
+                    "white-space": "nowrap",
+                    "text-align": "left",
+                  },
+                },
+                [node.name || "根目录"],
+              ),
+            ],
+          ),
+          View({ style: { "margin-left": "8px" } }, [
+            For({
+              each: node.children,
+              render(child) {
+                return PreviewResourceNode({ node: child, level: level + 1 });
+              },
+            }),
+          ]),
+        ],
+      );
+    },
+    else() {
+      return View(
+        {
+          key: node.name + "-file-" + level,
+          style: { "margin-left": indent, "margin-bottom": "2px" },
+        },
+        [
+          View(
+            {
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+                "font-size": "13px",
+                color: "var(--weui-FG-0)",
+                padding: "3px 6px",
+                "border-radius": "4px",
+              },
+            },
+            [
+              View(
+                {
+                  style: {
+                    "flex-shrink": "0",
+                    width: "16px",
+                    "text-align": "center",
+                  },
+                },
+                [resourceFileEmoji(node.name)],
+              ),
+              View(
+                {
+                  style: {
+                    flex: "1",
+                    overflow: "hidden",
+                    "text-overflow": "ellipsis",
+                    "white-space": "nowrap",
+                    "text-align": "left",
+                  },
+                },
+                [node.name || "文件"],
+              ),
+            ],
+          ),
+        ],
+      );
+    },
+  });
+}
+
+function PreviewResourceTree(props) {
+  const { preview } = props;
+  return View({ style: { "padding-top": "4px" } }, [
+    For({
+      each: computed(preview, (t) => {
+        var tree = buildPreviewTree(t);
+        var children = tree && tree.children ? tree.children : [];
+        console.log("build tree children", t, tree, children);
+        return children;
+      }),
+      render(node) {
+        return PreviewResourceNode({ node, level: 0 });
+      },
+    }),
+  ]);
+}
+
 function CreateTaskPreviewDialogView(props) {
   const title = "下载任务预览";
   const vm$ = props.store;
@@ -2715,25 +2904,6 @@ function CreateTaskPreviewDialogView(props) {
     "word-break": "break-all",
   };
   const sectionStyle = { "margin-bottom": "12px" };
-  const tableStyle = {
-    width: "100%",
-    "border-collapse": "collapse",
-    "font-size": "13px",
-  };
-  const thStyle = {
-    padding: "6px 8px",
-    "text-align": "left",
-    "border-bottom": "1px solid var(--weui-FG-3)",
-    color: "var(--weui-FG-1)",
-    "font-weight": "500",
-  };
-  const tdStyle = {
-    padding: "6px 8px",
-    "border-bottom": "1px solid var(--weui-FG-3)",
-    color: "var(--weui-FG-0)",
-    "vertical-align": "top",
-  };
-
   return Timeless.Dialog(
     {
       store: vm$.ui.createTaskPreviewDialog$,
@@ -2805,84 +2975,14 @@ function CreateTaskPreviewDialogView(props) {
                       View(
                         { style: { ...labelStyle, "margin-bottom": "8px" } },
                         [
+                          "资源列表（共 ",
                           computed(preview_, function (p) {
-                            return (
-                              "资源列表（共 " +
-                              (p && p.resources ? p.resources.length : 0) +
-                              " 项）"
-                            );
+                            return p && p.resources ? p.resources.length : 0;
                           }),
+                          " 项）",
                         ],
                       ),
-                      View({ style: { "overflow-x": "auto" } }, [
-                        Element("table", { style: tableStyle }, [
-                          Element("thead", {}, [
-                            Element("tr", {}, [
-                              Element(
-                                "th",
-                                { style: { ...thStyle, width: "35%" } },
-                                ["名称"],
-                              ),
-                              Element("th", { style: thStyle }, [
-                                "端点 (协议 / URL)",
-                              ]),
-                            ]),
-                          ]),
-                          Element("tbody", {}, [
-                            computed(preview_, function (p) {
-                              if (!p || !p.resources) return [];
-                              return p.resources.map(function (res, i) {
-                                return Element("tr", { key: i }, [
-                                  Element("td", { style: tdStyle }, [
-                                    res.name || "-",
-                                  ]),
-                                  Element("td", { style: tdStyle }, [
-                                    (res.endpoints || []).map(function (ep, j) {
-                                      return View(
-                                        {
-                                          key: j,
-                                          style: {
-                                            "margin-bottom":
-                                              j <
-                                              (res.endpoints || []).length - 1
-                                                ? "4px"
-                                                : "0",
-                                          },
-                                        },
-                                        [
-                                          View(
-                                            {
-                                              style: {
-                                                display: "inline-block",
-                                                "font-size": "12px",
-                                                padding: "1px 6px",
-                                                "border-radius": "3px",
-                                                background: "var(--weui-BG-2)",
-                                                color: "var(--weui-FG-1)",
-                                                "margin-right": "4px",
-                                              },
-                                            },
-                                            [ep.protocol || "-"],
-                                          ),
-                                          View(
-                                            {
-                                              style: {
-                                                display: "inline",
-                                                "word-break": "break-all",
-                                              },
-                                            },
-                                            [ep.url || "-"],
-                                          ),
-                                        ],
-                                      );
-                                    }),
-                                  ]),
-                                ]);
-                              });
-                            }),
-                          ]),
-                        ]),
-                      ]),
+                      PreviewResourceTree({ preview: preview_ }),
                     ]);
                   },
                 }),
@@ -2911,25 +3011,6 @@ function CreatePlatformTaskPreviewDialogView(props) {
     "word-break": "break-all",
   };
   const sectionStyle = { "margin-bottom": "12px" };
-  const tableStyle = {
-    width: "100%",
-    "border-collapse": "collapse",
-    "font-size": "13px",
-  };
-  const thStyle = {
-    padding: "6px 8px",
-    "text-align": "left",
-    "border-bottom": "1px solid var(--weui-FG-3)",
-    color: "var(--weui-FG-1)",
-    "font-weight": "500",
-  };
-  const tdStyle = {
-    padding: "6px 8px",
-    "border-bottom": "1px solid var(--weui-FG-3)",
-    color: "var(--weui-FG-0)",
-    "vertical-align": "top",
-  };
-
   return Timeless.Dialog(
     {
       store: vm$.ui.createPlatformTaskPreviewDialog$,
@@ -3036,99 +3117,14 @@ function CreatePlatformTaskPreviewDialogView(props) {
                       View(
                         { style: { ...labelStyle, "margin-bottom": "8px" } },
                         [
+                          "资源列表（共 ",
                           computed(preview_, function (p) {
-                            return (
-                              "资源列表（共 " +
-                              (p && p.resources ? p.resources.length : 0) +
-                              " 项）"
-                            );
+                            return p && p.resources ? p.resources.length : 0;
                           }),
+                          " 项）",
                         ],
                       ),
-                      View({ style: { "overflow-x": "auto" } }, [
-                        View({ style: tableStyle }, [
-                          View({}, [
-                            View({ class: "flex" }, [
-                              View({ style: { ...thStyle, width: "35%" } }, [
-                                "名称",
-                              ]),
-                              View({ style: thStyle }, ["端点 (协议 / URL)"]),
-                            ]),
-                          ]),
-                          View({}, [
-                            Show({
-                              when: computed(preview_, (t) => {
-                                return t && t.resources;
-                              }),
-                              ok() {
-                                return View({}, [
-                                  For({
-                                    each: computed(preview_, (t) => {
-                                      return t.resources;
-                                    }),
-                                    render(res, i) {
-                                      return View({ key: i, class: "flex" }, [
-                                        View({ style: tdStyle }, [
-                                          res.name || "-",
-                                        ]),
-                                        View({ style: tdStyle }, [
-                                          For({
-                                            each: res.endpoints,
-                                            render(ep, j) {
-                                              return View(
-                                                {
-                                                  key: j,
-                                                  style: {
-                                                    "margin-bottom":
-                                                      j <
-                                                      (res.endpoints || [])
-                                                        .length -
-                                                        1
-                                                        ? "4px"
-                                                        : "0",
-                                                  },
-                                                },
-                                                [
-                                                  View(
-                                                    {
-                                                      style: {
-                                                        display: "inline-block",
-                                                        "font-size": "12px",
-                                                        padding: "1px 6px",
-                                                        "border-radius": "3px",
-                                                        background:
-                                                          "var(--weui-BG-2)",
-                                                        color:
-                                                          "var(--weui-FG-1)",
-                                                        "margin-right": "4px",
-                                                      },
-                                                    },
-                                                    [ep.protocol || "-"],
-                                                  ),
-                                                  View(
-                                                    {
-                                                      style: {
-                                                        display: "inline",
-                                                        "word-break":
-                                                          "break-all",
-                                                      },
-                                                    },
-                                                    [ep.url || "-"],
-                                                  ),
-                                                ],
-                                              );
-                                            },
-                                          }),
-                                        ]),
-                                      ]);
-                                    },
-                                  }),
-                                ]);
-                              },
-                            }),
-                          ]),
-                        ]),
-                      ]),
+                      PreviewResourceTree({ preview: preview_ }),
                     ]);
                   },
                 }),

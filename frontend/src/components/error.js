@@ -165,6 +165,7 @@ class ErrorModal {
 }
 
 const errorModal = new ErrorModal();
+/** @type {Error[]} */
 var errors = [];
 window.addEventListener("error", function (event) {
   event.preventDefault();

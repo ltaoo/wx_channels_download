@@ -10,9 +10,27 @@ import (
 
 	"wx_channel/internal/api/services"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/interceptor"
 	"wx_channel/pkg/util"
 )
+
+// PlatformBrowserProfile is a common data structure extracted by the interceptor
+// when a user browses a platform page. Platform adapters translate their
+// scraper-specific payloads into this shared shape for persistence.
+type PlatformBrowserProfile struct {
+	PlatformId        string      `json:"platform_id"`
+	PlatformName      string      `json:"platform_name"`
+	ContentExternalId string      `json:"content_external_id"`
+	ContentType       string      `json:"content_type"`
+	ContentTitle      string      `json:"content_title"`
+	ContentURL        string      `json:"content_url"`
+	ContentSourceURL  string      `json:"content_source_url"`
+	ContentCoverURL   string      `json:"content_cover_url"`
+	AccountExternalId string      `json:"account_external_id"`
+	AccountUsername   string      `json:"account_username"`
+	AccountNickname   string      `json:"account_nickname"`
+	AccountAvatarURL  string      `json:"account_avatar_url"`
+	Raw               interface{} `json:"raw"`
+}
 
 type BrowseRecorder interface {
 	RecordBrowseHistory(uniqueMark string, info services.BrowseHistoryInfo) error
@@ -24,7 +42,7 @@ type RecordResult struct {
 	AccountUsername   string
 }
 
-func RecordLoadedProfile(db *gorm.DB, recorder BrowseRecorder, logger zerolog.Logger, profile *interceptor.PlatformBrowserProfile) RecordResult {
+func RecordLoadedProfile(db *gorm.DB, recorder BrowseRecorder, logger zerolog.Logger, profile *PlatformBrowserProfile) RecordResult {
 	result := RecordResult{}
 	if profile == nil || profile.PlatformId == "" || profile.ContentExternalId == "" {
 		return result
@@ -45,7 +63,7 @@ func RecordLoadedProfile(db *gorm.DB, recorder BrowseRecorder, logger zerolog.Lo
 	return result
 }
 
-func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.PlatformBrowserProfile, accountExternalID, accountUsername string) bool {
+func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *PlatformBrowserProfile, accountExternalID, accountUsername string) bool {
 	now := util.NowMillis()
 	acc := model.Account{
 		Id:         profile.PlatformId + ":" + accountExternalID,
@@ -83,7 +101,7 @@ func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *interceptor.Plat
 	return true
 }
 
-func RecordBrowse(recorder BrowseRecorder, logger zerolog.Logger, profile *interceptor.PlatformBrowserProfile, accountExternalID, accountUsername string) {
+func RecordBrowse(recorder BrowseRecorder, logger zerolog.Logger, profile *PlatformBrowserProfile, accountExternalID, accountUsername string) {
 	if err := recorder.RecordBrowseHistory(profile.ContentExternalId, services.BrowseHistoryInfo{
 		PlatformId:        profile.PlatformId,
 		AccountExternalId: accountExternalID,
