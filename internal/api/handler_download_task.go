@@ -27,17 +27,15 @@ type CreateDownloadTaskRequest struct {
 	Objects []services.CreateDownloadTaskBody `json:"objects"`
 }
 
-// taskV1IDBody is a generic request body with a task_id field.
-type taskV1IDBody struct {
-	TaskID int `json:"task_id"`
+// taskV1IDsBody is a request body with task_ids for batch operations (start/pause/resume).
+type taskV1IDsBody struct {
+	TaskIDs []int `json:"task_ids"`
 }
 
-// deleteDownloadTaskBody includes the caller's local-file cleanup intent.
-// Keeping this separate from taskV1IDBody avoids accepting delete-only options
-// on start/pause/resume endpoints.
-type deleteDownloadTaskBody struct {
-	TaskID      int  `json:"task_id"`
-	DeleteFiles bool `json:"delete_files"`
+// deleteDownloadTasksBody includes task_ids and the caller's local-file cleanup intent.
+type deleteDownloadTasksBody struct {
+	TaskIDs     []int `json:"task_ids"`
+	DeleteFiles bool  `json:"delete_files"`
 }
 
 // CreateDownloadTaskByURLRequest is the request for creating download tasks by URL.
@@ -552,17 +550,17 @@ func (c *APIClient) handleCreateDownloadTaskByURL(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"tasks": tasks})
 }
 
-// handleStartDownloadTask starts a download task.
+// handleStartDownloadTask batch-starts download tasks.
 // POST /api/v1/download_task/start
 func (c *APIClient) handleStartDownloadTask(ctx *gin.Context) {
-	var body taskV1IDBody
+	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if body.TaskID <= 0 {
-		result.Err(ctx, 400, "task_id 无效")
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
 		return
 	}
 	if c.db == nil {
@@ -570,47 +568,56 @@ func (c *APIClient) handleStartDownloadTask(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTask
-	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
-		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Msg("Task not found")
-		result.Err(ctx, 404, "下载任务不存在")
-		return
+	c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_count", len(body.TaskIDs)).Msg("Received batch start download task request")
+
+	results := make([]gin.H, 0, len(body.TaskIDs))
+	for _, taskID := range body.TaskIDs {
+		if taskID <= 0 {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+			continue
+		}
+
+		var task model.DownloadTask
+		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Msg("Task not found")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+			continue
+		}
+
+		if task.Status != model.TaskStatusWaiting &&
+			task.Status != model.TaskStatusPaused &&
+			task.Status != model.TaskStatusFailed {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Int("current_status", task.Status).Msg("Current status does not allow start")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许启动"})
+			continue
+		}
+
+		c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Starting download task")
+
+		if err := c.downloader.StartTask(task.Id); err != nil {
+			c.logger.Error().Int("task_id", taskID).Err(err).Msg("Failed to start download task")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "启动下载任务失败: " + err.Error()})
+			continue
+		}
+		c.logger.Info().Int("task_id", taskID).Str("status", "preparing").Msg("Download task started")
+
+		task.Status = model.TaskStatusPreparing
+		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
 	}
 
-	// Only Waiting / Paused / Failed statuses can be started
-	if task.Status != model.TaskStatusWaiting &&
-		task.Status != model.TaskStatusPaused &&
-		task.Status != model.TaskStatusFailed {
-		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Int("current_status", task.Status).Msg("Current status does not allow start")
-		result.Err(ctx, 400, "当前状态不允许启动")
-		return
-	}
-
-	c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Received start download task request")
-
-	// Hermes handles status persistence, log writing, and event broadcasting.
-	if err := c.downloader.StartTask(task.Id); err != nil {
-		c.logger.Error().Int("task_id", body.TaskID).Err(err).Msg("Failed to start download task")
-		result.Err(ctx, 500, "启动下载任务失败: "+err.Error())
-		return
-	}
-	c.logger.Info().Int("task_id", body.TaskID).Str("status", "preparing").Msg("Download task started")
-
-	task.Status = model.TaskStatusPreparing
-
-	result.Ok(ctx, gin.H{"task": task, "status_text": "preparing"})
+	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handlePauseDownloadTask pauses a download task.
+// handlePauseDownloadTask batch-pauses download tasks.
 // POST /api/v1/download_task/pause
 func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
-	var body taskV1IDBody
+	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if body.TaskID <= 0 {
-		result.Err(ctx, 400, "task_id 无效")
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
 		return
 	}
 	if c.db == nil {
@@ -618,46 +625,54 @@ func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTask
-	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
-		result.Err(ctx, 404, "下载任务不存在")
-		return
-	}
-
-	if task.Status != model.TaskStatusPreparing && task.Status != model.TaskStatusDownloading {
-		result.Err(ctx, 400, "当前状态不允许暂停")
-		return
-	}
-
-	// Hermes handles all status persistence (task/resource/segment/connection), log writing, and event broadcasting.
-	c.downloader.PauseTask(task.Id)
-
-	// Stream (STREAM) pause should be marked as finished, because streams cannot resume
-	if c.hasStreamResources(task.Id) {
-		now := time.Now().UnixMilli()
-		c.db.Model(&task).Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-		task.Status = model.TaskStatusFinished
-		if c.bus != nil {
-			go c.bus.Publish(events.DownloadTaskFinished{TaskID: task.Id})
+	results := make([]gin.H, 0, len(body.TaskIDs))
+	for _, taskID := range body.TaskIDs {
+		if taskID <= 0 {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+			continue
 		}
-		result.Ok(ctx, gin.H{"task": task, "status_text": "finished"})
-		return
+
+		var task model.DownloadTask
+		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+			continue
+		}
+
+		if task.Status != model.TaskStatusPreparing && task.Status != model.TaskStatusDownloading {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许暂停"})
+			continue
+		}
+
+		c.downloader.PauseTask(task.Id)
+
+		if c.hasStreamResources(task.Id) {
+			now := time.Now().UnixMilli()
+			c.db.Model(&task).Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
+			task.Status = model.TaskStatusFinished
+			if c.bus != nil {
+				go c.bus.Publish(events.DownloadTaskFinished{TaskID: task.Id})
+			}
+			results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "finished"})
+			continue
+		}
+
+		task.Status = model.TaskStatusPaused
+		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "paused"})
 	}
 
-	task.Status = model.TaskStatusPaused
-	result.Ok(ctx, gin.H{"task": task, "status_text": "paused"})
+	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handleResumeDownloadTask resumes a download task.
+// handleResumeDownloadTask batch-resumes download tasks.
 // POST /api/v1/download_task/resume
 func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
-	var body taskV1IDBody
+	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if body.TaskID <= 0 {
-		result.Err(ctx, 400, "task_id 无效")
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
 		return
 	}
 	if c.db == nil {
@@ -665,68 +680,92 @@ func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTask
-	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
-		result.Err(ctx, 404, "下载任务不存在")
-		return
+	results := make([]gin.H, 0, len(body.TaskIDs))
+	for _, taskID := range body.TaskIDs {
+		if taskID <= 0 {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+			continue
+		}
+
+		var task model.DownloadTask
+		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+			continue
+		}
+
+		if task.Status != model.TaskStatusPaused {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许恢复"})
+			continue
+		}
+
+		if err := c.downloader.StartTask(task.Id); err != nil {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "恢复下载任务失败: " + err.Error()})
+			continue
+		}
+		task.Status = model.TaskStatusPreparing
+		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
 	}
 
-	if task.Status != model.TaskStatusPaused {
-		result.Err(ctx, 400, "当前状态不允许恢复")
-		return
-	}
-
-	// Hermes handles status persistence, log writing, and event broadcasting.
-	if err := c.downloader.StartTask(task.Id); err != nil {
-		result.Err(ctx, 500, "恢复下载任务失败: "+err.Error())
-		return
-	}
-	task.Status = model.TaskStatusPreparing
-
-	result.Ok(ctx, gin.H{"task": task, "status_text": "preparing"})
+	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handleDeleteDownloadTask deletes a download task.
+// handleDeleteDownloadTask batch-deletes download tasks.
 // POST /api/v1/download_task/delete
 func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
-	startedAt := time.Now()
-	var body deleteDownloadTaskBody
+	var body deleteDownloadTasksBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
-	if body.TaskID <= 0 {
-		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("Rejected invalid task ID")
-		result.Err(ctx, 400, "task_id 无效")
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
 		return
 	}
 	if c.db == nil {
-		c.logger.Error().Str("api", "POST /api/v1/download_task/delete").Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("Failed because database is unavailable")
+		c.logger.Error().Str("api", "POST /api/v1/download_task/delete").Bool("delete_files", body.DeleteFiles).Msg("Failed because database is unavailable")
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
 	}
 
+	c.logger.Info().Str("api", "POST /api/v1/download_task/delete").Int("task_count", len(body.TaskIDs)).Bool("delete_files", body.DeleteFiles).Msg("Received batch delete download task request")
+
+	results := make([]gin.H, 0, len(body.TaskIDs))
+	for _, taskID := range body.TaskIDs {
+		r := c.deleteSingleDownloadTask(taskID, body.DeleteFiles)
+		results = append(results, r)
+	}
+
+	result.Ok(ctx, gin.H{"results": results})
+}
+
+// deleteSingleDownloadTask performs full deletion for a single download task
+// and returns a result entry for the batch response.
+func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H {
+	startedAt := time.Now()
+
+	if taskID <= 0 {
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", taskID).Bool("delete_files", deleteFiles).Msg("Rejected invalid task ID")
+		return gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"}
+	}
+
 	requestLog := c.logger.Info().
 		Str("api", "POST /api/v1/download_task/delete").
-		Int("task_id", body.TaskID).
-		Bool("delete_files", body.DeleteFiles)
+		Int("task_id", taskID).
+		Bool("delete_files", deleteFiles)
 	if c.cfg != nil {
 		requestLog.Str("download_root", c.cfg.DownloadDir)
 	}
-	requestLog.Msg("Received delete download task request")
+	requestLog.Msg("Processing delete download task")
 
 	var task model.DownloadTask
 	taskQuery := c.db
-	if body.DeleteFiles {
-		// A previous buggy deletion may have soft-deleted the database row while
-		// leaving the local file behind. File-cleanup requests must be retryable.
+	if deleteFiles {
 		taskQuery = taskQuery.Unscoped()
 	}
-	if err := taskQuery.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
-		c.logger.Warn().Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Err(err).Msg("Download task deletion failed to load task")
-		result.Err(ctx, 404, "下载任务不存在")
-		return
+	if err := taskQuery.Where("id = ?", taskID).First(&task).Error; err != nil {
+		c.logger.Warn().Int("task_id", taskID).Bool("delete_files", deleteFiles).Err(err).Msg("Download task deletion failed to load task")
+		return gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"}
 	}
 	alreadySoftDeleted := task.DeletedAt != nil
 
@@ -737,8 +776,7 @@ func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 	}
 	if err := resourceQuery.Where("task_id = ?", task.Id).Order("merge_order ASC, id ASC").Find(&resources).Error; err != nil {
 		c.logger.Error().Int("task_id", task.Id).Err(err).Msg("Download task deletion failed to load associated resources")
-		result.Err(ctx, 500, "查询下载任务资源失败: "+err.Error())
-		return
+		return gin.H{"task_id": taskID, "success": false, "error": "查询下载任务资源失败: " + err.Error()}
 	}
 	resourceIDs := make([]int, 0, len(resources))
 	for _, resource := range resources {
@@ -751,28 +789,25 @@ func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 		Int("task_status", task.Status).
 		Int("resource_count", len(resources)).
 		Ints("resource_ids", resourceIDs).
-		Bool("delete_files", body.DeleteFiles).
+		Bool("delete_files", deleteFiles).
 		Bool("already_soft_deleted", alreadySoftDeleted).
 		Msg("Download task deletion loaded task and resource snapshot")
 	c.logDownloadTaskLocalFiles(task, resources, "before_delete")
 
 	now := time.Now().UnixMilli()
 
-	// Hermes stops the download job, sets Cancelled status, writes log.
 	if c.downloader == nil {
 		c.logger.Error().Int("task_id", task.Id).Msg("Download task deletion failed because Hermes engine is unavailable")
-		result.Err(ctx, 500, "下载器未初始化")
-		return
+		return gin.H{"task_id": taskID, "success": false, "error": "下载器未初始化"}
 	}
 	c.logger.Info().Int("task_id", task.Id).Msg("Stopping Hermes download job before soft deletion")
 	c.downloader.DeleteTask(task.Id)
 	c.logger.Info().Int("task_id", task.Id).Msg("Hermes delete call completed")
-	if body.DeleteFiles {
+	if deleteFiles {
 		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Starting associated local file cleanup")
 		if err := c.deleteDownloadTaskLocalFiles(task, resources); err != nil {
 			c.logger.Error().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Err(err).Msg("Associated local file cleanup failed; database soft deletion was skipped")
-			result.Err(ctx, 500, "删除任务关联的本地文件失败: "+err.Error())
-			return
+			return gin.H{"task_id": taskID, "success": false, "error": "删除任务关联的本地文件失败: " + err.Error()}
 		}
 		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Associated local file cleanup completed")
 	} else {
@@ -782,13 +817,12 @@ func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 		c.logDownloadTaskLocalFiles(task, resources, "after_delete")
 		c.logger.Info().
 			Int("task_id", task.Id).
-			Bool("delete_files", body.DeleteFiles).
-			Bool("local_file_cleanup_attempted", body.DeleteFiles).
+			Bool("delete_files", deleteFiles).
+			Bool("local_file_cleanup_attempted", deleteFiles).
 			Bool("already_soft_deleted", true).
 			Dur("elapsed", time.Since(startedAt)).
 			Msg("Recovered local file cleanup for previously soft-deleted download task")
-		result.Ok(ctx, gin.H{"task_id": task.Id, "status_text": "cancelled"})
-		return
+		return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 	}
 	c.logger.Info().Int("task_id", task.Id).Msg("Starting database soft deletion")
 	deletedRecord, recordErr := c.buildDownloadTaskRecord(task.Id)
@@ -796,11 +830,9 @@ func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 		c.logger.Warn().Int("task_id", task.Id).Err(recordErr).Msg("Download task deletion failed to build pre-delete broadcast record")
 	}
 
-	// Soft-delete task (Hermes has already written Cancelled status)
 	taskDelete := c.db.Model(&task).Update("deleted_at", now)
 	c.logDownloadTaskSoftDeleteResult(task.Id, "task", taskDelete.Error, taskDelete.RowsAffected)
 
-	// Cascade soft-delete related data
 	resourceDelete := c.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Update("deleted_at", now)
 	c.logDownloadTaskSoftDeleteResult(task.Id, "resources", resourceDelete.Error, resourceDelete.RowsAffected)
 
@@ -835,12 +867,12 @@ func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 	c.logDownloadTaskLocalFiles(task, resources, "after_delete")
 	c.logger.Info().
 		Int("task_id", task.Id).
-		Bool("delete_files", body.DeleteFiles).
-		Bool("local_file_cleanup_attempted", body.DeleteFiles).
+		Bool("delete_files", deleteFiles).
+		Bool("local_file_cleanup_attempted", deleteFiles).
 		Dur("elapsed", time.Since(startedAt)).
 		Msg("Download task deletion request completed")
 
-	result.Ok(ctx, gin.H{"task_id": task.Id, "status_text": "cancelled"})
+	return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 }
 
 func (c *APIClient) logDownloadTaskSoftDeleteResult(taskID int, entity string, err error, rowsAffected int64) {

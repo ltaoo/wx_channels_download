@@ -623,14 +623,14 @@ function DownloaderPanelViewModel(props = {}) {
   const deleteReq = new Timeless.RequestCore(
     (params = {}) => {
       return request.post("/api/v1/download_task/delete", {
-        task_id: params.id,
+        task_ids: params.taskIds || (params.id ? [params.id] : []),
         delete_files: !!params.deleteFiles,
       });
     },
     { client: http_client },
   );
   const startReq = new Timeless.RequestCore(
-    (id) => request.post("/api/v1/download_task/start", { task_id: id }),
+    (id) => request.post("/api/v1/download_task/start", { task_ids: [id] }),
     { client: http_client },
   );
   const startAllReq = new Timeless.RequestCore(
@@ -644,7 +644,7 @@ function DownloaderPanelViewModel(props = {}) {
     { client: http_client },
   );
   const pauseReq = new Timeless.RequestCore(
-    (id) => request.post("/api/v1/download_task/pause", { task_id: id }),
+    (id) => request.post("/api/v1/download_task/pause", { task_ids: [id] }),
     { client: http_client },
   );
   const pauseAllReq = new Timeless.RequestCore(
@@ -658,7 +658,7 @@ function DownloaderPanelViewModel(props = {}) {
     { client: http_client },
   );
   const resumeReq = new Timeless.RequestCore(
-    (id) => request.post("/api/v1/download_task/resume", { task_id: id }),
+    (id) => request.post("/api/v1/download_task/resume", { task_ids: [id] }),
     { client: http_client },
   );
   const showFileReq = new Timeless.RequestCore(
@@ -1654,7 +1654,12 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      updateTaskStatus(task.id, "running");
+      const result = r.data && r.data.results && r.data.results[0];
+      if (result && result.success) {
+        updateTaskStatus(task.id, "running");
+      } else {
+        WXU.error({ msg: (result && result.error) || "启动失败" });
+      }
     },
     async pauseTask(task) {
       const r = await pauseReq.run(task.id);
@@ -1662,7 +1667,12 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      updateTaskStatus(task.id, "paused");
+      const result = r.data && r.data.results && r.data.results[0];
+      if (result && result.success) {
+        updateTaskStatus(task.id, "paused");
+      } else {
+        WXU.error({ msg: (result && result.error) || "暂停失败" });
+      }
     },
     isTaskSelected(task) {
       return isLoadedTask(task) && isTaskIdSelected(task.id);
@@ -1739,9 +1749,13 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: r.error.message });
         return false;
       }
-      // task_delete may arrive before the HTTP response; duplicate removal should be treated as success.
-      applyDeletedTaskIds([task.id]);
-      return true;
+      const result = r.data && r.data.results && r.data.results[0];
+      if (result && result.success) {
+        applyDeletedTaskIds([task.id]);
+        return true;
+      }
+      WXU.error({ msg: (result && result.error) || "删除失败" });
+      return false;
     },
     async deleteTasksByIds(ids, params = {}) {
       const taskIds = uniqueTaskIds(ids);
@@ -1749,29 +1763,31 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: "请选择要删除的下载任务" });
         return false;
       }
-      const deletedIds = [];
-      for (let i = 0; i < taskIds.length; i += 1) {
-        const id = taskIds[i];
-        const r = await deleteReq.run({
-          id,
-          deleteFiles: params.deleteFiles,
-        });
-        if (r.error) {
-          if (deletedIds.length) {
-            applyDeletedTaskIds(deletedIds);
-            delete_task_ids_.as(
-              taskIds.filter((taskId) => {
-                return !deletedIds.some((deletedId) => deletedId === taskId);
-              }),
-            );
-          }
-          WXU.error({ msg: r.error.message });
-          return false;
-        }
-        deletedIds.push(id);
+      const r = await deleteReq.run({
+        taskIds,
+        deleteFiles: params.deleteFiles,
+      });
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return false;
       }
-      applyDeletedTaskIds(deletedIds);
-      return true;
+      const results = r.data && r.data.results ? r.data.results : [];
+      const deletedIds = [];
+      const errors = [];
+      for (const result of results) {
+        if (result.success) {
+          deletedIds.push(result.task_id);
+        } else {
+          errors.push(result.error || "删除失败");
+        }
+      }
+      if (deletedIds.length) {
+        applyDeletedTaskIds(deletedIds);
+      }
+      if (errors.length) {
+        WXU.error({ msg: errors.join("; ") });
+      }
+      return deletedIds.length > 0;
     },
     async confirmDeleteTask() {
       if (deleting_task_.value) {
@@ -1808,7 +1824,12 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: r.error.message });
         return;
       }
-      updateTaskStatus(task.id, "running");
+      const result = r.data && r.data.results && r.data.results[0];
+      if (result && result.success) {
+        updateTaskStatus(task.id, "running");
+      } else {
+        WXU.error({ msg: (result && result.error) || "恢复失败" });
+      }
     },
     async startAllTasks() {
       const r = await startAllReq.run({
