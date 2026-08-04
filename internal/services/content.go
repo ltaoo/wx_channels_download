@@ -192,24 +192,50 @@ type ContentDownloadTaskRecord struct {
 	UpdatedAt    int64   `json:"updated_at"`
 }
 
+type ContentResourceRecord struct {
+	ID            int     `json:"id"`
+	TaskID        int     `json:"task_id"`
+	ContentID     *string `json:"content_id,omitempty"`
+	Name          string  `json:"name"`
+	Kind          string  `json:"kind"`
+	UniqueID      string  `json:"unique_id"`
+	Type          string  `json:"type"`
+	Size          int64   `json:"size"`
+	Downloaded    int64   `json:"downloaded"`
+	Speed         int64   `json:"speed"`
+	Status        int     `json:"status"`
+	MergeOrder    int     `json:"merge_order"`
+	Extra         string  `json:"extra"`
+	StreamURL     string  `json:"stream_url"`
+	RecordStart   *int64  `json:"record_start"`
+	RecordEnd     *int64  `json:"record_end"`
+	Duration      int64   `json:"duration"`
+	RotateMinutes int     `json:"rotate_minutes"`
+	RotateSize    int64   `json:"rotate_size"`
+	StartTime     *int64  `json:"start_time"`
+	FinishTime    *int64  `json:"finish_time"`
+	CreatedAt     int64   `json:"created_at"`
+	UpdatedAt     int64   `json:"updated_at"`
+}
+
 type ContentListItem struct {
 	ID             string                      `json:"id"`
 	PlatformID     string                      `json:"platform_id"`
-	PlatformName   string                      `json:"platform_name"`
-	Type           string                      `json:"content_type"`
+	Type           string                      `json:"type"`
 	ExternalID     string                      `json:"external_id"`
-	ExternalID1    string                      `json:"external_id1"`
 	ExternalID2    string                      `json:"external_id2"`
 	ExternalID3    string                      `json:"external_id3"`
 	Title          string                      `json:"title"`
 	Description    string                      `json:"description"`
 	URL            string                      `json:"url"`
-	ContentURL     string                      `json:"content_url"`
 	SourceURL      string                      `json:"source_url"`
 	CoverURL       string                      `json:"cover_url"`
+	CoverWidth   string  `json:"cover_width"`
+	CoverHeight  string  `json:"cover_height"`
 	PublishTime    int64                       `json:"publish_time"`
 	Accounts       []ContentAccountRecord      `json:"accounts"`
 	DownloadTasks  []ContentDownloadTaskRecord `json:"download_tasks"`
+	Resources      []ContentResourceRecord     `json:"resources"`
 }
 
 type ContentListResult struct {
@@ -268,7 +294,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	var contents []model.Content
 	if err := buildQuery().
 		Distinct("content.*").
-		Order("COALESCE(content.publish_time, content.updated_at, content.created_at) DESC").
+		Order("content.created_at DESC").
 		Limit(pageSize).
 		Offset(offset).
 		Find(&contents).Error; err != nil {
@@ -282,6 +308,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 
 	accountsByContentID := make(map[string][]ContentAccountRecord, len(contents))
 	downloadTasksByContentID := make(map[string][]ContentDownloadTaskRecord, len(contents))
+	resourcesByContentID := make(map[string][]ContentResourceRecord, len(contents))
 	if len(contentIDs) > 0 {
 		type contentAccountRow struct {
 			ContentID     string `gorm:"column:content_id"`
@@ -368,6 +395,47 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 				},
 			)
 		}
+
+		var resources []model.DownloadResource
+		if err := s.db.
+			Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
+			Order("content_id ASC, merge_order ASC").
+			Find(&resources).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range resources {
+			if r.ContentId == nil {
+				continue
+			}
+			resourcesByContentID[*r.ContentId] = append(
+				resourcesByContentID[*r.ContentId],
+				ContentResourceRecord{
+					ID:            r.Id,
+					TaskID:        r.TaskId,
+					ContentID:     r.ContentId,
+					Name:          r.Name,
+					Kind:          r.Kind,
+					UniqueID:      r.UniqueID,
+					Type:          r.Type,
+					Size:          r.Size,
+					Downloaded:    r.Downloaded,
+					Speed:         r.Speed,
+					Status:        r.Status,
+					MergeOrder:    r.MergeOrder,
+					Extra:         r.Extra,
+					StreamURL:     r.StreamURL,
+					RecordStart:   r.RecordStart,
+					RecordEnd:     r.RecordEnd,
+					Duration:      r.Duration,
+					RotateMinutes: r.RotateMinutes,
+					RotateSize:    r.RotateSize,
+					StartTime:     r.StartTime,
+					FinishTime:    r.FinishTime,
+					CreatedAt:     r.CreatedAt,
+					UpdatedAt:     r.UpdatedAt,
+				},
+			)
+		}
 	}
 
 	list := make([]ContentListItem, 0, len(contents))
@@ -384,23 +452,28 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		if downloadTasks == nil {
 			downloadTasks = make([]ContentDownloadTaskRecord, 0)
 		}
+		resourceList := resourcesByContentID[content.Id]
+		if resourceList == nil {
+			resourceList = make([]ContentResourceRecord, 0)
+		}
 		list = append(list, ContentListItem{
 			ID:             content.Id,
 			PlatformID:     content.PlatformId,
-			Type:    content.Type,
+			Type:           content.Type,
 			ExternalID:     content.ExternalId,
-			ExternalID1:    content.ExternalId,
 			ExternalID2:    content.ExternalId2,
 			ExternalID3:    content.ExternalId3,
 			Title:          content.Title,
 			Description:    content.Description,
 			URL:            content.URL,
-			ContentURL:     content.URL,
 			SourceURL:      content.SourceURL,
 			CoverURL:       content.CoverURL,
+			CoverWidth:       content.CoverWidth,
+			CoverHeight:       content.CoverHeight,
 			PublishTime:    publishTime,
 			Accounts:       accounts,
 			DownloadTasks:  downloadTasks,
+			Resources:      resourceList,
 		})
 	}
 

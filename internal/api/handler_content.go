@@ -80,8 +80,5 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	for i := range pageResult.List {
-		pageResult.List[i].PlatformName = platformNameOf(pageResult.List[i].PlatformID)
-	}
 	result.Ok(ctx, pageResult)
 }

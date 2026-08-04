@@ -239,17 +239,26 @@ var ContentLibraryModel = (() => {
     return labels[type] || type || "内容";
   }
 
-  function content_download_status(status) {
-    switch (Number(status)) {
-      case 1:
-        return { label: "下载中", tone: "running" };
-      case 2:
-        return { label: "已下载", tone: "finished" };
-      case 3:
-        return { label: "下载失败", tone: "failed" };
-      default:
-        return { label: "未下载", tone: "waiting" };
+  function content_download_status(downloadTasks) {
+    if (!downloadTasks || !downloadTasks.length) {
+      return { label: "未下载", tone: "waiting" };
     }
+    var count = downloadTasks.length;
+    // 1=Preparing, 2=Downloading, 4=Merging → still running
+    if (downloadTasks.some(function (t) {
+      return t.status === 1 || t.status === 2 || t.status === 4;
+    })) {
+      return { label: count + "个下载任务", tone: "running" };
+    }
+    // 6=Failed
+    if (downloadTasks.some(function (t) { return t.status === 6; })) {
+      return { label: count + "个下载任务", tone: "failed" };
+    }
+    // 5=Finished
+    if (downloadTasks.every(function (t) { return t.status === 5; })) {
+      return { label: count + "个下载任务", tone: "finished" };
+    }
+    return { label: count + "个下载任务", tone: "waiting" };
   }
 
   function normalize_epoch_ms(value) {

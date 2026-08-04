@@ -1592,7 +1592,7 @@ func (c *OfficialAccountClient) refresh_credential_from_frontend(logger zerolog.
 	c.wait_mu.Lock()
 	if ch, ok := c.wait_chan_map[acct.Biz]; ok {
 		c.wait_mu.Unlock()
-		logger.Debug().Msg("refresh official account via frontend: wait channel exists, waiting")
+		logger.Info().Msg("refresh official account via frontend: wait channel exists, waiting")
 		select {
 		case cur_acct := <-ch:
 			logger.Info().Dur("cost", time.Since(start)).Msg("refresh official account via frontend: completed (shared result)")

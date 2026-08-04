@@ -11,6 +11,7 @@ if (typeof window.Timeless !== "undefined") {
   window.Button = timeless.Button;
   window.Fragment = timeless.Fragment;
   window.Input = timeless.Input;
+  window.Img = timeless.Img;
   // Control flow
   window.Show = timeless.Show;
   window.For = timeless.For;

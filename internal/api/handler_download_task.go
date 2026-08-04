@@ -104,7 +104,7 @@ func (c *APIClient) startCreatedDownloadTask(taskID int) error {
 		c.logger.Error().Int("task_id", taskID).Msg("Hermes download engine not initialized, cannot start download task")
 		return fmt.Errorf("Hermes 下载器未初始化")
 	}
-	c.logger.Debug().Int("task_id", taskID).Msg("Submitting download task to Hermes scheduler")
+	c.logger.Info().Int("task_id", taskID).Msg("Submitting download task to Hermes scheduler")
 	if err := c.downloader.StartTask(taskID); err != nil {
 		c.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
 		return err

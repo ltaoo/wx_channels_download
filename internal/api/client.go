@@ -110,7 +110,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 	})
 	apiClient.broadcaster = newTaskBroadcaster()
 	apiClient.downloader.SetEventHandler(func(taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
-		logger.Debug().Int("task_id", taskID).Str("event", string(event)).Msg("Hermes task event")
+		logger.Info().Int("task_id", taskID).Str("event", string(event)).Msg("Hermes task event")
 		apiClient.broadcaster.notify(apiClient, taskID, event, progress)
 		if event == hermes.EventFinished && apiClient.bus != nil {
 			go func() {

@@ -102,8 +102,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 	contact, _ := pickAccountContact(&obj)
 	decryptKey := parseKeyFromContent(content)
-	baseExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "")
-	decryptExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey)
+	baseExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "", 0, obj.ObjectDesc.MediaType)
+	decryptExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, 0, obj.ObjectDesc.MediaType)
 	contentID := content.Id
 	task := func(configJSON []byte) *model.DownloadTask {
 		contentID := content.Id
@@ -170,6 +170,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			if len(files) > 1 {
 				imageName = fmt.Sprintf("%s_%d", title, i+1)
 			}
+			imageExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, i, obj.ObjectDesc.MediaType)
 			resources = append(resources, &types.ResourceInfo{
 				DownloadResource: model.DownloadResource{
 					ContentId: &contentID,
@@ -177,7 +178,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 					Kind:      mimeImageJPEG,
 					Size:      int64(file.FileSize),
 					UniqueID:  content.ExternalId + "_" + strconv.Itoa(i),
-					Extra:     decryptExtraJSON,
+					Extra:     imageExtraJSON,
 				},
 				Endpoints: []model.DownloadEndpoint{{
 					Protocol: "https",
@@ -454,7 +455,8 @@ func BuildDownloadTaskUniqueID(externalID string, config map[string]any) string 
 
 // buildResourceExtraJSON builds the resource.Extra JSON string.
 // When decodeKey is non-empty, the resource needs decryption; this is recorded in Extra for the postprocess pipeline.
-func buildResourceExtraJSON(id, title, spec string, createdAt int64, author string, decodeKey string) string {
+func buildResourceExtraJSON(id, title, spec string, createdAt int64, author string, decodeKey string, idx int, mediaType int) string {
+
 	now := time.Now().Unix()
 	filename := title
 	if filename == "" {
@@ -472,6 +474,8 @@ func buildResourceExtraJSON(id, title, spec string, createdAt int64, author stri
 		CreatedAt  string `json:"created_at"`
 		DownloadAt string `json:"download_at"`
 		Author     string `json:"author"`
+		Idx        int    `json:"idx,omitempty"`
+		MediaType  int    `json:"type,omitempty"`
 		DecodeKey  string `json:"decode_key,omitempty"`
 	}
 	data, _ := json.Marshal(extra{
@@ -482,6 +486,8 @@ func buildResourceExtraJSON(id, title, spec string, createdAt int64, author stri
 		CreatedAt:  strconv.FormatInt(createdAt, 10),
 		DownloadAt: strconv.FormatInt(now, 10),
 		Author:     author,
+		Idx:        idx,
+		MediaType:  mediaType,
 		DecodeKey:  decodeKey,
 	})
 	return string(data)

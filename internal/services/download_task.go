@@ -394,7 +394,7 @@ func (s *DownloadTaskService) PrepareTaskByURL(body CreateDownloadTaskByURLBody)
 
 // CreateTask creates a single platform download task.
 func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *CreateTaskResult, retErr error) {
-	s.logger.Debug().Str("platform", body.Platform).Msg("start processing single download task creation request")
+	s.logger.Info().Str("platform", body.Platform).Msg("start processing single download task creation request")
 
 	var task model.DownloadTask
 	defer func() {
@@ -443,10 +443,13 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	}
 
 	content := info.Content
+	if b, err := json.Marshal(content); err == nil {
+		s.logger.Info().RawJSON("content", b).Msg("content detail")
+	}
 	account := info.Account
 
 	resourceInfos := info.Resources
-	s.logger.Debug().Str("platform", body.Platform).Str("task_name", info.Task.Name).Int("resource_count", len(resourceInfos)).Msg("platform download task built successfully")
+	s.logger.Info().Str("platform", body.Platform).Str("task_name", info.Task.Name).Int("resource_count", len(resourceInfos)).Msg("platform download task built successfully")
 	for _, ri := range resourceInfos {
 		if len(ri.Endpoints) == 0 {
 			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Name)
@@ -1394,7 +1397,7 @@ func (s *DownloadTaskService) startCreatedDownloadTask(taskID int) error {
 		s.logger.Error().Int("task_id", taskID).Msg("Hermes downloader not initialized, unable to start download task")
 		return fmt.Errorf("Hermes 下载器未初始化")
 	}
-	s.logger.Debug().Int("task_id", taskID).Msg("submitting download task to Hermes scheduler")
+	s.logger.Info().Int("task_id", taskID).Msg("submitting download task to Hermes scheduler")
 	if err := s.downloader.StartTask(taskID); err != nil {
 		s.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
 		return err

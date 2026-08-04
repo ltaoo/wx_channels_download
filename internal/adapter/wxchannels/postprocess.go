@@ -106,7 +106,7 @@ const wxchannelsPostprocessPipelineJSON = `
         "rules": [
           {
             "output": "zip",
-            "condition": {"field": "task.config.type", "operator": "equals", "value": 2}
+            "condition": {"field": "task.config.type", "operator": "equals", "value": -1}
           },
           {
             "output": "mp3",
@@ -380,8 +380,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps re
 }
 
 func isZIPOutput(config map[string]any) bool {
-	typ, _ := config["type"].(float64)
-	return int(typ) == scraper.MediaTypePicture
+	return false
 }
 
 func postprocessResourceName(basePath, filePath string) string {

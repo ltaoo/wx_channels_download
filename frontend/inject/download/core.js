@@ -2482,7 +2482,9 @@ function DownloaderPanelViewModel(props = {}) {
           .Str("action", action || "")
           .Msg("overwriteConfirmDialog: onOk user selected action type");
         if (!action) {
-          WXU.log.Warn().Msg("overwriteConfirmDialog: action is empty, aborting retry");
+          WXU.log
+            .Warn()
+            .Msg("overwriteConfirmDialog: action is empty, aborting retry");
           return;
         }
         if (!duplicated_feed_prepare_download) {
@@ -2504,10 +2506,12 @@ function DownloaderPanelViewModel(props = {}) {
           .Bool("overwrite", overwrite)
           .Bool("duplicate", duplicate)
           .Str("stored_config", JSON.stringify(obj.config))
-          .Msg("overwriteConfirmDialog: preparing to retry creating download task");
+          .Msg(
+            "overwriteConfirmDialog: preparing to retry creating download task",
+          );
 
         const [err, data] = await methods.createDownloadTask([obj.content], {
-          platform: 'wxchannels',
+          platform: "wxchannels",
           spec: obj.config.spec,
           suffix: obj.config.suffix,
           overwrite,
@@ -2523,11 +2527,17 @@ function DownloaderPanelViewModel(props = {}) {
           return;
         }
         if (data && data.skipped) {
-          WXU.log.Warn().Msg("overwriteConfirmDialog: retry still returned 409 conflict");
+          WXU.log
+            .Warn()
+            .Msg("overwriteConfirmDialog: retry still returned 409 conflict");
           return;
         }
 
-        WXU.log.Info().Msg("overwriteConfirmDialog: retry creating download task succeeded");
+        WXU.log
+          .Info()
+          .Msg(
+            "overwriteConfirmDialog: retry creating download task succeeded",
+          );
         duplicated_feed_prepare_download = null;
         ui.overwriteConfirmDialog$.hide();
         await reloadTasks();
@@ -3765,7 +3775,8 @@ function DownloadTaskCard(props) {
     const totalFileSize = Array.isArray(t.files)
       ? t.files.reduce((sum, f) => sum + (Number(f.size) || 0), 0)
       : 0;
-    const totalSizeText = totalFileSize > 0 ? WXU.bytes_to_size(totalFileSize) : "";
+    const totalSizeText =
+      totalFileSize > 0 ? WXU.bytes_to_size(totalFileSize) : "";
 
     let statusText = t.status;
     let statusColor = "var(--weui-FG-1)";
@@ -3985,101 +3996,6 @@ function DownloadTaskCard(props) {
                   },
                 },
                 [computed(state_, (d) => d.errorText)],
-              );
-            },
-          }),
-          Show({
-            when: computed(
-              task_,
-              (t) => Array.isArray(t.files) && t.files.length > 1,
-            ),
-            ok() {
-              return View(
-                {
-                  class: "weui-cell__desc wx-dl-item-resources",
-                  style: {
-                    "margin-top": "6px",
-                    display: "grid",
-                    gap: "4px",
-                  },
-                },
-                [
-                  For({
-                    each: computed(task_, (t) => t.files || []),
-                    render(file_) {
-                      return View(
-                        {
-                          style: {
-                            padding: "3px 6px",
-                            "border-radius": "4px",
-                            background: "var(--weui-BG-1)",
-                          },
-                        },
-                        [
-                          View(
-                            {
-                              style: {
-                                display: "flex",
-                                "align-items": "center",
-                                "justify-content": "space-between",
-                                gap: "8px",
-                                "font-size": "11px",
-                              },
-                            },
-                            [
-                              View(
-                                {
-                                  style: {
-                                    overflow: "hidden",
-                                    "text-overflow": "ellipsis",
-                                    "white-space": "nowrap",
-                                  },
-                                  attributes: {
-                                    title: computed(
-                                      file_,
-                                      (file) => file.output_path || file.name,
-                                    ),
-                                  },
-                                },
-                                [
-                                  computed(
-                                    file_,
-                                    (file) => file.name || "文件",
-                                  ),
-                                ],
-                              ),
-                              View(
-                                {
-                                  style: {
-                                    "flex-shrink": "0",
-                                    color: "var(--weui-FG-1)",
-                                  },
-                                },
-                                [
-                                  computed(
-                                    file_,
-                                    download_resource_status_text,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          View(
-                            {
-                              style: {
-                                "margin-top": "1px",
-                                color: "var(--weui-FG-1)",
-                                "font-size": "10px",
-                                "font-variant-numeric": "tabular-nums",
-                              },
-                            },
-                            [computed(file_, download_resource_metrics)],
-                          ),
-                        ],
-                      );
-                    },
-                  }),
-                ],
               );
             },
           }),

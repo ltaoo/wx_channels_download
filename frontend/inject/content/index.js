@@ -43,7 +43,10 @@ function ContentPageHeader(props) {
         View({}, [
           View({ class: "wx-content-title" }, ["Contents"]),
           View({ class: "wx-content-subtitle" }, [
-            computed(vm$.state.total, (total) => `管理已记录的 ${total} 条内容`),
+            computed(
+              vm$.state.total,
+              (total) => `管理已记录的 ${total} 条内容`,
+            ),
           ]),
         ]),
       ]),
@@ -108,12 +111,11 @@ function ContentCover(props) {
   }
   return View({ class: "wx-content-cover-wrap" }, [
     fallback,
-    View({
-      type: "img",
+    Img({
       class: "wx-content-cover",
+      src: content.cover_url,
+      alt: content.title,
       attributes: {
-        src: content.cover_url,
-        alt: content.title,
         loading: "lazy",
         referrerpolicy: "no-referrer",
       },
@@ -128,10 +130,7 @@ function ContentAccountItem(props) {
   const vm$ = props.store;
   const account = props.account;
   const name =
-    account.nickname ||
-    account.alias ||
-    account.external_id ||
-    "未知账号";
+    account.nickname || account.alias || account.external_id || "未知账号";
   const secondaryName =
     account.alias && account.alias !== name
       ? account.alias
@@ -167,12 +166,13 @@ function ContentAccountItem(props) {
       },
     },
     [
-      account.avatar_url
-        ? View({
-            type: "img",
+      Show({
+        when: account.avatar_url,
+        ok() {
+          return Img({
             class: "wx-content-avatar",
+            src: account.avatar_url,
             attributes: {
-              src: account.avatar_url,
               alt: name,
               loading: "lazy",
               referrerpolicy: "no-referrer",
@@ -180,10 +180,15 @@ function ContentAccountItem(props) {
             onError(event) {
               event.target.style.display = "none";
             },
-          })
-        : View({ class: "wx-content-avatar wx-content-avatar-fallback" }, [
-            String(name).slice(0, 1),
-          ]),
+          });
+        },
+        else() {
+          return View(
+            { class: "wx-content-avatar wx-content-avatar-fallback" },
+            [String(name).slice(0, 1)],
+          );
+        },
+      }),
       View({ class: "wx-content-account-details" }, [
         View({ class: "wx-content-account-name-line" }, [
           View(
@@ -193,33 +198,15 @@ function ContentAccountItem(props) {
             },
             [name],
           ),
-          role
-            ? View({ class: "wx-content-account-role" }, [role])
-            : null,
-        ].filter(Boolean)),
-        secondaryName || followerCount
-          ? View({ class: "wx-content-account-meta" }, [
-              secondaryName
-                ? View(
-                    {
-                      class: "wx-content-account-alias",
-                      attributes: { title: secondaryName },
-                    },
-                    [secondaryName],
-                  )
-                : null,
-              followerCount
-                ? View({ class: "wx-content-account-followers" }, [
-                    `${followerCount} 粉丝`,
-                  ])
-                : null,
-            ].filter(Boolean))
-          : null,
-      ].filter(Boolean)),
-      clickable
-        ? Timeless.Icon({ name: "external-link", size: 13 })
-        : null,
-    ].filter(Boolean),
+        ]),
+      ]),
+      Show({
+        when: clickable,
+        ok() {
+          return Timeless.Icon({ name: "external-link", size: 13 });
+        },
+      }),
+    ],
   );
 }
 
@@ -232,30 +219,26 @@ function ContentAccountList(props) {
     ]);
   }
   return View({ class: "wx-content-accounts" }, [
-    View({ class: "wx-content-accounts-header" }, [
-      Timeless.Icon({ name: "users", size: 14 }),
-      `${accounts.length} 个关联账号`,
+    View({ class: "wx-content-account-list" }, [
+      For({
+        each: accounts,
+        render(account) {
+          return ContentAccountItem({ store: props.store, account });
+        },
+      }),
     ]),
-    View(
-      { class: "wx-content-account-list" },
-      accounts.map((account) =>
-        ContentAccountItem({ store: props.store, account })),
-    ),
   ]);
 }
 
 function ContentCard(props) {
   const vm$ = props.store;
   const content = props.content;
-  const status = vm$.methods.downloadStatus(content.download_status);
+  const status = vm$.methods.downloadStatus(content.download_tasks);
   const description = String(content.description || "").trim();
   const showDescription = description && description !== content.title;
   return View(
     {
-      class: [
-        "wx-content-card",
-        content.url ? "wx-content-card-clickable" : "",
-      ]
+      class: ["wx-content-card", content.url ? "wx-content-card-clickable" : ""]
         .filter(Boolean)
         .join(" "),
       onClick() {
@@ -269,46 +252,52 @@ function ContentCard(props) {
           status.label,
         ]),
       ]),
-      View({ class: "wx-content-card-body" }, [
-        View({ class: "wx-content-card-tags" }, [
-          View({ class: "wx-content-platform" }, [
-            vm$.methods.platformName(content),
+      View(
+        { class: "wx-content-card-body" },
+        [
+          View({ class: "wx-content-card-tags" }, [
+            View({ class: "wx-content-platform" }, [
+              vm$.methods.platformName(content),
+            ]),
+            View({ class: "wx-content-type-badge" }, [
+              vm$.methods.typeLabel(content.content_type),
+            ]),
           ]),
-          View({ class: "wx-content-type-badge" }, [
-            vm$.methods.typeLabel(content.content_type),
+          View(
+            {
+              class: "wx-content-card-title",
+              attributes: { title: content.title },
+            },
+            [content.title],
+          ),
+          showDescription
+            ? View({ class: "wx-content-description" }, [description])
+            : null,
+          ContentAccountList({ store: vm$, content }),
+          View({ class: "wx-content-card-footer" }, [
+            View({ class: "wx-content-meta" }, [
+              Timeless.Icon({ name: "clock3", size: 13 }),
+              vm$.methods.formatTime(content.publish_time),
+            ]),
+            View(
+              { class: "wx-content-card-footer-right" },
+              [
+                vm$.methods.formatBytes(content.file_size)
+                  ? View({ class: "wx-content-size" }, [
+                      vm$.methods.formatBytes(content.file_size),
+                    ])
+                  : null,
+                content.url
+                  ? Timeless.Icon({ name: "external-link", size: 15 })
+                  : null,
+              ].filter(Boolean),
+            ),
           ]),
-        ]),
-        View(
-          {
-            class: "wx-content-card-title",
-            attributes: { title: content.title },
-          },
-          [content.title],
-        ),
-        showDescription
-          ? View({ class: "wx-content-description" }, [description])
-          : null,
-        ContentAccountList({ store: vm$, content }),
-        View({ class: "wx-content-card-footer" }, [
-          View({ class: "wx-content-meta" }, [
-            Timeless.Icon({ name: "clock3", size: 13 }),
-            vm$.methods.formatTime(content.publish_time),
-          ]),
-          View({ class: "wx-content-card-footer-right" }, [
-            vm$.methods.formatBytes(content.file_size)
-              ? View({ class: "wx-content-size" }, [
-                  vm$.methods.formatBytes(content.file_size),
-                ])
-              : null,
-            content.url
-              ? Timeless.Icon({ name: "external-link", size: 15 })
-              : null,
-          ].filter(Boolean)),
-        ]),
-        content.error_msg
-          ? View({ class: "wx-content-error-message" }, [content.error_msg])
-          : null,
-      ].filter(Boolean)),
+          content.error_msg
+            ? View({ class: "wx-content-error-message" }, [content.error_msg])
+            : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
@@ -331,7 +320,8 @@ function ContentPageBody(props) {
     Show({
       when: vm$.state.loading,
       ok() {
-        return View({ class: "wx-content-grid" },
+        return View(
+          { class: "wx-content-grid" },
           Array.from({ length: 8 }, () => ContentSkeletonCard()),
         );
       },
@@ -392,33 +382,33 @@ function ContentPageBody(props) {
 function ContentPagination(props) {
   const vm$ = props.store;
   return View({ class: "wx-content-pagination" }, [
-    View({ class: "wx-content-pagination-summary" }, [
-      vm$.state.range_text,
-    ]),
+    View({ class: "wx-content-pagination-summary" }, [vm$.state.range_text]),
     View({ class: "wx-content-pagination-controls" }, [
-      View({
-        type: "select",
-        class: "wx-content-select wx-content-page-size",
-        attributes: { "aria-label": "每页数量" },
-        onChange(event) {
-          vm$.methods.setPageSize(event.target.value);
+      View(
+        {
+          type: "select",
+          class: "wx-content-select wx-content-page-size",
+          attributes: { "aria-label": "每页数量" },
+          onChange(event) {
+            vm$.methods.setPageSize(event.target.value);
+          },
         },
-      }, [
-        View({ type: "option", attributes: { value: "12" } }, ["12 条/页"]),
-        View(
-          { type: "option", attributes: { value: "24", selected: true } },
-          ["24 条/页"],
-        ),
-        View({ type: "option", attributes: { value: "48" } }, ["48 条/页"]),
-        View({ type: "option", attributes: { value: "96" } }, ["96 条/页"]),
-      ]),
+        [
+          View({ type: "option", attributes: { value: "12" } }, ["12 条/页"]),
+          View(
+            { type: "option", attributes: { value: "24", selected: true } },
+            ["24 条/页"],
+          ),
+          View({ type: "option", attributes: { value: "48" } }, ["48 条/页"]),
+          View({ type: "option", attributes: { value: "96" } }, ["96 条/页"]),
+        ],
+      ),
       ContentPageActionButton({
         icon: "chevron-left",
         title: "上一页",
         compact: true,
-        class: computed(
-          vm$.state.page,
-          (page) => page <= 1 ? "wx-content-action-disabled" : "",
+        class: computed(vm$.state.page, (page) =>
+          page <= 1 ? "wx-content-action-disabled" : "",
         ),
         onClick() {
           vm$.methods.previousPage();
@@ -437,9 +427,7 @@ function ContentPagination(props) {
         class: computed(
           { page: vm$.state.page, pageCount: vm$.state.page_count },
           (state) =>
-            state.page >= state.pageCount
-              ? "wx-content-action-disabled"
-              : "",
+            state.page >= state.pageCount ? "wx-content-action-disabled" : "",
         ),
         onClick() {
           vm$.methods.nextPage();
