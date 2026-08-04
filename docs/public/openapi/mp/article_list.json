@@ -1,0 +1,39 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "获取公众号文章列表",
+    "description": "获取指定公众号的文章列表",
+    "parameters": [
+      {
+        "name": "biz",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "公众号 biz 标识"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "文章列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

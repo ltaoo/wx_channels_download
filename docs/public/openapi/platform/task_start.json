@@ -1,0 +1,23 @@
+{
+  "get": {
+    "tags": [
+      "平台"
+    ],
+    "summary": "开始任务（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "操作结果"
+      }
+    }
+  }
+}

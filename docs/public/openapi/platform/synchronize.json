@@ -1,0 +1,34 @@
+{
+  "post": {
+    "tags": [
+      "平台"
+    ],
+    "summary": "同步账号内容列表并入库（兼容 wx_channels_api）",
+    "description": "通过视频号 ws 调用拉取指定账号的内容列表，并 upsert 写入 account/content/content_account。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "account_id": {
+                "type": "integer",
+                "description": "本地 account.id（与 username 二选一）"
+              },
+              "username": {
+                "type": "string",
+                "description": "视频号账号 username（与 account_id 二选一）"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "同步结果"
+      }
+    }
+  }
+}

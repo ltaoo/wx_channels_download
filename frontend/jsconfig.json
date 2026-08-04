@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "checkJs": true,
+    "allowJs": true,
+    "types": ["@timeless/types"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+    }
+  },
+  "include": [
+    "src/**/*.js",
+    "types/**/*.d.ts",
+  ],
+  "exclude": ["node_modules", "dist"]
+}

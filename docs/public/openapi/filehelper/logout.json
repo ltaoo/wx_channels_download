@@ -1,0 +1,27 @@
+{
+  "post": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "登出",
+    "description": "登出文件传输助手客户端（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "登出结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "已登出"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "post": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "创建/更新浏览历史",
+    "description": "根据内容 id 进行 upsert：首次写入创建记录，重复写入会将 visited_times + 1，并更新内容/账号信息。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "内容 id（视频号 object id）"
+              },
+              "contact": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "视频号账号 username（如 v2_xxx@finder）"
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "description": "视频号昵称"
+                  },
+                  "headUrl": {
+                    "type": "string",
+                    "description": "视频号头像 URL"
+                  }
+                },
+                "required": [
+                  "username"
+                ]
+              },
+              "objectDesc": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "description": "内容描述/标题"
+                  },
+                  "media": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "description": "媒体直链（不含 urlToken）"
+                        },
+                        "coverUrl": {
+                          "type": "string",
+                          "description": "封面 URL"
+                        },
+                        "decodeKey": {
+                          "type": "string",
+                          "description": "解密 key（视频号下载用）"
+                        },
+                        "urlToken": {
+                          "type": "string",
+                          "description": "媒体 token（拼接到 url 后）"
+                        }
+                      }
+                    },
+                    "description": "媒体列表（取第 1 个用于写入 content_url/content_cover_url）"
+                  }
+                }
+              },
+              "objectNonceId": {
+                "type": "string",
+                "description": "nonce id（写入 extra_data）"
+              },
+              "source_url": {
+                "type": "string",
+                "description": "来源页面 URL"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "examples": {
+            "create": {
+              "summary": "记录浏览历史",
+              "value": {
+                "id": "14545102784038246591",
+                "contact": {
+                  "username": "v2_xxx@finder",
+                  "nickname": "示例账号",
+                  "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132"
+                },
+                "objectDesc": {
+                  "description": "示例内容标题",
+                  "media": [
+                    {
+                      "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                      "coverUrl": "https://wx.qlogo.cn/finder/xxx/0",
+                      "decodeKey": "81721112",
+                      "urlToken": "&token=xxx"
+                    }
+                  ]
+                },
+                "objectNonceId": "nonce_id_xxx",
+                "source_url": "https://channels.weixin.qq.com/xxx"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "写入成功",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {}
+                }
+              },
+              "missing_id": {
+                "summary": "缺少 id",
+                "value": {
+                  "code": 400,
+                  "msg": "缺少内容 id",
+                  "data": {}
+                }
+              },
+              "invalid": {
+                "summary": "参数不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "不合法的参数",
+                  "data": {}
+                }
+              },
+              "no_db": {
+                "summary": "数据库未初始化",
+                "value": {
+                  "code": 500,
+                  "msg": "数据库未初始化",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

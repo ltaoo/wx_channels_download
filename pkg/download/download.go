@@ -20,12 +20,12 @@ type FileDownloadProgress struct {
 	Speed   float64
 }
 
-// 显示所有线程的进度
+// Display progress for all threads
 func display_progress(progress_chans []chan FileDownloadProgress, stop chan bool) {
-	// 存储每个线程的进度
+	// Store progress for each thread
 	progresses := make([]FileDownloadProgress, len(progress_chans))
 
-	// 清屏并移动光标到左上角
+	// Clear screen and move cursor to top-left
 	fmt.Print("\033[2J\033[H")
 
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -36,15 +36,15 @@ func display_progress(progress_chans []chan FileDownloadProgress, stop chan bool
 		case <-stop:
 			return
 		case <-ticker.C:
-			// 移动光标到左上角
+			// Move cursor to top-left
 			fmt.Print("\033[H")
 
-			// 显示每个线程的进度
+			// Display progress for each thread
 			total_downloaded := int64(0)
 			for i, progress := range progresses {
 				if progress.Total > 0 {
 					percentage := float64(progress.Current) / float64(progress.Total) * 100
-					fmt.Printf("线程 %d: [%-50s] %.1f%% (%.1f KB/s)\n",
+					fmt.Printf("Thread %d: [%-50s] %.1f%% (%.1f KB/s)\n",
 						i+1,
 						progress_bar(percentage, 50),
 						percentage,
@@ -52,34 +52,34 @@ func display_progress(progress_chans []chan FileDownloadProgress, stop chan bool
 					)
 					total_downloaded += progress.Current
 				} else {
-					fmt.Printf("线程 %d: 等待开始...\n", i+1)
+					fmt.Printf("Thread %d: waiting to start...\n", i+1)
 				}
 			}
 
-			// 显示总进度
+			// Display total progress
 			if len(progresses) > 0 && progresses[0].Total > 0 {
 				totalSize := progresses[0].Total * int64(len(progresses))
 				totalPercentage := float64(total_downloaded) / float64(totalSize) * 100
-				fmt.Printf("\n总进度: [%-50s] %.1f%%\n",
+				fmt.Printf("\nTotal progress: [%-50s] %.1f%%\n",
 					progress_bar(totalPercentage, 50),
 					totalPercentage,
 				)
 			}
 
-			// 更新进度信息
+			// Update progress information
 			for i, ch := range progress_chans {
 				select {
 				case progress := <-ch:
 					progresses[i] = progress
 				default:
-					// 不阻塞，使用上次的进度
+					// Non-blocking, use previous progress
 				}
 			}
 		}
 	}
 }
 
-// 生成进度条字符串
+// Generate progress bar string
 func progress_bar(percentage float64, width int) string {
 	completed := int(percentage / 100 * float64(width))
 	if completed > width {
@@ -101,12 +101,12 @@ func progress_bar(percentage float64, width int) string {
 
 func calculate_chunks(total_size, preferred_chunk_size int64) []struct{ start, end int64 } {
 	const (
-		minChunkSize = 1 * 1024 * 1024 // 1MB最小分块
-		maxChunks    = 8               // 最大分块数
-		minChunks    = 2               // 最小分块数
+		minChunkSize = 1 * 1024 * 1024 // 1MB minimum chunk size
+		maxChunks    = 8               // Maximum chunk count
+		minChunks    = 2               // Minimum chunk count
 	)
 
-	// 计算初始分块数
+	// Calculate initial chunk count
 	num_chunks := total_size / preferred_chunk_size
 	if num_chunks < minChunks {
 		num_chunks = minChunks
@@ -114,10 +114,10 @@ func calculate_chunks(total_size, preferred_chunk_size int64) []struct{ start, e
 		num_chunks = maxChunks
 	}
 
-	// 重新计算分块大小
+	// Recalculate chunk size
 	chunk_size := total_size / num_chunks
 
-	// 确保分块不小于最小值
+	// Ensure chunk is not smaller than minimum
 	if chunk_size < minChunkSize {
 		chunk_size = minChunkSize
 		num_chunks = total_size / chunk_size
@@ -131,7 +131,7 @@ func calculate_chunks(total_size, preferred_chunk_size int64) []struct{ start, e
 		start := i * chunk_size
 		end := start + chunk_size - 1
 
-		// 最后一个分块包含剩余所有数据
+		// Last chunk contains all remaining data
 		if i == num_chunks-1 {
 			end = total_size - 1
 		}
@@ -142,11 +142,11 @@ func calculate_chunks(total_size, preferred_chunk_size int64) []struct{ start, e
 	return chunks
 }
 
-// 带进度显示的文件分块下载
+// Download a file chunk with progress display
 func download_part_with_progress(url string, file *os.File, start, end int64, thread_idx int, progress_chan chan<- FileDownloadProgress) error {
-	client := &http.Client{Timeout: 0} // 无超时限制
+	client := &http.Client{Timeout: 0} // No timeout limit
 
-	// 创建带Range头的请求
+	// Create request with Range header
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -155,19 +155,19 @@ func download_part_with_progress(url string, file *os.File, start, end int64, th
 	range_header := fmt.Sprintf("bytes=%d-%d", start, end)
 	req.Header.Add("Range", range_header)
 
-	// 执行请求
+	// Execute request
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	// 检查响应状态
+	// Check response status
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("服务器返回错误状态码: %d", resp.StatusCode)
 	}
 
-	// 创建带进度统计的Reader
+	// Create reader with progress tracking
 	total_size := end - start + 1
 	progress_reader := &ProgressReader{
 		Reader:  resp.Body,
@@ -180,12 +180,12 @@ func download_part_with_progress(url string, file *os.File, start, end int64, th
 	if _, err := io.Copy(buf, progress_reader); err != nil {
 		return err
 	}
-	// 将下载的数据写入文件的指定位置
+	// Write downloaded data to the specified position in the file
 
-	// 同步写入文件
+	// Synchronized file write
 	file_mutex.Lock()
 	defer file_mutex.Unlock()
-	// 定位到文件的指定位置
+	// Seek to the specified position in the file
 	_, err = file.Seek(start, io.SeekStart)
 	if err != nil {
 		return err
@@ -196,7 +196,7 @@ func download_part_with_progress(url string, file *os.File, start, end int64, th
 	return nil
 }
 
-// 带进度统计的Reader
+// Reader with progress tracking
 type ProgressReader struct {
 	Reader    io.Reader
 	Total     int64
@@ -217,14 +217,14 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 	n, err := pr.Reader.Read(p)
 	pr.read += int64(n)
 
-	// 计算下载速度
+	// Calculate download speed
 	now := time.Now()
 	elapsed := now.Sub(pr.lastTime).Seconds()
 
-	if elapsed >= 0.1 { // 每100ms更新一次进度
+	if elapsed >= 0.1 { // Update progress every 100ms
 		speed := float64(pr.read-pr.lastRead) / elapsed
 
-		// 发送进度信息
+		// Send progress information
 		select {
 		case pr.Channel <- FileDownloadProgress{
 			Current: pr.read,
@@ -232,7 +232,7 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 			Speed:   speed,
 		}:
 		default:
-			// 不阻塞，如果通道满了就跳过
+			// Non-blocking, skip if channel is full
 		}
 
 		pr.lastRead = pr.read
@@ -281,14 +281,14 @@ func SingleThreadingDownload(url string, dest_filepath string, on_progress func(
 					TotalSize:      total_size,
 					Percent:        percent,
 				})
-				// fmt.Printf("\r\033[K已下载: %d/%d 字节 (%.2f%%)", downloaded, total_size, percent)
+				// fmt.Printf("\r\033[Kdownloaded: %d/%d bytes (%.2f%%)", downloaded, total_size, percent)
 			} else {
 				on_progress(&PartialFileDownloadProgress{
 					DownloadedSize: downloaded,
 					TotalSize:      0,
 					Percent:        0,
 				})
-				// fmt.Printf("\r\033[K已下载: %d 字节", downloaded)
+				// fmt.Printf("\r\033[Kdownloaded: %d bytes", downloaded)
 			}
 		}
 		if err == io.EOF {
@@ -306,7 +306,7 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 		TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 	}
 	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
-	// 发送HEAD请求获取文件信息
+	// Send HEAD request to get file info
 	resp, err := client.Head(url)
 	if err != nil {
 		return fmt.Errorf("获取文件信息失败 %v", err.Error())
@@ -315,7 +315,7 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 
 	fmt.Print("\033c")
 
-	// 检查是否支持断点续传
+	// Check if range requests are supported
 	if resp.Header.Get("Accept-Ranges") != "bytes" {
 		return fmt.Errorf("服务器不支持并发下载")
 	}
@@ -333,18 +333,18 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 	var wg sync.WaitGroup
 	errors := make(chan error, threads)
 
-	// 计算每个分块的大小
+	// Calculate chunk size for each thread
 	part_size := file_size / int64(threads)
 	// remainder := file_size % int64(threads)
 
 	chunks := calculate_chunks(file_size, part_size)
-	// 创建进度通道，每个线程一个
+	// Create progress channels, one per thread
 	progress_chans := make([]chan FileDownloadProgress, len(chunks))
 	for i := range progress_chans {
 		progress_chans[i] = make(chan FileDownloadProgress, 10)
 	}
 
-	// 启动进度显示器
+	// Start progress display
 	stop_progress := make(chan bool)
 	go display_progress(progress_chans, stop_progress)
 
@@ -358,7 +358,7 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 	}
 
 	// fmt.Println("the chunk size is", len(chunks))
-	// 启动并发下载
+	// Start concurrent downloads
 	for i, chunk := range chunks {
 		wg.Add(1)
 		// fmt.Println(i, chunk)
@@ -366,7 +366,7 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 			defer wg.Done()
 			// file, err := os.Create(tmp_dest_filepath + "_" + strconv.Itoa(thread_idx))
 			// if err != nil {
-			// 	errors <- fmt.Errorf("创建文件 %d 失败: %v", thread_idx+1, err)
+			// 	errors <- fmt.Errorf("failed to create file %d: %v", thread_idx+1, err)
 			// 	return
 			// }
 			// defer file.Close()
@@ -382,12 +382,12 @@ func MultiThreadingDownload(url string, threads int, dest_filepath string, tmp_d
 			}
 		}(i, chunk.start, chunk.end)
 	}
-	// 等待所有下载完成
+	// Wait for all downloads to complete
 	wg.Wait()
 	close(errors)
 	close(stop_progress)
 
-	// 检查错误
+	// Check for errors
 	if len(errors) > 0 {
 		// for err := range errors {
 		// 	fmt.Println(err)

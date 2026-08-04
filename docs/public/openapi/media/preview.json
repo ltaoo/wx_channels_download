@@ -1,0 +1,17 @@
+{
+  "get": {
+    "tags": [
+      "媒体"
+    ],
+    "summary": "文件预览页面",
+    "description": "返回一个 HTML 预览页面，用于在浏览器中预览文件",
+    "responses": {
+      "200": {
+        "description": "HTML 预览页面",
+        "content": {
+          "text/html": {}
+        }
+      }
+    }
+  }
+}

@@ -2,14 +2,14 @@
 title: 视频号查询部署
 ---
 
-# sph_deploy
+# deploy sph
 
 将视频号视频信息查询页面部署到 Cloudflare Worker，提供 Web 界面查询视频号视频下载地址。
 
 ## 用法
 
 ```sh
-wx_video_download sph_deploy
+wx_video_download deploy sph
 ```
 
 ## 前置条件
@@ -40,7 +40,7 @@ cloudflare:
 
 ## 说明
 
-- 部署内容为 `internal/api/sph/` 目录下的 `worker.js` 和 `index.html`
+- 部署内容为 `pkg/scraper/wxchannels/worker/` 目录下的 `worker.js` 和 `index.html`
 - Worker 运行在 Cloudflare 边缘节点，无需自有服务器
 - Cookie 以环境变量的方式注入 Worker，用于调用视频号接口时的身份认证
 

@@ -1,0 +1,42 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取服务状态",
+    "description": "返回当前服务的版本、各服务监听状态等信息",
+    "responses": {
+      "200": {
+        "description": "服务状态",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {
+                    "version": "v260613",
+                    "channels": {},
+                    "server_statuses": {},
+                    "api": {
+                      "addr": "127.0.0.1:2022",
+                      "listening": true,
+                      "status": "running"
+                    },
+                    "proxy": {
+                      "addr": "127.0.0.1:2023",
+                      "listening": true,
+                      "status": "running"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

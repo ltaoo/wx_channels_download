@@ -1,0 +1,141 @@
+{
+  "verified_at": "2026-07-21",
+  "endpoint": "POST /api/v1/download_task/create_by_url",
+  "description": "公开、无鉴权的 Hermes 手工下载验收样本；每个 request 可直接作为接口请求体。部分协议尚无驱动，其 expected 明确给出当前应有行为。",
+  "tasks": [
+    {
+      "id": "http-10m-zip",
+      "purpose": "验证 HTTP 协议入口、普通文件下载和自定义文件名。",
+      "request": {
+        "url": "http://download.thinkbroadband.com/10MB.zip",
+        "filename": "hermes-http-10MiB.zip"
+      },
+      "expected": {
+        "size_bytes": 10485760,
+        "segments": 10,
+        "range_supported": true
+      }
+    },
+    {
+      "id": "https-1m-single-segment",
+      "purpose": "验证 HTTPS 和不触发分片的单文件下载。",
+      "request": {
+        "url": "https://proof.ovh.net/files/1Mb.dat",
+        "filename": "hermes-https-1MiB.dat"
+      },
+      "expected": {
+        "size_bytes": 1048576,
+        "segments": 1,
+        "range_supported": true
+      }
+    },
+    {
+      "id": "https-10m-segmented",
+      "purpose": "验证 HTTPS Range 分片、进度与合并。",
+      "request": {
+        "url": "https://proof.ovh.net/files/10Mb.dat",
+        "filename": "hermes-https-10MiB.dat"
+      },
+      "expected": {
+        "size_bytes": 10485760,
+        "segments": 10,
+        "range_supported": true
+      }
+    },
+    {
+      "id": "https-100m-pause-resume",
+      "purpose": "验证大文件下载、暂停、恢复、断点进度和分片上限。",
+      "request": {
+        "url": "https://proof.ovh.net/files/100Mb.dat",
+        "filename": "hermes-https-100MiB.dat"
+      },
+      "expected": {
+        "size_bytes": 104857600,
+        "segments": 10,
+        "range_supported": true
+      }
+    },
+    {
+      "id": "hls-master-playlist-metadata-only",
+      "protocol": "HLS/m3u8 over HTTPS",
+      "engine_support": "manifest_only",
+      "purpose": "验证 m3u8 地址在当前 HTTP 驱动中只会被保存为播放列表，不会触发 HLS 媒体分片下载。",
+      "request": {
+        "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+        "filename": "hermes-hls-master.m3u8"
+      },
+      "expected": {
+        "api_result": "task_finished",
+        "size_bytes": 752,
+        "download_segments": 1,
+        "hls_media_segments_downloaded": false,
+        "note": "输出文件应以 #EXTM3U 开头。"
+      }
+    },
+    {
+      "id": "hls-media-playlist-metadata-only",
+      "protocol": "HLS/m3u8 over HTTPS",
+      "engine_support": "manifest_only",
+      "purpose": "为未来 HLS 驱动提供真实的 VOD 媒体播放列表与相对 TS 分片地址；当前仅保存清单文本。",
+      "request": {
+        "url": "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_hd_7.m3u8",
+        "filename": "hermes-hls-media-720p.m3u8"
+      },
+      "expected": {
+        "api_result": "task_finished",
+        "size_bytes": 3606,
+        "download_segments": 1,
+        "hls_media_segments_downloaded": false,
+        "note": "清单包含相对路径的 .ts VOD 分片；实现 HLS 驱动后应解析并下载它们。"
+      }
+    },
+    {
+      "id": "dash-mpd-metadata-only",
+      "protocol": "MPEG-DASH MPD over HTTPS",
+      "engine_support": "manifest_only",
+      "purpose": "验证 DASH 清单地址；当前仅保存 XML，不会下载音视频 Representation 分片。",
+      "request": {
+        "url": "https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd",
+        "filename": "hermes-dash-angel-one.mpd"
+      },
+      "expected": {
+        "api_result": "task_finished",
+        "size_bytes": 11431,
+        "download_segments": 1,
+        "dash_media_segments_downloaded": false
+      }
+    },
+    {
+      "id": "bittorrent-metafile-only",
+      "protocol": "BitTorrent metafile over HTTPS",
+      "engine_support": "metafile_only",
+      "purpose": "验证 .torrent 元数据文件的普通 HTTP 下载；不应误判为已经下载种子载荷。",
+      "request": {
+        "url": "https://webtorrent.io/torrents/sintel.torrent",
+        "filename": "hermes-sintel.torrent"
+      },
+      "expected": {
+        "api_result": "task_finished",
+        "size_bytes": 20792,
+        "download_segments": 1,
+        "bittorrent_payload_downloaded": false,
+        "note": "该元数据描述的主文件为 Sintel.mp4（129241752 字节）；当前不会连接 peer、tracker 或 DHT。"
+      }
+    },
+    {
+      "id": "bittorrent-magnet-unsupported",
+      "protocol": "magnet URI",
+      "engine_support": "unsupported",
+      "purpose": "验证磁链不会被当前 HTTP URL 创建接口误作为可下载地址接受。",
+      "request": {
+        "url": "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent",
+        "filename": "hermes-sintel.mp4"
+      },
+      "expected": {
+        "api_result": "rejected",
+        "task_created": false,
+        "reason": "当前 create_by_url 仅接受带 host 的 URL，且 Hermes 尚未注册 BitTorrent/magnet ProtocolDriver。"
+      }
+    }
+  ]
+}

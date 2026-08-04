@@ -1,0 +1,49 @@
+{
+  "get": {
+    "tags": [
+      "平台"
+    ],
+    "summary": "获取视频详情（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "oid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "nid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "url",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分享链接（可解析 eid）"
+      },
+      {
+        "name": "eid",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "加密 object id"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "详情结果（结构与 /api/channels/feed/profile 相同）"
+      }
+    }
+  }
+}

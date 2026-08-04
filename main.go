@@ -9,7 +9,7 @@ import (
 	"wx_channel/internal/config"
 )
 
-var AppVer = "260714"
+var AppVer = "26072313"
 var Mode = "debug"
 
 func main() {
@@ -18,6 +18,6 @@ func main() {
 	}
 	cfg := config.New(AppVer, Mode)
 	if err := cmd.Execute(cfg); err != nil {
-		fmt.Printf("运行失败 %v\n", err.Error())
+		fmt.Printf("Failed to run: %v\n", err.Error())
 	}
 }

@@ -12,16 +12,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
+	"wx_channel/frontend"
 	"wx_channel/pkg/filehelper"
 )
 
-// FinderAutoDownloadCallback 视频号自动下载回调
+// FinderAutoDownloadCallback is the auto-download callback for Channels (Finder).
 type FinderAutoDownloadCallback func(objectID, objectNonceID string) error
 
-// SphAutoDownloadCallback SPH 自动下载回调
+// SphAutoDownloadCallback is the auto-download callback for SPH videos.
 type SphAutoDownloadCallback func(sphUrl string) error
 
-// FileHelperHandler 文件传输助手处理器
+// FileHelperHandler is the file transfer helper processor.
 type FileHelperHandler struct {
 	client               *filehelper.Client
 	mu                   sync.RWMutex
@@ -29,26 +30,26 @@ type FileHelperHandler struct {
 	onSphAutoDownload    SphAutoDownloadCallback
 }
 
-// NewFileHelperHandler 创建处理器
+// NewFileHelperHandler creates a new FileHelperHandler.
 func NewFileHelperHandler() *FileHelperHandler {
 	return &FileHelperHandler{}
 }
 
-// SetFinderAutoDownloadCallback 设置视频号自动下载回调
+// SetFinderAutoDownloadCallback sets the auto-download callback for Channels.
 func (h *FileHelperHandler) SetFinderAutoDownloadCallback(cb FinderAutoDownloadCallback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.onFinderAutoDownload = cb
 }
 
-// SetSphAutoDownloadCallback 设置 SPH 自动下载回调
+// SetSphAutoDownloadCallback sets the auto-download callback for SPH.
 func (h *FileHelperHandler) SetSphAutoDownloadCallback(cb SphAutoDownloadCallback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.onSphAutoDownload = cb
 }
 
-// GetClient 获取或创建客户端
+// GetClient returns or creates a filehelper client.
 func (h *FileHelperHandler) GetClient() *filehelper.Client {
 	h.mu.RLock()
 	if h.client != nil {
@@ -77,14 +78,19 @@ func (h *FileHelperHandler) getLogger() *zerolog.Logger {
 	return &nopLogger
 }
 
-// HandlePage 返回前端页面
+// HandlePage serves the frontend page.
 // GET /filehelper
 func (h *FileHelperHandler) HandlePage(c *gin.Context) {
+	data, err := frontend.Assets.ReadRoot("filehelper.html")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "filehelper page not found")
+		return
+	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, string(files.HTMLFilehelper))
+	c.String(http.StatusOK, string(data))
 }
 
-// HandleGetQRCode 获取登录二维码
+// HandleGetQRCode returns a login QR code.
 // GET /api/filehelper/qrcode
 func (h *FileHelperHandler) HandleGetQRCode(c *gin.Context) {
 	client := h.GetClient()
@@ -108,7 +114,7 @@ func (h *FileHelperHandler) HandleGetQRCode(c *gin.Context) {
 	})
 }
 
-// HandleWaitLogin 等待登录（阻塞接口）
+// HandleWaitLogin waits for login (blocking endpoint).
 // GET /api/filehelper/login/wait
 func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 	client := h.GetClient()
@@ -124,7 +130,7 @@ func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 
 	switch code {
 	case 200:
-		// 登录成功，启动同步检查
+		// Login successful, start sync check
 		go client.StartSyncCheck()
 		c.JSON(http.StatusOK, gin.H{
 			"code": 0,
@@ -135,7 +141,7 @@ func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 		})
 
 	case 201:
-		// 已扫码，等待确认
+		// Already scanned, waiting for confirmation
 		c.JSON(http.StatusOK, gin.H{
 			"code": 0,
 			"msg":  "已扫码，等待确认",
@@ -146,7 +152,7 @@ func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 		})
 
 	case 400:
-		// 二维码过期
+		// QR code expired
 		c.JSON(http.StatusOK, gin.H{
 			"code": 0,
 			"msg":  "二维码已过期",
@@ -156,7 +162,7 @@ func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 		})
 
 	case 408:
-		// 等待扫码，继续轮询
+		// Waiting for scan, keep polling
 		c.JSON(http.StatusOK, gin.H{
 			"code": 0,
 			"msg":  "等待扫码",
@@ -177,7 +183,7 @@ func (h *FileHelperHandler) HandleWaitLogin(c *gin.Context) {
 	}
 }
 
-// HandleGetStatus 获取登录状态
+// HandleGetStatus returns login status.
 // GET /api/filehelper/status
 func (h *FileHelperHandler) HandleGetStatus(c *gin.Context) {
 	client := h.GetClient()
@@ -190,7 +196,7 @@ func (h *FileHelperHandler) HandleGetStatus(c *gin.Context) {
 	})
 }
 
-// HandleGetMessages 获取消息列表
+// HandleGetMessages returns the message list.
 // GET /api/filehelper/messages
 func (h *FileHelperHandler) HandleGetMessages(c *gin.Context) {
 	client := h.GetClient()
@@ -206,7 +212,7 @@ func (h *FileHelperHandler) HandleGetMessages(c *gin.Context) {
 	})
 }
 
-// HandleSyncMessages 同步消息（返回完整响应）
+// HandleSyncMessages syncs messages (returns full response).
 // GET /api/filehelper/sync
 func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 	client := h.GetClient()
@@ -228,7 +234,7 @@ func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 		return
 	}
 
-	// 检查是否启用自动下载
+	// Check if auto-download is enabled
 	if viper.GetBool("filehelper.enabled") && resp != nil && len(resp.AddMsgList) > 0 {
 		h.processFinderMessages(resp.AddMsgList)
 	}
@@ -236,7 +242,7 @@ func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// processFinderMessages 处理视频号消息，自动创建下载任务
+// processFinderMessages processes Channels messages and auto-creates download tasks.
 func (h *FileHelperHandler) processFinderMessages(messages []map[string]interface{}) {
 	h.mu.RLock()
 	finderCallback := h.onFinderAutoDownload
@@ -249,39 +255,39 @@ func (h *FileHelperHandler) processFinderMessages(messages []map[string]interfac
 			continue
 		}
 
-		// 处理应用消息（视频号）
+		// Process app message (Channels / Finder)
 		if int(msgType) == 49 {
-			// 检查 MsgType 是否为 49（应用消息）
+		// Check if MsgType is 49 (app message)
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
 				continue
 			}
 
-			// 解析视频号消息
+			// Parse Channels message
 			finderData, err := parseFinderFeed(content)
 			if err != nil || finderData == nil {
 				continue
 			}
 
-			// 检查是否包含必要的字段
+			// Check required fields
 			if finderData.ObjectID == "" || finderData.ObjectNonceID == "" {
 				continue
 			}
 
-			// 调用回调创建下载任务
+			// Call callback to create download task
 			if finderCallback != nil {
 				go finderCallback(finderData.ObjectID, finderData.ObjectNonceID)
 			}
 		}
 
-		// 处理文本消息
+		// Process text message
 		if int(msgType) == 1 {
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
 				continue
 			}
 
-			// 提取 SPH URL
+			// Extract SPH URL
 			sphUrl := extractSphUrl(content)
 			if sphUrl != "" && sphCallback != nil {
 				go sphCallback(sphUrl)
@@ -290,7 +296,7 @@ func (h *FileHelperHandler) processFinderMessages(messages []map[string]interfac
 	}
 }
 
-// HandleSyncCheck 阻塞等待同步检查
+// HandleSyncCheck blocks and waits for sync check.
 // GET /api/filehelper/synccheck
 func (h *FileHelperHandler) HandleSyncCheck(c *gin.Context) {
 	client := h.GetClient()
@@ -321,7 +327,7 @@ func (h *FileHelperHandler) HandleSyncCheck(c *gin.Context) {
 	})
 }
 
-// HandleSendMessage 发送消息
+// HandleSendMessage sends a message.
 // POST /api/filehelper/send
 func (h *FileHelperHandler) HandleSendMessage(c *gin.Context) {
 	var body struct {
@@ -359,7 +365,7 @@ func (h *FileHelperHandler) HandleSendMessage(c *gin.Context) {
 	})
 }
 
-// HandleLogout 登出
+// HandleLogout logs out.
 // POST /api/filehelper/logout
 func (h *FileHelperHandler) HandleLogout(c *gin.Context) {
 	client := h.GetClient()
@@ -378,7 +384,7 @@ func (h *FileHelperHandler) HandleLogout(c *gin.Context) {
 	})
 }
 
-// FinderFeedData 视频号消息解析结果
+// FinderFeedData holds parsed Channels message data.
 type FinderFeedData struct {
 	Username      string `json:"username"`
 	Nickname      string `json:"nickname"`
@@ -389,7 +395,7 @@ type FinderFeedData struct {
 	ObjectNonceID string `json:"object_nonce_id"`
 }
 
-// finderFeedXML 视频号 XML 结构
+// finderFeedXML holds the Channels (Finder) XML structure.
 type finderFeedXML struct {
 	XMLName       xml.Name `xml:"finderFeed"`
 	Username      string   `xml:"username"`
@@ -405,7 +411,7 @@ type finderFeedXML struct {
 	} `xml:"mediaList"`
 }
 
-// HandleParseFinderFeed 解析视频号消息
+// HandleParseFinderFeed parses a Channels message.
 // POST /api/filehelper/parse_finder_feed
 func (h *FileHelperHandler) HandleParseFinderFeed(c *gin.Context) {
 	var body struct {
@@ -444,14 +450,14 @@ func (h *FileHelperHandler) HandleParseFinderFeed(c *gin.Context) {
 	})
 }
 
-// parseFinderFeed 解析视频号 XML 内容
+// parseFinderFeed parses Channels XML content.
 func parseFinderFeed(content string) (*FinderFeedData, error) {
-	// 解码 HTML 实体
+	// Decode HTML entities
 	decoded := html.UnescapeString(content)
-	// 移除 <br/> 标签
+	// Remove <br/> tags
 	decoded = regexp.MustCompile(`<br\s*/?>`).ReplaceAllString(decoded, "")
 
-	// 提取 finderFeed 节点
+	// Extract finderFeed node
 	startIdx := strings.Index(decoded, "<finderFeed>")
 	endIdx := strings.Index(decoded, "</finderFeed>")
 	if startIdx == -1 || endIdx == -1 {
@@ -475,9 +481,9 @@ func parseFinderFeed(content string) (*FinderFeedData, error) {
 	}, nil
 }
 
-// extractSphUrl 从文本中提取 SPH URL
+// extractSphUrl extracts an SPH URL from text.
 func extractSphUrl(content string) string {
-	// 匹配 https://weixin.qq.com/sph/... 格式的 URL，前后可能有空格
+	// Match URLs in the format https://weixin.qq.com/sph/... with possible surrounding whitespace
 	pattern := `https://weixin\.qq\.com/sph/\w+`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindAllString(content, -1)

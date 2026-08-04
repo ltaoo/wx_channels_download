@@ -1,0 +1,59 @@
+{
+  "post": {
+    "tags": [
+      "内容"
+    ],
+    "summary": "视频列表（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "account_id": {
+                "type": "integer",
+                "description": "按账号筛选（可选）"
+              },
+              "keyword": {
+                "type": "string",
+                "description": "标题关键词（可选）"
+              },
+              "start_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "开始时间（可选）"
+              },
+              "end_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "结束时间（可选）"
+              },
+              "page": {
+                "type": "integer",
+                "default": 1
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 20
+              },
+              "limit": {
+                "type": "integer",
+                "description": "覆盖 page_size（可选）"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "覆盖分页 offset（可选）"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "列表结果"
+      }
+    }
+  }
+}

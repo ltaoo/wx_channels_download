@@ -9,6 +9,15 @@ vendor
 
 wx_video_download*
 wx_channel*
+scraper_examples/*
+!scraper_examples/*.go
+.asset-sync-store/
+.asset-sync.local.yaml
+workdir
+cache
+
+cache
+workdir
 
 scraper_examples
 cache
@@ -24,6 +33,7 @@ docs/.vitepress/cache
 docs/.vitepress/dist
 gopeed.db
 /*.json
+!.asset-sync.lock.json
 *.log
 
 .env

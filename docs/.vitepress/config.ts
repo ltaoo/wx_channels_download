@@ -127,8 +127,6 @@ export default defineConfig(async () => {
         text: "命令行",
         items: [
           { text: "代理服务", link: "/cli/proxy" },
-          { text: "下载", link: "/cli/download" },
-          { text: "解密", link: "/cli/decrypt" },
           { text: "视频号解析", link: "/cli/sph" },
           { text: "删除证书", link: "/cli/uninstall" },
           { text: "查看版本", link: "/cli/version" },

@@ -1,0 +1,37 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "同步检查",
+    "description": "阻塞等待，直到有新消息到达时返回（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "同步状态",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "status": "new_msg"
+                  }
+                }
+              },
+              "not_logged_in": {
+                "summary": "未登录",
+                "value": {
+                  "code": 401,
+                  "msg": "未登录"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

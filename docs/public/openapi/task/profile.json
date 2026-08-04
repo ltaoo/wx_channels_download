@@ -1,0 +1,56 @@
+{
+  "get": {
+    "tags": [
+      "下载器"
+    ],
+    "summary": "获取任务文件信息",
+    "description": "通过任务 ID 获取下载文件的路径和名称",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "任务 ID"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "文件信息",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "path": "/Users/xxx/Downloads",
+                    "name": "video.mp4"
+                  }
+                }
+              },
+              "missing_id": {
+                "summary": "缺少 ID",
+                "value": {
+                  "code": 400,
+                  "msg": "missing task id"
+                }
+              },
+              "not_found": {
+                "summary": "任务不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "task not found"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

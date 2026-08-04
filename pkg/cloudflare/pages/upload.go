@@ -13,20 +13,20 @@ import (
 	"github.com/samber/lo"
 )
 
-// 分桶算法相关常量
+// Bucket distribution algorithm constants
 const (
-	BULK_UPLOAD_CONCURRENCY = 4                // 并发上传数量
-	MAX_BUCKET_SIZE         = 50 * 1024 * 1024 // 50MB 每个桶的最大大小
-	MAX_BUCKET_FILE_COUNT   = 100              // 每个桶的最大文件数量
+	BULK_UPLOAD_CONCURRENCY = 4                // Concurrent upload count
+	MAX_BUCKET_SIZE         = 50 * 1024 * 1024 // 50MB max size per bucket
+	MAX_BUCKET_FILE_COUNT   = 100              // Max files per bucket
 )
 
-// 桶结构体
+// Bucket represents a file bucket.
 type Bucket struct {
 	Files         []FileContainer `json:"files"`
 	RemainingSize int             `json:"remaining_size"`
 }
 
-// 分桶结果
+// BucketResult holds the bucket distribution result.
 type BucketResult struct {
 	Buckets    []Bucket `json:"buckets"`
 	TotalFiles int      `json:"total_files"`
@@ -43,18 +43,18 @@ type FileContainer struct {
 
 var MAX_ASSET_COUNT = 50
 
-// 检查文件路径是否应该被忽略
+// should_ignore checks whether a file path should be ignored.
 func should_ignore(path string, ignorePatterns []string) bool {
 	for _, pattern := range ignorePatterns {
-		// 处理 ** 通配符模式
+		// Handle ** wildcard pattern
 		if strings.Contains(pattern, "**") {
-			// 将 ** 转换为通配符匹配
+			// Convert ** to wildcard match
 			pattern = strings.ReplaceAll(pattern, "**", "*")
 			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
 				return true
 			}
 		} else {
-			// 精确匹配文件名
+			// Exact filename match
 			if filepath.Base(path) == pattern {
 				return true
 			}
@@ -74,7 +74,7 @@ type FilePayloadToUpload struct {
 }
 
 func distribute_files_to_buckets(files []FileContainer) BucketResult {
-	// 初始化桶数组
+	// Initialize bucket array
 	buckets := make([]Bucket, BULK_UPLOAD_CONCURRENCY)
 	for i := range buckets {
 		buckets[i] = Bucket{
@@ -87,16 +87,16 @@ func distribute_files_to_buckets(files []FileContainer) BucketResult {
 	total_files := 0
 	total_size := 0
 
-	// 遍历所有文件进行分桶
+	// Iterate over all files for bucket distribution
 	for _, file := range files {
 		inserted := false
 
-		// 尝试将文件插入到现有桶中
+		// Try to insert file into an existing bucket
 		for i := 0; i < len(buckets); i++ {
 			bucket_index := (i + bucket_offset) % len(buckets)
 			bucket := &buckets[bucket_index]
 
-			// 检查桶是否有足够空间和文件数量限制
+			// Check if bucket has enough space and is within file count limit
 			if bucket.RemainingSize >= file.SizeInBytes &&
 				len(bucket.Files) < MAX_BUCKET_FILE_COUNT {
 				bucket.Files = append(bucket.Files, file)
@@ -106,7 +106,7 @@ func distribute_files_to_buckets(files []FileContainer) BucketResult {
 			}
 		}
 
-		// 如果现有桶都无法容纳，创建新桶
+		// If no existing bucket can fit, create a new one
 		if !inserted {
 			newBucket := Bucket{
 				Files:         []FileContainer{file},
@@ -120,7 +120,7 @@ func distribute_files_to_buckets(files []FileContainer) BucketResult {
 		total_size += file.SizeInBytes
 	}
 
-	// 过滤掉空的桶
+	// Filter out empty buckets
 	non_empty_buckets := []Bucket{}
 	for _, bucket := range buckets {
 		if len(bucket.Files) > 0 {
@@ -135,16 +135,16 @@ func distribute_files_to_buckets(files []FileContainer) BucketResult {
 	}
 }
 
-// 打印分桶结果（用于调试）
+// print_bucket_result prints bucket distribution results (for debugging).
 func print_bucket_result(result BucketResult) {
-	fmt.Printf("\n=== 分桶结果 ===\n")
-	fmt.Printf("总文件数: %d\n", result.TotalFiles)
-	fmt.Printf("总大小: %d bytes (%.2f MB)\n", result.TotalSize, float64(result.TotalSize)/(1024*1024))
-	fmt.Printf("桶数量: %d\n", len(result.Buckets))
+	fmt.Printf("\n=== Bucket Results ===\n")
+	fmt.Printf("Total files: %d\n", result.TotalFiles)
+	fmt.Printf("Total size: %d bytes (%.2f MB)\n", result.TotalSize, float64(result.TotalSize)/(1024*1024))
+	fmt.Printf("Bucket count: %d\n", len(result.Buckets))
 
 	for i, bucket := range result.Buckets {
 		bucketSize := MAX_BUCKET_SIZE - bucket.RemainingSize
-		fmt.Printf("桶 %d: %d 个文件, %d bytes (%.2f MB), 剩余空间: %d bytes\n",
+		fmt.Printf("Bucket %d: %d files, %d bytes (%.2f MB), remaining: %d bytes\n",
 			i+1, len(bucket.Files), bucketSize, float64(bucketSize)/(1024*1024), bucket.RemainingSize)
 		for _, f := range bucket.Files {
 			fmt.Println(f.Path, f.SizeInBytes)

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timeless vanilla js example</title>
+  <base href="/" />
+  <script type="importmap">
+    {
+      "imports": {
+        "@/": "./src/"
+      }
+    }
+  </script>
+  <!-- <link href="public/timeless/0.29.0/timeless.shadcn.css" rel="stylesheet" /> -->
+  <link href="public/timeless/0.28.0/timeless.weui.css" rel="stylesheet" />
+  <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
+  <script src="public/tailwindcss@4.js"></script>
+  <style type="text/tailwindcss">
+    @import "tailwindcss/theme.css";
+    @import "tailwindcss/preflight.css";
+    @import "tailwindcss/utilities.css";
+  </style>
+  <style>
+    .download-speed-chart {
+      --download-speed-line: #2563eb;
+      --download-speed-fill: rgba(37, 99, 235, 0.12);
+      --download-speed-grid: rgba(113, 113, 122, 0.2);
+    }
+
+    .dark .download-speed-chart {
+      --download-speed-line: #60a5fa;
+      --download-speed-fill: rgba(96, 165, 250, 0.16);
+      --download-speed-grid: rgba(161, 161, 170, 0.2);
+    }
+
+    .download-speed-chart__svg {
+      overflow: hidden;
+    }
+
+    .download-speed-chart__grid {
+      fill: none;
+      stroke: var(--download-speed-grid);
+      stroke-width: 1;
+    }
+
+    .download-speed-chart__grid--dash {
+      stroke-dasharray: 5 5;
+    }
+
+    .download-speed-chart__area {
+      fill: var(--download-speed-fill);
+      stroke: none;
+      transition: d 180ms linear;
+    }
+
+    .download-speed-chart__line {
+      fill: none;
+      stroke: var(--download-speed-line);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: d 180ms linear;
+    }
+
+    .download-speed-chart__head {
+      fill: var(--download-speed-line);
+      stroke: white;
+      stroke-width: 1.5;
+      transition: cx 180ms linear, cy 180ms linear;
+    }
+
+    .dark .download-speed-chart__head {
+      stroke: #18181b;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .download-speed-chart__area,
+      .download-speed-chart__line,
+      .download-speed-chart__head {
+        transition: none;
+      }
+    }
+  </style>
+  <script src="public/timeless/0.30.0/timeless.umd.min.js"></script>
+  <script src="public/timeless/0.30.0/timeless.dom.umd.min.js"></script>
+  <script src="public/timeless/0.30.0/timeless.web.umd.min.js"></script>
+  <script src="public/timeless/0.30.0/timeless.utils.umd.min.js"></script>
+  <!-- <script src="public/timeless/0.29.0/timeless.shadcn.umd.min.js"></script> -->
+  <script src="public/timeless/0.28.0/timeless.weui.umd.min.js"></script>
+  <script>
+    Object.assign(Timeless, Timeless.weui.kit);
+    // Object.assign(Timeless, Timeless.weui);
+    Timeless.ui = Timeless.weui.ui;
+    Object.assign(window, Timeless);
+  </script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="src/index.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,36 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "获取公众号 WebSocket 客户端列表",
+    "description": "返回当前已连接的公众号 WebSocket 客户端状态（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "客户端列表",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "list": [
+                      {
+                        "title": "公众号文章页面",
+                        "available": true,
+                        "last_ping": 1710000000000
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -17,28 +17,26 @@ import (
 )
 
 type Interceptor struct {
-	Version           string
-	Debug             bool
-	Settings          *InterceptorConfig
-	Headers           map[string]string
-	Cert              *certificate.CertFileAndKeyFile
-	proxy             proxy.InnerProxy
-	PostPlugins       []interface{}  // echo 的插件，将在 echo 初始化后传给 echo
-	FrontendVariables map[string]any // 前端额外的全局变量
-	log               *zerolog.Logger
-	OnCookies         func(url string, cookies []*http.Cookie) // 捕获到 cookie 时的回调
+	Version     string
+	Debug       bool
+	Settings    *InterceptorConfig
+	Headers     map[string]string
+	Cert        *certificate.CertFileAndKeyFile
+	proxy       proxy.InnerProxy
+	PostPlugins []interface{} // echo plugins, passed to echo after initialization
+	log         *zerolog.Logger
+	OnCookies   func(url string, cookies []*http.Cookie) // Callback invoked when cookies are captured
 }
 
 func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *Interceptor {
 	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", cfg.Version).Logger()
 	return &Interceptor{
-		Version:           cfg.Version,
-		Debug:             cfg.DebugShowError,
-		Settings:          cfg,
-		FrontendVariables: make(map[string]any),
-		Cert:              cert,
-		log:               &log,
-		proxy:             nil,
+		Version:  cfg.Version,
+		Debug:    cfg.DebugShowError,
+		Settings: cfg,
+		Cert:     cert,
+		log:      &log,
+		proxy:    nil,
 	}
 }
 
@@ -57,34 +55,6 @@ func (c *Interceptor) Start() error {
 			client.AddPlugin(plugin)
 		}
 	}
-	downloadTarget := &proxy.TargetConfig{
-		Protocol: c.Settings.APIServerProtocol,
-		Host:     c.Settings.APIServerHostname,
-		Port:     c.Settings.APIServerPort,
-	}
-	if c.Settings.RemoteServerEnabled {
-		downloadTarget = &proxy.TargetConfig{
-			Protocol: c.Settings.RemoteServerProtocol,
-			Host:     c.Settings.RemoteServerHostname,
-			Port:     c.Settings.RemoteServerPort,
-		}
-	}
-	client.AddPlugin(&proxy.Plugin{
-		Match:  "weixin110.qq.com",
-		Target: downloadTarget,
-	})
-	client.AddPlugin(&proxy.Plugin{
-		Match: "kf.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: c.Settings.APIServerProtocol,
-			Host:     c.Settings.APIServerHostname,
-			Port:     c.Settings.APIServerPort,
-		},
-	})
-	plugins := CreateChannelInterceptorPlugins(c, Assets)
-	for _, plugin := range plugins {
-		client.AddPlugin(plugin)
-	}
 	c.proxy = client
 	if !c.Settings.ProxySkipInstallRootCert {
 		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
@@ -92,7 +62,7 @@ func (c *Interceptor) Start() error {
 			return fmt.Errorf("检查证书失败: %v", err)
 		}
 		if !existing {
-			fmt.Printf("正在安装证书...\n")
+			fmt.Printf("Installing certificate...\n")
 			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
 				return fmt.Errorf("安装证书失败: %v", err)
 			}
@@ -143,9 +113,6 @@ func (c *Interceptor) AddPlugin(plugin interface{}) {
 	if c.proxy != nil {
 		c.proxy.AddPlugin(plugin)
 	}
-}
-func (c *Interceptor) AddVariable(key string, value any) {
-	c.FrontendVariables[key] = value
 }
 
 func (c *Interceptor) SetLog(writer io.Writer) {

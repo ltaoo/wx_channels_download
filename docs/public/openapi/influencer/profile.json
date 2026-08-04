@@ -1,0 +1,65 @@
+{
+  "get": {
+    "tags": [
+      "达人"
+    ],
+    "summary": "获取达人详情（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "详情"
+      }
+    }
+  },
+  "put": {
+    "tags": [
+      "达人"
+    ],
+    "summary": "更新达人（兼容 wx_channels_api）",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "avatar_url": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "更新结果"
+      }
+    }
+  }
+}

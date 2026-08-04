@@ -1,0 +1,62 @@
+{
+  "post": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "解析视频号分享消息",
+    "description": "解析微信消息中的视频号分享 XML，提取视频号信息（仅本地模式可用）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "微信应用消息 XML 内容（MsgType 49）"
+              }
+            },
+            "required": [
+              "content"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "解析结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "username": "v2_xxx@finder",
+                    "nickname": "示例账号",
+                    "desc": "视频描述",
+                    "avatar": "https://wx.qlogo.cn/xxx",
+                    "thumb_url": "https://wx.qlogo.cn/xxx",
+                    "object_id": "14545102784038246591",
+                    "object_nonce_id": "nonce_xxx"
+                  }
+                }
+              },
+              "empty_content": {
+                "summary": "内容为空",
+                "value": {
+                  "code": 400,
+                  "msg": "content 不能为空"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

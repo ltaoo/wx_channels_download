@@ -1,0 +1,28 @@
+{
+  "get": {
+    "tags": [
+      "文件传输助手"
+    ],
+    "summary": "获取登录状态",
+    "description": "返回当前文件传输助手客户端的登录状态详情（仅本地模式可用）",
+    "responses": {
+      "200": {
+        "description": "登录状态详情",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

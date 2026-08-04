@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Database Migration – WX Channel Download</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0c0f;
+      --panel: #14171f;
+      --panel2: #1c2029;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: rgba(255, 255, 255, 0.88);
+      --muted: rgba(255, 255, 255, 0.5);
+      --green: #07c160;
+      --blue: #4da3ff;
+      --red: #ff5c5c;
+      --orange: #f0a040;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+
+    /* header */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px; padding: 0 20px;
+      border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-logo { width: 24px; height: 24px; border-radius: 5px; background: var(--green); }
+    .header-title { font-size: 14px; font-weight: 650; }
+    .header-badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      background: rgba(255,255,255,0.06); color: var(--muted);
+    }
+    .header-actions { display: flex; gap: 8px; }
+
+    .btn {
+      height: 30px; padding: 0 12px; border: 1px solid var(--border);
+      border-radius: 5px; background: var(--panel2); color: var(--text);
+      font-size: 12px; cursor: pointer; display: inline-flex;
+      align-items: center; gap: 5px; transition: background 0.15s;
+    }
+    .btn:hover { background: #2a303c; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+    .btn-primary:hover { background: #06ad56; }
+
+    /* path bar */
+    .path-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    .path-input {
+      flex: 1; height: 30px; padding: 0 10px;
+      border: 1px solid var(--border); border-radius: 5px;
+      background: var(--panel2); color: var(--text); font-size: 12px;
+      outline: none; font-family: monospace;
+    }
+    .path-input:focus { border-color: var(--green); }
+
+    /* quick dirs */
+    .quick-dirs {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 20px; background: var(--panel);
+      border-bottom: 1px solid var(--border); font-size: 11px;
+    }
+    .quick-dirs-label { color: var(--muted); }
+    .quick-dir {
+      padding: 3px 8px; border-radius: 4px; background: var(--panel2);
+      border: 1px solid var(--border); cursor: pointer; transition: background 0.15s;
+    }
+    .quick-dir:hover { background: #2a303c; }
+
+    /* layout */
+    .main { display: flex; height: calc(100vh - 52px - 44px - 34px); }
+
+    /* sidebar */
+    .sidebar {
+      width: 240px; min-width: 200px; border-right: 1px solid var(--border);
+      background: var(--panel); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      font-size: 11px; font-weight: 650; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .table-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; cursor: pointer; font-size: 13px;
+      transition: background 0.12s; border-left: 2px solid transparent;
+    }
+    .table-item:hover { background: rgba(255,255,255,0.04); }
+    .table-item.active { background: rgba(7,193,96,0.1); border-left-color: var(--green); }
+    .table-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .table-item-count {
+      font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.06);
+      padding: 1px 6px; border-radius: 3px;
+    }
+
+    /* content */
+    .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    .content-header {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--panel); min-height: 44px;
+    }
+    .content-title { font-size: 13px; font-weight: 650; }
+    .content-info { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
+    .data-wrapper { flex: 1; overflow: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+    thead { position: sticky; top: 0; z-index: 1; }
+    th {
+      background: var(--panel2); padding: 8px 12px; text-align: left;
+      font-weight: 650; font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+    tr:hover td { background: rgba(255,255,255,0.025); }
+    td.null { color: var(--muted); font-style: italic; }
+    td.number { font-variant-numeric: tabular-nums; text-align: right; }
+    .col-type { font-size: 9px; color: var(--muted); display: block; text-transform: none; font-weight: 400; margin-top: 2px; }
+
+    .pagination {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px 16px; border-top: 1px solid var(--border); background: var(--panel); font-size: 12px;
+    }
+    .pagination .btn { min-width: 32px; justify-content: center; }
+    .page-info { color: var(--muted); font-size: 12px; margin: 0 8px; }
+
+    /* empty & spinner */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; color: var(--muted); font-size: 13px; gap: 8px;
+    }
+    .empty-state-icon { font-size: 36px; opacity: 0.3; }
+    .spinner {
+      width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: var(--green); border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* toast */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      padding: 10px 20px; border-radius: 8px; font-size: 13px;
+      background: var(--panel2); border: 1px solid var(--border);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 2000;
+      animation: toastIn 0.25s ease;
+    }
+    .toast.error { border-color: var(--red); }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    /* ====== FILE PICKER DIALOG ====== */
+    .dialog-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .dialog {
+      width: 640px; max-width: 94vw; max-height: 76vh;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; display: flex; flex-direction: column;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+    }
+    .dialog-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+    }
+    .dialog-title { font-size: 14px; font-weight: 650; }
+    .dialog-close {
+      width: 26px; height: 26px; border: none; border-radius: 5px;
+      background: transparent; color: var(--muted); font-size: 16px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .dialog-close:hover { background: rgba(255,255,255,0.08); }
+
+    /* breadcrumb */
+    .dialog-breadcrumb {
+      display: flex; align-items: center; gap: 4px;
+      padding: 8px 16px; border-bottom: 1px solid var(--border);
+      font-size: 12px; overflow-x: auto;
+    }
+    .breadcrumb-btn {
+      padding: 3px 6px; border-radius: 4px; background: transparent;
+      border: none; color: var(--text); cursor: pointer; font-size: 12px;
+      white-space: nowrap;
+    }
+    .breadcrumb-btn:hover { background: rgba(255,255,255,0.08); }
+    .breadcrumb-btn.root { color: var(--blue); font-weight: 600; }
+
+    /* file list */
+    .dialog-file-list {
+      flex: 1; overflow-y: auto; padding: 4px 0;
+    }
+    .file-row {
+      display: grid; grid-template-columns: 28px 1fr 90px 130px;
+      align-items: center; gap: 8px; padding: 7px 16px;
+      cursor: pointer; font-size: 12px; transition: background 0.12s;
+    }
+    .file-row:hover { background: rgba(255,255,255,0.04); }
+    .file-row.selected { background: rgba(7,193,96,0.1); }
+    .file-icon { text-align: center; font-size: 14px; }
+    .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .file-time { text-align: right; color: var(--muted); font-size: 11px; }
+
+    .dialog-footer {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border);
+    }
+
+    /* empty file list */
+    .dialog-empty {
+      padding: 48px 16px; text-align: center; color: var(--muted); font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo"></div>
+      <span class="header-title">Database Import</span>
+      <span class="header-badge" id="db-badge">No database loaded</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btn-export-csv" disabled>Export CSV</button>
+      <button class="btn" id="btn-export-all" disabled>Export All (JSON)</button>
+    </div>
+  </header>
+
+  <!-- path bar -->
+  <div class="path-bar">
+    <input class="path-input" id="path-input" type="text" placeholder="Database file path (.db)" />
+    <button class="btn" id="btn-browse">Browse...</button>
+    <button class="btn btn-primary" id="btn-load" disabled>Load Database</button>
+  </div>
+
+  <!-- quick dirs -->
+  <div class="quick-dirs" id="quick-dirs">
+    <span class="quick-dirs-label">Quick:</span>
+  </div>
+
+  <div class="main">
+    <!-- table sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>Tables</span>
+        <span id="table-count"></span>
+      </div>
+      <div class="sidebar-list" id="table-list"></div>
+    </aside>
+
+    <!-- content -->
+    <div class="content" id="content-area">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-state-icon">&#128200;</div>
+        <div>Load a database to view its tables</div>
+      </div>
+      <div id="data-view" style="display: none; flex: 1; flex-direction: column; overflow: hidden;">
+        <div class="content-header">
+          <span class="content-title" id="view-title">Table Data</span>
+          <div class="content-info">
+            <span id="view-columns">0 columns</span>
+            <span id="view-rows">0 rows</span>
+          </div>
+        </div>
+        <div class="data-wrapper" id="data-wrapper">
+          <table id="data-table"></table>
+        </div>
+        <div class="pagination" id="pagination" style="display: none;">
+          <button class="btn" id="btn-prev" disabled>&#8249;</button>
+          <span class="page-info" id="page-info">Page 1</span>
+          <button class="btn" id="btn-next">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const $ = s => document.querySelector(s);
+      const API_BASE = "";
+
+      // state
+      let dbPath = "";
+      let tables = [];
+      let currentTable = null;
+      let currentPage = 1;
+      let totalPages = 1;
+      const pageSize = 200;
+
+      // elements
+      const pathInput = $("#path-input");
+      const btnLoad = $("#btn-load");
+      const btnBrowse = $("#btn-browse");
+      const dbBadge = $("#db-badge");
+      const tableList = $("#table-list");
+      const tableCount = $("#table-count");
+      const dataView = $("#data-view");
+      const emptyState = $("#empty-state");
+      const viewTitle = $("#view-title");
+      const viewColumns = $("#view-columns");
+      const viewRows = $("#view-rows");
+      const dataTable = $("#data-table");
+      const dataWrapper = $("#data-wrapper");
+      const pagination = $("#pagination");
+      const pageInfo = $("#page-info");
+      const quickDirs = $("#quick-dirs");
+
+      // utils
+      function toast(msg, isError) {
+        const el = document.createElement("div");
+        el.className = "toast" + (isError ? " error" : "");
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+      }
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '<span class="null">NULL</span>';
+        var s = String(str);
+        if (s.length > 500) return s.slice(0, 500).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;") + "\u2026";
+        return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+      }
+
+      function isNumberLike(val) {
+        return val !== null && val !== undefined && (typeof val === "number" || (typeof val === "string" && val !== "" && !isNaN(Number(val))));
+      }
+
+      // ---- API ----
+      async function apiLoadDB(path) {
+        const r = await fetch(API_BASE + "/api/v1/migration/load", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ db_path: path })
+        });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.msg || "Failed to load database");
+        return j.data;
+      }
+
+      async function apiLoadTable(path, table, page) {
+        const r = await fetch(API_BASE + "/api/v1/migration/table", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ db_path: path, table: table, page: page, page_size: pageSize })
+        });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.msg || "Failed to load table");
+        return j.data;
+      }
+
+      async function apiFileList(dir) {
+        const r = await fetch(API_BASE + "/api/v1/migration/file/list", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dir: dir })
+        });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.msg || "Failed to list directory");
+        return j.data;
+      }
+
+      async function apiCommonDirs() {
+        const r = await fetch(API_BASE + "/api/v1/migration/common_dirs");
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.msg);
+        return j.data.dirs || [];
+      }
+
+      // ---- load database ----
+      async function loadDatabase() {
+        var p = pathInput.value.trim();
+        if (!p) { toast("Please enter a database path", true); return; }
+        dbPath = p;
+        btnLoad.disabled = true;
+        btnLoad.textContent = "Loading...";
+        try {
+          var data = await apiLoadDB(dbPath);
+          tables = data.tables || [];
+          dbBadge.textContent = data.database || "Loaded";
+          currentTable = null;
+          currentPage = 1;
+          emptyState.style.display = "flex";
+          dataView.style.display = "none";
+          renderTableList();
+          toast("Loaded " + tables.length + " tables");
+        } catch(e) {
+          toast(e.message, true);
+        } finally {
+          btnLoad.disabled = false;
+          btnLoad.textContent = "Load Database";
+        }
+      }
+
+      function renderTableList() {
+        tableList.innerHTML = tables.map(function(t) {
+          var cls = (currentTable === t.name) ? " active" : "";
+          return '<div class="table-item' + cls + '" data-table="' + escapeHtml(t.name) + '">' +
+            '<span class="table-item-name">' + escapeHtml(t.name) + '</span>' +
+            '<span class="table-item-count">' + t.rows.toLocaleString() + '</span></div>';
+        }).join("");
+        tableCount.textContent = tables.length + " tables";
+
+        tableList.querySelectorAll(".table-item").forEach(function(el) {
+          el.addEventListener("click", function() { selectTable(el.dataset.table); });
+        });
+      }
+
+      // ---- table data ----
+      function selectTable(name) {
+        currentTable = name;
+        currentPage = 1;
+        renderTableList();
+        renderTableData();
+      }
+
+      async function renderTableData() {
+        if (!dbPath || !currentTable) return;
+        try {
+          var data = await apiLoadTable(dbPath, currentTable, currentPage);
+          totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+
+          // columns
+          var cols = data.columns || [];
+          var rows = data.rows || [];
+
+          dataTable.innerHTML =
+            "<thead><tr>" +
+            cols.map(function(c) { return '<th>' + escapeHtml(c.name) + '<span class="col-type">' + escapeHtml(c.type||"") + '</span></th>'; }).join("") +
+            "</tr></thead>" +
+            "<tbody>" +
+            rows.map(function(row) {
+              return "<tr>" + cols.map(function(c) {
+                var v = row[c.name];
+                var cls = "";
+                if (v === null || v === undefined) cls = "null";
+                else if (isNumberLike(v)) cls = "number";
+                return '<td class="' + cls + '">' + escapeHtml(v) + "</td>";
+              }).join("") + "</tr>";
+            }).join("") +
+            "</tbody>";
+
+          viewTitle.textContent = currentTable;
+          viewColumns.textContent = cols.length + " columns";
+          viewRows.textContent = data.total.toLocaleString() + " rows";
+
+          // pagination
+          if (data.total > pageSize) {
+            pagination.style.display = "flex";
+            pageInfo.textContent = "Page " + currentPage + " / " + totalPages;
+            $("#btn-prev").disabled = currentPage <= 1;
+            $("#btn-next").disabled = currentPage >= totalPages;
+          } else {
+            pagination.style.display = "none";
+          }
+
+          emptyState.style.display = "none";
+          dataView.style.display = "flex";
+          dataWrapper.scrollTop = 0;
+        } catch(e) {
+          toast(e.message, true);
+        }
+      }
+
+      function goToPage(page) {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        renderTableData();
+      }
+
+      // ---- file picker dialog ----
+      let pickerResolve = null;
+      let pickerCurrentDir = "";
+
+      function showFilePicker() {
+        return new Promise(function(resolve) {
+          pickerResolve = resolve;
+          pickerCurrentDir = pathInput.value.trim() || "/";
+          renderFilePicker();
+        });
+      }
+
+      function renderFilePicker() {
+        // remove old dialog
+        var old = document.querySelector(".dialog-overlay");
+        if (old) old.remove();
+
+        var overlay = document.createElement("div");
+        overlay.className = "dialog-overlay";
+        overlay.innerHTML =
+          '<div class="dialog">' +
+          '<div class="dialog-header">' +
+          '<span class="dialog-title">Select Database File</span>' +
+          '<button class="dialog-close">&times;</button>' +
+          '</div>' +
+          '<div class="dialog-breadcrumb" id="picker-breadcrumb"></div>' +
+          '<div class="dialog-file-list" id="picker-file-list">' +
+          '<div class="dialog-empty"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading...</div>' +
+          '</div>' +
+          '<div class="dialog-footer">' +
+          '<button class="btn" id="picker-cancel">Cancel</button>' +
+          '</div>' +
+          '</div>';
+
+        document.body.appendChild(overlay);
+
+        // events
+        overlay.querySelector(".dialog-close").onclick = closePicker;
+        overlay.querySelector("#picker-cancel").onclick = closePicker;
+        overlay.addEventListener("click", function(e) {
+          if (e.target === overlay) closePicker();
+        });
+
+        loadPickerDir(pickerCurrentDir);
+      }
+
+      function closePicker() {
+        var overlay = document.querySelector(".dialog-overlay");
+        if (overlay) overlay.remove();
+        if (pickerResolve) { pickerResolve(null); pickerResolve = null; }
+        document.removeEventListener("keydown", onPickerKey);
+      }
+
+      function onPickerKey(e) {
+        if (e.key === "Escape") { closePicker(); return; }
+        if (e.key === "Backspace" && document.querySelector(".dialog-overlay")) {
+          var parent = filepathDir(pickerCurrentDir);
+          if (parent !== pickerCurrentDir) {
+            pickerCurrentDir = parent;
+            loadPickerDir(pickerCurrentDir);
+          }
+        }
+      }
+
+      function filepathDir(p) {
+        var s = p.replace(/\/+$/, "");
+        var i = s.lastIndexOf("/");
+        return i > 0 ? s.substring(0, i) : "/";
+      }
+
+      async function loadPickerDir(dir) {
+        pickerCurrentDir = dir;
+
+        var breadcrumb = document.querySelector("#picker-breadcrumb");
+        var fileList = document.querySelector("#picker-file-list");
+        if (!breadcrumb || !fileList) return;
+
+        // breadcrumb
+        var parts = dir.replace(/\/+$/, "").split("/").filter(Boolean);
+        var crumbs = '<button class="breadcrumb-btn root" data-dir="/">/</button>';
+        var acc = "";
+        parts.forEach(function(p) {
+          acc += "/" + p;
+          crumbs += '<span style="color:var(--muted)">/</span>';
+          crumbs += '<button class="breadcrumb-btn" data-dir="' + acc + '">' + escapeHtml(p) + '</button>';
+        });
+        if (dir === "/") crumbs = '<button class="breadcrumb-btn root" data-dir="/">/</button>';
+        breadcrumb.innerHTML = crumbs;
+
+        breadcrumb.querySelectorAll(".breadcrumb-btn").forEach(function(btn) {
+          btn.onclick = function() {
+            var d = btn.dataset.dir;
+            if (d) loadPickerDir(d);
+          };
+        });
+
+        fileList.innerHTML = '<div class="dialog-empty"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading...</div>';
+
+        try {
+          var data = await apiFileList(dir);
+          renderFileList(data.files || [], data);
+        } catch(e) {
+          fileList.innerHTML = '<div class="dialog-empty">Error: ' + escapeHtml(e.message) + '</div>';
+        }
+      }
+
+      function renderFileList(files, data) {
+        var fileList = document.querySelector("#picker-file-list");
+        if (!fileList) return;
+
+        if (files.length === 0) {
+          fileList.innerHTML = '<div class="dialog-empty">Empty directory</div>';
+          return;
+        }
+
+        var selectedPath = null;
+
+        var html = '';
+        files.forEach(function(f) {
+          var icon = f.isDir ? '&#128193;' : '&#128196;';
+          var size = f.isDir ? "" : formatSize(f.size);
+          var name = f.name;
+          html += '<div class="file-row" data-path="' + escapeHtml(f.path) + '" data-is-dir="' + f.isDir + '">' +
+            '<span class="file-icon">' + icon + '</span>' +
+            '<span class="file-name">' + escapeHtml(name) + '</span>' +
+            '<span class="file-size">' + escapeHtml(size) + '</span>' +
+            '<span class="file-time">' + escapeHtml(f.modTime || "") + '</span>' +
+            '</div>';
+        });
+        fileList.innerHTML = html;
+
+        fileList.querySelectorAll(".file-row").forEach(function(row) {
+          row.addEventListener("click", function() {
+            fileList.querySelectorAll(".file-row.selected").forEach(function(r) { r.classList.remove("selected"); });
+            row.classList.add("selected");
+            selectedPath = row.dataset.path;
+          });
+
+          row.addEventListener("dblclick", function() {
+            if (row.dataset.isDir === "true") {
+              loadPickerDir(row.dataset.path);
+            } else {
+              // select and close
+              if (pickerResolve) {
+                pickerResolve(row.dataset.path);
+                pickerResolve = null;
+              }
+              document.removeEventListener("keydown", onPickerKey);
+              var overlay = document.querySelector(".dialog-overlay");
+              if (overlay) overlay.remove();
+            }
+          });
+        });
+
+        // keyboard
+        document.addEventListener("keydown", onPickerKey);
+      }
+
+      function formatSize(bytes) {
+        if (!bytes) return "";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1048576).toFixed(1) + " MB";
+      }
+
+      // ---- export ----
+      async function exportCurrentTableCSV() {
+        if (!dbPath || !currentTable) return;
+        try {
+          var data = await apiLoadTable(dbPath, currentTable, 1);
+          var total = data.total;
+          var cols = data.columns || [];
+          var allRows = data.rows || [];
+
+          // fetch remaining pages
+          var totalPages2 = Math.ceil(total / pageSize);
+          for (var p = 2; p <= totalPages2; p++) {
+            var pageData = await apiLoadTable(dbPath, currentTable, p);
+            allRows = allRows.concat(pageData.rows || []);
+          }
+
+          var header = cols.map(function(c) { return '"' + String(c.name).replace(/"/g, '""') + '"'; }).join(",");
+          var body = allRows.map(function(r) {
+            return cols.map(function(c) {
+              var v = r[c.name];
+              if (v === null || v === undefined) return "";
+              return '"' + String(v).replace(/"/g, '""') + '"';
+            }).join(",");
+          }).join("\n");
+          var blob = new Blob([header + "\n" + body], { type: "text/csv; charset=utf-8" });
+          downloadBlob(blob, currentTable + ".csv");
+          toast("Exported " + allRows.length + " rows");
+        } catch(e) {
+          toast(e.message, true);
+        }
+      }
+
+      async function exportAllJSON() {
+        if (!dbPath || tables.length === 0) return;
+        try {
+          var result = {};
+          for (var i = 0; i < tables.length; i++) {
+            var t = tables[i];
+            var data = await apiLoadTable(dbPath, t.name, 1);
+            var rows = data.rows || [];
+            var totalPages2 = Math.ceil(t.rows / pageSize);
+            for (var p = 2; p <= totalPages2; p++) {
+              var pageData = await apiLoadTable(dbPath, t.name, p);
+              rows = rows.concat(pageData.rows || []);
+            }
+            result[t.name] = rows;
+          }
+          var blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+          downloadBlob(blob, "gopeed_export.json");
+          toast("Exported " + tables.length + " tables");
+        } catch(e) {
+          toast(e.message, true);
+        }
+      }
+
+      function downloadBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ---- init ----
+      async function loadCommonDirs() {
+        try {
+          var dirs = await apiCommonDirs();
+          quickDirs.innerHTML = '<span class="quick-dirs-label">Quick:</span>' +
+            dirs.filter(function(d) { return d; }).map(function(d) {
+              var label = d.split("/").pop() || d;
+              return '<span class="quick-dir" data-dir="' + escapeHtml(d) + '">' + escapeHtml(label) + '</span>';
+            }).join("");
+
+          quickDirs.querySelectorAll(".quick-dir").forEach(function(el) {
+            el.addEventListener("click", function() {
+              pathInput.value = el.dataset.dir;
+              btnLoad.disabled = false;
+            });
+          });
+        } catch(e) { /* ignore */ }
+      }
+
+      // events
+      pathInput.addEventListener("input", function() {
+        btnLoad.disabled = !pathInput.value.trim();
+      });
+
+      btnLoad.addEventListener("click", loadDatabase);
+
+      btnBrowse.addEventListener("click", async function() {
+        var path = await showFilePicker();
+        if (path) {
+          pathInput.value = path;
+          btnLoad.disabled = false;
+        }
+      });
+
+      $("#btn-prev").addEventListener("click", function() { goToPage(currentPage - 1); });
+      $("#btn-next").addEventListener("click", function() { goToPage(currentPage + 1); });
+      $("#btn-export-csv").addEventListener("click", exportCurrentTableCSV);
+      $("#btn-export-all").addEventListener("click", exportAllJSON);
+
+      document.addEventListener("keydown", function(e) {
+        if (!currentTable || document.querySelector(".dialog-overlay")) return;
+        if (e.key === "ArrowLeft") goToPage(currentPage - 1);
+        if (e.key === "ArrowRight") goToPage(currentPage + 1);
+      });
+
+      // after data loads, enable export buttons
+      var observer = new MutationObserver(function() {
+        var hasData = currentTable && tables.length > 0;
+        $("#btn-export-csv").disabled = !hasData;
+        $("#btn-export-all").disabled = tables.length === 0;
+      });
+      observer.observe(document.querySelector(".content"), { childList: true, subtree: true });
+
+      loadCommonDirs();
+    })();
+  </script>
+</body>
+
+</html>

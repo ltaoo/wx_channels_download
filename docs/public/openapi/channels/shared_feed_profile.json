@@ -1,0 +1,46 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "通过分享链接获取视频详情",
+    "description": "通过视频号分享链接解析视频详情信息",
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "视频号分享链接 URL"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "视频详情",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {}
+                }
+              },
+              "missing_url": {
+                "summary": "缺少 url",
+                "value": {
+                  "code": 400,
+                  "msg": "missing url"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
