@@ -18,7 +18,7 @@ func TestContentServiceListContentsPaginatesAndLoadsAccounts(t *testing.T) {
 		&model.Content{},
 		&model.Account{},
 		&model.ContentAccount{},
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 	))
 
 	publishOld := int64(1000)
@@ -88,7 +88,7 @@ func TestContentServiceListContentsPaginatesAndLoadsAccounts(t *testing.T) {
 		CreatedAt: 1002,
 	}).Error)
 	oldContentID := "wxchannels:old-video"
-	require.NoError(t, db.Create(&model.DownloadTaskV1{
+	require.NoError(t, db.Create(&model.DownloadTask{
 		Id:           101,
 		ContentId:    &oldContentID,
 		RootTaskID:   101,
@@ -103,7 +103,7 @@ func TestContentServiceListContentsPaginatesAndLoadsAccounts(t *testing.T) {
 		Timestamps:   model.Timestamps{CreatedAt: 1100, UpdatedAt: 1200},
 	}).Error)
 	deletedAt := int64(1300)
-	require.NoError(t, db.Create(&model.DownloadTaskV1{
+	require.NoError(t, db.Create(&model.DownloadTask{
 		Id:         102,
 		ContentId:  &oldContentID,
 		RootTaskID: 102,

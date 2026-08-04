@@ -21,7 +21,7 @@ func TestFilenameProcessorSanitizeFilename(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "con.txt_", name)
 
-	name, err = processor.SanitizeFilename(strings.Repeat("你", 100))
+	name, err = processor.SanitizeFilename(strings.Repeat("é", 100))
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(name), 235)
 	assert.True(t, utf8.ValidString(name))

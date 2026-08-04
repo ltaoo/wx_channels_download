@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS `download_connection`;
 DROP TABLE IF EXISTS `download_segment`;
 DROP TABLE IF EXISTS `download_endpoint`;
 DROP TABLE IF EXISTS `download_resource`;
-DROP TABLE IF EXISTS `download_task_v1`;
+DROP TABLE IF EXISTS `download_task`;
 
 DROP TABLE IF EXISTS `platform_workflow_run`;
 DROP TABLE IF EXISTS `browse_history`;
@@ -22,7 +22,6 @@ DROP TABLE IF EXISTS `chat_member`;
 DROP TABLE IF EXISTS `chat_session`;
 DROP TABLE IF EXISTS `download_task_event`;
 DROP TABLE IF EXISTS `download_task_piece`;
-DROP TABLE IF EXISTS `download_task`;
 DROP TABLE IF EXISTS `account`;
 DROP TABLE IF EXISTS `influencer`;
 DROP TABLE IF EXISTS `auth_credential`;

@@ -19,12 +19,6 @@ type handler struct{}
 
 func (h *handler) PlatformID() string { return platformID }
 
-// DownloadConfig holds 69shuba download configuration.
-type DownloadConfig struct {
-	SavePath string `json:"save_path"`
-	Filename string `json:"filename"`
-}
-
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
 	// Use mock data for frontend testing
 	novel := MockNovel()
@@ -36,13 +30,13 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	now := util.NowMillis()
 	content := &model.Content{
-		Id:          platformID + ":" + novel.ProfileURL,
-		PlatformId:  platformID,
-		ExternalId:  novel.ProfileURL,
-		Type: "novel",
-		Title:       novel.Name,
-		CoverURL:    novel.CoverURL,
-		URL:         novel.ProfileURL,
+		Id:         platformID + ":" + novel.ProfileURL,
+		PlatformId: platformID,
+		ExternalId: novel.ProfileURL,
+		Type:       "novel",
+		Title:      novel.Name,
+		CoverURL:   novel.CoverURL,
+		URL:        novel.ProfileURL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -70,7 +64,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 	info.Account = account
 	info.Content = content
-	info.Task.ContentId = &content.Id
+	contentID := content.Id
+	info.Task.ContentId = &contentID
 
 	// Build volumes and chapters
 	info.NovelVolumes = make([]*model.ContentNovelVolume, 0, len(novel.Volumes))

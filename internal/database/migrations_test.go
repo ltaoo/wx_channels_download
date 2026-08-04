@@ -11,7 +11,7 @@ import (
 	"wx_channel/internal/database/model"
 )
 
-func TestInitialMigrationCreatesDownloadTaskV1PlatformColumns(t *testing.T) {
+func TestInitialMigrationCreatesDownloadTaskPlatformColumns(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "migration.db")
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -27,7 +27,7 @@ func TestInitialMigrationCreatesDownloadTaskV1PlatformColumns(t *testing.T) {
 	}
 
 	contentID := "wxchannels:content-1"
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		ContentId:  &contentID,
 		Name:       "测试视频",
 		PlatformId: "wxchannels",
@@ -38,7 +38,7 @@ func TestInitialMigrationCreatesDownloadTaskV1PlatformColumns(t *testing.T) {
 		t.Fatalf("create download task: %v", err)
 	}
 
-	var persisted model.DownloadTaskV1
+	var persisted model.DownloadTask
 	if err := db.First(&persisted, task.Id).Error; err != nil {
 		t.Fatalf("load download task: %v", err)
 	}
@@ -71,5 +71,5 @@ func TestInitialMigrationCreatesDownloadTaskV1PlatformColumns(t *testing.T) {
 	if persistedVideo.PlayTimes != 12 {
 		t.Fatalf("play times = %d, want %d", persistedVideo.PlayTimes, int64(12))
 	}
-}
 
+}

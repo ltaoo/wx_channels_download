@@ -33,16 +33,8 @@ type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
-// DownloadConfig holds WeChat Official Account download configuration.
-type DownloadConfig struct {
-	Filename  string `json:"filename"`
-	Suffix    string `json:"suffix"`
-	Overwrite bool   `json:"overwrite"`
-	Duplicate bool   `json:"duplicate"`
-}
-
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
-	var config DownloadConfig
+	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
@@ -66,7 +58,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		return nil, fmt.Errorf("无法生成文章唯一标识")
 	}
 
-	title := config.Filename
+	title, _ := config["filename"].(string)
 	if title == "" {
 		title = strings.TrimSpace(data.Title)
 	}
@@ -82,6 +74,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	})
 
 	extraJSON := buildExtraJSON(externalID, title, strings.TrimSpace(data.NickName), articlePublishTimeVal(&data))
+	contentID := content.Id
 
 	// Parse images based on content type
 	var imageResources []*types.ResourceInfo
@@ -92,12 +85,12 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		if !ok {
 			return nil, fmt.Errorf("图集内容缺少图集详情")
 		}
-		imageResources = parseAlbumImages(albumExt.Images, externalID, extraJSON)
+		imageResources = parseAlbumImages(albumExt.Images, contentID, externalID, extraJSON)
 		albumImages = albumExt.Images
 		ext = albumExt.Album
 	} else {
 		// Article: parse images from ContentNoencode HTML
-		imageResources = parseContentImages(data.ContentNoencode, externalID, extraJSON)
+		imageResources = parseContentImages(data.ContentNoencode, contentID, externalID, extraJSON)
 	}
 
 	// Cover image resource (placed after content images in merge order)
@@ -108,6 +101,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 	coverMergeOrder := 100 + len(imageResources)
 	coverResource := model.DownloadResource{
+		ContentId:  &contentID,
 		Name:       title,
 		Kind:       "image",
 		UniqueID:   externalID + "_cover",
@@ -124,6 +118,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	// HTML content resource (content_noencode saved as .html file)
 	htmlName := title
 	htmlResource := model.DownloadResource{
+		ContentId:  &contentID,
 		Name:       htmlName,
 		Kind:       "html",
 		UniqueID:   externalID + "_html",
@@ -151,10 +146,10 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	})
 
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     buildDownloadTaskUniqueID(externalID, config.Suffix),
+			UniqueID:     buildDownloadTaskUniqueID(externalID, configString(config, "suffix")),
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
 			SourceURL:    sourceURL,
@@ -190,7 +185,7 @@ func contentBizType(data *scraper.ArticleCgiDataNew) int {
 }
 
 // parseContentImages parses ContentNoencode HTML and creates a DownloadResource for each inline image.
-func parseContentImages(contentHTML, externalID, extraJSON string) []*types.ResourceInfo {
+func parseContentImages(contentHTML, contentID, externalID, extraJSON string) []*types.ResourceInfo {
 	if contentHTML == "" {
 		return nil
 	}
@@ -217,6 +212,7 @@ func parseContentImages(contentHTML, externalID, extraJSON string) []*types.Reso
 		filename := hex.EncodeToString(hash[:])
 
 		res := model.DownloadResource{
+			ContentId:  &contentID,
 			Name:       filename,
 			Kind:       "image",
 			UniqueID:   fmt.Sprintf("%s_img_%d", externalID, i),
@@ -239,7 +235,7 @@ func parseContentImages(contentHTML, externalID, extraJSON string) []*types.Reso
 }
 
 // parseAlbumImages creates a DownloadResource for each image in the album.
-func parseAlbumImages(images []*model.ContentImage, externalID, extraJSON string) []*types.ResourceInfo {
+func parseAlbumImages(images []*model.ContentImage, contentID, externalID, extraJSON string) []*types.ResourceInfo {
 	if len(images) == 0 {
 		return nil
 	}
@@ -257,6 +253,7 @@ func parseAlbumImages(images []*model.ContentImage, externalID, extraJSON string
 		filename := hex.EncodeToString(hash[:])
 
 		res := model.DownloadResource{
+			ContentId:  &contentID,
 			Name:       filename,
 			Kind:       "image",
 			UniqueID:   fmt.Sprintf("%s_album_%d", externalID, i),
@@ -321,19 +318,15 @@ func buildExtraJSON(id, title, author string, createdAt int64) string {
 }
 
 // buildConfigJSON returns a map containing only the non-empty config fields.
-func buildConfigJSON(config DownloadConfig) map[string]any {
-	m := make(map[string]any)
-	if config.Filename != "" {
-		m["filename"] = config.Filename
-	}
-	if config.Suffix != "" {
-		m["suffix"] = config.Suffix
-	}
-	if config.Overwrite {
-		m["overwrite"] = true
-	}
-	if config.Duplicate {
-		m["duplicate"] = true
+func buildConfigJSON(config map[string]any) map[string]any {
+	m := make(map[string]any, len(config))
+	for key, value := range config {
+		m[key] = value
 	}
 	return m
+}
+
+func configString(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return value
 }

@@ -21,18 +21,6 @@ func init() {
 	registry.Register(&handler{})
 }
 
-// DownloadConfig holds Douyin download configuration.
-type DownloadConfig struct {
-	SavePath      string `json:"save_path"`
-	Filename      string `json:"filename"`
-	Suffix        string `json:"suffix"`
-	DownloadCover bool   `json:"download_cover"`
-	Overwrite     bool   `json:"overwrite"`
-	Duplicate     bool   `json:"duplicate"`
-	ConvertMP3    bool   `json:"convert_mp3"`
-	UploadCloud   bool   `json:"upload_cloud"`
-}
-
 type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -42,7 +30,7 @@ type douyinContentJSON struct {
 }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
-	var config DownloadConfig
+	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
@@ -72,14 +60,14 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	// Build Content
 	content := &model.Content{
-		Id:          BuildContentID(videoInfo.VideoID),
-		PlatformId:  platformIDDouyin,
-		ExternalId:  videoInfo.VideoID,
-		Type: "video",
-		Title:       videoInfo.Title,
-		URL:         videoInfo.URL,
-		CoverURL:    videoInfo.CoverURL,
-		SourceURL:   input.URL,
+		Id:         BuildContentID(videoInfo.VideoID),
+		PlatformId: platformIDDouyin,
+		ExternalId: videoInfo.VideoID,
+		Type:       "video",
+		Title:      videoInfo.Title,
+		URL:        videoInfo.URL,
+		CoverURL:   videoInfo.CoverURL,
+		SourceURL:  input.URL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -100,12 +88,12 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Build download task
-	title := config.Filename
+	title, _ := config["filename"].(string)
 	if title == "" {
 		title = videoInfo.Title
 	}
 
-	savePath := config.SavePath
+	savePath, _ := config["save_path"].(string)
 	if savePath == "" {
 		savePath = "/downloads/douyin"
 	}
@@ -120,16 +108,19 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	})
 
 	extraJSON := buildExtraJSON(videoInfo.VideoID, videoInfo.Title)
+	contentID := content.Id
 
 	// Cover resource
 	var resources []*types.ResourceInfo
 
-	if config.DownloadCover && videoInfo.CoverURL != "" {
+	downloadCover, _ := config["download_cover"].(bool)
+	if downloadCover && videoInfo.CoverURL != "" {
 		coverResource := model.DownloadResource{
-			Name:     title,
-			Kind:     "image",
-			UniqueID: videoInfo.VideoID + "_cover",
-			Extra:    extraJSON,
+			ContentId: &contentID,
+			Name:      title,
+			Kind:      "image",
+			UniqueID:  videoInfo.VideoID + "_cover",
+			Extra:     extraJSON,
 		}
 		coverEndpoint := model.DownloadEndpoint{
 			Protocol: "https",
@@ -144,10 +135,11 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	// Video resource
 	videoResource := model.DownloadResource{
-		Name:     title + ".mp4",
-		Kind:     "video",
-		UniqueID: videoInfo.VideoID,
-		Extra:    extraJSON,
+		ContentId: &contentID,
+		Name:      title + ".mp4",
+		Kind:      "video",
+		UniqueID:  videoInfo.VideoID,
+		Extra:     extraJSON,
 	}
 	videoEndpoint := model.DownloadEndpoint{
 		Protocol: "https",
@@ -160,7 +152,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	})
 
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
 			UniqueID:     videoInfo.VideoID,
@@ -200,28 +192,10 @@ func buildExtraJSON(id, title string) string {
 }
 
 // buildConfigJSON returns a map containing only the non-empty config fields.
-func buildConfigJSON(config DownloadConfig) map[string]any {
-	m := make(map[string]any)
-	if config.Filename != "" {
-		m["filename"] = config.Filename
-	}
-	if config.Suffix != "" {
-		m["suffix"] = config.Suffix
-	}
-	if config.DownloadCover {
-		m["download_cover"] = true
-	}
-	if config.Overwrite {
-		m["overwrite"] = true
-	}
-	if config.Duplicate {
-		m["duplicate"] = true
-	}
-	if config.ConvertMP3 {
-		m["convert_mp3"] = true
-	}
-	if config.UploadCloud {
-		m["upload_cloud"] = true
+func buildConfigJSON(config map[string]any) map[string]any {
+	m := make(map[string]any, len(config))
+	for key, value := range config {
+		m[key] = value
 	}
 	return m
 }

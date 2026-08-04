@@ -1,145 +1,161 @@
-多协议下载器设计文档（V1）
+Multi-Protocol Downloader Design (V1)
 
-1. 设计目标
+1. Design Goals
 
-构建一个统一下载框架，支持：
+Build a unified download framework that supports:
 
-* 多协议下载
-* 多资源下载
-* 文件夹下载
-* 直播流录制
-* 断点续传
-* 多线程下载
-* 插件化协议扩展
+* Multi-protocol downloads
+* Multi-resource downloads
+* Directory downloads
+* Live-stream recording
+* Resumable downloads
+* Multi-threaded downloads
+* Pluggable protocol extensions
 
-设计原则：
+Design principles:
 
-* 协议无关（Protocol Agnostic）
-* 资源统一（Resource Oriented）
-* 任务统一（Task Driven）
-* 插件扩展（Plugin Architecture）
+* Protocol agnostic
+* Resource oriented
+* Task driven
+* Plugin architecture
 
-⸻
+---
 
-2. 核心模型
+2. Core Model
 
-整个系统在 Resource 级别区分两种类型。
+The system distinguishes two types at the Resource level.
 
-Resource Type	描述	是否有限
-File	单个文件	✅
-Stream	数据流（直播）	❌
+| Resource Type | Description | Finite |
+| --- | --- | --- |
+| File | A single file | Yes |
+| Stream | A data stream (live) | No |
 
-例如：
+Examples:
 
-HTTP 下载
-        ↓
-      File
+```text
+HTTP download
+      ↓
+    File
+
 HLS Live
-        ↓
-     Stream
+      ↓
+   Stream
+
 RTMP
-        ↓
-     Stream
+      ↓
+   Stream
+```
 
-Task 是纯容器，可以混合 File 和 Stream 资源。
-协议不是资源类型。
+A Task is a pure container and may contain both File and Stream resources.
+A protocol is not a resource type.
 
-⸻
+---
 
-3. 下载任务
+3. Download Tasks
 
-Task 表示用户的一次下载行为。
+A Task represents one download operation requested by the user.
 
-例如：
+Examples:
 
-下载 Ubuntu ISO
+```text
+Download Ubuntu ISO
 Task
 
-例如：
-
-录制 Twitch
+Record Twitch
 Task
+```
 
-Task 不关心协议，也不关心资源类型。
+A Task is independent of both protocols and resource types.
 
-Task 只关心：
+A Task is concerned only with:
 
-* 包含哪些资源（Resource）
-* 保存根目录
-* 当前状态
+* Which resources it contains
+* The root output directory
+* Its current status
 
-⸻
+---
 
-4. 资源(Resource)
+4. Resources
 
-一个 Task 可以拥有多个 Resource。
+A Task may own multiple Resources.
 
-例如：
+Example:
 
+```text
 Task
     │
     ├── Video
     ├── Audio
     ├── Subtitle
     └── Cover
+```
 
-对于普通下载：
+For a regular download:
 
+```text
 Task
     │
     └── File
+```
 
-对于 BT：
+For BitTorrent:
 
+```text
 Task
     │
     ├── file1.iso
     ├── file2.pdf
     └── file3.zip
+```
 
-⸻
+---
 
-5. Endpoint（下载源）
+5. Endpoints (Download Sources)
 
-每个 Resource 可以拥有多个下载源。
+Each Resource may have multiple download sources.
 
-例如：
+Examples:
 
+```text
 Video
 HTTP
 FTP
 S3
+```
 
-或者：
+Or:
 
+```text
 Ubuntu.iso
 HTTP Mirror
 FTP Mirror
 BT
 S3
+```
 
-Endpoint 用于：
+Endpoints provide:
 
-* 镜像
-* 容灾
-* 自动测速
-* 自动切换
+* Mirrors
+* Failover
+* Automatic speed testing
+* Automatic switching
 
-而不是多个协议同时下载。
+They do not download through multiple protocols simultaneously.
 
-⸻
+---
 
-6. 协议（Protocol）
+6. Protocols
 
-协议负责：
+A protocol is responsible for:
 
-* 如何连接
-* 如何认证
-* 如何读取数据
-* 如何获取资源信息
+* Establishing connections
+* Authentication
+* Reading data
+* Obtaining resource information
 
-例如：
+Examples:
 
+```text
 HTTP
 HTTPS
 FTP
@@ -154,9 +170,11 @@ RTMP
 RTSP
 SRT
 WebRTC
+```
 
-协议全部实现统一接口。
+Every protocol implements the same interface:
 
+```text
 Prepare()
 Start()
 Pause()
@@ -164,13 +182,15 @@ Resume()
 Cancel()
 Close()
 Progress()
+```
 
-因此新增协议无需修改业务代码。
+Adding a protocol therefore requires no changes to business logic.
 
-⸻
+---
 
-7. 下载流程
+7. Download Flow
 
+```text
 Task
 ↓
 Scheduler
@@ -186,21 +206,23 @@ Reader
 Writer
 ↓
 Disk
+```
 
-协议负责读取。
+The protocol reads data.
 
-Writer 负责写文件。
+The Writer writes files.
 
-Scheduler 负责调度。
+The Scheduler coordinates execution.
 
-⸻
+---
 
-8. 数据库设计
+8. Database Design
 
-download_task
+### `download_task`
 
-下载任务（纯容器）。
+A download task (pure container).
 
+```text
 id
 name
 status
@@ -209,17 +231,17 @@ create_time
 start_time
 finish_time
 config_json
+```
 
-Note：`resource_type` 和直播字段（`stream_url`、`record_start`、`record_end`、`duration`、
-`rotate_minutes`、`rotate_size`、`is_live`）已下沉到 `download_resource`。
-Task 的 `save_path` 始终是输出根目录，不再是完整文件路径。
+Note: `resource_type` and the live-stream fields (`stream_url`, `record_start`, `record_end`, `duration`,
+`rotate_minutes`, and `rotate_size`) have moved to `download_resource`.
+A Task's `save_path` is always the output root directory, never a complete file path.
 
-⸻
+### `download_resource`
 
-download_resource
+A resource within a task.
 
-任务中的资源。
-
+```text
 id
 task_id
 name
@@ -236,29 +258,32 @@ record_end
 duration
 rotate_minutes
 rotate_size
-is_live
 start_time
 finish_time
+```
 
-resource_type
+`resource_type` values:
 
+```text
 file
 stream
+```
 
-kind
+`kind` values:
 
+```text
 file
 video
 audio
 subtitle
 cover
+```
 
-⸻
+### `download_endpoint`
 
-download_endpoint
+A resource's download source.
 
-资源下载源。
-
+```text
 id
 resource_id
 protocol
@@ -268,21 +293,23 @@ enabled
 headers
 cookies
 status
+```
 
-例如：
+Example:
 
+```text
 Ubuntu.iso
 HTTP
 FTP
 S3
 BT
+```
 
-⸻
+### `download_segment`
 
-download_segment
+A unified segment.
 
-统一分片。
-
+```text
 id
 resource_id
 index
@@ -293,25 +320,24 @@ size
 downloaded
 status
 retry
+```
 
-统一表示：
+It provides one representation for:
 
+```text
 HTTP Range
-
 HLS TS
-
 DASH Chunk
-
 BT Piece
+```
 
-全部统一。
+All segment types use the same model.
 
-⸻
+### `download_connection`
 
-download_connection
+Connection state.
 
-连接状态。
-
+```text
 id
 endpoint_id
 worker_id
@@ -321,29 +347,31 @@ speed
 bytes
 status
 last_active
+```
 
-用于：
+Used for:
 
-* 多线程
-* 多连接
-* CDN
+* Multiple threads
+* Multiple connections
+* CDN access
 
-⸻
+### `download_log`
 
-download_log
+Logs.
 
-日志。
-
+```text
 id
 task_id
 level
 message
 create_time
+```
 
-⸻
+---
 
-9. 状态机
+9. State Machine
 
+```text
 WAITING
 ↓
 PREPARING
@@ -355,20 +383,24 @@ PAUSED
 MERGING
 ↓
 FINISHED
+```
 
-异常：
+Exceptional terminal states:
 
+```text
 FAILED
 CANCELLED
+```
 
-直播没有 MERGING 也可以直接 FINISHED。
+A live stream may proceed directly to `FINISHED` without entering `MERGING`.
 
-⸻
+---
 
-10. 插件架构
+10. Plugin Architecture
 
-所有协议实现统一接口。
+Every protocol implements the same interface.
 
+```text
 ProtocolDriver
 Prepare()
 Start()
@@ -377,9 +409,11 @@ Resume()
 Cancel()
 Close()
 Progress()
+```
 
-例如：
+Examples:
 
+```text
 HttpDriver
 FtpDriver
 S3Driver
@@ -388,13 +422,15 @@ HlsDriver
 DashDriver
 RtmpDriver
 RtspDriver
+```
 
-调度器完全不知道协议细节。
+The Scheduler has no knowledge of protocol-specific details.
 
-⸻
+---
 
-11. 整体架构
+11. Overall Architecture
 
+```text
                   Download Task
                         │
         ┌───────────────┴───────────────┐
@@ -408,20 +444,21 @@ Endpoint1 Endpoint2          Endpoint1 Endpoint2
  HTTP      FTP                 HLS         RTMP
    │         │                    │           │
    └─────────┴────────────┬───────┴───────────┘
-                           │
-                    Scheduler（调度器）
-                           │
-                     Reader / Writer
-                           │
-                         Storage
+                         │
+                     Scheduler
+                         │
+                   Reader / Writer
+                         │
+                       Storage
+```
 
-12. 设计特点
+12. Design Characteristics
 
-* 资源与协议解耦：协议仅负责获取数据，任务围绕资源组织，新增协议无需修改任务模型。
-* 统一资源抽象：无论是单文件、文件集合还是直播流，都通过统一的 Task → Resource → Endpoint 模型管理。
-* 插件化扩展：新增协议只需实现统一驱动接口，调度器和数据库无需调整。
-* 支持镜像与容灾：同一 Resource 可配置多个 Endpoint，实现自动切换、优先级和镜像源管理。
-* 统一分片模型：HTTP Range、HLS TS、DASH Chunk、BT Piece 等统一抽象为 Segment，便于断点续传、重试和并发下载。
-* 易于扩展：后续可增加限速、任务队列、计划下载、云存储上传、媒体转码等能力，而无需重构核心模型。
+* Resource/protocol separation: protocols only retrieve data, while tasks are organized around resources. Adding a protocol does not require changing the task model.
+* Unified resource abstraction: single files, file collections, and live streams all use the same Task → Resource → Endpoint model.
+* Pluggable extensions: adding a protocol requires only an implementation of the common driver interface; the Scheduler and database remain unchanged.
+* Mirror and failover support: one Resource may configure multiple Endpoints for automatic switching, priorities, and mirror management.
+* Unified segment model: HTTP Range, HLS TS, DASH Chunk, and BT Piece data are all represented as Segments, simplifying resume, retry, and concurrent download behavior.
+* Extensibility: rate limiting, task queues, scheduled downloads, cloud-storage uploads, and media transcoding can be added later without restructuring the core model.
 
-这套设计适合作为一个长期演进的下载引擎，能够覆盖浏览器下载、桌面下载器以及服务端下载服务等多种场景。
+This design is suitable for a download engine that evolves over the long term and covers browser downloads, desktop downloaders, and server-side download services.

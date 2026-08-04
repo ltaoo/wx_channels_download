@@ -24,11 +24,11 @@ type NovelVolume struct {
 
 // NovelDetail contains all information about a novel.
 type NovelDetail struct {
-	Name       string        `json:"name"`
-	Author     string        `json:"author"`
-	CoverURL   string        `json:"cover_url"`
-	ProfileURL string        `json:"profile_url"`
-	Volumes    []NovelVolume `json:"volumes"`
+	Name       string         `json:"name"`
+	Author     string         `json:"author"`
+	CoverURL   string         `json:"cover_url"`
+	ProfileURL string         `json:"profile_url"`
+	Volumes    []NovelVolume  `json:"volumes"`
 	Chapters   []NovelChapter `json:"chapters"`
 }
 
@@ -59,26 +59,28 @@ func MockNovel() *NovelDetail {
 // It creates resources for profile.html, cover.jpg, and each chapter
 // (saved under chapters/0001.html etc.).
 func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.DownloadTaskResult, error) {
-	var config DownloadConfig
+	var config map[string]any
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
-	title := config.Filename
+	title, _ := config["filename"].(string)
 	if title == "" {
 		title = novel.Name
 	}
-	savePath := config.SavePath
+	savePath, _ := config["save_path"].(string)
 	if savePath == "" {
 		savePath = "/downloads/69shuba"
 	}
+	contentID := platformID + ":" + novel.ProfileURL
 
 	var resources []*types.ResourceInfo
 
 	// profile page resource
 	resources = append(resources, &types.ResourceInfo{
 		DownloadResource: model.DownloadResource{
-			Name: "profile",
-			Kind: "html",
+			ContentId: &contentID,
+			Name:      "profile",
+			Kind:      "html",
 		},
 		Endpoints: []model.DownloadEndpoint{{
 			Protocol: "http",
@@ -91,8 +93,9 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 	if novel.CoverURL != "" {
 		resources = append(resources, &types.ResourceInfo{
 			DownloadResource: model.DownloadResource{
-				Name: "cover",
-				Kind: "image",
+				ContentId: &contentID,
+				Name:      "cover",
+				Kind:      "image",
 			},
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "http",
@@ -106,8 +109,9 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 	for _, ch := range novel.Chapters {
 		resources = append(resources, &types.ResourceInfo{
 			DownloadResource: model.DownloadResource{
-				Name: fmt.Sprintf("chapters/%04d", ch.Index),
-				Kind: "html",
+				ContentId: &contentID,
+				Name:      fmt.Sprintf("chapters/%04d", ch.Index),
+				Kind:      "html",
 			},
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "http",
@@ -118,7 +122,8 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 	}
 
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
+			ContentId:  &contentID,
 			Name:       title,
 			PlatformId: platformID,
 			Status:     model.TaskStatusWaiting,

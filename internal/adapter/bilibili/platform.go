@@ -21,18 +21,6 @@ func init() {
 	registry.Register(&handler{})
 }
 
-// DownloadConfig holds Bilibili download configuration.
-type DownloadConfig struct {
-	SavePath      string `json:"save_path"`
-	Filename      string `json:"filename"`
-	Suffix        string `json:"suffix"`
-	DownloadCover bool   `json:"download_cover"`
-	Overwrite     bool   `json:"overwrite"`
-	Duplicate     bool   `json:"duplicate"`
-	ConvertMP3    bool   `json:"convert_mp3"`
-	UploadCloud   bool   `json:"upload_cloud"`
-}
-
 type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -43,7 +31,7 @@ type bilibiliContentJSON struct {
 }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
-	var config DownloadConfig
+	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
@@ -74,18 +62,18 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	return buildTaskFromVideoInfo(videoInfos[0], input.URL, config)
 }
 
-func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config DownloadConfig) (*types.DownloadTaskResult, error) {
+func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config map[string]any) (*types.DownloadTaskResult, error) {
 	now := util.NowMillis()
 
 	content := &model.Content{
-		Id:          BuildContentID(info.VideoID),
-		PlatformId:  platformIDBilibili,
-		ExternalId:  info.VideoID,
-		Type: "video",
-		Title:       info.Title,
-		URL:         info.URL,
-		CoverURL:    info.CoverURL,
-		SourceURL:   sourceURL,
+		Id:         BuildContentID(info.VideoID),
+		PlatformId: platformIDBilibili,
+		ExternalId: info.VideoID,
+		Type:       "video",
+		Title:      info.Title,
+		URL:        info.URL,
+		CoverURL:   info.CoverURL,
+		SourceURL:  sourceURL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -103,12 +91,12 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config Do
 		},
 	}
 
-	title := config.Filename
+	title, _ := config["filename"].(string)
 	if title == "" {
 		title = info.Title
 	}
 
-	savePath := config.SavePath
+	savePath, _ := config["save_path"].(string)
 	if savePath == "" {
 		savePath = "/downloads/bilibili"
 	}
@@ -122,16 +110,19 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config Do
 	})
 
 	extraJSON := buildExtraJSON(info.VideoID, info.Title)
+	contentID := content.Id
 
 	var resources []*types.ResourceInfo
 
 	// Cover resource (optional)
-	if config.DownloadCover && info.CoverURL != "" {
+	downloadCover, _ := config["download_cover"].(bool)
+	if downloadCover && info.CoverURL != "" {
 		coverResource := model.DownloadResource{
-			Name:     title,
-			Kind:     "image",
-			UniqueID: info.VideoID + "_cover",
-			Extra:    extraJSON,
+			ContentId: &contentID,
+			Name:      title,
+			Kind:      "image",
+			UniqueID:  info.VideoID + "_cover",
+			Extra:     extraJSON,
 		}
 		resources = append(resources, &types.ResourceInfo{
 			DownloadResource: coverResource,
@@ -145,10 +136,11 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config Do
 
 	// Video resource
 	videoResource := model.DownloadResource{
-		Name:     title + ".mp4",
-		Kind:     "video",
-		UniqueID: info.VideoID,
-		Extra:    extraJSON,
+		ContentId: &contentID,
+		Name:      title + ".mp4",
+		Kind:      "video",
+		UniqueID:  info.VideoID,
+		Extra:     extraJSON,
 	}
 	videoEndpoint := model.DownloadEndpoint{
 		Protocol: "https",
@@ -163,6 +155,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config Do
 	// DASH audio resource (anime/courses etc.)
 	if info.AudioURL != "" {
 		audioResource := model.DownloadResource{
+			ContentId:  &contentID,
 			Name:       title + ".audio.m4a",
 			Kind:       "audio",
 			UniqueID:   info.VideoID + "_audio",
@@ -180,7 +173,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config Do
 	}
 
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
 			UniqueID:     info.VideoID,
@@ -216,28 +209,10 @@ func buildExtraJSON(id, title string) string {
 	return string(data)
 }
 
-func buildConfigJSON(config DownloadConfig) map[string]any {
-	m := make(map[string]any)
-	if config.Filename != "" {
-		m["filename"] = config.Filename
-	}
-	if config.Suffix != "" {
-		m["suffix"] = config.Suffix
-	}
-	if config.DownloadCover {
-		m["download_cover"] = true
-	}
-	if config.Overwrite {
-		m["overwrite"] = true
-	}
-	if config.Duplicate {
-		m["duplicate"] = true
-	}
-	if config.ConvertMP3 {
-		m["convert_mp3"] = true
-	}
-	if config.UploadCloud {
-		m["upload_cloud"] = true
+func buildConfigJSON(config map[string]any) map[string]any {
+	m := make(map[string]any, len(config))
+	for key, value := range config {
+		m[key] = value
 	}
 	return m
 }

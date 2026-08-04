@@ -30,7 +30,7 @@ const (
 // (which already queries the DB for non-progress events) and invalidated on
 // terminal events (finished / failed).
 type progressCacheEntry struct {
-	task         model.DownloadTaskV1
+	task         model.DownloadTask
 	resourceURLs map[int]string // resourceID -> first URL
 	taskURL      string
 }
@@ -50,7 +50,7 @@ func (c *APIClient) cacheTaskProgressMeta(taskID int) {
 		return
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		c.logger.Info().Int("taskID", taskID).Err(err).Msg("progress_cache: DB load failed")
 		return
@@ -298,9 +298,9 @@ type v1TaskClient struct {
 	taskID int
 }
 
-// handleDownloadTaskV1WS is the download task record push WebSocket.
+// handleDownloadTaskWS is the download task record push WebSocket.
 // GET /ws/v1/download_task?task_id=1
-func (c *APIClient) handleDownloadTaskV1WS(ctx *gin.Context) {
+func (c *APIClient) handleDownloadTaskWS(ctx *gin.Context) {
 	conn, err := v1DownloadTaskUpgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return
@@ -483,7 +483,7 @@ func (c *APIClient) broadcastDownloadTaskStats() {
 		Count  int `gorm:"column:count"`
 	}
 	var counts []statusCount
-	if err := c.db.Model(&model.DownloadTaskV1{}).
+	if err := c.db.Model(&model.DownloadTask{}).
 		Select("status, COUNT(*) AS count").
 		Where("deleted_at IS NULL").
 		Group("status").

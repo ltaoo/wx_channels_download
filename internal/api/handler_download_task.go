@@ -17,38 +17,14 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/download/registry"
 	"wx_channel/internal/download/tasklineage"
-	"wx_channel/internal/download/types"
 	"wx_channel/internal/events"
 	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/hermes"
 )
 
-// CreateDownloadTaskV1Request is the request body for creating download tasks.
-type CreateDownloadTaskV1Request struct {
-	Objects []CreateDownloadTaskV1Body `json:"objects"`
-}
-
-// CreateDownloadTaskV1Body is a single item in the create download task request.
-type CreateDownloadTaskV1Body struct {
-	Platform     string          `json:"platform"`       // content platform
-	Content      json.RawMessage `json:"content"`        // platform content as raw JSON
-	Config       DownloadConfig  `json:"config"`         // download config
-	ParentTaskID *int            `json:"parent_task_id"` // optional parent task that discovered this content
-	RelationType string          `json:"relation_type"`  // optional, defaults to "discovered"
-}
-
-// DownloadConfig holds download configuration options.
-type DownloadConfig struct {
-	SavePath      string          `json:"save_path"`
-	Filename      string          `json:"filename"`
-	Spec          json.RawMessage `json:"spec"`
-	Suffix        string          `json:"suffix"` // file suffix, e.g. ".mp3" means convert to mp3 after download
-	DownloadCover bool            `json:"download_cover"`
-	Overwrite     bool            `json:"overwrite"`
-	Duplicate     bool            `json:"duplicate"`
-	ConvertMP3    bool            `json:"convert_mp3"`  // convert to mp3 after download
-	UploadCloud   bool            `json:"upload_cloud"` // upload to cloud storage after download
+// CreateDownloadTaskRequest is the request body for creating download tasks.
+type CreateDownloadTaskRequest struct {
+	Objects []services.CreateDownloadTaskBody `json:"objects"`
 }
 
 // taskV1IDBody is a generic request body with a task_id field.
@@ -56,10 +32,10 @@ type taskV1IDBody struct {
 	TaskID int `json:"task_id"`
 }
 
-// deleteDownloadTaskV1Body includes the caller's local-file cleanup intent.
+// deleteDownloadTaskBody includes the caller's local-file cleanup intent.
 // Keeping this separate from taskV1IDBody avoids accepting delete-only options
 // on start/pause/resume endpoints.
-type deleteDownloadTaskV1Body struct {
+type deleteDownloadTaskBody struct {
 	TaskID      int  `json:"task_id"`
 	DeleteFiles bool `json:"delete_files"`
 }
@@ -74,7 +50,7 @@ type CreateDownloadTaskByURLBody struct {
 	URL          string         `json:"url"`       // resource download URL, required
 	SavePath     string         `json:"save_path"` // save directory
 	Filename     string         `json:"filename"`  // filename (optional, extracted from URL by default)
-	Config       DownloadConfig `json:"config"`    // download config
+	Config       map[string]any `json:"config"`    // custom download config
 	ParentTaskID *int           `json:"parent_task_id"`
 	RelationType string         `json:"relation_type"`
 }
@@ -139,8 +115,8 @@ func (c *APIClient) startCreatedDownloadTask(taskID int) error {
 	return nil
 }
 
-// prepareDownloadTaskV1Single previews a single platform download task (no DB write, no download start).
-func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (gin.H, error) {
+// prepareDownloadTaskSingle previews a single platform download task (no DB write, no download start).
+func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBody) (gin.H, error) {
 	if body.Platform == "" {
 		return nil, fmt.Errorf("platform 不能为空")
 	}
@@ -150,16 +126,20 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
 
-	saveDir, err := c.resolveDownloadSaveDir(body.Config.SavePath)
+	saveDir, err := c.resolveDownloadSaveDir(body.SavePath)
 	if err != nil {
 		return nil, fmt.Errorf("准备保存目录失败: %w", err)
 	}
 
-	convertMP3 := body.Config.ConvertMP3 || strings.EqualFold(body.Config.Suffix, ".mp3")
-
-	body.Config.SavePath = saveDir
-	body.Config.ConvertMP3 = convertMP3
-	configJSON, err := json.Marshal(body.Config)
+	config := make(map[string]any, len(body.Config)+2)
+	for key, value := range body.Config {
+		config[key] = value
+	}
+	config["save_path"] = saveDir
+	if body.Filename != "" {
+		config["filename"] = body.Filename
+	}
+	configJSON, err := json.Marshal(config)
 	if err != nil {
 		return nil, fmt.Errorf("构建下载配置失败: %w", err)
 	}
@@ -215,10 +195,10 @@ func (c *APIClient) prepareDownloadTaskV1Single(body CreateDownloadTaskV1Body) (
 	}, nil
 }
 
-// handlePrepareDownloadTaskV1 batch-previews platform download tasks.
+// handlePrepareDownloadTask batch-previews platform download tasks.
 // POST /api/v1/download_task/prepare
-func (c *APIClient) handlePrepareDownloadTaskV1(ctx *gin.Context) {
-	var req CreateDownloadTaskV1Request
+func (c *APIClient) handlePrepareDownloadTask(ctx *gin.Context) {
+	var req CreateDownloadTaskRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
@@ -230,7 +210,7 @@ func (c *APIClient) handlePrepareDownloadTaskV1(ctx *gin.Context) {
 
 	previews := make([]gin.H, 0, len(req.Objects))
 	for _, body := range req.Objects {
-		data, err := c.prepareDownloadTaskV1Single(body)
+		data, err := c.prepareDownloadTaskSingle(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
 		} else {
@@ -241,8 +221,8 @@ func (c *APIClient) handlePrepareDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"previews": previews})
 }
 
-// prepareDownloadTaskByURLV1Single previews a download task created by resource URL (no DB write, no download start).
-func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByURLBody) (gin.H, error) {
+// prepareDownloadTaskByURLSingle previews a download task created by resource URL (no DB write, no download start).
+func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLBody) (gin.H, error) {
 	if body.URL == "" {
 		return nil, fmt.Errorf("url 不能为空")
 	}
@@ -256,7 +236,7 @@ func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByUR
 
 	requestedSavePath := body.SavePath
 	if requestedSavePath == "" {
-		requestedSavePath = body.Config.SavePath
+		requestedSavePath, _ = body.Config["save_path"].(string)
 	}
 	saveDir, err := c.resolveDownloadSaveDir(requestedSavePath)
 	if err != nil {
@@ -264,7 +244,7 @@ func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByUR
 	}
 	filename := body.Filename
 	if filename == "" {
-		filename = body.Config.Filename
+		filename, _ = body.Config["filename"].(string)
 	}
 	if filename == "" {
 		base := filepath.Base(parsedURL.Path)
@@ -306,9 +286,9 @@ func (c *APIClient) prepareDownloadTaskByURLV1Single(body CreateDownloadTaskByUR
 	}, nil
 }
 
-// handlePrepareDownloadTaskByURLV1 batch-previews download tasks created by resource URL.
+// handlePrepareDownloadTaskByURL batch-previews download tasks created by resource URL.
 // POST /api/v1/download_task/prepare_by_url
-func (c *APIClient) handlePrepareDownloadTaskByURLV1(ctx *gin.Context) {
+func (c *APIClient) handlePrepareDownloadTaskByURL(ctx *gin.Context) {
 	var req CreateDownloadTaskByURLRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -321,7 +301,7 @@ func (c *APIClient) handlePrepareDownloadTaskByURLV1(ctx *gin.Context) {
 
 	previews := make([]gin.H, 0, len(req.Objects))
 	for _, body := range req.Objects {
-		data, err := c.prepareDownloadTaskByURLV1Single(body)
+		data, err := c.prepareDownloadTaskByURLSingle(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
 		} else {
@@ -332,29 +312,12 @@ func (c *APIClient) handlePrepareDownloadTaskByURLV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"previews": previews})
 }
 
-// createDownloadTaskV1Single creates a single platform download task and returns the result data or error.
-func (c *APIClient) createDownloadTaskV1Single(body CreateDownloadTaskV1Body) (gin.H, error) {
+// createDownloadTaskSingle creates a single platform download task and returns the result data or error.
+func (c *APIClient) createDownloadTaskSingle(body services.CreateDownloadTaskBody) (gin.H, error) {
 	if c.downloadTaskService == nil {
 		return nil, fmt.Errorf("下载任务服务未初始化")
 	}
-	svcBody := services.CreateDownloadTaskV1Body{
-		Platform: body.Platform,
-		Content:  body.Content,
-		Config: services.DownloadConfig{
-			SavePath:      body.Config.SavePath,
-			Filename:      body.Config.Filename,
-			Spec:          body.Config.Spec,
-			Suffix:        body.Config.Suffix,
-			DownloadCover: body.Config.DownloadCover,
-			Overwrite:     body.Config.Overwrite,
-			Duplicate:     body.Config.Duplicate,
-			ConvertMP3:    body.Config.ConvertMP3,
-			UploadCloud:   body.Config.UploadCloud,
-		},
-		ParentTaskID: body.ParentTaskID,
-		RelationType: body.RelationType,
-	}
-	result, err := c.downloadTaskService.CreateTask(svcBody)
+	result, err := c.downloadTaskService.CreateTask(body)
 	if err != nil {
 		return nil, err
 	}
@@ -369,12 +332,12 @@ func (c *APIClient) createDownloadTaskV1Single(body CreateDownloadTaskV1Body) (g
 	}, nil
 }
 
-// handleCreateDownloadTaskV1 batch-creates platform download tasks.
+// handleCreateDownloadTask batch-creates platform download tasks.
 // POST /api/v1/download_task/create
-func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
-	var req CreateDownloadTaskV1Request
+func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
+	var req CreateDownloadTaskRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		c.logger.Warn().Err(err).Msg("POST /api/v1/download_task/create failed to parse request body")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/create").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
@@ -383,30 +346,32 @@ func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 
-	c.logger.Info().Int("object_count", len(req.Objects)).Msg("POST /api/v1/download_task/create received batch create download task request")
+	c.logger.Info().Str("api", "POST /api/v1/download_task/create").Int("object_count", len(req.Objects)).Msg("Received batch create download task request")
 
 	var duplicateErr *services.DuplicateTaskError
 	tasks := make([]gin.H, 0, len(req.Objects))
 	successCount := 0
 	failCount := 0
 	for _, body := range req.Objects {
-		data, err := c.createDownloadTaskV1Single(body)
+		data, err := c.createDownloadTaskSingle(body)
 		if err != nil {
 			if errors.As(err, &duplicateErr) {
 				// Single task conflict: return business code 409 (HTTP 200), frontend prompts user
 				if len(req.Objects) == 1 {
 					c.logger.Warn().
+						Str("api", "POST /api/v1/download_task/create").
 						Int("existing_task_id", duplicateErr.ExistingTaskID).
 						Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
-						Msg("POST /api/v1/download_task/create task conflict, already exists")
+						Msg("Task conflict, already exists")
 					resp := gin.H{"existing_task_id": duplicateErr.ExistingTaskID}
 					result.ErrWithData(ctx, result.CodeDuplicateTask, duplicateErr.Error(), resp)
 					return
 				}
 				c.logger.Warn().
+					Str("api", "POST /api/v1/download_task/create").
 					Int("existing_task_id", duplicateErr.ExistingTaskID).
 					Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
-					Msg("POST /api/v1/download_task/create task conflict in batch, skipping")
+					Msg("Task conflict in batch, skipping")
 				tasks = append(tasks, gin.H{"success": false, "error": err.Error(), "duplicate": true, "existing_task_id": duplicateErr.ExistingTaskID})
 				failCount++
 				continue
@@ -421,16 +386,17 @@ func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
 	}
 
 	c.logger.Info().
+		Str("api", "POST /api/v1/download_task/create").
 		Int("total", len(tasks)).
 		Int("success", successCount).
 		Int("failed", failCount).
-		Msg("POST /api/v1/download_task/create batch create download tasks completed")
+		Msg("Batch create download tasks completed")
 
 	result.Ok(ctx, gin.H{"tasks": tasks})
 }
 
-// createDownloadTaskByURLV1Single creates a single download task by resource URL.
-func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURLBody) (gin.H, error) {
+// createDownloadTaskByURLSingle creates a single download task by resource URL.
+func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBody) (gin.H, error) {
 	if body.URL == "" {
 		return nil, fmt.Errorf("url 不能为空")
 	}
@@ -442,17 +408,9 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 
 	protocol := strings.ToUpper(parsedURL.Scheme)
 
-	requestedSavePath := body.SavePath
-	if requestedSavePath == "" {
-		requestedSavePath = body.Config.SavePath
-	}
-	saveDir, err := c.resolveDownloadSaveDir(requestedSavePath)
-	if err != nil {
-		return nil, fmt.Errorf("准备保存目录失败: %w", err)
-	}
 	filename := body.Filename
 	if filename == "" {
-		filename = body.Config.Filename
+		filename, _ = body.Config["filename"].(string)
 	}
 	if filename == "" {
 		// Extract filename from URL path
@@ -474,8 +432,6 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 		return nil, fmt.Errorf("无法确定下载文件名")
 	}
 
-	savePath := downloadTaskSavePath(saveDir)
-
 	taskName := filename
 
 	// Store original download URL in config_json
@@ -491,7 +447,7 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 	now := time.Now().UnixMilli()
 
 	// Create task
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Name:       taskName,
 		Status:     model.TaskStatusWaiting,
 		ConfigJSON: string(configJSON),
@@ -510,7 +466,7 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 		return nil, err
 	}
 
-	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("save_path", savePath).Msg("URL download task written to database")
+	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Msg("URL download task written to database")
 	// Create resource
 	resource := model.DownloadResource{
 		TaskId:     task.Id,
@@ -555,12 +511,12 @@ func (c *APIClient) createDownloadTaskByURLV1Single(body CreateDownloadTaskByURL
 	}, nil
 }
 
-// handleCreateDownloadTaskByURLV1 batch-creates download tasks by resource URL.
+// handleCreateDownloadTaskByURL batch-creates download tasks by resource URL.
 // POST /api/v1/download_task/create_by_url
-func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
+func (c *APIClient) handleCreateDownloadTaskByURL(ctx *gin.Context) {
 	var req CreateDownloadTaskByURLRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		c.logger.Warn().Err(err).Msg("POST /api/v1/download_task/create_by_url failed to parse request body")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/create_by_url").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
@@ -569,13 +525,13 @@ func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
 		return
 	}
 
-	c.logger.Info().Int("object_count", len(req.Objects)).Msg("POST /api/v1/download_task/create_by_url received batch create URL download task request")
+	c.logger.Info().Str("api", "POST /api/v1/download_task/create_by_url").Int("object_count", len(req.Objects)).Msg("Received batch create URL download task request")
 
 	tasks := make([]gin.H, 0, len(req.Objects))
 	successCount := 0
 	failCount := 0
 	for _, body := range req.Objects {
-		data, err := c.createDownloadTaskByURLV1Single(body)
+		data, err := c.createDownloadTaskByURLSingle(body)
 		if err != nil {
 			c.logger.Warn().Str("url", body.URL).Err(err).Msg("Failed to create URL download task")
 			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})
@@ -587,20 +543,21 @@ func (c *APIClient) handleCreateDownloadTaskByURLV1(ctx *gin.Context) {
 	}
 
 	c.logger.Info().
+		Str("api", "POST /api/v1/download_task/create_by_url").
 		Int("total", len(tasks)).
 		Int("success", successCount).
 		Int("failed", failCount).
-		Msg("POST /api/v1/download_task/create_by_url batch create URL download tasks completed")
+		Msg("Batch create URL download tasks completed")
 
 	result.Ok(ctx, gin.H{"tasks": tasks})
 }
 
-// handleStartDownloadTaskV1 starts a download task.
+// handleStartDownloadTask starts a download task.
 // POST /api/v1/download_task/start
-func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleStartDownloadTask(ctx *gin.Context) {
 	var body taskV1IDBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.logger.Warn().Err(err).Msg("POST /api/v1/download_task/start failed to parse request body")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
@@ -613,9 +570,9 @@ func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
-		c.logger.Warn().Int("task_id", body.TaskID).Msg("POST /api/v1/download_task/start task not found")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Msg("Task not found")
 		result.Err(ctx, 404, "下载任务不存在")
 		return
 	}
@@ -624,12 +581,12 @@ func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
 	if task.Status != model.TaskStatusWaiting &&
 		task.Status != model.TaskStatusPaused &&
 		task.Status != model.TaskStatusFailed {
-		c.logger.Warn().Int("task_id", body.TaskID).Int("current_status", task.Status).Msg("POST /api/v1/download_task/start current status does not allow start")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Int("current_status", task.Status).Msg("Current status does not allow start")
 		result.Err(ctx, 400, "当前状态不允许启动")
 		return
 	}
 
-	c.logger.Info().Int("task_id", body.TaskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("POST /api/v1/download_task/start received start download task request")
+	c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", body.TaskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Received start download task request")
 
 	// Hermes handles status persistence, log writing, and event broadcasting.
 	if err := c.downloader.StartTask(task.Id); err != nil {
@@ -644,9 +601,9 @@ func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"task": task, "status_text": "preparing"})
 }
 
-// handlePauseDownloadTaskV1 pauses a download task.
+// handlePauseDownloadTask pauses a download task.
 // POST /api/v1/download_task/pause
-func (c *APIClient) handlePauseDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
 	var body taskV1IDBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -661,7 +618,7 @@ func (c *APIClient) handlePauseDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
 		result.Err(ctx, 404, "下载任务不存在")
 		return
@@ -691,9 +648,9 @@ func (c *APIClient) handlePauseDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"task": task, "status_text": "paused"})
 }
 
-// handleResumeDownloadTaskV1 resumes a download task.
+// handleResumeDownloadTask resumes a download task.
 // POST /api/v1/download_task/resume
-func (c *APIClient) handleResumeDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
 	var body taskV1IDBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -708,7 +665,7 @@ func (c *APIClient) handleResumeDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := c.db.Where("id = ?", body.TaskID).First(&task).Error; err != nil {
 		result.Err(ctx, 404, "下载任务不存在")
 		return
@@ -729,36 +686,37 @@ func (c *APIClient) handleResumeDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"task": task, "status_text": "preparing"})
 }
 
-// handleDeleteDownloadTaskV1 deletes a download task.
+// handleDeleteDownloadTask deletes a download task.
 // POST /api/v1/download_task/delete
-func (c *APIClient) handleDeleteDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
 	startedAt := time.Now()
-	var body deleteDownloadTaskV1Body
+	var body deleteDownloadTaskBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		c.logger.Warn().Err(err).Msg("POST /api/v1/download_task/delete failed to parse request body")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
 	}
 	if body.TaskID <= 0 {
-		c.logger.Warn().Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("POST /api/v1/download_task/delete rejected invalid task ID")
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("Rejected invalid task ID")
 		result.Err(ctx, 400, "task_id 无效")
 		return
 	}
 	if c.db == nil {
-		c.logger.Error().Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("POST /api/v1/download_task/delete failed because database is unavailable")
+		c.logger.Error().Str("api", "POST /api/v1/download_task/delete").Int("task_id", body.TaskID).Bool("delete_files", body.DeleteFiles).Msg("Failed because database is unavailable")
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
 	}
 
 	requestLog := c.logger.Info().
+		Str("api", "POST /api/v1/download_task/delete").
 		Int("task_id", body.TaskID).
 		Bool("delete_files", body.DeleteFiles)
 	if c.cfg != nil {
 		requestLog.Str("download_root", c.cfg.DownloadDir)
 	}
-	requestLog.Msg("POST /api/v1/download_task/delete received delete download task request")
+	requestLog.Msg("Received delete download task request")
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	taskQuery := c.db
 	if body.DeleteFiles {
 		// A previous buggy deletion may have soft-deleted the database row while
@@ -899,7 +857,7 @@ type downloadTaskLocalFileCandidate struct {
 	CandidateType string
 }
 
-func (c *APIClient) downloadTaskLocalFileRoots(task model.DownloadTaskV1) map[string]string {
+func (c *APIClient) downloadTaskLocalFileRoots(task model.DownloadTask) map[string]string {
 	roots := make(map[string]string)
 	addRoot := func(root, source string) {
 		root = strings.TrimSpace(root)
@@ -919,12 +877,13 @@ func (c *APIClient) downloadTaskLocalFileRoots(task model.DownloadTaskV1) map[st
 	if c.cfg != nil {
 		addRoot(c.cfg.DownloadDir, "download_root")
 	}
-	var taskConfig DownloadConfig
+	var taskConfig map[string]any
 	if strings.TrimSpace(task.ConfigJSON) != "" {
 		if err := json.Unmarshal([]byte(task.ConfigJSON), &taskConfig); err != nil {
 			c.logger.Warn().Int("task_id", task.Id).Err(err).Msg("Unable to parse task config while resolving local file roots")
 		} else {
-			addRoot(taskConfig.SavePath, "task_config_save_path")
+			savePath, _ := taskConfig["save_path"].(string)
+			addRoot(savePath, "task_config_save_path")
 		}
 	}
 	return roots
@@ -938,7 +897,7 @@ func pathWithinDownloadRoot(root, target string) bool {
 	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTaskV1, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
+func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
 	name := strings.TrimSpace(resource.Name)
 	if name == "" {
 		return nil
@@ -970,7 +929,7 @@ func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTaskV1, r
 	return candidates
 }
 
-func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTaskV1, resources []model.DownloadResource) error {
+func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource) error {
 	var deletionErrors []string
 	for _, resource := range resources {
 		candidates := c.downloadTaskLocalFileCandidates(task, resource)
@@ -1013,7 +972,7 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTaskV1, reso
 // logDownloadTaskLocalFiles records all plausible final and partial paths without
 // mutating the filesystem. The task config path is included because older tasks
 // may have been created with a per-task save_path that differs from DownloadDir.
-func (c *APIClient) logDownloadTaskLocalFiles(task model.DownloadTaskV1, resources []model.DownloadResource, phase string) {
+func (c *APIClient) logDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource, phase string) {
 	roots := c.downloadTaskLocalFileRoots(task)
 	c.logger.Info().Int("task_id", task.Id).Str("phase", phase).Int("resource_count", len(resources)).Int("candidate_root_count", len(roots)).Msg("Inspecting associated local file candidates")
 	for _, resource := range resources {
@@ -1033,7 +992,7 @@ func (c *APIClient) logDownloadTaskLocalFile(taskID int, resource model.Download
 		Int("task_id", taskID).
 		Int("resource_id", resource.Id).
 		Str("resource_name", resource.Name).
-		Str("resource_type", resource.ResourceType).
+		Str("resource_type", resource.Type).
 		Str("phase", phase).
 		Str("path_source", source).
 		Str("candidate_type", candidateType).
@@ -1049,9 +1008,9 @@ func (c *APIClient) logDownloadTaskLocalFile(taskID int, resource model.Download
 	event.Bool("exists", false).Err(err).Msg("Associated local file candidate inspection failed")
 }
 
-// handleListDownloadTaskV1 lists download tasks.
+// handleListDownloadTask lists download tasks.
 // GET /api/v1/download_task/list
-func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleListDownloadTask(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1081,10 +1040,10 @@ func (c *APIClient) handleListDownloadTaskV1(ctx *gin.Context) {
 		pageSize = 20
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	var total int64
 
-	query := c.db.Model(&model.DownloadTaskV1{}).Where("deleted_at IS NULL")
+	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
 	if parentTaskID, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parentTaskID > 0 {
 		query = query.Where("parent_task_id = ?", parentTaskID)
 	}
@@ -1181,9 +1140,9 @@ func buildResourceTree(resources []gin.H) *ResourceTreeNode {
 	return root
 }
 
-// handleStartAllDownloadTaskV1 batch-starts download tasks.
+// handleStartAllDownloadTask batch-starts download tasks.
 // POST /api/v1/download_task/start_all
-func (c *APIClient) handleStartAllDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleStartAllDownloadTask(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1208,7 +1167,7 @@ func (c *APIClient) handleStartAllDownloadTaskV1(ctx *gin.Context) {
 			model.TaskStatusWaiting, model.TaskStatusPaused, model.TaskStatusFailed)
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := query.Find(&tasks).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
@@ -1225,9 +1184,9 @@ func (c *APIClient) handleStartAllDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"started": started, "total": len(tasks)})
 }
 
-// handlePauseAllDownloadTaskV1 batch-pauses download tasks.
+// handlePauseAllDownloadTask batch-pauses download tasks.
 // POST /api/v1/download_task/pause_all
-func (c *APIClient) handlePauseAllDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handlePauseAllDownloadTask(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1252,7 +1211,7 @@ func (c *APIClient) handlePauseAllDownloadTaskV1(ctx *gin.Context) {
 			model.TaskStatusPreparing, model.TaskStatusDownloading)
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := query.Find(&tasks).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
@@ -1264,7 +1223,7 @@ func (c *APIClient) handlePauseAllDownloadTaskV1(ctx *gin.Context) {
 		// Stream pause should be marked as finished
 		if c.hasStreamResources(task.Id) {
 			now := time.Now().UnixMilli()
-			c.db.Model(&model.DownloadTaskV1{}).Where("id = ?", task.Id).
+			c.db.Model(&model.DownloadTask{}).Where("id = ?", task.Id).
 				Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
 			if c.bus != nil {
 				go c.bus.Publish(events.DownloadTaskFinished{TaskID: task.Id})
@@ -1276,9 +1235,9 @@ func (c *APIClient) handlePauseAllDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks)})
 }
 
-// handleClearDownloadTaskV1 clears completed/failed/cancelled download tasks.
+// handleClearDownloadTask clears completed/failed/cancelled download tasks.
 // POST /api/v1/download_task/clear
-func (c *APIClient) handleClearDownloadTaskV1(ctx *gin.Context) {
+func (c *APIClient) handleClearDownloadTask(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1289,7 +1248,7 @@ func (c *APIClient) handleClearDownloadTaskV1(ctx *gin.Context) {
 	}
 	ctx.ShouldBindJSON(&body)
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := c.db.Where("deleted_at IS NULL").
 		Where("status IN (?, ?, ?)",
 			model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled).
@@ -1329,104 +1288,6 @@ func (c *APIClient) handleClearDownloadTaskV1(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"cleared": cleared})
 }
 
-// buildTaskInput converts DownloadTaskResult and DownloadConfig into the TaskInput required by hooks.
-func buildTaskInput(info *types.DownloadTaskResult, taskName, taskSavePath string, bodyCfg DownloadConfig) *hermes.TaskInput {
-	taskInfo := hermes.TaskInfo{
-		Name:     taskName,
-		SavePath: taskSavePath,
-	}
-
-	resources := make([]hermes.ResourceInfo, 0, len(info.Resources))
-	for _, ri := range info.Resources {
-		endpoints := make([]hermes.EndpointInfo, 0, len(ri.Endpoints))
-		for _, ep := range ri.Endpoints {
-			endpoints = append(endpoints, hermes.EndpointInfo{
-				Protocol: ep.Protocol,
-				URL:      ep.URL,
-			})
-		}
-		resources = append(resources, hermes.ResourceInfo{
-			ID:        ri.Id,
-			Name:      ri.Name,
-			Kind:      ri.Kind,
-			Size:      ri.Size,
-			UniqueID:  ri.UniqueID,
-			Endpoints: endpoints,
-		})
-	}
-
-	config := map[string]any{
-		"save_path":      bodyCfg.SavePath,
-		"filename":       bodyCfg.Filename,
-		"spec":           bodyCfg.Spec,
-		"download_cover": bodyCfg.DownloadCover,
-		"overwrite":      bodyCfg.Overwrite,
-		"duplicate":      bodyCfg.Duplicate,
-	}
-
-	// Merge download config from ConfigJSON
-	if info.Task.ConfigJSON != "" {
-		var taskCfg map[string]any
-		if json.Unmarshal([]byte(info.Task.ConfigJSON), &taskCfg) == nil {
-			for k, v := range taskCfg {
-				if _, exists := config[k]; !exists {
-					config[k] = v
-				}
-			}
-		}
-	}
-	// Merge content metadata from MetadataJSON for hooks to use
-	if info.Task.MetadataJSON != "" {
-		var meta map[string]any
-		if json.Unmarshal([]byte(info.Task.MetadataJSON), &meta) == nil {
-			for k, v := range meta {
-				if _, exists := config[k]; !exists {
-					config[k] = v
-				}
-			}
-		}
-	}
-
-	// Parse content metadata for hooks to access separately
-	metadata := make(map[string]any)
-	if info.Task.MetadataJSON != "" {
-		json.Unmarshal([]byte(info.Task.MetadataJSON), &metadata)
-	}
-
-	return &hermes.TaskInput{
-		Task:      taskInfo,
-		Config:    config,
-		Metadata:  metadata,
-		Resources: resources,
-	}
-}
-
-// applyTaskInputModifications applies modifications returned by hooks to names, paths, and resource names.
-// Returns the modified taskName and taskSavePath.
-func applyTaskInputModifications(info *types.DownloadTaskResult, taskName, taskSavePath string, modified *hermes.TaskInput) (string, string) {
-	if modified == nil {
-		return taskName, taskSavePath
-	}
-
-	if modified.Task.Name != "" {
-		taskName = modified.Task.Name
-	}
-	if modified.Task.SavePath != "" {
-		taskSavePath = modified.Task.SavePath
-	}
-
-	for i, modRes := range modified.Resources {
-		if i >= len(info.Resources) {
-			break
-		}
-		if modRes.Name != "" {
-			info.Resources[i].Name = modRes.Name
-		}
-	}
-
-	return taskName, taskSavePath
-}
-
 // hasStreamResources checks whether the task contains STREAM type resources (live streams).
 func (c *APIClient) hasStreamResources(taskID int) bool {
 	if c.db == nil {
@@ -1434,7 +1295,7 @@ func (c *APIClient) hasStreamResources(taskID int) bool {
 	}
 	var count int64
 	c.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND resource_type = ?", taskID, model.ResourceTypeStream).
+		Where("task_id = ? AND type = ?", taskID, model.ResourceTypeStream).
 		Count(&count)
 	return count > 0
 }

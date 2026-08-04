@@ -143,57 +143,6 @@ CREATE TABLE IF NOT EXISTS `account` (
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_account_platform_external ON `account` (`platform_id`, `external_id`);
 
--- 下载任务表 (DownloadTask)
-CREATE TABLE IF NOT EXISTS `download_task` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `task_uid` TEXT,
-  `task_id` TEXT NOT NULL UNIQUE, --暴露给外部用于查询的任务id
-  `parent_id` INTEGER DEFAULT 0,
-  `root_id` INTEGER DEFAULT 0,
-  `node_type` TEXT, -- container | file
-  `engine` TEXT, -- http | cdp | sandbox_cdp | browser_pool_cdp | aria2 | fs
-  `engine_task_id` TEXT,
-  `type` INTEGER, -- 任务类型 (1:视频, 2:直播)
-  `status` INTEGER DEFAULT 1, --下载状态
-  `external_id` TEXT, -- 用于标记外部唯一的字段。用来判断是不是重复创建了同一个视频的下载任务
-  `protocol` TEXT, -- 下载协议 (http, https, ftp, etc.)
-  `url` TEXT NOT NULL, --下载的文件地址
-  `source_uri` TEXT,
-  `method` TEXT,
-  `request_headers` TEXT,
-  `request_body` TEXT,
-  `title` TEXT, --用于预览的描述
-  `filename` TEXT,
-  `cover_url` TEXT, --用于预览的封面图片
-  `mime_type` TEXT,
-  `size` INT, --下载的文件体积
-  `downloaded` INTEGER DEFAULT 0,
-  `speed` INTEGER DEFAULT 0,
-  `progress` TEXT, --下载进度，包含所用时间、下载速度、已下载大小、上传速度、已上传大小
-  `filepath` TEXT, --下载完成在本地磁盘的文件路径，使用相对路径
-  `output_path` TEXT,
-  `error` TEXT, --下载中断后的错误原因
-  `reason` TEXT, --该下载任务的来源
-  `metadata1` TEXT, --下载器存储的额外的数据
-  `metadata2` TEXT, --记录关于工作流的一些额外信息吧
-  `metadata` TEXT,
-  `idx` INTEGER DEFAULT 0, -- 用于前端展示顺序
-  `created_at` INTEGER NOT NULL DEFAULT 0,
-  `updated_at` INTEGER NOT NULL DEFAULT 0,
-  `deleted_at` INTEGER
-);
-
-CREATE INDEX IF NOT EXISTS idx_download_task_status ON `download_task` (`status`);
-CREATE INDEX IF NOT EXISTS idx_download_task_created ON `download_task` (`created_at`);
-CREATE INDEX IF NOT EXISTS idx_download_task_task_id ON `download_task` (`task_id`);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_download_task_task_uid
-ON `download_task` (`task_uid`)
-WHERE `task_uid` IS NOT NULL AND `task_uid` <> '';
-CREATE INDEX IF NOT EXISTS idx_download_task_parent_idx ON `download_task` (`parent_id`, `idx`);
-CREATE INDEX IF NOT EXISTS idx_download_task_root_idx ON `download_task` (`root_id`, `idx`);
-CREATE INDEX IF NOT EXISTS idx_download_task_node_type ON `download_task` (`node_type`);
-CREATE INDEX IF NOT EXISTS idx_download_task_engine ON `download_task` (`engine`);
-
 -- 分片表：按固定 piece 大小切分，记录范围与状态
 CREATE TABLE IF NOT EXISTS `download_task_piece` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -704,10 +653,10 @@ CREATE INDEX IF NOT EXISTS idx_platform_workflow_run_download_task_id
 ON `platform_workflow_run` (`download_task_id`);
 
 -- ========================================
--- 多协议下载器 V1 表
+-- 多协议下载器表
 -- ========================================
 
-CREATE TABLE IF NOT EXISTS `download_task_v1` (
+CREATE TABLE IF NOT EXISTS `download_task` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `content_id` TEXT,
   `parent_task_id` INTEGER,
@@ -729,19 +678,20 @@ CREATE TABLE IF NOT EXISTS `download_task_v1` (
   `deleted_at` INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_download_task_v1_status ON `download_task_v1` (`status`);
-CREATE INDEX IF NOT EXISTS idx_task_unique_id ON `download_task_v1` (`unique_id`);
-CREATE INDEX IF NOT EXISTS idx_download_task_v1_content ON `download_task_v1` (`content_id`);
-CREATE INDEX IF NOT EXISTS idx_download_task_v1_parent ON `download_task_v1` (`parent_task_id`);
-CREATE INDEX IF NOT EXISTS idx_download_task_v1_root ON `download_task_v1` (`root_task_id`);
+CREATE INDEX IF NOT EXISTS idx_download_task_status ON `download_task` (`status`);
+CREATE INDEX IF NOT EXISTS idx_task_unique_id ON `download_task` (`unique_id`);
+CREATE INDEX IF NOT EXISTS idx_download_task_content ON `download_task` (`content_id`);
+CREATE INDEX IF NOT EXISTS idx_download_task_parent ON `download_task` (`parent_task_id`);
+CREATE INDEX IF NOT EXISTS idx_download_task_root ON `download_task` (`root_task_id`);
 
 CREATE TABLE IF NOT EXISTS `download_resource` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `task_id` INTEGER NOT NULL,
+  `content_id` TEXT,
   `name` TEXT,
   `kind` TEXT NOT NULL DEFAULT 'file',
   `unique_id` TEXT,
-  `resource_type` TEXT NOT NULL DEFAULT 'file',
+  `type` TEXT NOT NULL DEFAULT 'file',
   `size` INTEGER,
   `status` INTEGER DEFAULT 0,
   `downloaded` INTEGER DEFAULT 0,
@@ -754,7 +704,6 @@ CREATE TABLE IF NOT EXISTS `download_resource` (
   `duration` INTEGER DEFAULT 0,
   `rotate_minutes` INTEGER DEFAULT 0,
   `rotate_size` INTEGER DEFAULT 0,
-  `is_live` INTEGER DEFAULT 0,
   `start_time` INTEGER,
   `finish_time` INTEGER,
   `created_at` INTEGER NOT NULL DEFAULT 0,

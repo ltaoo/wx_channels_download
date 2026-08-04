@@ -2,13 +2,50 @@ package wxchannels
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
+	"time"
 
 	"wx_channel/internal/database/model"
 	scraper "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/testui/assert"
 	"wx_channel/pkg/testui/require"
 )
+
+func TestBuildResourceExtraJSONIncludesFilenameAndDownloadAt(t *testing.T) {
+	tests := []struct {
+		name         string
+		id           string
+		title        string
+		wantFilename string
+	}{
+		{name: "title", id: "feed123", title: "视频标题", wantFilename: "视频标题"},
+		{name: "id fallback", id: "feed123", wantFilename: "feed123"},
+		{name: "current time fallback"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := time.Now().Unix()
+			raw := buildResourceExtraJSON(tt.id, tt.title, "original", 123, "作者", "")
+			after := time.Now().Unix()
+
+			var got map[string]string
+			require.NoError(t, json.Unmarshal([]byte(raw), &got))
+			downloadAt, err := strconv.ParseInt(got["download_at"], 10, 64)
+			require.NoError(t, err)
+			if downloadAt < before || downloadAt > after {
+				t.Fatalf("download_at = %d, want current Unix time in [%d, %d]", downloadAt, before, after)
+			}
+
+			wantFilename := tt.wantFilename
+			if wantFilename == "" {
+				wantFilename = got["download_at"]
+			}
+			assert.Equal(t, wantFilename, got["filename"])
+		})
+	}
+}
 
 func TestBuildDownloadTaskVideoCreatesSingleResource(t *testing.T) {
 	obj := scraper.ChannelsObject{
@@ -33,8 +70,8 @@ func TestBuildDownloadTaskVideoCreatesSingleResource(t *testing.T) {
 	raw, err := json.Marshal(obj)
 	require.NoError(t, err)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{
-		Filename: "自定义名称",
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{
+		"filename": "自定义名称",
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
@@ -74,7 +111,7 @@ const mergedLiveContentJSON = `{
 
 func TestBuildDownloadTask_LiveStream_DetectsJoinLiveContent(t *testing.T) {
 	raw := json.RawMessage(mergedLiveContentJSON)
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	content := info.Content
@@ -101,8 +138,8 @@ func TestBuildDownloadTask_LiveStream_DetectsJoinLiveContent(t *testing.T) {
 		assert.Equal(t, "https://example.com/anchor_avatar.jpg", account.AvatarURL)
 	})
 
-	// ---- Verify DownloadTaskV1 ----
-	t.Run("DownloadTaskV1", func(t *testing.T) {
+	// ---- Verify DownloadTask ----
+	t.Run("DownloadTask", func(t *testing.T) {
 		require.NotNil(t, info.Task.ContentId)
 		assert.Equal(t, "wxchannels:2078967496773105135", *info.Task.ContentId)
 		assert.Equal(t, "谁可以无缘无故给我刷个岛", info.Task.Name)
@@ -120,8 +157,7 @@ func TestBuildDownloadTask_LiveStream_DetectsJoinLiveContent(t *testing.T) {
 		r := info.Resources[0].DownloadResource
 		assert.Equal(t, "谁可以无缘无故给我刷个岛.mkv", r.Name)
 		assert.Equal(t, "stream", r.Kind)
-		assert.Equal(t, model.ResourceTypeStream, r.ResourceType)
-		assert.Equal(t, 1, r.IsLive)
+		assert.Equal(t, model.ResourceTypeStream, r.Type)
 		assert.Equal(t, 10, r.RotateMinutes)
 		assert.Equal(t, "2078967496773105135_1785075244", r.UniqueID)
 		assert.Equal(t, "http://pull-m1.wxlivecdn.com/trtc_1400419933/orig_live_stream.flv?token=abc123", r.StreamURL)
@@ -152,7 +188,7 @@ func TestBuildDownloadTask_LiveStream_ContactFallback(t *testing.T) {
 		}
 	}`)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	account := info.Account
@@ -178,7 +214,7 @@ func TestBuildDownloadTask_LiveStream_NicknameFallback(t *testing.T) {
 		"username": "top_level_user"
 	}`)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	account := info.Account
@@ -203,7 +239,7 @@ func TestBuildDownloadTask_LiveStream_NoLiveDescription(t *testing.T) {
 		"username": "aqiang"
 	}`)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	content := info.Content
@@ -215,8 +251,8 @@ func TestBuildDownloadTask_LiveStream_NoLiveDescription(t *testing.T) {
 
 func TestBuildDownloadTask_LiveStream_CustomFilename(t *testing.T) {
 	raw := json.RawMessage(mergedLiveContentJSON)
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{
-		Filename: "我的直播录制",
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{
+		"filename": "我的直播录制",
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
@@ -234,7 +270,7 @@ func TestBuildDownloadTask_LiveStream_NoLiveId(t *testing.T) {
 		"username": "test_user"
 	}`)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	content := info.Content
@@ -303,7 +339,7 @@ func TestBuildDownloadTask_NotLive_NotJoinLive(t *testing.T) {
 	raw, err := json.Marshal(obj)
 	require.NoError(t, err)
 
-	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	info, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	content := info.Content
@@ -325,11 +361,11 @@ func TestJoinLivePayload_Detection_NoLiveSdkInfo(t *testing.T) {
 
 	// This should fail since there's no liveSdkInfo (falls through to ChannelsObject,
 	// which will fail because it's not valid ChannelsObject format)
-	_, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(DownloadConfig{}))
+	_, err := (&handler{}).BuildDownloadTask(raw, toConfigJSON(map[string]any{}))
 	assert.Error(t, err)
 }
 
-func toConfigJSON(cfg DownloadConfig) json.RawMessage {
+func toConfigJSON(cfg map[string]any) json.RawMessage {
 	data, _ := json.Marshal(cfg)
 	return json.RawMessage(data)
 }
@@ -341,37 +377,37 @@ func TestBuildDownloadTaskUniqueID(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		config DownloadConfig
+		config map[string]any
 		want   string
 	}{
 		{
 			name:   "cover only (suffix .jpg)",
-			config: DownloadConfig{Suffix: ".jpg"},
+			config: map[string]any{"suffix": ".jpg"},
 			want:   "feed123_cover",
 		},
 		{
 			name:   "mp3 conversion (suffix .mp3)",
-			config: DownloadConfig{Suffix: ".mp3"},
+			config: map[string]any{"suffix": ".mp3"},
 			want:   "feed123_mp3",
 		},
 		{
 			name:   "mp3 with spec",
-			config: DownloadConfig{Suffix: ".mp3", Spec: xWT111},
+			config: map[string]any{"suffix": ".mp3", "spec": xWT111},
 			want:   "feed123_xWT111_mp3",
 		},
 		{
 			name:   "video with explicit spec",
-			config: DownloadConfig{Spec: xWT111},
+			config: map[string]any{"spec": xWT111},
 			want:   "feed123_xWT111",
 		},
 		{
 			name:   "video default (no spec, no suffix)",
-			config: DownloadConfig{},
+			config: map[string]any{},
 			want:   "feed123",
 		},
 		{
 			name:   "different spec produces different ID",
-			config: DownloadConfig{Spec: xWT200},
+			config: map[string]any{"spec": xWT200},
 			want:   "feed123_xWT200",
 		},
 	}

@@ -43,7 +43,7 @@ func TestHTTPPrepareDoesNotWaitForHEAD(t *testing.T) {
 	assert.Equal(t, "image/png; charset=binary", prepared.ContentType)
 	select {
 	case <-headCalled:
-		t.Fatal("Prepare 不应发送 HEAD 请求")
+		t.Fatal("Prepare should not send a HEAD request")
 	default:
 	}
 }

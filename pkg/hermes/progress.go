@@ -118,7 +118,7 @@ func (d *HermesEngine) snapshotProgress(taskID int) *TaskProgress {
 }
 
 // initTracker creates a new progress tracker for the given task.
-func (d *HermesEngine) initTracker(taskID int, resourceSizes map[int]int64, resources []Resource) {
+func (d *HermesEngine) initTracker(taskID int, resourceSizes map[int]int64, resources []ResourceJob) {
 	tracker := &progressTracker{
 		resources: make(map[int]*resourceTracker),
 		order:     make([]int, 0, len(resources)),

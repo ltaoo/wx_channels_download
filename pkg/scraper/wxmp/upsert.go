@@ -175,7 +175,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 	content := model.Content{
 		Id:          platformIDOfficialAccount + ":" + profile.ArticleID,
 		PlatformId:  platformIDOfficialAccount,
-		Type: "article",
+		Type:        "article",
 		ExternalId:  profile.ArticleID,
 		Title:       profile.Title,
 		Description: profile.Description,
@@ -230,7 +230,7 @@ func (c *OfficialAccountClient) UpsertArticle(profile *ArticleProfile) (*model.C
 // ArticleDownloadTaskOpts are optional parameters when creating a download_task.
 type ArticleDownloadTaskOpts struct {
 	TaskId     string // unique task identifier, auto-generated if empty
-	Status     int    // download status: 0=ready, 1=running, 2=pause, 3=wait, 4=done, 5=error
+	Status     int    // download status; use model.TaskStatus* values
 	Filepath   string // file save path
 	OutputPath string // file output path
 	Reason     string // download reason (e.g. "migrate", "manual", "batch")
@@ -263,74 +263,52 @@ func (c *OfficialAccountClient) UpsertArticleWithDownloadTask(profile *ArticlePr
 		taskId = fmt.Sprintf("officialaccount_%s_%d", profile.ArticleID, now)
 	}
 
-	taskURL := "officialaccount://" + profile.SourceURL
-
-	size := int64(profile.ContentSize)
-
-	downloaded := int64(0)
-	if opts.Status == 4 && size > 0 {
-		downloaded = size
-	}
-
-	meta2Bytes, _ := json.Marshal(map[string]any{
+	metadataBytes, _ := json.Marshal(map[string]any{
 		"platform":   platformIDOfficialAccount,
 		"article_id": profile.ArticleID,
 		"source_url": profile.SourceURL,
 	})
+	configBytes, _ := json.Marshal(map[string]any{
+		"filepath":    opts.Filepath,
+		"output_path": opts.OutputPath,
+		"reason":      opts.Reason,
+	})
 
 	// 3. Find or create download_task
 	var rec model.DownloadTask
-	err = c.db.Where("task_id = ?", taskId).First(&rec).Error
+	err = c.db.Where("platform_id = ? AND unique_id = ?", platformIDOfficialAccount, taskId).First(&rec).Error
 
 	if err == nil {
 		// already exists, update
 		updates := map[string]any{
-			"url":         taskURL,
-			"external_id": profile.ArticleID,
-			"title":       content.Title,
-			"cover_url":   content.CoverURL,
-			"metadata2":   string(meta2Bytes),
-			"updated_at":  now,
+			"content_id":    content.Id,
+			"name":          content.Title,
+			"source_url":    profile.SourceURL,
+			"cover_url":     content.CoverURL,
+			"config_json":   string(configBytes),
+			"metadata_json": string(metadataBytes),
+			"error_message": opts.Error,
+			"updated_at":    now,
 		}
-		if opts.Status > 0 {
-			updates["status"] = opts.Status
-		}
-		if size > 0 {
-			updates["size"] = size
-		}
-		if downloaded > 0 {
-			updates["downloaded"] = downloaded
-		}
-		if opts.Filepath != "" {
-			updates["filepath"] = opts.Filepath
-		}
-		if opts.OutputPath != "" {
-			updates["output_path"] = opts.OutputPath
-		}
-		if opts.Reason != "" {
-			updates["reason"] = opts.Reason
-		}
+		updates["status"] = opts.Status
 		if err := c.db.Model(&model.DownloadTask{}).Where("id = ?", rec.Id).Updates(updates).Error; err != nil {
 			return content, nil, fmt.Errorf("更新 download_task 失败: %w", err)
 		}
 		rec.Status = opts.Status
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// create new
+		contentID := content.Id
 		rec = model.DownloadTask{
-			TaskId:     taskId,
-			Status:     opts.Status,
-			Protocol:   "officialaccount",
-			URL:        taskURL,
-			ExternalId: profile.ArticleID,
-			Title:      content.Title,
-			CoverURL:   content.CoverURL,
-			Size:       size,
-			Downloaded: downloaded,
-			Filepath:   opts.Filepath,
-			OutputPath: opts.OutputPath,
-			Reason:     opts.Reason,
-			Error:      opts.Error,
-			Metadata2:  string(meta2Bytes),
+			ContentId:    &contentID,
+			Name:         content.Title,
+			PlatformId:   platformIDOfficialAccount,
+			UniqueID:     taskId,
+			Status:       opts.Status,
+			SourceURL:    profile.SourceURL,
+			CoverURL:     content.CoverURL,
+			ConfigJSON:   string(configBytes),
+			MetadataJSON: string(metadataBytes),
+			ErrorMessage: opts.Error,
 			Timestamps: model.Timestamps{
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -344,9 +322,9 @@ func (c *OfficialAccountClient) UpsertArticleWithDownloadTask(profile *ArticlePr
 	}
 
 	// 4. Update content download status
-	downloadPath := rec.OutputPath
+	downloadPath := opts.OutputPath
 	if downloadPath == "" {
-		downloadPath = rec.Filepath
+		downloadPath = opts.Filepath
 	}
 	if err := c.db.Model(&model.Content{}).Where("id = ?", content.Id).Updates(map[string]any{
 		"download_status": rec.Status,

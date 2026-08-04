@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,7 +252,7 @@ func (c *APIClient) Stop() error {
 	// Directly update V1 database: set in-progress download tasks to paused status
 	if c.db != nil {
 		now := time.Now().UnixMilli()
-		c.db.Model(&model.DownloadTaskV1{}).
+		c.db.Model(&model.DownloadTask{}).
 			Where("status = ? AND deleted_at IS NULL", model.TaskStatusDownloading).
 			Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": now})
 		c.db.Model(&model.DownloadConnection{}).
@@ -301,13 +300,17 @@ func (c *APIClient) CreateDownloadTask(platform string, contentJSON, configJSON 
 	if c.downloadTaskService == nil {
 		return nil, fmt.Errorf("下载任务服务未初始化")
 	}
-	var cfg services.DownloadConfig
+	var cfg map[string]any
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
-	return c.downloadTaskService.CreateTask(services.CreateDownloadTaskV1Body{
+	savePath, _ := cfg["save_path"].(string)
+	filename, _ := cfg["filename"].(string)
+	return c.downloadTaskService.CreateTask(services.CreateDownloadTaskBody{
 		Platform: platform,
 		Content:  contentJSON,
+		SavePath: savePath,
+		Filename: filename,
 		Config:   cfg,
 	})
 }
@@ -429,8 +432,8 @@ func (s *dbTaskStore) debug(format string, args ...interface{}) {
 var _ hermes.Store = (*dbTaskStore)(nil)
 var _ hermes.OutputNameStore = (*dbTaskStore)(nil)
 
-func (s *dbTaskStore) LoadTask(taskID int) (*hermes.Task, error) {
-	var task model.DownloadTaskV1
+func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, err
 	}
@@ -453,6 +456,24 @@ func (s *dbTaskStore) LoadTask(taskID int) (*hermes.Task, error) {
 	if len(endpoints) == 0 {
 		return nil, errors.New("任务没有已启用的下载端点")
 	}
+	config := make(map[string]any)
+	if strings.TrimSpace(task.ConfigJSON) != "" {
+		if err := json.Unmarshal([]byte(task.ConfigJSON), &config); err != nil {
+			return nil, fmt.Errorf("解析任务 %d config 失败: %w", task.Id, err)
+		}
+		if config == nil {
+			config = make(map[string]any)
+		}
+	}
+	metadata := make(map[string]any)
+	if strings.TrimSpace(task.MetadataJSON) != "" {
+		if err := json.Unmarshal([]byte(task.MetadataJSON), &metadata); err != nil {
+			return nil, fmt.Errorf("解析任务 %d metadata 失败: %w", task.Id, err)
+		}
+		if metadata == nil {
+			metadata = make(map[string]any)
+		}
+	}
 	endpointsByResource := make(map[int][]hermes.Endpoint, len(resources))
 	for _, endpoint := range endpoints {
 		headers := make(map[string]string)
@@ -470,39 +491,40 @@ func (s *dbTaskStore) LoadTask(taskID int) (*hermes.Task, error) {
 			Cookies:  endpoint.Cookies,
 		})
 	}
-	resourceInfos := make([]hermes.Resource, 0, len(resources))
+	resourceInfos := make([]hermes.ResourceJob, 0, len(resources))
 	for _, resource := range resources {
 		resourceEndpoints := endpointsByResource[resource.Id]
 		if len(resourceEndpoints) == 0 {
 			return nil, fmt.Errorf("资源 %d 没有已启用的下载端点", resource.Id)
 		}
 		extra := parseExtra(resource.Extra)
-		resourceInfos = append(resourceInfos, hermes.Resource{
-			ID:        resource.Id,
-			Name:      resource.Name,
-			Kind:      resource.Kind,
-			Type:      resource.ResourceType,
-			UniqueID:  resource.UniqueID,
-			Endpoints: resourceEndpoints,
-			Extra:     extra,
+		resourceInfos = append(resourceInfos, hermes.ResourceJob{
+			ID:         resource.Id,
+			Name:       resource.Name,
+			Kind:       resource.Kind,
+			Type:       resource.Type,
+			UniqueID:   resource.UniqueID,
+			Endpoints:  resourceEndpoints,
+			Extra:      extra,
+			Size:       resource.Size,
+			Downloaded: resource.Downloaded,
+			Speed:      resource.Speed,
 		})
 	}
-	primary := resourceInfos[0]
-	return &hermes.Task{
-		ID:         task.Id,
-		Name:       task.Name,
-		ResourceID: primary.ID,
-		Platform:   task.PlatformId,
-		Endpoints:  primary.Endpoints,
-		Resources:  resourceInfos,
-		Config:     task.ConfigJSON,
-		Metadata:   task.MetadataJSON,
+	return &hermes.TaskJob{
+		ID:        task.Id,
+		Name:      task.Name,
+		UniqueID:  task.UniqueID,
+		Platform:  task.PlatformId,
+		Resources: resourceInfos,
+		Config:    config,
+		Metadata:  metadata,
 	}, nil
 }
 
 func (s *dbTaskStore) UpdateStatus(taskID int, status int) error {
 	now := time.Now().UnixMilli()
-	return s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", taskID).
+	return s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
 		Updates(map[string]any{"status": status, "updated_at": now}).Error
 }
 
@@ -612,7 +634,7 @@ func (s *dbTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
 		if update.TaskName == "" {
 			return nil
 		}
-		return tx.Model(&model.DownloadTaskV1{}).Where("id = ?", update.TaskID).
+		return tx.Model(&model.DownloadTask{}).Where("id = ?", update.TaskID).
 			Updates(map[string]any{"name": update.TaskName, "save_path": update.SavePath, "updated_at": now}).Error
 	})
 	if err != nil {
@@ -678,7 +700,7 @@ func (s *dbTaskStore) DeactivateConnections(taskID int) error {
 
 func (s *dbTaskStore) FinishTask(taskID int) error {
 	now := time.Now().UnixMilli()
-	s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", taskID).
+	s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
 		Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
 	s.db.Exec(`UPDATE download_segment SET downloaded = CASE WHEN size > 0 THEN size ELSE downloaded END, status = 2, updated_at = ?
 		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`, now, taskID)
@@ -693,7 +715,7 @@ func (s *dbTaskStore) FinishTask(taskID int) error {
 }
 
 func (s *dbTaskStore) RecordError(taskID int, errMsg string) error {
-	return s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", taskID).
+	return s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
 		Updates(map[string]any{"error_message": errMsg, "updated_at": time.Now().UnixMilli()}).Error
 }
 

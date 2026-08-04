@@ -24,7 +24,7 @@ func TestHandleCompatContentListUsesPageParameters(t *testing.T) {
 		&model.Content{},
 		&model.Account{},
 		&model.ContentAccount{},
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 	))
 
 	publishFirst := int64(1000)
@@ -63,7 +63,7 @@ func TestHandleCompatContentListUsesPageParameters(t *testing.T) {
 		CreatedAt: 1000,
 	}).Error)
 	firstContentID := "test:first"
-	require.NoError(t, db.Create(&model.DownloadTaskV1{
+	require.NoError(t, db.Create(&model.DownloadTask{
 		Id:         51,
 		ContentId:  &firstContentID,
 		RootTaskID: 51,

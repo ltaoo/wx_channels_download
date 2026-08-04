@@ -1,4 +1,4 @@
-import { createDownloadTask, fetchBrowseHistoryList } from "@/biz/request.js";
+import { createDownloadTaskByURL, fetchBrowseHistoryList } from "@/biz/request.js";
 import { api_client$ } from "@/store/index.js";
 
 import { formatDate } from "./downloads.model.js";
@@ -150,7 +150,7 @@ export function BrowseHistoryPageModel(props) {
         });
       },
     }),
-    createDownloadTask: new Timeless.RequestCore(createDownloadTask, {
+    createDownloadTask: new Timeless.RequestCore(createDownloadTaskByURL, {
       client: api_client$,
     }),
   };

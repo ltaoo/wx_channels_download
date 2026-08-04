@@ -13,7 +13,7 @@ type MockStore struct {
 	mu sync.Mutex
 
 	// Task data.
-	taskInfo    *hermes.Task
+	taskInfo    *hermes.TaskJob
 	loadTaskErr error
 
 	// Status tracking.
@@ -28,14 +28,14 @@ type MockStore struct {
 	ResourceProgressCalls map[int][]ProgressCall
 
 	// Size tracking.
-	resourceSizeVal   int64
-	resourceSizes     map[int]int64
-	updateSizeErr     error
-	updateProgErr     error
-	updateStatusErr   error
-	finishErr         error
-	activateErr       error
-	createSegmentErr  error
+	resourceSizeVal  int64
+	resourceSizes    map[int]int64
+	updateSizeErr    error
+	updateProgErr    error
+	updateStatusErr  error
+	finishErr        error
+	activateErr      error
+	createSegmentErr error
 
 	// RecordError calls.
 	RecordErrors []string
@@ -46,7 +46,7 @@ type MockStore struct {
 	segmentResource map[int]int             // segment ID -> resource ID
 	nextSegmentID   int
 
-	// Resource finish tracking.
+	// ResourceJob finish tracking.
 	FinishedResources []int
 
 	// Output name updates.
@@ -62,7 +62,7 @@ type ProgressCall struct {
 
 // NewMockStore creates a new MockStore and optionally pre-loads it with a
 // task.
-func NewMockStore(task *hermes.Task) *MockStore {
+func NewMockStore(task *hermes.TaskJob) *MockStore {
 	return &MockStore{
 		taskInfo:              task,
 		ResourceProgressCalls: make(map[int][]ProgressCall),
@@ -78,32 +78,56 @@ func NewMockStore(task *hermes.Task) *MockStore {
 // ---------------------------------------------------------------------------
 
 // SetLoadTaskError makes LoadTask return the given error.
-func (m *MockStore) SetLoadTaskError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.loadTaskErr = err }
+func (m *MockStore) SetLoadTaskError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.loadTaskErr = err
+}
 
 // SetUpdateStatusError makes UpdateStatus return the given error.
-func (m *MockStore) SetUpdateStatusError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.updateStatusErr = err }
+func (m *MockStore) SetUpdateStatusError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.updateStatusErr = err
+}
 
 // SetUpdateProgressError makes UpdateProgress return the given error.
-func (m *MockStore) SetUpdateProgressError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.updateProgErr = err }
+func (m *MockStore) SetUpdateProgressError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.updateProgErr = err
+}
 
 // SetUpdateSizeError makes UpdateResourceSize return the given error.
-func (m *MockStore) SetUpdateSizeError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.updateSizeErr = err }
+func (m *MockStore) SetUpdateSizeError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.updateSizeErr = err
+}
 
 // SetActivateError makes ActivateTask return the given error.
-func (m *MockStore) SetActivateError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.activateErr = err }
+func (m *MockStore) SetActivateError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.activateErr = err
+}
 
 // SetFinishError makes FinishTask return the given error.
 func (m *MockStore) SetFinishError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.finishErr = err }
 
 // SetCreateSegmentError makes CreateSegments return the given error.
-func (m *MockStore) SetCreateSegmentError(err error) { m.mu.Lock(); defer m.mu.Unlock(); m.createSegmentErr = err }
+func (m *MockStore) SetCreateSegmentError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.createSegmentErr = err
+}
 
 // ---------------------------------------------------------------------------
 // hermes.Store implementation
 // ---------------------------------------------------------------------------
 
 // LoadTask returns the task configured for this store.
-func (m *MockStore) LoadTask(taskID int) (*hermes.Task, error) {
+func (m *MockStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.loadTaskErr != nil {
@@ -337,7 +361,7 @@ func (m *MockStore) HasStatus(status int) bool {
 }
 
 // Task returns the stored task (read-only).
-func (m *MockStore) Task() *hermes.Task {
+func (m *MockStore) Task() *hermes.TaskJob {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.taskInfo
@@ -348,8 +372,7 @@ func (m *MockStore) Task() *hermes.Task {
 // ---------------------------------------------------------------------------
 
 var (
-	_ hermes.Store            = (*MockStore)(nil)
-	_ hermes.ResourceStore    = (*MockStore)(nil)
-	_ hermes.OutputNameStore  = (*MockStore)(nil)
+	_ hermes.Store           = (*MockStore)(nil)
+	_ hermes.ResourceStore   = (*MockStore)(nil)
+	_ hermes.OutputNameStore = (*MockStore)(nil)
 )
-

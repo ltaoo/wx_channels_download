@@ -22,11 +22,11 @@ import (
 )
 
 // Postprocess assembles downloaded wxmp resources into the final HTML file.
-func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo, deps registry.PostprocessDeps) error {
+func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps registry.PostprocessDeps) error {
 	log := func(msg string, args ...interface{}) {
 		deps.Logger.Info().Msg(fmt.Sprintf(msg, args...))
 	}
-	taskID := info.TaskID
+	taskID := info.ID
 	var meta struct {
 		ExternalID string `json:"external_id"`
 		BizType    int    `json:"biz_type"`
@@ -59,7 +59,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo,
 	pc.Values["content_html"] = article.HTML
 	pc.Values["save_path"] = deps.BasePath
 	pc.Values["task_id"] = taskID
-	pc.Values["task_name"] = info.TaskName
+	pc.Values["task_name"] = info.Name
 	pc.Values["biz_type"] = meta.BizType
 	pc.Values["db"] = deps.DB
 	pc.Values["logger"] = deps.Logger
@@ -76,7 +76,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo,
 	}
 
 	embeddedNames, _ := pc.Values["embedded_resource_names"].(map[string]bool)
-	keptResources := make([]hermes.PostprocessResource, 0, len(info.Resources))
+	keptResources := make([]hermes.ResourceJob, 0, len(info.Resources))
 	for _, r := range info.Resources {
 		if r.Kind == "image" && embeddedNames[r.Name] {
 			if err := os.Remove(r.FilePath); err != nil && !os.IsNotExist(err) {

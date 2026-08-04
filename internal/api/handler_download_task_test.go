@@ -48,7 +48,7 @@ func (h *contentAccountTestPlatformHandler) PlatformID() string {
 
 func (h *contentAccountTestPlatformHandler) BuildDownloadTask(_ json.RawMessage, _ json.RawMessage) (*types.DownloadTaskResult, error) {
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			Name:       "content-account.bin",
 			UniqueID:   "api_test_content_account_file",
 			PlatformId: h.PlatformID(),
@@ -94,7 +94,7 @@ func (h *savePathTestPlatformHandler) BuildDownloadTask(_ json.RawMessage, confi
 	videoResource := model.DownloadResource{Name: "platform-file.bin", Kind: "video"}
 	videoEndpoint := model.DownloadEndpoint{Protocol: "HTTP", URL: h.endpointURL + "/video", Enabled: 1}
 	info := &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			Name:       "platform-file.bin",
 			UniqueID:   "api_test_platform_file",
 			PlatformId: "api_test_save_path",
@@ -121,7 +121,7 @@ func (h *savePathTestPlatformHandler) BuildDownloadTask(_ json.RawMessage, confi
 	return info, nil
 }
 
-func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
+func TestHandleCreateDownloadTaskUsesConfiguredSavePath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
 		&model.Content{},
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -164,12 +164,12 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	client.downloadTaskService = services.NewDownloadTaskService(db, &nopLogger, client.downloader, nil, workDir, expectedSaveDir)
 	defer client.downloader.PauseAllTask()
 
-	body := []byte(`{"objects":[{"platform":"api_test_save_path","content":{},"config":{"download_cover":true}}]}`)
+	body := []byte(`{"objects":[{"platform":"api_test_save_path","content":{},"filename":"custom.bin","config":{"download_cover":true,"nested":{"quality":"high"}}}]}`)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create", bytes.NewReader(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	client.handleCreateDownloadTaskV1(ctx)
+	client.handleCreateDownloadTask(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -177,7 +177,7 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 			Tasks []struct {
 				Success bool `json:"success"`
 				Data    struct {
-					Task      model.DownloadTaskV1     `json:"task"`
+					Task      model.DownloadTask       `json:"task"`
 					Resources []model.DownloadResource `json:"resources"`
 					Endpoints []model.DownloadEndpoint `json:"endpoints"`
 				} `json:"data"`
@@ -200,12 +200,14 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(savePathTestHandler.config, &cfg))
 	assert.True(t, cfg["download_cover"].(bool))
 	assert.Equal(t, expectedSaveDir, cfg["save_path"].(string))
+	assert.Equal(t, "custom.bin", cfg["filename"].(string))
+	assert.Equal(t, "high", cfg["nested"].(map[string]any)["quality"])
 	require.Len(t, result.Resources, 2)
 	require.Len(t, result.Endpoints, 2)
 	assert.Equal(t, "video", result.Resources[0].Kind)
 	assert.Equal(t, "cover", result.Resources[1].Kind)
 
-	var persisted model.DownloadTaskV1
+	var persisted model.DownloadTask
 	require.NoError(t, db.First(&persisted, result.Task.Id).Error)
 	require.NotNil(t, persisted.ContentId)
 	assert.Equal(t, "api_test_save_path:content-1", *persisted.ContentId)
@@ -239,14 +241,14 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 	assert.Equal(t, "finished", record.Files[1].Status)
 }
 
-func TestCreateDownloadTaskV1SingleLinksContentToPersistedAccount(t *testing.T) {
+func TestCreateDownloadTaskSingleLinksContentToPersistedAccount(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.Content{},
 		&model.Account{},
 		&model.ContentAccount{},
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 	))
@@ -274,7 +276,7 @@ func TestCreateDownloadTaskV1SingleLinksContentToPersistedAccount(t *testing.T) 
 	}
 	client.downloadTaskService = services.NewDownloadTaskService(db, &nopLogger, nil, nil, client.cfg.WorkDir, client.cfg.DownloadDir)
 
-	_, err = client.createDownloadTaskV1Single(CreateDownloadTaskV1Body{
+	_, err = client.createDownloadTaskSingle(services.CreateDownloadTaskBody{
 		Platform: handler.PlatformID(),
 		Content:  json.RawMessage(`{}`),
 	})
@@ -294,7 +296,7 @@ func TestCreateDownloadTaskV1SingleLinksContentToPersistedAccount(t *testing.T) 
 	assert.Equal(t, "owner", association.Role)
 }
 
-func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
+func TestHandleCreateDownloadTaskByURLInfersFilenameExtension(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -303,7 +305,7 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -332,7 +334,7 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create_by_url", bytes.NewBufferString(`{"objects":[{"url":"`+testServer.URL+`/image","filename":"cover"}]}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	client.handleCreateDownloadTaskByURLV1(ctx)
+	client.handleCreateDownloadTaskByURL(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -340,7 +342,7 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 			Tasks []struct {
 				Success bool `json:"success"`
 				Data    struct {
-					Task model.DownloadTaskV1 `json:"task"`
+					Task model.DownloadTask `json:"task"`
 				} `json:"data"`
 				Error string `json:"error"`
 			} `json:"tasks"`
@@ -351,7 +353,7 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 	require.Len(t, response.Data.Tasks, 1)
 	require.True(t, response.Data.Tasks[0].Success)
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	require.Eventually(t, func() bool {
 		if err := db.First(&task, response.Data.Tasks[0].Data.Task.Id).Error; err != nil {
 			return false
@@ -367,12 +369,12 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 	assert.Equal(t, []byte("png-data"), content)
 }
 
-func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
+func TestHandleListDownloadTaskIncludesLatestFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -380,7 +382,7 @@ func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 	))
 
 	now := time.Now().UnixMilli()
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Name:         "failed.bin",
 		PlatformId:   "wx_channels",
 		Status:       model.TaskStatusFailed,
@@ -398,7 +400,7 @@ func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/download_task/list", nil)
 	nopLogger := zerolog.Nop()
 	client := &APIClient{db: db, logger: &nopLogger}
-	client.handleListDownloadTaskV1(ctx)
+	client.handleListDownloadTask(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -425,12 +427,12 @@ func TestHandleListDownloadTaskV1IncludesLatestFailure(t *testing.T) {
 	assert.Equal(t, response.Data.List[0], message.Tasks[0])
 }
 
-func TestHandleListDownloadTaskV1FiltersAndReportsLineage(t *testing.T) {
+func TestHandleListDownloadTaskFiltersAndReportsLineage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -438,7 +440,7 @@ func TestHandleListDownloadTaskV1FiltersAndReportsLineage(t *testing.T) {
 	))
 
 	now := time.Now().UnixMilli()
-	root := model.DownloadTaskV1{
+	root := model.DownloadTask{
 		Name:       "root",
 		PlatformId: "wxchannels",
 		Status:     model.TaskStatusWaiting,
@@ -448,7 +450,7 @@ func TestHandleListDownloadTaskV1FiltersAndReportsLineage(t *testing.T) {
 	root.RootTaskID = root.Id
 	require.NoError(t, db.Model(&root).Update("root_task_id", root.RootTaskID).Error)
 
-	childOne := model.DownloadTaskV1{
+	childOne := model.DownloadTask{
 		ParentTaskID: &root.Id,
 		RootTaskID:   root.Id,
 		RelationType: model.TaskRelationDiscovered,
@@ -472,7 +474,7 @@ func TestHandleListDownloadTaskV1FiltersAndReportsLineage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/download_task/list?parent_task_id="+strconv.Itoa(root.Id), nil)
-	client.handleListDownloadTaskV1(ctx)
+	client.handleListDownloadTask(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -491,12 +493,12 @@ func TestHandleListDownloadTaskV1FiltersAndReportsLineage(t *testing.T) {
 	}
 }
 
-func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {
+func TestHandleListDownloadTaskReturnsFractionalProgress(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -504,7 +506,7 @@ func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {
 	))
 
 	now := time.Now().UnixMilli()
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Name:       "progress.bin",
 		Status:     model.TaskStatusDownloading,
 		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
@@ -551,7 +553,7 @@ func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/download_task/list", nil)
 	nopLogger := zerolog.Nop()
 	client := &APIClient{db: db, logger: &nopLogger}
-	client.handleListDownloadTaskV1(ctx)
+	client.handleListDownloadTask(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -571,7 +573,7 @@ func TestHandleListDownloadTaskV1ReturnsFractionalProgress(t *testing.T) {
 	assert.InDelta(t, 0.5, response.Data.List[0].Files[0].Progress, 0.001)
 }
 
-func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
+func TestHandleCreateDownloadTaskByURLAppliesFilenameTemplate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -580,7 +582,7 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -610,7 +612,7 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/create_by_url", bytes.NewBufferString(`{"objects":[{"url":"`+testServer.URL+`/image","filename":"cover"}]}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	client.handleCreateDownloadTaskByURLV1(ctx)
+	client.handleCreateDownloadTaskByURL(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -618,7 +620,7 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 			Tasks []struct {
 				Success bool `json:"success"`
 				Data    struct {
-					Task model.DownloadTaskV1 `json:"task"`
+					Task model.DownloadTask `json:"task"`
 				} `json:"data"`
 				Error string `json:"error"`
 			} `json:"tasks"`
@@ -632,7 +634,7 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 	taskID := response.Data.Tasks[0].Data.Task.Id
 	require.NotZero(t, taskID)
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	require.Eventually(t, func() bool {
 		if err := db.First(&task, taskID).Error; err != nil {
 			return false
@@ -651,12 +653,12 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 	assert.Equal(t, []byte("png-data"), content)
 }
 
-func TestHandleDeleteDownloadTaskV1LogsFileAndCascadeDiagnostics(t *testing.T) {
+func TestHandleDeleteDownloadTaskLogsFileAndCascadeDiagnostics(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
-		&model.DownloadTaskV1{},
+		&model.DownloadTask{},
 		&model.DownloadResource{},
 		&model.DownloadEndpoint{},
 		&model.DownloadSegment{},
@@ -668,14 +670,14 @@ func TestHandleDeleteDownloadTaskV1LogsFileAndCascadeDiagnostics(t *testing.T) {
 	require.NoError(t, os.WriteFile(filePath, []byte("video"), 0644))
 	partialPath := filePath + ".part"
 	require.NoError(t, os.WriteFile(partialPath, []byte("partial"), 0644))
-	configJSON, err := json.Marshal(DownloadConfig{SavePath: downloadRoot})
+	configJSON, err := json.Marshal(map[string]any{"save_path": downloadRoot})
 	require.NoError(t, err)
 
 	now := time.Now().UnixMilli()
-	task := model.DownloadTaskV1{Name: "delete diagnostic", Status: model.TaskStatusFinished, ConfigJSON: string(configJSON)}
+	task := model.DownloadTask{Name: "delete diagnostic", Status: model.TaskStatusFinished, ConfigJSON: string(configJSON)}
 	task.CreatedAt, task.UpdatedAt = now, now
 	require.NoError(t, db.Create(&task).Error)
-	resource := model.DownloadResource{TaskId: task.Id, Name: filepath.Base(filePath), Kind: "file", ResourceType: model.ResourceTypeFile, Status: 2}
+	resource := model.DownloadResource{TaskId: task.Id, Name: filepath.Base(filePath), Kind: "file", Type: model.ResourceTypeFile, Status: 2}
 	resource.CreatedAt, resource.UpdatedAt = now, now
 	require.NoError(t, db.Create(&resource).Error)
 	endpoint := model.DownloadEndpoint{ResourceId: resource.Id, Protocol: "https", URL: "https://example.com/video.mp4", Enabled: 1}
@@ -701,7 +703,7 @@ func TestHandleDeleteDownloadTaskV1LogsFileAndCascadeDiagnostics(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/delete", bytes.NewBufferString(`{"task_id":`+strconv.Itoa(task.Id)+`,"delete_files":true}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
-	client.handleDeleteDownloadTaskV1(ctx)
+	client.handleDeleteDownloadTask(ctx)
 
 	var response struct {
 		Code int `json:"code"`
@@ -762,7 +764,7 @@ func TestHandleDeleteDownloadTaskV1LogsFileAndCascadeDiagnostics(t *testing.T) {
 	retryCtx, _ := gin.CreateTestContext(retryRecorder)
 	retryCtx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/download_task/delete", bytes.NewBufferString(`{"task_id":`+strconv.Itoa(task.Id)+`,"delete_files":true}`))
 	retryCtx.Request.Header.Set("Content-Type", "application/json")
-	client.handleDeleteDownloadTaskV1(retryCtx)
+	client.handleDeleteDownloadTask(retryCtx)
 	require.NoError(t, json.Unmarshal(retryRecorder.Body.Bytes(), &response))
 	assert.Zero(t, response.Code, retryRecorder.Body.String())
 	_, err = os.Stat(filePath)
@@ -783,7 +785,7 @@ func TestDeleteDownloadTaskLocalFilesRejectsPathOutsideDownloadRoot(t *testing.T
 	var logOutput bytes.Buffer
 	logger := zerolog.New(&logOutput)
 	client := &APIClient{logger: &logger, cfg: &APIConfig{DownloadDir: downloadRoot}}
-	task := model.DownloadTaskV1{Id: 42}
+	task := model.DownloadTask{Id: 42}
 	resource := model.DownloadResource{Id: 7, TaskId: task.Id, Name: outsidePath}
 
 	err := client.deleteDownloadTaskLocalFiles(task, []model.DownloadResource{resource})

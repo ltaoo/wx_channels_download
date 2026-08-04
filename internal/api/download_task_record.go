@@ -83,21 +83,21 @@ func (c *APIClient) buildDownloadTaskRecord(taskID int) (*DownloadTaskRecord, er
 	if c.db == nil {
 		return nil, errors.New("数据库不可用")
 	}
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	records, err := c.buildDownloadTaskRecords([]model.DownloadTaskV1{task})
+	records, err := c.buildDownloadTaskRecords([]model.DownloadTask{task})
 	if err != nil || len(records) == 0 {
 		return nil, err
 	}
 	return &records[0], nil
 }
 
-func (c *APIClient) buildDownloadTaskRecords(tasks []model.DownloadTaskV1) ([]DownloadTaskRecord, error) {
+func (c *APIClient) buildDownloadTaskRecords(tasks []model.DownloadTask) ([]DownloadTaskRecord, error) {
 	records := make([]DownloadTaskRecord, 0, len(tasks))
 	if len(tasks) == 0 {
 		return records, nil
@@ -136,14 +136,14 @@ func (c *APIClient) buildDownloadTaskRecords(tasks []model.DownloadTaskV1) ([]Do
 		TaskID       int    `gorm:"column:task_id"`
 		Name         string `gorm:"column:name"`
 		Kind         string `gorm:"column:kind"`
-		ResourceType string `gorm:"column:resource_type"`
+		ResourceType string `gorm:"column:type"`
 		Size         int64  `gorm:"column:size"`
 		Status       int    `gorm:"column:status"`
 		MergeOrder   int    `gorm:"column:merge_order"`
 	}
 	var resources []resourceInfo
 	if err := c.db.Table("download_resource").
-		Select("id, task_id, name, kind, resource_type, size, status, merge_order").
+		Select("id, task_id, name, kind, type, size, status, merge_order").
 		Where("task_id IN ? AND deleted_at IS NULL", taskIDs).
 		Order("task_id ASC, merge_order ASC, id ASC").
 		Scan(&resources).Error; err != nil {
@@ -208,7 +208,7 @@ func (c *APIClient) buildDownloadTaskRecords(tasks []model.DownloadTaskV1) ([]Do
 		Count        int `gorm:"column:count"`
 	}
 	var childAggregates []childAggregate
-	if err := c.db.Model(&model.DownloadTaskV1{}).
+	if err := c.db.Model(&model.DownloadTask{}).
 		Select("parent_task_id, COUNT(*) AS count").
 		Where("parent_task_id IN ? AND deleted_at IS NULL", taskIDs).
 		Group("parent_task_id").

@@ -15,22 +15,24 @@ func (d *HermesEngine) downloadFile(
 	driver ProtocolDriver,
 	endpoint Endpoint,
 	filePath string,
-	resourceID int,
+	task *TaskJob,
+	resource *ResourceJob,
 	prepared PreparedResource,
-	taskID int,
 ) error {
+	resourceID := resource.ID
+	taskID := task.ID
 	segments, err := d.store.LoadSegmentInfo(resourceID)
 	if err != nil {
-		return fmt.Errorf("加载分片信息失败: %w", err)
+		return fmt.Errorf("failed to load segment information: %w", err)
 	}
 	ranges := []SegmentRange{{Index: 0, OffsetStart: 0, OffsetEnd: maxInt64(0, prepared.Size-1), Size: prepared.Size}}
 	if !segmentsMatchRanges(segments, ranges) {
 		ids, err := d.store.CreateSegments(resourceID, endpoint.URL, ranges)
 		if err != nil {
-			return fmt.Errorf("创建分片记录失败: %w", err)
+			return fmt.Errorf("failed to create segment records: %w", err)
 		}
 		if len(ids) != 1 {
-			return errors.New("创建分片记录失败: 返回的 ID 数量不正确")
+			return errors.New("failed to create segment records: incorrect number of IDs returned")
 		}
 		segments = []Segment{{ID: ids[0], Index: 0, URL: endpoint.URL, Size: prepared.Size, OffsetEnd: ranges[0].OffsetEnd}}
 	}
@@ -41,7 +43,7 @@ func (d *HermesEngine) downloadFile(
 	// Prefer the durable partial file over an older same-sized destination.
 	if prepared.Size > 0 && segment.Downloaded == prepared.Size && fileHasSize(partPath, prepared.Size) {
 		if err := finalizePartialFile(partPath, filePath); err != nil {
-			return fmt.Errorf("完成临时文件失败: %w", err)
+			return fmt.Errorf("failed to finalize temporary file: %w", err)
 		}
 		d.updateTracker(taskID, resourceID, prepared.Size, 0)
 		return nil
@@ -60,13 +62,13 @@ func (d *HermesEngine) downloadFile(
 	if prepared.Size > 0 && (downloaded < 0 || downloaded > prepared.Size) {
 		downloaded = 0
 		if err := os.Truncate(partPath, 0); err != nil {
-			return fmt.Errorf("重置临时文件失败: %w", err)
+			return fmt.Errorf("failed to reset temporary file: %w", err)
 		}
 	}
 	if segment.Downloaded != downloaded {
 		segment.Downloaded = downloaded
 		if err := d.store.UpdateSegmentProgress(segment.ID, downloaded); err != nil {
-			return fmt.Errorf("校准分片进度失败: %w", err)
+			return fmt.Errorf("failed to reconcile segment progress: %w", err)
 		}
 	}
 	if !prepared.SupportsRange {
@@ -85,7 +87,7 @@ func (d *HermesEngine) downloadFile(
 				return context.Cause(ctx)
 			}
 			if attempt == maxReadAttempts-1 {
-				return fmt.Errorf("打开下载源失败: %w", err)
+				return fmt.Errorf("failed to open download source: %w", err)
 			}
 			continue
 		}
@@ -100,10 +102,12 @@ func (d *HermesEngine) downloadFile(
 		file, openErr := os.OpenFile(partPath, flags, 0644)
 		if openErr != nil {
 			reader.Close()
-			return fmt.Errorf("打开临时文件失败: %w", openErr)
+			return fmt.Errorf("failed to open temporary file: %w", openErr)
 		}
 
 		err = d.copyReader(ctx, reader, file, prepared.Size, &downloaded, taskID, resourceID, func(total, speed int64) error {
+			resource.Downloaded = total
+			resource.Speed = speed
 			return d.persistProgress(taskID, resourceID, segment.ID, total, speed)
 		})
 		readerCloseErr := reader.Close()
@@ -115,6 +119,9 @@ func (d *HermesEngine) downloadFile(
 				err = syncErr
 			} else if persistErr := d.persistProgress(taskID, resourceID, segment.ID, downloaded, 0); persistErr != nil {
 				err = persistErr
+			} else {
+				resource.Downloaded = downloaded
+				resource.Speed = 0
 			}
 		}
 		closeErr := file.Close()
@@ -123,7 +130,7 @@ func (d *HermesEngine) downloadFile(
 		}
 		if err == nil && (prepared.Size <= 0 || downloaded == prepared.Size) {
 			if renameErr := os.Rename(partPath, filePath); renameErr != nil {
-				return fmt.Errorf("提交下载文件失败: %w", renameErr)
+				return fmt.Errorf("failed to commit downloaded file: %w", renameErr)
 			}
 			return nil
 		}
@@ -131,13 +138,13 @@ func (d *HermesEngine) downloadFile(
 			return err
 		}
 		if prepared.Size > 0 && downloaded >= prepared.Size {
-			return fmt.Errorf("下载数据大小异常: 期望 %d 字节，实际 %d 字节", prepared.Size, downloaded)
+			return fmt.Errorf("downloaded data size mismatch: expected %d bytes, got %d bytes", prepared.Size, downloaded)
 		}
 		if attempt == maxReadAttempts-1 {
 			if err == nil {
 				err = io.ErrUnexpectedEOF
 			}
-			return fmt.Errorf("下载读取失败: %w", err)
+			return fmt.Errorf("download read failed: %w", err)
 		}
 		if !prepared.SupportsRange {
 			downloaded = 0
@@ -182,7 +189,7 @@ func (d *HermesEngine) copyReader(
 		n, readErr := reader.Read(readBuf)
 		if n > 0 {
 			if _, err := writer.Write(readBuf[:n]); err != nil {
-				return fmt.Errorf("写入文件失败: %w", err)
+				return fmt.Errorf("failed to write file: %w", err)
 			}
 			*downloaded += int64(n)
 			if d.cfg.SpeedLimit > 0 {
@@ -245,23 +252,26 @@ func (d *HermesEngine) downloadSegments(
 	driver ProtocolDriver,
 	endpoint Endpoint,
 	filePath string,
-	resourceID int,
-	fileSize int64,
+	task *TaskJob,
+	resource *ResourceJob,
+	prepared PreparedResource,
 	segmentCount int,
-	taskID int,
 ) error {
+	resourceID := resource.ID
+	taskID := task.ID
+	fileSize := prepared.Size
 	ranges := splitFile(fileSize, segmentCount)
 	segments, err := d.store.LoadSegmentInfo(resourceID)
 	if err != nil {
-		return fmt.Errorf("加载分片信息失败: %w", err)
+		return fmt.Errorf("failed to load segment information: %w", err)
 	}
 	if !segmentsMatchRanges(segments, ranges) {
 		ids, err := d.store.CreateSegments(resourceID, endpoint.URL, ranges)
 		if err != nil {
-			return fmt.Errorf("创建分片记录失败: %w", err)
+			return fmt.Errorf("failed to create segment records: %w", err)
 		}
 		if len(ids) != len(ranges) {
-			return errors.New("创建分片记录失败: 返回的 ID 数量不正确")
+			return errors.New("failed to create segment records: incorrect number of IDs returned")
 		}
 		segments = make([]Segment, len(ranges))
 		for i, r := range ranges {
@@ -273,13 +283,13 @@ func (d *HermesEngine) downloadSegments(
 	partInfo, statErr := os.Stat(partPath)
 	partValid := statErr == nil && partInfo.Mode().IsRegular() && partInfo.Size() == fileSize
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		return fmt.Errorf("检查临时文件失败: %w", statErr)
+		return fmt.Errorf("failed to inspect temporary file: %w", statErr)
 	}
 	// Prefer a completed .part file: an older same-sized destination may still
 	// exist if the process stopped between progress persistence and rename.
 	if segmentsComplete(segments) && partValid {
 		if err := finalizePartialFile(partPath, filePath); err != nil {
-			return fmt.Errorf("提交已完成的临时文件失败: %w", err)
+			return fmt.Errorf("failed to commit completed temporary file: %w", err)
 		}
 		d.updateTracker(taskID, resourceID, fileSize, 0)
 		return nil
@@ -297,14 +307,14 @@ func (d *HermesEngine) downloadSegments(
 			}
 			segments[i].Downloaded = 0
 			if err := d.store.UpdateSegmentProgress(segments[i].ID, 0); err != nil {
-				return fmt.Errorf("重置分片进度失败: %w", err)
+				return fmt.Errorf("failed to reset segment progress: %w", err)
 			}
 		}
 	}
 
 	partFile, err := os.OpenFile(partPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		return fmt.Errorf("打开临时文件失败: %w", err)
+		return fmt.Errorf("failed to open temporary file: %w", err)
 	}
 	partClosed := false
 	defer func() {
@@ -314,7 +324,7 @@ func (d *HermesEngine) downloadSegments(
 	}()
 	if !partValid {
 		if err := partFile.Truncate(fileSize); err != nil {
-			return fmt.Errorf("预分配临时文件失败: %w", err)
+			return fmt.Errorf("failed to preallocate temporary file: %w", err)
 		}
 	}
 
@@ -364,7 +374,7 @@ func (d *HermesEngine) downloadSegments(
 		progressEventCount++
 		if progress.slot < 0 || progress.slot >= len(states) {
 			if firstErr == nil {
-				firstErr = errors.New("收到无效的分片进度索引")
+				firstErr = errors.New("received an invalid segment progress index")
 				cancelWorkers()
 			}
 			continue
@@ -381,6 +391,8 @@ func (d *HermesEngine) downloadSegments(
 			totalStateSpd += s.speed
 		}
 		d.updateTracker(taskID, resourceID, totalStateDL, totalStateSpd)
+		resource.Downloaded = totalStateDL
+		resource.Speed = totalStateSpd
 		// Throttle DB persistence to progressInterval to avoid excessive writes.
 		if time.Since(lastPersist) >= progressInterval || progress.done || progress.err != nil {
 			// The partial file is pre-sized, so its length cannot validate which
@@ -444,27 +456,27 @@ func (d *HermesEngine) downloadSegments(
 		return context.Cause(ctx)
 	}
 	if firstErr != nil {
-		return fmt.Errorf("分片下载失败: %w", firstErr)
+		return fmt.Errorf("segment download failed: %w", firstErr)
 	}
 	for _, state := range states {
 		if !state.done {
-			return errors.New("分片下载未完整结束")
+			return errors.New("segment download did not complete")
 		}
 	}
 	// Make data durable before marking all ranges complete. If persistence then
 	// succeeds but rename is interrupted, the next run finalizes the .part file.
 	if err := partFile.Sync(); err != nil {
-		return fmt.Errorf("同步临时文件失败: %w", err)
+		return fmt.Errorf("failed to sync temporary file: %w", err)
 	}
 	if err := d.persistAggregate(taskID, resourceID, segments, states); err != nil {
 		return err
 	}
 	if err := partFile.Close(); err != nil {
-		return fmt.Errorf("关闭临时文件失败: %w", err)
+		return fmt.Errorf("failed to close temporary file: %w", err)
 	}
 	partClosed = true
 	if err := os.Rename(partPath, filePath); err != nil {
-		return fmt.Errorf("提交下载文件失败: %w", err)
+		return fmt.Errorf("failed to commit downloaded file: %w", err)
 	}
 	return nil
 }
@@ -704,10 +716,10 @@ func waitForRetry(ctx context.Context, attempt int) bool {
 
 func (d *HermesEngine) persistProgress(taskID, resourceID, segmentID int, downloaded, speed int64) error {
 	if err := d.store.UpdateSegmentProgress(segmentID, downloaded); err != nil {
-		return fmt.Errorf("更新分片进度失败: %w", err)
+		return fmt.Errorf("failed to update segment progress: %w", err)
 	}
 	if err := d.updateResourceProgress(taskID, resourceID, downloaded, speed); err != nil {
-		return fmt.Errorf("更新任务进度失败: %w", err)
+		return fmt.Errorf("failed to update task progress: %w", err)
 	}
 	d.updateTracker(taskID, resourceID, downloaded, speed)
 	return nil
@@ -720,11 +732,11 @@ func (d *HermesEngine) persistAggregate(taskID, resourceID int, segments []Segme
 		totalDownloaded += state.downloaded
 		totalSpeed += state.speed
 		if err := d.store.UpdateSegmentProgress(segments[i].ID, state.downloaded); err != nil {
-			return fmt.Errorf("更新分片进度失败: %w", err)
+			return fmt.Errorf("failed to update segment progress: %w", err)
 		}
 	}
 	if err := d.updateResourceProgress(taskID, resourceID, totalDownloaded, totalSpeed); err != nil {
-		return fmt.Errorf("更新任务进度失败: %w", err)
+		return fmt.Errorf("failed to update task progress: %w", err)
 	}
 	d.updateTracker(taskID, resourceID, totalDownloaded, totalSpeed)
 	return nil

@@ -16,16 +16,16 @@ import (
 )
 
 // Postprocess performs wxchannels-specific decrypt and media conversion.
-func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo, deps registry.PostprocessDeps) error {
+func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps registry.PostprocessDeps) error {
 	log := func(msg string, args ...interface{}) {
 		deps.Logger.Info().Msg(fmt.Sprintf(msg, args...))
 	}
-	log("Postprocessor.wxchannels: task_id=%d processing %d resources", info.TaskID, len(info.Resources))
+	log("Postprocessor.wxchannels: task_id=%d processing %d resources", info.ID, len(info.Resources))
 
 	for i := range info.Resources {
 		r := &info.Resources[i]
 		log("Postprocessor.wxchannels: task_id=%d resource[%d] id=%d name=%q resourceType=%q extra=%v",
-			info.TaskID, i, r.ID, r.Name, r.Type, r.Extra)
+			info.ID, i, r.ID, r.Name, r.Type, r.Extra)
 
 		if r.Type == "STREAM" {
 			if err := postprocessStream(ctx, r, deps.BasePath, log); err != nil {
@@ -80,7 +80,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo,
 	return nil
 }
 
-func postprocessStream(ctx context.Context, r *hermes.PostprocessResource, basePath string, log func(string, ...interface{})) error {
+func postprocessStream(ctx context.Context, r *hermes.ResourceJob, basePath string, log func(string, ...interface{})) error {
 	pc := pipeline.NewContext()
 	pc.Values["input_file"] = r.FilePath
 	p := pipeline.NewBuilder("wxchannels_stream").Add("stream_convert", StreamConvertNode).Build()

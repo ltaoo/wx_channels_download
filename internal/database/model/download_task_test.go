@@ -7,12 +7,12 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestDownloadTaskV1AllowsMultipleTasksForContent(t *testing.T) {
+func TestDownloadTaskAllowsMultipleTasksForContent(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	if err := db.AutoMigrate(&Content{}, &DownloadTaskV1{}); err != nil {
+	if err := db.AutoMigrate(&Content{}, &DownloadTask{}); err != nil {
 		t.Fatalf("migrate database: %v", err)
 	}
 
@@ -27,7 +27,7 @@ func TestDownloadTaskV1AllowsMultipleTasksForContent(t *testing.T) {
 	}
 
 	contentID := "wxchannels:content-1"
-	tasks := []DownloadTaskV1{
+	tasks := []DownloadTask{
 		{ContentId: &contentID, Name: "video", PlatformId: "wxchannels"},
 		{ContentId: &contentID, Name: "audio", PlatformId: "wxchannels"},
 	}
@@ -36,7 +36,7 @@ func TestDownloadTaskV1AllowsMultipleTasksForContent(t *testing.T) {
 	}
 
 	var count int64
-	if err := db.Model(&DownloadTaskV1{}).Where("content_id = ?", "wxchannels:content-1").Count(&count).Error; err != nil {
+	if err := db.Model(&DownloadTask{}).Where("content_id = ?", "wxchannels:content-1").Count(&count).Error; err != nil {
 		t.Fatalf("count download tasks: %v", err)
 	}
 	if count != 2 {

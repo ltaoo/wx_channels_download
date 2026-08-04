@@ -17,7 +17,7 @@ type partialFileTestStore struct {
 	segments []Segment
 }
 
-func (s *partialFileTestStore) LoadTask(int) (*Task, error)            { return nil, nil }
+func (s *partialFileTestStore) LoadTask(int) (*TaskJob, error)         { return nil, nil }
 func (s *partialFileTestStore) UpdateStatus(int, int) error            { return nil }
 func (s *partialFileTestStore) ActivateTask(int) error                 { return nil }
 func (s *partialFileTestStore) UpdateProgress(int, int64, int64) error { return nil }
@@ -115,7 +115,9 @@ func TestDownloadSegmentsWritesRangesIntoSinglePartialFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := engine.downloadSegments(
-		context.Background(), driver, Endpoint{}, filePath, 1, int64(len(data)), 4, 1,
+		context.Background(), driver, Endpoint{}, filePath,
+		&TaskJob{ID: 1}, &ResourceJob{ID: 1},
+		PreparedResource{Size: int64(len(data))}, 4,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +150,9 @@ func TestDownloadFileDoesNotTrustSameSizedDestinationWithoutCompletedSegment(t *
 	}
 
 	if err := engine.downloadFile(
-		context.Background(), driver, Endpoint{}, filePath, 1,
-		PreparedResource{Size: int64(len(data)), SupportsRange: true}, 1,
+		context.Background(), driver, Endpoint{}, filePath,
+		&TaskJob{ID: 1}, &ResourceJob{ID: 1},
+		PreparedResource{Size: int64(len(data)), SupportsRange: true},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +190,9 @@ func TestCompletedPartialFileReplacesOlderSameSizedDestination(t *testing.T) {
 	}
 
 	if err := engine.downloadSegments(
-		context.Background(), driver, Endpoint{}, filePath, 1, int64(len(data)), len(ranges), 1,
+		context.Background(), driver, Endpoint{}, filePath,
+		&TaskJob{ID: 1}, &ResourceJob{ID: 1},
+		PreparedResource{Size: int64(len(data))}, len(ranges),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +240,9 @@ func TestDownloadSegmentsResumesPersistedRangesInPartialFile(t *testing.T) {
 	}
 
 	if err := engine.downloadSegments(
-		context.Background(), driver, Endpoint{}, filePath, 1, int64(len(data)), len(ranges), 1,
+		context.Background(), driver, Endpoint{}, filePath,
+		&TaskJob{ID: 1}, &ResourceJob{ID: 1},
+		PreparedResource{Size: int64(len(data))}, len(ranges),
 	); err != nil {
 		t.Fatal(err)
 	}

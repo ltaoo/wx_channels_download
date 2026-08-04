@@ -144,7 +144,7 @@ func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
 		if taskID != "" {
 			id, err := strconv.Atoi(taskID)
 			if err == nil && c.db != nil {
-				var task model.DownloadTaskV1
+				var task model.DownloadTask
 				var resource model.DownloadResource
 				if c.db.First(&task, id).Error == nil &&
 					c.db.Where("task_id = ?", id).Order("merge_order ASC, id ASC").First(&resource).Error == nil {

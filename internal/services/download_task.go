@@ -62,28 +62,18 @@ func NewDownloadTaskService(
 // Request / body types
 // ---------------------------------------------------------------------------
 
-type CreateDownloadTaskV1Request struct {
-	Objects []CreateDownloadTaskV1Body `json:"objects"`
+type CreateDownloadTaskRequest struct {
+	Objects []CreateDownloadTaskBody `json:"objects"`
 }
 
-type CreateDownloadTaskV1Body struct {
+type CreateDownloadTaskBody struct {
 	Platform     string          `json:"platform"`
 	Content      json.RawMessage `json:"content"`
-	Config       DownloadConfig  `json:"config"`
+	SavePath     string          `json:"save_path"`
+	Filename     string          `json:"filename"`
+	Config       map[string]any  `json:"config"`
 	ParentTaskID *int            `json:"parent_task_id"`
 	RelationType string          `json:"relation_type"`
-}
-
-type DownloadConfig struct {
-	SavePath      string          `json:"save_path"`
-	Filename      string          `json:"filename"`
-	Spec          json.RawMessage `json:"spec"`
-	Suffix        string          `json:"suffix"`
-	DownloadCover bool            `json:"download_cover"`
-	Overwrite     bool            `json:"overwrite"`
-	Duplicate     bool            `json:"duplicate"`
-	ConvertMP3    bool            `json:"convert_mp3"`
-	UploadCloud   bool            `json:"upload_cloud"`
 }
 
 type TaskV1IDBody struct {
@@ -98,7 +88,7 @@ type CreateDownloadTaskByURLBody struct {
 	URL          string         `json:"url"`
 	SavePath     string         `json:"save_path"`
 	Filename     string         `json:"filename"`
-	Config       DownloadConfig `json:"config"`
+	Config       map[string]any `json:"config"`
 	ParentTaskID *int           `json:"parent_task_id"`
 	RelationType string         `json:"relation_type"`
 }
@@ -126,6 +116,23 @@ type duplicateConflict struct {
 	TaskID      int
 	FilePath    string
 	ResourceKey string
+}
+
+func buildPlatformConfigJSON(config map[string]any, savePath, filename string) ([]byte, error) {
+	platformConfig := make(map[string]any, len(config)+2)
+	for key, value := range config {
+		platformConfig[key] = value
+	}
+	platformConfig["save_path"] = savePath
+	if filename != "" {
+		platformConfig["filename"] = filename
+	}
+	return json.Marshal(platformConfig)
+}
+
+func downloadConfigBool(config map[string]any, key string) bool {
+	value, _ := config[key].(bool)
+	return value
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +183,7 @@ type PrepareTaskByURLResult struct {
 }
 
 type CreateTaskResult struct {
-	Task      model.DownloadTaskV1     `json:"task"`
+	Task      model.DownloadTask       `json:"task"`
 	Resource  model.DownloadResource   `json:"resource"`
 	Endpoint  model.DownloadEndpoint   `json:"endpoint"`
 	Resources []model.DownloadResource `json:"resources"`
@@ -186,7 +193,7 @@ type CreateTaskResult struct {
 }
 
 type CreateTaskByURLResult struct {
-	Task     model.DownloadTaskV1   `json:"task"`
+	Task     model.DownloadTask     `json:"task"`
 	Resource model.DownloadResource `json:"resource"`
 	Endpoint model.DownloadEndpoint `json:"endpoint"`
 }
@@ -251,7 +258,7 @@ type DownloadTaskFileRecord struct {
 // ---------------------------------------------------------------------------
 
 // PrepareTask previews a single platform download task (no DB writes, no download start).
-func (s *DownloadTaskService) PrepareTask(body CreateDownloadTaskV1Body) (*PrepareTaskResult, error) {
+func (s *DownloadTaskService) PrepareTask(body CreateDownloadTaskBody) (*PrepareTaskResult, error) {
 	if body.Platform == "" {
 		return nil, fmt.Errorf("platform 不能为空")
 	}
@@ -261,16 +268,12 @@ func (s *DownloadTaskService) PrepareTask(body CreateDownloadTaskV1Body) (*Prepa
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
 
-	saveDir, err := s.resolveSaveDir(body.Config.SavePath)
+	saveDir, err := s.resolveSaveDir(body.SavePath)
 	if err != nil {
 		return nil, fmt.Errorf("准备保存目录失败: %w", err)
 	}
 
-	convertMP3 := body.Config.ConvertMP3 || strings.EqualFold(body.Config.Suffix, ".mp3")
-
-	body.Config.SavePath = saveDir
-	body.Config.ConvertMP3 = convertMP3
-	configJSON, err := json.Marshal(body.Config)
+	configJSON, err := buildPlatformConfigJSON(body.Config, saveDir, body.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("构建下载配置失败: %w", err)
 	}
@@ -339,7 +342,7 @@ func (s *DownloadTaskService) PrepareTaskByURL(body CreateDownloadTaskByURLBody)
 
 	requestedSavePath := body.SavePath
 	if requestedSavePath == "" {
-		requestedSavePath = body.Config.SavePath
+		requestedSavePath, _ = body.Config["save_path"].(string)
 	}
 	saveDir, err := s.resolveSaveDir(requestedSavePath)
 	if err != nil {
@@ -347,7 +350,7 @@ func (s *DownloadTaskService) PrepareTaskByURL(body CreateDownloadTaskByURLBody)
 	}
 	filename := body.Filename
 	if filename == "" {
-		filename = body.Config.Filename
+		filename, _ = body.Config["filename"].(string)
 	}
 	if filename == "" {
 		base := filepath.Base(parsedURL.Path)
@@ -390,10 +393,10 @@ func (s *DownloadTaskService) PrepareTaskByURL(body CreateDownloadTaskByURLBody)
 }
 
 // CreateTask creates a single platform download task.
-func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskV1Body) (result *CreateTaskResult, retErr error) {
+func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *CreateTaskResult, retErr error) {
 	s.logger.Debug().Str("platform", body.Platform).Msg("start processing single download task creation request")
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	defer func() {
 		if retErr != nil && task.Id > 0 {
 			s.db.Model(&task).Updates(map[string]any{
@@ -419,16 +422,12 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskV1Body) (result 
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
 
-	saveDir, err := s.resolveSaveDir(body.Config.SavePath)
+	saveDir, err := s.resolveSaveDir(body.SavePath)
 	if err != nil {
 		return nil, fmt.Errorf("准备保存目录失败: %w", err)
 	}
 
-	convertMP3 := body.Config.ConvertMP3 || strings.EqualFold(body.Config.Suffix, ".mp3")
-
-	body.Config.SavePath = saveDir
-	body.Config.ConvertMP3 = convertMP3
-	configJSON, err := json.Marshal(body.Config)
+	configJSON, err := buildPlatformConfigJSON(body.Config, saveDir, body.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("构建下载配置失败: %w", err)
 	}
@@ -463,13 +462,13 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskV1Body) (result 
 		resourceKeys = append(resourceKeys, ri.UniqueID)
 		resourceNames = append(resourceNames, ri.Name)
 	}
-	if err := s.checkDuplicateV1(saveDir, info.Task.UniqueID, resourceKeys, resourceNames, body.Config.Duplicate, body.Config.Overwrite); err != nil {
+	if err := s.checkDuplicate(saveDir, info.Task.UniqueID, resourceKeys, resourceNames, downloadConfigBool(body.Config, "duplicate"), downloadConfigBool(body.Config, "overwrite")); err != nil {
 		return nil, err
 	}
 
 	// onTaskCreate hook
 	if s.hookManager != nil && s.hookManager.HasCreateHook() {
-		taskInput := s.buildTaskInput(info, taskName, saveDir, body.Config)
+		taskInput := s.buildTaskInput(info, taskName, saveDir, body.Filename, body.Config)
 		modified, err := s.hookManager.InvokeCreateHook(taskInput)
 		if err != nil {
 			return nil, fmt.Errorf("onTaskCreate hook 执行失败: %w", err)
@@ -614,7 +613,7 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 
 	requestedSavePath := body.SavePath
 	if requestedSavePath == "" {
-		requestedSavePath = body.Config.SavePath
+		requestedSavePath, _ = body.Config["save_path"].(string)
 	}
 	saveDir, err := s.resolveSaveDir(requestedSavePath)
 	if err != nil {
@@ -622,7 +621,7 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 	}
 	filename := body.Filename
 	if filename == "" {
-		filename = body.Config.Filename
+		filename, _ = body.Config["filename"].(string)
 	}
 	if filename == "" {
 		base := filepath.Base(parsedURL.Path)
@@ -656,7 +655,7 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 
 	now := time.Now().UnixMilli()
 
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Name:       taskName,
 		Status:     model.TaskStatusWaiting,
 		ConfigJSON: string(configJSON),
@@ -719,12 +718,12 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 }
 
 // StartTask starts a download task.
-func (s *DownloadTaskService) StartTask(taskID int) (*model.DownloadTaskV1, error) {
+func (s *DownloadTaskService) StartTask(taskID int) (*model.DownloadTask, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("应用未初始化，数据库不可用")
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, fmt.Errorf("下载任务不存在")
 	}
@@ -748,12 +747,12 @@ func (s *DownloadTaskService) StartTask(taskID int) (*model.DownloadTaskV1, erro
 }
 
 // PauseTask pauses a download task. Returns the task, whether it is a stream resource, and error.
-func (s *DownloadTaskService) PauseTask(taskID int) (*model.DownloadTaskV1, bool, error) {
+func (s *DownloadTaskService) PauseTask(taskID int) (*model.DownloadTask, bool, error) {
 	if s.db == nil {
 		return nil, false, fmt.Errorf("应用未初始化，数据库不可用")
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, false, fmt.Errorf("下载任务不存在")
 	}
@@ -778,12 +777,12 @@ func (s *DownloadTaskService) PauseTask(taskID int) (*model.DownloadTaskV1, bool
 }
 
 // ResumeTask resumes a download task.
-func (s *DownloadTaskService) ResumeTask(taskID int) (*model.DownloadTaskV1, error) {
+func (s *DownloadTaskService) ResumeTask(taskID int) (*model.DownloadTask, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("应用未初始化，数据库不可用")
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, fmt.Errorf("下载任务不存在")
 	}
@@ -806,7 +805,7 @@ func (s *DownloadTaskService) DeleteTask(taskID int) (*DownloadTaskRecord, error
 		return nil, fmt.Errorf("应用未初始化，数据库不可用")
 	}
 
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, fmt.Errorf("下载任务不存在")
 	}
@@ -866,10 +865,10 @@ func (s *DownloadTaskService) ListTasks(taskID int, page int, pageSize int, stat
 		pageSize = 20
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	var total int64
 
-	query := s.db.Model(&model.DownloadTaskV1{}).Where("deleted_at IS NULL")
+	query := s.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
 	if statusFilter != "" {
 		parts := strings.Split(statusFilter, ",")
 		ints := make([]int, 0, len(parts))
@@ -923,7 +922,7 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 			model.TaskStatusWaiting, model.TaskStatusPaused, model.TaskStatusFailed)
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := query.Find(&tasks).Error; err != nil {
 		return 0, 0, fmt.Errorf("查询下载任务失败: %w", err)
 	}
@@ -959,7 +958,7 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 			model.TaskStatusPreparing, model.TaskStatusDownloading)
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := query.Find(&tasks).Error; err != nil {
 		return 0, nil, fmt.Errorf("查询下载任务失败: %w", err)
 	}
@@ -970,7 +969,7 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 		s.downloader.PauseTask(task.Id)
 		if s.hasStreamResources(task.Id) {
 			now := time.Now().UnixMilli()
-			s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", task.Id).
+			s.db.Model(&model.DownloadTask{}).Where("id = ?", task.Id).
 				Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
 			streamTaskIDs = append(streamTaskIDs, task.Id)
 		}
@@ -986,7 +985,7 @@ func (s *DownloadTaskService) ClearTasks(deleteFiles bool) (int, error) {
 		return 0, fmt.Errorf("应用未初始化，数据库不可用")
 	}
 
-	var tasks []model.DownloadTaskV1
+	var tasks []model.DownloadTask
 	if err := s.db.Where("deleted_at IS NULL").
 		Where("status IN (?, ?, ?)",
 			model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled).
@@ -1028,14 +1027,14 @@ func (s *DownloadTaskService) BuildTaskRecord(taskID int) (*DownloadTaskRecord, 
 	if s.db == nil {
 		return nil, errors.New("数据库不可用")
 	}
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	records, err := s.BuildTaskRecords([]model.DownloadTaskV1{task})
+	records, err := s.BuildTaskRecords([]model.DownloadTask{task})
 	if err != nil || len(records) == 0 {
 		return nil, err
 	}
@@ -1043,7 +1042,7 @@ func (s *DownloadTaskService) BuildTaskRecord(taskID int) (*DownloadTaskRecord, 
 }
 
 // BuildTaskRecords builds DownloadTaskRecord lists for multiple tasks.
-func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTaskV1) ([]DownloadTaskRecord, error) {
+func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]DownloadTaskRecord, error) {
 	records := make([]DownloadTaskRecord, 0, len(tasks))
 	if len(tasks) == 0 {
 		return records, nil
@@ -1082,14 +1081,14 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTaskV1) ([]
 		TaskID       int    `gorm:"column:task_id"`
 		Name         string `gorm:"column:name"`
 		Kind         string `gorm:"column:kind"`
-		ResourceType string `gorm:"column:resource_type"`
+		ResourceType string `gorm:"column:type"`
 		Size         int64  `gorm:"column:size"`
 		Status       int    `gorm:"column:status"`
 		MergeOrder   int    `gorm:"column:merge_order"`
 	}
 	var resources []resourceInfo
 	if err := s.db.Table("download_resource").
-		Select("id, task_id, name, kind, resource_type, size, status, merge_order").
+		Select("id, task_id, name, kind, type, size, status, merge_order").
 		Where("task_id IN ? AND deleted_at IS NULL", taskIDs).
 		Order("task_id ASC, merge_order ASC, id ASC").
 		Scan(&resources).Error; err != nil {
@@ -1154,7 +1153,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTaskV1) ([]
 		Count        int `gorm:"column:count"`
 	}
 	var childAggregates []childAggregate
-	if err := s.db.Model(&model.DownloadTaskV1{}).
+	if err := s.db.Model(&model.DownloadTask{}).
 		Select("parent_task_id, COUNT(*) AS count").
 		Where("parent_task_id IN ? AND deleted_at IS NULL", taskIDs).
 		Group("parent_task_id").
@@ -1282,7 +1281,7 @@ func (s *DownloadTaskService) resolveSaveDir(requested string) (string, error) {
 	return savePath, nil
 }
 
-func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID string, resourceKeys []string, resourceNames []string, duplicate bool, overwrite bool) error {
+func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string, resourceKeys []string, resourceNames []string, duplicate bool, overwrite bool) error {
 	if duplicate {
 		return nil
 	}
@@ -1292,7 +1291,7 @@ func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID stri
 
 	// Task-level duplicate check: any existing task with the same unique_id (regardless of status)
 	if taskUniqueID != "" {
-		var existingTask model.DownloadTaskV1
+		var existingTask model.DownloadTask
 		err := s.db.Where("unique_id = ? AND deleted_at IS NULL", taskUniqueID).First(&existingTask).Error
 		if err == nil {
 			existingTaskID = existingTask.Id
@@ -1300,7 +1299,7 @@ func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID stri
 				Int("existing_task_id", existingTask.Id).
 				Str("existing_task_unique_id", existingTask.UniqueID).
 				Str("incoming_task_unique_id", taskUniqueID).
-				Msg("checkDuplicateV1: task-level duplicate found")
+				Msg("checkDuplicate: task-level duplicate found")
 			conflicts = append(conflicts, duplicateConflict{
 				Type:        "task",
 				TaskID:      existingTask.Id,
@@ -1315,9 +1314,9 @@ func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID stri
 		}
 		var dup model.DownloadResource
 		err := s.db.
-			Joins("JOIN download_task_v1 ON download_task_v1.id = download_resource.task_id").
+			Joins("JOIN download_task ON download_task.id = download_resource.task_id").
 			Where("download_resource.unique_id = ?", key).
-			Where("download_task_v1.deleted_at IS NULL").
+			Where("download_task.deleted_at IS NULL").
 			First(&dup).Error
 		if err == nil {
 			existingTaskID = dup.TaskId
@@ -1326,7 +1325,7 @@ func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID stri
 				Str("existing_resource_unique_id", dup.UniqueID).
 				Str("incoming_resource_unique_id", key).
 				Str("resource_name", resourceNames[i]).
-				Msg("checkDuplicateV1: resource-level duplicate found")
+				Msg("checkDuplicate: resource-level duplicate found")
 			conflicts = append(conflicts, duplicateConflict{
 				Type:        "resource",
 				TaskID:      dup.TaskId,
@@ -1380,7 +1379,7 @@ func (s *DownloadTaskService) checkDuplicateV1(saveDir string, taskUniqueID stri
 }
 
 func (s *DownloadTaskService) deleteTaskWithFiles(taskID int) error {
-	var task model.DownloadTaskV1
+	var task model.DownloadTask
 	if err := s.db.First(&task, taskID).Error; err != nil {
 		return fmt.Errorf("任务不存在: %w", err)
 	}
@@ -1410,12 +1409,12 @@ func (s *DownloadTaskService) hasStreamResources(taskID int) bool {
 	}
 	var count int64
 	s.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND resource_type = ?", taskID, model.ResourceTypeStream).
+		Where("task_id = ? AND type = ?", taskID, model.ResourceTypeStream).
 		Count(&count)
 	return count > 0
 }
 
-func (s *DownloadTaskService) buildTaskInput(info *types.DownloadTaskResult, taskName, taskSavePath string, bodyCfg DownloadConfig) *hermes.TaskInput {
+func (s *DownloadTaskService) buildTaskInput(info *types.DownloadTaskResult, taskName, taskSavePath, filename string, bodyCfg map[string]any) *hermes.TaskInput {
 	taskInfo := hermes.TaskInfo{
 		Name:     taskName,
 		SavePath: taskSavePath,
@@ -1440,13 +1439,13 @@ func (s *DownloadTaskService) buildTaskInput(info *types.DownloadTaskResult, tas
 		})
 	}
 
-	config := map[string]any{
-		"save_path":      bodyCfg.SavePath,
-		"filename":       bodyCfg.Filename,
-		"spec":           bodyCfg.Spec,
-		"download_cover": bodyCfg.DownloadCover,
-		"overwrite":      bodyCfg.Overwrite,
-		"duplicate":      bodyCfg.Duplicate,
+	config := make(map[string]any, len(bodyCfg)+2)
+	for key, value := range bodyCfg {
+		config[key] = value
+	}
+	config["save_path"] = taskSavePath
+	if filename != "" {
+		config["filename"] = filename
 	}
 
 	if info.Task.ConfigJSON != "" {

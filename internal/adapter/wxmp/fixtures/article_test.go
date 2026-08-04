@@ -66,7 +66,7 @@ func TestToContent_FromArticleFixture(t *testing.T) {
 	expected := model.Content{
 		Id:          "wxmp:MzkyNjQ2NjI2NA==",
 		PlatformId:  "wxmp",
-		Type: "article",
+		Type:        "article",
 		ExternalId:  "MzkyNjQ2NjI2NA==",
 		ExternalId2: "2247484478",
 		Title:       "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -94,7 +94,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 		t.Fatal("handler not registered for platform wxmp")
 	}
 
-	config := wxmp.DownloadConfig{}
+	config := map[string]any{}
 	configJSON, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -124,7 +124,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	expectedContent := model.Content{
 		Id:          "wxmp:MzkyNjQ2NjI2NA==",
 		PlatformId:  "wxmp",
-		Type: "article",
+		Type:        "article",
 		ExternalId:  "MzkyNjQ2NjI2NA==",
 		ExternalId2: "2247484478",
 		Title:       "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -145,7 +145,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	const coverName = "fingerprintjs/fingerprintjs，我用了两周，说说真实感受"
 
 	expectedInfo := types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &expectedArticleContentID,
 			Name:         "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
 			UniqueID:     "MzkyNjQ2NjI2NA==_html",
@@ -235,7 +235,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 		Content: &model.Content{
 			Id:          "wxmp:MzkyNjQ2NjI2NA==",
 			PlatformId:  "wxmp",
-			Type: "article",
+			Type:        "article",
 			ExternalId:  "MzkyNjQ2NjI2NA==",
 			ExternalId2: "2247484478",
 			Title:       "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -244,6 +244,9 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 			CoverURL:    "https://mmbiz.qpic.cn/mmbiz_jpg/wfz3GtheTU1beBeFmQGgoEPus7qt4zRcE0mt6ibWSOZzxKQeicR8HiapGWUBkrRCbCNATtKH6oS9t0ene3UH1gkzcBicEmVXQ3NHYprLDD970xw/0?wx_fmt=jpeg",
 			PublishTime: &expectedArticlePublishTime,
 		},
+	}
+	for _, resource := range expectedInfo.Resources {
+		resource.ContentId = &expectedArticleContentID
 	}
 	testui.AssertStrictEqual(t, "DownloadTaskResult", expectedInfo, info)
 }
@@ -257,10 +260,10 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 		t.Fatal("handler not registered for platform wxmp")
 	}
 
-	config := wxmp.DownloadConfig{
-		Filename:  "自定义文件名",
-		Suffix:    ".html",
-		Overwrite: true,
+	config := map[string]any{
+		"filename":  "自定义文件名",
+		"suffix":    ".html",
+		"overwrite": true,
 	}
 	configJSON, err := json.Marshal(config)
 	if err != nil {
@@ -280,7 +283,7 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 	const coverURL = `https://mmbiz.qpic.cn/mmbiz_jpg/wfz3GtheTU1beBeFmQGgoEPus7qt4zRcE0mt6ibWSOZzxKQeicR8HiapGWUBkrRCbCNATtKH6oS9t0ene3UH1gkzcBicEmVXQ3NHYprLDD970xw/0?wx_fmt=jpeg`
 
 	expectedInfo := types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &expectedArticleContentID,
 			Name:         "自定义文件名",
 			UniqueID:     "MzkyNjQ2NjI2NA==_html",
@@ -374,7 +377,7 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 		Content: &model.Content{
 			Id:          "wxmp:MzkyNjQ2NjI2NA==",
 			PlatformId:  "wxmp",
-			Type: "article",
+			Type:        "article",
 			ExternalId:  "MzkyNjQ2NjI2NA==",
 			ExternalId2: "2247484478",
 			Title:       "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -385,6 +388,9 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 		},
 	}
 
+	for _, resource := range expectedInfo.Resources {
+		resource.ContentId = &expectedArticleContentID
+	}
 	testui.AssertStrictEqual(t, "DownloadTaskResult", expectedInfo, info)
 }
 

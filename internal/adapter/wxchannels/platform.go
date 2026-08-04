@@ -19,15 +19,6 @@ func init() {
 	registry.Register(&handler{})
 }
 
-// DownloadConfig holds WeChat Channels download configuration.
-type DownloadConfig struct {
-	Filename  string  `json:"filename"`
-	Spec      string `json:"spec"`
-	Suffix    string  `json:"suffix"`
-	Overwrite bool    `json:"overwrite"`
-	Duplicate bool    `json:"duplicate"`
-}
-
 type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -53,7 +44,7 @@ func (h *handler) ConvertContent(contentJSON json.RawMessage) (*model.Content, e
 }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
-	var config DownloadConfig
+	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
@@ -78,19 +69,20 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		return nil, err
 	}
 
-	title := config.Filename
+	title := configString(config, "filename")
 	if title == "" {
 		title = ObjectTitle(&obj)
 	}
+	configuredSpec := configString(config, "spec")
 	var spec string
-	if config.Spec == "" {
+	if configuredSpec == "" {
 		if !GetChannelsConfig().DownloadDefaultHighest {
 			spec = PickSpec(&obj)
 		}
-	} else if config.Spec != "original" {
-		spec = config.Spec
+	} else if configuredSpec != "original" {
+		spec = configuredSpec
 	}
-	log.Printf("DownloadDefaultHighest=%v, config.Spec=%q, final spec=%q", GetChannelsConfig().DownloadDefaultHighest, config.Spec, spec)
+	log.Printf("DownloadDefaultHighest=%v, config.Spec=%q, final spec=%q", GetChannelsConfig().DownloadDefaultHighest, configuredSpec, spec)
 	// "original" means highest quality → spec stays ""
 	coverURL := strings.TrimSpace(content.CoverURL)
 	if len(obj.ObjectDesc.Media) > 0 {
@@ -104,12 +96,13 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	decryptKey := parseKeyFromContent(content)
 	baseExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "")
 	decryptExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey)
-	task := func(configJSON []byte) *model.DownloadTaskV1 {
+	contentID := content.Id
+	task := func(configJSON []byte) *model.DownloadTask {
 		contentID := content.Id
-		task := &model.DownloadTaskV1{
+		task := &model.DownloadTask{
 			ContentId:  &contentID,
 			Name:       title,
-			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, DownloadConfig{Suffix: config.Suffix, Spec: spec}),
+			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": configString(config, "suffix"), "spec": spec}),
 			PlatformId: PlatformID,
 			Status:     model.TaskStatusWaiting,
 			SourceURL:  content.SourceURL,
@@ -121,9 +114,10 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Cover download: create cover resource only
-	if config.Suffix == ".jpg" && coverURL != "" {
+	if configString(config, "suffix") == ".jpg" && coverURL != "" {
 		configJSON, _ := json.Marshal(buildConfigJSON(config, spec))
 		coverResource := model.DownloadResource{
+			ContentId:  &contentID,
 			Name:       title,
 			Kind:       "image",
 			UniqueID:   content.ExternalId + "_cover",
@@ -170,11 +164,12 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			}
 			resources = append(resources, &types.ResourceInfo{
 				DownloadResource: model.DownloadResource{
-					Name:     sanitizeFilename(imageName),
-					Kind:     "image",
-					Size:     int64(file.FileSize),
-					UniqueID: content.ExternalId + "_" + strconv.Itoa(i),
-					Extra:    decryptExtraJSON,
+					ContentId: &contentID,
+					Name:      sanitizeFilename(imageName),
+					Kind:      "image",
+					Size:      int64(file.FileSize),
+					UniqueID:  content.ExternalId + "_" + strconv.Itoa(i),
+					Extra:     decryptExtraJSON,
 				},
 				Endpoints: []model.DownloadEndpoint{{
 					Protocol: "https",
@@ -189,10 +184,11 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		if bgm != nil {
 			resources = append(resources, &types.ResourceInfo{
 				DownloadResource: model.DownloadResource{
-					Name:     bgm.Name,
-					Kind:     "audio",
-					UniqueID: content.ExternalId + "_bgm",
-					Extra:    baseExtraJSON,
+					ContentId: &contentID,
+					Name:      bgm.Name,
+					Kind:      "audio",
+					UniqueID:  content.ExternalId + "_bgm",
+					Extra:     baseExtraJSON,
 				},
 				Endpoints: []model.DownloadEndpoint{{
 					Protocol: "http",
@@ -226,14 +222,15 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	if spec != "" {
 		resourceUniqueID = content.ExternalId + "_" + spec
 	}
-	if config.Suffix == ".mp3" {
+	if configString(config, "suffix") == ".mp3" {
 		resourceUniqueID += "_mp3"
 	}
 	videoResource := model.DownloadResource{
-		Name:     title,
-		Kind:     "video",
-		UniqueID: resourceUniqueID,
-		Extra:    decryptExtraJSON,
+		ContentId: &contentID,
+		Name:      title,
+		Kind:      "video",
+		UniqueID:  resourceUniqueID,
+		Extra:     decryptExtraJSON,
 	}
 	if ve, ok := ext.(*model.ContentVideo); ok {
 		videoResource.Size = ve.Size
@@ -264,7 +261,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 // UniqueID uses the combination of liveId + sessionStartTime to differentiate
 // different sessions of the same live (e.g. the stream was interrupted and restarted,
 // each session has a different startTime).
-func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (*types.DownloadTaskResult, error) {
+func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (*types.DownloadTaskResult, error) {
 	liveId := ""
 	sessionStartTime := int64(0)
 	if jl.LiveInfo != nil {
@@ -294,7 +291,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (
 		authorAvatarURL = jl.Contact.HeadUrl
 	}
 
-	title := config.Filename
+	title := configString(config, "filename")
 	if title == "" {
 		if jl.LiveDescription != "" {
 			title = jl.LiveDescription
@@ -304,7 +301,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (
 	}
 
 	now := time.Now().Unix()
-	configJSON, _ := json.Marshal(buildConfigJSON(config, config.Spec))
+	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec")))
 	metadataJSON, _ := json.Marshal(map[string]any{
 		"platform":     PlatformID,
 		"id":           liveId,
@@ -314,11 +311,11 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (
 	})
 
 	content := &model.Content{
-		Id:          BuildContentID(liveId),
-		PlatformId:  wxchannels,
-		ExternalId:  liveId,
-		Type: "live",
-		Title:       title,
+		Id:         BuildContentID(liveId),
+		PlatformId: wxchannels,
+		ExternalId: liveId,
+		Type:       "live",
+		Title:      title,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -348,10 +345,10 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (
 	}
 
 	streamResource := model.DownloadResource{
+		ContentId:     &content.Id,
 		Name:          title + ".mkv",
 		Kind:          "stream",
-		ResourceType:  model.ResourceTypeStream,
-		IsLive:        1,
+		Type:          model.ResourceTypeStream,
 		RotateMinutes: 10,
 		StreamURL:     jl.LiveSdkInfo.LiveCdnUrl,
 		UniqueID:      uniqueID,
@@ -363,7 +360,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config DownloadConfig) (
 	}
 
 	return &types.DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
 			UniqueID:     uniqueID,
@@ -430,15 +427,16 @@ func sanitizeBGMName(name string) string {
 //   - MP3 (default):         {externalID}_mp3             (config.Suffix == ".mp3")
 //   - Video + spec:         {externalID}_{spec}           (config.Spec is a codec name)
 //   - Video (default):       {externalID}                 (config.Spec is "" or "original")
-func BuildDownloadTaskUniqueID(externalID string, config DownloadConfig) string {
-	if config.Suffix == ".jpg" {
+func BuildDownloadTaskUniqueID(externalID string, config map[string]any) string {
+	suffixConfig := configString(config, "suffix")
+	if suffixConfig == ".jpg" {
 		return externalID + "_cover"
 	}
 	var suffix string
-	if config.Spec != "" {
-		suffix = "_" + config.Spec
+	if spec := configString(config, "spec"); spec != "" {
+		suffix = "_" + spec
 	}
-	if config.Suffix == ".mp3" {
+	if suffixConfig == ".mp3" {
 		suffix += "_mp3"
 	}
 	return externalID + suffix
@@ -447,40 +445,54 @@ func BuildDownloadTaskUniqueID(externalID string, config DownloadConfig) string 
 // buildResourceExtraJSON builds the resource.Extra JSON string.
 // When decodeKey is non-empty, the resource needs decryption; this is recorded in Extra for the postprocess pipeline.
 func buildResourceExtraJSON(id, title, spec string, createdAt int64, author string, decodeKey string) string {
+	now := time.Now().Unix()
+	filename := title
+	if filename == "" {
+		filename = id
+	}
+	if filename == "" {
+		filename = strconv.FormatInt(now, 10)
+	}
+
 	type extra struct {
-		ID        string `json:"id"`
-		Title     string `json:"title"`
-		CreatedAt string `json:"created_at"`
-		Author    string `json:"author"`
-		DecodeKey string `json:"decode_key,omitempty"`
+		ID         string `json:"id"`
+		Title      string `json:"title"`
+		Filename   string `json:"filename"`
+		Spec       string `json:"spec"`
+		CreatedAt  string `json:"created_at"`
+		DownloadAt string `json:"download_at"`
+		Author     string `json:"author"`
+		DecodeKey  string `json:"decode_key,omitempty"`
 	}
 	data, _ := json.Marshal(extra{
-		ID:        id,
-		Title:     title,
-		CreatedAt: strconv.FormatInt(createdAt, 10),
-		Author:    author,
-		DecodeKey: decodeKey,
+		ID:         id,
+		Title:      title,
+		Filename:   filename,
+		Spec:       spec,
+		CreatedAt:  strconv.FormatInt(createdAt, 10),
+		DownloadAt: strconv.FormatInt(now, 10),
+		Author:     author,
+		DecodeKey:  decodeKey,
 	})
 	return string(data)
 }
 
 // buildConfigJSON returns a map containing only the config fields whose value is set / true.
 // This keeps config_json compact by omitting empty/false fields.
-func buildConfigJSON(config DownloadConfig, spec string) map[string]any {
-	m := make(map[string]any)
-	if config.Suffix != "" {
-		m["suffix"] = config.Suffix
-	}
-	if config.Overwrite {
-		m["overwrite"] = true
-	}
-	if config.Duplicate {
-		m["duplicate"] = true
+func buildConfigJSON(config map[string]any, spec string) map[string]any {
+	m := make(map[string]any, len(config)+1)
+	for key, value := range config {
+		m[key] = value
 	}
 	if spec != "" {
 		m["spec"] = spec
 	}
 	return m
+}
+
+func configString(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return value
 }
 
 // parseKeyFromContent extracts the decrypt key from Content.Metadata.

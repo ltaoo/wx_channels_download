@@ -30,7 +30,7 @@ func registerBuiltins(vm *goja.Runtime) {
 func resolveBasePath(vm *goja.Runtime) (string, error) {
 	val := vm.Get("__basePath")
 	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
-		return "", fmt.Errorf("basePath 未设置")
+		return "", fmt.Errorf("basePath is not set")
 	}
 	return filepath.Clean(val.String()), nil
 }
@@ -46,12 +46,12 @@ func safeAbs(vm *goja.Runtime, p string) (string, error) {
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		return "", fmt.Errorf("解析路径失败: %w", err)
+		return "", fmt.Errorf("failed to resolve path: %w", err)
 	}
 	// Ensure the path does not escape basePath
 	rel, err := filepath.Rel(base, abs)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("路径 %s 不在允许的目录 %s 内", abs, base)
+		return "", fmt.Errorf("path %s is outside the allowed directory %s", abs, base)
 	}
 	return abs, nil
 }
@@ -60,13 +60,13 @@ func safeAbs(vm *goja.Runtime, p string) (string, error) {
 func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
-			return vm.ToValue(fmt.Errorf("zipFiles 需要 srcPaths 和 destPath 参数"))
+			return vm.ToValue(fmt.Errorf("zipFiles requires srcPaths and destPath arguments"))
 		}
 
 		srcArgs := call.Argument(0).Export()
 		srcList, ok := srcArgs.([]interface{})
 		if !ok {
-			return vm.ToValue(fmt.Errorf("srcPaths 必须是字符串数组"))
+			return vm.ToValue(fmt.Errorf("srcPaths must be an array of strings"))
 		}
 
 		srcPaths := make([]string, len(srcList))
@@ -84,7 +84,7 @@ func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		// Create the zip file
 		f, err := os.Create(safeDest)
 		if err != nil {
-			return vm.ToValue(fmt.Errorf("创建 zip 文件失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to create zip file: %w", err))
 		}
 		defer f.Close()
 
@@ -98,7 +98,7 @@ func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 			}
 
 			if err := addFileToZip(zw, safeSrc); err != nil {
-				return vm.ToValue(fmt.Errorf("添加 %s 到 zip 失败: %w", safeSrc, err))
+				return vm.ToValue(fmt.Errorf("failed to add %s to zip: %w", safeSrc, err))
 			}
 		}
 
@@ -138,13 +138,13 @@ func addFileToZip(zw *zip.Writer, filePath string) error {
 func removeFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
-			return vm.ToValue(fmt.Errorf("removeFiles 需要 paths 参数"))
+			return vm.ToValue(fmt.Errorf("removeFiles requires a paths argument"))
 		}
 
 		pathsArg := call.Argument(0).Export()
 		pathsList, ok := pathsArg.([]interface{})
 		if !ok {
-			return vm.ToValue(fmt.Errorf("paths 必须是字符串数组"))
+			return vm.ToValue(fmt.Errorf("paths must be an array of strings"))
 		}
 
 		for _, v := range pathsList {
@@ -159,14 +159,14 @@ func removeFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 				if os.IsNotExist(err) {
 					continue
 				}
-				return vm.ToValue(fmt.Errorf("检查文件 %s 失败: %w", safeP, err))
+				return vm.ToValue(fmt.Errorf("failed to inspect file %s: %w", safeP, err))
 			}
 			if info.IsDir() {
-				return vm.ToValue(fmt.Errorf("不允许删除目录: %s", safeP))
+				return vm.ToValue(fmt.Errorf("removing directories is not allowed: %s", safeP))
 			}
 
 			if err := os.Remove(safeP); err != nil {
-				return vm.ToValue(fmt.Errorf("删除文件 %s 失败: %w", safeP, err))
+				return vm.ToValue(fmt.Errorf("failed to remove file %s: %w", safeP, err))
 			}
 		}
 
@@ -178,7 +178,7 @@ func removeFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
-			return vm.ToValue(fmt.Errorf("moveFile 需要 src 和 dst 参数"))
+			return vm.ToValue(fmt.Errorf("moveFile requires src and dst arguments"))
 		}
 
 		src := call.Argument(0).String()
@@ -195,11 +195,11 @@ func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 
 		// Ensure the destination directory exists
 		if err := os.MkdirAll(filepath.Dir(safeDst), 0755); err != nil {
-			return vm.ToValue(fmt.Errorf("创建目标目录失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to create destination directory: %w", err))
 		}
 
 		if err := os.Rename(safeSrc, safeDst); err != nil {
-			return vm.ToValue(fmt.Errorf("移动文件失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to move file: %w", err))
 		}
 
 		return goja.Undefined()
@@ -210,7 +210,7 @@ func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 func writeTextFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
-			return vm.ToValue(fmt.Errorf("writeTextFile 需要 path 和 text 参数"))
+			return vm.ToValue(fmt.Errorf("writeTextFile requires path and text arguments"))
 		}
 
 		path := call.Argument(0).String()
@@ -222,7 +222,7 @@ func writeTextFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		}
 
 		if err := os.WriteFile(safePath, []byte(text), 0644); err != nil {
-			return vm.ToValue(fmt.Errorf("写入文件失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to write file: %w", err))
 		}
 
 		return goja.Undefined()
@@ -288,7 +288,7 @@ func readConfigJSONFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value 
 		jsonStr := call.Argument(0).String()
 		var result interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-			return vm.ToValue(fmt.Errorf("解析 JSON 失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to parse JSON: %w", err))
 		}
 		return vm.ToValue(result)
 	}
@@ -304,7 +304,7 @@ func writeConfigJSONFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value
 		obj := call.Argument(0).Export()
 		jsonBytes, err := json.Marshal(obj)
 		if err != nil {
-			return vm.ToValue(fmt.Errorf("序列化 JSON 失败: %w", err))
+			return vm.ToValue(fmt.Errorf("failed to serialize JSON: %w", err))
 		}
 		return vm.ToValue(string(jsonBytes))
 	}

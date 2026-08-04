@@ -27,11 +27,11 @@ type TaskInfo struct {
 
 // ResourceInfo is the resource information exposed to hooks.
 type ResourceInfo struct {
-	ID         int               `json:"id"`
-	Name       string            `json:"name"`
-	Kind       string            `json:"kind"`
-	Size       int64             `json:"size"`
-	UniqueID   string            `json:"unique_id"`
+	ID        int               `json:"id"`
+	Name      string            `json:"name"`
+	Kind      string            `json:"kind"`
+	Size      int64             `json:"size"`
+	UniqueID  string            `json:"unique_id"`
 	Extra     map[string]string `json:"extra"`
 	Endpoints []EndpointInfo    `json:"endpoints"`
 }
@@ -75,8 +75,8 @@ type ResourceMeta struct {
 // FilenameParams holds the parameters for the onFilename hook.
 // The hook returns a string (filename) or null/empty string (to use the default logic).
 type FilenameParams struct {
-	Meta   ResourceMeta  `json:"meta"`
-	Task   TaskInfo      `json:"task"`
+	Meta   ResourceMeta   `json:"meta"`
+	Task   TaskInfo       `json:"task"`
 	Config map[string]any `json:"config"`
 }
 
@@ -104,14 +104,14 @@ func (hm *HookManager) HasFilenameHook() bool {
 func (hm *HookManager) Load(scriptPath string) error {
 	data, err := os.ReadFile(scriptPath)
 	if err != nil {
-		return fmt.Errorf("读取 hook 脚本 %s 失败: %w", scriptPath, err)
+		return fmt.Errorf("failed to read hook script %s: %w", scriptPath, err)
 	}
 
 	vm := goja.New()
 	registerBuiltins(vm)
 
 	if _, err := vm.RunString(string(data)); err != nil {
-		return fmt.Errorf("执行 hook 脚本失败: %w", err)
+		return fmt.Errorf("failed to execute hook script: %w", err)
 	}
 
 	hm.vm = vm
@@ -133,7 +133,7 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskCreate"))
 	if !ok {
-		return nil, fmt.Errorf("onTaskCreate 不是函数")
+		return nil, fmt.Errorf("onTaskCreate is not a function")
 	}
 
 	taskVal := hm.vm.ToValue(input.Task)
@@ -142,7 +142,7 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 
 	result, err := fn(goja.Undefined(), taskVal, resourcesVal, configVal)
 	if err != nil {
-		return nil, fmt.Errorf("onTaskCreate 执行失败: %w", err)
+		return nil, fmt.Errorf("onTaskCreate execution failed: %w", err)
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
@@ -152,12 +152,12 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 	exported := result.Export()
 	jsonBytes, err := json.Marshal(exported)
 	if err != nil {
-		return nil, fmt.Errorf("序列化 onTaskCreate 结果失败: %w", err)
+		return nil, fmt.Errorf("failed to serialize onTaskCreate result: %w", err)
 	}
 
 	var modified TaskInput
 	if err := json.Unmarshal(jsonBytes, &modified); err != nil {
-		return nil, fmt.Errorf("反序列化 onTaskCreate 结果失败: %w", err)
+		return nil, fmt.Errorf("failed to deserialize onTaskCreate result: %w", err)
 	}
 
 	return &modified, nil
@@ -173,13 +173,13 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskFinish"))
 	if !ok {
-		return fmt.Errorf("onTaskFinish 不是函数")
+		return fmt.Errorf("onTaskFinish is not a function")
 	}
 
 	ctxVal := hm.vm.ToValue(ctx)
 	_, err := fn(goja.Undefined(), ctxVal)
 	if err != nil {
-		return fmt.Errorf("onTaskFinish 执行失败: %w", err)
+		return fmt.Errorf("onTaskFinish execution failed: %w", err)
 	}
 
 	return nil
@@ -197,7 +197,7 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onFilename"))
 	if !ok {
-		return "", fmt.Errorf("onFilename 不是函数")
+		return "", fmt.Errorf("onFilename is not a function")
 	}
 
 	systemVal := hm.vm.ToValue(systemName)
@@ -207,7 +207,7 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 
 	result, err := fn(goja.Undefined(), systemVal, metaVal, taskVal, configVal)
 	if err != nil {
-		return "", fmt.Errorf("onFilename 执行失败: %w", err)
+		return "", fmt.Errorf("onFilename execution failed: %w", err)
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {

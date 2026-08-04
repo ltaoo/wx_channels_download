@@ -10,8 +10,8 @@ import (
 	"wx_channel/internal/database/model"
 )
 
-// Apply validates and assigns lineage before a DownloadTaskV1 is created.
-func Apply(db *gorm.DB, task *model.DownloadTaskV1, parentTaskID *int, relationType string) error {
+// Apply validates and assigns lineage before a DownloadTask is created.
+func Apply(db *gorm.DB, task *model.DownloadTask, parentTaskID *int, relationType string) error {
 	if db == nil {
 		return fmt.Errorf("数据库不可用")
 	}
@@ -33,7 +33,7 @@ func Apply(db *gorm.DB, task *model.DownloadTaskV1, parentTaskID *int, relationT
 		return fmt.Errorf("parent_task_id 无效")
 	}
 
-	var parent model.DownloadTaskV1
+	var parent model.DownloadTask
 	err := db.Where("id = ? AND deleted_at IS NULL", *parentTaskID).First(&parent).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("父下载任务不存在")
@@ -56,7 +56,7 @@ func Apply(db *gorm.DB, task *model.DownloadTaskV1, parentTaskID *int, relationT
 }
 
 // FinalizeRoot assigns a newly-created root task's own ID as root_task_id.
-func FinalizeRoot(db *gorm.DB, task *model.DownloadTaskV1) error {
+func FinalizeRoot(db *gorm.DB, task *model.DownloadTask) error {
 	if task == nil || task.Id <= 0 {
 		return fmt.Errorf("下载任务尚未创建")
 	}

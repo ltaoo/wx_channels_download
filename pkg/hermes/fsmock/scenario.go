@@ -100,7 +100,7 @@ func NewScenario(maxConcurrent int) *ScenarioBuilder {
 }
 
 // WithTask sets the task to be loaded by the store.
-func (b *ScenarioBuilder) WithTask(task *hermes.Task) *ScenarioBuilder {
+func (b *ScenarioBuilder) WithTask(task *hermes.TaskJob) *ScenarioBuilder {
 	b.Store.mu.Lock()
 	b.Store.taskInfo = task
 	b.Store.mu.Unlock()
@@ -160,14 +160,14 @@ func (b *ScenarioBuilder) WaitFor(event hermes.EventType, timeout time.Duration)
 }
 
 // BuildFilePath computes the expected output path for a task+URL.
-func BuildFilePath(task *hermes.Task, url string) (string, error) {
+func BuildFilePath(task *hermes.TaskJob, url string) (string, error) {
 	return taskFilePath(task, url)
 }
 
 // taskFilePath mirrors the hermes package's taskFilePath logic.
-func taskFilePath(info *hermes.Task, endpointURL string) (string, error) {
+func taskFilePath(info *hermes.TaskJob, endpointURL string) (string, error) {
 	if info == nil || info.SavePath == "" {
-		return "", fmt.Errorf("保存路径不能为空")
+		return "", fmt.Errorf("save path cannot be empty")
 	}
 	name := info.Name
 	if name == "" {
@@ -184,51 +184,53 @@ func taskFilePath(info *hermes.Task, endpointURL string) (string, error) {
 		name = name[3:]
 	}
 	if name == "" || name == "." || name == ".." {
-		return "", fmt.Errorf("无法确定下载文件名")
+		return "", fmt.Errorf("unable to determine download filename")
 	}
 	return filepath.Join(info.SavePath, name), nil
 }
 
 // ---------------------------------------------------------------------------
-// Task constructors
+// TaskJob constructors
 // ---------------------------------------------------------------------------
 
-// SingleFileHTTPTask creates a Task for a single-file HTTP download.
-func SingleFileHTTPTask(id int, name string, saveDir string, url string) *hermes.Task {
-	return &hermes.Task{
-		ID:         id,
-		Name:       name,
-		SavePath:   saveDir,
-		ResourceID: id * 100,
-		Endpoints:  []hermes.Endpoint{{URL: url}},
+// SingleFileHTTPTask creates a TaskJob for a single-file HTTP download.
+func SingleFileHTTPTask(id int, name string, saveDir string, url string) *hermes.TaskJob {
+	return &hermes.TaskJob{
+		ID:       id,
+		Name:     name,
+		SavePath: saveDir,
+		Resources: []hermes.ResourceJob{{
+			ID: id * 100, Name: name, UniqueID: name,
+			Endpoints: []hermes.Endpoint{{URL: url}},
+		}},
 	}
 }
 
-// CollectionTask creates a Task with multiple resources.
-func CollectionTask(id int, saveDir string, resources ...hermes.Resource) *hermes.Task {
-	return &hermes.Task{
-		ID:         id,
-		Name:       "collection",
-		SavePath:   saveDir,
-		ResourceID: 0,
-		Resources:  resources,
+// CollectionTask creates a TaskJob with multiple resources.
+func CollectionTask(id int, saveDir string, resources ...hermes.ResourceJob) *hermes.TaskJob {
+	return &hermes.TaskJob{
+		ID:        id,
+		Name:      "collection",
+		SavePath:  saveDir,
+		Resources: resources,
 	}
 }
 
-// NewMemoryResource creates a Resource backed by a memory:// URL.
-func NewMemoryResource(id int, name string) hermes.Resource {
-	return hermes.Resource{
-		ID:   id,
-		Name: name,
+// NewMemoryResource creates a ResourceJob backed by a memory:// URL.
+func NewMemoryResource(id int, name string) hermes.ResourceJob {
+	return hermes.ResourceJob{
+		ID:       id,
+		Name:     name,
+		UniqueID: name,
 		Endpoints: []hermes.Endpoint{
 			{ID: id, Protocol: "memory", URL: "memory://" + name},
 		},
 	}
 }
 
-// NewMemoryResourceWithExt creates a Resource with a fallback extension.
+// NewMemoryResourceWithExt creates a ResourceJob with a fallback extension.
 // Used when Content-Type is unavailable and extension should be inferred from fallback.
-func NewMemoryResourceWithExt(id int, name, ext string) hermes.Resource {
+func NewMemoryResourceWithExt(id int, name, ext string) hermes.ResourceJob {
 	r := NewMemoryResource(id, name)
 	r.Extension = ext
 	return r

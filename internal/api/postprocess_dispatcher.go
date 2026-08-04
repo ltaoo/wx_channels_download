@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -22,18 +21,19 @@ func NewPlatformPostprocessor(db *gorm.DB, logger zerolog.Logger, basePath strin
 }
 
 // Process implements hermes.Postprocessor.
-func (pp *PlatformPostprocessor) Process(ctx context.Context, info *hermes.PostprocessInfo) error {
-	platform, _ := info.Metadata["platform"].(string)
-	pp.deps.Logger.Info().Msg(fmt.Sprintf(
-		"Postprocessor.Process: task_id=%d platform=%q resources=%d",
-		info.TaskID, platform, len(info.Resources),
-	))
+func (pp *PlatformPostprocessor) Process(ctx context.Context, info *hermes.TaskJob) error {
+	platform := info.Platform
+	pp.deps.Logger.Info().
+		Int("task_id", info.ID).
+		Str("platform", platform).
+		Int("resource_count", len(info.Resources)).
+		Msg("starting platform postprocessing")
 	handler := registry.Get(platform)
 	if handler == nil {
-		pp.deps.Logger.Info().Msg(fmt.Sprintf(
-			"Postprocessor.Process: task_id=%d no adapter for platform=%q, skipping",
-			info.TaskID, platform,
-		))
+		pp.deps.Logger.Info().
+			Int("task_id", info.ID).
+			Str("platform", platform).
+			Msg("no postprocessing adapter registered, skipping")
 		return nil
 	}
 	postprocessor, ok := handler.(registry.Postprocessor)

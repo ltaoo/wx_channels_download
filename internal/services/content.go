@@ -336,7 +336,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			})
 		}
 
-		var tasks []model.DownloadTaskV1
+		var tasks []model.DownloadTask
 		if err := s.db.
 			Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
 			Order("content_id ASC, id DESC").

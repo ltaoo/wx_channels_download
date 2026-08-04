@@ -6,7 +6,7 @@ import (
 
 // DownloadTaskResult is the result of building a download task by a platform handler.
 type DownloadTaskResult struct {
-	Task      *model.DownloadTaskV1
+	Task      *model.DownloadTask
 	Resources []*ResourceInfo
 	// Extension carries content-type-specific data set by platform adapters.
 	ContentDetail any
@@ -29,7 +29,7 @@ type ResourceInfo struct {
 // NewDownloadTaskResult creates a DownloadTaskResult with the given task-level fields.
 func NewDownloadTaskResult(name, uniqueID, platformID, configJSON, metadataJSON string) *DownloadTaskResult {
 	return &DownloadTaskResult{
-		Task: &model.DownloadTaskV1{
+		Task: &model.DownloadTask{
 			Name:         name,
 			UniqueID:     uniqueID,
 			PlatformId:   platformID,

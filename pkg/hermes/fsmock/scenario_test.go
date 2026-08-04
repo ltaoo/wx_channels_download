@@ -81,7 +81,7 @@ func TestScenario_SingleFileHTTP_NoRange(t *testing.T) {
 
 func TestScenario_CollectionMultipleEndpoints(t *testing.T) {
 	// Scenario 3: Collection via multiple endpoints (video + audio + cover)
-	// Resource names have no extension; correct fallback suffix is specified via Extension.
+	// ResourceJob names have no extension; correct fallback suffix is specified via Extension.
 	saveDir := t.TempDir()
 	data := GenerateData(64 * 1024)
 
@@ -121,15 +121,15 @@ func TestScenario_CollectionFallback(t *testing.T) {
 	b := NewScenario(1).
 		WithFailingDriver(int64(len(data))).
 		WithMemoryDriver(data).
-		WithTask(&hermes.Task{
-			ID:         1,
-			Name:       "fallback.bin",
-			SavePath:   saveDir,
-			ResourceID: 101,
-			Endpoints: []hermes.Endpoint{
-				{ID: 1, Protocol: "failing", URL: "failing://primary", Priority: 0},
-				{ID: 2, Protocol: "memory", URL: "memory://fallback", Priority: 1},
-			},
+		WithTask(&hermes.TaskJob{
+			ID: 1, Name: "fallback.bin", SavePath: saveDir,
+			Resources: []hermes.ResourceJob{{
+				ID: 101, Name: "fallback.bin", UniqueID: "fallback.bin",
+				Endpoints: []hermes.Endpoint{
+					{ID: 1, Protocol: "failing", URL: "failing://primary", Priority: 0},
+					{ID: 2, Protocol: "memory", URL: "memory://fallback", Priority: 1},
+				},
+			}},
 		})
 
 	require.NoError(t, b.Start(1))
@@ -156,14 +156,12 @@ func TestScenario_HLSStream(t *testing.T) {
 
 	b := NewScenario(1).
 		WithMemoryDriver(data).
-		WithTask(&hermes.Task{
-			ID:         1,
-			Name:       "stream.mp4",
-			SavePath:   saveDir,
-			ResourceID: 201,
-			Endpoints: []hermes.Endpoint{
-				{ID: 1, Protocol: "memory", URL: "memory://stream"},
-			},
+		WithTask(&hermes.TaskJob{
+			ID: 1, Name: "stream.mp4", SavePath: saveDir,
+			Resources: []hermes.ResourceJob{{
+				ID: 201, Name: "stream.mp4", UniqueID: "stream.mp4", Type: hermes.ResourceTypeStream,
+				Endpoints: []hermes.Endpoint{{ID: 1, Protocol: "memory", URL: "memory://stream"}},
+			}},
 		})
 
 	require.NoError(t, b.Start(1))
@@ -193,13 +191,7 @@ func TestScenario_MultiSegmentConcurrent(t *testing.T) {
 	defer srv.Close()
 
 	b := NewScenario(10).
-		WithTask(&hermes.Task{
-			ID:         1,
-			Name:       "multi_seg.bin",
-			SavePath:   saveDir,
-			ResourceID: 1,
-			URL:        srv.URL(),
-		}).
+		WithTask(SingleFileHTTPTask(1, "multi_seg.bin", saveDir, srv.URL())).
 		WithHTTPDriver()
 
 	require.NoError(t, b.Start(1))
@@ -237,12 +229,7 @@ func TestScenario_SlowServerPauseResume(t *testing.T) {
 	defer srv.Close()
 
 	b := NewScenario(1).
-		WithTask(&hermes.Task{
-			ID:       1,
-			Name:     "pause_test.bin",
-			SavePath: saveDir,
-			URL:      srv.URL(),
-		}).
+		WithTask(SingleFileHTTPTask(1, "pause_test.bin", saveDir, srv.URL())).
 		WithHTTPDriver()
 
 	require.NoError(t, b.Start(1))
@@ -297,13 +284,7 @@ func TestScenario_EmptyFile(t *testing.T) {
 	defer srv.Close()
 
 	b := NewScenario(1).
-		WithTask(&hermes.Task{
-			ID:         1,
-			Name:       "empty.bin",
-			SavePath:   saveDir,
-			ResourceID: 1,
-			URL:        srv.URL(),
-		}).
+		WithTask(SingleFileHTTPTask(1, "empty.bin", saveDir, srv.URL())).
 		WithHTTPDriver()
 
 	require.NoError(t, b.Start(1))
@@ -325,13 +306,12 @@ func TestScenario_OneByteFile(t *testing.T) {
 
 	b := NewScenario(1).
 		WithMemoryDriver(data).
-		WithTask(&hermes.Task{
-			ID:       1,
-			Name:     "one.bin",
-			SavePath: saveDir,
-			Endpoints: []hermes.Endpoint{
-				{ID: 1, Protocol: "memory", URL: "memory://one.bin"},
-			},
+		WithTask(&hermes.TaskJob{
+			ID: 1, Name: "one.bin", SavePath: saveDir,
+			Resources: []hermes.ResourceJob{{
+				ID: 1, Name: "one.bin", UniqueID: "one.bin",
+				Endpoints: []hermes.Endpoint{{ID: 1, Protocol: "memory", URL: "memory://one.bin"}},
+			}},
 		})
 
 	require.NoError(t, b.Start(1))
@@ -361,13 +341,7 @@ func TestScenario_LargeFileHundredMB(t *testing.T) {
 	defer srv.Close()
 
 	b := NewScenario(10).
-		WithTask(&hermes.Task{
-			ID:         1,
-			Name:       "big.bin",
-			SavePath:   saveDir,
-			ResourceID: 1,
-			URL:        srv.URL(),
-		}).
+		WithTask(SingleFileHTTPTask(1, "big.bin", saveDir, srv.URL())).
 		WithHTTPDriver()
 
 	require.NoError(t, b.Start(1))
@@ -389,13 +363,12 @@ func TestScenario_EventSequence(t *testing.T) {
 
 	b := NewScenario(1).
 		WithMemoryDriver(data).
-		WithTask(&hermes.Task{
-			ID:       1,
-			Name:     "seq.bin",
-			SavePath: saveDir,
-			Endpoints: []hermes.Endpoint{
-				{ID: 1, Protocol: "memory", URL: "memory://seq.bin"},
-			},
+		WithTask(&hermes.TaskJob{
+			ID: 1, Name: "seq.bin", SavePath: saveDir,
+			Resources: []hermes.ResourceJob{{
+				ID: 1, Name: "seq.bin", UniqueID: "seq.bin",
+				Endpoints: []hermes.Endpoint{{ID: 1, Protocol: "memory", URL: "memory://seq.bin"}},
+			}},
 		})
 
 	require.NoError(t, b.Start(1))
@@ -435,13 +408,12 @@ func TestScenario_StoreErrorHandling(t *testing.T) {
 		WithMemoryDriver(data)
 
 	b.Store.SetLoadTaskError(assert.AnError)
-	b.WithTask(&hermes.Task{
-		ID:       1,
-		Name:     "err.bin",
-		SavePath: saveDir,
-		Endpoints: []hermes.Endpoint{
-			{ID: 1, Protocol: "memory", URL: "memory://err.bin"},
-		},
+	b.WithTask(&hermes.TaskJob{
+		ID: 1, Name: "err.bin", SavePath: saveDir,
+		Resources: []hermes.ResourceJob{{
+			ID: 1, Name: "err.bin", UniqueID: "err.bin",
+			Endpoints: []hermes.Endpoint{{ID: 1, Protocol: "memory", URL: "memory://err.bin"}},
+		}},
 	})
 
 	require.NoError(t, b.Start(1))

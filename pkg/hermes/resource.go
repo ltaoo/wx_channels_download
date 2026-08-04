@@ -2,7 +2,6 @@ package hermes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
@@ -19,26 +18,17 @@ import (
 	"wx_channel/pkg/util"
 )
 
-func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePath string, resourceType string, resource Resource, config map[string]any, resourceExtensions map[int]string) (string, error) {
-	originalDBName := resource.Name
-	// Use unique_id as download filename to avoid collisions between tasks
-	// (e.g., mp3 conversion task vs normal download of the same video).
-	// The display name is preserved in resource.Extra["title"] for the final rename.
-	downloadName := resource.Name
-	if resource.UniqueID != "" {
-		downloadName = resource.UniqueID
+func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, resource *ResourceJob) (string, error) {
+	if task == nil {
+		return "", errors.New("task is nil")
 	}
-	configJSON, _ := json.Marshal(config)
-	resourceTask := &Task{
-		ID:               taskID,
-		Name:             downloadName,
-		SavePath:         savePath,
-		FilenameTemplate: d.cfg.FilenameTemplate,
-		ResourceID:       resource.ID,
-		Endpoints:        resource.Endpoints,
-		Config:           string(configJSON),
+	if resource == nil {
+		return "", errors.New("resource is nil")
 	}
-	candidates, err := d.endpointCandidates(resourceTask)
+	if strings.TrimSpace(resource.UniqueID) == "" {
+		return "", errors.New("resource unique ID is required")
+	}
+	candidates, err := d.endpointCandidates(resource.Endpoints)
 	if err != nil {
 		return "", err
 	}
@@ -51,7 +41,7 @@ func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePat
 			return "", err
 		}
 		if candidate.driver == nil {
-			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: 未注册协议驱动", candidate.protocol))
+			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: protocol driver is not registered", candidate.protocol))
 			continue
 		}
 
@@ -66,18 +56,28 @@ func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePat
 		if prepared.Size < 0 {
 			prepared.Size = 0
 		}
+		if resource.TargetExt == "" {
+			resource.TargetExt = preparedTargetExtension(prepared, resource.Extension)
+		}
 		if expectedSize > 0 && prepared.Size > 0 && prepared.Size != expectedSize {
-			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: 镜像资源大小不一致", candidate.protocol))
+			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: mirror resource size mismatch", candidate.protocol))
 			continue
 		}
 		if expectedSize == 0 && prepared.Size > 0 {
 			expectedSize = prepared.Size
 		}
 		if prepared.Size > 0 {
-			if err := d.updateResourceSize(taskID, resource.ID, prepared.Size); err != nil {
-				return "", fmt.Errorf("更新资源大小失败: %w", err)
+			resource.Size = prepared.Size
+			d.logger.Info().
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Int64("resource_size", prepared.Size).
+				Str("resource_size_readable", formatSize(prepared.Size)).
+				Msg("run - updating resource size from prepared endpoint")
+			if err := d.updateResourceSize(task.ID, resource.ID, prepared.Size); err != nil {
+				return "", fmt.Errorf("failed to update resource size: %w", err)
 			}
-			d.updateTrackerSize(taskID, resource.ID, prepared.Size)
+			d.updateTrackerSize(task.ID, resource.ID, prepared.Size)
 		}
 
 		// Once segment records exist, resource.Name is the canonical path that was
@@ -87,115 +87,65 @@ func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePat
 		// persisted offset to zero.
 		existingSegments, segmentErr := d.store.LoadSegmentInfo(resource.ID)
 		if segmentErr != nil {
-			return "", fmt.Errorf("读取已有下载分片失败: %w", segmentErr)
+			return "", fmt.Errorf("failed to load existing download segments: %w", segmentErr)
 		}
 		resuming := len(existingSegments) > 0
 		if resuming {
 			d.logger.Info().
-				Int("taskID", taskID).
-				Int("resourceID", resource.ID).
-				Int("segmentCount", len(existingSegments)).
-				Str("resourceName", resourceTask.Name).
-				Msg("existing segments found, preserving persisted filename")
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Int("segment_count", len(existingSegments)).
+				Str("resource_name", resource.Name).
+				Msg("run - existing segments found, preserving persisted filename")
 		}
-
-		if !resuming && resourceTask.FilenameTemplate != "" && downloadName == originalDBName {
-			meta := buildTemplateMeta(resource.Extra, config, resourceTask.Name)
-			rawName := resourceTask.Name
-			if newName := d.applyFilenameTemplate(resourceTask, candidate.endpoint.URL, meta); newName != "" {
-				resourceTask.Name = newName
-				d.logger.Info().
-					Int("taskID", taskID).
-					Int("resourceID", resource.ID).
-					Str("oldName", rawName).
-					Str("newName", newName).
-					Str("template", resourceTask.FilenameTemplate).
-					Interface("meta", meta).
-					Msg("filename template applied")
-			}
-		}
-
-		// onFilename hook: user-defined final filename
-		// Skip when using unique_id as download name; template and hook are
-		// deferred to finishTask after the filename is restored to the display name.
-		if !resuming && d.hooks != nil && d.hooks.HasFilenameHook() && downloadName == originalDBName {
-			params := &FilenameParams{
-				Meta: buildResourceMeta(resource.Extra, config),
-				Task: TaskInfo{
-					Name:     resourceTask.Name,
-					SavePath: savePath,
-					Config:   config,
-				},
-				Config: config,
-			}
-			rawName := resourceTask.Name
-			if newName, err := d.hooks.InvokeFilenameHook(params, resourceTask.Name); err != nil {
-				d.logger.Warn().Err(err).Msg("onFilename hook execution failed")
-			} else if newName != "" {
-				resourceTask.Name = newName
-				d.logger.Info().
-					Int("taskID", taskID).
-					Int("resourceID", resource.ID).
-					Str("oldName", rawName).
-					Str("newName", newName).
-					Msg("onFilename hook applied")
-			}
-		}
-
-		_, err = d.processOutputFilename(resourceTask, candidate.endpoint.URL, prepared, resource.Extension, originalDBName, resourceExtensions)
-		if err != nil {
-			return "", err
-		}
-		filePath, err = d.filePathForResource(resourceTask, candidate.endpoint.URL)
+		filePath, err = d.filePathForJobResource(task, resource, candidate.endpoint.URL)
 		if err != nil {
 			return "", err
 		}
 		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-			return "", fmt.Errorf("创建下载目录失败: %w", err)
+			return "", fmt.Errorf("failed to create download directory: %w", err)
 		}
 
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int("resourceID", resource.ID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Str("endpoint", candidate.endpoint.URL).
-			Str("filePath", d.relLogPath(filePath)).
-			Msg("starting resource download")
+			Str("file_path", d.relLogPath(filePath)).
+			Msg("run - starting resource download")
 
 		segmentCount := chooseSegmentCount(prepared)
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int("resourceID", resource.ID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Bool("segmented", segmentCount > 1).
-			Int("segmentCount", segmentCount).
-			Int64("segmentSize", minimumSegmentSize).
-			Msg("download mode selected")
+			Int("segment_count", segmentCount).
+			Int64("segment_size", minimumSegmentSize).
+			Msg("run - download mode selected")
+		downloadStart := time.Now()
 		if segmentCount > 1 {
-			err = d.downloadSegments(ctx, candidate.driver, candidate.endpoint, filePath, resource.ID, prepared.Size, segmentCount, taskID)
+			err = d.downloadSegments(ctx, candidate.driver, candidate.endpoint, filePath, task, resource, prepared, segmentCount)
 		} else {
-			err = d.downloadFile(ctx, candidate.driver, candidate.endpoint, filePath, resource.ID, prepared, taskID)
+			err = d.downloadFile(ctx, candidate.driver, candidate.endpoint, filePath, task, resource, prepared)
 		}
 		if err == nil {
+			resource.FilePath = filePath
 			d.logger.Info().
-				Int("taskID", taskID).
-				Int("resourceID", resource.ID).
-				Str("filePath", d.relLogPath(filePath)).
-				Msg("data transfer completed")
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Str("file_path", d.relLogPath(filePath)).
+				Dur("elapsed", time.Since(downloadStart)).
+				Msg("run - data transfer completed")
 			if prepared.Size <= 0 {
 				if fileInfo, statErr := os.Stat(filePath); statErr == nil {
-					if err := d.updateResourceSize(taskID, resource.ID, fileInfo.Size()); err != nil {
-						return "", fmt.Errorf("更新资源最终大小失败: %w", err)
+					resource.Size = fileInfo.Size()
+					if err := d.updateResourceSize(task.ID, resource.ID, fileInfo.Size()); err != nil {
+						return "", fmt.Errorf("failed to update final resource size: %w", err)
 					}
-					d.updateTrackerSize(taskID, resource.ID, fileInfo.Size())
+					d.updateTrackerSize(task.ID, resource.ID, fileInfo.Size())
 				}
 			}
-			if store, ok := d.store.(ResourceStore); ok {
-				d.logger.Info().
-					Int("taskID", taskID).
-					Int("resourceID", resource.ID).
-					Msg("persisting resource state")
-				if err := store.FinishResource(resource.ID); err != nil {
-					return "", fmt.Errorf("完成资源持久化失败: %w", err)
-				}
+			if err := d.finishDownloadResource(task.ID, resource.ID); err != nil {
+				return "", err
 			}
 			return filePath, nil
 		}
@@ -204,13 +154,30 @@ func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePat
 		}
 		endpointErrors = append(endpointErrors, fmt.Sprintf("%s: %v", candidate.protocol, err))
 		d.logger.Warn().
-			Int("endpointID", candidate.endpoint.ID).
-			Int("taskID", taskID).
-			Int("resourceID", resource.ID).
+			Int("endpoint_id", candidate.endpoint.ID).
+			Str("endpoint", candidate.endpoint.URL).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Err(err).
-			Msg("endpoint failed, trying next mirror")
+			Msg("run - download resource from endpoint failed, trying next mirror")
 	}
-	return "", fmt.Errorf("所有下载端点均不可用: %s", strings.Join(endpointErrors, "; "))
+	return "", fmt.Errorf("all download endpoints are unavailable: %s", strings.Join(endpointErrors, "; "))
+}
+
+func (d *HermesEngine) finishDownloadResource(taskID, resourceID int) error {
+	store, ok := d.store.(ResourceStore)
+	if !ok {
+		return nil
+	}
+
+	d.logger.Info().
+		Int("task_id", taskID).
+		Int("resource_id", resourceID).
+		Msg("persisting resource state")
+	if err := store.FinishResource(resourceID); err != nil {
+		return fmt.Errorf("failed to persist resource completion: %w", err)
+	}
+	return nil
 }
 
 // processOutputFilename handles download resource output filenames uniformly.
@@ -221,87 +188,87 @@ func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePat
 //  4. Reconstruct the full path and update task/resource info in the database
 //
 // Each step outputs logs for easy troubleshooting.
-func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, prepared PreparedResource, extensionFallback string, originalDBName string, resourceExtensions map[int]string) (bool, error) {
-	if task == nil || task.ResourceID <= 0 {
+func (d *HermesEngine) processOutputFilename(task *TaskJob, resource *ResourceJob, endpointURL string, prepared PreparedResource, originalDBName string, resourceExtensions map[int]string) (bool, error) {
+	if task == nil || resource == nil || resource.ID <= 0 {
 		return false, nil
 	}
 
-	rawName := strings.TrimSpace(task.Name)
-	if rawName == "" {
+	rawUniqueId := strings.TrimSpace(resource.UniqueID)
+	if rawUniqueId == "" {
 		return false, nil
 	}
 
-	// Step 1: Separate directory and base filename (user input is a plain filename without extension)
-	dir, baseName := filepath.Split(rawName)
+	// Step 1: Separate directory and base filename (unique ID is a plain filename without extension)
+	dir, baseName := filepath.Split(rawUniqueId)
 	d.logger.Info().
-		Int("taskID", task.ID).
-		Int("resourceID", task.ResourceID).
-		Str("rawName", rawName).
+		Int("task_id", task.ID).
+		Int("resource_id", resource.ID).
+		Str("raw_unique_id", rawUniqueId).
 		Str("dir", dir).
-		Str("baseName", baseName).
-		Msg("output filename processing started")
+		Str("base_name", baseName).
+		Msg("run - output filename processing started")
 
 	// Step 2: Determine extension
 	// Priority: Content-Type -> magic bytes -> user-specified fallback suffix
 	ext := extensionForContentType(prepared.ContentType)
 	if ext != "" {
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Str("extension", ext).
-			Str("contentType", prepared.ContentType).
-			Msg("extension from content type")
+			Str("content_type", prepared.ContentType).
+			Msg("run - extension from content type")
 	}
 	if ext == "" {
 		if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
 			ext = extensionForContentType(detectedType)
 			if ext != "" {
 				d.logger.Info().
-					Int("taskID", task.ID).
-					Int("resourceID", task.ResourceID).
+					Int("task_id", task.ID).
+					Int("resource_id", resource.ID).
 					Str("extension", ext).
-					Str("detectedType", detectedType).
-					Msg("extension from magic bytes")
+					Str("detected_type", detectedType).
+					Msg("run - extension from magic bytes")
 			}
 		}
 	}
 	if ext == "" {
-		ext = extensionFallback
+		ext = resource.Extension
 		if ext != "" {
 			d.logger.Info().
-				Int("taskID", task.ID).
-				Int("resourceID", task.ResourceID).
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
 				Str("extension", ext).
-				Msg("using user-specified fallback extension")
+				Msg("run - using user-specified fallback extension")
 		}
 	}
 
 	// Persist extension for file rename during finishTask
 	if ext != "" && resourceExtensions != nil {
-		resourceExtensions[task.ResourceID] = ext
+		resourceExtensions[resource.ID] = ext
 	}
 
 	// Step 3: Check for existing segments (resume skips filename processing)
-	if ext != "" && task.ResourceID > 0 {
-		segments, err := d.store.LoadSegmentInfo(task.ResourceID)
+	if ext != "" && resource.ID > 0 {
+		segments, err := d.store.LoadSegmentInfo(resource.ID)
 		if err != nil {
-			return false, fmt.Errorf("读取已有下载分片失败: %w", err)
+			return false, fmt.Errorf("failed to load existing download segments: %w", err)
 		}
 		if len(segments) > 0 {
 			persistedName := strings.TrimSpace(originalDBName)
-			if persistedName != "" && task.Name != persistedName {
+			if persistedName != "" && resource.Name != persistedName {
 				d.logger.Warn().
-					Int("taskID", task.ID).
-					Int("resourceID", task.ResourceID).
-					Str("derivedName", task.Name).
-					Str("persistedName", persistedName).
+					Int("task_id", task.ID).
+					Int("resource_id", resource.ID).
+					Str("derived_name", resource.Name).
+					Str("persisted_name", persistedName).
 					Msg("discarding derived filename while resuming")
-				task.Name = persistedName
+				resource.Name = persistedName
 			}
 			d.logger.Info().
-				Int("taskID", task.ID).
-				Int("resourceID", task.ResourceID).
-				Int("segmentCount", len(segments)).
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Int("segment_count", len(segments)).
 				Msg("existing segments found, skipping filename processing (resume)")
 			return false, nil
 		}
@@ -334,18 +301,14 @@ func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, pre
 		var currentPath string
 		var fileExists bool
 		for _, tryName := range candidateNames {
-			tmpTask := &Task{
-				ID: task.ID, Name: tryName,
-				SavePath: task.SavePath, ResourceID: task.ResourceID,
-			}
-			if path, err := d.filePathForResource(tmpTask, endpointURL); err == nil {
+			if path, err := d.resolveResourcePath(task.SavePath, tryName, endpointURL); err == nil {
 				if info, statErr := os.Stat(path); statErr == nil && info.Size() > 0 {
 					currentPath = path
 					fileExists = true
 					d.logger.Info().
-						Int("taskID", task.ID).
-						Int("resourceID", task.ResourceID).
-						Str("filePath", currentPath).
+						Int("task_id", task.ID).
+						Int("resource_id", resource.ID).
+						Str("file_path", currentPath).
 						Msg("existing output file detected")
 					break
 				}
@@ -354,50 +317,50 @@ func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, pre
 
 		if fileExists {
 			d.logger.Info().
-				Int("taskID", task.ID).
-				Int("resourceID", task.ResourceID).
-				Str("filePath", currentPath).
-				Str("config", task.Config).
-				Msg("file exists with config")
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Str("file_path", currentPath).
+				Interface("config", task.Config).
+				Msg("run - file exists with config")
 			isDup := getConfigBool(task.Config, "duplicate")
 			d.logger.Info().
-				Int("taskID", task.ID).
-				Int("resourceID", task.ResourceID).
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
 				Bool("duplicate", isDup).
-				Msg("duplicate config parsed")
+				Msg("run - duplicate config parsed")
 			// duplicate=true: when temp file exists, auto-append numeric suffix (1), (2), ...
 			if isDup {
-				newName := d.findNextDuplicateName(task, currentPath, dir, baseName, tmpExt)
+				newName := d.findNextDuplicateName(task, resource, currentPath, dir, baseName, tmpExt)
 				d.logger.Info().
-					Int("taskID", task.ID).
-					Int("resourceID", task.ResourceID).
-					Str("existingPath", currentPath).
-					Str("newName", newName).
+					Int("task_id", task.ID).
+					Int("resource_id", resource.ID).
+					Str("existing_path", currentPath).
+					Str("new_name", newName).
 					Msg("file exists, duplicate enabled")
-				task.Name = newName
+				resource.Name = newName
 				// Persist temp filename to DB; final extension written by finishTask
-				if _, err := d.persistResourceName(task, newName, originalDBName, "duplicate"); err != nil {
+				if _, err := d.persistResourceName(task, resource, newName, originalDBName, "duplicate"); err != nil {
 					d.logger.Warn().
-						Int("taskID", task.ID).
-						Int("resourceID", task.ResourceID).
+						Int("task_id", task.ID).
+						Int("resource_id", resource.ID).
 						Err(err).
 						Msg("failed to update resource name")
 				}
 				return false, nil
 			}
 			// duplicate=false: file exists, skip download but update DB resource name for consistency
-			task.Name = dir + baseName + tmpExt
+			resource.Name = dir + baseName + tmpExt
 			d.logger.Info().
-				Int("taskID", task.ID).
-				Int("resourceID", task.ResourceID).
-				Str("existingPath", currentPath).
-				Str("oldDBName", originalDBName).
-				Str("newDBName", task.Name).
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Str("existing_path", currentPath).
+				Str("old_db_name", originalDBName).
+				Str("new_db_name", resource.Name).
 				Msg("file exists, duplicate disabled, resource name persisted to DB")
-			if _, err := d.persistResourceName(task, task.Name, originalDBName, "overwrite"); err != nil {
+			if _, err := d.persistResourceName(task, resource, resource.Name, originalDBName, "overwrite"); err != nil {
 				d.logger.Warn().
-					Int("taskID", task.ID).
-					Int("resourceID", task.ResourceID).
+					Int("task_id", task.ID).
+					Int("resource_id", resource.ID).
 					Err(err).
 					Msg("failed to update resource name")
 			}
@@ -408,8 +371,8 @@ func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, pre
 	// Step 5: If no extension, abandon filename processing
 	if ext == "" {
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Msg("cannot determine extension, skipping filename processing")
 		return false, nil
 	}
@@ -418,13 +381,13 @@ func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, pre
 	fp := NewFilenameProcessor("", nil)
 	cleanBase, err := fp.SanitizeFilename(baseName)
 	if err != nil {
-		return false, fmt.Errorf("清理文件名失败: %w", err)
+		return false, fmt.Errorf("failed to sanitize filename: %w", err)
 	}
 	d.logger.Info().
-		Int("taskID", task.ID).
-		Int("resourceID", task.ResourceID).
-		Str("oldName", baseName).
-		Str("cleanName", cleanBase).
+		Int("task_id", task.ID).
+		Int("resource_id", resource.ID).
+		Str("old_name", baseName).
+		Str("clean_name", cleanBase).
 		Msg("filename sanitized")
 
 	// Truncate overly long filenames (235 byte limit must include .tmp extension)
@@ -433,41 +396,41 @@ func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, pre
 	if maxBaseLen > 0 && len(cleanBase) > maxBaseLen {
 		truncated := fp.truncateString(cleanBase, maxBaseLen)
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
-			Int("oldLen", len(cleanBase)).
-			Int("newLen", len(truncated)).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
+			Int("old_len", len(cleanBase)).
+			Int("new_len", len(truncated)).
 			Msg("filename truncated due to length")
 		cleanBase = truncated
 	}
 	if cleanBase == "" {
-		return false, fmt.Errorf("文件名仅包含无效字符")
+		return false, fmt.Errorf("filename contains only invalid characters")
 	}
 
 	// Step 7: Reconstruct full temp file path (.tmp suffix, final extension written by finishTask)
 	resourceName := dir + cleanBase + tmpExt
 	d.logger.Info().
-		Int("taskID", task.ID).
-		Int("resourceID", task.ResourceID).
-		Str("resourceName", resourceName).
-		Str("baseName", cleanBase).
-		Str("tmpExt", tmpExt).
+		Int("task_id", task.ID).
+		Int("resource_id", resource.ID).
+		Str("resource_name", resourceName).
+		Str("base_name", cleanBase).
+		Str("tmp_ext", tmpExt).
 		Str("dir", dir).
 		Msg("final temp output filename")
 
 	// Step 8: Compare with original DB name; skip DB update if unchanged
 	if resourceName == originalDBName {
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Msg("filename matches DB, skipping DB update")
-		task.Name = resourceName
+		resource.Name = resourceName
 		return false, nil
 	}
 
 	// Step 9: Update temp resource name in database
-	task.Name = resourceName
-	if updated, err := d.persistResourceName(task, resourceName, originalDBName, "new"); err != nil {
+	resource.Name = resourceName
+	if updated, err := d.persistResourceName(task, resource, resourceName, originalDBName, "new"); err != nil {
 		return false, err
 	} else {
 		return updated, nil
@@ -619,10 +582,14 @@ func prepareWithRetry(ctx context.Context, driver ProtocolDriver, endpoint Endpo
 	return PreparedResource{}, lastErr
 }
 
-func (d *HermesEngine) applyFilenameTemplate(task *Task, endpointURL string, meta map[string]string) string {
+func (d *HermesEngine) applyFilenameTemplate(task *TaskJob, resource *ResourceJob, endpointURL string, meta map[string]string) string {
+	return d.applyJobFilenameTemplate(task, resource, task.FilenameTemplate, resource.Name, endpointURL, meta)
+}
+
+func (d *HermesEngine) applyJobFilenameTemplate(task *TaskJob, resource *ResourceJob, template, name, endpointURL string, meta map[string]string) string {
 	// If template contains {{var}} syntax, use shared template var replacement
-	if strings.Contains(task.FilenameTemplate, "{{") {
-		return cleanPathSeparators(util.ReplaceTemplateVars(task.FilenameTemplate, meta))
+	if strings.Contains(template, "{{") {
+		return cleanPathSeparators(util.ReplaceTemplateVars(template, meta))
 	}
 
 	// Fall through to JS VM evaluation for expression-based templates
@@ -632,9 +599,9 @@ func (d *HermesEngine) applyFilenameTemplate(task *Task, endpointURL string, met
 	}
 
 	vm := goja.New()
-	vm.Set("name", task.Name)
+	vm.Set("name", name)
 	vm.Set("task_id", task.ID)
-	vm.Set("resource_id", task.ResourceID)
+	vm.Set("resource_id", resource.ID)
 	vm.Set("url_basename", urlBasename)
 
 	vm.Set("formatTime", func(call goja.FunctionCall) goja.Value {
@@ -660,7 +627,7 @@ func (d *HermesEngine) applyFilenameTemplate(task *Task, endpointURL string, met
 		return vm.ToValue(s)
 	})
 
-	result, err := vm.RunString(task.FilenameTemplate)
+	result, err := vm.RunString(template)
 	if err != nil {
 		d.logger.Warn().Err(err).Msg("filename template error")
 		return ""
@@ -680,10 +647,10 @@ func cleanPathSeparators(s string) string {
 	return strings.Trim(strings.Join(parts, "/"), "/")
 }
 
-func (d *HermesEngine) endpointCandidates(info *Task) ([]endpointCandidate, error) {
-	endpoints := append([]Endpoint(nil), info.Endpoints...)
+func (d *HermesEngine) endpointCandidates(resourceEndpoints []Endpoint) ([]endpointCandidate, error) {
+	endpoints := append([]Endpoint(nil), resourceEndpoints...)
 	if len(endpoints) == 0 {
-		return nil, errors.New("任务没有可用下载端点")
+		return nil, errors.New("task has no available download endpoints")
 	}
 	sort.SliceStable(endpoints, func(i, j int) bool { return endpoints[i].Priority < endpoints[j].Priority })
 
@@ -712,11 +679,11 @@ func (d *HermesEngine) endpointCandidates(info *Task) ([]endpointCandidate, erro
 // Failures are non-fatal; the download loop will retry Prepares as needed.
 // Returns a map of resourceID→size for resources whose size was successfully
 // determined.
-func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, resources []Resource) map[int]int64 {
+func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, resources []ResourceJob) map[int]int64 {
 	sizes := make(map[int]int64)
 	for i := range resources {
 		res := &resources[i]
-		candidates, err := d.endpointCandidates(&Task{Endpoints: res.Endpoints})
+		candidates, err := d.endpointCandidates(res.Endpoints)
 		if err != nil {
 			continue
 		}
@@ -733,12 +700,25 @@ func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, reso
 			}
 			if prepared.Size > 0 {
 				_ = d.updateResourceSize(taskID, res.ID, prepared.Size)
+				res.Size = prepared.Size
 				sizes[res.ID] = prepared.Size
 				break
 			}
 		}
 	}
 	return sizes
+}
+
+func preparedTargetExtension(prepared PreparedResource, fallback string) string {
+	if ext := extensionForContentType(prepared.ContentType); ext != "" {
+		return ext
+	}
+	if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
+		if ext := extensionForContentType(detectedType); ext != "" {
+			return ext
+		}
+	}
+	return fallback
 }
 
 // absFilePath constructs absolute path: basePath + savePath + name.
@@ -759,31 +739,38 @@ func (d *HermesEngine) relLogPath(absPath string) string {
 }
 
 // filePathForResource resolves the absolute on-disk path for a task's resource.
-func (d *HermesEngine) filePathForResource(info *Task, endpointURL string) (string, error) {
-	name := strings.TrimSpace(info.Name)
-	if name == "" {
+func (d *HermesEngine) filePathForJobResource(task *TaskJob, resource *ResourceJob, endpointURL string) (string, error) {
+	if task == nil || resource == nil {
+		return "", errors.New("task and resource jobs are required")
+	}
+	return d.resolveResourcePath(task.SavePath, resource.UniqueID, endpointURL)
+}
+
+func (d *HermesEngine) resolveResourcePath(savePath, uniqueID, endpointURL string) (string, error) {
+	rawUniqueId := strings.TrimSpace(uniqueID)
+	if rawUniqueId == "" {
 		if parsed, err := url.Parse(endpointURL); err == nil {
-			name = filepath.Base(parsed.Path)
+			rawUniqueId = filepath.Base(parsed.Path)
 		}
 	}
-	name = filepath.Clean(name)
-	name = strings.TrimLeft(name, "/")
+	rawUniqueId = filepath.Clean(rawUniqueId)
+	rawUniqueId = strings.TrimLeft(rawUniqueId, "/")
 	// Strip leading path traversal prefixes (same effect as filepath.Base but preserves subdirectories)
-	for strings.HasPrefix(name, "../") {
-		name = name[3:]
+	for strings.HasPrefix(rawUniqueId, "../") {
+		rawUniqueId = rawUniqueId[3:]
 	}
 	// Prevent path traversal attacks
-	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, string(filepath.Separator)+"..") {
-		return "", errors.New("无法确定下载文件名")
+	if rawUniqueId == "" || rawUniqueId == "." || rawUniqueId == ".." || strings.HasPrefix(rawUniqueId, "../") || strings.Contains(rawUniqueId, string(filepath.Separator)+"..") {
+		return "", errors.New("unable to determine download filename")
 	}
 
-	return d.absFilePath(info.SavePath, name), nil
+	return d.absFilePath(savePath, rawUniqueId), nil
 }
 
 // taskFilePath is the legacy function kept for backward compatibility.
-func taskFilePath(info *Task, endpointURL string) (string, error) {
+func taskFilePath(info *TaskJob, endpointURL string) (string, error) {
 	if strings.TrimSpace(info.SavePath) == "" {
-		return "", errors.New("保存路径不能为空")
+		return "", errors.New("save path cannot be empty")
 	}
 	name := strings.TrimSpace(info.Name)
 	if name == "" {
@@ -799,7 +786,7 @@ func taskFilePath(info *Task, endpointURL string) (string, error) {
 	}
 	// Prevent path traversal attacks
 	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, string(filepath.Separator)+"..") {
-		return "", errors.New("无法确定下载文件名")
+		return "", errors.New("unable to determine download filename")
 	}
 
 	savePath := filepath.Clean(info.SavePath)
@@ -882,43 +869,9 @@ func buildTemplateMeta(extra map[string]string, config map[string]any, currentNa
 	return meta
 }
 
-// parseConfigAndMetadata parses download config and content metadata JSON.
-// Returns the merged config map and separate metadata map.
-func parseConfigAndMetadata(configJSON, metadataJSON string) (map[string]any, map[string]any) {
-	result := make(map[string]any)
-	meta := make(map[string]any)
-	if configJSON != "" {
-		json.Unmarshal([]byte(configJSON), &result)
-	}
-	if metadataJSON != "" {
-		if json.Unmarshal([]byte(metadataJSON), &meta) == nil {
-			for k, v := range meta {
-				if _, exists := result[k]; !exists {
-					result[k] = v
-				}
-			}
-		}
-	}
-	// Protect against json.Unmarshal setting maps to nil when input is "null".
-	if result == nil {
-		result = make(map[string]any)
-	}
-	if meta == nil {
-		meta = make(map[string]any)
-	}
-	return result, meta
-}
-
 // calcSpeed computes download speed (bytes/sec) between two points in time.
-func getConfigBool(configJSON, key string) bool {
-	if configJSON == "" {
-		return false
-	}
-	var cfg map[string]interface{}
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		return false
-	}
-	if v, ok := cfg[key]; ok {
+func getConfigBool(config map[string]any, key string) bool {
+	if v, ok := config[key]; ok {
 		if b, ok := v.(bool); ok {
 			return b
 		}
@@ -926,16 +879,9 @@ func getConfigBool(configJSON, key string) bool {
 	return false
 }
 
-// getConfigString reads the value for the specified string key from the task's config JSON.
-func getConfigString(configJSON, key string) string {
-	if configJSON == "" {
-		return ""
-	}
-	var cfg map[string]interface{}
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		return ""
-	}
-	if v, ok := cfg[key]; ok {
+// getConfigString reads the string value for the specified task config key.
+func getConfigString(config map[string]any, key string) string {
+	if v, ok := config[key]; ok {
 		if s, ok := v.(string); ok {
 			return s
 		}
@@ -945,7 +891,7 @@ func getConfigString(configJSON, key string) string {
 
 // findNextDuplicateName finds the next available numeric suffix filename when a file already exists.
 // e.g., if baseName.mp4 exists, try baseName(1).mp4, baseName(2).mp4, ...
-func (d *HermesEngine) findNextDuplicateName(task *Task, existingPath, dir, baseName, ext string) string {
+func (d *HermesEngine) findNextDuplicateName(task *TaskJob, resource *ResourceJob, existingPath, dir, baseName, ext string) string {
 	tmpExt := ".tmp"
 	for counter := 1; ; counter++ {
 		candidate := fmt.Sprintf("%s(%d)%s", baseName, counter, tmpExt)
@@ -954,9 +900,9 @@ func (d *HermesEngine) findNextDuplicateName(task *Task, existingPath, dir, base
 			return dir + candidate
 		}
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
-			Str("fileName", dir+candidate).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
+			Str("file_name", dir+candidate).
 			Msg("duplicate file name exists, incrementing counter")
 	}
 }
@@ -964,54 +910,56 @@ func (d *HermesEngine) findNextDuplicateName(task *Task, existingPath, dir, base
 // resolveDuplicateFilename appends (1), (2), ... to the filename when a file
 // with the same name already exists on disk, to avoid overwriting.
 func (d *HermesEngine) resolveDuplicateFilename(savePath, finalName, ext string) string {
-	baseWithExt := finalName
-	for counter := 1; ; counter++ {
-		candidatePath := d.absFilePath(savePath, baseWithExt)
-		if _, err := os.Stat(candidatePath); os.IsNotExist(err) {
-			return baseWithExt
+	baseWithoutExt := strings.TrimSuffix(finalName, ext)
+	for counter := 0; ; counter++ {
+		candidate := finalName
+		if counter > 0 {
+			candidate = fmt.Sprintf("%s(%d)%s", baseWithoutExt, counter, ext)
 		}
-		baseWithoutExt := strings.TrimSuffix(baseWithExt, ext)
-		baseWithExt = fmt.Sprintf("%s(%d)%s", baseWithoutExt, counter, ext)
+		candidatePath := d.absFilePath(savePath, candidate)
+		if _, err := os.Stat(candidatePath); os.IsNotExist(err) {
+			return candidate
+		}
 	}
 }
 
 // persistResourceName updates the resource name in the database. 'reason' is used in logs to annotate the trigger scenario.
-func (d *HermesEngine) persistResourceName(task *Task, resourceName, originalDBName, reason string) (bool, error) {
+func (d *HermesEngine) persistResourceName(task *TaskJob, resource *ResourceJob, resourceName, originalDBName, reason string) (bool, error) {
 	if resourceName == originalDBName {
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Str("reason", reason).
 			Msg("filename matches DB, skipping DB update")
 		return false, nil
 	}
 	update := OutputNameUpdate{
 		TaskID:       task.ID,
-		ResourceID:   task.ResourceID,
+		ResourceID:   resource.ID,
 		ResourceName: resourceName,
 	}
 	d.logger.Info().
-		Int("taskID", task.ID).
-		Int("resourceID", task.ResourceID).
+		Int("task_id", task.ID).
+		Int("resource_id", resource.ID).
 		Str("reason", reason).
-		Int("updateTaskID", update.TaskID).
-		Int("updateResourceID", update.ResourceID).
-		Str("updateResourceName", update.ResourceName).
+		Int("update_task_id", update.TaskID).
+		Int("update_resource_id", update.ResourceID).
+		Str("update_resource_name", update.ResourceName).
 		Msg("updating resource name in DB")
 	if store, ok := d.store.(OutputNameStore); ok {
 		if err := store.UpdateOutputName(update); err != nil {
-			return false, fmt.Errorf("更新下载文件名到数据库失败: %w", err)
+			return false, fmt.Errorf("failed to update download filename in database: %w", err)
 		}
 		d.logger.Info().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
-			Str("oldName", originalDBName).
-			Str("newName", resourceName).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
+			Str("old_name", originalDBName).
+			Str("new_name", resourceName).
 			Msg("resource name updated in DB")
 	} else {
 		d.logger.Warn().
-			Int("taskID", task.ID).
-			Int("resourceID", task.ResourceID).
+			Int("task_id", task.ID).
+			Int("resource_id", resource.ID).
 			Msg("store does not implement OutputNameStore, skipping DB update")
 	}
 	return true, nil

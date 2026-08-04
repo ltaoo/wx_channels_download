@@ -70,7 +70,7 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 	if resp.StatusCode == http.StatusPartialContent {
 		start, end, total, ok := parseContentRange(resp.Header.Get("Content-Range"))
 		if !ok || start != 0 {
-			return hermes.PreparedResource{}, errors.New("服务器返回了无效的 Content-Range")
+			return hermes.PreparedResource{}, errors.New("server returned an invalid Content-Range")
 		}
 		_ = end // end depends on actual bytes returned, valid range 0..prepareProbeSize-1
 		prepared.Size = total
@@ -91,7 +91,7 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 		}
 		return prepared, nil
 	}
-	return hermes.PreparedResource{}, fmt.Errorf("资源探测返回状态码 %d", resp.StatusCode)
+	return hermes.PreparedResource{}, fmt.Errorf("resource probe returned status code %d", resp.StatusCode)
 }
 
 // Open downloads a resource according to ReadRequest and returns a readable data stream.
@@ -129,12 +129,12 @@ func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, re
 
 	if resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		return nil, fmt.Errorf("服务器不支持请求范围，状态码 %d", resp.StatusCode)
+		return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
 	}
 	start, end, _, ok := parseContentRange(resp.Header.Get("Content-Range"))
 	if !ok || start != request.OffsetStart || end > request.OffsetEnd {
 		resp.Body.Close()
-		return nil, errors.New("服务器返回的 Content-Range 与请求不匹配")
+		return nil, errors.New("server returned a Content-Range that does not match the request")
 	}
 
 	return resp.Body, nil
@@ -147,7 +147,7 @@ func (d *HTTPDriver) openFull(ctx context.Context, endpoint hermes.Endpoint) (io
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("服务器返回错误状态码: %d", resp.StatusCode)
+		return nil, fmt.Errorf("server returned error status code: %d", resp.StatusCode)
 	}
 	return io.NopCloser(bytes.NewReader(resp.Body)), nil
 }

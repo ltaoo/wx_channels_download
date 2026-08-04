@@ -27,7 +27,7 @@ const (
 	EventDeleted  EventType = "deleted"
 )
 
-// Task status values maintain stable mapping with the persistence layer's download_task_v1 status values.
+// Task status values maintain stable mapping with the persistence layer's download_task status values.
 const (
 	TaskStatusWaiting     = 0
 	TaskStatusPreparing   = 1
@@ -66,31 +66,50 @@ type Endpoint struct {
 	Cookies  string
 }
 
-// Task contains the task information needed by the downloader (provided externally via LoadTask).
-// ResourceID identifies the currently processed resource, carrying resource-level context during multi-resource downloads.
-type Task struct {
+// TaskJob is the single task model used by Hermes from Store.LoadTask until
+// post-processing finishes. Task-level input and runtime state belong here;
+// resource-level state belongs to ResourceJob.
+type TaskJob struct {
 	ID               int
 	Name             string
+	UniqueID         string // Task-level platform unique identifier
 	SavePath         string
 	FilenameTemplate string
-	ResourceID       int
 	Platform         string // PlatformId from DB, used by postprocessor for platform routing
-	Endpoints        []Endpoint
-	Resources        []Resource
-	Config           string // ConfigJSON from DB, download configuration for hooks
-	Metadata         string // MetadataJSON from DB, content metadata for hooks
+	Resources        []ResourceJob
+	Config           map[string]any // Parsed download configuration for hooks
+	Metadata         map[string]any // Parsed content metadata for postprocessors and hooks
+
+	ctx          context.Context
+	cancel       context.CancelFunc
+	done         chan struct{}
+	executionMu  sync.Mutex
+	cancelReason cancellationReason
 }
 
-// Resource is an independently downloadable file resource within a Task.
-type Resource struct {
+// ResourceJob is the single resource model used from endpoint selection through
+// probing, transfer, filename resolution and post-processing. Runtime fields are
+// intentionally kept beside the immutable resource input so later phases mutate
+// the same object instead of constructing parallel DTOs.
+type ResourceJob struct {
 	ID        int
 	Name      string
 	Kind      string // "html", "image", "video", etc.
 	Type      string // "FILE" | "STREAM"
-	UniqueID  string // Platform-level unique identifier, used as download filename
+	UniqueID  string // Platform-level unique identifier
 	Endpoints []Endpoint
 	Extension string            // User-specified suffix, used when both Content-Type and magic bytes are unavailable (e.g., ".mp4")
 	Extra     map[string]string // User-defined fields, irrelevant to download, passed through to hooks
+
+	// Runtime/output state populated by Hermes.
+	Size       int64
+	FilePath   string
+	TargetExt  string
+	Downloaded int64
+	Speed      int64
+	StartTime  time.Time
+	FinishTime time.Time
+	Error      error
 }
 
 // SegmentRange is a protocol-agnostic finite byte range, inclusive on both ends.
@@ -178,7 +197,7 @@ type ProtocolDriver interface {
 
 // Store isolates the download execution layer from the database.
 type Store interface {
-	LoadTask(taskID int) (*Task, error)
+	LoadTask(taskID int) (*TaskJob, error)
 	UpdateStatus(taskID int, status int) error
 	ActivateTask(taskID int) error
 	UpdateProgress(taskID int, downloaded int64, speed int64) error
@@ -218,28 +237,7 @@ type OutputNameStore interface {
 // Postprocessor defines platform-specific post-download processing.
 // Called by HermesEngine after all resources download, before .tmp renaming and DB updates.
 type Postprocessor interface {
-	Process(ctx context.Context, info *PostprocessInfo) error
-}
-
-// PostprocessInfo provides postprocessing context.
-type PostprocessInfo struct {
-	TaskID    int
-	TaskName  string
-	SavePath  string
-	Config    map[string]any
-	Metadata  map[string]any
-	Resources []PostprocessResource
-}
-
-// PostprocessResource describes one downloaded resource for postprocessing.
-type PostprocessResource struct {
-	ID        int
-	Name      string            // Current filename
-	Kind      string            // "video", "image", "html", etc.
-	Type      string            // "FILE", "STREAM"
-	Extra     map[string]string // Platform metadata (decode_key, etc.)
-	TargetExt string            // Correct final extension (e.g., ".mp4")
-	FilePath  string            // Absolute path to downloaded file
+	Process(ctx context.Context, taskJob *TaskJob) error
 }
 
 // HermesEngine is a protocol-agnostic finite resource download scheduler.
@@ -248,7 +246,7 @@ type HermesEngine struct {
 	mu            sync.Mutex
 	eventMu       sync.RWMutex
 	sem           chan struct{}
-	jobs          map[int]*job
+	jobs          map[int]*TaskJob
 	store         Store
 	logger        zerolog.Logger
 	onEvent       EventHandler
@@ -292,28 +290,19 @@ const (
 	cancelDelete
 )
 
-type job struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
-
-	mu     sync.Mutex
-	reason cancellationReason
-}
-
-func (j *job) stop(reason cancellationReason) {
-	j.mu.Lock()
-	if reason > j.reason {
-		j.reason = reason
+func (j *TaskJob) stop(reason cancellationReason) {
+	j.executionMu.Lock()
+	if reason > j.cancelReason {
+		j.cancelReason = reason
 	}
-	j.mu.Unlock()
+	j.executionMu.Unlock()
 	j.cancel()
 }
 
-func (j *job) cancellationReason() cancellationReason {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.reason
+func (j *TaskJob) cancellationReason() cancellationReason {
+	j.executionMu.Lock()
+	defer j.executionMu.Unlock()
+	return j.cancelReason
 }
 
 // HermesEngineConfig contains the download scheduler's runtime configuration.
@@ -360,7 +349,7 @@ func New(opt HermesNewConfig) *HermesEngine {
 	logger = logger.With().Str("component", "hermes").Logger()
 	e := &HermesEngine{
 		sem:           make(chan struct{}, cfg.MaxConcurrent),
-		jobs:          make(map[int]*job),
+		jobs:          make(map[int]*TaskJob),
 		store:         opt.Store,
 		logger:        logger,
 		drivers:       make(map[string]ProtocolDriver),
@@ -418,32 +407,31 @@ func (d *HermesEngine) StartTask(taskID int) error {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	job := &job{ctx: ctx, cancel: cancel, done: make(chan struct{})}
-	d.jobs[taskID] = job
+	taskJob := &TaskJob{ID: taskID, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	d.jobs[taskID] = taskJob
 	d.mu.Unlock()
 
 	if err := d.store.UpdateStatus(taskID, TaskStatusPreparing); err != nil {
 		cancel()
 		d.mu.Lock()
-		if d.jobs[taskID] == job {
+		if d.jobs[taskID] == taskJob {
 			delete(d.jobs, taskID)
 		}
 		d.mu.Unlock()
-		close(job.done)
+		close(taskJob.done)
 		return fmt.Errorf("failed to update task status to preparing: %w", err)
 	}
 	d.emit(taskID, EventCreated)
-	d.logger.Info().Int("taskID", taskID).Msg("task started")
-	go d.schedule(taskID, job)
+	go d.schedule(taskJob)
 	return nil
 }
 
 // PauseTask cancels and waits for the current execution instance to exit, ensuring subsequent Resume
 // will not write files concurrently with the old Writer.
 func (d *HermesEngine) PauseTask(taskID int) {
-	if job := d.findJob(taskID); job != nil {
-		job.stop(cancelPause)
-		<-job.done
+	if taskJob := d.findJob(taskID); taskJob != nil {
+		taskJob.stop(cancelPause)
+		<-taskJob.done
 	}
 }
 
@@ -451,61 +439,59 @@ func (d *HermesEngine) PauseTask(taskID int) {
 func (d *HermesEngine) PauseAllTask() {
 	d.logger.Info().Msg("PauseAllTask")
 	d.mu.Lock()
-	jobs := make([]*job, 0, len(d.jobs))
-	for _, job := range d.jobs {
-		jobs = append(jobs, job)
+	jobs := make([]*TaskJob, 0, len(d.jobs))
+	for _, taskJob := range d.jobs {
+		jobs = append(jobs, taskJob)
 	}
 	d.mu.Unlock()
-	for _, job := range jobs {
-		job.stop(cancelPause)
+	for _, taskJob := range jobs {
+		taskJob.stop(cancelPause)
 	}
-	for _, job := range jobs {
-		<-job.done
+	for _, taskJob := range jobs {
+		<-taskJob.done
 	}
 }
 
 // DeleteTask stops the execution instance and marks the task as cancelled.
 // Soft deletion of database entities is still handled by the API handler.
 func (d *HermesEngine) DeleteTask(taskID int) {
-	d.logger.Info().Int("taskID", taskID).Msg("DeleteTask")
-	if job := d.findJob(taskID); job != nil {
-		job.stop(cancelDelete)
-		<-job.done
+	d.logger.Info().Int("task_id", taskID).Msg("DeleteTask")
+	if taskJob := d.findJob(taskID); taskJob != nil {
+		taskJob.stop(cancelDelete)
+		<-taskJob.done
 		_ = d.store.UpdateStatus(taskID, TaskStatusCancelled)
-		d.logger.Info().Int("taskID", taskID).Msg("task deleted")
+		d.logger.Info().Int("task_id", taskID).Msg("task deleted")
 		d.emit(taskID, EventDeleted)
 		d.deleteTracker(taskID)
 	}
 }
 
-func (d *HermesEngine) findJob(taskID int) *job {
+func (d *HermesEngine) findJob(taskID int) *TaskJob {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.jobs[taskID]
 }
 
-func (d *HermesEngine) schedule(taskID int, job *job) {
-	d.logger.Info().
-		Int("taskID", taskID).
-		Msg("schedule")
+func (d *HermesEngine) schedule(taskJob *TaskJob) {
+	taskID := taskJob.ID
 	acquired := false
 	defer func() {
 		if acquired {
 			<-d.sem
 		}
 		d.mu.Lock()
-		if d.jobs[taskID] == job {
+		if d.jobs[taskID] == taskJob {
 			delete(d.jobs, taskID)
 		}
 		d.mu.Unlock()
-		close(job.done)
+		close(taskJob.done)
 	}()
 
 	select {
 	case d.sem <- struct{}{}:
 		acquired = true
-	case <-job.ctx.Done():
-		d.handleCancellation(taskID, job)
+	case <-taskJob.ctx.Done():
+		d.handleCancellation(taskID, taskJob)
 		return
 	}
 
@@ -515,20 +501,17 @@ func (d *HermesEngine) schedule(taskID int, job *job) {
 			if recovered := recover(); recovered != nil {
 				runErr = fmt.Errorf("download goroutine exited unexpectedly: %v", recovered)
 				d.logger.Error().
-					Int("taskID", taskID).
+					Int("task_id", taskID).
 					Interface("panic", recovered).
 					Str("stack", string(debug.Stack())).
 					Msg("download goroutine panicked")
 			}
 		}()
-		d.logger.Info().
-			Int("taskID", taskID).
-			Msg("before d.run")
-		runErr = d.run(taskID, job.ctx)
+		runErr = d.run(taskJob)
 	}()
 
-	if errors.Is(runErr, context.Canceled) || job.ctx.Err() != nil {
-		d.handleCancellation(taskID, job)
+	if errors.Is(runErr, context.Canceled) || taskJob.ctx.Err() != nil {
+		d.handleCancellation(taskID, taskJob)
 		return
 	}
 	if runErr != nil {
@@ -536,20 +519,32 @@ func (d *HermesEngine) schedule(taskID int, job *job) {
 	}
 }
 
-func (d *HermesEngine) handleCancellation(taskID int, job *job) {
-	if job.cancellationReason() == cancelPause {
+func (d *HermesEngine) handleCancellation(taskID int, taskJob *TaskJob) {
+	if taskJob.cancellationReason() == cancelPause {
 		d.pauseTask(taskID)
 	}
 }
 
-func (d *HermesEngine) run(taskID int, ctx context.Context) error {
-	info, err := d.store.LoadTask(taskID)
+func (d *HermesEngine) run(info *TaskJob) error {
+	taskID := info.ID
+	ctx := info.ctx
+	loaded, err := d.store.LoadTask(taskID)
 	if err != nil {
 		return fmt.Errorf("failed to load task information: %w", err)
 	}
-	if info == nil {
+	if loaded == nil {
 		return errors.New("failed to load task information: task is nil")
 	}
+	// Hydrate the scheduler-owned TaskJob while preserving its execution control
+	// fields. The same object now travels from queueing through finalization.
+	info.Name = loaded.Name
+	info.UniqueID = loaded.UniqueID
+	info.SavePath = loaded.SavePath
+	info.FilenameTemplate = loaded.FilenameTemplate
+	info.Platform = loaded.Platform
+	info.Resources = loaded.Resources
+	info.Config = loaded.Config
+	info.Metadata = loaded.Metadata
 	if len(info.Resources) == 0 {
 		return errors.New("task has no downloadable resources")
 	}
@@ -557,23 +552,26 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 
 	// Task start log: record basic task information
 	d.logger.Info().
-		Int("taskID", taskID).
-		Str("taskName", info.Name).
-		Str("savePath", info.SavePath).
-		Int("resourceCount", len(resources)).
-		Msg("run - the task info")
+		Int("task_id", taskID).
+		Str("task_name", info.Name).
+		Str("task_unique_id", info.UniqueID).
+		Str("save_path", info.SavePath).
+		Interface("config", info.Config).
+		Int("resource_count", len(resources)).
+		Msg("run - after d.store.LoadTask")
 
 	// Log detailed information for each resource
 	for i, r := range resources {
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int("resourceID", r.ID).
-			Int("resourceIndex", i+1).
-			Str("resourceName", r.Name).
-			Str("resourceKind", r.Kind).
-			Str("resourceType", r.Type).
-			Int("endpointCount", len(r.Endpoints)).
-			Msg("run - the resource info")
+			Int("task_id", taskID).
+			Int("resource_id", r.ID).
+			Int("resource_index", i+1).
+			Str("resource_name", r.Name).
+			Str("resource_unique_id", r.UniqueID).
+			Str("resource_kind", r.Kind).
+			Str("resource_type", r.Type).
+			Int("endpoint_count", len(r.Endpoints)).
+			Msg("run - after d.store.LoadTask")
 	}
 
 	if err := d.store.UpdateStatus(taskID, TaskStatusDownloading); err != nil {
@@ -584,7 +582,19 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 	}
 	d.emit(taskID, EventStarted)
 
-	config, _ := parseConfigAndMetadata(info.Config, info.Metadata)
+	if info.Config == nil {
+		info.Config = make(map[string]any)
+	}
+	if info.Metadata == nil {
+		info.Metadata = make(map[string]any)
+	}
+	// Preserve the existing template/hook behavior: metadata supplies defaults,
+	// while explicit download configuration wins on key conflicts.
+	for key, value := range info.Metadata {
+		if _, exists := info.Config[key]; !exists {
+			info.Config[key] = value
+		}
+	}
 
 	// Pre-probe all resource sizes, record time overhead
 	probeStart := time.Now()
@@ -627,11 +637,11 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 			knownSizes++
 			totalTaskSize += sz
 			d.logger.Info().
-				Int("taskID", taskID).
-				Int("resourceID", r.ID).
-				Str("resourceName", r.Name).
-				Int64("resourceSize", sz).
-				Str("resourceSizeReadable", formatSize(sz)).
+				Int("task_id", taskID).
+				Int("resource_id", r.ID).
+				Str("resource_name", r.Name).
+				Int64("resource_size", sz).
+				Str("resource_size_readable", formatSize(sz)).
 				Msg("run - resource size probed")
 		} else {
 			unknownSizes++
@@ -641,27 +651,25 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 
 	if totalTaskSize > 0 {
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int64("totalSize", totalTaskSize).
-			Str("totalSizeReadable", formatSize(totalTaskSize)).
-			Int("resourceCount", len(resources)).
-			Int("knownSizeCount", knownSizes).
-			Int("unknownSizeCount", unknownSizes).
-			Str("probeElapsed", probeElapsed.String()).
+			Int("task_id", taskID).
+			Int64("total_size", totalTaskSize).
+			Str("total_size_readable", formatSize(totalTaskSize)).
+			Int("resource_count", len(resources)).
+			Int("known_size_count", knownSizes).
+			Int("unknown_size_count", unknownSizes).
+			Str("probe_elapsed", probeElapsed.String()).
 			Msg("run - task size summary")
 	} else {
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int("resourceCount", len(resources)).
-			Int("unknownSizeCount", unknownSizes).
-			Str("probeElapsed", probeElapsed.String()).
+			Int("task_id", taskID).
+			Int("resource_count", len(resources)).
+			Int("unknown_size_count", unknownSizes).
+			Str("probe_elapsed", probeElapsed.String()).
 			Msg("run - task total size unknown, downloading resource by resource")
 	}
 
 	// Concurrently download all resources
 	downloadStart := time.Now()
-	var extensionsMu sync.Mutex
-	resourceExtensions := make(map[int]string)
 	var completedSize atomic.Int64
 
 	type resourceResult struct {
@@ -678,21 +686,29 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 	var firstErr error
 	var errOnce sync.Once
 
-	for i, resource := range resources {
+	for i := range resources {
+		resource := &resources[i]
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int("resourceID", resource.ID).
-			Int("resourceIndex", i+1).
-			Int("totalResources", len(resources)).
-			Str("resourceName", resource.Name).
-			Msg("downloading resource")
+			Int("task_id", taskID).
+			Int("resource_id", resource.ID).
+			Int("resource_index", i+1).
+			Int("total_resources", len(resources)).
+			Str("resource_name", resource.Name).
+			Str("resource_unique_id", resource.UniqueID).
+			Msg("run - before download resource")
 
 		wg.Add(1)
-		go func(idx int, res Resource) {
+		go func(idx int, res *ResourceJob) {
 			defer wg.Done()
 			resStart := time.Now()
-			localExts := make(map[int]string)
-			filePath, err := d.downloadResource(downloadCtx, taskID, info.SavePath, res.Type, res, config, localExts)
+			res.StartTime = resStart
+			filePath, err := d.downloadResource(downloadCtx, info, res)
+			res.FinishTime = time.Now()
+			res.Error = err
+			res.Speed = 0
+			if err == nil && res.Size > 0 {
+				res.Downloaded = res.Size
+			}
 			elapsed := time.Since(resStart).Round(time.Millisecond)
 
 			results[idx] = &resourceResult{filePath: filePath, err: err, elapsed: elapsed}
@@ -705,31 +721,25 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 					})
 				}
 				d.logger.Error().
-					Int("taskID", taskID).
-					Int("resourceID", res.ID).
-					Int("resourceIndex", idx+1).
-					Str("resourceName", res.Name).
+					Int("task_id", taskID).
+					Int("resource_id", res.ID).
+					Int("resource_index", idx+1).
+					Str("resource_name", res.Name).
 					Str("elapsed", elapsed.String()).
 					Err(err).
-					Msg("resource download failed")
+					Msg("run - resource download failed")
 				return
 			}
 
 			if sz, ok := resourceSizes[res.ID]; ok {
 				completedSize.Add(sz)
 			}
-			extensionsMu.Lock()
-			for k, v := range localExts {
-				resourceExtensions[k] = v
-			}
-			extensionsMu.Unlock()
-
 			d.logger.Info().
-				Int("taskID", taskID).
-				Int("resourceID", res.ID).
-				Int("totalResources", len(resources)).
+				Int("task_id", taskID).
+				Int("resource_id", res.ID).
+				Int("total_resources", len(resources)).
 				Str("elapsed", elapsed.String()).
-				Msg("resource downloaded")
+				Msg("run - resource downloaded")
 		}(i, resource)
 	}
 	wg.Wait()
@@ -757,30 +767,30 @@ func (d *HermesEngine) run(taskID int, ctx context.Context) error {
 		totalRes := len(filePaths)
 		pct := float64(downloaded) * 100 / float64(totalTaskSize)
 		d.logger.Info().
-			Int("taskID", taskID).
-			Int64("downloadedSize", downloaded).
-			Int64("totalSize", totalTaskSize).
-			Float64("progressPercent", pct).
-			Int("completedResources", totalRes).
-			Int("totalResources", len(resources)).
-			Msg("overall concurrent download progress")
+			Int("task_id", taskID).
+			Int64("downloaded_size", downloaded).
+			Int64("total_size", totalTaskSize).
+			Float64("progress_percent", pct).
+			Int("completed_resources", totalRes).
+			Int("total_resources", len(resources)).
+			Msg("run - overall concurrent download progress")
 	}
 
 	// All resources downloaded, log summary information
 	downloadElapsed := time.Since(downloadStart).Round(time.Millisecond)
 	logEvent := d.logger.Info().
-		Int("taskID", taskID).
-		Int("resourceCount", len(resources)).
-		Str("downloadElapsed", downloadElapsed.String())
+		Int("task_id", taskID).
+		Int("resource_count", len(resources)).
+		Str("download_elapsed", downloadElapsed.String())
 	if totalTaskSize > 0 && downloadElapsed.Seconds() > 0 {
 		avgSpeed := int64(float64(totalTaskSize) / downloadElapsed.Seconds())
 		logEvent.
-			Int64("totalSize", totalTaskSize).
-			Str("totalSizeReadable", formatSize(totalTaskSize)).
-			Int64("avgSpeedBytes", avgSpeed).
-			Str("avgSpeed", formatSpeed(avgSpeed))
+			Int64("total_size", totalTaskSize).
+			Str("total_size_readable", formatSize(totalTaskSize)).
+			Int64("avg_speed_bytes", avgSpeed).
+			Str("avg_speed", formatSpeed(avgSpeed))
 	}
-	logEvent.Msg("all resources downloaded, starting task finalization")
+	logEvent.Msg("run - all resources downloaded, starting task finalization")
 
-	return d.finishTask(taskID, strings.Join(filePaths, ", "), resourceExtensions)
+	return d.finishTask(info)
 }

@@ -89,7 +89,7 @@ type PostprocessDeps struct {
 
 // Postprocessor is an optional adapter capability.
 type Postprocessor interface {
-	Postprocess(context.Context, *hermes.PostprocessInfo, PostprocessDeps) error
+	Postprocess(context.Context, *hermes.TaskJob, PostprocessDeps) error
 }
 
 var (

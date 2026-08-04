@@ -81,7 +81,7 @@ export function createDownloadTaskByURL(body) {
 }
 
 /** @param {{ platform: string; content: any; config?: { save_path?: string; filename?: string; spec?: string; download_cover?: boolean } }} body */
-export function createDownloadTaskV1(body) {
+export function createDownloadTask(body) {
   return request.post("/api/v1/download_task/create", [body]);
 }
 
@@ -321,21 +321,6 @@ export function fetchDownloadAppConfig() {
 /** @param {{ values: Record<string, any> }} body */
 export function updateAppConfig(body) {
   return request.post("/api/admin/config", body);
-}
-
-/** @param {{ URL?: string; url?: string; Filename?: string; filename?: string; Dir?: string; dir?: string; Extra?: Record<string, string>; extra?: Record<string, string> }} body */
-export function createDownloadTask(body) {
-  const url = body.url || body.URL || "";
-  const filename = body.filename || body.Filename || "";
-  const dir = body.dir || body.Dir || "";
-  const extra = body.extra || body.Extra || {};
-  return request.post("/api/v1/download_task/create", {
-    objects: [],
-    // URL: url,
-    // Filename: filename,
-    // Dir: dir,
-    // Extra: extra,
-  });
 }
 
 /** @param {{ url: string; cover?: boolean }} body */

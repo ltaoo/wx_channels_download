@@ -32,6 +32,7 @@ node_modules
 docs/.vitepress/cache
 docs/.vitepress/dist
 gopeed.db
+data.db
 /*.json
 !.asset-sync.lock.json
 *.log

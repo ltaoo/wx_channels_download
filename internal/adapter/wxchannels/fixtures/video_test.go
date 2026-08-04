@@ -74,7 +74,7 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 	expectedContent := model.Content{
 		Id:          "wxchannels:14962486294771997060",
 		PlatformId:  "wxchannels",
-		Type: "video",
+		Type:        "video",
 		ExternalId:  "14962486294771997060",
 		ExternalId2: "4390481592474233535_0_146_0_0",
 		Title:       "讨厌我有什么用 有本事弄死我",
@@ -89,12 +89,12 @@ func TestToContent_FromVideoFeedJSON(t *testing.T) {
 	testui.AssertStrictEqual(t, "Content", expectedContent, content)
 
 	expectedVideo := model.ContentVideo{
-		Id:          "wxchannels:14962486294771997060",
-		Duration:    9,
-		Width:       1080,
-		Height:      2128,
-		Size:        9613487,
-		URL:         expectedVideoURL,
+		Id:       "wxchannels:14962486294771997060",
+		Duration: 9,
+		Width:    1080,
+		Height:   2128,
+		Size:     9613487,
+		URL:      expectedVideoURL,
 	}
 	testui.AssertStrictEqual(t, "ContentVideo", expectedVideo, contentVideo)
 }
@@ -154,7 +154,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 		t.Fatal("handler not registered for platform wxchannels")
 	}
 
-	config := wxchannels.DownloadConfig{}
+	config := map[string]any{}
 	cfgJSON, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -181,7 +181,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	expectedContent := model.Content{
 		Id:          "wxchannels:14962486294771997060",
 		PlatformId:  "wxchannels",
-		Type: "video",
+		Type:        "video",
 		ExternalId:  "14962486294771997060",
 		ExternalId2: "4390481592474233535_0_146_0_0",
 		Title:       "讨厌我有什么用 有本事弄死我",
@@ -195,16 +195,16 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	}
 	testui.AssertStrictEqual(t, "Content", expectedContent, content)
 	testui.AssertStrictEqual(t, "ContentVideo", model.ContentVideo{
-		Id:          "wxchannels:14962486294771997060",
-		Duration:    9,
-		Width:       1080,
-		Height:      2128,
-		Size:        9613487,
-		URL:         expectedVideoURL,
+		Id:       "wxchannels:14962486294771997060",
+		Duration: 9,
+		Width:    1080,
+		Height:   2128,
+		Size:     9613487,
+		URL:      expectedVideoURL,
 	}, contentVideo)
 
-	// ---- V1 DownloadTaskV1: task-level container ----
-	expectedTask := model.DownloadTaskV1{
+	// ---- V1 DownloadTask: task-level container ----
+	expectedTask := model.DownloadTask{
 		ContentId:   &expectedVideoContentID,
 		Name:        "讨厌我有什么用 有本事弄死我",
 		PlatformId:  "wxchannels",
@@ -216,15 +216,16 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 		CoverHeight: "2128",
 		ConfigJSON:  "{}",
 	}
-	testui.AssertStrictEqual(t, "DownloadTaskV1", expectedTask, info.Task)
+	testui.AssertStrictEqual(t, "DownloadTask", expectedTask, info.Task)
 
 	require.Len(t, info.Resources, 1)
 	expectedResource := model.DownloadResource{
-		Name:     "讨厌我有什么用 有本事弄死我",
-		Kind:     "video",
-		UniqueID: "14962486294771997060",
-		Size:     9613487,
-		Extra:    `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
+		ContentId: &expectedVideoContentID,
+		Name:      "讨厌我有什么用 有本事弄死我",
+		Kind:      "video",
+		UniqueID:  "14962486294771997060",
+		Size:      9613487,
+		Extra:     `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
 	}
 	testui.AssertStrictEqual(t, "DownloadResource", expectedResource, info.Resources[0].DownloadResource)
 
@@ -238,7 +239,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 }
 
 // TestBuildDownloadTask_FromContent_WithSpecAndSuffix verifies that when both
-// Spec and Suffix are set in DownloadConfig, the generated UniqueID and download
+// Spec and Suffix are set in the download config, the generated UniqueID and download
 // URL correctly reflect the configuration.
 func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 	contentJSON, err := example.Load("wxchannels/260710/video.json")
@@ -253,7 +254,7 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 		t.Fatal("handler not registered for platform wxchannels")
 	}
 
-	config := wxchannels.DownloadConfig{Spec: "xWT111", Suffix: ".mp3"}
+	config := map[string]any{"spec": "xWT111", "suffix": ".mp3"}
 	cfgJSON, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -280,7 +281,7 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 	expectedContent := model.Content{
 		Id:          "wxchannels:14962486294771997060",
 		PlatformId:  "wxchannels",
-		Type: "video",
+		Type:        "video",
 		ExternalId:  "14962486294771997060",
 		ExternalId2: "4390481592474233535_0_146_0_0",
 		Title:       "讨厌我有什么用 有本事弄死我",
@@ -294,16 +295,16 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 	}
 	testui.AssertStrictEqual(t, "Content", expectedContent, content)
 	testui.AssertStrictEqual(t, "ContentVideo", model.ContentVideo{
-		Id:          "wxchannels:14962486294771997060",
-		Duration:    9,
-		Width:       1080,
-		Height:      2128,
-		Size:        9613487,
-		URL:         expectedVideoURL,
+		Id:       "wxchannels:14962486294771997060",
+		Duration: 9,
+		Width:    1080,
+		Height:   2128,
+		Size:     9613487,
+		URL:      expectedVideoURL,
 	}, contentVideo)
 
-	// ---- V1 DownloadTaskV1: UniqueID reflects both spec and suffix ----
-	testui.AssertStrictEqual(t, "DownloadTaskV1", model.DownloadTaskV1{
+	// ---- V1 DownloadTask: UniqueID reflects both spec and suffix ----
+	testui.AssertStrictEqual(t, "DownloadTask", model.DownloadTask{
 		ContentId:   &expectedVideoContentID,
 		Name:        "讨厌我有什么用 有本事弄死我",
 		PlatformId:  "wxchannels",
@@ -318,11 +319,12 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 
 	require.Len(t, info.Resources, 1)
 	testui.AssertStrictEqual(t, "DownloadResource", model.DownloadResource{
-		Name:     "讨厌我有什么用 有本事弄死我",
-		Kind:     "video",
-		UniqueID: "14962486294771997060_xWT111_mp3",
-		Size:     9613487,
-		Extra:    `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
+		ContentId: &expectedVideoContentID,
+		Name:      "讨厌我有什么用 有本事弄死我",
+		Kind:      "video",
+		UniqueID:  "14962486294771997060_xWT111_mp3",
+		Size:      9613487,
+		Extra:     `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
 	}, info.Resources[0].DownloadResource)
 
 	require.Len(t, info.Resources[0].Endpoints, 1)
@@ -344,7 +346,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 		t.Fatal("handler not registered for platform wxchannels")
 	}
 
-	config := wxchannels.DownloadConfig{}
+	config := map[string]any{}
 	cfgJSON, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -370,7 +372,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 	testui.AssertStrictEqual(t, "Content", model.Content{
 		Id:          "wxchannels:14962486294771997060",
 		PlatformId:  "wxchannels",
-		Type: "video",
+		Type:        "video",
 		ExternalId:  "14962486294771997060",
 		ExternalId2: "4390481592474233535_0_146_0_0",
 		Title:       "讨厌我有什么用 有本事弄死我",
@@ -383,7 +385,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 		PublishTime: &expectedVideoPublishTime,
 	}, content)
 
-	// ---- V1 DownloadTaskV1: task-level container ----
+	// ---- V1 DownloadTask: task-level container ----
 	require.NotNil(t, info.Task.ContentId)
 	assert.Equal(t, "wxchannels:14962486294771997060", *info.Task.ContentId)
 	assert.Equal(t, "14962486294771997060", info.Task.UniqueID)
@@ -403,7 +405,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 // Start → 10% pause → Resume → 100% complete → Merging → Finished.
 // Validates state transitions and data consistency across task/resource/endpoint/segment/conn entities.
 func TestBuildDownloadTask_FromContent_Lifecycle(t *testing.T) {
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Id:           1,
 		Name:         "讨厌我有什么用 有本事弄死我",
 		UniqueID:     "14962486294771997060",
@@ -634,9 +636,9 @@ func TestBuildDownloadTask_FromContent_WithSubtasks(t *testing.T) {
 	const platformId = "wxchannels"
 	const spec = "xWT111"
 
-	// ---- Create V1 DownloadTaskV1: task-level container ----
+	// ---- Create V1 DownloadTask: task-level container ----
 	const taskId = 100
-	task := model.DownloadTaskV1{
+	task := model.DownloadTask{
 		Id:           taskId,
 		Name:         "讨厌我有什么用 有本事弄死我",
 		UniqueID:     "14962486294771997060",
@@ -693,7 +695,7 @@ func TestBuildDownloadTask_FromContent_WithSubtasks(t *testing.T) {
 		t.Errorf("ContentAccount.Role = %q, want 'owner'", ca.Role)
 	}
 
-	// 3. DownloadTaskV1 shape
+	// 3. DownloadTask shape
 	if task.Id != taskId {
 		t.Errorf("task.Id = %d, want %d", task.Id, taskId)
 	}

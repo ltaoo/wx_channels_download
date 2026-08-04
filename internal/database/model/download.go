@@ -1,54 +1,5 @@
 package model
 
-// DownloadTask status enum for the retired task model.
-const (
-	DownloadTaskStatusReady   = 0 // task created, not started
-	DownloadTaskStatusRunning = 1
-	DownloadTaskStatusPause   = 2
-	DownloadTaskStatusWait    = 3 // task waiting to run
-	DownloadTaskStatusDone    = 4
-	DownloadTaskStatusError   = 5
-)
-
-type DownloadTask struct {
-	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskUID        string `gorm:"column:task_uid" json:"task_uid"`
-	TaskId         string `gorm:"uniqueIndex;not null" json:"task_id"`
-	ParentId       int    `gorm:"index" json:"parent_id"`
-	RootId         int    `gorm:"index" json:"root_id"`
-	NodeType       string `gorm:"column:node_type" json:"node_type"`
-	Engine         string `gorm:"column:engine" json:"engine"`
-	EngineTaskID   string `gorm:"column:engine_task_id" json:"engine_task_id"`
-	Type           int    `json:"type"`
-	Status         int    `json:"status"`
-	ExternalId     string `json:"external_id"`
-	Protocol       string `json:"protocol"`
-	URL            string `gorm:"not null" json:"url"`
-	SourceURI      string `gorm:"column:source_uri" json:"source_uri"`
-	Method         string `gorm:"column:method" json:"method"`
-	RequestHeaders string `gorm:"column:request_headers" json:"request_headers"`
-	RequestBody    string `gorm:"column:request_body" json:"request_body"`
-	Title          string `json:"title"`
-	Filename       string `gorm:"column:filename" json:"filename"`
-	CoverURL       string `json:"cover_url"`
-	MimeType       string `gorm:"column:mime_type" json:"mime_type"`
-	Size           int64  `json:"size"`
-	Downloaded     int64  `gorm:"column:downloaded" json:"downloaded"`
-	Speed          int64  `gorm:"column:speed" json:"speed"`
-	Progress       string `json:"progress"`
-	Filepath       string `json:"filepath"`
-	OutputPath     string `json:"output_path"`
-	Error          string `json:"error"`
-	Reason         string `json:"reason"`
-	Metadata1      string `json:"metadata1"`
-	Metadata2      string `json:"metadata2"`
-	Metadata       string `gorm:"column:metadata" json:"metadata"`
-	Idx            int    `json:"idx"`
-	Timestamps
-}
-
-func (DownloadTask) TableName() string { return "download_task" }
-
 type DownloadTaskPiece struct {
 	Id             int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskId         int    `gorm:"not null;uniqueIndex:idx_download_task_piece_unique,priority:1;index:idx_download_task_piece_status,priority:1" json:"task_id"`

@@ -103,7 +103,7 @@ func TestBuildDownloadTask_FromAlbumFixture(t *testing.T) {
 		t.Fatalf("BuildDownloadTask: %v", err)
 	}
 
-	testui.AssertStrictEqual(t, "DownloadTaskV1", &model.DownloadTaskV1{
+	testui.AssertStrictEqual(t, "DownloadTask", &model.DownloadTask{
 		ContentId:    &expectedAlbumContentID,
 		Name:         "比女孩成熟，比女人天真🖤",
 		UniqueID:     "MzMwNDA3NDg2MQ==",
@@ -124,7 +124,7 @@ func TestBuildDownloadTask_FromAlbumFixture_WithSuffix(t *testing.T) {
 	if h == nil {
 		t.Fatal("handler not registered for platform wxmp")
 	}
-	configJSON, err := json.Marshal(wxmp.DownloadConfig{Suffix: ".html"})
+	configJSON, err := json.Marshal(map[string]any{"suffix": ".html"})
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestBuildDownloadTask_FromAlbumFixture_WithSuffix(t *testing.T) {
 		t.Fatalf("BuildDownloadTask: %v", err)
 	}
 
-	testui.AssertStrictEqual(t, "DownloadTaskV1", &model.DownloadTaskV1{
+	testui.AssertStrictEqual(t, "DownloadTask", &model.DownloadTask{
 		ContentId:    &expectedAlbumContentID,
 		Name:         "比女孩成熟，比女人天真🖤",
 		UniqueID:     "MzMwNDA3NDg2MQ==_html",
@@ -270,6 +270,9 @@ func assertAlbumDownloadTaskContent(t *testing.T, info *types.DownloadTaskResult
 				Headers:  wechatHeaderJSON,
 			}},
 		},
+	}
+	for _, resource := range resources {
+		resource.ContentId = &expectedAlbumContentID
 	}
 
 	testui.AssertStrictEqual(t, "DownloadResources", resources, info.Resources)

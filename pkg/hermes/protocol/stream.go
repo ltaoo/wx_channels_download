@@ -57,7 +57,7 @@ func (d *StreamDriver) Open(ctx context.Context, endpoint hermes.Endpoint, reque
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("创建 ffmpeg stdout 管道失败: %w", err)
+		return nil, fmt.Errorf("failed to create ffmpeg stdout pipe: %w", err)
 	}
 
 	// Capture stderr for error diagnostics
@@ -65,7 +65,7 @@ func (d *StreamDriver) Open(ctx context.Context, endpoint hermes.Endpoint, reque
 	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("启动 ffmpeg 下载失败: %w", err)
+		return nil, fmt.Errorf("failed to start ffmpeg download: %w", err)
 	}
 
 	return &streamReadCloser{reader: stdout, cmd: cmd, stderrBuf: &stderrBuf}, nil
