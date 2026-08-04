@@ -62,6 +62,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/remote/proxy", c.handleRemoteProxyRequest)
 	c.engine.GET("/api/remote/task/list", c.handleFetchRemoteTaskList)
 	c.engine.GET("/api/file", c.handleFetchFile)
+	c.engine.POST("/api/v1/fs/list", c.handleListFiles)
+	c.engine.POST("/api/v1/fs/search", c.handleSearchFiles)
 
 	c.engine.POST("/api/v1/download_task/prepare", c.handlePrepareDownloadTask)
 	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handlePrepareDownloadTaskByURL)

@@ -76,7 +76,7 @@ func TestBuildDownloadTaskVideoCreatesSingleResource(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	require.Len(t, info.Resources, 1)
-	assert.Equal(t, "video", info.Resources[0].DownloadResource.Kind)
+	assert.Equal(t, "video/mp4", info.Resources[0].DownloadResource.Kind)
 	assert.Equal(t, "自定义名称", info.Resources[0].DownloadResource.Name)
 	assert.Equal(t, "https://video.example.com/video.mp4?token=video", info.Resources[0].Endpoints[0].URL)
 }
@@ -156,7 +156,7 @@ func TestBuildDownloadTask_LiveStream_DetectsJoinLiveContent(t *testing.T) {
 	t.Run("DownloadResource", func(t *testing.T) {
 		r := info.Resources[0].DownloadResource
 		assert.Equal(t, "谁可以无缘无故给我刷个岛.mkv", r.Name)
-		assert.Equal(t, "stream", r.Kind)
+		assert.Equal(t, "video/x-matroska", r.Kind)
 		assert.Equal(t, model.ResourceTypeStream, r.Type)
 		assert.Equal(t, 10, r.RotateMinutes)
 		assert.Equal(t, "2078967496773105135_1785075244", r.UniqueID)
@@ -347,7 +347,7 @@ func TestBuildDownloadTask_NotLive_NotJoinLive(t *testing.T) {
 
 	// Should be video type, NOT live/stream
 	assert.Equal(t, "video", content.Type)
-	assert.NotEqual(t, "stream", info.Resources[0].DownloadResource.Kind)
+	assert.Equal(t, "video/mp4", info.Resources[0].DownloadResource.Kind)
 }
 
 func TestJoinLivePayload_Detection_NoLiveSdkInfo(t *testing.T) {

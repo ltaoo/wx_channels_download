@@ -55,6 +55,7 @@ type APIClient struct {
 	contentService      *services.ContentService
 	browseService       *services.BrowseService
 	downloadTaskService *services.DownloadTaskService
+	fsService           *services.FSService
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, staticAssets *webassets.Registry) *APIClient {
@@ -65,6 +66,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 	accountService := services.NewAccountService(db)
 	contentService := services.NewContentService(db)
 	browseService := services.NewBrowseService(db)
+	fsService := services.NewFSService()
 	if staticAssets == nil {
 		staticAssets = webassets.NewRegistry()
 	}
@@ -79,6 +81,7 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 		accountService: accountService,
 		contentService: contentService,
 		browseService:  browseService,
+		fsService:      fsService,
 	}
 
 	hookManager := hermes.NewHookManager()
@@ -431,6 +434,7 @@ func (s *dbTaskStore) debug(format string, args ...interface{}) {
 
 var _ hermes.Store = (*dbTaskStore)(nil)
 var _ hermes.OutputNameStore = (*dbTaskStore)(nil)
+var _ hermes.ResourceOutputStore = (*dbTaskStore)(nil)
 
 func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
 	var task model.DownloadTask
@@ -504,6 +508,7 @@ func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
 			Kind:       resource.Kind,
 			Type:       resource.Type,
 			UniqueID:   resource.UniqueID,
+			Extension:  hermes.CanonicalExtensionForMIMEType(resource.Kind),
 			Endpoints:  resourceEndpoints,
 			Extra:      extra,
 			Size:       resource.Size,
@@ -643,6 +648,28 @@ func (s *dbTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
 		s.debug("UpdateOutputName transaction succeeded")
 	}
 	return err
+}
+
+func (s *dbTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) error {
+	if update.TaskID <= 0 || update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
+		return errors.New("最终资源更新参数无效")
+	}
+	now := time.Now().UnixMilli()
+	result := s.db.Model(&model.DownloadResource{}).
+		Where("id = ? AND task_id = ?", update.ResourceID, update.TaskID).
+		Updates(map[string]any{
+			"name":       update.ResourceName,
+			"kind":       update.ResourceKind,
+			"size":       update.ResourceSize,
+			"updated_at": now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("更新最终资源未影响任何行: resource_id=%d task_id=%d", update.ResourceID, update.TaskID)
+	}
+	return nil
 }
 
 func (s *dbTaskStore) UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error {

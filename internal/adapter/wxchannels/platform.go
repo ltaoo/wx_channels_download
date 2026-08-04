@@ -21,6 +21,13 @@ func init() {
 
 type handler struct{}
 
+const (
+	mimeImageJPEG     = "image/jpeg"
+	mimeAudioMPEG     = "audio/mpeg"
+	mimeVideoMP4      = "video/mp4"
+	mimeVideoMatroska = "video/x-matroska"
+)
+
 func (h *handler) PlatformID() string { return PlatformID }
 
 // DecryptKey exposes the legacy channels conversion capability through the
@@ -44,6 +51,7 @@ func (h *handler) ConvertContent(contentJSON json.RawMessage) (*model.Content, e
 }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
+	// fmt.Println("[wxchannels]BuildDownloadTask")
 	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
@@ -119,7 +127,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		coverResource := model.DownloadResource{
 			ContentId:  &contentID,
 			Name:       title,
-			Kind:       "image",
+			Kind:       mimeImageJPEG,
 			UniqueID:   content.ExternalId + "_cover",
 			MergeOrder: 0,
 			Extra:      baseExtraJSON,
@@ -166,7 +174,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 				DownloadResource: model.DownloadResource{
 					ContentId: &contentID,
 					Name:      sanitizeFilename(imageName),
-					Kind:      "image",
+					Kind:      mimeImageJPEG,
 					Size:      int64(file.FileSize),
 					UniqueID:  content.ExternalId + "_" + strconv.Itoa(i),
 					Extra:     decryptExtraJSON,
@@ -186,7 +194,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 				DownloadResource: model.DownloadResource{
 					ContentId: &contentID,
 					Name:      bgm.Name,
-					Kind:      "audio",
+					Kind:      mimeAudioMPEG,
 					UniqueID:  content.ExternalId + "_bgm",
 					Extra:     baseExtraJSON,
 				},
@@ -219,16 +227,18 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	configJSON, _ := json.Marshal(buildConfigJSON(config, spec))
 
 	resourceUniqueID := content.ExternalId
+	resourceKind := mimeVideoMP4
 	if spec != "" {
 		resourceUniqueID = content.ExternalId + "_" + spec
 	}
 	if configString(config, "suffix") == ".mp3" {
 		resourceUniqueID += "_mp3"
+		resourceKind = mimeAudioMPEG
 	}
 	videoResource := model.DownloadResource{
 		ContentId: &contentID,
 		Name:      title,
-		Kind:      "video",
+		Kind:      resourceKind,
 		UniqueID:  resourceUniqueID,
 		Extra:     decryptExtraJSON,
 	}
@@ -347,7 +357,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 	streamResource := model.DownloadResource{
 		ContentId:     &content.Id,
 		Name:          title + ".mkv",
-		Kind:          "stream",
+		Kind:          mimeVideoMatroska,
 		Type:          model.ResourceTypeStream,
 		RotateMinutes: 10,
 		StreamURL:     jl.LiveSdkInfo.LiveCdnUrl,

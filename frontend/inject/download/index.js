@@ -1,4 +1,5 @@
 /// <reference path="../utils.js" />
+/// <reference path="../file.js" />
 /// <reference path="core.js" />
 /**
  * @file Download manager page entry
@@ -111,6 +112,13 @@ function DownloadPageTopBar(props) {
         },
       }),
       DownloadPageActionButton({
+        icon: "file-box",
+        label: "导入",
+        onClick() {
+          vm$.ui.importFileDialog$.show();
+        },
+      }),
+      DownloadPageActionButton({
         icon: "trash2",
         label: computed(selected_task_count_, (count) => {
           return count > 0 ? `删除选中 ${count}` : "删除选中";
@@ -175,6 +183,11 @@ function DownloaderPageView(props) {
         }),
         CreatePlatformTaskPreviewDialogView({
           store: vm$,
+        }),
+        FilePickerDialog({
+          dialogStore: vm$.ui.importFileDialog$,
+          title: "导入文件",
+          accept: ".db",
         }),
         TaskDeleteConfirmDialog({
           store: vm$,

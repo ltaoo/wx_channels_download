@@ -2,6 +2,8 @@ package hermes
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -9,6 +11,19 @@ import (
 	"wx_channel/pkg/testui/assert"
 	"wx_channel/pkg/testui/require"
 )
+
+func TestResolveDuplicateFilenameAppendsSuffixBeforeExtension(t *testing.T) {
+	basePath := t.TempDir()
+	engine := &HermesEngine{cfg: HermesEngineConfig{BasePath: basePath}}
+
+	for _, name := range []string{"clip.mp4", "clip(1).mp4"} {
+		err := os.WriteFile(filepath.Join(basePath, name), nil, 0600)
+		require.NoError(t, err)
+	}
+
+	name := engine.resolveDuplicateFilename("", "clip", ".mp4")
+	assert.Equal(t, "clip(2).mp4", name)
+}
 
 func TestFilenameProcessorSanitizeFilename(t *testing.T) {
 	processor := NewFilenameProcessor("", nil)

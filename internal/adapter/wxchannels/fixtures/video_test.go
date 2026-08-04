@@ -222,7 +222,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	expectedResource := model.DownloadResource{
 		ContentId: &expectedVideoContentID,
 		Name:      "讨厌我有什么用 有本事弄死我",
-		Kind:      "video",
+		Kind:      "video/mp4",
 		UniqueID:  "14962486294771997060",
 		Size:      9613487,
 		Extra:     `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
@@ -321,7 +321,7 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 	testui.AssertStrictEqual(t, "DownloadResource", model.DownloadResource{
 		ContentId: &expectedVideoContentID,
 		Name:      "讨厌我有什么用 有本事弄死我",
-		Kind:      "video",
+		Kind:      "audio/mpeg",
 		UniqueID:  "14962486294771997060_xWT111_mp3",
 		Size:      9613487,
 		Extra:     `{"id":"14962486294771997060","title":"讨厌我有什么用 有本事弄死我","created_at":"1783667361","author":"迷人的大嘴猴","decode_key":"1522886121"}`,
@@ -394,7 +394,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 	assert.Equal(t, model.TaskStatusWaiting, info.Task.Status)
 	assert.Equal(t, "{}", info.Task.ConfigJSON)
 	require.Len(t, info.Resources, 1)
-	assert.Equal(t, "video", info.Resources[0].DownloadResource.Kind)
+	assert.Equal(t, "video/mp4", info.Resources[0].DownloadResource.Kind)
 	assert.Equal(t, "14962486294771997060", info.Resources[0].DownloadResource.UniqueID)
 	assert.Equal(t, int64(9613487), info.Resources[0].DownloadResource.Size)
 	assert.Equal(t, "https", info.Resources[0].Endpoints[0].Protocol)
@@ -419,7 +419,7 @@ func TestBuildDownloadTask_FromContent_Lifecycle(t *testing.T) {
 		Id:     1,
 		TaskId: 1,
 		Name:   "讨厌我有什么用 有本事弄死我.mp4",
-		Kind:   "video",
+		Kind:   "video/mp4",
 		Size:   9613487,
 		Status: 0,
 	}
@@ -650,9 +650,9 @@ func TestBuildDownloadTask_FromContent_WithSubtasks(t *testing.T) {
 
 	// ---- Create three V1 DownloadResources (one per file type) ----
 	resources := []model.DownloadResource{
-		{Id: 101, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.mp4", Kind: "video", Size: 9613487, Status: 0, MergeOrder: 0},
-		{Id: 102, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.jpg", Kind: "cover", Size: 0, Status: 0, MergeOrder: 1},
-		{Id: 103, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.mp3", Kind: "audio", Size: 0, Status: 0, MergeOrder: 2},
+		{Id: 101, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.mp4", Kind: "video/mp4", Size: 9613487, Status: 0, MergeOrder: 0},
+		{Id: 102, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.jpg", Kind: "image/jpeg", Size: 0, Status: 0, MergeOrder: 1},
+		{Id: 103, TaskId: 100, Name: "讨厌我有什么用 有本事弄死我.mp3", Kind: "audio/mpeg", Size: 0, Status: 0, MergeOrder: 2},
 	}
 
 	// ---- Create three V1 DownloadEndpoints (one per resource) ----
@@ -707,7 +707,7 @@ func TestBuildDownloadTask_FromContent_WithSubtasks(t *testing.T) {
 	}
 	// 4. Each resource is correctly linked to the task
 	expectedResourceIDs := []int{101, 102, 103}
-	expectedKinds := []string{"video", "cover", "audio"}
+	expectedKinds := []string{"video/mp4", "image/jpeg", "audio/mpeg"}
 	expectedNames := []string{
 		"讨厌我有什么用 有本事弄死我.mp4",
 		"讨厌我有什么用 有本事弄死我.jpg",

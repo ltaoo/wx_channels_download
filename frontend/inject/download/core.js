@@ -2413,6 +2413,9 @@ function DownloaderPanelViewModel(props = {}) {
         });
   const ui = {
     dropdown$,
+    importFileDialog$: new Timeless.ui.DialogCore({
+      closeable: true,
+    }),
     createTaskDialog$: new Timeless.ui.DialogCore({
       closeable: true,
       onOk() {

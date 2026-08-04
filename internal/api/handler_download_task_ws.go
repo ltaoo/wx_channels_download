@@ -458,15 +458,6 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 		UpdatedAt:    task.UpdatedAt,
 	}
 
-	c.logger.Info().
-		Int("taskID", taskID).
-		Int64("dl", p.Downloaded).
-		Int64("size", p.TotalSize).
-		Int64("spd", p.Speed).
-		Float64("pct", pct).
-		Int("files", len(files)).
-		Msg("progress: WS pushed")
-
 	v1TaskHub.BroadcastTasks([]int{taskID}, DownloadTaskWSMessage{
 		Type:  downloadTaskWSUpsert,
 		Tasks: []DownloadTaskRecord{record},

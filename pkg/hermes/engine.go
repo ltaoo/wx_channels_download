@@ -234,6 +234,23 @@ type OutputNameStore interface {
 	UpdateOutputName(update OutputNameUpdate) error
 }
 
+// ResourceOutputUpdate is the final resource state after post-processing and
+// filename finalization. Kind is the persisted MIME source of truth;
+// Extension is derived from it at runtime.
+type ResourceOutputUpdate struct {
+	TaskID       int
+	ResourceID   int
+	ResourceName string
+	ResourceKind string
+	ResourceSize int64
+}
+
+// ResourceOutputStore persists the final post-processed resource metadata.
+// It is optional so non-persistent HermesEngine users remain supported.
+type ResourceOutputStore interface {
+	UpdateResourceOutput(update ResourceOutputUpdate) error
+}
+
 // Postprocessor defines platform-specific post-download processing.
 // Called by HermesEngine after all resources download, before .tmp renaming and DB updates.
 type Postprocessor interface {

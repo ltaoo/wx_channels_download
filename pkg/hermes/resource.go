@@ -59,6 +59,12 @@ func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, reso
 		if resource.TargetExt == "" {
 			resource.TargetExt = preparedTargetExtension(prepared, resource.Extension)
 		}
+		// Extension is the runtime filename suffix. Kind is normalized to the
+		// canonical MIME value persisted after filename finalization.
+		resource.Extension = resource.TargetExt
+		if mediaType := canonicalMIMETypeForPrepared(prepared, resource.Extension); mediaType != "" {
+			resource.Kind = mediaType
+		}
 		if expectedSize > 0 && prepared.Size > 0 && prepared.Size != expectedSize {
 			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: mirror resource size mismatch", candidate.protocol))
 			continue
@@ -437,24 +443,51 @@ func (d *HermesEngine) processOutputFilename(task *TaskJob, resource *ResourceJo
 	}
 }
 
-func extensionForContentType(contentType string) string {
+// CanonicalExtensionForMIMEType maps a MIME type through the application's
+// explicit one-to-one table. It never guesses from the operating-system MIME
+// registry, where one MIME type may have multiple extensions.
+func CanonicalExtensionForMIMEType(contentType string) string {
+	mediaType := canonicalMIMEType(contentType)
+	return contentTypeExtMap[mediaType]
+}
+
+func canonicalMIMEType(contentType string) string {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return ""
 	}
 	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
-	if mediaType == "" {
+	if _, exists := contentTypeExtMap[mediaType]; !exists {
 		return ""
 	}
-	// Prefer exact mapping (handles special cases like image/jpeg -> .jpg)
-	if ext, ok := contentTypeExtMap[mediaType]; ok {
+	return mediaType
+}
+
+func canonicalMIMETypeForPrepared(prepared PreparedResource, extension string) string {
+	if mediaType := canonicalMIMEType(prepared.ContentType); mediaType != "" {
+		return mediaType
+	}
+	if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
+		if mediaType := canonicalMIMEType(detectedType); mediaType != "" {
+			return mediaType
+		}
+	}
+	for mediaType, canonicalExtension := range contentTypeExtMap {
+		if canonicalExtension == extension {
+			return mediaType
+		}
+	}
+	return ""
+}
+
+func extensionForContentType(contentType string) string {
+	if ext := CanonicalExtensionForMIMEType(contentType); ext != "" {
 		return ext
 	}
-	// Generic binary stream: server doesn't know the specific type; don't infer extension from Content-Type
-	if mediaType == "application/octet-stream" {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType == "application/octet-stream" {
 		return ""
 	}
-	// Fallback: use Go standard library MIME extension table (return first matching extension)
 	exts, err := mime.ExtensionsByType(mediaType)
 	if err == nil && len(exts) > 0 {
 		return exts[0]
@@ -479,8 +512,22 @@ var contentTypeExtMap = map[string]string{
 	"audio/mp4":        ".m4a",
 	"audio/aac":        ".aac",
 	"audio/ogg":        ".ogg",
+	"audio/wav":        ".wav",
+	"audio/flac":       ".flac",
+	"text/html":        ".html",
+	"text/plain":       ".txt",
+	"text/css":         ".css",
+	"text/csv":         ".csv",
+	"text/markdown":    ".md",
+	"application/json": ".json",
+	"application/xml":  ".xml",
 	"application/pdf":  ".pdf",
 	"application/zip":  ".zip",
+	"image/svg+xml":    ".svg",
+	"image/bmp":        ".bmp",
+	"image/tiff":       ".tiff",
+	"video/mp2t":       ".ts",
+	"video/x-flv":      ".flv",
 }
 
 // detectContentTypeFromBytes detects file type via magic bytes.
@@ -907,14 +954,13 @@ func (d *HermesEngine) findNextDuplicateName(task *TaskJob, resource *ResourceJo
 	}
 }
 
-// resolveDuplicateFilename appends (1), (2), ... to the filename when a file
-// with the same name already exists on disk, to avoid overwriting.
-func (d *HermesEngine) resolveDuplicateFilename(savePath, finalName, ext string) string {
-	baseWithoutExt := strings.TrimSuffix(finalName, ext)
+// resolveDuplicateFilename appends (1), (2), ... to baseName when the final
+// filename already exists on disk. ext is appended after the duplicate suffix.
+func (d *HermesEngine) resolveDuplicateFilename(savePath, baseName, ext string) string {
 	for counter := 0; ; counter++ {
-		candidate := finalName
+		candidate := baseName + ext
 		if counter > 0 {
-			candidate = fmt.Sprintf("%s(%d)%s", baseWithoutExt, counter, ext)
+			candidate = fmt.Sprintf("%s(%d)%s", baseName, counter, ext)
 		}
 		candidatePath := d.absFilePath(savePath, candidate)
 		if _, err := os.Stat(candidatePath); os.IsNotExist(err) {

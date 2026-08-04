@@ -27,6 +27,13 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 		if r.FilePath == "" {
 			r.FilePath = d.absFilePath(job.SavePath, r.UniqueID)
 		}
+		d.logger.Info().
+			Int("task_id", taskID).
+			Int("resource_id", r.ID).
+			Str("resource_name", r.Name).
+			Str("resource_unique_id", r.UniqueID).
+			Str("file_path", r.FilePath).
+			Msg("run - finishTask")
 	}
 
 	// 4. Call postprocessor if set
@@ -44,9 +51,11 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 	// then apply filename template and hook for the final output name.
 	d.finalizeResourceFilenames(job)
 
-	// 6. Update resource names in DB (postprocessor may have changed them)
-	if err := d.persistResourceNames(taskID, job.Resources); err != nil {
-		d.logger.Warn().Int("task_id", taskID).Err(err).Msg("failed to update resource names (postprocessing)")
+	// 6. Persist the final Resource values. Postprocessing and filename
+	// finalization may have changed Name, MIME Kind and Size. Extension is
+	// derived from Kind and is intentionally not stored.
+	if err := d.persistResourceOutputs(taskID, job.Resources); err != nil {
+		d.logger.Warn().Int("task_id", taskID).Err(err).Msg("failed to update final resource outputs")
 	}
 
 	// Rebuild filePaths after possible postprocessing changes
@@ -125,10 +134,7 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 		if title == "" {
 			continue
 		}
-		ext := r.TargetExt
-		if ext == "" {
-			ext = filepath.Ext(r.Name)
-		}
+		ext := r.Extension
 
 		// Start with the display title as the base name
 		baseName := title
@@ -158,12 +164,16 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 			}
 		}
 
-		// Sanitize each path component and build final name
-		finalName := sanitizePathComponents(baseName) + ext
+		d.logger.Info().
+			Str("resource_name", r.Name).
+			Str("base_name", baseName).
+			Str("extension", ext).
+			Msg("run - resolving final resource filename")
 
-		// Check the complete destination path regardless of duplicate mode. If a
-		// file already exists there, append (1), (2), ... to avoid overwriting it.
-		finalName = d.resolveDuplicateFilename(job.SavePath, finalName, ext)
+		// Sanitize each path component, then resolve the final name. The duplicate
+		// suffix is inserted before the extension.
+		sanitizedBaseName := sanitizePathComponents(baseName)
+		finalName := d.resolveDuplicateFilename(job.SavePath, sanitizedBaseName, ext)
 
 		if finalName == r.Name {
 			continue
@@ -218,25 +228,39 @@ func sanitizePathComponents(path string) string {
 	return strings.Trim(strings.Join(parts, "/"), "/")
 }
 
-// persistResourceNames updates resource names in the database.
-func (d *HermesEngine) persistResourceNames(taskID int, resources []ResourceJob) error {
-	store, ok := d.store.(OutputNameStore)
-	if !ok {
-		return nil
-	}
+// persistResourceOutputs writes the Resource values after both postprocessing
+// and final filename calculation. Name, MIME Kind and Size are one snapshot.
+func (d *HermesEngine) persistResourceOutputs(taskID int, resources []ResourceJob) error {
+	store, supportsResourceOutput := d.store.(ResourceOutputStore)
 	for _, r := range resources {
-		update := OutputNameUpdate{
-			TaskID:       taskID,
-			ResourceID:   r.ID,
-			ResourceName: r.Name,
+		if !supportsResourceOutput {
+			if nameStore, ok := d.store.(OutputNameStore); ok {
+				if err := nameStore.UpdateOutputName(OutputNameUpdate{
+					TaskID: taskID, ResourceID: r.ID, ResourceName: r.Name,
+				}); err != nil {
+					return fmt.Errorf("failed to update resource name resource_id=%d: %w", r.ID, err)
+				}
+			}
+			if resourceStore, ok := d.store.(ResourceStore); ok {
+				if err := resourceStore.UpdateResourceSizeByID(r.ID, r.Size); err != nil {
+					return fmt.Errorf("failed to update resource size resource_id=%d: %w", r.ID, err)
+				}
+			}
+			continue
+		}
+		update := ResourceOutputUpdate{
+			TaskID: taskID, ResourceID: r.ID, ResourceName: r.Name,
+			ResourceKind: r.Kind, ResourceSize: r.Size,
 		}
 		d.logger.Info().
 			Int("task_id", taskID).
 			Int("resource_id", r.ID).
 			Str("resource_name", r.Name).
-			Msg("updating resource name in DB")
-		if err := store.UpdateOutputName(update); err != nil {
-			return fmt.Errorf("failed to update resource name resource_id=%d: %w", r.ID, err)
+			Str("resource_kind", r.Kind).
+			Int64("resource_size", r.Size).
+			Msg("updating final resource output in DB")
+		if err := store.UpdateResourceOutput(update); err != nil {
+			return fmt.Errorf("failed to update resource output resource_id=%d: %w", r.ID, err)
 		}
 	}
 	return nil
