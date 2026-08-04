@@ -54,11 +54,11 @@ func (h *contentAccountTestPlatformHandler) BuildDownloadTask(_ json.RawMessage,
 			PlatformId: h.PlatformID(),
 		},
 		Content: &model.Content{
-			Id:          "api_test_content_account:content-1",
-			PlatformId:  h.PlatformID(),
-			Type: "video",
-			ExternalId:  "content-1",
-			Title:       "关联账号测试",
+			Id:         "api_test_content_account:content-1",
+			PlatformId: h.PlatformID(),
+			Type:       "video",
+			ExternalId: "content-1",
+			Title:      "关联账号测试",
 		},
 		Account: &model.Account{
 			Id:         "api_test_content_account:incoming-account",
@@ -101,11 +101,11 @@ func (h *savePathTestPlatformHandler) BuildDownloadTask(_ json.RawMessage, confi
 			Status:     model.TaskStatusWaiting,
 		},
 		Content: &model.Content{
-			Id:          "api_test_save_path:content-1",
-			PlatformId:  "api_test_save_path",
-			Type: "video",
-			ExternalId:  "content-1",
-			Title:       "platform-file.bin",
+			Id:         "api_test_save_path:content-1",
+			PlatformId: "api_test_save_path",
+			Type:       "video",
+			ExternalId: "content-1",
+			Title:      "platform-file.bin",
 		},
 		Resources: []*types.ResourceInfo{{
 			DownloadResource: videoResource,
@@ -159,10 +159,10 @@ func TestHandleCreateDownloadTaskV1UsesConfiguredSavePath(t *testing.T) {
 			DownloadDir: expectedSaveDir,
 		},
 	}
-	client.downloader = hermes.New(hermes.NewOpt{Store: &dbTaskStore{db: db}, MaxConcurrent: 1, BasePath: expectedSaveDir})
+	client.downloader = hermes.New(hermes.HermesNewConfig{Store: &dbTaskStore{db: db}, Config: hermes.HermesEngineConfig{MaxConcurrent: 1, BasePath: expectedSaveDir}})
 	client.downloader.RegisterProtocol(protocol.NewHTTPDriver())
 	client.downloadTaskService = services.NewDownloadTaskService(db, &nopLogger, client.downloader, nil, workDir, expectedSaveDir)
-	defer client.downloader.PauseAll()
+	defer client.downloader.PauseAllTask()
 
 	body := []byte(`{"objects":[{"platform":"api_test_save_path","content":{},"config":{"download_cover":true}}]}`)
 	recorder := httptest.NewRecorder()
@@ -324,9 +324,9 @@ func TestHandleCreateDownloadTaskByURLV1InfersFilenameExtension(t *testing.T) {
 		logger: &nopLogger,
 		cfg:    &APIConfig{WorkDir: workDir, DownloadDir: workDir},
 	}
-	client.downloader = hermes.New(hermes.NewOpt{Store: &dbTaskStore{db: db}, MaxConcurrent: 1, BasePath: workDir})
+	client.downloader = hermes.New(hermes.HermesNewConfig{Store: &dbTaskStore{db: db}, Config: hermes.HermesEngineConfig{MaxConcurrent: 1, BasePath: workDir}})
 	client.downloader.RegisterProtocol(protocol.NewHTTPDriver())
-	defer client.downloader.PauseAll()
+	defer client.downloader.PauseAllTask()
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -602,9 +602,9 @@ func TestHandleCreateDownloadTaskByURLV1AppliesFilenameTemplate(t *testing.T) {
 		logger: &nopLogger,
 		cfg:    &APIConfig{WorkDir: workDir, DownloadDir: workDir, FilenameTemplate: template},
 	}
-	client.downloader = hermes.New(hermes.NewOpt{Store: &dbTaskStore{db: db}, MaxConcurrent: 1, FilenameTemplate: template, BasePath: workDir})
+	client.downloader = hermes.New(hermes.HermesNewConfig{Store: &dbTaskStore{db: db}, Config: hermes.HermesEngineConfig{MaxConcurrent: 1, FilenameTemplate: template, BasePath: workDir}})
 	client.downloader.RegisterProtocol(protocol.NewHTTPDriver())
-	defer client.downloader.PauseAll()
+	defer client.downloader.PauseAllTask()
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -695,7 +695,7 @@ func TestHandleDeleteDownloadTaskV1LogsFileAndCascadeDiagnostics(t *testing.T) {
 		logger: &logger,
 		cfg:    &APIConfig{DownloadDir: downloadRoot},
 	}
-	client.downloader = hermes.New(hermes.NewOpt{Store: &dbTaskStore{db: db}, Logger: &logger, BasePath: downloadRoot})
+	client.downloader = hermes.New(hermes.HermesNewConfig{Store: &dbTaskStore{db: db}, Logger: &logger, Config: hermes.HermesEngineConfig{BasePath: downloadRoot}})
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

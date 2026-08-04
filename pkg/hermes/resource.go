@@ -1,0 +1,1018 @@
+package hermes
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"mime"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dop251/goja"
+
+	"wx_channel/pkg/util"
+)
+
+func (d *HermesEngine) downloadResource(ctx context.Context, taskID int, savePath string, resourceType string, resource Resource, config map[string]any, resourceExtensions map[int]string) (string, error) {
+	originalDBName := resource.Name
+	// Use unique_id as download filename to avoid collisions between tasks
+	// (e.g., mp3 conversion task vs normal download of the same video).
+	// The display name is preserved in resource.Extra["title"] for the final rename.
+	downloadName := resource.Name
+	if resource.UniqueID != "" {
+		downloadName = resource.UniqueID
+	}
+	configJSON, _ := json.Marshal(config)
+	resourceTask := &Task{
+		ID:               taskID,
+		Name:             downloadName,
+		SavePath:         savePath,
+		FilenameTemplate: d.cfg.FilenameTemplate,
+		ResourceID:       resource.ID,
+		Endpoints:        resource.Endpoints,
+		Config:           string(configJSON),
+	}
+	candidates, err := d.endpointCandidates(resourceTask)
+	if err != nil {
+		return "", err
+	}
+
+	var endpointErrors []string
+	var filePath string
+	var expectedSize int64
+	for _, candidate := range candidates {
+		if err := context.Cause(ctx); err != nil {
+			return "", err
+		}
+		if candidate.driver == nil {
+			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: 未注册协议驱动", candidate.protocol))
+			continue
+		}
+
+		prepared, prepareErr := prepareWithRetry(ctx, candidate.driver, candidate.endpoint)
+		if prepareErr != nil {
+			if errors.Is(prepareErr, context.Canceled) {
+				return "", prepareErr
+			}
+			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: %v", candidate.protocol, prepareErr))
+			continue
+		}
+		if prepared.Size < 0 {
+			prepared.Size = 0
+		}
+		if expectedSize > 0 && prepared.Size > 0 && prepared.Size != expectedSize {
+			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: 镜像资源大小不一致", candidate.protocol))
+			continue
+		}
+		if expectedSize == 0 && prepared.Size > 0 {
+			expectedSize = prepared.Size
+		}
+		if prepared.Size > 0 {
+			if err := d.updateResourceSize(taskID, resource.ID, prepared.Size); err != nil {
+				return "", fmt.Errorf("更新资源大小失败: %w", err)
+			}
+			d.updateTrackerSize(taskID, resource.ID, prepared.Size)
+		}
+
+		// Once segment records exist, resource.Name is the canonical path that was
+		// persisted when the download first started. Reapplying filename templates
+		// or hooks after a restart can produce a different path, making the existing
+		// .part file appear missing and causing downloadSegments to reset every
+		// persisted offset to zero.
+		existingSegments, segmentErr := d.store.LoadSegmentInfo(resource.ID)
+		if segmentErr != nil {
+			return "", fmt.Errorf("读取已有下载分片失败: %w", segmentErr)
+		}
+		resuming := len(existingSegments) > 0
+		if resuming {
+			d.logger.Info().
+				Int("taskID", taskID).
+				Int("resourceID", resource.ID).
+				Int("segmentCount", len(existingSegments)).
+				Str("resourceName", resourceTask.Name).
+				Msg("existing segments found, preserving persisted filename")
+		}
+
+		if !resuming && resourceTask.FilenameTemplate != "" && downloadName == originalDBName {
+			meta := buildTemplateMeta(resource.Extra, config, resourceTask.Name)
+			rawName := resourceTask.Name
+			if newName := d.applyFilenameTemplate(resourceTask, candidate.endpoint.URL, meta); newName != "" {
+				resourceTask.Name = newName
+				d.logger.Info().
+					Int("taskID", taskID).
+					Int("resourceID", resource.ID).
+					Str("oldName", rawName).
+					Str("newName", newName).
+					Str("template", resourceTask.FilenameTemplate).
+					Interface("meta", meta).
+					Msg("filename template applied")
+			}
+		}
+
+		// onFilename hook: user-defined final filename
+		// Skip when using unique_id as download name; template and hook are
+		// deferred to finishTask after the filename is restored to the display name.
+		if !resuming && d.hooks != nil && d.hooks.HasFilenameHook() && downloadName == originalDBName {
+			params := &FilenameParams{
+				Meta: buildResourceMeta(resource.Extra, config),
+				Task: TaskInfo{
+					Name:     resourceTask.Name,
+					SavePath: savePath,
+					Config:   config,
+				},
+				Config: config,
+			}
+			rawName := resourceTask.Name
+			if newName, err := d.hooks.InvokeFilenameHook(params, resourceTask.Name); err != nil {
+				d.logger.Warn().Err(err).Msg("onFilename hook execution failed")
+			} else if newName != "" {
+				resourceTask.Name = newName
+				d.logger.Info().
+					Int("taskID", taskID).
+					Int("resourceID", resource.ID).
+					Str("oldName", rawName).
+					Str("newName", newName).
+					Msg("onFilename hook applied")
+			}
+		}
+
+		_, err = d.processOutputFilename(resourceTask, candidate.endpoint.URL, prepared, resource.Extension, originalDBName, resourceExtensions)
+		if err != nil {
+			return "", err
+		}
+		filePath, err = d.filePathForResource(resourceTask, candidate.endpoint.URL)
+		if err != nil {
+			return "", err
+		}
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return "", fmt.Errorf("创建下载目录失败: %w", err)
+		}
+
+		d.logger.Info().
+			Int("taskID", taskID).
+			Int("resourceID", resource.ID).
+			Str("endpoint", candidate.endpoint.URL).
+			Str("filePath", d.relLogPath(filePath)).
+			Msg("starting resource download")
+
+		segmentCount := chooseSegmentCount(prepared)
+		d.logger.Info().
+			Int("taskID", taskID).
+			Int("resourceID", resource.ID).
+			Bool("segmented", segmentCount > 1).
+			Int("segmentCount", segmentCount).
+			Int64("segmentSize", minimumSegmentSize).
+			Msg("download mode selected")
+		if segmentCount > 1 {
+			err = d.downloadSegments(ctx, candidate.driver, candidate.endpoint, filePath, resource.ID, prepared.Size, segmentCount, taskID)
+		} else {
+			err = d.downloadFile(ctx, candidate.driver, candidate.endpoint, filePath, resource.ID, prepared, taskID)
+		}
+		if err == nil {
+			d.logger.Info().
+				Int("taskID", taskID).
+				Int("resourceID", resource.ID).
+				Str("filePath", d.relLogPath(filePath)).
+				Msg("data transfer completed")
+			if prepared.Size <= 0 {
+				if fileInfo, statErr := os.Stat(filePath); statErr == nil {
+					if err := d.updateResourceSize(taskID, resource.ID, fileInfo.Size()); err != nil {
+						return "", fmt.Errorf("更新资源最终大小失败: %w", err)
+					}
+					d.updateTrackerSize(taskID, resource.ID, fileInfo.Size())
+				}
+			}
+			if store, ok := d.store.(ResourceStore); ok {
+				d.logger.Info().
+					Int("taskID", taskID).
+					Int("resourceID", resource.ID).
+					Msg("persisting resource state")
+				if err := store.FinishResource(resource.ID); err != nil {
+					return "", fmt.Errorf("完成资源持久化失败: %w", err)
+				}
+			}
+			return filePath, nil
+		}
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return "", context.Cause(ctx)
+		}
+		endpointErrors = append(endpointErrors, fmt.Sprintf("%s: %v", candidate.protocol, err))
+		d.logger.Warn().
+			Int("endpointID", candidate.endpoint.ID).
+			Int("taskID", taskID).
+			Int("resourceID", resource.ID).
+			Err(err).
+			Msg("endpoint failed, trying next mirror")
+	}
+	return "", fmt.Errorf("所有下载端点均不可用: %s", strings.Join(endpointErrors, "; "))
+}
+
+// processOutputFilename handles download resource output filenames uniformly.
+// Called after filenameTemplate and onFilename hook processing; completes:
+//  1. Determine file extension (Content-Type -> magic bytes -> user-specified fallback)
+//  2. User input is always treated as a plain filename (ignoring any embedded extension); the system appends the extension
+//  3. Clean and truncate the base filename (preserving directory portion)
+//  4. Reconstruct the full path and update task/resource info in the database
+//
+// Each step outputs logs for easy troubleshooting.
+func (d *HermesEngine) processOutputFilename(task *Task, endpointURL string, prepared PreparedResource, extensionFallback string, originalDBName string, resourceExtensions map[int]string) (bool, error) {
+	if task == nil || task.ResourceID <= 0 {
+		return false, nil
+	}
+
+	rawName := strings.TrimSpace(task.Name)
+	if rawName == "" {
+		return false, nil
+	}
+
+	// Step 1: Separate directory and base filename (user input is a plain filename without extension)
+	dir, baseName := filepath.Split(rawName)
+	d.logger.Info().
+		Int("taskID", task.ID).
+		Int("resourceID", task.ResourceID).
+		Str("rawName", rawName).
+		Str("dir", dir).
+		Str("baseName", baseName).
+		Msg("output filename processing started")
+
+	// Step 2: Determine extension
+	// Priority: Content-Type -> magic bytes -> user-specified fallback suffix
+	ext := extensionForContentType(prepared.ContentType)
+	if ext != "" {
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Str("extension", ext).
+			Str("contentType", prepared.ContentType).
+			Msg("extension from content type")
+	}
+	if ext == "" {
+		if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
+			ext = extensionForContentType(detectedType)
+			if ext != "" {
+				d.logger.Info().
+					Int("taskID", task.ID).
+					Int("resourceID", task.ResourceID).
+					Str("extension", ext).
+					Str("detectedType", detectedType).
+					Msg("extension from magic bytes")
+			}
+		}
+	}
+	if ext == "" {
+		ext = extensionFallback
+		if ext != "" {
+			d.logger.Info().
+				Int("taskID", task.ID).
+				Int("resourceID", task.ResourceID).
+				Str("extension", ext).
+				Msg("using user-specified fallback extension")
+		}
+	}
+
+	// Persist extension for file rename during finishTask
+	if ext != "" && resourceExtensions != nil {
+		resourceExtensions[task.ResourceID] = ext
+	}
+
+	// Step 3: Check for existing segments (resume skips filename processing)
+	if ext != "" && task.ResourceID > 0 {
+		segments, err := d.store.LoadSegmentInfo(task.ResourceID)
+		if err != nil {
+			return false, fmt.Errorf("读取已有下载分片失败: %w", err)
+		}
+		if len(segments) > 0 {
+			persistedName := strings.TrimSpace(originalDBName)
+			if persistedName != "" && task.Name != persistedName {
+				d.logger.Warn().
+					Int("taskID", task.ID).
+					Int("resourceID", task.ResourceID).
+					Str("derivedName", task.Name).
+					Str("persistedName", persistedName).
+					Msg("discarding derived filename while resuming")
+				task.Name = persistedName
+			}
+			d.logger.Info().
+				Int("taskID", task.ID).
+				Int("resourceID", task.ResourceID).
+				Int("segmentCount", len(segments)).
+				Msg("existing segments found, skipping filename processing (resume)")
+			return false, nil
+		}
+	}
+
+	// Step 4: Check if output file already exists (check .tmp and post-processed final files)
+	if ext != "" {
+		tmpExt := ".tmp"
+		// Potential filenames to check: temp file .tmp and post-processed final file (with config suffix)
+		candidateNames := []string{dir + baseName + tmpExt}
+		if cfgSuffix := getConfigString(task.Config, "suffix"); cfgSuffix != "" && cfgSuffix != tmpExt {
+			candidateNames = append(candidateNames, dir+baseName+cfgSuffix)
+		}
+		// Also check the actual detected extension (e.g. .jpg from magic bytes), so
+		// that duplicate downloads can find files renamed by a prior completed task.
+		if ext != "" && ext != tmpExt {
+			candidateExt := dir + baseName + ext
+			already := false
+			for _, c := range candidateNames {
+				if c == candidateExt {
+					already = true
+					break
+				}
+			}
+			if !already {
+				candidateNames = append(candidateNames, candidateExt)
+			}
+		}
+
+		var currentPath string
+		var fileExists bool
+		for _, tryName := range candidateNames {
+			tmpTask := &Task{
+				ID: task.ID, Name: tryName,
+				SavePath: task.SavePath, ResourceID: task.ResourceID,
+			}
+			if path, err := d.filePathForResource(tmpTask, endpointURL); err == nil {
+				if info, statErr := os.Stat(path); statErr == nil && info.Size() > 0 {
+					currentPath = path
+					fileExists = true
+					d.logger.Info().
+						Int("taskID", task.ID).
+						Int("resourceID", task.ResourceID).
+						Str("filePath", currentPath).
+						Msg("existing output file detected")
+					break
+				}
+			}
+		}
+
+		if fileExists {
+			d.logger.Info().
+				Int("taskID", task.ID).
+				Int("resourceID", task.ResourceID).
+				Str("filePath", currentPath).
+				Str("config", task.Config).
+				Msg("file exists with config")
+			isDup := getConfigBool(task.Config, "duplicate")
+			d.logger.Info().
+				Int("taskID", task.ID).
+				Int("resourceID", task.ResourceID).
+				Bool("duplicate", isDup).
+				Msg("duplicate config parsed")
+			// duplicate=true: when temp file exists, auto-append numeric suffix (1), (2), ...
+			if isDup {
+				newName := d.findNextDuplicateName(task, currentPath, dir, baseName, tmpExt)
+				d.logger.Info().
+					Int("taskID", task.ID).
+					Int("resourceID", task.ResourceID).
+					Str("existingPath", currentPath).
+					Str("newName", newName).
+					Msg("file exists, duplicate enabled")
+				task.Name = newName
+				// Persist temp filename to DB; final extension written by finishTask
+				if _, err := d.persistResourceName(task, newName, originalDBName, "duplicate"); err != nil {
+					d.logger.Warn().
+						Int("taskID", task.ID).
+						Int("resourceID", task.ResourceID).
+						Err(err).
+						Msg("failed to update resource name")
+				}
+				return false, nil
+			}
+			// duplicate=false: file exists, skip download but update DB resource name for consistency
+			task.Name = dir + baseName + tmpExt
+			d.logger.Info().
+				Int("taskID", task.ID).
+				Int("resourceID", task.ResourceID).
+				Str("existingPath", currentPath).
+				Str("oldDBName", originalDBName).
+				Str("newDBName", task.Name).
+				Msg("file exists, duplicate disabled, resource name persisted to DB")
+			if _, err := d.persistResourceName(task, task.Name, originalDBName, "overwrite"); err != nil {
+				d.logger.Warn().
+					Int("taskID", task.ID).
+					Int("resourceID", task.ResourceID).
+					Err(err).
+					Msg("failed to update resource name")
+			}
+			return false, nil
+		}
+	}
+
+	// Step 5: If no extension, abandon filename processing
+	if ext == "" {
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Msg("cannot determine extension, skipping filename processing")
+		return false, nil
+	}
+
+	// Step 6: Sanitize and truncate base filename (keep directory portion unchanged)
+	fp := NewFilenameProcessor("", nil)
+	cleanBase, err := fp.SanitizeFilename(baseName)
+	if err != nil {
+		return false, fmt.Errorf("清理文件名失败: %w", err)
+	}
+	d.logger.Info().
+		Int("taskID", task.ID).
+		Int("resourceID", task.ResourceID).
+		Str("oldName", baseName).
+		Str("cleanName", cleanBase).
+		Msg("filename sanitized")
+
+	// Truncate overly long filenames (235 byte limit must include .tmp extension)
+	tmpExt := ".tmp"
+	maxBaseLen := fp.maxNameLength - len(tmpExt)
+	if maxBaseLen > 0 && len(cleanBase) > maxBaseLen {
+		truncated := fp.truncateString(cleanBase, maxBaseLen)
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Int("oldLen", len(cleanBase)).
+			Int("newLen", len(truncated)).
+			Msg("filename truncated due to length")
+		cleanBase = truncated
+	}
+	if cleanBase == "" {
+		return false, fmt.Errorf("文件名仅包含无效字符")
+	}
+
+	// Step 7: Reconstruct full temp file path (.tmp suffix, final extension written by finishTask)
+	resourceName := dir + cleanBase + tmpExt
+	d.logger.Info().
+		Int("taskID", task.ID).
+		Int("resourceID", task.ResourceID).
+		Str("resourceName", resourceName).
+		Str("baseName", cleanBase).
+		Str("tmpExt", tmpExt).
+		Str("dir", dir).
+		Msg("final temp output filename")
+
+	// Step 8: Compare with original DB name; skip DB update if unchanged
+	if resourceName == originalDBName {
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Msg("filename matches DB, skipping DB update")
+		task.Name = resourceName
+		return false, nil
+	}
+
+	// Step 9: Update temp resource name in database
+	task.Name = resourceName
+	if updated, err := d.persistResourceName(task, resourceName, originalDBName, "new"); err != nil {
+		return false, err
+	} else {
+		return updated, nil
+	}
+}
+
+func extensionForContentType(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return ""
+	}
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	if mediaType == "" {
+		return ""
+	}
+	// Prefer exact mapping (handles special cases like image/jpeg -> .jpg)
+	if ext, ok := contentTypeExtMap[mediaType]; ok {
+		return ext
+	}
+	// Generic binary stream: server doesn't know the specific type; don't infer extension from Content-Type
+	if mediaType == "application/octet-stream" {
+		return ""
+	}
+	// Fallback: use Go standard library MIME extension table (return first matching extension)
+	exts, err := mime.ExtensionsByType(mediaType)
+	if err == nil && len(exts) > 0 {
+		return exts[0]
+	}
+	return ""
+}
+
+// contentTypeExtMap is a precise MIME type -> extension mapping.
+// Takes priority over mime.ExtensionsByType for special cases (e.g., .jpg vs .jpe).
+var contentTypeExtMap = map[string]string{
+	"image/jpeg":       ".jpg",
+	"image/png":        ".png",
+	"image/gif":        ".gif",
+	"image/webp":       ".webp",
+	"image/avif":       ".avif",
+	"video/mp4":        ".mp4",
+	"video/webm":       ".webm",
+	"video/quicktime":  ".mov",
+	"video/x-msvideo":  ".avi",
+	"video/x-matroska": ".mkv",
+	"audio/mpeg":       ".mp3",
+	"audio/mp4":        ".m4a",
+	"audio/aac":        ".aac",
+	"audio/ogg":        ".ogg",
+	"application/pdf":  ".pdf",
+	"application/zip":  ".zip",
+}
+
+// detectContentTypeFromBytes detects file type via magic bytes.
+// Returns a MIME type string, or empty string if unrecognized.
+// Used as a supplementary detection method when Content-Type header is absent.
+func detectContentTypeFromBytes(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	switch {
+	// PNG
+	case len(data) >= 4 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G':
+		return "image/png"
+	// JPEG
+	case len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "image/jpeg"
+	// GIF87a / GIF89a
+	case len(data) >= 4 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8':
+		return "image/gif"
+	// WebP
+	case len(data) >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F' &&
+		data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P':
+		return "image/webp"
+	// BMP
+	case len(data) >= 2 && data[0] == 'B' && data[1] == 'M':
+		return "image/bmp"
+	// MP4 / M4A (ftyp box at offset 4)
+	case len(data) >= 12 && string(data[4:8]) == "ftyp":
+		return "video/mp4"
+	// MKV / WebM (EBML header)
+	case len(data) >= 4 && data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3:
+		return "video/x-matroska"
+	// MP3 (ID3 tag or MPEG sync)
+	case len(data) >= 3 && data[0] == 'I' && data[1] == 'D' && data[2] == '3':
+		return "audio/mpeg"
+	case len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0:
+		return "audio/mpeg"
+	// OGG
+	case len(data) >= 4 && data[0] == 'O' && data[1] == 'g' && data[2] == 'g' && data[3] == 'S':
+		return "audio/ogg"
+	// FLAC
+	case len(data) >= 4 && data[0] == 'f' && data[1] == 'L' && data[2] == 'a' && data[3] == 'C':
+		return "audio/flac"
+	// WAV
+	case len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE":
+		return "audio/wav"
+	// PDF
+	case len(data) >= 5 && string(data[0:5]) == "%PDF-":
+		return "application/pdf"
+	// ZIP (PK\x03\x04)
+	case len(data) >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 0x03 && data[3] == 0x04:
+		return "application/zip"
+	// RAR
+	case len(data) >= 7 && data[0] == 'R' && data[1] == 'a' && data[2] == 'r' && data[3] == '!' && data[4] == 0x1A && data[5] == 0x07:
+		return "application/x-rar-compressed"
+	// 7z
+	case len(data) >= 6 && data[0] == '7' && data[1] == 'z' && data[2] == 0xBC && data[3] == 0xAF && data[4] == 0x27 && data[5] == 0x1C:
+		return "application/x-7z-compressed"
+	// GZIP
+	case len(data) >= 2 && data[0] == 0x1F && data[1] == 0x8B:
+		return "application/gzip"
+	default:
+		return ""
+	}
+}
+
+func (d *HermesEngine) updateResourceSize(taskID, resourceID int, size int64) error {
+	if store, ok := d.store.(ResourceStore); ok {
+		return store.UpdateResourceSizeByID(resourceID, size)
+	}
+	return d.store.UpdateResourceSize(taskID, size)
+}
+
+func (d *HermesEngine) updateResourceProgress(taskID, resourceID int, downloaded, speed int64) error {
+	if store, ok := d.store.(ResourceStore); ok {
+		return store.UpdateResourceProgress(resourceID, downloaded, speed)
+	}
+	return d.store.UpdateProgress(taskID, downloaded, speed)
+}
+
+func prepareWithRetry(ctx context.Context, driver ProtocolDriver, endpoint Endpoint) (PreparedResource, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxReadAttempts; attempt++ {
+		prepared, err := driver.Prepare(ctx, endpoint)
+		if err == nil {
+			return prepared, nil
+		}
+		if errors.Is(err, context.Canceled) {
+			return PreparedResource{}, err
+		}
+		if ctx.Err() != nil {
+			return PreparedResource{}, context.Cause(ctx)
+		}
+		lastErr = err
+		if attempt < maxReadAttempts-1 && !waitForRetry(ctx, attempt) {
+			return PreparedResource{}, context.Cause(ctx)
+		}
+	}
+	return PreparedResource{}, lastErr
+}
+
+func (d *HermesEngine) applyFilenameTemplate(task *Task, endpointURL string, meta map[string]string) string {
+	// If template contains {{var}} syntax, use shared template var replacement
+	if strings.Contains(task.FilenameTemplate, "{{") {
+		return cleanPathSeparators(util.ReplaceTemplateVars(task.FilenameTemplate, meta))
+	}
+
+	// Fall through to JS VM evaluation for expression-based templates
+	urlBasename := ""
+	if u, err := url.Parse(endpointURL); err == nil {
+		urlBasename = filepath.Base(u.Path)
+	}
+
+	vm := goja.New()
+	vm.Set("name", task.Name)
+	vm.Set("task_id", task.ID)
+	vm.Set("resource_id", task.ResourceID)
+	vm.Set("url_basename", urlBasename)
+
+	vm.Set("formatTime", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return vm.ToValue("")
+		}
+		return vm.ToValue(time.Now().Format(call.Argument(0).String()))
+	})
+
+	vm.Set("padStart", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			return call.Arguments[0]
+		}
+		s := call.Argument(0).String()
+		length := int(call.Argument(1).ToInteger())
+		pad := "0"
+		if len(call.Arguments) >= 3 {
+			pad = call.Argument(2).String()
+		}
+		for len(s) < length {
+			s = pad + s
+		}
+		return vm.ToValue(s)
+	})
+
+	result, err := vm.RunString(task.FilenameTemplate)
+	if err != nil {
+		d.logger.Warn().Err(err).Msg("filename template error")
+		return ""
+	}
+
+	return cleanPathSeparators(result.String())
+}
+
+// cleanPathSeparators trims whitespace around each / separator in a path string,
+// so that e.g. "AuthorName / VideoTitle" becomes "AuthorName/VideoTitle".
+// Leading/trailing whitespace is also trimmed.
+func cleanPathSeparators(s string) string {
+	parts := strings.Split(s, "/")
+	for i, p := range parts {
+		parts[i] = strings.TrimSpace(p)
+	}
+	return strings.Trim(strings.Join(parts, "/"), "/")
+}
+
+func (d *HermesEngine) endpointCandidates(info *Task) ([]endpointCandidate, error) {
+	endpoints := append([]Endpoint(nil), info.Endpoints...)
+	if len(endpoints) == 0 {
+		return nil, errors.New("任务没有可用下载端点")
+	}
+	sort.SliceStable(endpoints, func(i, j int) bool { return endpoints[i].Priority < endpoints[j].Priority })
+
+	candidates := make([]endpointCandidate, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		protocol := strings.ToLower(strings.TrimSpace(endpoint.Protocol))
+		if protocol == "" {
+			parsed, err := url.Parse(endpoint.URL)
+			if err == nil {
+				protocol = strings.ToLower(parsed.Scheme)
+			}
+		}
+		d.mu.Lock()
+		driver := d.drivers[protocol]
+		d.mu.Unlock()
+		candidates = append(candidates, endpointCandidate{endpoint: endpoint, protocol: protocol, driver: driver})
+	}
+	return candidates, nil
+}
+
+// ensureResourceSizes probes each resource to determine its size before the
+// download loop starts. When all resource sizes are known upfront, the API can
+// compute correct task-level aggregate progress (sum of all resource segments
+// divided by sum of all resource sizes), avoiding the 100%→partial→100%
+// oscillation that occurs when sizes are discovered one resource at a time.
+// Failures are non-fatal; the download loop will retry Prepares as needed.
+// Returns a map of resourceID→size for resources whose size was successfully
+// determined.
+func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, resources []Resource) map[int]int64 {
+	sizes := make(map[int]int64)
+	for i := range resources {
+		res := &resources[i]
+		candidates, err := d.endpointCandidates(&Task{Endpoints: res.Endpoints})
+		if err != nil {
+			continue
+		}
+		for _, c := range candidates {
+			if ctx.Err() != nil {
+				return sizes
+			}
+			if c.driver == nil {
+				continue
+			}
+			prepared, err := c.driver.Prepare(ctx, c.endpoint)
+			if err != nil {
+				continue
+			}
+			if prepared.Size > 0 {
+				_ = d.updateResourceSize(taskID, res.ID, prepared.Size)
+				sizes[res.ID] = prepared.Size
+				break
+			}
+		}
+	}
+	return sizes
+}
+
+// absFilePath constructs absolute path: basePath + savePath + name.
+func (d *HermesEngine) absFilePath(savePath, name string) string {
+	return filepath.Join(d.cfg.BasePath, savePath, name)
+}
+
+// relLogPath converts absolute absPath to relative (strips basePath prefix).
+func (d *HermesEngine) relLogPath(absPath string) string {
+	if d.cfg.BasePath == "" {
+		return absPath
+	}
+	rel, err := filepath.Rel(d.cfg.BasePath, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return absPath
+	}
+	return rel
+}
+
+// filePathForResource resolves the absolute on-disk path for a task's resource.
+func (d *HermesEngine) filePathForResource(info *Task, endpointURL string) (string, error) {
+	name := strings.TrimSpace(info.Name)
+	if name == "" {
+		if parsed, err := url.Parse(endpointURL); err == nil {
+			name = filepath.Base(parsed.Path)
+		}
+	}
+	name = filepath.Clean(name)
+	name = strings.TrimLeft(name, "/")
+	// Strip leading path traversal prefixes (same effect as filepath.Base but preserves subdirectories)
+	for strings.HasPrefix(name, "../") {
+		name = name[3:]
+	}
+	// Prevent path traversal attacks
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, string(filepath.Separator)+"..") {
+		return "", errors.New("无法确定下载文件名")
+	}
+
+	return d.absFilePath(info.SavePath, name), nil
+}
+
+// taskFilePath is the legacy function kept for backward compatibility.
+func taskFilePath(info *Task, endpointURL string) (string, error) {
+	if strings.TrimSpace(info.SavePath) == "" {
+		return "", errors.New("保存路径不能为空")
+	}
+	name := strings.TrimSpace(info.Name)
+	if name == "" {
+		if parsed, err := url.Parse(endpointURL); err == nil {
+			name = filepath.Base(parsed.Path)
+		}
+	}
+	name = filepath.Clean(name)
+	name = strings.TrimLeft(name, "/")
+	// Strip leading path traversal prefixes (same effect as filepath.Base but preserves subdirectories)
+	for strings.HasPrefix(name, "../") {
+		name = name[3:]
+	}
+	// Prevent path traversal attacks
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, string(filepath.Separator)+"..") {
+		return "", errors.New("无法确定下载文件名")
+	}
+
+	savePath := filepath.Clean(info.SavePath)
+	return filepath.Join(savePath, name), nil
+}
+
+func chooseSegmentCount(prepared PreparedResource) int {
+	if !prepared.SupportsRange || prepared.Size <= minimumSegmentSize {
+		return 1
+	}
+	count := int((prepared.Size + minimumSegmentSize - 1) / minimumSegmentSize)
+	if count > defaultSegmentCount {
+		count = defaultSegmentCount
+	}
+	return count
+}
+
+// splitFile divides a file into n non-empty segments, distributing any remainder across the first segments.
+func splitFile(fileSize int64, n int) []SegmentRange {
+	if n <= 0 || fileSize <= 0 {
+		return nil
+	}
+	if int64(n) > fileSize {
+		n = int(fileSize)
+	}
+	baseSize := fileSize / int64(n)
+	remainder := fileSize % int64(n)
+	ranges := make([]SegmentRange, n)
+	var offset int64
+	for i := 0; i < n; i++ {
+		size := baseSize
+		if int64(i) < remainder {
+			size++
+		}
+		ranges[i] = SegmentRange{Index: i, OffsetStart: offset, OffsetEnd: offset + size - 1, Size: size}
+		offset += size
+	}
+	return ranges
+}
+
+func buildResourceMeta(extra map[string]string, config map[string]any) ResourceMeta {
+	meta := ResourceMeta{
+		DownloadAt: time.Now().Unix(),
+	}
+	if extra != nil {
+		meta.ID = extra["id"]
+		meta.Title = extra["title"]
+		meta.Spec = extra["spec"]
+		meta.Author = extra["author"]
+		if v, err := strconv.ParseInt(extra["created_at"], 10, 64); err == nil {
+			meta.CreatedAt = v
+		}
+	}
+	if config != nil {
+		if platform, ok := config["platform"].(string); ok {
+			meta.Platform = platform
+		}
+	}
+	return meta
+}
+
+// buildTemplateMeta builds a metadata map for {{var}} template substitution from resource.Extra and task config.
+func buildTemplateMeta(extra map[string]string, config map[string]any, currentName string) map[string]string {
+	meta := make(map[string]string)
+	meta["download_at"] = time.Now().Format("2006-01-02")
+	meta["filename"] = currentName
+	if extra != nil {
+		meta["id"] = extra["id"]
+		meta["title"] = extra["title"]
+		meta["spec"] = extra["spec"]
+		meta["author"] = extra["author"]
+		meta["created_at"] = extra["created_at"]
+	}
+	// User config spec overrides resource metadata spec
+	if config != nil {
+		if spec, ok := config["spec"].(string); ok && spec != "" {
+			meta["spec"] = spec
+		}
+	}
+	return meta
+}
+
+// parseConfigAndMetadata parses download config and content metadata JSON.
+// Returns the merged config map and separate metadata map.
+func parseConfigAndMetadata(configJSON, metadataJSON string) (map[string]any, map[string]any) {
+	result := make(map[string]any)
+	meta := make(map[string]any)
+	if configJSON != "" {
+		json.Unmarshal([]byte(configJSON), &result)
+	}
+	if metadataJSON != "" {
+		if json.Unmarshal([]byte(metadataJSON), &meta) == nil {
+			for k, v := range meta {
+				if _, exists := result[k]; !exists {
+					result[k] = v
+				}
+			}
+		}
+	}
+	// Protect against json.Unmarshal setting maps to nil when input is "null".
+	if result == nil {
+		result = make(map[string]any)
+	}
+	if meta == nil {
+		meta = make(map[string]any)
+	}
+	return result, meta
+}
+
+// calcSpeed computes download speed (bytes/sec) between two points in time.
+func getConfigBool(configJSON, key string) bool {
+	if configJSON == "" {
+		return false
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return false
+	}
+	if v, ok := cfg[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
+// getConfigString reads the value for the specified string key from the task's config JSON.
+func getConfigString(configJSON, key string) string {
+	if configJSON == "" {
+		return ""
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return ""
+	}
+	if v, ok := cfg[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// findNextDuplicateName finds the next available numeric suffix filename when a file already exists.
+// e.g., if baseName.mp4 exists, try baseName(1).mp4, baseName(2).mp4, ...
+func (d *HermesEngine) findNextDuplicateName(task *Task, existingPath, dir, baseName, ext string) string {
+	tmpExt := ".tmp"
+	for counter := 1; ; counter++ {
+		candidate := fmt.Sprintf("%s(%d)%s", baseName, counter, tmpExt)
+		candidatePath := d.absFilePath(task.SavePath, filepath.Join(dir, candidate))
+		if _, err := os.Stat(candidatePath); os.IsNotExist(err) {
+			return dir + candidate
+		}
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Str("fileName", dir+candidate).
+			Msg("duplicate file name exists, incrementing counter")
+	}
+}
+
+// resolveDuplicateFilename appends (1), (2), ... to the filename when a file
+// with the same name already exists on disk, to avoid overwriting.
+func (d *HermesEngine) resolveDuplicateFilename(savePath, finalName, ext string) string {
+	baseWithExt := finalName
+	for counter := 1; ; counter++ {
+		candidatePath := d.absFilePath(savePath, baseWithExt)
+		if _, err := os.Stat(candidatePath); os.IsNotExist(err) {
+			return baseWithExt
+		}
+		baseWithoutExt := strings.TrimSuffix(baseWithExt, ext)
+		baseWithExt = fmt.Sprintf("%s(%d)%s", baseWithoutExt, counter, ext)
+	}
+}
+
+// persistResourceName updates the resource name in the database. 'reason' is used in logs to annotate the trigger scenario.
+func (d *HermesEngine) persistResourceName(task *Task, resourceName, originalDBName, reason string) (bool, error) {
+	if resourceName == originalDBName {
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Str("reason", reason).
+			Msg("filename matches DB, skipping DB update")
+		return false, nil
+	}
+	update := OutputNameUpdate{
+		TaskID:       task.ID,
+		ResourceID:   task.ResourceID,
+		ResourceName: resourceName,
+	}
+	d.logger.Info().
+		Int("taskID", task.ID).
+		Int("resourceID", task.ResourceID).
+		Str("reason", reason).
+		Int("updateTaskID", update.TaskID).
+		Int("updateResourceID", update.ResourceID).
+		Str("updateResourceName", update.ResourceName).
+		Msg("updating resource name in DB")
+	if store, ok := d.store.(OutputNameStore); ok {
+		if err := store.UpdateOutputName(update); err != nil {
+			return false, fmt.Errorf("更新下载文件名到数据库失败: %w", err)
+		}
+		d.logger.Info().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Str("oldName", originalDBName).
+			Str("newName", resourceName).
+			Msg("resource name updated in DB")
+	} else {
+		d.logger.Warn().
+			Int("taskID", task.ID).
+			Int("resourceID", task.ResourceID).
+			Msg("store does not implement OutputNameStore, skipping DB update")
+	}
+	return true, nil
+}

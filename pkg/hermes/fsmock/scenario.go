@@ -79,7 +79,7 @@ func (t *EventTracker) HasEvent(event hermes.EventType) bool {
 // ScenarioBuilder provides a fluent API for constructing test engine
 // setups.
 type ScenarioBuilder struct {
-	Engine   *hermes.Engine
+	Engine   *hermes.HermesEngine
 	Store    *MockStore
 	Tracker  *EventTracker
 	cleanups []func()
@@ -91,7 +91,10 @@ func NewScenario(maxConcurrent int) *ScenarioBuilder {
 		Tracker: &EventTracker{},
 	}
 	b.Store = NewMockStore(nil)
-	b.Engine = hermes.New(hermes.NewOpt{Store: b.Store, MaxConcurrent: maxConcurrent})
+	b.Engine = hermes.New(hermes.HermesNewConfig{
+		Store:  b.Store,
+		Config: hermes.HermesEngineConfig{MaxConcurrent: maxConcurrent},
+	})
 	b.Engine.SetEventHandler(b.Tracker.Record)
 	return b
 }
@@ -143,12 +146,12 @@ func (b *ScenarioBuilder) Cleanup() {
 
 // Start starts the engine.
 func (b *ScenarioBuilder) Start(taskID int) error {
-	return b.Engine.Start(taskID)
+	return b.Engine.StartTask(taskID)
 }
 
 // Pause pauses a running task.
 func (b *ScenarioBuilder) Pause(taskID int) {
-	b.Engine.Pause(taskID)
+	b.Engine.PauseTask(taskID)
 }
 
 // WaitFor blocks until the given event occurs or timeout.

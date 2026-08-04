@@ -106,7 +106,7 @@ func (d *partialFileRangeDriver) requestSnapshot() []ReadRequest {
 func TestDownloadSegmentsWritesRangesIntoSinglePartialFile(t *testing.T) {
 	data := bytes.Repeat([]byte("hermes-range-data-"), 8192)
 	store := &partialFileTestStore{}
-	engine := New(NewOpt{Store: store, MaxConcurrent: 1, SegmentConcurrency: 4})
+	engine := New(HermesNewConfig{Store: store, Config: HermesEngineConfig{MaxConcurrent: 1, SegmentConcurrency: 4}})
 	driver := &partialFileRangeDriver{data: data}
 	filePath := filepath.Join(t.TempDir(), "segmented.bin")
 
@@ -140,7 +140,7 @@ func TestDownloadSegmentsWritesRangesIntoSinglePartialFile(t *testing.T) {
 func TestDownloadFileDoesNotTrustSameSizedDestinationWithoutCompletedSegment(t *testing.T) {
 	data := bytes.Repeat([]byte("single-file-data-"), 1024)
 	store := &partialFileTestStore{}
-	engine := New(NewOpt{Store: store, MaxConcurrent: 1})
+	engine := New(HermesNewConfig{Store: store, Config: HermesEngineConfig{MaxConcurrent: 1}})
 	driver := &partialFileRangeDriver{data: data}
 	filePath := filepath.Join(t.TempDir(), "single.bin")
 	if err := os.WriteFile(filePath, make([]byte, len(data)), 0644); err != nil {
@@ -176,7 +176,7 @@ func TestCompletedPartialFileReplacesOlderSameSizedDestination(t *testing.T) {
 			OffsetEnd: r.OffsetEnd, Size: r.Size, Downloaded: r.Size,
 		}
 	}
-	engine := New(NewOpt{Store: store, MaxConcurrent: 1, SegmentConcurrency: 3})
+	engine := New(HermesNewConfig{Store: store, Config: HermesEngineConfig{MaxConcurrent: 1, SegmentConcurrency: 3}})
 	driver := &partialFileRangeDriver{data: data}
 	filePath := filepath.Join(t.TempDir(), "recovered.bin")
 	if err := os.WriteFile(filePath, make([]byte, len(data)), 0644); err != nil {
@@ -216,7 +216,7 @@ func TestDownloadSegmentsResumesPersistedRangesInPartialFile(t *testing.T) {
 		}
 	}
 	store.segments[0].Downloaded = resumeBytes
-	engine := New(NewOpt{Store: store, MaxConcurrent: 1, SegmentConcurrency: 3})
+	engine := New(HermesNewConfig{Store: store, Config: HermesEngineConfig{MaxConcurrent: 1, SegmentConcurrency: 3}})
 	driver := &partialFileRangeDriver{data: data}
 	filePath := filepath.Join(t.TempDir(), "resumed.bin")
 	partPath := filePath + partialFileSuffix

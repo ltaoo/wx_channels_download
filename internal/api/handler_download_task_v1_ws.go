@@ -122,7 +122,7 @@ func newTaskBroadcaster() *taskBroadcaster {
 // (finished / failed) the broadcast always runs immediately. For other events
 // (especially EventProgress) broadcasts are throttled to ≈100ms to balance
 // UI smoothness against database load.
-// progress carries in-memory download state from the Engine; when non-nil for
+// progress carries in-memory download state from the HermesEngine; when non-nil for
 // EventProgress, the lightweight broadcastDownloadTaskProgress path is used
 // instead of the full DB query path.
 func (b *taskBroadcaster) notify(c *APIClient, taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
@@ -414,7 +414,7 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 			ID:           rp.ID,
 			Name:         rp.Name,
 			Kind:         rp.Kind,
-			ResourceType: rp.ResourceType,
+			ResourceType: rp.Type,
 			Type:         "file",
 			Status:       status,
 			Size:         rp.Size,

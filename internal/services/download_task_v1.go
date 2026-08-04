@@ -30,7 +30,7 @@ import (
 type DownloadTaskService struct {
 	db          *gorm.DB
 	logger      *zerolog.Logger
-	downloader  *hermes.Engine
+	downloader  *hermes.HermesEngine
 	hookManager *hermes.HookManager
 	workDir     string
 	downloadDir string
@@ -39,7 +39,7 @@ type DownloadTaskService struct {
 func NewDownloadTaskService(
 	db *gorm.DB,
 	logger *zerolog.Logger,
-	downloader *hermes.Engine,
+	downloader *hermes.HermesEngine,
 	hookManager *hermes.HookManager,
 	workDir string,
 	downloadDir string,
@@ -737,7 +737,7 @@ func (s *DownloadTaskService) StartTask(taskID int) (*model.DownloadTaskV1, erro
 
 	s.logger.Info().Int("task_id", taskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("received start download task request")
 
-	if err := s.downloader.Start(task.Id); err != nil {
+	if err := s.downloader.StartTask(task.Id); err != nil {
 		s.logger.Error().Int("task_id", taskID).Err(err).Msg("failed to start download task")
 		return nil, fmt.Errorf("启动下载任务失败: %w", err)
 	}
@@ -762,7 +762,7 @@ func (s *DownloadTaskService) PauseTask(taskID int) (*model.DownloadTaskV1, bool
 		return nil, false, fmt.Errorf("当前状态不允许暂停")
 	}
 
-	s.downloader.Pause(task.Id)
+	s.downloader.PauseTask(task.Id)
 
 	isStream := s.hasStreamResources(task.Id)
 
@@ -792,7 +792,7 @@ func (s *DownloadTaskService) ResumeTask(taskID int) (*model.DownloadTaskV1, err
 		return nil, fmt.Errorf("当前状态不允许恢复")
 	}
 
-	if err := s.downloader.Start(task.Id); err != nil {
+	if err := s.downloader.StartTask(task.Id); err != nil {
 		return nil, fmt.Errorf("恢复下载任务失败: %w", err)
 	}
 	task.Status = model.TaskStatusPreparing
@@ -813,7 +813,7 @@ func (s *DownloadTaskService) DeleteTask(taskID int) (*DownloadTaskRecord, error
 
 	now := time.Now().UnixMilli()
 
-	s.downloader.Delete(task.Id)
+	s.downloader.DeleteTask(task.Id)
 	deletedRecord, _ := s.BuildTaskRecord(task.Id)
 
 	s.db.Model(&task).Update("deleted_at", now)
@@ -930,7 +930,7 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 
 	var started int
 	for _, task := range tasks {
-		if err := s.downloader.Start(task.Id); err != nil {
+		if err := s.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
@@ -967,7 +967,7 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 	var paused int
 	var streamTaskIDs []int
 	for _, task := range tasks {
-		s.downloader.Pause(task.Id)
+		s.downloader.PauseTask(task.Id)
 		if s.hasStreamResources(task.Id) {
 			now := time.Now().UnixMilli()
 			s.db.Model(&model.DownloadTaskV1{}).Where("id = ?", task.Id).
@@ -998,7 +998,7 @@ func (s *DownloadTaskService) ClearTasks(deleteFiles bool) (int, error) {
 	var cleared int
 
 	for _, task := range tasks {
-		s.downloader.Delete(task.Id)
+		s.downloader.DeleteTask(task.Id)
 
 		s.db.Model(&task).Update("deleted_at", now)
 
@@ -1396,7 +1396,7 @@ func (s *DownloadTaskService) startCreatedDownloadTask(taskID int) error {
 		return fmt.Errorf("Hermes 下载器未初始化")
 	}
 	s.logger.Debug().Int("task_id", taskID).Msg("submitting download task to Hermes scheduler")
-	if err := s.downloader.Start(taskID); err != nil {
+	if err := s.downloader.StartTask(taskID); err != nil {
 		s.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
 		return err
 	}

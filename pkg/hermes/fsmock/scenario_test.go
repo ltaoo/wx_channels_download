@@ -258,11 +258,11 @@ func TestScenario_SlowServerPauseResume(t *testing.T) {
 	assert.Equal(t, 1, b.Store.DeactivateCalls)
 
 	// Resume: create a new engine with the same store and tracker.
-	engine2 := hermes.New(hermes.NewOpt{Store: b.Store, MaxConcurrent: 1})
+	engine2 := hermes.New(hermes.HermesNewConfig{Store: b.Store, Config: hermes.HermesEngineConfig{MaxConcurrent: 1}})
 	engine2.SetEventHandler(b.Tracker.Record)
 	engine2.RegisterProtocol(&testHTTPDriver{})
 
-	require.NoError(t, engine2.Start(1))
+	require.NoError(t, engine2.StartTask(1))
 	// Wait for finish on the tracker (shared with the resumed engine).
 	finished := false
 	deadline := time.Now().Add(30 * time.Second)

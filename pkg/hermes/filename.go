@@ -13,7 +13,7 @@ import (
 // normalized relative path in memory to avoid duplicate output names.
 //
 // It does not create directories or inspect the filesystem. Callers must
-// persist the returned name before handing the task to Engine so persisted
+// persist the returned name before handing the task to HermesEngine so persisted
 // resource metadata and the eventual output path stay aligned.
 type FilenameProcessor struct {
 	// usedFilenames stores relative path/name keys and their duplicate counts.

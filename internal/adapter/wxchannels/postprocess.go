@@ -25,9 +25,9 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.PostprocessInfo,
 	for i := range info.Resources {
 		r := &info.Resources[i]
 		log("Postprocessor.wxchannels: task_id=%d resource[%d] id=%d name=%q resourceType=%q extra=%v",
-			info.TaskID, i, r.ID, r.Name, r.ResourceType, r.Extra)
+			info.TaskID, i, r.ID, r.Name, r.Type, r.Extra)
 
-		if r.ResourceType == "STREAM" {
+		if r.Type == "STREAM" {
 			if err := postprocessStream(ctx, r, deps.BasePath, log); err != nil {
 				return err
 			}

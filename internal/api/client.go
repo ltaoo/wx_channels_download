@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,16 +21,16 @@ import (
 	"wx_channel/frontend"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/download"
-	"wx_channel/internal/services"
 	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
+	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
 )
 
 type APIClient struct {
-	downloader  *hermes.Engine
+	downloader  *hermes.HermesEngine
 	hookManager *hermes.HookManager
 	broadcaster *taskBroadcaster
 	// official      *officialaccount.OfficialAccountClient
@@ -52,10 +52,10 @@ type APIClient struct {
 	svcStatuses       map[string]events.ServiceStatusChanged
 
 	// Services
-	accountService        *services.AccountService
-	contentService        *services.ContentService
-	browseService         *services.BrowseService
-	downloadTaskService   *services.DownloadTaskService
+	accountService      *services.AccountService
+	contentService      *services.ContentService
+	browseService       *services.BrowseService
+	downloadTaskService *services.DownloadTaskService
 }
 
 func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, staticAssets *webassets.Registry) *APIClient {
@@ -71,15 +71,15 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 	}
 
 	apiClient := &APIClient{
-		status_ws: status_ws,
-		cfg:          cfg,
-		engine:       gin.Default(),
-		db:           db,
-		logger:       &logger,
-		staticAssets: staticAssets,
-		accountService:        accountService,
-		contentService:        contentService,
-		browseService:         browseService,
+		status_ws:      status_ws,
+		cfg:            cfg,
+		engine:         gin.Default(),
+		db:             db,
+		logger:         &logger,
+		staticAssets:   staticAssets,
+		accountService: accountService,
+		contentService: contentService,
+		browseService:  browseService,
 	}
 
 	hookManager := hermes.NewHookManager()
@@ -96,13 +96,15 @@ func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, st
 		}
 	}
 
-	apiClient.downloader = hermes.New(hermes.NewOpt{
-		Store: &dbTaskStore{db: db, logger: &logger},
-		// SpeedLimit: 10 * 1024,
-		Logger:           &logger,
-		MaxConcurrent:    cfg.MaxRunning,
-		FilenameTemplate: cfg.FilenameTemplate,
-		BasePath:         cfg.DownloadDir,
+	apiClient.downloader = hermes.New(hermes.HermesNewConfig{
+		Store:  &dbTaskStore{db: db, logger: &logger},
+		Logger: &logger,
+		Config: hermes.HermesEngineConfig{
+			MaxConcurrent:    cfg.MaxRunning,
+			FilenameTemplate: cfg.FilenameTemplate,
+			BasePath:         cfg.DownloadDir,
+			// SpeedLimit: 10 * 1024,
+		},
 	})
 	apiClient.broadcaster = newTaskBroadcaster()
 	apiClient.downloader.SetEventHandler(func(taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
@@ -246,7 +248,7 @@ func (c *APIClient) Start() error {
 func (c *APIClient) Stop() error {
 	// Pause all Hermes download tasks
 	if c.downloader != nil {
-		c.downloader.PauseAll()
+		c.downloader.PauseAllTask()
 	}
 	// Directly update V1 database: set in-progress download tasks to paused status
 	if c.db != nil {
@@ -474,15 +476,15 @@ func (s *dbTaskStore) LoadTask(taskID int) (*hermes.Task, error) {
 		if len(resourceEndpoints) == 0 {
 			return nil, fmt.Errorf("资源 %d 没有已启用的下载端点", resource.Id)
 		}
-			extra := parseExtra(resource.Extra)
+		extra := parseExtra(resource.Extra)
 		resourceInfos = append(resourceInfos, hermes.Resource{
-			ID:           resource.Id,
-			Name:         resource.Name,
-			Kind:         resource.Kind,
-			ResourceType: resource.ResourceType,
-			UniqueID:     resource.UniqueID,
-			Endpoints:    resourceEndpoints,
-			Extra:        extra,
+			ID:        resource.Id,
+			Name:      resource.Name,
+			Kind:      resource.Kind,
+			Type:      resource.ResourceType,
+			UniqueID:  resource.UniqueID,
+			Endpoints: resourceEndpoints,
+			Extra:     extra,
 		})
 	}
 	primary := resourceInfos[0]

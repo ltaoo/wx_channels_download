@@ -303,19 +303,21 @@ func (t *eventTracker) waitFor(event EventType, timeout time.Duration) bool {
 // Tests
 // ---------------------------------------------------------------------------
 
-func newTestEngine(store Store, logger *zerolog.Logger, handler EventHandler, maxConcurrent int, filenameTemplate string) *Engine {
-	engine := New(NewOpt{
-		Store:            store,
-		Logger:           logger,
-		MaxConcurrent:    maxConcurrent,
-		FilenameTemplate: filenameTemplate,
+func newTestEngine(store Store, logger *zerolog.Logger, handler EventHandler, maxConcurrent int, filenameTemplate string) *HermesEngine {
+	engine := New(HermesNewConfig{
+		Store:  store,
+		Logger: logger,
+		Config: HermesEngineConfig{
+			MaxConcurrent:    maxConcurrent,
+			FilenameTemplate: filenameTemplate,
+		},
 	})
 	engine.SetEventHandler(handler)
 	return engine
 }
 
 func TestEngineSetEventHandler(t *testing.T) {
-	engine := New(NewOpt{MaxConcurrent: 1})
+	engine := New(HermesNewConfig{Config: HermesEngineConfig{MaxConcurrent: 1}})
 	var gotTaskID int
 	var gotEvent EventType
 
@@ -422,10 +424,10 @@ func TestDownloadResourceResumePreservesPersistedFilenameBeforeTemplate(t *testi
 	engine := newTestEngine(store, nil, nil, 1, "{{author}}/{{filename}}_{{spec}}")
 	engine.RegisterProtocol(&memoryProtocolDriver{data: data})
 	resource := Resource{
-		ID:           2,
-		Name:         persistedName,
-		ResourceType: ResourceTypeFile,
-		Extension:    ".mp4",
+		ID:        2,
+		Name:      persistedName,
+		Type:      ResourceTypeFile,
+		Extension: ".mp4",
 		Extra: map[string]string{
 			"author": "新华社",
 			"spec":   "xWT111",
@@ -573,8 +575,8 @@ func TestEngine_RetriesEndpointPreparation(t *testing.T) {
 		SavePath:   t.TempDir(),
 		ResourceID: 1,
 		Resources: []Resource{{
-			ID:        1,
-			Name:      "retry.bin",
+			ID:   1,
+			Name: "retry.bin",
 			Endpoints: []Endpoint{{
 				ID:       1,
 				Protocol: "flaky-prepare",
@@ -586,7 +588,7 @@ func TestEngine_RetriesEndpointPreparation(t *testing.T) {
 	engine := newTestEngine(store, nil, tracker.record, 1, "")
 	engine.RegisterProtocol(driver)
 
-	if err := engine.Start(1); err != nil {
+	if err := engine.StartTask(1); err != nil {
 		t.Fatal(err)
 	}
 	if !tracker.waitFor(EventFinished, 5*time.Second) {
@@ -614,7 +616,7 @@ func TestEngine_DownloadsCollectionResources(t *testing.T) {
 	engine := newTestEngine(store, nil, tracker.record, 1, "")
 	engine.RegisterProtocol(&memoryProtocolDriver{data: data})
 
-	if err := engine.Start(1); err != nil {
+	if err := engine.StartTask(1); err != nil {
 		t.Fatal(err)
 	}
 	if !tracker.waitFor(EventFinished, 5*time.Second) {
@@ -647,11 +649,11 @@ func TestEngine_DownloadWithProgress(t *testing.T) {
 	// mock store
 	store := &mockTaskStore{
 		taskInfo: &Task{
-			ID:       1,
-			Name:     "test.bin",
-			SavePath: saveDir,
+			ID:         1,
+			Name:       "test.bin",
+			SavePath:   saveDir,
 			ResourceID: 1,
-			Resources: []Resource{{ID: 1, Name: "test.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
+			Resources:  []Resource{{ID: 1, Name: "test.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
 		},
 	}
 
@@ -662,7 +664,7 @@ func TestEngine_DownloadWithProgress(t *testing.T) {
 	d.RegisterProtocol(&testHTTPDriver{})
 
 	// Start the download
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
 
@@ -723,11 +725,11 @@ func TestEngine_FileSmallerThanBuffer(t *testing.T) {
 
 	store := &mockTaskStore{
 		taskInfo: &Task{
-			ID:       1,
-			Name:     "small.bin",
-			SavePath: saveDir,
+			ID:         1,
+			Name:       "small.bin",
+			SavePath:   saveDir,
 			ResourceID: 1,
-			Resources: []Resource{{ID: 1, Name: "small.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
+			Resources:  []Resource{{ID: 1, Name: "small.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
 		},
 	}
 
@@ -735,7 +737,7 @@ func TestEngine_FileSmallerThanBuffer(t *testing.T) {
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 	d.RegisterProtocol(&testHTTPDriver{})
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
 
@@ -764,7 +766,7 @@ func TestEngine_EmptyFile(t *testing.T) {
 	tracker := &eventTracker{}
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 	d.RegisterProtocol(&testHTTPDriver{})
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatal(err)
 	}
 	if !tracker.waitFor(EventFinished, 5*time.Second) {
@@ -799,11 +801,11 @@ func TestEngine_ConcurrencyLimit(t *testing.T) {
 		os.MkdirAll(saveDir, 0755)
 		stores[i] = &mockTaskStore{
 			taskInfo: &Task{
-				ID:       i + 1,
-				Name:     "shared.bin",
-				SavePath: saveDir,
+				ID:         i + 1,
+				Name:       "shared.bin",
+				SavePath:   saveDir,
 				ResourceID: i + 1,
-				Resources: []Resource{{ID: i + 1, Name: "shared.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
+				Resources:  []Resource{{ID: i + 1, Name: "shared.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
 			},
 		}
 		trackers[i] = &eventTracker{}
@@ -813,7 +815,7 @@ func TestEngine_ConcurrencyLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		d := newTestEngine(stores[i], nil, trackers[i].record, 3, "")
 		d.RegisterProtocol(&testHTTPDriver{})
-		if err := d.Start(i + 1); err != nil {
+		if err := d.StartTask(i + 1); err != nil {
 			t.Fatalf("启动任务 %d 失败: %v", i+1, err)
 		}
 	}
@@ -842,11 +844,11 @@ func TestEngine_PauseAndResume(t *testing.T) {
 
 	store := &mockTaskStore{
 		taskInfo: &Task{
-			ID:       1,
-			Name:     "pause_test.bin",
-			SavePath: saveDir,
+			ID:         1,
+			Name:       "pause_test.bin",
+			SavePath:   saveDir,
 			ResourceID: 1,
-			Resources: []Resource{{ID: 1, Name: "pause_test.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
+			Resources:  []Resource{{ID: 1, Name: "pause_test.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
 		},
 	}
 
@@ -854,7 +856,7 @@ func TestEngine_PauseAndResume(t *testing.T) {
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 	d.RegisterProtocol(&testHTTPDriver{})
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动失败: %v", err)
 	}
 
@@ -864,7 +866,7 @@ func TestEngine_PauseAndResume(t *testing.T) {
 	}
 
 	// Pause
-	d.Pause(1)
+	d.PauseTask(1)
 
 	// Wait for the paused event
 	if !tracker.waitFor(EventPaused, 10*time.Second) {
@@ -877,7 +879,7 @@ func TestEngine_PauseAndResume(t *testing.T) {
 	// Resume
 	d2 := newTestEngine(store, nil, tracker.record, 1, "")
 	d2.RegisterProtocol(&testHTTPDriver{})
-	if err := d2.Start(1); err != nil {
+	if err := d2.StartTask(1); err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
 
@@ -894,7 +896,7 @@ func TestEngine_LoadTaskError(t *testing.T) {
 	tracker := &eventTracker{}
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("Start 不应返回错误: %v", err)
 	}
 
@@ -922,11 +924,11 @@ func TestEngine_EventSequence(t *testing.T) {
 
 	store := &mockTaskStore{
 		taskInfo: &Task{
-			ID:       1,
-			Name:     "sequence.bin",
-			SavePath: saveDir,
+			ID:         1,
+			Name:       "sequence.bin",
+			SavePath:   saveDir,
 			ResourceID: 1,
-			Resources: []Resource{{ID: 1, Name: "sequence.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
+			Resources:  []Resource{{ID: 1, Name: "sequence.bin", Endpoints: []Endpoint{{Protocol: "http", URL: ts.URL}}}},
 		},
 	}
 
@@ -934,7 +936,7 @@ func TestEngine_EventSequence(t *testing.T) {
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 	d.RegisterProtocol(&testHTTPDriver{})
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动失败: %v", err)
 	}
 
@@ -998,7 +1000,7 @@ func TestEngine_MultiSegmentConcurrent(t *testing.T) {
 	d := newTestEngine(store, nil, tracker.record, 10, "")
 	d.RegisterProtocol(&testHTTPDriver{})
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
 
@@ -1072,7 +1074,7 @@ func TestEngine_ServerWithoutRangeUsesSingleDownload(t *testing.T) {
 	tracker := &eventTracker{}
 	d := newTestEngine(store, nil, tracker.record, 1, "")
 	d.RegisterProtocol(&testHTTPDriver{})
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
 	if !tracker.waitFor(EventFinished, 15*time.Second) {
@@ -1138,7 +1140,7 @@ func TestEngine_RegisteredProtocolAndEndpointFallback(t *testing.T) {
 	d.RegisterProtocol(&failingProtocolDriver{size: int64(len(data))})
 	d.RegisterProtocol(&memoryProtocolDriver{data: data})
 
-	if err := d.Start(1); err != nil {
+	if err := d.StartTask(1); err != nil {
 		t.Fatalf("启动下载失败: %v", err)
 	}
 	if !tracker.waitFor(EventFinished, 5*time.Second) {

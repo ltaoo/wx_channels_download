@@ -131,7 +131,7 @@ func (c *APIClient) startCreatedDownloadTask(taskID int) error {
 		return fmt.Errorf("Hermes 下载器未初始化")
 	}
 	c.logger.Debug().Int("task_id", taskID).Msg("Submitting download task to Hermes scheduler")
-	if err := c.downloader.Start(taskID); err != nil {
+	if err := c.downloader.StartTask(taskID); err != nil {
 		c.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
 		return err
 	}
@@ -404,9 +404,9 @@ func (c *APIClient) handleCreateDownloadTaskV1(ctx *gin.Context) {
 					return
 				}
 				c.logger.Warn().
-						Int("existing_task_id", duplicateErr.ExistingTaskID).
-						Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
-						Msg("POST /api/v1/download_task/create task conflict in batch, skipping")
+					Int("existing_task_id", duplicateErr.ExistingTaskID).
+					Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
+					Msg("POST /api/v1/download_task/create task conflict in batch, skipping")
 				tasks = append(tasks, gin.H{"success": false, "error": err.Error(), "duplicate": true, "existing_task_id": duplicateErr.ExistingTaskID})
 				failCount++
 				continue
@@ -632,7 +632,7 @@ func (c *APIClient) handleStartDownloadTaskV1(ctx *gin.Context) {
 	c.logger.Info().Int("task_id", body.TaskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("POST /api/v1/download_task/start received start download task request")
 
 	// Hermes handles status persistence, log writing, and event broadcasting.
-	if err := c.downloader.Start(task.Id); err != nil {
+	if err := c.downloader.StartTask(task.Id); err != nil {
 		c.logger.Error().Int("task_id", body.TaskID).Err(err).Msg("Failed to start download task")
 		result.Err(ctx, 500, "启动下载任务失败: "+err.Error())
 		return
@@ -673,7 +673,7 @@ func (c *APIClient) handlePauseDownloadTaskV1(ctx *gin.Context) {
 	}
 
 	// Hermes handles all status persistence (task/resource/segment/connection), log writing, and event broadcasting.
-	c.downloader.Pause(task.Id)
+	c.downloader.PauseTask(task.Id)
 
 	// Stream (STREAM) pause should be marked as finished, because streams cannot resume
 	if c.hasStreamResources(task.Id) {
@@ -720,7 +720,7 @@ func (c *APIClient) handleResumeDownloadTaskV1(ctx *gin.Context) {
 	}
 
 	// Hermes handles status persistence, log writing, and event broadcasting.
-	if err := c.downloader.Start(task.Id); err != nil {
+	if err := c.downloader.StartTask(task.Id); err != nil {
 		result.Err(ctx, 500, "恢复下载任务失败: "+err.Error())
 		return
 	}
@@ -807,7 +807,7 @@ func (c *APIClient) handleDeleteDownloadTaskV1(ctx *gin.Context) {
 		return
 	}
 	c.logger.Info().Int("task_id", task.Id).Msg("Stopping Hermes download job before soft deletion")
-	c.downloader.Delete(task.Id)
+	c.downloader.DeleteTask(task.Id)
 	c.logger.Info().Int("task_id", task.Id).Msg("Hermes delete call completed")
 	if body.DeleteFiles {
 		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Starting associated local file cleanup")
@@ -1216,7 +1216,7 @@ func (c *APIClient) handleStartAllDownloadTaskV1(ctx *gin.Context) {
 
 	var started int
 	for _, task := range tasks {
-		if err := c.downloader.Start(task.Id); err != nil {
+		if err := c.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
@@ -1260,7 +1260,7 @@ func (c *APIClient) handlePauseAllDownloadTaskV1(ctx *gin.Context) {
 
 	var paused int
 	for _, task := range tasks {
-		c.downloader.Pause(task.Id)
+		c.downloader.PauseTask(task.Id)
 		// Stream pause should be marked as finished
 		if c.hasStreamResources(task.Id) {
 			now := time.Now().UnixMilli()
@@ -1302,7 +1302,7 @@ func (c *APIClient) handleClearDownloadTaskV1(ctx *gin.Context) {
 	var cleared int
 
 	for _, task := range tasks {
-		c.downloader.Delete(task.Id)
+		c.downloader.DeleteTask(task.Id)
 
 		// Soft-delete task
 		c.db.Model(&task).Update("deleted_at", now)
