@@ -83,10 +83,10 @@ func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
 		ID:       7,
 		Name:     "测试压缩包",
 		UniqueID: "bundle",
-		Config:   map[string]any{"suffix": ".zip"},
+		Config:   map[string]any{"suffix": ".zip", "type": float64(2)},
 		Resources: []hermes.ResourceJob{
-			{ID: 11, Name: "same", Kind: "text/plain", Extension: ".txt", FilePath: firstPath},
-			{ID: 12, Name: "same", Kind: "text/plain", Extension: ".txt", FilePath: secondPath},
+			{ID: 11, Name: "same", Kind: "text/plain", FilePath: firstPath},
+			{ID: 12, Name: "same", Kind: "text/plain", FilePath: secondPath},
 		},
 	}
 	p := mustBuildPostprocessPipelineAt(wxchannelsPostprocessPipelineJSON, "route_output_format")
@@ -103,8 +103,8 @@ func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
 	if archive.Kind != "application/zip" {
 		t.Fatalf("archive resource = %#v", archive)
 	}
-	if archive.Extension != ".zip" || archive.Size <= 0 {
-		t.Fatalf("archive persisted fields = extension %q size %d", archive.Extension, archive.Size)
+	if hermes.CanonicalExtensionForMIMEType(archive.Kind) != ".zip" || archive.Size <= 0 {
+		t.Fatalf("archive persisted fields = extension %q size %d", hermes.CanonicalExtensionForMIMEType(archive.Kind), archive.Size)
 	}
 	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
 		t.Fatalf("first source was not removed: %v", err)
@@ -149,7 +149,7 @@ func TestTaskJobUpdateNodeMutatesInputTaskJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	task := &hermes.TaskJob{Resources: []hermes.ResourceJob{{
-		ID: 3, UniqueID: "resource-3", Name: "before", Extension: ".bin", Size: 1,
+		ID: 3, UniqueID: "resource-3", Name: "before", Size: 1,
 	}}}
 	processed := task.Resources[0]
 	processed.Name = "after"
@@ -162,8 +162,8 @@ func TestTaskJobUpdateNodeMutatesInputTaskJob(t *testing.T) {
 		t.Fatalf("update TaskJob: %v", err)
 	}
 	got := task.Resources[0]
-	if got.Name != "after" || got.Extension != ".mp3" || got.Size != int64(len(content)) {
-		t.Fatalf("updated resource = %#v", got)
+	if got.Name != "after" || hermes.CanonicalExtensionForMIMEType(got.Kind) != ".mp3" || got.Size != int64(len(content)) {
+		t.Fatalf("updated resource = name=%q kind=%q size=%d", got.Name, got.Kind, got.Size)
 	}
 }
 

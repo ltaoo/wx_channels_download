@@ -420,11 +420,11 @@ func TestDownloadResourceResumePreservesPersistedFilenameBeforeTemplate(t *testi
 	engine := newTestEngine(store, nil, nil, 1, "{{author}}/{{filename}}_{{spec}}")
 	engine.RegisterProtocol(&memoryProtocolDriver{data: data})
 	resource := ResourceJob{
-		ID:        2,
-		Name:      persistedName,
-		UniqueID:  "resume-resource",
-		Type:      ResourceTypeFile,
-		Extension: ".mp4",
+		ID:       2,
+		Name:     persistedName,
+		UniqueID: "resume-resource",
+		Type:     ResourceTypeFile,
+		Kind:     "video/mp4",
 		Extra: map[string]string{
 			"author": "Xinhua",
 			"spec":   "xWT111",
@@ -514,7 +514,7 @@ func TestEngineExtensionFallback(t *testing.T) {
 	task := &TaskJob{
 		ID: 1, Name: "myfile", SavePath: t.TempDir(),
 	}
-	resource := &ResourceJob{ID: 2, Name: "myfile", UniqueID: "myfile", Extension: ".mp4"}
+	resource := &ResourceJob{ID: 2, Name: "myfile", UniqueID: "myfile", Kind: "video/mp4"}
 	extensions := make(map[int]string)
 	changed, err := engine.processOutputFilename(task, resource, "https://example.com/media",
 		PreparedResource{ContentType: ""}, resource.Name, extensions)
@@ -532,7 +532,7 @@ func TestEngineMagicBytesTakesPriorityOverFallback(t *testing.T) {
 	task := &TaskJob{
 		ID: 1, Name: "photo", SavePath: t.TempDir(),
 	}
-	resource := &ResourceJob{ID: 2, Name: "photo", UniqueID: "photo", Extension: ".mp4"}
+	resource := &ResourceJob{ID: 2, Name: "photo", UniqueID: "photo", Kind: "video/mp4"}
 	prepared := PreparedResource{
 		ProbeData: []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A},
 	}

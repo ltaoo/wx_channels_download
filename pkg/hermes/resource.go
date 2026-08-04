@@ -56,15 +56,9 @@ func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, reso
 		if prepared.Size < 0 {
 			prepared.Size = 0
 		}
-		if resource.TargetExt == "" {
-			resource.TargetExt = preparedTargetExtension(prepared, resource.Extension)
-		}
-		// Extension is the runtime filename suffix. Kind is normalized to the
-		// canonical MIME value persisted after filename finalization.
-		resource.Extension = resource.TargetExt
-		if mediaType := canonicalMIMETypeForPrepared(prepared, resource.Extension); mediaType != "" {
-			resource.Kind = mediaType
-		}
+		// Kind is normalized to the canonical MIME value persisted after
+		// filename finalization. Extension is derived from Kind at finalize time.
+		resource.Kind = preparedTargetKind(prepared)
 		if expectedSize > 0 && prepared.Size > 0 && prepared.Size != expectedSize {
 			endpointErrors = append(endpointErrors, fmt.Sprintf("%s: mirror resource size mismatch", candidate.protocol))
 			continue
@@ -239,13 +233,14 @@ func (d *HermesEngine) processOutputFilename(task *TaskJob, resource *ResourceJo
 		}
 	}
 	if ext == "" {
-		ext = resource.Extension
+		ext = CanonicalExtensionForMIMEType(resource.Kind)
 		if ext != "" {
 			d.logger.Info().
 				Int("task_id", task.ID).
 				Int("resource_id", resource.ID).
 				Str("extension", ext).
-				Msg("run - using user-specified fallback extension")
+				Str("kind", resource.Kind).
+				Msg("run - extension derived from resource kind")
 		}
 	}
 
@@ -451,6 +446,16 @@ func CanonicalExtensionForMIMEType(contentType string) string {
 	return contentTypeExtMap[mediaType]
 }
 
+// MIMETypeForExtension reverse-maps a file extension to the canonical MIME type.
+func MIMETypeForExtension(ext string) string {
+	for mimeType, canonicalExt := range contentTypeExtMap {
+		if canonicalExt == ext {
+			return mimeType
+		}
+	}
+	return ""
+}
+
 func canonicalMIMEType(contentType string) string {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -463,17 +468,12 @@ func canonicalMIMEType(contentType string) string {
 	return mediaType
 }
 
-func canonicalMIMETypeForPrepared(prepared PreparedResource, extension string) string {
+func preparedTargetKind(prepared PreparedResource) string {
 	if mediaType := canonicalMIMEType(prepared.ContentType); mediaType != "" {
 		return mediaType
 	}
 	if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
 		if mediaType := canonicalMIMEType(detectedType); mediaType != "" {
-			return mediaType
-		}
-	}
-	for mediaType, canonicalExtension := range contentTypeExtMap {
-		if canonicalExtension == extension {
 			return mediaType
 		}
 	}
@@ -754,18 +754,6 @@ func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, reso
 		}
 	}
 	return sizes
-}
-
-func preparedTargetExtension(prepared PreparedResource, fallback string) string {
-	if ext := extensionForContentType(prepared.ContentType); ext != "" {
-		return ext
-	}
-	if detectedType := detectContentTypeFromBytes(prepared.ProbeData); detectedType != "" {
-		if ext := extensionForContentType(detectedType); ext != "" {
-			return ext
-		}
-	}
-	return fallback
 }
 
 // absFilePath constructs absolute path: basePath + savePath + name.

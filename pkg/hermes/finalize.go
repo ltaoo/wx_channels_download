@@ -22,11 +22,15 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 		Interface("metadata", job.Metadata).
 		Msg("run - finishTask")
 
+	// Snapshot original resource IDs before postprocessing, so stale
+	// resources that are removed by the postprocessor can be deleted.
+	originalResourceIDs := make([]int, 0, len(job.Resources))
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if r.FilePath == "" {
 			r.FilePath = d.absFilePath(job.SavePath, r.UniqueID)
 		}
+		originalResourceIDs = append(originalResourceIDs, r.ID)
 		d.logger.Info().
 			Int("task_id", taskID).
 			Int("resource_id", r.ID).
@@ -45,6 +49,27 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 			return fmt.Errorf("post-processing failed: %w", err)
 		}
 		d.logger.Info().Int("task_id", taskID).Msg("postprocessing completed")
+
+		// Clean up stale resources that were removed by postprocessing.
+		if len(job.Resources) < len(originalResourceIDs) {
+			keepIDs := make(map[int]bool, len(job.Resources))
+			for _, r := range job.Resources {
+				keepIDs[r.ID] = true
+			}
+			staleIDs := make([]int, 0)
+			for _, id := range originalResourceIDs {
+				if !keepIDs[id] {
+					staleIDs = append(staleIDs, id)
+				}
+			}
+			if cleanupStore, ok := d.store.(ResourceCleanupStore); ok {
+				if err := cleanupStore.DeleteStaleResources(taskID, staleIDs); err != nil {
+					d.logger.Warn().Int("task_id", taskID).Err(err).Msg("failed to clean up stale resources")
+				} else {
+					d.logger.Info().Int("task_id", taskID).Ints("stale_ids", staleIDs).Msg("cleaned up stale resources after postprocessing")
+				}
+			}
+		}
 	}
 
 	// 5. Rename files from unique_id-based names to display names,
@@ -88,15 +113,16 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 func (d *HermesEngine) renameTempFiles(savePath string, resources []ResourceJob) error {
 	for i := range resources {
 		r := &resources[i]
-		if !strings.HasSuffix(r.Name, ".tmp") || r.TargetExt == "" {
+		targetExt := CanonicalExtensionForMIMEType(r.Kind)
+		if !strings.HasSuffix(r.Name, ".tmp") || targetExt == "" {
 			d.logger.Info().
 				Int("resource_id", r.ID).
 				Str("name", r.Name).
-				Str("target_ext", r.TargetExt).
+				Str("target_ext", targetExt).
 				Msg("renameTempFiles: skipped (not .tmp or no extension)")
 			continue
 		}
-		newName := strings.TrimSuffix(r.Name, ".tmp") + r.TargetExt
+		newName := strings.TrimSuffix(r.Name, ".tmp") + targetExt
 		oldPath := d.absFilePath(savePath, r.UniqueID)
 		newPath := d.absFilePath(savePath, newName)
 
@@ -134,7 +160,7 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 		if title == "" {
 			continue
 		}
-		ext := r.Extension
+		ext := CanonicalExtensionForMIMEType(r.Kind)
 
 		// Start with the display title as the base name
 		baseName := title

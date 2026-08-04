@@ -123,7 +123,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	// Cover download: create cover resource only
 	if configString(config, "suffix") == ".jpg" && coverURL != "" {
-		configJSON, _ := json.Marshal(buildConfigJSON(config, spec))
+		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
 		coverResource := model.DownloadResource{
 			ContentId:  &contentID,
 			Name:       title,
@@ -206,7 +206,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			})
 		}
 
-		configJSON, _ := json.Marshal(buildConfigJSON(config, spec))
+		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, scraper.MediaTypePicture))
 
 		info := &types.DownloadTaskResult{
 			Task:      task(configJSON),
@@ -224,7 +224,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		return nil, fmt.Errorf("无法获取视频下载地址")
 	}
 
-	configJSON, _ := json.Marshal(buildConfigJSON(config, spec))
+	configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
 
 	resourceUniqueID := content.ExternalId
 	resourceKind := mimeVideoMP4
@@ -311,7 +311,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 	}
 
 	now := time.Now().Unix()
-	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec")))
+	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec"), scraper.MediaTypeLive))
 	metadataJSON, _ := json.Marshal(map[string]any{
 		"platform":     PlatformID,
 		"id":           liveId,
@@ -487,16 +487,18 @@ func buildResourceExtraJSON(id, title, spec string, createdAt int64, author stri
 	return string(data)
 }
 
-// buildConfigJSON returns a map containing only the config fields whose value is set / true.
+// buildConfigJSON returns a map containing the config fields whose value is set / true,
+// plus the media type so post-processing can branch on it.
 // This keeps config_json compact by omitting empty/false fields.
-func buildConfigJSON(config map[string]any, spec string) map[string]any {
-	m := make(map[string]any, len(config)+1)
+func buildConfigJSON(config map[string]any, spec string, mediaType int) map[string]any {
+	m := make(map[string]any, len(config)+2)
 	for key, value := range config {
 		m[key] = value
 	}
 	if spec != "" {
 		m["spec"] = spec
 	}
+	m["type"] = mediaType
 	return m
 }
 

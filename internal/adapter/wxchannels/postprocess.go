@@ -93,6 +93,7 @@ const wxchannelsPostprocessPipelineJSON = `
       "inputPorts": ["main"],
       "outputPorts": ["zip", "mp3", "keep"],
       "inputs": {
+        "type": "task.config.type",
         "suffix": "task.config.suffix"
       },
       "outputs": {
@@ -105,7 +106,7 @@ const wxchannelsPostprocessPipelineJSON = `
         "rules": [
           {
             "output": "zip",
-            "condition": {"field": "task.config.suffix", "operator": "in", "value": [".zip", "zip"]}
+            "condition": {"field": "task.config.type", "operator": "equals", "value": 2}
           },
           {
             "output": "mp3",
@@ -129,8 +130,7 @@ const wxchannelsPostprocessPipelineJSON = `
         "resources": "single ZIP resource"
       },
       "parameters": {
-        "compression": "deflate",
-        "removeSources": true
+        "compression": "deflate"
       }
     },
     {
@@ -294,7 +294,6 @@ type postprocessNodeParameters struct {
 	AudioBitstreamFilter  string                  `json:"audioBitstreamFilter,omitempty"`
 	Movflags              string                  `json:"movflags,omitempty"`
 	Compression           string                  `json:"compression,omitempty"`
-	RemoveSources         bool                    `json:"removeSources,omitempty"`
 }
 
 type postprocessSwitchRule struct {
@@ -333,6 +332,8 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps re
 	}
 	log("Postprocessor.wxchannels: task_id=%d processing %d resources", info.ID, len(info.Resources))
 	archiveRequested := isZIPOutput(info.Config)
+	configSuffix, _ := info.Config["suffix"].(string)
+	log("Postprocessor.wxchannels: task_id=%d config.suffix=%q archiveRequested=%v", info.ID, configSuffix, archiveRequested)
 	resourceOutputSuffix := ""
 
 	for i := range info.Resources {
@@ -362,6 +363,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps re
 	}
 
 	if archiveRequested {
+		log("Postprocessor.wxchannels: task_id=%d entering output pipeline start=%q", info.ID, wxchannelsOutputPipeline.StartNodeID)
 		pc := pipeline.NewContext()
 		pc.Values["postprocess_run"] = &postprocessRun{
 			task:         info,
@@ -378,8 +380,8 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps re
 }
 
 func isZIPOutput(config map[string]any) bool {
-	suffix, _ := config["suffix"].(string)
-	return suffix == ".zip" || suffix == "zip"
+	typ, _ := config["type"].(float64)
+	return int(typ) == scraper.MediaTypePicture
 }
 
 func postprocessResourceName(basePath, filePath string) string {
@@ -533,7 +535,13 @@ func newSwitchNode(config postprocessNodeConfig, connections map[string][]postpr
 		run, _ := postprocessRunFromContext(pc)
 		output := config.Parameters.Fallback
 		for _, rule := range config.Parameters.Rules {
-			if evaluatePostprocessCondition(run, rule.Condition) {
+			matched := evaluatePostprocessCondition(run, rule.Condition)
+			if run.log != nil {
+				run.log("Postprocessor.wxchannels: pipeline=%s node=%s rule_field=%q rule_operator=%q rule_value=%v actual_value=%v matched=%v",
+					run.pipelineName, config.ID, rule.Condition.Field, rule.Condition.Operator, rule.Condition.Value,
+					postprocessFieldValue(run, rule.Condition.Field), matched)
+			}
+			if matched {
 				output = rule.Output
 				break
 			}
@@ -549,7 +557,7 @@ func newSwitchNode(config postprocessNodeConfig, connections map[string][]postpr
 
 func validatePostprocessCondition(condition postprocessCondition) error {
 	switch condition.Field {
-	case "resource.type", "resource.extra.decode_key", "task.config.suffix":
+	case "resource.type", "resource.extra.decode_key", "task.config.suffix", "task.config.type":
 	default:
 		return fmt.Errorf("不支持条件字段 %q", condition.Field)
 	}
@@ -590,6 +598,8 @@ func postprocessFieldValue(run *postprocessRun, field string) any {
 			return *run.outputSuffix
 		}
 		return run.task.Config["suffix"]
+	case "task.config.type":
+		return run.task.Config["type"]
 	default:
 		return nil
 	}
@@ -846,8 +856,7 @@ var TaskJobUpdateNode = pipeline.NewFuncNode("task_job_update", "task_job_update
 })
 
 func updatePostprocessedResource(resource *hermes.ResourceJob) error {
-	resource.Extension = hermes.CanonicalExtensionForMIMEType(resource.Kind)
-	if resource.Extension == "" {
+	if hermes.CanonicalExtensionForMIMEType(resource.Kind) == "" {
 		return fmt.Errorf("resource kind %q 不是可映射的 MIME type", resource.Kind)
 	}
 	if resource.FilePath == "" {
@@ -867,6 +876,14 @@ func newZipResourcesNode(id string, parameters postprocessNodeParameters) pipeli
 		if err != nil {
 			return err
 		}
+		if run.log != nil {
+			run.log("Postprocessor.wxchannels: node=%s task_id=%d resource_count=%d entering ZIP compression",
+				id, run.task.ID, len(run.task.Resources))
+			for i, r := range run.task.Resources {
+				run.log("Postprocessor.wxchannels: node=%s resource[%d] name=%q file_path=%q",
+					id, i, r.Name, r.FilePath)
+			}
+		}
 
 		archiveUniqueID := strings.TrimSpace(run.task.UniqueID) + "_zip"
 		if archiveUniqueID == "_zip" {
@@ -885,14 +902,12 @@ func newZipResourcesNode(id string, parameters postprocessNodeParameters) pipeli
 			return err
 		}
 
-		if parameters.RemoveSources {
-			for _, resource := range run.task.Resources {
-				if resource.FilePath == "" {
-					continue
-				}
-				if err := os.Remove(resource.FilePath); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("ZIP 已生成，但删除源文件 %q 失败: %w", resource.FilePath, err)
-				}
+		for _, resource := range run.task.Resources {
+			if resource.FilePath == "" {
+				continue
+			}
+			if err := os.Remove(resource.FilePath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("ZIP 已生成，但删除源文件 %q 失败: %w", resource.FilePath, err)
 			}
 		}
 
@@ -1007,8 +1022,10 @@ func uniqueZIPEntryName(resource hermes.ResourceJob, index int, seen map[string]
 	if name == "." || name == "" {
 		name = fmt.Sprintf("resource_%d", index+1)
 	}
-	if filepath.Ext(name) == "" && resource.Extension != "" {
-		name += resource.Extension
+	if filepath.Ext(name) == "" && resource.Kind != "" {
+		if ext := hermes.CanonicalExtensionForMIMEType(resource.Kind); ext != "" {
+			name += ext
+		}
 	}
 	seen[name]++
 	if seen[name] == 1 {

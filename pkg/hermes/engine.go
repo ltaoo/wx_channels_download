@@ -98,13 +98,11 @@ type ResourceJob struct {
 	Type      string // "FILE" | "STREAM"
 	UniqueID  string // Platform-level unique identifier
 	Endpoints []Endpoint
-	Extension string            // User-specified suffix, used when both Content-Type and magic bytes are unavailable (e.g., ".mp4")
 	Extra     map[string]string // User-defined fields, irrelevant to download, passed through to hooks
 
 	// Runtime/output state populated by Hermes.
 	Size       int64
 	FilePath   string
-	TargetExt  string
 	Downloaded int64
 	Speed      int64
 	StartTime  time.Time
@@ -249,6 +247,13 @@ type ResourceOutputUpdate struct {
 // It is optional so non-persistent HermesEngine users remain supported.
 type ResourceOutputStore interface {
 	UpdateResourceOutput(update ResourceOutputUpdate) error
+}
+
+// ResourceCleanupStore removes resources (and their associated endpoints,
+// connections and segments) that were removed by post-processing.
+// It is optional so non-persistent HermesEngine users remain supported.
+type ResourceCleanupStore interface {
+	DeleteStaleResources(taskID int, keepResourceIDs []int) error
 }
 
 // Postprocessor defines platform-specific post-download processing.

@@ -435,6 +435,7 @@ func (s *dbTaskStore) debug(format string, args ...interface{}) {
 var _ hermes.Store = (*dbTaskStore)(nil)
 var _ hermes.OutputNameStore = (*dbTaskStore)(nil)
 var _ hermes.ResourceOutputStore = (*dbTaskStore)(nil)
+var _ hermes.ResourceCleanupStore = (*dbTaskStore)(nil)
 
 func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
 	var task model.DownloadTask
@@ -508,7 +509,6 @@ func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
 			Kind:       resource.Kind,
 			Type:       resource.Type,
 			UniqueID:   resource.UniqueID,
-			Extension:  hermes.CanonicalExtensionForMIMEType(resource.Kind),
 			Endpoints:  resourceEndpoints,
 			Extra:      extra,
 			Size:       resource.Size,
@@ -670,6 +670,36 @@ func (s *dbTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) e
 		return fmt.Errorf("更新最终资源未影响任何行: resource_id=%d task_id=%d", update.ResourceID, update.TaskID)
 	}
 	return nil
+}
+
+func (s *dbTaskStore) DeleteStaleResources(taskID int, staleResourceIDs []int) error {
+	if taskID <= 0 || len(staleResourceIDs) == 0 {
+		return nil
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Delete connections for endpoints of stale resources.
+		if err := tx.Exec(`DELETE FROM download_connection WHERE endpoint_id IN (
+			SELECT id FROM download_endpoint WHERE resource_id IN ?
+		)`, staleResourceIDs).Error; err != nil {
+			return err
+		}
+		// Delete endpoints of stale resources.
+		if err := tx.Where("resource_id IN ?", staleResourceIDs).
+			Delete(&model.DownloadEndpoint{}).Error; err != nil {
+			return err
+		}
+		// Delete segments of stale resources.
+		if err := tx.Where("resource_id IN ?", staleResourceIDs).
+			Delete(&model.DownloadSegment{}).Error; err != nil {
+			return err
+		}
+		// Delete the stale resources.
+		if err := tx.Where("id IN ? AND task_id = ?", staleResourceIDs, taskID).
+			Delete(&model.DownloadResource{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *dbTaskStore) UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error {

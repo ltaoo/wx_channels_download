@@ -81,7 +81,7 @@ func TestScenario_SingleFileHTTP_NoRange(t *testing.T) {
 
 func TestScenario_CollectionMultipleEndpoints(t *testing.T) {
 	// Scenario 3: Collection via multiple endpoints (video + audio + cover)
-	// ResourceJob names have no extension; correct fallback suffix is specified via Extension.
+	// ResourceJob names have no extension; correct fallback suffix is derived from Kind.
 	saveDir := t.TempDir()
 	data := GenerateData(64 * 1024)
 
@@ -102,7 +102,7 @@ func TestScenario_CollectionMultipleEndpoints(t *testing.T) {
 	assert.Equal(t, 1, b.Store.FinishCalls)
 
 	// Verify each resource file exists with correct data.
-	// Filenames are determined by the system, appending suffix based on Extension.
+	// Filenames are determined by the system, with extension derived from Kind.
 	for _, name := range []string{"video.mp4", "audio.mp3", "cover.jpg"} {
 		p := filepath.Join(saveDir, name)
 		content, err := os.ReadFile(p)

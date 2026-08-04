@@ -228,11 +228,18 @@ func NewMemoryResource(id int, name string) hermes.ResourceJob {
 	}
 }
 
-// NewMemoryResourceWithExt creates a ResourceJob with a fallback extension.
-// Used when Content-Type is unavailable and extension should be inferred from fallback.
+// NewMemoryResourceWithKind creates a ResourceJob with a fallback Kind (MIME type).
+// Used when Content-Type is unavailable and Kind should be derived from a known file extension.
+func NewMemoryResourceWithKind(id int, name, kind string) hermes.ResourceJob {
+	r := NewMemoryResource(id, name)
+	r.Kind = kind
+	return r
+}
+
+// NewMemoryResourceWithExt creates a ResourceJob with a MIME type derived from the given extension.
 func NewMemoryResourceWithExt(id int, name, ext string) hermes.ResourceJob {
 	r := NewMemoryResource(id, name)
-	r.Extension = ext
+	r.Kind = hermes.MIMETypeForExtension(ext)
 	return r
 }
 
