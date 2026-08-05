@@ -594,11 +594,6 @@ CREATE TABLE IF NOT EXISTS `browse_history` (
   `id` TEXT PRIMARY KEY,
   `platform_id` TEXT NOT NULL,
   `visited_times` INTEGER NOT NULL DEFAULT 1, --访问次数
-  `account_id` TEXT,
-  `influencer_id` INTEGER,
-  `account_external_id` TEXT,
-  `account_nickname` TEXT,
-  `account_avatar_url` TEXT,
   `type` TEXT,
   `external_id` TEXT,
   `title` TEXT,
@@ -617,10 +612,14 @@ CREATE TABLE IF NOT EXISTS `browse_history` (
 CREATE INDEX IF NOT EXISTS idx_browse_history_time ON `browse_history` (`visited_times`);
 CREATE INDEX IF NOT EXISTS idx_browse_history_external
 ON `browse_history` (`platform_id`, `external_id`);
-CREATE INDEX IF NOT EXISTS idx_browse_history_platform_account_updated
-ON `browse_history` (`platform_id`, `account_id`, `updated_at`);
-CREATE INDEX IF NOT EXISTS idx_browse_history_platform_influencer_updated
-ON `browse_history` (`platform_id`, `influencer_id`, `updated_at`);
+CREATE TABLE IF NOT EXISTS `browse_history_account` (
+  `browse_history_id` TEXT NOT NULL,
+  `account_id` TEXT NOT NULL,
+  `role` TEXT DEFAULT 'author',
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (`browse_history_id`, `account_id`)
+);
+CREATE INDEX IF NOT EXISTS idx_browse_history_account_account ON `browse_history_account` (`account_id`);
 
 CREATE TABLE IF NOT EXISTS `platform_workflow_run` (
   `id` TEXT PRIMARY KEY,

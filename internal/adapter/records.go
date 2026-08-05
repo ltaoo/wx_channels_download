@@ -16,8 +16,7 @@ import (
 type BrowseHistoryInfo struct {
 	PlatformId        string
 	AccountExternalId string
-	AccountNickname   string
-	AccountAvatarURL  string
+	Account           *model.Account
 	ContentType       string
 	ContentTitle      string
 	ContentURL        string
@@ -108,11 +107,22 @@ func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *PlatformBrowserP
 }
 
 func RecordBrowse(recorder BrowseRecorder, logger zerolog.Logger, profile *PlatformBrowserProfile, accountExternalID string) {
+	now := util.NowMillis()
+	account := &model.Account{
+		Id:         profile.PlatformId + ":" + accountExternalID,
+		PlatformId: profile.PlatformId,
+		ExternalId: accountExternalID,
+		Nickname:   profile.AccountNickname,
+		AvatarURL:  profile.AccountAvatarURL,
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
 	if err := recorder.RecordBrowseHistory(profile.ContentExternalId, BrowseHistoryInfo{
 		PlatformId:        profile.PlatformId,
 		AccountExternalId: accountExternalID,
-		AccountNickname:   profile.AccountNickname,
-		AccountAvatarURL:  profile.AccountAvatarURL,
+		Account:           account,
 		ContentType:       profile.ContentType,
 		ContentTitle:      profile.ContentTitle,
 		ContentURL:        profile.ContentURL,

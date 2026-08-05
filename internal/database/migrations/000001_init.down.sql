@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS `download_resource`;
 DROP TABLE IF EXISTS `download_task`;
 
 DROP TABLE IF EXISTS `platform_workflow_run`;
+DROP TABLE IF EXISTS `browse_history_account`;
 DROP TABLE IF EXISTS `browse_history`;
 DROP TABLE IF EXISTS `content_influencer`;
 DROP TABLE IF EXISTS `content_account`;

@@ -84,15 +84,10 @@ type WXVideoAccess struct {
 func (WXVideoAccess) TableName() string { return "wx_video_access" }
 
 type BrowseHistory struct {
-	Id                string  `gorm:"primaryKey" json:"id"`
-	PlatformId        string  `gorm:"not null" json:"platform_id"`
-	VisitedTimes      int64   `gorm:"not null" json:"visited_times"`
-	AccountId         *string `json:"account_id"`
-	InfluencerId      *int    `json:"influencer_id"`
-	AccountExternalId string  `json:"account_external_id"`
-	AccountNickname   string  `json:"account_nickname"`
-	AccountAvatarURL  string  `json:"account_avatar_url"`
-	Type              string  `json:"type"`
+	Id           string `gorm:"primaryKey" json:"id"`
+	PlatformId   string `gorm:"not null" json:"platform_id"`
+	VisitedTimes int64  `gorm:"not null" json:"visited_times"`
+	Type         string `json:"type"`
 	ExternalId        string  `json:"external_id"`
 	Title             string  `json:"title"`
 	URL               string  `json:"url"`
@@ -106,6 +101,15 @@ type BrowseHistory struct {
 }
 
 func (BrowseHistory) TableName() string { return "browse_history" }
+
+type BrowseHistoryAccount struct {
+	BrowseHistoryId string `gorm:"primaryKey" json:"browse_history_id"`
+	AccountId       string `gorm:"primaryKey" json:"account_id"`
+	Role            string `json:"role"`
+	CreatedAt       int64  `json:"created_at"`
+}
+
+func (BrowseHistoryAccount) TableName() string { return "browse_history_account" }
 
 func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 	if db == nil {
@@ -131,11 +135,8 @@ func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 	err := db.Where("platform_id = ? AND external_id = ?", b.PlatformId, b.ExternalId).First(&existing).Error
 	if err == nil {
 		return db.Model(&existing).UpdateColumns(map[string]any{
-			"visited_times":       existing.VisitedTimes + 1,
-			"account_external_id": b.AccountExternalId,
-			"account_nickname":    b.AccountNickname,
-			"account_avatar_url":  b.AccountAvatarURL,
-			"type":                b.Type,
+			"visited_times": existing.VisitedTimes + 1,
+			"type":          b.Type,
 			"title":               b.Title,
 			"url":                 b.URL,
 			"source_url":          b.SourceURL,

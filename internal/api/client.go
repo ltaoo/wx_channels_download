@@ -57,7 +57,7 @@ func NewAPIClient(
 	// Initialize services
 	account_service := services.NewAccountService(db)
 	content_service := services.NewContentService(db)
-	browse_service := services.NewBrowseService(db)
+	browse_service := services.NewBrowseService(db, logger)
 	fs_service := services.NewFSService()
 	if static_assets == nil {
 		static_assets = webassets.NewRegistry()

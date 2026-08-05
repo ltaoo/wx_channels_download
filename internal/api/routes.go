@@ -144,6 +144,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/replace", c.handleProxyCertificateReplace)
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handleProxyCertificateUninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handleProxyCertificateUninstallByName)
+	c.engine.GET("/api/cookie/extract", c.handleCookieExtract)
 	c.engine.GET("/api/certificate/root/status", c.handleRootCertificateStatus)
 	c.engine.POST("/api/certificate/root/install", c.handleRootCertificateInstall)
 	c.engine.POST("/api/certificate/root/uninstall", c.handleRootCertificateUninstall)

@@ -154,24 +154,38 @@ function BrowseHistoryRow(props) {
           attributes: { title: vm$.methods.authorName(history) },
         },
         [
-          Show({
-            when: history.author_avatar_url,
-            ok() {
-              return Img({
-                class: "wx-content-row-author-avatar",
-                src: history.author_avatar_url,
-                attributes: {
-                  alt: vm$.methods.authorName(history),
-                  loading: "lazy",
-                  referrerpolicy: "no-referrer",
-                },
-                onError(event) {
-                  event.target.style.display = "none";
-                },
-              });
+          For({
+            each: history.accounts || [],
+            render(acc_) {
+              const acc = acc_ && acc_.value !== undefined ? acc_.value : acc_;
+              return View({ class: "wx-content-row-author-account" }, [
+                Show({
+                  when: acc.avatar_url,
+                  ok() {
+                    return Img({
+                      class: "wx-content-row-author-avatar",
+                      src: acc.avatar_url,
+                      attributes: {
+                        alt: acc.nickname || acc.external_id || "",
+                        loading: "lazy",
+                        referrerpolicy: "no-referrer",
+                      },
+                      onError(event) {
+                        event.target.style.display = "none";
+                      },
+                    });
+                  },
+                }),
+                View(
+                  {
+                    class: "wx-content-row-author-name",
+                    attributes: { title: acc.nickname || acc.external_id || "" },
+                  },
+                  [acc.nickname || acc.external_id || "未知"],
+                ),
+              ]);
             },
           }),
-          vm$.methods.authorName(history),
         ],
       ),
       // 访问时间

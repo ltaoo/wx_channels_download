@@ -156,7 +156,6 @@ func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
-	accountID := BuildAccountID(strings.TrimSpace(data.Bizuin))
 	now := util.NowMillis()
 	contentType := "article"
 	if isAlbum(data) {
@@ -164,18 +163,14 @@ func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error
 	}
 
 	return &model.BrowseHistory{
-		PlatformId:        PlatformID,
-		VisitedTimes:      1,
-		AccountId:         &accountID,
-		AccountExternalId: strings.TrimSpace(data.Bizuin),
-		AccountNickname:   strings.TrimSpace(data.NickName),
-		AccountAvatarURL:  articleAvatarURL(data),
-		Type:              contentType,
-		ExternalId:        externalID,
-		Title:             strings.TrimSpace(data.Title),
-		URL:               strings.TrimSpace(data.Link),
-		SourceURL:         buildSourceURL(data),
-		CoverURL:          articleCoverURL(data),
+		PlatformId:   PlatformID,
+		VisitedTimes: 1,
+		Type:         contentType,
+		ExternalId:   externalID,
+		Title:        strings.TrimSpace(data.Title),
+		URL:          strings.TrimSpace(data.Link),
+		SourceURL:    buildSourceURL(data),
+		CoverURL:     articleCoverURL(data),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,

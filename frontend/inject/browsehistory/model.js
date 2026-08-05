@@ -74,6 +74,11 @@ var BrowseHistoryModel = (() => {
 
   function normalize_browse_history_item(raw) {
     const source = raw && typeof raw === "object" ? raw : {};
+    const accounts = Array.isArray(source.accounts)
+      ? source.accounts.map(normalize_account_brief)
+      : [];
+    const primary =
+      accounts.length > 0 ? accounts[0] : { nickname: "", avatar_url: "", external_id: "" };
     return {
       ...source,
       id: first_non_empty(source.id, source.ID),
@@ -101,26 +106,10 @@ var BrowseHistoryModel = (() => {
         source.CoverURL,
         source.coverUrl,
       ),
-      author_nickname: first_non_empty(
-        source.account_nickname,
-        source.accountNickname,
-        source.account_nick_name,
-        source.AccountNickname,
-        source.nickname,
-      ),
-      author_external_id: first_non_empty(
-        source.account_external_id,
-        source.accountExternalId,
-        source.account_external,
-        source.account_id,
-        source.AccountExternalId,
-      ),
-      author_avatar_url: first_non_empty(
-        source.account_avatar_url,
-        source.accountAvatarURL,
-        source.account_avatar,
-        source.AccountAvatarURL,
-      ),
+      accounts: accounts,
+      author_nickname: primary.nickname,
+      author_external_id: primary.external_id,
+      author_avatar_url: primary.avatar_url,
       url: first_non_empty(
         source.url,
         source.URL,
@@ -149,6 +138,17 @@ var BrowseHistoryModel = (() => {
         ),
         0,
       ),
+    };
+  }
+
+  function normalize_account_brief(acc) {
+    if (!acc || typeof acc !== "object") {
+      return { nickname: "", avatar_url: "", external_id: "" };
+    }
+    return {
+      nickname: first_non_empty(acc.nickname, acc.Nickname, ""),
+      avatar_url: first_non_empty(acc.avatar_url, acc.avatarUrl, acc.AvatarURL, ""),
+      external_id: first_non_empty(acc.external_id, acc.externalId, acc.ExternalId, ""),
     };
   }
 
