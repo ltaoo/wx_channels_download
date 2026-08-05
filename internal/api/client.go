@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/adapter"
 	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/services"

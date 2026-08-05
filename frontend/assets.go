@@ -185,8 +185,8 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 		b,
 		scriptAttr,
 		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.utils.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.utils.umd.min.js"),
 	)
 	AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.css"))
 	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.umd.min.js"))
@@ -194,8 +194,8 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 	AppendScriptSrcs(
 		b,
 		scriptAttr,
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.dom.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.web.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.dom.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.web.umd.min.js"),
 	)
 }
 
@@ -204,8 +204,8 @@ func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string
 		b,
 		scriptAttr,
 		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.utils.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.utils.umd.min.js"),
 	)
 	if len(shadcnCSS) > 0 {
 		shadcnCSS = ChannelStaticAssetResponseData("timeless.weui.css", shadcnCSS)
@@ -218,8 +218,8 @@ func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string
 	AppendScriptSrcs(
 		b,
 		scriptAttr,
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.dom.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.web.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.dom.umd.min.js"),
+		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.web.umd.min.js"),
 	)
 }
 
@@ -522,12 +522,12 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSMitt = files.readLib("mitt.umd.js")
 	files.JSAxios = files.readLib("axios.min.js")
 	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
-	files.JSTimeless = files.readPublic("timeless/0.28.0/timeless.umd.min.js")
-	files.JSTimelessUtils = files.readPublic("timeless/0.28.0/timeless.utils.umd.min.js")
-	files.CSSTimelessShadcn = files.readPublic("timeless/0.28.0/timeless.weui.css")
-	files.JSTimelessShadcn = files.readPublic("timeless/0.28.0/timeless.weui.umd.min.js")
-	files.JSTimelessDOM = files.readPublic("timeless/0.28.0/timeless.dom.umd.min.js")
-	files.JSTimelessWeb = files.readPublic("timeless/0.28.0/timeless.web.umd.min.js")
+	files.JSTimeless = files.readPublic("timeless/0.30.0/timeless.umd.min.js")
+	files.JSTimelessUtils = files.readPublic("timeless/0.30.0/timeless.utils.umd.min.js")
+	files.CSSTimelessShadcn = files.readPublic("timeless/0.30.0/timeless.weui.css")
+	files.JSTimelessShadcn = files.readPublic("timeless/0.30.0/timeless.weui.umd.min.js")
+	files.JSTimelessDOM = files.readPublic("timeless/0.30.0/timeless.dom.umd.min.js")
+	files.JSTimelessWeb = files.readPublic("timeless/0.30.0/timeless.web.umd.min.js")
 	files.CSSComponents = files.readInject("components.css")
 	files.JSDebug = files.readInject("pagespy.js")
 	files.JSError = files.readInject("error.js")
