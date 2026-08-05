@@ -54,10 +54,14 @@ func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
 		return
 	}
 
-	updated, err := convertProxyConfigValues(body.Values)
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
+	updated := map[string]interface{}{}
+	for key, value := range body.Values {
+		converted, err := convertServiceConfigValue(key, value)
+		if err != nil {
+			result.Err(ctx, 400, err.Error())
+			return
+		}
+		updated[key] = converted
 	}
 	if err := c.saveConfigValues(updated); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -457,31 +461,6 @@ func (c *APIClient) systemProxySettings() system.ProxySettings {
 	return system.ProxySettings{
 		Hostname: fmt.Sprint(cfg["hostname"]),
 		Port:     strconv.Itoa(proxyFirstPositive(proxyToIntDefault(cfg["port"], 2023), 2023)),
-	}
-}
-
-func convertProxyConfigValues(values map[string]interface{}) (map[string]interface{}, error) {
-	updated := map[string]interface{}{}
-	for key, value := range values {
-		converted, err := convertProxyConfigValue(key, value)
-		if err != nil {
-			return nil, err
-		}
-		updated[key] = converted
-	}
-	return updated, nil
-}
-
-func convertProxyConfigValue(key string, value interface{}) (interface{}, error) {
-	switch key {
-	case "proxy.hostname", "proxy.tcpRelay.hostname", "proxy.defaultInterface", "proxy.upstreamProxy", "cert.file", "cert.key", "cert.name":
-		return strings.TrimSpace(fmt.Sprint(value)), nil
-	case "proxy.port", "proxy.tcpRelay.port":
-		return serviceConfigPort(value)
-	case "proxy.system", "proxy.tun", "proxy.tcpRelay.enabled", "proxy.skipInstallRootCert":
-		return serviceConfigBool(value)
-	default:
-		return nil, fmt.Errorf("未知配置项: %s", key)
 	}
 }
 

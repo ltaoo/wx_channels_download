@@ -115,27 +115,6 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		c.cached_proxy_addr = ev.Addr
 		c.proxy_status_mu.Unlock()
 	})
-	bus.Subscribe(events.TypeBrowseHistoryRecorded, func(e events.Event) {
-		ev, ok := e.(events.BrowseHistoryRecorded)
-		if !ok || ev.Browse == nil {
-			return
-		}
-		b := ev.Browse
-		if err := c.RecordBrowseHistory(b.ExternalId, adapter.BrowseHistoryInfo{
-			PlatformId:        b.PlatformId,
-			AccountExternalId: b.AccountExternalId,
-			AccountNickname:   b.AccountNickname,
-			AccountAvatarURL:  b.AccountAvatarURL,
-			ContentType:       b.Type,
-			ContentTitle:      b.Title,
-			ContentURL:        b.URL,
-			ContentSourceURL:  b.SourceURL,
-			ContentCoverURL:   b.CoverURL,
-			ExtraDataJSON:     b.ExtraData,
-		}); err != nil {
-			c.logger.Error().Err(err).Str("external_id", b.ExternalId).Msg("create browse history failed")
-		}
-	})
 	bus.Subscribe(events.TypeServiceStatusChanged, func(e events.Event) {
 		ev, ok := e.(events.ServiceStatusChanged)
 		if !ok {
