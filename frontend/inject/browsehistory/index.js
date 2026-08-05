@@ -71,21 +71,19 @@ function BrowseHistoryPageToolbar(props) {
   ]);
 }
 
-function BrowseHistoryCover(props) {
+function BrowseHistoryRowCover(props) {
   const history = props.history;
-  const fallback = View({ class: "wx-content-cover-fallback" }, [
-    Timeless.Icon({ name: "file", size: 32 }),
-    View({ class: "wx-content-cover-type" }, [
-      props.store.methods.typeLabel(history.content_type),
-    ]),
-  ]);
   if (!history.cover_url) {
-    return fallback;
+    return View({ class: "wx-content-row-cover wx-content-row-cover-fallback" }, [
+      Timeless.Icon({ name: "file", size: 18 }),
+    ]);
   }
-  return View({ class: "wx-content-cover-wrap" }, [
-    fallback,
+  return View({ class: "wx-content-row-cover-wrap" }, [
+    View({ class: "wx-content-row-cover wx-content-row-cover-fallback" }, [
+      Timeless.Icon({ name: "file", size: 18 }),
+    ]),
     Img({
-      class: "wx-content-cover",
+      class: "wx-content-row-cover",
       src: history.cover_url,
       alt: history.title,
       attributes: {
@@ -99,71 +97,12 @@ function BrowseHistoryCover(props) {
   ]);
 }
 
-function BrowseHistoryAuthorItem(props) {
-  const vm$ = props.store;
-  const history = props.history;
-  const name = vm$.methods.authorName(history);
-  const showClickable = false;
-  const avatar = history.author_avatar_url || "";
-  return View(
-    {
-      type: showClickable ? "button" : "div",
-      class: [
-        "wx-content-account-item",
-        showClickable ? "wx-content-account-item-clickable" : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    },
-    [
-      Show({
-        when: avatar,
-        ok() {
-          return Img({
-            class: "wx-content-avatar",
-            src: avatar,
-            attributes: {
-              alt: name,
-              loading: "lazy",
-              referrerpolicy: "no-referrer",
-            },
-            onError(event) {
-              event.target.style.display = "none";
-            },
-          });
-        },
-        else() {
-          return View(
-            { class: "wx-content-avatar wx-content-avatar-fallback" },
-            [String(name).slice(0, 1)],
-          );
-        },
-      }),
-      View({ class: "wx-content-account-details" }, [
-        View({ class: "wx-content-account-name-line" }, [
-          View(
-            {
-              class: "wx-content-account-name",
-              attributes: { title: name },
-            },
-            [name],
-          ),
-        ]),
-        View({ class: "wx-content-account-meta" }, [
-          Timeless.Icon({ name: "user", size: 11 }),
-          history.author_external_id ? history.author_external_id : "作者账号",
-        ]),
-      ]),
-    ],
-  );
-}
-
-function BrowseHistoryCard(props) {
+function BrowseHistoryRow(props) {
   const vm$ = props.store;
   const history = props.history;
   return View(
     {
-      class: ["wx-content-card", history.url ? "wx-content-card-clickable" : ""]
+      class: ["wx-content-row", history.url ? "wx-content-row-clickable" : ""]
         .filter(Boolean)
         .join(" "),
       onClick() {
@@ -171,60 +110,111 @@ function BrowseHistoryCard(props) {
       },
     },
     [
-      View({ class: "wx-content-card-media" }, [
-        BrowseHistoryCover({ store: vm$, history }),
-      ]),
-      View({ class: "wx-content-card-body" }, [
-        View({ class: "wx-content-card-tags" }, [
-          View({ class: "wx-content-platform" }, [
-            vm$.methods.platformName(history),
-          ]),
-          View({ class: "wx-content-type-badge" }, [
-            vm$.methods.typeLabel(history.content_type),
-          ]),
-        ]),
+      // 封面
+      BrowseHistoryRowCover({ history: history }),
+      // 标题
+      View({ class: "wx-content-row-main" }, [
         View(
           {
-            class: "wx-content-card-title",
+            class: "wx-content-row-title",
             attributes: { title: history.title },
           },
           [history.title],
         ),
-        View(
-          {
-            class: "wx-content-accounts",
-          },
-          [BrowseHistoryAuthorItem({ store: vm$, history })],
-        ),
-        View({ class: "wx-content-card-footer" }, [
-          View({ class: "wx-content-meta" }, [
-            Timeless.Icon({ name: "clock3", size: 13 }),
-            vm$.methods.formatTime(history.publish_time),
+        View({ class: "wx-content-row-badges" }, [
+          View({ class: "wx-content-row-platform" }, [
+            Show({
+              when: vm$.methods.platformFavicon(history),
+              ok() {
+                return Img({
+                  class: "wx-content-row-platform-icon",
+                  src: vm$.methods.platformFavicon(history),
+                  attributes: {
+                    alt: "",
+                    loading: "lazy",
+                    referrerpolicy: "no-referrer",
+                  },
+                  onError(event) {
+                    event.target.style.display = "none";
+                  },
+                });
+              },
+            }),
+            vm$.methods.platformName(history),
           ]),
-          View(
-            { class: "wx-content-card-footer-right" },
-            [
-              history.visited_times > 0
-                ? View(
-                  { class: "wx-content-size" },
-                  [`浏览 ${history.visited_times} 次`],
-                )
-                : null,
-            ].filter(Boolean),
-          ),
+          View({ class: "wx-content-row-type" }, [
+            vm$.methods.typeLabel(history.content_type),
+          ]),
         ]),
+      ]),
+      // 账号
+      View(
+        {
+          class: "wx-content-row-author",
+          attributes: { title: vm$.methods.authorName(history) },
+        },
+        [
+          Show({
+            when: history.author_avatar_url,
+            ok() {
+              return Img({
+                class: "wx-content-row-author-avatar",
+                src: history.author_avatar_url,
+                attributes: {
+                  alt: vm$.methods.authorName(history),
+                  loading: "lazy",
+                  referrerpolicy: "no-referrer",
+                },
+                onError(event) {
+                  event.target.style.display = "none";
+                },
+              });
+            },
+          }),
+          vm$.methods.authorName(history),
+        ],
+      ),
+      // 访问时间
+      View({ class: "wx-content-row-meta" }, [
+        Timeless.Icon({ name: "clock3", size: 12 }),
+        vm$.methods.formatTime(history.publish_time),
+      ]),
+      // 访问次数
+      View({ class: "wx-content-row-visits" }, [
+        history.visited_times > 0
+          ? `浏览 ${history.visited_times} 次`
+          : "",
       ]),
     ],
   );
 }
 
-function BrowseHistorySkeletonCard() {
-  return View({ class: "wx-content-card wx-content-skeleton-card" }, [
-    View({ class: "wx-content-card-media wx-content-skeleton" }),
-    View({ class: "wx-content-card-body" }, [
-      View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+function BrowseHistoryTableHead() {
+  return View({ class: "wx-content-row wx-content-row-head" }, [
+    View({ class: "wx-content-row-head-cell" }, ["封面"]),
+    View({ class: "wx-content-row-head-cell" }, ["标题"]),
+    View({ class: "wx-content-row-head-cell wx-content-row-col-author" }, ["账号"]),
+    View({ class: "wx-content-row-head-cell wx-content-row-col-meta" }, ["访问时间"]),
+    View({ class: "wx-content-row-head-cell wx-content-row-col-visits" }, ["访问次数"]),
+  ]);
+}
+
+function BrowseHistorySkeletonRow() {
+  return View({ class: "wx-content-row wx-content-skeleton-row" }, [
+    View({ class: "wx-content-row-col-cover" }, [
+      View({ class: "wx-content-row-cover wx-content-skeleton" }),
+    ]),
+    View({ class: "wx-content-row-col-main" }, [
       View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
+      View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+    ]),
+    View({ class: "wx-content-row-col-author" }, [
       View({ class: "wx-content-skeleton wx-content-skeleton-line" }),
+    ]),
+    View({ class: "wx-content-row-col-meta" }, [
+      View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
+    ]),
+    View({ class: "wx-content-row-col-visits" }, [
       View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
     ]),
   ]);
@@ -237,8 +227,8 @@ function BrowseHistoryPageBody(props) {
       when: vm$.state.loading,
       ok() {
         return View(
-          { class: "wx-content-grid" },
-          Array.from({ length: 8 }, () => BrowseHistorySkeletonCard()),
+          { class: "wx-content-rows" },
+          Array.from({ length: 8 }, () => BrowseHistorySkeletonRow()),
         );
       },
       else() {
@@ -268,7 +258,8 @@ function BrowseHistoryPageBody(props) {
                 (histories) => histories.length > 0,
               ),
               ok() {
-                return View({ class: "wx-content-grid" }, [
+                return View({ class: "wx-content-rows" }, [
+                  BrowseHistoryTableHead(),
                   For({
                     each: vm$.state.histories,
                     render(history_) {
@@ -276,7 +267,7 @@ function BrowseHistoryPageBody(props) {
                         history_ && history_.value !== undefined
                           ? history_.value
                           : history_;
-                      return BrowseHistoryCard({ store: vm$, history });
+                      return BrowseHistoryRow({ store: vm$, history });
                     },
                   }),
                 ]);

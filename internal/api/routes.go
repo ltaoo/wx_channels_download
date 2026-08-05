@@ -67,6 +67,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/download_task/start", c.handleStartDownloadTask)
 	c.engine.POST("/api/v1/download_task/pause", c.handlePauseDownloadTask)
 	c.engine.POST("/api/v1/download_task/resume", c.handleResumeDownloadTask)
+	c.engine.POST("/api/v1/download_task/retry", c.handleRetryDownloadTask)
 	c.engine.POST("/api/v1/download_task/delete", c.handleDeleteDownloadTask)
 	c.engine.POST("/api/v1/download_task/start_all", c.handleStartAllDownloadTask)
 	c.engine.POST("/api/v1/download_task/pause_all", c.handlePauseAllDownloadTask)

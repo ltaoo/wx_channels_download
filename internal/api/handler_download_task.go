@@ -713,6 +713,67 @@ func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"results": results})
 }
 
+// handleRetryDownloadTask batch-retries failed/cancelled download tasks.
+// POST /api/v1/download_task/retry
+func (c *APIClient) handleRetryDownloadTask(ctx *gin.Context) {
+	var body taskV1IDsBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Err(err).Msg("Failed to parse request body")
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
+		return
+	}
+	if c.db == nil {
+		result.Err(ctx, 500, "应用未初始化，数据库不可用")
+		return
+	}
+
+	c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_count", len(body.TaskIDs)).Msg("Received batch retry download task request")
+
+	results := make([]gin.H, 0, len(body.TaskIDs))
+	for _, taskID := range body.TaskIDs {
+		if taskID <= 0 {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+			continue
+		}
+
+		var task model.DownloadTask
+		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Msg("Task not found")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+			continue
+		}
+
+		if task.Status != model.TaskStatusFailed && task.Status != model.TaskStatusCancelled {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Int("current_status", task.Status).Msg("Current status does not allow retry")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许重试"})
+			continue
+		}
+
+		c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Retrying download task")
+
+		// Clear error state before retrying
+		now := time.Now().UnixMilli()
+		c.db.Model(&task).Updates(map[string]any{"error_message": "", "status": model.TaskStatusWaiting, "updated_at": now})
+
+		if err := c.downloader.StartTask(task.Id); err != nil {
+			c.logger.Error().Int("task_id", taskID).Err(err).Msg("Failed to retry download task")
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "重试下载任务失败: " + err.Error()})
+			continue
+		}
+		c.logger.Info().Int("task_id", taskID).Str("status", "preparing").Msg("Download task retried")
+
+		task.Status = model.TaskStatusPreparing
+		task.ErrorMessage = ""
+		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
+	}
+
+	result.Ok(ctx, gin.H{"results": results})
+}
+
 // handleDeleteDownloadTask batch-deletes download tasks.
 // POST /api/v1/download_task/delete
 func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {

@@ -454,6 +454,11 @@ function DownloaderPanelViewModel(props = {}) {
           request.post("/api/v1/download_task/resume", { task_ids: [id] }),
         { client: http_client },
       ),
+      retry: new Timeless.RequestCore(
+        (id) =>
+          request.post("/api/v1/download_task/retry", { task_ids: [id] }),
+        { client: http_client },
+      ),
       clear: new Timeless.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/clear", {
@@ -1591,6 +1596,19 @@ function DownloaderPanelViewModel(props = {}) {
         updateTaskStatus(task.id, "running");
       } else {
         WXU.error({ msg: (result && result.error) || "恢复失败" });
+      }
+    },
+    async retryTask(task) {
+      const r = await reqs.task.retry.run(task.id);
+      if (r.error) {
+        WXU.error({ msg: r.error.message });
+        return;
+      }
+      const result = r.data && r.data.results && r.data.results[0];
+      if (result && result.success) {
+        updateTaskStatus(task.id, "running");
+      } else {
+        WXU.error({ msg: (result && result.error) || "重试失败" });
       }
     },
     async startAllTasks() {

@@ -1676,7 +1676,7 @@ function DownloadTaskCard(props) {
                       ) {
                         return;
                       }
-                      vm$.methods.resumeTask(task_.value);
+                      vm$.methods.retryTask(task_.value);
                     },
                   },
                   [

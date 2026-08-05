@@ -152,6 +152,16 @@ var BrowseHistoryModel = (() => {
     };
   }
 
+  function browse_history_platform_favicon(history) {
+    const icons = {
+      wxchannels: "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
+      wxmp: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+      officialaccount: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+    };
+    const key = history && (history.platform_id || history.platformId);
+    return icons[key] || "";
+  }
+
   function browse_history_platform_name(history) {
     if (history.platform_name) {
       return history.platform_name;
@@ -362,6 +372,7 @@ var BrowseHistoryModel = (() => {
         }
         window.open(history.url, "_blank", "noopener,noreferrer");
       },
+      platformFavicon: browse_history_platform_favicon,
       platformName: browse_history_platform_name,
       typeLabel: browse_history_type_label,
       formatTime: format_history_time,
