@@ -6,8 +6,7 @@ import (
 
 	wxmp "wx_channel/internal/adapter/wxmp"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
-	"wx_channel/internal/download/types"
+	"wx_channel/internal/adapter"
 	"wx_channel/pkg/testui"
 	example "wx_channel/scraper_examples"
 )
@@ -94,7 +93,7 @@ func TestToContent_FromAlbumFixture(t *testing.T) {
 func TestBuildDownloadTask_FromAlbumFixture(t *testing.T) {
 	raw, _ := albumFixture(t)
 
-	h := registry.Get(wxmp.PlatformID)
+	h := adapter.Get(wxmp.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxmp")
 	}
@@ -120,7 +119,7 @@ func TestBuildDownloadTask_FromAlbumFixture(t *testing.T) {
 func TestBuildDownloadTask_FromAlbumFixture_WithSuffix(t *testing.T) {
 	raw, _ := albumFixture(t)
 
-	h := registry.Get(wxmp.PlatformID)
+	h := adapter.Get(wxmp.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxmp")
 	}
@@ -147,7 +146,7 @@ func TestBuildDownloadTask_FromAlbumFixture_WithSuffix(t *testing.T) {
 	assertAlbumDownloadTaskContent(t, info)
 }
 
-func assertAlbumDownloadTaskContent(t *testing.T, info *types.DownloadTaskResult) {
+func assertAlbumDownloadTaskContent(t *testing.T, info *adapter.DownloadTaskResult) {
 	t.Helper()
 
 	const (
@@ -155,7 +154,7 @@ func assertAlbumDownloadTaskContent(t *testing.T, info *types.DownloadTaskResult
 		wechatHeaderJSON = `{"Referer":"https://mp.weixin.qq.com/","User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN"}`
 	)
 
-	resources := []*types.ResourceInfo{
+	resources := []*adapter.ResourceInfo{
 		{
 			DownloadResource: model.DownloadResource{
 				Name:       "比女孩成熟，比女人天真🖤.html",

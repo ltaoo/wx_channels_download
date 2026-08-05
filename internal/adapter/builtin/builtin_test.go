@@ -3,12 +3,12 @@ package builtin
 import (
 	"testing"
 
-	"wx_channel/internal/download/registry"
+	"wx_channel/internal/adapter"
 )
 
 func TestDownloadAdaptersAreRegistered(t *testing.T) {
 	for _, platformID := range []string{"69shuba", "bilibili", "douyin", "wxchannels", "wxmp"} {
-		if registry.Get(platformID) == nil {
+		if adapter.Get(platformID) == nil {
 			t.Fatalf("adapter %q is not registered", platformID)
 		}
 	}
@@ -16,11 +16,11 @@ func TestDownloadAdaptersAreRegistered(t *testing.T) {
 
 func TestRuntimeCapabilitiesAreRegistered(t *testing.T) {
 	for _, platformID := range []string{"wxchannels", "wxmp"} {
-		handler := registry.Get(platformID)
-		if _, ok := handler.(registry.RuntimeAdapter); !ok {
+		handler := adapter.Get(platformID)
+		if _, ok := handler.(adapter.RuntimeAdapter); !ok {
 			t.Errorf("adapter %q does not expose runtime registration", platformID)
 		}
-		if _, ok := handler.(registry.Postprocessor); !ok {
+		if _, ok := handler.(adapter.Postprocessor); !ok {
 			t.Errorf("adapter %q does not expose postprocessing", platformID)
 		}
 	}

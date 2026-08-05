@@ -26,9 +26,9 @@
 
       $btn.innerText = "点击取消";
       $btn.classList.add("weui-btn_loading");
-      const $loading = document.createElement("i");
-      $loading.className = "weui-loading";
-      $btn.prepend($loading);
+      // const $loading = document.createElement("i");
+      // $loading.className = "weui-loading";
+      // $btn.prepend($loading);
 
       const stop_loading = () => {
         $btn.classList.remove("weui-btn_loading");
@@ -43,12 +43,6 @@
           });
           return;
         }
-        // if (!my_username) {
-        //   WXU.error({
-        //     msg: "Data not yet initialized",
-        //   });
-        //   return;
-        // }
         var { href } = window.location;
         if (!href) {
           WXU.error({
@@ -57,6 +51,11 @@
           return;
         }
         const queries = WXU.get_queries(href);
+        WXU.log
+          .Info()
+          .Str("file", "channels.profile.js")
+          .Str("href", href)
+          .Msg("check has username in href");
         if (!queries.username) {
           WXU.error({
             msg: "username 不能为空",
@@ -79,6 +78,11 @@
             needFansCount: 0,
             objectId: "0",
           };
+          WXU.log
+            .Info()
+            .Str("file", "channels.profile.js")
+            .JSON("payload", payload)
+            .Msg("before WXU.API.finderUserPage");
           var r = await WXU.API.finderUserPage(payload);
           if (r.errCode !== 0) {
             WXU.error({
@@ -132,7 +136,11 @@
   WXU.onInit((data) => {
     my_username = data.mainFinderUsername;
   });
-  WXU.observe_node({ selector: ".opr-area", container: "#app", onOk: () => {
-    __wx_insert_batch_download_btn();
-  }});
+  WXU.observe_node({
+    selector: ".opr-area",
+    container: "#app",
+    onOk: () => {
+      __wx_insert_batch_download_btn();
+    },
+  });
 })();

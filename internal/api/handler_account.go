@@ -31,7 +31,7 @@ func (c *APIClient) handleCompatInfluencerList(ctx *gin.Context) {
 	}
 
 	// Use service
-	pageResult, err := c.accountService.ListInfluencers(page, size)
+	pageResult, err := c.account_service.ListInfluencers(page, size)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -48,7 +48,7 @@ func (c *APIClient) handleCompatInfluencerGet(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.accountService.GetInfluencer(id)
+	influencer, err := c.account_service.GetInfluencer(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, err.Error())
@@ -78,7 +78,7 @@ func (c *APIClient) handleCompatInfluencerCreate(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.accountService.CreateInfluencer(&services.CreateInfluencerInput{
+	influencer, err := c.account_service.CreateInfluencer(&services.CreateInfluencerInput{
 		Name:        body.Name,
 		AvatarURL:   body.AvatarURL,
 		Description: body.Description,
@@ -110,7 +110,7 @@ func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.accountService.UpdateInfluencer(id, &services.UpdateInfluencerInput{
+	influencer, err := c.account_service.UpdateInfluencer(id, &services.UpdateInfluencerInput{
 		Name:        body.Name,
 		AvatarURL:   body.AvatarURL,
 		Description: body.Description,

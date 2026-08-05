@@ -6,9 +6,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/adapterctx"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
-	"wx_channel/internal/download/registry"
 	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
 	scraper "wx_channel/pkg/scraper/wxmp"
@@ -18,12 +17,11 @@ import (
 type Deps struct {
 	StaticAssets     *webassets.Registry
 	RouteRegistrar   RouteRegistrar
-	Interceptor      registry.InterceptorRegistrar
+	Interceptor      adapter.InterceptorRegistrar
 	DB               *gorm.DB
 	Logger           *zerolog.Logger
 	Bus              *events.Bus
 	Config           *config.Config
-	RemoteServerMode bool
 }
 
 // Handle provides access to the adapter's runtime components.
@@ -44,13 +42,13 @@ func Register(d Deps) (*Handle, error) {
 	// 2. Interceptor plugins
 	icfg := NewConfig(d.Config)
 	if d.Interceptor != nil {
-		for _, p := range icfg.GetPlugins(adapterctx.AdapterContext{DB: d.DB, Logger: *d.Logger}) {
+		for _, p := range icfg.GetPlugins(adapter.AdapterContext{DB: d.DB, Logger: d.Logger}) {
 			d.Interceptor.AddPostPlugin(p)
 		}
 	}
 
 	// 3. Routes
-	r := NewRoutes(d.Config, d.RemoteServerMode, d.Logger, d.DB)
+	r := NewRoutes(d.Config, d.Logger, d.DB)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 	}
@@ -59,7 +57,7 @@ func Register(d Deps) (*Handle, error) {
 }
 
 // RegisterRuntime exposes the adapter through the shared registry contract.
-func (h *handler) RegisterRuntime(d registry.RuntimeDeps) (registry.RuntimeHandle, error) {
+func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
 	return Register(Deps{
 		StaticAssets:     d.StaticAssets,
 		RouteRegistrar:   d.Routes,
@@ -68,7 +66,6 @@ func (h *handler) RegisterRuntime(d registry.RuntimeDeps) (registry.RuntimeHandl
 		Logger:           d.Logger,
 		Bus:              d.Bus,
 		Config:           d.Config,
-		RemoteServerMode: d.RemoteServerMode,
 	})
 }
 

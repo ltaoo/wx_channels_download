@@ -1,6 +1,7 @@
 /// <reference path="../utils.js" />
 /// <reference path="../file.js" />
-/// <reference path="core.js" />
+/// <reference path="model.js" />
+/// <reference path="view.js" />
 /**
  * @file Download manager page entry
  */

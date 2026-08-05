@@ -287,29 +287,81 @@ var WXU = (() => {
   }, LOG_CFG);
 
   class LogBuilder {
+    _setField(key, val) {
+      this._fields[key] = val;
+      return this;
+    }
+    _normalizeValue(val) {
+      if (val === null || typeof val === "undefined") {
+        return val;
+      }
+      if (typeof val === "bigint") {
+        return val.toString();
+      }
+      if (typeof val === "symbol" || typeof val === "function") {
+        return String(val);
+      }
+      if (val instanceof Date) {
+        return val.toISOString();
+      }
+      if (val instanceof Error) {
+        return {
+          name: val.name,
+          message: val.message,
+          stack: val.stack,
+        };
+      }
+      return val;
+    }
+    _coerceJSONValue(key, val) {
+      if (typeof val === "string") {
+        try {
+          val = JSON.parse(val);
+        } catch (_ignore) {}
+      }
+      return this._setField(key, this._normalizeValue(val));
+    }
     constructor(level, transport) {
       this._fields = {};
       this._level = level;
       this._transport = transport;
     }
     Str(key, val) {
-      this._fields[key] = val;
-      return this;
+      return this._setField(key, this._normalizeValue(val));
+    }
+    Err(err) {
+      return this._setField("error", this._normalizeValue(err));
+    }
+    Object(key, val) {
+      return this._coerceJSONValue(key, val);
+    }
+    Obj(key, val) {
+      return this.Object(key, val);
+    }
+    Dict(key, val) {
+      return this.Object(key, val);
+    }
+    Interface(key, val) {
+      return this._setField(key, this._normalizeValue(val));
+    }
+    JSON(key, val) {
+      return this._coerceJSONValue(key, val);
     }
     Int(key, val) {
-      this._fields[key] = val;
-      return this;
+      return this._setField(key, val);
+    }
+    RawJSON(key, val) {
+      return this._coerceJSONValue(key, val);
     }
     Bool(key, val) {
-      this._fields[key] = val;
-      return this;
+      return this._setField(key, val);
     }
     Float(key, val) {
-      this._fields[key] = val;
-      return this;
+      return this._setField(key, val);
     }
     Msg(msg) {
-      const payload = { ...this._fields, msg, level: this._level };
+      const message = this._normalizeValue(msg);
+      const payload = { ...this._fields, message, level: this._level };
       console.log("[log]", payload);
       this._transport.enqueue(payload);
     }
@@ -475,9 +527,11 @@ var WXU = (() => {
       hide() {},
       toggle() {},
       async create(feeds, opt) {
+        console.warn("create - downloader not ready");
         return [new Error("downloader not ready"), null];
       },
       async browse(feeds, opt) {
+        console.warn("browse - downloader not ready");
         return [new Error("downloader not ready"), null];
       },
     },
@@ -593,9 +647,10 @@ var WXU = (() => {
         }, 5000);
       }
       function startObserve() {
-        var $root = typeof container === "string"
-          ? document.querySelector(container)
-          : (container || null);
+        var $root =
+          typeof container === "string"
+            ? document.querySelector(container)
+            : container || null;
         if (!$root) {
           $root = document.body || document.documentElement;
         }

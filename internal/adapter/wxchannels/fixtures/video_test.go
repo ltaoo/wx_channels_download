@@ -8,7 +8,7 @@ import (
 
 	wxchannels "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
+	"wx_channel/internal/adapter"
 	"wx_channel/pkg/testui"
 	"wx_channel/pkg/testui/assert"
 	"wx_channel/pkg/testui/require"
@@ -149,7 +149,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	var obj wxchannels.ChannelsObject
 	require.NoError(t, json.Unmarshal(contentJSON, &obj))
 
-	h := registry.Get(wxchannels.PlatformID)
+	h := adapter.Get(wxchannels.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxchannels")
 	}
@@ -249,7 +249,7 @@ func TestBuildDownloadTask_FromContent_WithSpecAndSuffix(t *testing.T) {
 	var obj wxchannels.ChannelsObject
 	require.NoError(t, json.Unmarshal(contentJSON, &obj))
 
-	h := registry.Get(wxchannels.PlatformID)
+	h := adapter.Get(wxchannels.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxchannels")
 	}
@@ -341,7 +341,7 @@ func TestBuildDownloadTaskWithMultiResource_FromContent(t *testing.T) {
 		t.Fatalf("load video fixture: %v", err)
 	}
 
-	h := registry.Get(wxchannels.PlatformID)
+	h := adapter.Get(wxchannels.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxchannels")
 	}

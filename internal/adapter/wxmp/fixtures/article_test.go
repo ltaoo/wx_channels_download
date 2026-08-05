@@ -6,8 +6,7 @@ import (
 
 	wxmp "wx_channel/internal/adapter/wxmp"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
-	"wx_channel/internal/download/types"
+	"wx_channel/internal/adapter"
 	"wx_channel/pkg/testui"
 	example "wx_channel/scraper_examples"
 )
@@ -89,7 +88,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	raw, data := articleFixture(t)
 	contentJSON := json.RawMessage(raw)
 
-	h := registry.Get(wxmp.PlatformID)
+	h := adapter.Get(wxmp.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxmp")
 	}
@@ -144,7 +143,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 	const metadataJSON = `{"author":"猫猫的理想国度","biz_type":1,"created_at":1785123529,"external_id":"MzkyNjQ2NjI2NA==","platform":"wxmp"}`
 	const coverName = "fingerprintjs/fingerprintjs，我用了两周，说说真实感受"
 
-	expectedInfo := types.DownloadTaskResult{
+	expectedInfo := adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &expectedArticleContentID,
 			Name:         "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -156,7 +155,7 @@ func TestBuildDownloadTask_FromContent(t *testing.T) {
 			ConfigJSON:   "{}",
 			MetadataJSON: metadataJSON,
 		},
-		Resources: []*types.ResourceInfo{
+		Resources: []*adapter.ResourceInfo{
 			{
 				DownloadResource: model.DownloadResource{
 					Name:       "fingerprintjs/fingerprintjs，我用了两周，说说真实感受",
@@ -255,7 +254,7 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 	raw, data := articleFixture(t)
 	contentJSON := json.RawMessage(raw)
 
-	h := registry.Get(wxmp.PlatformID)
+	h := adapter.Get(wxmp.PlatformID)
 	if h == nil {
 		t.Fatal("handler not registered for platform wxmp")
 	}
@@ -282,7 +281,7 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 	const imageURL2 = `https://mmbiz.qpic.cn/mmbiz_jpg/wfz3GtheTU3msa1awM8pAkrhBXylo6tVbl4nJhbiaic8h3UjtBPQn1cpX0Jfib9atibSib8bqwAYAbicxbn6LG6OY69azNOjsqCoicNLproWWLSq5Y/640?wx_fmt=jpeg`
 	const coverURL = `https://mmbiz.qpic.cn/mmbiz_jpg/wfz3GtheTU1beBeFmQGgoEPus7qt4zRcE0mt6ibWSOZzxKQeicR8HiapGWUBkrRCbCNATtKH6oS9t0ene3UH1gkzcBicEmVXQ3NHYprLDD970xw/0?wx_fmt=jpeg`
 
-	expectedInfo := types.DownloadTaskResult{
+	expectedInfo := adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &expectedArticleContentID,
 			Name:         "自定义文件名",
@@ -294,7 +293,7 @@ func TestBuildDownloadTask_WithCustomConfig(t *testing.T) {
 			ConfigJSON:   `{"filename":"自定义文件名","overwrite":true,"suffix":".html"}`,
 			MetadataJSON: `{"author":"猫猫的理想国度","biz_type":1,"created_at":1785123529,"external_id":"MzkyNjQ2NjI2NA==","platform":"wxmp"}`,
 		},
-		Resources: []*types.ResourceInfo{
+		Resources: []*adapter.ResourceInfo{
 			{
 				// 1. content_noencode saved as html file
 				DownloadResource: model.DownloadResource{

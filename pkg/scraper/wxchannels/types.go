@@ -722,6 +722,7 @@ type FrontendErrorTip struct {
 // FrontendReport is a unified frontend report, level is "info" or "error"
 type FrontendReport struct {
 	Level        string  `json:"level"`
+	Message      string  `json:"message"`
 	Msg          string  `json:"msg"`
 	End          int     `json:"end,omitempty"`
 	Replace      int     `json:"replace,omitempty"`

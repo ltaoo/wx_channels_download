@@ -4,22 +4,21 @@ import (
 	"encoding/json"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
-	"wx_channel/internal/download/types"
+	"wx_channel/internal/adapter"
 	"wx_channel/pkg/util"
 )
 
 const platformID = "69shuba"
 
 func init() {
-	registry.Register(&handler{})
+	adapter.Register(&handler{})
 }
 
 type handler struct{}
 
 func (h *handler) PlatformID() string { return platformID }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
+func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	// Use mock data for frontend testing
 	novel := MockNovel()
 

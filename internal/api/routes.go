@@ -20,6 +20,7 @@ func (c *APIClient) SetupRoutes() {
 	c.setupStaticAssetRoutes()
 	c.engine.GET("/", c.handleIndex)
 	c.engine.GET("/download", c.handleDownloadPage)
+	c.engine.GET("/browsehistory", c.handleBrowseHistoryPage)
 	c.engine.GET("/content", c.handleContentPage)
 	c.engine.GET("/channels", c.handleChannelsPage)
 	// TODO: migration handlers require velo/fileserver which is not yet implemented
@@ -28,7 +29,6 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/api/v1/migration/table", c.handleMigrationTable)
 	// c.engine.POST("/api/v1/migration/file/list", c.handleMigrationFileList)
 	// c.engine.GET("/api/v1/migration/common_dirs", c.handleMigrationCommonDirs)
-	c.engine.GET("/admin", c.handlePlatformWorkflowWebsocket)
 	// Official account endpoints
 	// c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 	// c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
@@ -50,17 +50,12 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/open_file", c.handleHighlightFileInFolder)
 	c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
 	c.engine.POST("/api/open", c.handleOpenURL)
-	// Status and Hermes download task endpoints
-	c.engine.GET("/ws/status", c.status_ws.HandleWebsocket)
-	c.engine.GET("/ws/admin", c.handlePlatformWorkflowWebsocket)
 	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistories)
 	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
 	// c.engine.POST("/api/task/pipeline/start", c.handleProbePlatformDownloadTask)
 	// c.engine.POST("/api/task/probe", c.handleProbePlatformDownloadTask)
 	// c.engine.GET("/api/task/pipeline/workflow", c.handleFetchPlatformDownloadWorkflow)
 	// c.engine.POST("/api/task/pipeline/resume", c.handleResumePlatformDownloadPipeline)
-	c.engine.POST("/api/remote/proxy", c.handleRemoteProxyRequest)
-	c.engine.GET("/api/remote/task/list", c.handleFetchRemoteTaskList)
 	c.engine.GET("/api/file", c.handleFetchFile)
 	c.engine.POST("/api/v1/fs/list", c.handleListFiles)
 	c.engine.POST("/api/v1/fs/search", c.handleSearchFiles)
@@ -166,7 +161,6 @@ func (c *APIClient) handleFavicon(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleStatus(ctx *gin.Context) {
-	channels_data := c.channelsStatusData()["channels"]
 	apiHost := c.cfg.Hostname
 	apiPort := c.cfg.Port
 	proxyAddr := "127.0.0.1:2023"
@@ -194,7 +188,6 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 	}
 	data := gin.H{
 		"version":         c.cfg.Version,
-		"channels":        channels_data,
 		"server_statuses": statuses,
 		"api": gin.H{
 			"addr":      apiAddr,

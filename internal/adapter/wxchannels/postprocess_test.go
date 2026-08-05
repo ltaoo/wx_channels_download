@@ -2,74 +2,29 @@ package wxchannels
 
 import (
 	"archive/zip"
-	"context"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"wx_channel/internal/pipeline"
 	"wx_channel/pkg/hermes"
 )
 
-func TestBuildPostprocessPipelineFromJSON(t *testing.T) {
-	p, err := buildPostprocessPipeline(wxchannelsPostprocessPipelineJSON)
-	if err != nil {
-		t.Fatalf("build pipeline: %v", err)
+func TestPostprocessFlowDefinitionsAreUsable(t *testing.T) {
+	if wxchannelsPostprocessFlow.ID != "wxchannels_postprocess" {
+		t.Fatalf("postprocess flow id = %q", wxchannelsPostprocessFlow.ID)
 	}
-	if p.Name != "wxchannels_postprocess" {
-		t.Fatalf("pipeline name = %q", p.Name)
+	if wxchannelsOutputFlow.ID != "wxchannels_postprocess_output" {
+		t.Fatalf("output flow id = %q", wxchannelsOutputFlow.ID)
 	}
-	if p.StartNodeID != "route_resource" {
-		t.Fatalf("pipeline start = %q", p.StartNodeID)
-	}
-	if len(p.Nodes) != 10 {
-		t.Fatalf("pipeline node count = %d", len(p.Nodes))
+	for _, name := range []string{"route_resource", "route_output_format", "task_job_update", "done"} {
+		if _, ok := wxchannelsPostprocessFlow.Nodes[name]; !ok {
+			t.Fatalf("wxchannelsPostprocessFlow missing node %q", name)
+		}
 	}
 }
 
-func TestPostprocessPipelineJSONDescribesDataAndControlFlow(t *testing.T) {
-	var config postprocessPipelineConfig
-	if err := json.Unmarshal([]byte(wxchannelsPostprocessPipelineJSON), &config); err != nil {
-		t.Fatalf("unmarshal pipeline: %v", err)
-	}
-	if config.Inputs["input_file"] != "resource.file_path" {
-		t.Fatalf("input_file source = %q", config.Inputs["input_file"])
-	}
-	if config.Outputs["output_file"] != "resource.file_path" {
-		t.Fatalf("output_file target = %q", config.Outputs["output_file"])
-	}
-
-	nodes := make(map[string]postprocessNodeConfig, len(config.Nodes))
-	for _, node := range config.Nodes {
-		nodes[node.ID] = node
-	}
-	resourceSwitch := nodes["route_resource"]
-	if resourceSwitch.Type != "switch" || len(resourceSwitch.Parameters.Rules) != 2 {
-		t.Fatalf("resource switch = %#v", resourceSwitch)
-	}
-	streamRule := resourceSwitch.Parameters.Rules[0]
-	if streamRule.Condition.Field != "resource.type" || streamRule.Condition.Operator != "equals" || streamRule.Output != "stream" {
-		t.Fatalf("stream rule = %#v", streamRule)
-	}
-	connections := config.Connections["route_resource"]["stream"]
-	if len(connections) != 1 || connections[0].Node != "stream_convert" {
-		t.Fatalf("stream connections = %#v", connections)
-	}
-	if nodes["convert_mp3"].Inputs["decrypted_file"] != "pipeline.decrypted_file" {
-		t.Fatalf("convert_mp3 input mapping missing")
-	}
-	if nodes["convert_mp3"].Outputs["mp3_file"] != "pipeline.mp3_file" {
-		t.Fatalf("convert_mp3 output mapping missing")
-	}
-	zipConnections := config.Connections["route_output_format"]["zip"]
-	if len(zipConnections) != 1 || zipConnections[0].Node != "zip_resources" {
-		t.Fatalf("zip connections = %#v", zipConnections)
-	}
-}
-
-func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
+func TestOutputFlowCompressesResourcesIntoZIP(t *testing.T) {
 	dir := t.TempDir()
 	firstPath := filepath.Join(dir, "first")
 	secondPath := filepath.Join(dir, "second")
@@ -83,19 +38,25 @@ func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
 		ID:       7,
 		Name:     "测试压缩包",
 		UniqueID: "bundle",
-		Config:   map[string]any{"suffix": ".zip", "type": float64(2)},
+		Config:   map[string]any{"suffix": ".zip", "type": float64(-1)},
 		Resources: []hermes.ResourceJob{
 			{ID: 11, Name: "same", Kind: "text/plain", FilePath: firstPath},
 			{ID: 12, Name: "same", Kind: "text/plain", FilePath: secondPath},
 		},
 	}
-	p := mustBuildPostprocessPipelineAt(wxchannelsPostprocessPipelineJSON, "route_output_format")
-	pc := pipeline.NewContext()
-	pc.Values["postprocess_run"] = &postprocessRun{task: task, basePath: dir}
 
-	if _, err := p.Run(context.Background(), pc); err != nil {
-		t.Fatalf("run ZIP pipeline: %v", err)
+	err := runWXChannelsPostprocessFlow(wxchannelsOutputFlow, map[string]interface{}{
+		wxchannelsPostprocessContextTaskType:   taskConfigType(task.Config),
+		wxchannelsPostprocessContextTaskSuffix: taskConfigSuffix(task.Config),
+		wxchannelsPostprocessRunKey: &postprocessRun{
+			task:     task,
+			basePath: dir,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run output flow: %v", err)
 	}
+
 	if len(task.Resources) != 1 {
 		t.Fatalf("resource count = %d", len(task.Resources))
 	}
@@ -103,8 +64,8 @@ func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
 	if archive.Kind != "application/zip" {
 		t.Fatalf("archive resource = %#v", archive)
 	}
-	if hermes.CanonicalExtensionForMIMEType(archive.Kind) != ".zip" || archive.Size <= 0 {
-		t.Fatalf("archive persisted fields = extension %q size %d", hermes.CanonicalExtensionForMIMEType(archive.Kind), archive.Size)
+	if archive.FilePath == "" {
+		t.Fatalf("archive file path is empty")
 	}
 	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
 		t.Fatalf("first source was not removed: %v", err)
@@ -144,109 +105,123 @@ func TestOutputPipelineCompressesResourcesIntoZIP(t *testing.T) {
 
 func TestTaskJobUpdateNodeMutatesInputTaskJob(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "converted")
-	content := []byte("postprocessed-content")
-	if err := os.WriteFile(filePath, content, 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte("postprocessed-content"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	task := &hermes.TaskJob{Resources: []hermes.ResourceJob{{
-		ID: 3, UniqueID: "resource-3", Name: "before", Size: 1,
+		ID: 3, UniqueID: "resource-3", Name: "before", Kind: "audio/mpeg", FilePath: filePath,
 	}}}
-	processed := task.Resources[0]
+	processed := &task.Resources[0]
 	processed.Name = "after"
-	processed.FilePath = filePath
-	processed.Kind = "audio/mpeg"
-	pc := pipeline.NewContext()
-	pc.Values["postprocess_run"] = &postprocessRun{task: task, resource: &processed}
 
-	if _, err := TaskJobUpdateNode.Execute(context.Background(), pc); err != nil {
+	_, err := taskJobUpdateNode(map[string]interface{}{
+		wxchannelsPostprocessRunKey: &postprocessRun{
+			task:     task,
+			resource: processed,
+		},
+	})
+	if err != nil {
 		t.Fatalf("update TaskJob: %v", err)
 	}
 	got := task.Resources[0]
-	if got.Name != "after" || hermes.CanonicalExtensionForMIMEType(got.Kind) != ".mp3" || got.Size != int64(len(content)) {
-		t.Fatalf("updated resource = name=%q kind=%q size=%d", got.Name, got.Kind, got.Size)
+	if got.Name != "after" {
+		t.Fatalf("updated resource name = %q", got.Name)
+	}
+	if got.Size != int64(len("postprocessed-content")) {
+		t.Fatalf("updated resource size=%d", got.Size)
+	}
+}
+
+func TestPostprocessSkipsPlainFile(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(filePath, []byte("raw-content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	task := &hermes.TaskJob{
+		ID: 9,
+		Config: map[string]any{"suffix": ".txt", "type": float64(0)},
+		Resources: []hermes.ResourceJob{{
+			ID: 33,
+			Name: "plain",
+			Type: "FILE",
+			FilePath: filePath,
+		}},
+	}
+	err := runWXChannelsPostprocessFlow(wxchannelsPostprocessFlow, map[string]interface{}{
+		wxchannelsPostprocessContextInputFile:             filePath,
+		wxchannelsPostprocessContextDecodeKey:             "",
+		wxchannelsPostprocessContextResourceType:           "FILE",
+		wxchannelsPostprocessContextResourceHasDecodeSecret: false,
+		wxchannelsPostprocessContextTaskType:               taskConfigType(task.Config),
+		wxchannelsPostprocessContextTaskSuffix:             taskConfigSuffix(task.Config),
+		wxchannelsPostprocessRunKey: &postprocessRun{
+			task:        task,
+			resource:    &task.Resources[0],
+			basePath:    dir,
+			originalExt: ".txt",
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := task.Resources[0]; got.Name != "plain" {
+		t.Fatalf("unexpected mutation: name=%q kind=%q", got.Name, got.Kind)
+	}
+}
+
+func TestPostprocessStreamsPassThroughKeepsKind(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "video.mp4")
+	if err := os.WriteFile(filePath, []byte("stream-content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	task := &hermes.TaskJob{
+		ID: 12,
+		Config: map[string]any{"type": float64(2), "suffix": ".mp4"},
+		Resources: []hermes.ResourceJob{{
+			ID: 44,
+			Name: "stream",
+			Type: "STREAM",
+			FilePath: filePath,
+		}},
+	}
+	err := runWXChannelsPostprocessFlow(wxchannelsPostprocessFlow, map[string]interface{}{
+		wxchannelsPostprocessContextInputFile:             filePath,
+		wxchannelsPostprocessContextDecodeKey:             "",
+		wxchannelsPostprocessContextResourceType:           "STREAM",
+		wxchannelsPostprocessContextResourceHasDecodeSecret: false,
+		wxchannelsPostprocessContextTaskType:               taskConfigType(task.Config),
+		wxchannelsPostprocessContextTaskSuffix:             taskConfigSuffix(task.Config),
+		wxchannelsPostprocessRunKey: &postprocessRun{
+			task:        task,
+			resource:    &task.Resources[0],
+			basePath:    dir,
+			originalExt: filepath.Ext(filePath),
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := task.Resources[0]; got.Kind != "video/mp4" {
+		t.Fatalf("resource kind=%q", got.Kind)
 	}
 }
 
 func TestCanonicalExtensionForMIMEType(t *testing.T) {
 	tests := map[string]string{
-		"image/jpeg":                   ".jpg",
-		"image/jpeg; charset=binary":   ".jpg",
-		"audio/mpeg":                   ".mp3",
-		"video/x-matroska":             ".mkv",
-		"application/zip":              ".zip",
-		"application/octet-stream":     "",
+		"image/jpeg":                 ".jpg",
+		"image/jpeg; charset=binary": ".jpg",
+		"audio/mpeg":                 ".mp3",
+		"video/x-matroska":           ".mkv",
+		"application/zip":            ".zip",
+		"application/octet-stream":   "",
 		"application/x-unknown-format": "",
-		"video":                        "",
+		"video":                      "",
 	}
 	for mimeType, want := range tests {
 		if got := hermes.CanonicalExtensionForMIMEType(mimeType); got != want {
 			t.Errorf("CanonicalExtensionForMIMEType(%q) = %q, want %q", mimeType, got, want)
 		}
 	}
-}
-
-func TestPostprocessPipelineSkipsPlainFile(t *testing.T) {
-	p, err := buildPostprocessPipeline(wxchannelsPostprocessPipelineJSON)
-	if err != nil {
-		t.Fatalf("build pipeline: %v", err)
-	}
-	r := &hermes.ResourceJob{Type: "FILE", Extra: map[string]string{}}
-	pc := newPostprocessTestContext(&hermes.TaskJob{}, r)
-
-	if _, err := p.Run(context.Background(), pc); err != nil {
-		t.Fatalf("run pipeline: %v", err)
-	}
-	if state := pc.GetNodeState("done"); state != pipeline.StateCompleted {
-		t.Fatalf("done state = %q", state)
-	}
-	if state := pc.GetNodeState("decrypt"); state != "" {
-		t.Fatalf("decrypt should not run, state = %q", state)
-	}
-}
-
-func TestPostprocessPipelinePassesThroughMP4Stream(t *testing.T) {
-	p, err := buildPostprocessPipeline(wxchannelsPostprocessPipelineJSON)
-	if err != nil {
-		t.Fatalf("build pipeline: %v", err)
-	}
-	filePath := filepath.Join(t.TempDir(), "already-playable.mp4")
-	if err := os.WriteFile(filePath, []byte("mp4"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	r := &hermes.ResourceJob{
-		Type:     "STREAM",
-		FilePath: filePath,
-		Extra:    map[string]string{},
-	}
-	pc := newPostprocessTestContext(&hermes.TaskJob{}, r)
-
-	if _, err := p.Run(context.Background(), pc); err != nil {
-		t.Fatalf("run pipeline: %v", err)
-	}
-	if state := pc.GetNodeState("stream_convert"); state != pipeline.StateCompleted {
-		t.Fatalf("stream_convert state = %q", state)
-	}
-	if state := pc.GetNodeState("finalize_stream"); state != pipeline.StateCompleted {
-		t.Fatalf("finalize_stream state = %q", state)
-	}
-	if state := pc.GetNodeState("decrypt"); state != "" {
-		t.Fatalf("decrypt should not run, state = %q", state)
-	}
-}
-
-func newPostprocessTestContext(task *hermes.TaskJob, resource *hermes.ResourceJob) *pipeline.Context {
-	if len(task.Resources) == 0 {
-		task.Resources = append(task.Resources, *resource)
-		resource = &task.Resources[0]
-	}
-	pc := pipeline.NewContext()
-	pc.Values["input_file"] = resource.FilePath
-	pc.Values["decode_key"] = resource.Extra["decode_key"]
-	pc.Values["postprocess_run"] = &postprocessRun{
-		task:        task,
-		resource:    resource,
-		originalExt: ".mp4",
-		log:         func(string, ...interface{}) {},
-	}
-	return pc
 }

@@ -47,7 +47,8 @@ type ChannelInjectedFiles struct {
 	CSSComponents           []byte
 	JSComponents            []byte
 	JSChannels              []byte
-	JSDownloadCore          []byte
+	JSDownloadModel         []byte
+	JSDownloadView            []byte
 	JSDownloadPanel         []byte
 	JSDownloadIndex         []byte
 	JSDownloader            []byte
@@ -538,7 +539,8 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSUtils = files.readInject("utils.js")
 	files.JSChannelsUtils = files.readInject("channels.utils.js")
 	files.JSChannels = files.readInject("channels.ws.js")
-	files.JSDownloadCore = files.readInject("download/core.js")
+	files.JSDownloadModel = files.readInject("download/model.js")
+	files.JSDownloadView = files.readInject("download/view.js")
 	files.JSDownloadPanel = files.readInject("download/panel.js")
 	files.JSDownloadIndex = files.readInject("download/index.js")
 	files.JSDownloader = files.JSDownloadPanel

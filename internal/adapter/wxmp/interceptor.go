@@ -2,9 +2,8 @@ package wxmp
 
 import (
 	"wx_channel/frontend"
-	"wx_channel/internal/adapterctx"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
-	"wx_channel/internal/events"
 	scraper "wx_channel/pkg/scraper/wxmp"
 )
 
@@ -20,26 +19,20 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 		return &InterceptorPluginConfig{}
 	}
 	return &InterceptorPluginConfig{
-		settings: scraper.NewOfficialAccountConfig(cfg, false),
+		settings: scraper.NewOfficialAccountConfig(cfg),
 		version:  cfg.Version,
 	}
 }
 
 // GetPlugins returns official-account injection and callback plugins wired to
 // adapter-owned persistence and browse events.
-func (c *InterceptorPluginConfig) GetPlugins(ctx adapterctx.AdapterContext) []interface{} {
+func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []interface{} {
 	if c == nil || c.settings == nil {
 		return nil
 	}
 
-	onArticleLoaded := func(profile *scraper.OfficialAccountArticleProfile) {
-		HandleArticleProfileLoaded(ctx.DB, ctx.Logger, profile)
-		if ctx.Bus != nil {
-			ctx.Bus.Publish(events.BrowseHistoryRecorded{Browse: BuildBrowseRecord(profile)})
-		}
-	}
 	return []interface{}{
-		scraper.CreateOfficialAccountArticleLoadedPlugin(onArticleLoaded),
+		scraper.CreateOfficialAccountArticleLoadedPlugin(nil),
 		scraper.CreateOfficialAccountInterceptorPlugin(c.settings, frontend.Assets, c.version),
 	}
 }

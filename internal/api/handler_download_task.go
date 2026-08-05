@@ -15,7 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/download/tasklineage"
 	"wx_channel/internal/events"
 	"wx_channel/internal/services"
@@ -119,7 +119,7 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("platform 不能为空")
 	}
 
-	h := registry.Get(body.Platform)
+	h := adapter.Get(body.Platform)
 	if h == nil {
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
@@ -312,10 +312,10 @@ func (c *APIClient) handlePrepareDownloadTaskByURL(ctx *gin.Context) {
 
 // createDownloadTaskSingle creates a single platform download task and returns the result data or error.
 func (c *APIClient) createDownloadTaskSingle(body services.CreateDownloadTaskBody) (gin.H, error) {
-	if c.downloadTaskService == nil {
+	if c.download_task_service == nil {
 		return nil, fmt.Errorf("下载任务服务未初始化")
 	}
-	result, err := c.downloadTaskService.CreateTask(body)
+	result, err := c.download_task_service.CreateTask(body)
 	if err != nil {
 		return nil, err
 	}
@@ -348,6 +348,7 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 
 	var duplicateErr *services.DuplicateTaskError
 	tasks := make([]gin.H, 0, len(req.Objects))
+	ids := make([]int, 0, len(req.Objects))
 	successCount := 0
 	failCount := 0
 	for _, body := range req.Objects {
@@ -379,6 +380,9 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 			failCount++
 		} else {
 			tasks = append(tasks, gin.H{"success": true, "data": data})
+			if task, ok := data["task"].(model.DownloadTask); ok {
+				ids = append(ids, task.Id)
+			}
 			successCount++
 		}
 	}
@@ -390,7 +394,7 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		Int("failed", failCount).
 		Msg("Batch create download tasks completed")
 
-	result.Ok(ctx, gin.H{"tasks": tasks})
+	result.Ok(ctx, gin.H{"tasks": tasks, "ids": ids})
 }
 
 // createDownloadTaskByURLSingle creates a single download task by resource URL.
@@ -825,7 +829,7 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 		return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 	}
 	c.logger.Info().Int("task_id", task.Id).Msg("Starting database soft deletion")
-	deletedRecord, recordErr := c.buildDownloadTaskRecord(task.Id)
+	deletedRecord, recordErr := c.download_task_service.BuildTaskRecord(task.Id)
 	if recordErr != nil {
 		c.logger.Warn().Int("task_id", task.Id).Err(recordErr).Msg("Download task deletion failed to build pre-delete broadcast record")
 	}
@@ -859,7 +863,7 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 	}
 
 	if deletedRecord != nil {
-		c.broadcastDownloadTaskDelete([]DownloadTaskRecord{*deletedRecord})
+		c.broadcastDownloadTaskDelete([]services.DownloadTaskRecord{*deletedRecord})
 		c.logger.Info().Int("task_id", task.Id).Msg("Download task deletion broadcast emitted")
 	} else {
 		c.logger.Warn().Int("task_id", task.Id).Msg("Download task deletion broadcast skipped because no pre-delete record was available")
@@ -1048,7 +1052,7 @@ func (c *APIClient) handleListDownloadTask(ctx *gin.Context) {
 		return
 	}
 	if taskID, err := strconv.Atoi(ctx.Query("task_id")); err == nil && taskID > 0 {
-		record, err := c.buildDownloadTaskRecord(taskID)
+		record, err := c.download_task_service.BuildTaskRecord(taskID)
 		if err != nil {
 			result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 			return
@@ -1100,12 +1104,20 @@ func (c *APIClient) handleListDownloadTask(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务总数失败: "+err.Error())
 		return
 	}
+
+	// stats: count of tasks grouped by status (same base filters minus status filter)
+	stats, err := c.queryTaskStats(ctx)
+	if err != nil {
+		result.Err(ctx, 500, "查询下载任务统计失败: "+err.Error())
+		return
+	}
+
 	if err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
 	}
 
-	list, err := c.buildDownloadTaskRecords(tasks)
+	list, err := c.download_task_service.BuildTaskRecords(tasks)
 	if err != nil {
 		result.Err(ctx, 500, "构建下载任务记录失败: "+err.Error())
 		return
@@ -1116,7 +1128,35 @@ func (c *APIClient) handleListDownloadTask(ctx *gin.Context) {
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
+		"stats":     stats,
 	})
+}
+
+// queryTaskStats returns a map of status -> count for download tasks, respecting
+// parent_task_id and root_task_id filters (but not status filter).
+func (c *APIClient) queryTaskStats(ctx *gin.Context) (map[int]int64, error) {
+	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
+	if parentTaskID, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parentTaskID > 0 {
+		query = query.Where("parent_task_id = ?", parentTaskID)
+	}
+	if rootTaskID, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && rootTaskID > 0 {
+		query = query.Where("root_task_id = ?", rootTaskID)
+	}
+
+	type statusCount struct {
+		Status int   `gorm:"column:status"`
+		Count  int64 `gorm:"column:count"`
+	}
+	var rows []statusCount
+	if err := query.Select("status, COUNT(*) as count").Group("status").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	stats := make(map[int]int64, len(rows))
+	for _, r := range rows {
+		stats[r.Status] = r.Count
+	}
+	return stats, nil
 }
 
 // ResourceTreeNode is a resource tree node for the frontend to render file directory structures.

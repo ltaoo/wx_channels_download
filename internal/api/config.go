@@ -28,34 +28,7 @@ type APIConfig struct {
 	RemoteServerProtocol         string `json:"remoteServerProtocol"`
 	RemoteServerHostname         string `json:"remoteServerHostname"`
 	RemoteServerPort             int    `json:"remoteServerPort"`
-	RemoteServerMode             bool   `json:"remoteServerMode"` // server mode flag
-	OfficialAccountRefreshToken  string
-	OfficialAccountTokenFilepath string
-	ChannelsRefreshInterval      int
 	CloudflareSphCookie          string
-	Shuba69Cookie                string
-	BilibiliCookie               string
-	YouTubeCookie                string
-	YouTubePoToken               string
-	WeiboCookie                  string
-	Shuba69Fetcher               string
-	Shuba69CDPEndpoint           string
-	Shuba69CDPTimeout            int
-	Shuba69CDPWait               int
-	Shuba69SandboxAPIBaseURL     string
-	Shuba69SandboxID             string
-	BrowserDockerImage           string
-	BrowserDockerEntrypoint      string
-	BrowserDockerNetwork         string
-	BrowserCDPPortMin            int
-	BrowserCDPPortMax            int
-	BrowserDesktopPortMin        int
-	BrowserDesktopPortMax        int
-	BrowserDesktopResolution     string
-	BrowserDockerShmSize         string
-	BrowserDockerMemoryLimit     string
-	BrowserDockerChromeCommand   string
-
 	FilenameTemplate string
 
 	HooksScript string
@@ -70,7 +43,7 @@ type APIConfig struct {
 	MigrationsPath string
 }
 
-func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
+func NewAPIConfig(c *config.Config) *APIConfig {
 	dir := viper.GetString("download.dir")
 	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
 	dir = strings.ReplaceAll(dir, "%CWD%", c.WorkDir)
@@ -81,15 +54,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
 	}
-	mp_refresh_token := viper.GetString("mp.refreshToken")
-	mp_token_filepath := viper.GetString("mp.tokenFilepath")
 	cloudflare_sph_cookie := viper.GetString("cloudflare.sphCookie")
-	shuba69_cookie := viper.GetString("69shuba.cookie")
-	bilibili_cookie := viper.GetString("bilibili.cookie")
-	youtube_cookie := viper.GetString("youtube.cookie")
-	youtube_po_token := viper.GetString("youtube.poToken")
-	weibo_cookie := viper.GetString("weibo.cookie")
-	shuba69_fetcher := strings.ToLower(strings.TrimSpace(viper.GetString("69shuba.fetcher")))
 
 	dbPath := viper.GetString("db.filepath")
 	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
@@ -121,33 +86,7 @@ func NewAPIConfig(c *config.Config, remote_mode bool) *APIConfig {
 		RemoteServerProtocol:         viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:         viper.GetString("download.remoteServer.hostname"),
 		RemoteServerPort:             viper.GetInt("download.remoteServer.port"),
-		RemoteServerMode:             remote_mode,
-		OfficialAccountTokenFilepath: mp_token_filepath,
-		OfficialAccountRefreshToken:  mp_refresh_token,
-		ChannelsRefreshInterval:      viper.GetInt("channels.refreshInterval"),
 		CloudflareSphCookie:          cloudflare_sph_cookie,
-		Shuba69Cookie:                shuba69_cookie,
-		BilibiliCookie:               bilibili_cookie,
-		YouTubeCookie:                youtube_cookie,
-		YouTubePoToken:               youtube_po_token,
-		WeiboCookie:                  weibo_cookie,
-		Shuba69Fetcher:               shuba69_fetcher,
-		Shuba69CDPEndpoint:           viper.GetString("69shuba.cdpEndpoint"),
-		Shuba69CDPTimeout:            viper.GetInt("69shuba.cdpTimeout"),
-		Shuba69CDPWait:               viper.GetInt("69shuba.cdpWait"),
-		Shuba69SandboxAPIBaseURL:     viper.GetString("69shuba.sandboxAPIBaseURL"),
-		Shuba69SandboxID:             viper.GetString("69shuba.sandboxID"),
-		BrowserDockerImage:           viper.GetString("sandbox.dockerImage"),
-		BrowserDockerEntrypoint:      viper.GetString("sandbox.dockerEntrypoint"),
-		BrowserDockerNetwork:         viper.GetString("sandbox.dockerNetwork"),
-		BrowserCDPPortMin:            viper.GetInt("sandbox.cdpPortMin"),
-		BrowserCDPPortMax:            viper.GetInt("sandbox.cdpPortMax"),
-		BrowserDesktopPortMin:        viper.GetInt("sandbox.desktopPortMin"),
-		BrowserDesktopPortMax:        viper.GetInt("sandbox.desktopPortMax"),
-		BrowserDesktopResolution:     viper.GetString("sandbox.resolution"),
-		BrowserDockerShmSize:         viper.GetString("sandbox.shmSize"),
-		BrowserDockerMemoryLimit:     viper.GetString("sandbox.memoryLimit"),
-		BrowserDockerChromeCommand:   viper.GetString("sandbox.chromeCommand"),
 
 		FilenameTemplate: viper.GetString("download.filenameTemplate"),
 		HooksScript:      viper.GetString("download.hooksScript"),

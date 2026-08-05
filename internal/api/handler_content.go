@@ -19,7 +19,7 @@ func (c *APIClient) handleCompatContentList(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceContentType string) {
-	if c.contentService == nil {
+	if c.content_service == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -66,7 +66,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		keyword = *body.Keyword
 	}
 
-	pageResult, err := c.contentService.ListContents(services.ContentListOptions{
+	pageResult, err := c.content_service.ListContents(services.ContentListOptions{
 		AccountID:   accountID,
 		Type: contentType,
 		Keyword:     keyword,

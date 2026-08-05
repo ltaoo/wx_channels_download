@@ -4,7 +4,7 @@
       "下载器"
     ],
     "summary": "创建/更新浏览历史",
-    "description": "根据内容 id 进行 upsert：首次写入创建记录，重复写入会将 visited_times + 1，并更新内容/账号信息。",
+    "description": "根据内容 id 进行 upsert：首次写入创建记录，重复写入会将 visited_times + 1，并更新内容/账号信息。\n\n当前推荐请求体为 `objects` 数组，每项包含 `platform`（平台 id）和 `content`（平台原始内容对象）。其中 `content` 将按平台进行解析转换，当前服务端已接入 wxchannels。为兼容旧版调用，接口也接受直接发送 wxchannels 内容对象（不含 platform/content），默认按 wxchannels 处理。",
     "requestBody": {
       "required": true,
       "content": {
@@ -12,100 +12,105 @@
           "schema": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string",
-                "description": "内容 id（视频号 object id）"
-              },
-              "contact": {
-                "type": "object",
-                "properties": {
-                  "username": {
-                    "type": "string",
-                    "description": "视频号账号 username（如 v2_xxx@finder）"
-                  },
-                  "nickname": {
-                    "type": "string",
-                    "description": "视频号昵称"
-                  },
-                  "headUrl": {
-                    "type": "string",
-                    "description": "视频号头像 URL"
-                  }
-                },
-                "required": [
-                  "username"
-                ]
-              },
-              "objectDesc": {
-                "type": "object",
-                "properties": {
-                  "description": {
-                    "type": "string",
-                    "description": "内容描述/标题"
-                  },
-                  "media": {
-                    "type": "array",
-                    "items": {
+              "objects": {
+                "type": "array",
+                "description": "浏览历史批量上报。支持对象列表逐条提交；旧版兼容可省略 platform/content，直接传 wxchannels content",
+                "items": {
+                  "oneOf": [
+                    {
                       "type": "object",
+                      "required": ["platform", "content"],
                       "properties": {
-                        "url": {
+                        "platform": {
                           "type": "string",
-                          "description": "媒体直链（不含 urlToken）"
+                          "description": "平台 id，如 wxchannels、wxmp",
+                          "example": "wxchannels"
                         },
-                        "coverUrl": {
-                          "type": "string",
-                          "description": "封面 URL"
-                        },
-                        "decodeKey": {
-                          "type": "string",
-                          "description": "解密 key（视频号下载用）"
-                        },
-                        "urlToken": {
-                          "type": "string",
-                          "description": "媒体 token（拼接到 url 后）"
+                        "content": {
+                          "type": "object",
+                          "description": "对应平台抓取到的原始内容对象。后端会按平台进行转换",
+                          "additionalProperties": true
                         }
                       }
                     },
-                    "description": "媒体列表（取第 1 个用于写入 content_url/content_cover_url）"
-                  }
+                    {
+                      "type": "object",
+                      "required": ["id"],
+                      "description": "旧版兼容：直接发送 wxchannels content 对象",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "内容 id（wxchannels object id）"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  ]
                 }
-              },
-              "objectNonceId": {
-                "type": "string",
-                "description": "nonce id（写入 extra_data）"
-              },
-              "source_url": {
-                "type": "string",
-                "description": "来源页面 URL"
               }
             },
             "required": [
-              "id"
+              "objects"
             ]
           },
           "examples": {
             "create": {
-              "summary": "记录浏览历史",
+              "summary": "wxchannels 记录浏览历史（platform/content）",
               "value": {
-                "id": "14545102784038246591",
-                "contact": {
-                  "username": "v2_xxx@finder",
-                  "nickname": "示例账号",
-                  "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132"
-                },
-                "objectDesc": {
-                  "description": "示例内容标题",
-                  "media": [
-                    {
-                      "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
-                      "coverUrl": "https://wx.qlogo.cn/finder/xxx/0",
-                      "decodeKey": "81721112",
-                      "urlToken": "&token=xxx"
+                "objects": [
+                  {
+                    "platform": "wxchannels",
+                    "content": {
+                      "id": "14545102784038246591",
+                      "contact": {
+                        "username": "v2_xxx@finder",
+                        "nickname": "示例账号",
+                        "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132"
+                      },
+                      "objectDesc": {
+                        "description": "示例内容标题",
+                        "media": [
+                          {
+                            "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                            "coverUrl": "https://wx.qlogo.cn/finder/xxx/0",
+                            "decodeKey": "81721112",
+                            "urlToken": "&token=xxx"
+                          }
+                        ]
+                      },
+                      "objectNonceId": "nonce_id_xxx",
+                      "source_url": "https://channels.weixin.qq.com/xxx"
                     }
-                  ]
-                },
-                "objectNonceId": "nonce_id_xxx",
-                "source_url": "https://channels.weixin.qq.com/xxx"
+                  }
+                ]
+              }
+            },
+            "create_legacy": {
+              "summary": "wxchannels 兼容旧版请求（直接发送对象）",
+              "value": {
+                "objects": [
+                  {
+                    "id": "14545102784038246591",
+                    "contact": {
+                      "username": "v2_xxx@finder",
+                      "nickname": "示例账号",
+                      "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/xxx/132"
+                    },
+                    "objectDesc": {
+                      "description": "示例内容标题",
+                      "media": [
+                        {
+                          "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx",
+                          "coverUrl": "https://wx.qlogo.cn/finder/xxx/0",
+                          "decodeKey": "81721112",
+                          "urlToken": "&token=xxx"
+                        }
+                      ]
+                    },
+                    "objectNonceId": "nonce_id_xxx",
+                    "source_url": "https://channels.weixin.qq.com/xxx"
+                  }
+                ]
               }
             }
           }

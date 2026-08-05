@@ -209,11 +209,15 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				frontend.AppendScriptSrcs(
 					&injected,
 					crossoriginAttr,
-					frontend.InjectAssetURL(assetBaseURL, "download/core.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/view.js"),
 					frontend.InjectAssetURL(assetBaseURL, "download/panel.js"),
 				)
 				if cfg.InjectGlobalScript != "" {
 					frontend.AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
+				}
+				if cfg.InjectContentScript != "" {
+					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
 				frontend.AppendScriptSrcs(
 					&injected,
@@ -225,27 +229,15 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				)
 				if pathname == "/web/pages/home" {
 					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.home.js"))
-					if cfg.InjectExtraScriptAfterJSMain != "" {
-						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
-					}
 				}
 				if pathname == "/web/pages/feed" {
 					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.feed.js"))
-					if cfg.InjectExtraScriptAfterJSMain != "" {
-						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
-					}
 				}
 				if pathname == "/web/pages/live" {
 					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.live.js"))
-					if cfg.InjectExtraScriptAfterJSMain != "" {
-						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
-					}
 				}
 				if pathname == "/web/pages/profile" {
 					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.profile.js"))
-					if cfg.InjectExtraScriptAfterJSMain != "" {
-						frontend.AppendInlineScript(&injected, "", cfg.InjectExtraScriptAfterJSMain)
-					}
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

@@ -18,7 +18,6 @@ type OfficialAccountConfig struct {
 	Hostname                  string
 	Port                      int
 	Addr                      string
-	RemoteMode                bool
 	RemoteServerEnabled       bool   `json:"remoteServerEnabled"`
 	RemoteServerProtocol      string `json:"remoteServerProtocol"`
 	RemoteServerHostname      string `json:"remoteServerHostname"`
@@ -28,9 +27,10 @@ type OfficialAccountConfig struct {
 	RefreshSkipMinutes        int
 	MaxWebsocketClients       int
 	AccountIdsRefreshInterval []string
+	InjectContentScript       string
 }
 
-func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccountConfig {
+func NewOfficialAccountConfig(c *config.Config) *OfficialAccountConfig {
 	protocol := viper.GetString("api.protocol")
 	hostname := viper.GetString("api.hostname")
 	port := viper.GetInt("api.port")
@@ -45,7 +45,6 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		Hostname:                  hostname,
 		Port:                      port,
 		Addr:                      hostname + ":" + strconv.Itoa(port),
-		RemoteMode:                remote_mode,
 		RemoteServerEnabled:       viper.GetBool("download.remoteServer.enabled"),
 		RemoteServerProtocol:      viper.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:      viper.GetString("download.remoteServer.hostname"),
@@ -55,6 +54,7 @@ func NewOfficialAccountConfig(c *config.Config, remote_mode bool) *OfficialAccou
 		RefreshSkipMinutes:        viper.GetInt("mp.refreshSkipMinutes"),
 		MaxWebsocketClients:       viper.GetInt("mp.maxWebsocketClients"),
 		AccountIdsRefreshInterval: viper.GetStringSlice("mp.accountIdsRefreshInterval"),
+		InjectContentScript:       c.ContentScriptContent,
 	}
 	return cfg
 }

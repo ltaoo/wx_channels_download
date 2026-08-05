@@ -100,7 +100,6 @@ type OfficialAccountClient struct {
 	APIServerProtocol         string
 	APIServerHostname         string
 	APIServerPort             int
-	RemoteMode                bool
 	RemoteServerProtocol      string
 	RemoteServerHostname      string
 	RemoteServerPort          int
@@ -136,7 +135,6 @@ func NewOfficialAccountClient(cfg *OfficialAccountConfig, parent_logger *zerolog
 		APIServerProtocol:         cfg.Protocol,
 		APIServerHostname:         cfg.Hostname,
 		APIServerPort:             cfg.Port,
-		RemoteMode:                cfg.RemoteMode,
 		RemoteServerProtocol:      cfg.RemoteServerProtocol,
 		RemoteServerHostname:      cfg.RemoteServerHostname,
 		RemoteServerPort:          cfg.RemoteServerPort,
@@ -488,9 +486,7 @@ func (c *OfficialAccountClient) HandleFetchList(ctx *gin.Context) {
 			UpdateTime:  acct.UpdateTime,
 			Error:       acct.Error,
 		}
-		if !c.RemoteMode {
-			summary.RefreshUri = acct.RefreshUri
-		}
+		summary.RefreshUri = acct.RefreshUri
 
 		// Build Links
 		var links []Link
@@ -729,11 +725,9 @@ func (c *OfficialAccountClient) HandleRefreshEvent(ctx *gin.Context) {
 	c.wait_mu.Unlock()
 	logger.Info().
 		Bool("has_waiter", ok).
-		Bool("remote_mode", c.RemoteMode).
 		Msg("refresh official account event: stored and notified")
 	is_manually_refresh := !ok
-	if is_manually_refresh && !c.RemoteMode {
-		// When manually refreshing, push credentials to remote server. Skip if already on remote server to avoid loops.
+	if is_manually_refresh {
 		go c.pushCredentialToRemoteServer(logger, target_acct)
 	}
 	result.Ok(ctx, nil)
@@ -749,7 +743,6 @@ func (c *OfficialAccountClient) HandleRefreshAllRemoteOfficialAccount(ctx *gin.C
 		Str("run_id", run_id).
 		Str("origin", c.RemoteServerAddr).
 		Int("refresh_skip_minutes", c.RefreshSkipMinutes).
-		Bool("remote_mode", c.RemoteMode).
 		Msg("refresh all remote official accounts: start")
 	err := c.refreshAllRemoteOfficialAccount(run_id)
 	if err != nil {
@@ -1271,13 +1264,9 @@ func (c *OfficialAccountClient) HandleOfficialAccountManagerHome(ctx *gin.Contex
 	if len(c.Tokens) > 0 {
 		token = c.Tokens[0]
 	}
-	mode := "0"
-	if c.RemoteMode {
-		mode = "1"
-	}
 	html = strings.ReplaceAll(html, "%%REMOTE_SERVER%%", remote)
 	html = strings.ReplaceAll(html, "%%TOKEN%%", token)
-	html = strings.ReplaceAll(html, "%%REMOTE_MODE%%", mode)
+	html = strings.ReplaceAll(html, "%%REMOTE_MODE%%", "0")
 	ctx.String(http.StatusOK, html)
 }
 
@@ -1315,9 +1304,6 @@ func (c *OfficialAccountClient) ValidateToken(t string) bool {
 }
 
 func (c *OfficialAccountClient) Validate() error {
-	if c.RemoteMode {
-		return nil
-	}
 	c.ws_mu.RLock()
 	empty := len(c.ws_clients) == 0
 	c.ws_mu.RUnlock()
@@ -1327,9 +1313,6 @@ func (c *OfficialAccountClient) Validate() error {
 	return nil
 }
 func (c *OfficialAccountClient) EnsureFrontendReady(timeout time.Duration) error {
-	if c.RemoteMode {
-		return nil
-	}
 	deadline := time.Now().Add(timeout)
 	for {
 		c.ws_mu.RLock()

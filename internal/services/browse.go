@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	utilpkg "wx_channel/pkg/util"
 )
@@ -20,21 +21,22 @@ func NewBrowseService(db *gorm.DB) *BrowseService {
 	}
 }
 
-type BrowseHistoryInfo struct {
-	PlatformId        string
-	AccountExternalId string
-	AccountNickname   string
-	AccountAvatarURL  string
-	ContentType       string
-	ContentTitle      string
-	ContentURL        string
-	ContentSourceURL  string
-	ContentCoverURL   string
-	ExtraData         map[string]any
-	ExtraDataJSON     string
+type BrowseHistoryListOptions struct {
+	PlatformIds     []string
+	AccountUsername *string
+	Page            int
+	PageSize        int
+	Offset          *int
 }
 
-func (s *BrowseService) Record(uniqueMark string, info BrowseHistoryInfo) error {
+type BrowseHistoryListResult struct {
+	List     []model.BrowseHistory `json:"list"`
+	Total    int64                 `json:"total"`
+	Page     int                   `json:"page"`
+	PageSize int                   `json:"page_size"`
+}
+
+func (s *BrowseService) Record(uniqueMark string, info adapter.BrowseHistoryInfo) error {
 	if s.db == nil {
 		return ErrDBNotInitialized
 	}
@@ -74,14 +76,17 @@ func (s *BrowseService) Record(uniqueMark string, info BrowseHistoryInfo) error 
 	return browse.Upsert(s.db)
 }
 
-func (s *BrowseService) List(platformId string, accountUsername *string) ([]model.BrowseHistory, error) {
-	return s.ListPlatforms([]string{platformId}, accountUsername)
+func (s *BrowseService) List(platformId string, accountUsername *string, page int, pageSize int) (*BrowseHistoryListResult, error) {
+	return s.ListPlatforms([]string{platformId}, accountUsername, page, pageSize)
 }
 
-func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *string) ([]model.BrowseHistory, error) {
+func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *string, page int, pageSize int) (*BrowseHistoryListResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
+	page = normalizePage(page)
+	pageSize = normalizePageSize(pageSize)
+	offset := (page - 1) * pageSize
 	var normalizedPlatformIds []string
 	for _, platformId := range platformIds {
 		platformId = strings.TrimSpace(platformId)
@@ -98,11 +103,36 @@ func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *str
 		query = query.Where("account_external_id = ?", *accountUsername)
 	}
 
-	var browseHistories []model.BrowseHistory
-	if err := query.Order("updated_at DESC, id DESC").Find(&browseHistories).Error; err != nil {
+	var total int64
+	if err := query.Model(&model.BrowseHistory{}).Count(&total).Error; err != nil {
 		return nil, err
 	}
-	return browseHistories, nil
+
+	var browseHistories []model.BrowseHistory
+	query = query.Order("updated_at DESC, id DESC").Limit(pageSize).Offset(offset)
+	if err := query.Find(&browseHistories).Error; err != nil {
+		return nil, err
+	}
+	return &BrowseHistoryListResult{
+		List:     browseHistories,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+func normalizePage(page int) int {
+	if page < 1 {
+		return 1
+	}
+	return page
+}
+
+func normalizePageSize(pageSize int) int {
+	if pageSize < 1 {
+		return 20
+	}
+	return pageSize
 }
 
 func normalizeBrowseContentType(contentType string) string {

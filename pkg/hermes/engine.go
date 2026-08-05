@@ -49,10 +49,11 @@ const (
 	defaultSegmentCount = 32
 	minimumSegmentSize  = int64(25 * 1024 * 1024)
 	partialFileSuffix   = ".part"
-	progressInterval    = 500 * time.Millisecond
+	progressInterval    = 1 * time.Second
 	progressLogInterval = 3 * time.Second
 	maxReadAttempts     = 3
 	defaultReadTimeout  = 10 * time.Second
+	readBufferSize      = 256 * 1024
 )
 
 // Endpoint contains download source information needed by protocol drivers. Headers and Cookies

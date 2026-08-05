@@ -8,7 +8,7 @@ import (
 )
 
 func (c *APIClient) handleListFiles(ctx *gin.Context) {
-	if c.fsService == nil {
+	if c.fs_service == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
 		return
 	}
@@ -17,7 +17,7 @@ func (c *APIClient) handleListFiles(ctx *gin.Context) {
 		result.Err(ctx, 400, "请求参数无效: "+err.Error())
 		return
 	}
-	files, err := c.fsService.ListFiles(options)
+	files, err := c.fs_service.ListFiles(options)
 	if err != nil {
 		result.Err(ctx, 500, "读取文件列表失败: "+err.Error())
 		return
@@ -26,7 +26,7 @@ func (c *APIClient) handleListFiles(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleSearchFiles(ctx *gin.Context) {
-	if c.fsService == nil {
+	if c.fs_service == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
 		return
 	}
@@ -35,7 +35,7 @@ func (c *APIClient) handleSearchFiles(ctx *gin.Context) {
 		result.Err(ctx, 400, "请求参数无效: "+err.Error())
 		return
 	}
-	files, err := c.fsService.SearchFiles(options)
+	files, err := c.fs_service.SearchFiles(options)
 	if err != nil {
 		result.Err(ctx, 500, "搜索文件失败: "+err.Error())
 		return

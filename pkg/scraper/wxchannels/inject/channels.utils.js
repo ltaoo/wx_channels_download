@@ -678,7 +678,9 @@ var WXBase64 = (() => {
               new Timeless.ui.MenuItemCore({
                 label: "下载为MP3",
                 onClick() {
-                  const [err, profile] = WXU.check_feed_existing({ silence: true });
+                  const [err, profile] = WXU.check_feed_existing({
+                    silence: true,
+                  });
                   if (err) return;
                   __wx_channels_handle_click_download__({ suffix: ".mp3" });
                   close_dropdown();
@@ -686,13 +688,17 @@ var WXBase64 = (() => {
               }),
             ]
           : []),
-        new Timeless.ui.MenuItemCore({
-          label: "下载封面",
-          onClick() {
-            __wx_channels_handle_download_cover();
-            close_dropdown();
-          },
-        }),
+        ...(feed && feed.objectDesc && feed.objectDesc.mediaType === 4
+          ? [
+              new Timeless.ui.MenuItemCore({
+                label: "下载封面",
+                onClick() {
+                  __wx_channels_handle_download_cover();
+                  close_dropdown();
+                },
+              }),
+            ]
+          : []),
         new Timeless.ui.MenuItemCore({
           label: "复制页面链接",
           onClick() {
@@ -906,6 +912,11 @@ var WXBase64 = (() => {
      */
     set_feed(feed) {
       __wx_channels_store__.feed = feed;
+      WXU.log
+        .Info()
+        .Str("file", "channels.utils.js")
+        .JSON("feed", feed)
+        .Msg("before downloader.browse");
       WXU.downloader.browse([feed], { platform: "wxchannels" });
     },
     /**

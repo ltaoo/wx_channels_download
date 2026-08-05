@@ -27,6 +27,14 @@ type Config struct {
 	Version  string
 	Mode     string
 
+	// Resolved global script
+	GlobalScriptPath    string // Absolute path to global.js
+	GlobalScriptContent string // Content of global.js
+
+	// Resolved content script
+	ContentScriptPath    string // Absolute path to content script
+	ContentScriptContent string // Content of content script
+
 	DBType         string
 	DBHost         string
 	DBPort         string
@@ -276,20 +284,20 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigItem{
-		Key:         "inject.extraScript.afterJSMain",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "额外注入的 JS 脚本路径",
-		Title:       "注入脚本",
-		Group:       "Inject",
-		HotReload:   true,
-	})
-	Register(ConfigItem{
 		Key:         "inject.globalScript",
 		Type:        ConfigTypeString,
 		Default:     "global.js",
 		Description: "全局用户脚本",
 		Title:       "全局脚本",
+		Group:       "Inject",
+		HotReload:   true,
+	})
+	Register(ConfigItem{
+		Key:         "inject.contentScript",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "注入到页面的内容脚本路径",
+		Title:       "内容脚本",
 		Group:       "Inject",
 		HotReload:   true,
 	})
@@ -678,7 +686,28 @@ func (c *Config) LoadConfig() error {
 	}
 	c.MigrationsPath = migPath
 
+	// Resolve inject scripts
+	c.resolveScript("inject.globalScript", &c.GlobalScriptPath, &c.GlobalScriptContent)
+	c.resolveScript("inject.contentScript", &c.ContentScriptPath, &c.ContentScriptContent)
+
 	return nil
+}
+
+func (c *Config) resolveScript(configKey string, pathField, contentField *string) {
+	scriptPath := viper.GetString(configKey)
+	if scriptPath == "" {
+		return
+	}
+	if !filepath.IsAbs(scriptPath) {
+		scriptPath = filepath.Join(c.RootDir, scriptPath)
+	}
+	scriptPath = filepath.Clean(scriptPath)
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return
+	}
+	*pathField = scriptPath
+	*contentField = string(data)
 }
 
 // GetDebugInfo returns debug information about how the base directory was determined

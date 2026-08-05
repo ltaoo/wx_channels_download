@@ -3,7 +3,6 @@ package wxchannels
 import (
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,14 +16,9 @@ import (
 	scraper "wx_channel/pkg/scraper/wxchannels"
 )
 
-// ChannelsTaskCreator creates a download task from channels feed object JSON.
-// feedObject is the JSON-serialized ChannelsObject from the feed profile.
-type ChannelsTaskCreator func(feedObject json.RawMessage, savePath, filename, spec string, downloadCover, overwrite, duplicate, convertMP3 bool) (any, error)
-
 const ChannelsWebsocketPath = "/ws/channels"
 
-// RouteRegistrar is the narrow HTTP capability required by this adapter. It
-// keeps the adapter independent from the API package and its APIClient type.
+// RouteRegistrar is the narrow HTTP capability required by this adapter.
 type RouteRegistrar interface {
 	RegisterGET(path string, handler gin.HandlerFunc)
 	RegisterPOST(path string, handler gin.HandlerFunc)
@@ -33,16 +27,14 @@ type RouteRegistrar interface {
 // WebsocketRoutes owns the video-channel browser websocket endpoint and its
 // scraper client lifecycle.
 type WebsocketRoutes struct {
-	client             *scraper.ChannelsClient
-	sphCookie          string
-	remoteServerMode   bool
-	createDownloadTask ChannelsTaskCreator
+	client    *scraper.ChannelsClient
+	sphCookie string
 }
 
-func NewWebsocketRoutes(refreshInterval int, db *gorm.DB, sphCookie string, remoteServerMode bool, createDownloadTask ChannelsTaskCreator) *WebsocketRoutes {
+func NewWebsocketRoutes(refreshInterval int, db *gorm.DB, sphCookie string) *WebsocketRoutes {
 	client := scraper.NewChannelsClient(refreshInterval)
 	client.SetDB(db)
-	return &WebsocketRoutes{client: client, sphCookie: sphCookie, remoteServerMode: remoteServerMode, createDownloadTask: createDownloadTask}
+	return &WebsocketRoutes{client: client, sphCookie: sphCookie}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -60,11 +52,23 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 	registrar.RegisterGET("/api/channels/interactioned/list", r.HandleFetchInteractionedFeedList)
 	registrar.RegisterGET("/api/channels/follow/list", r.HandleFetchFollowList)
 	registrar.RegisterGET("/api/channels/play/history", r.HandleFetchPlayHistory)
+	registrar.RegisterGET("/api/channels/postprocess/flows", r.HandleFetchPostprocessFlows)
 	registrar.RegisterGET("/api/channels/feed/share_url", r.HandleFetchFeedShareUrl)
 	registrar.RegisterGET("/api/channels/shared_feed/profile", r.HandleFetchSharedFeedProfile)
 	registrar.RegisterGET("/api/channels/feed/comment/list", r.HandleFetchFeedCommentList)
 	registrar.RegisterGET("/rss/channels", r.HandleFetchFeedListOfContactRSS)
-	registrar.RegisterGET("/api/channels/download_task/create", r.HandleChannelsCreateDownloadTask)
+}
+
+// HandleFetchPostprocessFlows returns wxchannels postprocess flow configs for read-only visualization.
+func (r *WebsocketRoutes) HandleFetchPostprocessFlows(ctx *gin.Context) {
+	flowID := ctx.Query("flow_id")
+	payload, err := GetWXChannelsPostprocessFlowVisualization(flowID)
+	if err != nil {
+		util.Err(ctx, 400, err.Error())
+		return
+	}
+
+	util.Ok(ctx, payload)
 }
 
 // HandleParseSph parses an SPH share link to retrieve video information.
@@ -218,70 +222,6 @@ func (r *WebsocketRoutes) HandleFetchFeedProfile(ctx *gin.Context) {
 		return
 	}
 	util.Ok(ctx, resp)
-}
-
-// HandleChannelsCreateDownloadTask fetches Channels feed details and creates a download task.
-// GET /api/channels/download_task/create
-func (r *WebsocketRoutes) HandleChannelsCreateDownloadTask(ctx *gin.Context) {
-	if r.createDownloadTask == nil {
-		util.Err(ctx, 500, "下载任务服务未初始化")
-		return
-	}
-
-	oid := ctx.Query("oid")
-	nid := ctx.Query("nid")
-	reqUrl := ctx.Query("url")
-	eid := ctx.Query("eid")
-
-	if eid == "" && reqUrl != "" {
-		if parsedURL, err := url.Parse(reqUrl); err == nil {
-			if _eid := parsedURL.Query().Get("eid"); _eid != "" {
-				eid = _eid
-				reqUrl = ""
-			}
-		}
-	}
-	if oid != "" && nid != "" {
-		reqUrl = ""
-	}
-
-	resp, err := r.client.FetchChannelsFeedProfile(oid, nid, reqUrl, eid)
-	if err != nil {
-		util.Err(ctx, 400, err.Error())
-		return
-	}
-
-	contentJSON, err := json.Marshal(resp.Data.Object)
-	if err != nil {
-		util.Err(ctx, 500, "序列化 feed 数据失败: "+err.Error())
-		return
-	}
-
-	savePath := ctx.Query("save_path")
-	filename := ctx.Query("filename")
-	spec := ctx.Query("spec")
-	downloadCover := ctx.Query("download_cover") == "true"
-	overwrite := ctx.Query("overwrite") == "true"
-	duplicate := ctx.Query("duplicate") == "true"
-	convertMP3 := ctx.Query("convert_mp3") == "true"
-
-	result, err := r.createDownloadTask(contentJSON, savePath, filename, spec, downloadCover, overwrite, duplicate, convertMP3)
-	if err != nil {
-		code := 400
-		var dupErr duplicateTaskError
-		if errors.As(err, &dupErr) {
-			code = dupErr.StatusCode()
-		}
-		util.Err(ctx, code, err.Error())
-		return
-	}
-
-	util.Ok(ctx, result)
-}
-
-// duplicateTaskError is used to identify duplicate task errors.
-type duplicateTaskError interface {
-	StatusCode() int
 }
 
 // HandleFetchSharedFeedProfile fetches shared video details.

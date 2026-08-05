@@ -12,6 +12,7 @@ import (
 	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/hermes"
 )
 
 type APIServer struct {
@@ -20,9 +21,16 @@ type APIServer struct {
 	bus       *events.Bus
 }
 
-func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger, db *gorm.DB, staticAssets *webassets.Registry) *APIServer {
+func NewAPIServer(
+	cfg *APIConfig,
+	logger *zerolog.Logger,
+	db *gorm.DB,
+	staticAssets *webassets.Registry,
+	downloader *hermes.HermesEngine,
+	hookManager *hermes.HookManager,
+) *APIServer {
 	srv := manager.NewHTTPServer("API服务", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
-	client := NewAPIClient(cfg, logger, db, staticAssets)
+	client := NewAPIClient(cfg, logger, db, staticAssets, downloader, hookManager)
 	srv.SetHandler(client.HTTPHandler())
 	return &APIServer{
 		HTTPServer: srv,

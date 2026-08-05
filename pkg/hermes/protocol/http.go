@@ -42,9 +42,16 @@ func NewHTTPDriver() *HTTPDriver {
 		stdHTTP: &http.Client{
 			Timeout: 300 * time.Second,
 			Transport: &http.Transport{
+				ForceAttemptHTTP2: true,
 				DialContext: (&net.Dialer{
-					Timeout: 5 * time.Second,
+					Timeout:   5 * time.Second,
+					KeepAlive: 30 * time.Second,
 				}).DialContext,
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 32,
+				MaxConnsPerHost:     0, // no limit, let MaxIdleConnsPerHost govern reuse
+				IdleConnTimeout:     90 * time.Second,
+				TLSHandshakeTimeout: 10 * time.Second,
 			},
 		},
 	}

@@ -2,167 +2,105 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/database/model"
-	"wx_channel/internal/download"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/events"
 	"wx_channel/internal/manager"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
-	"wx_channel/pkg/hermes/protocol"
 )
 
 type APIClient struct {
 	downloader  *hermes.HermesEngine
-	hookManager *hermes.HookManager
 	broadcaster *taskBroadcaster
-	// official      *officialaccount.OfficialAccountClient
-	// channels      *channels.ChannelsClient
-	status_ws    *download.StatusHub
 	filehelper   *FileHelperHandler
 	cfg          *APIConfig
 	engine       *gin.Engine
 	db           *gorm.DB
 	logger       *zerolog.Logger
-	httpHandler  http.Handler
-	staticAssets *webassets.Registry
+	http_handler  http.Handler
+	static_assets *webassets.Registry
 
 	bus               *events.Bus
-	proxyStatusMu     sync.RWMutex
-	cachedProxyStatus string
-	cachedProxyAddr   string
-	svcStatusMu       sync.RWMutex
-	svcStatuses       map[string]events.ServiceStatusChanged
+	proxy_status_mu     sync.RWMutex
+	cached_proxy_status string
+	cached_proxy_addr   string
+	svc_status_mu       sync.RWMutex
+	svc_statuses       map[string]events.ServiceStatusChanged
 
 	// Services
-	accountService      *services.AccountService
-	contentService      *services.ContentService
-	browseService       *services.BrowseService
-	downloadTaskService *services.DownloadTaskService
-	fsService           *services.FSService
+	account_service      *services.AccountService
+	content_service      *services.ContentService
+	browse_service       *services.BrowseService
+	download_task_service *services.DownloadTaskService
+	fs_service           *services.FSService
 }
 
-func NewAPIClient(cfg *APIConfig, parent_logger *zerolog.Logger, db *gorm.DB, staticAssets *webassets.Registry) *APIClient {
+func NewAPIClient(
+	cfg *APIConfig,
+	parent_logger *zerolog.Logger,
+	db *gorm.DB,
+	static_assets *webassets.Registry,
+	downloader *hermes.HermesEngine,
+	hook_manager *hermes.HookManager,
+) *APIClient {
 	logger := parent_logger.With().Str("Client", "api_client").Logger()
-	status_ws := download.NewStatusHub()
 
 	// Initialize services
-	accountService := services.NewAccountService(db)
-	contentService := services.NewContentService(db)
-	browseService := services.NewBrowseService(db)
-	fsService := services.NewFSService()
-	if staticAssets == nil {
-		staticAssets = webassets.NewRegistry()
+	account_service := services.NewAccountService(db)
+	content_service := services.NewContentService(db)
+	browse_service := services.NewBrowseService(db)
+	fs_service := services.NewFSService()
+	if static_assets == nil {
+		static_assets = webassets.NewRegistry()
 	}
 
-	apiClient := &APIClient{
-		status_ws:      status_ws,
+	api_client := &APIClient{
 		cfg:            cfg,
 		engine:         gin.Default(),
 		db:             db,
 		logger:         &logger,
-		staticAssets:   staticAssets,
-		accountService: accountService,
-		contentService: contentService,
-		browseService:  browseService,
-		fsService:      fsService,
+		static_assets:   static_assets,
+		account_service: account_service,
+		content_service: content_service,
+		browse_service:  browse_service,
+		fs_service:      fs_service,
+		downloader:     downloader,
 	}
 
-	hookManager := hermes.NewHookManager()
-	hookScript := cfg.HooksScript
-	if hookScript == "" {
-		conventionPath := filepath.Join(cfg.WorkDir, "hooks.js")
-		if _, err := os.Stat(conventionPath); err == nil {
-			hookScript = conventionPath
-		}
-	}
-	if hookScript != "" {
-		if err := hookManager.Load(hookScript); err != nil {
-			logger.Warn().Err(err).Str("path", hookScript).Msg("Failed to load hook script")
-		}
-	}
+	api_client.download_task_service = services.NewDownloadTaskService(
+		db, &logger, downloader, hook_manager,
+		cfg.WorkDir, cfg.DownloadDir,
+	)
 
-	apiClient.downloader = hermes.New(hermes.HermesNewConfig{
-		Store:  &dbTaskStore{db: db, logger: &logger},
-		Logger: &logger,
-		Config: hermes.HermesEngineConfig{
-			MaxConcurrent:    cfg.MaxRunning,
-			FilenameTemplate: cfg.FilenameTemplate,
-			BasePath:         cfg.DownloadDir,
-			// SpeedLimit: 10 * 1024,
-		},
-	})
-	apiClient.broadcaster = newTaskBroadcaster()
-	apiClient.downloader.SetEventHandler(func(taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
-		logger.Info().Int("task_id", taskID).Str("event", string(event)).Msg("Hermes task event")
-		apiClient.broadcaster.notify(apiClient, taskID, event, progress)
-		if event == hermes.EventFinished && apiClient.bus != nil {
+	api_client.broadcaster = newTaskBroadcaster()
+	api_client.downloader.SetEventHandler(func(task_id int, event hermes.EventType, progress *hermes.TaskProgress) {
+		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
+		api_client.broadcaster.notify(api_client, task_id, event, progress)
+		if event == hermes.EventFinished && api_client.bus != nil {
 			go func() {
-				apiClient.bus.Publish(events.DownloadTaskFinished{TaskID: taskID})
+				api_client.bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
 			}()
 		}
 	})
-	apiClient.hookManager = hookManager
-	apiClient.downloader.SetHooks(hookManager)
-	apiClient.downloader.RegisterProtocol(protocol.NewHTTPDriver())
-	apiClient.downloader.RegisterProtocol(protocol.NewStreamDriver())
-	apiClient.downloader.RegisterProtocol(protocol.NewInlineDriver())
-
-	// Set up composite postprocessor for platform-specific post-download processing
-	apiClient.downloader.SetPostprocessor(NewPlatformPostprocessor(db, logger, cfg.DownloadDir))
-
-	apiClient.downloadTaskService = services.NewDownloadTaskService(db, &logger, apiClient.downloader, hookManager, cfg.WorkDir, cfg.DownloadDir)
-
-	status_ws.OnConnected = func(wsClient *download.StatusWSClient) {
-		data, err := json.Marshal(APIClientWSMessage{
-			Type: "channels_status",
-			Data: apiClient.channelsStatusData(),
-		})
-		if err != nil {
-			return
-		}
-		select {
-		case wsClient.Send <- data:
-		default:
-		}
-	}
-	// channels_client.OnConnected = func(_ *channels.Client) {
-	// 	status_ws.Broadcast(APIClientWSMessage{
-	// 		Type: "channels_status",
-	// 		Data: apiClient.channelsStatusData(),
-	// 	})
-	// }
-	// channels_client.OnDisconnected = func(_ *channels.Client) {
-	// 	status_ws.Broadcast(APIClientWSMessage{
-	// 		Type: "channels_status",
-	// 		Data: apiClient.channelsStatusData(),
-	// 	})
-	// }
 
 	// // Set file transfer helper Channels auto-download callback
-	// apiClient.filehelper.SetFinderAutoDownloadCallback(apiClient.autoCreateChannelsTask)
+	// api_client.filehelper.SetFinderAutoDownloadCallback(api_client.autoCreateChannelsTask)
 	// // Set file transfer helper SPH auto-download callback
-	// apiClient.filehelper.SetSphAutoDownloadCallback(apiClient.autoDownloadSphVideo)
+	// api_client.filehelper.SetSphAutoDownloadCallback(api_client.autoDownloadSphVideo)
 
-	apiClient.SetupRoutes()
-	// apiClient.httpHandler = apiClient.buildHTTPHandler()
-	return apiClient
+	api_client.SetupRoutes()
+	// api_client.http_handler = api_client.buildHTTPHandler()
+	return api_client
 }
 
 func (c *APIClient) SubscribeEvents(bus *events.Bus) {
@@ -172,10 +110,10 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		if !ok {
 			return
 		}
-		c.proxyStatusMu.Lock()
-		c.cachedProxyStatus = ev.Status
-		c.cachedProxyAddr = ev.Addr
-		c.proxyStatusMu.Unlock()
+		c.proxy_status_mu.Lock()
+		c.cached_proxy_status = ev.Status
+		c.cached_proxy_addr = ev.Addr
+		c.proxy_status_mu.Unlock()
 	})
 	bus.Subscribe(events.TypeBrowseHistoryRecorded, func(e events.Event) {
 		ev, ok := e.(events.BrowseHistoryRecorded)
@@ -183,7 +121,7 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 			return
 		}
 		b := ev.Browse
-		if err := c.RecordBrowseHistory(b.ExternalId, services.BrowseHistoryInfo{
+		if err := c.RecordBrowseHistory(b.ExternalId, adapter.BrowseHistoryInfo{
 			PlatformId:        b.PlatformId,
 			AccountExternalId: b.AccountExternalId,
 			AccountNickname:   b.AccountNickname,
@@ -203,12 +141,12 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		if !ok {
 			return
 		}
-		c.svcStatusMu.Lock()
-		if c.svcStatuses == nil {
-			c.svcStatuses = make(map[string]events.ServiceStatusChanged)
+		c.svc_status_mu.Lock()
+		if c.svc_statuses == nil {
+			c.svc_statuses = make(map[string]events.ServiceStatusChanged)
 		}
-		c.svcStatuses[ev.Name] = ev
-		c.svcStatusMu.Unlock()
+		c.svc_statuses[ev.Name] = ev
+		c.svc_status_mu.Unlock()
 	})
 }
 
@@ -234,10 +172,10 @@ type ClientWebsocketResponse struct {
 }
 
 func (c *APIClient) serviceStatusesMap() map[string]manager.ServerStatus {
-	c.svcStatusMu.RLock()
-	defer c.svcStatusMu.RUnlock()
-	result := make(map[string]manager.ServerStatus, len(c.svcStatuses))
-	for name, s := range c.svcStatuses {
+	c.svc_status_mu.RLock()
+	defer c.svc_status_mu.RUnlock()
+	result := make(map[string]manager.ServerStatus, len(c.svc_statuses))
+	for name, s := range c.svc_statuses {
 		result[name] = manager.ServerStatus(s.Status)
 	}
 	return result
@@ -251,22 +189,6 @@ func (c *APIClient) Stop() error {
 	// Pause all Hermes download tasks
 	if c.downloader != nil {
 		c.downloader.PauseAllTask()
-	}
-	// Directly update V1 database: set in-progress download tasks to paused status
-	if c.db != nil {
-		now := time.Now().UnixMilli()
-		c.db.Model(&model.DownloadTask{}).
-			Where("status = ? AND deleted_at IS NULL", model.TaskStatusDownloading).
-			Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": now})
-		c.db.Model(&model.DownloadConnection{}).
-			Where("status = 1 AND deleted_at IS NULL").
-			Updates(map[string]any{"status": 0, "speed": 0, "last_active": now, "updated_at": now})
-	}
-	// if c.channels != nil {
-	// 	c.channels.Stop()
-	// }
-	if c.status_ws != nil {
-		c.status_ws.Stop()
 	}
 	return nil
 }
@@ -293,36 +215,14 @@ func (c *APIClient) HTTPHandler() http.Handler {
 
 // DownloadTaskService returns the download task service.
 func (c *APIClient) DownloadTaskService() *services.DownloadTaskService {
-	return c.downloadTaskService
-}
-
-// CreateDownloadTask is the host capability exposed to registered adapters.
-// Both request and config cross the adapter boundary as JSON so concrete
-// adapter routes do not depend on API or service-layer request types.
-func (c *APIClient) CreateDownloadTask(platform string, contentJSON, configJSON json.RawMessage) (any, error) {
-	if c.downloadTaskService == nil {
-		return nil, fmt.Errorf("下载任务服务未初始化")
-	}
-	var cfg map[string]any
-	if err := json.Unmarshal(configJSON, &cfg); err != nil {
-		return nil, fmt.Errorf("解析下载配置失败: %w", err)
-	}
-	savePath, _ := cfg["save_path"].(string)
-	filename, _ := cfg["filename"].(string)
-	return c.downloadTaskService.CreateTask(services.CreateDownloadTaskBody{
-		Platform: platform,
-		Content:  contentJSON,
-		SavePath: savePath,
-		Filename: filename,
-		Config:   cfg,
-	})
+	return c.download_task_service
 }
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if c.httpHandler == nil {
-		c.httpHandler = c.buildHTTPHandler()
+	if c.http_handler == nil {
+		c.http_handler = c.buildHTTPHandler()
 	}
-	c.httpHandler.ServeHTTP(w, r)
+	c.http_handler.ServeHTTP(w, r)
 }
 
 func (c *APIClient) setupStaticAssetRoutes() {
@@ -373,7 +273,7 @@ func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
 	data, err := frontend.Assets.ReadInject(rel)
 	if err != nil {
-		c.staticAssets.ServeHTTP(ctx.Writer, ctx.Request)
+		c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
 		return
 	}
 	etag := frontend.ChannelStaticAssetETag(data)
@@ -392,7 +292,7 @@ func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 }
 
 func (c *APIClient) handlePlatformStaticAsset(ctx *gin.Context) {
-	c.staticAssets.ServeHTTP(ctx.Writer, ctx.Request)
+	c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
@@ -417,432 +317,3 @@ func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
 }
 
-// ---------------------------------------------------------------------------
-// dbTaskStore is the GORM adapter for hermes.Store.
-// ---------------------------------------------------------------------------
-
-type dbTaskStore struct {
-	db     *gorm.DB
-	logger *zerolog.Logger
-}
-
-func (s *dbTaskStore) debug(format string, args ...interface{}) {
-	if s.logger != nil {
-		s.logger.Info().Msgf("[dbTaskStore] "+format, args...)
-	}
-}
-
-var _ hermes.Store = (*dbTaskStore)(nil)
-var _ hermes.OutputNameStore = (*dbTaskStore)(nil)
-var _ hermes.ResourceOutputStore = (*dbTaskStore)(nil)
-var _ hermes.ResourceCleanupStore = (*dbTaskStore)(nil)
-
-func (s *dbTaskStore) LoadTask(taskID int) (*hermes.TaskJob, error) {
-	var task model.DownloadTask
-	if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-		return nil, err
-	}
-	var resources []model.DownloadResource
-	if err := s.db.Where("task_id = ?", task.Id).Order("merge_order ASC, id ASC").Find(&resources).Error; err != nil {
-		return nil, err
-	}
-	if len(resources) == 0 {
-		return nil, errors.New("任务没有下载资源")
-	}
-	resourceIDs := make([]int, len(resources))
-	for i, resource := range resources {
-		resourceIDs[i] = resource.Id
-	}
-	var endpoints []model.DownloadEndpoint
-	if err := s.db.Where("resource_id IN ? AND enabled = ?", resourceIDs, 1).
-		Order("resource_id ASC, priority ASC, id ASC").Find(&endpoints).Error; err != nil {
-		return nil, err
-	}
-	if len(endpoints) == 0 {
-		return nil, errors.New("任务没有已启用的下载端点")
-	}
-	config := make(map[string]any)
-	if strings.TrimSpace(task.ConfigJSON) != "" {
-		if err := json.Unmarshal([]byte(task.ConfigJSON), &config); err != nil {
-			return nil, fmt.Errorf("解析任务 %d config 失败: %w", task.Id, err)
-		}
-		if config == nil {
-			config = make(map[string]any)
-		}
-	}
-	metadata := make(map[string]any)
-	if strings.TrimSpace(task.MetadataJSON) != "" {
-		if err := json.Unmarshal([]byte(task.MetadataJSON), &metadata); err != nil {
-			return nil, fmt.Errorf("解析任务 %d metadata 失败: %w", task.Id, err)
-		}
-		if metadata == nil {
-			metadata = make(map[string]any)
-		}
-	}
-	endpointsByResource := make(map[int][]hermes.Endpoint, len(resources))
-	for _, endpoint := range endpoints {
-		headers := make(map[string]string)
-		if strings.TrimSpace(endpoint.Headers) != "" {
-			if err := json.Unmarshal([]byte(endpoint.Headers), &headers); err != nil {
-				return nil, fmt.Errorf("解析端点 %d headers 失败: %w", endpoint.Id, err)
-			}
-		}
-		endpointsByResource[endpoint.ResourceId] = append(endpointsByResource[endpoint.ResourceId], hermes.Endpoint{
-			ID:       endpoint.Id,
-			Protocol: endpoint.Protocol,
-			URL:      endpoint.URL,
-			Priority: endpoint.Priority,
-			Headers:  headers,
-			Cookies:  endpoint.Cookies,
-		})
-	}
-	resourceInfos := make([]hermes.ResourceJob, 0, len(resources))
-	for _, resource := range resources {
-		resourceEndpoints := endpointsByResource[resource.Id]
-		if len(resourceEndpoints) == 0 {
-			return nil, fmt.Errorf("资源 %d 没有已启用的下载端点", resource.Id)
-		}
-		extra := parseExtra(resource.Extra)
-		resourceInfos = append(resourceInfos, hermes.ResourceJob{
-			ID:         resource.Id,
-			Name:       resource.Name,
-			Kind:       resource.Kind,
-			Type:       resource.Type,
-			UniqueID:   resource.UniqueID,
-			Endpoints:  resourceEndpoints,
-			Extra:      extra,
-			Size:       resource.Size,
-			Downloaded: resource.Downloaded,
-			Speed:      resource.Speed,
-		})
-	}
-	return &hermes.TaskJob{
-		ID:        task.Id,
-		Name:      task.Name,
-		UniqueID:  task.UniqueID,
-		Platform:  task.PlatformId,
-		Resources: resourceInfos,
-		Config:    config,
-		Metadata:  metadata,
-	}, nil
-}
-
-func (s *dbTaskStore) UpdateStatus(taskID int, status int) error {
-	now := time.Now().UnixMilli()
-	return s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
-		Updates(map[string]any{"status": status, "updated_at": now}).Error
-}
-
-func (s *dbTaskStore) ActivateTask(taskID int) error {
-	now := time.Now().UnixMilli()
-
-	// Get all endpoints for this task.
-	var endpoints []model.DownloadEndpoint
-	if err := s.db.Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", taskID).Find(&endpoints).Error; err != nil {
-		return err
-	}
-
-	// Create connections for endpoints that don't have one yet.
-	for _, ep := range endpoints {
-		var count int64
-		if err := s.db.Model(&model.DownloadConnection{}).Where("endpoint_id = ?", ep.Id).Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
-			host := ""
-			if parsedURL, err := url.Parse(ep.URL); err == nil {
-				host = parsedURL.Host
-			}
-			conn := model.DownloadConnection{
-				EndpointId: ep.Id,
-				WorkerId:   "worker-" + strconv.Itoa(ep.Id),
-				Host:       host,
-				Status:     1,
-				Bytes:      0,
-				Speed:      0,
-				LastActive: now,
-			}
-			conn.CreatedAt = now
-			conn.UpdatedAt = now
-			if err := s.db.Create(&conn).Error; err != nil {
-				return err
-			}
-		}
-	}
-
-	// Set start_time for all resources.
-	if err := s.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND start_time IS NULL", taskID).
-		Updates(map[string]any{"start_time": now, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Activate all endpoints.
-	if err := s.db.Model(&model.DownloadEndpoint{}).
-		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", taskID).
-		Updates(map[string]any{"status": 1, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Activate all connections.
-	return s.db.Model(&model.DownloadConnection{}).
-		Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", taskID).
-		Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now}).Error
-}
-
-func (s *dbTaskStore) UpdateProgress(taskID int, downloaded int64, speed int64) error {
-	now := time.Now().UnixMilli()
-	if err := s.db.Exec(`UPDATE download_connection SET speed = ?, bytes = ?, last_active = ?, updated_at = ?
-		WHERE endpoint_id IN (
-			SELECT id FROM download_endpoint WHERE resource_id IN (
-				SELECT id FROM download_resource WHERE task_id = ?
-			)
-		)`, speed, downloaded, now, now, taskID).Error; err != nil {
-		return err
-	}
-	return s.db.Exec(`UPDATE download_resource SET status = 1, updated_at = ? WHERE task_id = ? AND status IN (0,1)`,
-		now, taskID).Error
-}
-
-func (s *dbTaskStore) UpdateResourceSize(taskID int, size int64) error {
-	now := time.Now().UnixMilli()
-	return s.db.Exec(`UPDATE download_resource SET size = ?, updated_at = ? WHERE task_id = ?`,
-		size, now, taskID).Error
-}
-
-func (s *dbTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
-	s.debug("UpdateOutputName called: task_id=%d resource_id=%d task_name=%q resource_name=%q save_path=%q",
-		update.TaskID, update.ResourceID, update.TaskName, update.ResourceName, update.SavePath)
-
-	if update.TaskID <= 0 || update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
-		s.debug("UpdateOutputName invalid parameters, skipping update")
-		return errors.New("下载文件名更新参数无效")
-	}
-
-	now := time.Now().UnixMilli()
-	s.debug("UpdateOutputName starting transaction to update download_resource: id=%d task_id=%d name=%q",
-		update.ResourceID, update.TaskID, update.ResourceName)
-
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.DownloadResource{}).
-			Where("id = ? AND task_id = ?", update.ResourceID, update.TaskID).
-			Updates(map[string]any{"name": update.ResourceName, "updated_at": now})
-		if result.Error != nil {
-			s.debug("UpdateOutputName download_resource update failed: %v", result.Error)
-			return result.Error
-		}
-		s.debug("UpdateOutputName download_resource RowsAffected=%d", result.RowsAffected)
-		if result.RowsAffected == 0 {
-			return fmt.Errorf("更新资源名未影响任何行: resource_id=%d task_id=%d new_name=%q",
-				update.ResourceID, update.TaskID, update.ResourceName)
-		}
-		if update.TaskName == "" {
-			return nil
-		}
-		return tx.Model(&model.DownloadTask{}).Where("id = ?", update.TaskID).
-			Updates(map[string]any{"name": update.TaskName, "save_path": update.SavePath, "updated_at": now}).Error
-	})
-	if err != nil {
-		s.debug("UpdateOutputName transaction failed: %v", err)
-	} else {
-		s.debug("UpdateOutputName transaction succeeded")
-	}
-	return err
-}
-
-func (s *dbTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) error {
-	if update.TaskID <= 0 || update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
-		return errors.New("最终资源更新参数无效")
-	}
-	now := time.Now().UnixMilli()
-	result := s.db.Model(&model.DownloadResource{}).
-		Where("id = ? AND task_id = ?", update.ResourceID, update.TaskID).
-		Updates(map[string]any{
-			"name":       update.ResourceName,
-			"kind":       update.ResourceKind,
-			"size":       update.ResourceSize,
-			"updated_at": now,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("更新最终资源未影响任何行: resource_id=%d task_id=%d", update.ResourceID, update.TaskID)
-	}
-	return nil
-}
-
-func (s *dbTaskStore) DeleteStaleResources(taskID int, staleResourceIDs []int) error {
-	if taskID <= 0 || len(staleResourceIDs) == 0 {
-		return nil
-	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		// Delete connections for endpoints of stale resources.
-		if err := tx.Exec(`DELETE FROM download_connection WHERE endpoint_id IN (
-			SELECT id FROM download_endpoint WHERE resource_id IN ?
-		)`, staleResourceIDs).Error; err != nil {
-			return err
-		}
-		// Delete endpoints of stale resources.
-		if err := tx.Where("resource_id IN ?", staleResourceIDs).
-			Delete(&model.DownloadEndpoint{}).Error; err != nil {
-			return err
-		}
-		// Delete segments of stale resources.
-		if err := tx.Where("resource_id IN ?", staleResourceIDs).
-			Delete(&model.DownloadSegment{}).Error; err != nil {
-			return err
-		}
-		// Delete the stale resources.
-		if err := tx.Where("id IN ? AND task_id = ?", staleResourceIDs, taskID).
-			Delete(&model.DownloadResource{}).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-}
-
-func (s *dbTaskStore) UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error {
-	now := time.Now().UnixMilli()
-	if err := s.db.Exec(`UPDATE download_connection SET speed = ?, bytes = ?, last_active = ?, updated_at = ?
-		WHERE endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id = ?)`,
-		speed, downloaded, now, now, resourceID).Error; err != nil {
-		return err
-	}
-	return s.db.Model(&model.DownloadResource{}).Where("id = ?", resourceID).
-		Updates(map[string]any{"status": 1, "downloaded": downloaded, "speed": speed, "updated_at": now}).Error
-}
-
-func (s *dbTaskStore) UpdateResourceSizeByID(resourceID int, size int64) error {
-	now := time.Now().UnixMilli()
-	return s.db.Model(&model.DownloadResource{}).Where("id = ?", resourceID).
-		Updates(map[string]any{"size": size, "status": 1, "updated_at": now}).Error
-}
-
-func (s *dbTaskStore) FinishResource(resourceID int) error {
-	now := time.Now().UnixMilli()
-	if err := s.db.Model(&model.DownloadResource{}).Where("id = ?", resourceID).
-		Updates(map[string]any{"status": 2, "finish_time": now, "updated_at": now}).Error; err != nil {
-		return err
-	}
-	return s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
-		WHERE endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id = ?)`, now, resourceID).Error
-}
-
-func (s *dbTaskStore) DeactivateConnections(taskID int) error {
-	now := time.Now().UnixMilli()
-
-	// Update resource status for this task's downloading resources.
-	if err := s.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND status = 1", taskID).
-		Updates(map[string]any{"status": 1, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Update segment status for this task's active segments.
-	if err := s.db.Model(&model.DownloadSegment{}).
-		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?) AND status = 1", taskID).
-		Updates(map[string]any{"status": 1, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Deactivate connections.
-	return s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
-		WHERE endpoint_id IN (
-			SELECT id FROM download_endpoint WHERE resource_id IN (
-				SELECT id FROM download_resource WHERE task_id = ?
-			)
-		)`, now, taskID).Error
-}
-
-func (s *dbTaskStore) FinishTask(taskID int) error {
-	now := time.Now().UnixMilli()
-	s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
-		Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-	s.db.Exec(`UPDATE download_segment SET downloaded = CASE WHEN size > 0 THEN size ELSE downloaded END, status = 2, updated_at = ?
-		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`, now, taskID)
-	s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
-		WHERE endpoint_id IN (
-			SELECT id FROM download_endpoint WHERE resource_id IN (
-				SELECT id FROM download_resource WHERE task_id = ?
-			)
-		)`, now, taskID)
-	s.db.Exec(`UPDATE download_resource SET status = 2, updated_at = ? WHERE task_id = ?`, now, taskID)
-	return nil
-}
-
-func (s *dbTaskStore) RecordError(taskID int, errMsg string) error {
-	return s.db.Model(&model.DownloadTask{}).Where("id = ?", taskID).
-		Updates(map[string]any{"error_message": errMsg, "updated_at": time.Now().UnixMilli()}).Error
-}
-
-func (s *dbTaskStore) CreateSegments(resourceID int, url string, ranges []hermes.SegmentRange) ([]int, error) {
-	now := time.Now().UnixMilli()
-	var ids []int
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Unscoped().Where("resource_id = ?", resourceID).Delete(&model.DownloadSegment{}).Error; err != nil {
-			return err
-		}
-		for _, r := range ranges {
-			seg := model.DownloadSegment{
-				ResourceId:  resourceID,
-				Index:       r.Index,
-				URL:         url,
-				OffsetStart: r.OffsetStart,
-				OffsetEnd:   r.OffsetEnd,
-				Size:        r.Size,
-				Downloaded:  0,
-				Status:      1,
-			}
-			seg.CreatedAt = now
-			seg.UpdatedAt = now
-			if err := tx.Create(&seg).Error; err != nil {
-				return err
-			}
-			ids = append(ids, seg.Id)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
-func (s *dbTaskStore) UpdateSegmentProgress(segID int, downloaded int64) error {
-	now := time.Now().UnixMilli()
-	return s.db.Model(&model.DownloadSegment{}).Where("id = ?", segID).
-		Updates(map[string]any{"downloaded": downloaded, "updated_at": now}).Error
-}
-
-func (s *dbTaskStore) LoadSegmentInfo(resourceID int) ([]hermes.Segment, error) {
-	var segs []model.DownloadSegment
-	if err := s.db.Where("resource_id = ?", resourceID).Order("`index` ASC").Find(&segs).Error; err != nil {
-		return nil, err
-	}
-	infos := make([]hermes.Segment, len(segs))
-	for i, s := range segs {
-		infos[i] = hermes.Segment{
-			ID:          s.Id,
-			Index:       s.Index,
-			URL:         s.URL,
-			OffsetStart: s.OffsetStart,
-			OffsetEnd:   s.OffsetEnd,
-			Size:        s.Size,
-			Downloaded:  s.Downloaded,
-		}
-	}
-	return infos, nil
-}
-
-// parseExtra parses a JSON string into map[string]string for passing through user-defined fields.
-func parseExtra(raw string) map[string]string {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var attrs map[string]string
-	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
-		return nil
-	}
-	return attrs
-}

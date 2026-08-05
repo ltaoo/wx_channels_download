@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
-	"wx_channel/internal/download/types"
+	"wx_channel/internal/adapter"
 	scraper "wx_channel/pkg/scraper/douyin"
 	"wx_channel/pkg/util"
 )
@@ -18,7 +17,7 @@ const platformIDDouyin = "douyin"
 const PlatformID = platformIDDouyin
 
 func init() {
-	registry.Register(&handler{})
+	adapter.Register(&handler{})
 }
 
 type handler struct{}
@@ -29,7 +28,7 @@ type douyinContentJSON struct {
 	URL string `json:"url"`
 }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
+func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
@@ -111,7 +110,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	contentID := content.Id
 
 	// Cover resource
-	var resources []*types.ResourceInfo
+	var resources []*adapter.ResourceInfo
 
 	downloadCover, _ := config["download_cover"].(bool)
 	if downloadCover && videoInfo.CoverURL != "" {
@@ -127,7 +126,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			URL:      videoInfo.CoverURL,
 			Enabled:  1,
 		}
-		resources = append(resources, &types.ResourceInfo{
+		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: coverResource,
 			Endpoints:        []model.DownloadEndpoint{coverEndpoint},
 		})
@@ -146,12 +145,12 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		URL:      videoInfo.URL,
 		Enabled:  1,
 	}
-	resources = append(resources, &types.ResourceInfo{
+	resources = append(resources, &adapter.ResourceInfo{
 		DownloadResource: videoResource,
 		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
 	})
 
-	return &types.DownloadTaskResult{
+	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,

@@ -60,11 +60,6 @@ func ValidateTokenFilepath(file_path string, root_dir string) (string, error) {
 	if _, err := os.Stat(token_filepath); err != nil {
 		return "", err
 	}
-	// script_byte, err := os.ReadFile(token_filepath)
-	// if err != nil {
-	// 	return err
-	// }
-	// settings.InjectExtraScriptAfterJSMain = string(script_byte)
 	return token_filepath, nil
 }
 

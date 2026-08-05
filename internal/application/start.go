@@ -17,16 +17,16 @@ import (
 	"github.com/ltaoo/velo"
 
 	_ "wx_channel/internal/adapter/builtin"
-	"wx_channel/internal/adapterctx"
-	// "wx_channel/internal/admin"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
-	"wx_channel/internal/download/registry"
 	"wx_channel/internal/events"
 	"wx_channel/internal/interceptor"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/hermes"
+	"wx_channel/pkg/hermes/protocol"
 	"wx_channel/pkg/system"
 )
 
@@ -50,7 +50,6 @@ func Start(cfg *config.Config) {
 	logger := zerolog.New(log_file).With().Timestamp().Logger()
 	log.Logger = zerolog.New(zerolog.MultiLevelWriter(os.Stderr, log_file)).With().
 		Timestamp().
-		Str("service", "box").
 		Str("version", cfg.Version).
 		Logger()
 
@@ -61,62 +60,90 @@ func Start(cfg *config.Config) {
 		return
 	}
 
-	api_cfg := api.NewAPIConfig(cfg, false)
-	staticAssets := webassets.NewRegistry()
+	api_cfg := api.NewAPIConfig(cfg)
+	static_assets := webassets.NewRegistry()
 	bus := events.NewBus()
-	adapterCtx := adapterctx.AdapterContext{DB: b.DB, Logger: logger, Bus: bus, BasePath: api_cfg.DownloadDir}
-	certFiles := config.LoadCertFiles()
-	interceptor_srv := interceptor.NewInterceptorServer(cfg, certFiles)
+	cert_files := config.LoadCertFiles()
+	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files)
 	interceptor_srv.SetLog(log_file)
 	interceptor_srv.SubscribeEvents(bus)
 
-	tableData := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
+	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
 	if cfg.FullPath != "" {
-		tableData = append(tableData, []string{"Config File", cfg.FullPath})
+		table_data = append(table_data, []string{"Config File", cfg.FullPath})
 	}
-	if api_cfg.RemoteServerEnabled {
-		tableData = append(tableData, []string{"Download Dir", "Remote Server"})
+	table_data = append(table_data, []string{"Download Dir", api_cfg.DownloadDir})
+	// --- Hook manager ---
+	hook_manager := hermes.NewHookManager()
+	if script := api_cfg.HooksScript; script != "" {
+		if err := hook_manager.Load(script); err != nil {
+			logger.Warn().Err(err).Str("path", script).Msg("Failed to load hook script")
+		}
 	} else {
-		tableData = append(tableData, []string{"Download Dir", api_cfg.DownloadDir})
+		convention_path := filepath.Join(cfg.WorkDir, "hooks.js")
+		if _, err := os.Stat(convention_path); err == nil {
+			if err := hook_manager.Load(convention_path); err != nil {
+				logger.Warn().Err(err).Str("path", convention_path).Msg("Failed to load hook script")
+			}
+		}
 	}
-	api_srv := api.NewAPIServer(api_cfg, &adapterCtx.Logger, adapterCtx.DB, staticAssets)
-	api_srv.SubscribeEvents(adapterCtx.Bus)
-	// admin_srv := admin.NewAdminServer(cfg, b, adapterCtx.Bus)
 
-	adapterHandles := make([]registry.RuntimeHandle, 0)
-	for _, platformID := range registry.IDs() {
-		handler := registry.Get(platformID)
-		runtimeAdapter, ok := handler.(registry.RuntimeAdapter)
+	// --- Database store ---
+	task_store := database.NewDBTaskStore(b.DB, &logger)
+
+	// --- Download engine ---
+	downloader := hermes.New(hermes.HermesNewConfig{
+		Store:  task_store,
+		Logger: &logger,
+		Config: hermes.HermesEngineConfig{
+			MaxConcurrent:    api_cfg.MaxRunning,
+			FilenameTemplate: api_cfg.FilenameTemplate,
+			BasePath:         api_cfg.DownloadDir,
+		},
+	})
+	downloader.RegisterProtocol(protocol.NewHTTPDriver())
+	downloader.RegisterProtocol(protocol.NewStreamDriver())
+	downloader.RegisterProtocol(protocol.NewInlineDriver())
+	downloader.SetHooks(hook_manager)
+	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, logger, api_cfg.DownloadDir))
+
+	// --- API service ---
+	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB, static_assets, downloader, hook_manager)
+	api_srv.SubscribeEvents(bus)
+	// admin_srv := admin.NewAdminServer(cfg, b, bus)
+	if cfg.GlobalScriptPath != "" {
+		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
+	}
+	pterm.DefaultTable.WithHasHeader().WithData(table_data).Render()
+	fmt.Println()
+
+	adapter_handles := make([]adapter.RuntimeHandle, 0)
+	for _, platform_id := range adapter.IDs() {
+		handler := adapter.Get(platform_id)
+		runtime_adapter, ok := handler.(adapter.RuntimeAdapter)
 		if !ok {
 			continue
 		}
-		handle, err := runtimeAdapter.RegisterRuntime(registry.RuntimeDeps{
-			StaticAssets:       staticAssets,
-			Routes:             api_srv.APIClient,
-			Interceptor:        interceptor_srv.Interceptor,
-			DB:                 adapterCtx.DB,
-			Logger:             &adapterCtx.Logger,
-			Bus:                adapterCtx.Bus,
-			Config:             cfg,
-			RemoteServerMode:   api_cfg.RemoteServerMode,
-			CreateDownloadTask: api_srv.APIClient.CreateDownloadTask,
+		handle, err := runtime_adapter.RegisterRuntime(adapter.RuntimeDeps{
+			StaticAssets:     static_assets,
+			Routes:           api_srv.APIClient,
+			Interceptor:      interceptor_srv.Interceptor,
+			DB:               b.DB,
+			Logger:           &logger,
+			Bus:              bus,
+			Config:           cfg,
 		})
 		if err != nil {
-			color.Red(fmt.Sprintf("Failed to register platform %s: %v", platformID, err))
+			color.Red(fmt.Sprintf("Failed to register platform %s: %v", platform_id, err))
 			return
 		}
-		adapterHandles = append(adapterHandles, handle)
-		if scriptHandle, ok := handle.(registry.GlobalScriptHandle); ok && scriptHandle.HasGlobalScript() {
-			tableData = append(tableData, []string{"Global Script", scriptHandle.GlobalScriptFilepath()})
-		}
+		adapter_handles = append(adapter_handles, handle)
 	}
-	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-	fmt.Println()
 
 	cleanup := func() {
 		fmt.Printf("\nShutting down downloader...\n")
-		for i := len(adapterHandles) - 1; i >= 0; i-- {
-			adapterHandles[i].Stop()
+		for i := len(adapter_handles) - 1; i >= 0; i-- {
+			adapter_handles[i].Stop()
 		}
 		if err := interceptor_srv.Stop(); err != nil {
 			color.Red(fmt.Sprintf("Failed to stop proxy service: %v\n", err))
@@ -124,6 +151,7 @@ func Start(cfg *config.Config) {
 		if err := api_srv.Stop(); err != nil {
 			color.Red(fmt.Sprintf("Failed to stop API service: %v\n", err))
 		}
+		task_store.Shutdown()
 		// if err := admin_srv.Stop(); err != nil {
 		// 	color.Red(fmt.Sprintf("Failed to stop GUI/Admin service: %v\n", err))
 		// }

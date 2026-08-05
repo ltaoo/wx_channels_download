@@ -1,5 +1,5 @@
 /// <reference path="../utils.js" />
-/// <reference path="core.js" />
+/// <reference path="model.js" />
 /**
  * @file Content list page entry.
  */

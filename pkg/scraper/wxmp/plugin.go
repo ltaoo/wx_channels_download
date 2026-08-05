@@ -214,12 +214,16 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 					frontend.InjectAssetURL(assetBaseURL, "utils.js"),
 					frontend.InjectAssetURL(assetBaseURL, "components.js"),
 					frontend.InjectAssetURL(assetBaseURL, "virtual-list-view.js"),
-					frontend.InjectAssetURL(assetBaseURL, "download/core.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
+					frontend.InjectAssetURL(assetBaseURL, "download/view.js"),
 					ChannelInjectAssetURL(assetBaseURL, "mp.ws.js"),
 				)
 				if cfg.PagespyEnabled {
 					/** Online debugging */
 					frontend.AppendScriptSrcs(&injected, script_attr, frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), frontend.InjectAssetURL(assetBaseURL, "pagespy.js"))
+				}
+				if cfg.InjectContentScript != "" {
+					frontend.AppendInlineScript(&injected, script_attr, cfg.InjectContentScript)
 				}
 				html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 				ctx.SetResponseBody(html)

@@ -448,6 +448,8 @@ type ArticleCgiData struct {
 	IPWording                IPWording           `json:"ip_wording"`
 	ShowIPWording            int                 `json:"show_ip_wording"`
 	IsAcctAreaShield         int                 `json:"is_acct_area_shield"`
+	Appmsgalbuminfo          map[string]interface{} `json:"appmsgalbuminfo"`
+	PublicTagInfo            map[string]interface{} `json:"public_tag_info"`
 	ShieldAcctAreaids        []interface{}       `json:"shield_acct_areaids"`
 	StyleType                int                 `json:"style_type"`
 	ShieldAreasInfo          []interface{}       `json:"shield_areas_info"`
@@ -541,6 +543,7 @@ type WatermarkInfo struct {
 
 // UserInfo represents the user_info field.
 type UserInfo struct {
+	ShortLink                string            `json:"short_link"`
 	IsPaid                   int               `json:"is_paid"`
 	ClientVersion            string            `json:"clientversion"`
 	Ckeys                    []interface{}     `json:"ckeys"`

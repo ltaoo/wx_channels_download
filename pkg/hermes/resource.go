@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -718,6 +719,11 @@ func (d *HermesEngine) endpointCandidates(resourceEndpoints []Endpoint) ([]endpo
 	return candidates, nil
 }
 
+// probeConcurrency caps the number of concurrent Prepare requests during the
+// upfront size-discovery phase. This balances latency (parallel probes) against
+// server-side rate-limiting (aggressive concurrency may trigger CDN throttling).
+const probeConcurrency = 5
+
 // ensureResourceSizes probes each resource to determine its size before the
 // download loop starts. When all resource sizes are known upfront, the API can
 // compute correct task-level aggregate progress (sum of all resource segments
@@ -727,33 +733,80 @@ func (d *HermesEngine) endpointCandidates(resourceEndpoints []Endpoint) ([]endpo
 // Returns a map of resourceID→size for resources whose size was successfully
 // determined.
 func (d *HermesEngine) ensureResourceSizes(ctx context.Context, taskID int, resources []ResourceJob) map[int]int64 {
+	if len(resources) == 0 {
+		return nil
+	}
+	if len(resources) == 1 {
+		// Single resource: no benefit from parallelism overhead.
+		return d.probeResourceSizesSeq(ctx, taskID, resources)
+	}
+	return d.probeResourceSizesParallel(ctx, taskID, resources)
+}
+
+func (d *HermesEngine) probeResourceSizesSeq(ctx context.Context, taskID int, resources []ResourceJob) map[int]int64 {
+	var mu sync.Mutex
 	sizes := make(map[int]int64)
 	for i := range resources {
 		res := &resources[i]
-		candidates, err := d.endpointCandidates(res.Endpoints)
+		if err := ctx.Err(); err != nil {
+			return sizes
+		}
+		d.probeOneResource(ctx, taskID, res, &mu, &sizes)
+	}
+	return sizes
+}
+
+func (d *HermesEngine) probeResourceSizesParallel(ctx context.Context, taskID int, resources []ResourceJob) map[int]int64 {
+	sizes := make(map[int]int64)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, probeConcurrency)
+
+	for i := range resources {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(res *ResourceJob) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			d.probeOneResource(ctx, taskID, res, &mu, &sizes)
+		}(&resources[i])
+	}
+	wg.Wait()
+	return sizes
+}
+
+func (d *HermesEngine) probeOneResource(ctx context.Context, taskID int, res *ResourceJob, mu *sync.Mutex, sizes *map[int]int64) {
+	candidates, err := d.endpointCandidates(res.Endpoints)
+	if err != nil {
+		return
+	}
+	for _, c := range candidates {
+		if ctx.Err() != nil {
+			return
+		}
+		if c.driver == nil {
+			continue
+		}
+		prepared, err := c.driver.Prepare(ctx, c.endpoint)
 		if err != nil {
 			continue
 		}
-		for _, c := range candidates {
-			if ctx.Err() != nil {
-				return sizes
-			}
-			if c.driver == nil {
-				continue
-			}
-			prepared, err := c.driver.Prepare(ctx, c.endpoint)
-			if err != nil {
-				continue
-			}
-			if prepared.Size > 0 {
-				_ = d.updateResourceSize(taskID, res.ID, prepared.Size)
-				res.Size = prepared.Size
-				sizes[res.ID] = prepared.Size
-				break
-			}
+		if prepared.Size > 0 {
+			_ = d.updateResourceSize(taskID, res.ID, prepared.Size)
+			res.Size = prepared.Size
+			mu.Lock()
+			(*sizes)[res.ID] = prepared.Size
+			mu.Unlock()
+			return
 		}
 	}
-	return sizes
 }
 
 // absFilePath constructs absolute path: basePath + savePath + name.
@@ -833,8 +886,14 @@ func chooseSegmentCount(prepared PreparedResource) int {
 		return 1
 	}
 	count := int((prepared.Size + minimumSegmentSize - 1) / minimumSegmentSize)
-	if count > defaultSegmentCount {
-		count = defaultSegmentCount
+	maxCount := defaultSegmentCount
+	// For very large files (≥ 2 GiB), allow more segments so each segment
+	// stays near the minimum size and bandwidth saturation improves.
+	if prepared.Size >= 2*1024*1024*1024 {
+		maxCount = 64
+	}
+	if count > maxCount {
+		count = maxCount
 	}
 	return count
 }

@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
-	"wx_channel/internal/download/types"
+	"wx_channel/internal/adapter"
 	scraper "wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
 )
@@ -18,7 +17,7 @@ const platformIDBilibili = "bilibili"
 const PlatformID = platformIDBilibili
 
 func init() {
-	registry.Register(&handler{})
+	adapter.Register(&handler{})
 }
 
 type handler struct{}
@@ -30,7 +29,7 @@ type bilibiliContentJSON struct {
 	PageNum int    `json:"page_num"`
 }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*types.DownloadTaskResult, error) {
+func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
@@ -62,7 +61,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	return buildTaskFromVideoInfo(videoInfos[0], input.URL, config)
 }
 
-func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config map[string]any) (*types.DownloadTaskResult, error) {
+func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config map[string]any) (*adapter.DownloadTaskResult, error) {
 	now := util.NowMillis()
 
 	content := &model.Content{
@@ -112,7 +111,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config ma
 	extraJSON := buildExtraJSON(info.VideoID, info.Title)
 	contentID := content.Id
 
-	var resources []*types.ResourceInfo
+	var resources []*adapter.ResourceInfo
 
 	// Cover resource (optional)
 	downloadCover, _ := config["download_cover"].(bool)
@@ -124,7 +123,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config ma
 			UniqueID:  info.VideoID + "_cover",
 			Extra:     extraJSON,
 		}
-		resources = append(resources, &types.ResourceInfo{
+		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: coverResource,
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "https",
@@ -147,7 +146,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config ma
 		URL:      info.URL,
 		Enabled:  1,
 	}
-	resources = append(resources, &types.ResourceInfo{
+	resources = append(resources, &adapter.ResourceInfo{
 		DownloadResource: videoResource,
 		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
 	})
@@ -162,7 +161,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config ma
 			MergeOrder: 1,
 			Extra:      extraJSON,
 		}
-		resources = append(resources, &types.ResourceInfo{
+		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: audioResource,
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "https",
@@ -172,7 +171,7 @@ func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config ma
 		})
 	}
 
-	return &types.DownloadTaskResult{
+	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,

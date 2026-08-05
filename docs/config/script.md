@@ -26,13 +26,3 @@ function beforeFilename(filename, params) {
 }
 ```
 
-
-## 主脚本之后插入的脚本
-
-```yaml
-inject:
-  extraScript:
-    afterJSMain: "./extra.js"
-```
-
-可以用来自定义额外功能

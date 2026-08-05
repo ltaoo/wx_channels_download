@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/services"
 	"wx_channel/pkg/hermes"
 )
 
@@ -213,8 +214,8 @@ func (c *APIClient) maybeBroadcastStats(b *taskBroadcaster, force bool) {
 // DownloadTaskWSMessage only carries the event type; the Tasks array is fully isomorphic with REST data.list[].
 type DownloadTaskWSMessage struct {
 	Type  string               `json:"type"`
-	Tasks []DownloadTaskRecord `json:"tasks,omitempty"`
-	Stats *DownloadTaskStats   `json:"stats,omitempty"`
+	Tasks []services.DownloadTaskRecord `json:"tasks,omitempty"`
+	Stats *services.DownloadTaskStats   `json:"stats,omitempty"`
 }
 
 var v1DownloadTaskUpgrader = websocket.Upgrader{
@@ -274,7 +275,7 @@ func (h *taskWSPool) BroadcastTasks(taskIDs []int, payload DownloadTaskWSMessage
 }
 
 // BroadcastStats pushes task statistics to all clients.
-func (h *taskWSPool) BroadcastStats(stats *DownloadTaskStats) {
+func (h *taskWSPool) BroadcastStats(stats *services.DownloadTaskStats) {
 	data, err := json.Marshal(DownloadTaskWSMessage{
 		Type:  downloadTaskWSStats,
 		Stats: stats,
@@ -316,8 +317,8 @@ func (c *APIClient) handleDownloadTaskWS(ctx *gin.Context) {
 	go client.writePump()
 
 	if client.taskID != 0 {
-		if record, recordErr := c.buildDownloadTaskRecord(client.taskID); recordErr == nil && record != nil {
-			client.enqueue(DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Tasks: []DownloadTaskRecord{*record}})
+		if record, recordErr := c.download_task_service.BuildTaskRecord(client.taskID); recordErr == nil && record != nil {
+			client.enqueue(DownloadTaskWSMessage{Type: downloadTaskWSUpsert, Tasks: []services.DownloadTaskRecord{*record}})
 		}
 		// Populate the progress cache so subsequent progress broadcasts are instant.
 		c.cacheTaskProgressMeta(client.taskID)
@@ -328,9 +329,9 @@ func (c *APIClient) handleDownloadTaskWS(ctx *gin.Context) {
 }
 
 func (c *APIClient) broadcastDownloadTaskUpsert(taskIDs []int) {
-	records := make([]DownloadTaskRecord, 0, len(taskIDs))
+	records := make([]services.DownloadTaskRecord, 0, len(taskIDs))
 	for _, id := range taskIDs {
-		record, err := c.buildDownloadTaskRecord(id)
+		record, err := c.download_task_service.BuildTaskRecord(id)
 		if err != nil || record == nil {
 			continue
 		}
@@ -386,7 +387,7 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 		errorMessage = task.ErrorMessage
 	}
 
-	files := make([]DownloadTaskFileRecord, 0, len(p.Resources))
+	files := make([]services.DownloadTaskFileRecord, 0, len(p.Resources))
 	for _, rp := range p.Resources {
 		status := "waiting"
 		if rp.Size > 0 && rp.Downloaded >= rp.Size {
@@ -410,7 +411,7 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 		} else if status == "downloading" {
 			fileResourceStatus = model.TaskStatusDownloading
 		}
-		files = append(files, DownloadTaskFileRecord{
+		files = append(files, services.DownloadTaskFileRecord{
 			ID:           rp.ID,
 			Name:         rp.Name,
 			Kind:         rp.Kind,
@@ -420,18 +421,18 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 			Size:         rp.Size,
 			Downloaded:   rp.Downloaded,
 			Speed:        rp.Speed,
-			Progress:     taskProgressPercent(rp.Downloaded, rp.Size, fileResourceStatus),
+			Progress:     services.TaskProgressPercent(rp.Downloaded, rp.Size, fileResourceStatus),
 			URL:          entry.resourceURLs[rp.ID],
 			OutputPath:   rp.Name,
 			Error:        errorMessage,
 		})
 	}
 
-	effectiveStatus := computeEffectiveTaskStatus(cachedStatus, files)
+	effectiveStatus := services.ComputeEffectiveTaskStatus(cachedStatus, files)
 
-	pct := taskProgressPercent(p.Downloaded, p.TotalSize, effectiveStatus)
+	pct := services.TaskProgressPercent(p.Downloaded, p.TotalSize, effectiveStatus)
 
-	record := DownloadTaskRecord{
+	record := services.DownloadTaskRecord{
 		ID:           task.Id,
 		ContentID:    task.ContentId,
 		ParentTaskID: task.ParentTaskID,
@@ -460,7 +461,7 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 
 	v1TaskHub.BroadcastTasks([]int{taskID}, DownloadTaskWSMessage{
 		Type:  downloadTaskWSUpsert,
-		Tasks: []DownloadTaskRecord{record},
+		Tasks: []services.DownloadTaskRecord{record},
 	})
 }
 
@@ -482,7 +483,7 @@ func (c *APIClient) broadcastDownloadTaskStats() {
 		c.logger.Error().Err(err).Msg("Failed to query download task statistics")
 		return
 	}
-	stats := &DownloadTaskStats{}
+	stats := &services.DownloadTaskStats{}
 	for _, sc := range counts {
 		stats.Total += sc.Count
 		switch sc.Status {
@@ -501,7 +502,7 @@ func (c *APIClient) broadcastDownloadTaskStats() {
 	v1TaskHub.BroadcastStats(stats)
 }
 
-func (c *APIClient) broadcastDownloadTaskDelete(records []DownloadTaskRecord) {
+func (c *APIClient) broadcastDownloadTaskDelete(records []services.DownloadTaskRecord) {
 	if len(records) == 0 {
 		return
 	}

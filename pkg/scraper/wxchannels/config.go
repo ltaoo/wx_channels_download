@@ -1,9 +1,6 @@
 package wxchannels
 
 import (
-	"os"
-	"path"
-	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/viper"
@@ -37,9 +34,8 @@ type InterceptorConfig struct {
 	PageppyServerAPI                    string         `json:"pagespyServerAPI"`
 	DebugShowError                      bool           `json:"debugShowError"`
 	ChannelsDisableLocationToHome       bool           `json:"channelsDisableLocationToHome"`
-	InjectExtraScriptAfterJSMain        string         `json:"-"`
-	InjectGlobalScriptFilepath          string         `json:"-"`
 	InjectGlobalScript                  string         `json:"-"`
+	InjectContentScript                 string         `json:"-"`
 	FrontendVariables                   map[string]any `json:"-"`
 }
 
@@ -70,35 +66,14 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
 		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
 		OfficialAccountRemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
-		InjectExtraScriptAfterJSMain:        viper.GetString("inject.extraScript.afterJSMain"),
-		InjectGlobalScriptFilepath:          viper.GetString("inject.globalScript"),
 		FrontendVariables:                   make(map[string]any),
 	}
 	if viper.GetBool("channels.disableLocationToHome") {
 		settings.ChannelsDisableLocationToHome = true
 	}
 
-	globalScriptPath := path.Join(c.RootDir, "global.js")
-	if _, err := os.Stat(globalScriptPath); err == nil {
-		scriptByte, err := os.ReadFile(globalScriptPath)
-		if err == nil {
-			settings.InjectGlobalScriptFilepath = globalScriptPath
-			settings.InjectGlobalScript = string(scriptByte)
-		}
-	}
-
-	extraJSFilepath := settings.InjectExtraScriptAfterJSMain
-	if extraJSFilepath != "" {
-		if !filepath.IsAbs(extraJSFilepath) {
-			extraJSFilepath = filepath.Join(c.RootDir, extraJSFilepath)
-		}
-		if _, err := os.Stat(extraJSFilepath); err == nil {
-			scriptByte, err := os.ReadFile(extraJSFilepath)
-			if err == nil {
-				settings.InjectExtraScriptAfterJSMain = string(scriptByte)
-			}
-		}
-	}
+	settings.InjectGlobalScript = c.GlobalScriptContent
+	settings.InjectContentScript = c.ContentScriptContent
 	return settings
 }
 

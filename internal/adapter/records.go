@@ -8,10 +8,24 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/services"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/util"
 )
+
+// BrowseHistoryInfo carries the information needed to record a browse history entry.
+type BrowseHistoryInfo struct {
+	PlatformId        string
+	AccountExternalId string
+	AccountNickname   string
+	AccountAvatarURL  string
+	ContentType       string
+	ContentTitle      string
+	ContentURL        string
+	ContentSourceURL  string
+	ContentCoverURL   string
+	ExtraData         map[string]any
+	ExtraDataJSON     string
+}
 
 // PlatformBrowserProfile is a common data structure extracted by the interceptor
 // when a user browses a platform page. Platform adapters translate their
@@ -32,7 +46,7 @@ type PlatformBrowserProfile struct {
 }
 
 type BrowseRecorder interface {
-	RecordBrowseHistory(uniqueMark string, info services.BrowseHistoryInfo) error
+	RecordBrowseHistory(uniqueMark string, info BrowseHistoryInfo) error
 }
 
 type RecordResult struct {
@@ -94,7 +108,7 @@ func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *PlatformBrowserP
 }
 
 func RecordBrowse(recorder BrowseRecorder, logger zerolog.Logger, profile *PlatformBrowserProfile, accountExternalID string) {
-	if err := recorder.RecordBrowseHistory(profile.ContentExternalId, services.BrowseHistoryInfo{
+	if err := recorder.RecordBrowseHistory(profile.ContentExternalId, BrowseHistoryInfo{
 		PlatformId:        profile.PlatformId,
 		AccountExternalId: accountExternalID,
 		AccountNickname:   profile.AccountNickname,

@@ -30,21 +30,6 @@
     { client: http_client },
   );
 
-  const reportArticleReq = new Timeless.RequestCore((data) => {
-    return fetch("/api/browse/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    }).then(function (r) {
-      return r.json();
-    });
-  });
-
-  const createDownloadTaskReq = new Timeless.RequestCore(
-    (body) => request.post("/api/v1/download_task/create", body),
-    { client: http_client },
-  );
-
   const msgListReq = new Timeless.RequestCore(
     (params) => request.get("/api/mp/msg/list", params),
     { client: http_client },
@@ -179,36 +164,25 @@
   }
 
   function report_article_loaded() {
-    console.log(
-      "report_article_loaded",
-      window.cgiDataNew,
-      window.__wxmp_article_reported__,
-    );
     if (!window.cgiDataNew || window.__wxmp_article_reported__) {
       return;
     }
     window.__wxmp_article_reported__ = true;
-    WXU.downloader.browse([window.cgiDataNew], { platform: "wxmp" });
+    const article = window.cgiDataNew;
+    const articles = [article];
+    WXU.log
+      .Info()
+      .Str("file", "mp.ws.js")
+      .JSON("article", { title: article.title })
+      .Msg("before downloader.browse");
+    WXU.downloader.browse(articles, { platform: "wxmp" });
   }
 
   async function create_download_task(popover$, $btn) {
     WXU.log.Info().Msg("[mp.wx.js]create_download_task");
-    var sp = new URLSearchParams(location.search);
-    const meta = (() => {
-      if (!window.cgiDataNew?.bizuin) {
-        return {
-          bizuin: sp.get("__biz"),
-          mid: Number(sp.get("mid")),
-          idx: Number(sp.get("idx")),
-          sn: sp.get("sn"),
-        };
-      }
-      return {};
-    })();
-    const [error, data] = await WXU.downloader.create(
-      [{ ...window.cgiDataNew, ...meta }],
-      { platform: "wxmp" },
-    );
+    const [error, data] = await WXU.downloader.create([window.cgiDataNew], {
+      platform: "wxmp",
+    });
     if (error) {
       WXU.log.Error(error).Msg("[mp.wx.js]create failed");
       WXU.error({ msg: error.message });
@@ -224,11 +198,10 @@
   }
 
   function DownloaderEntry(props) {
-    const vm$ = DownloaderPanelViewModel({
-      onRequestClose() {
-        props.popover$.hide();
-      },
-    });
+    const vm$ =
+      typeof downloadermodel$ !== undefined
+        ? downloadermodel$
+        : DownloaderPanelViewModel({});
     return Button(
       {
         attributes: {
@@ -456,14 +429,6 @@
       DownloaderEntry({
         popover$,
         onClick: handle_download_click,
-        onMounted(vm$) {
-          WXU.downloader.create = function (feeds, opt) {
-            return vm$.methods.createDownloadTask(feeds, opt);
-          };
-          WXU.downloader.browse = function (feeds, opt) {
-            return vm$.methods.createBrowseHistories(feeds, opt);
-          };
-        },
       }),
       $btn,
     );
@@ -605,25 +570,32 @@
       location.pathname.match(/\/s\/[0-9a-zA-Z-_]{1,}/) ||
       location.pathname === "/s"
     );
-    console.log(
-      "[wxmp.ws.js]page location pathname",
-      location.pathname,
-      isArticleURL,
-    );
+    WXU.log
+      .Info()
+      .Str("file", "mp.ws.js")
+      .Str("url", location.href)
+      .Bool("is_article_url", isArticleURL)
+      .Msg("main");
     if (!isArticleURL) {
       return;
     }
+    var sp = new URLSearchParams(location.search);
+    if (!window.cgiDataNew?.bizuin) {
+      Object.assign(window.cgiDataNew, {
+        bizuin: sp.get("__biz"),
+        mid: Number(sp.get("mid")),
+        idx: Number(sp.get("idx")),
+        sn: sp.get("sn"),
+      });
+    }
     report_article_loaded();
-    console.log("[wxmp.ws.js]before observe_node .interaction_bar");
     WXU.observe_node({
       selector: ".interaction_bar",
       container: "body",
       onOk(node) {
-        console.log(
-          "[wxmp.ws.js]observe_node callback",
-          node,
-          document.querySelectorAll(".interaction_bar"),
-        );
+        WXU.log
+          .Info()
+          .Msg("main - find the container to insert download button");
         if (__download_btn_inserted) {
           return;
         }

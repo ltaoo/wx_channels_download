@@ -166,7 +166,7 @@ func (d *HermesEngine) copyReader(
 	resourceID int,
 	onProgress func(total, speed int64) error,
 ) error {
-	buf := make([]byte, 32*1024)
+	buf := make([]byte, readBufferSize)
 	speedSampler := newProgressSpeedSampler(time.Now(), *downloaded)
 	lastLog := time.Now()
 	lastLogDownloaded := *downloaded
@@ -546,7 +546,7 @@ func (d *HermesEngine) downloadSegment(
 			Dur("openElapsed", openElapsed).
 			Msg("seg: Open() done, reading")
 
-		buf := make([]byte, 32*1024)
+		buf := make([]byte, readBufferSize)
 		for downloaded < segment.Size {
 			chunkStart := time.Now()
 			remaining := segment.Size - downloaded
@@ -678,6 +678,8 @@ var errReadTimeout = errors.New("read timeout: CDN connection stalled")
 // readWithTimeout performs a single Read with a deadline. If the Read does not
 // return within the timeout, the reader is closed to unblock the goroutine and
 // errReadTimeout is returned so the caller can retry.
+// The per-read goroutine overhead is amortized by the 256 KiB read buffer,
+// which reduces the number of Read calls by 8× compared to the old 32 KiB buffer.
 func (d *HermesEngine) readWithTimeout(reader io.Reader, buf []byte) (int, error) {
 	type readResult struct {
 		n   int

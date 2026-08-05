@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/types"
 )
 
 // NovelChapter represents a single chapter in a novel.
@@ -58,7 +58,7 @@ func MockNovel() *NovelDetail {
 // BuildDownloadTask builds a COLLECTION download task from a NovelDetail.
 // It creates resources for profile.html, cover.jpg, and each chapter
 // (saved under chapters/0001.html etc.).
-func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.DownloadTaskResult, error) {
+func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
@@ -73,10 +73,10 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 	}
 	contentID := platformID + ":" + novel.ProfileURL
 
-	var resources []*types.ResourceInfo
+	var resources []*adapter.ResourceInfo
 
 	// profile page resource
-	resources = append(resources, &types.ResourceInfo{
+	resources = append(resources, &adapter.ResourceInfo{
 		DownloadResource: model.DownloadResource{
 			ContentId: &contentID,
 			Name:      "profile",
@@ -91,7 +91,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 
 	// cover image resource (optional)
 	if novel.CoverURL != "" {
-		resources = append(resources, &types.ResourceInfo{
+		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: model.DownloadResource{
 				ContentId: &contentID,
 				Name:      "cover",
@@ -107,7 +107,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 
 	// chapter resources (under chapters/ subdirectory)
 	for _, ch := range novel.Chapters {
-		resources = append(resources, &types.ResourceInfo{
+		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: model.DownloadResource{
 				ContentId: &contentID,
 				Name:      fmt.Sprintf("chapters/%04d", ch.Index),
@@ -121,7 +121,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*types.D
 		})
 	}
 
-	return &types.DownloadTaskResult{
+	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:  &contentID,
 			Name:       title,

@@ -35,7 +35,7 @@
 
 ### 3.1 统一的 Adapter 协议
 
-`internal/download/registry/registry.go` 已定义：
+`internal/adapter/adapter.go` 已定义：
 
 - `PlatformHandler`：平台内容解析和下载任务构建；
 - `RuntimeAdapter`：安装路由、资源和拦截器等运行时能力；
@@ -46,7 +46,7 @@
 
 ### 3.2 宿主能力注入
 
-`internal/adapter/wxchannels/register.go` 中的 `RegisterRuntime` 接收 `registry.RuntimeDeps`，说明 adapter 已开始通过能力接口访问宿主，而不是直接控制整个应用。
+`internal/adapter/wxchannels/register.go` 中的 `RegisterRuntime` 接收 `adapter.RuntimeDeps`，说明 adapter 已开始通过能力接口访问宿主，而不是直接控制整个应用。
 
 ### 3.3 基础生命周期
 
@@ -79,7 +79,7 @@ cmd/plugins/wxchannels/
 
 ### 4.3 Registry 只能注册，不能替换或注销
 
-当前 `registry.Register` 遇到相同 `PlatformID` 会 panic，并且没有：
+当前 `adapter.Register` 遇到相同 `PlatformID` 会 panic，并且没有：
 
 ```go
 Replace(...)

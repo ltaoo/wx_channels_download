@@ -17,9 +17,8 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/download/registry"
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/download/tasklineage"
-	"wx_channel/internal/download/types"
 	"wx_channel/pkg/hermes"
 )
 
@@ -212,6 +211,7 @@ type TaskListResult struct {
 type DownloadTaskRecord struct {
 	ID           int                      `json:"id"`
 	ContentID    *string                  `json:"content_id,omitempty"`
+	ContentType  string                   `json:"content_type,omitempty"`
 	ParentTaskID *int                     `json:"parent_task_id,omitempty"`
 	RootTaskID   int                      `json:"root_task_id"`
 	RelationType string                   `json:"relation_type,omitempty"`
@@ -253,6 +253,16 @@ type DownloadTaskFileRecord struct {
 	Error        string  `json:"error"`
 }
 
+// DownloadTaskStats holds counts of download tasks by status.
+type DownloadTaskStats struct {
+	Total       int `json:"total"`
+	Downloading int `json:"downloading"`
+	Paused      int `json:"paused"`
+	Waiting     int `json:"waiting"`
+	Finished    int `json:"finished"`
+	Error       int `json:"error"`
+}
+
 // ---------------------------------------------------------------------------
 // Business logic methods
 // ---------------------------------------------------------------------------
@@ -263,7 +273,7 @@ func (s *DownloadTaskService) PrepareTask(body CreateDownloadTaskBody) (*Prepare
 		return nil, fmt.Errorf("platform 不能为空")
 	}
 
-	h := registry.Get(body.Platform)
+	h := adapter.Get(body.Platform)
 	if h == nil {
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
@@ -416,7 +426,7 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		return nil, fmt.Errorf("platform 不能为空")
 	}
 
-	h := registry.Get(body.Platform)
+	h := adapter.Get(body.Platform)
 	if h == nil {
 		s.logger.Warn().Str("platform", body.Platform).Msg("unsupported platform")
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
@@ -1168,6 +1178,30 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 		childCountByTask[aggregate.ParentTaskID] = aggregate.Count
 	}
 
+	contentIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if task.ContentId != nil && *task.ContentId != "" {
+			contentIDs = append(contentIDs, *task.ContentId)
+		}
+	}
+	contentTypeByID := make(map[string]string, len(contentIDs))
+	if len(contentIDs) > 0 {
+		type contentTypeRow struct {
+			ID   string `gorm:"column:id"`
+			Type string `gorm:"column:type"`
+		}
+		var contentTypeRows []contentTypeRow
+		if err := s.db.Table("content").
+			Select("id, type").
+			Where("id IN ?", contentIDs).
+			Scan(&contentTypeRows).Error; err != nil {
+			return nil, err
+		}
+		for _, row := range contentTypeRows {
+			contentTypeByID[row.ID] = row.Type
+		}
+	}
+
 	for _, task := range tasks {
 		totalSize := sizeByTask[task.Id]
 		if totalSize <= 0 {
@@ -1210,16 +1244,21 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				Size:         r.Size,
 				Downloaded:   downloadedByResource[r.ID],
 				Speed:        speedByResource[r.ID],
-				Progress:     taskProgressPercent(downloadedByResource[r.ID], r.Size, mapResourceTaskStatus(r.Status)),
+				Progress:     TaskProgressPercent(downloadedByResource[r.ID], r.Size, MapResourceTaskStatus(r.Status)),
 				URL:          urlByResource[r.ID],
 				OutputPath:   outputPath,
 				Error:        fileError,
 			})
 		}
-		effectiveStatus := computeEffectiveTaskStatus(task.Status, files)
+		effectiveStatus := ComputeEffectiveTaskStatus(task.Status, files)
+		contentType := ""
+		if task.ContentId != nil {
+			contentType = contentTypeByID[*task.ContentId]
+		}
 		records = append(records, DownloadTaskRecord{
 			ID:           task.Id,
 			ContentID:    task.ContentId,
+			ContentType:  contentType,
 			ParentTaskID: task.ParentTaskID,
 			RootTaskID:   task.RootTaskID,
 			RelationType: task.RelationType,
@@ -1237,7 +1276,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			Size:         totalSize,
 			Downloaded:   downloadedByTask[task.Id],
 			Speed:        speedByTask[task.Id],
-			Progress:     taskProgressPercent(downloadedByTask[task.Id], totalSize, effectiveStatus),
+			Progress:     TaskProgressPercent(downloadedByTask[task.Id], totalSize, effectiveStatus),
 			Error:        errorMessage,
 			Files:        files,
 			FileCount:    len(files),
@@ -1417,7 +1456,7 @@ func (s *DownloadTaskService) hasStreamResources(taskID int) bool {
 	return count > 0
 }
 
-func (s *DownloadTaskService) buildTaskInput(info *types.DownloadTaskResult, taskName, taskSavePath, filename string, bodyCfg map[string]any) *hermes.TaskInput {
+func (s *DownloadTaskService) buildTaskInput(info *adapter.DownloadTaskResult, taskName, taskSavePath, filename string, bodyCfg map[string]any) *hermes.TaskInput {
 	taskInfo := hermes.TaskInfo{
 		Name:     taskName,
 		SavePath: taskSavePath,
@@ -1485,7 +1524,7 @@ func (s *DownloadTaskService) buildTaskInput(info *types.DownloadTaskResult, tas
 	}
 }
 
-func (s *DownloadTaskService) applyTaskInputModifications(info *types.DownloadTaskResult, taskName, taskSavePath string, modified *hermes.TaskInput) (string, string) {
+func (s *DownloadTaskService) applyTaskInputModifications(info *adapter.DownloadTaskResult, taskName, taskSavePath string, modified *hermes.TaskInput) (string, string) {
 	if modified == nil {
 		return taskName, taskSavePath
 	}
@@ -1555,7 +1594,8 @@ func buildResourceTree(resources []ResourceDetail) *ResourceTreeNode {
 // internal helpers (package-level)
 // ---------------------------------------------------------------------------
 
-func taskProgressPercent(downloaded, total int64, status int) float64 {
+// TaskProgressPercent calculates the completion percentage of a download task.
+func TaskProgressPercent(downloaded, total int64, status int) float64 {
 	if status == model.TaskStatusFinished {
 		return 100
 	}
@@ -1569,14 +1609,16 @@ func taskProgressPercent(downloaded, total int64, status int) float64 {
 	return math.Round(percent*100) / 100
 }
 
-func mapResourceTaskStatus(status int) int {
+// MapResourceTaskStatus maps a download resource status to a task status.
+func MapResourceTaskStatus(status int) int {
 	if status == 2 {
 		return model.TaskStatusFinished
 	}
 	return model.TaskStatusDownloading
 }
 
-func computeEffectiveTaskStatus(dbStatus int, files []DownloadTaskFileRecord) int {
+// ComputeEffectiveTaskStatus derives the effective task status from the database status and file states.
+func ComputeEffectiveTaskStatus(dbStatus int, files []DownloadTaskFileRecord) int {
 	switch dbStatus {
 	case model.TaskStatusPaused, model.TaskStatusFailed,
 		model.TaskStatusCancelled, model.TaskStatusMerging:

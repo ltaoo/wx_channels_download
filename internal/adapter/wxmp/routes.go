@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/config"
+	"wx_channel/internal/util"
 	scraper "wx_channel/pkg/scraper/wxmp"
 )
 
@@ -25,11 +26,11 @@ type Routes struct {
 	client *scraper.OfficialAccountClient
 }
 
-func NewRoutes(cfg *config.Config, remoteMode bool, logger *zerolog.Logger, db *gorm.DB) *Routes {
+func NewRoutes(cfg *config.Config, logger *zerolog.Logger, db *gorm.DB) *Routes {
 	if cfg == nil || logger == nil {
 		return &Routes{}
 	}
-	client := scraper.NewOfficialAccountClient(scraper.NewOfficialAccountConfig(cfg, remoteMode), logger)
+	client := scraper.NewOfficialAccountClient(scraper.NewOfficialAccountConfig(cfg), logger)
 	client.SetDB(db)
 	return &Routes{client: client}
 }
@@ -45,12 +46,24 @@ func (r *Routes) RegisterRoutes(registrar RouteRegistrar) {
 	registrar.RegisterGET("/api/mp/list", r.client.HandleFetchList)
 	registrar.RegisterGET("/api/mp/msg/list", r.client.HandleFetchMsgList)
 	registrar.RegisterGET("/api/mp/article/list", r.client.HandleFetchArticleList)
+	registrar.RegisterGET("/api/mp/postprocess/flows", r.HandleFetchPostprocessFlows)
 	registrar.RegisterGET("/rss/mp", r.client.HandleOfficialAccountRSS)
 	registrar.RegisterGET("/mp/proxy", r.client.HandleOfficialAccountProxy)
 	registrar.RegisterGET("/mp/home", r.client.HandleOfficialAccountManagerHome)
 	registrar.RegisterPOST("/api/mp/refresh_with_frontend", r.client.HandleRefreshOfficialAccountWithFrontend)
 	registrar.RegisterPOST("/api/mp/delete", r.client.HandleDelete)
 	registrar.RegisterPOST("/api/mp/refresh", r.client.HandleRefreshEvent)
+}
+
+// HandleFetchPostprocessFlows returns wxmp postprocess flow configs for read-only visualization.
+func (r *Routes) HandleFetchPostprocessFlows(ctx *gin.Context) {
+	flowID := ctx.Query("flow_id")
+	payload, err := GetWXMPPostprocessFlowVisualization(flowID)
+	if err != nil {
+		util.Err(ctx, 400, err.Error())
+		return
+	}
+	util.Ok(ctx, payload)
 }
 
 func (r *Routes) Stop() {

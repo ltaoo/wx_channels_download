@@ -326,10 +326,10 @@ func (c *APIClient) proxyConfigData() gin.H {
 }
 
 func (c *APIClient) proxyServiceStatusData() gin.H {
-	c.proxyStatusMu.RLock()
-	addr := c.cachedProxyAddr
-	status := c.cachedProxyStatus
-	c.proxyStatusMu.RUnlock()
+	c.proxy_status_mu.RLock()
+	addr := c.cached_proxy_addr
+	status := c.cached_proxy_status
+	c.proxy_status_mu.RUnlock()
 	if status == "" {
 		status = "stopped"
 	}
@@ -520,9 +520,9 @@ func (c *APIClient) saveConfigValues(values map[string]interface{}) error {
 }
 
 func (c *APIClient) proxyServiceRunning() bool {
-	c.proxyStatusMu.RLock()
-	status := c.cachedProxyStatus
-	c.proxyStatusMu.RUnlock()
+	c.proxy_status_mu.RLock()
+	status := c.cached_proxy_status
+	c.proxy_status_mu.RUnlock()
 	return status == "running" || status == "stopping"
 }
 

@@ -3,11 +3,15 @@ package wxchannels
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	scraper "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
@@ -45,6 +49,18 @@ func cleanMediaURL(rawURL string) string {
 	q.Del("uzid")
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+func firstMediaCoverURL(file scraper.ChannelsMediaItem) string {
+	coverURL := strings.TrimSpace(file.CoverUrl)
+	if coverURL != "" {
+		return coverURL
+	}
+	mediaURL := strings.TrimSpace(file.URL + file.URLToken)
+	if mediaURL != "" {
+		return mediaURL
+	}
+	return ""
 }
 
 // ToAccount converts a ChannelsObject into a model.Account.
@@ -89,7 +105,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 		return nil, nil, errors.New("channels object is nil")
 	}
 	if obj.ID == "" {
-		return nil, nil, errors.New("缺少 id 字段")
+		return nil, nil, errors.New("missing object id field")
 	}
 
 	now := util.NowMillis()
@@ -129,12 +145,12 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 			files = obj.ObjectDesc.Media
 		}
 		if len(files) == 0 {
-			return nil, nil, errors.New("picture 类型缺少 files 数据")
+			return nil, nil, errors.New("picture object missing files data")
 		}
 		c.Type = "album"
 		c.Title = obj.ObjectDesc.Description
 		c.Description = obj.ObjectDesc.Description
-		c.CoverURL = files[0].CoverUrl
+		c.CoverURL = firstMediaCoverURL(files[0])
 		c.CoverWidth = strconv.Itoa(int(files[0].Width))
 		c.CoverHeight = strconv.Itoa(int(files[0].Height))
 		if obj.CreateTime > 0 {
@@ -170,11 +186,11 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 
 	// Media (video)
 	if obj.ObjectDesc.MediaType == scraper.MediaTypeLive {
-		return nil, nil, errors.New("不支持直播回放（mediaType=9）")
+		return nil, nil, errors.New("live replay is not supported (mediaType=9)")
 	}
 
 	if len(obj.ObjectDesc.Media) == 0 {
-		return nil, nil, errors.New("objectDesc.media 为空")
+		return nil, nil, errors.New("objectDesc.media is empty")
 	}
 	media := obj.ObjectDesc.Media[0]
 
@@ -209,78 +225,75 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 	return c, ext, nil
 }
 
-// PickSpec returns the first h264 spec's FileFormat from the object, or "original" if none.
-func PickSpec(obj *scraper.ChannelsObject) string {
-	specs := obj.Spec
-	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
-		specs = obj.ObjectDesc.Media[0].Spec
-	}
-	if len(specs) > 0 {
-		return specs[0].FileFormat
-	}
-	return ""
-}
+// BuildBrowseRecordFromObject constructs a model.BrowseHistory directly from a ChannelsObject,
+// performing the conversion to browse record internally without an intermediate MediaProfile.
+func BuildBrowseRecordFromObject(obj *scraper.ChannelsObject) *model.BrowseHistory {
+	accountUsername := strings.TrimSpace(obj.Contact.Username)
+	now := util.NowMillis()
 
-// BuildDownloadURLWithSpec returns the download URL for the given spec.
-//
-//   - If spec is a codec name (e.g. "xWT111"), appends &X-snsvideoflag= to the base URL.
-//   - If spec is "" or "original", strips all query params except encfilekey and token,
-//     mirroring the JS __wx_channels_download4 original-video logic.
-//   - zip:// URLs are returned as-is.
-func BuildDownloadURLWithSpec(obj *scraper.ChannelsObject, spec string) string {
-	baseURL := ObjectURL(obj)
-
-	// When spec is non-empty: append X-snsvideoflag parameter
-	if spec != "" {
-		return baseURL + "&X-snsvideoflag=" + spec
+	var key string
+	if len(obj.ObjectDesc.Media) > 0 {
+		key = obj.ObjectDesc.Media[0].DecodeKey
 	}
 
-	// When spec is empty, download the original video, keeping only encfilekey and token
-	if u, err := url.Parse(baseURL); err == nil {
-		filekey := u.Query().Get("encfilekey")
-		token := u.Query().Get("token")
-		if filekey != "" && token != "" {
-			clean := &url.URL{
-				Scheme: u.Scheme,
-				Host:   u.Host,
-				Path:   u.Path,
-			}
-			q := clean.Query()
-			q.Set("encfilekey", filekey)
-			q.Set("token", token)
-			clean.RawQuery = q.Encode()
-			return clean.String()
+	extraData, _ := json.Marshal(map[string]any{
+		"id":         obj.ID,
+		"nonce_id":   obj.ObjectNonceId,
+		"decode_key": key,
+	})
+
+	browseID := wxchannels + ":" + obj.ID
+	contentSourceURL := obj.SourceURL
+	if contentSourceURL == "" {
+		contentSourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", accountUsername)
+	}
+
+	coverURL := ""
+	coverWidth := ""
+	coverHeight := ""
+	mediaList := obj.Files
+	if len(mediaList) == 0 {
+		mediaList = obj.ObjectDesc.Media
+	}
+	if len(mediaList) > 0 {
+		media := mediaList[0]
+		if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+			coverURL = firstMediaCoverURL(media)
+		} else {
+			coverURL = strings.TrimSpace(media.ThumbUrl)
 		}
+		coverWidth = strconv.Itoa(int(media.Width))
+		coverHeight = strconv.Itoa(int(media.Height))
+	}
+	publishTime := int64(obj.CreateTime)
+
+	contentType := "video"
+	if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+		contentType = "album"
 	}
 
-	return baseURL
-}
-
-// DecryptKeyInt returns the video decrypt key as int, or 0 on failure.
-func DecryptKeyInt(obj *scraper.ChannelsObject) int {
-	if len(obj.ObjectDesc.Media) == 0 {
-		return 0
+	return &model.BrowseHistory{
+		Id:                browseID,
+		PlatformId:        wxchannels,
+		VisitedTimes:      1,
+		AccountExternalId: accountUsername,
+		AccountNickname:   obj.Contact.Nickname,
+		AccountAvatarURL:  obj.Contact.HeadUrl,
+		Type:              contentType,
+		ExternalId:        obj.ID,
+		Title:             obj.ObjectDesc.Description,
+		URL:               ObjectURL(obj),
+		SourceURL:         contentSourceURL,
+		CoverURL:          coverURL,
+		CoverWidth:        coverWidth,
+		CoverHeight:       coverHeight,
+		PublishTime:       &publishTime,
+		ExtraData:         string(extraData),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}
-	key, err := strconv.Atoi(obj.ObjectDesc.Media[0].DecodeKey)
-	if err != nil {
-		return 0
-	}
-	return key
-}
-
-// ObjectTitle returns the object title with fallback logic (description → ID → timestamp).
-func ObjectTitle(obj *scraper.ChannelsObject) string {
-	if obj.LiveInfo != nil {
-		return "直播"
-	}
-	title := strings.TrimSpace(obj.ObjectDesc.Description)
-	if title != "" {
-		return title
-	}
-	if strings.TrimSpace(obj.ID) != "" {
-		return obj.ID
-	}
-	return strconv.FormatInt(time.Now().Unix(), 10)
 }
 
 // ObjectURL returns the download URL (video = media.URL + URLToken, picture/live returns "").
@@ -333,4 +346,495 @@ func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string
 	}
 
 	return strings.TrimSuffix(strings.Replace(u, "?&", "?", 1), "?")
+}
+
+const (
+	mimeImageJPEG     = "image/jpeg"
+	mimeAudioMPEG     = "audio/mpeg"
+	mimeVideoMP4      = "video/mp4"
+	mimeVideoMatroska = "video/x-matroska"
+)
+
+func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	var config map[string]any
+	if err := json.Unmarshal(configRaw, &config); err != nil {
+		return nil, fmt.Errorf("解析下载配置失败: %w", err)
+	}
+
+	// Live stream detection: joinLive response contains liveSdkInfo
+	var jl scraper.JoinLivePayload
+	if json.Unmarshal(contentJSON, &jl) == nil && jl.LiveSdkInfo != nil && jl.LiveSdkInfo.LiveCdnUrl != "" {
+		return buildLiveDownloadTask(&jl, config)
+	}
+
+	var obj scraper.ChannelsObject
+	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+		return nil, err
+	}
+
+	content, ext, err := ToContent(&obj)
+	if err != nil {
+		return nil, err
+	}
+	account, err := ToAccount(&obj)
+	if err != nil {
+		return nil, err
+	}
+
+	title := configString(config, "filename")
+	if title == "" {
+		title = ObjectTitle(&obj)
+	}
+	configuredSpec := configString(config, "spec")
+	var spec string
+	if configuredSpec == "" {
+		if !GetChannelsConfig().DownloadDefaultHighest {
+			spec = PickSpec(&obj)
+		}
+	} else if configuredSpec != "original" {
+		spec = configuredSpec
+	}
+	log.Printf("DownloadDefaultHighest=%v, config.Spec=%q, final spec=%q", GetChannelsConfig().DownloadDefaultHighest, configuredSpec, spec)
+	coverURL := strings.TrimSpace(content.CoverURL)
+	if len(obj.ObjectDesc.Media) > 0 {
+		if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].CoverUrl); candidate != "" {
+			coverURL = candidate
+		} else if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].ThumbUrl); candidate != "" {
+			coverURL = candidate
+		}
+	}
+	contact, _ := pickAccountContact(&obj)
+	decryptKey := parseKeyFromContent(content)
+	baseExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "", 0, obj.ObjectDesc.MediaType)
+	decryptExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, 0, obj.ObjectDesc.MediaType)
+	contentID := content.Id
+	task := func(configJSON []byte) *model.DownloadTask {
+		contentID := content.Id
+		task := &model.DownloadTask{
+			ContentId:  &contentID,
+			Name:       title,
+			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": configString(config, "suffix"), "spec": spec}),
+			PlatformId: PlatformID,
+			Status:     model.TaskStatusWaiting,
+			SourceURL:  content.SourceURL,
+			CoverURL:   content.CoverURL,
+			ConfigJSON: string(configJSON),
+		}
+		_ = ext
+		return task
+	}
+
+	// Cover download: create cover resource only
+	if configString(config, "suffix") == ".jpg" && coverURL != "" {
+		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
+		coverResource := model.DownloadResource{
+			ContentId:  &contentID,
+			Name:       title,
+			Kind:       mimeImageJPEG,
+			UniqueID:   content.ExternalId + "_cover",
+			MergeOrder: 0,
+			Extra:      baseExtraJSON,
+		}
+		coverEndpoint := model.DownloadEndpoint{
+			Protocol: "https",
+			URL:      coverURL,
+			Enabled:  1,
+		}
+		info := &adapter.DownloadTaskResult{
+			Task: task(configJSON),
+			Resources: []*adapter.ResourceInfo{{
+				DownloadResource: coverResource,
+				Endpoints:        []model.DownloadEndpoint{coverEndpoint},
+			}},
+			Account: account,
+			Content: content,
+		}
+		setContentExt(info, ext)
+		return info, nil
+	}
+
+	// Picture type: create a download resource for each media item, plus background music
+	if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+		files := obj.Files
+		if len(files) == 0 {
+			files = obj.ObjectDesc.Media
+		}
+		if len(files) == 0 {
+			return nil, fmt.Errorf("图片类型缺少文件数据")
+		}
+
+		resources := make([]*adapter.ResourceInfo, 0, len(files)+1)
+		for i, file := range files {
+			mediaURL := getMediaURL(file)
+			if mediaURL == "" {
+				return nil, fmt.Errorf("图片 %d 下载地址为空", i+1)
+			}
+			imageName := title
+			if len(files) > 1 {
+				imageName = fmt.Sprintf("%s_%d", title, i+1)
+			}
+			imageExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, i, obj.ObjectDesc.MediaType)
+			resources = append(resources, &adapter.ResourceInfo{
+				DownloadResource: model.DownloadResource{
+					ContentId: &contentID,
+					Name:      sanitizeFilename(imageName),
+					Kind:      mimeImageJPEG,
+					Size:      int64(file.FileSize),
+					UniqueID:  content.ExternalId + "_" + strconv.Itoa(i),
+					Extra:     imageExtraJSON,
+				},
+				Endpoints: []model.DownloadEndpoint{{
+					Protocol: "https",
+					URL:      mediaURL,
+					Enabled:  1,
+				}},
+			})
+		}
+
+		// Background music
+		bgm := formatBGM(&obj)
+		if bgm != nil {
+			resources = append(resources, &adapter.ResourceInfo{
+				DownloadResource: model.DownloadResource{
+					ContentId: &contentID,
+					Name:      bgm.Name,
+					Kind:      mimeAudioMPEG,
+					UniqueID:  content.ExternalId + "_bgm",
+					Extra:     baseExtraJSON,
+				},
+				Endpoints: []model.DownloadEndpoint{{
+					Protocol: "http",
+					URL:      bgm.URL,
+					Enabled:  1,
+				}},
+			})
+		}
+
+		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, scraper.MediaTypePicture))
+
+		info := &adapter.DownloadTaskResult{
+			Task:      task(configJSON),
+			Resources: resources,
+			Account:   account,
+			Content:   content,
+		}
+		setContentExt(info, ext)
+		return info, nil
+	}
+
+	// Video type
+	downloadURL := BuildDownloadURLWithSpec(&obj, spec)
+	if downloadURL == "" {
+		return nil, fmt.Errorf("无法获取视频下载地址")
+	}
+
+	configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
+
+	resourceUniqueID := content.ExternalId
+	resourceKind := mimeVideoMP4
+	if spec != "" {
+		resourceUniqueID = content.ExternalId + "_" + spec
+	}
+	if configString(config, "suffix") == ".mp3" {
+		resourceUniqueID += "_mp3"
+		resourceKind = mimeAudioMPEG
+	}
+	videoResource := model.DownloadResource{
+		ContentId: &contentID,
+		Name:      title,
+		Kind:      resourceKind,
+		UniqueID:  resourceUniqueID,
+		Extra:     decryptExtraJSON,
+	}
+	if ve, ok := ext.(*model.ContentVideo); ok {
+		videoResource.Size = ve.Size
+	}
+	videoEndpoint := model.DownloadEndpoint{
+		Protocol: "https",
+		URL:      downloadURL,
+		Enabled:  1,
+	}
+	resources := []*adapter.ResourceInfo{{
+		DownloadResource: videoResource,
+		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
+	}}
+
+	info := &adapter.DownloadTaskResult{
+		Task:      task(configJSON),
+		Resources: resources,
+		Account:   account,
+		Content:   content,
+	}
+	setContentExt(info, ext)
+	return info, nil
+}
+
+// buildLiveDownloadTask builds a live-stream download task from a joinLive response.
+func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (*adapter.DownloadTaskResult, error) {
+	liveId := ""
+	sessionStartTime := int64(0)
+	if jl.LiveInfo != nil {
+		liveId = jl.LiveInfo.LiveId
+		sessionStartTime = int64(jl.LiveInfo.StartTime)
+	}
+
+	authorNickname := jl.Nickname
+	authorUsername := jl.Username
+	authorAvatarURL := ""
+	if jl.LiveInfo != nil && jl.AnchorContact != nil {
+		if jl.AnchorContact.Nickname != "" {
+			authorNickname = jl.AnchorContact.Nickname
+		}
+		if jl.AnchorContact.Username != "" {
+			authorUsername = jl.AnchorContact.Username
+		}
+		authorAvatarURL = jl.AnchorContact.HeadUrl
+	} else if jl.Contact != nil {
+		if jl.Contact.Nickname != "" {
+			authorNickname = jl.Contact.Nickname
+		}
+		if jl.Contact.Username != "" {
+			authorUsername = jl.Contact.Username
+		}
+		authorAvatarURL = jl.Contact.HeadUrl
+	}
+
+	title := configString(config, "filename")
+	if title == "" {
+		if jl.LiveDescription != "" {
+			title = jl.LiveDescription
+		} else {
+			title = "直播"
+		}
+	}
+
+	now := time.Now().Unix()
+	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec"), scraper.MediaTypeLive))
+	metadataJSON, _ := json.Marshal(map[string]any{
+		"platform":     PlatformID,
+		"id":           liveId,
+		"content_type": "live",
+		"author":       authorNickname,
+		"download_at":  now,
+	})
+
+	content := &model.Content{
+		Id:         BuildContentID(liveId),
+		PlatformId: wxchannels,
+		ExternalId: liveId,
+		Type:       "live",
+		Title:      title,
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	if sessionStartTime > 0 {
+		pt := sessionStartTime
+		content.PublishTime = &pt
+	}
+
+	account := &model.Account{
+		Id:         BuildAccountID(authorUsername),
+		PlatformId: wxchannels,
+		ExternalId: authorUsername,
+		Nickname:   authorNickname,
+		AvatarURL:  authorAvatarURL,
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	uniqueID := liveId + "_" + strconv.FormatInt(sessionStartTime, 10)
+	if sessionStartTime == 0 {
+		uniqueID = liveId + "_" + strconv.FormatInt(now, 10)
+	}
+
+	streamResource := model.DownloadResource{
+		ContentId:     &content.Id,
+		Name:          title + ".mkv",
+		Kind:          mimeVideoMatroska,
+		Type:          model.ResourceTypeStream,
+		RotateMinutes: 10,
+		StreamURL:     jl.LiveSdkInfo.LiveCdnUrl,
+		UniqueID:      uniqueID,
+	}
+	streamEndpoint := model.DownloadEndpoint{
+		Protocol: "livestream",
+		URL:      jl.LiveSdkInfo.LiveCdnUrl,
+		Enabled:  1,
+	}
+
+	return &adapter.DownloadTaskResult{
+		Task: &model.DownloadTask{
+			ContentId:    &content.Id,
+			Name:         title,
+			UniqueID:     uniqueID,
+			PlatformId:   PlatformID,
+			Status:       model.TaskStatusWaiting,
+			ConfigJSON:   string(configJSON),
+			MetadataJSON: string(metadataJSON),
+		},
+		Resources: []*adapter.ResourceInfo{{
+			DownloadResource: streamResource,
+			Endpoints:        []model.DownloadEndpoint{streamEndpoint},
+		}},
+		ContentDetail: nil,
+		Account:       account,
+		Content:       content,
+	}, nil
+}
+
+// getMediaURL returns the combined download URL for a media item (url + urlToken).
+func getMediaURL(media scraper.ChannelsMediaItem) string {
+	return media.URL + media.URLToken
+}
+
+// bgmInfo holds background music download info extracted from a picture feed.
+type bgmInfo struct {
+	URL  string
+	Name string
+}
+
+// formatBGM extracts background music info from a picture feed's followPostInfo.
+func formatBGM(obj *scraper.ChannelsObject) *bgmInfo {
+	musicInfo := obj.ObjectDesc.FollowPostInfo.MusicInfo
+	if musicInfo.MediaStreamingUrl == "" {
+		return nil
+	}
+	name := "bgm"
+	if musicInfo.Name != "" {
+		name = sanitizeBGMName(musicInfo.Name)
+	}
+	return &bgmInfo{URL: musicInfo.MediaStreamingUrl, Name: name}
+}
+
+// sanitizeBGMName removes characters unsafe for filenames.
+func sanitizeBGMName(name string) string {
+	r := strings.NewReplacer(
+		"/", "_", "\\", "_", ":", "_", "*", "_",
+		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
+	)
+	return r.Replace(name)
+}
+
+// BuildDownloadTaskUniqueID computes a unique task ID from the content ID and download configuration.
+func BuildDownloadTaskUniqueID(externalID string, config map[string]any) string {
+	suffixConfig := configString(config, "suffix")
+	if suffixConfig == ".jpg" {
+		return externalID + "_cover"
+	}
+	var suffix string
+	if spec := configString(config, "spec"); spec != "" {
+		suffix = "_" + spec
+	}
+	if suffixConfig == ".mp3" {
+		suffix += "_mp3"
+	}
+	return externalID + suffix
+}
+
+// buildResourceExtraJSON builds the resource.Extra JSON string.
+func buildResourceExtraJSON(id, title, spec string, createdAt int64, author string, decodeKey string, idx int, mediaType int) string {
+
+	now := time.Now().Unix()
+	filename := title
+	if filename == "" {
+		filename = id
+	}
+	if filename == "" {
+		filename = strconv.FormatInt(now, 10)
+	}
+
+	type extra struct {
+		ID         string `json:"id"`
+		Title      string `json:"title"`
+		Filename   string `json:"filename"`
+		Spec       string `json:"spec"`
+		CreatedAt  string `json:"created_at"`
+		DownloadAt string `json:"download_at"`
+		Author     string `json:"author"`
+		Idx        int    `json:"idx,omitempty"`
+		MediaType  int    `json:"type,omitempty"`
+		DecodeKey  string `json:"decode_key,omitempty"`
+	}
+	data, _ := json.Marshal(extra{
+		ID:         id,
+		Title:      title,
+		Filename:   filename,
+		Spec:       spec,
+		CreatedAt:  strconv.FormatInt(createdAt, 10),
+		DownloadAt: strconv.FormatInt(now, 10),
+		Author:     author,
+		Idx:        idx,
+		MediaType:  mediaType,
+		DecodeKey:  decodeKey,
+	})
+	return string(data)
+}
+
+// buildConfigJSON returns a map containing the config fields whose value is set / true,
+// plus the media type so post-processing can branch on it.
+func buildConfigJSON(config map[string]any, spec string, mediaType int) map[string]any {
+	m := make(map[string]any, len(config)+2)
+	for key, value := range config {
+		m[key] = value
+	}
+	if spec != "" {
+		m["spec"] = spec
+	}
+	m["type"] = mediaType
+	return m
+}
+
+func configString(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return value
+}
+
+// parseKeyFromContent extracts the decrypt key from Content.Metadata.
+func parseKeyFromContent(c *model.Content) string {
+	if c == nil || c.Metadata == "" {
+		return ""
+	}
+	var kv struct {
+		Key string `json:"key"`
+	}
+	if json.Unmarshal([]byte(c.Metadata), &kv) == nil {
+		return kv.Key
+	}
+	return ""
+}
+
+// sanitizeFilename ensures the filename has an extension, extracting from the URL if needed.
+func sanitizeFilename(name string) string {
+	nameWithoutExt := strings.TrimSuffix(name, filepath.Ext(name))
+	return nameWithoutExt
+}
+
+// setContentExt routes the extension data: *ContentAlbum.Image goes to AlbumImages,
+// []*ContentImage goes to AlbumImages, other non-nil values go to ContentDetail.
+func setContentExt(dtr *adapter.DownloadTaskResult, ext any) {
+	switch e := ext.(type) {
+	case *model.ContentAlbum:
+		dtr.ContentDetail = e
+		dtr.AlbumImages = contentAlbumImages(e.Images)
+	case []*model.ContentImage:
+		dtr.AlbumImages = e
+	case nil:
+	default:
+		dtr.ContentDetail = e
+	}
+}
+
+func contentAlbumImages(images []model.ContentImage) []*model.ContentImage {
+	if len(images) == 0 {
+		return nil
+	}
+	result := make([]*model.ContentImage, len(images))
+	for i := range images {
+		result[i] = &images[i]
+	}
+	return result
 }
