@@ -1,11 +1,221 @@
 package wxmp
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"html"
+	"strconv"
 	"strings"
 	"unicode"
 )
+
+type FlexibleInt int64
+
+func (v *FlexibleInt) UnmarshalJSON(data []byte) error {
+	var n int64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*v = FlexibleInt(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		*v = 0
+		return nil
+	}
+	parsed, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
+	*v = FlexibleInt(parsed)
+	return nil
+}
+
+type CgiDataNew struct {
+	BaseResp struct {
+		Ret         int    `json:"ret"`
+		ErrMsg      string `json:"errmsg"`
+		WxToken     int    `json:"wxtoken"`
+		CookieCount int    `json:"cookie_count"`
+		SessionID   string `json:"sessionid"`
+	} `json:"base_resp"`
+	UserName          string      `json:"user_name"`
+	NickName          string      `json:"nick_name"`
+	RoundHeadImg      string      `json:"round_head_img"`
+	Title             string      `json:"title"`
+	Desc              string      `json:"desc"`
+	ContentNoEncode   string      `json:"content_noencode"`
+	CreateTime        string      `json:"create_time"`
+	CdnUrl            string      `json:"cdn_url"`
+	Link              string      `json:"link"`
+	SourceUrl         string      `json:"source_url"`
+	CanShare          int         `json:"can_share"`
+	Alias             string      `json:"alias"`
+	Type              int         `json:"type"`
+	Author            string      `json:"author"`
+	IsLimitUser       int         `json:"is_limit_user"`
+	ShowCoverPic      int         `json:"show_cover_pic"`
+	AdvertisementNum  int         `json:"advertisement_num"`
+	AdvertisementInfo []any       `json:"advertisement_info"`
+	OriCreateTime     FlexibleInt `json:"ori_create_time"`
+	UserUin           FlexibleInt `json:"user_uin"`
+	TotalItemNum      int         `json:"total_item_num"`
+	IsAsync           int         `json:"is_async"`
+	CommentID         string      `json:"comment_id"`
+	ImgFormat         string      `json:"img_format"`
+	SvrTime           FlexibleInt `json:"svr_time"`
+	CopyrightInfo     struct {
+		CopyrightStat      int `json:"copyright_stat"`
+		IsCartoonCopyright int `json:"is_cartoon_copyright"`
+	} `json:"copyright_info"`
+	CanReward        int         `json:"can_reward"`
+	Signature        string      `json:"signature"`
+	RewardWording    string      `json:"reward_wording"`
+	InMm             int         `json:"in_mm"`
+	AppID            string      `json:"app_id"`
+	ShowComment      int         `json:"show_comment"`
+	CanUsePage       int         `json:"can_use_page"`
+	HdHeadImg        string      `json:"hd_head_img"`
+	DelReasonID      int         `json:"del_reason_id"`
+	SrcID            string      `json:"srcid"`
+	IsWxgStuffUin    int         `json:"is_wxg_stuff_uin"`
+	NeedReportCost   int         `json:"need_report_cost"`
+	BizUin           string      `json:"bizuin"`
+	Mid              FlexibleInt `json:"mid"`
+	Idx              FlexibleInt `json:"idx"`
+	Sn               string      `json:"sn"`
+	UseTxVideoPlayer int         `json:"use_tx_video_player"`
+	IsOnlyRead       int         `json:"is_only_read"`
+	ReqID            string      `json:"req_id"`
+	UseOuterLink     int         `json:"use_outer_link"`
+	BanScene         int         `json:"ban_scene"`
+	CspNonceStr      int         `json:"csp_nonce_str"`
+	MsgDailyIdx      FlexibleInt `json:"msg_daily_idx"`
+	OriHeadImgUrl    string      `json:"ori_head_img_url"`
+	FilterTime       FlexibleInt `json:"filter_time"`
+	AppmsgFeFilter   string      `json:"appmsg_fe_filter"`
+	IsLogin          int         `json:"is_login"`
+	RewardMoney      int         `json:"reward_money"`
+	PageType         int         `json:"page_type"`
+	ItemShowType     int         `json:"item_show_type"`
+	VoiceInAppmsg    []any       `json:"voice_in_appmsg"`
+	VideoPageInfo    struct {
+		MpVideoTransInfo []any `json:"mp_video_trans_info"`
+		DramaVideoInfo   struct {
+		} `json:"drama_video_info"`
+		DramaInfo struct {
+		} `json:"drama_info"`
+	} `json:"video_page_info"`
+	MaliciousTitleReasonID int                 `json:"malicious_title_reason_id"`
+	VideoPageInfos         []VideoPageInfoItem `json:"video_page_infos"`
+	PicturePageInfoList    []PicturePageInfo   `json:"picture_page_info_list"`
+}
+
+type VideoPageInfoItem struct {
+	VideoID              string             `json:"video_id"`
+	OriStatus            int                `json:"ori_status"`
+	SourceBizuin         string             `json:"source_bizuin"`
+	SourceNickname       string             `json:"source_nickname"`
+	SourceLink           string             `json:"source_link"`
+	IsMpVideo            int                `json:"is_mp_video"`
+	IsMpVideoDelete      int                `json:"is_mp_video_delete"`
+	MpVideoOverseasLimit int                `json:"mp_video_overseas_limit"`
+	IsMpVideoForbid      int                `json:"is_mp_video_forbid"`
+	MpVideoForbidReason  int                `json:"mp_video_forbid_reason"`
+	HitUsername          int                `json:"hit_username"`
+	HitBizuin            int                `json:"hit_bizuin"`
+	HitVid               string             `json:"hit_vid"`
+	ContentNoencode      string             `json:"content_noencode"`
+	IsMpVideoUrgentState int                `json:"is_mp_video_urgent_state"`
+	IsAppmsgUnauthorized int                `json:"is_appmsg_unauthorized"`
+	CoverUrl             string             `json:"cover_url"`
+	CoverUrl11           string             `json:"cover_url_1_1"`
+	CoverUrl169          string             `json:"cover_url_16_9"`
+	VideoidUploadtime    int                `json:"videoid_uploadtime"`
+	VideoidBizuin        int                `json:"videoid_bizuin"`
+	MpVideoTransInfo     []MpVideoTransInfo `json:"mp_video_trans_info"`
+}
+
+type MpVideoTransInfo struct {
+	DurationMs          int    `json:"duration_ms"`
+	Filesize            any    `json:"filesize"`
+	FormatID            int    `json:"format_id"`
+	Height              int    `json:"height"`
+	Url                 string `json:"url"`
+	VideoQualityLevel   int    `json:"video_quality_level"`
+	VideoQualityWording string `json:"video_quality_wording"`
+	Width               int    `json:"width"`
+}
+
+type PictureLivePhotoFormat struct {
+	FormatID int         `json:"format_id"`
+	URL      string      `json:"url"`
+	FileSize FlexibleInt `json:"file_size"`
+	Duration int64       `json:"duration"`
+	Width    int         `json:"width"`
+	Height   int         `json:"height"`
+}
+
+type PictureLivePhoto struct {
+	Vid        string                   `json:"vid"`
+	Type       int                      `json:"type"`
+	FormatInfo []PictureLivePhotoFormat `json:"format_info"`
+}
+
+type PicturePageInfo struct {
+	CdnUrl            string           `json:"cdn_url"`
+	Width             int              `json:"width"`
+	Height            int              `json:"height"`
+	ThemeColor        string           `json:"theme_color"`
+	IsQrCode          int              `json:"is_qr_code"`
+	PoiInfo           []any            `json:"poi_info"`
+	WxaInfo           []any            `json:"wxa_info"`
+	LivePhoto         PictureLivePhoto `json:"live_photo"`
+	DisableThemeColor bool             `json:"disable_theme_color"`
+	BindAdInfo        []any            `json:"bind_ad_info"`
+	CpsAdInfo         []any            `json:"cps_ad_info"`
+	PicWindowProduct  struct {
+		ProductEncryptKey string `json:"product_encrypt_key"`
+		ProductType       int    `json:"product_type"`
+		Title             string `json:"title"`
+		DataType          int    `json:"data_type"`
+		ProductID         string `json:"product_id"`
+	} `json:"pic_window_product"`
+	ShowWatermark         bool    `json:"show_watermark"`
+	BottomRightBrightness float64 `json:"bottom_right_brightness"`
+	WatermarkInfo         struct {
+		CdnUrl     string `json:"cdn_url"`
+		IsUploader bool   `json:"is_uploader"`
+	} `json:"watermark_info"`
+	SpotProductInfo []any `json:"spot_product_info"`
+	ShareCover      struct {
+		FileID   int    `json:"file_id"`
+		Width    int    `json:"width"`
+		Height   int    `json:"height"`
+		CdnUrl   string `json:"cdn_url"`
+		CropInfo string `json:"crop_info"`
+	} `json:"share_cover"`
+}
+
+type WechatOfficialArticle struct {
+	Type                int                 `json:"type"`
+	Title               string              `json:"title"`
+	Content             string              `json:"content"`
+	ContentLength       int                 `json:"content_length"`
+	Images              []string            `json:"images"`
+	Creator             string              `json:"creator"`
+	AuthorNickname      string              `json:"author_nickname"`
+	AuthorAvatar        string              `json:"author_avatar"`
+	AuthorID            string              `json:"author_id"`
+	PublishTimeStr      string              `json:"publish_time_str"`
+	Videos              []VideoPageInfoItem `json:"videos"`
+	PicturePageInfoList []PicturePageInfo   `json:"picture_page_info_list,omitempty"`
+	PageJSON            *CgiDataNew         `json:"-"`
+	PageHTML            string              `json:"-"`
+}
 
 type AtomAuthor struct {
 	Name string `xml:"name"`
@@ -347,155 +557,155 @@ func isIdentPart(ch rune) bool {
 
 // ArticleCgiData represents the window.cgiDataNew object on an official account article page.
 type ArticleCgiData struct {
-	BaseResp                 BaseResp            `json:"base_resp"`
-	UserName                 string              `json:"user_name"`
-	NickName                 string              `json:"nick_name"`
-	RoundHeadImg             string              `json:"round_head_img"`
-	Title                    string              `json:"title"`
-	Desc                     string              `json:"desc"`
-	ContentNoencode          string              `json:"content_noencode"`
-	CreateTime               string              `json:"create_time"`
-	CdnURL                   string              `json:"cdn_url"`
-	Link                     string              `json:"link"`
-	SourceURL                string              `json:"source_url"`
-	CanShare                 int                 `json:"can_share"`
-	Alias                    string              `json:"alias"`
-	Type                     int                 `json:"type"`
-	Author                   string              `json:"author"`
-	IsLimitUser              int                 `json:"is_limit_user"`
-	ShowCoverPic             int                 `json:"show_cover_pic"`
-	AdvertisementNum         int                 `json:"advertisement_num"`
-	AdvertisementInfo        []interface{}       `json:"advertisement_info"`
-	OriCreateTime            int                 `json:"ori_create_time"`
-	UserUin                  string              `json:"user_uin"`
-	TotalItemNum             int                 `json:"total_item_num"`
-	IsAsync                  int                 `json:"is_async"`
-	CommentID                string              `json:"comment_id"`
-	ImgFormat                string              `json:"img_format"`
-	SvrTime                  int                 `json:"svr_time"`
-	CopyrightInfo            CopyrightInfo       `json:"copyright_info"`
-	CanReward                int                 `json:"can_reward"`
-	Signature                string              `json:"signature"`
-	InMm                     int                 `json:"in_mm"`
-	AppID                    string              `json:"app_id"`
-	ShowComment              int                 `json:"show_comment"`
-	CanUsePage               int                 `json:"can_use_page"`
-	HdHeadImg                string              `json:"hd_head_img"`
-	DelReasonID              int                 `json:"del_reason_id"`
-	Srcid                    string              `json:"srcid"`
-	IsWxgStuffUin            int                 `json:"is_wxg_stuff_uin"`
-	NeedReportCost           int                 `json:"need_report_cost"`
-	Bizuin                   string              `json:"bizuin"`
-	Mid                      int                 `json:"mid"`
-	Idx                      int                 `json:"idx"`
-	Sn                       string              `json:"sn"`
-	UseTxVideoPlayer         int                 `json:"use_tx_video_player"`
-	IsOnlyRead               int                 `json:"is_only_read"`
-	ReqID                    string              `json:"req_id"`
-	UseOuterLink             int                 `json:"use_outer_link"`
-	BanScene                 int                 `json:"ban_scene"`
-	CspNonceStr              int                 `json:"csp_nonce_str"`
-	MsgDailyIdx              int                 `json:"msg_daily_idx"`
-	OriHeadImgURL            string              `json:"ori_head_img_url"`
-	FilterTime               int                 `json:"filter_time"`
-	AppmsgFeFilter           string              `json:"appmsg_fe_filter"`
-	IsLogin                  int                 `json:"is_login"`
-	ItemShowType             int                 `json:"item_show_type"`
-	VoiceInAppmsg            []interface{}       `json:"voice_in_appmsg"`
-	VideoPageInfo            VideoPageInfo       `json:"video_page_info"`
-	MaliciousTitleReasonID   int                 `json:"malicious_title_reason_id"`
-	PicturePageInfoList      []PicturePageInfo   `json:"picture_page_info_list"`
-	ShowMsgVoice             int                 `json:"show_msg_voice"`
-	Locationlist             []interface{}       `json:"locationlist"`
-	Hotspotinfolist          []interface{}       `json:"hotspotinfolist"`
-	Isnew                    int                 `json:"isnew"`
-	MaliciousContentType     int                 `json:"malicious_content_type"`
-	FasttmplVersion          int                 `json:"fasttmpl_version"`
-	IsTopStories             int                 `json:"is_top_stories"`
-	VideoIDs                 []interface{}       `json:"video_ids"`
-	Isprofileblock           int                 `json:"isprofileblock"`
-	CdnURL2351               string              `json:"cdn_url_235_1"`
-	CdnURL11                 string              `json:"cdn_url_1_1"`
-	MoreReadType             int                 `json:"more_read_type"`
-	AppmsgLikeType           int                 `json:"appmsg_like_type"`
-	OriSendTime              int                 `json:"ori_send_time"`
-	ShowTopBar               int                 `json:"show_top_bar"`
-	RelatedTag               []interface{}       `json:"related_tag"`
-	UserInfo                 UserInfo            `json:"user_info"`
-	Ainfos                   []Ainfo             `json:"ainfos"`
-	RelatedArticleInfo       RelatedArticleInfo  `json:"related_article_info"`
-	HasRedPacketCover        int                 `json:"has_red_packet_cover"`
-	IsPaySubscribe           int                 `json:"is_pay_subscribe"`
-	PaySubscribeInfo         PaySubscribeInfo    `json:"pay_subscribe_info"`
-	VideoInArticle           []interface{}       `json:"video_in_article"`
-	IsAreaShield             int                 `json:"is_area_shield"`
-	ShieldAreaids            []interface{}       `json:"shield_areaids"`
-	AppmsgExtGet             AppmsgExtGet        `json:"appmsg_ext_get"`
-	AnchorTree               []interface{}       `json:"anchor_tree"`
-	VoiceInAppmsgListJSON    string              `json:"voice_in_appmsg_list_json"`
-	LiveInfo                 []interface{}       `json:"live_info"`
-	Lang                     string              `json:"lang"`
-	CdnURL169                string              `json:"cdn_url_16_9"`
-	BizCard                  BizCard             `json:"biz_card"`
-	RealItemShowType         int                 `json:"real_item_show_type"`
-	URLItemShowType          int                 `json:"url_item_show_type"`
-	VideoPageInfos           []interface{}       `json:"video_page_infos"`
-	CanUseWecoin             int                 `json:"can_use_wecoin"`
-	WecoinTips               int                 `json:"wecoin_tips"`
-	FrontEndAdditionalFields FrontEndAddFields   `json:"front_end_additional_fields"`
-	OpenFansmsg              int                 `json:"open_fansmsg"`
-	IsCoolingAppmsg          int                 `json:"is_cooling_appmsg"`
-	IPWording                IPWording           `json:"ip_wording"`
-	ShowIPWording            int                 `json:"show_ip_wording"`
-	IsAcctAreaShield         int                 `json:"is_acct_area_shield"`
+	BaseResp                 BaseResp               `json:"base_resp"`
+	UserName                 string                 `json:"user_name"`
+	NickName                 string                 `json:"nick_name"`
+	RoundHeadImg             string                 `json:"round_head_img"`
+	Title                    string                 `json:"title"`
+	Desc                     string                 `json:"desc"`
+	ContentNoencode          string                 `json:"content_noencode"`
+	CreateTime               string                 `json:"create_time"`
+	CdnURL                   string                 `json:"cdn_url"`
+	Link                     string                 `json:"link"`
+	SourceURL                string                 `json:"source_url"`
+	CanShare                 int                    `json:"can_share"`
+	Alias                    string                 `json:"alias"`
+	Type                     int                    `json:"type"`
+	Author                   string                 `json:"author"`
+	IsLimitUser              int                    `json:"is_limit_user"`
+	ShowCoverPic             int                    `json:"show_cover_pic"`
+	AdvertisementNum         int                    `json:"advertisement_num"`
+	AdvertisementInfo        []interface{}          `json:"advertisement_info"`
+	OriCreateTime            int                    `json:"ori_create_time"`
+	UserUin                  string                 `json:"user_uin"`
+	TotalItemNum             int                    `json:"total_item_num"`
+	IsAsync                  int                    `json:"is_async"`
+	CommentID                string                 `json:"comment_id"`
+	ImgFormat                string                 `json:"img_format"`
+	SvrTime                  int                    `json:"svr_time"`
+	CopyrightInfo            CopyrightInfo          `json:"copyright_info"`
+	CanReward                int                    `json:"can_reward"`
+	Signature                string                 `json:"signature"`
+	InMm                     int                    `json:"in_mm"`
+	AppID                    string                 `json:"app_id"`
+	ShowComment              int                    `json:"show_comment"`
+	CanUsePage               int                    `json:"can_use_page"`
+	HdHeadImg                string                 `json:"hd_head_img"`
+	DelReasonID              int                    `json:"del_reason_id"`
+	Srcid                    string                 `json:"srcid"`
+	IsWxgStuffUin            int                    `json:"is_wxg_stuff_uin"`
+	NeedReportCost           int                    `json:"need_report_cost"`
+	Bizuin                   string                 `json:"bizuin"`
+	Mid                      int                    `json:"mid"`
+	Idx                      int                    `json:"idx"`
+	Sn                       string                 `json:"sn"`
+	UseTxVideoPlayer         int                    `json:"use_tx_video_player"`
+	IsOnlyRead               int                    `json:"is_only_read"`
+	ReqID                    string                 `json:"req_id"`
+	UseOuterLink             int                    `json:"use_outer_link"`
+	BanScene                 int                    `json:"ban_scene"`
+	CspNonceStr              int                    `json:"csp_nonce_str"`
+	MsgDailyIdx              int                    `json:"msg_daily_idx"`
+	OriHeadImgURL            string                 `json:"ori_head_img_url"`
+	FilterTime               int                    `json:"filter_time"`
+	AppmsgFeFilter           string                 `json:"appmsg_fe_filter"`
+	IsLogin                  int                    `json:"is_login"`
+	ItemShowType             int                    `json:"item_show_type"`
+	VoiceInAppmsg            []interface{}          `json:"voice_in_appmsg"`
+	VideoPageInfo            VideoPageInfo          `json:"video_page_info"`
+	MaliciousTitleReasonID   int                    `json:"malicious_title_reason_id"`
+	PicturePageInfoList      []PicturePageInfo      `json:"picture_page_info_list"`
+	ShowMsgVoice             int                    `json:"show_msg_voice"`
+	Locationlist             []interface{}          `json:"locationlist"`
+	Hotspotinfolist          []interface{}          `json:"hotspotinfolist"`
+	Isnew                    int                    `json:"isnew"`
+	MaliciousContentType     int                    `json:"malicious_content_type"`
+	FasttmplVersion          int                    `json:"fasttmpl_version"`
+	IsTopStories             int                    `json:"is_top_stories"`
+	VideoIDs                 []interface{}          `json:"video_ids"`
+	Isprofileblock           int                    `json:"isprofileblock"`
+	CdnURL2351               string                 `json:"cdn_url_235_1"`
+	CdnURL11                 string                 `json:"cdn_url_1_1"`
+	MoreReadType             int                    `json:"more_read_type"`
+	AppmsgLikeType           int                    `json:"appmsg_like_type"`
+	OriSendTime              int                    `json:"ori_send_time"`
+	ShowTopBar               int                    `json:"show_top_bar"`
+	RelatedTag               []interface{}          `json:"related_tag"`
+	UserInfo                 UserInfo               `json:"user_info"`
+	Ainfos                   []Ainfo                `json:"ainfos"`
+	RelatedArticleInfo       RelatedArticleInfo     `json:"related_article_info"`
+	HasRedPacketCover        int                    `json:"has_red_packet_cover"`
+	IsPaySubscribe           int                    `json:"is_pay_subscribe"`
+	PaySubscribeInfo         PaySubscribeInfo       `json:"pay_subscribe_info"`
+	VideoInArticle           []interface{}          `json:"video_in_article"`
+	IsAreaShield             int                    `json:"is_area_shield"`
+	ShieldAreaids            []interface{}          `json:"shield_areaids"`
+	AppmsgExtGet             AppmsgExtGet           `json:"appmsg_ext_get"`
+	AnchorTree               []interface{}          `json:"anchor_tree"`
+	VoiceInAppmsgListJSON    string                 `json:"voice_in_appmsg_list_json"`
+	LiveInfo                 []interface{}          `json:"live_info"`
+	Lang                     string                 `json:"lang"`
+	CdnURL169                string                 `json:"cdn_url_16_9"`
+	BizCard                  BizCard                `json:"biz_card"`
+	RealItemShowType         int                    `json:"real_item_show_type"`
+	URLItemShowType          int                    `json:"url_item_show_type"`
+	VideoPageInfos           []interface{}          `json:"video_page_infos"`
+	CanUseWecoin             int                    `json:"can_use_wecoin"`
+	WecoinTips               int                    `json:"wecoin_tips"`
+	FrontEndAdditionalFields FrontEndAddFields      `json:"front_end_additional_fields"`
+	OpenFansmsg              int                    `json:"open_fansmsg"`
+	IsCoolingAppmsg          int                    `json:"is_cooling_appmsg"`
+	IPWording                IPWording              `json:"ip_wording"`
+	ShowIPWording            int                    `json:"show_ip_wording"`
+	IsAcctAreaShield         int                    `json:"is_acct_area_shield"`
 	Appmsgalbuminfo          map[string]interface{} `json:"appmsgalbuminfo"`
 	PublicTagInfo            map[string]interface{} `json:"public_tag_info"`
-	ShieldAcctAreaids        []interface{}       `json:"shield_acct_areaids"`
-	StyleType                int                 `json:"style_type"`
-	ShieldAreasInfo          []interface{}       `json:"shield_areas_info"`
-	CreateTimestamp          int                 `json:"create_timestamp"`
-	PictureListInPictext     []interface{}       `json:"picture_list_in_pictext"`
-	Servicetype              int                 `json:"servicetype"`
-	SegmentCommentID         string              `json:"segment_comment_id"`
-	AdMarkStatus             int                 `json:"ad_mark_status"`
-	HideAdMarkOnCps          int                 `json:"hide_ad_mark_on_cps"`
-	FinderAudioCard          string              `json:"finder_audio_card"`
-	ClaimSource              ClaimSource         `json:"claim_source"`
-	AtBizList                AtBizList           `json:"at_biz_list"`
-	ExtraCommentID           string              `json:"extra_comment_id"`
-	LastText                 []interface{}       `json:"last_text"`
-	WashStatus               int                 `json:"wash_status"`
-	Enterid                  int                 `json:"enterid"`
-	ZhugeQaIDList            []interface{}       `json:"zhuge_qa_id_list"`
-	SecControlInfo           SecControlInfo      `json:"sec_control_info"`
-	CdnURL34                 string              `json:"cdn_url_3_4"`
-	WindowProductList        []interface{}       `json:"window_product_list"`
-	FinderMusicCard          string              `json:"finder_music_card"`
-	FinderAudioCardList      FinderAudioCardList `json:"finder_audio_card_list"`
-	FinderMusicCardList      FinderMusicCardList `json:"finder_music_card_list"`
-	NewServiceType           int                 `json:"new_service_type"`
-	ProductActivity          struct{}            `json:"product_activity"`
-	RtBizInfo                struct{}            `json:"rt_biz_info"`
-	RedpacketCoverList       []interface{}       `json:"redpacket_cover_list"`
-	FooterGiftActivity       struct{}            `json:"footer_gift_activity"`
-	VerifyStatus             int                 `json:"verify_status"`
-	IsPhacctVerify           int                 `json:"is_phacct_verify"`
-	WatermarkSetting         int                 `json:"watermark_setting"`
-	TitleGenType             int                 `json:"title_gen_type"`
-	AppmsgListenID           string              `json:"appmsg_listen_id"`
-	TransAppmsgInfo          struct{}            `json:"trans_appmsg_info"`
-	Location                 struct{}            `json:"location"`
-	TopicInfos               []interface{}       `json:"topic_infos"`
-	FooterCommonShops        []interface{}       `json:"footer_common_shops"`
-	FooterProductCard        struct{}            `json:"footer_product_card"`
-	DescEmpty                bool                `json:"desc_empty"`
-	Hashtags                 Hashtags            `json:"hashtags"`
-	AigcPictures             []interface{}       `json:"aigc_pictures"`
-	PrivateInfo              struct{}            `json:"private_info"`
-	BizType                  int                 `json:"biz_type"`
-	AIChatInfo               AIChatInfo          `json:"ai_chat_info"`
-	SpecialBiz               bool                `json:"special_biz"`
-	PreloadCommentItemList   []interface{}       `json:"preload_comment_item_list"`
+	ShieldAcctAreaids        []interface{}          `json:"shield_acct_areaids"`
+	StyleType                int                    `json:"style_type"`
+	ShieldAreasInfo          []interface{}          `json:"shield_areas_info"`
+	CreateTimestamp          int                    `json:"create_timestamp"`
+	PictureListInPictext     []interface{}          `json:"picture_list_in_pictext"`
+	Servicetype              int                    `json:"servicetype"`
+	SegmentCommentID         string                 `json:"segment_comment_id"`
+	AdMarkStatus             int                    `json:"ad_mark_status"`
+	HideAdMarkOnCps          int                    `json:"hide_ad_mark_on_cps"`
+	FinderAudioCard          string                 `json:"finder_audio_card"`
+	ClaimSource              ClaimSource            `json:"claim_source"`
+	AtBizList                AtBizList              `json:"at_biz_list"`
+	ExtraCommentID           string                 `json:"extra_comment_id"`
+	LastText                 []interface{}          `json:"last_text"`
+	WashStatus               int                    `json:"wash_status"`
+	Enterid                  int                    `json:"enterid"`
+	ZhugeQaIDList            []interface{}          `json:"zhuge_qa_id_list"`
+	SecControlInfo           SecControlInfo         `json:"sec_control_info"`
+	CdnURL34                 string                 `json:"cdn_url_3_4"`
+	WindowProductList        []interface{}          `json:"window_product_list"`
+	FinderMusicCard          string                 `json:"finder_music_card"`
+	FinderAudioCardList      FinderAudioCardList    `json:"finder_audio_card_list"`
+	FinderMusicCardList      FinderMusicCardList    `json:"finder_music_card_list"`
+	NewServiceType           int                    `json:"new_service_type"`
+	ProductActivity          struct{}               `json:"product_activity"`
+	RtBizInfo                struct{}               `json:"rt_biz_info"`
+	RedpacketCoverList       []interface{}          `json:"redpacket_cover_list"`
+	FooterGiftActivity       struct{}               `json:"footer_gift_activity"`
+	VerifyStatus             int                    `json:"verify_status"`
+	IsPhacctVerify           int                    `json:"is_phacct_verify"`
+	WatermarkSetting         int                    `json:"watermark_setting"`
+	TitleGenType             int                    `json:"title_gen_type"`
+	AppmsgListenID           string                 `json:"appmsg_listen_id"`
+	TransAppmsgInfo          struct{}               `json:"trans_appmsg_info"`
+	Location                 struct{}               `json:"location"`
+	TopicInfos               []interface{}          `json:"topic_infos"`
+	FooterCommonShops        []interface{}          `json:"footer_common_shops"`
+	FooterProductCard        struct{}               `json:"footer_product_card"`
+	DescEmpty                bool                   `json:"desc_empty"`
+	Hashtags                 Hashtags               `json:"hashtags"`
+	AigcPictures             []interface{}          `json:"aigc_pictures"`
+	PrivateInfo              struct{}               `json:"private_info"`
+	BizType                  int                    `json:"biz_type"`
+	AIChatInfo               AIChatInfo             `json:"ai_chat_info"`
+	SpecialBiz               bool                   `json:"special_biz"`
+	PreloadCommentItemList   []interface{}          `json:"preload_comment_item_list"`
 }
 
 // BaseResp represents the base_resp field in article CGI data.

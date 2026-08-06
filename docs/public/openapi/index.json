@@ -107,54 +107,6 @@
     "/mp/proxy": {
       "$ref": "./mp/proxy.json"
     },
-    "/api/task/create_channels": {
-      "$ref": "./task/create_channels.json"
-    },
-    "/api/task/create": {
-      "$ref": "./task/create.json"
-    },
-    "/api/task/create2": {
-      "$ref": "./task/create2.json"
-    },
-    "/api/task/create_batch": {
-      "$ref": "./task/create_batch.json"
-    },
-    "/api/browse_history/create": {
-      "$ref": "./task/browse_history_create.json"
-    },
-    "/api/browse_history/list": {
-      "$ref": "./task/browse_history_list.json"
-    },
-    "/api/task/list": {
-      "$ref": "./task/list.json"
-    },
-    "/api/task/start": {
-      "$ref": "./task/start.json"
-    },
-    "/api/task/start_all": {
-      "$ref": "./task/start_all.json"
-    },
-    "/api/task/pause": {
-      "$ref": "./task/pause.json"
-    },
-    "/api/task/pause_all": {
-      "$ref": "./task/pause_all.json"
-    },
-    "/api/task/resume": {
-      "$ref": "./task/resume.json"
-    },
-    "/api/task/delete": {
-      "$ref": "./task/delete.json"
-    },
-    "/api/task/clear": {
-      "$ref": "./task/clear.json"
-    },
-    "/api/open_download_dir": {
-      "$ref": "./task/open_download_dir.json"
-    },
-    "/api/show_file": {
-      "$ref": "./task/show_file.json"
-    },
     "/api/download_task/list": {
       "$ref": "./download_task/list.json"
     },
@@ -188,42 +140,6 @@
     "/api/download_task/play": {
       "$ref": "./download_task/play.json"
     },
-    "/api/influencers": {
-      "$ref": "./influencer/list.json"
-    },
-    "/api/influencers/{id}": {
-      "$ref": "./influencer/profile.json"
-    },
-    "/api/account/list": {
-      "$ref": "./platform/list.json"
-    },
-    "/api/account/synchronize": {
-      "$ref": "./platform/synchronize.json"
-    },
-    "/api/video/list": {
-      "$ref": "./content/list.json"
-    },
-    "/api/channels/search/author": {
-      "$ref": "./platform/search_author.json"
-    },
-    "/api/channels/author/videos": {
-      "$ref": "./platform/author_videos.json"
-    },
-    "/api/channels/media/profile": {
-      "$ref": "./platform/media_profile.json"
-    },
-    "/api/channels/task/status": {
-      "$ref": "./platform/task_status.json"
-    },
-    "/api/channels/task/start": {
-      "$ref": "./platform/task_start.json"
-    },
-    "/api/channels/shared_feed/profile": {
-      "$ref": "./channels/shared_feed_profile.json"
-    },
-    "/api/status": {
-      "$ref": "./task/status.json"
-    },
     "/api/mp/ws_pool": {
       "$ref": "./mp/ws_pool.json"
     },
@@ -232,75 +148,6 @@
     },
     "/api/mp/download_all": {
       "$ref": "./mp/download_all.json"
-    },
-    "/api/task/profile": {
-      "$ref": "./task/profile.json"
-    },
-    "/api/task/pipeline/start": {
-      "$ref": "./task/pipeline_start.json"
-    },
-    "/api/task/probe": {
-      "$ref": "./task/probe.json"
-    },
-    "/api/task/pipeline/workflow": {
-      "$ref": "./task/pipeline_workflow.json"
-    },
-    "/api/task/pipeline/resume": {
-      "$ref": "./task/pipeline_resume.json"
-    },
-    "/api/task/create3": {
-      "$ref": "./task/create3.json"
-    },
-    "/api/v0/task/list": {
-      "$ref": "./task/v0_task_list.json"
-    },
-    "/api/remote/proxy": {
-      "$ref": "./task/remote_proxy.json"
-    },
-    "/api/remote/task/list": {
-      "$ref": "./task/remote_task_list.json"
-    },
-    "/api/file": {
-      "$ref": "./task/file.json"
-    },
-    "/file": {
-      "$ref": "./media/file.json"
-    },
-    "/preview": {
-      "$ref": "./media/preview.json"
-    },
-    "/api/open": {
-      "$ref": "./task/open.json"
-    },
-    "/api/filehelper/qrcode": {
-      "$ref": "./filehelper/qrcode.json"
-    },
-    "/api/filehelper/login/wait": {
-      "$ref": "./filehelper/login_wait.json"
-    },
-    "/api/filehelper/status": {
-      "$ref": "./filehelper/status.json"
-    },
-    "/api/filehelper/synccheck": {
-      "$ref": "./filehelper/synccheck.json"
-    },
-    "/api/filehelper/sync": {
-      "$ref": "./filehelper/sync.json"
-    },
-    "/api/filehelper/messages": {
-      "$ref": "./filehelper/messages.json"
-    },
-    "/api/filehelper/send": {
-      "$ref": "./filehelper/send.json"
-    },
-    "/api/filehelper/logout": {
-      "$ref": "./filehelper/logout.json"
-    },
-    "/api/filehelper/parse_finder_feed": {
-      "$ref": "./filehelper/parse_finder_feed.json"
-    },
-    "/filehelper": {
-      "$ref": "./filehelper/index.json"
     },
     "/mp/home": {
       "$ref": "./mp/home.json"
