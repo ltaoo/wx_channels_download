@@ -4,13 +4,13 @@ set -euo pipefail
 usage() {
     cat >&2 <<'EOF'
 Usage:
-  scripts/dockertest.sh <version>
-  scripts/dockertest.sh <image>
+  bash build/dockertest.sh <version>
+  bash build/dockertest.sh <image>
 
 Examples:
-  scripts/dockertest.sh 26061402
-  scripts/dockertest.sh ghcr.io/ltaoo/wx_video_download:v260614
-  IMAGE=ghcr.io/ltaoo/wx_video_download:v260614 scripts/dockertest.sh
+  bash build/dockertest.sh 26061402
+  bash build/dockertest.sh ghcr.io/ltaoo/wx_video_download:v260614
+  IMAGE=ghcr.io/ltaoo/wx_video_download:v260614 bash build/dockertest.sh
 
 Environment:
   IMAGE                Full image name. Defaults to wx_video_download:<version>.
