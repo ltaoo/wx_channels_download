@@ -804,6 +804,10 @@ func (s *DownloadTaskService) ResumeTask(taskID int) (*model.DownloadTask, error
 		return nil, fmt.Errorf("当前状态不允许恢复")
 	}
 
+	if !s.downloader.HasAvailableSlot() {
+		return nil, fmt.Errorf("exceeds maximum concurrent download tasks (%d)", s.downloader.MaxConcurrent())
+	}
+
 	if err := s.downloader.StartTask(task.Id); err != nil {
 		return nil, fmt.Errorf("恢复下载任务失败: %w", err)
 	}

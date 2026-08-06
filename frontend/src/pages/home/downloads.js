@@ -7,6 +7,8 @@ import {
   formatBytes,
 } from "./downloads.model.js";
 
+const MAX_CONCURRENT_DOWNLOADS = 3;
+
 function mapStatusClassName(status) {
   if (status === DownloadTaskStatus.Downloading) {
     return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
@@ -1733,9 +1735,15 @@ function TaskCard(task, vm$) {
                 },
                 [
                   Show({
-                    when: computed(task, (t) => {
-                      return t.status === DownloadTaskStatus.Failed;
-                    }),
+                    when: combine(
+                      {
+                        status: computed(task, (t) => t.status),
+                        runningCount: vm$.state.runningCount,
+                      },
+                      (d) =>
+                        d.status === DownloadTaskStatus.Failed &&
+                        d.runningCount < MAX_CONCURRENT_DOWNLOADS,
+                    ),
                     ok() {
                       return Button(
                         {
@@ -1809,9 +1817,14 @@ function TaskCard(task, vm$) {
                     },
                   }),
                   Show({
-                    when: computed(
-                      task,
-                      (t) => t.status === DownloadTaskStatus.Paused,
+                    when: combine(
+                      {
+                        status: computed(task, (t) => t.status),
+                        runningCount: vm$.state.runningCount,
+                      },
+                      (d) =>
+                        d.status === DownloadTaskStatus.Paused &&
+                        d.runningCount < MAX_CONCURRENT_DOWNLOADS,
                     ),
                     ok() {
                       return Button(
@@ -1839,7 +1852,15 @@ function TaskCard(task, vm$) {
                     },
                   }),
                   Show({
-                    when: computed(task, (t) => isStartableStatus(t.status)),
+                    when: combine(
+                      {
+                        status: computed(task, (t) => t.status),
+                        runningCount: vm$.state.runningCount,
+                      },
+                      (d) =>
+                        isStartableStatus(d.status) &&
+                        d.runningCount < MAX_CONCURRENT_DOWNLOADS,
+                    ),
                     ok() {
                       return Button(
                         {

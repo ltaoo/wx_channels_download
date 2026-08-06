@@ -19,7 +19,9 @@ func TestRegisterStaticAssets(t *testing.T) {
 
 	for _, requestPath := range []string{
 		StaticAssetsPath + "/channels.ws.js",
+		StaticAssetsPath + "/getFeedInfo.js",
 		"/__assets/inject/channels.ws.js",
+		"/__assets/inject/getFeedInfo.js",
 	} {
 		response := httptest.NewRecorder()
 		registry.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))

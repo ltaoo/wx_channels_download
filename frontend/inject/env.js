@@ -18,7 +18,7 @@ var WXEnv = (() => {
     downloadProtocol: "http",
     downloadHostname: "127.0.0.1:2022",
     assetsFallbackBase: "http://127.0.0.1:2022/__assets",
-    MaxRunning: 5,
+    MaxRunning: 3,
   };
   const runtimeEnv = window.__wx_channels_env__;
   const ua = navigator.userAgent || navigator.platform || "";

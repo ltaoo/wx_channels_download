@@ -65,14 +65,24 @@ function DownloadPageStatusCounts(props) {
 
 function DownloadPageStatusActions(props) {
   const vm$ = props.store;
+  const running_count_ = vm$.state.running_count;
   return View({ class: "wx-dl-page-status-actions" }, [
-    DownloadPageActionButton({
-      icon: "play",
-      iconSize: 14,
-      label: "全部开始",
-      class: "wx-dl-page-action-compact",
-      onClick() {
-        vm$.methods.startAllTasks();
+    Show({
+      when: computed(running_count_, function (t) {
+        var maxRunning =
+          WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
+        return t < maxRunning;
+      }),
+      ok: function () {
+        return DownloadPageActionButton({
+          icon: "play",
+          iconSize: 14,
+          label: "全部开始",
+          class: "wx-dl-page-action-compact",
+          onClick: function () {
+            vm$.methods.startAllTasks();
+          },
+        });
       },
     }),
     DownloadPageActionButton({

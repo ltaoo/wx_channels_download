@@ -702,6 +702,11 @@ func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
 			continue
 		}
 
+		if !c.downloader.HasAvailableSlot() {
+			results = append(results, gin.H{"task_id": taskID, "success": false, "error": fmt.Sprintf("exceeds maximum concurrent download tasks (%d)", c.downloader.MaxConcurrent())})
+			continue
+		}
+
 		if err := c.downloader.StartTask(task.Id); err != nil {
 			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "恢复下载任务失败: " + err.Error()})
 			continue
@@ -1307,11 +1312,16 @@ func (c *APIClient) handleStartAllDownloadTask(ctx *gin.Context) {
 	}
 
 	var started int
+	available := c.downloader.MaxConcurrent() - c.downloader.RunningTaskCount()
 	for _, task := range tasks {
+		if available <= 0 {
+			break
+		}
 		if err := c.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
+		available--
 	}
 
 	result.Ok(ctx, gin.H{"started": started, "total": len(tasks)})

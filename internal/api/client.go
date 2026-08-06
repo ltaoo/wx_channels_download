@@ -242,7 +242,7 @@ func (c *APIClient) handleChannelPublicAsset(ctx *gin.Context) {
 	}
 	data = frontend.ChannelStaticAssetResponseData(rel, data)
 	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelLibAssetCacheControl)
+	ctx.Header("Cache-Control", frontend.ChannelPublicAssetCacheControl)
 	if ctx.Request.Method == http.MethodHead {
 		ctx.Status(http.StatusOK)
 		return
@@ -297,4 +297,3 @@ func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
 	}
 	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
 }
-

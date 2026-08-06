@@ -449,6 +449,21 @@ func (d *HermesEngine) StartTask(taskID int) error {
 	return nil
 }
 
+// HasAvailableSlot returns true when at least one concurrent download slot is free.
+func (d *HermesEngine) HasAvailableSlot() bool {
+	return len(d.sem) < cap(d.sem)
+}
+
+// RunningTaskCount returns the number of currently occupied concurrent slots.
+func (d *HermesEngine) RunningTaskCount() int {
+	return len(d.sem)
+}
+
+// MaxConcurrent returns the maximum number of concurrent download slots.
+func (d *HermesEngine) MaxConcurrent() int {
+	return cap(d.sem)
+}
+
 // PauseTask cancels and waits for the current execution instance to exit, ensuring subsequent Resume
 // will not write files concurrently with the old Writer.
 func (d *HermesEngine) PauseTask(taskID int) {

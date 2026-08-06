@@ -59,6 +59,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 		cfg = &InterceptorConfig{}
 	}
 	version := cfg.Version
+	sharedLibVersion := frontend.ChannelSharedLibAssetVersion(files, version)
 	variables := cfg.FrontendVariables
 	if variables == nil {
 		variables = map[string]any{}
@@ -182,7 +183,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					/** Global error capture and show dialog */
 					frontend.AppendScriptSrcs(&injected, crossoriginAttr, frontend.InjectAssetURL(assetBaseURL, "error.js"))
 				}
-				frontend.AppendSharedLibAssets(&injected, assetBaseURL, version, crossoriginAttr, "")
+				frontend.AppendSharedLibAssets(&injected, assetBaseURL, sharedLibVersion, crossoriginAttr, "")
 				frontend.AppendStylesheetHrefs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "components.css"))
 				cfg_byte, _ := json.Marshal(cfg)
 				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))

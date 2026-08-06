@@ -430,7 +430,7 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
 .wx-dl-page-item .weui-cell__hd { margin-right: 34px !important; color: #f1f3f4 !important; }
 .wx-dl-page-item .weui-cell__bd { min-width: 0; }
 .wx-dl-page-item .wx-dl-item-title { color: var(--wx-dl-page-blue) !important; font-size: 16px !important; font-weight: 600 !important; line-height: 22px !important; text-decoration: underline; }
-.wx-dl-page-item .weui-cell__desc { overflow: hidden !important; color: #bdc1c6 !important; font-size: 16px !important; line-height: 24px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+.wx-dl-page-item .weui-cell__desc { overflow: hidden; color: #bdc1c6; font-size: 16px; line-height: 24px; text-overflow: ellipsis; white-space: nowrap; }
 .wx-dl-page-item .weui-cell__ft { gap: 22px; margin-left: 28px; color: #bdc1c6; }
 .wx-dl-page-item .weui-cell__ft > * { margin-left: 0 !important; }
 .wx-dl-page-empty { width: var(--wx-dl-page-card-width); max-width: calc(100vw - 48px); flex: 1; min-height: 220px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin: 0 auto; border: 0; border-radius: 8px; color: var(--weui-FG-1); font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.32); }

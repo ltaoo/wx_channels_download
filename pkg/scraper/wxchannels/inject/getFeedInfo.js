@@ -2,7 +2,7 @@ var Hc = Object.defineProperty;
 var qc = (t, e, r) => e in t ? Hc(t, e, { enumerable: !0, configurable: !0, writable: !0, value: r }) : t[e] = r;
 var gi = (t, e, r) => (qc(t, typeof e != "symbol" ? e + "" : e, r), r);
 
-// Browser version - assumes axios is available globally via script tag
+// Browser version for wxchannels injection - assumes axios is available globally.
 
 var qr = typeof window !== 'undefined' ? window.axios : (typeof axios !== 'undefined' ? axios : require('axios'));
 

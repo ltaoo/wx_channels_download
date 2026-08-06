@@ -32,7 +32,6 @@ type ChannelInjectedFiles struct {
 	JSBox                   []byte
 	JSMitt                  []byte
 	JSAxios                 []byte
-	JSGetFeedInfo           []byte
 	JSDebug                 []byte
 	JSEventBus              []byte
 	JSEnv                   []byte
@@ -66,8 +65,10 @@ var Assets = NewChannelInjectedFiles("")
 
 const channelAssetsPath = "/__assets"
 const ChannelLibAssetCacheControl = "public, max-age=2592000, immutable"
+const ChannelPublicAssetCacheControl = "no-cache"
 const ChannelSrcAssetCacheControl = "no-cache"
 const channelLibAssetCacheControl = ChannelLibAssetCacheControl
+const channelPublicAssetCacheControl = ChannelPublicAssetCacheControl
 const channelSrcAssetCacheControl = ChannelSrcAssetCacheControl
 
 // const timelessBridgeScript = `
@@ -139,6 +140,40 @@ func ChannelPublicAssetURL(baseURL string, version string, rel string) string {
 	return strings.TrimRight(baseURL, "/") + "/public/" + rel + "?v=" + url.QueryEscape(version)
 }
 
+// ChannelSharedLibAssetVersion ties the injected asset URL to the actual
+// browser bundle contents. This keeps replacing a bundle under the same
+// directory (for example timeless/0.30.0) from reusing an older immutable URL.
+func ChannelSharedLibAssetVersion(files *ChannelInjectedFiles, version string) string {
+	if files == nil {
+		return version
+	}
+
+	hash := sha256.New()
+	assets := []struct {
+		name string
+		data []byte
+	}{
+		{name: "mitt", data: files.JSMitt},
+		{name: "timeless", data: files.JSTimeless},
+		{name: "timeless-utils", data: files.JSTimelessUtils},
+		{name: "timeless-weui-css", data: files.CSSTimelessShadcn},
+		{name: "timeless-weui", data: files.JSTimelessShadcn},
+		{name: "timeless-dom", data: files.JSTimelessDOM},
+		{name: "timeless-web", data: files.JSTimelessWeb},
+	}
+	for _, asset := range assets {
+		_, _ = hash.Write([]byte(asset.name))
+		_, _ = hash.Write([]byte{0})
+		_, _ = hash.Write(asset.data)
+		_, _ = hash.Write([]byte{0})
+	}
+	fingerprint := hex.EncodeToString(hash.Sum(nil))[:12]
+	if version == "" {
+		return fingerprint
+	}
+	return version + "-" + fingerprint
+}
+
 func ChannelSrcAssetURL(baseURL string, rel string) string {
 	return strings.TrimRight(baseURL, "/") + "/src/" + rel
 }
@@ -188,8 +223,8 @@ func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, s
 		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.umd.min.js"),
 		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.utils.umd.min.js"),
 	)
-	AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.css"))
-	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.umd.min.js"))
+	AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.css"))
+	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.umd.min.js"))
 	// AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
@@ -211,9 +246,9 @@ func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string
 		shadcnCSS = ChannelStaticAssetResponseData("timeless.weui.css", shadcnCSS)
 		AppendInlineStyle(b, styleAttr, string(shadcnCSS))
 	} else {
-		AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.css"))
+		AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.css"))
 	}
-	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.28.0/timeless.weui.umd.min.js"))
+	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.umd.min.js"))
 	// AppendInlineScript(b, scriptAttr, timelessBridgeScript)
 	AppendScriptSrcs(
 		b,
@@ -248,7 +283,7 @@ func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelIn
 		data = ChannelStaticAssetResponseData(rel, data)
 		ctx.Mock(200, map[string]string{
 			"Content-Type":                channelStaticAssetContentType(rel),
-			"Cache-Control":               channelLibAssetCacheControl,
+			"Cache-Control":               channelPublicAssetCacheControl,
 			"Access-Control-Allow-Origin": "*",
 		}, string(data))
 		return true
@@ -521,7 +556,6 @@ func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
 	files.JSPageSpy = files.readLib("pagespy.min.js")
 	files.JSMitt = files.readLib("mitt.umd.js")
 	files.JSAxios = files.readLib("axios.min.js")
-	files.JSGetFeedInfo = files.readLib("getFeedInfo.js")
 	files.JSTimeless = files.readPublic("timeless/0.30.0/timeless.umd.min.js")
 	files.JSTimelessUtils = files.readPublic("timeless/0.30.0/timeless.utils.umd.min.js")
 	files.CSSTimelessShadcn = files.readPublic("timeless/0.30.0/timeless.weui.css")

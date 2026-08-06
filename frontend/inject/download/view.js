@@ -12,6 +12,11 @@ function map_download_task_icon_name(filename) {
   }
   return "file";
 }
+function format_download_progress_text(percent) {
+  const p = Number(percent);
+  if (!Number.isFinite(p)) return "0";
+  return String(Math.round(Math.max(0, Math.min(100, p))));
+}
 function DownloadTaskFileIcon(props) {
   const size = props.size || 32;
   const iconName_ = computed(props.task, (task) => {
@@ -788,78 +793,79 @@ function ClearTasksConfirmDialog(props) {
     },
     [
       View({ style: { padding: "20px 20px 16px" } }, [
-        View(
-          {
-            style: {
-              "font-size": "17px",
-              "font-weight": "600",
-              "line-height": "24px",
-              "margin-bottom": "8px",
+          View(
+            {
+              style: {
+                "font-size": "17px",
+                "font-weight": "600",
+                "line-height": "24px",
+                "margin-bottom": "8px",
+              },
             },
-          },
-          ["删除下载记录"],
-        ),
-        View(
-          {
-            style: {
-              "font-size": "14px",
-              "line-height": "20px",
-              color: "var(--weui-FG-1)",
-              "margin-bottom": "16px",
+            ["删除下载记录"],
+          ),
+          View(
+            {
+              style: {
+                "font-size": "14px",
+                "line-height": "20px",
+                color: "var(--weui-FG-1)",
+                "margin-bottom": "16px",
+              },
             },
-          },
-          ["确认删除下载记录？"],
-        ),
-        View(
-          {
-            role: "checkbox",
-            tabIndex: "0",
-            attributes: {
-              "aria-checked": computed(
-                props.store.state.delete_delete_files,
-                (checked) => (checked ? "true" : "false"),
-              ),
+            ["确认删除下载记录？"],
+          ),
+          View(
+            {
+              role: "checkbox",
+              tabIndex: "0",
+              attributes: {
+                "aria-checked": computed(
+                  props.store.state.delete_delete_files,
+                  (checked) => (checked ? "true" : "false"),
+                ),
+              },
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "10px",
+                padding: "10px 0",
+                cursor: "pointer",
+                "user-select": "none",
+                "font-size": "14px",
+                "line-height": "20px",
+              },
+              onClick() {
+                // if (loading_.value) {
+                //   return;
+                // }
+                // deleteFiles_.as((prev) => !prev);
+                props.store.methods.handleClickCheckboxConfirmDeleteFiles();
+              },
+              // onKeyDown(e) {
+              //   if (loading_.value) {
+              //     return;
+              //   }
+              //   if (e.key === " " || e.key === "Enter") {
+              //     e.preventDefault();
+              //     deleteFiles_.as((prev) => !prev);
+              //   }
+              // },
             },
-            style: {
-              display: "flex",
-              "align-items": "center",
-              gap: "10px",
-              padding: "10px 0",
-              cursor: "pointer",
-              "user-select": "none",
-              "font-size": "14px",
-              "line-height": "20px",
-            },
-            onClick() {
-              // if (loading_.value) {
-              //   return;
-              // }
-              // deleteFiles_.as((prev) => !prev);
-              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
-            },
-            // onKeyDown(e) {
-            //   if (loading_.value) {
-            //     return;
-            //   }
-            //   if (e.key === " " || e.key === "Enter") {
-            //     e.preventDefault();
-            //     deleteFiles_.as((prev) => !prev);
-            //   }
-            // },
-          },
-          [
-            View({ style: checkboxStyle }, [
-              Show({
-                when: props.store.state.delete_delete_files,
-                ok() {
-                  return Timeless.Icon({ name: "check", size: 14 });
-                },
-              }),
-            ]),
-            View({}, ["同时删除已下载的文件"]),
-          ],
-        ),
-      ]),
+            [
+              View({ style: checkboxStyle }, [
+                Show({
+                  when: props.store.state.delete_delete_files,
+                  ok() {
+                    return Timeless.Icon({ name: "check", size: 14 });
+                  },
+                }),
+              ]),
+              View({}, ["同时删除已下载的文件"]),
+            ],
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -1075,65 +1081,66 @@ function TaskDeleteConfirmDialog(props) {
     },
     [
       View({ style: { padding: "20px 20px 16px" } }, [
-        View(
-          {
-            style: {
-              "font-size": "17px",
-              "font-weight": "600",
-              "line-height": "24px",
-              "margin-bottom": "8px",
+          View(
+            {
+              style: {
+                "font-size": "17px",
+                "font-weight": "600",
+                "line-height": "24px",
+                "margin-bottom": "8px",
+              },
             },
-          },
-          ["删除下载任务"],
-        ),
-        View(
-          {
-            style: {
-              "font-size": "14px",
-              "line-height": "20px",
-              color: "var(--weui-FG-1)",
-              "margin-bottom": "16px",
+            ["删除下载任务"],
+          ),
+          View(
+            {
+              style: {
+                "font-size": "14px",
+                "line-height": "20px",
+                color: "var(--weui-FG-1)",
+                "margin-bottom": "16px",
+              },
             },
-          },
-          ["确定删除下载任务记录？", "此操作不可恢复。"],
-        ),
-        View(
-          {
-            role: "checkbox",
-            tabIndex: "0",
-            attributes: {
-              "aria-checked": computed(
-                props.store.state.delete_delete_files,
-                (checked) => (checked ? "true" : "false"),
-              ),
+            ["确定删除下载任务记录？", "此操作不可恢复。"],
+          ),
+          View(
+            {
+              role: "checkbox",
+              tabIndex: "0",
+              attributes: {
+                "aria-checked": computed(
+                  props.store.state.delete_delete_files,
+                  (checked) => (checked ? "true" : "false"),
+                ),
+              },
+              style: {
+                display: "flex",
+                "align-items": "center",
+                gap: "10px",
+                padding: "10px 0",
+                cursor: "pointer",
+                "user-select": "none",
+                "font-size": "14px",
+                "line-height": "20px",
+              },
+              onClick() {
+                props.store.methods.handleClickCheckboxConfirmDeleteFiles();
+              },
             },
-            style: {
-              display: "flex",
-              "align-items": "center",
-              gap: "10px",
-              padding: "10px 0",
-              cursor: "pointer",
-              "user-select": "none",
-              "font-size": "14px",
-              "line-height": "20px",
-            },
-            onClick() {
-              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
-            },
-          },
-          [
-            View({ style: checkboxStyle }, [
-              Show({
-                when: props.store.state.delete_delete_files,
-                ok() {
-                  return Timeless.Icon({ name: "check", size: 14 });
-                },
-              }),
-            ]),
-            View({}, ["同时删除已下载的文件"]),
-          ],
-        ),
-      ]),
+            [
+              View({ style: checkboxStyle }, [
+                Show({
+                  when: props.store.state.delete_delete_files,
+                  ok() {
+                    return Timeless.Icon({ name: "check", size: 14 });
+                  },
+                }),
+              ]),
+              View({}, ["同时删除已下载的文件"]),
+            ],
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -1276,12 +1283,14 @@ function DownloadTaskCard(props) {
     let statusText = t.status;
     let statusColor = "var(--weui-FG-1)";
     let errorText = "";
+    let progressText = "";
     if (isRunning) {
       const speed = format_download_speed(
         t.speed ||
           (t.progress && typeof t.progress === "object" ? t.progress.speed : 0),
       );
-      statusText = `${speed} • ${pr}%`;
+      statusText = speed || "下载中";
+      progressText = format_download_progress_text(pr);
     } else if (isCompleted) {
       statusText = "已完成";
       const total = t.meta && t.meta.res ? t.meta.res.size : 0;
@@ -1295,7 +1304,8 @@ function DownloadTaskCard(props) {
     } else if (isPending) {
       statusText = "等待中...";
     } else if (isPaused) {
-      statusText = `已暂停 • ${pr}%`;
+      statusText = "已暂停";
+      progressText = format_download_progress_text(pr);
     }
     return {
       pr,
@@ -1307,6 +1317,7 @@ function DownloadTaskCard(props) {
       statusText,
       statusColor,
       errorText,
+      progressText,
       totalSizeText,
       totalFileSize,
     };
@@ -1378,6 +1389,29 @@ function DownloadTaskCard(props) {
           },
         },
         [
+          View(
+            {
+              style: {
+                position: "relative",
+                width: "32px",
+                height: "32px",
+                display: "inline-flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "z-index": "1",
+                "pointer-events": "none",
+                opacity: computed(state_, (t) => {
+                  return t.isRunning || t.isPaused ? "0.2" : "1";
+                }),
+              },
+            },
+            [
+              DownloadTaskFileIcon({
+                task: task_,
+                size: 32,
+              }),
+            ],
+          ),
           Show({
             when: computed(state_, (t) => {
               return t.isRunning || t.isPaused;
@@ -1391,6 +1425,7 @@ function DownloadTaskCard(props) {
                       top: "0",
                       left: "0",
                       transform: "rotate(-90deg)",
+                      "z-index": "3",
                     },
                     attributes: {
                       width: "50",
@@ -1424,12 +1459,28 @@ function DownloadTaskCard(props) {
                     }),
                   ],
                 ),
+                View(
+                  {
+                    style: {
+                      position: "absolute",
+                      inset: "0",
+                      display: "grid",
+                      "place-items": "center",
+                      "font-size": "24px",
+                      "font-weight": "700",
+                      color: "var(--weui-FG-0)",
+                      "line-height": "1",
+                      "pointer-events": "none",
+                      "z-index": "4",
+                      "text-shadow":
+                        "0 0 2px var(--weui-BG-3), 0 2px 4px rgba(0, 0, 0, 0.55)",
+                      "-webkit-text-stroke": "0.3px var(--weui-BG-3)",
+                    },
+                  },
+                  [computed(state_, (t) => t.progressText)],
+                ),
               ];
             },
-          }),
-          DownloadTaskFileIcon({
-            task: task_,
-            size: 32,
           }),
         ],
       ),
@@ -1464,8 +1515,8 @@ function DownloadTaskCard(props) {
             [
               computed(state_, (d) => {
                 return d.totalSizeText
-                  ? `${d.totalSizeText} · ${d.statusText}`
-                  : d.statusText;
+                  ? `${d.totalSizeText} · ${String(d.statusText).split("•")[0].trim()}`
+                  : String(d.statusText).split("•")[0].trim();
               }),
             ],
           ),
@@ -1512,11 +1563,16 @@ function DownloadTaskCard(props) {
                 running_count: running_count_,
               },
               (t) => {
+                var maxRunning =
+                  WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
                 if (t.state.isCompleted) {
                   return 1;
                 }
                 if (t.state.isRunning) {
                   return 2;
+                }
+                if (t.running_count >= maxRunning) {
+                  return 5;
                 }
                 if (t.state.isPaused) {
                   return 3;
@@ -1533,26 +1589,8 @@ function DownloadTaskCard(props) {
                   {
                     type: "a",
                     class: "wx-download-item-start",
-                    style: computed(running_count_, (t) => {
-                      return {
-                        ...btnStyle,
-                        ...(t >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                          ? {
-                              opacity: "0.4",
-                              cursor: "not-allowed",
-                              "pointer-events": "none",
-                            }
-                          : {}),
-                      };
-                    }),
+                    style: btnStyle,
                     onClick() {
-                      if (
-                        running_count_.value >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                      ) {
-                        return;
-                      }
                       vm$.methods.startTask(task_.value);
                     },
                   },
@@ -1620,26 +1658,8 @@ function DownloadTaskCard(props) {
                   {
                     type: "a",
                     class: "wx-download-item-resume",
-                    style: computed(running_count_, (t) => {
-                      return {
-                        ...btnStyle,
-                        ...(t >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                          ? {
-                              opacity: "0.4",
-                              cursor: "not-allowed",
-                              "pointer-events": "none",
-                            }
-                          : {}),
-                      };
-                    }),
+                    style: btnStyle,
                     onClick() {
-                      if (
-                        running_count_.value >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                      ) {
-                        return;
-                      }
                       vm$.methods.resumeTask(task_.value);
                     },
                   },
@@ -1656,26 +1676,8 @@ function DownloadTaskCard(props) {
                   {
                     type: "a",
                     class: "wx-download-item-resume",
-                    style: computed(running_count_, (t) => {
-                      return {
-                        ...btnStyle,
-                        ...(t >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                          ? {
-                              opacity: "0.4",
-                              cursor: "not-allowed",
-                              "pointer-events": "none",
-                            }
-                          : {}),
-                      };
-                    }),
+                    style: btnStyle,
                     onClick() {
-                      if (
-                        running_count_.value >=
-                        (WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning)
-                      ) {
-                        return;
-                      }
                       vm$.methods.retryTask(task_.value);
                     },
                   },
@@ -1686,6 +1688,9 @@ function DownloadTaskCard(props) {
                     }),
                   ],
                 );
+              },
+              5() {
+                return View({});
               },
             },
           }),

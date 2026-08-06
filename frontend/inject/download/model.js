@@ -1612,6 +1612,15 @@ function DownloaderPanelViewModel(props = {}) {
       }
     },
     async startAllTasks() {
+      var maxRunning =
+        WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
+      if (running_count_.value >= maxRunning) {
+        WXU.warning({
+          msg:
+            "已达到最大同时下载任务数（" + maxRunning + "），请等待当前任务完成",
+        });
+        return;
+      }
       const r = await reqs.task.startAll.run({
         status: getActiveStatusFilter(),
       });
