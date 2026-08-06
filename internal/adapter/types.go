@@ -1,8 +1,12 @@
 package adapter
 
 import (
+	"errors"
+
 	"wx_channel/internal/database/model"
 )
+
+var ErrBrowseHistoryNotSupported = errors.New("browse history is not supported")
 
 // DownloadTaskResult is the result of building a download task by a platform handler.
 type DownloadTaskResult struct {
@@ -18,6 +22,12 @@ type DownloadTaskResult struct {
 	Account *model.Account
 	// Content is the base content model (common fields).
 	Content *model.Content
+}
+
+// BrowseHistoryResult is returned by a platform BrowseHistoryBuilder.
+type BrowseHistoryResult struct {
+	BrowseHistory *model.BrowseHistory
+	Account       *model.Account
 }
 
 // ResourceInfo describes a resource and its mirror endpoints. DownloadResource is embedded for direct access to Name/Kind/Size fields.

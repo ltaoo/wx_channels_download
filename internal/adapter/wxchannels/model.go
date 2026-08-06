@@ -225,9 +225,14 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 	return c, ext, nil
 }
 
-// BuildBrowseRecordFromObject constructs a model.BrowseHistory directly from a ChannelsObject,
-// performing the conversion to browse record internally without an intermediate MediaProfile.
-func BuildBrowseRecordFromObject(obj *scraper.ChannelsObject) *model.BrowseHistory {
+// BuildBrowseHistory converts an intercepted ChannelsObject into the standard
+// browse history result.
+func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	var obj scraper.ChannelsObject
+	if err := json.Unmarshal(content_json, &obj); err != nil {
+		return nil, fmt.Errorf("解析视频号内容失败: %w", err)
+	}
+
 	accountUsername := strings.TrimSpace(obj.Contact.Username)
 	now := util.NowMillis()
 
@@ -272,25 +277,33 @@ func BuildBrowseRecordFromObject(obj *scraper.ChannelsObject) *model.BrowseHisto
 		contentType = "album"
 	}
 
-	return &model.BrowseHistory{
-		Id:           browseID,
-		PlatformId:   wxchannels,
-		VisitedTimes: 1,
-		Type:         contentType,
-		ExternalId:   obj.ID,
-		Title:        obj.ObjectDesc.Description,
-		URL:          ObjectURL(obj),
-		SourceURL:    contentSourceURL,
-		CoverURL:     coverURL,
-		CoverWidth:   coverWidth,
-		CoverHeight:  coverHeight,
-		PublishTime:       &publishTime,
-		ExtraData:         string(extraData),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
+	account, err := ToAccount(&obj)
+	if err != nil {
+		return nil, err
 	}
+
+	return &adapter.BrowseHistoryResult{
+		BrowseHistory: &model.BrowseHistory{
+			Id:           browseID,
+			PlatformId:   wxchannels,
+			VisitedTimes: 1,
+			Type:         contentType,
+			ExternalId:   obj.ID,
+			Title:        obj.ObjectDesc.Description,
+			URL:          ObjectURL(&obj),
+			SourceURL:    contentSourceURL,
+			CoverURL:     coverURL,
+			CoverWidth:   coverWidth,
+			CoverHeight:  coverHeight,
+			PublishTime:  &publishTime,
+			ExtraData:    string(extraData),
+			Timestamps: model.Timestamps{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+		Account: account,
+	}, nil
 }
 
 // ObjectURL returns the download URL (video = media.URL + URLToken, picture/live returns "").
@@ -650,7 +663,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 
 	streamResource := model.DownloadResource{
 		ContentId:     &content.Id,
-		Name:          title + ".mkv",
+		Name:          title,
 		Kind:          mimeVideoMatroska,
 		Type:          model.ResourceTypeStream,
 		RotateMinutes: 10,

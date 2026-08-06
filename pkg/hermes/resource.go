@@ -38,7 +38,8 @@ func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, reso
 	var filePath string
 	var expectedSize int64
 	for _, candidate := range candidates {
-		if err := context.Cause(ctx); err != nil {
+		if err := context.Cause(ctx); err != nil &&
+			!(strings.EqualFold(resource.Type, ResourceTypeStream) && errors.Is(err, ErrTaskStopRequested)) {
 			return "", err
 		}
 		if candidate.driver == nil {
@@ -123,7 +124,14 @@ func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, reso
 			Int64("segment_size", minimumSegmentSize).
 			Msg("run - download mode selected")
 		downloadStart := time.Now()
-		if segmentCount > 1 {
+		if strings.EqualFold(resource.Type, ResourceTypeStream) {
+			recorder, ok := candidate.driver.(StreamRecorder)
+			if !ok {
+				err = fmt.Errorf("protocol %s does not implement stream recording", candidate.protocol)
+			} else {
+				err = d.downloadStream(ctx, recorder, candidate.endpoint, filePath, task, resource)
+			}
+		} else if segmentCount > 1 {
 			err = d.downloadSegments(ctx, candidate.driver, candidate.endpoint, filePath, task, resource, prepared, segmentCount)
 		} else {
 			err = d.downloadFile(ctx, candidate.driver, candidate.endpoint, filePath, task, resource, prepared)
@@ -149,6 +157,12 @@ func (d *HermesEngine) downloadResource(ctx context.Context, task *TaskJob, reso
 				return "", err
 			}
 			return filePath, nil
+		}
+		// A live stop uses cancellation only to halt the recorder. Preserve any
+		// merge/finalization error returned after that cancellation so the task
+		// records the real failure instead of the stop sentinel.
+		if errors.Is(context.Cause(ctx), ErrTaskStopRequested) {
+			return "", err
 		}
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return "", context.Cause(ctx)

@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -16,6 +17,18 @@ import (
 type BrowseService struct {
 	db     *gorm.DB
 	logger zerolog.Logger
+}
+
+var ErrBrowseHistoryMissingID = errors.New("content id is missing")
+
+type CreateBrowseHistoryBody struct {
+	Platform string          `json:"platform"`
+	Content  json.RawMessage `json:"content"`
+}
+
+type CreateBrowseHistoryResult struct {
+	BrowseHistory *model.BrowseHistory `json:"browse_history"`
+	Account       *model.Account       `json:"account"`
 }
 
 func NewBrowseService(db *gorm.DB, logger zerolog.Logger) *BrowseService {
@@ -53,6 +66,58 @@ type BrowseHistoryListResult struct {
 	PageSize int                 `json:"page_size"`
 }
 
+// CreateBrowseHistory lets the platform adapter translate the intercepted
+// payload, then persists the resulting browse history and account records.
+func (s *BrowseService) CreateBrowseHistory(body CreateBrowseHistoryBody) (*CreateBrowseHistoryResult, error) {
+	platform := strings.ToLower(strings.TrimSpace(body.Platform))
+	if platform == "" {
+		return nil, fmt.Errorf("%w: platform is required", ErrInvalidInput)
+	}
+	if len(body.Content) == 0 {
+		return nil, errors.New("browse history item missing content")
+	}
+
+	handler := adapter.Get(platform)
+	if handler == nil {
+		return nil, fmt.Errorf("unsupported platform: %s", platform)
+	}
+
+	info, err := handler.BuildBrowseHistory(body.Content)
+	if err != nil {
+		if errors.Is(err, adapter.ErrBrowseHistoryNotSupported) {
+			return nil, fmt.Errorf("platform does not support browse history: %s", platform)
+		}
+		return nil, fmt.Errorf("failed to build browse history from payload: %w", err)
+	}
+	if info == nil {
+		return nil, errors.New("failed to build browse history record")
+	}
+
+	browse_history := info.BrowseHistory
+	if browse_history == nil {
+		return nil, errors.New("failed to build browse history record")
+	}
+	if strings.TrimSpace(browse_history.PlatformId) == "" {
+		browse_history.PlatformId = platform
+	}
+	if strings.TrimSpace(browse_history.ExternalId) == "" {
+		return nil, ErrBrowseHistoryMissingID
+	}
+
+	account_external_id := ""
+	if info.Account != nil {
+		account_external_id = info.Account.ExternalId
+	}
+	if err := s.createBrowseHistoryRecord(browse_history, account_external_id, info.Account); err != nil {
+		return nil, err
+	}
+
+	return &CreateBrowseHistoryResult{
+		BrowseHistory: browse_history,
+		Account:       info.Account,
+	}, nil
+}
+
 func (s *BrowseService) Record(uniqueMark string, info adapter.BrowseHistoryInfo) error {
 	if s.db == nil {
 		return ErrDBNotInitialized
@@ -88,61 +153,116 @@ func (s *BrowseService) Record(uniqueMark string, info adapter.BrowseHistoryInfo
 		},
 	}
 
+	return s.createBrowseHistoryRecord(browse, info.AccountExternalId, info.Account)
+}
+
+func (s *BrowseService) createBrowseHistoryRecord(browse *model.BrowseHistory, account_external_id string, account *model.Account) error {
+	if s.db == nil {
+		return ErrDBNotInitialized
+	}
+	if browse == nil || strings.TrimSpace(browse.PlatformId) == "" || strings.TrimSpace(browse.ExternalId) == "" {
+		return ErrInvalidInput
+	}
+
+	now := utilpkg.NowMillis()
+	browse.PlatformId = strings.TrimSpace(browse.PlatformId)
+	browse.ExternalId = strings.TrimSpace(browse.ExternalId)
+	browse.Type = normalizeBrowseContentType(browse.Type)
+	if browse.VisitedTimes <= 0 {
+		browse.VisitedTimes = 1
+	}
+	if browse.CreatedAt == 0 {
+		browse.CreatedAt = now
+	}
+	if browse.UpdatedAt == 0 {
+		browse.UpdatedAt = now
+	}
+
 	if err := browse.Upsert(s.db); err != nil {
 		s.logger.Error().
-			Str("method", "BrowseService.Record").
-			Str("platform_id", info.PlatformId).
-			Str("external_id", uniqueMark).
-			Str("content_title", info.ContentTitle).
+			Str("method", "BrowseService.createBrowseHistoryRecord").
+			Str("platform_id", browse.PlatformId).
+			Str("external_id", browse.ExternalId).
+			Str("content_title", browse.Title).
 			Err(err).
 			Msg("failed to upsert browse history")
 		return err
 	}
+	if browse.Id == "" {
+		var persisted model.BrowseHistory
+		if err := s.db.Where("platform_id = ? AND external_id = ?", browse.PlatformId, browse.ExternalId).First(&persisted).Error; err != nil {
+			return err
+		}
+		browse.Id = persisted.Id
+		browse.VisitedTimes = persisted.VisitedTimes
+	}
 	s.logger.Info().
-		Str("method", "BrowseService.Record").
+		Str("method", "BrowseService.createBrowseHistoryRecord").
 		Str("browse_id", browse.Id).
-		Str("platform_id", info.PlatformId).
+		Str("platform_id", browse.PlatformId).
 		Int64("visited_times", browse.VisitedTimes).
 		Msg("browse history upserted")
 
-	accountExternalID := strings.TrimSpace(info.AccountExternalId)
-	if accountExternalID != "" {
-		accountID := info.PlatformId + ":" + accountExternalID
-		if err := s.ensureAccount(info.Account); err != nil {
+	account_external_id = strings.TrimSpace(account_external_id)
+	if account_external_id == "" && account != nil {
+		account_external_id = strings.TrimSpace(account.ExternalId)
+	}
+	if account_external_id != "" {
+		account_id := browse.PlatformId + ":" + account_external_id
+		if account != nil {
+			if strings.TrimSpace(account.PlatformId) == "" {
+				account.PlatformId = browse.PlatformId
+			}
+			if strings.TrimSpace(account.ExternalId) == "" {
+				account.ExternalId = account_external_id
+			}
+			if strings.TrimSpace(account.Id) == "" {
+				account.Id = account_id
+			}
+			if account.CreatedAt == 0 {
+				account.CreatedAt = now
+			}
+			if account.UpdatedAt == 0 {
+				account.UpdatedAt = now
+			}
+		}
+		if err := s.ensureAccount(account); err != nil {
 			s.logger.Error().
-				Str("method", "BrowseService.Record").
-				Str("account_id", accountID).
-				Str("platform_id", info.PlatformId).
-				Str("external_id", accountExternalID).
+				Str("method", "BrowseService.createBrowseHistoryRecord").
+				Str("account_id", account_id).
+				Str("platform_id", browse.PlatformId).
+				Str("external_id", account_external_id).
 				Err(err).
 				Msg("failed to ensure account record")
 			return err
 		}
 		joinRecord := model.BrowseHistoryAccount{
 			BrowseHistoryId: browse.Id,
-			AccountId:       accountID,
+			AccountId:       account_id,
 			Role:            "author",
 			CreatedAt:       now,
 		}
-		if err := s.db.Where(joinRecord).FirstOrCreate(&joinRecord).Error; err != nil {
+		if err := s.db.
+			Where("browse_history_id = ? AND account_id = ?", joinRecord.BrowseHistoryId, joinRecord.AccountId).
+			FirstOrCreate(&joinRecord).Error; err != nil {
 			s.logger.Error().
-				Str("method", "BrowseService.Record").
+				Str("method", "BrowseService.createBrowseHistoryRecord").
 				Str("browse_history_id", browse.Id).
-				Str("account_id", accountID).
+				Str("account_id", account_id).
 				Err(err).
 				Msg("failed to create browse_history_account join record")
 			return err
 		}
 		s.logger.Info().
-			Str("method", "BrowseService.Record").
+			Str("method", "BrowseService.createBrowseHistoryRecord").
 			Str("browse_history_id", browse.Id).
-			Str("account_id", accountID).
+			Str("account_id", account_id).
 			Msg("browse_history_account join record created")
 	} else {
 		s.logger.Info().
-			Str("method", "BrowseService.Record").
+			Str("method", "BrowseService.createBrowseHistoryRecord").
 			Str("browse_id", browse.Id).
-			Str("platform_id", info.PlatformId).
+			Str("platform_id", browse.PlatformId).
 			Msg("skip browse_history_account: account_external_id is empty")
 	}
 

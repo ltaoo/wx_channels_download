@@ -24,6 +24,22 @@ const platformIDWxMP = "wxmp"
 // PlatformID is the platform identifier for WeChat official accounts.
 const PlatformID = platformIDWxMP
 
+var wechatHeaders string
+
+func init() {
+	adapter.Register(&handler{})
+	h := map[string]string{
+		"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN",
+		"Referer":    "https://mp.weixin.qq.com/",
+	}
+	b, _ := json.Marshal(h)
+	wechatHeaders = string(b)
+}
+
+type handler struct{}
+
+func (h *handler) PlatformID() string { return PlatformID }
+
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
 	return PlatformID + ":" + externalID
@@ -206,10 +222,27 @@ func isAlbum(data *wxmp.ArticleCgiDataNew) bool {
 	return len(data.PicturePageInfoList) >= 4
 }
 
-// BuildBrowseRecordFromObject converts article CGI data into a model.BrowseHistory.
-func BuildBrowseRecordFromObject(data *wxmp.ArticleCgiDataNew) *model.BrowseHistory {
-	record, _ := ArticleToHistory(data)
-	return record
+// BuildBrowseHistory converts intercepted article CGI data into the standard
+// browse history result.
+func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	var data wxmp.ArticleCgiDataNew
+	if err := json.Unmarshal(content_json, &data); err != nil {
+		return nil, fmt.Errorf("解析文章数据失败: %w", err)
+	}
+
+	browse_history, err := ArticleToHistory(&data)
+	if err != nil {
+		return nil, err
+	}
+	account, err := ToAccount(&data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &adapter.BrowseHistoryResult{
+		BrowseHistory: browse_history,
+		Account:       account,
+	}, nil
 }
 
 // ArticleToContentArticle converts an ArticleCgiData into a model.ContentArticle with the HTML body.

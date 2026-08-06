@@ -16,9 +16,9 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/download/tasklineage"
+	"wx_channel/internal/database"
+	"wx_channel/internal/database/model"
 	"wx_channel/pkg/hermes"
 )
 
@@ -238,19 +238,18 @@ type DownloadTaskRecord struct {
 }
 
 type DownloadTaskFileRecord struct {
-	ID           int     `json:"id"`
-	Name         string  `json:"name"`
-	Kind         string  `json:"kind"`
-	ResourceType string  `json:"resource_type"`
-	Type         string  `json:"type"`
-	Status       string  `json:"status"`
-	Size         int64   `json:"size"`
-	Downloaded   int64   `json:"downloaded"`
-	Speed        int64   `json:"speed"`
-	Progress     float64 `json:"progress"`
-	URL          string  `json:"url"`
-	OutputPath   string  `json:"output_path"`
-	Error        string  `json:"error"`
+	ID         int     `json:"id"`
+	Name       string  `json:"name"`
+	Kind       string  `json:"kind"`
+	Type       string  `json:"type"`
+	Status     string  `json:"status"`
+	Size       int64   `json:"size"`
+	Downloaded int64   `json:"downloaded"`
+	Speed      int64   `json:"speed"`
+	Progress   float64 `json:"progress"`
+	URL        string  `json:"url"`
+	OutputPath string  `json:"output_path"`
+	Error      string  `json:"error"`
 }
 
 // DownloadTaskStats holds counts of download tasks by status.
@@ -500,14 +499,14 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	task.Status = model.TaskStatusWaiting
 	task.CreatedAt = now
 	task.UpdatedAt = now
-	if err := tasklineage.Apply(s.db, &task, body.ParentTaskID, body.RelationType); err != nil {
+	if err := database.ApplyTaskLineage(s.db, &task, body.ParentTaskID, body.RelationType); err != nil {
 		return nil, err
 	}
 	if err := s.db.Create(&task).Error; err != nil {
 		s.logger.Error().Str("platform", body.Platform).Err(err).Msg("failed to write download task to database")
 		return nil, fmt.Errorf("创建下载任务失败: %w", err)
 	}
-	if err := tasklineage.FinalizeRoot(s.db, &task); err != nil {
+	if err := database.FinalizeTaskRoot(s.db, &task); err != nil {
 		return nil, err
 	}
 	s.logger.Info().Int("task_id", task.Id).Str("task_name", task.Name).Str("platform", body.Platform).Msg("download task written to database")
@@ -676,14 +675,14 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 	task.CreatedAt = now
 	task.UpdatedAt = now
 
-	if err := tasklineage.Apply(s.db, &task, body.ParentTaskID, body.RelationType); err != nil {
+	if err := database.ApplyTaskLineage(s.db, &task, body.ParentTaskID, body.RelationType); err != nil {
 		return nil, err
 	}
 	if err := s.db.Create(&task).Error; err != nil {
 		s.logger.Error().Str("url", body.URL).Err(err).Msg("failed to write URL download task to database")
 		return nil, fmt.Errorf("创建下载任务失败: %w", err)
 	}
-	if err := tasklineage.FinalizeRoot(s.db, &task); err != nil {
+	if err := database.FinalizeTaskRoot(s.db, &task); err != nil {
 		return nil, err
 	}
 
@@ -774,17 +773,26 @@ func (s *DownloadTaskService) PauseTask(taskID int) (*model.DownloadTask, bool, 
 		return nil, false, fmt.Errorf("当前状态不允许暂停")
 	}
 
-	s.downloader.PauseTask(task.Id)
-
 	isStream := s.hasStreamResources(task.Id)
 
 	if isStream {
-		now := time.Now().UnixMilli()
-		s.db.Model(&task).Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-		task.Status = model.TaskStatusFinished
+		if err := s.downloader.StopTask(task.Id); err != nil {
+			return nil, true, fmt.Errorf("停止直播录制失败: %w", err)
+		}
+		if err := s.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+			return nil, true, fmt.Errorf("读取直播录制最终状态失败: %w", err)
+		}
+		if task.Status != model.TaskStatusFinished {
+			message := strings.TrimSpace(task.ErrorMessage)
+			if message == "" {
+				message = fmt.Sprintf("收尾后的任务状态异常: %d", task.Status)
+			}
+			return &task, true, fmt.Errorf("直播录制收尾失败: %s", message)
+		}
 		return &task, true, nil
 	}
 
+	s.downloader.PauseTask(task.Id)
 	task.Status = model.TaskStatusPaused
 	return &task, false, nil
 }
@@ -983,12 +991,24 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 	var paused int
 	var streamTaskIDs []int
 	for _, task := range tasks {
-		s.downloader.PauseTask(task.Id)
 		if s.hasStreamResources(task.Id) {
-			now := time.Now().UnixMilli()
-			s.db.Model(&model.DownloadTask{}).Where("id = ?", task.Id).
-				Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
+			if err := s.downloader.StopTask(task.Id); err != nil {
+				return paused, streamTaskIDs, fmt.Errorf("停止直播录制任务 %d 失败: %w", task.Id, err)
+			}
+			var stoppedTask model.DownloadTask
+			if err := s.db.Where("id = ?", task.Id).First(&stoppedTask).Error; err != nil {
+				return paused, streamTaskIDs, fmt.Errorf("读取直播录制任务 %d 最终状态失败: %w", task.Id, err)
+			}
+			if stoppedTask.Status != model.TaskStatusFinished {
+				message := strings.TrimSpace(stoppedTask.ErrorMessage)
+				if message == "" {
+					message = fmt.Sprintf("收尾后的任务状态异常: %d", stoppedTask.Status)
+				}
+				return paused, streamTaskIDs, fmt.Errorf("直播录制任务 %d 收尾失败: %s", task.Id, message)
+			}
 			streamTaskIDs = append(streamTaskIDs, task.Id)
+		} else {
+			s.downloader.PauseTask(task.Id)
 		}
 		paused++
 	}
@@ -1229,6 +1249,8 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			fileError := ""
 			if r.Status != 2 {
 				switch task.Status {
+				case model.TaskStatusFinished:
+					fileStatus = "finished"
 				case model.TaskStatusPaused:
 					fileStatus = "paused"
 				case model.TaskStatusFailed:
@@ -1239,19 +1261,18 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				}
 			}
 			files = append(files, DownloadTaskFileRecord{
-				ID:           r.ID,
-				Name:         r.Name,
-				Kind:         r.Kind,
-				ResourceType: r.ResourceType,
-				Type:         "file",
-				Status:       fileStatus,
-				Size:         r.Size,
-				Downloaded:   downloadedByResource[r.ID],
-				Speed:        speedByResource[r.ID],
-				Progress:     TaskProgressPercent(downloadedByResource[r.ID], r.Size, MapResourceTaskStatus(r.Status)),
-				URL:          urlByResource[r.ID],
-				OutputPath:   outputPath,
-				Error:        fileError,
+				ID:         r.ID,
+				Name:       r.Name,
+				Kind:       r.Kind,
+				Type:       r.ResourceType,
+				Status:     fileStatus,
+				Size:       r.Size,
+				Downloaded: downloadedByResource[r.ID],
+				Speed:      speedByResource[r.ID],
+				Progress:   TaskProgressPercent(downloadedByResource[r.ID], r.Size, MapResourceTaskStatus(r.Status)),
+				URL:        urlByResource[r.ID],
+				OutputPath: outputPath,
+				Error:      fileError,
 			})
 		}
 		effectiveStatus := ComputeEffectiveTaskStatus(task.Status, files)
@@ -1455,7 +1476,7 @@ func (s *DownloadTaskService) hasStreamResources(taskID int) bool {
 	}
 	var count int64
 	s.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND type = ?", taskID, model.ResourceTypeStream).
+		Where("task_id = ? AND UPPER(type) = ?", taskID, model.ResourceTypeStream).
 		Count(&count)
 	return count > 0
 }
@@ -1624,7 +1645,7 @@ func MapResourceTaskStatus(status int) int {
 // ComputeEffectiveTaskStatus derives the effective task status from the database status and file states.
 func ComputeEffectiveTaskStatus(dbStatus int, files []DownloadTaskFileRecord) int {
 	switch dbStatus {
-	case model.TaskStatusPaused, model.TaskStatusFailed,
+	case model.TaskStatusPaused, model.TaskStatusFinished, model.TaskStatusFailed,
 		model.TaskStatusCancelled, model.TaskStatusMerging:
 		return dbStatus
 	}

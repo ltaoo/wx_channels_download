@@ -1,465 +1,145 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
+	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/util"
 )
 
-func (c *APIClient) CreateBrowseHistory(browse *model.BrowseHistory, account *model.Account) error {
-	if c.browse_service == nil {
-		if c.logger != nil {
-			c.logger.Warn().Str("api", "CreateBrowseHistory").Msg("database not initialized")
-		}
-		return ErrDBNotInitialized
-	}
-	if browse == nil {
-		if c.logger != nil {
-			c.logger.Warn().Str("api", "CreateBrowseHistory").Msg("browse history payload is nil")
-		}
+func (c *APIClient) CreateBrowseHistory(browse_history *model.BrowseHistory, account *model.Account) error {
+	if browse_history == nil {
 		return ErrInvalidInput
 	}
-	accountExternalID := ""
+
+	account_external_id := ""
 	if account != nil {
-		accountExternalID = account.ExternalId
+		account_external_id = account.ExternalId
 	}
-	return c.RecordBrowseHistory(browse.ExternalId, adapter.BrowseHistoryInfo{
-		PlatformId:        browse.PlatformId,
-		AccountExternalId: accountExternalID,
+	return c.RecordBrowseHistory(browse_history.ExternalId, adapter.BrowseHistoryInfo{
+		PlatformId:        browse_history.PlatformId,
+		AccountExternalId: account_external_id,
 		Account:           account,
-		ContentType:       browse.Type,
-		ContentTitle:      browse.Title,
-		ContentURL:        browse.URL,
-		ContentSourceURL:  browse.SourceURL,
-		ContentCoverURL:   browse.CoverURL,
-		ExtraDataJSON:     browse.ExtraData,
+		ContentType:       browse_history.Type,
+		ContentTitle:      browse_history.Title,
+		ContentURL:        browse_history.URL,
+		ContentSourceURL:  browse_history.SourceURL,
+		ContentCoverURL:   browse_history.CoverURL,
+		ExtraDataJSON:     browse_history.ExtraData,
 	})
 }
 
-func (c *APIClient) RecordBrowseHistory(uniqueMark string, info adapter.BrowseHistoryInfo) error {
-	if c.browse_service == nil {
-		if c.logger != nil {
-			c.logger.Warn().Str("api", "RecordBrowseHistory").Msg("database not initialized")
-		}
+func (c *APIClient) RecordBrowseHistory(unique_mark string, info adapter.BrowseHistoryInfo) error {
+	if c.browse_history_service == nil {
 		return ErrDBNotInitialized
 	}
-	if err := c.browse_service.Record(uniqueMark, info); err != nil {
-		if c.logger != nil {
-			c.logger.Error().Str("api", "RecordBrowseHistory").Err(err).
-				Str("platform_id", info.PlatformId).
-				Str("content_external_id", uniqueMark).
-				Msg("failed to record browse history")
-		}
-		return err
-	}
-	return nil
-}
-
-type CreateBrowseHistoryBody struct {
-	Platform string          `json:"platform"`
-	Content  json.RawMessage `json:"content"`
+	return c.browse_history_service.Record(unique_mark, info)
 }
 
 type browseHistoryCreateRequest struct {
-	Objects []CreateBrowseHistoryBody `json:"objects"`
+	Objects []services.CreateBrowseHistoryBody `json:"objects"`
 }
 
-var errBrowseHistoryMissingID = errors.New("content id is missing")
-
-const defaultBrowseHistoryPlatform = "wxchannels"
-
-func normalizeBrowseHistoryPlatform(platform string) string {
-	return strings.ToLower(strings.TrimSpace(platform))
-}
-
-func parseBrowseHistoryCreateItem(item CreateBrowseHistoryBody) (string, json.RawMessage, error) {
-	platform := normalizeBrowseHistoryPlatform(item.Platform)
-	if platform == "" {
-		platform = defaultBrowseHistoryPlatform
-	}
-	if len(item.Content) == 0 {
-		return "", nil, errors.New("browse history item missing content")
-	}
-	return platform, item.Content, nil
-}
-
-func buildBrowseHistoryFromPayload(platform string, content json.RawMessage) (*model.BrowseHistory, *model.Account, error) {
-	plat := normalizeBrowseHistoryPlatform(platform)
-	if plat == "" {
-		plat = defaultBrowseHistoryPlatform
-	}
-	handler := adapter.Get(plat)
-	if handler == nil {
-		return nil, nil, fmt.Errorf("unsupported platform: %s", platform)
+// createBrowseHistorySingle creates one browse history item through the
+// service layer. Platform payload parsing and persistence stay out of the API.
+func (c *APIClient) createBrowseHistorySingle(body services.CreateBrowseHistoryBody) (gin.H, error) {
+	if c.browse_history_service == nil {
+		return nil, fmt.Errorf("browse history service not initialized")
 	}
 
-	info, err := handler.BuildDownloadTask(content, json.RawMessage("{}"))
+	created, err := c.browse_history_service.CreateBrowseHistory(body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to build browse history from payload: %w", err)
-	}
-	if info == nil || info.Content == nil {
-		return nil, nil, errors.New("failed to build browse history record")
+		return nil, err
 	}
 
-	record, account := browseHistoryFromDownloadTaskResult(info)
-	if record == nil {
-		return nil, nil, errors.New("failed to build browse history record")
-	}
-
-	if strings.TrimSpace(record.ExternalId) == "" {
-		return nil, nil, errBrowseHistoryMissingID
-	}
-	return record, account, nil
+	return gin.H{
+		"browse_history": created.BrowseHistory,
+		"account":        created.Account,
+	}, nil
 }
 
-func browseHistoryFromDownloadTaskResult(result *adapter.DownloadTaskResult) (*model.BrowseHistory, *model.Account) {
-	if result == nil || result.Content == nil {
-		return nil, nil
-	}
-
-	content := result.Content
-	now := util.NowMillis()
-
-	platformID := strings.TrimSpace(content.PlatformId)
-	if platformID == "" && result.Task != nil {
-		platformID = strings.TrimSpace(result.Task.PlatformId)
-	}
-	if platformID == "" {
-		return nil, nil
-	}
-
-	extra := ""
-	if result.Task != nil {
-		extra = strings.TrimSpace(result.Task.MetadataJSON)
-	}
-	if extra == "" {
-		extra = strings.TrimSpace(content.Metadata)
-	}
-
-	return &model.BrowseHistory{
-		PlatformId:   platformID,
-		VisitedTimes: 1,
-		Type:         content.Type,
-		ExternalId:   strings.TrimSpace(content.ExternalId),
-		Title:        content.Title,
-		URL:          content.URL,
-		SourceURL:    content.SourceURL,
-		CoverURL:     content.CoverURL,
-		CoverWidth:   content.CoverWidth,
-		CoverHeight:  content.CoverHeight,
-		PublishTime:  content.PublishTime,
-		ExtraData:    extra,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, result.Account
-}
-
+// handleCreateBrowseHistory batch-creates browse history records.
 func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
-	var body browseHistoryCreateRequest
-	if err := ctx.ShouldBindJSON(&body); err != nil {
+	var req browseHistoryCreateRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		if c.logger != nil {
 			c.logger.Warn().
 				Str("api", "POST /api/browse_history/create").
 				Err(err).
-				Msg("failed to parse single browse history request body")
+				Msg("failed to parse browse history create request body")
 		}
 		result.Err(ctx, 400, "invalid request payload")
 		return
 	}
-	if c.logger != nil {
-		c.logger.Info().
-			Str("api", "POST /api/browse_history/create").
-			Int("request_object_count", len(body.Objects)).
-			Msg("received browse history create request")
-	}
-
-	if len(body.Objects) == 0 {
-		if c.logger != nil {
-			c.logger.Warn().
-				Str("api", "POST /api/browse_history/create").
-				Msg("single browse history create rejected: objects empty")
-		}
+	if len(req.Objects) == 0 {
 		result.Err(ctx, 400, "browse history objects cannot be empty")
 		return
 	}
 
-	results := make([]gin.H, 0, len(body.Objects))
-	createdCount := 0
-	failedCount := 0
-	skippedCount := 0
-	for idx, raw := range body.Objects {
-		platform, content, err := parseBrowseHistoryCreateItem(raw)
-		if err != nil {
-			if c.logger != nil {
-				c.logger.Warn().
-					Str("api", "POST /api/browse_history/create").
-					Int("index", idx).
-					Err(err).
-					Msg("failed to parse browse history item")
-			}
-			results = append(results, gin.H{
-				"index":   idx,
-				"success": false,
-				"error":   err.Error(),
-			})
-			failedCount++
-			continue
-		}
-
-		record, account, err := buildBrowseHistoryFromPayload(platform, content)
-		if err != nil {
-			if errors.Is(err, errBrowseHistoryMissingID) {
-				skippedCount++
-				if c.logger != nil {
-					c.logger.Warn().
-						Str("api", "POST /api/browse_history/create").
-						Int("index", idx).
-						Str("platform_id", platform).
-						Msg("skip browse history item: content id missing")
-				}
-				results = append(results, gin.H{
-					"index":    idx,
-					"success":  false,
-					"skipped":  true,
-					"error":    errBrowseHistoryMissingID.Error(),
-					"platform": platform,
-				})
-				continue
-			}
-			if c.logger != nil {
-				c.logger.Error().
-					Str("api", "POST /api/browse_history/create").
-					Str("platform_id", platform).
-					Err(err).
-					Msg("failed to build browse history record from payload")
-			}
-			results = append(results, gin.H{
-				"index":   idx,
-				"success": false,
-				"error":   err.Error(),
-			})
-			failedCount++
-			continue
-		}
-
-		accountExternalID := ""
-		if account != nil {
-			accountExternalID = account.ExternalId
-		}
-		if c.logger != nil {
-			c.logger.Info().
-				Str("api", "POST /api/browse_history/create").
-				Int("index", idx).
-				Str("platform_id", record.PlatformId).
-				Str("content_id", record.ExternalId).
-				Str("account_id", accountExternalID).
-				Str("content_title", record.Title).
-				Str("content_url", record.URL).
-				Str("content_source_url", record.SourceURL).
-				Str("content_cover_url", record.CoverURL).
-				Msg("persisting browse history item")
-		}
-
-		if err := c.CreateBrowseHistory(record, account); err != nil {
-			if c.logger != nil {
-				c.logger.Error().
-					Str("api", "POST /api/browse_history/create").
-					Int("index", idx).
-					Str("platform_id", record.PlatformId).
-					Str("content_id", record.ExternalId).
-					Err(err).
-					Msg("failed to create browse history item")
-			}
-			results = append(results, gin.H{
-				"index":      idx,
-				"success":    false,
-				"error":      err.Error(),
-				"platform":   record.PlatformId,
-				"content_id": record.ExternalId,
-			})
-			failedCount++
-			continue
-		}
-		createdCount++
-		results = append(results, gin.H{
-			"index":      idx,
-			"success":    true,
-			"platform":   record.PlatformId,
-			"content_id": record.ExternalId,
-			"account":    accountExternalID,
-		})
-	}
 	if c.logger != nil {
 		c.logger.Info().
 			Str("api", "POST /api/browse_history/create").
-			Int("created_count", createdCount).
-			Int("failed_count", failedCount).
-			Int("skipped_count", skippedCount).
-			Int("object_count", len(body.Objects)).
+			Int("object_count", len(req.Objects)).
+			Msg("received browse history create request")
+	}
+
+	results := make([]gin.H, 0, len(req.Objects))
+	created_count := 0
+	failed_count := 0
+	skipped_count := 0
+	for index, body := range req.Objects {
+		data, err := c.createBrowseHistorySingle(body)
+		if err != nil {
+			item := gin.H{
+				"index":   index,
+				"success": false,
+				"error":   err.Error(),
+			}
+			if errors.Is(err, services.ErrBrowseHistoryMissingID) {
+				item["skipped"] = true
+				skipped_count++
+			} else {
+				failed_count++
+			}
+			results = append(results, item)
+			if c.logger != nil {
+				c.logger.Warn().
+					Str("api", "POST /api/browse_history/create").
+					Int("index", index).
+					Str("platform_id", body.Platform).
+					Err(err).
+					Msg("failed to create browse history item")
+			}
+			continue
+		}
+
+		created_count++
+		results = append(results, gin.H{
+			"index":   index,
+			"success": true,
+			"data":    data,
+		})
+	}
+
+	if c.logger != nil {
+		c.logger.Info().
+			Str("api", "POST /api/browse_history/create").
+			Int("created_count", created_count).
+			Int("failed_count", failed_count).
+			Int("skipped_count", skipped_count).
+			Int("object_count", len(req.Objects)).
 			Msg("browse history create completed")
 	}
 	result.Ok(ctx, gin.H{
 		"results":       results,
-		"created_count": createdCount,
-		"failed_count":  failedCount,
-		"skipped_count": skippedCount,
-	})
-}
-
-func (c *APIClient) handleCreateBrowseHistories(ctx *gin.Context) {
-	var body browseHistoryCreateRequest
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		if c.logger != nil {
-			c.logger.Warn().
-				Str("api", "POST /api/browse_history/create").
-				Err(err).
-				Msg("failed to parse browse history batch create request body")
-		}
-		result.Err(ctx, 400, "invalid request payload")
-		return
-	}
-	if c.logger != nil {
-		c.logger.Info().
-			Str("api", "POST /api/browse_history/create").
-			Int("request_object_count", len(body.Objects)).
-			Msg("received browse history batch create request")
-	}
-	if len(body.Objects) == 0 {
-		if c.logger != nil {
-			c.logger.Warn().
-				Str("api", "POST /api/browse_history/create").
-				Msg("browse history batch create rejected: objects empty")
-		}
-		result.Err(ctx, 400, "browse history objects cannot be empty")
-		return
-	}
-
-	createdCount := 0
-	failedCount := 0
-	skippedCount := 0
-	results := make([]gin.H, 0, len(body.Objects))
-	for idx, raw := range body.Objects {
-		platform, content, err := parseBrowseHistoryCreateItem(raw)
-		if err != nil {
-			if c.logger != nil {
-				c.logger.Warn().
-					Str("api", "POST /api/browse_history/create").
-					Int("index", idx).
-					Err(err).
-					Msg("failed to parse browse history item")
-			}
-			results = append(results, gin.H{
-				"index":   idx,
-				"success": false,
-				"error":   err.Error(),
-			})
-			failedCount++
-			continue
-		}
-
-		record, account, err := buildBrowseHistoryFromPayload(platform, content)
-		if err != nil {
-			if errors.Is(err, errBrowseHistoryMissingID) {
-				skippedCount++
-				c.logger.Warn().
-					Str("api", "POST /api/browse_history/create").
-					Int("index", idx).
-					Str("platform_id", platform).
-					Msg("skip browse history item: content id missing")
-				results = append(results, gin.H{
-					"index":    idx,
-					"success":  false,
-					"skipped":  true,
-					"error":    errBrowseHistoryMissingID.Error(),
-					"platform": platform,
-				})
-				continue
-			}
-			c.logger.Error().
-				Str("api", "POST /api/browse_history/create").
-				Int("index", idx).
-				Str("platform_id", platform).
-				Err(err).
-				Msg("failed to build browse history record from payload")
-			results = append(results, gin.H{
-				"index":   idx,
-				"success": false,
-				"error":   err.Error(),
-			})
-			failedCount++
-			continue
-		}
-
-		accountExternalID := ""
-		if account != nil {
-			accountExternalID = account.ExternalId
-		}
-		if c.logger != nil {
-			c.logger.Info().
-				Str("api", "POST /api/browse_history/create").
-				Int("index", idx).
-				Str("platform_id", record.PlatformId).
-				Str("content_id", record.ExternalId).
-				Str("account_id", accountExternalID).
-				Str("content_title", record.Title).
-				Str("content_url", record.URL).
-				Str("content_source_url", record.SourceURL).
-				Msg("persisting browse history item")
-		}
-
-		if err := c.CreateBrowseHistory(record, account); err != nil {
-			if c.logger != nil {
-				c.logger.Error().
-					Str("api", "POST /api/browse_history/create").
-					Int("index", idx).
-					Str("platform_id", platform).
-					Str("content_id", record.ExternalId).
-					Err(err).
-					Msg("failed to create browse history item in batch")
-			}
-			results = append(results, gin.H{
-				"index":      idx,
-				"success":    false,
-				"error":      err.Error(),
-				"platform":   record.PlatformId,
-				"content_id": record.ExternalId,
-			})
-			failedCount++
-			continue
-		}
-		createdCount++
-		results = append(results, gin.H{
-			"index":      idx,
-			"success":    true,
-			"platform":   record.PlatformId,
-			"content_id": record.ExternalId,
-			"account":    accountExternalID,
-		})
-	}
-	if c.logger != nil {
-		c.logger.Info().
-			Str("api", "POST /api/browse_history/create").
-			Int("created_count", createdCount).
-			Int("failed_count", failedCount).
-			Int("skipped_count", skippedCount).
-			Int("object_count", len(body.Objects)).
-			Msg("browse history batch create completed")
-	}
-	result.Ok(ctx, gin.H{
-		"results":       results,
-		"created_count": createdCount,
-		"failed_count":  failedCount,
-		"skipped_count": skippedCount,
+		"created_count": created_count,
+		"failed_count":  failed_count,
+		"skipped_count": skipped_count,
 	})
 }
 
@@ -483,17 +163,17 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 		return
 	}
 
-	platformIds := body.PlatformIds
+	platform_ids := body.PlatformIds
 	if body.PlatformId != "" {
-		platformIds = []string{body.PlatformId}
+		platform_ids = []string{body.PlatformId}
 	}
-	if len(platformIds) == 0 {
-		platformIds = []string{"wxchannels", "wxmp", "zhihu", "xiaohongshu", "bilibili", "youtube", "weibo"}
+	if len(platform_ids) == 0 {
+		platform_ids = []string{"wxchannels", "wxmp", "zhihu", "xiaohongshu", "bilibili", "youtube", "weibo"}
 	}
 	if c.logger != nil {
 		c.logger.Info().
 			Str("api", "POST /api/browse_history/list").
-			Strs("platform_ids", platformIds).
+			Strs("platform_ids", platform_ids).
 			Str("username", func() string {
 				if body.Username == nil {
 					return ""
@@ -519,20 +199,20 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 	}
 
 	page := 1
-	pageSize := 20
+	page_size := 20
 	if body.Page != nil && *body.Page > 0 {
 		page = *body.Page
 	}
 	if body.PageSize != nil && *body.PageSize > 0 {
-		pageSize = *body.PageSize
+		page_size = *body.PageSize
 	} else if body.PageSizeLegacy != nil && *body.PageSizeLegacy > 0 {
-		pageSize = *body.PageSizeLegacy
+		page_size = *body.PageSizeLegacy
 	}
 
 	if c.logger != nil {
 		c.logger.Info().
 			Str("api", "POST /api/browse_history/list").
-			Strs("platform_ids", platformIds).
+			Strs("platform_ids", platform_ids).
 			Str("username", func() string {
 				if body.Username == nil {
 					return ""
@@ -540,24 +220,24 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 				return *body.Username
 			}()).
 			Int("page", page).
-			Int("page_size", pageSize).
+			Int("page_size", page_size).
 			Msg("Querying browse history list")
 	}
-	if c.browse_service == nil {
+	if c.browse_history_service == nil {
 		if c.logger != nil {
 			c.logger.Warn().
 				Str("api", "POST /api/browse_history/list").
-				Msg("browse service not initialized")
+				Msg("browse history service not initialized")
 		}
-		result.Err(ctx, 500, "browse service not initialized")
+		result.Err(ctx, 500, "browse history service not initialized")
 		return
 	}
-	browseHistories, err := c.browse_service.ListPlatforms(platformIds, body.Username, page, pageSize)
+	browse_histories, err := c.browse_history_service.ListPlatforms(platform_ids, body.Username, page, page_size)
 	if err != nil {
 		if c.logger != nil {
 			c.logger.Error().
 				Str("api", "POST /api/browse_history/list").
-				Strs("platform_ids", platformIds).
+				Strs("platform_ids", platform_ids).
 				Str("username", func() string {
 					if body.Username == nil {
 						return ""
@@ -565,7 +245,7 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 					return *body.Username
 				}()).
 				Int("page", page).
-				Int("page_size", pageSize).
+				Int("page_size", page_size).
 				Err(err).
 				Msg("Failed to query browse history list")
 		}
@@ -575,18 +255,18 @@ func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
 	if c.logger != nil {
 		c.logger.Info().
 			Str("api", "POST /api/browse_history/list").
-			Strs("platform_ids", platformIds).
+			Strs("platform_ids", platform_ids).
 			Str("username", func() string {
 				if body.Username == nil {
 					return ""
 				}
 				return *body.Username
 			}()).
-			Int("page", browseHistories.Page).
-			Int("page_size", browseHistories.PageSize).
-			Int64("total", browseHistories.Total).
-			Int("returned", len(browseHistories.List)).
+			Int("page", browse_histories.Page).
+			Int("page_size", browse_histories.PageSize).
+			Int64("total", browse_histories.Total).
+			Int("returned", len(browse_histories.List)).
 			Msg("Browse history list returned")
 	}
-	result.Ok(ctx, browseHistories)
+	result.Ok(ctx, browse_histories)
 }

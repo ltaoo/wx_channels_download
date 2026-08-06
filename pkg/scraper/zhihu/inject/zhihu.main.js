@@ -1,45 +1,56 @@
 (function () {
-  var LOG_PREFIX = "[WX-ZHIHU]";
-  function log() {
-    try {
-      console.log.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments)));
-    } catch (e) {}
-  }
+  WXU.log
+    .Info()
+    .Str("file", "zhihu.main.js")
+    .Str("href", location.href)
+    .Str("protocol", location.protocol)
+    .Str("hostname", location.hostname)
+    .Str("pathname", location.pathname)
+    .Str("ready_state", document.readyState)
+    .Msg("script loaded");
 
-  log("script loaded", {
-    href: location.href,
-    protocol: location.protocol,
-    hostname: location.hostname,
-    pathname: location.pathname,
-    readyState: document.readyState,
-  });
-
-  if (location.protocol !== "https:" || location.hostname !== "www.zhihu.com" || location.pathname !== "/") {
-    log("skip by location");
+  if (
+    location.protocol !== "https:" ||
+    location.hostname !== "www.zhihu.com" ||
+    location.pathname !== "/"
+  ) {
+    WXU.log.Info().Str("file", "zhihu.main.js").Msg("skip by location");
     return;
   }
   if (window.__wx_platform_zhihu_topstory_recommend__) {
-    log("skip duplicate script");
+    WXU.log.Info().Str("file", "zhihu.main.js").Msg("skip duplicate script");
     return;
   }
   window.__wx_platform_zhihu_topstory_recommend__ = true;
-  log("script activated");
+  WXU.log.Info().Str("file", "zhihu.main.js").Msg("script activated");
 
   var reported = new Set();
   var observed = new WeakSet();
   var observer = new IntersectionObserver(
     function (entries) {
-      log("intersection entries", entries.length);
+      WXU.log
+        .Info()
+        .Str("file", "zhihu.main.js")
+        .Int("count", entries.length)
+        .Msg("intersection entries");
       entries.forEach(function (entry) {
-        log("intersection entry", {
-          isIntersecting: entry.isIntersecting,
-          ratio: entry.intersectionRatio,
-          className: entry.target && entry.target.className,
-        });
+        WXU.log
+          .Info()
+          .Str("file", "zhihu.main.js")
+          .Bool("is_intersecting", entry.isIntersecting)
+          .Float("ratio", entry.intersectionRatio)
+          .Str("class_name", entry.target && entry.target.className)
+          .Msg("intersection entry");
         if (!entry.isIntersecting || entry.intersectionRatio < 0.35) {
           return;
         }
-        reportCard(entry.target);
+        reportCard(entry.target).catch(function (error) {
+          WXU.log
+            .Error()
+            .Str("file", "zhihu.main.js")
+            .Err(error)
+            .Msg("reportCard failed");
+        });
       });
     },
     {
@@ -98,9 +109,11 @@
   }
 
   function metaContents(root, selector) {
-    return Array.prototype.slice.call(root.querySelectorAll(selector)).map(function (el) {
-      return attr(el, "content");
-    });
+    return Array.prototype.slice
+      .call(root.querySelectorAll(selector))
+      .map(function (el) {
+        return attr(el, "content");
+      });
   }
 
   function normalizeContentType(value, fallback) {
@@ -139,7 +152,10 @@
     }
     if (contentType === "article") {
       for (var j = 0; j < urls.length; j += 1) {
-        if (urls[j].indexOf("/p/") >= 0 || urls[j].indexOf("zhuanlan.zhihu.com") >= 0) {
+        if (
+          urls[j].indexOf("/p/") >= 0 ||
+          urls[j].indexOf("zhuanlan.zhihu.com") >= 0
+        ) {
           return urls[j];
         }
       }
@@ -170,8 +186,10 @@
     return first(
       link && (link.getAttribute("title") || link.textContent),
       card.querySelector("h2") && card.querySelector("h2").textContent,
-      card.querySelector(".ContentItem-title") && card.querySelector(".ContentItem-title").textContent,
-      card.querySelector(".RichContent-inner") && card.querySelector(".RichContent-inner").textContent,
+      card.querySelector(".ContentItem-title") &&
+        card.querySelector(".ContentItem-title").textContent,
+      card.querySelector(".RichContent-inner") &&
+        card.querySelector(".RichContent-inner").textContent,
     );
   }
 
@@ -212,119 +230,82 @@
   }
 
   function isAdCard(card) {
-    return !!(card && card.querySelector(".Pc-feedAd-new, .Pc-feedAd-new-title"));
+    return !!(
+      card && card.querySelector(".Pc-feedAd-new, .Pc-feedAd-new-title")
+    );
   }
 
-  function reportCard(card) {
-    log("reportCard called", {
-      className: card && card.className,
-      text: card && text(card.textContent).slice(0, 100),
-    });
+  async function findRecommendFeed(itemId) {
+    var normalizedItemId = text(itemId);
+    if (!normalizedItemId || typeof wx_fetch === "undefined") {
+      return null;
+    }
+    try {
+      var response = await wx_fetch.get_response(
+        "/api/v3/feed/topstory/recommend",
+      );
+      if (!response) {
+        return null;
+      }
+      var payload =
+        typeof response.json === "function" ? await response.json() : response;
+      var data = payload && Array.isArray(payload.data) ? payload.data : [];
+      return (
+        data.find(function (item) {
+          return (
+            item && item.target && text(item.target.id) === normalizedItemId
+          );
+        }) || null
+      );
+    } catch (error) {
+      WXU.log
+        .Error()
+        .Str("file", "zhihu.main.js")
+        .Str("item_id", normalizedItemId)
+        .Err(error)
+        .Msg("read recommend feed response failed");
+      return null;
+    }
+  }
+
+  async function reportCard(card) {
+    WXU.log
+      .Info()
+      .Str("file", "zhihu.main.js")
+      .Str("class_name", card && card.className)
+      .Str("text", card && text(card.textContent).slice(0, 100))
+      .Msg("reportCard called");
     if (isAdCard(card)) {
-      log("reportCard skipped", { reason: "ad card" });
+      WXU.log
+        .Info()
+        .Str("file", "zhihu.main.js")
+        .Str("reason", "ad card")
+        .Msg("reportCard skipped");
       return;
     }
     var feed = card.querySelector(".Feed");
     var contentItem = card.querySelector(".ContentItem");
     var feedExtra = parseJSON(attr(feed, "data-za-extra-module"));
     var zop = parseJSON(attr(contentItem, "data-zop"));
-    var contentExtra = parseJSON(attr(contentItem, "data-za-extra-module"));
-    var feedContent = (feedExtra.card && feedExtra.card.content) || {};
-    var itemContent = (contentExtra.card && contentExtra.card.content) || {};
-    var link = findContentLink(card);
-    var contentType = normalizeContentType(
-      first(zop.type, feedContent.type, itemContent.type, attr(contentItem, "itemprop")),
-      link && link.href && link.href.indexOf("/zvideo/") >= 0 ? "video" : "",
-    );
-    var contentURL = findContentURL(card, contentItem, link, contentType);
-    var questionURL = absoluteURL(metaContent(card, '[itemprop="zhihu:question"] meta[itemprop="url"]'));
-    var contentToken = first(
-      itemContent.token,
-      feedContent.token,
-      zop.itemId,
-      attr(contentItem, "name"),
-      metaContent(contentItem || card, 'meta[itemprop="url"]'),
-    );
-    var contentExternalID = zhihuUnique(contentType, contentToken, contentURL);
-    if (!contentExternalID || reported.has(contentExternalID)) {
-      log("reportCard skipped", {
-        reason: !contentExternalID ? "missing contentExternalID" : "already reported",
-        contentType: contentType,
-        contentToken: contentToken,
-        contentURL: contentURL,
-        contentExternalID: contentExternalID,
-      });
+    var itemId = text(zop.itemId);
+    var recommendFeed = await findRecommendFeed(itemId);
+    WXU.log
+      .Info()
+      .Str("file", "zhihu.main.js")
+      .Str("item_id", itemId)
+      .Bool("matched", !!recommendFeed)
+      .JSON("recommend_feed", recommendFeed)
+      .Msg("recommend feed lookup");
+    if (!recommendFeed) {
       return;
     }
-    reported.add(contentExternalID);
-
-    var authorLink = findAuthorLink(card);
-    var authorURL = absoluteURL(authorLink && authorLink.href);
-    var authorMemberHashID = first(itemContent.author_member_hash_id, feedContent.author_member_hash_id);
-    var authorName = first(
-      zop.authorName,
-      authorLink && authorLink.textContent,
-      card.querySelector(".AuthorInfo-name") && card.querySelector(".AuthorInfo-name").textContent,
-      card.querySelector(".UserLink") && card.querySelector(".UserLink").textContent,
-    );
-    // Build a scraper.AnswerPage object and submit via WXU.downloader.browse
-    var questionToken = first(itemContent.parent_token, feedContent.parent_token, "0");
-    var dateCreated = metaContent(contentItem || card, 'meta[itemprop="dateCreated"]');
-    var dateModified = metaContent(contentItem || card, 'meta[itemprop="dateModified"]');
-    var createdTime = dateCreated ? Math.floor(new Date(dateCreated).getTime() / 1000) : 0;
-    var updatedTime = dateModified ? Math.floor(new Date(dateModified).getTime() / 1000) : 0;
-    var authorAvatarURL = absoluteURL(findAvatar(card));
-    var answerCoverURL = absoluteURL(findImage(card));
-    var title = first(zop.title, metaContent(card, 'meta[itemprop="name"]'), findTitle(card, link));
-    var urlToken = "";
-    if (authorURL) {
-      var match = authorURL.match(/\/people\/([^/?&#]+)/);
-      urlToken = match ? match[1] : (authorMemberHashID || "");
-    }
-    var upvoteNum = Number(first(itemContent.upvote_num, metaContent(card, 'meta[itemprop="upvoteCount"]'), 0)) || 0;
-    var commentNum = Number(first(itemContent.comment_num, metaContent(card, 'meta[itemprop="commentCount"]'), 0)) || 0;
-    var answerPage = {
-      URL: {
-        QuestionID: questionToken,
-        AnswerID: contentToken,
-        Canonical: contentURL,
-      },
-      Source: contentURL,
-      Question: {
-        id: questionToken,
-        title: title,
-      },
-      Answer: {
-        id: contentToken,
-        type: contentType,
-        author: {
-          id: authorMemberHashID || "",
-          name: authorName || "",
-          url: authorURL || "",
-          urlToken: urlToken,
-          url_token: urlToken,
-          avatarUrl: authorAvatarURL || "",
-          avatar_url: authorAvatarURL || "",
-        },
-        content: answerCoverURL ? '<img src="' + answerCoverURL + '" />' : "",
-        createdTime: createdTime,
-        updatedTime: updatedTime,
-        voteupCount: upvoteNum,
-        commentCount: commentNum,
-      },
-    };
-    log("reportCard answerPage", answerPage);
-    if (typeof WXU !== "undefined" && WXU.downloader && typeof WXU.downloader.browse === "function") {
-      WXU.downloader.browse([answerPage], { platform: "zhihu" });
-      log("reportCard browse called", { contentExternalID: contentExternalID });
-    } else {
-      log("reportCard skipped", { reason: "WXU.downloader.browse not available" });
-    }
+    downloadermodel$.browse([recommendFeed], { platform: "zhihu" });
   }
 
   function observeCards(root) {
     var scope = root || document;
-    var selector = ".Topstory-recommend .Card.TopstoryItem.TopstoryItem-isRecommend";
+    var selector =
+      ".Topstory-recommend .Card.TopstoryItem.TopstoryItem-isRecommend";
     var cards = Array.prototype.slice.call(scope.querySelectorAll(selector));
     if (
       scope !== document &&
@@ -333,59 +314,96 @@
     ) {
       cards.unshift(scope);
     }
-    log("observeCards scan", {
-      rootTag: scope.tagName || "document",
-      rootClass: scope.className || "",
-      count: cards.length,
-    });
+    WXU.log
+      .Info()
+      .Str("file", "zhihu.main.js")
+      .Str("root_tag", scope.tagName || "document")
+      .Str("root_class", scope.className || "")
+      .Int("count", cards.length)
+      .Msg("observeCards scan");
     cards.forEach(function (card) {
       if (isAdCard(card)) {
-        log("observeCards skip ad", {
-          className: card.className,
-          text: text(card.textContent).slice(0, 100),
-        });
+        WXU.log
+          .Info()
+          .Str("file", "zhihu.main.js")
+          .Str("class_name", card.className)
+          .Str("text", text(card.textContent).slice(0, 100))
+          .Msg("observeCards skip ad");
         return;
       }
       if (observed.has(card)) {
-        log("observeCards skip observed", card.className);
+        WXU.log
+          .Info()
+          .Str("file", "zhihu.main.js")
+          .Str("class_name", card.className)
+          .Msg("observeCards skip observed");
         return;
       }
       observed.add(card);
       observer.observe(card);
-      log("observeCards observing", {
-        className: card.className,
-        text: text(card.textContent).slice(0, 100),
-      });
+      WXU.log
+        .Info()
+        .Str("file", "zhihu.main.js")
+        .Str("class_name", card.className)
+        .Str("text", text(card.textContent).slice(0, 100))
+        .Msg("observeCards observing");
     });
   }
 
   function start() {
-    log("start", {
-      readyState: document.readyState,
-      topstoryExists: !!document.querySelector(".Topstory-recommend"),
-      initialCards: document.querySelectorAll(".Card.TopstoryItem.TopstoryItem-isRecommend").length,
-      recommendCards: document.querySelectorAll(".Topstory-recommend .Card.TopstoryItem.TopstoryItem-isRecommend").length,
-    });
+    WXU.log
+      .Info()
+      .Str("file", "zhihu.main.js")
+      .Str("ready_state", document.readyState)
+      .Bool("topstory_exists", !!document.querySelector(".Topstory-recommend"))
+      .Int(
+        "initial_cards",
+        document.querySelectorAll(".Card.TopstoryItem.TopstoryItem-isRecommend")
+          .length,
+      )
+      .Int(
+        "recommend_cards",
+        document.querySelectorAll(
+          ".Topstory-recommend .Card.TopstoryItem.TopstoryItem-isRecommend",
+        ).length,
+      )
+      .Msg("start");
     observeCards(document);
-    var container = document.querySelector(".Topstory-recommend") || document.body;
+    var container =
+      document.querySelector(".Topstory-recommend") || document.body;
     if (!container) {
-      log("start skipped: no container");
+      WXU.log
+        .Info()
+        .Str("file", "zhihu.main.js")
+        .Msg("start skipped: no container");
       return;
     }
-    log("mutation observer attached", {
-      tagName: container.tagName,
-      className: container.className,
-    });
+    WXU.log
+      .Info()
+      .Str("file", "zhihu.main.js")
+      .Str("tag_name", container.tagName)
+      .Str("class_name", container.className)
+      .Msg("mutation observer attached");
     new MutationObserver(function (mutations) {
-      log("mutations", mutations.length);
+      WXU.log
+        .Info()
+        .Str("file", "zhihu.main.js")
+        .Int("count", mutations.length)
+        .Msg("mutations");
       mutations.forEach(function (mutation) {
-        log("mutation nodes", mutation.addedNodes.length);
+        WXU.log
+          .Info()
+          .Str("file", "zhihu.main.js")
+          .Int("count", mutation.addedNodes.length)
+          .Msg("mutation nodes");
         mutation.addedNodes.forEach(function (node) {
           if (node && node.nodeType === 1) {
-            log("mutation added element", {
-              tagName: node.tagName,
-              className: node.className,
-            });
+            WXU.log
+              .Info()
+              .Str("file", "zhihu.main.js")
+              .Str("tag_name", node.tagName)
+              .Str("class_name", node.className)
+              .Msg("mutation added element");
             observeCards(node);
           }
         });

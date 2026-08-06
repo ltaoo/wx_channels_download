@@ -501,7 +501,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	var contents []model.Content
 	if err := buildQuery().
 		Distinct("content.*").
-		Order("content.created_at DESC").
+		Order("content.created_at DESC, content.id DESC").
 		Limit(pageSize).
 		Offset(offset).
 		Find(&contents).Error; err != nil {

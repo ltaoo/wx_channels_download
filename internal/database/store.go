@@ -53,6 +53,8 @@ var _ hermes.Store = (*DBTaskStore)(nil)
 var _ hermes.OutputNameStore = (*DBTaskStore)(nil)
 var _ hermes.ResourceOutputStore = (*DBTaskStore)(nil)
 var _ hermes.ResourceCleanupStore = (*DBTaskStore)(nil)
+var _ hermes.StreamSegmentStore = (*DBTaskStore)(nil)
+var _ hermes.StreamResultStore = (*DBTaskStore)(nil)
 
 func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 	var task model.DownloadTask
@@ -121,16 +123,22 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 		}
 		extra := parseExtra(resource.Extra)
 		resource_infos = append(resource_infos, hermes.ResourceJob{
-			ID:         resource.Id,
-			Name:       resource.Name,
-			Kind:       resource.Kind,
-			Type:       resource.Type,
-			UniqueID:   resource.UniqueID,
-			Endpoints:  resource_endpoints,
-			Extra:      extra,
-			Size:       resource.Size,
-			Downloaded: resource.Downloaded,
-			Speed:      resource.Speed,
+			ID:            resource.Id,
+			Name:          resource.Name,
+			Kind:          resource.Kind,
+			Type:          resource.Type,
+			UniqueID:      resource.UniqueID,
+			Endpoints:     resource_endpoints,
+			Extra:         extra,
+			StreamURL:     resource.StreamURL,
+			RecordStart:   resource.RecordStart,
+			RecordEnd:     resource.RecordEnd,
+			Duration:      resource.Duration,
+			RotateMinutes: resource.RotateMinutes,
+			RotateSize:    resource.RotateSize,
+			Size:          resource.Size,
+			Downloaded:    resource.Downloaded,
+			Speed:         resource.Speed,
 		})
 	}
 	return &hermes.TaskJob{
@@ -430,6 +438,60 @@ func (s *DBTaskStore) UpdateSegmentProgress(seg_id int, downloaded int64) error 
 	now := time.Now().UnixMilli()
 	return s.db.Model(&model.DownloadSegment{}).Where("id = ?", seg_id).
 		Updates(map[string]any{"downloaded": downloaded, "updated_at": now}).Error
+}
+
+// SyncStreamSegments upserts the time-based chunks produced by a live-stream
+// recorder. Existing rows are retained across pause/resume so the database
+// reflects the same deterministic chunk sequence that remains on disk.
+func (s *DBTaskStore) SyncStreamSegments(resource_id int, stream_url string, segments []hermes.StreamSegmentState) error {
+	if resource_id <= 0 || len(segments) == 0 {
+		return nil
+	}
+	now := time.Now().UnixMilli()
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, state := range segments {
+			status := 1
+			if state.Complete {
+				status = 2
+			}
+			var segment model.DownloadSegment
+			err := tx.Where("resource_id = ? AND `index` = ?", resource_id, state.Index).First(&segment).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				segment = model.DownloadSegment{
+					ResourceId: resource_id,
+					Index:      state.Index,
+					URL:        stream_url,
+					Size:       state.Size,
+					Downloaded: state.Downloaded,
+					Status:     status,
+				}
+				segment.CreatedAt = now
+				segment.UpdatedAt = now
+				if err := tx.Create(&segment).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&segment).Updates(map[string]any{
+				"url":        stream_url,
+				"size":       state.Size,
+				"downloaded": state.Downloaded,
+				"status":     status,
+				"updated_at": now,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *DBTaskStore) UpdateStreamDuration(resource_id int, duration_seconds int64) error {
+	return s.db.Model(&model.DownloadResource{}).Where("id = ?", resource_id).
+		Updates(map[string]any{"duration": duration_seconds, "updated_at": time.Now().UnixMilli()}).Error
 }
 
 func (s *DBTaskStore) LoadSegmentInfo(resource_id int) ([]hermes.Segment, error) {

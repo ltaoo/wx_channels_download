@@ -58,7 +58,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/api/task/probe", c.handleProbePlatformDownloadTask)
 	// c.engine.GET("/api/task/pipeline/workflow", c.handleFetchPlatformDownloadWorkflow)
 	// c.engine.POST("/api/task/pipeline/resume", c.handleResumePlatformDownloadPipeline)
-	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistories)
+	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
 	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
 	c.engine.POST("/api/v1/download_task/prepare", c.handlePrepareDownloadTask)
 	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handlePrepareDownloadTaskByURL)
@@ -127,8 +127,8 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.GET("/qidian/proxy", qidian.HandleImageProxy)
 	// c.engine.GET("/weibo/proxy", weibo.HandleImageProxy)
 	// Other endpoints
-	c.engine.GET("/api/status", c.handleStatus)
 	c.engine.POST("/report", c.handleFrontendReport)
+	c.engine.GET("/api/status", c.handleStatus)
 	c.engine.POST("/api/service/start", c.handleServiceStart)
 	c.engine.POST("/api/service/stop", c.handleServiceStop)
 	c.engine.POST("/api/service/config", c.handleServiceConfigUpdate)

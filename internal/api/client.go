@@ -20,31 +20,31 @@ import (
 )
 
 type APIClient struct {
-	downloader  *hermes.HermesEngine
-	broadcaster *taskBroadcaster
-	filehelper   *FileHelperHandler
-	cfg          *APIConfig
-	engine       *gin.Engine
-	db           *gorm.DB
-	logger       *zerolog.Logger
+	downloader    *hermes.HermesEngine
+	broadcaster   *taskBroadcaster
+	filehelper    *FileHelperHandler
+	cfg           *APIConfig
+	engine        *gin.Engine
+	db            *gorm.DB
+	logger        *zerolog.Logger
 	http_handler  http.Handler
 	static_assets *webassets.Registry
 
-	bus               *events.Bus
+	bus                 *events.Bus
 	proxy_status_mu     sync.RWMutex
 	cached_proxy_status string
 	cached_proxy_addr   string
 	svc_status_mu       sync.RWMutex
-	svc_statuses       map[string]events.ServiceStatusChanged
+	svc_statuses        map[string]events.ServiceStatusChanged
 
 	clawclient *clawreq.Client
 
 	// Services
-	account_service      *services.AccountService
-	content_service      *services.ContentService
-	browse_service       *services.BrowseService
-	download_task_service *services.DownloadTaskService
-	fs_service           *services.FSService
+	account_service        *services.AccountService
+	content_service        *services.ContentService
+	browse_history_service *services.BrowseService
+	download_task_service  *services.DownloadTaskService
+	fs_service             *services.FSService
 }
 
 func NewAPIClient(
@@ -55,28 +55,28 @@ func NewAPIClient(
 	downloader *hermes.HermesEngine,
 	hook_manager *hermes.HookManager,
 ) *APIClient {
-	logger := parent_logger.With().Str("Client", "api_client").Logger()
+	logger := parent_logger.With().Logger()
 
 	// Initialize services
 	account_service := services.NewAccountService(db)
 	content_service := services.NewContentService(db)
-	browse_service := services.NewBrowseService(db, logger)
+	browse_history_service := services.NewBrowseService(db, logger)
 	fs_service := services.NewFSService()
 	if static_assets == nil {
 		static_assets = webassets.NewRegistry()
 	}
 
 	api_client := &APIClient{
-		cfg:            cfg,
-		engine:         gin.Default(),
-		db:             db,
-		logger:         &logger,
-		static_assets:   static_assets,
-		account_service: account_service,
-		content_service: content_service,
-		browse_service:  browse_service,
-		fs_service:      fs_service,
-		downloader:     downloader,
+		cfg:                    cfg,
+		engine:                 gin.Default(),
+		db:                     db,
+		logger:                 &logger,
+		static_assets:          static_assets,
+		account_service:        account_service,
+		content_service:        content_service,
+		browse_history_service: browse_history_service,
+		fs_service:             fs_service,
+		downloader:             downloader,
 	}
 
 	api_client.download_task_service = services.NewDownloadTaskService(

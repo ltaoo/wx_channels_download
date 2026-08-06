@@ -82,7 +82,7 @@ type TaskJob struct {
 	Metadata         map[string]any // Parsed content metadata for postprocessors and hooks
 
 	ctx          context.Context
-	cancel       context.CancelFunc
+	cancel       context.CancelCauseFunc
 	done         chan struct{}
 	executionMu  sync.Mutex
 	cancelReason cancellationReason
@@ -100,6 +100,17 @@ type ResourceJob struct {
 	UniqueID  string // Platform-level unique identifier
 	Endpoints []Endpoint
 	Extra     map[string]string // User-defined fields, irrelevant to download, passed through to hooks
+
+	// Live-stream recording configuration. Timestamps accept Unix seconds or
+	// Unix milliseconds; Duration is expressed in seconds. RotateMinutes is the
+	// preferred recording chunk duration and RotateSize is reserved for recorder
+	// implementations that support size-based rotation.
+	StreamURL     string
+	RecordStart   *int64
+	RecordEnd     *int64
+	Duration      int64
+	RotateMinutes int
+	RotateSize    int64
 
 	// Runtime/output state populated by Hermes.
 	Size       int64
@@ -194,6 +205,58 @@ type ProtocolDriver interface {
 	Open(ctx context.Context, endpoint Endpoint, request ReadRequest) (io.ReadCloser, error)
 }
 
+// StreamRecordRequest describes one live-stream recording execution. Stream
+// recorders write directly to OutputPath because live rotation and crash-safe
+// chunk handling cannot be expressed as a resumable byte-range Reader.
+type StreamRecordRequest struct {
+	OutputPath    string
+	StopAt        time.Time
+	Duration      time.Duration
+	RotateMinutes int
+	RotateSize    int64
+}
+
+// StreamSegmentState is the durable progress state of one recorder chunk.
+// The local path is intentionally not persisted by the generic Store; recorder
+// implementations derive it deterministically from OutputPath and Index.
+type StreamSegmentState struct {
+	Index      int
+	Size       int64
+	Downloaded int64
+	Complete   bool
+}
+
+// StreamRecordProgress reports byte/time progress for a live stream. Live
+// resources have no known final size, so clients should display Duration and
+// Downloaded rather than a percentage.
+type StreamRecordProgress struct {
+	Downloaded int64
+	Speed      int64
+	Duration   time.Duration
+	Segments   []StreamSegmentState
+	Finalizing bool
+}
+
+// StreamRecordResult is returned after chunks have been finalized into the
+// requested output file.
+type StreamRecordResult struct {
+	FilePath string
+	Size     int64
+	Duration time.Duration
+}
+
+// StreamRecorder is an optional capability implemented by protocol drivers
+// that record endless media sources. ProtocolDriver remains unchanged for
+// finite resources and for backwards-compatible registration.
+type StreamRecorder interface {
+	RecordStream(
+		ctx context.Context,
+		endpoint Endpoint,
+		request StreamRecordRequest,
+		onProgress func(StreamRecordProgress) error,
+	) (StreamRecordResult, error)
+}
+
 // Store isolates the download execution layer from the database.
 type Store interface {
 	LoadTask(taskID int) (*TaskJob, error)
@@ -215,6 +278,18 @@ type ResourceStore interface {
 	UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error
 	UpdateResourceSizeByID(resourceID int, size int64) error
 	FinishResource(resourceID int) error
+}
+
+// StreamSegmentStore optionally persists the recorder's time-based chunks.
+// Stores that do not implement it still receive aggregate resource progress.
+type StreamSegmentStore interface {
+	SyncStreamSegments(resourceID int, url string, segments []StreamSegmentState) error
+}
+
+// StreamResultStore optionally persists media-specific recording metadata that
+// is not part of the generic finite-resource Store contract.
+type StreamResultStore interface {
+	UpdateStreamDuration(resourceID int, durationSeconds int64) error
 }
 
 // OutputNameUpdate keeps persisted download metadata aligned with the output
@@ -310,16 +385,36 @@ type cancellationReason uint8
 const (
 	cancelNone cancellationReason = iota
 	cancelPause
+	cancelStop
 	cancelDelete
 )
 
+// ErrTaskStopRequested is the cancellation cause used when a live recording
+// should stop accepting new media but still finalize its recorded chunks.
+var ErrTaskStopRequested = errors.New("live stream stop requested")
+
 func (j *TaskJob) stop(reason cancellationReason) {
 	j.executionMu.Lock()
-	if reason > j.cancelReason {
-		j.cancelReason = reason
+	if j.cancelReason != cancelNone {
+		// Deletion remains authoritative if it races with pause/stop. The first
+		// cancellation cause still controls how an in-flight recorder exits.
+		if reason == cancelDelete {
+			j.cancelReason = cancelDelete
+		}
+		j.executionMu.Unlock()
+		return
 	}
+	j.cancelReason = reason
+	cancel := j.cancel
 	j.executionMu.Unlock()
-	j.cancel()
+	if cancel == nil {
+		return
+	}
+	if reason == cancelStop {
+		cancel(ErrTaskStopRequested)
+		return
+	}
+	cancel(context.Canceled)
 }
 
 func (j *TaskJob) cancellationReason() cancellationReason {
@@ -429,13 +524,13 @@ func (d *HermesEngine) StartTask(taskID int) error {
 		d.mu.Unlock()
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
 	taskJob := &TaskJob{ID: taskID, ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	d.jobs[taskID] = taskJob
 	d.mu.Unlock()
 
 	if err := d.store.UpdateStatus(taskID, TaskStatusPreparing); err != nil {
-		cancel()
+		cancel(context.Canceled)
 		d.mu.Lock()
 		if d.jobs[taskID] == taskJob {
 			delete(d.jobs, taskID)
@@ -471,6 +566,35 @@ func (d *HermesEngine) PauseTask(taskID int) {
 		taskJob.stop(cancelPause)
 		<-taskJob.done
 	}
+}
+
+// StopTask terminates a live recording and waits until its persisted chunks
+// have been merged and the regular task post-processing pipeline has finished.
+// Unlike PauseTask, a stopped live task cannot be resumed.
+func (d *HermesEngine) StopTask(taskID int) error {
+	if taskID <= 0 {
+		return errors.New("taskID must be greater than 0")
+	}
+	if d.store == nil {
+		return errors.New("download task store is nil")
+	}
+
+	d.mu.Lock()
+	taskJob := d.jobs[taskID]
+	created := taskJob == nil
+	if created {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		taskJob = &TaskJob{ID: taskID, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+		d.jobs[taskID] = taskJob
+	}
+	d.mu.Unlock()
+
+	taskJob.stop(cancelStop)
+	if created {
+		go d.schedule(taskJob)
+	}
+	<-taskJob.done
+	return nil
 }
 
 // PauseAllTask pauses all in-progress or queued download tasks.
@@ -525,12 +649,19 @@ func (d *HermesEngine) schedule(taskJob *TaskJob) {
 		close(taskJob.done)
 	}()
 
-	select {
-	case d.sem <- struct{}{}:
+	if taskJob.cancellationReason() == cancelStop {
+		// A stop-only job may be recovering durable chunks after a restart, so
+		// it still needs to run even though its recording context is cancelled.
+		d.sem <- struct{}{}
 		acquired = true
-	case <-taskJob.ctx.Done():
-		d.handleCancellation(taskID, taskJob)
-		return
+	} else {
+		select {
+		case d.sem <- struct{}{}:
+			acquired = true
+		case <-taskJob.ctx.Done():
+			d.handleCancellation(taskID, taskJob)
+			return
+		}
 	}
 
 	var runErr error
@@ -548,7 +679,8 @@ func (d *HermesEngine) schedule(taskJob *TaskJob) {
 		runErr = d.run(taskJob)
 	}()
 
-	if errors.Is(runErr, context.Canceled) || taskJob.ctx.Err() != nil {
+	if taskJob.cancellationReason() != cancelStop &&
+		(errors.Is(runErr, context.Canceled) || taskJob.ctx.Err() != nil) {
 		d.handleCancellation(taskID, taskJob)
 		return
 	}
@@ -752,7 +884,8 @@ func (d *HermesEngine) run(info *TaskJob) error {
 			results[idx] = &resourceResult{filePath: filePath, err: err, elapsed: elapsed}
 
 			if err != nil {
-				if !errors.Is(err, context.Canceled) && downloadCtx.Err() == nil {
+				if info.cancellationReason() == cancelStop ||
+					(!errors.Is(err, context.Canceled) && downloadCtx.Err() == nil) {
 					errOnce.Do(func() {
 						firstErr = fmt.Errorf("failed to download resource %s: %w", res.Name, err)
 						cancelDownloads()
@@ -782,14 +915,19 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	}
 	wg.Wait()
 
-	// If parent context has been cancelled (pause/delete), return the cancellation cause directly.
-	// Do not proceed with finishTask to avoid a Finished -> Paused state transition race.
-	if err := context.Cause(ctx); err != nil {
+	// Pause/delete must not finalize. A live stop is different: the stream
+	// recorder has already merged its chunks, so continue through postprocess.
+	if err := context.Cause(ctx); err != nil && info.cancellationReason() != cancelStop {
 		return err
 	}
 
 	if firstErr != nil {
 		return firstErr
+	}
+	if info.cancellationReason() == cancelStop {
+		if err := d.store.UpdateStatus(taskID, TaskStatusMerging); err != nil {
+			return fmt.Errorf("failed to update stopped live task status to merging: %w", err)
+		}
 	}
 
 	// Collect file paths in original order

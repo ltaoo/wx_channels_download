@@ -7,9 +7,9 @@ function __wx_copy_live_download_command(url) {
     return new Date().valueOf();
   })();
   var command = `ffmpeg -i "${url}" -c copy -y "live_${filename}.flv"`;
-  WXU.log({ prefix: "", msg: "" });
-  WXU.log({ prefix: "", msg: "直播下载命令" });
-  WXU.log({ prefix: "", msg: command });
+  // WXU.log({ prefix: "", msg: "" });
+  // WXU.log({ prefix: "", msg: "直播下载命令" });
+  // WXU.log({ prefix: "", msg: command });
   WXU.copy(command);
   WXU.toast("直播下载命令已复制到粘贴板");
 }

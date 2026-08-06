@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
 	scraper "wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
 )
@@ -23,6 +23,10 @@ func init() {
 type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
+
+func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	return nil, adapter.ErrBrowseHistoryNotSupported
+}
 
 type bilibiliContentJSON struct {
 	URL     string `json:"url"`

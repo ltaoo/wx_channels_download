@@ -34,6 +34,10 @@ type PlatformHandler interface {
 	// configJSON: platform-specific download config JSON (directory, filename, quality, overwrite strategy, etc.)
 	// Content and Account are embedded in the returned DownloadTaskResult.
 	BuildDownloadTask(contentJSON json.RawMessage, configJSON json.RawMessage) (*DownloadTaskResult, error)
+
+	// BuildBrowseHistory converts intercepted platform content into a browse
+	// history record and its related account.
+	BuildBrowseHistory(contentJSON json.RawMessage) (*BrowseHistoryResult, error)
 }
 
 // PlatformAdapter is the complete interface for a platform adapter.
@@ -59,13 +63,13 @@ type InterceptorRegistrar interface {
 // Keeping this contract in the registry allows a future dynamic loader to
 // construct adapters without application code importing concrete packages.
 type RuntimeDeps struct {
-	StaticAssets       *webassets.Registry
-	Routes             RouteRegistrar
-	Interceptor        InterceptorRegistrar
-	DB                 *gorm.DB
-	Logger             *zerolog.Logger
-	Bus                *events.Bus
-	Config             *config.Config
+	StaticAssets *webassets.Registry
+	Routes       RouteRegistrar
+	Interceptor  InterceptorRegistrar
+	DB           *gorm.DB
+	Logger       *zerolog.Logger
+	Bus          *events.Bus
+	Config       *config.Config
 }
 
 // RuntimeHandle owns resources started by an adapter.

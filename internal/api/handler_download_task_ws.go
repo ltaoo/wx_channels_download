@@ -213,7 +213,7 @@ func (c *APIClient) maybeBroadcastStats(b *taskBroadcaster, force bool) {
 
 // DownloadTaskWSMessage only carries the event type; the Tasks array is fully isomorphic with REST data.list[].
 type DownloadTaskWSMessage struct {
-	Type  string               `json:"type"`
+	Type  string                        `json:"type"`
 	Tasks []services.DownloadTaskRecord `json:"tasks,omitempty"`
 	Stats *services.DownloadTaskStats   `json:"stats,omitempty"`
 }
@@ -412,19 +412,18 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 			fileResourceStatus = model.TaskStatusDownloading
 		}
 		files = append(files, services.DownloadTaskFileRecord{
-			ID:           rp.ID,
-			Name:         rp.Name,
-			Kind:         rp.Kind,
-			ResourceType: rp.Type,
-			Type:         "file",
-			Status:       status,
-			Size:         rp.Size,
-			Downloaded:   rp.Downloaded,
-			Speed:        rp.Speed,
-			Progress:     services.TaskProgressPercent(rp.Downloaded, rp.Size, fileResourceStatus),
-			URL:          entry.resourceURLs[rp.ID],
-			OutputPath:   rp.Name,
-			Error:        errorMessage,
+			ID:         rp.ID,
+			Name:       rp.Name,
+			Kind:       rp.Kind,
+			Type:       rp.Type,
+			Status:     status,
+			Size:       rp.Size,
+			Downloaded: rp.Downloaded,
+			Speed:      rp.Speed,
+			Progress:   services.TaskProgressPercent(rp.Downloaded, rp.Size, fileResourceStatus),
+			URL:        entry.resourceURLs[rp.ID],
+			OutputPath: rp.Name,
+			Error:      errorMessage,
 		})
 	}
 
@@ -459,10 +458,20 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 		UpdatedAt:    task.UpdatedAt,
 	}
 
+	// Cache invalidation is also used as a terminal-event barrier. Holding the
+	// read lock through the send guarantees that a stop handler which removes
+	// this entry can publish the final DB-backed record after any older progress.
+	progressCacheMu.RLock()
+	currentEntry, stillCurrent := progressCache[taskID]
+	if !stillCurrent || currentEntry != entry {
+		progressCacheMu.RUnlock()
+		return
+	}
 	v1TaskHub.BroadcastTasks([]int{taskID}, DownloadTaskWSMessage{
 		Type:  downloadTaskWSUpsert,
 		Tasks: []services.DownloadTaskRecord{record},
 	})
+	progressCacheMu.RUnlock()
 }
 
 // broadcastDownloadTaskStats queries task counts by status from the database and pushes them to all WS clients.

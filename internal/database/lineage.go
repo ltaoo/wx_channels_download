@@ -1,4 +1,4 @@
-package tasklineage
+package database
 
 import (
 	"errors"
@@ -10,8 +10,8 @@ import (
 	"wx_channel/internal/database/model"
 )
 
-// Apply validates and assigns lineage before a DownloadTask is created.
-func Apply(db *gorm.DB, task *model.DownloadTask, parentTaskID *int, relationType string) error {
+// ApplyTaskLineage validates and assigns lineage before a DownloadTask is created.
+func ApplyTaskLineage(db *gorm.DB, task *model.DownloadTask, parentTaskID *int, relationType string) error {
 	if db == nil {
 		return fmt.Errorf("数据库不可用")
 	}
@@ -55,8 +55,8 @@ func Apply(db *gorm.DB, task *model.DownloadTask, parentTaskID *int, relationTyp
 	return nil
 }
 
-// FinalizeRoot assigns a newly-created root task's own ID as root_task_id.
-func FinalizeRoot(db *gorm.DB, task *model.DownloadTask) error {
+// FinalizeTaskRoot assigns a newly-created root task's own ID as root_task_id.
+func FinalizeTaskRoot(db *gorm.DB, task *model.DownloadTask) error {
 	if task == nil || task.Id <= 0 {
 		return fmt.Errorf("下载任务尚未创建")
 	}

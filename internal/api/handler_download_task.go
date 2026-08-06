@@ -14,10 +14,9 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/download/tasklineage"
-	"wx_channel/internal/events"
+	"wx_channel/internal/database"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
 )
@@ -457,14 +456,14 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 	task.CreatedAt = now
 	task.UpdatedAt = now
 
-	if err := tasklineage.Apply(c.db, &task, body.ParentTaskID, body.RelationType); err != nil {
+	if err := database.ApplyTaskLineage(c.db, &task, body.ParentTaskID, body.RelationType); err != nil {
 		return nil, err
 	}
 	if err := c.db.Create(&task).Error; err != nil {
 		c.logger.Error().Str("url", body.URL).Err(err).Msg("URL download task failed to write to database")
 		return nil, fmt.Errorf("创建下载任务失败: %w", err)
 	}
-	if err := tasklineage.FinalizeRoot(c.db, &task); err != nil {
+	if err := database.FinalizeTaskRoot(c.db, &task); err != nil {
 		return nil, err
 	}
 
@@ -647,18 +646,28 @@ func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
 			continue
 		}
 
-		c.downloader.PauseTask(task.Id)
-
 		if c.hasStreamResources(task.Id) {
-			now := time.Now().UnixMilli()
-			c.db.Model(&task).Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-			task.Status = model.TaskStatusFinished
-			if c.bus != nil {
-				go c.bus.Publish(events.DownloadTaskFinished{TaskID: task.Id})
+			if err := c.downloader.StopTask(task.Id); err != nil {
+				results = append(results, gin.H{"task_id": taskID, "success": false, "error": "停止直播录制失败: " + err.Error()})
+				continue
+			}
+			if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+				results = append(results, gin.H{"task_id": taskID, "success": false, "error": "读取直播录制最终状态失败: " + err.Error()})
+				continue
+			}
+			if task.Status != model.TaskStatusFinished {
+				message := strings.TrimSpace(task.ErrorMessage)
+				if message == "" {
+					message = fmt.Sprintf("收尾后的任务状态异常: %d", task.Status)
+				}
+				results = append(results, gin.H{"task_id": taskID, "success": false, "task": task, "error": "直播录制收尾失败: " + message})
+				continue
 			}
 			results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "finished"})
 			continue
 		}
+
+		c.downloader.PauseTask(task.Id)
 
 		task.Status = model.TaskStatusPaused
 		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "paused"})
@@ -1000,32 +1009,50 @@ func pathWithinDownloadRoot(root, target string) bool {
 }
 
 func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
-	name := strings.TrimSpace(resource.Name)
-	if name == "" {
+	names := []struct {
+		value  string
+		source string
+	}{
+		{value: strings.TrimSpace(resource.Name), source: "resource_name"},
+		{value: strings.TrimSpace(resource.UniqueID), source: "resource_unique_id"},
+	}
+	if names[0].value == "" && names[1].value == "" {
 		return nil
 	}
 	roots := c.downloadTaskLocalFileRoots(task)
 	seen := make(map[string]struct{})
-	candidates := make([]downloadTaskLocalFileCandidate, 0, len(roots)*2)
+	candidates := make([]downloadTaskLocalFileCandidate, 0, len(roots)*6)
 	for root, source := range roots {
-		path := name
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(root, path)
-		}
-		path = filepath.Clean(path)
-		if !pathWithinDownloadRoot(root, path) {
-			c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Str("download_root", root).Str("path", path).Msg("Rejected local file candidate outside download root")
-			continue
-		}
-		for _, candidate := range []downloadTaskLocalFileCandidate{
-			{Path: path, PathSource: source, CandidateType: "final"},
-			{Path: path + ".part", PathSource: source, CandidateType: "partial"},
-		} {
-			if _, exists := seen[candidate.Path]; exists {
+		for _, name := range names {
+			if name.value == "" {
 				continue
 			}
-			seen[candidate.Path] = struct{}{}
-			candidates = append(candidates, candidate)
+			path := name.value
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(root, path)
+			}
+			path = filepath.Clean(path)
+			if !pathWithinDownloadRoot(root, path) {
+				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Str("download_root", root).Str("path", path).Msg("Rejected local file candidate outside download root")
+				continue
+			}
+			pathSource := source + ":" + name.source
+			resourceCandidates := []downloadTaskLocalFileCandidate{
+				{Path: path, PathSource: pathSource, CandidateType: "final"},
+				{Path: path + ".part", PathSource: pathSource, CandidateType: "partial"},
+			}
+			if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
+				resourceCandidates = append(resourceCandidates, downloadTaskLocalFileCandidate{
+					Path: path + ".recording", PathSource: pathSource, CandidateType: "recording",
+				})
+			}
+			for _, candidate := range resourceCandidates {
+				if _, exists := seen[candidate.Path]; exists {
+					continue
+				}
+				seen[candidate.Path] = struct{}{}
+				candidates = append(candidates, candidate)
+			}
 		}
 	}
 	return candidates
@@ -1051,13 +1078,18 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Err(err).Msg("Failed to inspect associated local file before removal")
 				continue
 			}
-			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			isRecordingDir := candidate.CandidateType == "recording" && info.IsDir() && strings.HasSuffix(candidate.Path, ".recording")
+			if info.Mode()&os.ModeSymlink != 0 || (!info.Mode().IsRegular() && !isRecordingDir) {
 				err := fmt.Errorf("拒绝删除非普通文件 %q (mode=%s)", candidate.Path, info.Mode())
 				deletionErrors = append(deletionErrors, err.Error())
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Str("mode", info.Mode().String()).Msg("Rejected unsafe associated local file removal")
 				continue
 			}
-			if err := os.Remove(candidate.Path); err != nil {
+			remove := os.Remove
+			if isRecordingDir {
+				remove = os.RemoveAll
+			}
+			if err := remove(candidate.Path); err != nil {
 				deletionErrors = append(deletionErrors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Err(err).Msg("Failed to remove associated local file")
 				continue
@@ -1361,21 +1393,33 @@ func (c *APIClient) handlePauseAllDownloadTask(ctx *gin.Context) {
 	}
 
 	var paused int
+	var failures []gin.H
 	for _, task := range tasks {
-		c.downloader.PauseTask(task.Id)
-		// Stream pause should be marked as finished
 		if c.hasStreamResources(task.Id) {
-			now := time.Now().UnixMilli()
-			c.db.Model(&model.DownloadTask{}).Where("id = ?", task.Id).
-				Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-			if c.bus != nil {
-				go c.bus.Publish(events.DownloadTaskFinished{TaskID: task.Id})
+			if err := c.downloader.StopTask(task.Id); err != nil {
+				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
+				continue
 			}
+			var stoppedTask model.DownloadTask
+			if err := c.db.Where("id = ?", task.Id).First(&stoppedTask).Error; err != nil {
+				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
+				continue
+			}
+			if stoppedTask.Status != model.TaskStatusFinished {
+				message := strings.TrimSpace(stoppedTask.ErrorMessage)
+				if message == "" {
+					message = fmt.Sprintf("收尾后的任务状态异常: %d", stoppedTask.Status)
+				}
+				failures = append(failures, gin.H{"task_id": task.Id, "error": message})
+				continue
+			}
+		} else {
+			c.downloader.PauseTask(task.Id)
 		}
 		paused++
 	}
 
-	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks)})
+	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks), "failures": failures})
 }
 
 // handleClearDownloadTask clears completed/failed/cancelled download tasks.
@@ -1438,7 +1482,7 @@ func (c *APIClient) hasStreamResources(taskID int) bool {
 	}
 	var count int64
 	c.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND type = ?", taskID, model.ResourceTypeStream).
+		Where("task_id = ? AND UPPER(type) = ?", taskID, model.ResourceTypeStream).
 		Count(&count)
 	return count > 0
 }
@@ -1542,32 +1586,32 @@ func (c *APIClient) handleDownloadTaskDetail(ctx *gin.Context) {
 
 	record.Files = nil // replaced by enriched files below
 	result.Ok(ctx, gin.H{
-		"id":            record.ID,
-		"content":       contentData,
-		"content_id":    record.ContentID,
-		"content_type":  record.ContentType,
+		"id":             record.ID,
+		"content":        contentData,
+		"content_id":     record.ContentID,
+		"content_type":   record.ContentType,
 		"parent_task_id": record.ParentTaskID,
-		"root_task_id":  record.RootTaskID,
-		"relation_type": record.RelationType,
-		"child_count":   record.ChildCount,
-		"name":          record.Name,
-		"platform_id":   record.PlatformID,
-		"status":        record.Status,
-		"source_url":    record.SourceURL,
-		"cover_url":     record.CoverURL,
-		"cover_width":   record.CoverWidth,
-		"cover_height":  record.CoverHeight,
-		"config_json":   record.ConfigJSON,
-		"metadata_json": record.MetadataJSON,
-		"url":           record.URL,
-		"size":          record.Size,
-		"downloaded":    record.Downloaded,
-		"speed":         record.Speed,
-		"progress":      record.Progress,
-		"error":         record.Error,
-		"files":         files,
-		"file_count":    len(files),
-		"created_at":    record.CreatedAt,
-		"updated_at":    record.UpdatedAt,
+		"root_task_id":   record.RootTaskID,
+		"relation_type":  record.RelationType,
+		"child_count":    record.ChildCount,
+		"name":           record.Name,
+		"platform_id":    record.PlatformID,
+		"status":         record.Status,
+		"source_url":     record.SourceURL,
+		"cover_url":      record.CoverURL,
+		"cover_width":    record.CoverWidth,
+		"cover_height":   record.CoverHeight,
+		"config_json":    record.ConfigJSON,
+		"metadata_json":  record.MetadataJSON,
+		"url":            record.URL,
+		"size":           record.Size,
+		"downloaded":     record.Downloaded,
+		"speed":          record.Speed,
+		"progress":       record.Progress,
+		"error":          record.Error,
+		"files":          files,
+		"file_count":     len(files),
+		"created_at":     record.CreatedAt,
+		"updated_at":     record.UpdatedAt,
 	})
 }

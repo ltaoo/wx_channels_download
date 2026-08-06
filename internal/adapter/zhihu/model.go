@@ -21,7 +21,6 @@ type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
-
 // PlatformID is the exportable platform identifier for zhihu.
 const PlatformID = platformIDZhihu
 
@@ -245,6 +244,123 @@ func ArticleToBrowseHistory(page *scraper.ArticlePage) (*model.BrowseHistory, er
 	}, nil
 }
 
+// BuildBrowseHistory converts an intercepted Zhihu recommendation feed item
+// into the standard browse history result.
+func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	var feed scraper.RecommendFeed
+	if err := json.Unmarshal(content_json, &feed); err != nil {
+		return nil, fmt.Errorf("解析知乎推荐内容失败: %w", err)
+	}
+
+	target := &feed.Target
+	externalID := strings.TrimSpace(target.ID)
+	if externalID == "" {
+		return nil, fmt.Errorf("知乎推荐内容ID不能为空")
+	}
+
+	contentType := strings.TrimSpace(target.Type)
+	if contentType == "" && target.ArticleType != nil {
+		contentType = strings.TrimSpace(*target.ArticleType)
+	}
+	if contentType == "" && target.Question != nil {
+		contentType = "answer"
+	}
+	if contentType == "" {
+		contentType = "other"
+	}
+
+	title := ""
+	if target.Title != nil {
+		title = strings.TrimSpace(*target.Title)
+	}
+	if title == "" && target.Question != nil {
+		title = strings.TrimSpace(target.Question.Title)
+	}
+	title = firstNonEmptyStr(title, target.PreviewText, target.ExcerptNew, target.Excerpt, "知乎内容")
+
+	contentURL := strings.TrimSpace(target.URL)
+	coverURL := ""
+	if target.Thumbnail != nil {
+		coverURL = strings.TrimSpace(*target.Thumbnail)
+	}
+	if coverURL == "" && target.ImageURL != nil {
+		coverURL = strings.TrimSpace(*target.ImageURL)
+	}
+	if coverURL == "" && len(target.Thumbnails) > 0 {
+		coverURL = strings.TrimSpace(target.Thumbnails[0])
+	}
+	if coverURL == "" && target.Linkbox != nil {
+		coverURL = strings.TrimSpace(target.Linkbox.Pic)
+	}
+	if coverURL == "" {
+		coverURL = scraper.FirstImageURL(target.Content, contentURL)
+	}
+
+	publishTimeSeconds := int64(0)
+	if target.CreatedTime != nil {
+		publishTimeSeconds = *target.CreatedTime
+	} else if target.Created != nil {
+		publishTimeSeconds = *target.Created
+	} else if target.Question != nil {
+		publishTimeSeconds = target.Question.Created
+	} else {
+		publishTimeSeconds = feed.CreatedTime
+	}
+
+	extraData, _ := json.Marshal(&feed)
+	now := util.NowMillis()
+
+	return &adapter.BrowseHistoryResult{
+		BrowseHistory: &model.BrowseHistory{
+			PlatformId:   PlatformID,
+			VisitedTimes: 1,
+			Type:         contentType,
+			ExternalId:   externalID,
+			Title:        title,
+			URL:          contentURL,
+			SourceURL:    contentURL,
+			CoverURL:     coverURL,
+			PublishTime:  int64Ptr(publishTimeSeconds * 1000),
+			ExtraData:    string(extraData),
+			Timestamps: model.Timestamps{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+		Account: RecommendFeedToAccount(&feed),
+	}, nil
+}
+
+// RecommendFeedToAccount converts the target author attached to a recommendation
+// item into the shared account model.
+func RecommendFeedToAccount(feed *scraper.RecommendFeed) *model.Account {
+	if feed == nil {
+		return nil
+	}
+
+	author := &feed.Target.Author
+	external_id := firstNonEmptyStr(author.ID, author.URLToken)
+	if external_id == "" {
+		return nil
+	}
+
+	now := util.NowMillis()
+	return &model.Account{
+		Id:            BuildAccountID(external_id),
+		PlatformId:    PlatformID,
+		ExternalId:    external_id,
+		Nickname:      author.Name,
+		Signature:     author.Headline,
+		AvatarURL:     author.AvatarURL,
+		ProfileURL:    author.URL,
+		FollowerCount: int64(author.FollowersCount),
+		Timestamps: model.Timestamps{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+}
+
 // parseAnswerPageContent attempts to unmarshal the content JSON as a scraper.AnswerPage.
 // Returns the parsed page and true if the content appears to be a valid AnswerPage.
 func parseAnswerPageContent(contentJSON json.RawMessage) (*scraper.AnswerPage, bool) {
@@ -407,10 +523,10 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	// Cover image resource
 	if coverURL != "" {
 		coverResource := model.DownloadResource{
-			ContentId: &contentID,
-			Name:      title,
-			Kind:      "image",
-			UniqueID:  externalID + "_cover",
+			ContentId:  &contentID,
+			Name:       title,
+			Kind:       "image",
+			UniqueID:   externalID + "_cover",
 			MergeOrder: 999,
 		}
 		coverEndpoint := model.DownloadEndpoint{

@@ -1428,7 +1428,8 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: (result && result.error) || "启动失败" });
       }
     },
-    async pauseTask(task) {
+    async pauseTask(task, options = {}) {
+      const isLiveStream = options.liveStream === true;
       const r = await reqs.task.pause.run(task.id);
       if (r.error) {
         WXU.error({ msg: r.error.message });
@@ -1436,9 +1437,16 @@ function DownloaderPanelViewModel(props = {}) {
       }
       const result = r.data && r.data.results && r.data.results[0];
       if (result && result.success) {
-        updateTaskStatus(task.id, "paused");
+        updateTaskStatus(
+          task.id,
+          result.status_text || (isLiveStream ? "finished" : "paused"),
+        );
       } else {
-        WXU.error({ msg: (result && result.error) || "暂停失败" });
+        WXU.error({
+          msg:
+            (result && result.error) ||
+            (isLiveStream ? "停止录制失败" : "暂停失败"),
+        });
       }
     },
     isTaskSelected(task) {
@@ -2433,9 +2441,12 @@ function DownloaderPanelViewModel(props = {}) {
 }
 
 var downloadermodel$ = DownloaderPanelViewModel({});
+downloadermodel$.browse = function (feeds, opt) {
+  return downloadermodel$.methods.createBrowseHistories(feeds, opt);
+};
 WXU.downloader.create = function (feeds, opt) {
   return downloadermodel$.methods.createDownloadTask(feeds, opt);
 };
 WXU.downloader.browse = function (feeds, opt) {
-  return downloadermodel$.methods.createBrowseHistories(feeds, opt);
+  return downloadermodel$.browse(feeds, opt);
 };

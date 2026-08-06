@@ -157,6 +157,7 @@ var BrowseHistoryModel = (() => {
       wxchannels: "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
       wxmp: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
       officialaccount: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+      zhihu: "https://static.zhihu.com/heifetz/favicon.ico",
     };
     const key = history && (history.platform_id || history.platformId);
     return icons[key] || "";

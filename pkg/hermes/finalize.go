@@ -164,6 +164,12 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 
 		// Start with the display title as the base name
 		baseName := title
+		// Older STREAM rows stored the display name with an .mkv suffix even
+		// though Kind is the extension source of truth. Avoid producing
+		// title.mkv.mkv while remaining compatible with those persisted tasks.
+		if strings.EqualFold(r.Type, ResourceTypeStream) && ext != "" && strings.EqualFold(filepath.Ext(baseName), ext) {
+			baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+		}
 
 		// Apply filename template using display title as {{filename}}
 		if d.cfg.FilenameTemplate != "" {
@@ -199,15 +205,19 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 		// Sanitize each path component, then resolve the final name. The duplicate
 		// suffix is inserted before the extension.
 		sanitizedBaseName := sanitizePathComponents(baseName)
-		finalName := d.resolveDuplicateFilename(job.SavePath, sanitizedBaseName, ext)
-
-		if finalName == r.Name {
-			continue
+		oldPath := strings.TrimSpace(r.FilePath)
+		if oldPath == "" {
+			oldPath = d.absFilePath(job.SavePath, r.UniqueID)
 		}
-
-		oldPath := d.absFilePath(job.SavePath, r.UniqueID)
+		preferredName := sanitizedBaseName + ext
+		finalName := preferredName
+		if filepath.Clean(oldPath) != filepath.Clean(d.absFilePath(job.SavePath, preferredName)) {
+			finalName = d.resolveDuplicateFilename(job.SavePath, sanitizedBaseName, ext)
+		}
 		newPath := d.absFilePath(job.SavePath, finalName)
 		if oldPath == newPath {
+			r.Name = finalName
+			r.FilePath = newPath
 			continue
 		}
 

@@ -2303,27 +2303,28 @@ func streamConvertNode(values map[string]interface{}) (interface{}, error) {
 			return nil, fmt.Errorf("缺少 task 或 resource")
 		}
 
-		ext := strings.ToLower(filepath.Ext(inputFile))
-		if strings.EqualFold(ext, ".mp4") || strings.EqualFold(ext, ".mkv") {
-			values[ctxMP4File] = inputFile
-			return nil, nil
+		ctx := nodeContext(values)
+		videoCodec, err := probeFirstMediaCodec(ctx, inputFile, "v:0")
+		if err != nil {
+			return nil, fmt.Errorf("检测直播视频编码失败: %w", err)
+		}
+		if videoCodec == "" {
+			return nil, fmt.Errorf("直播文件不包含视频轨道")
+		}
+		audioCodec, err := probeFirstMediaCodec(ctx, inputFile, "a:0")
+		if err != nil {
+			return nil, fmt.Errorf("检测直播音频编码失败: %w", err)
 		}
 
+		ext := strings.ToLower(filepath.Ext(inputFile))
 		baseName := filepath.Base(inputFile)
-		mp4File := filepath.Join(filepath.Dir(inputFile), strings.TrimSuffix(baseName, ext))
+		mp4File := inputFile
+		if ext != ".mp4" {
+			mp4File = filepath.Join(filepath.Dir(inputFile), strings.TrimSuffix(baseName, ext)+".mp4")
+		}
 		tmpFile := mp4File + ".converting"
 
-		cmd := exec.CommandContext(
-			nodeContext(values),
-			"ffmpeg",
-			"-i", inputFile,
-			"-c", "copy",
-			"-bsf:a", "aac_adtstoasc",
-			"-movflags", "+faststart",
-			"-f", "mp4",
-			"-y",
-			tmpFile,
-		)
+		cmd := exec.CommandContext(ctx, "ffmpeg", buildStreamMP4Args(inputFile, tmpFile, videoCodec, audioCodec)...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			_ = os.Remove(tmpFile)
@@ -2338,22 +2339,85 @@ func streamConvertNode(values map[string]interface{}) (interface{}, error) {
 	})
 }
 
+func probeFirstMediaCodec(ctx context.Context, inputFile, selector string) (string, error) {
+	cmd := exec.CommandContext(
+		ctx,
+		"ffprobe",
+		"-v", "error",
+		"-select_streams", selector,
+		"-show_entries", "stream=codec_name",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		inputFile,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ffprobe 失败: %w\n%s", err, string(output))
+	}
+	codec, _, _ := strings.Cut(strings.TrimSpace(string(output)), "\n")
+	return strings.ToLower(strings.TrimSpace(codec)), nil
+}
+
+func buildStreamMP4Args(inputFile, outputFile, videoCodec, audioCodec string) []string {
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-fflags", "+genpts",
+		"-i", inputFile,
+		"-map", "0:v:0",
+		"-map", "0:a:0?",
+		"-map_metadata", "0",
+	}
+
+	switch strings.ToLower(strings.TrimSpace(videoCodec)) {
+	case "hevc", "h265":
+		// Apple system players require the hvc1 sample entry for reliable HEVC
+		// playback. This only rewrites container metadata and preserves quality.
+		args = append(args, "-c:v", "copy", "-tag:v", "hvc1")
+	case "h264", "avc":
+		args = append(args, "-c:v", "copy")
+	default:
+		// Fall back to the broadly supported H.264/yuv420p combination when the
+		// source codec cannot be played directly by common system players.
+		args = append(args,
+			"-c:v", "libx264",
+			"-preset", "medium",
+			"-crf", "20",
+			"-pix_fmt", "yuv420p",
+			"-fps_mode", "vfr",
+		)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(audioCodec)) {
+	case "":
+	case "aac":
+		args = append(args, "-c:a", "copy", "-bsf:a", "aac_adtstoasc")
+	default:
+		args = append(args, "-c:a", "aac", "-b:a", "192k")
+	}
+
+	return append(args,
+		"-avoid_negative_ts", "make_zero",
+		"-video_track_timescale", "90000",
+		"-movflags", "+faststart",
+		"-f", "mp4",
+		"-y",
+		outputFile,
+	)
+}
+
 func finalizeStreamNode(values map[string]interface{}) (interface{}, error) {
 	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeFinalizeStream, func(run *postprocessRun) (interface{}, error) {
 		if run.resource == nil {
 			return nil, fmt.Errorf("缺少 resource")
 		}
 		mp4File, _ := values[ctxMP4File].(string)
-		if mp4File != "" && run.originalExt != ".mp4" && run.originalExt != ".mkv" {
+		if mp4File == "" {
+			return nil, fmt.Errorf("缺少 mp4_file")
+		}
+		run.resource.FilePath = mp4File
+		if strings.TrimSpace(run.resource.Name) == "" {
 			run.resource.Name = postprocessResourceName(run.basePath, mp4File)
-			run.resource.FilePath = mp4File
 		}
-		switch run.originalExt {
-		case ".mkv":
-			run.resource.Kind = "video/x-matroska"
-		default:
-			run.resource.Kind = "video/mp4"
-		}
+		run.resource.Kind = "video/mp4"
 		return nil, nil
 	})
 }

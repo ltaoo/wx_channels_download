@@ -17,6 +17,46 @@ function format_download_progress_text(percent) {
   if (!Number.isFinite(p)) return "0";
   return String(Math.round(Math.max(0, Math.min(100, p))));
 }
+function DownloadInfinityIcon(props = {}) {
+  const size = props.size || 14;
+  return SVG.SVG(
+    {
+      style: {
+        display: "block",
+        "flex-shrink": "0",
+      },
+      attributes: {
+        width: String(size),
+        height: String(size),
+        xmlns: "http://www.w3.org/2000/svg",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        class: "lucide lucide-infinity-icon lucide-infinity",
+        "aria-hidden": "true",
+      },
+    },
+    [
+      SVG.Path({
+        attributes: {
+          d: "M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8",
+        },
+      }),
+    ],
+  );
+}
+function is_live_stream_download_task(task) {
+  if (!task || !Array.isArray(task.files)) return false;
+  return task.files.some((file) => {
+    if (!file) return false;
+    return [file.type, file.resource_type].some(
+      (type) => String(type || "").toUpperCase() === "STREAM",
+    );
+  });
+}
 function DownloadTaskFileIcon(props) {
   const size = props.size || 32;
   const iconName_ = computed(props.task, (task) => {
@@ -1265,6 +1305,7 @@ function DownloadTaskCard(props) {
   const iconSize = "50px";
   const state_ = computed(task_, (t) => {
     const pr = format_download_percent(t);
+    const isLiveStream = is_live_stream_download_task(t);
     const normalizedStatus = normalize_download_status(t.status);
     const isPaused = normalizedStatus === "pause";
     const isRunning = normalizedStatus === "running";
@@ -1274,11 +1315,22 @@ function DownloadTaskCard(props) {
       normalizedStatus === "done" ||
       (pr === 100 && !isRunning && !isFailed && !isPaused && !isPending);
 
-    const totalFileSize = Array.isArray(t.files)
-      ? t.files.reduce((sum, f) => sum + (Number(f.size) || 0), 0)
-      : 0;
-    const totalSizeText =
-      totalFileSize > 0 ? WXU.bytes_to_size(totalFileSize) : "";
+    const files = Array.isArray(t.files) ? t.files : [];
+    const filesDownloadedSize = files.reduce(
+      (sum, f) => sum + (Number(f.downloaded) || 0),
+      0,
+    );
+    const filesTotalSize = files.reduce(
+      (sum, f) => sum + (Number(f.size) || 0),
+      0,
+    );
+    const downloadedSize = Math.max(
+      filesDownloadedSize,
+      Number(t.downloaded) || 0,
+    );
+    const totalFileSize = Math.max(filesTotalSize, Number(t.size) || 0);
+    const downloadedSizeText = WXU.bytes_to_size(downloadedSize);
+    const totalSizeText = WXU.bytes_to_size(totalFileSize);
 
     let statusText = t.status;
     let statusColor = "var(--weui-FG-1)";
@@ -1293,10 +1345,6 @@ function DownloadTaskCard(props) {
       progressText = format_download_progress_text(pr);
     } else if (isCompleted) {
       statusText = "已完成";
-      const total = t.meta && t.meta.res ? t.meta.res.size : 0;
-      if (total) {
-        statusText = WXU.bytes_to_size(total);
-      }
     } else if (isFailed) {
       statusText = "失败";
       errorText = t.error || t._errMsg || "下载失败";
@@ -1309,6 +1357,7 @@ function DownloadTaskCard(props) {
     }
     return {
       pr,
+      isLiveStream,
       isCompleted,
       isPaused,
       isRunning,
@@ -1318,6 +1367,7 @@ function DownloadTaskCard(props) {
       statusColor,
       errorText,
       progressText,
+      downloadedSizeText,
       totalSizeText,
       totalFileSize,
     };
@@ -1401,7 +1451,9 @@ function DownloadTaskCard(props) {
                 "z-index": "1",
                 "pointer-events": "none",
                 opacity: computed(state_, (t) => {
-                  return t.isRunning || t.isPaused ? "0.2" : "1";
+                  return !t.isLiveStream && (t.isRunning || t.isPaused)
+                    ? "0.2"
+                    : "1";
                 }),
               },
             },
@@ -1414,7 +1466,7 @@ function DownloadTaskCard(props) {
           ),
           Show({
             when: computed(state_, (t) => {
-              return t.isRunning || t.isPaused;
+              return !t.isLiveStream && (t.isRunning || t.isPaused);
             }),
             ok() {
               return [
@@ -1492,14 +1544,52 @@ function DownloadTaskCard(props) {
         [
           View(
             {
-              class: "wx-dl-item-title",
               style: {
-                color: "var(--weui-FG-0)",
-                "font-weight": "500",
-                "font-size": "14px",
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+                "flex-wrap": "wrap",
               },
             },
-            [computed(task_, (t) => t.name)],
+            [
+              View(
+                {
+                  class: "wx-dl-item-title",
+                  style: {
+                    color: "var(--weui-FG-0)",
+                    "font-weight": "500",
+                    "font-size": "14px",
+                    "min-width": "0",
+                  },
+                },
+                [computed(task_, (t) => t.name)],
+              ),
+              Show({
+                when: computed(state_, (d) => d.isLiveStream),
+                ok() {
+                  return View(
+                    {
+                      style: {
+                        display: "inline-flex",
+                        "align-items": "center",
+                        height: "18px",
+                        padding: "0 6px",
+                        color: "#FA5151",
+                        "font-size": "11px",
+                        "font-weight": "600",
+                        "line-height": "18px",
+                        "white-space": "nowrap",
+                        "text-decoration": "none",
+                        background: "rgba(250, 81, 81, 0.12)",
+                        border: "1px solid rgba(250, 81, 81, 0.35)",
+                        "border-radius": "4px",
+                      },
+                    },
+                    ["直播"],
+                  );
+                },
+              }),
+            ],
           ),
           View(
             {
@@ -1509,15 +1599,28 @@ function DownloadTaskCard(props) {
                   "margin-top": "4px",
                   color: d.statusColor,
                   "font-size": "12px",
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "3px",
+                  "flex-wrap": "wrap",
                 };
               }),
             },
             [
-              computed(state_, (d) => {
-                return d.totalSizeText
-                  ? `${d.totalSizeText} · ${String(d.statusText).split("•")[0].trim()}`
-                  : String(d.statusText).split("•")[0].trim();
+              computed(state_, (d) => `${d.downloadedSizeText} /`),
+              Show({
+                when: computed(state_, (d) => d.isLiveStream),
+                ok() {
+                  return DownloadInfinityIcon({ size: 14 });
+                },
+                else() {
+                  return computed(state_, (d) => d.totalSizeText);
+                },
               }),
+              "·",
+              computed(state_, (d) =>
+                String(d.statusText).split("•")[0].trim(),
+              ),
             ],
           ),
           Show({
@@ -1570,6 +1673,9 @@ function DownloadTaskCard(props) {
                 }
                 if (t.state.isRunning) {
                   return 2;
+                }
+                if (t.state.isLiveStream && t.state.isPaused) {
+                  return 5;
                 }
                 if (t.running_count >= maxRunning) {
                   return 5;
@@ -1641,14 +1747,39 @@ function DownloadTaskCard(props) {
                     type: "a",
                     class: "wx-download-item-pause",
                     style: btnStyle,
+                    attributes: {
+                      title: computed(state_, (t) =>
+                        t.isLiveStream ? "停止录制" : "暂停",
+                      ),
+                      "aria-label": computed(state_, (t) =>
+                        t.isLiveStream ? "停止录制" : "暂停",
+                      ),
+                    },
                     onClick() {
-                      vm$.methods.pauseTask(task_.value);
+                      vm$.methods.pauseTask(task_.value, {
+                        liveStream: state_.value.isLiveStream,
+                      });
                     },
                   },
                   [
-                    Timeless.Icon({
-                      name: "pause",
-                      size: 20,
+                    Show({
+                      when: computed(state_, (t) => t.isLiveStream),
+                      ok() {
+                        return [
+                          Timeless.Icon({
+                            name: "square",
+                            size: 20,
+                          }),
+                        ];
+                      },
+                      else() {
+                        return [
+                          Timeless.Icon({
+                            name: "pause",
+                            size: 20,
+                          }),
+                        ];
+                      },
                     }),
                   ],
                 );

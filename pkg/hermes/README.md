@@ -7,14 +7,30 @@ Package boundaries:
 - `Engine` manages task concurrency, state transitions, endpoint failover, segment retries, and resumable downloads.
 - `ProtocolDriver` manages protocol connections, authentication, resource probing, and data reads.
 - `Store` persists tasks, resources, segments, and progress in external storage.
-- HTTP/HTTPS is the default driver; other protocols are registered through `Engine.RegisterProtocol`.
+- Protocols are registered explicitly through `Engine.RegisterProtocol` by the application.
 - This package does not depend on the API, GORM, the frontend, or any specific content platform.
 
-The current executor targets finite `FILE` resources. `COLLECTION` and `STREAM` are reserved resource types, but they still require dedicated planning and recording schedulers.
+The executor supports finite `FILE` resources and live `STREAM` resources. `COLLECTION` remains a reserved resource type that requires a dedicated planner.
 
 ## Protocols That Can Currently Be Verified
 
-`Engine.New` registers the HTTP driver by default, so `http://` and `https://` resources can be downloaded without additional registration. Other protocols can be added through the `Engine.RegisterProtocol` interface, but the repository does not yet provide FTP, SFTP, BT, or similar drivers; do not treat them as currently available features.
+`Engine.New` starts with an empty protocol registry. The application currently registers HTTP/HTTPS, inline-content, and `livestream` drivers. The live driver requires `ffmpeg` and records HTTP-FLV, HLS, RTMP, RTSP, and other inputs supported by the installed FFmpeg build. FTP, SFTP, BitTorrent, and similar drivers are not provided.
+
+## Live-stream Recording
+
+`STREAM` resources are routed through the optional `StreamRecorder` driver capability rather than the finite byte-range download loop. The bundled `livestream` driver:
+
+- forwards endpoint HTTP headers and cookies to FFmpeg;
+- enables HTTP network reconnect options;
+- records without re-encoding (`-c copy`);
+- writes ten-minute MKV chunks by default, or uses `download_resource.rotate_minutes`;
+- retains closed chunks across pause and retry;
+- reports aggregate byte/time progress and persists chunk state in `download_segment`;
+- concatenates playable chunks into one MKV file and atomically commits it when the stream ends or reaches its configured stop time.
+
+`record_start`, `record_end`, and `duration` are honored by the recording scheduler. `rotate_size` is carried through the recorder contract but the bundled FFmpeg recorder does not yet implement size-based rotation. HTTP 401, 403, and 410 responses are treated as fatal for that endpoint and persisted as concrete task errors because they usually mean that the signed URL or its authorization is no longer valid. Hermes does not refresh signed live URLs; other transport failures still use bounded retries.
+
+Submitting an `.m3u8` through the generic HTTP URL endpoint still downloads the manifest as a finite file. To record it as a live stream, create a `STREAM` resource whose endpoint protocol is `livestream`.
 
 ## Manual Download Acceptance Data
 

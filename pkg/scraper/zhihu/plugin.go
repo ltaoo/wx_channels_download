@@ -37,6 +37,15 @@ func CreateZhihuInterceptorPlugin(cookie string, files *frontend.ChannelInjected
 			}
 			html := string(respBody)
 
+			var earlyInjected strings.Builder
+			frontend.AppendScriptSrcs(
+				&earlyInjected,
+				"",
+				frontend.InjectAssetURL(assetBaseURL, "fetch.js"),
+			)
+			frontend.AppendSharedLibAssets(&earlyInjected, assetBaseURL, version, "", "")
+			html = strings.Replace(html, "<head>", "<head>"+earlyInjected.String(), 1)
+
 			var injected strings.Builder
 			frontend.AppendInlineScript(
 				&injected,
@@ -46,6 +55,10 @@ func CreateZhihuInterceptorPlugin(cookie string, files *frontend.ChannelInjected
 			frontend.AppendScriptSrcs(
 				&injected,
 				"",
+				frontend.InjectAssetURL(assetBaseURL, "eventbus.js"),
+				frontend.InjectAssetURL(assetBaseURL, "env.js"),
+				frontend.InjectAssetURL(assetBaseURL, "utils.js"),
+				frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
 				InjectAssetURL(assetBaseURL, "zhihu.main.js"),
 			)
 

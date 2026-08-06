@@ -3,8 +3,8 @@ package shuba69
 import (
 	"encoding/json"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
 	"wx_channel/pkg/util"
 )
 
@@ -17,6 +17,10 @@ func init() {
 type handler struct{}
 
 func (h *handler) PlatformID() string { return platformID }
+
+func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	return nil, adapter.ErrBrowseHistoryNotSupported
+}
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	// Use mock data for frontend testing

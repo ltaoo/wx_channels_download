@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"wx_channel/internal/adapter"
 	wxchannels "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/adapter"
 	"wx_channel/pkg/testui"
 	"wx_channel/pkg/testui/assert"
 	"wx_channel/pkg/testui/require"
@@ -105,12 +105,12 @@ func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
 		t.Fatalf("load video fixture: %v", err)
 	}
 
-	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+	h := adapter.Get("wxchannels")
+	built, err := h.BuildBrowseHistory(raw)
+	if err != nil {
+		t.Fatalf("BuildBrowseHistory: %v", err)
 	}
-
-	r := wxchannels.BuildBrowseRecordFromObject(&obj)
+	r := built.BrowseHistory
 	if r.PublishTime == nil || *r.PublishTime != 1783667361 {
 		t.Fatalf("unexpected publish time: %v", r.PublishTime)
 	}
@@ -123,13 +123,13 @@ func TestBuildBrowseRecord_FromVideoFeedJSON(t *testing.T) {
 		VisitedTimes: 1,
 		Type:         "video",
 		ExternalId:   "14962486294771997060",
-		Title:             "讨厌我有什么用 有本事弄死我",
-		URL:               "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
-		SourceURL:         "https://channels.weixin.qq.com/web/pages/feed?username=v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665%40finder&oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
-		CoverURL:          "https://finder.video.qq.com/251/20350/stodownload?encfilekey=2fG3V4WwQPnQr0gxUocFa2h6q3eoq4hXzG39ub5SWukSZAsfOaRiadTuuGIYouJicfpVpzk12gN6RJ2mlOl26YUBWWTVupMcpSIhJDGZaKiaRI&token=ic1n0xDG6awibhOHyNxbvz6nLNtsL3qg5UrFPrz5Jj4TMUicLBbchc6FxnZm5WybqCJGmyeCPokfKqLKqgia6PpXIc7oxANHcCfUGvZ2tkcIfe9Gnz8pKU6G2fVsHnRmVYqPkoqyLdic9MrwTdQWmCLTamzeQ40lL8sTUiaaMgr0QibWm7wQAbtMvUalYywFOoiaotMxjeEHU4mg8GLIS33rP8iaUwuyIrBiandouT&hy=SZ&idx=1&m=7b022855f315b6aa0a3dd30f631d1d4a&picformat=200&wxampicformat=503",
-		CoverWidth:        "1080",
-		CoverHeight:       "2128",
-		ExtraData:         `{"decode_key":"1522886121","id":"14962486294771997060","nonce_id":"4390481592474233535_0_146_0_0"}`,
+		Title:        "讨厌我有什么用 有本事弄死我",
+		URL:          "https://finder.video.qq.com/251/20302/stodownload?encfilekey=Cvvj5Ix3eewQsFvYyicia1J4vPZhKwibibyibAO6BVb6JtHx7sfjtTfmCnIib4dtTeSl2Skialoibjc4ia6VtH3tyOo2Sbfhz1vNa4lmBoRG3uapCVhgnZfcJBou7lg&token=2lt8WBSnjTkTjXXRcWF576SLtqb9LdRn1Cliaa0icf5zFjCLyBFNe1e3eKzhzzEc5h05O81ibb3hwbVTVywYQAQbSQzZkHicCqabpEdwBzhTgdyPiakaMMw7n96CtNxoPbKkQxiaYOzPImgS9ZG3kDzKcLjMEyIIVGYuibzdHECVIOFibOQGL4pWibDRRD6VcpGApwhugo6k9Mq48YAov7zg751dO260H5iaGeEkJZWhKhib0hib4W0&basedata=CAMSBnhXVDE1OCJaCgoKBnhXVDE1OBAACgoKBnhXVDE1NxAACgoKBnhXVDE1NhAACgoKBnhXVDExMxAACgoKBnhXVDExMhAACgoKBnhXVDExMRAACgcKA3hBMBAACgcKA3hBMhAA&sign=AgZzkYT5vBvSWwKe5MpufA75x2T3Xnnz7PtuTK98WxdVbZm4Grpnyl52sDN4W6CI562FVgGaZ-_tYlBjCRLdIQ&web=1&extg=10f0000&svrbypass=AAuL%2FQsFAAABAAAAAABRfl4aFfX8vo5XJgBRahAAAADnaHZTnGbFfAj9RgZXfw6ViUCWOt8LYujr%2BrkpCHNy7PD375%2BDqLzGDCk8ibQxWRl9tKOjUKAhiL4%3D&svrnonce=1783693350",
+		SourceURL:    "https://channels.weixin.qq.com/web/pages/feed?username=v2_060000231003b20faec8c5e78f19c4d7ca0dee30b077a7a4527af7236dbe740f76db287e7665%40finder&oid=z6VuAqyJGYQ&nid=PO4fvyBRar8",
+		CoverURL:     "https://finder.video.qq.com/251/20350/stodownload?encfilekey=2fG3V4WwQPnQr0gxUocFa2h6q3eoq4hXzG39ub5SWukSZAsfOaRiadTuuGIYouJicfpVpzk12gN6RJ2mlOl26YUBWWTVupMcpSIhJDGZaKiaRI&token=ic1n0xDG6awibhOHyNxbvz6nLNtsL3qg5UrFPrz5Jj4TMUicLBbchc6FxnZm5WybqCJGmyeCPokfKqLKqgia6PpXIc7oxANHcCfUGvZ2tkcIfe9Gnz8pKU6G2fVsHnRmVYqPkoqyLdic9MrwTdQWmCLTamzeQ40lL8sTUiaaMgr0QibWm7wQAbtMvUalYywFOoiaotMxjeEHU4mg8GLIS33rP8iaUwuyIrBiandouT&hy=SZ&idx=1&m=7b022855f315b6aa0a3dd30f631d1d4a&picformat=200&wxampicformat=503",
+		CoverWidth:   "1080",
+		CoverHeight:  "2128",
+		ExtraData:    `{"decode_key":"1522886121","id":"14962486294771997060","nonce_id":"4390481592474233535_0_146_0_0"}`,
 	}
 
 	testui.AssertStrictEqual(t, "BrowseHistory", expected, r)
