@@ -111,24 +111,10 @@ function DownloadPageTopBar(props) {
     ]),
     View({ class: "wx-dl-page-actions" }, [
       DownloadPageActionButton({
-        icon: "plus",
-        label: "创建任务",
+        icon: "refresh-cw",
+        label: "刷新",
         onClick() {
-          vm$.methods.requestCreateTask();
-        },
-      }),
-      DownloadPageActionButton({
-        icon: "package-plus",
-        label: "平台创建",
-        onClick() {
-          vm$.methods.requestCreatePlatformTask();
-        },
-      }),
-      DownloadPageActionButton({
-        icon: "file-box",
-        label: "导入",
-        onClick() {
-          vm$.ui.importFileDialog$.show();
+          vm$.methods.refreshTasks();
         },
       }),
       DownloadPageActionButton({

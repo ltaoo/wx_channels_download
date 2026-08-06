@@ -50,7 +50,7 @@ https://dash.cloudflare.com/profile/api-tokens
 上述配置完成后，执行下面命令即可部署到 `Cloudflare`
 
 ```bash
-./wx_channels_download deploy
+./wx_channels_download deploy mp
 ```
 
 ### 本地刷新配置

@@ -458,21 +458,6 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	if sourceURL == "" {
 		sourceURL = strings.TrimSpace(data.Link)
 	}
-	coverMergeOrder := 100 + len(imageResources)
-	coverResource := model.DownloadResource{
-		ContentId:  &contentID,
-		Name:       title,
-		Kind:       "image",
-		UniqueID:   externalID + "_cover",
-		MergeOrder: coverMergeOrder,
-		Extra:      extraJSON,
-	}
-	coverEndpoint := model.DownloadEndpoint{
-		Protocol: "https",
-		URL:      coverURL,
-		Enabled:  1,
-		Headers:  wechatHeaders,
-	}
 
 	htmlName := title
 	htmlResource := model.DownloadResource{
@@ -489,7 +474,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		Enabled:  1,
 	}
 
-	resources := make([]*adapter.ResourceInfo, 0, len(imageResources)+2)
+	resources := make([]*adapter.ResourceInfo, 0, len(imageResources)+1)
 	resources = append(resources, &adapter.ResourceInfo{
 		DownloadResource: htmlResource,
 		Endpoints:        []model.DownloadEndpoint{htmlEndpoint},
@@ -497,10 +482,6 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	for _, r := range imageResources {
 		resources = append(resources, r)
 	}
-	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: coverResource,
-		Endpoints:        []model.DownloadEndpoint{coverEndpoint},
-	})
 
 	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{

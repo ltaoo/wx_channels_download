@@ -161,8 +161,8 @@ func TestBuildDownloadTaskArticleIgnoresPictureListWithoutPageType(t *testing.T)
 	if !strings.Contains(info.Task.MetadataJSON, `"biz_type":1`) {
 		t.Fatalf("MetadataJSON = %s, want biz_type 1", info.Task.MetadataJSON)
 	}
-	if len(info.Resources) != 4 {
-		t.Fatalf("Resources len = %d, want HTML, two article images and cover", len(info.Resources))
+	if len(info.Resources) != 3 {
+		t.Fatalf("Resources len = %d, want HTML and two article images", len(info.Resources))
 	}
 	if !strings.HasSuffix(info.Resources[1].UniqueID, "_img_0") || !strings.HasSuffix(info.Resources[2].UniqueID, "_img_1") {
 		t.Fatalf("article image resource IDs = %q, %q", info.Resources[1].UniqueID, info.Resources[2].UniqueID)
