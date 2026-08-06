@@ -17,6 +17,64 @@ function format_download_progress_text(percent) {
   if (!Number.isFinite(p)) return "0";
   return String(Math.round(Math.max(0, Math.min(100, p))));
 }
+function NumberView(props = {}) {
+  const value = Object.prototype.hasOwnProperty.call(props, "value")
+    ? props.value
+    : props.number;
+  const characterWidth = props.characterWidth || "0.65em";
+  const decimalWidth = props.decimalWidth || "0.3em";
+  const toCharacters = (currentValue) => {
+    return Array.from(currentValue == null ? "" : String(currentValue)).map(
+      (character, index) => ({
+        key: `${index}:${character}`,
+        character,
+      }),
+    );
+  };
+  const characters_ =
+    value && value.__is_ref
+      ? computed(value, toCharacters)
+      : toCharacters(value);
+  return View(
+    {
+      class: ["wx-number-view", props.class].filter(Boolean).join(" "),
+      style: {
+        display: "inline-flex",
+        "align-items": "center",
+        "white-space": "nowrap",
+        ...(props.style || {}),
+      },
+      attributes: props.attributes || {},
+    },
+    [
+      For({
+        key: "key",
+        each: characters_,
+        render(item) {
+          const width =
+            item.character === "." ? decimalWidth : characterWidth;
+          return View(
+            {
+              class: "wx-number-view-character",
+              style: {
+                display: "inline-flex",
+                width,
+                "min-width": width,
+                "flex-basis": width,
+                "flex-shrink": "0",
+                "align-items": "center",
+                "justify-content": "center",
+                "text-align": "center",
+                ...(props.characterStyle || {}),
+              },
+            },
+            [item.character],
+          );
+        },
+      }),
+    ],
+  );
+}
 function DownloadInfinityIcon(props = {}) {
   const size = props.size || 14;
   return SVG.SVG(
@@ -1316,6 +1374,12 @@ function DownloadTaskCard(props) {
       (pr === 100 && !isRunning && !isFailed && !isPaused && !isPending);
 
     const files = Array.isArray(t.files) ? t.files : [];
+    const deletedFileCount = files.filter((file) => {
+      return String((file && file.status) || "").toLowerCase() === "deleted";
+    }).length;
+    const hasDeletedFiles = deletedFileCount > 0;
+    const allFilesDeleted =
+      files.length > 0 && deletedFileCount === files.length;
     const filesDownloadedSize = files.reduce(
       (sum, f) => sum + (Number(f.downloaded) || 0),
       0,
@@ -1329,22 +1393,28 @@ function DownloadTaskCard(props) {
       Number(t.downloaded) || 0,
     );
     const totalFileSize = Math.max(filesTotalSize, Number(t.size) || 0);
-    const downloadedSizeText = WXU.bytes_to_size(downloadedSize);
-    const totalSizeText = WXU.bytes_to_size(totalFileSize);
+    const downloadedSizeText = format_download_size(downloadedSize);
+    const totalSizeText = format_download_size(totalFileSize);
 
     let statusText = t.status;
     let statusColor = "var(--weui-FG-1)";
     let errorText = "";
     let progressText = "";
+    let speedText = "";
     if (isRunning) {
-      const speed = format_download_speed(
+      speedText = format_download_speed(
         t.speed ||
           (t.progress && typeof t.progress === "object" ? t.progress.speed : 0),
       );
-      statusText = speed || "下载中";
+      statusText = "下载中";
       progressText = format_download_progress_text(pr);
     } else if (isCompleted) {
-      statusText = "已完成";
+      statusText = hasDeletedFiles
+        ? allFilesDeleted
+          ? "文件已删除"
+          : "部分文件已删除"
+        : "已完成";
+      statusColor = hasDeletedFiles ? "#FA5151" : "#07C160";
     } else if (isFailed) {
       statusText = "失败";
       errorText = t.error || t._errMsg || "下载失败";
@@ -1353,12 +1423,15 @@ function DownloadTaskCard(props) {
       statusText = "等待中...";
     } else if (isPaused) {
       statusText = "已暂停";
+      statusColor = "#FBC02D";
       progressText = format_download_progress_text(pr);
     }
     return {
       pr,
       isLiveStream,
       isCompleted,
+      hasDeletedFiles,
+      allFilesDeleted,
       isPaused,
       isRunning,
       isFailed,
@@ -1367,6 +1440,7 @@ function DownloadTaskCard(props) {
       statusColor,
       errorText,
       progressText,
+      speedText,
       downloadedSizeText,
       totalSizeText,
       totalFileSize,
@@ -1529,7 +1603,11 @@ function DownloadTaskCard(props) {
                       "-webkit-text-stroke": "0.3px var(--weui-BG-3)",
                     },
                   },
-                  [computed(state_, (t) => t.progressText)],
+                  [
+                    NumberView({
+                      value: computed(state_, (t) => t.progressText),
+                    }),
+                  ],
                 ),
               ];
             },
@@ -1594,33 +1672,68 @@ function DownloadTaskCard(props) {
           View(
             {
               class: "weui-cell__desc",
-              style: computed(state_, (d) => {
-                return {
-                  "margin-top": "4px",
-                  color: d.statusColor,
-                  "font-size": "12px",
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "3px",
-                  "flex-wrap": "wrap",
-                };
-              }),
+              style: {
+                "margin-top": "4px",
+                color: "var(--weui-FG-1)",
+                "font-size": "12px",
+                display: "flex",
+                "align-items": "center",
+                gap: "3px",
+                "flex-wrap": "wrap",
+              },
             },
             [
-              computed(state_, (d) => `${d.downloadedSizeText} /`),
+              View(
+                {
+                  style: computed(state_, (d) => ({ color: d.statusColor })),
+                },
+                [
+                  computed(state_, (d) =>
+                    String(d.statusText).split("•")[0].trim(),
+                  ),
+                ],
+              ),
+              "·",
               Show({
-                when: computed(state_, (d) => d.isLiveStream),
+                when: computed(state_, (d) => d.isCompleted),
                 ok() {
-                  return DownloadInfinityIcon({ size: 14 });
+                  return NumberView({
+                    value: computed(state_, (d) => d.totalSizeText),
+                  });
                 },
                 else() {
-                  return computed(state_, (d) => d.totalSizeText);
+                  return [
+                    NumberView({
+                      value: computed(
+                        state_,
+                        (d) => `${d.downloadedSizeText} /`,
+                      ),
+                    }),
+                    Show({
+                      when: computed(state_, (d) => d.isLiveStream),
+                      ok() {
+                        return DownloadInfinityIcon({ size: 14 });
+                      },
+                      else() {
+                        return NumberView({
+                          value: computed(state_, (d) => d.totalSizeText),
+                        });
+                      },
+                    }),
+                  ];
                 },
               }),
-              "·",
-              computed(state_, (d) =>
-                String(d.statusText).split("•")[0].trim(),
-              ),
+              Show({
+                when: computed(state_, (d) => d.isRunning && !!d.speedText),
+                ok() {
+                  return [
+                    "·",
+                    NumberView({
+                      value: computed(state_, (d) => d.speedText),
+                    }),
+                  ];
+                },
+              }),
             ],
           ),
           Show({

@@ -225,10 +225,137 @@ var WXU = (() => {
       }, 1000);
     });
   }
+  function __wx_ensure_feedback_style() {
+    if (document.getElementById("wx-feedback-style")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "wx-feedback-style";
+    style.textContent = `
+.wx-feedback-toptips.weui-toptips {
+  display: block;
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 8px;
+  background-color: var(--weui-RED, #fa5151);
+  color: #fff;
+  font-size: 14px;
+  text-align: center;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  transform: translateZ(0);
+}
+.wx-feedback-layer .weui-mask_transparent {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+}
+.wx-feedback-layer .weui-toast__wrp {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wx-feedback-layer .weui-toast {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  max-width: 320px;
+  margin-top: -10%;
+  padding: 28px 20px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background-color: var(--weui-BG-4, #4c4c4c);
+  color: rgba(255, 255, 255, 0.9);
+  filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.1));
+  line-height: 1.4;
+  text-align: center;
+  transform: none;
+}
+.wx-feedback-layer .weui-toast_text {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 20px;
+}
+.wx-feedback-layer .weui-toast__content {
+  max-width: 100%;
+  font-size: 14px;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.wx-feedback-layer .weui-primary-loading.weui-icon_toast {
+  position: relative;
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  margin-bottom: 16px;
+  color: #ededed;
+  font-size: 40px;
+  animation: circleLoading 1s steps(60, end) infinite;
+  flex-shrink: 0;
+}
+.wx-feedback-layer .weui-primary-loading::before,
+.wx-feedback-layer .weui-primary-loading::after {
+  content: "";
+  display: block;
+  width: 0.5em;
+  height: 1em;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: currentColor;
+}
+.wx-feedback-layer .weui-primary-loading::before {
+  border-width: 4px 0 4px 4px;
+  border-radius: 1em 0 0 1em;
+  -webkit-mask-image: linear-gradient(#000 8%, rgba(0, 0, 0, 0.3) 95%);
+}
+.wx-feedback-layer .weui-primary-loading::after {
+  border-width: 4px 4px 4px 0;
+  border-radius: 0 1em 1em 0;
+  -webkit-mask-image: linear-gradient(transparent 8%, rgba(0, 0, 0, 0.3) 95%);
+}
+.wx-feedback-layer .weui-primary-loading__dot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 0 4px 4px 0;
+  background: currentColor;
+}
+@keyframes circleLoading {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}`;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  function __wx_feedback_text(value, fallback = "") {
+    if (value instanceof Error) {
+      return value.message || fallback;
+    }
+    if (value && typeof value === "object") {
+      value = value.msg ?? value.message ?? value.text;
+    }
+    return value == null || value === "" ? fallback : String(value);
+  }
   function __wx_top_tip(text) {
+    __wx_ensure_feedback_style();
     const tip = document.createElement("div");
-    tip.className = "wx-top-tip";
-    tip.textContent = text || "";
+    tip.className = "weui-toptips weui-toptips_warn wx-feedback-toptips";
+    tip.setAttribute("role", "alert");
+    tip.setAttribute("aria-live", "assertive");
+    tip.textContent = __wx_feedback_text(text);
     document.body.appendChild(tip);
     setTimeout(() => {
       tip.remove();
@@ -239,28 +366,55 @@ var WXU = (() => {
       },
     };
   }
-  function __wx_toast(text) {
+  function __wx_create_toast(text, loading) {
+    __wx_ensure_feedback_style();
+    const root = document.createElement("div");
+    root.className = "wx-feedback-layer";
+    root.setAttribute("role", "alert");
+    root.setAttribute("aria-live", "assertive");
+    const mask = document.createElement("div");
+    mask.className = "weui-mask_transparent";
+    const wrapper = document.createElement("div");
+    wrapper.className = "weui-toast__wrp";
     const toast = document.createElement("div");
-    toast.className = "wx-toast";
-    toast.textContent = text || "";
-    document.body.appendChild(toast);
+    toast.className = loading ? "weui-toast" : "weui-toast weui-toast_text";
+    if (loading) {
+      const spinner = document.createElement("span");
+      spinner.className = "weui-primary-loading weui-icon_toast";
+      spinner.setAttribute("role", "img");
+      spinner.setAttribute("aria-label", "正在加载");
+      const dot = document.createElement("span");
+      dot.className = "weui-primary-loading__dot";
+      spinner.appendChild(dot);
+      toast.appendChild(spinner);
+    }
+    const content = document.createElement("p");
+    content.className = "weui-toast__content";
+    content.textContent = text;
+    toast.appendChild(content);
+    wrapper.appendChild(toast);
+    root.appendChild(mask);
+    root.appendChild(wrapper);
+    document.body.appendChild(root);
+    return root;
+  }
+  function __wx_toast(text) {
+    const root = __wx_create_toast(__wx_feedback_text(text), false);
     setTimeout(() => {
-      toast.remove();
+      root.remove();
     }, 2200);
     return {
       hide() {
-        toast.remove();
+        root.remove();
       },
     };
   }
-  function __wx_loading(text = "加载中") {
-    const mask = document.createElement("div");
-    mask.className = "wx-loading-mask";
-    mask.innerHTML = `<div class="wx-loading-box"><span class="wx-loading-spinner"></span><span>${text}</span></div>`;
-    document.body.appendChild(mask);
+  function __wx_loading(options = "加载中") {
+    const text = __wx_feedback_text(options, "加载中");
+    const root = __wx_create_toast(text, true);
     return {
       hide() {
-        mask.remove();
+        root.remove();
       },
     };
   }
@@ -389,10 +543,15 @@ var WXU = (() => {
    * @param {ErrorMsg} params
    */
   function __wx_error(params) {
-    var _alert = params.alert != null ? params.alert : 1;
-    logTransport.enqueue({ msg: params.msg, level: "error" });
+    const options =
+      params && typeof params === "object" && !(params instanceof Error)
+        ? params
+        : { msg: params };
+    const message = __wx_feedback_text(options, "未知错误");
+    var _alert = options.alert != null ? options.alert : 1;
+    logTransport.enqueue({ msg: message, level: "error" });
     if (_alert) {
-      __wx_top_tip(params.msg);
+      return __wx_top_tip(message);
     }
   }
   const script_loaded_map = {};
@@ -604,8 +763,8 @@ var WXU = (() => {
     copy: __wx_copy,
     log: Logger,
     error: __wx_error,
-    loading() {
-      return __wx_loading();
+    loading(options) {
+      return __wx_loading(options);
     },
     toast(text) {
       return __wx_toast(text);

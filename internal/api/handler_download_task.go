@@ -37,6 +37,28 @@ type deleteDownloadTasksBody struct {
 	DeleteFiles bool  `json:"delete_files"`
 }
 
+// checkDownloadTaskFileItem identifies one file returned by the task list API.
+// Name and OutputPath are accepted as part of that record, but the server uses
+// the persisted task/resource relationship to resolve a safe local path.
+type checkDownloadTaskFileItem struct {
+	TaskID     int    `json:"task_id"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	OutputPath string `json:"output_path"`
+}
+
+type checkDownloadTaskFilesBody struct {
+	Files []checkDownloadTaskFileItem `json:"files"`
+}
+
+type checkDownloadTaskFileResult struct {
+	TaskID  int    `json:"task_id"`
+	ID      int    `json:"id"`
+	Checked bool   `json:"checked"`
+	Exists  bool   `json:"exists"`
+	Error   string `json:"error,omitempty"`
+}
+
 // CreateDownloadTaskByURLRequest is the request for creating download tasks by URL.
 type CreateDownloadTaskByURLRequest struct {
 	Objects []CreateDownloadTaskByURLBody `json:"objects"`
@@ -1140,6 +1162,119 @@ func (c *APIClient) logDownloadTaskLocalFile(taskID int, resource model.Download
 		return
 	}
 	event.Bool("exists", false).Err(err).Msg("Associated local file candidate inspection failed")
+}
+
+// handleCheckDownloadTaskFiles checks a page of task files without delaying the
+// task-list response. Paths supplied by the browser are never accessed directly:
+// resource IDs are matched to their persisted task and resolved under the task's
+// configured download roots.
+// POST /api/v1/download_task/check_files
+func (c *APIClient) handleCheckDownloadTaskFiles(ctx *gin.Context) {
+	if c.db == nil {
+		result.Err(ctx, 500, "应用未初始化，数据库不可用")
+		return
+	}
+
+	var body checkDownloadTaskFilesBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "请求参数错误: "+err.Error())
+		return
+	}
+	if len(body.Files) == 0 {
+		result.Ok(ctx, gin.H{"files": []checkDownloadTaskFileResult{}})
+		return
+	}
+	if len(body.Files) > 5000 {
+		result.Err(ctx, 400, "单次最多校验 5000 个文件")
+		return
+	}
+
+	taskIDs := make([]int, 0, len(body.Files))
+	resourceIDs := make([]int, 0, len(body.Files))
+	seenTaskIDs := make(map[int]struct{})
+	seenResourceIDs := make(map[int]struct{})
+	for _, file := range body.Files {
+		if file.TaskID > 0 {
+			if _, exists := seenTaskIDs[file.TaskID]; !exists {
+				seenTaskIDs[file.TaskID] = struct{}{}
+				taskIDs = append(taskIDs, file.TaskID)
+			}
+		}
+		if file.ID > 0 {
+			if _, exists := seenResourceIDs[file.ID]; !exists {
+				seenResourceIDs[file.ID] = struct{}{}
+				resourceIDs = append(resourceIDs, file.ID)
+			}
+		}
+	}
+
+	var tasks []model.DownloadTask
+	if len(taskIDs) > 0 {
+		if err := c.db.Where("id IN ? AND deleted_at IS NULL", taskIDs).Find(&tasks).Error; err != nil {
+			result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
+			return
+		}
+	}
+	var resources []model.DownloadResource
+	if len(resourceIDs) > 0 {
+		if err := c.db.Where("id IN ? AND deleted_at IS NULL", resourceIDs).Find(&resources).Error; err != nil {
+			result.Err(ctx, 500, "查询下载文件失败: "+err.Error())
+			return
+		}
+	}
+
+	taskByID := make(map[int]model.DownloadTask, len(tasks))
+	for _, task := range tasks {
+		taskByID[task.Id] = task
+	}
+	resourceByID := make(map[int]model.DownloadResource, len(resources))
+	for _, resource := range resources {
+		resourceByID[resource.Id] = resource
+	}
+
+	checkedFiles := make([]checkDownloadTaskFileResult, 0, len(body.Files))
+	for _, file := range body.Files {
+		checked := checkDownloadTaskFileResult{TaskID: file.TaskID, ID: file.ID}
+		task, taskExists := taskByID[file.TaskID]
+		resource, resourceExists := resourceByID[file.ID]
+		if !taskExists || !resourceExists || resource.TaskId != task.Id {
+			checked.Error = "下载文件记录不存在"
+			checkedFiles = append(checkedFiles, checked)
+			continue
+		}
+
+		candidates := c.downloadTaskLocalFileCandidates(task, resource)
+		if len(candidates) == 0 {
+			checked.Error = "无法解析本地文件路径"
+			checkedFiles = append(checkedFiles, checked)
+			continue
+		}
+
+		checked.Checked = true
+		for _, candidate := range candidates {
+			// A finished resource only exists when its final output exists. A
+			// partial/recording artifact is valid evidence for an active resource.
+			if (resource.Status == 2 || task.Status == model.TaskStatusFinished) && candidate.CandidateType != "final" {
+				continue
+			}
+			info, err := os.Stat(candidate.Path)
+			if err == nil {
+				if !info.IsDir() || candidate.CandidateType == "recording" {
+					checked.Exists = true
+					break
+				}
+				continue
+			}
+			if !os.IsNotExist(err) {
+				checked.Checked = false
+				checked.Error = "检查本地文件失败"
+				break
+			}
+		}
+		checkedFiles = append(checkedFiles, checked)
+	}
+
+	result.Ok(ctx, gin.H{"files": checkedFiles})
 }
 
 // handleListDownloadTask lists download tasks.

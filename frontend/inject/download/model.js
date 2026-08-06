@@ -25,12 +25,33 @@ const request = Timeless.request_factory({
 });
 
 function format_download_speed(bps) {
+  const value = Math.max(0, Number(bps) || 0);
   const kb = 1024,
     mb = kb * 1024;
-  if (!bps) return "0 B/s";
-  if (bps >= mb) return (bps / mb).toFixed(2) + " MB/s";
-  if (bps >= kb) return (bps / kb).toFixed(2) + " KB/s";
-  return bps + " B/s";
+  if (value >= mb) return (value / mb).toFixed(1) + " MB/s";
+  if (value >= kb) return (value / kb).toFixed(1) + " KB/s";
+  return value.toFixed(1) + " B/s";
+}
+function format_download_size(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value === 0) return "0.0KB";
+  const units = [
+    "bytes",
+    "KB",
+    "MB",
+    "GB",
+    "TB",
+    "PB",
+    "EB",
+    "ZB",
+    "YB",
+  ];
+  const exponent = Math.min(
+    Math.floor(Math.log(value) / Math.log(1024)),
+    units.length - 1,
+  );
+  if (exponent < 1) return `${value.toFixed(1)} ${units[0]}`;
+  return `${(value / Math.pow(1024, exponent)).toFixed(1)}${units[exponent]}`;
 }
 function format_download_percent(t) {
   const direct = Number(t && t.progress);
@@ -126,6 +147,7 @@ function normalize_download_status(status) {
 
 function download_resource_status_text(file) {
   const status = String((file && file.status) || "").toLowerCase();
+  if (status === "deleted") return "文件已删除";
   if (status === "finished" || status === "done") return "已完成";
   if (status === "error" || status === "failed") return "失败";
   if (status === "downloading" || status === "running") return "下载中";
@@ -135,8 +157,10 @@ function download_resource_status_text(file) {
 }
 
 function download_resource_metrics(file) {
-  const size = WXU.bytes_to_size(Number((file && file.size) || 0));
-  const downloaded = WXU.bytes_to_size(Number((file && file.downloaded) || 0));
+  const size = format_download_size(Number((file && file.size) || 0));
+  const downloaded = format_download_size(
+    Number((file && file.downloaded) || 0),
+  );
   const speed = format_download_speed(Number((file && file.speed) || 0));
   const progress = Math.min(
     100,
@@ -622,6 +646,7 @@ function DownloaderPanelViewModel(props = {}) {
   const pending_pages = new Set();
   let selection_anchor_task_id = null;
   let draining_pages = false;
+  let file_verification_generation = 0;
   const isDOMElement = (value) => {
     return !!(
       value &&
@@ -1062,6 +1087,7 @@ function DownloaderPanelViewModel(props = {}) {
     }, 0);
   };
   const resetVirtualTasks = () => {
+    file_verification_generation += 1;
     virtual_total = 0;
     loaded_pages.clear();
     loading_pages.clear();
@@ -1112,6 +1138,116 @@ function DownloaderPanelViewModel(props = {}) {
     scheduleSyncListViewSlotHeights();
     if (!options.reset) {
       scheduleListViewScrollSync(_scrollTop);
+    }
+  };
+  const isFinishedTaskFile = (file) => {
+    const status = String(
+      (file && (file._download_status || file.status)) || "",
+    ).toLowerCase();
+    return status === "finished" || status === "done";
+  };
+  const collectTaskPageFiles = (list) => {
+    const files = [];
+    (Array.isArray(list) ? list : []).forEach((task) => {
+      if (!task || !task.id || !Array.isArray(task.files)) {
+        return;
+      }
+      task.files.forEach((file) => {
+        if (!file || !file.id) {
+          return;
+        }
+        files.push({
+          ...file,
+          task_id: task.id,
+        });
+      });
+    });
+    return files;
+  };
+  const applyTaskFileVerification = (files, generation) => {
+    if (
+      generation !== file_verification_generation ||
+      !Array.isArray(files) ||
+      files.length === 0
+    ) {
+      return;
+    }
+    const resultByFile = new Map();
+    files.forEach((file) => {
+      if (!file || !file.checked || !file.task_id || !file.id) {
+        return;
+      }
+      resultByFile.set(`${file.task_id}:${file.id}`, file);
+    });
+    if (resultByFile.size === 0) {
+      return;
+    }
+
+    let changed = false;
+    const nextTasks = (tasks_.value || []).map((task) => {
+      if (!isLoadedTask(task) || !Array.isArray(task.files)) {
+        return task;
+      }
+      let taskChanged = false;
+      const nextFiles = task.files.map((file) => {
+        const checked = resultByFile.get(`${task.id}:${file && file.id}`);
+        if (!checked) {
+          return file;
+        }
+        const originalStatus = file._download_status || file.status;
+        const nextStatus =
+          checked.exists === false && isFinishedTaskFile(file)
+            ? "deleted"
+            : originalStatus;
+        if (
+          file.local_file_checked === true &&
+          file.local_file_exists === checked.exists &&
+          file.status === nextStatus
+        ) {
+          return file;
+        }
+        taskChanged = true;
+        changed = true;
+        return {
+          ...file,
+          _download_status: originalStatus,
+          local_file_checked: true,
+          local_file_exists: checked.exists,
+          status: nextStatus,
+        };
+      });
+      if (!taskChanged) {
+        return task;
+      }
+      const nextTask = { ...task, files: nextFiles };
+      nextTask.height = estimateTaskItemHeight(nextTask);
+      return nextTask;
+    });
+    if (changed && generation === file_verification_generation) {
+      tasks_.as(nextTasks);
+      scheduleSyncListViewSlotHeights();
+    }
+  };
+  const verifyTaskPageFiles = async (list, generation) => {
+    const files = collectTaskPageFiles(list);
+    if (files.length === 0) {
+      return;
+    }
+    try {
+      // Each page owns its request instance so adjacent prefetches can verify
+      // concurrently without sharing RequestCore loading state.
+      const checkLocal = new Timeless.RequestCore(
+        (items) =>
+          request.post("/api/v1/download_task/check_files", { files: items }),
+        { client: http_client },
+      );
+      const r = await checkLocal.run(files);
+      if (r && !r.error && generation === file_verification_generation) {
+        applyTaskFileVerification(r.data && r.data.files, generation);
+      }
+    } catch (e) {
+      // Local-file verification is a background enhancement; list pagination
+      // must remain usable when the check is unavailable.
     }
   };
   const loadWaitingTaskPage = async (page) => {
@@ -1186,6 +1322,9 @@ function DownloaderPanelViewModel(props = {}) {
         return r;
       }
       applyTaskPage(r.data, options);
+      // Render the requested page first; local-file checks and their state
+      // updates deliberately run in the background and never block pagination.
+      verifyTaskPageFiles(r.data && r.data.list, file_verification_generation);
       setTimeout(maybeLoadMoreTasks, 0);
       return r;
     } finally {
