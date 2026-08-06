@@ -112,10 +112,10 @@ function empty_download_status_counts() {
 }
 const DOWNLOAD_WAITING_STATUS_KEYS = ["ready", "wait"];
 const DOWNLOAD_STATUS_COUNT_ITEMS = [
-  { key: "all", label: "全部", statuses: ["total"] },
+  { key: "total", label: "全部" },
   { key: "running", label: "下载中" },
   { key: "pause", label: "暂停" },
-  { key: "wait", label: "等待中", statuses: DOWNLOAD_WAITING_STATUS_KEYS },
+  { key: "wait", label: "等待中" },
   { key: "done", label: "已完成" },
   { key: "error", label: "失败" },
 ];
@@ -349,21 +349,14 @@ function normalize_download_status_counts(counts) {
 }
 function get_download_status_count(counts, item) {
   const c = normalize_download_status_counts(counts);
-  const keys = Array.isArray(item && item.statuses)
-    ? item.statuses
-    : [typeof item === "string" ? item : item && item.key];
-  return keys.reduce((sum, key) => {
-    return sum + (Number(c[key]) || 0);
-  }, 0);
+  return c[item.key];
 }
 function format_download_status_counts(counts) {
   const c = normalize_download_status_counts(counts);
   return [
     `下载中 ${c.running}`,
     `暂停 ${c.pause}`,
-    `等待中 ${get_download_status_count(c, {
-      statuses: DOWNLOAD_WAITING_STATUS_KEYS,
-    })}`,
+    `等待中 ${c.wait}`,
     `已完成 ${c.done}`,
     `失败 ${c.error}`,
   ].join(" · ");
@@ -588,19 +581,19 @@ function DownloaderPanelViewModel(props = {}) {
     );
   }
   function adjustStatusCounts(fromStatus, toStatus, totalDelta) {
-    status_counts_.as((prev) => {
-      const next = normalize_download_status_counts(prev);
-      const from = normalize_download_status(fromStatus);
-      const to = normalize_download_status(toStatus);
-      if (from && typeof next[from] !== "undefined" && next[from] > 0) {
-        next[from] -= 1;
-      }
-      if (to && typeof next[to] !== "undefined") {
-        next[to] += 1;
-      }
-      next.total = Math.max(0, next.total + (totalDelta || 0));
-      return next;
-    });
+    // status_counts_.as((prev) => {
+    //   const next = normalize_download_status_counts(prev);
+    //   const from = normalize_download_status(fromStatus);
+    //   const to = normalize_download_status(toStatus);
+    //   if (from && typeof next[from] !== "undefined" && next[from] > 0) {
+    //     next[from] -= 1;
+    //   }
+    //   if (to && typeof next[to] !== "undefined") {
+    //     next[to] += 1;
+    //   }
+    //   next.total = Math.max(0, next.total + (totalDelta || 0));
+    //   return next;
+    // });
   }
   const updateTaskStatus = (id, status) => {
     const current = tasks_.value || [];
@@ -1281,9 +1274,7 @@ function DownloaderPanelViewModel(props = {}) {
       { sort_by_status },
     );
     const start = (normalizedPage - 1) * _pageSize;
-    const countTotal = get_download_status_count(status_counts_.value, {
-      statuses: DOWNLOAD_WAITING_STATUS_KEYS,
-    });
+    const countTotal = get_download_status_count(status_counts_.value);
     const responseTotal =
       normalizeTotal(waitData.total) + normalizeTotal(readyData.total);
     return Timeless.Result.Ok({
@@ -1521,6 +1512,12 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       active_status_.as(nextStatus);
+      const r = await reloadTasks();
+      if (r && r.error) {
+        WXU.error({ msg: r.error.message });
+      }
+    },
+    async refreshTasks() {
       const r = await reloadTasks();
       if (r && r.error) {
         WXU.error({ msg: r.error.message });
@@ -2009,7 +2006,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       if (WXU.config.remoteServerEnabled || WXU.config.inDocker) {
-        var u = DownloadHostname + "/preview?id=" + id;
+        var u = APIHostname + "/preview?id=" + id;
         window.open(u);
         return;
       }
@@ -2354,8 +2351,24 @@ function DownloaderPanelViewModel(props = {}) {
     },
   };
 
-  const dropdownItems = [];
-  dropdownItems.push(
+  const dropdown$ =new Timeless.ui.DropdownMenuCore({
+    trigger: "hover",
+    align: "end",
+    items: [
+    new Timeless.ui.MenuItemCore({
+      label: "刷新",
+      async onClick() {
+        ui.dropdown$.hide();
+        await methods.refreshTasks();
+      },
+    }),
+    new Timeless.ui.MenuItemCore({
+      label: "管理下载任务",
+      onClick() {
+        ui.dropdown$.hide();
+        window.open(WXEnv.apiOrigin + "/download", "_blank");
+      },
+    }),
     new Timeless.ui.MenuItemCore({
       label: "清空下载记录",
       async onClick() {
@@ -2363,15 +2376,15 @@ function DownloaderPanelViewModel(props = {}) {
         ui.clearConfirmDialog$.show();
       },
     }),
-  );
-  const dropdown$ =
-    props.enableDropdownMenu === false
-      ? null
-      : new Timeless.ui.DropdownMenuCore({
-          trigger: "hover",
-          align: "end",
-          items: dropdownItems,
-        });
+    new Timeless.ui.MenuItemCore({
+      label: "关闭",
+      onClick() {
+        dropdown$.hide();
+        WXU.downloader.hide();
+      },
+    }),
+    ],
+  })
   const ui = {
     dropdown$,
     importFileDialog$: new Timeless.ui.DialogCore({

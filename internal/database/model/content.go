@@ -64,17 +64,47 @@ type ContentVideo struct {
 
 func (ContentVideo) TableName() string { return "content_video" }
 
+const (
+	ContentImageTypeStill     = "still"
+	ContentImageTypeLivePhoto = "live_photo"
+)
+
+type ContentImageLivePhotoFormat struct {
+	FormatId   int    `json:"format_id"`
+	URL        string `json:"url"`
+	Size       int64  `json:"size"`
+	DurationMs int64  `json:"duration_ms"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+}
+
+// ContentImageLivePhoto describes the motion component paired with an album
+// image. URL and the scalar media fields identify the selected download
+// variant; Formats preserves every variant returned by the platform.
+type ContentImageLivePhoto struct {
+	Vid        string                        `json:"vid"`
+	Type       int                           `json:"type"`
+	URL        string                        `json:"url"`
+	FormatId   int                           `json:"format_id"`
+	Width      int                           `json:"width"`
+	Height     int                           `json:"height"`
+	Size       int64                         `json:"size"`
+	DurationMs int64                         `json:"duration_ms"`
+	Formats    []ContentImageLivePhotoFormat `gorm:"serializer:json;type:text" json:"formats,omitempty"`
+}
+
 type ContentImage struct {
-	Id        uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	AlbumId   string `gorm:"not null;index:idx_content_image_album" json:"album_id"`
-	SortOrder int    `json:"sort_order"`
-	URL       string `json:"url"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
-	Size      int64  `json:"size"`
-	Ext       string `json:"ext"`
-	ImageType string `json:"image_type"`
-	DeletedAt *int64 `gorm:"column:deleted_at;index" json:"deleted_at"`
+	Id        uint                   `gorm:"primaryKey;autoIncrement" json:"id"`
+	AlbumId   string                 `gorm:"not null;index:idx_content_image_album" json:"album_id"`
+	SortOrder int                    `json:"sort_order"`
+	URL       string                 `json:"url"`
+	Width     int                    `json:"width"`
+	Height    int                    `json:"height"`
+	Size      int64                  `json:"size"`
+	Ext       string                 `json:"ext"`
+	ImageType string                 `gorm:"not null;default:still" json:"image_type"`
+	LivePhoto *ContentImageLivePhoto `gorm:"embedded;embeddedPrefix:live_photo_" json:"live_photo,omitempty"`
+	DeletedAt *int64                 `gorm:"column:deleted_at;index" json:"deleted_at"`
 }
 
 func (ContentImage) TableName() string { return "content_image" }
@@ -201,7 +231,6 @@ type ContentAlbum struct {
 }
 
 func (ContentAlbum) TableName() string { return "content_album" }
-
 
 type ContentPodcast struct {
 	Id            string `gorm:"primaryKey" json:"id"`

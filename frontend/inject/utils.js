@@ -682,8 +682,14 @@ var WXU = (() => {
   return {
     ...WXE,
     downloader: {
-      show() {},
-      hide() {},
+      show() {
+        console.warn("show - downloader not ready");
+        return [new Error("downloader not ready"), null];
+      },
+      hide() {
+        console.warn("hide - downloader not ready");
+        return [new Error("downloader not ready"), null];
+      },
       toggle() {},
       async create(feeds, opt) {
         console.warn("create - downloader not ready");

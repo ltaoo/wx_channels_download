@@ -198,28 +198,7 @@ func isAlbum(data *wxmp.ArticleCgiDataNew) bool {
 	if data == nil {
 		return false
 	}
-	if data.PageType == 2 {
-		return true
-	}
-
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return len(data.PicturePageInfoList) >= 4
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return len(data.PicturePageInfoList) >= 4
-	}
-
-	if _, ok := payload["appmsgalbuminfo"]; ok {
-		return false
-	}
-	if _, ok := payload["public_tag_info"]; ok {
-		return false
-	}
-
-	return len(data.PicturePageInfoList) >= 4
+	return data.PageType == 2
 }
 
 // BuildBrowseHistory converts intercepted article CGI data into the standard
@@ -282,8 +261,13 @@ func buildContentAlbum(data *wxmp.ArticleCgiDataNew, contentID string) (*model.C
 	albumImages := make([]*model.ContentImage, 0, len(data.PicturePageInfoList))
 	for i, picture := range data.PicturePageInfoList {
 		imageURL := normalizeImageURL(picture.CdnUrl)
-		if imageURL == "" {
+		livePhoto := buildContentImageLivePhoto(picture.LivePhoto)
+		if imageURL == "" && livePhoto == nil {
 			continue
+		}
+		imageType := model.ContentImageTypeStill
+		if livePhoto != nil {
+			imageType = model.ContentImageTypeLivePhoto
 		}
 		albumImages = append(albumImages, &model.ContentImage{
 			AlbumId:   contentID,
@@ -291,6 +275,8 @@ func buildContentAlbum(data *wxmp.ArticleCgiDataNew, contentID string) (*model.C
 			URL:       imageURL,
 			Width:     picture.Width,
 			Height:    picture.Height,
+			ImageType: imageType,
+			LivePhoto: livePhoto,
 		})
 	}
 
@@ -299,12 +285,73 @@ func buildContentAlbum(data *wxmp.ArticleCgiDataNew, contentID string) (*model.C
 		ImageCount:  len(albumImages),
 		Format:      strings.TrimSpace(data.ImgFormat),
 		Description: strings.TrimSpace(data.Desc),
+		Images:      contentImageValues(albumImages, contentID),
 	}
 	if len(albumImages) > 0 {
 		album.CoverWidth = albumImages[0].Width
 		album.CoverHeight = albumImages[0].Height
 	}
 	return album, albumImages
+}
+
+func buildContentImageLivePhoto(input wxmp.PictureLivePhoto) *model.ContentImageLivePhoto {
+	formats := make([]model.ContentImageLivePhotoFormat, 0, len(input.FormatInfo))
+	selected := -1
+	for _, source := range input.FormatInfo {
+		videoURL := normalizeImageURL(source.URL)
+		if videoURL == "" {
+			continue
+		}
+		format := model.ContentImageLivePhotoFormat{
+			FormatId:   source.FormatID,
+			URL:        videoURL,
+			Size:       int64(source.FileSize),
+			DurationMs: source.Duration,
+			Width:      source.Width,
+			Height:     source.Height,
+		}
+		formats = append(formats, format)
+		candidate := len(formats) - 1
+		if selected < 0 || betterLivePhotoFormat(formats[candidate], formats[selected]) {
+			selected = candidate
+		}
+	}
+
+	vid := strings.TrimSpace(input.Vid)
+	if selected < 0 {
+		if vid == "" && input.Type == 0 {
+			return nil
+		}
+		return &model.ContentImageLivePhoto{Vid: vid, Type: input.Type}
+	}
+
+	best := formats[selected]
+	return &model.ContentImageLivePhoto{
+		Vid:        vid,
+		Type:       input.Type,
+		URL:        best.URL,
+		FormatId:   best.FormatId,
+		Width:      best.Width,
+		Height:     best.Height,
+		Size:       best.Size,
+		DurationMs: best.DurationMs,
+		Formats:    formats,
+	}
+}
+
+func betterLivePhotoFormat(candidate, current model.ContentImageLivePhotoFormat) bool {
+	if candidate.FormatId == 0 && current.FormatId != 0 {
+		return true
+	}
+	if current.FormatId == 0 && candidate.FormatId != 0 {
+		return false
+	}
+	candidatePixels := int64(candidate.Width) * int64(candidate.Height)
+	currentPixels := int64(current.Width) * int64(current.Height)
+	if candidatePixels != currentPixels {
+		return candidatePixels > currentPixels
+	}
+	return candidate.Size > current.Size
 }
 
 func articleWordCount(contentHTML string) int {
@@ -395,14 +442,13 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	var imageResources []*adapter.ResourceInfo
 	var albumImages []*model.ContentImage
-	if bizType == 2 {
-		albumExt, ok := ext.(*ContentAlbumExt)
-		if !ok {
-			return nil, fmt.Errorf("图集内容缺少图集详情")
-		}
+	if albumExt, ok := ext.(*ContentAlbumExt); ok {
 		imageResources = parseAlbumImages(albumExt.Images, contentID, externalID, extraJSON)
 		albumImages = albumExt.Images
+		albumExt.Album.Images = contentImageValues(albumExt.Images, contentID)
 		ext = albumExt.Album
+	} else if bizType == 2 {
+		return nil, fmt.Errorf("图集内容缺少图集详情")
 	} else {
 		imageResources = parseContentImages(data.ContentNoencode, contentID, externalID, extraJSON)
 	}
@@ -487,10 +533,10 @@ func buildDownloadTaskUniqueID(externalID, suffix string) string {
 
 // contentBizType normalizes WeChat's picture-message markers for downstream processing.
 func contentBizType(data *wxmp.ArticleCgiDataNew) int {
-	if data.ItemShowType == 8 || data.RealItemShowType == 8 {
+	if isAlbum(data) {
 		return 2
 	}
-	return data.BizType
+	return 1
 }
 
 // parseContentImages parses ContentNoencode HTML and creates a DownloadResource for each inline image.
@@ -544,44 +590,112 @@ func parseContentImages(contentHTML, contentID, externalID, extraJSON string) []
 }
 
 // parseAlbumImages creates a DownloadResource for each image in the album.
+func contentImageValues(images []*model.ContentImage, albumID string) []model.ContentImage {
+	if len(images) == 0 {
+		return nil
+	}
+	values := make([]model.ContentImage, 0, len(images))
+	for i, image := range images {
+		if image == nil {
+			continue
+		}
+		value := *image
+		value.Id = 0
+		value.AlbumId = albumID
+		value.SortOrder = i
+		if image.LivePhoto != nil {
+			livePhoto := *image.LivePhoto
+			livePhoto.Formats = append([]model.ContentImageLivePhotoFormat(nil), image.LivePhoto.Formats...)
+			value.LivePhoto = &livePhoto
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
 func parseAlbumImages(images []*model.ContentImage, contentID, externalID, extraJSON string) []*adapter.ResourceInfo {
 	if len(images) == 0 {
 		return nil
 	}
 
-	var resources []*adapter.ResourceInfo
-	mergeBase := 100
+	resources := make([]*adapter.ResourceInfo, 0, len(images)*2)
+	mergeOrder := 100
 
 	for i, image := range images {
-		imgURL := normalizeImageURL(image.URL)
-		if imgURL == "" {
+		if image == nil {
 			continue
 		}
+		imgURL := normalizeImageURL(image.URL)
+		filename := ""
+		if imgURL != "" {
+			hash := md5.Sum([]byte(imgURL))
+			filename = hex.EncodeToString(hash[:])
+			res := model.DownloadResource{
+				ContentId:  &contentID,
+				Name:       filename,
+				Kind:       "image",
+				UniqueID:   fmt.Sprintf("%s_album_%d", externalID, i),
+				MergeOrder: mergeOrder,
+				Extra:      extraJSON,
+			}
+			ep := model.DownloadEndpoint{
+				Protocol: "https",
+				URL:      imgURL,
+				Enabled:  1,
+				Headers:  wechatHeaders,
+			}
+			resources = append(resources, &adapter.ResourceInfo{
+				DownloadResource: res,
+				Endpoints:        []model.DownloadEndpoint{ep},
+			})
+			mergeOrder++
+		}
 
-		hash := md5.Sum([]byte(imgURL))
-		filename := hex.EncodeToString(hash[:])
-
-		res := model.DownloadResource{
+		if image.LivePhoto == nil {
+			continue
+		}
+		videoURL := normalizeImageURL(image.LivePhoto.URL)
+		if videoURL == "" {
+			continue
+		}
+		if filename == "" {
+			hash := md5.Sum([]byte(videoURL))
+			filename = hex.EncodeToString(hash[:])
+		}
+		videoResource := model.DownloadResource{
 			ContentId:  &contentID,
 			Name:       filename,
-			Kind:       "image",
-			UniqueID:   fmt.Sprintf("%s_album_%d", externalID, i),
-			MergeOrder: mergeBase + i,
+			Kind:       "video/mp4",
+			UniqueID:   fmt.Sprintf("%s_album_%d_live", externalID, i),
+			Size:       image.LivePhoto.Size,
+			Duration:   durationMillisecondsToSeconds(image.LivePhoto.DurationMs),
+			MergeOrder: mergeOrder,
 			Extra:      extraJSON,
 		}
-		ep := model.DownloadEndpoint{
-			Protocol: "https",
-			URL:      imgURL,
-			Enabled:  1,
-			Headers:  wechatHeaders,
-		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: res,
-			Endpoints:        []model.DownloadEndpoint{ep},
+			DownloadResource: videoResource,
+			Endpoints: []model.DownloadEndpoint{{
+				Protocol: "https",
+				URL:      videoURL,
+				Enabled:  1,
+				Headers:  wechatHeaders,
+			}},
 		})
+		mergeOrder++
 	}
 
 	return resources
+}
+
+func durationMillisecondsToSeconds(durationMs int64) int64 {
+	if durationMs <= 0 {
+		return 0
+	}
+	seconds := durationMs / 1000
+	if seconds == 0 {
+		return 1
+	}
+	return seconds
 }
 
 // normalizeImageURL cleans image URLs: handles HTML entities, protocol prefix, enforces HTTPS.

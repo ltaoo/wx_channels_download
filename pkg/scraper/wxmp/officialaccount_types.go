@@ -147,20 +147,33 @@ type MpVideoTransInfo struct {
 	Width               int    `json:"width"`
 }
 
+type PictureLivePhotoFormat struct {
+	FormatID int         `json:"format_id"`
+	URL      string      `json:"url"`
+	FileSize FlexibleInt `json:"file_size"`
+	Duration int64       `json:"duration"`
+	Width    int         `json:"width"`
+	Height   int         `json:"height"`
+}
+
+type PictureLivePhoto struct {
+	Vid        string                   `json:"vid"`
+	Type       int                      `json:"type"`
+	FormatInfo []PictureLivePhotoFormat `json:"format_info"`
+}
+
 type PicturePageInfo struct {
-	CdnUrl     string `json:"cdn_url"`
-	Width      int    `json:"width"`
-	Height     int    `json:"height"`
-	ThemeColor string `json:"theme_color"`
-	IsQrCode   int    `json:"is_qr_code"`
-	PoiInfo    []any  `json:"poi_info"`
-	WxaInfo    []any  `json:"wxa_info"`
-	LivePhoto  struct {
-		FormatInfo []any `json:"format_info"`
-	} `json:"live_photo"`
-	DisableThemeColor bool  `json:"disable_theme_color"`
-	BindAdInfo        []any `json:"bind_ad_info"`
-	CpsAdInfo         []any `json:"cps_ad_info"`
+	CdnUrl            string           `json:"cdn_url"`
+	Width             int              `json:"width"`
+	Height            int              `json:"height"`
+	ThemeColor        string           `json:"theme_color"`
+	IsQrCode          int              `json:"is_qr_code"`
+	PoiInfo           []any            `json:"poi_info"`
+	WxaInfo           []any            `json:"wxa_info"`
+	LivePhoto         PictureLivePhoto `json:"live_photo"`
+	DisableThemeColor bool             `json:"disable_theme_color"`
+	BindAdInfo        []any            `json:"bind_ad_info"`
+	CpsAdInfo         []any            `json:"cps_ad_info"`
 	PicWindowProduct  struct {
 		ProductEncryptKey string `json:"product_encrypt_key"`
 		ProductType       int    `json:"product_type"`

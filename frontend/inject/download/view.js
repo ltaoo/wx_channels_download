@@ -2215,30 +2215,6 @@ function DownloaderPanelView(props) {
         store: vm$,
         paddingBottom: 12,
       }),
-      Show({
-        when: computed(task_count_, (count) => {
-          return count > 20;
-        }),
-        ok() {
-          return View(
-            {
-              class: "wx-dl-panel-footer",
-              style: {
-                "z-index": 100,
-                "flex-shrink": "0",
-                "text-align": "center",
-                padding: "12px 0",
-                cursor: "pointer",
-                "font-size": "14px",
-              },
-              onClick() {
-                window.open(DownloadHostname + "/download", "_blank");
-              },
-            },
-            ["查看所有"],
-          );
-        },
-      }),
     ],
   );
 }

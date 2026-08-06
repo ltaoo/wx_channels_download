@@ -17,8 +17,8 @@ import (
 	"gorm.io/gorm"
 	"wx_channel/pkg/flowengine"
 
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
 	"wx_channel/pkg/hermes"
 )
 
@@ -46,36 +46,46 @@ type wxmpPostprocessRun struct {
 
 // Postprocess assembles downloaded wxmp resources into the final HTML file.
 func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
-	log := func(msg string, args ...interface{}) {
-		deps.Logger.Info().Msg(fmt.Sprintf(msg, args...))
-	}
 	taskID := info.ID
 	var meta struct {
-		ExternalID string `json:"external_id"`
-		BizType    int    `json:"biz_type"`
+		BizType int `json:"biz_type"`
 	}
 	if info.Metadata != nil {
-		meta.ExternalID, _ = info.Metadata["external_id"].(string)
-		if bt, ok := info.Metadata["biz_type"].(float64); ok {
-			meta.BizType = int(bt)
+		metadataJSON, err := json.Marshal(info.Metadata)
+		if err != nil {
+			return fmt.Errorf("wxmp postprocess: encode task metadata: %w", err)
+		}
+		if err := json.Unmarshal(metadataJSON, &meta); err != nil {
+			return fmt.Errorf("wxmp postprocess: decode task metadata: %w", err)
 		}
 	}
-	if meta.ExternalID == "" && info.Metadata != nil {
-		m, _ := json.Marshal(info.Metadata)
-		_ = json.Unmarshal(m, &meta)
+	if meta.BizType != 1 {
+		deps.Logger.Info().
+			Int("task_id", taskID).
+			Int("biz_type", meta.BizType).
+			Msg("Postprocessor.wxmp: non-article task, skipping HTML image embedding")
+		return nil
 	}
 
-	contentID := BuildContentID(meta.ExternalID)
-	var article model.ContentArticle
 	if deps.DB == nil {
 		return fmt.Errorf("wxmp postprocess: database is nil")
 	}
-	if err := deps.DB.Where("id = ?", contentID).First(&article).Error; err != nil {
-		log("Postprocessor.wxmp: task_id=%d ContentArticle not found: %v, skipping assembly", taskID, err)
-		return nil
+
+	var htmlResource *hermes.ResourceJob
+	for i := range info.Resources {
+		resource := &info.Resources[i]
+		kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+		if (kind == "html" || kind == "text/html") && resource.FilePath != "" {
+			htmlResource = resource
+			break
+		}
 	}
-	if article.HTML == "" {
-		return nil
+	if htmlResource == nil {
+		return fmt.Errorf("wxmp postprocess: article task %d has no downloaded HTML resource", taskID)
+	}
+	contentHTML, err := os.ReadFile(htmlResource.FilePath)
+	if err != nil {
+		return fmt.Errorf("wxmp postprocess: read HTML resource %s: %w", htmlResource.FilePath, err)
 	}
 
 	data := map[string]interface{}{
@@ -86,15 +96,10 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps ad
 			savePath:    deps.BasePath,
 			taskName:    info.Name,
 			bizType:     meta.BizType,
-			contentHTML: article.HTML,
+			contentHTML: string(contentHTML),
 		},
-		wxmpPostprocessContextKeyCtx: ctx,
-	}
-	for _, r := range info.Resources {
-		if r.Kind == "html" && r.FilePath != "" {
-			data[wxmpPostprocessContextOutputFile] = r.FilePath
-			break
-		}
+		wxmpPostprocessContextKeyCtx:     ctx,
+		wxmpPostprocessContextOutputFile: htmlResource.FilePath,
 	}
 
 	if err := runWXMPPostprocessFlow(wxmpPostprocessFlow, data); err != nil {
@@ -114,9 +119,8 @@ func wxmpPostprocessRunFromContext(data map[string]interface{}) (*wxmpPostproces
 	return run, nil
 }
 
-// AssembleHTMLNode parses content HTML, replaces image URLs with local downloaded filenames,
-// and wraps it as a complete HTML document. For album type (biz_type=2), generates gallery
-// HTML directly from downloaded image resources.
+// AssembleHTMLNode embeds downloaded images in an official-account article and
+// wraps the fragment as a complete HTML document.
 func assembleHTMLNode(values map[string]interface{}) (interface{}, error) {
 	return runWXMPNode(values, wxmpPostprocessFlowNodeAssembleHTML, func(run *wxmpPostprocessRun) (interface{}, error) {
 		return assembleHTMLNodeInternal(values, run)
@@ -143,128 +147,77 @@ func assembleHTMLNodeInternal(values map[string]interface{}, run *wxmpPostproces
 
 	logf("assemble_html: savePath=%q taskName=%q bizType=%d", run.savePath, taskName, bizType)
 
-	var bodyHTML string
-	if bizType == 2 {
-		// Album: generate gallery HTML from downloaded image resources
-		var imageResources []model.DownloadResource
-		if err := run.db.Where("task_id = ? AND kind = ?", taskID, "image").Order("merge_order ASC").Find(&imageResources).Error; err != nil {
-			return nil, fmt.Errorf("加载图片资源失败: %w", err)
-		}
-		logf("assemble_html: album mode, loaded %d image resources", len(imageResources))
+	if bizType != 1 {
+		return nil, fmt.Errorf("wxmp postprocess: unsupported biz_type %d", bizType)
+	}
+	if run.contentHTML == "" {
+		return nil, fmt.Errorf("缺少 content_html")
+	}
 
-		var galleryBuilder strings.Builder
-		if run.contentHTML != "" {
-			galleryBuilder.WriteString(`<div class="album_desc">`)
-			galleryBuilder.WriteString(run.contentHTML)
-			galleryBuilder.WriteString(`</div>`)
-		}
-		galleryBuilder.WriteString(`<div class="album_gallery">`)
-		for _, res := range imageResources {
-			galleryBuilder.WriteString(fmt.Sprintf(`<img src="%s" alt="">`, res.Name))
-		}
-		galleryBuilder.WriteString(`</div>`)
-		bodyHTML = galleryBuilder.String()
-	} else {
-		// Article: parse content HTML, replace image URLs with local filenames
-		if run.contentHTML == "" {
-			return nil, fmt.Errorf("缺少 content_html")
-		}
+	embeddedResources := make(map[string]bool)
+	md5ToResource := imageResourcesByURL(run.task.Resources)
+	logf("assemble_html: article mode, mapped %d downloaded image resources from task", len(md5ToResource))
 
-		// Load image resources from DB to get hermes-assigned extensions
-		var imageResources []model.DownloadResource
-		if err := run.db.Where("task_id = ? AND kind = ?", taskID, "image").Order("merge_order ASC").Find(&imageResources).Error; err != nil {
-			return nil, fmt.Errorf("加载图片资源失败: %w", err)
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(run.contentHTML))
+	if err != nil {
+		return nil, fmt.Errorf("解析 content HTML 失败: %w", err)
+	}
+
+	totalImgs := 0
+	matchedImgs := 0
+	dataURIImgs := 0
+	remoteFallbackImgs := 0
+	doc.Find("img").Each(func(i int, s *goquery.Selection) {
+		totalImgs++
+		imgURL := s.AttrOr("data-src", "")
+		srcAttr := "data-src"
+		if imgURL == "" {
+			imgURL = s.AttrOr("src", "")
+			srcAttr = "src"
 		}
-		logf("assemble_html: article mode, loaded %d image resources from DB (kind=\"image\")", len(imageResources))
-		for i, res := range imageResources {
-			logf("assemble_html: DB image[%d] id=%d name=%q merge_order=%d", i, res.Id, res.Name, res.MergeOrder)
+		imgURL = normalizeImageURL(imgURL)
+		if imgURL == "" {
+			warnf("assemble_html: img[%d] no valid URL (both data-src and src are empty)", i)
+			return
 		}
 
-		// Build map: MD5 hash → resource.Name (strip directory prefix and template suffix)
-		// Original resource name is just the MD5 hash (e.g. "644ac3fe..."). After filenameTemplate
-		// (e.g. "{{author}}/{{filename}}_{{spec}}"), the name becomes "author/hash_.jpg".
-		// We need to extract just the hash part to match against image URLs.
-		md5ToName := make(map[string]string, len(imageResources))
-		for _, res := range imageResources {
-			filename := filepath.Base(res.Name)
-			ext := filepath.Ext(filename)
-			filenameWithoutExt := strings.TrimSuffix(filename, ext)
-			filenameWithoutExt = strings.TrimSuffix(filenameWithoutExt, "_")
-			md5ToName[filenameWithoutExt] = res.Name
-			logf("assemble_html: md5ToName[%q] = %q (from DB name=%q)", filenameWithoutExt, res.Name, res.Name)
-		}
+		hash := md5.Sum([]byte(imgURL))
+		hashStr := hex.EncodeToString(hash[:])
+		logf("assemble_html: img[%d] URL=%q attr=%s → hash=%s", i, imgURL, srcAttr, hashStr)
 
-		logf("assemble_html: md5ToName map built with %d entries", len(md5ToName))
+		if resource, ok := md5ToResource[hashStr]; ok {
+			matchedImgs++
+			dataURI := imageResourceToDataURI(resource)
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(run.contentHTML))
-		if err != nil {
-			return nil, fmt.Errorf("解析 content HTML 失败: %w", err)
-		}
-
-		embeddedNames := make(map[string]bool) // resource names embedded as base64
-		totalImgs := 0
-		matchedImgs := 0
-		dataURIImgs := 0
-		filenameFallbackImgs := 0
-		doc.Find("img").Each(func(i int, s *goquery.Selection) {
-			totalImgs++
-			imgURL := s.AttrOr("data-src", "")
-			srcAttr := "data-src"
-			if imgURL == "" {
-				imgURL = s.AttrOr("src", "")
-				srcAttr = "src"
-			}
-			imgURL = normalizeImageURL(imgURL)
-			if imgURL == "" {
-				warnf("assemble_html: img[%d] no valid URL (both data-src and src are empty)", i)
-				return
-			}
-
-			hash := md5.Sum([]byte(imgURL))
-			hashStr := hex.EncodeToString(hash[:])
-			logf("assemble_html: img[%d] URL=%q attr=%s → hash=%s", i, imgURL, srcAttr, hashStr)
-
-			if name, ok := md5ToName[hashStr]; ok {
-				matchedImgs++
-				filePath := filepath.Join(run.savePath, name)
-				dataURI := imageToDataURI(filePath)
-
-				if dataURI != "" {
-					s.SetAttr("src", dataURI)
-					dataURIImgs++
-					embeddedNames[name] = true
-					logf("assemble_html: img[%d] ✓ base64 inline success (file=%s size=%d)",
-						i, name, len(dataURI))
-				} else {
-					s.SetAttr("src", name)
-					filenameFallbackImgs++
-					warnf("assemble_html: img[%d] ✗ base64 read failed, falling back to filename (file=%s path=%s)",
-						i, name, filePath)
-				}
-				s.RemoveAttr("data-src")
+			if dataURI != "" {
+				s.SetAttr("src", dataURI)
+				dataURIImgs++
+				embeddedResources[wxmpResourceKey(resource)] = true
+				logf("assemble_html: img[%d] base64 inline success (resource_id=%d file=%s size=%d)",
+					i, resource.ID, resource.FilePath, len(dataURI))
 			} else {
-				warnf("assemble_html: img[%d] ✗ no local resource matched (URL=%q hash=%q, md5ToName keys=%v)",
-					i, imgURL, hashStr, mapKeys(md5ToName))
+				s.SetAttr("src", imgURL)
+				remoteFallbackImgs++
+				warnf("assemble_html: img[%d] base64 read failed, falling back to remote URL (resource_id=%d path=%s)",
+					i, resource.ID, resource.FilePath)
 			}
-		})
-
-		logf("assemble_html: stats total_imgs=%d matched=%d data_uri=%d filename_fallback=%d unmatched=%d embedded_names=%v",
-			totalImgs, matchedImgs, dataURIImgs, filenameFallbackImgs, totalImgs-matchedImgs, mapKeysBool(embeddedNames))
-
-		values[wxmpPostprocessContextEmbeddedNames] = embeddedNames
-
-		bodyHTML, err = doc.Find("body").Html()
-		if err != nil {
-			bodyHTML = run.contentHTML
+			s.RemoveAttr("data-src")
+		} else {
+			warnf("assemble_html: img[%d] no local resource matched (URL=%q hash=%q, md5ToResource keys=%v)",
+				i, imgURL, hashStr, mapKeysResource(md5ToResource))
 		}
-	}
+	})
 
-	var fullHTML string
-	if bizType == 2 {
-		fullHTML = assembleAlbumFullHTML(taskName, bodyHTML)
-	} else {
-		fullHTML = AssembleFullHTML(taskName, bodyHTML)
+	logf("assemble_html: stats total_imgs=%d matched=%d data_uri=%d remote_fallback=%d unmatched=%d embedded_resources=%v",
+		totalImgs, matchedImgs, dataURIImgs, remoteFallbackImgs, totalImgs-matchedImgs, mapKeysBool(embeddedResources))
+
+	bodyHTML, err := doc.Find("body").Html()
+	if err != nil {
+		bodyHTML = run.contentHTML
 	}
+	values[wxmpPostprocessContextEmbeddedNames] = embeddedResources
+
+	fullHTML := AssembleFullHTML(taskName, bodyHTML)
 
 	// Ensure output file has .html extension.
 	// Sanitize task name to replace "/" which can appear in titles (e.g. "zh-CN/zh-TW")
@@ -286,6 +239,14 @@ func assembleHTMLNodeInternal(values map[string]interface{}, run *wxmpPostproces
 	}
 	if err := os.WriteFile(outputPath, []byte(fullHTML), 0644); err != nil {
 		return nil, fmt.Errorf("写入 HTML 文件失败: %w", err)
+	}
+	for i := range run.task.Resources {
+		resource := &run.task.Resources[i]
+		if resource.FilePath != "" && filepath.Clean(resource.FilePath) == filepath.Clean(outputPath) {
+			resource.Kind = "text/html"
+			resource.Size = int64(len(fullHTML))
+			break
+		}
 	}
 
 	values[wxmpPostprocessContextFinalHTML] = outputPath
@@ -352,14 +313,14 @@ func cleanupEmbeddedImageResourcesNode(values map[string]interface{}) (interface
 			run.logger.Warn().Int("task_id", run.task.ID).Msgf(msg, args...)
 		}
 
-		embeddedNames, _ := values[wxmpPostprocessContextEmbeddedNames].(map[string]bool)
-		if len(embeddedNames) == 0 {
+		embeddedResources, _ := values[wxmpPostprocessContextEmbeddedNames].(map[string]bool)
+		if len(embeddedResources) == 0 {
 			return nil, nil
 		}
 
 		keptResources := make([]hermes.ResourceJob, 0, len(run.task.Resources))
 		for _, r := range run.task.Resources {
-			if r.Kind == "image" && embeddedNames[r.Name] {
+			if embeddedResources[wxmpResourceKey(&r)] {
 				if err := os.Remove(r.FilePath); err != nil && !os.IsNotExist(err) {
 					warnf("Postprocessor.wxmp: task_id=%d remove image %s: %v", run.task.ID, r.FilePath, err)
 				}
@@ -441,12 +402,12 @@ var wxmpPostprocessFlow = flowengine.FlowDefinition{
 	StartNodeID: wxmpPostprocessFlowNodeAssembleHTML,
 	Nodes: map[string]flowengine.NodeDefinition{
 		wxmpPostprocessFlowNodeAssembleHTML: AssembleHTMLNode,
-		wxmpPostprocessFlowNodeCleanup:     CleanupEmbeddedImageResourcesNode,
+		wxmpPostprocessFlowNodeCleanup:      CleanupEmbeddedImageResourcesNode,
 		wxmpPostprocessFlowNodeDone: {
-			ID:           wxmpPostprocessFlowNodeDone,
-			Name:         "done",
-			Type:         "EndNode",
-			InputSchema:  []flowengine.FieldSchema{},
+			ID:          wxmpPostprocessFlowNodeDone,
+			Name:        "done",
+			Type:        "EndNode",
+			InputSchema: []flowengine.FieldSchema{},
 			OutputSchema: []flowengine.FieldSchema{
 				{Key: wxmpPostprocessContextFinalHTML, Type: "string", Required: false},
 			},
@@ -695,7 +656,7 @@ func assembleWXMPFullHTML(title, bodyHTML string, isAlbum bool) string {
             color: #333;
         }
         h1 { font-size: 1.8em; margin-bottom: 0.5em; }
-        img { max-width: 100%; height: auto; }`, baseMaxWidth))
+        img { max-width: 100%%; height: auto; }`, baseMaxWidth))
 	if isAlbum {
 		cssBuilder.WriteString(`
         img { display: block; margin-bottom: 20px; border-radius: 6px; }
@@ -724,15 +685,74 @@ func assembleWXMPFullHTML(title, bodyHTML string, isAlbum bool) string {
 	return b.String()
 }
 
-// imageToDataURI reads an image file and returns a base64 data URI.
-// Returns empty string on any error (caller falls back to filename).
-func imageToDataURI(path string) string {
-	data, err := os.ReadFile(path)
+func imageResourcesByURL(resources []hermes.ResourceJob) map[string]*hermes.ResourceJob {
+	result := make(map[string]*hermes.ResourceJob)
+	for i := range resources {
+		resource := &resources[i]
+		if !isEmbeddableWXMPImage(resource) {
+			continue
+		}
+		for _, endpoint := range resource.Endpoints {
+			imageURL := normalizeImageURL(endpoint.URL)
+			if imageURL == "" {
+				continue
+			}
+			hash := md5.Sum([]byte(imageURL))
+			result[hex.EncodeToString(hash[:])] = resource
+		}
+
+		// Keep compatibility with tasks created before endpoint-based matching:
+		// their resource name is the MD5 of the source URL.
+		filename := filepath.Base(resource.Name)
+		ext := filepath.Ext(filename)
+		filename = strings.TrimSuffix(filename, ext)
+		filename = strings.TrimSuffix(filename, "_")
+		if len(filename) == md5.Size*2 {
+			result[filename] = resource
+		}
+	}
+	return result
+}
+
+func isEmbeddableWXMPImage(resource *hermes.ResourceJob) bool {
+	if resource == nil || strings.HasSuffix(resource.UniqueID, "_cover") {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+	return kind == "image" || strings.HasPrefix(kind, "image/")
+}
+
+// imageResourceToDataURI reads a downloaded image from its actual Hermes path.
+// The temporary path intentionally has no extension, so MIME comes from Kind.
+func imageResourceToDataURI(resource *hermes.ResourceJob) string {
+	if resource == nil || strings.TrimSpace(resource.FilePath) == "" {
+		return ""
+	}
+	data, err := os.ReadFile(resource.FilePath)
 	if err != nil {
 		return ""
 	}
-	mime := mimeByExtension(filepath.Ext(path))
+	mime := strings.ToLower(strings.TrimSpace(resource.Kind))
+	if !strings.HasPrefix(mime, "image/") {
+		mime = mimeByExtension(filepath.Ext(resource.FilePath))
+	}
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func wxmpResourceKey(resource *hermes.ResourceJob) string {
+	if resource == nil {
+		return ""
+	}
+	if resource.ID > 0 {
+		return fmt.Sprintf("id:%d", resource.ID)
+	}
+	if resource.UniqueID != "" {
+		return "unique_id:" + resource.UniqueID
+	}
+	if resource.FilePath != "" {
+		return "file_path:" + resource.FilePath
+	}
+	return "name:" + resource.Name
 }
 
 // mimeByExtension maps file extensions to MIME types.
@@ -755,8 +775,7 @@ func mimeByExtension(ext string) string {
 	}
 }
 
-// mapKeys returns the keys of a map[string]string as a slice for debug logging.
-func mapKeys(m map[string]string) []string {
+func mapKeysResource(m map[string]*hermes.ResourceJob) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

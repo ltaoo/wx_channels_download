@@ -35,15 +35,17 @@ function DownloadPageStatusCounts(props) {
                 status === item.key ? "true" : "false",
               ),
             },
-            class: computed(active_status_, (status) =>
-              [
+            class: computed(active_status_, (status) => {
+              return [
                 "wx-dl-page-count",
                 "wx-dl-page-count-filter",
                 status === item.key ? "wx-dl-page-count-active" : "",
                 item.key === "error" ? "wx-dl-page-count-error" : "",
               ]
                 .filter(Boolean)
-                .join(" "),
+                .join(" ");
+            },
+              
             ),
             onClick() {
               vm$.methods.setStatusFilter(item.key);
@@ -219,7 +221,12 @@ function DownloaderPageView(props) {
       root.id = "app";
       document.body.appendChild(root);
     }
-    // document.body.classList.add("wx-dl-page-body");
+    document.body.classList.add("wx-dl-page-body");
+    document.body.dataset.weuiTheme = document.documentElement.classList.contains(
+      "dark",
+    )
+      ? "dark"
+      : "light";
     const vm$ = DownloaderPanelViewModel({
       enableDropdownMenu: false,
       fixedListHeight: false,

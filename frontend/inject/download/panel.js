@@ -44,21 +44,21 @@ function DownloaderEntry(props) {
 }
 
 (() => {
+  const popover$ = new Timeless.ui.PopoverCore({
+    offsetY: 4,
+    destroyOnClose: false,
+  });
+  WXU.downloader.show = function () {
+    popover$.show();
+  };
+  WXU.downloader.hide = function () {
+    popover$.hide();
+  };
+  WXU.downloader.toggle = function () {
+    popover$.toggle();
+  };
   function insert_downloader($wrap, $trigger) {
     $wrap.insertBefore($trigger, $wrap.firstChild);
-    const popover$ = new Timeless.ui.PopoverCore({
-      offsetY: 4,
-      destroyOnClose: false,
-    });
-    WXU.downloader.show = function () {
-      popover$.show();
-    };
-    WXU.downloader.hide = function () {
-      popover$.hide();
-    };
-    WXU.downloader.toggle = function () {
-      popover$.toggle();
-    };
     Timeless.DOM.render(
       DownloaderEntry({
         popover$,

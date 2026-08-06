@@ -419,6 +419,12 @@
     const msgListDialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
+    WXU.downloader.show = function() {
+      popover$.show();
+    }
+    WXU.downloader.hide = function() {
+      popover$.hide();
+    }
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
     const $btn = document.createElement("div");
     $btn.className = "sns_opr_btn_con";

@@ -169,6 +169,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 				Width:     int(file.Width),
 				Height:    int(file.Height),
 				Size:      int64(file.FileSize),
+				ImageType: model.ContentImageTypeStill,
 			})
 		}
 		album := &model.ContentAlbum{

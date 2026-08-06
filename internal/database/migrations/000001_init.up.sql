@@ -398,6 +398,15 @@ CREATE TABLE IF NOT EXISTS `content_image` (
   `size` INTEGER DEFAULT 0,
   `ext` TEXT,
   `image_type` TEXT DEFAULT 'still',
+  `live_photo_vid` TEXT,
+  `live_photo_type` INTEGER,
+  `live_photo_url` TEXT,
+  `live_photo_format_id` INTEGER,
+  `live_photo_width` INTEGER,
+  `live_photo_height` INTEGER,
+  `live_photo_size` INTEGER,
+  `live_photo_duration_ms` INTEGER,
+  `live_photo_formats` TEXT,
   `deleted_at` INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_content_image_album ON `content_image` (`album_id`);

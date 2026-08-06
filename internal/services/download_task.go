@@ -532,21 +532,9 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		account = persistedAccount
 	}
 
-	// Save extension table
-	if info.ContentDetail != nil {
-		if err := s.db.Save(info.ContentDetail).Error; err != nil {
-			return nil, fmt.Errorf("保存扩展数据失败: %w", err)
-		}
+	if err := saveContentExtension(s.db, info.ContentDetail); err != nil {
+		return nil, fmt.Errorf("保存扩展数据失败: %w", err)
 	}
-
-	// Save album images (skip when ContentDetail is *ContentAlbum, which cascade-saves its Images)
-	// if len(info.AlbumImages) > 0 {
-	// 	if _, ok := info.ContentDetail.(*model.ContentAlbum); !ok {
-	// 		if err := s.db.Create(&info.AlbumImages).Error; err != nil {
-	// 			return nil, fmt.Errorf("保存图集图片失败: %w", err)
-	// 		}
-	// 	}
-	// }
 
 	// Save novel volumes
 	if len(info.NovelVolumes) > 0 {
@@ -1315,6 +1303,16 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+func saveContentExtension(db *gorm.DB, detail any) error {
+	if db == nil {
+		return ErrDBNotInitialized
+	}
+	if detail == nil {
+		return nil
+	}
+	return db.Session(&gorm.Session{FullSaveAssociations: true}).Save(detail).Error
+}
 
 func (s *DownloadTaskService) resolveSaveDir(requested string) (string, error) {
 	savePath := strings.TrimSpace(requested)

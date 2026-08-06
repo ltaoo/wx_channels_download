@@ -597,20 +597,9 @@ func (c *OfficialAccountDownload) writeInlineImage(htmlContent *strings.Builder,
 }
 
 func picturePageInfoLivePhotoURL(item PicturePageInfo) string {
-	for _, raw := range item.LivePhoto.FormatInfo {
-		if m, ok := raw.(map[string]any); ok {
-			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
-				if value, _ := m[key].(string); strings.TrimSpace(value) != "" {
-					return value
-				}
-			}
-		}
-		if m, ok := raw.(map[string]string); ok {
-			for _, key := range []string{"url", "video_url", "play_url", "cdn_url"} {
-				if value := strings.TrimSpace(m[key]); value != "" {
-					return value
-				}
-			}
+	for _, format := range item.LivePhoto.FormatInfo {
+		if videoURL := strings.TrimSpace(format.URL); videoURL != "" {
+			return videoURL
 		}
 	}
 	return ""
