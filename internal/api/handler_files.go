@@ -175,7 +175,7 @@ func (c *APIClient) handleStreamImage(ctx *gin.Context) {
 	c.handleStreamVideo(ctx)
 }
 
-func (c *APIClient) handlePreviewFile(ctx *gin.Context) {
+func (c *APIClient) handlePreviewPage(ctx *gin.Context) {
 	data, err := frontend.Assets.ReadRoot("preview.html")
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, "preview page not found")

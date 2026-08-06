@@ -15,6 +15,7 @@ import (
 	"wx_channel/internal/manager"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/clawreq"
 	"wx_channel/pkg/hermes"
 )
 
@@ -35,6 +36,8 @@ type APIClient struct {
 	cached_proxy_addr   string
 	svc_status_mu       sync.RWMutex
 	svc_statuses       map[string]events.ServiceStatusChanged
+
+	clawclient *clawreq.Client
 
 	// Services
 	account_service      *services.AccountService

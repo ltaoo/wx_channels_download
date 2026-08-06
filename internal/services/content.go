@@ -245,6 +245,213 @@ type ContentListResult struct {
 	PageSize int               `json:"page_size"`
 }
 
+// loadContentRelations loads accounts, download tasks, and resources for the given
+// content IDs. It is shared by ListContents and GetContentDetail.
+func (s *ContentService) loadContentRelations(contentIDs []string) (
+	map[string][]ContentAccountRecord,
+	map[string][]ContentDownloadTaskRecord,
+	map[string][]ContentResourceRecord,
+	error,
+) {
+	accountsByContentID := make(map[string][]ContentAccountRecord, len(contentIDs))
+	downloadTasksByContentID := make(map[string][]ContentDownloadTaskRecord, len(contentIDs))
+	resourcesByContentID := make(map[string][]ContentResourceRecord, len(contentIDs))
+
+	if len(contentIDs) == 0 {
+		return accountsByContentID, downloadTasksByContentID, resourcesByContentID, nil
+	}
+
+	type contentAccountRow struct {
+		ContentID     string `gorm:"column:content_id"`
+		AccountID     string `gorm:"column:account_id"`
+		Role          string `gorm:"column:role"`
+		PlatformID    string `gorm:"column:platform_id"`
+		InfluencerID  *int   `gorm:"column:influencer_id"`
+		ExternalID    string `gorm:"column:external_id"`
+		Alias         string `gorm:"column:alias"`
+		Nickname      string `gorm:"column:nickname"`
+		Signature     string `gorm:"column:signature"`
+		AvatarURL     string `gorm:"column:avatar_url"`
+		ProfileURL    string `gorm:"column:profile_url"`
+		IsListen      int    `gorm:"column:is_listen"`
+		FollowerCount int64  `gorm:"column:follower_count"`
+		PastNames     string `gorm:"column:past_names"`
+		PastAvatars   string `gorm:"column:past_avatars"`
+		CreatedAt     int64  `gorm:"column:created_at"`
+		UpdatedAt     int64  `gorm:"column:updated_at"`
+	}
+	var rows []contentAccountRow
+	if err := s.db.Table("content_account").
+		Select(`content_account.content_id, content_account.account_id, content_account.role,
+			account.platform_id, account.influencer_id, account.external_id, account.alias,
+			account.nickname, account.signature, account.avatar_url, account.profile_url,
+			account.is_listen, account.follower_count, account.past_names, account.past_avatars,
+			account.created_at, account.updated_at`).
+		Joins("JOIN account ON account.id = content_account.account_id").
+		Where("content_account.content_id IN ? AND account.deleted_at IS NULL", contentIDs).
+		Order("content_account.content_id ASC, content_account.account_id ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	for _, row := range rows {
+		accountsByContentID[row.ContentID] = append(accountsByContentID[row.ContentID], ContentAccountRecord{
+			ID:            row.AccountID,
+			PlatformID:    row.PlatformID,
+			InfluencerID:  row.InfluencerID,
+			ExternalID:    row.ExternalID,
+			Alias:         row.Alias,
+			Nickname:      row.Nickname,
+			Signature:     row.Signature,
+			AvatarURL:     row.AvatarURL,
+			ProfileURL:    row.ProfileURL,
+			IsListen:      row.IsListen,
+			FollowerCount: row.FollowerCount,
+			PastNames:     row.PastNames,
+			PastAvatars:   row.PastAvatars,
+			Role:          row.Role,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
+		})
+	}
+
+	var tasks []model.DownloadTask
+	if err := s.db.
+		Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
+		Order("content_id ASC, id DESC").
+		Find(&tasks).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	for _, task := range tasks {
+		if task.ContentId == nil {
+			continue
+		}
+		downloadTasksByContentID[*task.ContentId] = append(
+			downloadTasksByContentID[*task.ContentId],
+			ContentDownloadTaskRecord{
+				ID:           task.Id,
+				ContentID:    task.ContentId,
+				ParentTaskID: task.ParentTaskID,
+				RootTaskID:   task.RootTaskID,
+				RelationType: task.RelationType,
+				Name:         task.Name,
+				PlatformID:   task.PlatformId,
+				Status:       task.Status,
+				SourceURL:    task.SourceURL,
+				CoverURL:     task.CoverURL,
+				CoverWidth:   task.CoverWidth,
+				CoverHeight:  task.CoverHeight,
+				Error:        task.ErrorMessage,
+				CreatedAt:    task.CreatedAt,
+				UpdatedAt:    task.UpdatedAt,
+			},
+		)
+	}
+
+	var resources []model.DownloadResource
+	if err := s.db.
+		Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
+		Order("content_id ASC, merge_order ASC").
+		Find(&resources).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	for _, r := range resources {
+		if r.ContentId == nil {
+			continue
+		}
+		resourcesByContentID[*r.ContentId] = append(
+			resourcesByContentID[*r.ContentId],
+			ContentResourceRecord{
+				ID:            r.Id,
+				TaskID:        r.TaskId,
+				ContentID:     r.ContentId,
+				Name:          r.Name,
+				Kind:          r.Kind,
+				UniqueID:      r.UniqueID,
+				Type:          r.Type,
+				Size:          r.Size,
+				Downloaded:    r.Downloaded,
+				Speed:         r.Speed,
+				Status:        r.Status,
+				MergeOrder:    r.MergeOrder,
+				Extra:         r.Extra,
+				StreamURL:     r.StreamURL,
+				RecordStart:   r.RecordStart,
+				RecordEnd:     r.RecordEnd,
+				Duration:      r.Duration,
+				RotateMinutes: r.RotateMinutes,
+				RotateSize:    r.RotateSize,
+				StartTime:     r.StartTime,
+				FinishTime:    r.FinishTime,
+				CreatedAt:     r.CreatedAt,
+				UpdatedAt:     r.UpdatedAt,
+			},
+		)
+	}
+
+	return accountsByContentID, downloadTasksByContentID, resourcesByContentID, nil
+}
+
+func (s *ContentService) GetContentDetail(contentID string) (*ContentListItem, error) {
+	if s.db == nil {
+		return nil, ErrDBNotInitialized
+	}
+
+	contentID = strings.TrimSpace(contentID)
+	if contentID == "" {
+		return nil, fmt.Errorf("content id is required")
+	}
+
+	var content model.Content
+	if err := s.db.Where("id = ?", contentID).First(&content).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("content not found: %s", contentID)
+		}
+		return nil, err
+	}
+
+	accountsByContentID, downloadTasksByContentID, resourcesByContentID, err := s.loadContentRelations([]string{content.Id})
+	if err != nil {
+		return nil, err
+	}
+
+	publishTime := int64(0)
+	if content.PublishTime != nil {
+		publishTime = *content.PublishTime
+	}
+	accounts := accountsByContentID[content.Id]
+	if accounts == nil {
+		accounts = make([]ContentAccountRecord, 0)
+	}
+	downloadTasks := downloadTasksByContentID[content.Id]
+	if downloadTasks == nil {
+		downloadTasks = make([]ContentDownloadTaskRecord, 0)
+	}
+	resources := resourcesByContentID[content.Id]
+	if resources == nil {
+		resources = make([]ContentResourceRecord, 0)
+	}
+
+	return &ContentListItem{
+		ID:            content.Id,
+		PlatformID:    content.PlatformId,
+		Type:          content.Type,
+		ExternalID:    content.ExternalId,
+		ExternalID2:   content.ExternalId2,
+		ExternalID3:   content.ExternalId3,
+		Title:         content.Title,
+		Description:   content.Description,
+		URL:           content.URL,
+		SourceURL:     content.SourceURL,
+		CoverURL:      content.CoverURL,
+		CoverWidth:    content.CoverWidth,
+		CoverHeight:   content.CoverHeight,
+		PublishTime:   publishTime,
+		Accounts:      accounts,
+		DownloadTasks: downloadTasks,
+		Resources:     resources,
+	}, nil
+}
+
 func (s *ContentService) ListContents(options ContentListOptions) (*ContentListResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
@@ -306,136 +513,9 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		contentIDs = append(contentIDs, content.Id)
 	}
 
-	accountsByContentID := make(map[string][]ContentAccountRecord, len(contents))
-	downloadTasksByContentID := make(map[string][]ContentDownloadTaskRecord, len(contents))
-	resourcesByContentID := make(map[string][]ContentResourceRecord, len(contents))
-	if len(contentIDs) > 0 {
-		type contentAccountRow struct {
-			ContentID     string `gorm:"column:content_id"`
-			AccountID     string `gorm:"column:account_id"`
-			Role          string `gorm:"column:role"`
-			PlatformID    string `gorm:"column:platform_id"`
-			InfluencerID  *int   `gorm:"column:influencer_id"`
-			ExternalID    string `gorm:"column:external_id"`
-			Alias         string `gorm:"column:alias"`
-			Nickname      string `gorm:"column:nickname"`
-			Signature     string `gorm:"column:signature"`
-			AvatarURL     string `gorm:"column:avatar_url"`
-			ProfileURL    string `gorm:"column:profile_url"`
-			IsListen      int    `gorm:"column:is_listen"`
-			FollowerCount int64  `gorm:"column:follower_count"`
-			PastNames     string `gorm:"column:past_names"`
-			PastAvatars   string `gorm:"column:past_avatars"`
-			CreatedAt     int64  `gorm:"column:created_at"`
-			UpdatedAt     int64  `gorm:"column:updated_at"`
-		}
-		var rows []contentAccountRow
-		if err := s.db.Table("content_account").
-			Select(`content_account.content_id, content_account.account_id, content_account.role,
-				account.platform_id, account.influencer_id, account.external_id, account.alias,
-				account.nickname, account.signature, account.avatar_url, account.profile_url,
-				account.is_listen, account.follower_count, account.past_names, account.past_avatars,
-				account.created_at, account.updated_at`).
-			Joins("JOIN account ON account.id = content_account.account_id").
-			Where("content_account.content_id IN ? AND account.deleted_at IS NULL", contentIDs).
-			Order("content_account.content_id ASC, content_account.account_id ASC").
-			Scan(&rows).Error; err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			accountsByContentID[row.ContentID] = append(accountsByContentID[row.ContentID], ContentAccountRecord{
-				ID:            row.AccountID,
-				PlatformID:    row.PlatformID,
-				InfluencerID:  row.InfluencerID,
-				ExternalID:    row.ExternalID,
-				Alias:         row.Alias,
-				Nickname:      row.Nickname,
-				Signature:     row.Signature,
-				AvatarURL:     row.AvatarURL,
-				ProfileURL:    row.ProfileURL,
-				IsListen:      row.IsListen,
-				FollowerCount: row.FollowerCount,
-				PastNames:     row.PastNames,
-				PastAvatars:   row.PastAvatars,
-				Role:          row.Role,
-				CreatedAt:     row.CreatedAt,
-				UpdatedAt:     row.UpdatedAt,
-			})
-		}
-
-		var tasks []model.DownloadTask
-		if err := s.db.
-			Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
-			Order("content_id ASC, id DESC").
-			Find(&tasks).Error; err != nil {
-			return nil, err
-		}
-		for _, task := range tasks {
-			if task.ContentId == nil {
-				continue
-			}
-			downloadTasksByContentID[*task.ContentId] = append(
-				downloadTasksByContentID[*task.ContentId],
-				ContentDownloadTaskRecord{
-					ID:           task.Id,
-					ContentID:    task.ContentId,
-					ParentTaskID: task.ParentTaskID,
-					RootTaskID:   task.RootTaskID,
-					RelationType: task.RelationType,
-					Name:         task.Name,
-					PlatformID:   task.PlatformId,
-					Status:       task.Status,
-					SourceURL:    task.SourceURL,
-					CoverURL:     task.CoverURL,
-					CoverWidth:   task.CoverWidth,
-					CoverHeight:  task.CoverHeight,
-					Error:        task.ErrorMessage,
-					CreatedAt:    task.CreatedAt,
-					UpdatedAt:    task.UpdatedAt,
-				},
-			)
-		}
-
-		var resources []model.DownloadResource
-		if err := s.db.
-			Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
-			Order("content_id ASC, merge_order ASC").
-			Find(&resources).Error; err != nil {
-			return nil, err
-		}
-		for _, r := range resources {
-			if r.ContentId == nil {
-				continue
-			}
-			resourcesByContentID[*r.ContentId] = append(
-				resourcesByContentID[*r.ContentId],
-				ContentResourceRecord{
-					ID:            r.Id,
-					TaskID:        r.TaskId,
-					ContentID:     r.ContentId,
-					Name:          r.Name,
-					Kind:          r.Kind,
-					UniqueID:      r.UniqueID,
-					Type:          r.Type,
-					Size:          r.Size,
-					Downloaded:    r.Downloaded,
-					Speed:         r.Speed,
-					Status:        r.Status,
-					MergeOrder:    r.MergeOrder,
-					Extra:         r.Extra,
-					StreamURL:     r.StreamURL,
-					RecordStart:   r.RecordStart,
-					RecordEnd:     r.RecordEnd,
-					Duration:      r.Duration,
-					RotateMinutes: r.RotateMinutes,
-					RotateSize:    r.RotateSize,
-					StartTime:     r.StartTime,
-					FinishTime:    r.FinishTime,
-					CreatedAt:     r.CreatedAt,
-					UpdatedAt:     r.UpdatedAt,
-				},
-			)
-		}
+	accountsByContentID, downloadTasksByContentID, resourcesByContentID, err := s.loadContentRelations(contentIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	list := make([]ContentListItem, 0, len(contents))

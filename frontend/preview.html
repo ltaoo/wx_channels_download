@@ -1,148 +1,534 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>File Preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview</title>
 <style>
-    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
-    body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; }
-    h2 { text-align: center; color: #333; padding: 15px; margin: 0; flex-shrink: 0; background: #fff; border-bottom: 1px solid #ddd; z-index: 10; }
-    
-    #content { flex: 1; overflow: auto; position: relative; display: flex; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; width: 100%; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #app { height: 100%; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0b0c0f;
+    color: #e6e6e6;
+}
+#app {
+    display: flex;
+    flex-direction: column;
+}
 
-    /* Video styles */
-    .video-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-    video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); outline: none; }
+/* Header */
+.header {
+    flex-shrink: 0;
+    background: #14171f;
+    border-bottom: 1px solid #2a2d35;
+    padding: 12px 24px;
+}
+.header .account-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.header .account-row .avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #1e2130;
+}
+.header .account-row .account-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #ccc;
+}
+.header .title-row {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.header .sub-row {
+    font-size: 12px;
+    color: #999;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.header .sub-row .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 500;
+}
+.badge-finished { background: #1a3a2a; color: #4caf50; }
+.badge-downloading { background: #1a2a3a; color: #64b5f6; }
+.badge-paused { background: #3a3a1a; color: #ffeb3b; }
+.badge-failed { background: #3a1a1a; color: #ef5350; }
+.badge-default { background: #2a2d35; color: #aaa; }
 
-    /* Gallery (General) */
-    .gallery { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%; }
-    
-    /* Single Image View */
-    .gallery.single-view { height: 100%; align-items: center; }
-    .gallery.single-view .img-container { background: transparent; padding: 0; box-shadow: none; max-width: 100%; max-height: 100%; display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; }
-    .gallery.single-view .img-container img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer; border-radius: 4px; }
+.platform { display: flex; align-items: center; gap: 4px; }
+.platform img { width: 16px; height: 16px; object-fit: contain; }
 
-    /* Multi Image / Zip View */
-    .img-container { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; max-width: 300px; }
-    .img-container img { max-width: 100%; max-height: 200px; object-fit: contain; cursor: pointer; border-radius: 4px; display: block; margin: 0 auto; }
-    .img-name { margin-bottom: 8px; font-size: 14px; color: #666; word-break: break-all; }
+/* Full-page video (single video file) */
+.video-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+}
+.video-container video {
+    max-width: 100%;
+    max-height: calc(100% - 28px);
+    width: auto;
+    height: auto;
+    outline: none;
+}
+.video-container .video-filename {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
 
-    /* HTML iframe */
-    .html-container { width: 100%; height: 100%; }
-    .html-container iframe { width: 100%; height: 100%; border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+/* Full-page image (single image file) */
+.image-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;
+    padding: 20px;
+}
+.image-container img {
+    max-width: 100%;
+    max-height: calc(100% - 28px);
+    object-fit: contain;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.image-container .img-filename {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
 
-    /* Overlay */
-    .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; }
-    .overlay img { max-width: 90%; max-height: 90%; object-fit: contain; }
-    .close-btn { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }
+/* Main content (file grid) */
+.main {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 20px 24px;
+}
+.main h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #ccc;
+}
+
+/* File grid */
+.file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+.file-card {
+    background: #14171f;
+    border: 1px solid #2a2d35;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+}
+.file-card:hover {
+    border-color: #4a6fa5;
+    transform: translateY(-1px);
+}
+.file-card .thumb {
+    width: 100%;
+    height: 120px;
+    background: #1a1d27;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+.file-card .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.file-card .thumb .icon {
+    font-size: 40px;
+    opacity: 0.5;
+}
+.file-card .thumb .file-status {
+    position: absolute;
+    top: 6px; right: 6px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(0,0,0,0.7);
+    color: #aaa;
+}
+.file-card .info {
+    padding: 10px 12px;
+}
+.file-card .info .fname {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 4px;
+}
+.file-card .info .fmeta {
+    font-size: 11px;
+    color: #777;
+    display: flex;
+    justify-content: space-between;
+}
+.file-card .progress-bar {
+    height: 3px;
+    background: #2a2d35;
+    margin-top: 6px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.file-card .progress-bar .fill {
+    height: 100%;
+    background: #4a6fa5;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+/* Preview overlay (non-video files from grid) */
+.preview-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+.preview-overlay .preview-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: #111;
+    border-bottom: 1px solid #2a2d35;
+}
+.preview-overlay .preview-header .preview-name {
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.preview-overlay .preview-header button {
+    background: none;
+    border: 1px solid #444;
+    color: #ccc;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.preview-overlay .preview-header button:hover { background: #2a2d35; }
+.preview-overlay .preview-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 20px;
+}
+.preview-overlay .preview-body img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+}
+.preview-overlay .preview-body video {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 4px;
+    outline: none;
+}
+.preview-overlay .preview-body audio {
+    width: 400px;
+}
+.preview-overlay .preview-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 4px;
+    background: #fff;
+}
+
+/* States */
+.state-msg {
+    text-align: center;
+    padding: 60px 20px;
+    color: #777;
+}
+.state-msg .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #2a2d35;
+    border-top-color: #4a6fa5;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
+</head>
+<body>
+<div id="app"></div>
 <script>
+const TYPE_ICONS = {
+    image: '\u{1F5BC}', video: '\u{1F3AC}', audio: '\u{1F3B5}',
+    html: '\u{1F310}', zip: '\u{1F4E6}', pdf: '\u{1F4C4}', other: '\u{1F4C1}'
+};
+
+const STATUS_MAP = {0:'Waiting',1:'Preparing',2:'Downloading',3:'Paused',4:'Merging',5:'Finished',6:'Failed',7:'Cancelled'};
+
+const PLATFORM_FAVICONS = {
+    wxchannels: 'https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico',
+    wxmp: 'https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico',
+    officialaccount: 'https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico',
+};
+const PLATFORM_NAMES = {
+    wxchannels: '视频号', wxmp: '公众号', officialaccount: '公众号',
+    douyin: '抖音', bilibili: 'Bilibili', xiaohongshu: '小红书', xhs: '小红书',
+    youtube: 'YouTube', zhihu: '知乎', douban: '豆瓣',
+    qidian: '起点中文网', fanqienovel: '番茄小说', '69shuba': '69书吧',
+};
+
+function platformFavicon(pid) { return PLATFORM_FAVICONS[pid] || ''; }
+function platformName(pid) { return PLATFORM_NAMES[pid] || pid || ''; }
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function statusBadgeClass(s) {
+    switch (s) {
+        case 5: return 'badge-finished';
+        case 2: return 'badge-downloading';
+        case 3: return 'badge-paused';
+        case 6: case 7: return 'badge-failed';
+        default: return 'badge-default';
+    }
+}
+
+function fileTypeIcon(ft) {
+    return TYPE_ICONS[ft] || TYPE_ICONS.other;
+}
+
 async function init() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
     if (!id) {
-        document.body.innerHTML = '<h3>Missing task id</h3>';
+        document.getElementById('app').innerHTML = '<div class="state-msg"><h3>Missing task id</h3></div>';
         return;
     }
 
+    document.getElementById('app').innerHTML = '<div class="state-msg"><div class="spinner"></div><p>Loading...</p></div>';
+
     try {
-        // 1. Get task profile
-        const profileResp = await fetch(`/api/task/profile?id=${id}`);
-        if (!profileResp.ok) throw new Error('Failed to fetch task profile');
-        const profile = await profileResp.json();
-        if (profile.code !== 0) throw new Error(profile.msg || 'Error fetching profile');
-        
-        const { path, name } = profile.data;
-        
-        // Construct full path
-        let fullPath = path;
-        // Simple join logic for path and name
-        if (fullPath && !fullPath.endsWith('/') && !fullPath.endsWith('\\')) {
-            // Check if it looks like Windows path
-            if (fullPath.includes('\\')) {
-                fullPath += '\\';
-            } else {
-                fullPath += '/';
-            }
-        }
-        fullPath += name;
-
-        // 2. Call /api/file
-        const fileResp = await fetch(`/api/file?path=${encodeURIComponent(fullPath)}`);
-        if (!fileResp.ok) throw new Error('Failed to fetch file info');
-        const fileInfo = await fileResp.json();
-        if (fileInfo.code !== 0) throw new Error(fileInfo.msg || 'Error fetching file info');
-
-        render(fileInfo.data, name);
-
+        const resp = await fetch(`/api/v1/download_task/detail?id=${encodeURIComponent(id)}`);
+        if (!resp.ok) throw new Error('Failed to fetch task detail');
+        const json = await resp.json();
+        if (json.code !== 0) throw new Error(json.msg || 'Error');
+        render(json.data);
     } catch (e) {
         console.error(e);
-        document.body.innerHTML = `<h3>Error: ${e.message}</h3>`;
+        document.getElementById('app').innerHTML = `<div class="state-msg"><h3>Error</h3><p>${e.message}</p></div>`;
     }
 }
 
-function render(data, filename) {
-    const container = document.getElementById('content');
-    document.getElementById('title').innerText = filename;
-    document.title = filename; // Set document title
+function render(data) {
+    document.title = data.name || 'Preview';
 
-    if (data.type === 'video') {
-        container.innerHTML = `
+    const content = data.content || {};
+    const title = content.title || data.name || 'Untitled';
+    const platformID = content.platform_id || data.platform_id || '';
+    const pFavicon = platformFavicon(platformID);
+    const pName = platformName(platformID);
+
+    // Account: use first account from content, or fall back to task-level info.
+    const accounts = content.accounts || [];
+    const account = accounts[0];
+    const accountHTML = account
+        ? `<div class="account-row">
+            ${account.avatar_url ? `<img class="avatar" src="${encodeURI(account.avatar_url)}" alt="" onerror="this.style.display='none'">` : ''}
+            <span class="account-name">${account.nickname || account.external_id || ''}</span>
+           </div>`
+        : '';
+
+    const platformHTML = platformID ? `
+        <span class="platform">
+            ${pFavicon ? `<img src="${pFavicon}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : ''}
+            ${pName}
+        </span>` : '';
+
+    const headerHTML = `
+        <div class="header">
+            ${accountHTML}
+            <div class="title-row">${title}</div>
+            <div class="sub-row">
+                ${platformHTML}
+                ${data.content_type ? `<span class="badge badge-default">${data.content_type}</span>` : ''}
+            </div>
+        </div>`;
+
+    const files = data.files || [];
+    const existingFiles = files.filter(f => f.exists);
+
+    // Single video file: show full-page player
+    if (existingFiles.length === 1 && existingFiles[0].file_type === 'video') {
+        const f = existingFiles[0];
+        const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+        document.getElementById('app').innerHTML = `
+            ${headerHTML}
             <div class="video-container">
                 <video controls autoplay>
-                    <source src="${data.url}" type="video/mp4">
-                    Your browser does not support the video tag.
+                    <source src="${url}">
+                    Your browser does not support video.
                 </video>
-            </div>
-        `;
-    } else if (data.type === 'image') {
-        container.innerHTML = `
-             <div class="gallery single-view">
-                <div class="img-container">
-                    <img src="${data.url}" alt="${filename}" onclick="showFull(this.src)">
-                </div>
-            </div>
-        `;
-    } else if (data.type === 'zip') {
-        if (!data.images || data.images.length === 0) {
-             container.innerHTML = '<h3>No images found in zip</h3>';
-             return;
-        }
-        const html = data.images.map(img => `
-            <div class="img-container">
-                <div class="img-name">${img.name || ''}</div>
-                <img src="${img.url}" alt="${img.name}" onclick="showFull(this.src)">
-            </div>
-        `).join('');
-        container.innerHTML = `<div class="gallery">${html}</div>`;
-    } else if (data.type === 'html') {
-        container.innerHTML = `
-            <div class="html-container">
-                <iframe src="${data.url}" sandbox="allow-same-origin"></iframe>
-            </div>
-        `;
-    } else {
-        container.innerHTML = '<h3>Unsupported file type or format</h3>';
+                <div class="video-filename">${f.name}</div>
+            </div>`;
+        return;
     }
+
+    // Single image file: show full-page image
+    if (existingFiles.length === 1 && existingFiles[0].file_type === 'image') {
+        const f = existingFiles[0];
+        const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+        document.getElementById('app').innerHTML = `
+            ${headerHTML}
+            <div class="image-container">
+                <img src="${url}" alt="${f.name}">
+                <div class="img-filename">${f.name}</div>
+            </div>`;
+        return;
+    }
+
+    // Multiple files or non-video/image: show file grid
+    const fileCardsHTML = files.length > 0
+        ? files.map((f, i) => {
+            const ft = f.file_type || 'other';
+            const icon = fileTypeIcon(ft);
+            const thumbHTML = (ft === 'image' && f.exists)
+                ? `<img src="/file?path=${encodeURIComponent(f.local_path)}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=icon>${icon}</span>'">`
+                : `<span class="icon">${icon}</span>`;
+            const progressBar = (f.status === 'downloading' && f.progress > 0)
+                ? `<div class="progress-bar"><div class="fill" style="width:${f.progress}%"></div></div>`
+                : '';
+            return `
+                <div class="file-card" onclick="previewFile(${i})" title="${f.name}">
+                    <div class="thumb">
+                        ${thumbHTML}
+                        <span class="file-status">${f.status}</span>
+                    </div>
+                    <div class="info">
+                        <div class="fname">${f.name}</div>
+                        <div class="fmeta">
+                            <span>${formatBytes(f.size)}</span>
+                            <span>${f.exists ? '' : 'missing'}</span>
+                        </div>
+                        ${progressBar}
+                    </div>
+                </div>`;
+        }).join('')
+        : '<div class="state-msg"><p>No files</p></div>';
+
+    document.getElementById('app').innerHTML = `
+        ${headerHTML}
+        <div class="main">
+            <h2>Files (${files.length})</h2>
+            <div class="file-grid">${fileCardsHTML}</div>
+        </div>`;
+
+    window.__files = files;
 }
 
-function showFull(src) {
-	document.getElementById('overlay-img').src = src;
-	document.getElementById('overlay').style.display = 'flex';
+function previewFile(index) {
+    const f = window.__files[index];
+    if (!f || !f.exists) return;
+
+    const ft = f.file_type || 'other';
+    const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+
+    let bodyHTML = '';
+    if (ft === 'image') {
+        bodyHTML = `<img src="${url}" alt="${f.name}">`;
+    } else if (ft === 'video') {
+        bodyHTML = `<video controls autoplay><source src="${url}">Your browser does not support video.</video>`;
+    } else if (ft === 'audio') {
+        bodyHTML = `<audio controls autoplay><source src="${url}">Your browser does not support audio.</audio>`;
+    } else if (ft === 'html') {
+        bodyHTML = `<iframe src="${url}" sandbox="allow-same-origin"></iframe>`;
+    } else {
+        bodyHTML = `<div class="state-msg"><p>${f.name}</p><p style="margin-top:8px">${formatBytes(f.size)}</p><p style="margin-top:12px"><a href="${url}" style="color:#4a6fa5">Download / Open</a></p></div>`;
+    }
+
+    const panel = document.createElement('div');
+    panel.className = 'preview-overlay';
+    panel.id = 'preview-overlay';
+    panel.innerHTML = `
+        <div class="preview-header">
+            <span class="preview-name">${f.name}</span>
+            <button onclick="closePreview()">Close</button>
+        </div>
+        <div class="preview-body">${bodyHTML}</div>
+    `;
+    panel.addEventListener('click', function(e) {
+        if (e.target === this) closePreview();
+    });
+    document.body.appendChild(panel);
+    document.body.style.overflow = 'hidden';
 }
-function closeOverlay() {
-	document.getElementById('overlay').style.display = 'none';
+
+function closePreview() {
+    const panel = document.getElementById('preview-overlay');
+    if (panel) panel.remove();
+    document.body.style.overflow = '';
 }
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closePreview();
+});
 
 window.onload = init;
 </script>
-</head>
-<body>
-<h2 id="title">Loading...</h2>
-<div id="content"></div>
-<div id="overlay" class="overlay" onclick="closeOverlay()">
-	<span class="close-btn">&times;</span>
-	<img id="overlay-img" src="">
-</div>
 </body>
 </html>

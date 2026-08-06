@@ -1432,3 +1432,132 @@ func (c *APIClient) hasStreamResources(taskID int) bool {
 		Count(&count)
 	return count > 0
 }
+
+// handleDownloadTaskDetail returns download task detail with enriched file info.
+// GET /api/v1/download_task/detail
+func (c *APIClient) handleDownloadTaskDetail(ctx *gin.Context) {
+	if c.db == nil {
+		result.Err(ctx, 500, "应用未初始化，数据库不可用")
+		return
+	}
+
+	taskID, err := strconv.Atoi(ctx.Query("id"))
+	if err != nil || taskID <= 0 {
+		result.Err(ctx, 400, "id is required and must be a positive integer")
+		return
+	}
+
+	record, err := c.download_task_service.BuildTaskRecord(taskID)
+	if err != nil {
+		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
+		return
+	}
+	if record == nil {
+		result.Err(ctx, 404, "下载任务不存在")
+		return
+	}
+
+	// Look up associated content if present.
+	var contentData gin.H
+	if record.ContentID != nil && *record.ContentID != "" {
+		var content model.Content
+		if err := c.db.Where("id = ?", *record.ContentID).First(&content).Error; err == nil {
+			publishTime := int64(0)
+			if content.PublishTime != nil {
+				publishTime = *content.PublishTime
+			}
+			contentData = gin.H{
+				"id":           content.Id,
+				"platform_id":  content.PlatformId,
+				"type":         content.Type,
+				"title":        content.Title,
+				"description":  content.Description,
+				"cover_url":    content.CoverURL,
+				"url":          content.URL,
+				"source_url":   content.SourceURL,
+				"publish_time": publishTime,
+			}
+
+			// Load accounts linked to this content.
+			var accounts []gin.H
+			type accountRow struct {
+				AccountID  string `gorm:"column:account_id"`
+				Nickname   string `gorm:"column:nickname"`
+				AvatarURL  string `gorm:"column:avatar_url"`
+				ExternalID string `gorm:"column:external_id"`
+			}
+			var rows []accountRow
+			if err := c.db.Table("content_account").
+				Select("content_account.account_id, account.nickname, account.avatar_url, account.external_id").
+				Joins("JOIN account ON account.id = content_account.account_id").
+				Where("content_account.content_id = ? AND account.deleted_at IS NULL", *record.ContentID).
+				Scan(&rows).Error; err == nil && len(rows) > 0 {
+				for _, r := range rows {
+					accounts = append(accounts, gin.H{
+						"id":          r.AccountID,
+						"nickname":    r.Nickname,
+						"avatar_url":  r.AvatarURL,
+						"external_id": r.ExternalID,
+					})
+				}
+			}
+			contentData["accounts"] = accounts
+		}
+	}
+
+	// Enrich files with local file info.
+	type fileWithPath struct {
+		services.DownloadTaskFileRecord
+		LocalPath string `json:"local_path"`
+		FileType  string `json:"file_type"`
+		FileURL   string `json:"file_url"`
+		Exists    bool   `json:"exists"`
+	}
+
+	files := make([]fileWithPath, 0, len(record.Files))
+	for _, f := range record.Files {
+		localPath := filepath.Join(c.cfg.DownloadDir, f.OutputPath)
+		exists := false
+		if _, statErr := os.Stat(localPath); statErr == nil {
+			exists = true
+		}
+		files = append(files, fileWithPath{
+			DownloadTaskFileRecord: f,
+			LocalPath:              localPath,
+			FileType:               fileTypeByExt(f.Name),
+			FileURL:                "/file?path=" + localPath,
+			Exists:                 exists,
+		})
+	}
+
+	record.Files = nil // replaced by enriched files below
+	result.Ok(ctx, gin.H{
+		"id":            record.ID,
+		"content":       contentData,
+		"content_id":    record.ContentID,
+		"content_type":  record.ContentType,
+		"parent_task_id": record.ParentTaskID,
+		"root_task_id":  record.RootTaskID,
+		"relation_type": record.RelationType,
+		"child_count":   record.ChildCount,
+		"name":          record.Name,
+		"platform_id":   record.PlatformID,
+		"status":        record.Status,
+		"source_url":    record.SourceURL,
+		"cover_url":     record.CoverURL,
+		"cover_width":   record.CoverWidth,
+		"cover_height":  record.CoverHeight,
+		"config_json":   record.ConfigJSON,
+		"metadata_json": record.MetadataJSON,
+		"url":           record.URL,
+		"size":          record.Size,
+		"downloaded":    record.Downloaded,
+		"speed":         record.Speed,
+		"progress":      record.Progress,
+		"error":         record.Error,
+		"files":         files,
+		"file_count":    len(files),
+		"created_at":    record.CreatedAt,
+		"updated_at":    record.UpdatedAt,
+	})
+}
