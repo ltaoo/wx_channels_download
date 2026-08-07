@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// DeployBody 定义 Worker 部署所需的参数
+// DeployBody defines the parameters required for Worker deployment.
 type DeployBody struct {
 	AccountID         string
 	AuthToken         string
@@ -24,7 +24,7 @@ type DeployBody struct {
 	AdditionalFiles   map[string][]byte // extra files to include (e.g. index.html)
 }
 
-// Metadata 定义 Worker 部署所需的元数据
+// Metadata defines the metadata required for Worker deployment.
 type Metadata struct {
 	MainModule        string    `json:"main_module"`
 	CompatibilityDate string    `json:"compatibility_date"`
@@ -39,7 +39,7 @@ type Binding struct {
 	ID          string `json:"id,omitempty"`           // For d1
 }
 
-// DeployResult 定义部署结果
+// DeployResult defines the deployment result.
 type DeployResult struct {
 	Success bool  `json:"success"`
 	Errors  []any `json:"errors"`
@@ -74,14 +74,14 @@ func detectContentType(filename string) string {
 	}
 }
 
-// Deploy 执行 Cloudflare Worker 部署
+// Deploy executes a Cloudflare Worker deployment.
 func Deploy(deployBody DeployBody) (string, error) {
 	mainModule := deployBody.MainModule
 	if mainModule == "" {
 		mainModule = "index.js"
 	}
 
-	// 构造 Metadata
+	// Build Metadata
 	metadata := Metadata{
 		MainModule:        mainModule,
 		CompatibilityDate: deployBody.CompatibilityDate,
@@ -93,12 +93,12 @@ func Deploy(deployBody DeployBody) (string, error) {
 		return "", fmt.Errorf("构造 metadata 失败: %v", err)
 	}
 
-	// 构造 Multipart 请求
+	// Build multipart request
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
 	// Part 1: Metadata
-	// 注意: Cloudflare API 要求 metadata 部分必须有 Content-Type: application/json
+	// NOTE: Cloudflare API requires the metadata part to have Content-Type: application/json
 	h := make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", `form-data; name="metadata"`)
 	h.Set("Content-Type", "application/json")
@@ -132,7 +132,7 @@ func Deploy(deployBody DeployBody) (string, error) {
 
 	writer.Close()
 
-	// 发送请求
+	// Send request
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/workers/scripts/%s", deployBody.AccountID, deployBody.WorkerName)
 	req, err := http.NewRequest("PUT", url, body)
 	if err != nil {
@@ -155,7 +155,7 @@ func Deploy(deployBody DeployBody) (string, error) {
 		return "", fmt.Errorf("部署失败 (Status: %d): %s", resp.StatusCode, string(respBody))
 	}
 
-	// 解析响应以确认 success
+	// Parse response to confirm success
 	var result DeployResult
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("解析响应失败: %v, body: %s", err, string(respBody))
@@ -165,15 +165,15 @@ func Deploy(deployBody DeployBody) (string, error) {
 		return "", fmt.Errorf("部署失败 (API Error): %s", string(respBody))
 	}
 
-	// 部署成功后，确保 workers.dev 子域名已启用
+	// After successful deployment, ensure the workers.dev subdomain is enabled
 	if err := enableSubdomain(deployBody.AccountID, deployBody.AuthToken, deployBody.WorkerName); err != nil {
-		// fmt.Printf("警告: 启用 workers.dev 子域名失败: %v\n", err)
+		// fmt.Printf("Warning: failed to enable workers.dev subdomain: %v\n", err)
 	}
 
 	return result.Result.ID, nil
 }
 
-// enableSubdomain 确保 Worker 的 workers.dev 子域名路由已启用
+// enableSubdomain ensures the Worker's workers.dev subdomain route is enabled
 // PUT /accounts/{account_id}/workers/scripts/{script_name}/subdomain
 func enableSubdomain(accountID, authToken, workerName string) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/workers/scripts/%s/subdomain", accountID, workerName)

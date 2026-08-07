@@ -86,6 +86,16 @@ func installCertificate(cert_data []byte) error {
 	return nil
 }
 
+func checkCertificateTrusted(cert_name string) (bool, error) {
+	// Windows: Certificates in LocalMachine\Root are inherently trusted.
+	// If the cert is installed, it's trusted.
+	installed, err := CheckHasCertificate(cert_name)
+	if err != nil {
+		return false, err
+	}
+	return installed, nil
+}
+
 func uninstallCertificate(name string) error {
 	fmt.Println(name)
 	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"

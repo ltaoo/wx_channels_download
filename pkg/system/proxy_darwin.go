@@ -111,13 +111,13 @@ func read_network_proxy(device string, secure bool) (*network_proxy_info, error)
 }
 
 func get_network_interfaces() (*HardwarePort, error) {
-	// 获取所有硬件端口信息
+	// Get all hardware port information
 	cmd := exec.Command("networksetup", "-listallhardwareports")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("执行 networksetup 命令失败: %v", err)
 	}
-	// 解析硬件端口信息
+	// Parse hardware port information
 	var ports []HardwarePort
 	lines := strings.Split(string(output), "\n")
 
@@ -137,16 +137,16 @@ func get_network_interfaces() (*HardwarePort, error) {
 	if cur_port.Port != "" {
 		ports = append(ports, cur_port)
 	}
-	// 获取网络接口信息
+	// Get network interface information
 	cmd = exec.Command("scutil", "--nwi")
 	output, err = cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("执行 scutil 命令失败: %v", err)
 	}
-	// 使用正则解析接口信息
+	// Use regex to parse interface information
 	re := regexp.MustCompile(`Network interfaces{0,1}: ([0-9a-zA-Z]{1,})`)
 	matches := re.FindStringSubmatch(string(output))
-	// 将接口信息与硬件端口匹配
+	// Match interface information with hardware ports
 	if len(matches) >= 2 {
 		for i := range ports {
 			if ports[i].Device == matches[1] {

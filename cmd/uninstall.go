@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
 )
@@ -20,7 +21,7 @@ var uninstall_certificate_cmd = &cobra.Command{
 			return
 		}
 		uninstall_certificate_command(&UninstallCertificateCommandArgs{
-			CertFiles: CertFiles,
+			CertFiles: services.LoadCertFiles(),
 		})
 	},
 }
@@ -36,11 +37,11 @@ type UninstallCertificateCommandArgs struct {
 func uninstall_certificate_command(args *UninstallCertificateCommandArgs) {
 	settings := system.ProxySettings{}
 	if err := system.DisableProxy(settings); err != nil {
-		fmt.Printf("\nERROR 取消代理失败 %v\n", err.Error())
+		fmt.Printf("\nERROR: Failed to cancel proxy: %v\n", err.Error())
 		return
 	}
 	if err := certificate.UninstallCertificate(args.CertFiles.Name); err != nil {
-		fmt.Printf("\nERROR 删除根证书失败 %v\n", err.Error())
+		fmt.Printf("\nERROR: Failed to delete root certificate: %v\n", err.Error())
 		return
 	}
 	color.Green(fmt.Sprintf("\n\n删除根证书 '%v' 成功\n", args.CertFiles.Name))

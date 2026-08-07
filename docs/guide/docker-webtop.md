@@ -25,7 +25,7 @@ GHCR。此时需要先发布/公开镜像，或者执行 `docker login ghcr.io` 
 ## 直接启动
 
 ```bash
-bash scripts/run-webtop-container.sh
+bash build/run-webtop-container.sh
 ```
 
 默认参数等价于下面的手动 Webtop 命令：`3000` 端口、`NET_ADMIN`、
@@ -36,7 +36,7 @@ bash scripts/run-webtop-container.sh
 如果已经存在同名容器，换一个容器名和端口：
 
 ```bash
-NAME=wx_download_test WEB_PORT=3100 bash scripts/run-webtop-container.sh
+NAME=wx_download_test WEB_PORT=3100 bash build/run-webtop-container.sh
 ```
 
 打开 `http://127.0.0.1:3000` 进入桌面。WeChat 会自动启动，
@@ -94,7 +94,7 @@ NAME=wxaccount1 \
 WEB_PORT=3001 \
 CONFIG_DIR=/config/wxaccounts/wxaccount1 \
 CONTAINER_HOSTNAME=wx-linux-account1 \
-bash scripts/run-webtop-container.sh
+bash build/run-webtop-container.sh
 ```
 
 启动账号 2：
@@ -104,7 +104,7 @@ NAME=wxaccount2 \
 WEB_PORT=3002 \
 CONFIG_DIR=/config/wxaccounts/wxaccount2 \
 CONTAINER_HOSTNAME=wx-linux-account2 \
-bash scripts/run-webtop-container.sh
+bash build/run-webtop-container.sh
 ```
 
 启动账号 3 时继续递增即可：
@@ -114,7 +114,7 @@ NAME=wxaccount3 \
 WEB_PORT=3003 \
 CONFIG_DIR=/config/wxaccounts/wxaccount3 \
 CONTAINER_HOSTNAME=wx-linux-account3 \
-bash scripts/run-webtop-container.sh
+bash build/run-webtop-container.sh
 ```
 
 访问地址：
@@ -135,7 +135,7 @@ NAME=wxaccount1 \
 WEB_PORT=3001 \
 CONFIG_DIR=/config/wxaccounts/wxaccount1 \
 CONTAINER_HOSTNAME=wx-linux-account1 \
-bash scripts/run-webtop-container.sh
+bash build/run-webtop-container.sh
 ```
 
 ## 本地构建镜像
@@ -146,7 +146,7 @@ bash scripts/run-webtop-container.sh
 构建 arm64 Webtop 镜像：
 
 ```bash
-bash scripts/build-webtop-image.sh
+bash build/build-webtop-image.sh
 ```
 
 默认读取 `/Users/litao/Downloads/WeChatLinux_arm64.deb`。需要指定路径或镜像名时：
@@ -154,7 +154,7 @@ bash scripts/build-webtop-image.sh
 ```bash
 WECHAT_DEB=/path/to/WeChatLinux_arm64.deb \
 IMAGE=wx_video_download:v260607 \
-bash scripts/build-webtop-image.sh
+bash build/build-webtop-image.sh
 ```
 
 默认配置来自 `internal/config/config.template.yaml`，`global.js` 不存在时会使用空脚本占位。需要打包自定义默认配置或用户脚本时：
@@ -162,13 +162,13 @@ bash scripts/build-webtop-image.sh
 ```bash
 CONFIG_FILE=/path/to/config.yaml \
 GLOBAL_SCRIPT=/path/to/global.js \
-bash scripts/build-webtop-image.sh
+bash build/build-webtop-image.sh
 ```
 
 使用本地构建镜像启动：
 
 ```bash
-IMAGE=wx_video_download:v260607 bash scripts/run-webtop-container.sh
+IMAGE=wx_video_download:v260607 bash build/run-webtop-container.sh
 ```
 
 手动启动本地镜像时，把镜像名改成 `wx_video_download:v260607` 即可：

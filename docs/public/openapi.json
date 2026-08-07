@@ -23,104 +23,131 @@
     {
       "name": "下载器",
       "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
+    },
+    {
+      "name": "下载任务",
+      "description": "兼容 wx_channels_api 的下载任务接口（/api/download_task/*），底层复用本项目的下载器与 download_task 表"
+    },
+    {
+      "name": "平台",
+      "description": "兼容 wx_channels_api 的平台/账号/视频号相关接口（/account/*、/channels/*）"
+    },
+    {
+      "name": "达人",
+      "description": "兼容 wx_channels_api 的达人接口（/influencers*）"
+    },
+    {
+      "name": "内容",
+      "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
+    },
+    {
+      "name": "文件传输助手",
+      "description": "文件传输助手相关接口（仅本地模式可用）"
+    },
+    {
+      "name": "媒体",
+      "description": "媒体文件预览与播放接口"
     }
   ],
   "paths": {
     "/api/channels/contact/search": {
-      "$ref": "./openapi/paths/api_channels_contact_search.json"
+      "$ref": "./openapi/channels/contact_search.json"
     },
     "/api/channels/contact/feed/list": {
-      "$ref": "./openapi/paths/api_channels_contact_feed_list.json"
+      "$ref": "./openapi/channels/contact_feed_list.json"
     },
     "/api/channels/feed/profile": {
-      "$ref": "./openapi/paths/api_channels_feed_profile.json"
+      "$ref": "./openapi/channels/feed_profile.json"
     },
     "/api/channels/feed/share_url": {
-      "$ref": "./openapi/paths/api_channels_feed_share_url.json"
+      "$ref": "./openapi/channels/feed_share_url.json"
     },
     "/api/channels/parse_sph": {
-      "$ref": "./openapi/paths/api_channels_parse_sph.json"
+      "$ref": "./openapi/channels/parse_sph.json"
     },
     "/api/channels/feed/comment/list": {
-      "$ref": "./openapi/paths/api_channels_feed_comment_list.json"
+      "$ref": "./openapi/channels/feed_comment_list.json"
     },
     "/api/channels/live/replay/list": {
-      "$ref": "./openapi/paths/api_channels_live_replay_list.json"
+      "$ref": "./openapi/channels/live_replay_list.json"
     },
     "/api/channels/interactioned/list": {
-      "$ref": "./openapi/paths/api_channels_interactioned_list.json"
+      "$ref": "./openapi/channels/interactioned_list.json"
     },
     "/api/channels/follow/list": {
-      "$ref": "./openapi/paths/api_channels_follow_list.json"
+      "$ref": "./openapi/channels/follow_list.json"
     },
     "/rss/channels": {
-      "$ref": "./openapi/paths/rss_channels.json"
+      "$ref": "./openapi/channels/rss.json"
     },
     "/play": {
-      "$ref": "./openapi/paths/play.json"
+      "$ref": "./openapi/channels/play.json"
     },
     "/api/mp/list": {
-      "$ref": "./openapi/paths/api_mp_list.json"
+      "$ref": "./openapi/mp/list.json"
     },
     "/api/mp/msg/list": {
-      "$ref": "./openapi/paths/api_mp_msg_list.json"
+      "$ref": "./openapi/mp/msg_list.json"
     },
     "/api/mp/delete": {
-      "$ref": "./openapi/paths/api_mp_delete.json"
+      "$ref": "./openapi/mp/delete.json"
     },
     "/api/mp/refresh_with_frontend": {
-      "$ref": "./openapi/paths/api_mp_refresh_with_frontend.json"
+      "$ref": "./openapi/mp/refresh_with_frontend.json"
     },
     "/api/mp/refresh": {
-      "$ref": "./openapi/paths/api_mp_refresh.json"
+      "$ref": "./openapi/mp/refresh.json"
     },
     "/rss/mp": {
-      "$ref": "./openapi/paths/rss_mp.json"
+      "$ref": "./openapi/mp/rss.json"
     },
     "/mp/proxy": {
-      "$ref": "./openapi/paths/mp_proxy.json"
+      "$ref": "./openapi/mp/proxy.json"
     },
-    "/api/task/create_channels": {
-      "$ref": "./openapi/paths/api_task_create_channels.json"
+    "/api/download_task/list": {
+      "$ref": "./openapi/download_task/list.json"
     },
-    "/api/task/create": {
-      "$ref": "./openapi/paths/api_task_create.json"
+    "/api/download_task/start": {
+      "$ref": "./openapi/download_task/start.json"
     },
-    "/api/task/create2": {
-      "$ref": "./openapi/paths/api_task_create2.json"
+    "/api/download_task/profile": {
+      "$ref": "./openapi/download_task/profile.json"
     },
-    "/api/task/create_batch": {
-      "$ref": "./openapi/paths/api_task_create_batch.json"
+    "/api/download_task/create": {
+      "$ref": "./openapi/download_task/create.json"
     },
-    "/api/task/list": {
-      "$ref": "./openapi/paths/api_task_list.json"
+    "/api/download_task/batch_create": {
+      "$ref": "./openapi/download_task/batch_create.json"
     },
-    "/api/task/start": {
-      "$ref": "./openapi/paths/api_task_start.json"
+    "/api/download_task/delete": {
+      "$ref": "./openapi/download_task/delete.json"
     },
-    "/api/task/start_all": {
-      "$ref": "./openapi/paths/api_task_start_all.json"
+    "/api/download_task/retry": {
+      "$ref": "./openapi/download_task/retry.json"
     },
-    "/api/task/pause": {
-      "$ref": "./openapi/paths/api_task_pause.json"
+    "/api/download_task/pause_all": {
+      "$ref": "./openapi/download_task/pause_all.json"
     },
-    "/api/task/pause_all": {
-      "$ref": "./openapi/paths/api_task_pause_all.json"
+    "/api/download_task/start_all": {
+      "$ref": "./openapi/download_task/start_all.json"
     },
-    "/api/task/resume": {
-      "$ref": "./openapi/paths/api_task_resume.json"
+    "/api/download_task/highlight_file": {
+      "$ref": "./openapi/download_task/highlight_file.json"
     },
-    "/api/task/delete": {
-      "$ref": "./openapi/paths/api_task_delete.json"
+    "/api/download_task/play": {
+      "$ref": "./openapi/download_task/play.json"
     },
-    "/api/task/clear": {
-      "$ref": "./openapi/paths/api_task_clear.json"
+    "/api/mp/ws_pool": {
+      "$ref": "./openapi/mp/ws_pool.json"
     },
-    "/api/open_download_dir": {
-      "$ref": "./openapi/paths/api_open_download_dir.json"
+    "/api/mp/article/list": {
+      "$ref": "./openapi/mp/article_list.json"
     },
-    "/api/show_file": {
-      "$ref": "./openapi/paths/api_show_file.json"
+    "/api/mp/download_all": {
+      "$ref": "./openapi/mp/download_all.json"
+    },
+    "/mp/home": {
+      "$ref": "./openapi/mp/home.json"
     }
   }
 }

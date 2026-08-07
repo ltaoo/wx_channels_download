@@ -1,0 +1,14 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "公众号首页",
+    "description": "返回公众号管理主页 HTML 页面",
+    "responses": {
+      "200": {
+        "description": "HTML 页面"
+      }
+    }
+  }
+}

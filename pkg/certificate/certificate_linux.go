@@ -24,7 +24,7 @@ type linuxCertStore struct {
 	updateErrMsg string
 }
 
-// 检查是否以 root 权限运行
+// Check if running as root
 func isRoot() bool {
 	return os.Geteuid() == 0
 }
@@ -78,7 +78,7 @@ func runPrivileged(stdin io.Reader, args ...string) error {
 	if isRoot() {
 		return runCommand(stdin, args...)
 	}
-	fmt.Println("需要管理员权限，正在请求...")
+	fmt.Println("Administrator privileges required, requesting...")
 	return runCommand(stdin, append([]string{"sudo"}, args...)...)
 }
 
@@ -180,7 +180,7 @@ func removeSystemCert(path string) error {
 
 func warnIfErr(prefix string, err error) {
 	if err != nil {
-		fmt.Printf("警告: %s: %v\n", prefix, err)
+		fmt.Printf("Warning: %s: %v\n", prefix, err)
 	}
 }
 
@@ -191,21 +191,21 @@ func installSystemNSSCert(certPath string) {
 
 	systemDB := "/etc/pki/nssdb"
 	if _, err := os.Stat(systemDB); os.IsNotExist(err) {
-		fmt.Printf("未找到 NSS 系统数据库: %s，正在创建...\n", systemDB)
+		fmt.Printf("NSS system database not found: %s, creating...\n", systemDB)
 		if err := runPrivileged(nil, "mkdir", "-p", systemDB); err != nil {
-			warnIfErr("创建 NSS 系统数据库目录失败", err)
+			warnIfErr("Failed to create NSS system database directory", err)
 			return
 		}
-		warnIfErr("设置 NSS 系统数据库目录权限失败", runPrivileged(nil, "chmod", "700", systemDB))
+		warnIfErr("Failed to set permissions on NSS system database directory", runPrivileged(nil, "chmod", "700", systemDB))
 		err := runPrivileged(strings.NewReader("\n\n"), "certutil", "-d", "sql:"+systemDB, "-N", "--empty-password")
 		if err != nil {
-			warnIfErr("初始化 NSS 系统数据库失败", err)
+			warnIfErr("Failed to initialize NSS system database", err)
 			return
 		}
-		fmt.Printf("已创建 NSS 系统数据库: %s (密码为空)\n", systemDB)
+		fmt.Printf("NSS system database created: %s (empty password)\n", systemDB)
 	}
 	_ = runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-D", "-n", linuxCertNickname)
-	warnIfErr("添加 NSS 系统证书失败", runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
+	warnIfErr("Failed to add NSS system certificate", runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
 }
 
 func installUserNSSCert(certPath string) {
@@ -214,26 +214,26 @@ func installUserNSSCert(certPath string) {
 	}
 	desktopUser, err := currentDesktopUser()
 	if err != nil || desktopUser.HomeDir == "" {
-		warnIfErr("获取登录用户失败，跳过 NSS 用户证书库", err)
+		warnIfErr("Failed to get login user, skipping NSS user certificate store", err)
 		return
 	}
 	userDB := filepath.Join(desktopUser.HomeDir, ".pki", "nssdb")
 	if _, err := os.Stat(userDB); os.IsNotExist(err) {
-		fmt.Printf("未找到 NSS 用户数据库: %s，正在创建...\n", userDB)
+		fmt.Printf("NSS user database not found: %s, creating...\n", userDB)
 		if err := runAsUser(desktopUser, nil, "mkdir", "-p", userDB); err != nil {
-			warnIfErr("创建 NSS 用户数据库目录失败", err)
+			warnIfErr("Failed to create NSS user database directory", err)
 			return
 		}
-		warnIfErr("设置 NSS 用户数据库目录权限失败", runAsUser(desktopUser, nil, "chmod", "700", userDB))
+		warnIfErr("Failed to set permissions on NSS user database directory", runAsUser(desktopUser, nil, "chmod", "700", userDB))
 		err := runAsUser(desktopUser, strings.NewReader("\n\n"), "certutil", "-d", "sql:"+userDB, "-N", "--empty-password")
 		if err != nil {
-			warnIfErr("初始化 NSS 用户数据库失败", err)
+			warnIfErr("Failed to initialize NSS user database", err)
 			return
 		}
-		fmt.Printf("已创建 NSS 用户数据库: %s (密码为空)\n", userDB)
+		fmt.Printf("NSS user database created: %s (empty password)\n", userDB)
 	}
 	_ = runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-D", "-n", linuxCertNickname)
-	warnIfErr("添加 NSS 用户证书失败", runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
+	warnIfErr("Failed to add NSS user certificate", runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
 }
 
 func uninstallNSSCerts() {
@@ -246,7 +246,7 @@ func uninstallNSSCerts() {
 	}
 	desktopUser, err := currentDesktopUser()
 	if err != nil || desktopUser.HomeDir == "" {
-		warnIfErr("获取登录用户失败，跳过 NSS 用户证书库", err)
+		warnIfErr("Failed to get login user, skipping NSS user certificate store", err)
 		return
 	}
 	userDB := filepath.Join(desktopUser.HomeDir, ".pki", "nssdb")
@@ -314,10 +314,19 @@ func installCertificate(cert []byte) error {
 		return fmt.Errorf("%s: %v", store.updateErrMsg, err)
 	}
 
-	// NSS 证书库处理 (Firefox/Chromium)，失败不影响系统 CA 安装结果。
+	// NSS certificate store handling (Firefox/Chromium); failures do not affect system CA installation.
 	installSystemNSSCert(store.certPath)
 	installUserNSSCert(store.certPath)
 	return nil
+}
+
+func checkCertificateTrusted(cert_name string) (bool, error) {
+	// On Linux, a cert installed via update-ca-certificates is considered trusted.
+	installed, err := CheckHasCertificate(cert_name)
+	if err != nil {
+		return false, err
+	}
+	return installed, nil
 }
 
 func uninstallCertificate(name string) error {

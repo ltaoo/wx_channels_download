@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/pterm/pterm"
 
 	"wx_channel/pkg/cloudflare/worker"
 )
@@ -24,24 +24,40 @@ var deploy_cmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "部署 Cloudflare Worker",
 	Long:  "读取配置文件中的 Cloudflare 配置，通过 Cloudflare REST API 直接部署 Worker",
+}
+
+var deploy_mp_cmd = &cobra.Command{
+	Use:   "mp",
+	Short: "部署公众号 Worker",
+	Long:  "部署公众号 RSS/API 相关的 Cloudflare Worker",
 	Run: func(cmd *cobra.Command, args []string) {
-		deploy()
+		deploy_mp()
+	},
+}
+
+var deploy_sph_cmd = &cobra.Command{
+	Use:   "sph",
+	Short: "部署视频号查询 Worker",
+	Long:  "部署视频号视频信息查询的 Cloudflare Worker",
+	Run: func(cmd *cobra.Command, args []string) {
+		deploy_sph()
 	},
 }
 
 func init() {
+	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd)
 	Register(deploy_cmd)
 }
 
-func deploy() {
+func deploy_mp() {
 	pterm.DefaultSection.Println("开始部署 Cloudflare Worker (REST API)")
 
-	// 1. 获取配置
+	// 1. Get configuration
 	account_id := viper.GetString("cloudflare.accountId")
 	api_token := viper.GetString("cloudflare.apiToken")
 	worker_name := viper.GetString("cloudflare.workerName")
 	d1_database_id := viper.GetString("cloudflare.d1Id")
-	d1_database_name := viper.GetString("cloudflare.d1Name") // 新增：支持通过名称查找/创建
+	d1_database_name := viper.GetString("cloudflare.d1Name") // New: support lookup/create by name
 	admin_token := viper.GetString("cloudflare.adminToken")
 	refresh_token := viper.GetString("cloudflare.refreshToken")
 	remote_server_hostname := viper.GetString("mp.remoteServer.hostname")
@@ -51,7 +67,7 @@ func deploy() {
 		return
 	}
 
-	// 1.2 优先使用 Database Name 查找或创建 (如果配置了 Name)
+	// 1.2 Use Database Name to find or create if configured
 	if d1_database_name != "" {
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("正在根据名称查找 D1 数据库: '%s' ...", d1_database_name))
 		id, err := find_d1_database_by_name(account_id, api_token, d1_database_name)
@@ -81,7 +97,7 @@ func deploy() {
 		return
 	}
 
-	// 1.5 执行数据库初始化 (直接调用 API)
+	// 1.5 Execute database initialization (via API directly)
 	spinner, _ := pterm.DefaultSpinner.Start("正在验证 D1 数据库连接...")
 	if err := verify_d1_database(account_id, api_token, d1_database_id); err != nil {
 		spinner.Fail(fmt.Sprintf("D1 数据库验证失败: %v", err))
@@ -90,9 +106,9 @@ func deploy() {
 	}
 	spinner.Success("D1 数据库连接验证成功")
 
-	worker_dir := filepath.Join(Cfg.RootDir, "internal", "officialaccount", "worker")
+	worker_dir := filepath.Join(Cfg.RootDir, "pkg", "scraper", "wxmp", "worker")
 
-	// 1.6 执行数据库迁移
+	// 1.6 Execute database migration
 	spinner, _ = pterm.DefaultSpinner.Start("正在检查并执行数据库迁移...")
 
 	if err := run_migrations(account_id, api_token, d1_database_id, filepath.Join(worker_dir, "migrations")); err != nil {
@@ -108,7 +124,7 @@ func deploy() {
 		return
 	}
 
-	// 3. 构造部署参数
+	// 3. Build deployment parameters
 	deploy_body := worker.DeployBody{
 		AccountID:         account_id,
 		AuthToken:         api_token,
@@ -123,8 +139,8 @@ func deploy() {
 		},
 	}
 
-	// 4. 执行部署
-	// 截断 Account ID 以防止终端换行导致 Spinner 渲染问题
+	// 4. Execute deployment
+	// Truncate Account ID to prevent spinner rendering issues from terminal line wrapping
 	shortAccountID := account_id
 	if len(shortAccountID) > 6 {
 		shortAccountID = shortAccountID[:6] + "..."
@@ -138,7 +154,7 @@ func deploy() {
 	}
 	spinner.Success("部署成功!")
 
-	// 5. 获取子域名并输出访问地址
+	// 5. Get subdomain and output access URL
 	spinner, _ = pterm.DefaultSpinner.Start("正在获取 Worker 访问地址...")
 	subdomain, err := get_workers_subdomain(account_id, api_token)
 	workerUrl := ""
@@ -181,6 +197,121 @@ func deploy() {
 
 	pterm.Println()
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("✅ 部署成功! 请访问上面的 URL 使用服务")
+}
+
+func deploy_sph() {
+	pterm.DefaultSection.Println("开始部署 视频号查询 Worker (REST API)")
+
+	account_id := viper.GetString("cloudflare.accountId")
+	api_token := viper.GetString("cloudflare.apiToken")
+	worker_name := viper.GetString("cloudflare.sphWorkerName")
+	sph_cookie := viper.GetString("cloudflare.sphCookie")
+
+	if api_token == "" || account_id == "" {
+		pterm.Error.Println("错误: 未配置 Cloudflare Auth Token 或 Account ID")
+		return
+	}
+
+	if worker_name == "" {
+		pterm.Error.Println("错误: 未配置 cloudflare.sphWorkerName")
+		return
+	}
+
+	sph_dir := filepath.Join(Cfg.RootDir, "pkg", "scraper", "wxchannels", "worker")
+
+	// Read worker.js
+	script_path := filepath.Join(sph_dir, "worker.js")
+	script_content, err := os.ReadFile(script_path)
+	if err != nil {
+		pterm.Error.Printf("读取 worker.js 失败: %v\n", err)
+		return
+	}
+
+	// Read index.html
+	html_path := filepath.Join(sph_dir, "index.html")
+	html_content, err := os.ReadFile(html_path)
+	if err != nil {
+		pterm.Error.Printf("读取 index.html 失败: %v\n", err)
+		return
+	}
+
+	// Read icon.png and convert to base64, deploy as JS module
+	icon_path := filepath.Join(Cfg.RootDir, "build", "icon.png")
+	icon_bytes, err := os.ReadFile(icon_path)
+	if err != nil {
+		pterm.Error.Printf("读取 icon.png 失败: %v\n", err)
+		return
+	}
+	icon_base64 := base64.StdEncoding.EncodeToString(icon_bytes)
+
+	// Build deployment parameters (sph worker does not need D1 or extra bindings)
+	deploy_body := worker.DeployBody{
+		AccountID:         account_id,
+		AuthToken:         api_token,
+		WorkerName:        worker_name,
+		ScriptContent:     script_content,
+		CompatibilityDate: "2024-01-01",
+		MainModule:        "worker.js",
+		Bindings: []worker.Binding{
+			{Type: "plain_text", Name: "COOKIE", Text: sph_cookie},
+		},
+		AdditionalFiles: map[string][]byte{
+			"index.html": html_content,
+			"icon.js":    []byte(fmt.Sprintf(`export default "%s";`, icon_base64)),
+		},
+	}
+
+	shortAccountID := account_id
+	if len(shortAccountID) > 6 {
+		shortAccountID = shortAccountID[:6] + "..."
+	}
+
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("正在部署到 Cloudflare (Worker: %s)...", worker_name))
+	_, err = worker.Deploy(deploy_body)
+	if err != nil {
+		spinner.Fail(fmt.Sprintf("部署失败: %v", err))
+		return
+	}
+	spinner.Success("部署成功!")
+
+	// Get subdomain and output access URL
+	spinner, _ = pterm.DefaultSpinner.Start("正在获取 Worker 访问地址...")
+	subdomain, err := get_workers_subdomain(account_id, api_token)
+	workerUrl := ""
+	if err != nil {
+		spinner.Warning(fmt.Sprintf("获取子域名失败: %v", err))
+		workerUrl = fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_name)
+	} else {
+		workerUrl = fmt.Sprintf("https://%s.%s.workers.dev", worker_name, subdomain)
+		spinner.Success("获取访问地址成功")
+	}
+
+	pterm.Println()
+	pterm.DefaultHeader.WithFullWidth().Println("部署摘要")
+
+	panels := pterm.Panels{
+		{{Data: pterm.DefaultBox.WithTitle("Worker Info").Sprint(
+			pterm.Sprintf("%s: %s\n%s: %s",
+				pterm.Bold.Sprint("Worker Name"), pterm.Cyan(worker_name),
+				pterm.Bold.Sprint("URL"), pterm.LightGreen(workerUrl),
+			),
+		)}},
+	}
+	pterm.DefaultPanel.WithPanels(panels).Render()
+
+	pterm.Println()
+	pterm.DefaultHeader.WithFullWidth().Println("可用 API")
+
+	tableData := [][]string{
+		{"Method", "Path", "Description"},
+		{"GET", "/", "视频号视频信息查询页面"},
+		{"POST", "/api/fetch_video_profile", "获取视频号视频信息"},
+	}
+
+	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+
+	pterm.Println()
+	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("部署成功! 请访问上面的 URL 使用服务")
 }
 
 func verify_d1_database(accountID, authToken, databaseID string) error {

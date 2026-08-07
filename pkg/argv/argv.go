@@ -45,12 +45,13 @@ nextopt:
 	return m
 }
 
-// 获取指定参数名的值,获取失败返回默认值(多个参数名则返回最先找到的值)
+// Get the value of the specified argument key; returns the default value if not found
+// (returns the first match if multiple keys are provided)
 func ArgsValue(margs Map, def string, keys ...string) (value string) {
-	value = def // 默认值
+	value = def // Default value
 	for _, key := range keys {
-		if v, ok := margs[key]; ok && v != "" { // 找到参数
-			value = v // 存储该值
+		if v, ok := margs[key]; ok && v != "" { // Key found
+			value = v // Store the value
 			break
 		}
 	}

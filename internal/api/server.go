@@ -1,45 +1,116 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
-	"wx_channel/internal/manager"
+	"wx_channel/internal/events"
+	"wx_channel/internal/webassets"
+	"wx_channel/pkg/hermes"
 )
 
 type APIServer struct {
-	*manager.HTTPServer
+	addr      string
+	handler   http.Handler
+	server    *http.Server
 	APIClient *APIClient
+	bus       *events.Bus
 }
 
-func NewAPIServer(cfg *APIConfig, logger *zerolog.Logger) *APIServer {
-	srv := manager.NewHTTPServer("API服务", "api", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
-	client := NewAPIClient(cfg, logger)
-	srv.SetHandler(withCORS(client))
+func NewAPIServer(
+	cfg *APIConfig,
+	logger *zerolog.Logger,
+	db *gorm.DB,
+	staticAssets *webassets.Registry,
+	downloader *hermes.HermesEngine,
+	hookManager *hermes.HookManager,
+) *APIServer {
+	client := NewAPIClient(cfg, logger, db, staticAssets, downloader, hookManager)
 	return &APIServer{
-		HTTPServer: srv,
-		APIClient:  client,
+		addr:      cfg.Hostname + ":" + strconv.Itoa(cfg.Port),
+		handler:   client.HTTPHandler(),
+		APIClient: client,
 	}
+}
+
+func (s *APIServer) SubscribeEvents(bus *events.Bus) {
+	s.bus = bus
+	s.APIClient.SubscribeEvents(bus)
+	bus.Subscribe(events.TypeServiceCommand, func(e events.Event) {
+		cmd, ok := e.(events.ServiceCommand)
+		if !ok || cmd.Name != "api" {
+			return
+		}
+		switch cmd.Action {
+		case "start":
+			_ = s.Start()
+		case "stop":
+			_ = s.Stop()
+		}
+	})
 }
 
 func (s *APIServer) Start() error {
-	l, err := net.Listen("tcp", s.HTTPServer.Addr())
+	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("启动API服务失败，端口被占用: %v", err)
 	}
-	l.Close()
 	if err := s.APIClient.Start(); err != nil {
+		_ = listener.Close()
 		return err
 	}
-	return s.HTTPServer.Start()
+	server := &http.Server{
+		Addr:    s.addr,
+		Handler: s.handler,
+	}
+	s.server = server
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("API服务 error: %v\n", err)
+			return
+		}
+		fmt.Println("API服务 stopped")
+	}()
+
+	s.publishStatus("running")
+	return nil
+}
+
+func (s *APIServer) Addr() string {
+	return s.addr
 }
 
 func (s *APIServer) Stop() error {
 	if err := s.APIClient.Stop(); err != nil {
 		return err
 	}
-	return s.HTTPServer.Stop()
+	if s.server != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.server.Shutdown(ctx); err != nil {
+			return err
+		}
+		s.server = nil
+	}
+	s.publishStatus("stopped")
+	return nil
+}
+
+func (s *APIServer) publishStatus(status string) {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(events.ServiceStatusChanged{
+		Name:   "api",
+		Title:  "API服务",
+		Addr:   s.Addr(),
+		Status: status,
+	})
 }

@@ -95,6 +95,7 @@ export default defineConfig(async () => {
   themeConfig: {
     nav: [
       { text: "首页", link: "/" },
+      { text: "文档", link: "/guide/start" },
       { text: "Releases", link: `/releases/${latestReleaseDate}` },
       { text: "API Playground", link: "/feature/playground" },
       { text: "FAQ", link: "/faq/button_inject_failed" },
@@ -127,9 +128,7 @@ export default defineConfig(async () => {
         text: "命令行",
         items: [
           { text: "代理服务", link: "/cli/proxy" },
-          { text: "下载", link: "/cli/download" },
-          { text: "解密", link: "/cli/decrypt" },
-          { text: "视频号解析", link: "/cli/sph" },
+          { text: "部署", link: "/cli/deploy" },
           { text: "删除证书", link: "/cli/uninstall" },
           { text: "查看版本", link: "/cli/version" },
           { text: "更新", link: "/cli/update" },

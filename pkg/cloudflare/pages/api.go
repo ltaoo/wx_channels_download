@@ -51,7 +51,7 @@ func Api_fetch_missing_files(hashes []string, jwt string) ([]string, error) {
 		return []string{}, err
 	}
 	fmt.Println("Api_fetch_missing_files", string(resp_bytes))
-	// 返回指定类型
+	// Return the specified type
 	var result struct {
 		Success bool     `json:"success"`
 		Result  []string `json:"result"`
@@ -100,7 +100,7 @@ func Api_fetch_upload_token(account_id string, project_name string) (*UploadToke
 		return nil, err
 	}
 	defer resp.Body.Close()
-	// 读取原始响应体
+	// Read raw response body
 	resp_bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -290,24 +290,24 @@ func IsJwtExpired(token string) (bool, error) {
 	return int64(exp) <= now, nil
 }
 
-// 示例：发送简单的表单数据
+// Example: send simple form data
 func Api_send_simple_formdata() error {
 	url := "https://api.example.com/upload"
 
-	// 创建表单数据
+	// Create form data
 	form_date := make(map[string][]string)
 	form_date["name"] = []string{"test file"}
 	form_date["description"] = []string{"这是一个测试文件"}
 	form_date["category"] = []string{"document"}
 
-	// 发送请求
+	// Send request
 	resp, err := http.PostForm(url, form_date)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	// 读取响应
+	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -317,41 +317,41 @@ func Api_send_simple_formdata() error {
 	return nil
 }
 
-// 发送包含文件的 FormData
+// Send FormData containing files
 func Api_send_multipart_formdata() error {
 	url := "https://api.example.com/upload"
 
-	// 创建 multipart writer
+	// Create multipart writer
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	// 添加文本字段
+	// Add text field
 	writer.WriteField("name", "test file")
 	writer.WriteField("description", "这是一个测试文件")
 
-	// 添加文件字段
+	// Add file field
 	fileWriter, err := writer.CreateFormFile("file", "test.txt")
 	if err != nil {
 		return err
 	}
 
-	// 写入文件内容
-	fileContent := []byte("这是文件内容")
+	// Write file content
+	fileContent := []byte("this is the file content")
 	fileWriter.Write(fileContent)
 
-	// 关闭 writer
+	// Close writer
 	writer.Close()
 
-	// 创建请求
+	// Create request
 	req, err := http.NewRequest("POST", url, &buf)
 	if err != nil {
 		return err
 	}
 
-	// 设置 Content-Type header（包含 boundary）
+	// Set Content-Type header (includes boundary)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	// 发送请求
+	// Send request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -359,7 +359,7 @@ func Api_send_multipart_formdata() error {
 	}
 	defer resp.Body.Close()
 
-	// 读取响应
+	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -369,50 +369,50 @@ func Api_send_multipart_formdata() error {
 	return nil
 }
 
-// 上传本地文件
+// Upload local file
 func Api_upload_local_file(filePath string) error {
 	url := "https://api.example.com/upload"
 
-	// 打开文件
+	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// 创建 multipart writer
+	// Create multipart writer
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	// 添加文本字段
+	// Add text field
 	writer.WriteField("name", "uploaded file")
 	writer.WriteField("description", "从本地文件上传")
 
-	// 创建文件字段
+	// Create file field
 	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
 		return err
 	}
 
-	// 复制文件内容到表单
+	// Copy file content to form
 	_, err = io.Copy(part, file)
 	if err != nil {
 		return err
 	}
 
-	// 关闭 writer
+	// Close writer
 	writer.Close()
 
-	// 创建请求
+	// Create request
 	req, err := http.NewRequest("POST", url, &buf)
 	if err != nil {
 		return err
 	}
 
-	// 设置 Content-Type header
+	// Set Content-Type header
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	// 发送请求
+	// Send request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -420,7 +420,7 @@ func Api_upload_local_file(filePath string) error {
 	}
 	defer resp.Body.Close()
 
-	// 读取响应
+	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err

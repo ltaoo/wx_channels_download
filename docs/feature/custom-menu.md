@@ -61,7 +61,7 @@ WXU.unshiftMenuItems([
         var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
         if (err) {
           WXU.error({ msg: "解密失败，" + err.message, alert: 0 });
-          WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0 });
+          WXU.error({ msg: "请刷新视频号页面后重试", alert: 0 });
         } else {
           WXU.log({ msg: "解密成功" });
           media_buf = data;

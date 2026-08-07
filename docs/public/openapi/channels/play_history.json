@@ -1,0 +1,288 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取观看历史",
+    "description": "获取当前登录账号的视频观看历史列表。调用时需要保持视频号页面打开，并可使用响应中的 data.data.lastBuffer 作为 next_marker 获取下一页。",
+    "parameters": [
+      {
+        "name": "next_marker",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "分页标记，使用上一页响应 data.data.lastBuffer 的值"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "成功响应",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 0
+                },
+                "msg": {
+                  "type": "string",
+                  "example": "成功"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "errCode": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "errMsg": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "baseresponse": {
+                          "type": "object",
+                          "properties": {
+                            "Ret": {
+                              "type": "integer"
+                            },
+                            "ErrMsg": {
+                              "type": "object",
+                              "properties": {
+                                "String": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "objects": {
+                          "type": "array",
+                          "description": "视频列表",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "视频 ID"
+                              },
+                              "contact": {
+                                "type": "object",
+                                "properties": {
+                                  "username": {
+                                    "type": "string"
+                                  },
+                                  "nickname": {
+                                    "type": "string"
+                                  },
+                                  "headUrl": {
+                                    "type": "string"
+                                  },
+                                  "signature": {
+                                    "type": "string"
+                                  },
+                                  "coverImgUrl": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "objectDesc": {
+                                "type": "object",
+                                "properties": {
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "media": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "url": {
+                                          "type": "string"
+                                        },
+                                        "thumbUrl": {
+                                          "type": "string"
+                                        },
+                                        "mediaType": {
+                                          "type": "integer"
+                                        },
+                                        "videoPlayLen": {
+                                          "type": "integer"
+                                        },
+                                        "width": {
+                                          "type": "number"
+                                        },
+                                        "height": {
+                                          "type": "number"
+                                        },
+                                        "fileSize": {
+                                          "type": "integer"
+                                        },
+                                        "spec": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "fileFormat": {
+                                                "type": "string"
+                                              },
+                                              "width": {
+                                                "type": "number"
+                                              },
+                                              "height": {
+                                                "type": "number"
+                                              },
+                                              "durationMs": {
+                                                "type": "integer"
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "coverUrl": {
+                                          "type": "string"
+                                        },
+                                        "decodeKey": {
+                                          "type": "string"
+                                        },
+                                        "urlToken": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "mediaType": {
+                                    "type": "integer"
+                                  },
+                                  "followPostInfo": {
+                                    "type": "object",
+                                    "properties": {
+                                      "musicInfo": {
+                                        "type": "object",
+                                        "properties": {
+                                          "docId": {
+                                            "type": "string"
+                                          },
+                                          "docType": {
+                                            "type": "integer"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          },
+                                          "artist": {
+                                            "type": "string"
+                                          },
+                                          "mediaStreamingUrl": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "hasBgm": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "objectNonceId": {
+                                "type": "string"
+                              },
+                              "createtime": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "lastBuffer": {
+                          "type": "string",
+                          "description": "分页标记，用于请求下一页"
+                        },
+                        "continueFlag": {
+                          "type": "integer",
+                          "description": "是否还有更多数据，0 表示没有，1 表示有"
+                        },
+                        "recentNDays": {
+                          "type": "integer",
+                          "description": "最近 N 天的观看历史"
+                        }
+                      }
+                    },
+                    "payload": {
+                      "type": "object",
+                      "properties": {
+                        "lastBuffer": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "errCode": 0,
+                    "errMsg": "ok",
+                    "data": {
+                      "baseresponse": {
+                        "Ret": 0,
+                        "ErrMsg": {
+                          "String": ""
+                        }
+                      },
+                      "objects": [
+                        {
+                          "id": "14975583782529927706",
+                          "contact": {
+                            "username": "v2_060000231003b20faec8c7e68d1dc1d2c907e431b0772a75256252d6e2fe0bf545fb729f3e4d@finder",
+                            "nickname": "Cheems开心果",
+                            "headUrl": "https://wx.qlogo.cn/finderhead/ver_1/x0PXJE0ibzcf4nv856JNnQy7uUzkDZILJBqyKJ8NkZA7DBxtXgPF7bp3A8iaprxP3VxX6XwlV1WNAiavAPzEL3Fu6Lj5AibXVOgzOTtRDaAhKYjxyGm0wKf85Yrib4zTnPBicV/132",
+                            "signature": "弘扬戏曲文化，国粹永不过时"
+                          },
+                          "objectDesc": {
+                            "description": "规则怪谈：大华一中(上)#规则怪谈#推理#cheems小剧场",
+                            "mediaType": 4
+                          },
+                          "objectNonceId": "1562255896845221197_0_0_125_32_0_a14b1d42-8ce8-11f1-bf1f-6bbede2b3b85",
+                          "createtime": 1785228703
+                        }
+                      ],
+                      "lastBuffer": "EPDJstMG",
+                      "continueFlag": 1,
+                      "recentNDays": 7
+                    },
+                    "payload": {
+                      "lastBuffer": ""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "未初始化": {
+        "description": "未初始化",
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 400,
+              "msg": "请先初始化客户端 socket 连接",
+              "data": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "创建视频号下载任务（兼容 wx_channels_api）",
+    "description": "接收 ChannelsObject 结构的原始视频号数据，后端自动处理 format_feed（类似 format_feed 逻辑）、链接拼接、文件名生成、spec 处理等。支持 video、picture、live 三种类型。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "内容 id（视频号 object id）"
+              },
+              "contact": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "视频号账号 username"
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "description": "视频号昵称"
+                  },
+                  "headUrl": {
+                    "type": "string",
+                    "description": "视频号头像 URL"
+                  }
+                }
+              },
+              "objectDesc": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "description": "标题/描述"
+                  },
+                  "mediaType": {
+                    "type": "integer",
+                    "description": "媒体类型（2=图片视频, 4=普通视频, 9=直播）"
+                  },
+                  "media": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "description": "媒体 URL"
+                        },
+                        "urlToken": {
+                          "type": "string",
+                          "description": "媒体 token"
+                        },
+                        "coverUrl": {
+                          "type": "string",
+                          "description": "封面 URL"
+                        },
+                        "decodeKey": {
+                          "type": "string",
+                          "description": "解密 key"
+                        },
+                        "spec": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "fileFormat": {
+                                "type": "string",
+                                "description": "视频规格名称"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "objectNonceId": {
+                "type": "string",
+                "description": "nonce id"
+              },
+              "source_url": {
+                "type": "string",
+                "description": "来源页面 URL（提供则直接使用）"
+              },
+              "type": {
+                "type": "string",
+                "description": "feed 类型：media、picture、live"
+              },
+              "liveInfo": {
+                "type": "object",
+                "description": "直播信息（live 类型时使用）"
+              },
+              "files": {
+                "type": "array",
+                "description": "图片列表（picture 类型时使用）"
+              },
+              "anchorContact": {
+                "type": "object",
+                "description": "主播信息（live 类型时使用）"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "创建结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "message": "创建下载任务成功",
+                    "task_id": "fqG2OhiJFRYpnELqZmPRW"
+                  }
+                }
+              },
+              "invalid": {
+                "summary": "参数不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "不合法的参数",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
