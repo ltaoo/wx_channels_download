@@ -1,0 +1,116 @@
+package manager
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+)
+
+// HTTPServer implementation
+type HTTPServer struct {
+	title    string
+	addr     string
+	status   ServerStatus
+	mux      http.Handler
+	server   *http.Server
+	disabled bool
+	mu       sync.RWMutex
+}
+
+func NewHTTPServer(title string, addr string) *HTTPServer {
+	return &HTTPServer{
+		title:  title,
+		addr:   addr,
+		status: StatusStopped,
+	}
+}
+
+func (s *HTTPServer) Addr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.addr
+}
+
+func (s *HTTPServer) SetAddr(addr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addr = addr
+}
+
+func (s *HTTPServer) SetHandler(handler http.Handler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mux = handler
+}
+
+func (s *HTTPServer) Disable() {
+	s.disabled = true
+}
+
+func (s *HTTPServer) Start() error {
+	if s.disabled {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.status == StatusRunning {
+		return fmt.Errorf("server is already %s", s.status)
+	}
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
+	s.status = StatusRunning
+	s.server = &http.Server{
+		Addr:    s.addr,
+		Handler: s.mux,
+	}
+
+	go func() {
+		// fmt.Printf("Server %s starting on addr %s\n", s.name, s.addr)
+		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+			s.mu.Lock()
+			s.status = StatusError
+			s.mu.Unlock()
+			fmt.Printf("%s error: %v\n", s.title, err)
+			return
+		}
+
+		s.mu.Lock()
+		s.status = StatusStopped
+		s.mu.Unlock()
+		fmt.Printf("%s stopped\n", s.title)
+	}()
+
+	return nil
+}
+
+func (s *HTTPServer) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.status != StatusRunning {
+		return nil
+	}
+
+	s.status = StatusStopping
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.server.Shutdown(ctx); err != nil {
+		s.status = StatusError
+		return err
+	}
+
+	return nil
+}
+
+func (s *HTTPServer) Status() ServerStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.status
+}

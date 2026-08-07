@@ -1,13 +1,12 @@
 package wxchannels
 
 import (
-	"fmt"
 	"strconv"
 
-	"wx_channel/pkg/configapi"
-)
+	"github.com/spf13/viper"
 
-var ConfigDeclaration = configapi.Declare("debug", "pagespy", "channel", "channels", "download", "api", "mp")
+	"wx_channel/internal/config"
+)
 
 type ChannelsConfig struct {
 	Version                             string         `json:"version"`
@@ -40,104 +39,42 @@ type ChannelsConfig struct {
 	FrontendVariables                   map[string]any `json:"-"`
 }
 
-func NewChannelsConfig(provider configapi.Provider, runtime configapi.Runtime) (*ChannelsConfig, error) {
-	var debug_config struct {
-		ShowError bool `json:"error"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "debug", &debug_config); err != nil {
-		return nil, fmt.Errorf("debug config: %w", err)
-	}
-	var pagespy_config struct {
-		Enabled  bool   `json:"enabled"`
-		Protocol string `json:"protocol"`
-		API      string `json:"api"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "pagespy", &pagespy_config); err != nil {
-		return nil, fmt.Errorf("pagespy config: %w", err)
-	}
-	var legacy_channel_config struct {
-		DisableLocationToHome bool `json:"disableLocationToHome"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "channel", &legacy_channel_config); err != nil {
-		return nil, fmt.Errorf("legacy channel config: %w", err)
-	}
-	var channels_config struct {
-		DisableLocationToHome bool `json:"disableLocationToHome"`
-		Download              struct {
-			DefaultHighest     bool `json:"defaultHighest"`
-			PauseWhenDownload  bool `json:"pauseWhenDownload"`
-			Frontend           bool `json:"frontend"`
-			ForceCheckAllFeeds bool `json:"forceCheckAllFeeds"`
-		} `json:"download"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "channels", &channels_config); err != nil {
-		return nil, fmt.Errorf("channels config: %w", err)
-	}
-	var download_config struct {
-		FilenameTemplate string `json:"filenameTemplate"`
-		MaxRunning       int    `json:"maxRunning"`
-		RemoteServer     struct {
-			Enabled  bool   `json:"enabled"`
-			Protocol string `json:"protocol"`
-			Hostname string `json:"hostname"`
-			Port     int    `json:"port"`
-		} `json:"remoteServer"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "download", &download_config); err != nil {
-		return nil, fmt.Errorf("download config: %w", err)
-	}
-	var api_config struct {
-		Protocol string `json:"protocol"`
-		Hostname string `json:"hostname"`
-		Port     int    `json:"port"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "api", &api_config); err != nil {
-		return nil, fmt.Errorf("api config: %w", err)
-	}
-	var mp_config struct {
-		Enabled      bool   `json:"enabled"`
-		RefreshToken string `json:"refreshToken"`
-		RemoteServer struct {
-			Protocol string `json:"protocol"`
-			Hostname string `json:"hostname"`
-			Port     int    `json:"port"`
-		} `json:"remoteServer"`
-	}
-	if err := ConfigDeclaration.Decode(provider, "mp", &mp_config); err != nil {
-		return nil, fmt.Errorf("official account config: %w", err)
-	}
-
+func NewChannelsConfig(c *config.Config) *ChannelsConfig {
 	settings := &ChannelsConfig{
-		Version:                             runtime.Version,
-		DebugShowError:                      debug_config.ShowError,
-		PagespyEnabled:                      pagespy_config.Enabled,
-		PageppyServerProtocol:               pagespy_config.Protocol,
-		PageppyServerAPI:                    pagespy_config.API,
-		ChannelsDisableLocationToHome:       legacy_channel_config.DisableLocationToHome || channels_config.DisableLocationToHome,
-		DownloadDefaultHighest:              channels_config.Download.DefaultHighest,
-		DownloadFilenameTemplate:            download_config.FilenameTemplate,
-		DownloadPauseWhenDownload:           channels_config.Download.PauseWhenDownload,
-		DownloadInFrontend:                  channels_config.Download.Frontend,
-		DownloadMaxRunning:                  download_config.MaxRunning,
-		DownloadForceCheckAllFeeds:          channels_config.Download.ForceCheckAllFeeds,
-		APIServerProtocol:                   api_config.Protocol,
-		APIServerHostname:                   api_config.Hostname,
-		APIServerPort:                       api_config.Port,
-		APIServerAddr:                       api_config.Hostname + ":" + strconv.Itoa(api_config.Port),
-		RemoteServerEnabled:                 download_config.RemoteServer.Enabled,
-		RemoteServerProtocol:                download_config.RemoteServer.Protocol,
-		RemoteServerHostname:                download_config.RemoteServer.Hostname,
-		RemoteServerPort:                    download_config.RemoteServer.Port,
-		OfficialAccountServerDisabled:       !mp_config.Enabled,
-		OfficialAccountServerRefreshToken:   mp_config.RefreshToken,
-		OfficialAccountRemoteServerProtocol: mp_config.RemoteServer.Protocol,
-		OfficialAccountRemoteServerHostname: mp_config.RemoteServer.Hostname,
-		OfficialAccountRemoteServerPort:     mp_config.RemoteServer.Port,
-		InjectGlobalScript:                  runtime.GlobalScriptContent,
-		InjectContentScript:                 runtime.ContentScriptContent,
+		Version:                             c.Version,
+		DebugShowError:                      viper.GetBool("debug.error"),
+		PagespyEnabled:                      viper.GetBool("pagespy.enabled"),
+		PageppyServerProtocol:               viper.GetString("pagespy.protocol"),
+		PageppyServerAPI:                    viper.GetString("pagespy.api"),
+		ChannelsDisableLocationToHome:       viper.GetBool("channel.disableLocationToHome"),
+		DownloadDefaultHighest:              viper.GetBool("channels.download.defaultHighest"),
+		DownloadFilenameTemplate:            viper.GetString("download.filenameTemplate"),
+		DownloadPauseWhenDownload:           viper.GetBool("channels.download.pauseWhenDownload"),
+		DownloadInFrontend:                  viper.GetBool("channels.download.frontend"),
+		DownloadMaxRunning:                  viper.GetInt("download.maxRunning"),
+		DownloadForceCheckAllFeeds:          viper.GetBool("channels.download.forceCheckAllFeeds"),
+		APIServerProtocol:                   viper.GetString("api.protocol"),
+		APIServerHostname:                   viper.GetString("api.hostname"),
+		APIServerPort:                       viper.GetInt("api.port"),
+		APIServerAddr:                       viper.GetString("api.hostname") + ":" + strconv.Itoa(viper.GetInt("api.port")),
+		RemoteServerEnabled:                 viper.GetBool("download.remoteServer.enabled"),
+		RemoteServerProtocol:                viper.GetString("download.remoteServer.protocol"),
+		RemoteServerHostname:                viper.GetString("download.remoteServer.hostname"),
+		RemoteServerPort:                    viper.GetInt("download.remoteServer.port"),
+		OfficialAccountServerDisabled:       !viper.GetBool("mp.enabled"),
+		OfficialAccountServerRefreshToken:   viper.GetString("mp.refreshToken"),
+		OfficialAccountRemoteServerProtocol: viper.GetString("mp.remoteServer.protocol"),
+		OfficialAccountRemoteServerHostname: viper.GetString("mp.remoteServer.hostname"),
+		OfficialAccountRemoteServerPort:     viper.GetInt("mp.remoteServer.port"),
 		FrontendVariables:                   make(map[string]any),
 	}
-	return settings, nil
+	if viper.GetBool("channels.disableLocationToHome") {
+		settings.ChannelsDisableLocationToHome = true
+	}
+
+	settings.InjectGlobalScript = c.GlobalScriptContent
+	settings.InjectContentScript = c.ContentScriptContent
+	return settings
 }
 
 func (c *ChannelsConfig) AddVariable(key string, value any) {

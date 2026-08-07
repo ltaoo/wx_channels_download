@@ -17,8 +17,10 @@ import (
 	"wx_channel/pkg/util"
 )
 
+const platformIDWxChannels = "wxchannels"
+
 // PlatformID is the platform identifier for wechat channels.
-const PlatformID = "wxchannels"
+const PlatformID = platformIDWxChannels
 
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {

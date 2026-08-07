@@ -2,7 +2,7 @@ package wxchannelsadapter
 
 import (
 	"wx_channel/internal/adapter"
-	"wx_channel/pkg/configapi"
+	"wx_channel/internal/config"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
@@ -12,12 +12,8 @@ type InterceptorPluginConfig struct {
 	settings *wxchannels.ChannelsConfig
 }
 
-func NewConfig(provider configapi.Provider, runtime configapi.Runtime) (*InterceptorPluginConfig, error) {
-	settings, err := wxchannels.NewChannelsConfig(provider, runtime)
-	if err != nil {
-		return nil, err
-	}
-	return &InterceptorPluginConfig{settings: settings}, nil
+func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
+	return &InterceptorPluginConfig{settings: wxchannels.NewChannelsConfig(cfg)}
 }
 
 // GetPlugins returns the video-channel scraper plugins with callbacks wired

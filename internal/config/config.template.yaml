@@ -24,6 +24,10 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+admin:
+  hostname: "127.0.0.1"
+  port: 2021
+
 update:
   proxy: ""
   mirror: ""
@@ -36,6 +40,7 @@ db:
   password: ""
   filename: ""
   filepath: "%CWD%/data.db"
+  migration: "%CWD%/migrations"
 
 proxy:
   system: true

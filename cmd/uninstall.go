@@ -4,30 +4,30 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
+	"github.com/spf13/cobra"
 
 	"wx_channel/internal/config"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
 )
 
-func run_uninstall(args []string) error {
-	flags := new_command_flag_set("uninstall", "删除初始化时自动安装的证书")
-	var config_filepath string
-	add_config_flags(flags, &config_filepath)
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if err := reject_command_args(flags); err != nil {
-		return err
-	}
-	cfg := config.New(config_filepath, nil)
-	if err := cfg.LoadConfig(); err != nil {
-		return err
-	}
-	uninstall_certificate_command(&UninstallCertificateCommandArgs{
-		CertFiles: config.LoadCertFiles(cfg),
-	})
-	return nil
+var uninstall_certificate_cmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "删除证书",
+	Long:  "删除初始化时自动安装的证书",
+	Run: func(cmd *cobra.Command, args []string) {
+		command := cmd.Name()
+		if command != "uninstall" {
+			return
+		}
+		uninstall_certificate_command(&UninstallCertificateCommandArgs{
+			CertFiles: config.LoadCertFiles(),
+		})
+	},
+}
+
+func init() {
+	root_cmd.AddCommand(uninstall_certificate_cmd)
 }
 
 type UninstallCertificateCommandArgs struct {

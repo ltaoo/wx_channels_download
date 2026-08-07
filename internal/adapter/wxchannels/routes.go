@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/config"
 	"wx_channel/internal/util"
-	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
@@ -28,10 +28,12 @@ type RouteRegistrar interface {
 // scraper client lifecycle.
 type WebsocketRoutes struct {
 	client *wxchannels.ChannelsClient
+	cfg    *config.Config
 }
 
-func NewWebsocketRoutes(config_provider configapi.Provider) *WebsocketRoutes {
-	return &WebsocketRoutes{client: wxchannels.NewChannelsClient(config_provider)}
+func NewWebsocketRoutes(refreshInterval int, cfg *config.Config) *WebsocketRoutes {
+	client := wxchannels.NewChannelsClient(refreshInterval, cfg)
+	return &WebsocketRoutes{client: client, cfg: cfg}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -76,14 +78,18 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 		return
 	}
 
-	raw_value, err := r.client.Fetch(wxchannels.FetchParams{URL: shareUrl})
-	if err != nil {
-		util.Err(ctx, 400, err.Error())
+	cookie := ""
+	if r.cfg != nil {
+		cookie = r.cfg.GetString("cloudflare.sphCookie")
+	}
+	if cookie == "" {
+		util.Err(ctx, 400, "cloudflare.sphCookie not configured")
 		return
 	}
-	rawResp, ok := raw_value.(json.RawMessage)
-	if !ok {
-		util.Err(ctx, 500, "unexpected channels fetch response")
+
+	rawResp, err := wxchannels.FetchVideoProfileWithShareUrl(shareUrl, cookie)
+	if err != nil {
+		util.Err(ctx, 400, err.Error())
 		return
 	}
 

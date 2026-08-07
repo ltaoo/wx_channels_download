@@ -2,7 +2,6 @@ package shuba69adapter
 
 import (
 	"wx_channel/internal/config"
-	"wx_channel/pkg/configapi"
 )
 
 // Shuba69PluginConfig implements config.Configurable for 69shuba plugin config.
@@ -18,20 +17,20 @@ type Shuba69PluginConfig struct {
 
 func (c *Shuba69PluginConfig) ConfigNamespace() string { return "69shuba" }
 
-func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
-	return []configapi.Item{
+func (c *Shuba69PluginConfig) ConfigSchema() []config.ConfigItem {
+	return []config.ConfigItem{
 		{
 			Key:         "cookie",
-			Type:        configapi.TypeText,
+			Type:        config.ConfigTypeText,
 			Default:     "",
 			Description: "69书吧请求 Cookie，用于访问 Cloudflare 验证后的页面",
 			Title:       "69书吧 Cookie",
 			Group:       "69shuba",
-			Reload:      configapi.ReloadHot,
+			HotReload:   true,
 		},
 		{
 			Key:         "fetcher",
-			Type:        configapi.TypeSelect,
+			Type:        config.ConfigTypeSelect,
 			Default:     "clawreq",
 			Options:     []string{"clawreq", "http", "cdp", "sandbox"},
 			Description: "69书吧 HTML 抓取方式，clawreq 使用浏览器指纹 HTTP client，http 使用 Go client，cdp 使用 CDP 服务地址，sandbox 使用 webarchive 沙箱浏览器 API",
@@ -40,7 +39,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 		},
 		{
 			Key:         "cdpEndpoint",
-			Type:        configapi.TypeString,
+			Type:        config.ConfigTypeString,
 			Default:     "http://127.0.0.1:9222",
 			Description: "CDP 服务地址，仅 fetcher=cdp 时使用；可以是本机浏览器或容器暴露的 CDP HTTP/WS 地址",
 			Title:       "69书吧 CDP 地址",
@@ -48,7 +47,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 		},
 		{
 			Key:         "cdpTimeout",
-			Type:        configapi.TypeInt,
+			Type:        config.ConfigTypeInt,
 			Default:     30,
 			Description: "69书吧 CDP 单次页面抓取超时时间（秒）",
 			Title:       "69书吧 CDP 超时",
@@ -56,7 +55,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 		},
 		{
 			Key:         "cdpWait",
-			Type:        configapi.TypeInt,
+			Type:        config.ConfigTypeInt,
 			Default:     8,
 			Description: "69书吧 CDP 页面加载完成后的额外等待时间（秒），用于等待 Cloudflare 跳转",
 			Title:       "69书吧 CDP 等待",
@@ -64,7 +63,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 		},
 		{
 			Key:         "sandboxAPIBaseURL",
-			Type:        configapi.TypeString,
+			Type:        config.ConfigTypeString,
 			Default:     "http://127.0.0.1:2021/api/v1",
 			Description: "webarchive 风格沙箱 API 地址，仅 fetcher=sandbox 时使用",
 			Title:       "69书吧沙箱 API",
@@ -72,7 +71,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 		},
 		{
 			Key:         "sandboxID",
-			Type:        configapi.TypeString,
+			Type:        config.ConfigTypeString,
 			Default:     "",
 			Description: "用于抓取 69书吧页面的沙箱 ID，仅 fetcher=sandbox 时使用",
 			Title:       "69书吧沙箱 ID",
@@ -81,7 +80,7 @@ func (c *Shuba69PluginConfig) ConfigSchema() []configapi.Item {
 	}
 }
 
-func (c *Shuba69PluginConfig) ApplyConfig(sub *config.ScopedConfig) error {
+func (c *Shuba69PluginConfig) ApplyConfig(sub *config.SubViper) error {
 	c.Cookie = sub.GetString("cookie")
 	c.Fetcher = sub.GetString("fetcher")
 	c.CDPEndpoint = sub.GetString("cdpEndpoint")

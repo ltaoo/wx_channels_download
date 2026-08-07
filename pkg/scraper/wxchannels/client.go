@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -16,8 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
+	"wx_channel/internal/config"
 	"wx_channel/pkg/cache"
-	"wx_channel/pkg/configapi"
 )
 
 var channels_ws_upgrader = websocket.Upgrader{
@@ -37,16 +36,6 @@ type FetchParams struct {
 	URL string `json:"url"`
 }
 
-type ChannelsClientConfig struct {
-	RefreshInterval int    `json:"refreshInterval"`
-	YuanbaoCookie   string `json:"sphCookie"`
-	revision        uint64
-}
-
-// ClientConfigDeclaration explicitly lists the runtime configuration consumed
-// by ChannelsClient.
-var ClientConfigDeclaration = configapi.Declare("channels", "cloudflare")
-
 type ChannelsClient struct {
 	ws_clients       map[*Client]bool
 	ws_mu            sync.RWMutex
@@ -55,44 +44,22 @@ type ChannelsClient struct {
 	requests_mu      sync.RWMutex
 	cache            *cache.Cache
 	req_seq          uint64
-	config_provider  configapi.Provider
-	runtime_config   atomic.Pointer[ChannelsClientConfig]
-	config_apply_mu  sync.Mutex
-	config_change_mu sync.Mutex
-	config_changed   chan struct{}
-	unsubscribes     []func()
-	stop_once        sync.Once
+	refresh_interval int
+	cfg              *config.Config
 	OnConnected      func(client *Client)
 	OnDisconnected   func(client *Client)
 	OnMessage        func(client *Client, message []byte)
 }
 
-func NewChannelsClient(config_provider configapi.Provider) *ChannelsClient {
-	c := &ChannelsClient{
-		ws_clients:      make(map[*Client]bool),
-		requests:        make(map[string]chan ClientWebsocketResponse),
-		cache:           cache.New(),
-		req_seq:         uint64(time.Now().UnixNano()),
-		config_provider: config_provider,
-		config_changed:  make(chan struct{}),
+func NewChannelsClient(refresh_interval int, cfg *config.Config) *ChannelsClient {
+	return &ChannelsClient{
+		ws_clients:       make(map[*Client]bool),
+		requests:         make(map[string]chan ClientWebsocketResponse),
+		cache:            cache.New(),
+		req_seq:          uint64(time.Now().UnixNano()),
+		refresh_interval: refresh_interval,
+		cfg:              cfg,
 	}
-	c.runtime_config.Store(&ChannelsClientConfig{})
-	if config_provider != nil {
-		unsubscribe, err := ClientConfigDeclaration.Subscribe(config_provider, func(uint64) {
-			if err := c.reload_runtime_config(); err != nil {
-				log.Printf("wxchannels: reload runtime config: %v", err)
-			}
-		})
-		if err != nil {
-			log.Printf("wxchannels: subscribe runtime config: %v", err)
-		} else {
-			c.unsubscribes = append(c.unsubscribes, unsubscribe)
-		}
-		if err := c.reload_runtime_config(); err != nil {
-			log.Printf("wxchannels: load runtime config: %v", err)
-		}
-	}
-	return c
 }
 
 func (c *ChannelsClient) Fetch(params FetchParams) (any, error) {
@@ -108,8 +75,10 @@ func (c *ChannelsClient) Fetch(params FetchParams) (any, error) {
 }
 
 func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, error) {
-	cfg := c.current_config()
-	cookie := strings.TrimSpace(cfg.YuanbaoCookie)
+	if c.cfg == nil {
+		return nil, errors.New("config is not initialized")
+	}
+	cookie := strings.TrimSpace(c.cfg.GetString("cloudflare.sphCookie"))
 	if cookie == "" {
 		return nil, errors.New("cloudflare.sphCookie not configured")
 	}
@@ -118,123 +87,6 @@ func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, erro
 
 func (c *ChannelsClient) fetch_profile_with_channels_client(raw_url string) (any, error) {
 	return nil, nil
-}
-
-func (c *ChannelsClient) reload_runtime_config() error {
-	if c.config_provider == nil {
-		return errors.New("config provider is not initialized")
-	}
-
-	var channels_config struct {
-		RefreshInterval int `json:"refreshInterval"`
-	}
-	channels_snapshot, err := ClientConfigDeclaration.Snapshot(c.config_provider, "channels")
-	if err != nil {
-		return fmt.Errorf("load channels config: %w", err)
-	}
-	if err := channels_snapshot.Decode(&channels_config); err != nil {
-		return fmt.Errorf("decode channels config: %w", err)
-	}
-	if channels_config.RefreshInterval < 0 {
-		return errors.New("channels.refreshInterval cannot be negative")
-	}
-
-	var cloudflare_config struct {
-		YuanbaoCookie string `json:"sphCookie"`
-	}
-	cloudflare_snapshot, err := ClientConfigDeclaration.Snapshot(c.config_provider, "cloudflare")
-	if err != nil {
-		return fmt.Errorf("load cloudflare config: %w", err)
-	}
-	if err := cloudflare_snapshot.Decode(&cloudflare_config); err != nil {
-		return fmt.Errorf("decode cloudflare config: %w", err)
-	}
-
-	revision := channels_snapshot.Revision()
-	if cloudflare_snapshot.Revision() > revision {
-		revision = cloudflare_snapshot.Revision()
-	}
-	return c.apply_runtime_config(ChannelsClientConfig{
-		RefreshInterval: channels_config.RefreshInterval,
-		YuanbaoCookie:   cloudflare_config.YuanbaoCookie,
-		revision:        revision,
-	})
-}
-
-func (c *ChannelsClient) apply_runtime_config(next ChannelsClientConfig) error {
-	if next.RefreshInterval < 0 {
-		return errors.New("channels.refreshInterval cannot be negative")
-	}
-	c.config_apply_mu.Lock()
-	defer c.config_apply_mu.Unlock()
-	current := c.current_config()
-	if next.revision != 0 && next.revision < current.revision {
-		return nil
-	}
-
-	next_copy := next
-	c.config_change_mu.Lock()
-	c.runtime_config.Store(&next_copy)
-	close(c.config_changed)
-	c.config_changed = make(chan struct{})
-	c.config_change_mu.Unlock()
-	return nil
-}
-
-func (c *ChannelsClient) current_config() ChannelsClientConfig {
-	cfg := c.runtime_config.Load()
-	if cfg == nil {
-		return ChannelsClientConfig{}
-	}
-	return *cfg
-}
-
-func (c *ChannelsClient) runtime_config_state() (ChannelsClientConfig, <-chan struct{}) {
-	c.config_change_mu.Lock()
-	defer c.config_change_mu.Unlock()
-	return c.current_config(), c.config_changed
-}
-
-func (c *ChannelsClient) refresh_channels(client *Client, done <-chan struct{}) {
-	for {
-		cfg, config_changed := c.runtime_config_state()
-		if cfg.RefreshInterval <= 0 {
-			select {
-			case <-config_changed:
-				continue
-			case <-done:
-				return
-			}
-		}
-
-		timer := time.NewTimer(time.Duration(cfg.RefreshInterval) * time.Second)
-		select {
-		case <-timer.C:
-			c.ws_mu.RLock()
-			_, available := c.ws_clients[client]
-			c.ws_mu.RUnlock()
-			if !available {
-				return
-			}
-			_ = c.ReloadChannels()
-		case <-config_changed:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			continue
-		case <-done:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			return
-		}
-	}
 }
 
 func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
@@ -253,11 +105,28 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		c.OnConnected(client)
 	}
 
-	client_done := make(chan struct{})
-	go c.refresh_channels(client, client_done)
+	// Periodic refresh logic
+	refresh_interval := c.refresh_interval
+	if c.refresh_interval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(refresh_interval) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					c.ws_mu.RLock()
+					if _, ok := c.ws_clients[client]; !ok {
+						c.ws_mu.RUnlock()
+						return
+					}
+					c.ws_mu.RUnlock()
+					c.ReloadChannels()
+				}
+			}
+		}()
+	}
 
 	defer func() {
-		close(client_done)
 		removed := false
 		c.ws_mu.Lock()
 		if _, ok := c.ws_clients[client]; ok {
@@ -290,12 +159,6 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	}
 }
 func (c *ChannelsClient) Stop() {
-	c.stop_once.Do(func() {
-		for _, unsubscribe := range c.unsubscribes {
-			unsubscribe()
-		}
-		c.unsubscribes = nil
-	})
 	c.ws_mu.Lock()
 	for client := range c.ws_clients {
 		close(client.Send)

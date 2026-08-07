@@ -18,7 +18,7 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
-	"wx_channel/pkg/scraper/wxchannels"
+	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 )
 
@@ -36,7 +36,7 @@ func (c *APIClient) handlePlay(ctx *gin.Context) {
 		return
 	}
 	decryptKeyStr := ctx.Query("key")
-	decryptor := wxchannels.NewChannelsVideoDecryptor()
+	decryptor := channels.NewChannelsVideoDecryptor()
 	if decryptKeyStr != "" {
 		decryptKey, err := strconv.ParseUint(decryptKeyStr, 0, 64)
 		if err != nil {

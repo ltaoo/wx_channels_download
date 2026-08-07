@@ -5,8 +5,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"wx_channel/internal/config"
 	"wx_channel/internal/util"
-	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/scraper/wxmp"
 )
 
@@ -26,17 +26,13 @@ type Routes struct {
 	client *wxmp.OfficialAccountClient
 }
 
-func NewRoutes(provider configapi.Provider, runtime configapi.Runtime, logger *zerolog.Logger, db *gorm.DB) (*Routes, error) {
-	if provider == nil || logger == nil {
-		return &Routes{}, nil
+func NewRoutes(cfg *config.Config, logger *zerolog.Logger, db *gorm.DB) *Routes {
+	if cfg == nil || logger == nil {
+		return &Routes{}
 	}
-	cfg, err := wxmp.NewOfficialAccountConfig(provider, runtime)
-	if err != nil {
-		return nil, err
-	}
-	client := wxmp.NewOfficialAccountClient(cfg, logger)
+	client := wxmp.NewOfficialAccountClient(wxmp.NewOfficialAccountConfig(cfg), logger)
 	client.SetDB(db)
-	return &Routes{client: client}, nil
+	return &Routes{client: client}
 }
 
 // RegisterRoutes installs the previously local-only official-account routes.

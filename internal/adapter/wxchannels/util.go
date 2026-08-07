@@ -85,10 +85,8 @@ func ObjectTitle(obj *wxchannels.ChannelsObject) string {
 	return strconv.FormatInt(time.Now().Unix(), 10)
 }
 
-func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
-
 // DecryptKey exposes the legacy channels conversion capability through the
-// registered adapter, so callers do not need to import this package.
+// registered handler, so callers do not need to import this package.
 func (a *ChannelsAdapter) DecryptKey(contentJSON json.RawMessage) (int, error) {
 	var obj wxchannels.ChannelsObject
 	if err := json.Unmarshal(contentJSON, &obj); err != nil {

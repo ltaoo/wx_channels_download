@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
 )
@@ -19,22 +17,7 @@ func init() {
 	adapter.Register(&handler{})
 }
 
-type handler struct {
-	config_mu       sync.RWMutex
-	config_provider configapi.Provider
-}
-
-func (h *handler) set_config_provider(provider configapi.Provider) {
-	h.config_mu.Lock()
-	h.config_provider = provider
-	h.config_mu.Unlock()
-}
-
-func (h *handler) current_config_provider() configapi.Provider {
-	h.config_mu.RLock()
-	defer h.config_mu.RUnlock()
-	return h.config_provider
-}
+type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
@@ -410,7 +393,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 	_ = json.Unmarshal(contentJSON, &input)
 
-	client := zhihu.NewClientWithConfig(zhihu.ClientConfig{ConfigProvider: h.current_config_provider()})
+	client := zhihu.NewClient("")
 
 	var htmlContent string
 	if page != nil {

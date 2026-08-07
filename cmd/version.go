@@ -2,20 +2,27 @@ package cmd
 
 import (
 	"fmt"
+
+	"github.com/spf13/cobra"
 )
 
-func run_version(version string, args []string) error {
-	flags := new_command_flag_set("version", "查看当前应用版本")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if err := reject_command_args(flags); err != nil {
-		return err
-	}
-	version_command(version)
-	return nil
+var version_cmd = &cobra.Command{
+	Use:   "version",
+	Short: "查看版本",
+	Long:  "查看当前应用版本",
+	Run: func(cmd *cobra.Command, args []string) {
+		command := cmd.Name()
+		if command != "version" {
+			return
+		}
+		version_command()
+	},
 }
 
-func version_command(version string) {
-	fmt.Println(version)
+func init() {
+	root_cmd.AddCommand(version_cmd)
+}
+
+func version_command() {
+	fmt.Println(Version)
 }

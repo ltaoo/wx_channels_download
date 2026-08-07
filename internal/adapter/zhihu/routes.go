@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/util"
-	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -18,13 +17,12 @@ type RouteRegistrar interface {
 
 // Routes owns the zhihu HTTP endpoints.
 type Routes struct {
-	workdir         string
-	config_provider configapi.Provider
+	workdir string
 }
 
 // NewRoutes creates a Routes instance with the given workdir (used to locate cookies.json).
-func NewRoutes(workdir string, config_provider configapi.Provider) *Routes {
-	return &Routes{workdir: workdir, config_provider: config_provider}
+func NewRoutes(workdir string) *Routes {
+	return &Routes{workdir: workdir}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -48,10 +46,7 @@ func (r *Routes) HandleFetch(ctx *gin.Context) {
 
 	log.Printf("[zhihu] HandleFetch called with url=%s", rawURL)
 
-	client := zhihu.NewClientWithConfig(zhihu.ClientConfig{
-		WorkDir:        r.workdir,
-		ConfigProvider: r.config_provider,
-	})
+	client := zhihu.NewClient(r.workdir)
 	html, err := client.BuildHTMLFromURL(rawURL)
 	if err != nil {
 		log.Printf("[zhihu] BuildHTMLFromURL failed: %v", err)

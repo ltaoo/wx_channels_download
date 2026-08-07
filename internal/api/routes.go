@@ -7,21 +7,28 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	// "wx_channel/pkg/scraper/douban"
+	// "wx_channel/pkg/scraper/instagram"
+	// "wx_channel/pkg/scraper/qidian"
+	// "wx_channel/pkg/scraper/weibo"
+	// "wx_channel/pkg/scraper/xiaohongshu"
 )
 
 func (c *APIClient) SetupRoutes() {
-	c.engine.GET("/api/config", c.handle_config_view)
-	c.engine.GET("/api/config/schema", c.handle_config_schema)
-	c.engine.PATCH("/api/config", c.handle_config_update)
 	// favicon
-	c.engine.GET("/favicon.ico", c.handle_favicon)
+	c.engine.GET("/favicon.ico", c.handleFavicon)
 	c.setupStaticAssetRoutes()
-	c.engine.GET("/", c.handle_index)
-	c.engine.GET("/download", c.handle_download_page)
-	c.engine.GET("/browsehistory", c.handle_browse_history_page)
-	c.engine.GET("/content", c.handle_content_page)
+	c.engine.GET("/", c.handleIndex)
+	c.engine.GET("/download", c.handleDownloadPage)
+	c.engine.GET("/browsehistory", c.handleBrowseHistoryPage)
+	c.engine.GET("/content", c.handleContentPage)
 	c.engine.GET("/preview", c.handlePreviewPage)
-	c.engine.GET("/channels", c.handle_channels_page)
+	c.engine.GET("/channels", c.handleChannelsPage)
+	// Official account endpoints
+	// c.engine.GET("/ws/mp", c.official.HandleWebsocket)
+	// c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
+	// c.engine.POST("/api/mp/refresh_with_frontend", c.official.HandleRefreshOfficialAccountWithFrontend)
+	// c.engine.GET("/api/mp/ws_pool", c.official.HandleFetchOfficialAccountClients)
 	// File transfer helper endpoints
 	c.engine.GET("/filehelper", c.filehelper.HandlePage)
 	c.engine.GET("/api/filehelper/qrcode", c.filehelper.HandleGetQRCode)
@@ -41,10 +48,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/file", c.handleFetchFile)
 	c.engine.POST("/api/v1/fs/list", c.handleListFiles)
 	c.engine.POST("/api/v1/fs/search", c.handleSearchFiles)
-	c.engine.GET("/play", c.handlePlay)
-	c.engine.GET("/file", c.handleStreamVideo)
 
-	// c.engine.GET("/migration", c.handle_migration_page)
+	// c.engine.GET("/migration", c.handleMigrationPage)
 	// c.engine.POST("/api/v1/migration/load", c.handleMigrationLoad)
 	// c.engine.POST("/api/v1/migration/table", c.handleMigrationTable)
 	// c.engine.POST("/api/v1/migration/file/list", c.handleMigrationFileList)
@@ -72,11 +77,39 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/v1/download_task/detail", c.handleDownloadTaskDetail)
 	c.engine.GET("/ws/v1/download_task", c.handleDownloadTaskWS)
 
+	// c.engine.GET("/api/influencers", c.handleCompatInfluencerList)
+	// c.engine.GET("/api/influencers/:id", c.handleCompatInfluencerGet)
+	// c.engine.POST("/api/influencers", c.handleCompatInfluencerCreate)
+	// c.engine.PUT("/api/influencers/:id", c.handleCompatInfluencerUpdate)
+	// c.engine.GET("/influencers", c.handleCompatInfluencerList)
+	// c.engine.GET("/influencers/:id", c.handleCompatInfluencerGet)
+	// c.engine.POST("/influencers", c.handleCompatInfluencerCreate)
+	// c.engine.PUT("/influencers/:id", c.handleCompatInfluencerUpdate)
+
 	c.engine.GET("/api/account/list", c.handleCompatAccountList)
+	// c.engine.POST("/api/account/synchronize", c.handleCompatAccountSynchronize)
+	// c.engine.POST("/account/list", c.handleCompatAccountList)
+	// c.engine.POST("/account/synchronize", c.handleCompatAccountSynchronize)
 
 	c.engine.GET("/api/content/list", c.handleCompatContentList)
 	c.engine.GET("/api/content/detail", c.handleContentDetail)
+	// c.engine.POST("/content/list", c.handleCompatContentList)
+	// c.engine.POST("/api/video/list", c.handleCompatVideoList)
+	// c.engine.POST("/video/list", c.handleCompatVideoList)
 
+	// c.engine.GET("/api/channels/search/author", c.handleCompatChannelsSearchAuthor)
+	// c.engine.GET("/api/channels/author/videos", c.handleCompatChannelsAuthorVideos)
+	// c.engine.GET("/api/channels/media/profile", c.handleCompatChannelsMediaProfile)
+	// c.engine.GET("/api/channels/task/status", c.handleCompatChannelsTaskStatus)
+	// c.engine.GET("/api/channels/task/start", c.handleCompatChannelsTaskStart)
+	// c.engine.GET("/channels/search/author", c.handleCompatChannelsSearchAuthor)
+	// c.engine.GET("/channels/author/videos", c.handleCompatChannelsAuthorVideos)
+	// c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
+	// c.engine.GET("/channels/task/status", c.handleCompatChannelsTaskStatus)
+	// c.engine.GET("/channels/task/start", c.handleCompatChannelsTaskStart)
+	// File operations
+	c.engine.GET("/play", c.handlePlay)
+	c.engine.GET("/file", c.handleStreamVideo)
 	c.engine.GET("/imgproxy", c.handleImgProxy)
 	// Official account endpoints (both remote and local)
 	// c.engine.GET("/api/mp/list", c.official.HandleFetchList)
@@ -86,10 +119,20 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/api/mp/refresh", c.official.HandleRefreshEvent)
 	// c.engine.POST("/api/mp/download_all", c.handleDownloadAllOfficialAccountMsgs)
 	// c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
+	// c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
+	// c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
+	// c.engine.GET("/xiaohongshu/proxy", xiaohongshu.HandleImageProxy)
+	// c.engine.GET("/bilibili/proxy", contentbilibili.HandleImageProxy)
+	// c.engine.GET("/douban/proxy", douban.HandleImageProxy)
+	// c.engine.GET("/instagram/proxy", instagram.HandleImageProxy)
+	// c.engine.GET("/qidian/proxy", qidian.HandleImageProxy)
+	// c.engine.GET("/weibo/proxy", weibo.HandleImageProxy)
 	// Other endpoints
-	c.engine.POST("/report", c.handle_frontend_report)
-	// Admin endpoints
-	c.engine.GET("/api/status", c.handle_status)
+	c.engine.POST("/report", c.handleFrontendReport)
+	c.engine.GET("/api/status", c.handleStatus)
+	c.engine.POST("/api/service/start", c.handleServiceStart)
+	c.engine.POST("/api/service/stop", c.handleServiceStop)
+	c.engine.POST("/api/service/config", c.handleServiceConfigUpdate)
 	c.engine.GET("/api/proxy/status", c.handleProxyStatus)
 	c.engine.POST("/api/proxy/config", c.handleProxyConfigUpdate)
 	c.engine.POST("/api/proxy/restart", c.handleProxyRestart)
@@ -106,6 +149,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/certificate/root/status", c.handleRootCertificateStatus)
 	c.engine.POST("/api/certificate/root/install", c.handleRootCertificateInstall)
 	c.engine.POST("/api/certificate/root/uninstall", c.handleRootCertificateUninstall)
+	// c.engine.GET("/api/test", c.handleTest)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
@@ -113,39 +157,50 @@ func (c *APIClient) SetupRoutes() {
 	})
 }
 
-func (c *APIClient) handle_favicon(ctx *gin.Context) {
+func (c *APIClient) handleFavicon(ctx *gin.Context) {
 	ctx.Header("Content-Type", "image/png")
 	ctx.Header("Cache-Control", "public, max-age=86400")
 	ctx.File("build/winres/icon.png")
 }
 
-func (c *APIClient) handle_status(ctx *gin.Context) {
-	api_config := c.current_api_endpoint_config()
-	proxy_config := c.current_proxy_config()
-	api_addr := fmt.Sprintf("%s:%d", api_config.Hostname, api_config.Port)
-	proxy_addr := fmt.Sprintf("%s:%d", proxy_config.Hostname, proxy_config.Port)
-	api_status := "stopped"
-	if check_port(api_addr) {
-		api_status = "running"
+func (c *APIClient) handleStatus(ctx *gin.Context) {
+	apiHost := c.cfg.Hostname
+	apiPort := c.cfg.Port
+	proxyAddr := "127.0.0.1:2023"
+	if c.cfg.Original != nil {
+		if host := c.cfg.Original.GetString("api.hostname"); host != "" {
+			apiHost = host
+		}
+		if port := c.cfg.Original.GetInt("api.port"); port > 0 {
+			apiPort = port
+		}
+		host := c.cfg.Original.GetString("proxy.hostname")
+		port := c.cfg.Original.GetInt("proxy.port")
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		if port <= 0 {
+			port = 2023
+		}
+		proxyAddr = fmt.Sprintf("%s:%d", host, port)
 	}
-	proxy_service := c.proxyServiceStatusData()
-	proxy_status, _ := proxy_service["status"].(string)
-	if proxy_status == "" {
-		proxy_status = "stopped"
+	apiAddr := fmt.Sprintf("%s:%d", apiHost, apiPort)
+	statuses := gin.H{}
+	for name, status := range c.serviceStatusesMap() {
+		statuses[name] = string(status)
 	}
-	statuses := gin.H{"api": api_status, "interceptor": proxy_status}
 	data := gin.H{
 		"version":         c.cfg.Version,
 		"server_statuses": statuses,
 		"api": gin.H{
-			"addr":      api_addr,
-			"listening": api_status == "running",
-			"status":    api_status,
+			"addr":      apiAddr,
+			"listening": checkPort(apiAddr),
+			"status":    statuses["api"],
 		},
 		"proxy": gin.H{
-			"addr":      proxy_addr,
-			"listening": proxy_service["listening"],
-			"status":    proxy_status,
+			"addr":      proxyAddr,
+			"listening": checkPort(proxyAddr),
+			"status":    statuses["interceptor"],
 		},
 	}
 	ctx.JSON(200, gin.H{
@@ -155,7 +210,7 @@ func (c *APIClient) handle_status(ctx *gin.Context) {
 	})
 }
 
-func check_port(addr string) bool {
+func checkPort(addr string) bool {
 	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 	if err != nil {
 		return false

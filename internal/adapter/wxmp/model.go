@@ -35,8 +35,6 @@ func init() {
 	wechatHeaders = string(b)
 }
 
-func (a *OfficialAccountAdapter) PlatformID() string { return PlatformID }
-
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
 	return PlatformID + ":" + externalID

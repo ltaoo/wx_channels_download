@@ -7,6 +7,8 @@ const (
 	TypeProxyCommand          = "proxy.command"
 	TypeProxyStatusChanged    = "proxy.status_changed"
 	TypeBrowseHistoryRecorded = "browsehistory.recorded"
+	TypeServiceCommand        = "service.command"
+	TypeServiceStatusChanged  = "service.status_changed"
 	TypeDownloadTaskFinished  = "downloadtask.finished"
 )
 
@@ -41,6 +43,24 @@ type BrowseHistoryRecorded struct {
 }
 
 func (e BrowseHistoryRecorded) Type() string { return TypeBrowseHistoryRecorded }
+
+// ServiceCommand is published to control service lifecycle (start/stop).
+type ServiceCommand struct {
+	Name   string // "admin", "api", "interceptor"
+	Action string // "start", "stop"
+}
+
+func (e ServiceCommand) Type() string { return TypeServiceCommand }
+
+// ServiceStatusChanged is published when a service's status or address changes.
+type ServiceStatusChanged struct {
+	Name   string
+	Title  string
+	Addr   string
+	Status string // "running", "stopped", "stopping", "error"
+}
+
+func (e ServiceStatusChanged) Type() string { return TypeServiceStatusChanged }
 
 // DownloadTaskFinished is published when a download task finishes.
 type DownloadTaskFinished struct {

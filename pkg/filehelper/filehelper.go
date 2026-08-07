@@ -25,7 +25,6 @@ type Config struct {
 // Client is the file transfer helper client
 type Client struct {
 	cfg        *Config
-	cfg_mu     sync.RWMutex
 	logger     *zerolog.Logger
 	httpClient *http.Client
 
@@ -132,10 +131,6 @@ type LoginStatusDetail struct {
 
 // NewClient creates a new client
 func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
-	if cfg == nil {
-		cfg = &Config{}
-	}
-	cfg_copy := *cfg
 	if logger == nil {
 		nopLogger := zerolog.Nop()
 		logger = &nopLogger
@@ -148,7 +143,7 @@ func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
 		jar = nil // If creation fails, don't use cookie jar
 	}
 	return &Client{
-		cfg:    &cfg_copy,
+		cfg:    cfg,
 		logger: logger,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
@@ -160,28 +155,6 @@ func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
 		msgCache:  make([]map[string]interface{}, 0),
 		stopChan:  make(chan struct{}),
 	}
-}
-
-// SetConfig atomically replaces the client's runtime configuration.
-func (c *Client) SetConfig(cfg Config) {
-	if c == nil {
-		return
-	}
-	c.cfg_mu.Lock()
-	c.cfg = &cfg
-	c.cfg_mu.Unlock()
-}
-
-func (c *Client) current_config() Config {
-	if c == nil {
-		return Config{}
-	}
-	c.cfg_mu.RLock()
-	defer c.cfg_mu.RUnlock()
-	if c.cfg == nil {
-		return Config{}
-	}
-	return *c.cfg
 }
 
 // GetQRCode gets the login QR code
@@ -869,8 +842,7 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 	c.msgCacheMu.Unlock()
 
 	// Callback notification
-	cfg := c.current_config()
-	if cfg.CallbackURL == "" {
+	if c.cfg.CallbackURL == "" {
 		c.logger.Warn().Msg("No callback URL configured, skipping message notification")
 		return
 	}
@@ -878,7 +850,7 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 	for _, msg := range resp.AddMsgList {
 		go func(m map[string]interface{}) {
 			bodyBytes, _ := json.Marshal(m)
-			req, err := http.NewRequest("POST", cfg.CallbackURL, strings.NewReader(string(bodyBytes)))
+			req, err := http.NewRequest("POST", c.cfg.CallbackURL, strings.NewReader(string(bodyBytes)))
 			if err != nil {
 				c.logger.Error().Err(err).Msg("Failed to create callback request")
 				return

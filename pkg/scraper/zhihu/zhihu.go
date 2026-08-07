@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/spf13/viper"
 
 	"wx_channel/pkg/clawreq"
-	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/cookies"
 )
 
@@ -34,20 +34,12 @@ var answerURLRe = regexp.MustCompile(`^/question/([0-9]+|undefined)/answer/([0-9
 var questionURLRe = regexp.MustCompile(`^/question/([0-9]+)$`)
 var articleURLRe = regexp.MustCompile(`^/p/([0-9]+)$`)
 
-var ConfigDeclaration = configapi.Declare("zhihu")
-
-type ClientConfig struct {
-	WorkDir        string
-	ConfigProvider configapi.Provider
-}
-
 type Client struct {
-	clawreqClient   *clawreq.Client
-	httpClient      *http.Client
-	cookieStr       string
-	workdir         string
-	config_provider configapi.Provider
-	OnProgress      func(downloaded int64)
+	clawreqClient *clawreq.Client
+	httpClient    *http.Client
+	cookieStr     string
+	workdir       string
+	OnProgress    func(downloaded int64)
 }
 
 type AnswerURL struct {
@@ -309,11 +301,7 @@ func canonicalAnswerURL(questionID, answerID string) string {
 // NewClient creates a zhihu scraper client with the given workdir.
 // The workdir is used to locate cookies.json for authentication.
 func NewClient(workdir string) *Client {
-	return NewClientWithConfig(ClientConfig{WorkDir: workdir})
-}
-
-func NewClientWithConfig(cfg ClientConfig) *Client {
-	c := &Client{workdir: cfg.WorkDir, config_provider: cfg.ConfigProvider}
+	c := &Client{workdir: workdir}
 	c.initClawreqClient()
 	c.loadCookies()
 	return c
@@ -376,22 +364,12 @@ func (c *Client) loadCookies() {
 	c.cookieStr = cookies.FormatCookieHeader(filtered)
 }
 
-// cookie returns the current cookie string, falling back to the module's
-// declared runtime configuration.
+// cookie returns the current cookie string, falling back to viper config.
 func (c *Client) cookie() string {
 	if c != nil && c.cookieStr != "" {
 		return c.cookieStr
 	}
-	if c == nil || c.config_provider == nil {
-		return ""
-	}
-	var runtime_config struct {
-		Cookie string `json:"cookie"`
-	}
-	if err := ConfigDeclaration.Decode(c.config_provider, "zhihu", &runtime_config); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(runtime_config.Cookie)
+	return strings.TrimSpace(viper.GetString("zhihu.cookie"))
 }
 
 func (c *Client) FetchAnswerPage(rawURL string) (*AnswerPage, error) {
@@ -1019,14 +997,14 @@ func (c *Client) doAPIBytesWithClawreq(endpoint, referer string) ([]byte, error)
 	apiURL := SourceURL + strings.TrimPrefix(endpoint, "/")
 	cookie := c.cookie()
 	headers := map[string]string{
-		"Accept":           "*/*",
-		"Accept-Language":  "zh-CN,zh;q=0.9,en;q=0.8",
-		"Cache-Control":    "no-cache",
-		"Pragma":           "no-cache",
-		"X-Requested-With": "fetch",
-		"Sec-Fetch-Dest":   "empty",
-		"Sec-Fetch-Mode":   "cors",
-		"Sec-Fetch-Site":   "same-origin",
+		"Accept":            "*/*",
+		"Accept-Language":   "zh-CN,zh;q=0.9,en;q=0.8",
+		"Cache-Control":     "no-cache",
+		"Pragma":            "no-cache",
+		"X-Requested-With":  "fetch",
+		"Sec-Fetch-Dest":    "empty",
+		"Sec-Fetch-Mode":    "cors",
+		"Sec-Fetch-Site":    "same-origin",
 	}
 	if referer != "" {
 		headers["Referer"] = referer

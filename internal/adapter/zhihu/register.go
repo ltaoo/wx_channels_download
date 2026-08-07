@@ -7,9 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
+	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
-	"wx_channel/pkg/configapi"
-	"wx_channel/pkg/events"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -21,8 +21,7 @@ type Deps struct {
 	DB             *gorm.DB
 	Logger         *zerolog.Logger
 	Bus            *events.Bus
-	ConfigProvider configapi.Provider
-	Runtime        configapi.Runtime
+	Config         *config.Config
 }
 
 // Handle owns the adapter's runtime components.
@@ -40,15 +39,8 @@ func Register(d Deps) (*Handle, error) {
 	}
 
 	// 2. Interceptor plugins
-	config_provider := d.ConfigProvider
+	icfg := NewConfig(d.Config)
 	if d.Interceptor != nil {
-		if config_provider == nil {
-			return nil, fmt.Errorf("zhihu config is required for interceptor registration")
-		}
-		icfg, err := NewConfig(config_provider, d.Runtime)
-		if err != nil {
-			return nil, fmt.Errorf("zhihu interceptor config: %w", err)
-		}
 		for _, p := range icfg.GetPlugins(adapter.AdapterContext{
 			DB:     d.DB,
 			Logger: d.Logger,
@@ -59,8 +51,11 @@ func Register(d Deps) (*Handle, error) {
 	}
 
 	// 3. Routes
-	workdir := d.Runtime.WorkDir
-	r := NewRoutes(workdir, config_provider)
+	workdir := ""
+	if d.Config != nil {
+		workdir = d.Config.WorkDir
+	}
+	r := NewRoutes(workdir)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 		if d.Logger != nil {
@@ -76,8 +71,6 @@ func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle,
 	if d.Logger != nil {
 		d.Logger.Info().Msg("zhihu adapter registering runtime")
 	}
-	config_provider := d.ConfigProvider
-	h.set_config_provider(config_provider)
 	return Register(Deps{
 		StaticAssets:   d.StaticAssets,
 		RouteRegistrar: d.Routes,
@@ -85,8 +78,7 @@ func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle,
 		DB:             d.DB,
 		Logger:         d.Logger,
 		Bus:            d.Bus,
-		ConfigProvider: config_provider,
-		Runtime:        d.Runtime,
+		Config:         d.Config,
 	})
 }
 

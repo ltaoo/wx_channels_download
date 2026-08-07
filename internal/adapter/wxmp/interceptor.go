@@ -2,7 +2,7 @@ package wxmpadapter
 
 import (
 	"wx_channel/internal/adapter"
-	"wx_channel/pkg/configapi"
+	"wx_channel/internal/config"
 	"wx_channel/pkg/scraper/wxmp"
 )
 
@@ -13,12 +13,14 @@ type InterceptorPluginConfig struct {
 	version  string
 }
 
-func NewConfig(provider configapi.Provider, runtime configapi.Runtime) (*InterceptorPluginConfig, error) {
-	settings, err := wxmp.NewOfficialAccountConfig(provider, runtime)
-	if err != nil {
-		return nil, err
+func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
+	if cfg == nil {
+		return &InterceptorPluginConfig{}
 	}
-	return &InterceptorPluginConfig{settings: settings, version: runtime.Version}, nil
+	return &InterceptorPluginConfig{
+		settings: wxmp.NewOfficialAccountConfig(cfg),
+		version:  cfg.Version,
+	}
 }
 
 // GetPlugins returns the official-account injection plugin.

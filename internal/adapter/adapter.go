@@ -15,9 +15,9 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"wx_channel/internal/config"
+	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
-	"wx_channel/pkg/configapi"
-	"wx_channel/pkg/events"
 	"wx_channel/pkg/hermes"
 )
 
@@ -63,15 +63,13 @@ type InterceptorRegistrar interface {
 // Keeping this contract in the registry allows a future dynamic loader to
 // construct adapters without application code importing concrete packages.
 type RuntimeDeps struct {
-	StaticAssets   *webassets.Registry
-	Routes         RouteRegistrar
-	Interceptor    InterceptorRegistrar
-	DB             *gorm.DB
-	Logger         *zerolog.Logger
-	Bus            *events.Bus
-	ConfigProvider configapi.Provider
-	Runtime        configapi.Runtime
-	BasePath       string
+	StaticAssets *webassets.Registry
+	Routes       RouteRegistrar
+	Interceptor  InterceptorRegistrar
+	DB           *gorm.DB
+	Logger       *zerolog.Logger
+	Bus          *events.Bus
+	Config       *config.Config
 }
 
 // RuntimeHandle owns resources started by an adapter.
