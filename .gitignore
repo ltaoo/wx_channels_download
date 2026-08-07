@@ -25,6 +25,7 @@ workdir
 
 config.yaml
 global.js
+hooks.js
 downloads
 temp_sunnynet
 

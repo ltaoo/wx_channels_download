@@ -70,6 +70,7 @@ type ResourceMeta struct {
 	DownloadAt int64  `json:"download_at"` // download time (seconds)
 	Author     string `json:"author"`      // creator/uploader name
 	Platform   string `json:"platform"`    // platform identifier, e.g. "wxchannels"
+	Idx        int    `json:"idx"`         // media index for multi-resource posts
 }
 
 // FilenameParams holds the parameters for the onFilename hook.
@@ -136,8 +137,14 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 		return nil, fmt.Errorf("onTaskCreate is not a function")
 	}
 
-	taskVal := hm.vm.ToValue(input.Task)
-	resourcesVal := hm.vm.ToValue(input.Resources)
+	taskVal, err := hm.toHookValue(input.Task)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare onTaskCreate task value: %w", err)
+	}
+	resourcesVal, err := hm.toHookValue(input.Resources)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare onTaskCreate resources value: %w", err)
+	}
 	configVal := hm.vm.ToValue(input.Config)
 
 	result, err := fn(goja.Undefined(), taskVal, resourcesVal, configVal)
@@ -176,8 +183,11 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 		return fmt.Errorf("onTaskFinish is not a function")
 	}
 
-	ctxVal := hm.vm.ToValue(ctx)
-	_, err := fn(goja.Undefined(), ctxVal)
+	ctxVal, err := hm.toHookValue(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to prepare onTaskFinish context value: %w", err)
+	}
+	_, err = fn(goja.Undefined(), ctxVal)
 	if err != nil {
 		return fmt.Errorf("onTaskFinish execution failed: %w", err)
 	}
@@ -201,8 +211,14 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 	}
 
 	systemVal := hm.vm.ToValue(systemName)
-	metaVal := hm.vm.ToValue(params.Meta)
-	taskVal := hm.vm.ToValue(params.Task)
+	metaVal, err := hm.toHookValue(params.Meta)
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare onFilename meta value: %w", err)
+	}
+	taskVal, err := hm.toHookValue(params.Task)
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare onFilename task value: %w", err)
+	}
 	configVal := hm.vm.ToValue(params.Config)
 
 	result, err := fn(goja.Undefined(), systemVal, metaVal, taskVal, configVal)
@@ -216,6 +232,18 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 
 	s := strings.TrimSpace(result.String())
 	return s, nil
+}
+
+func (hm *HookManager) toHookValue(v any) (goja.Value, error) {
+	jsonBytes, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var data any
+	if err := json.Unmarshal(jsonBytes, &data); err != nil {
+		return nil, err
+	}
+	return hm.vm.ToValue(data), nil
 }
 
 func isDefinedFunction(vm *goja.Runtime, name string) bool {

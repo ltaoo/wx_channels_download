@@ -63,7 +63,7 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		CloudflareSphCookie:  cloudflare_sph_cookie,
 
 		FilenameTemplate: c.GetString("download.filenameTemplate"),
-		HooksScript:      c.GetString("download.hooksScript"),
+		HooksScript:      c.HookScriptPath,
 
 		DBType:     c.GetString("db.type"),
 		DBHost:     c.GetString("db.host"),

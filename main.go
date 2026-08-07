@@ -41,7 +41,7 @@ func new_app_logger() (*zerolog.Logger, *os.File, string, error) {
 	if err := os.MkdirAll(log_dir, 0755); err != nil {
 		return nil, nil, "", err
 	}
-	log_path := filepath.Join(log_dir, "info.log")
+	log_path := filepath.Join(log_dir, "app.log")
 	log_file, err := os.OpenFile(log_path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return nil, nil, "", err

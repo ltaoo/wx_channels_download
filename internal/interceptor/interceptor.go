@@ -28,16 +28,25 @@ type Interceptor struct {
 	OnCookies   func(url string, cookies []*http.Cookie) // Callback invoked when cookies are captured
 }
 
-func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile) *Interceptor {
-	log := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", cfg.Version).Logger()
+func NewInterceptor(cfg *InterceptorConfig, cert *certificate.CertFileAndKeyFile, logger *zerolog.Logger) *Interceptor {
+	log := newInterceptorLogger(logger, cfg.Version)
 	return &Interceptor{
 		Version:  cfg.Version,
 		Debug:    cfg.DebugShowError,
 		Settings: cfg,
 		Cert:     cert,
-		log:      &log,
+		log:      log,
 		proxy:    nil,
 	}
+}
+
+func newInterceptorLogger(parent *zerolog.Logger, version string) *zerolog.Logger {
+	if parent == nil {
+		l := zerolog.New(io.Discard).With().Timestamp().Str("component", "interceptor").Str("version", version).Logger()
+		return &l
+	}
+	l := parent.With().Str("component", "interceptor").Str("version", version).Logger()
+	return &l
 }
 
 func (c *Interceptor) Start() error {
@@ -115,10 +124,6 @@ func (c *Interceptor) AddPlugin(plugin interface{}) {
 	}
 }
 
-func (c *Interceptor) SetLog(writer io.Writer) {
-	l := zerolog.New(writer).With().Timestamp().Str("component", "interceptor").Str("version", c.Version).Logger()
-	c.log = &l
-}
 func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(r.Host); err == nil {

@@ -11,7 +11,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/pterm/pterm"
-	"github.com/rs/zerolog"
 
 	"github.com/ltaoo/velo"
 
@@ -40,17 +39,7 @@ func Start(cfg *config.Config) {
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
 	logger := cfg.Logger()
-	if logger == nil {
-		fallback_logger := zerolog.Nop()
-		logger = &fallback_logger
-	}
 	cfg.LogGlobalScriptPath()
-	if cfg.LogPath() != "" {
-		logger.Info().
-			Str("file", "internal/application/start.go").
-			Str("log_path", cfg.LogPath()).
-			Msg("application log file configured")
-	}
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
@@ -93,10 +82,7 @@ func Start(cfg *config.Config) {
 	}
 	bus := events.NewBus()
 	cert_files := services.LoadCertFiles()
-	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files)
-	if cfg.LogFile() != nil {
-		interceptor_srv.SetLog(cfg.LogFile())
-	}
+	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files, logger)
 	interceptor_srv.SubscribeEvents(bus)
 
 	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
@@ -109,6 +95,13 @@ func Start(cfg *config.Config) {
 	table_data = append(table_data, []string{"Download Dir", api_cfg.DownloadDir})
 	// --- Hook manager ---
 	hook_manager := hermes.NewHookManager()
+	configured_hook_path := cfg.GetString("download.hooksScript")
+	logger.Info().
+		Str("file", "internal/application/start.go").
+		Str("configured_path", api_cfg.HooksScript).
+		Str("resolved_config_path", configured_hook_path).
+		Bool("exists", api_cfg.HooksScript != "").
+		Msg("download hook script discovery")
 	if script := api_cfg.HooksScript; script != "" {
 		if err := hook_manager.Load(script); err != nil {
 			logger.Warn().
@@ -116,18 +109,18 @@ func Start(cfg *config.Config) {
 				Str("file", "internal/application/start.go").
 				Str("path", script).
 				Msg("Failed to load hook script")
+		} else {
+			logger.Info().
+				Str("file", "internal/application/start.go").
+				Str("path", script).
+				Str("source", "download.hooksScript").
+				Msg("download hook script loaded")
 		}
 	} else {
-		convention_path := filepath.Join(cfg.WorkDir, "hooks.js")
-		if _, err := os.Stat(convention_path); err == nil {
-			if err := hook_manager.Load(convention_path); err != nil {
-				logger.Warn().
-					Err(err).
-					Str("file", "internal/application/start.go").
-					Str("path", convention_path).
-					Msg("Failed to load hook script")
-			}
-		}
+		logger.Info().
+			Str("file", "internal/application/start.go").
+			Str("resolved_config_path", configured_hook_path).
+			Msg("download hook script not found")
 	}
 
 	// --- Database store ---
@@ -156,6 +149,9 @@ func Start(cfg *config.Config) {
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
+	}
+	if api_cfg.HooksScript != "" {
+		table_data = append(table_data, []string{"Hooks Script", api_cfg.HooksScript})
 	}
 	pterm.DefaultTable.WithHasHeader().WithData(table_data).Render()
 	fmt.Println()

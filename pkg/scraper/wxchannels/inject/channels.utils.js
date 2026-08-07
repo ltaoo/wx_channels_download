@@ -472,11 +472,15 @@ var WXBase64 = (() => {
   // play_cur_video: __wx_channels_play_cur_video,
   /**
    * 构建文件名
-   * @param {FeedProfile} profile
+   * @param {ChannelsFeed} feed
    * @param {string} spec
    * @param {string} template
    */
-  function build_filename(profile, spec, template) {
+  function build_filename(feed, spec, template) {
+    var profile = WXU.format_feed(feed);
+    if (!profile) {
+      throw new Error("there is no feed");
+    }
     var default_name = (() => {
       if (profile.title) {
         return profile.title;
@@ -916,7 +920,6 @@ var WXBase64 = (() => {
     },
     format_media_spec_label,
     format_media_spec_short_label,
-    // build_filename,
     build_picture_zip_files,
     build_picture_zip_url,
     append_media_buf(buf) {
@@ -960,6 +963,7 @@ var WXBase64 = (() => {
      * @returns
      */
     format_feed,
+    build_filename,
     pause_cur_video: __wx_channels_pause_cur_video,
     play_cur_video: __wx_channels_play_cur_video,
     check_feed_existing: __wx_check_feed_existing,
@@ -1032,9 +1036,15 @@ var WXBase64 = (() => {
    */
   async function __wx_channels_download4(feed, opt) {
     console.log("__wx_channels_download4", opt);
+    var filename = WXU.build_filename(
+      feed,
+      opt.spec,
+      WXU.config.downloadFilenameTemplate,
+    );
     if (!WXU.config.downloadInFrontend) {
       var something = await WXU.downloader.create([feed], {
         platform: "wxchannels",
+        // filename: window.beforeFilename ? filename : undefined,
         ...opt,
       });
       console.log("after download create", something);
@@ -1045,11 +1055,6 @@ var WXBase64 = (() => {
       }
       return;
     }
-    var filename = WXU.build_filename(
-      feed,
-      opt.spec,
-      WXU.config.downloadFilenameTemplate,
-    );
     if (!filename) {
       WXU.error({ msg: "文件名生成失败" });
       return;
@@ -1201,9 +1206,15 @@ ${payload.key || ""}`,
   async function __wx_channels_handle_download_cover() {
     var [err, feed] = WXU.check_feed_existing();
     if (err) return;
+    var filename = WXU.build_filename(
+      feed,
+      null,
+      WXU.config.downloadFilenameTemplate,
+    );
     if (!WXU.config.downloadInFrontend) {
       var [err, data] = await WXU.downloader.create([feed], {
         platform: "wxchannels",
+        // filename: window.beforeFilename ? filename : undefined,
         suffix: ".jpg",
       });
       if (err) {
@@ -1213,11 +1224,6 @@ ${payload.key || ""}`,
       return;
     }
     var url = feed.cover_url.replace(/^http:/, "https:");
-    var filename = WXU.build_filename(
-      feed,
-      null,
-      WXU.config.downloadFilenameTemplate,
-    );
     if (!filename) {
       WXU.error({ msg: "文件名生成失败" });
       return;

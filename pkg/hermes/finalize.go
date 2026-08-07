@@ -191,8 +191,30 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 				},
 				Config: job.Config,
 			}
-			if newName, err := d.hooks.InvokeFilenameHook(params, baseName); err == nil && newName != "" {
+			if newName, err := d.hooks.InvokeFilenameHook(params, baseName); err != nil {
+				d.logger.Warn().
+					Err(err).
+					Int("task_id", job.ID).
+					Int("resource_id", r.ID).
+					Str("system_name", baseName).
+					Interface("meta", hookMeta).
+					Msg("filename hook failed")
+			} else if newName != "" {
+				d.logger.Info().
+					Int("task_id", job.ID).
+					Int("resource_id", r.ID).
+					Str("system_name", baseName).
+					Str("hook_name", newName).
+					Interface("meta", hookMeta).
+					Msg("filename hook applied")
 				baseName = newName
+			} else {
+				d.logger.Info().
+					Int("task_id", job.ID).
+					Int("resource_id", r.ID).
+					Str("system_name", baseName).
+					Interface("meta", hookMeta).
+					Msg("filename hook returned empty")
 			}
 		}
 

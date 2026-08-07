@@ -3,11 +3,12 @@ package interceptor
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
@@ -25,9 +26,9 @@ type InterceptorServer struct {
 	running     bool
 }
 
-func NewInterceptorServer(cfg *config.Config, cert *certificate.CertFileAndKeyFile) *InterceptorServer {
+func NewInterceptorServer(cfg *config.Config, cert *certificate.CertFileAndKeyFile, logger *zerolog.Logger) *InterceptorServer {
 	settings := NewInterceptorSettings(cfg)
-	interceptor := NewInterceptor(settings, cert)
+	interceptor := NewInterceptor(settings, cert, logger)
 
 	return &InterceptorServer{
 		addr:        settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort),
@@ -85,10 +86,6 @@ func (s *InterceptorServer) ApplySettings(settings *InterceptorConfig, cert *cer
 	s.Interceptor.Settings = settings
 	s.Interceptor.Cert = cert
 	s.addr = settings.ProxyServerHostname + ":" + strconv.Itoa(settings.ProxyServerPort)
-}
-
-func (s *InterceptorServer) SetLog(writer io.Writer) {
-	s.Interceptor.SetLog(writer)
 }
 
 func (s *InterceptorServer) ProxyTun() bool {

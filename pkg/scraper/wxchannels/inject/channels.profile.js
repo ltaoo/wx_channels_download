@@ -93,8 +93,14 @@
             return;
           }
           const feeds = r.data.object;
+          // var filename = WXU.build_filename(
+          //   feed,
+          //   opt.spec,
+          //   WXU.config.downloadFilenameTemplate,
+          // );
           var [err, data] = await WXU.downloader.create(feeds, {
             platform: "wxchannels",
+            // filename: window.beforeFilename ? filename : undefined,
             ignore_live_feed: true,
           });
           if (err) {

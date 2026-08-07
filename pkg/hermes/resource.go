@@ -947,6 +947,9 @@ func buildResourceMeta(extra map[string]string, config map[string]any) ResourceM
 		if v, err := strconv.ParseInt(extra["created_at"], 10, 64); err == nil {
 			meta.CreatedAt = v
 		}
+		if v, err := strconv.Atoi(extra["idx"]); err == nil {
+			meta.Idx = v
+		}
 	}
 	if config != nil {
 		if platform, ok := config["platform"].(string); ok {

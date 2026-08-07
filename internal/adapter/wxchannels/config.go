@@ -1,6 +1,8 @@
 package wxchannelsadapter
 
 import (
+	"github.com/spf13/viper"
+
 	"wx_channel/internal/config"
 )
 
@@ -78,7 +80,7 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	c.DisableLocationToHome = sub.GetBool("disableLocationToHome")
 	c.RefreshInterval = sub.GetInt("refreshInterval")
-	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest")
+	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest") || viper.GetBool("download.defaultHighest")
 	c.DownloadFrontend = sub.GetBool("download.frontend")
 	c.DownloadForceCheckAllFeeds = sub.GetBool("download.forceCheckAllFeeds")
 	c.DownloadPauseWhenDownload = sub.GetBool("download.pauseWhenDownload")

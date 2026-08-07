@@ -31,6 +31,9 @@ type Config struct {
 	// Resolved global script
 	GlobalScriptPath string // Absolute path to configured global script
 
+	// Resolved hook script
+	HookScriptPath string // Absolute path to configured download hook script
+
 	// Resolved content script
 	ContentScriptContent string // Content of content script
 
@@ -462,6 +465,16 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:          "download.hooksScript",
+		Type:         ConfigTypeString,
+		Default:      "hooks.js",
+		Description:  "下载任务 Hook 脚本",
+		Title:        "Hook 脚本",
+		Group:        "Download",
+		HotReload:    true,
+		ProcessValue: ResolveWorkDirPathValue,
+	})
+	Register(ConfigField{
 		Key:         "download.playDoneAudio",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -552,111 +565,6 @@ func (c *Config) LoadConfig() error {
 		Description: "指定 API 服务的端口",
 		Title:       "API 服务端口",
 		Group:       "API",
-	})
-	Register(ConfigField{
-		Key:         "admin.hostname",
-		Type:        ConfigTypeString,
-		Default:     "127.0.0.1",
-		Description: "指定 GUI/Admin 服务的主机名",
-		Title:       "Admin 服务主机",
-		Group:       "Admin",
-	})
-	Register(ConfigField{
-		Key:         "admin.port",
-		Type:        ConfigTypeInt,
-		Default:     2021,
-		Description: "指定 GUI/Admin 服务的端口",
-		Title:       "Admin 服务端口",
-		Group:       "Admin",
-	})
-
-	Register(ConfigField{
-		Key:         "sandbox.dockerImage",
-		Type:        ConfigTypeString,
-		Default:     "lscr.io/linuxserver/chromium:latest",
-		Description: "浏览器沙箱 Docker 镜像，默认使用带 Web 桌面的 Chromium 镜像",
-		Title:       "沙箱镜像",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.dockerEntrypoint",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "浏览器沙箱 Docker --entrypoint；默认留空以使用 webtop 镜像自己的桌面启动流程",
-		Title:       "沙箱 Entrypoint",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.dockerNetwork",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "浏览器沙箱 Docker 网络，留空使用默认网络",
-		Title:       "沙箱网络",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.cdpPortMin",
-		Type:        ConfigTypeInt,
-		Default:     39222,
-		Description: "浏览器沙箱 CDP 宿主机端口范围起点",
-		Title:       "CDP 端口起点",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.cdpPortMax",
-		Type:        ConfigTypeInt,
-		Default:     39322,
-		Description: "浏览器沙箱 CDP 宿主机端口范围终点",
-		Title:       "CDP 端口终点",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.desktopPortMin",
-		Type:        ConfigTypeInt,
-		Default:     39000,
-		Description: "浏览器沙箱 Web 桌面宿主机端口范围起点",
-		Title:       "桌面端口起点",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.desktopPortMax",
-		Type:        ConfigTypeInt,
-		Default:     39122,
-		Description: "浏览器沙箱 Web 桌面宿主机端口范围终点",
-		Title:       "桌面端口终点",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.resolution",
-		Type:        ConfigTypeString,
-		Default:     "1920x1080x24",
-		Description: "浏览器沙箱 Web 桌面分辨率",
-		Title:       "桌面分辨率",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.shmSize",
-		Type:        ConfigTypeString,
-		Default:     "1g",
-		Description: "浏览器沙箱 Docker --shm-size",
-		Title:       "共享内存",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.memoryLimit",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "浏览器沙箱 Docker --memory，留空不限制",
-		Title:       "内存限制",
-		Group:       "Sandbox",
-	})
-	Register(ConfigField{
-		Key:         "sandbox.chromeCommand",
-		Type:        ConfigTypeText,
-		Default:     "",
-		Description: "浏览器沙箱容器启动命令，留空时自动查找 Chrome/Chromium 并启用 0.0.0.0:9222 remote debugging",
-		Title:       "Chrome 启动命令",
-		Group:       "Sandbox",
 	})
 	Register(ConfigField{
 		Key:         "cloudflare.accountId",
@@ -802,6 +710,7 @@ func (c *Config) LoadConfig() error {
 
 	// Resolve inject scripts
 	c.resolve_script_path("inject.globalScript", &c.GlobalScriptPath)
+	c.resolve_script_path("download.hooksScript", &c.HookScriptPath)
 	c.resolve_script("inject.contentScript", &c.ContentScriptContent)
 
 	return nil
