@@ -140,7 +140,7 @@ var WXEnv = (() => {
 
   function assetUrl(path) {
     const base = assetsBaseURL();
-    if (path.startsWith("/lib/")) {
+    if (path.startsWith("/public/")) {
       const version = encodeURIComponent(config().version || "static");
       return `${base}${path}?v=${version}`;
     }

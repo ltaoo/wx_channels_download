@@ -18,7 +18,6 @@ const default_assets_dir = "frontend"
 
 type UserScripts struct {
 	root_fs          fs.FS
-	lib_fs           fs.FS
 	src_fs           fs.FS
 	inject_script_fs fs.FS
 	public_fs        fs.FS
@@ -31,7 +30,6 @@ func Assets() *UserScripts {
 }
 
 const assets_path = "/__assets"
-const LibAssetCacheControl = "public, max-age=2592000, immutable"
 const PublicAssetCacheControl = "no-cache"
 const SrcAssetCacheControl = "no-cache"
 
@@ -315,7 +313,6 @@ func NewUserScripts(inject_dir string) *UserScripts {
 	if root_fs := embeddedRootFS(); root_fs != nil {
 		return &UserScripts{
 			root_fs:          root_fs,
-			lib_fs:           embeddedLibFS(),
 			src_fs:           embeddedSrcFS(),
 			inject_script_fs: embeddedInjectFS(),
 			public_fs:        embeddedPublicFS(),
@@ -329,15 +326,10 @@ func NewUserScripts(inject_dir string) *UserScripts {
 	}
 	return &UserScripts{
 		root_fs:          os.DirFS(inject_dir),
-		lib_fs:           os.DirFS(filepath.Join(inject_dir, "lib")),
 		src_fs:           os.DirFS(filepath.Join(inject_dir, "src")),
 		inject_script_fs: os.DirFS(filepath.Join(inject_dir, "inject")),
 		public_fs:        os.DirFS(filepath.Join(inject_dir, "public")),
 	}
-}
-
-func (files *UserScripts) ReadLib(rel string) ([]byte, error) {
-	return read_asset(files.lib_fs, rel)
 }
 
 func (files *UserScripts) ReadSrc(rel string) ([]byte, error) {
@@ -386,7 +378,7 @@ func find_assets_dir() string {
 		)
 	}
 	for _, candidate := range candidates {
-		if stat, err := os.Stat(filepath.Join(candidate, "lib")); err == nil && stat.IsDir() {
+		if stat, err := os.Stat(filepath.Join(candidate, "public")); err == nil && stat.IsDir() {
 			return candidate
 		}
 	}

@@ -11,8 +11,8 @@ type XiaohongshuPluginConfig struct {
 
 func (c *XiaohongshuPluginConfig) ConfigNamespace() string { return "xiaohongshu" }
 
-func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

@@ -19,7 +19,83 @@ function components_style_href() {
   return "/__assets/inject/components.css";
 }
 
+const wx_icon_registry = {
+  clock3: {
+    tag: "svg",
+    attrs: {
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "lucide lucide-clock3-icon lucide-clock-3",
+    },
+    children: [
+      {
+        tag: "circle",
+        attrs: {
+          cx: "12",
+          cy: "12",
+          r: "10",
+        },
+      },
+      {
+        tag: "path",
+        attrs: {
+          d: "M12 6v6h4",
+        },
+      },
+    ],
+  },
+  square: {
+    tag: "svg",
+    attrs: {
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "lucide lucide-square-icon lucide-square",
+    },
+    children: [
+      {
+        tag: "rect",
+        attrs: {
+          width: "18",
+          height: "18",
+          x: "3",
+          y: "3",
+          rx: "2",
+        },
+      },
+    ],
+  },
+};
+
+function register_wx_icons(icons) {
+  if (!icons || typeof icons !== "object") {
+    return Timeless.getIconRegistry ? Timeless.getIconRegistry() : {};
+  }
+  if (typeof Timeless.registerIcons === "function") {
+    Timeless.registerIcons(icons);
+  } else if (Timeless.Icon && typeof Timeless.Icon.register === "function") {
+    Timeless.Icon.register(icons);
+  } else if (typeof Timeless.getIconRegistry === "function") {
+    Object.assign(Timeless.getIconRegistry(), icons);
+  }
+  return Timeless.getIconRegistry ? Timeless.getIconRegistry() : icons;
+}
+
+register_wx_icons(wx_icon_registry);
+
+if (typeof globalThis !== "undefined") {
+  globalThis.WXRegisterIcons = register_wx_icons;
+}
+
 const Icons = {
+  registerIcons: register_wx_icons,
   download_icon1: `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`,
   download_icon2: `<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1567" width="1em" height="1em"><path d="M510.507 161c136.08 0 254.917 86.968 298.77 212.61l0.947 2.772 0.209 0.056c85.945 23.138 148.202 101.3 149.545 193.033L960 572.5c0 112.114-90.482 203-202.098 203-9.832 0-23.115-1.567-39.848-4.7-8.686-1.626-14.409-9.985-12.782-18.67a16 16 0 0 1 0.316-1.361l10.739-38.438c2.221-7.951 10.128-12.907 18.253-11.44 9.632 1.74 17.406 2.609 23.322 2.609 72.028 0 130.418-58.65 130.418-131 0-64.593-46.855-119.203-109.508-129.32l-1.904-0.293-23.48-3.436-6.02-23.055C719.407 309.16 622.489 233 510.507 233c-106.271 0-199.349 68.62-232.37 168.113l-0.982 3.024-6.578 20.706-21.305 3.796C183.982 440.275 135.68 497.59 135.68 565c0 76.492 61.733 138.5 137.884 138.5 4.118 0 9.58-0.435 16.386-1.305 8.178-1.045 15.812 4.296 17.633 12.337l8.838 39.024c1.952 8.618-3.452 17.187-12.07 19.139a16 16 0 0 1-1.327 0.242c-12.264 1.709-22.084 2.563-29.46 2.563C157.824 775.5 64 681.256 64 565c0-94.273 62.11-175.514 149.425-201.7l2.4-0.701 1.368-3.441c47.328-116.945 160.436-196.452 289.156-198.13l4.158-0.028z" fill="currentColor" p-id="1568"></path><path d="M505.744 860.925c3.186 4.1 9.358 4.1 12.544 0l111.502-141.8c4.082-5.2 0.399-12.9-6.272-12.9h-73.77l-1.909 0.003L547.84 464a8 8 0 0 0-8-8h-55.68a8 8 0 0 0-8 8v242.322l-2.075 0.003h-73.571c-6.67 0-10.354 7.7-6.272 12.9z" fill="currentColor" p-id="1569"></path></svg>`,
   download_icon3: `<svg data-v-132dee25 class="svg-icon icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="28" height="28"><path d="M213.333333 853.333333h597.333334v-85.333333H213.333333m597.333334-384h-170.666667V128H384v256H213.333333l298.666667 298.666667 298.666667-298.666667z"></path></svg>`,

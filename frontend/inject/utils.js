@@ -704,7 +704,7 @@ var WXU = (() => {
      * Type conversion utilities
      */
     async media_buffer_to_wav(...args) {
-      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
+      await __wx_load_script(__wx_asset_url("/public/recorder.min.js"));
       return WXAudio.mediaBufferToWav(...args);
     },
     // wav_to_mp3_blob: WXAudio.wavBlobToMP3,
@@ -860,11 +860,11 @@ var WXU = (() => {
       });
     },
     async save(blob, filename) {
-      await __wx_load_script(__wx_asset_url("/lib/FileSaver.min.js"));
+      await __wx_load_script(__wx_asset_url("/public/FileSaver.min.js"));
       saveAs(blob, filename);
     },
     async Zip() {
-      await __wx_load_script(__wx_asset_url("/lib/jszip.min.js"));
+      await __wx_load_script(__wx_asset_url("/public/jszip.min.js"));
       const zip = new JSZip();
       return zip;
     },

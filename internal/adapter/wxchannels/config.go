@@ -16,8 +16,8 @@ type ChannelsPluginConfig struct {
 
 func (c *ChannelsPluginConfig) ConfigNamespace() string { return "channels" }
 
-func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "disableLocationToHome",
 			Type:        config.ConfigTypeBool,
@@ -100,7 +100,7 @@ func init() {
 
 	// Legacy alias for backward compatibility; registered with its flat key directly
 	// to avoid the namespace auto-prefix applied by LoadPluginConfigs.
-	config.Register(config.ConfigItem{
+	config.Register(config.ConfigField{
 		Key:         "channel.disableLocationToHome",
 		Type:        config.ConfigTypeBool,
 		Default:     false,

@@ -187,7 +187,7 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 	apiAddr := fmt.Sprintf("%s:%d", apiHost, apiPort)
 	statuses := gin.H{}
 	for name, status := range c.serviceStatusesMap() {
-		statuses[name] = string(status)
+		statuses[name] = status
 	}
 	data := gin.H{
 		"version":         c.cfg.Version,

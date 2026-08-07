@@ -34,7 +34,7 @@ var root_cmd = &cobra.Command{
 			fmt.Println(fmt.Sprintf("%s%v", error_prefix, err))
 			os.Exit(0)
 		}
-		shouldExit, err := application.PrepareStartPrivileges(!cmd.HasParent() || cmd.Name() == "start")
+		shouldExit, err := application.PrepareStartPrivileges(!cmd.HasParent())
 		if err != nil {
 			fmt.Println(error_prefix + err.Error())
 		}

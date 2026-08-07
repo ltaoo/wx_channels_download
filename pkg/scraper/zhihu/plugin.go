@@ -6,63 +6,72 @@ import (
 	"strings"
 
 	"wx_channel/frontend"
+	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 )
 
 // CreateZhihuInterceptorPlugin creates a proxy plugin that injects the
 // zhihu.main.js script into www.zhihu.com pages.
-func CreateZhihuInterceptorPlugin(cookie string, assetBaseURL string, version string) *proxy.Plugin {
-	urlBuild := frontend.NewURLBuild(assetBaseURL, nil)
-	assetVersion := version
-	if assetVersion == "" {
-		assetVersion = "static"
+func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version string) *proxy.Plugin {
+	asset_base_url = "/__assets"
+	url_build := frontend.NewURLBuild(asset_base_url, nil)
+	asset_version := version
+	if asset_version == "" {
+		asset_version = "static"
 	}
-	versionQuery := url.Values{"v": []string{assetVersion}}
+	version_query := url.Values{"v": []string{asset_version}}
 
 	return &proxy.Plugin{
 		Match: "zhihu.com",
+		OnRequest: func(ctx proxy.Context) {
+			interceptor.MockFrontendStaticAsset(ctx, ctx.Req().URL.Path, interceptor.FrontendStaticAssetMockOptions{
+				PlatformPrefix: StaticAssetsPath + "/",
+				PlatformFS:     Assets.InjectFS,
+			})
+		},
 		OnResponse: func(ctx proxy.Context) {
-			respContentType := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
+			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 
-			if hostname != "www.zhihu.com" || !strings.Contains(respContentType, "text/html") {
+			if hostname != "www.zhihu.com" || !strings.Contains(resp_content_type, "text/html") {
 				return
 			}
 
-			respBody, err := ctx.GetResponseBody()
+			resp_body, err := ctx.GetResponseBody()
 			if err != nil {
 				return
 			}
-			html := string(respBody)
+			html := string(resp_body)
 
-			var earlyInjected strings.Builder
+			var early_injected strings.Builder
 			frontend.AppendScripts(
-				&earlyInjected,
+				&early_injected,
 				"",
-				urlBuild("/inject/fetch.js"),
+				url_build("/inject/fetch.js"),
 			)
-			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.umd.min.js", versionQuery))
-			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.utils.umd.min.js", versionQuery))
-			frontend.AppendStylesheets(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.weui.css", versionQuery))
-			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.weui.umd.min.js", versionQuery))
-			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.dom.umd.min.js", versionQuery))
-			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.web.umd.min.js", versionQuery))
-			html = strings.Replace(html, "<head>", "<head>"+earlyInjected.String(), 1)
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.utils.umd.min.js", version_query))
+			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.weui.css", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.web.umd.min.js", version_query))
+			html = strings.Replace(html, "<head>", "<head>"+early_injected.String(), 1)
 
 			var injected strings.Builder
 			frontend.AppendInlineScript(
 				&injected,
 				"",
-				fmt.Sprintf(`window.__d_config = { version: %q, assets_base_url: %q };`, version, assetBaseURL),
+				fmt.Sprintf(`window.__d_config = { version: %q, assets_base_url: %q };`, version, asset_base_url),
 			)
 			frontend.AppendScripts(
 				&injected,
 				"",
-				urlBuild("/inject/eventbus.js"),
-				urlBuild("/inject/env.js"),
-				urlBuild("/inject/utils.js"),
-				urlBuild("/inject/download/model.js"),
-				InjectAssetURL(assetBaseURL, "zhihu.main.js"),
+				url_build("/public/mitt.umd.js"),
+				url_build("/inject/eventbus.js"),
+				url_build("/inject/env.js"),
+				url_build("/inject/utils.js"),
+				url_build("/inject/download/model.js"),
+				InjectAssetURL(asset_base_url, "zhihu.main.js"),
 			)
 
 			html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)

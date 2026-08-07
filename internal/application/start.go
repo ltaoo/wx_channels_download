@@ -16,14 +16,15 @@ import (
 
 	"github.com/ltaoo/velo"
 
-	_ "wx_channel/internal/adapter/builtin"
 	"wx_channel/internal/adapter"
+	_ "wx_channel/internal/adapter/builtin"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
 	"wx_channel/internal/events"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
@@ -63,7 +64,7 @@ func Start(cfg *config.Config) {
 	api_cfg := api.NewAPIConfig(cfg)
 	static_assets := webassets.NewRegistry()
 	bus := events.NewBus()
-	cert_files := config.LoadCertFiles()
+	cert_files := services.LoadCertFiles()
 	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files)
 	interceptor_srv.SetLog(log_file)
 	interceptor_srv.SubscribeEvents(bus)
@@ -126,13 +127,13 @@ func Start(cfg *config.Config) {
 			continue
 		}
 		handle, err := runtime_adapter.RegisterRuntime(adapter.RuntimeDeps{
-			StaticAssets:     static_assets,
-			Routes:           api_srv.APIClient,
-			Interceptor:      interceptor_srv.Interceptor,
-			DB:               b.DB,
-			Logger:           &logger,
-			Bus:              bus,
-			Config:           cfg,
+			StaticAssets: static_assets,
+			Routes:       api_srv.APIClient,
+			Interceptor:  interceptor_srv.Interceptor,
+			DB:           b.DB,
+			Logger:       &logger,
+			Bus:          bus,
+			Config:       cfg,
 		})
 		if err != nil {
 			color.Red(fmt.Sprintf("Failed to register platform %s: %v", platform_id, err))

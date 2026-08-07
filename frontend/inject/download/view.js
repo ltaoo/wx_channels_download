@@ -1679,7 +1679,10 @@ function DownloadTaskCard(props) {
                 display: "flex",
                 "align-items": "center",
                 gap: "3px",
-                "flex-wrap": "wrap",
+                "flex-wrap": "nowrap",
+                overflow: "hidden",
+                "white-space": "nowrap",
+                "text-overflow": "ellipsis",
               },
             },
             [

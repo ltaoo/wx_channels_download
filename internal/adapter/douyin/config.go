@@ -12,8 +12,8 @@ type DouyinPluginConfig struct {
 
 func (c *DouyinPluginConfig) ConfigNamespace() string { return "douyin" }
 
-func (c *DouyinPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *DouyinPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

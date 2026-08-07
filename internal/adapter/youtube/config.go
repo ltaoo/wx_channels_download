@@ -13,8 +13,8 @@ type YouTubePluginConfig struct {
 
 func (c *YouTubePluginConfig) ConfigNamespace() string { return "youtube" }
 
-func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

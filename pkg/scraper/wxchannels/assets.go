@@ -49,9 +49,9 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	return nil
 }
 
-// ChannelsUserScripts builds a URL for an asset owned by this package.
+// InjectAssetURL builds a URL for an asset owned by this package.
 // The endpoint is shared with the frontend asset server, but ownership stays
 // in the wxchannels package.
-func ChannelsUserScripts(baseURL, name string) string {
+func InjectAssetURL(baseURL, name string) string {
 	return strings.TrimRight(baseURL, "/") + "/platform/wxchannels/" + strings.TrimLeft(name, "/")
 }

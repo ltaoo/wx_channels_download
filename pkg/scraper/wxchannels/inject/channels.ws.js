@@ -15,11 +15,11 @@ async function fetchExportIdWithShareId(data) {
   if (!uri) {
     return [new Error("can't get the uri from url, " + data.url), null];
   }
-  await WXU.load_script(__wx_asset_url("/lib/axios.min.js"));
+  await WXU.load_script(__wx_asset_url("/public/axios.min.js"));
   await WXU.load_script(
     __wx_asset_url("/platform/wxchannels/getFeedInfo.js"),
   );
-  // await WXU.load_script(__wx_asset_url("/lib/merlin.js"));
+  // await WXU.load_script(__wx_asset_url("/public/merlin.js"));
   if (typeof getFeedInfo !== "function") {
     return [new Error("the getFeedInfo is not a function"), null];
   }

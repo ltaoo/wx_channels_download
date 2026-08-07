@@ -12,8 +12,8 @@ type ZhihuPluginConfig struct {
 
 func (c *ZhihuPluginConfig) ConfigNamespace() string { return "zhihu" }
 
-func (c *ZhihuPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *ZhihuPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

@@ -17,8 +17,8 @@ type Shuba69PluginConfig struct {
 
 func (c *Shuba69PluginConfig) ConfigNamespace() string { return "69shuba" }
 
-func (c *Shuba69PluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *Shuba69PluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,

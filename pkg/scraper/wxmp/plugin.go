@@ -10,10 +10,11 @@ import (
 	"strings"
 
 	"wx_channel/frontend"
+	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 )
 
-var cspNonceReg = regexp.MustCompile(`'nonce-([^']+)'`)
+var csp_nonce_reg = regexp.MustCompile(`'nonce-([^']+)'`)
 
 type OfficialAccountArticleProfile struct {
 	UniqueMark    string          `json:"unique_mark"`
@@ -38,25 +39,25 @@ func NewOfficialAccountArticleProfile(raw json.RawMessage) (*OfficialAccountArti
 	}
 
 	profile := &OfficialAccountArticleProfile{
-		Title:         jsonString(data, "title"),
-		URL:           html.UnescapeString(jsonString(data, "link")),
-		SourceURL:     html.UnescapeString(jsonString(data, "source_url")),
-		CoverURL:      html.UnescapeString(jsonString(data, "cdn_url")),
-		Biz:           jsonString(data, "bizuin"),
-		Username:      jsonString(data, "user_name"),
-		Nickname:      jsonString(data, "nick_name"),
-		AvatarURL:     html.UnescapeString(firstOfficialAccountValue(jsonString(data, "round_head_img"), jsonString(data, "ori_head_img_url"), jsonString(data, "hd_head_img"))),
-		Mid:           jsonScalarString(data, "mid"),
-		Idx:           jsonScalarString(data, "idx"),
-		Sn:            jsonString(data, "sn"),
+		Title:         json_string(data, "title"),
+		URL:           html.UnescapeString(json_string(data, "link")),
+		SourceURL:     html.UnescapeString(json_string(data, "source_url")),
+		CoverURL:      html.UnescapeString(json_string(data, "cdn_url")),
+		Biz:           json_string(data, "bizuin"),
+		Username:      json_string(data, "user_name"),
+		Nickname:      json_string(data, "nick_name"),
+		AvatarURL:     html.UnescapeString(first_official_account_value(json_string(data, "round_head_img"), json_string(data, "ori_head_img_url"), json_string(data, "hd_head_img"))),
+		Mid:           json_scalar_string(data, "mid"),
+		Idx:           json_scalar_string(data, "idx"),
+		Sn:            json_string(data, "sn"),
 		RawCgiDataNew: raw,
 	}
-	fillOfficialAccountArticleFromURL(profile)
-	profile.UniqueMark = buildOfficialAccountArticleUniqueMark(profile)
+	fill_official_account_article_from_url(profile)
+	profile.UniqueMark = build_official_account_article_unique_mark(profile)
 	return profile, nil
 }
 
-func fillOfficialAccountArticleFromURL(profile *OfficialAccountArticleProfile) {
+func fill_official_account_article_from_url(profile *OfficialAccountArticleProfile) {
 	if profile == nil || profile.URL == "" {
 		return
 	}
@@ -79,22 +80,22 @@ func fillOfficialAccountArticleFromURL(profile *OfficialAccountArticleProfile) {
 	}
 }
 
-func buildOfficialAccountArticleUniqueMark(profile *OfficialAccountArticleProfile) string {
+func build_official_account_article_unique_mark(profile *OfficialAccountArticleProfile) string {
 	parts := []string{profile.Biz, profile.Mid, profile.Idx, profile.Sn}
-	allPresent := true
+	all_present := true
 	for _, part := range parts {
 		if strings.TrimSpace(part) == "" {
-			allPresent = false
+			all_present = false
 			break
 		}
 	}
-	if allPresent {
+	if all_present {
 		return strings.Join(parts, "_")
 	}
-	return firstOfficialAccountValue(profile.URL, profile.SourceURL, profile.Title)
+	return first_official_account_value(profile.URL, profile.SourceURL, profile.Title)
 }
 
-func jsonString(data map[string]json.RawMessage, key string) string {
+func json_string(data map[string]json.RawMessage, key string) string {
 	raw, ok := data[key]
 	if !ok || len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -106,8 +107,8 @@ func jsonString(data map[string]json.RawMessage, key string) string {
 	return ""
 }
 
-func jsonScalarString(data map[string]json.RawMessage, key string) string {
-	if s := jsonString(data, key); s != "" {
+func json_scalar_string(data map[string]json.RawMessage, key string) string {
+	if s := json_string(data, key); s != "" {
 		return s
 	}
 	raw, ok := data[key]
@@ -129,7 +130,7 @@ func jsonScalarString(data map[string]json.RawMessage, key string) string {
 	return ""
 }
 
-func firstOfficialAccountValue(values ...string) string {
+func first_official_account_value(values ...string) string {
 	for _, value := range values {
 		if value != "" {
 			return value
@@ -139,15 +140,24 @@ func firstOfficialAccountValue(values ...string) string {
 }
 
 func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version string) *proxy.Plugin {
-	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.Protocol, cfg.Hostname, cfg.Port)
-	urlBuild := frontend.NewURLBuild(assetBaseURL, nil)
-	assetVersion := version
-	if assetVersion == "" {
-		assetVersion = "static"
+	asset_base_url := "/__assets"
+	url_build := frontend.NewURLBuild(asset_base_url, nil)
+	asset_version := version
+	if asset_version == "" {
+		asset_version = "static"
 	}
-	versionQuery := url.Values{"v": []string{assetVersion}}
+	version_query := url.Values{"v": []string{asset_version}}
 	return &proxy.Plugin{
 		Match: "qq.com",
+		OnRequest: func(ctx proxy.Context) {
+			if ctx.Req().URL.Hostname() != "mp.weixin.qq.com" {
+				return
+			}
+			interceptor.MockFrontendStaticAsset(ctx, ctx.Req().URL.Path, interceptor.FrontendStaticAssetMockOptions{
+				PlatformPrefix: StaticAssetsPath + "/",
+				PlatformFS:     Assets.InjectFS,
+			})
+		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
@@ -159,25 +169,26 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 				}
 				html := string(resp_body)
 				csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
-				variables := buildOfficialAccountVariables(html)
+				interceptor.RewriteResponseCSPForLocalAssets(ctx, asset_base_url)
+				variables := build_official_account_variables(html)
 				script_attr := ""
 				style_attr := ""
-				if match := cspNonceReg.FindStringSubmatch(csp); len(match) > 1 {
+				if match := csp_nonce_reg.FindStringSubmatch(csp); len(match) > 1 {
 					script_attr = fmt.Sprintf(` nonce="%s" reportloaderror`, match[1])
 					style_attr = fmt.Sprintf(` nonce="%s"`, match[1])
 				}
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScripts(&injected, script_attr, urlBuild("/inject/error.js"))
+					frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js"))
 				}
-				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.umd.min.js", versionQuery))
-				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.utils.umd.min.js", versionQuery))
-				frontend.AppendStylesheets(&injected, style_attr, urlBuild("/public/timeless/0.30.0/timeless.weui.css", versionQuery))
-				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.weui.umd.min.js", versionQuery))
-				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.dom.umd.min.js", versionQuery))
-				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.web.umd.min.js", versionQuery))
-				frontend.AppendStylesheets(&injected, style_attr, urlBuild("/inject/components.css"))
+				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.umd.min.js", version_query))
+				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.utils.umd.min.js", version_query))
+				frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.30.0/timeless.weui.css", version_query))
+				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.weui.umd.min.js", version_query))
+				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.dom.umd.min.js", version_query))
+				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.web.umd.min.js", version_query))
+				frontend.AppendStylesheets(&injected, style_attr, url_build("/inject/components.css"))
 				frontend_config := make(map[string]any, len(variables)+2)
 				cfg_byte, _ := json.Marshal(cfg)
 				_ = json.Unmarshal(cfg_byte, &frontend_config)
@@ -185,7 +196,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 					frontend_config[key] = value
 				}
 				frontend_config["version"] = version
-				frontend_config["assets_base_url"] = assetBaseURL
+				frontend_config["assets_base_url"] = asset_base_url
 				frontend_config_byte, _ := json.Marshal(frontend_config)
 				frontend.AppendInlineScript(
 					&injected,
@@ -195,18 +206,19 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 				frontend.AppendScripts(
 					&injected,
 					script_attr,
-					urlBuild("/inject/eventbus.js"),
-					urlBuild("/inject/env.js"),
-					urlBuild("/inject/utils.js"),
-					urlBuild("/inject/components.js"),
-					urlBuild("/inject/virtual-list-view.js"),
-					urlBuild("/inject/download/model.js"),
-					urlBuild("/inject/download/view.js"),
-					ChannelInjectAssetURL(assetBaseURL, "mp.ws.js"),
+					url_build("/public/mitt.umd.js"),
+					url_build("/inject/eventbus.js"),
+					url_build("/inject/env.js"),
+					url_build("/inject/utils.js"),
+					url_build("/inject/components.js"),
+					url_build("/inject/virtual-list-view.js"),
+					url_build("/inject/download/model.js"),
+					url_build("/inject/download/view.js"),
+					InjectAssetURL(asset_base_url, "mp.ws.js"),
 				)
 				if cfg.PagespyEnabled {
 					/** Online debugging */
-					frontend.AppendScripts(&injected, script_attr, urlBuild("/lib/pagespy.min.js", versionQuery), urlBuild("/inject/pagespy.js"))
+					frontend.AppendScripts(&injected, script_attr, url_build("/public/pagespy.min.js", version_query), url_build("/inject/pagespy.js"))
 				}
 				if cfg.InjectContentScript != "" {
 					frontend.AppendInlineScript(&injected, script_attr, cfg.InjectContentScript)

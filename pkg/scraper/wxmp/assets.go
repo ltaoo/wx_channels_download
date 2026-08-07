@@ -43,7 +43,7 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	return nil
 }
 
-// ChannelInjectAssetURL builds a URL for an asset owned by this package.
-func ChannelInjectAssetURL(baseURL, name string) string {
+// InjectAssetURL builds a URL for an asset owned by this package.
+func InjectAssetURL(baseURL, name string) string {
 	return strings.TrimRight(baseURL, "/") + "/platform/wxmp/" + strings.TrimLeft(name, "/")
 }

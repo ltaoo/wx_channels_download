@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
@@ -98,12 +98,7 @@ func (c *APIClient) resolveDownloadSaveDir(requested string) (string, error) {
 		}
 	}
 
-	savePath = strings.ReplaceAll(savePath, "%UserDownloads%", xdg.UserDirs.Download)
-	savePath = strings.ReplaceAll(savePath, "%CWD%", workDir)
-	savePath = filepath.Clean(savePath)
-	if !filepath.IsAbs(savePath) {
-		savePath = filepath.Join(workDir, savePath)
-	}
+	savePath = config.ResolveWorkDirPath(savePath, workDir)
 
 	if err := os.MkdirAll(savePath, 0755); err != nil {
 		return "", fmt.Errorf("创建保存目录 %q 失败: %w", savePath, err)

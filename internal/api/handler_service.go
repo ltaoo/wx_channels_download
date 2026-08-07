@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/config"
 	"wx_channel/internal/events"
+	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
 )
@@ -143,7 +143,7 @@ func serviceConfigPort(value interface{}) (int, error) {
 }
 
 func (c *APIClient) handleRootCertificateStatus(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	installed, err := certificate.CheckHasCertificate(cert.Name)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -156,7 +156,7 @@ func (c *APIClient) handleRootCertificateStatus(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleRootCertificateInstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	if err := certificate.InstallCertificate(cert.Cert); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -168,7 +168,7 @@ func (c *APIClient) handleRootCertificateInstall(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleRootCertificateUninstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	if err := certificate.UninstallCertificate(cert.Name); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return

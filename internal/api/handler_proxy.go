@@ -18,6 +18,7 @@ import (
 
 	"wx_channel/internal/config"
 	"wx_channel/internal/events"
+	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
@@ -180,7 +181,7 @@ func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	if err := certificate.InstallCertificate(cert.Cert); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -189,7 +190,7 @@ func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateUninstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	if err := certificate.UninstallCertificate(cert.Name); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -222,7 +223,7 @@ func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
 	}
 
 	// 1. Get old cert info
-	certInfo := config.LoadCertFilesWithInfo()
+	certInfo := services.LoadCertFilesWithInfo()
 	oldName := certInfo.Cert.Name
 
 	// 2. If installed, uninstall old cert
@@ -275,7 +276,7 @@ func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificatePEM(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := services.LoadCertFiles()
 	ctx.Header("Content-Type", "application/x-pem-file; charset=utf-8")
 	ctx.Header("Content-Disposition", `attachment; filename="root-ca.pem"`)
 	ctx.String(200, string(cert.Cert))
@@ -384,7 +385,7 @@ func (c *APIClient) systemProxyStatusData() gin.H {
 }
 
 func (c *APIClient) certificateStatusData() gin.H {
-	certInfo := config.LoadCertFilesWithInfo()
+	certInfo := services.LoadCertFilesWithInfo()
 	cert := certInfo.Cert
 	installed, installErr := certificate.CheckHasCertificate(cert.Name)
 	data := gin.H{
@@ -422,7 +423,7 @@ func (c *APIClient) certificateStatusData() gin.H {
 	}
 
 	// Build list of all available certificates with their system-install status
-	allCerts := config.ScanAvailableCerts()
+	allCerts := services.ScanAvailableCerts()
 	certList := make([]gin.H, 0, len(allCerts))
 	for _, ac := range allCerts {
 		entry := c.buildCertEntry(ac)
@@ -433,7 +434,7 @@ func (c *APIClient) certificateStatusData() gin.H {
 	return data
 }
 
-func (c *APIClient) buildCertEntry(ac config.AvailableCert) gin.H {
+func (c *APIClient) buildCertEntry(ac services.AvailableCert) gin.H {
 	installed, _ := certificate.CheckHasCertificate(ac.Cert.Name)
 	entry := gin.H{
 		"name":          ac.Cert.Name,

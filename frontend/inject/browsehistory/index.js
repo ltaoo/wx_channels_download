@@ -62,16 +62,6 @@ function BrowseHistoryPageHeader(props) {
   ]);
 }
 
-function BrowseHistoryPageToolbar(props) {
-  const vm$ = props.store;
-  return View({ class: "wx-content-toolbar" }, [
-    Timeless.Select({
-      store: vm$.ui.platform,
-      class: "wx-content-type-select",
-    }),
-  ]);
-}
-
 function BrowseHistoryRowCover(props) {
   const history = props.history;
   if (!history.cover_url) {
@@ -192,7 +182,7 @@ function BrowseHistoryRow(props) {
       // 访问时间
       View({ class: "wx-content-row-meta" }, [
         Timeless.Icon({ name: "clock3", size: 12 }),
-        vm$.methods.formatTime(history.publish_time),
+        vm$.methods.formatTime(history.updated_at),
       ]),
       // 访问次数
       View({ class: "wx-content-row-visits" }, [
@@ -399,9 +389,6 @@ function BrowseHistoryPageView(props) {
     },
     [
       BrowseHistoryPageHeader({ store: vm$ }),
-      View({ class: "wx-content-toolbar-wrap" }, [
-        BrowseHistoryPageToolbar({ store: vm$ }),
-      ]),
       BrowseHistoryPageBody({ store: vm$ }),
       Show({
         when: computed(vm$.state.histories, (histories) => histories.length > 0),

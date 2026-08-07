@@ -477,7 +477,7 @@ body[data-weui-theme=dark] .wx-dl-dark-scroll:active::-webkit-scrollbar-thumb { 
 .wx-dl-page-list [data-list-view-viewport] { display: flex; flex-direction: column; gap: var(--wx-dl-card-gap); }
 .wx-dl-page-list [data-list-view-item] { display: flex; justify-content: center; }
 .wx-dl-page-item { width: var(--wx-dl-page-card-width); max-width: calc(100vw - 48px); flex: 0 0 auto; box-sizing: border-box; padding: 22px 28px 22px 36px; background: var(--wx-dl-page-surface); border: 1px solid var(--wx-dl-page-border); border-radius: 8px; box-shadow: var(--wx-dl-page-shadow); }
-.wx-dl-page-item .weui-cell__hd { margin-right: 34px !important; color: var(--wx-dl-page-primary) !important; }
+.wx-dl-page-item .weui-cell__hd { margin-right: 12px !important; color: var(--wx-dl-page-primary) !important; }
 .wx-dl-page-item .weui-cell__bd { min-width: 0; }
 .wx-dl-page-item .wx-dl-item-title { color: var(--wx-dl-page-primary) !important; font-size: 16px !important; font-weight: 600 !important; line-height: 22px !important; }
 .wx-dl-page-item .weui-cell__desc { overflow: hidden; color: var(--wx-dl-page-muted); font-size: 16px; line-height: 24px; text-overflow: ellipsis; white-space: nowrap; }

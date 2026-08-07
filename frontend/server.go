@@ -7,7 +7,7 @@ import (
 	"github.com/ltaoo/velo/frontendserver"
 )
 
-//go:embed index.html migration.html public lib
+//go:embed index.html migration.html public
 var embeddedFS embed.FS
 
 // FS exports the embedded frontend filesystem for use in production mode
@@ -30,7 +30,7 @@ func NewServer(mode string) http.Handler {
 		Root:                root,
 		Embedded:            embedded,
 		EntryPage:           "index.html",
-		StaticAssetPrefixes: []string{"/public", "/src", "/lib"},
+		StaticAssetPrefixes: []string{"/public", "/src"},
 		NoFallbackPrefixes:  []string{"/api", "/ws", "/rss"},
 	})
 }

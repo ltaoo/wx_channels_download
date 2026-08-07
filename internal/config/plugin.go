@@ -24,7 +24,7 @@ type Configurable interface {
 	// ConfigSchema returns the config item definitions for this plugin.
 	// Keys are relative to the namespace (e.g. "disableLocationToHome", not
 	// "channels.disableLocationToHome"). The loader auto-prepends the namespace.
-	ConfigSchema() []ConfigItem
+	ConfigSchema() []ConfigField
 
 	// ApplyConfig is called after config.yaml is loaded, with a SubViper scoped
 	// to the plugin's namespace. The plugin reads its config values from sub

@@ -138,7 +138,7 @@ var WXAudio = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
-      await __wx_load_script(__wx_asset_url("/lib/recorder.min.js"));
+      await __wx_load_script(__wx_asset_url("/public/recorder.min.js"));
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);

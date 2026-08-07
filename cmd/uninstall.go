@@ -6,7 +6,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"wx_channel/internal/config"
+	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
 )
@@ -21,7 +21,7 @@ var uninstall_certificate_cmd = &cobra.Command{
 			return
 		}
 		uninstall_certificate_command(&UninstallCertificateCommandArgs{
-			CertFiles: config.LoadCertFiles(),
+			CertFiles: services.LoadCertFiles(),
 		})
 	},
 }

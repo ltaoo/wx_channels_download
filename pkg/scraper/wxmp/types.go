@@ -279,7 +279,7 @@ type officialAccountPageVariable struct {
 	Article   officialAccountArticleVariable   `json:"article,omitempty"`
 }
 
-func buildOfficialAccountVariables(htmlText string) map[string]interface{} {
+func build_official_account_variables(htmlText string) map[string]interface{} {
 	page := extractOfficialAccountPageVariable(htmlText)
 	variables := map[string]interface{}{}
 	if page.Publisher.AvatarURL == "" &&

@@ -3,7 +3,7 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["lib/**", "docs/**", "dist/**", "node_modules/**"],
+    ignores: ["public/**", "docs/**", "dist/**", "node_modules/**"],
   },
   {
     files: ["src/**/*.js"],

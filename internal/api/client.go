@@ -12,7 +12,6 @@ import (
 
 	"wx_channel/frontend"
 	"wx_channel/internal/events"
-	"wx_channel/internal/manager"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/clawreq"
@@ -152,12 +151,12 @@ type ClientWebsocketResponse struct {
 	Data json.RawMessage `json:"data"`
 }
 
-func (c *APIClient) serviceStatusesMap() map[string]manager.ServerStatus {
+func (c *APIClient) serviceStatusesMap() map[string]string {
 	c.svc_status_mu.RLock()
 	defer c.svc_status_mu.RUnlock()
-	result := make(map[string]manager.ServerStatus, len(c.svc_statuses))
+	result := make(map[string]string, len(c.svc_statuses))
 	for name, s := range c.svc_statuses {
-		result[name] = manager.ServerStatus(s.Status)
+		result[name] = s.Status
 	}
 	return result
 }
@@ -208,29 +207,11 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (c *APIClient) setupStaticAssetRoutes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		c.engine.Handle(method, "/__assets/lib/*filepath", c.handleLibAsset)
 		c.engine.Handle(method, "/__assets/public/*filepath", c.handlePublicAsset)
 		c.engine.Handle(method, "/__assets/src/*filepath", c.handleSrcAsset)
 		c.engine.Handle(method, "/__assets/inject/*filepath", c.handleFrontendInjectAsset)
 		c.engine.Handle(method, "/__assets/platform/*filepath", c.handlePlatformStaticAsset)
 	}
-}
-
-func (c *APIClient) handleLibAsset(ctx *gin.Context) {
-	rel := ctx.Param("filepath")
-	data, err := frontend.Assets().ReadLib(rel)
-	if err != nil {
-		ctx.Status(http.StatusNotFound)
-		return
-	}
-	data = frontend.StaticAssetResponseData(rel, data)
-	ctx.Header("Content-Type", frontend.StaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.LibAssetCacheControl)
-	if ctx.Request.Method == http.MethodHead {
-		ctx.Status(http.StatusOK)
-		return
-	}
-	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) handlePublicAsset(ctx *gin.Context) {

@@ -1,22 +1,25 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"wx_channel/internal/events"
-	"wx_channel/internal/manager"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
 )
 
 type APIServer struct {
-	*manager.HTTPServer
+	addr      string
+	handler   http.Handler
+	server    *http.Server
 	APIClient *APIClient
 	bus       *events.Bus
 }
@@ -29,12 +32,11 @@ func NewAPIServer(
 	downloader *hermes.HermesEngine,
 	hookManager *hermes.HookManager,
 ) *APIServer {
-	srv := manager.NewHTTPServer("API服务", cfg.Hostname+":"+strconv.Itoa(cfg.Port))
 	client := NewAPIClient(cfg, logger, db, staticAssets, downloader, hookManager)
-	srv.SetHandler(client.HTTPHandler())
 	return &APIServer{
-		HTTPServer: srv,
-		APIClient:  client,
+		addr:      cfg.Hostname + ":" + strconv.Itoa(cfg.Port),
+		handler:   client.HTTPHandler(),
+		APIClient: client,
 	}
 }
 
@@ -56,37 +58,52 @@ func (s *APIServer) SubscribeEvents(bus *events.Bus) {
 }
 
 func (s *APIServer) Start() error {
-	l, err := net.Listen("tcp", s.HTTPServer.Addr())
+	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("启动API服务失败，端口被占用: %v", err)
 	}
-	l.Close()
 	if err := s.APIClient.Start(); err != nil {
+		_ = listener.Close()
 		return err
 	}
-	if err := s.HTTPServer.Start(); err != nil {
-		return err
+	server := &http.Server{
+		Addr:    s.addr,
+		Handler: s.handler,
 	}
-	s.publishStatus()
+	s.server = server
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("API服务 error: %v\n", err)
+			return
+		}
+		fmt.Println("API服务 stopped")
+	}()
+
+	s.publishStatus("running")
 	return nil
 }
 
-func (s *APIServer) SetHandler(handler http.Handler) {
-	s.HTTPServer.SetHandler(handler)
+func (s *APIServer) Addr() string {
+	return s.addr
 }
 
 func (s *APIServer) Stop() error {
 	if err := s.APIClient.Stop(); err != nil {
 		return err
 	}
-	if err := s.HTTPServer.Stop(); err != nil {
-		return err
+	if s.server != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.server.Shutdown(ctx); err != nil {
+			return err
+		}
+		s.server = nil
 	}
-	s.publishStatus()
+	s.publishStatus("stopped")
 	return nil
 }
 
-func (s *APIServer) publishStatus() {
+func (s *APIServer) publishStatus(status string) {
 	if s.bus == nil {
 		return
 	}
@@ -94,6 +111,6 @@ func (s *APIServer) publishStatus() {
 		Name:   "api",
 		Title:  "API服务",
 		Addr:   s.Addr(),
-		Status: string(s.Status()),
+		Status: status,
 	})
 }

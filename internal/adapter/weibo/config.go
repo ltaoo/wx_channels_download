@@ -12,8 +12,8 @@ type WeiboPluginConfig struct {
 
 func (c *WeiboPluginConfig) ConfigNamespace() string { return "weibo" }
 
-func (c *WeiboPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *WeiboPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

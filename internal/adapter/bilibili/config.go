@@ -12,8 +12,8 @@ type BilibiliPluginConfig struct {
 
 func (c *BilibiliPluginConfig) ConfigNamespace() string { return "bilibili" }
 
-func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

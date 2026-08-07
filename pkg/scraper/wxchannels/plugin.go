@@ -13,6 +13,7 @@ import (
 	"github.com/fatih/color"
 
 	"wx_channel/frontend"
+	"wx_channel/internal/interceptor"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/util"
 )
@@ -68,7 +69,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 	if variables == nil {
 		variables = map[string]any{}
 	}
-	asset_base_url := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
+	asset_base_url := "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	v := "?t=" + version
 	plugins := make([]*proxy.Plugin, 0, 5)
@@ -76,6 +77,12 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
+			if interceptor.MockFrontendStaticAsset(ctx, pathname, interceptor.FrontendStaticAssetMockOptions{
+				PlatformPrefix: StaticAssetsPath + "/",
+				PlatformFS:     Assets.InjectFS,
+			}) {
+				return
+			}
 			if pathname == "/__wx_channels_api/tip" {
 				var data FrontendTip
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
@@ -161,6 +168,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					return
 				}
 				html := string(resp_body)
+				interceptor.RewriteResponseCSPForLocalAssets(ctx, asset_base_url)
 				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
@@ -196,6 +204,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
+					url_build("/public/mitt.umd.js", version_query),
 					url_build("/inject/eventbus.js"),
 					url_build("/inject/env.js"),
 					url_build("/inject/utils.js"),
@@ -206,7 +215,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					frontend.AppendScripts(
 						&injected,
 						crossorigin_attr,
-						url_build("/lib/pagespy.min.js", version_query),
+						url_build("/public/pagespy.min.js", version_query),
 						url_build("/inject/pagespy.js"),
 					)
 				}
@@ -226,22 +235,22 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					ChannelsUserScripts(asset_base_url, "channels.events.js"),
-					ChannelsUserScripts(asset_base_url, "channels.env.js"),
-					ChannelsUserScripts(asset_base_url, "channels.utils.js"),
-					ChannelsUserScripts(asset_base_url, "channels.ws.js"),
+					InjectAssetURL(asset_base_url, "channels.events.js"),
+					InjectAssetURL(asset_base_url, "channels.env.js"),
+					InjectAssetURL(asset_base_url, "channels.utils.js"),
+					InjectAssetURL(asset_base_url, "channels.ws.js"),
 				)
 				if pathname == "/web/pages/home" {
-					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.home.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.home.js"))
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.feed.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.feed.js"))
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.live.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.live.js"))
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.profile.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.profile.js"))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

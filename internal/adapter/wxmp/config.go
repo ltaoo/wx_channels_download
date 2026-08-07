@@ -18,8 +18,8 @@ type MPPluginConfig struct {
 
 func (c *MPPluginConfig) ConfigNamespace() string { return "mp" }
 
-func (c *MPPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *MPPluginConfig) ConfigSchema() []config.ConfigField {
+	return []config.ConfigField{
 		{
 			Key:         "enabled",
 			Type:        config.ConfigTypeBool,

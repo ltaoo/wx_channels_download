@@ -133,15 +133,12 @@ var BrowseHistoryModel = (() => {
         ),
         0,
       ),
+      updated_at: number_or_default(
+        first_non_empty(source.updated_at, source.UpdatedAt),
+        0,
+      ),
       publish_time: number_or_default(
-        first_non_empty(
-          source.publish_time,
-          source.PublishTime,
-          source.updated_at,
-          source.UpdatedAt,
-          source.created_at,
-          source.CreatedAt,
-        ),
+        first_non_empty(source.publish_time, source.PublishTime),
         0,
       ),
     };

@@ -1,19 +1,16 @@
 package config
 
 import (
-	"bytes"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/adrg/xdg"
 	"github.com/spf13/viper"
-
-	"wx_channel/pkg/certificate"
 )
 
 type Config struct {
@@ -35,14 +32,13 @@ type Config struct {
 	ContentScriptPath    string // Absolute path to content script
 	ContentScriptContent string // Content of content script
 
-	DBType         string
-	DBHost         string
-	DBPort         string
-	DBUser         string
-	DBPassword     string
-	DBName         string
-	DBPath         string
-	MigrationsPath string
+	DBType     string
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+	DBPath     string
 }
 
 const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
@@ -111,16 +107,93 @@ func New(ver string, mode string) *Config {
 	return c
 }
 
+func (ctx ConfigValueContext) Get(key string) interface{} {
+	if ctx.Config == nil {
+		return viper.Get(key)
+	}
+	return ctx.Config.Get(key)
+}
+
+func (ctx ConfigValueContext) GetString(key string) string {
+	if ctx.Config == nil {
+		return viper.GetString(key)
+	}
+	return ctx.Config.GetString(key)
+}
+
+func (ctx ConfigValueContext) GetInt(key string) int {
+	if ctx.Config == nil {
+		return viper.GetInt(key)
+	}
+	return ctx.Config.GetInt(key)
+}
+
+func (ctx ConfigValueContext) GetBool(key string) bool {
+	if ctx.Config == nil {
+		return viper.GetBool(key)
+	}
+	return ctx.Config.GetBool(key)
+}
+
+func (ctx ConfigValueContext) RootDir() string {
+	if ctx.Config == nil {
+		return ""
+	}
+	return ctx.Config.RootDir
+}
+
+func (ctx ConfigValueContext) WorkDir() string {
+	if ctx.Config == nil {
+		return ""
+	}
+	if strings.TrimSpace(ctx.Config.WorkDir) != "" {
+		return ctx.Config.WorkDir
+	}
+	return ctx.Config.GetString("workdir")
+}
+
+func ResolveWorkDirValue(value interface{}, ctx ConfigValueContext) interface{} {
+	rootDir := strings.TrimSpace(ctx.RootDir())
+	return resolvePathValue(value, rootDir, rootDir, rootDir)
+}
+
+func ResolveWorkDirPathValue(value interface{}, ctx ConfigValueContext) interface{} {
+	workDir := strings.TrimSpace(ctx.WorkDir())
+	return ResolveWorkDirPath(value, workDir)
+}
+
+// ResolveWorkDirPath expands config path placeholders and resolves relative paths
+// from the runtime working directory.
+func ResolveWorkDirPath(value interface{}, workDir string) string {
+	workDir = strings.TrimSpace(workDir)
+	return resolvePathValue(value, workDir, workDir, "")
+}
+
+func resolvePathValue(value interface{}, baseDir string, cwd string, fallback string) string {
+	path := strings.TrimSpace(configValueString(value))
+	if path == "" {
+		path = fallback
+	}
+	path = strings.ReplaceAll(path, "%UserDownloads%", xdg.UserDirs.Download)
+	path = strings.ReplaceAll(path, "%CWD%", cwd)
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) && baseDir != "" {
+		path = filepath.Join(baseDir, path)
+	}
+	return path
+}
+
 func (c *Config) LoadConfig() error {
-	Register(ConfigItem{
-		Key:         "workdir",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "运行时工作目录，日志、数据库等运行时文件将写入该目录",
-		Title:       "工作目录",
-		Group:       "General",
+	Register(ConfigField{
+		Key:          "workdir",
+		Type:         ConfigTypeString,
+		Default:      "",
+		Description:  "运行时工作目录，日志、数据库等运行时文件将写入该目录",
+		Title:        "工作目录",
+		Group:        "General",
+		ProcessValue: ResolveWorkDirValue,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.system",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -129,7 +202,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.hostname",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1",
@@ -137,7 +210,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "代理主机",
 		Group:       "Proxy",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.port",
 		Type:        ConfigTypeInt,
 		Default:     2023,
@@ -145,7 +218,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "代理端口",
 		Group:       "Proxy",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.tcpRelay.enabled",
 		Type:        ConfigTypeBool,
 		Default:     false,
@@ -154,7 +227,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.tcpRelay.hostname",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1",
@@ -163,7 +236,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.tcpRelay.port",
 		Type:        ConfigTypeInt,
 		Default:     9900,
@@ -172,7 +245,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cert.file",
 		Type:        ConfigTypeFile,
 		Default:     "",
@@ -182,7 +255,7 @@ func (c *Config) LoadConfig() error {
 		Accept:      ".pem,.cer,.crt,.key",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cert.key",
 		Type:        ConfigTypeFile,
 		Default:     "",
@@ -192,7 +265,7 @@ func (c *Config) LoadConfig() error {
 		Accept:      ".pem,.key",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cert.name",
 		Type:        ConfigTypeString,
 		Default:     "Echo",
@@ -201,7 +274,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.tun",
 		Type:        ConfigTypeBool,
 		Default:     false,
@@ -210,7 +283,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.defaultInterface",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -219,7 +292,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.skipInstallRootCert",
 		Type:        ConfigTypeBool,
 		Default:     false,
@@ -228,7 +301,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "proxy.upstreamProxy",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -237,7 +310,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "pagespy.enabled",
 		Type:        ConfigTypeSelect,
 		Default:     false,
@@ -246,7 +319,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Pagespy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "pagespy.protocol",
 		Type:        ConfigTypeSelect,
 		Default:     "http",
@@ -256,7 +329,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Pagespy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "pagespy.api",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1:6752",
@@ -265,7 +338,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Pagespy",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "debug.error",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -274,7 +347,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Debug",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "debug.echolog",
 		Type:        ConfigTypeBool,
 		Default:     false,
@@ -283,7 +356,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Debug",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "inject.globalScript",
 		Type:        ConfigTypeString,
 		Default:     "global.js",
@@ -292,7 +365,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Inject",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "inject.contentScript",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -301,15 +374,16 @@ func (c *Config) LoadConfig() error {
 		Group:       "Inject",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
-		Key:         "download.dir",
-		Type:        ConfigTypeString,
-		Default:     "%UserDownloads%",
-		Description: "指定下载的目录，当 frontend 为 true 时不生效",
-		Title:       "下载目录",
-		Group:       "Download",
+	Register(ConfigField{
+		Key:          "download.dir",
+		Type:         ConfigTypeString,
+		Default:      "%UserDownloads%",
+		Description:  "指定下载的目录，当 frontend 为 true 时不生效",
+		Title:        "下载目录",
+		Group:        "Download",
+		ProcessValue: ResolveWorkDirPathValue,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "download.filenameTemplate",
 		Type:        ConfigTypeString,
 		Default:     "{{filename}}_{{spec}}",
@@ -318,7 +392,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "download.playDoneAudio",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -327,7 +401,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Download",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.type",
 		Type:        ConfigTypeSelect,
 		Default:     "sqlite",
@@ -336,7 +410,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库类型",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.host",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -344,7 +418,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库主机",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.port",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -352,7 +426,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库端口",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.username",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -360,7 +434,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库用户名",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.password",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -368,7 +442,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库密码",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "db.filename",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -376,23 +450,16 @@ func (c *Config) LoadConfig() error {
 		Title:       "数据库名称",
 		Group:       "Database",
 	})
-	Register(ConfigItem{
-		Key:         "db.filepath",
-		Type:        ConfigTypeString,
-		Default:     "%CWD%/data.db",
-		Description: "SQLite 数据库文件路径",
-		Title:       "SQLite 路径",
-		Group:       "Database",
+	Register(ConfigField{
+		Key:          "db.filepath",
+		Type:         ConfigTypeString,
+		Default:      "%CWD%/data.db",
+		Description:  "SQLite 数据库文件路径",
+		Title:        "SQLite 路径",
+		Group:        "Database",
+		ProcessValue: ResolveWorkDirPathValue,
 	})
-	Register(ConfigItem{
-		Key:         "db.migration",
-		Type:        ConfigTypeString,
-		Default:     "%CWD%/migrations",
-		Description: "数据库迁移文件目录",
-		Title:       "迁移目录",
-		Group:       "Database",
-	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "api.protocol",
 		Type:        ConfigTypeString,
 		Default:     "http",
@@ -401,7 +468,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 		Readonly:    true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "api.hostname",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1",
@@ -409,7 +476,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "API 服务主机",
 		Group:       "API",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "api.port",
 		Type:        ConfigTypeInt,
 		Default:     2022,
@@ -417,7 +484,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "API 服务端口",
 		Group:       "API",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "admin.hostname",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1",
@@ -425,7 +492,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "Admin 服务主机",
 		Group:       "Admin",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "admin.port",
 		Type:        ConfigTypeInt,
 		Default:     2021,
@@ -434,7 +501,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Admin",
 	})
 
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.dockerImage",
 		Type:        ConfigTypeString,
 		Default:     "lscr.io/linuxserver/chromium:latest",
@@ -442,7 +509,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "沙箱镜像",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.dockerEntrypoint",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -450,7 +517,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "沙箱 Entrypoint",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.dockerNetwork",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -458,7 +525,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "沙箱网络",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.cdpPortMin",
 		Type:        ConfigTypeInt,
 		Default:     39222,
@@ -466,7 +533,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "CDP 端口起点",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.cdpPortMax",
 		Type:        ConfigTypeInt,
 		Default:     39322,
@@ -474,7 +541,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "CDP 端口终点",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.desktopPortMin",
 		Type:        ConfigTypeInt,
 		Default:     39000,
@@ -482,7 +549,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "桌面端口起点",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.desktopPortMax",
 		Type:        ConfigTypeInt,
 		Default:     39122,
@@ -490,7 +557,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "桌面端口终点",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.resolution",
 		Type:        ConfigTypeString,
 		Default:     "1920x1080x24",
@@ -498,7 +565,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "桌面分辨率",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.shmSize",
 		Type:        ConfigTypeString,
 		Default:     "1g",
@@ -506,7 +573,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "共享内存",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.memoryLimit",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -514,7 +581,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "内存限制",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "sandbox.chromeCommand",
 		Type:        ConfigTypeText,
 		Default:     "",
@@ -522,7 +589,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "Chrome 启动命令",
 		Group:       "Sandbox",
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.accountId",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -531,7 +598,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.apiToken",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -540,7 +607,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.refreshToken",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -549,7 +616,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.adminToken",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -558,7 +625,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.workerName",
 		Type:        ConfigTypeString,
 		Default:     "official-account-api",
@@ -567,7 +634,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.d1Id",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -576,7 +643,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "cloudflare.d1Name",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -586,7 +653,7 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	// Update auto-update configuration
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "update.proxy",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -595,7 +662,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "Update",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "update.mirror",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -606,7 +673,7 @@ func (c *Config) LoadConfig() error {
 	})
 
 	// FileHelper WeChat file transfer helper configuration
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "filehelper.enabled",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -615,7 +682,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "FileHelper",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "filehelper.callbackUrl",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -624,7 +691,7 @@ func (c *Config) LoadConfig() error {
 		Group:       "FileHelper",
 		HotReload:   true,
 	})
-	Register(ConfigItem{
+	Register(ConfigField{
 		Key:         "filehelper.syncInterval",
 		Type:        ConfigTypeInt,
 		Default:     5,
@@ -648,43 +715,21 @@ func (c *Config) LoadConfig() error {
 	// Load plugin configs: each plugin declares its schema and reads its own config
 	LoadPluginConfigs()
 
-	c.DBType = viper.GetString("db.type")
-	c.DBHost = viper.GetString("db.host")
-	c.DBPort = viper.GetString("db.port")
-	c.DBUser = viper.GetString("db.username")
-	c.DBPassword = viper.GetString("db.password")
-	c.DBName = viper.GetString("db.filename")
+	c.DBType = c.GetString("db.type")
+	c.DBHost = c.GetString("db.host")
+	c.DBPort = c.GetString("db.port")
+	c.DBUser = c.GetString("db.username")
+	c.DBPassword = c.GetString("db.password")
+	c.DBName = c.GetString("db.filename")
 
-	workDir := strings.TrimSpace(viper.GetString("workdir"))
-	if workDir == "" {
-		workDir = c.RootDir
-	}
-	workDir = strings.ReplaceAll(workDir, "%CWD%", c.RootDir)
-	workDir = filepath.Clean(workDir)
-	if !filepath.IsAbs(workDir) {
-		workDir = filepath.Join(c.RootDir, workDir)
-	}
+	workDir := c.GetString("workdir")
 	c.WorkDir = workDir
 	if err := os.MkdirAll(c.WorkDir, 0755); err != nil {
 		c.Error = err
 		return err
 	}
 
-	dbPath := viper.GetString("db.filepath")
-	dbPath = strings.ReplaceAll(dbPath, "%CWD%", c.WorkDir)
-	dbPath = filepath.Clean(dbPath)
-	if !filepath.IsAbs(dbPath) {
-		dbPath = filepath.Join(c.WorkDir, dbPath)
-	}
-	c.DBPath = dbPath
-
-	migPath := viper.GetString("db.migration")
-	migPath = strings.ReplaceAll(migPath, "%CWD%", c.WorkDir)
-	migPath = filepath.Clean(migPath)
-	if !filepath.IsAbs(migPath) {
-		migPath = filepath.Join(c.WorkDir, migPath)
-	}
-	c.MigrationsPath = migPath
+	c.DBPath = c.GetString("db.filepath")
 
 	// Resolve inject scripts
 	c.resolveScript("inject.globalScript", &c.GlobalScriptPath, &c.GlobalScriptContent)
@@ -694,7 +739,7 @@ func (c *Config) LoadConfig() error {
 }
 
 func (c *Config) resolveScript(configKey string, pathField, contentField *string) {
-	scriptPath := viper.GetString(configKey)
+	scriptPath := c.GetString(configKey)
 	if scriptPath == "" {
 		return
 	}
@@ -747,25 +792,180 @@ func (c *Config) GetAll() map[string]interface{} {
 }
 
 func (c *Config) Get(key string) interface{} {
-	return viper.Get(key)
+	return c.processValue(key, viper.Get(key))
 }
 
 // Typed getters with dotted path support, e.g. "a.b.c"
-func (c *Config) GetString(path string) string   { return viper.GetString(path) }
-func (c *Config) GetInt(path string) int         { return viper.GetInt(path) }
-func (c *Config) GetBool(path string) bool       { return viper.GetBool(path) }
-func (c *Config) GetFloat64(path string) float64 { return viper.GetFloat64(path) }
+func (c *Config) GetString(path string) string {
+	if !hasValueProcessor(path) {
+		return viper.GetString(path)
+	}
+	return configValueString(c.processValue(path, viper.Get(path)))
+}
+
+func (c *Config) GetInt(path string) int {
+	if !hasValueProcessor(path) {
+		return viper.GetInt(path)
+	}
+	return configValueInt(c.processValue(path, viper.Get(path)))
+}
+
+func (c *Config) GetBool(path string) bool {
+	if !hasValueProcessor(path) {
+		return viper.GetBool(path)
+	}
+	return configValueBool(c.processValue(path, viper.Get(path)))
+}
+
+func (c *Config) GetFloat64(path string) float64 {
+	if !hasValueProcessor(path) {
+		return viper.GetFloat64(path)
+	}
+	return configValueFloat64(c.processValue(path, viper.Get(path)))
+}
+
+func (c *Config) processValue(path string, value interface{}) interface{} {
+	item, ok := Lookup(path)
+	if !ok || item.ProcessValue == nil {
+		return value
+	}
+	return item.ProcessValue(value, ConfigValueContext{Config: c})
+}
+
+func hasValueProcessor(path string) bool {
+	item, ok := Lookup(path)
+	return ok && item.ProcessValue != nil
+}
 
 // GetDownloadDir resolves and returns the absolute download directory path.
 func (c *Config) GetDownloadDir() string {
-	dir := viper.GetString("download.dir")
-	dir = strings.ReplaceAll(dir, "%UserDownloads%", xdg.UserDirs.Download)
-	dir = strings.ReplaceAll(dir, "%CWD%", c.WorkDir)
-	dir = filepath.Clean(dir)
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(c.WorkDir, dir)
+	return c.GetString("download.dir")
+}
+
+func configValueString(value interface{}) string {
+	if value == nil {
+		return ""
 	}
-	return dir
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func configValueInt(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int8:
+		return int(v)
+	case int16:
+		return int(v)
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case uint:
+		return int(v)
+	case uint8:
+		return int(v)
+	case uint16:
+		return int(v)
+	case uint32:
+		return int(v)
+	case uint64:
+		return int(v)
+	case float32:
+		return int(v)
+	case float64:
+		return int(v)
+	case string:
+		i, _ := strconv.Atoi(strings.TrimSpace(v))
+		return i
+	case bool:
+		if v {
+			return 1
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+func configValueBool(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		b, _ := strconv.ParseBool(strings.TrimSpace(v))
+		return b
+	case int:
+		return v != 0
+	case int8:
+		return v != 0
+	case int16:
+		return v != 0
+	case int32:
+		return v != 0
+	case int64:
+		return v != 0
+	case uint:
+		return v != 0
+	case uint8:
+		return v != 0
+	case uint16:
+		return v != 0
+	case uint32:
+		return v != 0
+	case uint64:
+		return v != 0
+	case float32:
+		return v != 0
+	case float64:
+		return v != 0
+	default:
+		return false
+	}
+}
+
+func configValueFloat64(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return f
+	case bool:
+		if v {
+			return 1
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 func IsMPEnabled() bool {
@@ -784,211 +984,4 @@ func EnsureDirIfMissing(path string) error {
 		return os.MkdirAll(path, 0755)
 	}
 	return err
-}
-
-type CertSource string
-
-const (
-	CertSourceSunnyNet   CertSource = "sunny_net"
-	CertSourceMitmproxy  CertSource = "mitmproxy"
-	CertSourceConfigured CertSource = "configured"
-	CertSourceGenerated  CertSource = "generated"
-)
-
-type CertFilesInfo struct {
-	Cert         *certificate.CertFileAndKeyFile
-	Source       CertSource
-	IsLegacy     bool
-	RiskWarnings []string
-}
-
-func LoadCertFilesWithInfo() CertFilesInfo {
-	cert := LoadCertFiles()
-	info := CertFilesInfo{Cert: cert}
-
-	if cert.Name == certificate.DefaultCertFiles.Name {
-		info.Source = CertSourceSunnyNet
-		info.IsLegacy = true
-		info.RiskWarnings = []string{"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议删除后安装本机专有证书"}
-		return info
-	}
-
-	if cert.Name == "mitmproxy" {
-		info.Source = CertSourceMitmproxy
-		info.IsLegacy = true
-		info.RiskWarnings = []string{"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险"}
-		return info
-	}
-
-	// cert.file and cert.key are configured; determine if user-configured or app-generated.
-	// App-generated certs are written to the certs/ subdirectory of the work dir.
-	certFile := viper.GetString("cert.file")
-	if certFile != "" {
-		if absPath, err := filepath.Abs(certFile); err == nil && isUnderCertsDir(absPath) {
-			info.Source = CertSourceGenerated
-			return info
-		}
-	}
-
-	info.Source = CertSourceConfigured
-	return info
-}
-
-// AvailableCert represents a certificate available to the proxy.
-type AvailableCert struct {
-	Cert         *certificate.CertFileAndKeyFile
-	Source       CertSource
-	IsLegacy     bool
-	IsActive     bool
-	RiskWarnings []string
-}
-
-// ScanAvailableCerts returns all certificates known to the system,
-// including the built-in SunnyNet cert, mitmproxy cert (if present),
-// and the user-configured or generated cert. Exactly one cert is marked active.
-func ScanAvailableCerts() []AvailableCert {
-	activeCert := LoadCertFiles()
-	var certs []AvailableCert
-
-	// 1. SunnyNet (always available as fallback)
-	sunnyEntry := AvailableCert{
-		Cert:     certificate.DefaultCertFiles,
-		Source:   CertSourceSunnyNet,
-		IsLegacy: true,
-		IsActive: activeCert.Name == certificate.DefaultCertFiles.Name,
-		RiskWarnings: []string{
-			"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议替换为本机生成的证书",
-		},
-	}
-	certs = append(certs, sunnyEntry)
-
-	// 2. mitmproxy (available if cert files exist on disk)
-	if mitmCert := tryLoadMitmproxyCert(); mitmCert != nil {
-		mitmEntry := AvailableCert{
-			Cert:     mitmCert,
-			Source:   CertSourceMitmproxy,
-			IsLegacy: true,
-			IsActive: activeCert.Name == "mitmproxy",
-			RiskWarnings: []string{
-				"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险，建议替换为本机生成的证书",
-			},
-		}
-		certs = append(certs, mitmEntry)
-	}
-
-	// 3. Configured/generated cert (available if cert.file + cert.key are set)
-	if confCert, ok := loadConfiguredCertFiles(); ok {
-		source := CertSourceConfigured
-		if absPath, err := filepath.Abs(viper.GetString("cert.file")); err == nil && isUnderCertsDir(absPath) {
-			source = CertSourceGenerated
-		}
-		isActive := activeCert.Name == confCert.Name // compare name since object identities differ
-		// Also compare by source: only the configured/generated cert can be active
-		// when activeCert is neither SunnyNet nor mitmproxy.
-		if !isActive && activeCert.Name != certificate.DefaultCertFiles.Name && activeCert.Name != "mitmproxy" {
-			isActive = true
-		}
-		confEntry := AvailableCert{
-			Cert:     confCert,
-			Source:   source,
-			IsLegacy: false,
-			IsActive: isActive,
-		}
-		certs = append(certs, confEntry)
-	}
-
-	return certs
-}
-
-// tryLoadMitmproxyCert loads the mitmproxy certificate from standard locations.
-// Returns nil if the cert files are not found.
-func tryLoadMitmproxyCert() *certificate.CertFileAndKeyFile {
-	var dirs []string
-	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".mitmproxy"))
-	}
-	if runtime.GOOS == "windows" {
-		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			dirs = append(dirs, filepath.Join(appdata, "mitmproxy"))
-		}
-	}
-	for _, dir := range dirs {
-		cert_path := filepath.Join(dir, "mitmproxy-ca-cert.pem")
-		key_path := filepath.Join(dir, "mitmproxy-ca.pem")
-		if cert_bytes, err1 := os.ReadFile(cert_path); err1 == nil {
-			if key_bytes, err2 := os.ReadFile(key_path); err2 == nil {
-				return &certificate.CertFileAndKeyFile{
-					Name:       "mitmproxy",
-					Cert:       cert_bytes,
-					PrivateKey: key_bytes,
-				}
-			}
-		}
-		if key_bytes, err := os.ReadFile(key_path); err == nil {
-			rest := key_bytes
-			var certBlocks [][]byte
-			var keyBlock []byte
-			for {
-				block, rem := pem.Decode(rest)
-				if block == nil {
-					break
-				}
-				rest = rem
-				if block.Type == "CERTIFICATE" {
-					enc := pem.EncodeToMemory(block)
-					if enc != nil {
-						certBlocks = append(certBlocks, enc)
-					}
-				} else if strings.Contains(block.Type, "PRIVATE KEY") {
-					enc := pem.EncodeToMemory(block)
-					if enc != nil {
-						keyBlock = enc
-					}
-				}
-			}
-			if len(certBlocks) > 0 && len(keyBlock) > 0 {
-				return &certificate.CertFileAndKeyFile{
-					Name:       "mitmproxy",
-					Cert:       bytes.Join(certBlocks, []byte("")),
-					PrivateKey: keyBlock,
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func LoadCertFiles() *certificate.CertFileAndKeyFile {
-	if cert, ok := loadConfiguredCertFiles(); ok {
-		return cert
-	}
-	if mitmCert := tryLoadMitmproxyCert(); mitmCert != nil {
-		return mitmCert
-	}
-	return certificate.DefaultCertFiles
-}
-
-func loadConfiguredCertFiles() (*certificate.CertFileAndKeyFile, bool) {
-	cert_filepath := viper.GetString("cert.file")
-	certkey_filepath := viper.GetString("cert.key")
-	if cert_filepath != "" && certkey_filepath != "" {
-		if cert_bytes, err := os.ReadFile(cert_filepath); err == nil {
-			if certkey_bytes, err2 := os.ReadFile(certkey_filepath); err2 == nil {
-				certname := viper.GetString("cert.name")
-				if strings.TrimSpace(certname) == "" {
-					certname = certificate.DefaultCertFiles.Name
-				}
-				return &certificate.CertFileAndKeyFile{
-					Name:       certname,
-					Cert:       cert_bytes,
-					PrivateKey: certkey_bytes,
-				}, true
-			}
-		}
-	}
-	return nil, false
-}
-
-func isUnderCertsDir(absCertPath string) bool {
-	return filepath.Base(filepath.Dir(absCertPath)) == "certs"
 }

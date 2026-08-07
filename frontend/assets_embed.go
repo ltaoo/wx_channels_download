@@ -7,16 +7,11 @@ import (
 	"io/fs"
 )
 
-//go:embed lib src inject public *.html
+//go:embed src inject public *.html
 var injectFS embed.FS
 
 func embeddedRootFS() fs.FS {
 	return injectFS
-}
-
-func embeddedLibFS() fs.FS {
-	sub, _ := fs.Sub(injectFS, "lib")
-	return sub
 }
 
 func embeddedSrcFS() fs.FS {
