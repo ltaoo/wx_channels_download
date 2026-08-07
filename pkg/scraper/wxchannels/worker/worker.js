@@ -43,6 +43,11 @@ export default {
       return handleFetchVideoProfile(request, env);
     }
 
+    // POST /api/download_feed_zip
+    if (url.pathname === "/api/download_feed_zip" && request.method === "POST") {
+      return handleDownloadFeedZip(request);
+    }
+
     // Return 404 for all other requests
     return new Response("not found", { status: 404 });
   },
@@ -53,6 +58,7 @@ function corsHeaders() {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Expose-Headers": "Content-Disposition",
   };
 }
 
@@ -260,4 +266,255 @@ async function handleFetchVideoProfile(request, env) {
       }
     );
   }
+}
+
+async function handleDownloadFeedZip(request) {
+  try {
+    const body = await request.json();
+    const feed = body.feed || body;
+    const files = extractFeedZipFiles(feed);
+    if (files.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "no downloadable picture or bgm found" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders(), "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const entries = [];
+    entries.push({
+      name: "info.json",
+      data: new TextEncoder().encode(JSON.stringify(feed, null, 2)),
+    });
+
+    for (const file of files) {
+      const resp = await fetch(file.url, {
+        headers: {
+          "Accept": "*/*",
+        },
+      });
+      if (!resp.ok) {
+        throw new Error(`${file.name}: http ${resp.status}`);
+      }
+      const contentType = resp.headers.get("Content-Type") || "";
+      const data = new Uint8Array(await resp.arrayBuffer());
+      entries.push({
+        name: ensureFileExtension(file.name, file.url, contentType),
+        data,
+      });
+    }
+
+    const zip = buildZip(entries);
+    const filename = zipFilename(feed);
+    return new Response(zip, {
+      status: 200,
+      headers: {
+        ...corsHeaders(),
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="channels_feed.zip"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      },
+    });
+  } catch (err) {
+    log("[handleDownloadFeedZip] error:", err.message);
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders(), "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+
+function extractFeedZipFiles(feed) {
+  const data = sharedFeedData(feed);
+  const feedInfo = data && data.feedInfo ? data.feedInfo : {};
+  const files = [];
+  const picInfo = Array.isArray(feedInfo.picInfo) ? feedInfo.picInfo : [];
+  picInfo.forEach((pic, index) => {
+    const url = pic && typeof pic.url === "string" ? pic.url.trim() : "";
+    if (!url) return;
+    files.push({
+      url,
+      name: `${String(index + 1).padStart(2, "0")}.jpg`,
+    });
+  });
+  const bgmInfo = feedInfo.bgmInfo || {};
+  const bgmUrl = String(bgmInfo.bgmUrl || bgmInfo.mediaStreamingUrl || "").trim();
+  if (bgmUrl) {
+    const bgmName = sanitizeZipEntryName(bgmInfo.name || "bgm").replace(/\.[a-z0-9]{2,5}$/i, "");
+    files.push({
+      url: bgmUrl,
+      name: (bgmName || "bgm") + ".mp3",
+    });
+  }
+  return files;
+}
+
+function zipFilename(feed) {
+  const data = sharedFeedData(feed);
+  const feedInfo = data && data.feedInfo ? data.feedInfo : {};
+  const base = baseFilename(feedInfo.description, feedInfo.createtime) || "channels_feed";
+  return base + ".zip";
+}
+
+function sharedFeedData(feed) {
+  if (feed && feed.data && feed.data.feedInfo) return feed.data;
+  if (feed && feed.data && feed.data.data && feed.data.data.feedInfo) return feed.data.data;
+  if (feed && feed.feedInfo) return feed;
+  return {};
+}
+
+function baseFilename(desc, createtime) {
+  if (desc) return sanitizeZipEntryName(desc).slice(0, 160);
+  if (createtime) {
+    const d = new Date(Number(createtime) * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  }
+  return "";
+}
+
+function ensureFileExtension(name, url, contentType) {
+  const cleanName = sanitizeZipEntryName(name) || "file";
+  if (/\.[a-z0-9]{2,5}$/i.test(cleanName)) {
+    return cleanName;
+  }
+  const ext = extensionFromContentType(contentType) || extensionFromURL(url) || ".bin";
+  return cleanName + ext;
+}
+
+function extensionFromContentType(contentType) {
+  const value = String(contentType || "").split(";")[0].trim().toLowerCase();
+  const map = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "application/json": ".json",
+  };
+  return map[value] || "";
+}
+
+function extensionFromURL(rawURL) {
+  try {
+    const ext = new URL(rawURL).pathname.match(/\.[a-z0-9]{2,5}$/i);
+    return ext ? ext[0].toLowerCase() : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function sanitizeZipEntryName(name) {
+  return String(name || "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i += 1) {
+    crc = crcTable[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildZip(entries) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const now = new Date();
+  const dosTime =
+    (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  const dosDate =
+    ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+  for (const entry of entries) {
+    const nameBytes = encoder.encode(entry.name);
+    const data = entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data);
+    const crc = crc32(data);
+    const local = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(local.buffer);
+    writeZipHeader(view, 0x04034b50, 20, 0, 0, dosTime, dosDate, crc, data.length, data.length, nameBytes.length, 0);
+    local.set(nameBytes, 30);
+    chunks.push(local, data);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, dosTime, true);
+    centralView.setUint16(14, dosDate, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+    central.push(centralHeader);
+    offset += local.length + data.length;
+  }
+
+  const centralOffset = offset;
+  const centralSize = central.reduce((sum, item) => sum + item.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, entries.length, true);
+  endView.setUint16(10, entries.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralOffset, true);
+  return concatUint8Arrays([...chunks, ...central, end]);
+}
+
+function writeZipHeader(view, signature, version, flags, method, time, date, crc, compressedSize, size, nameLength, extraLength, offset = 0) {
+  if (signature) view.setUint32(offset, signature, true);
+  view.setUint16(offset + 4, version, true);
+  view.setUint16(offset + 6, flags, true);
+  view.setUint16(offset + 8, method, true);
+  view.setUint16(offset + 10, time, true);
+  view.setUint16(offset + 12, date, true);
+  view.setUint32(offset + 14, crc, true);
+  view.setUint32(offset + 18, compressedSize, true);
+  view.setUint32(offset + 22, size, true);
+  view.setUint16(offset + 26, nameLength, true);
+  view.setUint16(offset + 28, extraLength, true);
+}
+
+function concatUint8Arrays(parts) {
+  const size = parts.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
 }

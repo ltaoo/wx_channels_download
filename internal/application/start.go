@@ -100,7 +100,7 @@ func Start(cfg *config.Config) {
 			MaxConcurrent:    api_cfg.MaxRunning,
 			FilenameTemplate: api_cfg.FilenameTemplate,
 			BasePath:         api_cfg.DownloadDir,
-			SpeedLimit:       100 * 1024, // 100kb/s
+			// SpeedLimit:       500 * 1024,
 		},
 	})
 	downloader.RegisterProtocol(protocol.NewHTTPDriver())

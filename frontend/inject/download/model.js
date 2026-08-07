@@ -386,7 +386,13 @@ function DownloaderPanelViewModel(props = {}) {
   const ITEM_TITLE_STATUS_GAP = 4;
   const ITEM_MAX_TITLE_LINES = 3;
   const ITEM_TITLE_UNITS_PER_LINE = 34;
-  const GUTTER = 8;
+  const GUTTER = Math.max(
+    0,
+    number_or_fallback(
+      typeof props.listGutter !== "undefined" ? props.listGutter : props.gutter,
+      8,
+    ),
+  );
   const fixed_list_height_ = props.fixedListHeight !== false;
   const sync_list_content_height_ = props.syncListContentHeight !== false;
   const LIST_HEIGHT = Number(props.listHeight) || 380;
@@ -2366,7 +2372,7 @@ function DownloaderPanelViewModel(props = {}) {
       label: "管理下载任务",
       onClick() {
         ui.dropdown$.hide();
-        window.open(WXEnv.apiOrigin + "/download", "_blank");
+        window.open(WXEnv.apiOrigin + "/", "_blank");
       },
     }),
     new Timeless.ui.MenuItemCore({

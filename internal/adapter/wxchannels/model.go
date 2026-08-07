@@ -1,6 +1,8 @@
 package wxchannelsadapter
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -378,8 +380,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 		return buildLiveDownloadTask(&jl, config)
 	}
 
-	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+	obj, err := parseChannelsObjectForDownload(contentJSON)
+	if err != nil {
 		return nil, err
 	}
 
@@ -514,14 +516,18 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 					Extra:     baseExtraJSON,
 				},
 				Endpoints: []model.DownloadEndpoint{{
-					Protocol: "http",
+					Protocol: endpointProtocol(bgm.URL),
 					URL:      bgm.URL,
 					Enabled:  1,
 				}},
 			})
 		}
 
-		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, wxchannels.MediaTypePicture))
+		pictureConfig := buildConfigJSON(config, spec, wxchannels.MediaTypePicture)
+		if configString(pictureConfig, "suffix") == "" {
+			pictureConfig["suffix"] = ".zip"
+		}
+		configJSON, _ := json.Marshal(pictureConfig)
 
 		info := &adapter.DownloadTaskResult{
 			Task:      task(configJSON),
@@ -700,6 +706,200 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 // getMediaURL returns the combined download URL for a media item (url + urlToken).
 func getMediaURL(media wxchannels.ChannelsMediaItem) string {
 	return media.URL + media.URLToken
+}
+
+func parseChannelsObjectForDownload(contentJSON json.RawMessage) (wxchannels.ChannelsObject, error) {
+	var obj wxchannels.ChannelsObject
+	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+		return obj, err
+	}
+	if channelsObjectHasDownloadShape(&obj) {
+		return obj, nil
+	}
+	sharedObj, ok, err := sharedFeedProfileToChannelsObject(contentJSON)
+	if err != nil {
+		return obj, err
+	}
+	if ok {
+		return *sharedObj, nil
+	}
+	return obj, nil
+}
+
+func channelsObjectHasDownloadShape(obj *wxchannels.ChannelsObject) bool {
+	if obj == nil {
+		return false
+	}
+	return obj.LiveInfo != nil ||
+		obj.ObjectDesc.MediaType != 0 ||
+		len(obj.ObjectDesc.Media) > 0 ||
+		len(obj.Files) > 0
+}
+
+func sharedFeedProfileToChannelsObject(contentJSON json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	resp, ok, err := parseSharedFeedProfile(contentJSON, true)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+	feedInfo := resp.Data.Feedinfo
+	if feedInfo.MediaType != wxchannels.MediaTypePicture && len(feedInfo.Picinfo) == 0 {
+		return nil, false, nil
+	}
+	if len(feedInfo.Picinfo) == 0 {
+		return nil, true, errors.New("分享详情图片类型缺少 picInfo")
+	}
+
+	media := make([]wxchannels.ChannelsMediaItem, 0, len(feedInfo.Picinfo))
+	for _, pic := range feedInfo.Picinfo {
+		picURL := strings.TrimSpace(pic.URL)
+		if picURL == "" {
+			continue
+		}
+		media = append(media, wxchannels.ChannelsMediaItem{
+			URL:      picURL,
+			Width:    pic.Width,
+			Height:   pic.Height,
+			FileSize: pic.FileSize,
+			CoverUrl: strings.TrimSpace(feedInfo.Coverurl),
+		})
+	}
+	if len(media) == 0 {
+		return nil, true, errors.New("分享详情图片类型 picInfo 未包含下载地址")
+	}
+
+	bgmURL := sharedFeedBGMURL(feedInfo.Bgminfo)
+	contactUsername := sharedFeedAuthorID(resp.Data.Authorinfo)
+	objectID := sharedFeedObjectID(resp, contentJSON)
+	obj := &wxchannels.ChannelsObject{
+		ID:            objectID,
+		ObjectNonceId: objectID,
+		CreateTime:    feedInfo.Createtime,
+		Type:          "picture",
+		Contact: wxchannels.ChannelsContact{
+			Username: contactUsername,
+			Nickname: strings.TrimSpace(resp.Data.Authorinfo.Nickname),
+			HeadUrl:  strings.TrimSpace(resp.Data.Authorinfo.Headimgurl),
+		},
+		ObjectDesc: wxchannels.ChannelsObjectDesc{
+			Description: strings.TrimSpace(feedInfo.Description),
+			MediaType:   wxchannels.MediaTypePicture,
+			Media:       media,
+			FollowPostInfo: wxchannels.ChannelsFollowPostInfo{
+				MusicInfo: wxchannels.ChannelsMusicInfo{
+					DocId:             feedInfo.Bgminfo.DocID,
+					DocType:           feedInfo.Bgminfo.DocType,
+					Name:              feedInfo.Bgminfo.Name,
+					Artist:            feedInfo.Bgminfo.Artist,
+					MediaStreamingUrl: bgmURL,
+				},
+			},
+		},
+		Files: media,
+	}
+	return obj, true, nil
+}
+
+func parseSharedFeedProfile(contentJSON json.RawMessage, allowEnvelope bool) (wxchannels.ChannelsSharedFeedProfileResp, bool, error) {
+	var resp wxchannels.ChannelsSharedFeedProfileResp
+	directErr := json.Unmarshal(contentJSON, &resp)
+	if directErr == nil {
+		if len(resp.Data.Feedinfo.Picinfo) > 0 || resp.Data.Feedinfo.MediaType != 0 {
+			return resp, true, nil
+		}
+	}
+
+	if !allowEnvelope {
+		return resp, false, directErr
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(contentJSON, &envelope); err != nil {
+		return resp, false, err
+	}
+	if _, hasCode := envelope["code"]; !hasCode {
+		return resp, false, nil
+	}
+	data, hasData := envelope["data"]
+	if !hasData || len(data) == 0 {
+		return resp, false, nil
+	}
+	unwrapped, ok, err := parseSharedFeedProfile(data, false)
+	if ok || err == nil {
+		return unwrapped, ok, err
+	}
+	if directErr != nil {
+		return resp, false, directErr
+	}
+	return resp, false, err
+}
+
+func sharedFeedBGMURL(info wxchannels.SharedFeedBGMInfo) string {
+	if u := strings.TrimSpace(info.BGMURL); u != "" {
+		return u
+	}
+	return strings.TrimSpace(info.MediaStreamingURL)
+}
+
+func sharedFeedObjectID(resp wxchannels.ChannelsSharedFeedProfileResp, contentJSON json.RawMessage) string {
+	candidate := strings.TrimSpace(resp.Data.Sceneinfo.Dynamicexportid)
+	if candidate == "" {
+		candidate = strings.TrimSpace(resp.Data.Feedinfo.Coverurl)
+	}
+	if candidate == "" && len(resp.Data.Feedinfo.Picinfo) > 0 {
+		candidate = strings.TrimSpace(resp.Data.Feedinfo.Picinfo[0].URL)
+	}
+	if candidate == "" {
+		return "shared_" + hashString(string(contentJSON))[:16]
+	}
+	safe := safeIdentifier(candidate)
+	if safe == "" {
+		return "shared_" + hashString(candidate)[:16]
+	}
+	if len(safe) > 96 {
+		return safe[:80] + "_" + hashString(candidate)[:12]
+	}
+	return safe
+}
+
+func sharedFeedAuthorID(author wxchannels.SharedFeedAuthorinfo) string {
+	candidate := strings.TrimSpace(author.Headimgurl)
+	if candidate == "" {
+		candidate = strings.TrimSpace(author.Nickname)
+	}
+	if candidate == "" {
+		return ""
+	}
+	return "shared_author_" + hashString(candidate)[:16]
+}
+
+func safeIdentifier(value string) string {
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range strings.TrimSpace(value) {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
+		if ok {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func hashString(value string) string {
+	sum := sha1.Sum([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func endpointProtocol(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err == nil && parsed.Scheme != "" {
+		return strings.ToLower(parsed.Scheme)
+	}
+	return "https"
 }
 
 // bgmInfo holds background music download info extracted from a picture feed.

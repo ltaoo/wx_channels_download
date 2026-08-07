@@ -29,11 +29,16 @@ const (
 // so that broadcastDownloadTaskProgress can build the WS message without
 // any database queries. The cache is populated by broadcastDownloadTaskUpsert
 // (which already queries the DB for non-progress events) and invalidated on
-// terminal events (finished / failed).
+// terminal events (finished / failed / deleted).
 type progressCacheEntry struct {
 	task         model.DownloadTask
 	resourceURLs map[int]string // resourceID -> first URL
 	taskURL      string
+}
+
+type taskBroadcastRequest struct {
+	event    hermes.EventType
+	progress *hermes.TaskProgress
 }
 
 var (
@@ -104,38 +109,56 @@ func removeCachedTaskProgressMeta(taskID int) {
 // taskBroadcaster throttles and dispatches download task WebSocket broadcasts.
 // It runs the heavy buildDownloadTaskRecord DB query in a goroutine so the
 // download pipeline is never blocked on WS broadcast work. Only one in-flight
-// broadcast per task is permitted, and EventProgress is throttled.
+// broadcast per task is permitted, terminal events are queued behind in-flight
+// broadcasts, and EventProgress is throttled.
 type taskBroadcaster struct {
 	mu        sync.Mutex
-	active    map[int]bool      // tasks currently broadcasting
+	active    map[int]bool // tasks currently broadcasting
+	pending   map[int]taskBroadcastRequest
 	last      map[int]time.Time // last broadcast time per task
 	statsLast time.Time         // last stats broadcast time
 }
 
 func newTaskBroadcaster() *taskBroadcaster {
 	return &taskBroadcaster{
-		active: make(map[int]bool),
-		last:   make(map[int]time.Time),
+		active:  make(map[int]bool),
+		pending: make(map[int]taskBroadcastRequest),
+		last:    make(map[int]time.Time),
 	}
 }
 
-// notify schedules a broadcast for the given task. For terminal events
-// (finished / failed) the broadcast always runs immediately. For other events
+func isTerminalTaskEvent(event hermes.EventType) bool {
+	return event == hermes.EventFinished || event == hermes.EventFailed || event == hermes.EventDeleted
+}
+
+// notify schedules a broadcast for the given task. Terminal events
+// (finished / failed / deleted) are never dropped; if a progress broadcast is
+// already in-flight, the terminal event is queued and sent immediately after it.
+// For other events
 // (especially EventProgress) broadcasts are throttled to ≈100ms to balance
 // UI smoothness against database load.
 // progress carries in-memory download state from the HermesEngine; when non-nil for
 // EventProgress, the lightweight broadcastDownloadTaskProgress path is used
 // instead of the full DB query path.
 func (b *taskBroadcaster) notify(c *APIClient, taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
+	req := taskBroadcastRequest{event: event, progress: progress}
 	var dl, spd int64
 	if progress != nil {
 		dl, spd = progress.Downloaded, progress.Speed
 	}
 	isProgress := event == hermes.EventProgress && progress != nil
+	isTerminal := isTerminalTaskEvent(event)
 
 	b.mu.Lock()
 	// Skip if a broadcast for this task is already in-flight.
 	if b.active[taskID] {
+		if isTerminal {
+			b.pending[taskID] = req
+			c.logger.Info().
+				Int("taskID", taskID).
+				Str("event", string(event)).
+				Msg("task broadcast: queued terminal event behind in-flight broadcast")
+		}
 		b.mu.Unlock()
 		if isProgress {
 			c.logger.Info().
@@ -147,7 +170,6 @@ func (b *taskBroadcaster) notify(c *APIClient, taskID int, event hermes.EventTyp
 		}
 		return
 	}
-	isTerminal := event == "finished" || event == "failed"
 	if !isTerminal {
 		if prev, ok := b.last[taskID]; ok && time.Since(prev) < progressThrottle {
 			b.mu.Unlock()
@@ -175,14 +197,15 @@ func (b *taskBroadcaster) notify(c *APIClient, taskID int, event hermes.EventTyp
 			Msg("progress: dispatching broadcast")
 	}
 
-	go func() {
-		defer func() {
-			b.mu.Lock()
-			delete(b.active, taskID)
-			b.mu.Unlock()
-		}()
+	go b.runTaskBroadcast(c, taskID, req)
+}
+
+func (b *taskBroadcaster) runTaskBroadcast(c *APIClient, taskID int, req taskBroadcastRequest) {
+	for {
+		isProgress := req.event == hermes.EventProgress && req.progress != nil
+		isTerminal := isTerminalTaskEvent(req.event)
 		if isProgress {
-			c.broadcastDownloadTaskProgress(taskID, progress)
+			c.broadcastDownloadTaskProgress(taskID, req.progress)
 		} else {
 			c.broadcastDownloadTaskUpsert([]int{taskID})
 			// Refresh cached metadata so subsequent progress broadcasts can
@@ -195,7 +218,19 @@ func (b *taskBroadcaster) notify(c *APIClient, taskID int, event hermes.EventTyp
 		}
 		// Push stats whenever a task event fires (throttled to avoid excessive DB queries).
 		c.maybeBroadcastStats(b, isTerminal)
-	}()
+
+		b.mu.Lock()
+		next, ok := b.pending[taskID]
+		if !ok {
+			delete(b.active, taskID)
+			b.mu.Unlock()
+			return
+		}
+		delete(b.pending, taskID)
+		b.last[taskID] = time.Now()
+		b.mu.Unlock()
+		req = next
+	}
 }
 
 // maybeBroadcastStats pushes stats at most once per second, unless it's a

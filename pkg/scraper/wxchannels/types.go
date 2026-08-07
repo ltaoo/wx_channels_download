@@ -302,15 +302,33 @@ type Errmsg struct {
 	Type int `json:"type"`
 }
 type SharedFeedinfo struct {
-	Picinfo         []interface{} `json:"picInfo"`
-	Description     string        `json:"description"`
-	Favcountfmt     string        `json:"favCountFmt"`
-	Likecountfmt    string        `json:"likeCountFmt"`
-	Forwardcountfmt string        `json:"forwardCountFmt"`
-	Commentcountfmt string        `json:"commentCountFmt"`
-	Createtime      int           `json:"createtime"`
-	Ishardad        bool          `json:"isHardAd"`
-	Coverurl        string        `json:"coverUrl"`
+	Picinfo         []SharedFeedPicInfo `json:"picInfo"`
+	Description     string              `json:"description"`
+	MediaType       int                 `json:"mediaType"`
+	Favcountfmt     string              `json:"favCountFmt"`
+	Likecountfmt    string              `json:"likeCountFmt"`
+	Forwardcountfmt string              `json:"forwardCountFmt"`
+	Commentcountfmt string              `json:"commentCountFmt"`
+	Bgminfo         SharedFeedBGMInfo   `json:"bgmInfo"`
+	Createtime      int                 `json:"createtime"`
+	Ishardad        bool                `json:"isHardAd"`
+	Coverurl        string              `json:"coverUrl"`
+}
+
+type SharedFeedPicInfo struct {
+	URL      string  `json:"url"`
+	Width    float32 `json:"width"`
+	Height   float32 `json:"height"`
+	FileSize int     `json:"fileSize"`
+}
+
+type SharedFeedBGMInfo struct {
+	BGMURL            string `json:"bgmUrl"`
+	MediaStreamingURL string `json:"mediaStreamingUrl"`
+	Name              string `json:"name"`
+	Artist            string `json:"artist"`
+	DocID             string `json:"docId"`
+	DocType           int    `json:"docType"`
 }
 type SharedFeedAuthorinfo struct {
 	Nickname    string `json:"nickname"`

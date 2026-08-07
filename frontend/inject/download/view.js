@@ -1973,6 +1973,12 @@ function DownloadTaskListView(props) {
         : typeof props.bottomPadding !== "undefined"
           ? props.bottomPadding
           : 0;
+  const listGutter =
+    typeof props.gutter !== "undefined"
+      ? props.gutter
+      : typeof props.listGutter !== "undefined"
+        ? props.listGutter
+        : vm$.state.list_gutter;
 
   return View(
     {
@@ -2008,7 +2014,7 @@ function DownloadTaskListView(props) {
                   key: "id",
                   size: props.size || 10,
                   buffer: vm$.state.list_buffer,
-                  gutter: vm$.state.list_gutter,
+                  gutter: listGutter,
                   itemHeight: vm$.state.list_item_height,
                   paddingBottom: listPaddingBottom,
                   each: tasks_,

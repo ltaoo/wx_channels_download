@@ -75,6 +75,20 @@
       border-radius: 8px;
       background: #000;
     }
+    .picture-grid {
+      width: 320px;
+      max-width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .picture-grid img {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 6px;
+      object-fit: cover;
+      background: #f2f2f2;
+    }
     .download-btn {
       display: inline-flex;
       align-items: center;
@@ -225,6 +239,7 @@
     }
 
     function renderResult(feed) {
+      window.__lastFeedProfile = feed;
       const fi = feed.data && feed.data.feedInfo;
       const ai = feed.data && feed.data.authorInfo;
 
@@ -232,9 +247,19 @@
 
       if (fi) {
         const bestVideoUrl = fi.h264VideoInfo?.videoUrl || fi.h265VideoInfo?.videoUrl || fi.videoUrl || "";
+        const picInfo = Array.isArray(fi.picInfo) ? fi.picInfo : [];
+        const bgmUrl = fi.bgmInfo && (fi.bgmInfo.bgmUrl || fi.bgmInfo.mediaStreamingUrl || "");
         html += '<div class="video-card">';
         if (bestVideoUrl) {
           html += `<video src="${esc(bestVideoUrl)}" poster="${esc(fi.coverUrl)}" controls preload="metadata"></video>`;
+        } else if (picInfo.length > 0) {
+          html += '<div class="picture-grid">';
+          picInfo.forEach((item) => {
+            if (item && item.url) {
+              html += `<img src="${esc(item.url)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+            }
+          });
+          html += '</div>';
         } else {
           html += `<img class="cover" src="${esc(fi.coverUrl)}" alt="cover" onerror="this.style.display='none'">`;
         }
@@ -254,6 +279,8 @@
         if (fi.commentCountFmt) html += `<span>评论 ${esc(fi.commentCountFmt)}</span>`;
         html += '</div>';
         if (bestVideoUrl) html += `<div><button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadVideoFromBtn(this)">下载视频</button> <button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadRawVideoFromBtn(this)">下载原始视频</button></div>`;
+        if (!bestVideoUrl && picInfo.length > 0) html += `<div><button class="download-btn" onclick="downloadFeedZip()">下载图集 ZIP</button></div>`;
+        if (picInfo.length > 0) html += `<div class="stats"><span>图片 ${picInfo.length}</span>${bgmUrl ? '<span>BGM 1</span>' : ''}</div>`;
         if (bestVideoUrl) html += `<div class="video-link"><a href="${esc(bestVideoUrl)}" target="_blank">${esc(bestVideoUrl)}</a></div>`;
         html += '</div></div>';
       }
@@ -310,7 +337,7 @@
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
-        a.download = sanitizeFilename(description, createtime) || "video.mp4";
+        a.download = sanitizeFilename(description, createtime, "mp4") || "video.mp4";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -321,12 +348,42 @@
       }
     }
 
-    function sanitizeFilename(desc, createtime) {
-      if (desc) return desc.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 200) + ".mp4";
+    async function downloadFeedZip() {
+      try {
+        showStatus("压缩下载中...", "");
+        const feed = window.__lastFeedProfile;
+        const resp = await fetch(`${API_BASE}/download_feed_zip`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feed }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || "下载失败");
+        }
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const fi = feed && feed.data && feed.data.feedInfo ? feed.data.feedInfo : {};
+        a.href = blobUrl;
+        a.download = sanitizeFilename(fi.description, fi.createtime, "zip") || "channels_feed.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        showStatus("", "");
+      } catch (err) {
+        showStatus("下载失败: " + err.message, "error");
+      }
+    }
+
+    function sanitizeFilename(desc, createtime, ext) {
+      const suffix = "." + (ext || "mp4");
+      if (desc) return desc.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 200) + suffix;
       if (createtime) {
         const d = new Date(Number(createtime) * 1000);
         const pad = (n) => String(n).padStart(2, "0");
-        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.mp4`;
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${suffix}`;
       }
       return "";
     }

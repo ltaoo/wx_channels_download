@@ -116,6 +116,7 @@ cloudflare:
 | `cloudflare.sphCookie` | 视频号接口所需的元宝 Web 端 Cookie |
 
 元宝 Web 端指 https://yuanbao.tencent.com/ 网站，登录后获取 `cookie` 作为配置即可。
+元宝 Web 端 Cookie 有效期约 1 个月，失效后重新登录获取新的 Cookie，并到 Cloudflare Worker 更新 `COOKIE` 环境变量即可。
 
 ### 部署内容
 

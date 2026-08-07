@@ -1479,7 +1479,7 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 				"gateway_type": "Exclusive",
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
-					{"condition": "task_config_type == -1", "target_id": "zip_resources"},
+					{"condition": `task_config_type == -1 || task_config_suffix == ".zip" || task_config_suffix == "zip"`, "target_id": "zip_resources"},
 					{"condition": `task_config_suffix == ".mp3" || task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
 					{"condition": "true", "target_id": "done"},
 				},
@@ -2520,6 +2520,8 @@ func zipResourcesNode(values map[string]interface{}) (interface{}, error) {
 			archiveResource.Size = stat.Size()
 		}
 		run.task.Resources = []hermes.ResourceJob{archiveResource}
+		run.resource = &run.task.Resources[0]
+		values[wxchannelsPostprocessContextResource] = run.resource
 		values["archive_file"] = archivePath
 		return nil, nil
 	})
