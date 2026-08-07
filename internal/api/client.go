@@ -211,6 +211,7 @@ func (c *APIClient) setupStaticAssetRoutes() {
 		c.engine.Handle(method, "/__assets/src/*filepath", c.handleSrcAsset)
 		c.engine.Handle(method, "/__assets/inject/*filepath", c.handleFrontendInjectAsset)
 		c.engine.Handle(method, "/__assets/platform/*filepath", c.handlePlatformStaticAsset)
+		c.engine.Handle(method, "/__assets/user/*filepath", c.handleUserStaticAsset)
 	}
 }
 
@@ -255,6 +256,23 @@ func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 
 func (c *APIClient) handlePlatformStaticAsset(ctx *gin.Context) {
 	c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
+}
+
+func (c *APIClient) handleUserStaticAsset(ctx *gin.Context) {
+	if c.logger != nil {
+		c.logger.Info().
+			Str("method", ctx.Request.Method).
+			Str("path", ctx.Request.URL.Path).
+			Msg("serving user static asset through API")
+	}
+	c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
+	if c.logger != nil {
+		c.logger.Info().
+			Str("method", ctx.Request.Method).
+			Str("path", ctx.Request.URL.Path).
+			Int("status", ctx.Writer.Status()).
+			Msg("served user static asset through API")
+	}
 }
 
 func (c *APIClient) handleSrcAsset(ctx *gin.Context) {

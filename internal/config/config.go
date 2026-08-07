@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 )
 
@@ -23,13 +24,14 @@ type Config struct {
 	Debug    bool
 	Version  string
 	Mode     string
+	logger   *zerolog.Logger
+	log_file *os.File
+	log_path string
 
 	// Resolved global script
-	GlobalScriptPath    string // Absolute path to global.js
-	GlobalScriptContent string // Content of global.js
+	GlobalScriptPath string // Absolute path to configured global script
 
 	// Resolved content script
-	ContentScriptPath    string // Absolute path to content script
 	ContentScriptContent string // Content of content script
 
 	DBType     string
@@ -43,7 +45,7 @@ type Config struct {
 
 const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
 
-func New(ver string, mode string) *Config {
+func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -61,7 +63,7 @@ func New(ver string, mode string) *Config {
 			has_config = true
 		}
 		viper.SetConfigFile(config_filepath)
-		return &Config{
+		c := &Config{
 			RootDir:  base_dir,
 			Filename: filename,
 			FullPath: config_filepath,
@@ -69,6 +71,8 @@ func New(ver string, mode string) *Config {
 			Version:  ver,
 			Mode:     mode,
 		}
+		c.set_logger(logger, log_file, log_path)
+		return c
 	}
 
 	var candidates []string
@@ -104,7 +108,71 @@ func New(ver string, mode string) *Config {
 		Version:  ver,
 		Mode:     mode,
 	}
+	c.set_logger(logger, log_file, log_path)
 	return c
+}
+
+func (c *Config) set_logger(logger *zerolog.Logger, log_file *os.File, log_path string) {
+	if c == nil {
+		return
+	}
+	c.logger = logger
+	c.log_file = log_file
+	c.log_path = log_path
+}
+
+func (c *Config) Logger() *zerolog.Logger {
+	return c.logger
+}
+
+func (c *Config) LogFile() *os.File {
+	return c.log_file
+}
+
+func (c *Config) LogPath() string {
+	return c.log_path
+}
+
+func (c *Config) LogGlobalScriptPath() {
+	if c == nil {
+		return
+	}
+	config_key := "inject.globalScript"
+	resolved_path := c.GetString(config_key)
+	raw_script_path := strings.TrimSpace(viper.GetString(config_key))
+	if resolved_path == "" {
+		c.logger.Info().
+			Str("file", "internal/config/config.go").
+			Str("config_key", config_key).
+			Str("raw_path", raw_script_path).
+			Str("workdir", c.WorkDir).
+			Str("rootdir", c.RootDir).
+			Msg("config LogGlobalScriptPath: configured script path is not resolved")
+		return
+	}
+	info, err := os.Stat(resolved_path)
+	if err != nil {
+		c.logger.Info().
+			Err(err).
+			Str("file", "internal/config/config.go").
+			Str("config_key", config_key).
+			Str("raw_path", raw_script_path).
+			Str("workdir", c.WorkDir).
+			Str("rootdir", c.RootDir).
+			Str("resolved_path", resolved_path).
+			Msg("config LogGlobalScriptPath: configured script path does not exist")
+		return
+	}
+	c.logger.Info().
+		Str("file", "internal/config/config.go").
+		Str("config_key", config_key).
+		Str("raw_path", raw_script_path).
+		Str("workdir", c.WorkDir).
+		Str("rootdir", c.RootDir).
+		Str("resolved_path", resolved_path).
+		Bool("is_dir", info.IsDir()).
+		Int64("size", info.Size()).
+		Msg("config LogGlobalScriptPath: configured script path resolved")
 }
 
 func (ctx ConfigValueContext) Get(key string) interface{} {
@@ -153,32 +221,32 @@ func (ctx ConfigValueContext) WorkDir() string {
 }
 
 func ResolveWorkDirValue(value interface{}, ctx ConfigValueContext) interface{} {
-	rootDir := strings.TrimSpace(ctx.RootDir())
-	return resolvePathValue(value, rootDir, rootDir, rootDir)
+	root_dir := strings.TrimSpace(ctx.RootDir())
+	return resolve_path_value(value, root_dir, root_dir, root_dir)
 }
 
 func ResolveWorkDirPathValue(value interface{}, ctx ConfigValueContext) interface{} {
-	workDir := strings.TrimSpace(ctx.WorkDir())
-	return ResolveWorkDirPath(value, workDir)
+	work_dir := strings.TrimSpace(ctx.WorkDir())
+	return ResolveWorkDirPath(value, work_dir)
 }
 
 // ResolveWorkDirPath expands config path placeholders and resolves relative paths
 // from the runtime working directory.
-func ResolveWorkDirPath(value interface{}, workDir string) string {
-	workDir = strings.TrimSpace(workDir)
-	return resolvePathValue(value, workDir, workDir, "")
+func ResolveWorkDirPath(value interface{}, work_dir string) string {
+	work_dir = strings.TrimSpace(work_dir)
+	return resolve_path_value(value, work_dir, work_dir, "")
 }
 
-func resolvePathValue(value interface{}, baseDir string, cwd string, fallback string) string {
-	path := strings.TrimSpace(configValueString(value))
+func resolve_path_value(value interface{}, base_dir string, cwd string, fallback string) string {
+	path := strings.TrimSpace(config_value_string(value))
 	if path == "" {
 		path = fallback
 	}
 	path = strings.ReplaceAll(path, "%UserDownloads%", xdg.UserDirs.Download)
 	path = strings.ReplaceAll(path, "%CWD%", cwd)
 	path = filepath.Clean(path)
-	if !filepath.IsAbs(path) && baseDir != "" {
-		path = filepath.Join(baseDir, path)
+	if !filepath.IsAbs(path) && base_dir != "" {
+		path = filepath.Join(base_dir, path)
 	}
 	return path
 }
@@ -357,13 +425,14 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
-		Key:         "inject.globalScript",
-		Type:        ConfigTypeString,
-		Default:     "global.js",
-		Description: "全局用户脚本",
-		Title:       "全局脚本",
-		Group:       "Inject",
-		HotReload:   true,
+		Key:          "inject.globalScript",
+		Type:         ConfigTypeString,
+		Default:      "global.js",
+		Description:  "全局用户脚本",
+		Title:        "全局脚本",
+		Group:        "Inject",
+		HotReload:    true,
+		ProcessValue: ResolveWorkDirPathValue,
 	})
 	Register(ConfigField{
 		Key:         "inject.contentScript",
@@ -722,8 +791,8 @@ func (c *Config) LoadConfig() error {
 	c.DBPassword = c.GetString("db.password")
 	c.DBName = c.GetString("db.filename")
 
-	workDir := c.GetString("workdir")
-	c.WorkDir = workDir
+	work_dir := c.GetString("workdir")
+	c.WorkDir = work_dir
 	if err := os.MkdirAll(c.WorkDir, 0755); err != nil {
 		c.Error = err
 		return err
@@ -732,27 +801,73 @@ func (c *Config) LoadConfig() error {
 	c.DBPath = c.GetString("db.filepath")
 
 	// Resolve inject scripts
-	c.resolveScript("inject.globalScript", &c.GlobalScriptPath, &c.GlobalScriptContent)
-	c.resolveScript("inject.contentScript", &c.ContentScriptPath, &c.ContentScriptContent)
+	c.resolve_script_path("inject.globalScript", &c.GlobalScriptPath)
+	c.resolve_script("inject.contentScript", &c.ContentScriptContent)
 
 	return nil
 }
 
-func (c *Config) resolveScript(configKey string, pathField, contentField *string) {
-	scriptPath := c.GetString(configKey)
-	if scriptPath == "" {
+func (c *Config) resolve_script_path(config_key string, path_field *string) {
+	raw_script_path := strings.TrimSpace(viper.GetString(config_key))
+	script_path := c.GetString(config_key)
+	if script_path == "" {
+		c.logger.Info().
+			Str("file", "internal/config/config.go").
+			Str("config_key", config_key).
+			Str("raw_path", raw_script_path).
+			Str("workdir", c.WorkDir).
+			Str("rootdir", c.RootDir).
+			Msg("config resolve_script_path: configured script path is not resolved")
 		return
 	}
-	if !filepath.IsAbs(scriptPath) {
-		scriptPath = filepath.Join(c.RootDir, scriptPath)
+	if !filepath.IsAbs(script_path) {
+		base_dir := c.WorkDir
+		if strings.TrimSpace(base_dir) == "" {
+			base_dir = c.RootDir
+		}
+		script_path = filepath.Join(base_dir, script_path)
 	}
-	scriptPath = filepath.Clean(scriptPath)
-	data, err := os.ReadFile(scriptPath)
+	script_path = filepath.Clean(script_path)
+	info, err := os.Stat(script_path)
+	if err != nil {
+		c.logger.Info().
+			Err(err).
+			Str("file", "internal/config/config.go").
+			Str("config_key", config_key).
+			Str("raw_path", raw_script_path).
+			Str("workdir", c.WorkDir).
+			Str("rootdir", c.RootDir).
+			Str("resolved_path", script_path).
+			Msg("config resolve_script_path: configured script path does not exist")
+		return
+	}
+	*path_field = script_path
+	c.logger.Info().
+		Str("file", "internal/config/config.go").
+		Str("config_key", config_key).
+		Str("raw_path", raw_script_path).
+		Str("workdir", c.WorkDir).
+		Str("rootdir", c.RootDir).
+		Str("resolved_path", script_path).
+		Bool("is_dir", info.IsDir()).
+		Int64("size", info.Size()).
+		Msg("config resolve_script_path: configured script path resolved")
+}
+
+func (c *Config) resolve_script(config_key string, content_field *string) {
+	script_path := c.GetString(config_key)
+	if script_path == "" {
+		return
+	}
+	if !filepath.IsAbs(script_path) {
+		script_path = filepath.Join(c.RootDir, script_path)
+	}
+	script_path = filepath.Clean(script_path)
+	data, err := os.ReadFile(script_path)
 	if err != nil {
 		return
 	}
-	*pathField = scriptPath
-	*contentField = string(data)
+	*content_field = string(data)
 }
 
 // GetDebugInfo returns debug information about how the base directory was determined
@@ -792,39 +907,39 @@ func (c *Config) GetAll() map[string]interface{} {
 }
 
 func (c *Config) Get(key string) interface{} {
-	return c.processValue(key, viper.Get(key))
+	return c.process_value(key, viper.Get(key))
 }
 
 // Typed getters with dotted path support, e.g. "a.b.c"
 func (c *Config) GetString(path string) string {
-	if !hasValueProcessor(path) {
+	if !has_value_processor(path) {
 		return viper.GetString(path)
 	}
-	return configValueString(c.processValue(path, viper.Get(path)))
+	return config_value_string(c.process_value(path, viper.Get(path)))
 }
 
 func (c *Config) GetInt(path string) int {
-	if !hasValueProcessor(path) {
+	if !has_value_processor(path) {
 		return viper.GetInt(path)
 	}
-	return configValueInt(c.processValue(path, viper.Get(path)))
+	return config_value_int(c.process_value(path, viper.Get(path)))
 }
 
 func (c *Config) GetBool(path string) bool {
-	if !hasValueProcessor(path) {
+	if !has_value_processor(path) {
 		return viper.GetBool(path)
 	}
-	return configValueBool(c.processValue(path, viper.Get(path)))
+	return config_value_bool(c.process_value(path, viper.Get(path)))
 }
 
 func (c *Config) GetFloat64(path string) float64 {
-	if !hasValueProcessor(path) {
+	if !has_value_processor(path) {
 		return viper.GetFloat64(path)
 	}
-	return configValueFloat64(c.processValue(path, viper.Get(path)))
+	return config_value_float64(c.process_value(path, viper.Get(path)))
 }
 
-func (c *Config) processValue(path string, value interface{}) interface{} {
+func (c *Config) process_value(path string, value interface{}) interface{} {
 	item, ok := Lookup(path)
 	if !ok || item.ProcessValue == nil {
 		return value
@@ -832,7 +947,7 @@ func (c *Config) processValue(path string, value interface{}) interface{} {
 	return item.ProcessValue(value, ConfigValueContext{Config: c})
 }
 
-func hasValueProcessor(path string) bool {
+func has_value_processor(path string) bool {
 	item, ok := Lookup(path)
 	return ok && item.ProcessValue != nil
 }
@@ -842,7 +957,7 @@ func (c *Config) GetDownloadDir() string {
 	return c.GetString("download.dir")
 }
 
-func configValueString(value interface{}) string {
+func config_value_string(value interface{}) string {
 	if value == nil {
 		return ""
 	}
@@ -854,7 +969,7 @@ func configValueString(value interface{}) string {
 	}
 }
 
-func configValueInt(value interface{}) int {
+func config_value_int(value interface{}) int {
 	switch v := value.(type) {
 	case int:
 		return v
@@ -893,7 +1008,7 @@ func configValueInt(value interface{}) int {
 	}
 }
 
-func configValueBool(value interface{}) bool {
+func config_value_bool(value interface{}) bool {
 	switch v := value.(type) {
 	case bool:
 		return v
@@ -929,7 +1044,7 @@ func configValueBool(value interface{}) bool {
 	}
 }
 
-func configValueFloat64(value interface{}) float64 {
+func config_value_float64(value interface{}) float64 {
 	switch v := value.(type) {
 	case float64:
 		return v

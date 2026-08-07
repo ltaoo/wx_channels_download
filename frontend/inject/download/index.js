@@ -436,9 +436,23 @@ function DownloadPageTaskRow(props) {
         View({ class: "wx-dl-page-task-title-line" }, [
           View(
             {
+              type: "a",
               class: "wx-dl-page-task-title",
               attributes: {
+                href: computed(task_, (task) => download_task_preview_url(task)),
                 title: computed(task_, (task) => (task && task.name) || ""),
+                target: "_blank",
+                rel: "noopener noreferrer",
+              },
+              style: {
+                cursor: "pointer",
+                "text-decoration": "none",
+              },
+              onClick(event) {
+                if (event && typeof event.preventDefault === "function") {
+                  event.preventDefault();
+                }
+                open_download_task_preview(DownloadPageTaskValue(task_));
               },
             },
             [computed(task_, (task) => (task && task.name) || "")],

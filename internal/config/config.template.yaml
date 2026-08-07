@@ -5,9 +5,9 @@ debug:
 workdir: ""
 
 pagespy:
+  enabled: false
   protocol: http
   api: 127.0.0.1:6752
-  enabled: false
 
 download:
   filenameTemplate: "{{filename}}_{{spec}}"
@@ -55,6 +55,7 @@ proxy:
   upstreamProxy: ""
 
 channels:
+  enabled: true
   disableLocationToHome: false
   download:
     defaultHighest: false
@@ -80,4 +81,5 @@ cloudflare:
   adminToken: ""
   workerName: "mp-rss-api"
   d1Name: "mp-rss-db"
+  sphWorkerName: "sph"
   sphCookie: ""

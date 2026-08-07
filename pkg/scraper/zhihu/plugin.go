@@ -12,7 +12,7 @@ import (
 
 // CreateZhihuInterceptorPlugin creates a proxy plugin that injects the
 // zhihu.main.js script into www.zhihu.com pages.
-func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version string) *proxy.Plugin {
+func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version string, globalScriptPath string) *proxy.Plugin {
 	asset_base_url = "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	asset_version := version
@@ -27,6 +27,7 @@ func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version 
 			interceptor.MockFrontendStaticAsset(ctx, ctx.Req().URL.Path, interceptor.FrontendStaticAssetMockOptions{
 				PlatformPrefix: StaticAssetsPath + "/",
 				PlatformFS:     Assets.InjectFS,
+				UserScriptPath: globalScriptPath,
 			})
 		},
 		OnResponse: func(ctx proxy.Context) {
@@ -70,9 +71,16 @@ func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version 
 				url_build("/inject/eventbus.js"),
 				url_build("/inject/env.js"),
 				url_build("/inject/utils.js"),
+			)
+			frontend.AppendScripts(
+				&injected,
+				"",
 				url_build("/inject/download/model.js"),
 				InjectAssetURL(asset_base_url, "zhihu.main.js"),
 			)
+			if globalScriptPath != "" {
+				frontend.AppendScripts(&injected, "", frontend.UserGlobalScriptAssetPath(globalScriptPath))
+			}
 
 			html = strings.Replace(html, "</body>", injected.String()+"</body>", 1)
 			ctx.SetResponseBody(html)

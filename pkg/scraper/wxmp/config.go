@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/config"
 )
 
@@ -27,6 +28,8 @@ type OfficialAccountConfig struct {
 	RefreshSkipMinutes        int
 	MaxWebsocketClients       int
 	AccountIdsRefreshInterval []string
+	GlobalScriptPath          string `json:"-"`
+	GlobalScriptURL           string `json:"-"`
 	InjectContentScript       string
 }
 
@@ -54,7 +57,11 @@ func NewOfficialAccountConfig(c *config.Config) *OfficialAccountConfig {
 		RefreshSkipMinutes:        viper.GetInt("mp.refreshSkipMinutes"),
 		MaxWebsocketClients:       viper.GetInt("mp.maxWebsocketClients"),
 		AccountIdsRefreshInterval: viper.GetStringSlice("mp.accountIdsRefreshInterval"),
+		GlobalScriptPath:          c.GlobalScriptPath,
 		InjectContentScript:       c.ContentScriptContent,
+	}
+	if c.GlobalScriptPath != "" {
+		cfg.GlobalScriptURL = frontend.UserGlobalScriptAssetPath(c.GlobalScriptPath)
 	}
 	return cfg
 }

@@ -26,3 +26,34 @@ func TestNewURLBuildQueryOverride(t *testing.T) {
 		t.Fatalf("NewURLBuild() default query = %q, want %q", got, want)
 	}
 }
+
+func TestUserGlobalScriptAssetPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		script_path string
+		want        string
+	}{
+		{
+			name:        "default global script",
+			script_path: "/tmp/wx/global.js",
+			want:        "/__assets/user/global.js",
+		},
+		{
+			name:        "configured script file",
+			script_path: "/tmp/wx/custom.user.js",
+			want:        "/__assets/user/custom.user.js",
+		},
+		{
+			name:        "empty script path",
+			script_path: "",
+			want:        "/__assets/user/global.js",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := UserGlobalScriptAssetPath(tt.script_path); got != tt.want {
+				t.Fatalf("UserGlobalScriptAssetPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

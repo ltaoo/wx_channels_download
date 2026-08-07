@@ -18,6 +18,10 @@ type handler struct{}
 
 func (h *handler) PlatformID() string { return platformID }
 
+func (h *handler) Fetch(rawURL string) (any, error) {
+	return MockNovel(), nil
+}
+
 func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
 	return nil, adapter.ErrBrowseHistoryNotSupported
 }

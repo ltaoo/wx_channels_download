@@ -12,10 +12,10 @@ import (
 	"github.com/fatih/color"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/ltaoo/velo"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
 	_ "wx_channel/internal/adapter/builtin"
 	"wx_channel/internal/api"
@@ -39,20 +39,18 @@ func Start(cfg *config.Config) {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-	log_filepath := filepath.Join(cfg.WorkDir, "app.log")
-	log_file, err := os.OpenFile(log_filepath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		color.Red(fmt.Sprintf("Failed to create log file, %s\n\n", err))
-		return
+	logger := cfg.Logger()
+	if logger == nil {
+		fallback_logger := zerolog.Nop()
+		logger = &fallback_logger
 	}
-	defer log_file.Close()
-	logger := zerolog.New(log_file).With().Timestamp().Logger()
-	log.Logger = zerolog.New(zerolog.MultiLevelWriter(os.Stderr, log_file)).With().
-		Timestamp().
-		Str("version", cfg.Version).
-		Logger()
+	cfg.LogGlobalScriptPath()
+	if cfg.LogPath() != "" {
+		logger.Info().
+			Str("file", "internal/application/start.go").
+			Str("log_path", cfg.LogPath()).
+			Msg("application log file configured")
+	}
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
@@ -63,13 +61,48 @@ func Start(cfg *config.Config) {
 
 	api_cfg := api.NewAPIConfig(cfg)
 	static_assets := webassets.NewRegistry()
+	if cfg.GlobalScriptPath == "" {
+		logger.Info().
+			Str("file", "internal/application/start.go").
+			Msg("global script path is empty; skipping global script asset registration")
+	} else {
+		global_script_asset_path := frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
+		logger.Info().
+			Str("file", "internal/application/start.go").
+			Str("path", cfg.GlobalScriptPath).
+			Str("asset_path", global_script_asset_path).
+			Msg("registering global script asset")
+		if err := static_assets.RegisterFile(
+			global_script_asset_path,
+			os.DirFS(filepath.Dir(cfg.GlobalScriptPath)),
+			filepath.Base(cfg.GlobalScriptPath),
+		); err != nil {
+			logger.Warn().
+				Err(err).
+				Str("file", "internal/application/start.go").
+				Str("path", cfg.GlobalScriptPath).
+				Str("asset_path", global_script_asset_path).
+				Msg("failed to register global script asset")
+		} else {
+			logger.Info().
+				Str("file", "internal/application/start.go").
+				Str("path", cfg.GlobalScriptPath).
+				Str("asset_path", global_script_asset_path).
+				Msg("global script asset registered")
+		}
+	}
 	bus := events.NewBus()
 	cert_files := services.LoadCertFiles()
 	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files)
-	interceptor_srv.SetLog(log_file)
+	if cfg.LogFile() != nil {
+		interceptor_srv.SetLog(cfg.LogFile())
+	}
 	interceptor_srv.SubscribeEvents(bus)
 
 	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
+	if cfg.LogPath() != "" {
+		table_data = append(table_data, []string{"Log File", cfg.LogPath()})
+	}
 	if cfg.FullPath != "" {
 		table_data = append(table_data, []string{"Config File", cfg.FullPath})
 	}
@@ -78,24 +111,32 @@ func Start(cfg *config.Config) {
 	hook_manager := hermes.NewHookManager()
 	if script := api_cfg.HooksScript; script != "" {
 		if err := hook_manager.Load(script); err != nil {
-			logger.Warn().Err(err).Str("path", script).Msg("Failed to load hook script")
+			logger.Warn().
+				Err(err).
+				Str("file", "internal/application/start.go").
+				Str("path", script).
+				Msg("Failed to load hook script")
 		}
 	} else {
 		convention_path := filepath.Join(cfg.WorkDir, "hooks.js")
 		if _, err := os.Stat(convention_path); err == nil {
 			if err := hook_manager.Load(convention_path); err != nil {
-				logger.Warn().Err(err).Str("path", convention_path).Msg("Failed to load hook script")
+				logger.Warn().
+					Err(err).
+					Str("file", "internal/application/start.go").
+					Str("path", convention_path).
+					Msg("Failed to load hook script")
 			}
 		}
 	}
 
 	// --- Database store ---
-	task_store := database.NewDBTaskStore(b.DB, &logger)
+	task_store := database.NewDBTaskStore(b.DB, logger)
 
 	// --- Download engine ---
 	downloader := hermes.New(hermes.HermesNewConfig{
 		Store:  task_store,
-		Logger: &logger,
+		Logger: logger,
 		Config: hermes.HermesEngineConfig{
 			MaxConcurrent:    api_cfg.MaxRunning,
 			FilenameTemplate: api_cfg.FilenameTemplate,
@@ -107,10 +148,10 @@ func Start(cfg *config.Config) {
 	downloader.RegisterProtocol(protocol.NewStreamDriver())
 	downloader.RegisterProtocol(protocol.NewInlineDriver())
 	downloader.SetHooks(hook_manager)
-	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, logger, api_cfg.DownloadDir))
+	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
 
 	// --- API service ---
-	api_srv := api.NewAPIServer(api_cfg, &logger, b.DB, static_assets, downloader, hook_manager)
+	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager)
 	api_srv.SubscribeEvents(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
@@ -131,7 +172,7 @@ func Start(cfg *config.Config) {
 			Routes:       api_srv.APIClient,
 			Interceptor:  interceptor_srv.Interceptor,
 			DB:           b.DB,
-			Logger:       &logger,
+			Logger:       logger,
 			Bus:          bus,
 			Config:       cfg,
 		})

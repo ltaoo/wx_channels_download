@@ -197,6 +197,54 @@
     popover$.show(popover_pos($btn));
   }
 
+  var before_menus_items = [];
+
+  function __wxmp_download_menu_label(label) {
+    if (typeof Node !== "undefined" && label instanceof Node) {
+      return label.textContent || "";
+    }
+    return label == null ? "" : String(label);
+  }
+
+  function __wxmp_create_download_menu_item(options, trigger, close) {
+    return new Timeless.ui.MenuItemCore({
+      label: __wxmp_download_menu_label(options.label),
+      tooltip: options.tooltip || options.title,
+      disabled: !!options.disabled,
+      async onClick() {
+        if (typeof options.onClick === "function") {
+          await options.onClick({
+            article: window.cgiDataNew || null,
+            trigger,
+          });
+        }
+        close();
+      },
+    });
+  }
+
+  function __wxmp_render_extra_download_menu_items(items, trigger, close) {
+    return (items || [])
+      .filter((item) => {
+        return item && item.label && item.onClick;
+      })
+      .map((item) => {
+        return __wxmp_create_download_menu_item(item, trigger, close);
+      });
+  }
+
+  Object.assign(WXU, {
+    unshiftMenuItems(items) {
+      if (!Array.isArray(items)) {
+        items = [items];
+      }
+      before_menus_items = items.concat(before_menus_items);
+    },
+    get before_menu_items() {
+      return before_menus_items;
+    },
+  });
+
   function DownloaderEntry(props) {
     const vm$ =
       typeof downloadermodel$ !== undefined
@@ -419,12 +467,12 @@
     const msgListDialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
-    WXU.downloader.show = function() {
+    WXU.downloader.show = function () {
       popover$.show();
-    }
-    WXU.downloader.hide = function() {
+    };
+    WXU.downloader.hide = function () {
       popover$.hide();
-    }
+    };
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
     const $btn = document.createElement("div");
     $btn.className = "sns_opr_btn_con";
@@ -448,10 +496,21 @@
         ") !important; }";
       document.head.appendChild(st);
     })();
-    const dropdown$ = new Timeless.ui.DropdownMenuCore({
+    let dropdown$ = null;
+    function close_dropdown() {
+      if (dropdown$) {
+        dropdown$.hide();
+      }
+    }
+    dropdown$ = new Timeless.ui.DropdownMenuCore({
       trigger: "hover",
       align: "end",
       items: [
+        ...__wxmp_render_extra_download_menu_items(
+          before_menus_items,
+          $btn,
+          close_dropdown,
+        ),
         new Timeless.ui.MenuItemCore({
           label: "复制文章HTML",
           onClick() {

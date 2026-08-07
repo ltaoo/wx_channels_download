@@ -12,8 +12,9 @@ import (
 // InterceptorPluginConfig owns the zhihu scraper configuration used
 // by the local interceptor.
 type InterceptorPluginConfig struct {
-	settings *ZhihuPluginConfig
-	version  string
+	settings         *ZhihuPluginConfig
+	version          string
+	globalScriptPath string
 }
 
 // NewConfig creates an InterceptorPluginConfig from the application config.
@@ -22,8 +23,9 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 		return &InterceptorPluginConfig{}
 	}
 	return &InterceptorPluginConfig{
-		settings: GetZhihuConfig(),
-		version:  cfg.Version,
+		settings:         GetZhihuConfig(),
+		version:          cfg.Version,
+		globalScriptPath: cfg.GlobalScriptPath,
 	}
 }
 
@@ -40,7 +42,7 @@ func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []inter
 		viper.GetString("api.hostname"),
 		viper.GetInt("api.port"),
 	)
-	plugin := zhihu.CreateZhihuInterceptorPlugin(c.settings.Cookie, asset_base_url, c.version)
+	plugin := zhihu.CreateZhihuInterceptorPlugin(c.settings.Cookie, asset_base_url, c.version, c.globalScriptPath)
 	if plugin == nil {
 		return nil
 	}

@@ -611,10 +611,17 @@ var WXBase64 = (() => {
     };
   }
 
-  function __wx_create_timeless_download_menu_item(options, trigger, close) {
+  function __wx_download_menu_items(items) {
+    if (Array.isArray(items)) {
+      return items;
+    }
+    return items ? [items] : [];
+  }
+
+  function __wxmp_create_download_menu_item(options, trigger, close) {
     return new Timeless.ui.MenuItemCore({
       label: __wx_download_menu_label(options.label),
-      tooltip: options.title,
+      tooltip: options.tooltip || options.title,
       disabled: !!options.disabled,
       async onClick() {
         if (typeof options.onClick === "function") {
@@ -626,12 +633,12 @@ var WXBase64 = (() => {
   }
 
   function __wx_render_extra_download_dropdown_items(items, trigger, close) {
-    return (items || [])
+    return __wx_download_menu_items(items)
       .filter((item) => {
-        return item.label && item.onClick;
+        return item && item.label && item.onClick;
       })
       .map((item) => {
-        return __wx_create_timeless_download_menu_item(item, trigger, close);
+        return __wxmp_create_download_menu_item(item, trigger, close);
       });
   }
 
@@ -661,7 +668,7 @@ var WXBase64 = (() => {
       var feed = __wx_channels_store__.feed;
       return [
         ...__wx_render_extra_download_dropdown_items(
-          WXU.before_menu_items,
+          before_menu_items,
           trigger,
           close_dropdown,
         ),
@@ -708,7 +715,7 @@ var WXBase64 = (() => {
           },
         }),
         ...__wx_render_extra_download_dropdown_items(
-          WXU.after_menu_items,
+          after_menu_items,
           trigger,
           close_dropdown,
         ),
@@ -776,6 +783,7 @@ var WXBase64 = (() => {
     }
     trigger.addEventListener("mouseenter", () => {
       set_reference();
+      dropdown$.setItems(build_root_menu_items());
       submenu$.setItems(build_download_menu_items());
       dropdown$.handleEnterTrigger();
     });
@@ -789,8 +797,8 @@ var WXBase64 = (() => {
     return dropdown$;
   }
 
-  var before_menus_items = [];
-  var after_menus_items = [];
+  var before_menu_items = [];
+  var after_menu_items = [];
   var before_level2_menus_items = [];
   var after_level2_menus_items = [];
   var WXAPI = {};
@@ -871,6 +879,20 @@ var WXBase64 = (() => {
       configurable: true,
       enumerable: true,
     },
+    before_menu_items: {
+      get() {
+        return before_menu_items;
+      },
+      configurable: true,
+      enumerable: true,
+    },
+    after_menu_items: {
+      get() {
+        return after_menu_items;
+      },
+      configurable: true,
+      enumerable: true,
+    },
   });
   Object.assign(WXU, {
     /**
@@ -943,20 +965,16 @@ var WXBase64 = (() => {
     check_feed_existing: __wx_check_feed_existing,
     attach_download_dropdown_menu: __wx_attach_download_dropdown_menu,
     unshiftMenuItems(items) {
-      before_menus_items = items.concat(before_menus_items);
+      items = __wx_download_menu_items(items);
+      before_menu_items = items.concat(before_menu_items);
     },
     /**
      * 向菜单后面插入额外菜单
      * @param {{label: string; onClick?:(event: { profile: ChannelsMedia }) => void}[]} items
      */
     pushMenuItems(items) {
-      after_menus_items = after_menus_items.concat(items);
-    },
-    get before_menu_items() {
-      return before_menus_items;
-    },
-    get after_menu_items() {
-      return after_menus_items;
+      items = __wx_download_menu_items(items);
+      after_menu_items = after_menu_items.concat(items);
     },
     get version() {
       return window.__d_config.version;

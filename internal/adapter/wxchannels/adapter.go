@@ -3,6 +3,7 @@ package wxchannelsadapter
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog"
@@ -29,10 +30,10 @@ type Deps struct {
 
 // ChannelsAdapter owns all wxchannels platform and runtime capabilities.
 type ChannelsAdapter struct {
-	runtimeMu         sync.Mutex
-	runtimeRegistered bool
-	routes            *WebsocketRoutes
-	interceptorConfig *InterceptorPluginConfig
+	runtime_mu         sync.Mutex
+	runtime_registered bool
+	routes             *WebsocketRoutes
+	interceptor_config *InterceptorPluginConfig
 }
 
 var (
@@ -52,34 +53,53 @@ func NewChannelsAdapter() *ChannelsAdapter {
 
 func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
 
+func (a *ChannelsAdapter) Fetch(raw_url string) (any, error) {
+	if a == nil {
+		return nil, errors.New("wxchannels adapter is not initialized")
+	}
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
+		return nil, errors.New("wxchannels url is empty")
+	}
+
+	a.runtime_mu.Lock()
+	routes := a.routes
+	a.runtime_mu.Unlock()
+	if routes == nil || routes.client == nil {
+		return nil, errors.New("wxchannels runtime is not initialized")
+	}
+
+	return routes.client.Fetch(wxchannels.FetchParams{URL: raw_url})
+}
+
 // Register creates and initializes a standalone channels adapter.
 func Register(d Deps) (*ChannelsAdapter, error) {
-	channelsAdapter := NewChannelsAdapter()
-	if err := channelsAdapter.register(d); err != nil {
+	channels_adapter := NewChannelsAdapter()
+	if err := channels_adapter.register(d); err != nil {
 		return nil, err
 	}
-	return channelsAdapter, nil
+	return channels_adapter, nil
 }
 
 // register wires up static assets, interceptor plugins, routes, and lifecycle
 // state on this adapter instance.
 func (a *ChannelsAdapter) register(d Deps) error {
-	a.runtimeMu.Lock()
-	if a.runtimeRegistered {
-		a.runtimeMu.Unlock()
+	a.runtime_mu.Lock()
+	if a.runtime_registered {
+		a.runtime_mu.Unlock()
 		return errors.New("wxchannels adapter runtime is already registered")
 	}
-	a.runtimeRegistered = true
-	a.runtimeMu.Unlock()
+	a.runtime_registered = true
+	a.runtime_mu.Unlock()
 
 	registered := false
 	defer func() {
 		if registered {
 			return
 		}
-		a.runtimeMu.Lock()
-		a.runtimeRegistered = false
-		a.runtimeMu.Unlock()
+		a.runtime_mu.Lock()
+		a.runtime_registered = false
+		a.runtime_mu.Unlock()
 	}()
 
 	if d.StaticAssets != nil {
@@ -88,13 +108,20 @@ func (a *ChannelsAdapter) register(d Deps) error {
 		}
 	}
 
-	var interceptorConfig *InterceptorPluginConfig
+	var interceptor_config *InterceptorPluginConfig
 	if d.Interceptor != nil {
 		if d.Config == nil {
 			return errors.New("wxchannels config is required for interceptor registration")
 		}
-		interceptorConfig = NewConfig(d.Config)
-		for _, p := range interceptorConfig.GetPlugins(adapter.AdapterContext{
+		if d.Logger != nil {
+			d.Logger.Info().
+				Str("file", "internal/adapter/wxchannels/adapter.go").
+				Bool("global_script_configured", d.Config.GlobalScriptPath != "").
+				Str("global_script_path", d.Config.GlobalScriptPath).
+				Msg("wxchannels adapter register: creating interceptor config")
+		}
+		interceptor_config = NewConfig(d.Config, d.Logger)
+		for _, p := range interceptor_config.GetPlugins(adapter.AdapterContext{
 			DB:       d.DB,
 			Logger:   d.Logger,
 			Bus:      d.Bus,
@@ -109,10 +136,10 @@ func (a *ChannelsAdapter) register(d Deps) error {
 		r.RegisterRoutes(d.RouteRegistrar)
 	}
 
-	a.runtimeMu.Lock()
+	a.runtime_mu.Lock()
 	a.routes = r
-	a.interceptorConfig = interceptorConfig
-	a.runtimeMu.Unlock()
+	a.interceptor_config = interceptor_config
+	a.runtime_mu.Unlock()
 	registered = true
 	return nil
 }
@@ -120,9 +147,9 @@ func (a *ChannelsAdapter) register(d Deps) error {
 // RegisterRuntime exposes the complete adapter through the shared registry
 // contract. The concrete package remains responsible for interpreting config.
 func (a *ChannelsAdapter) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
-	refreshInterval := 0
+	refresh_interval := 0
 	if d.Config != nil {
-		refreshInterval = d.Config.GetInt("channels.refreshInterval")
+		refresh_interval = d.Config.GetInt("channels.refreshInterval")
 	}
 	if err := a.register(Deps{
 		StaticAssets:    d.StaticAssets,
@@ -132,7 +159,7 @@ func (a *ChannelsAdapter) RegisterRuntime(d adapter.RuntimeDeps) (adapter.Runtim
 		Logger:          d.Logger,
 		Bus:             d.Bus,
 		Config:          d.Config,
-		RefreshInterval: refreshInterval,
+		RefreshInterval: refresh_interval,
 	}); err != nil {
 		return nil, err
 	}
@@ -144,12 +171,12 @@ func (a *ChannelsAdapter) Stop() {
 	if a == nil {
 		return
 	}
-	a.runtimeMu.Lock()
+	a.runtime_mu.Lock()
 	routes := a.routes
-	a.runtimeRegistered = false
+	a.runtime_registered = false
 	a.routes = nil
-	a.interceptorConfig = nil
-	a.runtimeMu.Unlock()
+	a.interceptor_config = nil
+	a.runtime_mu.Unlock()
 	if routes != nil {
 		routes.Stop()
 	}

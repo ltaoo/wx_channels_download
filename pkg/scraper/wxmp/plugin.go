@@ -156,6 +156,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 			interceptor.MockFrontendStaticAsset(ctx, ctx.Req().URL.Path, interceptor.FrontendStaticAssetMockOptions{
 				PlatformPrefix: StaticAssetsPath + "/",
 				PlatformFS:     Assets.InjectFS,
+				UserScriptPath: cfg.GlobalScriptPath,
 			})
 		},
 		OnResponse: func(ctx proxy.Context) {
@@ -219,6 +220,9 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 				if cfg.PagespyEnabled {
 					/** Online debugging */
 					frontend.AppendScripts(&injected, script_attr, url_build("/public/pagespy.min.js", version_query), url_build("/inject/pagespy.js"))
+				}
+				if cfg.GlobalScriptURL != "" {
+					frontend.AppendScripts(&injected, script_attr, cfg.GlobalScriptURL)
 				}
 				if cfg.InjectContentScript != "" {
 					frontend.AppendInlineScript(&injected, script_attr, cfg.InjectContentScript)

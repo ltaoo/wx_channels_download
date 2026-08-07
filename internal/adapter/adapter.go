@@ -29,6 +29,9 @@ type PlatformHandler interface {
 	// PlatformID returns the unique platform identifier, e.g. "wxchannels", "wx_mp"
 	PlatformID() string
 
+	// Fetch retrieves raw scraper data for a platform-specific URL.
+	Fetch(rawURL string) (any, error)
+
 	// BuildDownloadTask generates a download task result from the platform's raw content JSON and download config.
 	// contentJSON: raw JSON data of the platform scraper object
 	// configJSON: platform-specific download config JSON (directory, filename, quality, overwrite strategy, etc.)

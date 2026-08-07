@@ -3,6 +3,7 @@ package wxmpadapter
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog"
@@ -50,6 +51,14 @@ func NewOfficialAccountAdapter() *OfficialAccountAdapter {
 }
 
 func (a *OfficialAccountAdapter) PlatformID() string { return PlatformID }
+
+func (a *OfficialAccountAdapter) Fetch(rawURL string) (any, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, errors.New("wxmp url is empty")
+	}
+	return (&wxmp.OfficialAccountDownload{}).FetchArticle(rawURL)
+}
 
 // Register creates and initializes a standalone official-account adapter.
 func Register(d Deps) (*OfficialAccountAdapter, error) {

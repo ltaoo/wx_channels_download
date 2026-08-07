@@ -24,6 +24,15 @@ func (h *handler) PlatformID() string { return PlatformID }
 // PlatformID is the exportable platform identifier for zhihu.
 const PlatformID = platformIDZhihu
 
+func (h *handler) Fetch(rawURL string) (any, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("知乎URL不能为空")
+	}
+
+	return zhihu.NewClient("").Fetch(rawURL)
+}
+
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
 	return PlatformID + ":" + externalID

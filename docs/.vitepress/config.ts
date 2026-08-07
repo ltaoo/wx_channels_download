@@ -95,6 +95,7 @@ export default defineConfig(async () => {
   themeConfig: {
     nav: [
       { text: "首页", link: "/" },
+      { text: "文档", link: "/guide/start" },
       { text: "Releases", link: `/releases/${latestReleaseDate}` },
       { text: "API Playground", link: "/feature/playground" },
       { text: "FAQ", link: "/faq/button_inject_failed" },

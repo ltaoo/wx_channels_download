@@ -17,6 +17,26 @@ function format_download_progress_text(percent) {
   if (!Number.isFinite(p)) return "0";
   return String(Math.round(Math.max(0, Math.min(100, p))));
 }
+function download_task_preview_url(task) {
+  const id = task && task.id;
+  if (id === undefined || id === null || id === "") return "";
+  const origin =
+    (typeof WXEnv !== "undefined" && WXEnv.apiOrigin) ||
+    (window.location && window.location.origin) ||
+    "";
+  const base = String(origin || "").replace(/\/$/, "");
+  return `${base}/preview?id=${encodeURIComponent(id)}`;
+}
+function open_download_task_preview(task) {
+  const url = download_task_preview_url(task);
+  if (!url) {
+    WXU.error({
+      msg: "task id is empty",
+    });
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+}
 function NumberView(props = {}) {
   const value = Object.prototype.hasOwnProperty.call(props, "value")
     ? props.value
@@ -1632,15 +1652,32 @@ function DownloadTaskCard(props) {
             [
               View(
                 {
+                  type: "a",
                   class: "wx-dl-item-title",
+                  attributes: {
+                    href: computed(task_, (t) => download_task_preview_url(t)),
+                    title: computed(task_, (t) => (t && t.name) || ""),
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  },
                   style: {
                     color: "var(--weui-FG-0)",
                     "font-weight": "500",
                     "font-size": "14px",
                     "min-width": "0",
+                    cursor: "pointer",
+                    "text-decoration": "none",
+                  },
+                  onClick(e) {
+                    if (e && typeof e.preventDefault === "function") {
+                      e.preventDefault();
+                    }
+                    const task =
+                      task_ && task_.value !== undefined ? task_.value : task_;
+                    open_download_task_preview(task);
                   },
                 },
-                [computed(task_, (t) => t.name)],
+                [computed(task_, (t) => (t && t.name) || "")],
               ),
               Show({
                 when: computed(state_, (d) => d.isLiveStream),

@@ -30,14 +30,17 @@ func Assets() *UserScripts {
 }
 
 const assets_path = "/__assets"
+const defaultUserGlobalScriptAssetName = "global.js"
 const PublicAssetCacheControl = "no-cache"
 const SrcAssetCacheControl = "no-cache"
 
-// const timelessBridgeScript = `
-// Object.assign(Timeless, Timeless.weui.kit);
-// Object.assign(Timeless, Timeless.weui);
-// Object.assign(window, Timeless);
-// `
+func UserGlobalScriptAssetPath(script_path string) string {
+	name := strings.TrimSpace(filepath.Base(script_path))
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		name = defaultUserGlobalScriptAssetName
+	}
+	return path.Join(assets_path, "user", name)
+}
 
 func AssetsBaseURL(protocol string, hostname string, port int) string {
 	protocol = strings.TrimSpace(protocol)

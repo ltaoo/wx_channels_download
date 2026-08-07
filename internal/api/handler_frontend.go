@@ -13,9 +13,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
-	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
-	scraper_wxmp "wx_channel/pkg/scraper/wxmp"
 	result "wx_channel/internal/util"
+	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
 )
 
 func (c *APIClient) handleIndex(ctx *gin.Context) {
@@ -24,6 +23,10 @@ func (c *APIClient) handleIndex(ctx *gin.Context) {
 
 func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/index.html")
+}
+
+func (c *APIClient) handleHomePage(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/home.html")
 }
 
 func (c *APIClient) handleContentPage(ctx *gin.Context) {
@@ -217,27 +220,10 @@ func zerologLevel(level string) zerolog.Level {
 	}
 }
 
-// handleFrontendArticle handles official account article metadata posted from injected pages.
-func (c *APIClient) handleFrontendArticle(ctx *gin.Context) {
-	body, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		result.Err(ctx, 400, "read body failed")
-		return
-	}
-	profile, err := scraper_wxmp.NewOfficialAccountArticleProfile(json.RawMessage(body))
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if profile != nil {
-		fmt.Printf("\nOpened official account article\n%s\n", profile.Title)
-	}
-	result.Ok(ctx, nil)
-}
-
 func shouldServeByAPI(path string) bool {
 	if path == "/" ||
 		path == "/favicon.ico" ||
+		path == "/home" ||
 		path == "/filehelper" ||
 		path == "/play" ||
 		path == "/file" ||

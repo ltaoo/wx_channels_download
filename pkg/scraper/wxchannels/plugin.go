@@ -59,6 +59,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 	if cfg == nil {
 		cfg = &ChannelsConfig{}
 	}
+	logger := cfg.Logger
 	version := cfg.Version
 	asset_version := version
 	if asset_version == "" {
@@ -72,6 +73,15 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 	asset_base_url := "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	v := "?t=" + version
+	global_script_asset_path := ""
+	if cfg.GlobalScriptPath != "" {
+		global_script_asset_path = frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
+		logger.Info().
+			Str("file", "pkg/scraper/wxchannels/plugin.go").
+			Str("path", cfg.GlobalScriptPath).
+			Str("asset_path", global_script_asset_path).
+			Msg("wxchannels interceptor initialized with global script")
+	}
 	plugins := make([]*proxy.Plugin, 0, 5)
 	plugin_1 := &proxy.Plugin{
 		Match: "channels.weixin.qq.com",
@@ -80,6 +90,8 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 			if interceptor.MockFrontendStaticAsset(ctx, pathname, interceptor.FrontendStaticAssetMockOptions{
 				PlatformPrefix: StaticAssetsPath + "/",
 				PlatformFS:     Assets.InjectFS,
+				UserScriptPath: cfg.GlobalScriptPath,
+				Logger:         logger,
 			}) {
 				return
 			}
@@ -226,12 +238,6 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					url_build("/inject/download/view.js"),
 					url_build("/inject/download/panel.js"),
 				)
-				if cfg.InjectGlobalScript != "" {
-					frontend.AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
-				}
-				if cfg.InjectContentScript != "" {
-					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
-				}
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
@@ -240,6 +246,19 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					InjectAssetURL(asset_base_url, "channels.utils.js"),
 					InjectAssetURL(asset_base_url, "channels.ws.js"),
 				)
+				if global_script_asset_path != "" {
+					frontend.AppendScripts(&injected, crossorigin_attr, global_script_asset_path)
+					if logger != nil {
+						logger.Info().
+							Str("file", "pkg/scraper/wxchannels/plugin.go").
+							Str("path", cfg.GlobalScriptPath).
+							Str("asset_path", global_script_asset_path).
+							Msg("after append global script")
+					}
+				}
+				if cfg.InjectContentScript != "" {
+					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
+				}
 				if pathname == "/web/pages/home" {
 					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.home.js"))
 				}
@@ -519,7 +538,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						js_script = js_go_to_prev_flow_reg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
 					{
-						js_wxutil := `;console.log('before channels:UtilsLoaded', decodeBase64ToUint64String);WXU.emit("channels:UtilsLoaded",{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{`
+						js_wxutil := `;WXU.emit("channels:UtilsLoaded",{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{`
 						js_script = js_export_reg.ReplaceAllString(js_script, js_wxutil)
 					}
 					{

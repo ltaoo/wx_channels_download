@@ -1,20 +1,21 @@
-package bilibiliadapter
+package douyinadapter
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	"wx_channel/pkg/scraper/bilibili"
+	"wx_channel/pkg/scraper/douyin"
 	"wx_channel/pkg/util"
 )
 
-const platformIDBilibili = "bilibili"
+const platformIDDouyin = "douyin"
 
-// PlatformID is the platform identifier for bilibili.
-const PlatformID = platformIDBilibili
+// PlatformID is the platform identifier for douyin.
+const PlatformID = platformIDDouyin
 
 func init() {
 	adapter.Register(&handler{})
@@ -24,13 +25,25 @@ type handler struct{}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
+func (h *handler) Fetch(rawURL string) (any, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("抖音URL不能为空")
+	}
+
+	cookie := ""
+	if cfg := GetDouyinConfig(); cfg != nil {
+		cookie = cfg.Cookie
+	}
+	return douyin.NewClient(cookie).GetVideoInfo(rawURL)
+}
+
 func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
 	return nil, adapter.ErrBrowseHistoryNotSupported
 }
 
-type bilibiliContentJSON struct {
-	URL     string `json:"url"`
-	PageNum int    `json:"page_num"`
+type douyinContentJSON struct {
+	URL string `json:"url"`
 }
 
 func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -39,101 +52,101 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
-	var input bilibiliContentJSON
+	var input douyinContentJSON
 	if err := json.Unmarshal(contentJSON, &input); err != nil {
-		return nil, fmt.Errorf("解析B站URL失败: %w", err)
+		return nil, fmt.Errorf("解析抖音URL失败: %w", err)
 	}
 	if input.URL == "" {
-		return nil, fmt.Errorf("B站URL不能为空")
+		return nil, fmt.Errorf("抖音URL不能为空")
 	}
 
+	// Get cookie from config
 	cookie := ""
-	if cfg := GetBilibiliConfig(); cfg != nil {
+	if cfg := GetDouyinConfig(); cfg != nil {
 		cookie = cfg.Cookie
 	}
 
-	// Call scraper to get video info
-	client := bilibili.NewClient(cookie)
-	videoInfos, err := client.GetVideoInfo(input.URL, input.PageNum)
+	// Call scraper to get video info (prefer mobile, fall back to web)
+	client := douyin.NewClient(cookie)
+	videoInfo, err := client.GetVideoInfo(input.URL)
 	if err != nil {
-		return nil, fmt.Errorf("获取B站视频信息失败: %w", err)
-	}
-	if len(videoInfos) == 0 {
-		return nil, fmt.Errorf("未获取到B站视频")
+		return nil, fmt.Errorf("获取抖音视频信息失败: %w", err)
 	}
 
-	return buildTaskFromVideoInfo(videoInfos[0], input.URL, config)
-}
-
-func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config map[string]any) (*adapter.DownloadTaskResult, error) {
 	now := util.NowMillis()
 
+	// Build Content
 	content := &model.Content{
-		Id:         BuildContentID(info.VideoID),
-		PlatformId: platformIDBilibili,
-		ExternalId: info.VideoID,
+		Id:         BuildContentID(videoInfo.VideoID),
+		PlatformId: platformIDDouyin,
+		ExternalId: videoInfo.VideoID,
 		Type:       "video",
-		Title:      info.Title,
-		URL:        info.URL,
-		CoverURL:   info.CoverURL,
-		SourceURL:  sourceURL,
+		Title:      videoInfo.Title,
+		URL:        videoInfo.URL,
+		CoverURL:   videoInfo.CoverURL,
+		SourceURL:  input.URL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
 
+	// Build Account (Douyin mobile scraper lacks author info, falls back to videoID)
+	accountExternalID := videoInfo.VideoID
 	account := &model.Account{
-		Id:         BuildAccountID(info.VideoID),
-		PlatformId: platformIDBilibili,
-		ExternalId: info.VideoID,
-		Nickname:   "B站用户",
+		Id:         BuildAccountID(accountExternalID),
+		PlatformId: platformIDDouyin,
+		ExternalId: accountExternalID,
+		Nickname:   "抖音用户",
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
 
+	// Build download task
 	title, _ := config["filename"].(string)
 	if title == "" {
-		title = info.Title
+		title = videoInfo.Title
 	}
 
 	savePath, _ := config["save_path"].(string)
 	if savePath == "" {
-		savePath = "/downloads/bilibili"
+		savePath = "/downloads/douyin"
 	}
 
 	configJSON, _ := json.Marshal(buildConfigJSON(config))
 	metadataJSON, _ := json.Marshal(map[string]any{
 		"platform":    PlatformID,
-		"external_id": info.VideoID,
-		"title":       info.Title,
+		"external_id": videoInfo.VideoID,
+		"title":       videoInfo.Title,
+		"source":      videoInfo.Source,
 		"download_at": time.Now().Unix(),
 	})
 
-	extraJSON := buildExtraJSON(info.VideoID, info.Title)
+	extraJSON := buildExtraJSON(videoInfo.VideoID, videoInfo.Title)
 	contentID := content.Id
 
+	// Cover resource
 	var resources []*adapter.ResourceInfo
 
-	// Cover resource (optional)
 	downloadCover, _ := config["download_cover"].(bool)
-	if downloadCover && info.CoverURL != "" {
+	if downloadCover && videoInfo.CoverURL != "" {
 		coverResource := model.DownloadResource{
 			ContentId: &contentID,
 			Name:      title,
 			Kind:      "image",
-			UniqueID:  info.VideoID + "_cover",
+			UniqueID:  videoInfo.VideoID + "_cover",
 			Extra:     extraJSON,
+		}
+		coverEndpoint := model.DownloadEndpoint{
+			Protocol: "https",
+			URL:      videoInfo.CoverURL,
+			Enabled:  1,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
 			DownloadResource: coverResource,
-			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
-				URL:      info.CoverURL,
-				Enabled:  1,
-			}},
+			Endpoints:        []model.DownloadEndpoint{coverEndpoint},
 		})
 	}
 
@@ -142,12 +155,12 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 		ContentId: &contentID,
 		Name:      title + ".mp4",
 		Kind:      "video",
-		UniqueID:  info.VideoID,
+		UniqueID:  videoInfo.VideoID,
 		Extra:     extraJSON,
 	}
 	videoEndpoint := model.DownloadEndpoint{
 		Protocol: "https",
-		URL:      info.URL,
+		URL:      videoInfo.URL,
 		Enabled:  1,
 	}
 	resources = append(resources, &adapter.ResourceInfo{
@@ -155,31 +168,11 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
 	})
 
-	// DASH audio resource (anime/courses etc.)
-	if info.AudioURL != "" {
-		audioResource := model.DownloadResource{
-			ContentId:  &contentID,
-			Name:       title + ".audio.m4a",
-			Kind:       "audio",
-			UniqueID:   info.VideoID + "_audio",
-			MergeOrder: 1,
-			Extra:      extraJSON,
-		}
-		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: audioResource,
-			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
-				URL:      info.AudioURL,
-				Enabled:  1,
-			}},
-		})
-	}
-
 	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     info.VideoID,
+			UniqueID:     videoInfo.VideoID,
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
 			ConfigJSON:   string(configJSON),
@@ -188,7 +181,7 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 		Resources: resources,
 		ContentDetail: &model.ContentVideo{
 			Id:     content.Id,
-			URL:    info.URL,
+			URL:    videoInfo.URL,
 			Format: "mp4",
 		},
 		Account: account,
@@ -196,14 +189,17 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 	}, nil
 }
 
+// BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
-	return platformIDBilibili + ":" + externalID
+	return platformIDDouyin + ":" + externalID
 }
 
+// BuildAccountID builds an account identifier from an external ID.
 func BuildAccountID(externalID string) string {
-	return platformIDBilibili + ":" + externalID
+	return platformIDDouyin + ":" + externalID
 }
 
+// buildExtraJSON builds the resource.Extra JSON string.
 func buildExtraJSON(id, title string) string {
 	data, _ := json.Marshal(map[string]string{
 		"id":    id,
@@ -212,6 +208,7 @@ func buildExtraJSON(id, title string) string {
 	return string(data)
 }
 
+// buildConfigJSON returns a map containing only the non-empty config fields.
 func buildConfigJSON(config map[string]any) map[string]any {
 	m := make(map[string]any, len(config))
 	for key, value := range config {
