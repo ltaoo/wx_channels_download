@@ -189,8 +189,6 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
-// buildResourceMeta builds a simplified ResourceMeta from resource.Extra and task config.
-// resource.Extra is populated by each platform's BuildDownloadTask; fields vary by platform.
 func calcSpeed(t0 time.Time, downloaded0 int64, t1 time.Time, downloaded1 int64) int64 {
 	elapsed := t1.Sub(t0).Seconds()
 	if elapsed <= 0 || downloaded1 <= downloaded0 {

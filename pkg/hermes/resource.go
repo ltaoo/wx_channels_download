@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -935,48 +934,23 @@ func splitFile(fileSize int64, n int) []SegmentRange {
 	return ranges
 }
 
-func buildResourceMeta(extra map[string]string, config map[string]any) ResourceMeta {
-	meta := ResourceMeta{
-		DownloadAt: time.Now().Unix(),
+func buildResourceMeta(extra map[string]string) ResourceMeta {
+	meta := make(ResourceMeta, len(extra)+1)
+	for key, value := range extra {
+		meta[key] = value
 	}
-	if extra != nil {
-		meta.ID = extra["id"]
-		meta.Title = extra["title"]
-		meta.Spec = extra["spec"]
-		meta.Author = extra["author"]
-		if v, err := strconv.ParseInt(extra["created_at"], 10, 64); err == nil {
-			meta.CreatedAt = v
-		}
-		if v, err := strconv.Atoi(extra["idx"]); err == nil {
-			meta.Idx = v
-		}
-	}
-	if config != nil {
-		if platform, ok := config["platform"].(string); ok {
-			meta.Platform = platform
-		}
-	}
+	meta["download_at"] = time.Now().Unix()
 	return meta
 }
 
-// buildTemplateMeta builds a metadata map for {{var}} template substitution from resource.Extra and task config.
-func buildTemplateMeta(extra map[string]string, config map[string]any, currentName string) map[string]string {
-	meta := make(map[string]string)
+// buildTemplateMeta builds a metadata map for {{var}} substitution from resource.Extra.
+func buildTemplateMeta(extra map[string]string, currentName string) map[string]string {
+	meta := make(map[string]string, len(extra)+2)
+	for key, value := range extra {
+		meta[key] = value
+	}
 	meta["download_at"] = time.Now().Format("2006-01-02")
 	meta["filename"] = currentName
-	if extra != nil {
-		meta["id"] = extra["id"]
-		meta["title"] = extra["title"]
-		meta["spec"] = extra["spec"]
-		meta["author"] = extra["author"]
-		meta["created_at"] = extra["created_at"]
-	}
-	// User config spec overrides resource metadata spec
-	if config != nil {
-		if spec, ok := config["spec"].(string); ok && spec != "" {
-			meta["spec"] = spec
-		}
-	}
 	return meta
 }
 

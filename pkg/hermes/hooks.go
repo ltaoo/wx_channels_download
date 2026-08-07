@@ -60,18 +60,9 @@ type FinishContext struct {
 	SavePath  string         `json:"savePath"`
 }
 
-// ResourceMeta is the second argument for the onFilename hook, containing flat video metadata expanded from resource.Extra.
-// Fields vary by platform and are all optional.
-type ResourceMeta struct {
-	ID         string `json:"id"`          // video ID
-	Title      string `json:"title"`       // video title
-	Spec       string `json:"spec"`        // video quality, e.g. "original", "xWT111"
-	CreatedAt  int64  `json:"created_at"`  // video publish time (seconds)
-	DownloadAt int64  `json:"download_at"` // download time (seconds)
-	Author     string `json:"author"`      // creator/uploader name
-	Platform   string `json:"platform"`    // platform identifier, e.g. "wxchannels"
-	Idx        int    `json:"idx"`         // media index for multi-resource posts
-}
+// ResourceMeta is the arbitrary resource metadata exposed to onFilename.
+// It mirrors resource.Extra and adds download_at at hook invocation time.
+type ResourceMeta map[string]any
 
 // FilenameParams holds the parameters for the onFilename hook.
 // The hook returns a string (filename) or null/empty string (to use the default logic).

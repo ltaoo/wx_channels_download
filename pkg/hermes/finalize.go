@@ -149,10 +149,10 @@ func (d *HermesEngine) renameTempFiles(savePath string, resources []ResourceJob)
 }
 
 // finalizeResourceFilenames renames downloaded files from unique_id-based names
-// to human-readable display names (from Extra["title"]), then applies filename
-// template and hooks to produce the final output filename. This is done after
-// download and postprocessing so that templates/hooks work on clean display names
-// instead of internal unique IDs.
+// to human-readable resource names, then applies filename template and hooks to
+// produce the final output filename. This is done after download and
+// postprocessing so that templates/hooks work on clean display names instead of
+// internal unique IDs.
 func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 	for i := range job.Resources {
 		r := &job.Resources[i]
@@ -173,7 +173,7 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 
 		// Apply filename template using display title as {{filename}}
 		if d.cfg.FilenameTemplate != "" {
-			meta := buildTemplateMeta(r.Extra, job.Config, baseName)
+			meta := buildTemplateMeta(r.Extra, baseName)
 			if newName := d.applyJobFilenameTemplate(job, r, d.cfg.FilenameTemplate, baseName, "", meta); newName != "" {
 				baseName = newName
 			}
@@ -181,7 +181,7 @@ func (d *HermesEngine) finalizeResourceFilenames(job *TaskJob) {
 
 		// Apply filename hook
 		if d.hooks != nil && d.hooks.HasFilenameHook() {
-			hookMeta := buildResourceMeta(r.Extra, job.Config)
+			hookMeta := buildResourceMeta(r.Extra)
 			params := &FilenameParams{
 				Meta: hookMeta,
 				Task: TaskInfo{
