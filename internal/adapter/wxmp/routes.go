@@ -1,13 +1,13 @@
-package wxmp
+package wxmpadapter
 
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/config"
 	"wx_channel/internal/util"
-	scraper "wx_channel/pkg/scraper/wxmp"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/scraper/wxmp"
 )
 
 const (
@@ -23,16 +23,20 @@ type RouteRegistrar interface {
 
 // Routes owns the official-account client lifecycle and endpoints.
 type Routes struct {
-	client *scraper.OfficialAccountClient
+	client *wxmp.OfficialAccountClient
 }
 
-func NewRoutes(cfg *config.Config, logger *zerolog.Logger, db *gorm.DB) *Routes {
-	if cfg == nil || logger == nil {
-		return &Routes{}
+func NewRoutes(provider configapi.Provider, runtime configapi.Runtime, logger *zerolog.Logger, db *gorm.DB) (*Routes, error) {
+	if provider == nil || logger == nil {
+		return &Routes{}, nil
 	}
-	client := scraper.NewOfficialAccountClient(scraper.NewOfficialAccountConfig(cfg), logger)
+	cfg, err := wxmp.NewOfficialAccountConfig(provider, runtime)
+	if err != nil {
+		return nil, err
+	}
+	client := wxmp.NewOfficialAccountClient(cfg, logger)
 	client.SetDB(db)
-	return &Routes{client: client}
+	return &Routes{client: client}, nil
 }
 
 // RegisterRoutes installs the previously local-only official-account routes.

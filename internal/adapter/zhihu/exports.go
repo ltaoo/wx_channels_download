@@ -1,24 +1,24 @@
-package zhihu
+package zhihuadapter
 
-import scraper "wx_channel/pkg/scraper/zhihu"
+import "wx_channel/pkg/scraper/zhihu"
 
 // User re-exports the scraper's User type.
-type User = scraper.User
+type User = zhihu.User
 
 // Answer re-exports the scraper's Answer type.
-type Answer = scraper.Answer
+type Answer = zhihu.Answer
 
 // Question re-exports the scraper's Question type.
-type Question = scraper.Question
+type Question = zhihu.Question
 
 // Article re-exports the scraper's Article type.
-type Article = scraper.Article
+type Article = zhihu.Article
 
 // AnswerPage re-exports the scraper's AnswerPage type.
-type AnswerPage = scraper.AnswerPage
+type AnswerPage = zhihu.AnswerPage
 
 // QuestionPage re-exports the scraper's QuestionPage type.
-type QuestionPage = scraper.QuestionPage
+type QuestionPage = zhihu.QuestionPage
 
 // ArticlePage re-exports the scraper's ArticlePage type.
-type ArticlePage = scraper.ArticlePage
+type ArticlePage = zhihu.ArticlePage

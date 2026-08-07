@@ -115,8 +115,11 @@ func (c *Interceptor) AddPlugin(plugin interface{}) {
 	}
 }
 
-func (c *Interceptor) SetLog(writer io.Writer) {
-	l := zerolog.New(writer).With().Timestamp().Str("component", "interceptor").Str("version", c.Version).Logger()
+func (c *Interceptor) SetLogger(logger *zerolog.Logger) {
+	if logger == nil {
+		return
+	}
+	l := logger.With().Str("component", "interceptor").Str("version", c.Version).Logger()
 	c.log = &l
 }
 func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -1,26 +1,24 @@
-package wxmp
+package wxmpadapter
 
 import (
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/config"
-	scraper "wx_channel/pkg/scraper/wxmp"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/scraper/wxmp"
 )
 
 // InterceptorPluginConfig owns the official-account scraper configuration used
 // by the local interceptor.
 type InterceptorPluginConfig struct {
-	settings *scraper.OfficialAccountConfig
+	settings *wxmp.OfficialAccountConfig
 	version  string
 }
 
-func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
-	if cfg == nil {
-		return &InterceptorPluginConfig{}
+func NewConfig(provider configapi.Provider, runtime configapi.Runtime) (*InterceptorPluginConfig, error) {
+	settings, err := wxmp.NewOfficialAccountConfig(provider, runtime)
+	if err != nil {
+		return nil, err
 	}
-	return &InterceptorPluginConfig{
-		settings: scraper.NewOfficialAccountConfig(cfg),
-		version:  cfg.Version,
-	}
+	return &InterceptorPluginConfig{settings: settings, version: runtime.Version}, nil
 }
 
 // GetPlugins returns the official-account injection plugin.
@@ -30,6 +28,6 @@ func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []inter
 	}
 
 	return []interface{}{
-		scraper.CreateOfficialAccountInterceptorPlugin(c.settings, c.version),
+		wxmp.CreateOfficialAccountInterceptorPlugin(c.settings, c.version),
 	}
 }

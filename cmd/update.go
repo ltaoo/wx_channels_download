@@ -14,29 +14,46 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/blang/semver"
 	"github.com/inconshreveable/go-update"
 	"github.com/pterm/pterm"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+
+	"wx_channel/internal/config"
+	"wx_channel/pkg/hermes"
 )
 
-var updateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "检查并更新到最新版本",
-	Run: func(cmd *cobra.Command, args []string) {
-		do_update()
-	},
+type update_command_config struct {
+	proxy  string
+	mirror string
 }
 
-func init() {
-	root_cmd.AddCommand(updateCmd)
+func run_update(version string, args []string) error {
+	flags := new_command_flag_set("update", "检查并安装最新版本")
+	var config_filepath string
+	add_config_flags(flags, &config_filepath)
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if err := reject_command_args(flags); err != nil {
+		return err
+	}
+	cfg := config.New(config_filepath, nil)
+	if err := cfg.LoadConfig(); err != nil {
+		return err
+	}
+	settings := update_command_config{
+		proxy:  cfg.GetString("update.proxy"),
+		mirror: cfg.GetString("update.mirror"),
+	}
+	do_update(version, settings)
+	return nil
 }
 
-type GitHubRelease struct {
+type github_release struct {
 	TagName     string    `json:"tag_name"`
 	Name        string    `json:"name"`
 	PublishedAt time.Time `json:"published_at"`
@@ -47,92 +64,81 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-func do_update() {
-	spinner, _ := pterm.DefaultSpinner.Start("正在检查更新...")
+func do_update(version string, settings update_command_config) {
+	spinner, _ := pterm.DefaultSpinner.Start("Checking for updates...")
 
-	releases, err := fetch_releases("ltaoo/wx_channels_download")
+	releases, err := fetch_releases("ltaoo/wx_channels_download", settings)
 	if err != nil {
-		spinner.Fail(fmt.Sprintf("检查更新失败: %v", err))
+		spinner.Fail(fmt.Sprintf("Failed to check for updates: %v", err))
 		return
 	}
 
 	if len(releases) == 0 {
-		spinner.Warning("未找到发布版本")
+		spinner.Warning("No releases found")
 		return
 	}
 
-	spinner.Success("检查完成")
+	spinner.Success("Update check completed")
 
 	latest := releases[0]
 
-	currentVer, err := semver.ParseTolerant(Version)
+	current_ver, err := semver.ParseTolerant(version)
 	if err != nil {
-		pterm.Warning.Printf("当前版本号(%s)格式不正确，无法比较版本\n", Version)
+		pterm.Warning.Printf("Current version (%s) is invalid and cannot be compared\n", version)
 	}
 
-	latestVer, err := semver.ParseTolerant(latest.TagName)
+	latest_ver, err := semver.ParseTolerant(latest.TagName)
 	if err != nil {
-		pterm.Error.Printf("最新版本号(%s)格式不正确，无法比较版本\n", latest.TagName)
+		pterm.Error.Printf("Latest version (%s) is invalid and cannot be compared\n", latest.TagName)
 		return
 	}
 
-	if currentVer.GE(latestVer) {
-		pterm.Info.Printf("当前已是最新版本: %s\n", Version)
+	if current_ver.GE(latest_ver) {
+		pterm.Info.Printf("You are already using the latest version: %s\n", version)
 		return
 	}
 
-	pterm.DefaultSection.Println("发现新版本")
-	pterm.Info.Printf("最新版本: %s (当前版本: %s)\n", latest.TagName, Version)
-	pterm.Info.Printf("发布时间: %s\n", latest.PublishedAt.Format("2006-01-02 15:04:05"))
+	pterm.DefaultSection.Println("New version available")
+	pterm.Info.Printf("Latest version: %s (current version: %s)\n", latest.TagName, version)
+	pterm.Info.Printf("Published at: %s\n", latest.PublishedAt.Format("2006-01-02 15:04:05"))
 	pterm.Println()
-	pterm.Println(pterm.Yellow("发布说明:"))
+	pterm.Println(pterm.Yellow("Release notes:"))
 	pterm.Println(latest.Body)
 	pterm.Println()
 
-	result, _ := pterm.DefaultInteractiveConfirm.Show("是否开始更新?")
+	result, _ := pterm.DefaultInteractiveConfirm.Show("Start the update?")
 	if !result {
-		pterm.Info.Println("已取消更新")
+		pterm.Info.Println("Update canceled")
 		return
 	}
 
-	assetURL, assetName := find_asset(latest)
-	if assetURL == "" {
-		pterm.Error.Printf("未找到适用于当前系统 (%s/%s) 的安装包\n", runtime.GOOS, runtime.GOARCH)
+	asset_url, asset_name := find_asset(latest)
+	if asset_url == "" {
+		pterm.Error.Printf("No package found for the current system (%s/%s)\n", runtime.GOOS, runtime.GOARCH)
 		return
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
-		pterm.Error.Println("无法获取当前程序路径:", err)
+		pterm.Error.Println("Unable to locate the current executable:", err)
 		return
 	}
 
-	pterm.Info.Println("正在下载并更新...")
+	pterm.Info.Println("Downloading and installing the update...")
 
-	// If it's a compressed file, we need to handle it manually
-	if strings.HasSuffix(assetName, ".zip") || strings.HasSuffix(assetName, ".tar.gz") || strings.HasSuffix(assetName, ".tgz") {
-		if err := update_from_compressed(assetURL, assetName, exe); err != nil {
-			pterm.Error.Println("更新失败:", err)
-			return
-		}
-	} else {
-		// If it's a binary directly (unlikely based on description but possible)
-		spinner, _ := pterm.DefaultSpinner.Start("正在下载并应用更新...")
-		if err := selfupdate.UpdateTo(assetURL, exe); err != nil {
-			spinner.Fail(fmt.Sprintf("更新失败: %v", err))
-			return
-		}
-		spinner.Success("更新完成")
+	if err := download_and_apply_update(asset_url, asset_name, exe, settings); err != nil {
+		pterm.Error.Println("Update failed:", err)
+		return
 	}
 
-	pterm.Success.Printf("成功更新至版本 %s\n", latest.TagName)
+	pterm.Success.Printf("Successfully updated to version %s\n", latest.TagName)
 }
 
-func fetch_releases(slug string) ([]GitHubRelease, error) {
-	rawURL := fmt.Sprintf("https://api.github.com/repos/%s/releases", slug)
-	reqURL := apply_mirror(rawURL)
-	client := create_update_http_client()
-	resp, err := client.Get(reqURL)
+func fetch_releases(slug string, settings update_command_config) ([]github_release, error) {
+	raw_url := fmt.Sprintf("https://api.github.com/repos/%s/releases", slug)
+	req_url := apply_mirror(raw_url, settings.mirror)
+	client := create_update_http_client(settings.proxy)
+	resp, err := client.Get(req_url)
 	if err != nil {
 		return nil, err
 	}
@@ -142,128 +148,234 @@ func fetch_releases(slug string) ([]GitHubRelease, error) {
 		return nil, fmt.Errorf("GitHub API returned status: %s", resp.Status)
 	}
 
-	var releases []GitHubRelease
+	var releases []github_release
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return nil, err
 	}
 	return releases, nil
 }
 
-func find_asset(release GitHubRelease) (string, string) {
+func find_asset(release github_release) (string, string) {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
-	targetArch := arch
+	target_arch := arch
 	if arch == "amd64" {
-		targetArch = "x86_64"
+		target_arch = "x86_64"
 	} else if arch == "386" {
-		targetArch = "x86"
+		target_arch = "x86"
 	}
 
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
-		if strings.Contains(name, os) && strings.Contains(name, targetArch) {
+		if strings.Contains(name, os) && strings.Contains(name, target_arch) {
 			return asset.BrowserDownloadURL, asset.Name
 		}
 	}
 	return "", ""
 }
 
-// ProgressReader wraps an io.Reader and updates a pterm.ProgressbarPrinter
-type ProgressReader struct {
-	Reader io.Reader
-	Bar    *pterm.ProgressbarPrinter
-}
-
-func (pr *ProgressReader) Read(p []byte) (n int, err error) {
-	n, err = pr.Reader.Read(p)
-	if n > 0 {
-		pr.Bar.Add(n)
+func download_update_asset_with_hermes(
+	raw_url string,
+	filename string,
+	proxy_server hermes.ProxyServer,
+	on_progress func(*hermes.TaskProgress),
+) (string, func(), error) {
+	parsed_url, err := url.Parse(raw_url)
+	if err != nil || parsed_url.Scheme == "" || parsed_url.Host == "" {
+		return "", nil, fmt.Errorf("invalid update download URL")
 	}
-	return
+	protocol_name := strings.ToLower(parsed_url.Scheme)
+	if protocol_name != "http" && protocol_name != "https" {
+		return "", nil, fmt.Errorf("unsupported update download protocol %q", protocol_name)
+	}
+
+	asset_name := filepath.Base(strings.TrimSpace(filename))
+	if asset_name == "" || asset_name == "." || asset_name == string(filepath.Separator) {
+		return "", nil, fmt.Errorf("invalid update asset filename")
+	}
+
+	temp_dir, err := os.MkdirTemp("", "wx-channels-update-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create update download directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(temp_dir) }
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			cleanup()
+		}
+	}()
+
+	downloader := hermes.New(hermes.HermesNewConfig{
+		Config: hermes.HermesEngineConfig{
+			MaxConcurrent: 1,
+			BasePath:      temp_dir,
+		},
+	})
+
+	var terminal atomic.Bool
+	downloader.OnEvent(func(_ int, event hermes.EventType, progress *hermes.TaskProgress) {
+		if event == hermes.EventProgress && !terminal.Load() && progress != nil && on_progress != nil {
+			on_progress(progress)
+		}
+		if event == hermes.EventFinished || event == hermes.EventFailed {
+			terminal.Store(true)
+		}
+	})
+
+	task := downloader.CreateTask(
+		raw_url,
+		hermes.WithFilename(asset_name),
+		hermes.WithProxyServer(proxy_server),
+	)
+	if err := task.Wait(); err != nil {
+		terminal.Store(true)
+		return "", nil, fmt.Errorf("download update: %w", err)
+	}
+	terminal.Store(true)
+
+	asset_path := task.FilePath()
+	info, err := os.Stat(asset_path)
+	if err != nil {
+		return "", nil, fmt.Errorf("open downloaded update: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("downloaded update is not a regular file")
+	}
+
+	succeeded = true
+	return asset_path, cleanup, nil
 }
 
-func update_from_compressed(rawURL, filename, exePath string) error {
-	reqURL := apply_mirror(rawURL)
-	client := create_update_http_client()
-	resp, err := client.Get(reqURL)
+type update_hermes_progress_bar struct {
+	mu         sync.Mutex
+	bar        *pterm.ProgressbarPrinter
+	downloaded int64
+	stopped    bool
+}
+
+func (p *update_hermes_progress_bar) update(progress *hermes.TaskProgress) {
+	if progress == nil || progress.TotalSize <= 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopped {
+		return
+	}
+	if p.bar == nil {
+		bar, err := pterm.DefaultProgressbar.
+			WithTotal(int(progress.TotalSize)).
+			WithTitle("Downloading").
+			Start()
+		if err != nil {
+			return
+		}
+		p.bar = bar
+	}
+	delta := progress.Downloaded - p.downloaded
+	if delta > 0 {
+		p.bar.Add(int(delta))
+		p.downloaded = progress.Downloaded
+	}
+}
+
+func (p *update_hermes_progress_bar) stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopped = true
+	if p.bar != nil {
+		_, _ = p.bar.Stop()
+	}
+}
+
+func download_and_apply_update(raw_url, filename, exe_path string, settings update_command_config) error {
+	req_url := apply_mirror(raw_url, settings.mirror)
+	progress := &update_hermes_progress_bar{}
+	asset_path, cleanup, err := download_update_asset_with_hermes(
+		req_url,
+		filename,
+		hermes.ProxyServer{Address: settings.proxy},
+		progress.update,
+	)
+	progress.stop()
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer cleanup()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status: %s", resp.Status)
+	source, err := os.Open(asset_path)
+	if err != nil {
+		return fmt.Errorf("open downloaded update: %w", err)
 	}
+	defer source.Close()
 
-	// Create progress bar
-	bar, _ := pterm.DefaultProgressbar.WithTotal(int(resp.ContentLength)).WithTitle("正在下载").Start()
-	defer bar.Stop()
+	return apply_downloaded_update(source, filename, exe_path)
+}
 
-	proxyReader := &ProgressReader{
-		Reader: resp.Body,
-		Bar:    bar,
-	}
+func apply_downloaded_update(source io.Reader, filename, exe_path string) error {
+	var binary_reader io.Reader
+	lower_filename := strings.ToLower(filename)
 
-	// Read content into memory to avoid temp files if possible,
-	// or stream to decompressor.
-	// Since we need to find the binary inside, we stream.
-
-	var binaryReader io.Reader
-
-	if strings.HasSuffix(filename, ".zip") {
+	if strings.HasSuffix(lower_filename, ".zip") {
 		// For zip, we need random access, so we have to read it all or save to temp file.
 		// Reading to memory is cleaner if not too huge.
-		bodyBytes, err := io.ReadAll(proxyReader)
+		body_bytes, err := io.ReadAll(source)
 		if err != nil {
-			return err
+			return fmt.Errorf("read zip update: %w", err)
 		}
 
-		zipReader, err := zip.NewReader(bytes.NewReader(bodyBytes), int64(len(bodyBytes)))
+		zip_reader, err := zip.NewReader(bytes.NewReader(body_bytes), int64(len(body_bytes)))
 		if err != nil {
-			return err
+			return fmt.Errorf("open zip update: %w", err)
 		}
 
-		for _, file := range zipReader.File {
+		for _, file := range zip_reader.File {
 			if is_executable_file(file.Name) {
 				rc, err := file.Open()
 				if err != nil {
-					return err
+					return fmt.Errorf("open executable in zip update: %w", err)
 				}
 				defer rc.Close()
-				binaryReader = rc
+				binary_reader = rc
 				break
 			}
 		}
-	} else if strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".tgz") {
-		gzipReader, err := gzip.NewReader(proxyReader)
+	} else if strings.HasSuffix(lower_filename, ".tar.gz") || strings.HasSuffix(lower_filename, ".tgz") {
+		gzip_reader, err := gzip.NewReader(source)
 		if err != nil {
-			return err
+			return fmt.Errorf("open gzip update: %w", err)
 		}
-		defer gzipReader.Close()
+		defer gzip_reader.Close()
 
-		tarReader := tar.NewReader(gzipReader)
+		tar_reader := tar.NewReader(gzip_reader)
 		for {
-			header, err := tarReader.Next()
+			header, err := tar_reader.Next()
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("read tar update: %w", err)
 			}
 
 			if is_executable_file(header.Name) {
-				binaryReader = tarReader
+				binary_reader = tar_reader
 				break
 			}
 		}
+	} else {
+		binary_reader = source
 	}
 
-	if binaryReader == nil {
+	if binary_reader == nil {
 		return fmt.Errorf("executable not found in archive")
 	}
 
-	return update.Apply(binaryReader, update.Options{})
+	if err := update.Apply(binary_reader, update.Options{TargetPath: exe_path}); err != nil {
+		return fmt.Errorf("apply update: %w", err)
+	}
+	return nil
 }
 
 func is_executable_file(name string) bool {
@@ -276,12 +388,11 @@ func is_executable_file(name string) bool {
 	return base == "wx_channels_download" || base == "wx_video_download"
 }
 
-func create_update_http_client() *http.Client {
-	proxyURL := viper.GetString("update.proxy")
-	if proxyURL == "" {
+func create_update_http_client(proxy_url string) *http.Client {
+	if proxy_url == "" {
 		return http.DefaultClient
 	}
-	proxy, err := url.Parse(proxyURL)
+	proxy, err := url.Parse(proxy_url)
 	if err != nil {
 		return http.DefaultClient
 	}
@@ -292,11 +403,10 @@ func create_update_http_client() *http.Client {
 	}
 }
 
-func apply_mirror(rawURL string) string {
-	mirror := viper.GetString("update.mirror")
+func apply_mirror(raw_url string, mirror string) string {
 	if mirror == "" {
-		return rawURL
+		return raw_url
 	}
 	mirror = strings.TrimSuffix(mirror, "/")
-	return mirror + "/" + rawURL
+	return mirror + "/" + raw_url
 }

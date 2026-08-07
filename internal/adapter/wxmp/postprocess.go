@@ -1,4 +1,4 @@
-package wxmp
+package wxmpadapter
 
 import (
 	"context"
@@ -45,7 +45,7 @@ type wxmpPostprocessRun struct {
 }
 
 // Postprocess assembles downloaded wxmp resources into the final HTML file.
-func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
+func (a *OfficialAccountAdapter) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
 	taskID := info.ID
 	var meta struct {
 		BizType int `json:"biz_type"`

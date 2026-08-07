@@ -1,4 +1,4 @@
-package wxchannels
+package wxchannelsadapter
 
 import (
 	"archive/zip"
@@ -18,7 +18,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/pkg/hermes"
-	scraper "wx_channel/pkg/scraper/wxchannels"
+	"wx_channel/pkg/scraper/wxchannels"
 
 	"github.com/expr-lang/expr"
 )
@@ -1814,7 +1814,7 @@ var TaskJobUpdateNode = flowengine.NodeDefinition{
 }
 
 // Postprocess performs wxchannels-specific decrypt and media conversion.
-func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
+func (a *ChannelsAdapter) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
 	log := func(msg string, args ...interface{}) {
 		deps.Logger.Info().Msg(fmt.Sprintf(msg, args...))
 	}
@@ -2200,7 +2200,7 @@ func decryptNode(values map[string]interface{}) (interface{}, error) {
 		}
 
 		tmpFile := inputFile + ".tmp"
-		if err := scraper.DecryptFile(inputFile, tmpFile, key, 131072); err != nil {
+		if err := wxchannels.DecryptFile(inputFile, tmpFile, key, 131072); err != nil {
 			_ = os.Remove(tmpFile)
 			return nil, err
 		}

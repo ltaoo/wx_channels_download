@@ -18,7 +18,7 @@ func (d *HermesEngine) finishTask(job *TaskJob) error {
 	// instances that completed transfer. Do not reload or copy them here.
 	d.logger.Info().
 		Int("task_id", taskID).
-		Interface("config", job.Config).
+		Interface("config", taskConfigForLog(job.Config)).
 		Interface("metadata", job.Metadata).
 		Msg("run - finishTask")
 

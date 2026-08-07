@@ -336,7 +336,7 @@ func (d *HermesEngine) processOutputFilename(task *TaskJob, resource *ResourceJo
 				Int("task_id", task.ID).
 				Int("resource_id", resource.ID).
 				Str("file_path", currentPath).
-				Interface("config", task.Config).
+				Interface("config", taskConfigForLog(task.Config)).
 				Msg("run - file exists with config")
 			isDup := getConfigBool(task.Config, "duplicate")
 			d.logger.Info().

@@ -1,7 +1,8 @@
-package xiaohongshu
+package xiaohongshuadapter
 
 import (
 	"wx_channel/internal/config"
+	"wx_channel/pkg/configapi"
 )
 
 // XiaohongshuPluginConfig implements config.Configurable for xiaohongshu plugin config.
@@ -11,11 +12,11 @@ type XiaohongshuPluginConfig struct {
 
 func (c *XiaohongshuPluginConfig) ConfigNamespace() string { return "xiaohongshu" }
 
-func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *XiaohongshuPluginConfig) ConfigSchema() []configapi.Item {
+	return []configapi.Item{
 		{
 			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
+			Type:        configapi.TypeBool,
 			Default:     false,
 			Description: "是否记录小红书页面浏览记录",
 			Title:       "记录小红书浏览",
@@ -24,7 +25,7 @@ func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigItem {
 	}
 }
 
-func (c *XiaohongshuPluginConfig) ApplyConfig(sub *config.SubViper) error {
+func (c *XiaohongshuPluginConfig) ApplyConfig(sub *config.ScopedConfig) error {
 	c.Enabled = sub.GetBool("enabled")
 	return nil
 }

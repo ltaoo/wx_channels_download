@@ -11,11 +11,10 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/events"
-	"wx_channel/internal/manager"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/clawreq"
+	"wx_channel/pkg/events"
 	"wx_channel/pkg/hermes"
 )
 
@@ -29,13 +28,12 @@ type APIClient struct {
 	logger        *zerolog.Logger
 	http_handler  http.Handler
 	static_assets *webassets.Registry
+	config_store  ConfigStore
 
 	bus                 *events.Bus
 	proxy_status_mu     sync.RWMutex
 	cached_proxy_status string
 	cached_proxy_addr   string
-	svc_status_mu       sync.RWMutex
-	svc_statuses        map[string]events.ServiceStatusChanged
 
 	clawclient *clawreq.Client
 
@@ -49,6 +47,7 @@ type APIClient struct {
 
 func NewAPIClient(
 	cfg *APIConfig,
+	config_store ConfigStore,
 	parent_logger *zerolog.Logger,
 	db *gorm.DB,
 	static_assets *webassets.Registry,
@@ -72,6 +71,7 @@ func NewAPIClient(
 		db:                     db,
 		logger:                 &logger,
 		static_assets:          static_assets,
+		config_store:           config_store,
 		account_service:        account_service,
 		content_service:        content_service,
 		browse_history_service: browse_history_service,
@@ -83,6 +83,7 @@ func NewAPIClient(
 		db, &logger, downloader, hook_manager,
 		cfg.WorkDir, cfg.DownloadDir,
 	)
+	api_client.filehelper = NewFileHelperHandler(config_store)
 
 	api_client.broadcaster = newTaskBroadcaster()
 	api_client.downloader.SetEventHandler(func(task_id int, event hermes.EventType, progress *hermes.TaskProgress) {
@@ -101,7 +102,7 @@ func NewAPIClient(
 	// api_client.filehelper.SetSphAutoDownloadCallback(api_client.autoDownloadSphVideo)
 
 	api_client.SetupRoutes()
-	// api_client.http_handler = api_client.buildHTTPHandler()
+	// api_client.http_handler = api_client.build_http_handler()
 	return api_client
 }
 
@@ -116,18 +117,6 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		c.cached_proxy_status = ev.Status
 		c.cached_proxy_addr = ev.Addr
 		c.proxy_status_mu.Unlock()
-	})
-	bus.Subscribe(events.TypeServiceStatusChanged, func(e events.Event) {
-		ev, ok := e.(events.ServiceStatusChanged)
-		if !ok {
-			return
-		}
-		c.svc_status_mu.Lock()
-		if c.svc_statuses == nil {
-			c.svc_statuses = make(map[string]events.ServiceStatusChanged)
-		}
-		c.svc_statuses[ev.Name] = ev
-		c.svc_status_mu.Unlock()
 	})
 }
 
@@ -152,21 +141,14 @@ type ClientWebsocketResponse struct {
 	Data json.RawMessage `json:"data"`
 }
 
-func (c *APIClient) serviceStatusesMap() map[string]manager.ServerStatus {
-	c.svc_status_mu.RLock()
-	defer c.svc_status_mu.RUnlock()
-	result := make(map[string]manager.ServerStatus, len(c.svc_statuses))
-	for name, s := range c.svc_statuses {
-		result[name] = manager.ServerStatus(s.Status)
-	}
-	return result
-}
-
 func (c *APIClient) Start() error {
 	return nil
 }
 
 func (c *APIClient) Stop() error {
+	if c.filehelper != nil {
+		c.filehelper.Close()
+	}
 	// Pause all Hermes download tasks
 	if c.downloader != nil {
 		c.downloader.PauseAllTask()
@@ -201,7 +183,7 @@ func (c *APIClient) DownloadTaskService() *services.DownloadTaskService {
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.http_handler == nil {
-		c.http_handler = c.buildHTTPHandler()
+		c.http_handler = c.build_http_handler()
 	}
 	c.http_handler.ServeHTTP(w, r)
 }

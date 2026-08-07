@@ -1,4 +1,4 @@
-package wxchannels
+package wxchannelsadapter
 
 import (
 	"encoding/json"
@@ -7,13 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	scraper "wx_channel/pkg/scraper/wxchannels"
+	"wx_channel/pkg/scraper/wxchannels"
 )
 
 // PickSpec returns the first h264 spec's FileFormat from the object, or "original" if none.
-func PickSpec(obj *scraper.ChannelsObject) string {
+func PickSpec(obj *wxchannels.ChannelsObject) string {
 	specs := obj.Spec
 	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
 		specs = obj.ObjectDesc.Media[0].Spec
@@ -30,7 +29,7 @@ func PickSpec(obj *scraper.ChannelsObject) string {
 //   - If spec is "" or "original", strips all query params except encfilekey and token,
 //     mirroring the JS __wx_channels_download4 original-video logic.
 //   - zip:// URLs are returned as-is.
-func BuildDownloadURLWithSpec(obj *scraper.ChannelsObject, spec string) string {
+func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) string {
 	baseURL := ObjectURL(obj)
 
 	// When spec is non-empty: append X-snsvideoflag parameter
@@ -60,7 +59,7 @@ func BuildDownloadURLWithSpec(obj *scraper.ChannelsObject, spec string) string {
 }
 
 // DecryptKeyInt returns the video decrypt key as int, or 0 on failure.
-func DecryptKeyInt(obj *scraper.ChannelsObject) int {
+func DecryptKeyInt(obj *wxchannels.ChannelsObject) int {
 	if len(obj.ObjectDesc.Media) == 0 {
 		return 0
 	}
@@ -72,7 +71,7 @@ func DecryptKeyInt(obj *scraper.ChannelsObject) int {
 }
 
 // ObjectTitle returns the object title with fallback logic (description → ID → timestamp).
-func ObjectTitle(obj *scraper.ChannelsObject) string {
+func ObjectTitle(obj *wxchannels.ChannelsObject) string {
 	if obj.LiveInfo != nil {
 		return "直播"
 	}
@@ -86,18 +85,12 @@ func ObjectTitle(obj *scraper.ChannelsObject) string {
 	return strconv.FormatInt(time.Now().Unix(), 10)
 }
 
-func init() {
-	adapter.Register(&handler{})
-}
-
-type handler struct{}
-
-func (h *handler) PlatformID() string { return PlatformID }
+func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
 
 // DecryptKey exposes the legacy channels conversion capability through the
-// registered handler, so callers do not need to import this package.
-func (h *handler) DecryptKey(contentJSON json.RawMessage) (int, error) {
-	var obj scraper.ChannelsObject
+// registered adapter, so callers do not need to import this package.
+func (a *ChannelsAdapter) DecryptKey(contentJSON json.RawMessage) (int, error) {
+	var obj wxchannels.ChannelsObject
 	if err := json.Unmarshal(contentJSON, &obj); err != nil {
 		return 0, err
 	}
@@ -105,8 +98,8 @@ func (h *handler) DecryptKey(contentJSON json.RawMessage) (int, error) {
 }
 
 // ConvertContent converts a raw channels object into the shared content model.
-func (h *handler) ConvertContent(contentJSON json.RawMessage) (*model.Content, error) {
-	var obj scraper.ChannelsObject
+func (a *ChannelsAdapter) ConvertContent(contentJSON json.RawMessage) (*model.Content, error) {
+	var obj wxchannels.ChannelsObject
 	if err := json.Unmarshal(contentJSON, &obj); err != nil {
 		return nil, err
 	}

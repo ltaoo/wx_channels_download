@@ -1,13 +1,15 @@
-package zhihu
+package zhihuadapter
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	scraper "wx_channel/pkg/scraper/zhihu"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
 )
 
@@ -17,7 +19,22 @@ func init() {
 	adapter.Register(&handler{})
 }
 
-type handler struct{}
+type handler struct {
+	config_mu       sync.RWMutex
+	config_provider configapi.Provider
+}
+
+func (h *handler) set_config_provider(provider configapi.Provider) {
+	h.config_mu.Lock()
+	h.config_provider = provider
+	h.config_mu.Unlock()
+}
+
+func (h *handler) current_config_provider() configapi.Provider {
+	h.config_mu.RLock()
+	defer h.config_mu.RUnlock()
+	return h.config_provider
+}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
@@ -43,7 +60,7 @@ func ContentExternalID(contentType, token, url string) string {
 }
 
 // ToContent converts zhihu answer page data into a model.Content.
-func ToContent(page *scraper.AnswerPage) (*model.Content, error) {
+func ToContent(page *zhihu.AnswerPage) (*model.Content, error) {
 	if page == nil || page.Answer.ID == "" {
 		return nil, fmt.Errorf("zhihu answer page is empty")
 	}
@@ -52,7 +69,7 @@ func ToContent(page *scraper.AnswerPage) (*model.Content, error) {
 	now := util.NowMillis()
 
 	contentURL := page.Source
-	coverURL := scraper.FirstImageURL(page.Answer.Content, contentURL)
+	coverURL := zhihu.FirstImageURL(page.Answer.Content, contentURL)
 
 	return &model.Content{
 		Id:           BuildContentID(externalID),
@@ -77,7 +94,7 @@ func ToContent(page *scraper.AnswerPage) (*model.Content, error) {
 }
 
 // QuestionToContent converts zhihu question page data into a model.Content.
-func QuestionToContent(page *scraper.QuestionPage) (*model.Content, error) {
+func QuestionToContent(page *zhihu.QuestionPage) (*model.Content, error) {
 	if page == nil || page.Question.ID == "" {
 		return nil, fmt.Errorf("zhihu question page is empty")
 	}
@@ -86,7 +103,7 @@ func QuestionToContent(page *scraper.QuestionPage) (*model.Content, error) {
 	now := util.NowMillis()
 
 	contentURL := page.Source
-	coverURL := scraper.FirstImageURL(page.Question.Excerpt, contentURL)
+	coverURL := zhihu.FirstImageURL(page.Question.Excerpt, contentURL)
 
 	return &model.Content{
 		Id:           BuildContentID(externalID),
@@ -110,7 +127,7 @@ func QuestionToContent(page *scraper.QuestionPage) (*model.Content, error) {
 }
 
 // ArticleToContent converts zhihu article page data into a model.Content.
-func ArticleToContent(page *scraper.ArticlePage) (*model.Content, error) {
+func ArticleToContent(page *zhihu.ArticlePage) (*model.Content, error) {
 	if page == nil || page.Article.ID == "" {
 		return nil, fmt.Errorf("zhihu article page is empty")
 	}
@@ -141,26 +158,26 @@ func ArticleToContent(page *scraper.ArticlePage) (*model.Content, error) {
 }
 
 // ToAccount converts a zhihu user into a model.Account.
-func ToAccount(user *scraper.User) (*model.Account, error) {
+func ToAccount(user *zhihu.User) (*model.Account, error) {
 	if user == nil {
 		return nil, fmt.Errorf("zhihu user is empty")
 	}
 
-	externalID := scraper.UserDisplayName(*user)
+	externalID := zhihu.UserDisplayName(*user)
 	if externalID == "" {
 		return nil, fmt.Errorf("zhihu user has no identifiable name")
 	}
 
 	now := util.NowMillis()
-	profileURL := scraper.UserURL(*user)
+	profileURL := zhihu.UserURL(*user)
 
 	return &model.Account{
 		Id:         BuildAccountID(externalID),
 		PlatformId: PlatformID,
 		ExternalId: user.ID,
-		Nickname:   scraper.UserDisplayName(*user),
+		Nickname:   zhihu.UserDisplayName(*user),
 		Signature:  user.Headline,
-		AvatarURL:  scraper.UserAvatarURL(*user),
+		AvatarURL:  zhihu.UserAvatarURL(*user),
 		ProfileURL: profileURL,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
@@ -170,7 +187,7 @@ func ToAccount(user *scraper.User) (*model.Account, error) {
 }
 
 // AnswerToBrowseHistory converts a zhihu answer page into a model.BrowseHistory.
-func AnswerToBrowseHistory(page *scraper.AnswerPage) (*model.BrowseHistory, error) {
+func AnswerToBrowseHistory(page *zhihu.AnswerPage) (*model.BrowseHistory, error) {
 	if page == nil || page.Answer.ID == "" {
 		return nil, fmt.Errorf("zhihu answer page is empty")
 	}
@@ -185,7 +202,7 @@ func AnswerToBrowseHistory(page *scraper.AnswerPage) (*model.BrowseHistory, erro
 		Title:        page.Question.Title,
 		URL:          page.Source,
 		SourceURL:    page.Source,
-		CoverURL:     scraper.FirstImageURL(page.Answer.Content, page.Source),
+		CoverURL:     zhihu.FirstImageURL(page.Answer.Content, page.Source),
 		PublishTime:  int64Ptr(page.Answer.CreatedTime * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
@@ -195,7 +212,7 @@ func AnswerToBrowseHistory(page *scraper.AnswerPage) (*model.BrowseHistory, erro
 }
 
 // QuestionToBrowseHistory converts a zhihu question page into a model.BrowseHistory.
-func QuestionToBrowseHistory(page *scraper.QuestionPage) (*model.BrowseHistory, error) {
+func QuestionToBrowseHistory(page *zhihu.QuestionPage) (*model.BrowseHistory, error) {
 	if page == nil || page.Question.ID == "" {
 		return nil, fmt.Errorf("zhihu question page is empty")
 	}
@@ -210,7 +227,7 @@ func QuestionToBrowseHistory(page *scraper.QuestionPage) (*model.BrowseHistory, 
 		Title:        page.Question.Title,
 		URL:          page.Source,
 		SourceURL:    page.Source,
-		CoverURL:     scraper.FirstImageURL(page.Question.Excerpt, page.Source),
+		CoverURL:     zhihu.FirstImageURL(page.Question.Excerpt, page.Source),
 		PublishTime:  int64Ptr(page.Question.Created * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
@@ -220,7 +237,7 @@ func QuestionToBrowseHistory(page *scraper.QuestionPage) (*model.BrowseHistory, 
 }
 
 // ArticleToBrowseHistory converts a zhihu article page into a model.BrowseHistory.
-func ArticleToBrowseHistory(page *scraper.ArticlePage) (*model.BrowseHistory, error) {
+func ArticleToBrowseHistory(page *zhihu.ArticlePage) (*model.BrowseHistory, error) {
 	if page == nil || page.Article.ID == "" {
 		return nil, fmt.Errorf("zhihu article page is empty")
 	}
@@ -247,7 +264,7 @@ func ArticleToBrowseHistory(page *scraper.ArticlePage) (*model.BrowseHistory, er
 // BuildBrowseHistory converts an intercepted Zhihu recommendation feed item
 // into the standard browse history result.
 func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
-	var feed scraper.RecommendFeed
+	var feed zhihu.RecommendFeed
 	if err := json.Unmarshal(content_json, &feed); err != nil {
 		return nil, fmt.Errorf("解析知乎推荐内容失败: %w", err)
 	}
@@ -293,7 +310,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 		coverURL = strings.TrimSpace(target.Linkbox.Pic)
 	}
 	if coverURL == "" {
-		coverURL = scraper.FirstImageURL(target.Content, contentURL)
+		coverURL = zhihu.FirstImageURL(target.Content, contentURL)
 	}
 
 	publishTimeSeconds := int64(0)
@@ -333,7 +350,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 
 // RecommendFeedToAccount converts the target author attached to a recommendation
 // item into the shared account model.
-func RecommendFeedToAccount(feed *scraper.RecommendFeed) *model.Account {
+func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	if feed == nil {
 		return nil
 	}
@@ -361,10 +378,10 @@ func RecommendFeedToAccount(feed *scraper.RecommendFeed) *model.Account {
 	}
 }
 
-// parseAnswerPageContent attempts to unmarshal the content JSON as a scraper.AnswerPage.
+// parseAnswerPageContent attempts to unmarshal the content JSON as a zhihu.AnswerPage.
 // Returns the parsed page and true if the content appears to be a valid AnswerPage.
-func parseAnswerPageContent(contentJSON json.RawMessage) (*scraper.AnswerPage, bool) {
-	var page scraper.AnswerPage
+func parseAnswerPageContent(contentJSON json.RawMessage) (*zhihu.AnswerPage, bool) {
+	var page zhihu.AnswerPage
 	if err := json.Unmarshal(contentJSON, &page); err != nil {
 		return nil, false
 	}
@@ -382,7 +399,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	// Try AnswerPage format first (from browser injection).
 	// When the content is a pre-built AnswerPage, skip the HTTP fetch.
-	var page *scraper.AnswerPage
+	var page *zhihu.AnswerPage
 	if p, ok := parseAnswerPageContent(contentJSON); ok {
 		page = p
 	}
@@ -393,7 +410,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 	_ = json.Unmarshal(contentJSON, &input)
 
-	client := scraper.NewClient("")
+	client := zhihu.NewClientWithConfig(zhihu.ClientConfig{ConfigProvider: h.current_config_provider()})
 
 	var htmlContent string
 	if page != nil {
@@ -429,7 +446,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			title = page.Question.Title
 		}
 		contentType = "answer"
-		coverURL = scraper.FirstImageURL(page.Answer.Content, page.Source)
+		coverURL = zhihu.FirstImageURL(page.Answer.Content, page.Source)
 		sourceURL = page.Source
 
 		c, err := ToContent(page)
@@ -442,11 +459,11 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		}
 	} else {
 		// Fall back to parsing the URL
-		if articleURL, ok := scraper.ParseArticleURL(input.URL); ok {
+		if articleURL, ok := zhihu.ParseArticleURL(input.URL); ok {
 			externalID = articleURL.ArticleID
 			contentType = "article"
 			sourceURL = articleURL.Canonical
-		} else if questionURL, ok := scraper.ParseQuestionURL(input.URL); ok {
+		} else if questionURL, ok := zhihu.ParseQuestionURL(input.URL); ok {
 			externalID = questionURL.QuestionID
 			contentType = "question"
 			sourceURL = questionURL.Canonical
@@ -590,10 +607,10 @@ func buildConfigJSON(config map[string]any) map[string]any {
 	return m
 }
 
-// BuildBrowseRecordFromObject converts a scraper.AnswerPage into a
+// BuildBrowseRecordFromObject converts a zhihu.AnswerPage into a
 // model.BrowseHistory, following the same field mapping as zhihu.main.js
 // reportCard. Returns nil if the page is nil or missing the answer ID.
-func BuildBrowseRecordFromObject(page *scraper.AnswerPage) *model.BrowseHistory {
+func BuildBrowseRecordFromObject(page *zhihu.AnswerPage) *model.BrowseHistory {
 	if page == nil || page.Answer.ID == "" {
 		return nil
 	}
@@ -617,7 +634,7 @@ func BuildBrowseRecordFromObject(page *scraper.AnswerPage) *model.BrowseHistory 
 		Title:        page.Question.Title,
 		URL:          page.Source,
 		SourceURL:    page.Source,
-		CoverURL:     scraper.FirstImageURL(page.Answer.Content, page.Source),
+		CoverURL:     zhihu.FirstImageURL(page.Answer.Content, page.Source),
 		PublishTime:  int64Ptr(page.Answer.CreatedTime * 1000),
 		ExtraData:    string(extraData),
 		Timestamps: model.Timestamps{

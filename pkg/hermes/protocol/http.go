@@ -8,8 +8,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"wx_channel/pkg/clawreq"
@@ -21,39 +23,18 @@ import (
 // Uses a client pool to support concurrent HTTP Range requests, eliminating serial
 // bottlenecks caused by single-client mutex locks.
 type HTTPDriver struct {
-	pool    chan *clawreq.Client
-	stdHTTP *http.Client
+	mu       sync.Mutex
+	pools    map[string]chan *clawreq.Client
+	stdHTTPs map[string]*http.Client
 }
 
 const httpDriverPoolSize = 3
 
 // NewHTTPDriver creates a new HTTP protocol driver instance.
 func NewHTTPDriver() *HTTPDriver {
-	pool := make(chan *clawreq.Client, httpDriverPoolSize)
-	for i := 0; i < httpDriverPoolSize; i++ {
-		client, _ := clawreq.New(clawreq.Config{
-			Profile:         clawreq.ProfileChrome,
-			FollowRedirects: true,
-		})
-		pool <- client
-	}
 	return &HTTPDriver{
-		pool: pool,
-		stdHTTP: &http.Client{
-			Timeout: 300 * time.Second,
-			Transport: &http.Transport{
-				ForceAttemptHTTP2: true,
-				DialContext: (&net.Dialer{
-					Timeout:   5 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 32,
-				MaxConnsPerHost:     0, // no limit, let MaxIdleConnsPerHost govern reuse
-				IdleConnTimeout:     90 * time.Second,
-				TLSHandshakeTimeout: 10 * time.Second,
-			},
-		},
+		pools:    make(map[string]chan *clawreq.Client),
+		stdHTTPs: make(map[string]*http.Client),
 	}
 }
 
@@ -129,7 +110,15 @@ func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, re
 		req.Header.Set("Cookie", endpoint.Cookies)
 	}
 
-	resp, err := d.stdHTTP.Do(req)
+	proxyURL, err := endpoint.ProxyServer.URL()
+	if err != nil {
+		return nil, err
+	}
+	client, err := d.standardHTTPClient(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +163,96 @@ func (d *HTTPDriver) do(ctx context.Context, endpoint hermes.Endpoint, opts ...c
 	}
 	allOpts = append(allOpts, opts...)
 
-	client := <-d.pool
-	defer func() { d.pool <- client }()
+	proxyURL, err := endpoint.ProxyServer.URL()
+	if err != nil {
+		return nil, err
+	}
+	pool, err := d.browserClientPool(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	client := <-pool
+	defer func() { pool <- client }()
 	return client.Do(ctx, "GET", endpoint.URL, nil, allOpts...)
+}
+
+func (d *HTTPDriver) browserClientPool(rawProxyURL string) (chan *clawreq.Client, error) {
+	proxyURL, _, err := normalizeProxyURL(rawProxyURL)
+	if err != nil {
+		return nil, err
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if pool := d.pools[proxyURL]; pool != nil {
+		return pool, nil
+	}
+
+	pool := make(chan *clawreq.Client, httpDriverPoolSize)
+	for i := 0; i < httpDriverPoolSize; i++ {
+		client, err := clawreq.New(clawreq.Config{
+			Profile:         clawreq.ProfileChrome,
+			ProxyURL:        proxyURL,
+			FollowRedirects: true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create HTTP client: %w", err)
+		}
+		pool <- client
+	}
+	d.pools[proxyURL] = pool
+	return pool, nil
+}
+
+func (d *HTTPDriver) standardHTTPClient(rawProxyURL string) (*http.Client, error) {
+	proxyURL, parsedProxyURL, err := normalizeProxyURL(rawProxyURL)
+	if err != nil {
+		return nil, err
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if client := d.stdHTTPs[proxyURL]; client != nil {
+		return client, nil
+	}
+
+	transport := &http.Transport{
+		ForceAttemptHTTP2: true,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 32,
+		MaxConnsPerHost:     0, // no limit, let MaxIdleConnsPerHost govern reuse
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
+	if parsedProxyURL != nil {
+		transport.Proxy = http.ProxyURL(parsedProxyURL)
+	}
+	client := &http.Client{Timeout: 300 * time.Second, Transport: transport}
+	d.stdHTTPs[proxyURL] = client
+	return client, nil
+}
+
+func normalizeProxyURL(rawProxyURL string) (string, *url.URL, error) {
+	rawProxyURL = strings.TrimSpace(rawProxyURL)
+	if rawProxyURL == "" {
+		return "", nil, nil
+	}
+
+	proxyURL, err := url.Parse(rawProxyURL)
+	if err != nil || proxyURL.Host == "" || proxyURL.Hostname() == "" {
+		return "", nil, errors.New("invalid proxy URL")
+	}
+	proxyURL.Scheme = strings.ToLower(proxyURL.Scheme)
+	switch proxyURL.Scheme {
+	case "http", "https", "socks5":
+	default:
+		return "", nil, fmt.Errorf("unsupported proxy scheme %q", proxyURL.Scheme)
+	}
+	return proxyURL.String(), proxyURL, nil
 }
 
 func parseContentRange(value string) (start, end, total int64, ok bool) {

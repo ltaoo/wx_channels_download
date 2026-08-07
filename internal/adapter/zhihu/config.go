@@ -1,7 +1,8 @@
-package zhihu
+package zhihuadapter
 
 import (
 	"wx_channel/internal/config"
+	"wx_channel/pkg/configapi"
 )
 
 // ZhihuPluginConfig implements config.Configurable for zhihu plugin config.
@@ -12,11 +13,11 @@ type ZhihuPluginConfig struct {
 
 func (c *ZhihuPluginConfig) ConfigNamespace() string { return "zhihu" }
 
-func (c *ZhihuPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *ZhihuPluginConfig) ConfigSchema() []configapi.Item {
+	return []configapi.Item{
 		{
 			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
+			Type:        configapi.TypeBool,
 			Default:     false,
 			Description: "是否记录知乎页面浏览记录",
 			Title:       "记录知乎浏览",
@@ -24,17 +25,17 @@ func (c *ZhihuPluginConfig) ConfigSchema() []config.ConfigItem {
 		},
 		{
 			Key:         "cookie",
-			Type:        config.ConfigTypeText,
+			Type:        configapi.TypeText,
 			Default:     "",
 			Description: "知乎请求 Cookie，用于访问需要登录态的知乎接口",
 			Title:       "知乎 Cookie",
 			Group:       "Zhihu",
-			HotReload:   true,
+			Reload:      configapi.ReloadHot,
 		},
 	}
 }
 
-func (c *ZhihuPluginConfig) ApplyConfig(sub *config.SubViper) error {
+func (c *ZhihuPluginConfig) ApplyConfig(sub *config.ScopedConfig) error {
 	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	return nil

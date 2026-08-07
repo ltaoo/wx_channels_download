@@ -1,30 +1,43 @@
-package zhihu
+package zhihuadapter
 
 import (
-	"github.com/spf13/viper"
+	"fmt"
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/config"
-	scraper "wx_channel/pkg/scraper/zhihu"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/scraper/zhihu"
 )
+
+var InterceptorConfigDeclaration = configapi.Declare("zhihu", "api")
 
 // InterceptorPluginConfig owns the zhihu scraper configuration used
 // by the local interceptor.
 type InterceptorPluginConfig struct {
-	settings *ZhihuPluginConfig
-	version  string
+	settings       *ZhihuPluginConfig
+	version        string
+	asset_base_url string
 }
 
 // NewConfig creates an InterceptorPluginConfig from the application config.
-func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
-	if cfg == nil {
-		return &InterceptorPluginConfig{}
+func NewConfig(provider configapi.Provider, runtime configapi.Runtime) (*InterceptorPluginConfig, error) {
+	var settings ZhihuPluginConfig
+	if err := InterceptorConfigDeclaration.Decode(provider, "zhihu", &settings); err != nil {
+		return nil, fmt.Errorf("zhihu config: %w", err)
+	}
+	var api_config struct {
+		Protocol string `json:"protocol"`
+		Hostname string `json:"hostname"`
+		Port     int    `json:"port"`
+	}
+	if err := InterceptorConfigDeclaration.Decode(provider, "api", &api_config); err != nil {
+		return nil, fmt.Errorf("api config: %w", err)
 	}
 	return &InterceptorPluginConfig{
-		settings: GetZhihuConfig(),
-		version:  cfg.Version,
-	}
+		settings:       &settings,
+		version:        runtime.Version,
+		asset_base_url: frontend.AssetsBaseURLFromConfig(api_config.Protocol, api_config.Hostname, api_config.Port),
+	}, nil
 }
 
 // GetPlugins returns zhihu injection and callback plugins wired to
@@ -35,12 +48,7 @@ func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []inter
 	}
 
 	// Create zhihu interceptor plugin for injecting zhihu.main.js
-	asset_base_url := frontend.AssetsBaseURLFromConfig(
-		viper.GetString("api.protocol"),
-		viper.GetString("api.hostname"),
-		viper.GetInt("api.port"),
-	)
-	plugin := scraper.CreateZhihuInterceptorPlugin(c.settings.Cookie, asset_base_url, c.version)
+	plugin := zhihu.CreateZhihuInterceptorPlugin(c.settings.Cookie, c.asset_base_url, c.version)
 	if plugin == nil {
 		return nil
 	}

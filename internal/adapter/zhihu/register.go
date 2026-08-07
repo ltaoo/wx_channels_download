@@ -1,4 +1,4 @@
-package zhihu
+package zhihuadapter
 
 import (
 	"fmt"
@@ -7,10 +7,10 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/config"
-	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
-	scraper "wx_channel/pkg/scraper/zhihu"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/events"
+	"wx_channel/pkg/scraper/zhihu"
 )
 
 // Deps holds the dependencies needed to register the zhihu adapter.
@@ -21,7 +21,8 @@ type Deps struct {
 	DB             *gorm.DB
 	Logger         *zerolog.Logger
 	Bus            *events.Bus
-	Config         *config.Config
+	ConfigProvider configapi.Provider
+	Runtime        configapi.Runtime
 }
 
 // Handle owns the adapter's runtime components.
@@ -33,14 +34,21 @@ type Handle struct {
 func Register(d Deps) (*Handle, error) {
 	// 1. Static assets
 	if d.StaticAssets != nil {
-		if err := scraper.RegisterStaticAssets(d.StaticAssets); err != nil {
+		if err := zhihu.RegisterStaticAssets(d.StaticAssets); err != nil {
 			return nil, fmt.Errorf("zhihu static assets: %w", err)
 		}
 	}
 
 	// 2. Interceptor plugins
-	icfg := NewConfig(d.Config)
+	config_provider := d.ConfigProvider
 	if d.Interceptor != nil {
+		if config_provider == nil {
+			return nil, fmt.Errorf("zhihu config is required for interceptor registration")
+		}
+		icfg, err := NewConfig(config_provider, d.Runtime)
+		if err != nil {
+			return nil, fmt.Errorf("zhihu interceptor config: %w", err)
+		}
 		for _, p := range icfg.GetPlugins(adapter.AdapterContext{
 			DB:     d.DB,
 			Logger: d.Logger,
@@ -51,11 +59,8 @@ func Register(d Deps) (*Handle, error) {
 	}
 
 	// 3. Routes
-	workdir := ""
-	if d.Config != nil {
-		workdir = d.Config.WorkDir
-	}
-	r := NewRoutes(workdir)
+	workdir := d.Runtime.WorkDir
+	r := NewRoutes(workdir, config_provider)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 		if d.Logger != nil {
@@ -71,6 +76,8 @@ func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle,
 	if d.Logger != nil {
 		d.Logger.Info().Msg("zhihu adapter registering runtime")
 	}
+	config_provider := d.ConfigProvider
+	h.set_config_provider(config_provider)
 	return Register(Deps{
 		StaticAssets:   d.StaticAssets,
 		RouteRegistrar: d.Routes,
@@ -78,7 +85,8 @@ func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle,
 		DB:             d.DB,
 		Logger:         d.Logger,
 		Bus:            d.Bus,
-		Config:         d.Config,
+		ConfigProvider: config_provider,
+		Runtime:        d.Runtime,
 	})
 }
 

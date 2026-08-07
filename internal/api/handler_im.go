@@ -10,11 +10,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
-	"github.com/spf13/viper"
 
 	"wx_channel/frontend"
+	"wx_channel/pkg/configapi"
 	"wx_channel/pkg/filehelper"
 )
+
+var FileHelperConfigDeclaration = configapi.Declare("filehelper")
+
+type file_helper_runtime_config struct {
+	Enabled     bool   `json:"enabled"`
+	CallbackURL string `json:"callbackUrl"`
+}
 
 // FinderAutoDownloadCallback is the auto-download callback for Channels (Finder).
 type FinderAutoDownloadCallback func(objectID, objectNonceID string) error
@@ -28,11 +35,24 @@ type FileHelperHandler struct {
 	mu                   sync.RWMutex
 	onFinderAutoDownload FinderAutoDownloadCallback
 	onSphAutoDownload    SphAutoDownloadCallback
+	config_provider      configapi.Provider
+	runtime_config       file_helper_runtime_config
+	config_unsubscribe   func()
 }
 
 // NewFileHelperHandler creates a new FileHelperHandler.
-func NewFileHelperHandler() *FileHelperHandler {
-	return &FileHelperHandler{}
+func NewFileHelperHandler(config_provider configapi.Provider) *FileHelperHandler {
+	handler := &FileHelperHandler{config_provider: config_provider}
+	_ = handler.reload_runtime_config()
+	if config_provider != nil {
+		unsubscribe, err := FileHelperConfigDeclaration.Subscribe(config_provider, func(uint64) {
+			_ = handler.reload_runtime_config()
+		})
+		if err == nil {
+			handler.config_unsubscribe = unsubscribe
+		}
+	}
+	return handler
 }
 
 // SetFinderAutoDownloadCallback sets the auto-download callback for Channels.
@@ -65,12 +85,50 @@ func (h *FileHelperHandler) GetClient() *filehelper.Client {
 		return h.client
 	}
 
-	cfg := &filehelper.Config{
-		CallbackURL: viper.GetString("filehelper.callbackUrl"),
-	}
+	cfg := &filehelper.Config{CallbackURL: h.runtime_config.CallbackURL}
 	logger := h.getLogger()
 	h.client = filehelper.NewClient(cfg, logger)
 	return h.client
+}
+
+func (h *FileHelperHandler) reload_runtime_config() error {
+	if h == nil || h.config_provider == nil {
+		return configapi.ErrNilProvider
+	}
+	var next file_helper_runtime_config
+	if err := FileHelperConfigDeclaration.Decode(h.config_provider, "filehelper", &next); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.runtime_config = next
+	client := h.client
+	if client != nil {
+		client.SetConfig(filehelper.Config{CallbackURL: next.CallbackURL})
+	}
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *FileHelperHandler) current_config() file_helper_runtime_config {
+	if h == nil {
+		return file_helper_runtime_config{}
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.runtime_config
+}
+
+func (h *FileHelperHandler) Close() {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	unsubscribe := h.config_unsubscribe
+	h.config_unsubscribe = nil
+	h.mu.Unlock()
+	if unsubscribe != nil {
+		unsubscribe()
+	}
 }
 
 func (h *FileHelperHandler) getLogger() *zerolog.Logger {
@@ -235,7 +293,7 @@ func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 	}
 
 	// Check if auto-download is enabled
-	if viper.GetBool("filehelper.enabled") && resp != nil && len(resp.AddMsgList) > 0 {
+	if h.current_config().Enabled && resp != nil && len(resp.AddMsgList) > 0 {
 		h.processFinderMessages(resp.AddMsgList)
 	}
 
@@ -257,7 +315,7 @@ func (h *FileHelperHandler) processFinderMessages(messages []map[string]interfac
 
 		// Process app message (Channels / Finder)
 		if int(msgType) == 49 {
-		// Check if MsgType is 49 (app message)
+			// Check if MsgType is 49 (app message)
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
 				continue

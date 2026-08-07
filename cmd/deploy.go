@@ -12,55 +12,86 @@ import (
 	"strings"
 
 	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
+	"wx_channel/internal/config"
 	"wx_channel/pkg/cloudflare/worker"
 )
 
 const permissionHint = "提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)"
 
-var deploy_cmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "部署 Cloudflare Worker",
-	Long:  "读取配置文件中的 Cloudflare 配置，通过 Cloudflare REST API 直接部署 Worker",
+func run_deploy(args []string) error {
+	if len(args) == 0 {
+		print_deploy_usage(os.Stdout)
+		return nil
+	}
+	switch args[0] {
+	case "mp":
+		return run_deploy_mp(args[1:])
+	case "sph":
+		return run_deploy_sph(args[1:])
+	case "help", "-h", "--help":
+		print_deploy_usage(os.Stdout)
+		return nil
+	default:
+		return fmt.Errorf("unknown deploy target %q; expected mp or sph", args[0])
+	}
 }
 
-var deploy_mp_cmd = &cobra.Command{
-	Use:   "mp",
-	Short: "部署公众号 Worker",
-	Long:  "部署公众号 RSS/API 相关的 Cloudflare Worker",
-	Run: func(cmd *cobra.Command, args []string) {
-		deploy_mp()
-	},
+func run_deploy_mp(args []string) error {
+	cfg, err := load_deploy_config("deploy mp", "部署公众号 RSS/API 相关的 Cloudflare Worker", args)
+	if err != nil {
+		return err
+	}
+	deploy_mp(cfg)
+	return nil
 }
 
-var deploy_sph_cmd = &cobra.Command{
-	Use:   "sph",
-	Short: "部署视频号查询 Worker",
-	Long:  "部署视频号视频信息查询的 Cloudflare Worker",
-	Run: func(cmd *cobra.Command, args []string) {
-		deploy_sph()
-	},
+func run_deploy_sph(args []string) error {
+	cfg, err := load_deploy_config("deploy sph", "部署视频号视频信息查询的 Cloudflare Worker", args)
+	if err != nil {
+		return err
+	}
+	deploy_sph(cfg)
+	return nil
 }
 
-func init() {
-	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd)
-	Register(deploy_cmd)
+func load_deploy_config(name string, description string, args []string) (*config.Config, error) {
+	flags := new_command_flag_set(name, description)
+	var config_filepath string
+	add_config_flags(flags, &config_filepath)
+	if err := flags.Parse(args); err != nil {
+		return nil, err
+	}
+	if err := reject_command_args(flags); err != nil {
+		return nil, err
+	}
+	cfg := config.New(config_filepath, nil)
+	if err := cfg.LoadConfig(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
-func deploy_mp() {
+func print_deploy_usage(output io.Writer) {
+	fmt.Fprintln(output, "Usage: wx_video_download deploy <mp|sph> [options]")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "Targets:")
+	fmt.Fprintln(output, "  mp     部署公众号 RSS/API 相关的 Cloudflare Worker")
+	fmt.Fprintln(output, "  sph    部署视频号视频信息查询的 Cloudflare Worker")
+}
+
+func deploy_mp(cfg *config.Config) {
 	pterm.DefaultSection.Println("开始部署 Cloudflare Worker (REST API)")
 
 	// 1. Get configuration
-	account_id := viper.GetString("cloudflare.accountId")
-	api_token := viper.GetString("cloudflare.apiToken")
-	worker_name := viper.GetString("cloudflare.workerName")
-	d1_database_id := viper.GetString("cloudflare.d1Id")
-	d1_database_name := viper.GetString("cloudflare.d1Name") // New: support lookup/create by name
-	admin_token := viper.GetString("cloudflare.adminToken")
-	refresh_token := viper.GetString("cloudflare.refreshToken")
-	remote_server_hostname := viper.GetString("mp.remoteServer.hostname")
+	account_id := cfg.GetString("cloudflare.accountId")
+	api_token := cfg.GetString("cloudflare.apiToken")
+	worker_name := cfg.GetString("cloudflare.workerName")
+	d1_database_id := cfg.GetString("cloudflare.d1Id")
+	d1_database_name := cfg.GetString("cloudflare.d1Name") // New: support lookup/create by name
+	admin_token := cfg.GetString("cloudflare.adminToken")
+	refresh_token := cfg.GetString("cloudflare.refreshToken")
+	remote_server_hostname := cfg.GetString("mp.remoteServer.hostname")
 
 	if api_token == "" || account_id == "" {
 		pterm.Error.Println("错误: 未配置 Cloudflare Auth Token 或 Account ID")
@@ -106,7 +137,7 @@ func deploy_mp() {
 	}
 	spinner.Success("D1 数据库连接验证成功")
 
-	worker_dir := filepath.Join(Cfg.RootDir, "pkg", "scraper", "wxmp", "worker")
+	worker_dir := filepath.Join(cfg.RootDir, "pkg", "scraper", "wxmp", "worker")
 
 	// 1.6 Execute database migration
 	spinner, _ = pterm.DefaultSpinner.Start("正在检查并执行数据库迁移...")
@@ -199,13 +230,13 @@ func deploy_mp() {
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("✅ 部署成功! 请访问上面的 URL 使用服务")
 }
 
-func deploy_sph() {
+func deploy_sph(cfg *config.Config) {
 	pterm.DefaultSection.Println("开始部署 视频号查询 Worker (REST API)")
 
-	account_id := viper.GetString("cloudflare.accountId")
-	api_token := viper.GetString("cloudflare.apiToken")
-	worker_name := viper.GetString("cloudflare.sphWorkerName")
-	sph_cookie := viper.GetString("cloudflare.sphCookie")
+	account_id := cfg.GetString("cloudflare.accountId")
+	api_token := cfg.GetString("cloudflare.apiToken")
+	worker_name := cfg.GetString("cloudflare.sphWorkerName")
+	sph_cookie := cfg.GetString("cloudflare.sphCookie")
 
 	if api_token == "" || account_id == "" {
 		pterm.Error.Println("错误: 未配置 Cloudflare Auth Token 或 Account ID")
@@ -217,7 +248,7 @@ func deploy_sph() {
 		return
 	}
 
-	sph_dir := filepath.Join(Cfg.RootDir, "pkg", "scraper", "wxchannels", "worker")
+	sph_dir := filepath.Join(cfg.RootDir, "pkg", "scraper", "wxchannels", "worker")
 
 	// Read worker.js
 	script_path := filepath.Join(sph_dir, "worker.js")
@@ -236,7 +267,7 @@ func deploy_sph() {
 	}
 
 	// Read icon.png and convert to base64, deploy as JS module
-	icon_path := filepath.Join(Cfg.RootDir, "build", "icon.png")
+	icon_path := filepath.Join(cfg.RootDir, "build", "icon.png")
 	icon_bytes, err := os.ReadFile(icon_path)
 	if err != nil {
 		pterm.Error.Printf("读取 icon.png 失败: %v\n", err)

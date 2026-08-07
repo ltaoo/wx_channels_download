@@ -2,7 +2,7 @@
 //
 // Application code imports only this package for side effects. Concrete
 // adapters register themselves and are subsequently accessed through registry.Get.
-package builtin
+package builtinadapter
 
 import (
 	_ "wx_channel/internal/adapter/69shuba"

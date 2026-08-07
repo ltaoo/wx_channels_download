@@ -1,4 +1,4 @@
-package douyin
+package douyinadapter
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	scraper "wx_channel/pkg/scraper/douyin"
+	"wx_channel/pkg/scraper/douyin"
 	"wx_channel/pkg/util"
 )
 
@@ -53,7 +53,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Call scraper to get video info (prefer mobile, fall back to web)
-	client := scraper.NewClient(cookie)
+	client := douyin.NewClient(cookie)
 	videoInfo, err := client.GetVideoInfo(input.URL)
 	if err != nil {
 		return nil, fmt.Errorf("获取抖音视频信息失败: %w", err)

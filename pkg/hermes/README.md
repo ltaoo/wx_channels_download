@@ -7,14 +7,81 @@ Package boundaries:
 - `Engine` manages task concurrency, state transitions, endpoint failover, segment retries, and resumable downloads.
 - `ProtocolDriver` manages protocol connections, authentication, resource probing, and data reads.
 - `Store` persists tasks, resources, segments, and progress in external storage.
-- Protocols are registered explicitly through `Engine.RegisterProtocol` by the application.
+- `New(HermesNewConfig{})` supplies an in-memory store and a standard HTTP/HTTPS driver for direct Go use.
+- Applications can still provide a persistent `Store` and replace protocol drivers through `Engine.RegisterProtocol`.
 - This package does not depend on the API, GORM, the frontend, or any specific content platform.
+
+## High-level Go API
+
+The zero-config API creates and starts a single-resource HTTP/HTTPS task. The
+returned handle can wait for completion and report the output path. `OnEvent`
+replays lifecycle events that occurred before the callback was registered, so
+it is safe to register immediately after `CreateTask`. With no base path set,
+downloads are written to the process working directory.
+
+```go
+downloader := hermes.New(hermes.HermesNewConfig{})
+task := downloader.CreateTask(rawURL)
+
+downloader.OnEvent(func(taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
+    // Handle created, started, progress, finished, and failed events.
+})
+
+if err := task.Wait(); err != nil {
+    return err
+}
+fmt.Println(task.FilePath())
+```
+
+Optional task settings do not require a custom `Store` or protocol driver:
+
+```go
+task := downloader.CreateTask(
+    rawURL,
+    hermes.WithFilename("release.zip"),
+    hermes.WithSavePath("downloads"),
+    hermes.WithProxyServer(hermes.ProxyServer{
+        Address:  "socks5://127.0.0.1:1080",
+        Username: "download-user",
+        Password: "secret",
+    }),
+)
+```
+
+The lower-level `StartTask`, `Store`, and `RegisterProtocol` APIs remain
+available for database-backed, multi-resource, inline-content, and live-stream
+workflows.
+
+## Task-level proxy
+
+Set `TaskJob.ProxyServer` to route every network endpoint in that task through
+the same proxy. `ProxyServer` keeps `Address`, `Username`, and `Password`
+separate; `Address` accepts a complete proxy URL or an HTTP proxy `host:port`.
+Stores that use the generic task configuration can instead provide the same
+fields under `Config["proxy_server"]`. An explicit `TaskJob.ProxyServer` takes
+precedence. The proxy is copied to `Endpoint.ProxyServer` before resource probing
+and transfer, so a shared engine can run direct tasks and tasks using different
+proxies at the same time.
+
+```go
+task.ProxyServer = hermes.ProxyServer{
+    Address:  "socks5://127.0.0.1:1080",
+    Username: "download-user",
+    Password: "secret",
+}
+```
+
+Proxy configuration is redacted from Hermes structured logs.
+
+The bundled HTTP driver supports `http`, `https`, and `socks5` proxy URLs for
+both full and byte-range requests. The live-stream driver passes the proxy to
+FFmpeg's `http_proxy` input option for HTTP/HTTPS stream URLs.
 
 The executor supports finite `FILE` resources and live `STREAM` resources. `COLLECTION` remains a reserved resource type that requires a dedicated planner.
 
 ## Protocols That Can Currently Be Verified
 
-`Engine.New` starts with an empty protocol registry. The application currently registers HTTP/HTTPS, inline-content, and `livestream` drivers. The live driver requires `ffmpeg` and records HTTP-FLV, HLS, RTMP, RTSP, and other inputs supported by the installed FFmpeg build. FTP, SFTP, BitTorrent, and similar drivers are not provided.
+`New` registers a standard HTTP/HTTPS driver by default. An application may replace it by registering another driver for the same protocol names. Inline-content and `livestream` drivers remain explicit registrations. The live driver requires `ffmpeg` and records HTTP-FLV, HLS, RTMP, RTSP, and other inputs supported by the installed FFmpeg build. FTP, SFTP, BitTorrent, and similar drivers are not provided.
 
 ## Live-stream Recording
 

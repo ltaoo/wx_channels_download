@@ -2,9 +2,10 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
-	"github.com/spf13/viper"
+	"wx_channel/pkg/configapi"
 )
 
 // Configurable is the interface each plugin/module implements to declare its own
@@ -13,35 +14,39 @@ import (
 // Usage:
 //  1. Implement Configurable on a plugin struct.
 //  2. Call RegisterPlugin() in the plugin's init().
-//  3. LoadPluginConfigs() is called after viper reads config.yaml — it registers
-//     each plugin's schema into the global Registry and calls ApplyConfig() with
-//     a SubViper scoped to the plugin's namespace.
+//  3. The host registers every plugin schema before Manager refresh, then calls
+//     ApplyConfig with a ScopedConfig limited to that plugin's namespace.
 type Configurable interface {
 	// ConfigNamespace returns the top-level key in config.yaml for this plugin,
 	// e.g. "channels", "69shuba", "bilibili".
 	ConfigNamespace() string
 
-	// ConfigSchema returns the config item definitions for this plugin.
+	// ConfigSchema returns configapi item definitions for this plugin.
 	// Keys are relative to the namespace (e.g. "disableLocationToHome", not
 	// "channels.disableLocationToHome"). The loader auto-prepends the namespace.
-	ConfigSchema() []ConfigItem
+	ConfigSchema() []configapi.Item
 
-	// ApplyConfig is called after config.yaml is loaded, with a SubViper scoped
+	// ApplyConfig is called after all sources are loaded, with a ScopedConfig scoped
 	// to the plugin's namespace. The plugin reads its config values from sub
 	// and populates its own struct fields.
-	ApplyConfig(sub *SubViper) error
+	ApplyConfig(config *ScopedConfig) error
+}
+
+type configurable_aliases interface {
+	// ConfigAliases returns compatibility keys that are already fully qualified.
+	ConfigAliases() []configapi.Item
 }
 
 var (
-	pluginsMu sync.RWMutex
-	plugins   []Configurable
+	plugins_mu sync.RWMutex
+	plugins    []Configurable
 )
 
 // RegisterPlugin registers a plugin for config schema declaration and loading.
 // Call this in the plugin's init() function. Duplicate namespaces are rejected.
 func RegisterPlugin(p Configurable) {
-	pluginsMu.Lock()
-	defer pluginsMu.Unlock()
+	plugins_mu.Lock()
+	defer plugins_mu.Unlock()
 
 	ns := p.ConfigNamespace()
 	for _, existing := range plugins {
@@ -52,28 +57,65 @@ func RegisterPlugin(p Configurable) {
 	plugins = append(plugins, p)
 }
 
-// LoadPluginConfigs iterates over all registered plugins and:
-//  1. Registers each plugin's ConfigSchema items into the global schema Registry
-//     (with keys auto-prefixed by namespace).
-//  2. Calls ApplyConfig() on each plugin, passing a SubViper scoped to its namespace.
-//
-// Must be called AFTER viper.ReadInConfig().
-func LoadPluginConfigs() {
-	pluginsMu.RLock()
-	defer pluginsMu.RUnlock()
+// register_plugin_schemas attaches every adapter-owned schema directly to the
+// manager. Prefixing prevents one adapter from owning another's namespace.
+func register_plugin_schemas(manager *configapi.Manager) ([]*configapi.ModuleHandle, error) {
+	plugins_mu.RLock()
+	defer plugins_mu.RUnlock()
 
+	handles := make([]*configapi.ModuleHandle, 0, len(plugins))
 	for _, p := range plugins {
 		ns := p.ConfigNamespace()
-		// Register schema items with namespace prefix
-		for _, item := range p.ConfigSchema() {
+		schema := p.ConfigSchema()
+		items := make([]configapi.Item, 0, len(schema))
+		for _, item := range schema {
 			prefixed := item
 			prefixed.Key = ns + "." + item.Key
-			Register(prefixed)
+			prefixed.Sensitive = prefixed.Sensitive || sensitive_config_key(prefixed.Key)
+			items = append(items, prefixed)
 		}
-		// Build scoped viper and apply config
-		sub := viper.Sub(ns)
-		if err := p.ApplyConfig(NewSubViper(sub)); err != nil {
-			panic(fmt.Sprintf("config: plugin %q ApplyConfig failed: %v", ns, err))
+		if aliases, ok := p.(configurable_aliases); ok {
+			for _, item := range aliases.ConfigAliases() {
+				item.Sensitive = item.Sensitive || sensitive_config_key(item.Key)
+				items = append(items, item)
+			}
+		}
+		handle, err := manager.RegisterModule(
+			configapi.DeclareModule("adapter."+ns, items...),
+		)
+		if err != nil {
+			for index := len(handles) - 1; index >= 0; index-- {
+				handles[index].Unregister()
+			}
+			return nil, fmt.Errorf("config: register plugin %q schema: %w", ns, err)
+		}
+		handles = append(handles, handle)
+	}
+	return handles, nil
+}
+
+// ApplyPluginConfigs initializes legacy adapter configuration structs from
+// namespace-scoped immutable snapshots. Runtime adapters should subscribe to
+// configapi.Provider directly for subsequent hot updates.
+func ApplyPluginConfigs(provider configapi.Provider) error {
+	plugins_mu.RLock()
+	defer plugins_mu.RUnlock()
+
+	for _, plugin := range plugins {
+		namespace := plugin.ConfigNamespace()
+		if err := plugin.ApplyConfig(NewScopedConfig(provider.Snapshot(namespace))); err != nil {
+			return fmt.Errorf("config: plugin %q ApplyConfig failed: %w", namespace, err)
 		}
 	}
+	return nil
+}
+
+func sensitive_config_key(key string) bool {
+	key = strings.ToLower(key)
+	for _, marker := range []string{"password", "token", "cookie", "secret", "privatekey", "apikey"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }

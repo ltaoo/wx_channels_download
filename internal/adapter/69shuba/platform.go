@@ -1,4 +1,4 @@
-package shuba69
+package shuba69adapter
 
 import (
 	"encoding/json"

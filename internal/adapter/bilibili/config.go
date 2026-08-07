@@ -1,7 +1,8 @@
-package bilibili
+package bilibiliadapter
 
 import (
 	"wx_channel/internal/config"
+	"wx_channel/pkg/configapi"
 )
 
 // BilibiliPluginConfig implements config.Configurable for bilibili plugin config.
@@ -12,11 +13,11 @@ type BilibiliPluginConfig struct {
 
 func (c *BilibiliPluginConfig) ConfigNamespace() string { return "bilibili" }
 
-func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *BilibiliPluginConfig) ConfigSchema() []configapi.Item {
+	return []configapi.Item{
 		{
 			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
+			Type:        configapi.TypeBool,
 			Default:     false,
 			Description: "是否记录 B 站页面浏览记录",
 			Title:       "记录 B 站浏览",
@@ -24,17 +25,17 @@ func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigItem {
 		},
 		{
 			Key:         "cookie",
-			Type:        config.ConfigTypeText,
+			Type:        configapi.TypeText,
 			Default:     "",
 			Description: "B 站请求 Cookie，用于访问账号可看的高清清晰度；不会输出到日志",
 			Title:       "B 站 Cookie",
 			Group:       "Bilibili",
-			HotReload:   true,
+			Reload:      configapi.ReloadHot,
 		},
 	}
 }
 
-func (c *BilibiliPluginConfig) ApplyConfig(sub *config.SubViper) error {
+func (c *BilibiliPluginConfig) ApplyConfig(sub *config.ScopedConfig) error {
 	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	return nil

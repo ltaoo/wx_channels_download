@@ -1,6 +1,7 @@
 // Package hermes provides a protocol-pluggable download task engine.
 //
-// Hermes schedules tasks, chooses resource endpoints, persists resumable
-// segments through Store, and delegates network reads to ProtocolDriver
-// implementations. It does not depend on API handlers, databases, or UI code.
+// New with an empty HermesNewConfig provides an in-memory Store and an HTTP
+// driver for direct CreateTask use. Applications may instead provide a
+// persistent Store and replace ProtocolDriver implementations. Hermes does not
+// depend on API handlers, databases, or UI code.
 package hermes

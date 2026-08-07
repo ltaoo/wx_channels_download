@@ -1,4 +1,4 @@
-package wxchannels
+package wxchannelsadapter
 
 import (
 	"encoding/json"
@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/config"
 	"wx_channel/internal/util"
-	scraper "wx_channel/pkg/scraper/wxchannels"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/scraper/wxchannels"
 )
 
 const ChannelsWebsocketPath = "/ws/channels"
@@ -27,13 +27,11 @@ type RouteRegistrar interface {
 // WebsocketRoutes owns the video-channel browser websocket endpoint and its
 // scraper client lifecycle.
 type WebsocketRoutes struct {
-	client *scraper.ChannelsClient
-	cfg    *config.Config
+	client *wxchannels.ChannelsClient
 }
 
-func NewWebsocketRoutes(refreshInterval int, cfg *config.Config) *WebsocketRoutes {
-	client := scraper.NewChannelsClient(refreshInterval, cfg)
-	return &WebsocketRoutes{client: client, cfg: cfg}
+func NewWebsocketRoutes(config_provider configapi.Provider) *WebsocketRoutes {
+	return &WebsocketRoutes{client: wxchannels.NewChannelsClient(config_provider)}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -78,18 +76,14 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 		return
 	}
 
-	cookie := ""
-	if r.cfg != nil {
-		cookie = r.cfg.GetString("cloudflare.sphCookie")
-	}
-	if cookie == "" {
-		util.Err(ctx, 400, "cloudflare.sphCookie not configured")
-		return
-	}
-
-	rawResp, err := scraper.FetchVideoProfileWithShareUrl(shareUrl, cookie)
+	raw_value, err := r.client.Fetch(wxchannels.FetchParams{URL: shareUrl})
 	if err != nil {
 		util.Err(ctx, 400, err.Error())
+		return
+	}
+	rawResp, ok := raw_value.(json.RawMessage)
+	if !ok {
+		util.Err(ctx, 500, "unexpected channels fetch response")
 		return
 	}
 
@@ -99,7 +93,7 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 		if dataWrap, ok := data["data"].(map[string]interface{}); ok {
 			if feedInfo, ok := dataWrap["feedInfo"].(map[string]interface{}); ok {
 				if videoUrl, ok := feedInfo["videoUrl"].(string); ok && videoUrl != "" {
-					feedInfo["originVideoUrl"] = scraper.CleanVideoURL(videoUrl)
+					feedInfo["originVideoUrl"] = wxchannels.CleanVideoURL(videoUrl)
 				}
 				// Pre-store a copy of videoUrl for later use
 				if _, ok := feedInfo["originVideoUrl"]; !ok {
@@ -314,7 +308,7 @@ func (r *WebsocketRoutes) HandleDecryptVideo(ctx *gin.Context) {
 		return
 	}
 
-	scraper.DecryptData(data, 131072, uint64(key))
+	wxchannels.DecryptData(data, 131072, uint64(key))
 
 	if err := os.WriteFile(filepath, data, 0644); err != nil {
 		util.Err(ctx, 400, "failed to write file: "+err.Error())

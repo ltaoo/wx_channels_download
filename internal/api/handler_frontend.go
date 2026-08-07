@@ -13,79 +13,78 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
-	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
-	scraper_wxmp "wx_channel/pkg/scraper/wxmp"
 	result "wx_channel/internal/util"
+	"wx_channel/pkg/scraper/wxchannels"
 )
 
-func (c *APIClient) handleIndex(ctx *gin.Context) {
-	c.handleDownloadPage(ctx)
+func (c *APIClient) handle_index(ctx *gin.Context) {
+	c.handle_download_page(ctx)
 }
 
-func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/index.html")
+func (c *APIClient) handle_download_page(ctx *gin.Context) {
+	c.render_frontend_file(ctx, "inject/index.html")
 }
 
-func (c *APIClient) handleContentPage(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/content.html")
+func (c *APIClient) handle_content_page(ctx *gin.Context) {
+	c.render_frontend_file(ctx, "inject/content.html")
 }
 
-func (c *APIClient) handleBrowseHistoryPage(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/browsehistory.html")
+func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
+	c.render_frontend_file(ctx, "inject/browsehistory.html")
 }
 
-func (c *APIClient) handleChannelsPage(ctx *gin.Context) {
-	log.Println("[ROUTE] handleChannelsPage called, rendering channels.html")
-	c.renderFrontendFile(ctx, "inject/channels.html")
+func (c *APIClient) handle_channels_page(ctx *gin.Context) {
+	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
+	c.render_frontend_file(ctx, "inject/channels.html")
 }
 
 // TODO: requires velo/fileserver
-// func (c *APIClient) handleMigrationPage(ctx *gin.Context) {
-// 	c.renderFrontendFile(ctx, "migration.html")
+// func (c *APIClient) handle_migration_page(ctx *gin.Context) {
+// 	c.render_frontend_file(ctx, "migration.html")
 // }
 
-func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
+func (c *APIClient) render_frontend_file(ctx *gin.Context, name string) {
 	data, err := frontend.Assets().ReadRoot(name)
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	cfgByte, _ := json.Marshal(c.cfg)
+	cfg_byte, _ := json.Marshal(c.cfg)
 	html := string(data)
-	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfg_byte))
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")
 
 	ctx.Header("Content-Type", "text/html; charset=utf-8")
 	ctx.String(http.StatusOK, html)
 }
 
-func (c *APIClient) buildHTTPHandler() http.Handler {
-	frontendHandler := frontend.NewServer(c.cfg.Mode)
+func (c *APIClient) build_http_handler() http.Handler {
+	frontend_handler := frontend.NewServer(c.cfg.Mode)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if shouldServeByAPI(r.URL.Path) {
+		if should_serve_by_api(r.URL.Path) {
 			c.engine.ServeHTTP(w, r)
 			return
 		}
-		frontendHandler.ServeHTTP(w, r)
+		frontend_handler.ServeHTTP(w, r)
 	})
 }
 
-// handleFrontendTip handles frontend log/tip messages posted from injected pages.
-func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
+// handle_frontend_tip handles frontend log/tip messages posted from injected pages.
+func (c *APIClient) handle_frontend_tip(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendTip
+	var data wxchannels.FrontendTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	prefixText := "[FRONTEND]"
+	prefix_text := "[FRONTEND]"
 	prefix := data.Prefix
 	if prefix == nil {
-		prefix = &prefixText
+		prefix = &prefix_text
 	}
 	if data.End == 1 {
 		fmt.Println()
@@ -99,14 +98,14 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-// handleFrontendError handles frontend error messages posted from injected pages.
-func (c *APIClient) handleFrontendError(ctx *gin.Context) {
+// handle_frontend_error handles frontend error messages posted from injected pages.
+func (c *APIClient) handle_frontend_error(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendErrorTip
+	var data wxchannels.FrontendErrorTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -115,88 +114,88 @@ func (c *APIClient) handleFrontendError(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-// handleFrontendReport handles unified frontend reports, level is "info" or "error".
-func (c *APIClient) handleFrontendReport(ctx *gin.Context) {
+// handle_frontend_report handles unified frontend reports, level is "info" or "error".
+func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
 
-	var data scraper_wxchannels.FrontendReport
+	var data wxchannels.FrontendReport
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	var extraFields map[string]interface{}
-	if err := json.Unmarshal(body, &extraFields); err != nil {
+	var extra_fields map[string]interface{}
+	if err := json.Unmarshal(body, &extra_fields); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
 
 	// Write to log file -- parse all fields to support arbitrary key=value passed by the frontend fluent logger
-	delete(extraFields, "level")
-	delete(extraFields, "msg")
-	delete(extraFields, "message")
-	delete(extraFields, "end")
-	delete(extraFields, "replace")
-	delete(extraFields, "ignore_prefix")
-	delete(extraFields, "prefix")
+	delete(extra_fields, "level")
+	delete(extra_fields, "msg")
+	delete(extra_fields, "message")
+	delete(extra_fields, "end")
+	delete(extra_fields, "replace")
+	delete(extra_fields, "ignore_prefix")
+	delete(extra_fields, "prefix")
 
-	reportMessage := data.Message
-	if reportMessage == "" {
-		reportMessage = data.Msg
+	report_message := data.Message
+	if report_message == "" {
+		report_message = data.Msg
 	}
-	if reportMessage == "" {
-		reportMessage = "frontend report"
+	if report_message == "" {
+		report_message = "frontend report"
 	}
-	evt := c.logger.WithLevel(zerologLevel(data.Level)).
+	evt := c.logger.WithLevel(zerolog_level(data.Level)).
 		Str("source", "frontend")
-	for k, v := range extraFields {
-		evt = evt.Interface(k, normalizeFrontendReportValue(v))
+	for k, v := range extra_fields {
+		evt = evt.Interface(k, normalize_frontend_report_value(v))
 	}
-	evt.Msg(reportMessage)
+	evt.Msg(report_message)
 
 	// Terminal display
 	if data.Level == "error" {
-		color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", reportMessage))
+		color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", report_message))
 	} else {
-		prefixText := "[FRONTEND]"
+		prefix_text := "[FRONTEND]"
 		prefix := data.Prefix
 		if prefix == nil {
-			prefix = &prefixText
+			prefix = &prefix_text
 		}
 		if data.End == 1 {
 			fmt.Println()
 		} else if data.Replace == 1 {
-			fmt.Printf("\r\033[K%v%s", *prefix, reportMessage)
+			fmt.Printf("\r\033[K%v%s", *prefix, report_message)
 		} else if data.IgnorePrefix == 1 {
-			fmt.Printf("%s\n", reportMessage)
+			fmt.Printf("%s\n", report_message)
 		} else {
-			fmt.Printf("%v%s\n", *prefix, reportMessage)
+			fmt.Printf("%v%s\n", *prefix, report_message)
 		}
 	}
 	result.Ok(ctx, nil)
 }
 
-func normalizeFrontendReportValue(v interface{}) interface{} {
+func normalize_frontend_report_value(v interface{}) interface{} {
 	switch value := v.(type) {
 	case string:
 		var parsed interface{}
 		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
-			return normalizeFrontendReportValue(parsed)
+			return normalize_frontend_report_value(parsed)
 		}
 		return value
 	case map[string]interface{}:
 		normalized := make(map[string]interface{}, len(value))
 		for k, child := range value {
-			normalized[k] = normalizeFrontendReportValue(child)
+			normalized[k] = normalize_frontend_report_value(child)
 		}
 		return normalized
 	case []interface{}:
 		normalized := make([]interface{}, len(value))
 		for i, child := range value {
-			normalized[i] = normalizeFrontendReportValue(child)
+			normalized[i] = normalize_frontend_report_value(child)
 		}
 		return normalized
 	default:
@@ -204,7 +203,7 @@ func normalizeFrontendReportValue(v interface{}) interface{} {
 	}
 }
 
-func zerologLevel(level string) zerolog.Level {
+func zerolog_level(level string) zerolog.Level {
 	switch level {
 	case "error":
 		return zerolog.ErrorLevel
@@ -217,25 +216,7 @@ func zerologLevel(level string) zerolog.Level {
 	}
 }
 
-// handleFrontendArticle handles official account article metadata posted from injected pages.
-func (c *APIClient) handleFrontendArticle(ctx *gin.Context) {
-	body, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		result.Err(ctx, 400, "read body failed")
-		return
-	}
-	profile, err := scraper_wxmp.NewOfficialAccountArticleProfile(json.RawMessage(body))
-	if err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if profile != nil {
-		fmt.Printf("\nOpened official account article\n%s\n", profile.Title)
-	}
-	result.Ok(ctx, nil)
-}
-
-func shouldServeByAPI(path string) bool {
+func should_serve_by_api(path string) bool {
 	if path == "/" ||
 		path == "/favicon.ico" ||
 		path == "/filehelper" ||
@@ -252,7 +233,7 @@ func shouldServeByAPI(path string) bool {
 		return true
 	}
 
-	apiPrefixes := []string{
+	api_prefixes := []string{
 		"/api/",
 		"/ws/",
 		"/rss/",
@@ -269,7 +250,7 @@ func shouldServeByAPI(path string) bool {
 		"/weibo/",
 		"/__assets/",
 	}
-	for _, prefix := range apiPrefixes {
+	for _, prefix := range api_prefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}

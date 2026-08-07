@@ -1,7 +1,8 @@
-package youtube
+package youtubeadapter
 
 import (
 	"wx_channel/internal/config"
+	"wx_channel/pkg/configapi"
 )
 
 // YouTubePluginConfig implements config.Configurable for youtube plugin config.
@@ -13,11 +14,11 @@ type YouTubePluginConfig struct {
 
 func (c *YouTubePluginConfig) ConfigNamespace() string { return "youtube" }
 
-func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigItem {
-	return []config.ConfigItem{
+func (c *YouTubePluginConfig) ConfigSchema() []configapi.Item {
+	return []configapi.Item{
 		{
 			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
+			Type:        configapi.TypeBool,
 			Default:     false,
 			Description: "是否记录 YouTube 页面浏览记录",
 			Title:       "记录 YouTube 浏览",
@@ -25,26 +26,26 @@ func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigItem {
 		},
 		{
 			Key:         "cookie",
-			Type:        config.ConfigTypeText,
+			Type:        configapi.TypeText,
 			Default:     "",
 			Description: "YouTube 请求 Cookie，用于访问需要登录态的视频；不会输出到日志",
 			Title:       "YouTube Cookie",
 			Group:       "YouTube",
-			HotReload:   true,
+			Reload:      configapi.ReloadHot,
 		},
 		{
 			Key:         "poToken",
-			Type:        config.ConfigTypeText,
+			Type:        configapi.TypeText,
 			Default:     "",
 			Description: "YouTube GVS PO Token，兼容 yt-dlp 的 client.gvs+TOKEN 格式；用于避免部分 videoplayback 403",
 			Title:       "YouTube PO Token",
 			Group:       "YouTube",
-			HotReload:   true,
+			Reload:      configapi.ReloadHot,
 		},
 	}
 }
 
-func (c *YouTubePluginConfig) ApplyConfig(sub *config.SubViper) error {
+func (c *YouTubePluginConfig) ApplyConfig(sub *config.ScopedConfig) error {
 	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	c.PoToken = sub.GetString("poToken")

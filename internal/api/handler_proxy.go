@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -17,9 +18,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/config"
-	"wx_channel/internal/events"
 	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/configapi"
+	"wx_channel/pkg/events"
 	"wx_channel/pkg/system"
 )
 
@@ -40,7 +42,7 @@ func (c *APIClient) handleProxyStatus(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.config_store == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
@@ -56,7 +58,7 @@ func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
 
 	updated := map[string]interface{}{}
 	for key, value := range body.Values {
-		converted, err := convertServiceConfigValue(key, value)
+		converted, err := convertProxyConfigValue(key, value)
 		if err != nil {
 			result.Err(ctx, 400, err.Error())
 			return
@@ -120,7 +122,7 @@ func (c *APIClient) handleProxyCertificateStatus(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.config_store == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
@@ -128,7 +130,7 @@ func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
 	_ = ctx.ShouldBindJSON(&body)
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		name = strings.TrimSpace(c.cfg.Original.GetString("cert.name"))
+		name = strings.TrimSpace(c.current_certificate_config().Name)
 	}
 	if name == "" {
 		name = "wx_channels_download"
@@ -180,7 +182,7 @@ func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := config.LoadCertFiles(c.config_store)
 	if err := certificate.InstallCertificate(cert.Cert); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -189,7 +191,7 @@ func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateUninstall(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := config.LoadCertFiles(c.config_store)
 	if err := certificate.UninstallCertificate(cert.Name); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -216,13 +218,13 @@ func (c *APIClient) handleProxyCertificateUninstallByName(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.config_store == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
 
 	// 1. Get old cert info
-	certInfo := config.LoadCertFilesWithInfo()
+	certInfo := config.LoadCertFilesWithInfo(c.config_store)
 	oldName := certInfo.Cert.Name
 
 	// 2. If installed, uninstall old cert
@@ -275,7 +277,7 @@ func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleProxyCertificatePEM(ctx *gin.Context) {
-	cert := config.LoadCertFiles()
+	cert := config.LoadCertFiles(c.config_store)
 	ctx.Header("Content-Type", "application/x-pem-file; charset=utf-8")
 	ctx.Header("Content-Disposition", `attachment; filename="root-ca.pem"`)
 	ctx.String(200, string(cert.Cert))
@@ -293,38 +295,26 @@ func (c *APIClient) proxyStatusData() gin.H {
 }
 
 func (c *APIClient) proxyConfigData() gin.H {
-	var original *config.Config
-	if c.cfg != nil {
-		original = c.cfg.Original
-	}
-	host := "127.0.0.1"
-	port := 2023
-	if original != nil {
-		if value := strings.TrimSpace(original.GetString("proxy.hostname")); value != "" {
-			host = value
-		}
-		if value := original.GetInt("proxy.port"); value > 0 {
-			port = value
-		}
-	}
+	proxy_config := c.current_proxy_config()
+	certificate_config := c.current_certificate_config()
 	return gin.H{
-		"hostname":               host,
-		"port":                   port,
-		"addr":                   net.JoinHostPort(host, strconv.Itoa(port)),
-		"system":                 original != nil && original.GetBool("proxy.system"),
-		"tun":                    original != nil && original.GetBool("proxy.tun"),
-		"default_interface":      getConfigString(original, "proxy.defaultInterface"),
-		"skip_install_root_cert": original != nil && original.GetBool("proxy.skipInstallRootCert"),
-		"upstream_proxy":         getConfigString(original, "proxy.upstreamProxy"),
+		"hostname":               proxy_config.Hostname,
+		"port":                   proxy_config.Port,
+		"addr":                   net.JoinHostPort(proxy_config.Hostname, strconv.Itoa(proxy_config.Port)),
+		"system":                 proxy_config.System,
+		"tun":                    proxy_config.Tun,
+		"default_interface":      proxy_config.DefaultInterface,
+		"skip_install_root_cert": proxy_config.SkipInstallRootCert,
+		"upstream_proxy":         proxy_config.UpstreamProxy,
 		"tcp_relay": gin.H{
-			"enabled":  original != nil && original.GetBool("proxy.tcpRelay.enabled"),
-			"hostname": proxyFirstNonEmpty(getConfigString(original, "proxy.tcpRelay.hostname"), "127.0.0.1"),
-			"port":     proxyFirstPositive(getConfigInt(original, "proxy.tcpRelay.port"), 9900),
+			"enabled":  proxy_config.TCPRelay.Enabled,
+			"hostname": proxy_config.TCPRelay.Hostname,
+			"port":     proxy_config.TCPRelay.Port,
 		},
 		"cert": gin.H{
-			"name": getConfigString(original, "cert.name"),
-			"file": getConfigString(original, "cert.file"),
-			"key":  getConfigString(original, "cert.key"),
+			"name": certificate_config.Name,
+			"file": certificate_config.File,
+			"key":  certificate_config.Key,
 		},
 	}
 }
@@ -345,17 +335,14 @@ func (c *APIClient) proxyServiceStatusData() gin.H {
 		"name":      "interceptor",
 		"addr":      addr,
 		"status":    status,
-		"listening": addr != "" && checkPort(addr),
+		"listening": addr != "" && check_port(addr),
 	}
 }
 
 func (c *APIClient) systemProxyStatusData() gin.H {
 	expected := c.systemProxySettings()
 	cur, err := system.FetchCurProxy(expected)
-	configured := false
-	if c.cfg != nil && c.cfg.Original != nil {
-		configured = c.cfg.Original.GetBool("proxy.system")
-	}
+	configured := c.current_proxy_config().System
 	data := gin.H{
 		"configured": configured,
 		"expected": gin.H{
@@ -384,7 +371,7 @@ func (c *APIClient) systemProxyStatusData() gin.H {
 }
 
 func (c *APIClient) certificateStatusData() gin.H {
-	certInfo := config.LoadCertFilesWithInfo()
+	certInfo := config.LoadCertFilesWithInfo(c.config_store)
 	cert := certInfo.Cert
 	installed, installErr := certificate.CheckHasCertificate(cert.Name)
 	data := gin.H{
@@ -413,16 +400,15 @@ func (c *APIClient) certificateStatusData() gin.H {
 	} else {
 		data["parse_error"] = err.Error()
 	}
-	if c.cfg != nil && c.cfg.Original != nil {
-		data["configured"] = gin.H{
-			"name": c.cfg.Original.GetString("cert.name"),
-			"file": c.cfg.Original.GetString("cert.file"),
-			"key":  c.cfg.Original.GetString("cert.key"),
-		}
+	configured_certificate := c.current_certificate_config()
+	data["configured"] = gin.H{
+		"name": configured_certificate.Name,
+		"file": configured_certificate.File,
+		"key":  configured_certificate.Key,
 	}
 
 	// Build list of all available certificates with their system-install status
-	allCerts := config.ScanAvailableCerts()
+	allCerts := config.ScanAvailableCerts(c.config_store)
 	certList := make([]gin.H, 0, len(allCerts))
 	for _, ac := range allCerts {
 		entry := c.buildCertEntry(ac)
@@ -464,7 +450,43 @@ func (c *APIClient) systemProxySettings() system.ProxySettings {
 	}
 }
 
-func serviceConfigBool(value interface{}) (bool, error) {
+func convertProxyConfigValue(key string, value interface{}) (interface{}, error) {
+	switch key {
+	case "proxy.hostname", "proxy.tcpRelay.hostname", "proxy.defaultInterface", "proxy.upstreamProxy", "cert.file", "cert.key", "cert.name":
+		return strings.TrimSpace(fmt.Sprint(value)), nil
+	case "proxy.port", "proxy.tcpRelay.port":
+		return proxyConfigPort(value)
+	case "proxy.system", "proxy.tun", "proxy.tcpRelay.enabled", "proxy.skipInstallRootCert":
+		return proxyConfigBool(value)
+	default:
+		return nil, fmt.Errorf("未知配置项: %s", key)
+	}
+}
+
+func proxyConfigPort(value interface{}) (int, error) {
+	switch v := value.(type) {
+	case int:
+		if v <= 0 {
+			return 0, fmt.Errorf("端口必须大于 0")
+		}
+		return v, nil
+	case float64:
+		if v != float64(int(v)) || v <= 0 {
+			return 0, fmt.Errorf("端口必须是大于 0 的整数")
+		}
+		return int(v), nil
+	case string:
+		port, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil || port <= 0 {
+			return 0, fmt.Errorf("端口必须是大于 0 的整数")
+		}
+		return port, nil
+	default:
+		return 0, fmt.Errorf("端口必须是大于 0 的整数")
+	}
+}
+
+func proxyConfigBool(value interface{}) (bool, error) {
 	switch v := value.(type) {
 	case bool:
 		return v, nil
@@ -480,22 +502,14 @@ func serviceConfigBool(value interface{}) (bool, error) {
 }
 
 func (c *APIClient) saveConfigValues(values map[string]interface{}) error {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.config_store == nil {
 		return fmt.Errorf("配置未初始化")
 	}
-	for key, value := range values {
-		c.cfg.Original.Update(key, value)
-	}
-	if dir := filepath.Dir(c.cfg.Original.FullPath); dir != "" && dir != "." {
-		if err := config.EnsureDirIfMissing(dir); err != nil {
-			return err
-		}
-	}
-	if err := c.cfg.Original.Save(); err != nil {
-		return err
-	}
-	c.cfg.Original.Existing = true
-	return nil
+	_, err := c.config_store.Apply(context.Background(), configapi.UpdateRequest{
+		Values:           values,
+		ExpectedRevision: c.config_store.Revision(),
+	})
+	return err
 }
 
 func (c *APIClient) proxyServiceRunning() bool {
@@ -608,29 +622,6 @@ func certificateFilenameSlug(name string) string {
 		return "wx_channels_download"
 	}
 	return slug
-}
-
-func getConfigString(c *config.Config, key string) string {
-	if c == nil {
-		return ""
-	}
-	return c.GetString(key)
-}
-
-func getConfigInt(c *config.Config, key string) int {
-	if c == nil {
-		return 0
-	}
-	return c.GetInt(key)
-}
-
-func proxyFirstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func proxyFirstPositive(values ...int) int {

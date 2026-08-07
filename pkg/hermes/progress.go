@@ -23,9 +23,12 @@ func (d *HermesEngine) failTask(taskID int, errMsg string) {
 }
 
 func (d *HermesEngine) emit(taskID int, event EventType) {
-	d.eventMu.RLock()
+	d.eventMu.Lock()
+	if d.replayEvents {
+		d.eventHistory[taskID] = append(d.eventHistory[taskID], event)
+	}
 	handler := d.onEvent
-	d.eventMu.RUnlock()
+	d.eventMu.Unlock()
 	if handler != nil {
 		handler(taskID, event, nil)
 	}

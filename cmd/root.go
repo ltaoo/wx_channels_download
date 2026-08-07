@@ -1,76 +1,86 @@
 package cmd
 
 import (
+	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
-	"github.com/fatih/color"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
-	"wx_channel/internal/application"
-	"wx_channel/internal/config"
+	"github.com/rs/zerolog"
 )
 
-var (
-	Version         string
-	Cfg             *config.Config
-	device          string
-	config_filepath string
-	workdir         string
-	hostname        string
-	port            int
-	debug           bool
-)
-
-var error_prefix = color.RedString("[ERROR]")
-
-var root_cmd = &cobra.Command{
-	Use:   "wx_video_download",
-	Short: "启动下载程序",
-	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if err := application.PrepareConfig(Cfg, config_filepath); err != nil {
-			fmt.Println(fmt.Sprintf("%s%v", error_prefix, err))
-			os.Exit(0)
-		}
-		shouldExit, err := application.PrepareStartPrivileges(!cmd.HasParent() || cmd.Name() == "start")
-		if err != nil {
-			fmt.Println(error_prefix + err.Error())
-		}
-		if shouldExit {
-			os.Exit(0)
-		}
+// Execute dispatches one command from args. With no explicit command, start is
+// used so running the executable directly keeps the existing behavior.
+func Execute(version string, mode string, args []string, logger *zerolog.Logger) error {
+	err := execute(version, mode, args, logger)
+	if errors.Is(err, flag.ErrHelp) {
 		return nil
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		application.Start(Cfg)
-	},
+	}
+	return err
 }
 
-func init() {
-	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "代理服务器网络设备")
-	root_cmd.PersistentFlags().StringVarP(&config_filepath, "config", "c", "", "配置文件路径")
-	root_cmd.PersistentFlags().StringVar(&workdir, "workdir", "", "运行时工作目录")
-	root_cmd.PersistentFlags().StringVar(&hostname, "hostname", "127.0.0.1", "代理服务器主机名")
-	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
-	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
+func execute(version string, mode string, args []string, logger *zerolog.Logger) error {
+	logger.Info().Strs("args", args).Msg("execute command")
+	if len(args) == 0 {
+		return run_start(version, mode, nil, logger)
+	}
 
-	viper.BindPFlag("workdir", root_cmd.PersistentFlags().Lookup("workdir"))
-	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
-	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
-	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
+	switch args[0] {
+	case "start":
+		return run_start(version, mode, args[1:], logger)
+	case "update":
+		return run_update(version, args[1:])
+	case "deploy":
+		return run_deploy(args[1:])
+	case "uninstall":
+		return run_uninstall(args[1:])
+	case "version":
+		return run_version(version, args[1:])
+	case "help", "-h", "--help":
+		print_root_usage(os.Stdout)
+		return nil
+	default:
+		if strings.HasPrefix(args[0], "-") {
+			return run_start(version, mode, args, logger)
+		}
+		return fmt.Errorf("unknown command %q; run with --help to list commands", args[0])
+	}
 }
 
-func Execute(cfg *config.Config) error {
-	cobra.MousetrapHelpText = ""
-
-	Version = cfg.Version
-	Cfg = cfg
-
-	return root_cmd.Execute()
+func new_command_flag_set(name string, description string) *flag.FlagSet {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	flags.Usage = func() {
+		fmt.Fprintf(flags.Output(), "Usage: wx_video_download %s [options]\n\n%s\n\nOptions:\n", name, description)
+		flags.PrintDefaults()
+	}
+	return flags
 }
 
-func Register(cmd *cobra.Command) {
-	root_cmd.AddCommand(cmd)
+func add_config_flags(flags *flag.FlagSet, config_filepath *string) {
+	flags.StringVar(config_filepath, "config", "", "配置文件路径")
+	flags.StringVar(config_filepath, "c", "", "配置文件路径（--config 的简写）")
+}
+
+func reject_command_args(flags *flag.FlagSet) error {
+	if flags.NArg() == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s: unexpected arguments: %v", flags.Name(), flags.Args())
+}
+
+func print_root_usage(output io.Writer) {
+	fmt.Fprintln(output, "Usage: wx_video_download [command] [options]")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "Commands:")
+	fmt.Fprintln(output, "  start         启动管理界面、API 和本地代理服务（默认）")
+	fmt.Fprintln(output, "  update        检查并安装最新版本")
+	fmt.Fprintln(output, "  deploy mp     部署公众号 Cloudflare Worker")
+	fmt.Fprintln(output, "  deploy sph    部署视频号查询 Cloudflare Worker")
+	fmt.Fprintln(output, "  uninstall     删除根证书")
+	fmt.Fprintln(output, "  version       查看当前版本")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "Run 'wx_video_download <command> --help' for command options.")
 }

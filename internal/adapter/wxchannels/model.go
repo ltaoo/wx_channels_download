@@ -1,4 +1,4 @@
-package wxchannels
+package wxchannelsadapter
 
 import (
 	"encoding/json"
@@ -13,23 +13,21 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	scraper "wx_channel/pkg/scraper/wxchannels"
+	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 )
 
-const wxchannels = "wxchannels"
-
 // PlatformID is the platform identifier for wechat channels.
-const PlatformID = wxchannels
+const PlatformID = "wxchannels"
 
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
-	return wxchannels + ":" + externalID
+	return PlatformID + ":" + externalID
 }
 
 // BuildAccountID builds an account identifier from an external ID.
 func BuildAccountID(externalID string) string {
-	return wxchannels + ":" + externalID
+	return PlatformID + ":" + externalID
 }
 
 type metadataKV struct {
@@ -51,7 +49,7 @@ func cleanMediaURL(rawURL string) string {
 	return u.String()
 }
 
-func firstMediaCoverURL(file scraper.ChannelsMediaItem) string {
+func firstMediaCoverURL(file wxchannels.ChannelsMediaItem) string {
 	coverURL := strings.TrimSpace(file.CoverUrl)
 	if coverURL != "" {
 		return coverURL
@@ -64,7 +62,7 @@ func firstMediaCoverURL(file scraper.ChannelsMediaItem) string {
 }
 
 // ToAccount converts a ChannelsObject into a model.Account.
-func ToAccount(obj *scraper.ChannelsObject) (*model.Account, error) {
+func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 	if obj == nil {
 		return nil, errors.New("channels object is nil")
 	}
@@ -74,7 +72,7 @@ func ToAccount(obj *scraper.ChannelsObject) (*model.Account, error) {
 	now := util.NowMillis()
 	acc := &model.Account{
 		Id:         BuildAccountID(accountUsername),
-		PlatformId: wxchannels,
+		PlatformId: PlatformID,
 		ExternalId: accountUsername,
 		Nickname:   contact.Nickname,
 		Signature:  strings.TrimSpace(contact.Signature),
@@ -90,7 +88,7 @@ func ToAccount(obj *scraper.ChannelsObject) (*model.Account, error) {
 
 // pickAccountContact selects the appropriate contact and external ID for an account.
 // For live objects, prefers AnchorContact over Contact.
-func pickAccountContact(obj *scraper.ChannelsObject) (scraper.ChannelsContact, string) {
+func pickAccountContact(obj *wxchannels.ChannelsObject) (wxchannels.ChannelsContact, string) {
 	if obj.LiveInfo != nil && obj.AnchorContact != nil {
 		return *obj.AnchorContact, obj.AnchorContact.Username
 	}
@@ -100,7 +98,7 @@ func pickAccountContact(obj *scraper.ChannelsObject) (scraper.ChannelsContact, s
 // ToContent converts a ChannelsObject into a slim model.Content and an extension struct.
 // Returns (content, extension, error). extension is nil for live content, *ContentVideo for video,
 // []*ContentImage for single picture, *ContentAlbum for album.
-func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
+func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 	if obj == nil {
 		return nil, nil, errors.New("channels object is nil")
 	}
@@ -111,7 +109,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 	now := util.NowMillis()
 	c := &model.Content{
 		Id:          BuildContentID(obj.ID),
-		PlatformId:  wxchannels,
+		PlatformId:  PlatformID,
 		ExternalId:  obj.ID,
 		ExternalId2: obj.ObjectNonceId,
 		SourceURL:   obj.SourceURL,
@@ -139,7 +137,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 	}
 
 	// Picture
-	if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+	if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 		files := obj.Files
 		if len(files) == 0 {
 			files = obj.ObjectDesc.Media
@@ -186,7 +184,7 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 	}
 
 	// Media (video)
-	if obj.ObjectDesc.MediaType == scraper.MediaTypeLive {
+	if obj.ObjectDesc.MediaType == wxchannels.MediaTypeLive {
 		return nil, nil, errors.New("live replay is not supported (mediaType=9)")
 	}
 
@@ -228,8 +226,8 @@ func ToContent(obj *scraper.ChannelsObject) (*model.Content, any, error) {
 
 // BuildBrowseHistory converts an intercepted ChannelsObject into the standard
 // browse history result.
-func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
-	var obj scraper.ChannelsObject
+func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	var obj wxchannels.ChannelsObject
 	if err := json.Unmarshal(content_json, &obj); err != nil {
 		return nil, fmt.Errorf("解析视频号内容失败: %w", err)
 	}
@@ -248,7 +246,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 		"decode_key": key,
 	})
 
-	browseID := wxchannels + ":" + obj.ID
+	browseID := PlatformID + ":" + obj.ID
 	contentSourceURL := obj.SourceURL
 	if contentSourceURL == "" {
 		contentSourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", accountUsername)
@@ -263,7 +261,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 	}
 	if len(mediaList) > 0 {
 		media := mediaList[0]
-		if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+		if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 			coverURL = firstMediaCoverURL(media)
 		} else {
 			coverURL = strings.TrimSpace(media.ThumbUrl)
@@ -274,7 +272,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 	publishTime := int64(obj.CreateTime)
 
 	contentType := "video"
-	if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+	if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 		contentType = "album"
 	}
 
@@ -286,7 +284,7 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 	return &adapter.BrowseHistoryResult{
 		BrowseHistory: &model.BrowseHistory{
 			Id:           browseID,
-			PlatformId:   wxchannels,
+			PlatformId:   PlatformID,
 			VisitedTimes: 1,
 			Type:         contentType,
 			ExternalId:   obj.ID,
@@ -308,11 +306,11 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 }
 
 // ObjectURL returns the download URL (video = media.URL + URLToken, picture/live returns "").
-func ObjectURL(obj *scraper.ChannelsObject) string {
+func ObjectURL(obj *wxchannels.ChannelsObject) string {
 	if obj.LiveInfo != nil {
 		return ""
 	}
-	if obj.Type == "picture" || obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+	if obj.Type == "picture" || obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 		return ""
 	}
 	if len(obj.ObjectDesc.Media) == 0 {
@@ -366,19 +364,19 @@ const (
 	mimeVideoMatroska = "video/x-matroska"
 )
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
 	// Live stream detection: joinLive response contains liveSdkInfo
-	var jl scraper.JoinLivePayload
+	var jl wxchannels.JoinLivePayload
 	if json.Unmarshal(contentJSON, &jl) == nil && jl.LiveSdkInfo != nil && jl.LiveSdkInfo.LiveCdnUrl != "" {
 		return buildLiveDownloadTask(&jl, config)
 	}
 
-	var obj scraper.ChannelsObject
+	var obj wxchannels.ChannelsObject
 	if err := json.Unmarshal(contentJSON, &obj); err != nil {
 		return nil, err
 	}
@@ -465,7 +463,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Picture type: create a download resource for each media item, plus background music
-	if obj.ObjectDesc.MediaType == scraper.MediaTypePicture {
+	if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 		files := obj.Files
 		if len(files) == 0 {
 			files = obj.ObjectDesc.Media
@@ -521,7 +519,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			})
 		}
 
-		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, scraper.MediaTypePicture))
+		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, wxchannels.MediaTypePicture))
 
 		info := &adapter.DownloadTaskResult{
 			Task:      task(configJSON),
@@ -581,7 +579,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 }
 
 // buildLiveDownloadTask builds a live-stream download task from a joinLive response.
-func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (*adapter.DownloadTaskResult, error) {
+func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any) (*adapter.DownloadTaskResult, error) {
 	liveId := ""
 	sessionStartTime := int64(0)
 	if jl.LiveInfo != nil {
@@ -620,7 +618,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 	}
 
 	now := time.Now().Unix()
-	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec"), scraper.MediaTypeLive))
+	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec"), wxchannels.MediaTypeLive))
 	metadataJSON, _ := json.Marshal(map[string]any{
 		"platform":     PlatformID,
 		"id":           liveId,
@@ -631,7 +629,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 
 	content := &model.Content{
 		Id:         BuildContentID(liveId),
-		PlatformId: wxchannels,
+		PlatformId: PlatformID,
 		ExternalId: liveId,
 		Type:       "live",
 		Title:      title,
@@ -647,7 +645,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 
 	account := &model.Account{
 		Id:         BuildAccountID(authorUsername),
-		PlatformId: wxchannels,
+		PlatformId: PlatformID,
 		ExternalId: authorUsername,
 		Nickname:   authorNickname,
 		AvatarURL:  authorAvatarURL,
@@ -698,7 +696,7 @@ func buildLiveDownloadTask(jl *scraper.JoinLivePayload, config map[string]any) (
 }
 
 // getMediaURL returns the combined download URL for a media item (url + urlToken).
-func getMediaURL(media scraper.ChannelsMediaItem) string {
+func getMediaURL(media wxchannels.ChannelsMediaItem) string {
 	return media.URL + media.URLToken
 }
 
@@ -709,7 +707,7 @@ type bgmInfo struct {
 }
 
 // formatBGM extracts background music info from a picture feed's followPostInfo.
-func formatBGM(obj *scraper.ChannelsObject) *bgmInfo {
+func formatBGM(obj *wxchannels.ChannelsObject) *bgmInfo {
 	musicInfo := obj.ObjectDesc.FollowPostInfo.MusicInfo
 	if musicInfo.MediaStreamingUrl == "" {
 		return nil

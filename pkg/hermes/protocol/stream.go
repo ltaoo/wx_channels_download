@@ -191,7 +191,10 @@ func (d *StreamDriver) recordAttempt(
 	defer cancelProcess()
 
 	pattern := filepath.Join(recordingDir, "segment-%06d.mkv")
-	args := buildStreamFFmpegArgs(endpoint, pattern, startIndex, rotateMinutes)
+	args, err := buildStreamFFmpegArgs(endpoint, pattern, startIndex, rotateMinutes)
+	if err != nil {
+		return false, err
+	}
 	cmd := exec.CommandContext(processCtx, d.ffmpegBinary(), args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -298,7 +301,7 @@ func stopFFmpeg(stdin io.WriteCloser, cancel context.CancelFunc, waitCh <-chan e
 	}
 }
 
-func buildStreamFFmpegArgs(endpoint hermes.Endpoint, outputPattern string, startIndex, rotateMinutes int) []string {
+func buildStreamFFmpegArgs(endpoint hermes.Endpoint, outputPattern string, startIndex, rotateMinutes int) ([]string, error) {
 	args := []string{
 		"-hide_banner",
 		"-loglevel", "warning",
@@ -317,6 +320,13 @@ func buildStreamFFmpegArgs(endpoint hermes.Endpoint, outputPattern string, start
 			"-reconnect_on_http_error", "429,500,502,503,504",
 			"-reconnect_delay_max", "30",
 		)
+		proxyURL, err := endpoint.ProxyServer.URL()
+		if err != nil {
+			return nil, err
+		}
+		if proxyURL != "" {
+			args = append(args, "-http_proxy", proxyURL)
+		}
 		if headers := ffmpegHeaders(endpoint); headers != "" {
 			args = append(args, "-headers", headers)
 		}
@@ -342,7 +352,7 @@ func buildStreamFFmpegArgs(endpoint hermes.Endpoint, outputPattern string, start
 		"-y",
 		outputPattern,
 	)
-	return args
+	return args, nil
 }
 
 func ffmpegHeaders(endpoint hermes.Endpoint) string {

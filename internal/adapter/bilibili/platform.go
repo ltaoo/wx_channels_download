@@ -1,4 +1,4 @@
-package bilibili
+package bilibiliadapter
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	scraper "wx_channel/pkg/scraper/bilibili"
+	"wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
 )
 
@@ -53,7 +53,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Call scraper to get video info
-	client := scraper.NewClient(cookie)
+	client := bilibili.NewClient(cookie)
 	videoInfos, err := client.GetVideoInfo(input.URL, input.PageNum)
 	if err != nil {
 		return nil, fmt.Errorf("获取B站视频信息失败: %w", err)
@@ -65,7 +65,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	return buildTaskFromVideoInfo(videoInfos[0], input.URL, config)
 }
 
-func buildTaskFromVideoInfo(info *scraper.VideoInfo, sourceURL string, config map[string]any) (*adapter.DownloadTaskResult, error) {
+func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config map[string]any) (*adapter.DownloadTaskResult, error) {
 	now := util.NowMillis()
 
 	content := &model.Content{

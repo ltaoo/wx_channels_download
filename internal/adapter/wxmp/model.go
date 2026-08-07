@@ -1,4 +1,4 @@
-package wxmp
+package wxmpadapter
 
 import (
 	"crypto/md5"
@@ -15,7 +15,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
-	wxmp "wx_channel/pkg/scraper/wxmp"
+	"wx_channel/pkg/scraper/wxmp"
 	"wx_channel/pkg/util"
 )
 
@@ -27,7 +27,6 @@ const PlatformID = platformIDWxMP
 var wechatHeaders string
 
 func init() {
-	adapter.Register(&handler{})
 	h := map[string]string{
 		"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN",
 		"Referer":    "https://mp.weixin.qq.com/",
@@ -36,9 +35,7 @@ func init() {
 	wechatHeaders = string(b)
 }
 
-type handler struct{}
-
-func (h *handler) PlatformID() string { return PlatformID }
+func (a *OfficialAccountAdapter) PlatformID() string { return PlatformID }
 
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(externalID string) string {
@@ -203,7 +200,7 @@ func isAlbum(data *wxmp.ArticleCgiDataNew) bool {
 
 // BuildBrowseHistory converts intercepted article CGI data into the standard
 // browse history result.
-func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+func (a *OfficialAccountAdapter) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
 	var data wxmp.ArticleCgiDataNew
 	if err := json.Unmarshal(content_json, &data); err != nil {
 		return nil, fmt.Errorf("解析文章数据失败: %w", err)
@@ -397,7 +394,7 @@ func firstNonEmptyStr(values ...string) string {
 	return ""
 }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (a *OfficialAccountAdapter) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(configRaw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)

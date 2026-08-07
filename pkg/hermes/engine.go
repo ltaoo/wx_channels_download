@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -65,6 +66,9 @@ type Endpoint struct {
 	Priority int
 	Headers  map[string]string
 	Cookies  string
+	// ProxyServer is copied from the owning TaskJob before protocol requests are
+	// made. Drivers that perform network I/O should honor it for this endpoint.
+	ProxyServer ProxyServer
 }
 
 // TaskJob is the single task model used by Hermes from Store.LoadTask until
@@ -77,9 +81,12 @@ type TaskJob struct {
 	SavePath         string
 	FilenameTemplate string
 	Platform         string // PlatformId from DB, used by postprocessor for platform routing
-	Resources        []ResourceJob
-	Config           map[string]any // Parsed download configuration for hooks
-	Metadata         map[string]any // Parsed content metadata for postprocessors and hooks
+	// ProxyServer applies to every network endpoint in this task. When its
+	// address is empty, Config["proxy_server"] is used.
+	ProxyServer ProxyServer
+	Resources   []ResourceJob
+	Config      map[string]any // Parsed download configuration for hooks
+	Metadata    map[string]any // Parsed content metadata for postprocessors and hooks
 
 	ctx          context.Context
 	cancel       context.CancelCauseFunc
@@ -348,6 +355,8 @@ type HermesEngine struct {
 	store         Store
 	logger        zerolog.Logger
 	onEvent       EventHandler
+	eventHistory  map[int][]EventType
+	replayEvents  bool
 	drivers       map[string]ProtocolDriver
 	hooks         *HookManager
 	postprocessor Postprocessor
@@ -460,20 +469,35 @@ type HermesNewConfig struct {
 // New creates a new HermesEngine from the given configuration.
 func New(opt HermesNewConfig) *HermesEngine {
 	cfg := opt.Config.withDefaults()
+	if strings.TrimSpace(cfg.BasePath) == "" {
+		if workingDirectory, err := os.Getwd(); err == nil {
+			cfg.BasePath = workingDirectory
+		} else {
+			cfg.BasePath = "."
+		}
+	}
 	logger := zerolog.Nop()
 	if opt.Logger != nil {
 		logger = *opt.Logger
 	}
 	logger = logger.With().Str("component", "hermes").Logger()
+	store := opt.Store
+	replayEvents := store == nil
+	if store == nil {
+		store = newMemoryStore()
+	}
 	e := &HermesEngine{
 		sem:           make(chan struct{}, cfg.MaxConcurrent),
 		jobs:          make(map[int]*TaskJob),
-		store:         opt.Store,
+		store:         store,
 		logger:        logger,
+		eventHistory:  make(map[int][]EventType),
+		replayEvents:  replayEvents,
 		drivers:       make(map[string]ProtocolDriver),
 		progressCache: make(map[int]*progressTracker),
 		cfg:           cfg,
 	}
+	e.RegisterProtocol(newDefaultHTTPDriver())
 	return e
 }
 
@@ -712,9 +736,11 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	info.SavePath = loaded.SavePath
 	info.FilenameTemplate = loaded.FilenameTemplate
 	info.Platform = loaded.Platform
+	info.ProxyServer = loaded.ProxyServer
 	info.Resources = loaded.Resources
 	info.Config = loaded.Config
 	info.Metadata = loaded.Metadata
+	applyTaskProxy(info)
 	if len(info.Resources) == 0 {
 		return errors.New("task has no downloadable resources")
 	}
@@ -726,7 +752,7 @@ func (d *HermesEngine) run(info *TaskJob) error {
 		Str("task_name", info.Name).
 		Str("task_unique_id", info.UniqueID).
 		Str("save_path", info.SavePath).
-		Interface("config", info.Config).
+		Interface("config", taskConfigForLog(info.Config)).
 		Int("resource_count", len(resources)).
 		Msg("run - after d.store.LoadTask")
 
