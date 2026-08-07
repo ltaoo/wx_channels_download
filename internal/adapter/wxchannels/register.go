@@ -15,15 +15,14 @@ import (
 
 // Deps holds the dependencies needed to register the wxchannels adapter.
 type Deps struct {
-	StaticAssets       *webassets.Registry
-	RouteRegistrar     RouteRegistrar
-	Interceptor        adapter.InterceptorRegistrar
-	DB                 *gorm.DB
-	Logger             *zerolog.Logger
-	Bus                *events.Bus
-	Config             *config.Config
-	RefreshInterval    int
-	SphCookie          string
+	StaticAssets    *webassets.Registry
+	RouteRegistrar  RouteRegistrar
+	Interceptor     adapter.InterceptorRegistrar
+	DB              *gorm.DB
+	Logger          *zerolog.Logger
+	Bus             *events.Bus
+	Config          *config.Config
+	RefreshInterval int
 }
 
 // AdapterWXChannels is the wxchannels platform adapter.
@@ -53,7 +52,7 @@ func Register(d Deps) (*AdapterWXChannels, error) {
 	}
 
 	// 3. Routes
-	r := NewWebsocketRoutes(d.RefreshInterval, d.DB, d.SphCookie)
+	r := NewWebsocketRoutes(d.RefreshInterval, d.Config)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 	}
@@ -65,21 +64,18 @@ func Register(d Deps) (*AdapterWXChannels, error) {
 // contract. The concrete package remains responsible for interpreting config.
 func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
 	refreshInterval := 0
-	sphCookie := ""
 	if d.Config != nil {
 		refreshInterval = d.Config.GetInt("channels.refreshInterval")
-		sphCookie = d.Config.GetString("cloudflare.sphCookie")
 	}
 	return Register(Deps{
-		StaticAssets:     d.StaticAssets,
-		RouteRegistrar:   d.Routes,
-		Interceptor:      d.Interceptor,
-		DB:               d.DB,
-		Logger:           d.Logger,
-		Bus:              d.Bus,
-		Config:           d.Config,
-		RefreshInterval:  refreshInterval,
-		SphCookie:        sphCookie,
+		StaticAssets:    d.StaticAssets,
+		RouteRegistrar:  d.Routes,
+		Interceptor:     d.Interceptor,
+		DB:              d.DB,
+		Logger:          d.Logger,
+		Bus:             d.Bus,
+		Config:          d.Config,
+		RefreshInterval: refreshInterval,
 	})
 }
 

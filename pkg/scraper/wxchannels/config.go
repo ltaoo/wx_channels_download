@@ -8,7 +8,7 @@ import (
 	"wx_channel/internal/config"
 )
 
-type InterceptorConfig struct {
+type ChannelsConfig struct {
 	Version                             string         `json:"version"`
 	DownloadDefaultHighest              bool           `json:"defaultHighest"`
 	DownloadFilenameTemplate            string         `json:"downloadFilenameTemplate"`
@@ -39,8 +39,8 @@ type InterceptorConfig struct {
 	FrontendVariables                   map[string]any `json:"-"`
 }
 
-func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
-	settings := &InterceptorConfig{
+func NewChannelsConfig(c *config.Config) *ChannelsConfig {
+	settings := &ChannelsConfig{
 		Version:                             c.Version,
 		DebugShowError:                      viper.GetBool("debug.error"),
 		PagespyEnabled:                      viper.GetBool("pagespy.enabled"),
@@ -77,7 +77,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 	return settings
 }
 
-func (c *InterceptorConfig) AddVariable(key string, value any) {
+func (c *ChannelsConfig) AddVariable(key string, value any) {
 	if c.FrontendVariables == nil {
 		c.FrontendVariables = make(map[string]any)
 	}

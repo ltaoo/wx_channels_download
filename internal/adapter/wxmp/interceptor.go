@@ -1,7 +1,6 @@
 package wxmp
 
 import (
-	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
 	scraper "wx_channel/pkg/scraper/wxmp"
@@ -24,15 +23,13 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 	}
 }
 
-// GetPlugins returns official-account injection and callback plugins wired to
-// adapter-owned persistence and browse events.
+// GetPlugins returns the official-account injection plugin.
 func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []interface{} {
 	if c == nil || c.settings == nil {
 		return nil
 	}
 
 	return []interface{}{
-		scraper.CreateOfficialAccountArticleLoadedPlugin(nil),
-		scraper.CreateOfficialAccountInterceptorPlugin(c.settings, frontend.Assets, c.version),
+		scraper.CreateOfficialAccountInterceptorPlugin(c.settings, c.version),
 	}
 }

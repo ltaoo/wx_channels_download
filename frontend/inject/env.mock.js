@@ -7,14 +7,14 @@ if (typeof WXEnv === "undefined") {
 
 (() => {
   window.ua = navigator.userAgent;
-  window.__wx_channels_version__ = "fakefeed";
+  window.__d_config.version = "fakefeed";
 
   var __wx_fake_params = new URLSearchParams(window.location.search);
   var __wx_fake_use_mock_api =
     __wx_fake_params.get("mock") === "1" ||
     __wx_fake_params.get("api") === "mock";
   function __wx_existing_api_base() {
-    var cfg = window.__wx_channels_config__ || {};
+    var cfg = window.__d_config || {};
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
       return cfg.apiServerProtocol + "://" + cfg.apiServerAddr;
     }
@@ -28,7 +28,7 @@ if (typeof WXEnv === "undefined") {
   var __wx_fake_api_url = new URL(__wx_fake_api_base, window.location.href);
   var __wx_fake_api_protocol = __wx_fake_api_url.protocol.replace(":", "");
   window.__wx_fake_use_mock_api__ = __wx_fake_use_mock_api;
-  window.__wx_channels_config__ = {
+  Object.assign(window.__d_config, {
     defaultHighest: false,
     downloadFilenameTemplate: "{{title}}",
     downloadInFrontend: false,
@@ -36,8 +36,7 @@ if (typeof WXEnv === "undefined") {
     apiServerProtocol: __wx_fake_api_protocol,
     apiServerAddr: __wx_fake_api_url.host,
     remoteServerEnabled: false,
-  };
-  window.WXVariable = {};
+  });
 
   WXEnv.applyRuntimeEnv({
     channelsProtocol: __wx_fake_api_protocol,

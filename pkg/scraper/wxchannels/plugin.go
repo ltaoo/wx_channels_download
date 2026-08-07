@@ -19,76 +19,63 @@ import (
 
 var (
 	// HTML processing related regex patterns
-	scriptSrcReg  = regexp.MustCompile(`src="([^"]{1,})\.js"`)
-	scriptHrefReg = regexp.MustCompile(`href="([^"]{1,})\.js"`)
+	script_src_reg  = regexp.MustCompile(`src="([^"]{1,})\.js"`)
+	script_href_reg = regexp.MustCompile(`href="([^"]{1,})\.js"`)
 
 	// JavaScript processing related regex patterns
-	jsDepReg         = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
-	jsFromReg        = regexp.MustCompile(`from {0,1}"([^"]{1,})\.js"`)
-	jsLazyImportReg  = regexp.MustCompile(`import\("([^"]{1,})\.js"\)`)
-	jsImportReg      = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
-	jsExportReg      = regexp.MustCompile(`exports?\s*\{`)
-	jsExportBlockReg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
+	js_dep_reg          = regexp.MustCompile(`"js/([^"]{1,})\.js"`)
+	js_from_reg         = regexp.MustCompile(`from {0,1}"([^"]{1,})\.js"`)
+	js_lazy_import_reg  = regexp.MustCompile(`import\("([^"]{1,})\.js"\)`)
+	js_import_reg       = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js"`)
+	js_export_reg       = regexp.MustCompile(`exports?\s*\{`)
+	js_export_block_reg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// Regex patterns for specific paths
-	jsSourceBufferReg                   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	jsInitReg                           = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
-	jsFeedProfileReg                    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	jsCommentListReg                    = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
-	jsPCFlowReg                         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
-	jsLiveInfoReg                       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	jsLiveFeedListReg                   = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
-	jsJoinLiveReg                       = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
-	jsRecommendFeedsReg                 = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
-	jsUserFeedsReg                      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
-	jsFinderPCSearchReg                 = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
-	jsFinderSearchReg                   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
-	jsFinderGetFollowListReg            = regexp.MustCompile(`async finderGetFollowList\((\w+)\)\{(.*?)\}async`)
-	jsFinderGetPlayHistoryReg           = regexp.MustCompile(`async finderGetPlayHistory\((\w+)\)\{(.*?)\}async`)
-	jsFinderGetInteractionedFeedListReg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
-	jsFinderGetFeedH5Url                = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
-	jsGoToPrevFlowReg                   = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
-	jsGoToNextFlowReg                   = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
-	jsFlowTabReg                        = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
-	jsLocalFlowTabReg                   = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
-	jsLoadLocalPlaylistReg              = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
+	js_source_buffer_reg                      = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	js_init_reg                               = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
+	js_feed_profile_reg                       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	js_comment_list_reg                       = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
+	js_pc_flow_reg                            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	js_live_info_reg                          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	js_live_feed_list_reg                     = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
+	js_join_live_reg                          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
+	js_recommend_feeds_reg                    = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
+	js_user_feeds_reg                         = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	js_finder_pc_search_reg                   = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
+	js_finder_search_reg                      = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
+	js_finder_get_follow_list_reg             = regexp.MustCompile(`async finderGetFollowList\((\w+)\)\{(.*?)\}async`)
+	js_finder_get_play_history_reg            = regexp.MustCompile(`async finderGetPlayHistory\((\w+)\)\{(.*?)\}async`)
+	js_finder_get_interactioned_feed_list_reg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
+	js_finder_get_feed_h5_url                 = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
+	js_go_to_prev_flow_reg                    = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
+	js_go_to_next_flow_reg                    = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
+	js_flow_tab_reg                           = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
+	js_local_flow_tab_reg                     = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
+	js_load_local_playlist_reg                = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles, onFeedProfileLoaded func(profile *MediaProfile)) []*proxy.Plugin {
+func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 	if cfg == nil {
-		cfg = &InterceptorConfig{}
+		cfg = &ChannelsConfig{}
 	}
 	version := cfg.Version
-	sharedLibVersion := frontend.ChannelSharedLibAssetVersion(files, version)
+	asset_version := version
+	if asset_version == "" {
+		asset_version = "static"
+	}
+	version_query := url.Values{"v": []string{asset_version}}
 	variables := cfg.FrontendVariables
 	if variables == nil {
 		variables = map[string]any{}
 	}
-	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
+	asset_base_url := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
+	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	v := "?t=" + version
 	plugins := make([]*proxy.Plugin, 0, 5)
-	plugin1 := &proxy.Plugin{
+	plugin_1 := &proxy.Plugin{
 		Match: "channels.weixin.qq.com",
 		OnRequest: func(ctx proxy.Context) {
 			pathname := ctx.Req().URL.Path
-			if frontend.MockChannelStaticAsset(ctx, pathname, files) || MockStaticAsset(ctx, pathname) {
-				return
-			}
-			if pathname == "/__wx_channels_api/profile" {
-				var data MediaProfile
-				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
-					fmt.Println("[ECHO]handler", err.Error())
-				}
-				if onFeedProfileLoaded != nil {
-					profile := data
-					go onFeedProfileLoaded(&profile)
-				}
-				// fmt.Printf("\nvideo opened\n%s\n", data.Title)
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/json",
-				}, "{}")
-				return
-			}
 			if pathname == "/__wx_channels_api/tip" {
 				var data FrontendTip
 				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
@@ -150,10 +137,10 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					}
 					req.Header.Del("Accept-Encoding")
 					client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second}
-					if resp2, err2 := client.Do(req); err2 == nil {
-						defer resp2.Body.Close()
-						body2, _ := io.ReadAll(resp2.Body)
-						ct := resp2.Header.Get("Content-Type")
+					if resp_2, err_2 := client.Do(req); err_2 == nil {
+						defer resp_2.Body.Close()
+						body_2, _ := io.ReadAll(resp_2.Body)
+						ct := resp_2.Header.Get("Content-Type")
 						lct := strings.ToLower(ct)
 						if ct == "" || strings.Contains(lct, "text/html") {
 							ct = "text/html; charset=utf-8"
@@ -162,7 +149,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						ctx.Res().Header.Del("Content-Encoding")
 						ctx.Res().Header.Del("Content-Length")
 						ctx.SetResponseHeader("Content-Type", ct)
-						ctx.SetResponseBody(string(body2))
+						ctx.SetResponseBody(string(body_2))
 						resp_content_type = strings.ToLower(ct)
 					}
 				}
@@ -174,45 +161,61 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					return
 				}
 				html := string(resp_body)
-				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
-				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
+				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+v+`"`)
+				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
 				var injected strings.Builder
-				crossoriginAttr := ` crossorigin="anonymous"`
+				crossorigin_attr := ` crossorigin="anonymous"`
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, frontend.InjectAssetURL(assetBaseURL, "error.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
 				}
-				frontend.AppendSharedLibAssets(&injected, assetBaseURL, sharedLibVersion, crossoriginAttr, "")
-				frontend.AppendStylesheetHrefs(&injected, "", frontend.InjectAssetURL(assetBaseURL, "components.css"))
-				cfg_byte, _ := json.Marshal(cfg)
-				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
-				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
-				variable_byte, _ := json.Marshal(variables)
-				frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
-				frontend.AppendScriptSrcs(
+				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
+				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.30.0/timeless.weui.css"))
+				frontend.AppendScripts(
 					&injected,
-					crossoriginAttr,
-					frontend.InjectAssetURL(assetBaseURL, "eventbus.js"),
-					frontend.InjectAssetURL(assetBaseURL, "env.js"),
-					frontend.InjectAssetURL(assetBaseURL, "utils.js"),
-					frontend.InjectAssetURL(assetBaseURL, "components.js"),
-					frontend.InjectAssetURL(assetBaseURL, "virtual-list-view.js"),
+					crossorigin_attr,
+					url_build("/public/timeless/0.30.0/timeless.umd.min.js"),
+					url_build("/public/timeless/0.30.0/timeless.utils.umd.min.js"),
+					url_build("/public/timeless/0.30.0/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.30.0/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.30.0/timeless.web.umd.min.js"),
+				)
+				frontend_config := make(map[string]any, len(variables)+2)
+				for key, value := range variables {
+					frontend_config[key] = value
+				}
+				frontend_config["version"] = version
+				frontend_config["assets_base_url"] = asset_base_url
+				frontend_config_byte, _ := json.Marshal(frontend_config)
+				frontend.AppendInlineScript(
+					&injected,
+					"",
+					fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte),
+				)
+				frontend.AppendScripts(
+					&injected,
+					crossorigin_attr,
+					url_build("/inject/eventbus.js"),
+					url_build("/inject/env.js"),
+					url_build("/inject/utils.js"),
+					url_build("/inject/components.js"),
+					url_build("/inject/virtual-list-view.js"),
 				)
 				if cfg.PagespyEnabled {
-					frontend.AppendScriptSrcs(
+					frontend.AppendScripts(
 						&injected,
-						crossoriginAttr,
-						frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"),
-						frontend.InjectAssetURL(assetBaseURL, "pagespy.js"),
+						crossorigin_attr,
+						url_build("/lib/pagespy.min.js", version_query),
+						url_build("/inject/pagespy.js"),
 					)
 				}
-				frontend.AppendScriptSrcs(
+				frontend.AppendScripts(
 					&injected,
-					crossoriginAttr,
-					frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
-					frontend.InjectAssetURL(assetBaseURL, "download/view.js"),
-					frontend.InjectAssetURL(assetBaseURL, "download/panel.js"),
+					crossorigin_attr,
+					url_build("/inject/download/model.js"),
+					url_build("/inject/download/view.js"),
+					url_build("/inject/download/panel.js"),
 				)
 				if cfg.InjectGlobalScript != "" {
 					frontend.AppendInlineScript(&injected, "", cfg.InjectGlobalScript)
@@ -220,25 +223,25 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				if cfg.InjectContentScript != "" {
 					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
-				frontend.AppendScriptSrcs(
+				frontend.AppendScripts(
 					&injected,
-					crossoriginAttr,
-					ChannelInjectAssetURL(assetBaseURL, "channels.events.js"),
-					ChannelInjectAssetURL(assetBaseURL, "channels.env.js"),
-					ChannelInjectAssetURL(assetBaseURL, "channels.utils.js"),
-					ChannelInjectAssetURL(assetBaseURL, "channels.ws.js"),
+					crossorigin_attr,
+					ChannelsUserScripts(asset_base_url, "channels.events.js"),
+					ChannelsUserScripts(asset_base_url, "channels.env.js"),
+					ChannelsUserScripts(asset_base_url, "channels.utils.js"),
+					ChannelsUserScripts(asset_base_url, "channels.ws.js"),
 				)
 				if pathname == "/web/pages/home" {
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.home.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.home.js"))
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.feed.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.feed.js"))
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.live.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.live.js"))
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.profile.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, ChannelsUserScripts(asset_base_url, "channels.profile.js"))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)
@@ -246,7 +249,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 			}
 		},
 	}
-	plugin2 := &proxy.Plugin{
+	plugin_2 := &proxy.Plugin{
 		Match: "res.wx.qq.com",
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
@@ -263,10 +266,10 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 				}
 				// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 				js_script := string(resp_body)
-				js_script = jsFromReg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
-				js_script = jsDepReg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
-				js_script = jsLazyImportReg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
-				js_script = jsImportReg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
+				js_script = js_from_reg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
+				js_script = js_dep_reg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
+				js_script = js_lazy_import_reg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
+				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
 					{
@@ -279,7 +282,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:Init", data);
 					return result;
 				}async`
-						js_script = jsInitReg.ReplaceAllString(js_script, js_init)
+						js_script = js_init_reg.ReplaceAllString(js_script, js_init)
 					}
 					{
 						js_pc_flow := `async finderPcFlow($1) {
@@ -291,7 +294,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:PCFlowLoaded", feeds);
 					return result;
 				}async`
-						js_script = jsPCFlowReg.ReplaceAllString(js_script, js_pc_flow)
+						js_script = js_pc_flow_reg.ReplaceAllString(js_script, js_pc_flow)
 					}
 					{
 						js_recommend_feeds := `async finderGetRecommend($1) {
@@ -303,7 +306,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:RecommendFeedsLoaded", feeds);
 					return result;
 				}async`
-						js_script = jsRecommendFeedsReg.ReplaceAllString(js_script, js_recommend_feeds)
+						js_script = js_recommend_feeds_reg.ReplaceAllString(js_script, js_recommend_feeds)
 					}
 					{
 						js_feed_profile := `async finderGetCommentDetail($1) {
@@ -315,7 +318,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:OnFeedProfileLoaded", feed);
 					return result;
 				}async`
-						js_script = jsFeedProfileReg.ReplaceAllString(js_script, js_feed_profile)
+						js_script = js_feed_profile_reg.ReplaceAllString(js_script, js_feed_profile)
 					}
 					{
 						js_comment_list := `async finderGetCommentList($1) {
@@ -326,7 +329,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:FeedCommentListLoaded", result.data);
 					return result;
 				}async`
-						js_script = jsCommentListReg.ReplaceAllString(js_script, js_comment_list)
+						js_script = js_comment_list_reg.ReplaceAllString(js_script, js_comment_list)
 					}
 					{
 						js_finder_pc_search := `async finderPCSearch($1) {
@@ -336,7 +339,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					// console.log("before finderPCSearch", result, $1);
 					return result;
 				}async`
-						js_script = jsFinderPCSearchReg.ReplaceAllString(js_script, js_finder_pc_search)
+						js_script = js_finder_pc_search_reg.ReplaceAllString(js_script, js_finder_pc_search)
 					}
 					{
 						js_finder_search := `async finderSearch($1) {
@@ -346,7 +349,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					// console.log("before finderSearch", result, $1);
 					return result;
 				}async`
-						js_script = jsFinderSearchReg.ReplaceAllString(js_script, js_finder_search)
+						js_script = js_finder_search_reg.ReplaceAllString(js_script, js_finder_search)
 					}
 
 					{
@@ -358,7 +361,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						console.log("finderGetFollowList result", result);
 						return result;
 					}async`
-						js_script = jsFinderGetFollowListReg.ReplaceAllString(js_script, js_finder_get_follow_list)
+						js_script = js_finder_get_follow_list_reg.ReplaceAllString(js_script, js_finder_get_follow_list)
 					}
 					{
 						js_finder_get_play_history := `async finderGetPlayHistory($1) {
@@ -369,7 +372,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						console.log("finderGetPlayHistory result", $1, result);
 						return result;
 					}async`
-						js_script = jsFinderGetPlayHistoryReg.ReplaceAllString(js_script, js_finder_get_play_history)
+						js_script = js_finder_get_play_history_reg.ReplaceAllString(js_script, js_finder_get_play_history)
 					}
 					{
 						js_finder_interactioned := `async finderGetInteractionedFeedList($1) {
@@ -381,7 +384,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						WXU.emit("channels:InteractionedFeedsLoaded", feeds);
 						return result;
 					}}const`
-						js_script = jsFinderGetInteractionedFeedListReg.ReplaceAllString(js_script, js_finder_interactioned)
+						js_script = js_finder_get_interactioned_feed_list_reg.ReplaceAllString(js_script, js_finder_interactioned)
 					}
 					{
 						js_finder_feed_h5_url := `async finderGetFeedH5Url($1) {
@@ -393,7 +396,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						WXU.emit("channels:GetFeedH5Url", data);
 						return result;
 					}}const`
-						js_script = jsFinderGetFeedH5Url.ReplaceAllString(js_script, js_finder_feed_h5_url)
+						js_script = js_finder_get_feed_h5_url.ReplaceAllString(js_script, js_finder_feed_h5_url)
 					}
 					{
 						js_user_feed := `async finderUserPage($1) {
@@ -405,7 +408,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:UserFeedsLoaded", feeds);
 					return result;
 				}async`
-						js_script = jsUserFeedsReg.ReplaceAllString(js_script, js_user_feed)
+						js_script = js_user_feeds_reg.ReplaceAllString(js_script, js_user_feed)
 					}
 					{
 						js_live_feed_list := `async finderLiveUserPage($1) {
@@ -417,7 +420,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						WXU.emit("channels:LiveUserFeedsLoaded", feeds);
 						return result;
 					}async`
-						js_script = jsLiveFeedListReg.ReplaceAllString(js_script, js_live_feed_list)
+						js_script = js_live_feed_list_reg.ReplaceAllString(js_script, js_live_feed_list)
 					}
 					{
 						js_live_profile := `async finderGetLiveInfo($1) {
@@ -429,7 +432,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:OnLiveProfileLoaded", live);
 					return result;
 				}async`
-						js_script = jsLiveInfoReg.ReplaceAllString(js_script, js_live_profile)
+						js_script = js_live_info_reg.ReplaceAllString(js_script, js_live_profile)
 					}
 					{
 						js_join_live := `async joinLive($1) {
@@ -441,12 +444,12 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 					WXU.emit("channels:JoinLive", data);
 					return result;
 				}async`
-						js_script = jsJoinLiveReg.ReplaceAllString(js_script, js_join_live)
+						js_script = js_join_live_reg.ReplaceAllString(js_script, js_join_live)
 					}
 					{
 
 						api_methods := "{}"
-						if m := jsExportBlockReg.FindStringSubmatch(js_script); len(m) >= 2 {
+						if m := js_export_block_reg.FindStringSubmatch(js_script); len(m) >= 2 {
 							items := strings.Split(m[1], ",")
 							locals := make([]string, 0, len(items))
 							for _, it := range items {
@@ -469,14 +472,14 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						}
 						api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
 						js_wxapi := `;WXU.emit("channels:APILoaded",` + api_methods_escaped + `);export{`
-						js_script = jsExportReg.ReplaceAllString(js_script, js_wxapi)
+						js_script = js_export_reg.ReplaceAllString(js_script, js_wxapi)
 					}
 					ctx.SetResponseBody(js_script)
 					return
 				}
 				if strings.Contains(pathname, "connect.publish") || strings.Contains(pathname, "applyMic.publish") {
 					flow_list_variable_name := "yt"
-					if m := jsFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
+					if m := js_flow_tab_reg.FindStringSubmatch(js_script); len(m) >= 2 {
 						flow_list_variable_name = m[1]
 					}
 					{
@@ -491,7 +494,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						// console.log("before GotoNextFeed", %[1]s, feed);
 						WXU.emit("channels:GotoNextFeed", feed);
 					}`, flow_list_variable_name)
-						js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, js_go_next_feed)
+						js_script = js_go_to_next_flow_reg.ReplaceAllString(js_script, js_go_next_feed)
 					}
 					{
 						js_go_prev_feed := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
@@ -504,15 +507,15 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						// console.log("before GotoPrevFeed", %[1]s, feed);
 						WXU.emit("channels:GotoPrevFeed", feed);
 					}`, flow_list_variable_name)
-						js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, js_go_prev_feed)
+						js_script = js_go_to_prev_flow_reg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
 					{
 						js_wxutil := `;console.log('before channels:UtilsLoaded', decodeBase64ToUint64String);WXU.emit("channels:UtilsLoaded",{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{`
-						js_script = jsExportReg.ReplaceAllString(js_script, js_wxutil)
+						js_script = js_export_reg.ReplaceAllString(js_script, js_wxutil)
 					}
 					{
 						local_feed_list_variable_name := "vn"
-						if m := jsLocalFlowTabReg.FindStringSubmatch(js_script); len(m) >= 2 {
+						if m := js_local_flow_tab_reg.FindStringSubmatch(js_script); len(m) >= 2 {
 							local_feed_list_variable_name = m[1]
 						}
 						js_load_local := fmt.Sprintf(`loadLocalPlaylist:async function(...args){
@@ -524,7 +527,7 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						WXU.emit("channels:HomeFeedChanged", feed);
 					}`, local_feed_list_variable_name)
-						js_script = jsLoadLocalPlaylistReg.ReplaceAllString(js_script, js_load_local)
+						js_script = js_load_local_playlist_reg.ReplaceAllString(js_script, js_load_local)
 					}
 					ctx.SetResponseBody(js_script)
 					return
@@ -533,77 +536,6 @@ func CreateInterceptorPlugins(cfg *InterceptorConfig, files *frontend.ChannelInj
 			}
 		},
 	}
-	plugins = append(plugins, plugin1, plugin2)
+	plugins = append(plugins, plugin_1, plugin_2)
 	return plugins
-}
-
-// CreateYuanbaoTencentPlugin intercepts requests and responses to yuanbao.tencent.com/api,
-// extracts Cookie from request headers and Set-Cookie from response headers, and passes them through the callback.
-// The cookieStr in the callback is the Cookie / Set-Cookie value.
-func CreateYuanbaoTencentPlugin(onCookieExtracted func(cookieStr string)) *proxy.Plugin {
-	isAPIPath := func(ctx proxy.Context) bool {
-		return ctx.Req().URL.Hostname() == "yuanbao.tencent.com" && strings.HasPrefix(ctx.Req().URL.Path, "/api")
-	}
-	return &proxy.Plugin{
-		Match: "yuanbao.tencent.com",
-		OnRequest: func(ctx proxy.Context) {
-			if !isAPIPath(ctx) {
-				return
-			}
-			cookie := ctx.Req().Header.Get("Cookie")
-			if cookie != "" && onCookieExtracted != nil {
-				onCookieExtracted(cookie)
-			}
-		},
-		OnResponse: func(ctx proxy.Context) {
-			if !isAPIPath(ctx) {
-				return
-			}
-			cookies := ctx.Res().Header.Values("Set-Cookie")
-			if len(cookies) > 0 {
-				cookieValue := strings.Join(cookies, "; ")
-				if onCookieExtracted != nil {
-					onCookieExtracted(cookieValue)
-				}
-			}
-		},
-	}
-}
-
-func CreateSimpleChannelInterceptorPlugin(cfg *InterceptorConfig, files *frontend.ChannelInjectedFiles) *proxy.Plugin {
-	version := cfg.Version
-	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.APIServerProtocol, cfg.APIServerHostname, cfg.APIServerPort)
-	v := "?t=" + version
-	return &proxy.Plugin{
-		Match: "qq.com",
-		OnRequest: func(ctx proxy.Context) {
-			if frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) || MockStaticAsset(ctx, ctx.Req().URL.Path) {
-				return
-			}
-		},
-		OnResponse: func(ctx proxy.Context) {
-			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Req().URL.Hostname()
-			pathname := ctx.Req().URL.Path
-			// fmt.Println("response", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
-			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
-				resp_body, err := ctx.GetResponseBody()
-				if err != nil {
-					return
-				}
-				html := string(resp_body)
-				html = scriptSrcReg.ReplaceAllString(html, `src="$1.js`+v+`"`)
-				html = scriptHrefReg.ReplaceAllString(html, `href="$1.js`+v+`"`)
-				var injected strings.Builder
-			crossoriginAttr := ` crossorigin="anonymous"`
-				if pathname == "/web/pages/feed" || pathname == "/web/pages/home" {
-					/** Core logic */
-					frontend.AppendScriptSrcs(&injected, crossoriginAttr, ChannelInjectAssetURL(assetBaseURL, "channels.home.js"))
-				}
-				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
-				ctx.SetResponseBody(html)
-				return
-			}
-		},
-	}
 }

@@ -7,12 +7,12 @@
   <title>Browse History</title>
   <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
   <script>
-    window.__wx_channels_config__ = __WX_DOWNLOAD_CONFIG_JSON__;
-    window.__wx_channels_version__ = "__WX_DOWNLOAD_VERSION__";
-    window.WXVariable = {};
+    window.__d_config = Object.assign({}, __WX_DOWNLOAD_CONFIG_JSON__, {
+      version: "__WX_DOWNLOAD_VERSION__",
+      assets_base_url: "/__assets",
+    });
   </script>
   <!-- <link rel="stylesheet" href="/__assets/public/timeless/0.30.0/timeless.weui.css" /> -->
-  <script src="/__assets/lib/mitt.umd.js"></script>
   <script src="/__assets/public/timeless/0.30.0/timeless.umd.min.js"></script>
   <script src="/__assets/public/timeless/0.30.0/timeless.utils.umd.min.js"></script>
   <script src="/__assets/public/timeless/0.30.0/timeless.weui.umd.min.js"></script>
@@ -25,6 +25,7 @@
   <script src="/__assets/inject/utils.js"></script>
   <script src="/__assets/inject/components.js"></script>
   <script src="/__assets/inject/file.js"></script>
+  <script src="/__assets/inject/virtual-list-view.js"></script>
   <script src="/__assets/inject/browsehistory/model.js"></script>
   <script src="/__assets/inject/browsehistory/index.js"></script>
 </head>

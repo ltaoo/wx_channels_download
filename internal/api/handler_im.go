@@ -81,7 +81,7 @@ func (h *FileHelperHandler) getLogger() *zerolog.Logger {
 // HandlePage serves the frontend page.
 // GET /filehelper
 func (h *FileHelperHandler) HandlePage(c *gin.Context) {
-	data, err := frontend.Assets.ReadRoot("filehelper.html")
+	data, err := frontend.Assets().ReadRoot("filehelper.html")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "filehelper page not found")
 		return

@@ -37,8 +37,8 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/ltaoo/echo v0.11.1
-	github.com/ltaoo/velo v0.0.0
+	github.com/ltaoo/echo v0.12.0
+	github.com/ltaoo/velo v1.0.0
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
 	github.com/rhysd/go-github-selfupdate v1.2.3
@@ -46,9 +46,9 @@ require (
 	github.com/samber/lo v1.39.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
-	github.com/stretchr/testify v1.11.1
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/zeebo/blake3 v0.2.4
+	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
 	golang.org/x/text v0.32.0
 	gorm.io/driver/mysql v1.6.0
@@ -78,11 +78,6 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/image v0.23.0
-)
-
-replace (
-	github.com/ltaoo/echo => ../echo
-	github.com/ltaoo/velo => ../velo
 )
 
 // Downgrade golang.org/x/* to versions compatible with Go 1.20
@@ -119,7 +114,6 @@ require (
 	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/containerd/console v1.0.5 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -164,7 +158,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/quic-go/quic-go v0.40.0 // indirect
 	github.com/refraction-networking/utls v1.5.4 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -196,7 +189,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect

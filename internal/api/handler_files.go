@@ -176,7 +176,7 @@ func (c *APIClient) handleStreamImage(ctx *gin.Context) {
 }
 
 func (c *APIClient) handlePreviewPage(ctx *gin.Context) {
-	data, err := frontend.Assets.ReadRoot("preview.html")
+	data, err := frontend.Assets().ReadRoot("preview.html")
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, "preview page not found")
 		return

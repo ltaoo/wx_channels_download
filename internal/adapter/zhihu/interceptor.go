@@ -1,6 +1,8 @@
 package zhihu
 
 import (
+	"github.com/spf13/viper"
+
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
@@ -33,7 +35,12 @@ func (c *InterceptorPluginConfig) GetPlugins(ctx adapter.AdapterContext) []inter
 	}
 
 	// Create zhihu interceptor plugin for injecting zhihu.main.js
-	plugin := scraper.CreateZhihuInterceptorPlugin(c.settings.Cookie, frontend.Assets, c.version)
+	asset_base_url := frontend.AssetsBaseURLFromConfig(
+		viper.GetString("api.protocol"),
+		viper.GetString("api.hostname"),
+		viper.GetInt("api.port"),
+	)
+	plugin := scraper.CreateZhihuInterceptorPlugin(c.settings.Cookie, asset_base_url, c.version)
 	if plugin == nil {
 		return nil
 	}

@@ -12,64 +12,28 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"wx_channel/internal/interceptor/proxy"
 )
 
-const defaultChannelInjectDir = "frontend"
+const default_assets_dir = "frontend"
 
-type ChannelInjectedFiles struct {
-	InjectDir               string
-	RootFS                  fs.FS
-	LibFS                   fs.FS
-	SrcFS                   fs.FS
-	InjectScriptFS          fs.FS
-	PublicFS                fs.FS
-	JSFileSaver             []byte
-	JSZip                   []byte
-	JSRecorder              []byte
-	JSPageSpy               []byte
-	JSBox                   []byte
-	JSMitt                  []byte
-	JSAxios                 []byte
-	JSDebug                 []byte
-	JSEventBus              []byte
-	JSEnv                   []byte
-	JSEnvChannels           []byte
-	JSEnvMock               []byte
-	JSTimeless              []byte
-	JSTimelessUtils         []byte
-	CSSTimelessShadcn       []byte
-	JSTimelessShadcn        []byte
-	JSTimelessDOM           []byte
-	JSTimelessWeb           []byte
-	CSSComponents           []byte
-	JSComponents            []byte
-	JSChannels              []byte
-	JSDownloadModel         []byte
-	JSDownloadView            []byte
-	JSDownloadPanel         []byte
-	JSDownloadIndex         []byte
-	JSDownloader            []byte
-	JSUtils                 []byte
-	JSChannelsUtils         []byte
-	JSError                 []byte
-	JSHomePage              []byte
-	JSFeedProfilePage       []byte
-	JSLiveProfilePage       []byte
-	JSContactPage           []byte
-	JSWechatOfficialAccount []byte
+type UserScripts struct {
+	root_fs          fs.FS
+	lib_fs           fs.FS
+	src_fs           fs.FS
+	inject_script_fs fs.FS
+	public_fs        fs.FS
 }
 
-var Assets = NewChannelInjectedFiles("")
+var assets = NewUserScripts("")
 
-const channelAssetsPath = "/__assets"
-const ChannelLibAssetCacheControl = "public, max-age=2592000, immutable"
-const ChannelPublicAssetCacheControl = "no-cache"
-const ChannelSrcAssetCacheControl = "no-cache"
-const channelLibAssetCacheControl = ChannelLibAssetCacheControl
-const channelPublicAssetCacheControl = ChannelPublicAssetCacheControl
-const channelSrcAssetCacheControl = ChannelSrcAssetCacheControl
+func Assets() *UserScripts {
+	return assets
+}
+
+const assets_path = "/__assets"
+const LibAssetCacheControl = "public, max-age=2592000, immutable"
+const PublicAssetCacheControl = "no-cache"
+const SrcAssetCacheControl = "no-cache"
 
 // const timelessBridgeScript = `
 // Object.assign(Timeless, Timeless.weui.kit);
@@ -77,7 +41,7 @@ const channelSrcAssetCacheControl = ChannelSrcAssetCacheControl
 // Object.assign(window, Timeless);
 // `
 
-func ChannelAssetsBaseURL(protocol string, hostname string, port int) string {
+func AssetsBaseURL(protocol string, hostname string, port int) string {
 	protocol = strings.TrimSpace(protocol)
 	protocol = strings.TrimSuffix(protocol, "://")
 	protocol = strings.TrimSuffix(protocol, ":")
@@ -88,12 +52,12 @@ func ChannelAssetsBaseURL(protocol string, hostname string, port int) string {
 	if hostname == "" {
 		hostname = "127.0.0.1"
 	}
-	host, embeddedPort, err := net.SplitHostPort(hostname)
+	host, embedded_port, err := net.SplitHostPort(hostname)
 	if err == nil {
-		host = normalizeChannelAssetHostname(host)
-		host = net.JoinHostPort(host, embeddedPort)
+		host = normalize_asset_hostname(host)
+		host = net.JoinHostPort(host, embedded_port)
 	} else {
-		host = normalizeChannelAssetHostname(hostname)
+		host = normalize_asset_hostname(hostname)
 		if port > 0 {
 			host = net.JoinHostPort(host, strconv.Itoa(port))
 		}
@@ -101,11 +65,11 @@ func ChannelAssetsBaseURL(protocol string, hostname string, port int) string {
 	return (&url.URL{
 		Scheme: protocol,
 		Host:   host,
-		Path:   channelAssetsPath,
+		Path:   assets_path,
 	}).String()
 }
 
-func normalizeChannelAssetHostname(hostname string) string {
+func normalize_asset_hostname(hostname string) string {
 	hostname = strings.TrimSpace(hostname)
 	if strings.HasPrefix(hostname, "[") && strings.HasSuffix(hostname, "]") {
 		hostname = strings.TrimPrefix(strings.TrimSuffix(hostname, "]"), "[")
@@ -119,70 +83,46 @@ func normalizeChannelAssetHostname(hostname string) string {
 }
 
 func AssetsBaseURLFromConfig(protocol string, hostname string, port int) string {
-	return ChannelAssetsBaseURL(protocol, hostname, port)
+	return AssetsBaseURL(protocol, hostname, port)
 }
 
-func ChannelAssetsSameOriginBaseURL() string {
-	return channelAssetsPath
-}
-
-func ChannelLibAssetURL(baseURL string, version string, rel string) string {
-	if version == "" {
-		version = "static"
+func NewURLBuild(base_url string, query url.Values) func(asset_path string, query ...url.Values) string {
+	base_url = strings.TrimRight(base_url, "/")
+	base_query := clone_url_values(query)
+	return func(asset_path string, query ...url.Values) string {
+		raw_url := base_url + "/" + strings.TrimLeft(asset_path, "/")
+		asset_url, err := url.Parse(raw_url)
+		if err != nil {
+			return raw_url
+		}
+		search := clone_url_values(base_query)
+		override_url_values(search, asset_url.Query())
+		for _, values := range query {
+			override_url_values(search, values)
+		}
+		asset_url.RawQuery = search.Encode()
+		return asset_url.String()
 	}
-	return strings.TrimRight(baseURL, "/") + "/lib/" + rel + "?v=" + url.QueryEscape(version)
 }
 
-func ChannelPublicAssetURL(baseURL string, version string, rel string) string {
-	if version == "" {
-		version = "static"
+func clone_url_values(source url.Values) url.Values {
+	cloned := make(url.Values, len(source))
+	for key, values := range source {
+		cloned[key] = append([]string(nil), values...)
 	}
-	return strings.TrimRight(baseURL, "/") + "/public/" + rel + "?v=" + url.QueryEscape(version)
+	return cloned
 }
 
-// ChannelSharedLibAssetVersion ties the injected asset URL to the actual
-// browser bundle contents. This keeps replacing a bundle under the same
-// directory (for example timeless/0.30.0) from reusing an older immutable URL.
-func ChannelSharedLibAssetVersion(files *ChannelInjectedFiles, version string) string {
-	if files == nil {
-		return version
+func override_url_values(target url.Values, source url.Values) {
+	for key, values := range source {
+		target.Del(key)
+		for _, value := range values {
+			target.Add(key, value)
+		}
 	}
-
-	hash := sha256.New()
-	assets := []struct {
-		name string
-		data []byte
-	}{
-		{name: "mitt", data: files.JSMitt},
-		{name: "timeless", data: files.JSTimeless},
-		{name: "timeless-utils", data: files.JSTimelessUtils},
-		{name: "timeless-weui-css", data: files.CSSTimelessShadcn},
-		{name: "timeless-weui", data: files.JSTimelessShadcn},
-		{name: "timeless-dom", data: files.JSTimelessDOM},
-		{name: "timeless-web", data: files.JSTimelessWeb},
-	}
-	for _, asset := range assets {
-		_, _ = hash.Write([]byte(asset.name))
-		_, _ = hash.Write([]byte{0})
-		_, _ = hash.Write(asset.data)
-		_, _ = hash.Write([]byte{0})
-	}
-	fingerprint := hex.EncodeToString(hash.Sum(nil))[:12]
-	if version == "" {
-		return fingerprint
-	}
-	return version + "-" + fingerprint
 }
 
-func ChannelSrcAssetURL(baseURL string, rel string) string {
-	return strings.TrimRight(baseURL, "/") + "/src/" + rel
-}
-
-func InjectAssetURL(baseURL string, rel string) string {
-	return strings.TrimRight(baseURL, "/") + "/inject/" + rel
-}
-
-func AppendScriptSrcs(b *strings.Builder, attr string, srcs ...string) {
+func AppendScripts(b *strings.Builder, attr string, srcs ...string) {
 	for _, src := range srcs {
 		if src == "" {
 			continue
@@ -191,7 +131,7 @@ func AppendScriptSrcs(b *strings.Builder, attr string, srcs ...string) {
 	}
 }
 
-func AppendStylesheetHrefs(b *strings.Builder, attr string, hrefs ...string) {
+func AppendStylesheets(b *strings.Builder, attr string, hrefs ...string) {
 	for _, href := range hrefs {
 		if href == "" {
 			continue
@@ -215,149 +155,27 @@ func AppendInlineStyle(b *strings.Builder, attr string, css string) {
 	b.WriteString(fmt.Sprintf(`<style%s>%s</style>`, attr, css))
 }
 
-func AppendSharedLibAssets(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string) {
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.utils.umd.min.js"),
-	)
-	AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.css"))
-	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.umd.min.js"))
-	// AppendInlineScript(b, scriptAttr, timelessBridgeScript)
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.dom.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.web.umd.min.js"),
-	)
-}
-
-func AppendSharedLibAssetsWithInlineShadcnCSS(b *strings.Builder, baseURL string, version string, scriptAttr string, styleAttr string, shadcnCSS []byte) {
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelLibAssetURL(baseURL, version, "mitt.umd.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.utils.umd.min.js"),
-	)
-	if len(shadcnCSS) > 0 {
-		shadcnCSS = ChannelStaticAssetResponseData("timeless.weui.css", shadcnCSS)
-		AppendInlineStyle(b, styleAttr, string(shadcnCSS))
-	} else {
-		AppendStylesheetHrefs(b, styleAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.css"))
-	}
-	AppendScriptSrcs(b, scriptAttr, ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.weui.umd.min.js"))
-	// AppendInlineScript(b, scriptAttr, timelessBridgeScript)
-	AppendScriptSrcs(
-		b,
-		scriptAttr,
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.dom.umd.min.js"),
-		ChannelPublicAssetURL(baseURL, version, "timeless/0.30.0/timeless.web.umd.min.js"),
-	)
-}
-
-func mockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelInjectedFiles) bool {
-	if files == nil {
-		return false
-	}
-	if rel, ok := channelStaticAssetRel(pathname, "lib"); ok {
-		data, err := files.ReadLib(rel)
-		if err != nil {
-			return false
-		}
-		data = ChannelStaticAssetResponseData(rel, data)
-		ctx.Mock(200, map[string]string{
-			"Content-Type":  channelStaticAssetContentType(rel),
-			"Cache-Control": channelLibAssetCacheControl,
-			"Access-Control-Allow-Origin": "*",
-		}, string(data))
-		return true
-	}
-	if rel, ok := channelStaticAssetRel(pathname, "public"); ok {
-		data, err := files.ReadPublic(rel)
-		if err != nil {
-			return false
-		}
-		data = ChannelStaticAssetResponseData(rel, data)
-		ctx.Mock(200, map[string]string{
-			"Content-Type":                channelStaticAssetContentType(rel),
-			"Cache-Control":               channelPublicAssetCacheControl,
-			"Access-Control-Allow-Origin": "*",
-		}, string(data))
-		return true
-	}
-	if rel, ok := channelStaticAssetRel(pathname, "src"); ok {
-		data, err := files.ReadSrc(rel)
-		if err != nil {
-			return false
-		}
-		etag := channelStaticAssetETag(data)
-		headers := map[string]string{
-			"Content-Type":                channelStaticAssetContentType(rel),
-			"Cache-Control":               channelSrcAssetCacheControl,
-			"Access-Control-Allow-Origin": "*",
-			"ETag":                        etag,
-		}
-		if req := ctx.Req(); req != nil && req.Header != nil {
-			if strings.Contains(req.Header.Get("If-None-Match"), etag) {
-				ctx.Mock(304, headers, "")
-				return true
-			}
-		}
-		ctx.Mock(200, headers, string(data))
-		return true
-	}
-	if rel, ok := channelStaticAssetRel(pathname, "inject"); ok {
-		data, err := files.ReadInject(rel)
-		if err != nil {
-			return false
-		}
-		etag := channelStaticAssetETag(data)
-		headers := map[string]string{
-			"Content-Type":                channelStaticAssetContentType(rel),
-			"Cache-Control":               channelSrcAssetCacheControl,
-			"Access-Control-Allow-Origin": "*",
-			"ETag":                        etag,
-		}
-		if req := ctx.Req(); req != nil && req.Header != nil {
-			if strings.Contains(req.Header.Get("If-None-Match"), etag) {
-				ctx.Mock(304, headers, "")
-				return true
-			}
-		}
-		ctx.Mock(200, headers, string(data))
-		return true
-	}
-	return false
-}
-
-func MockChannelStaticAsset(ctx proxy.Context, pathname string, files *ChannelInjectedFiles) bool {
-	return mockChannelStaticAsset(ctx, pathname, files)
-}
-
-func ChannelStaticAssetResponseData(rel string, data []byte) []byte {
+func StaticAssetResponseData(rel string, data []byte) []byte {
 	if strings.HasSuffix(rel, "timeless.shadcn.css") {
-		return []byte(stripTopLevelCascadeLayers(string(data)))
+		return []byte(strip_top_level_cascade_layers(string(data)))
 	}
 	return data
 }
 
-func stripTopLevelCascadeLayers(css string) string {
+func strip_top_level_cascade_layers(css string) string {
 	var b strings.Builder
 	for i := 0; i < len(css); {
-		if hasTopLevelLayerAt(css, i) {
-			end, contentStart, contentEnd, ok := topLevelLayerRule(css, i)
+		if has_top_level_layer_at(css, i) {
+			end, content_start, content_end, ok := top_level_layer_rule(css, i)
 			if ok {
-				if contentStart >= 0 {
-					b.WriteString(css[contentStart:contentEnd])
+				if content_start >= 0 {
+					b.WriteString(css[content_start:content_end])
 				}
 				i = end
 				continue
 			}
 		}
-		next := copyCSSUnit(&b, css, i)
+		next := copy_css_unit(&b, css, i)
 		if next <= i {
 			next = i + 1
 		}
@@ -366,7 +184,7 @@ func stripTopLevelCascadeLayers(css string) string {
 	return b.String()
 }
 
-func hasTopLevelLayerAt(css string, i int) bool {
+func has_top_level_layer_at(css string, i int) bool {
 	if !strings.HasPrefix(css[i:], "@layer") {
 		return false
 	}
@@ -374,25 +192,25 @@ func hasTopLevelLayerAt(css string, i int) bool {
 	if end >= len(css) {
 		return true
 	}
-	return !isCSSIdentChar(css[end])
+	return !is_css_ident_char(css[end])
 }
 
-func topLevelLayerRule(css string, start int) (end int, contentStart int, contentEnd int, ok bool) {
+func top_level_layer_rule(css string, start int) (end int, content_start int, content_end int, ok bool) {
 	i := start + len("@layer")
 	for i < len(css) {
 		switch css[i] {
 		case '\'', '"':
-			i = skipCSSString(css, i)
+			i = skip_css_string(css, i)
 		case '/':
 			if i+1 < len(css) && css[i+1] == '*' {
-				i = skipCSSComment(css, i)
+				i = skip_css_comment(css, i)
 			} else {
 				i++
 			}
 		case ';':
 			return i + 1, -1, -1, true
 		case '{':
-			close := findMatchingCSSBrace(css, i)
+			close := find_matching_css_brace(css, i)
 			if close < 0 {
 				return 0, 0, 0, false
 			}
@@ -404,15 +222,15 @@ func topLevelLayerRule(css string, start int) (end int, contentStart int, conten
 	return 0, 0, 0, false
 }
 
-func copyCSSUnit(b *strings.Builder, css string, i int) int {
+func copy_css_unit(b *strings.Builder, css string, i int) int {
 	switch css[i] {
 	case '\'', '"':
-		next := skipCSSString(css, i)
+		next := skip_css_string(css, i)
 		b.WriteString(css[i:next])
 		return next
 	case '/':
 		if i+1 < len(css) && css[i+1] == '*' {
-			next := skipCSSComment(css, i)
+			next := skip_css_comment(css, i)
 			b.WriteString(css[i:next])
 			return next
 		}
@@ -421,7 +239,7 @@ func copyCSSUnit(b *strings.Builder, css string, i int) int {
 	return i + 1
 }
 
-func skipCSSString(css string, start int) int {
+func skip_css_string(css string, start int) int {
 	quote := css[start]
 	i := start + 1
 	for i < len(css) {
@@ -437,23 +255,23 @@ func skipCSSString(css string, start int) int {
 	return len(css)
 }
 
-func skipCSSComment(css string, start int) int {
+func skip_css_comment(css string, start int) int {
 	if end := strings.Index(css[start+2:], "*/"); end >= 0 {
 		return start + 2 + end + 2
 	}
 	return len(css)
 }
 
-func findMatchingCSSBrace(css string, open int) int {
+func find_matching_css_brace(css string, open int) int {
 	depth := 0
 	for i := open; i < len(css); {
 		switch css[i] {
 		case '\'', '"':
-			i = skipCSSString(css, i)
+			i = skip_css_string(css, i)
 			continue
 		case '/':
 			if i+1 < len(css) && css[i+1] == '*' {
-				i = skipCSSComment(css, i)
+				i = skip_css_comment(css, i)
 				continue
 			}
 		case '{':
@@ -469,37 +287,11 @@ func findMatchingCSSBrace(css string, open int) int {
 	return -1
 }
 
-func isCSSIdentChar(c byte) bool {
+func is_css_ident_char(c byte) bool {
 	return c == '-' || c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-func channelStaticAssetRel(pathname string, dir string) (string, bool) {
-	marker := "/" + dir + "/"
-	idx := strings.LastIndex(pathname, marker)
-	if idx < 0 {
-		trimmed := strings.TrimPrefix(pathname, "/")
-		prefix := dir + "/"
-		if !strings.HasPrefix(trimmed, prefix) {
-			return "", false
-		}
-		rel := strings.TrimPrefix(trimmed, prefix)
-		if rel == "" || strings.Contains(rel, "..") {
-			return "", false
-		}
-		return rel, true
-	}
-	rel := pathname[idx+len(marker):]
-	if rel == "" || strings.Contains(rel, "..") {
-		return "", false
-	}
-	return rel, true
-}
-
-func channelStaticAssetContentType(rel string) string {
-	return ChannelStaticAssetContentType(rel)
-}
-
-func ChannelStaticAssetContentType(rel string) string {
+func StaticAssetContentType(rel string) string {
 	switch {
 	case strings.HasSuffix(rel, ".js"):
 		return "application/javascript; charset=utf-8"
@@ -514,127 +306,65 @@ func ChannelStaticAssetContentType(rel string) string {
 	}
 }
 
-func channelStaticAssetETag(data []byte) string {
-	return ChannelStaticAssetETag(data)
-}
-
-func ChannelStaticAssetETag(data []byte) string {
+func StaticAssetETag(data []byte) string {
 	hash := sha256.Sum256(data)
 	return `"` + hex.EncodeToString(hash[:]) + `"`
 }
 
-func NewChannelInjectedFiles(injectDir string) *ChannelInjectedFiles {
-	var files *ChannelInjectedFiles
-	if rootFS := embeddedRootFS(); rootFS != nil {
-		files = &ChannelInjectedFiles{
-			InjectDir:      "(embedded)",
-			RootFS:         rootFS,
-			LibFS:          embeddedLibFS(),
-			SrcFS:          embeddedSrcFS(),
-			InjectScriptFS: embeddedInjectFS(),
-			PublicFS:       embeddedPublicFS(),
-		}
-	} else {
-		if injectDir == "" {
-			injectDir = findChannelInjectDir()
-		}
-		if abs, err := filepath.Abs(injectDir); err == nil {
-			injectDir = abs
-		}
-		files = &ChannelInjectedFiles{
-			InjectDir:      injectDir,
-			RootFS:         os.DirFS(injectDir),
-			LibFS:          os.DirFS(filepath.Join(injectDir, "lib")),
-			SrcFS:          os.DirFS(filepath.Join(injectDir, "src")),
-			InjectScriptFS: os.DirFS(filepath.Join(injectDir, "inject")),
-			PublicFS:       os.DirFS(filepath.Join(injectDir, "public")),
+func NewUserScripts(inject_dir string) *UserScripts {
+	if root_fs := embeddedRootFS(); root_fs != nil {
+		return &UserScripts{
+			root_fs:          root_fs,
+			lib_fs:           embeddedLibFS(),
+			src_fs:           embeddedSrcFS(),
+			inject_script_fs: embeddedInjectFS(),
+			public_fs:        embeddedPublicFS(),
 		}
 	}
-	files.JSFileSaver = files.readLib("FileSaver.min.js")
-	files.JSZip = files.readLib("jszip.min.js")
-	files.JSRecorder = files.readLib("recorder.min.js")
-	files.JSPageSpy = files.readLib("pagespy.min.js")
-	files.JSMitt = files.readLib("mitt.umd.js")
-	files.JSAxios = files.readLib("axios.min.js")
-	files.JSTimeless = files.readPublic("timeless/0.30.0/timeless.umd.min.js")
-	files.JSTimelessUtils = files.readPublic("timeless/0.30.0/timeless.utils.umd.min.js")
-	files.CSSTimelessShadcn = files.readPublic("timeless/0.30.0/timeless.weui.css")
-	files.JSTimelessShadcn = files.readPublic("timeless/0.30.0/timeless.weui.umd.min.js")
-	files.JSTimelessDOM = files.readPublic("timeless/0.30.0/timeless.dom.umd.min.js")
-	files.JSTimelessWeb = files.readPublic("timeless/0.30.0/timeless.web.umd.min.js")
-	files.CSSComponents = files.readInject("components.css")
-	files.JSDebug = files.readInject("pagespy.js")
-	files.JSError = files.readInject("error.js")
-	files.JSEventBus = files.readInject("eventbus.js")
-	files.JSEnv = files.readInject("env.js")
-	files.JSEnvChannels = files.readInject("channels.env.js")
-	files.JSEnvMock = files.readInject("env.mock.js")
-	files.JSComponents = files.readInject("components.js")
-	files.JSUtils = files.readInject("utils.js")
-	files.JSChannelsUtils = files.readInject("channels.utils.js")
-	files.JSChannels = files.readInject("channels.ws.js")
-	files.JSDownloadModel = files.readInject("download/model.js")
-	files.JSDownloadView = files.readInject("download/view.js")
-	files.JSDownloadPanel = files.readInject("download/panel.js")
-	files.JSDownloadIndex = files.readInject("download/index.js")
-	files.JSDownloader = files.JSDownloadPanel
-	files.JSWechatOfficialAccount = files.readInject("mp.ws.js")
-	files.JSHomePage = files.readInject("channels.home.js")
-	files.JSFeedProfilePage = files.readInject("channels.feed.js")
-	files.JSLiveProfilePage = files.readInject("channels.live.js")
-	files.JSContactPage = files.readInject("channels.profile.js")
-	return files
+	if inject_dir == "" {
+		inject_dir = find_assets_dir()
+	}
+	if abs, err := filepath.Abs(inject_dir); err == nil {
+		inject_dir = abs
+	}
+	return &UserScripts{
+		root_fs:          os.DirFS(inject_dir),
+		lib_fs:           os.DirFS(filepath.Join(inject_dir, "lib")),
+		src_fs:           os.DirFS(filepath.Join(inject_dir, "src")),
+		inject_script_fs: os.DirFS(filepath.Join(inject_dir, "inject")),
+		public_fs:        os.DirFS(filepath.Join(inject_dir, "public")),
+	}
 }
 
-func (files *ChannelInjectedFiles) ReadLib(rel string) ([]byte, error) {
-	return readChannelAsset(files.LibFS, rel)
+func (files *UserScripts) ReadLib(rel string) ([]byte, error) {
+	return read_asset(files.lib_fs, rel)
 }
 
-func (files *ChannelInjectedFiles) ReadSrc(rel string) ([]byte, error) {
-	return readChannelAsset(files.SrcFS, rel)
+func (files *UserScripts) ReadSrc(rel string) ([]byte, error) {
+	return read_asset(files.src_fs, rel)
 }
 
-func (files *ChannelInjectedFiles) ReadInject(rel string) ([]byte, error) {
-	return readChannelAsset(files.InjectScriptFS, rel)
+func (files *UserScripts) ReadInject(rel string) ([]byte, error) {
+	return read_asset(files.inject_script_fs, rel)
 }
 
-func (files *ChannelInjectedFiles) ReadRoot(rel string) ([]byte, error) {
-	return readChannelAsset(files.RootFS, rel)
+func (files *UserScripts) ReadRoot(rel string) ([]byte, error) {
+	return read_asset(files.root_fs, rel)
 }
 
-func (files *ChannelInjectedFiles) ReadPublic(rel string) ([]byte, error) {
-	return readChannelAsset(files.PublicFS, rel)
+func (files *UserScripts) ReadPublic(rel string) ([]byte, error) {
+	return read_asset(files.public_fs, rel)
 }
 
-func (files *ChannelInjectedFiles) readLib(rel string) []byte {
-	data, _ := files.ReadLib(rel)
-	return data
-}
-
-func (files *ChannelInjectedFiles) readSrc(rel string) []byte {
-	data, _ := files.ReadSrc(rel)
-	return data
-}
-
-func (files *ChannelInjectedFiles) readInject(rel string) []byte {
-	data, _ := files.ReadInject(rel)
-	return data
-}
-
-func (files *ChannelInjectedFiles) readPublic(rel string) []byte {
-	data, _ := files.ReadPublic(rel)
-	return data
-}
-
-func readChannelAsset(assetFS fs.FS, rel string) ([]byte, error) {
-	clean, ok := cleanChannelAssetRel(rel)
+func read_asset(asset_fs fs.FS, rel string) ([]byte, error) {
+	clean, ok := clean_asset_rel(rel)
 	if !ok {
 		return nil, fs.ErrInvalid
 	}
-	return fs.ReadFile(assetFS, clean)
+	return fs.ReadFile(asset_fs, clean)
 }
 
-func cleanChannelAssetRel(rel string) (string, bool) {
+func clean_asset_rel(rel string) (string, bool) {
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || strings.Contains(rel, "..") || strings.ContainsRune(rel, 0) {
 		return "", false
@@ -646,13 +376,13 @@ func cleanChannelAssetRel(rel string) (string, bool) {
 	return clean, true
 }
 
-func findChannelInjectDir() string {
-	candidates := []string{defaultChannelInjectDir}
+func find_assets_dir() string {
+	candidates := []string{default_assets_dir}
 	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
+		exe_dir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(exeDir, "inject"),
-			filepath.Join(exeDir, defaultChannelInjectDir),
+			filepath.Join(exe_dir, "inject"),
+			filepath.Join(exe_dir, default_assets_dir),
 		)
 	}
 	for _, candidate := range candidates {
@@ -660,5 +390,5 @@ func findChannelInjectDir() string {
 			return candidate
 		}
 	}
-	return defaultChannelInjectDir
+	return default_assets_dir
 }

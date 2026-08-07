@@ -2,6 +2,7 @@ package zhihu
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"wx_channel/frontend"
@@ -9,20 +10,17 @@ import (
 )
 
 // CreateZhihuInterceptorPlugin creates a proxy plugin that injects the
-// zhihu.main.js script into www.zhihu.com pages and serves platform-owned
-// static assets for same-origin requests intercepted by the local proxy.
-func CreateZhihuInterceptorPlugin(cookie string, files *frontend.ChannelInjectedFiles, version string) *proxy.Plugin {
-	assetBaseURL := frontend.ChannelAssetsSameOriginBaseURL()
+// zhihu.main.js script into www.zhihu.com pages.
+func CreateZhihuInterceptorPlugin(cookie string, assetBaseURL string, version string) *proxy.Plugin {
+	urlBuild := frontend.NewURLBuild(assetBaseURL, nil)
+	assetVersion := version
+	if assetVersion == "" {
+		assetVersion = "static"
+	}
+	versionQuery := url.Values{"v": []string{assetVersion}}
 
 	return &proxy.Plugin{
 		Match: "zhihu.com",
-		OnRequest: func(ctx proxy.Context) {
-			if ctx.Req().URL.Hostname() == "www.zhihu.com" {
-				if frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) || MockStaticAsset(ctx, ctx.Req().URL.Path) {
-					return
-				}
-			}
-		},
 		OnResponse: func(ctx proxy.Context) {
 			respContentType := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
@@ -38,27 +36,32 @@ func CreateZhihuInterceptorPlugin(cookie string, files *frontend.ChannelInjected
 			html := string(respBody)
 
 			var earlyInjected strings.Builder
-			frontend.AppendScriptSrcs(
+			frontend.AppendScripts(
 				&earlyInjected,
 				"",
-				frontend.InjectAssetURL(assetBaseURL, "fetch.js"),
+				urlBuild("/inject/fetch.js"),
 			)
-			frontend.AppendSharedLibAssets(&earlyInjected, assetBaseURL, version, "", "")
+			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.umd.min.js", versionQuery))
+			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.utils.umd.min.js", versionQuery))
+			frontend.AppendStylesheets(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.weui.css", versionQuery))
+			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.weui.umd.min.js", versionQuery))
+			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.dom.umd.min.js", versionQuery))
+			frontend.AppendScripts(&earlyInjected, "", urlBuild("/public/timeless/0.30.0/timeless.web.umd.min.js", versionQuery))
 			html = strings.Replace(html, "<head>", "<head>"+earlyInjected.String(), 1)
 
 			var injected strings.Builder
 			frontend.AppendInlineScript(
 				&injected,
 				"",
-				fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL),
+				fmt.Sprintf(`window.__d_config = { version: %q, assets_base_url: %q };`, version, assetBaseURL),
 			)
-			frontend.AppendScriptSrcs(
+			frontend.AppendScripts(
 				&injected,
 				"",
-				frontend.InjectAssetURL(assetBaseURL, "eventbus.js"),
-				frontend.InjectAssetURL(assetBaseURL, "env.js"),
-				frontend.InjectAssetURL(assetBaseURL, "utils.js"),
-				frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
+				urlBuild("/inject/eventbus.js"),
+				urlBuild("/inject/env.js"),
+				urlBuild("/inject/utils.js"),
+				urlBuild("/inject/download/model.js"),
 				InjectAssetURL(assetBaseURL, "zhihu.main.js"),
 			)
 

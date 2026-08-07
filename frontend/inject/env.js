@@ -1,14 +1,8 @@
 /**
  * @file Injected runtime environment, service addresses, and global config entry.
  */
-if (typeof window.__wx_channels_config__ === "undefined") {
-  window.__wx_channels_config__ = {};
-}
-if (typeof window.WXVariable === "undefined") {
-  window.WXVariable = {};
-}
-if (typeof window.__wx_channels_env__ === "undefined") {
-  window.__wx_channels_env__ = {};
+if (typeof window.__d_config === "undefined") {
+  window.__d_config = {};
 }
 
 var WXEnv = (() => {
@@ -20,14 +14,11 @@ var WXEnv = (() => {
     assetsFallbackBase: "http://127.0.0.1:2022/__assets",
     MaxRunning: 3,
   };
-  const runtimeEnv = window.__wx_channels_env__;
+  const runtimeEnv = window.__d_config;
   const ua = navigator.userAgent || navigator.platform || "";
 
   function config() {
-    return {
-      ...(window.__wx_channels_config__ || {}),
-      ...(window.WXVariable || {}),
-    };
+    return window.__d_config || {};
   }
 
   function ownValue(source, name) {
@@ -130,8 +121,8 @@ var WXEnv = (() => {
   }
 
   function assetsBaseURL() {
-    const cfg = window.__wx_channels_config__ || {};
-    const explicitBase = explicitEnvValue("assetsBaseURL");
+    const cfg = config();
+    const explicitBase = ownValue(cfg, "assets_base_url");
     if (explicitBase) {
       return String(explicitBase).replace(/\/$/, "");
     }
@@ -150,9 +141,7 @@ var WXEnv = (() => {
   function assetUrl(path) {
     const base = assetsBaseURL();
     if (path.startsWith("/lib/")) {
-      const version = encodeURIComponent(
-        window.__wx_channels_version__ || "static",
-      );
+      const version = encodeURIComponent(config().version || "static");
       return `${base}${path}?v=${version}`;
     }
     return `${base}${path}`;

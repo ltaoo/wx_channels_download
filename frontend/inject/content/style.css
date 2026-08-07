@@ -59,6 +59,24 @@ select {
   flex-direction: column;
 }
 
+.wx-content-page.wx-browse-history-page {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wx-browse-history-page > .wx-content-header,
+.wx-browse-history-page > .wx-content-toolbar-wrap,
+.wx-browse-history-page > .wx-content-pagination {
+  flex: 0 0 auto;
+}
+
+.wx-browse-history-page > .wx-content-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .wx-content-header {
   position: sticky;
   top: 0;
@@ -247,6 +265,38 @@ select {
   overflow: hidden;
 }
 
+.wx-content-history-rows {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-content-history-list {
+  min-height: 0;
+  flex: 1;
+  position: relative;
+  background: var(--wx-content-border);
+}
+
+.wx-content-history-list [data-list-view-root] {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wx-content-history-list [data-list-view-content],
+.wx-content-history-list [data-list-view-viewport],
+.wx-content-history-list [data-list-view-item] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wx-content-history-list [data-list-view-item] {
+  background: var(--wx-content-panel);
+}
+
 .wx-content-row {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr) 140px 140px 90px;
@@ -396,6 +446,20 @@ select {
   border-radius: 50%;
   object-fit: cover;
   background: var(--wx-content-panel-soft);
+}
+
+.wx-content-row-author-account {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wx-content-row-author-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* meta column */
@@ -820,6 +884,32 @@ select {
   font-size: 13px;
 }
 
+.wx-content-load-more {
+  min-height: 54px;
+  padding-top: 10px;
+  padding-bottom: 12px;
+}
+
+.wx-content-load-more-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wx-content-load-more-status .weui-loading {
+  flex: 0 0 auto;
+}
+
+.wx-content-load-more-error {
+  max-width: min(420px, 50vw);
+  overflow: hidden;
+  color: var(--wx-content-danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wx-content-pagination-controls {
   display: flex;
   align-items: center;
@@ -981,5 +1071,10 @@ select {
   .wx-content-pagination-controls {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .wx-content-load-more-status {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

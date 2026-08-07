@@ -33,7 +33,11 @@ var BrowseHistoryModel = (() => {
     return Number.isFinite(number) ? number : fallback;
   }
 
-  function normalize_browse_history_list_response(data, fallbackPage, fallbackSize) {
+  function normalize_browse_history_list_response(
+    data,
+    fallbackPage,
+    fallbackSize,
+  ) {
     const source = data && typeof data === "object" ? data : {};
     const list = Array.isArray(source.list)
       ? source.list
@@ -78,7 +82,9 @@ var BrowseHistoryModel = (() => {
       ? source.accounts.map(normalize_account_brief)
       : [];
     const primary =
-      accounts.length > 0 ? accounts[0] : { nickname: "", avatar_url: "", external_id: "" };
+      accounts.length > 0
+        ? accounts[0]
+        : { nickname: "", avatar_url: "", external_id: "" };
     return {
       ...source,
       id: first_non_empty(source.id, source.ID),
@@ -147,14 +153,25 @@ var BrowseHistoryModel = (() => {
     }
     return {
       nickname: first_non_empty(acc.nickname, acc.Nickname, ""),
-      avatar_url: first_non_empty(acc.avatar_url, acc.avatarUrl, acc.AvatarURL, ""),
-      external_id: first_non_empty(acc.external_id, acc.externalId, acc.ExternalId, ""),
+      avatar_url: first_non_empty(
+        acc.avatar_url,
+        acc.avatarUrl,
+        acc.AvatarURL,
+        "",
+      ),
+      external_id: first_non_empty(
+        acc.external_id,
+        acc.externalId,
+        acc.ExternalId,
+        "",
+      ),
     };
   }
 
   function browse_history_platform_favicon(history) {
     const icons = {
-      wxchannels: "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
+      wxchannels:
+        "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
       wxmp: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
       officialaccount: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
       zhihu: "https://static.zhihu.com/heifetz/favicon.ico",
@@ -186,7 +203,9 @@ var BrowseHistoryModel = (() => {
   }
 
   function browse_history_type_label(value) {
-    const type = String(value || "").trim().toLowerCase();
+    const type = String(value || "")
+      .trim()
+      .toLowerCase();
     const labels = {
       video: "视频",
       short_video: "短视频",
@@ -237,6 +256,32 @@ var BrowseHistoryModel = (() => {
     return name;
   }
 
+  function browse_history_item_key(history) {
+    return String(
+      first_non_empty(
+        history && history.id,
+        history && history.url,
+        history && history.source_url,
+      ),
+    );
+  }
+
+  function append_unique_browse_histories(current, incoming) {
+    const next = Array.isArray(current) ? current.slice() : [];
+    const keys = new Set(next.map(browse_history_item_key).filter(Boolean));
+    for (const history of incoming || []) {
+      const key = browse_history_item_key(history);
+      if (key && keys.has(key)) {
+        continue;
+      }
+      next.push(history);
+      if (key) {
+        keys.add(key);
+      }
+    }
+    return next;
+  }
+
   function create_model() {
     const PAGE_SIZE_DEFAULT = 24;
     const histories_ = refarr([]);
@@ -245,7 +290,9 @@ var BrowseHistoryModel = (() => {
     const page_size_ = ref(PAGE_SIZE_DEFAULT);
     const platform_id_ = ref("");
     const loading_ = ref(false);
+    const loading_more_ = ref(false);
     const error_ = ref("");
+    const load_more_error_ = ref("");
     let request_sequence = 0;
 
     const platform_options = [
@@ -266,12 +313,13 @@ var BrowseHistoryModel = (() => {
       options: platform_options,
       onChange(value) {
         platform_id_.as(String(value || ""));
-        load(1);
+        load(1, { reset: true });
       },
     });
 
     const list_request = new Timeless.RequestCore(
-      (params) => browse_history_request.post("/api/browse_history/list", params),
+      (params) =>
+        browse_history_request.post("/api/browse_history/list", params),
       {
         client: browse_history_http_client,
         process(response) {
@@ -289,33 +337,57 @@ var BrowseHistoryModel = (() => {
       },
     );
 
-    const page_count_ = computed(
-      { total: total_, pageSize: page_size_ },
-      (state) =>
-        Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
+    const initial_loading_ = combine(
+      { loading: loading_, histories: histories_ },
+      (state) => state.loading && state.histories.length === 0,
     );
-    const range_text_ = computed(
+    const has_more_ = combine(
       {
+        histories: histories_,
         total: total_,
         page: page_,
         pageSize: page_size_,
-        count: computed(histories_, (items) => items.length),
+      },
+      (state) =>
+        state.histories.length < state.total &&
+        state.page * state.pageSize < state.total,
+    );
+    const loaded_text_ = combine(
+      {
+        total: total_,
+        histories: histories_,
       },
       (state) => {
-        if (!state.total || !state.count) {
+        const count = state.histories.length;
+        if (!state.total) {
           return `共 ${state.total || 0} 条`;
         }
-        const start = (state.page - 1) * state.pageSize + 1;
-        const end = start + state.count - 1;
-        return `第 ${start}-${end} 条，共 ${state.total} 条`;
+        return count >= state.total
+          ? `已加载全部 ${state.total} 条`
+          : `已加载 ${count} / ${state.total} 条`;
       },
     );
 
-    async function load(targetPage = page_.value) {
+    async function load(targetPage = page_.value, options = {}) {
+      const append = options.append === true;
+      if (append && (loading_.value || !has_more_.value)) {
+        return null;
+      }
       const sequence = ++request_sequence;
       const requestedPage = Math.max(1, Number(targetPage) || 1);
       loading_.as(true);
-      error_.as("");
+      loading_more_.as(append);
+      if (append) {
+        load_more_error_.as("");
+      } else {
+        error_.as("");
+        load_more_error_.as("");
+      }
+      if (options.reset === true) {
+        histories_.as([], { reset: true });
+        total_.as(0);
+        page_.as(1);
+      }
       const params = {
         page: requestedPage,
         page_size: page_size_.value,
@@ -330,42 +402,41 @@ var BrowseHistoryModel = (() => {
         return result;
       }
       loading_.as(false);
+      loading_more_.as(false);
       if (result.error) {
-        error_.as(result.error.message || String(result.error));
+        const message = result.error.message || String(result.error);
+        if (append) {
+          load_more_error_.as(message);
+        } else {
+          error_.as(message);
+        }
         return result;
       }
 
       const data = result.data;
-      histories_.as(data.list.map(normalize_browse_history_item), { reset: true });
-      total_.as(data.total);
-      page_.as(data.page);
+      const incoming = data.list.map(normalize_browse_history_item);
+      const next = append
+        ? append_unique_browse_histories(histories_.value, incoming)
+        : incoming;
+      histories_.as(next, { reset: true });
+      total_.as(Math.max(data.total, next.length));
+      page_.as(data.page || requestedPage);
       page_size_.as(data.page_size);
       return result;
     }
 
     const methods = {
       ready() {
-        return load(1);
+        return load(1, { reset: true });
       },
       refresh() {
-        return load(page_.value);
+        return load(1, { reset: true });
       },
-      setPageSize(value) {
-        const size = Number(value);
-        page_size_.as([12, 24, 48, 96].includes(size) ? size : PAGE_SIZE_DEFAULT);
-        return load(1);
-      },
-      previousPage() {
-        if (page_.value <= 1 || loading_.value) {
+      loadMore() {
+        if (loading_.value || !has_more_.value) {
           return null;
         }
-        return load(page_.value - 1);
-      },
-      nextPage() {
-        if (page_.value >= page_count_.value || loading_.value) {
-          return null;
-        }
-        return load(page_.value + 1);
+        return load(page_.value + 1, { append: true });
       },
       openSource(history) {
         if (!history || !history.url) {
@@ -386,11 +457,14 @@ var BrowseHistoryModel = (() => {
         total: total_,
         page: page_,
         page_size: page_size_,
-        page_count: page_count_,
-        range_text: range_text_,
+        initial_loading: initial_loading_,
+        has_more: has_more_,
+        loaded_text: loaded_text_,
         platform_id: platform_id_,
         loading: loading_,
+        loading_more: loading_more_,
         error: error_,
+        load_more_error: load_more_error_,
       },
       ui: {
         platform: platform_select_,

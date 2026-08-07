@@ -650,15 +650,20 @@
       if (!source || typeof source.subscribe !== "function") {
         return;
       }
+      const handleItemsUpdate = () => {
+        if (asArray(source).length !== items.length) {
+          reachedBottom = false;
+        }
+        markOffsetsDirty();
+        scheduleRender(false);
+      };
       cleanups.push(
         source.subscribe({
           onPatch() {
-            markOffsetsDirty();
-            scheduleRender(false);
+            handleItemsUpdate();
           },
           onChange() {
-            markOffsetsDirty();
-            scheduleRender(false);
+            handleItemsUpdate();
           },
         }),
       );

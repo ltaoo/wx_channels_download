@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,11 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gorm.io/gorm"
 
-	"wx_channel/internal/database/model"
+	"wx_channel/internal/config"
 	"wx_channel/pkg/cache"
-	"wx_channel/pkg/util"
 )
 
 var channels_ws_upgrader = websocket.Upgrader{
@@ -28,33 +27,66 @@ var channels_ws_upgrader = websocket.Upgrader{
 	},
 }
 
-type ChannelsClient struct {
-	ws_clients      map[*Client]bool
-	ws_mu           sync.RWMutex
-	engine          *gin.Engine
-	requests        map[string]chan ClientWebsocketResponse
-	requests_mu     sync.RWMutex
-	cache           *cache.Cache
-	req_seq         uint64
-	refreshInterval int
-	db              *gorm.DB
-	OnConnected     func(client *Client)
-	OnDisconnected  func(client *Client)
-	OnMessage       func(client *Client, message []byte)
+var (
+	channels_share_url_reg = regexp.MustCompile(`^https://weixin\.qq\.com/sph/[A-Za-z0-9_-]+/?$`)
+	channels_feed_url_reg  = regexp.MustCompile(`^https://channels\.weixin\.qq\.com/web/pages/feed\?oid=[A-Za-z0-9_-]+&nid=[A-Za-z0-9_-]+$`)
+)
+
+type FetchParams struct {
+	URL string `json:"url"`
 }
 
-func NewChannelsClient(refreshInterval int) *ChannelsClient {
+type ChannelsClient struct {
+	ws_clients       map[*Client]bool
+	ws_mu            sync.RWMutex
+	engine           *gin.Engine
+	requests         map[string]chan ClientWebsocketResponse
+	requests_mu      sync.RWMutex
+	cache            *cache.Cache
+	req_seq          uint64
+	refresh_interval int
+	cfg              *config.Config
+	OnConnected      func(client *Client)
+	OnDisconnected   func(client *Client)
+	OnMessage        func(client *Client, message []byte)
+}
+
+func NewChannelsClient(refresh_interval int, cfg *config.Config) *ChannelsClient {
 	return &ChannelsClient{
-		ws_clients:      make(map[*Client]bool),
-		requests:        make(map[string]chan ClientWebsocketResponse),
-		cache:           cache.New(),
-		req_seq:         uint64(time.Now().UnixNano()),
-		refreshInterval: refreshInterval,
+		ws_clients:       make(map[*Client]bool),
+		requests:         make(map[string]chan ClientWebsocketResponse),
+		cache:            cache.New(),
+		req_seq:          uint64(time.Now().UnixNano()),
+		refresh_interval: refresh_interval,
+		cfg:              cfg,
 	}
 }
 
-func (c *ChannelsClient) SetDB(db *gorm.DB) {
-	c.db = db
+func (c *ChannelsClient) Fetch(params FetchParams) (any, error) {
+	raw_url := strings.TrimSpace(params.URL)
+	switch {
+	case channels_share_url_reg.MatchString(raw_url):
+		return c.fetch_profile_with_share_url(raw_url)
+	case channels_feed_url_reg.MatchString(raw_url):
+		return c.fetch_profile_with_channels_client(raw_url)
+	default:
+		return nil, ErrUnsupportedURL
+	}
+}
+
+func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, error) {
+	if c.cfg == nil {
+		return nil, errors.New("config is not initialized")
+	}
+	cookie := strings.TrimSpace(c.cfg.GetString("cloudflare.sphCookie"))
+	if cookie == "" {
+		return nil, errors.New("cloudflare.sphCookie not configured")
+	}
+	return FetchVideoProfileWithShareUrl(raw_url, cookie)
+}
+
+func (c *ChannelsClient) fetch_profile_with_channels_client(raw_url string) (any, error) {
+	return nil, nil
 }
 
 func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
@@ -67,17 +99,17 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
-	go client.writePump()
+	go client.write_pump()
 
 	if c.OnConnected != nil {
 		c.OnConnected(client)
 	}
 
 	// Periodic refresh logic
-	refreshInterval := c.refreshInterval
-	if c.refreshInterval > 0 {
+	refresh_interval := c.refresh_interval
+	if c.refresh_interval > 0 {
 		go func() {
-			ticker := time.NewTicker(time.Duration(refreshInterval) * time.Second)
+			ticker := time.NewTicker(time.Duration(refresh_interval) * time.Second)
 			defer ticker.Stop()
 			for {
 				select {
@@ -152,7 +184,7 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
 }
 func (wc *ChannelsClient) Validate() error {
 	if !wc.Available() {
-		return errors.New("请先初始化客户端 socket 连接")
+		return errors.New("please initialize the client socket connection first")
 	}
 	return nil
 }
@@ -193,7 +225,7 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	}
 	if client == nil {
 		c.ws_mu.Unlock()
-		return nil, errors.New("没有可用的客户端")
+		return nil, errors.New("no client is available")
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -205,21 +237,21 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 	case client.Send <- data:
 	default:
 		c.ws_mu.Unlock()
-		return nil, errors.New("发送缓冲区已满")
+		return nil, errors.New("send buffer is full")
 	}
 	c.ws_mu.Unlock()
 	select {
 	case resp := <-resp_chan:
 		return &resp, nil
 	case <-time.After(timeout):
-		return nil, errors.New("请求超时")
+		return nil, errors.New("request timed out")
 	}
 }
 
 // Search for users by keyword
 func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*ChannelsContactSearchResp, error) {
 	if keyword == "" {
-		return nil, errors.New("keyword 不能为空")
+		return nil, errors.New("keyword cannot be empty")
 	}
 	clean_keyword := strings.TrimSpace(keyword)
 	cache_key := "channels:contact_list:" + clean_keyword + ":" + next_marker
@@ -368,12 +400,12 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*C
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchFeedPage(rawURL string) (*FeedPage, error) {
-	parts, err := ParseFeedURL(rawURL)
+func (c *ChannelsClient) FetchFeedPage(raw_url string) (*FeedPage, error) {
+	parts, err := ParseFeedURL(raw_url)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.FetchChannelsFeedProfile(parts.Oid, parts.Nid, rawURL, parts.Eid)
+	resp, err := c.FetchChannelsFeedProfile(parts.Oid, parts.Nid, raw_url, parts.Eid)
 	if err != nil {
 		return nil, err
 	}
@@ -470,91 +502,4 @@ func (c *ChannelsClient) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedSha
 func (c *ChannelsClient) ReloadChannels() error {
 	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
 	return err
-}
-
-// UpsertChannelsFeed upserts content and account records into the database and links them.
-func (c *ChannelsClient) UpsertChannelsFeed(content *model.Content, account *model.Account) (*model.Content, error) {
-	if c.db == nil {
-		return nil, errors.New("db is nil")
-	}
-	if content == nil {
-		return nil, errors.New("content is nil")
-	}
-	if account == nil {
-		return nil, errors.New("account is nil")
-	}
-	if strings.TrimSpace(content.ExternalId) == "" {
-		return nil, errors.New("missing external_id")
-	}
-
-	platformID := "wxchannels"
-	now := util.NowMillis()
-
-	existingAccount := &model.Account{}
-	if account.ExternalId != "" {
-		if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, account.ExternalId).First(existingAccount).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				account.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
-				if err := c.db.Create(account).Error; err != nil {
-					return nil, err
-				}
-				existingAccount = account
-			} else {
-				return nil, err
-			}
-		} else {
-			if err := c.db.Model(existingAccount).Updates(map[string]any{
-				"nickname":   account.Nickname,
-				"avatar_url": account.AvatarURL,
-				"updated_at": now,
-			}).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	var existing model.Content
-	if err := c.db.Where("platform_id = ? AND external_id = ?", platformID, content.ExternalId).First(&existing).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
-		}
-	}
-
-	content.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
-	if existing.Id == "" {
-		if err := c.db.Create(content).Error; err != nil {
-			return nil, err
-		}
-	} else {
-		content.Id = existing.Id
-		if err := c.db.Model(&model.Content{}).Where("id = ?", existing.Id).Updates(map[string]any{
-			"title":       content.Title,
-			"url":         content.URL,
-			"cover_url":   content.CoverURL,
-			"update_time": content.UpdateTime,
-			"updated_at":  now,
-		}).Error; err != nil {
-			return nil, err
-		}
-	}
-	if existingAccount.Id != "" {
-		if err := c.db.Where("content_id = ? AND account_id <> ? AND role = ?", content.Id, existingAccount.Id, "owner").Delete(&model.ContentAccount{}).Error; err != nil {
-			return nil, err
-		}
-		ac := model.ContentAccount{
-			AccountId: existingAccount.Id,
-			ContentId: content.Id,
-			Role:      "owner",
-			CreatedAt: now,
-		}
-		if err := c.db.FirstOrCreate(&ac, model.ContentAccount{AccountId: existingAccount.Id, ContentId: content.Id}).Error; err != nil {
-			return nil, err
-		}
-		if ac.Role != "owner" {
-			if err := c.db.Model(&model.ContentAccount{}).Where("content_id = ? AND account_id = ?", content.Id, existingAccount.Id).Update("role", "owner").Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-	return content, nil
 }

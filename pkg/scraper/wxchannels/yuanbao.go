@@ -29,19 +29,19 @@ type ParseData struct {
 	PlayableUrl             string `json:"playable_url"`
 }
 
-func generateRid() string {
-	timestampHex := fmt.Sprintf("%x", time.Now().Unix())
-	randomHex := make([]byte, 8)
-	for i := range randomHex {
-		randomHex[i] = "0123456789abcdef"[rand.Intn(16)]
+func generate_rid() string {
+	timestamp_hex := fmt.Sprintf("%x", time.Now().Unix())
+	random_hex := make([]byte, 8)
+	for i := range random_hex {
+		random_hex[i] = "0123456789abcdef"[rand.Intn(16)]
 	}
-	return timestampHex + "-" + string(randomHex)
+	return timestamp_hex + "-" + string(random_hex)
 }
 
-func ParseShareUrl(shareUrl string, cookie string) (*ParseResponse, error) {
-	log.Println("[parseShareUrl] start, url:", shareUrl)
+func ParseShareUrl(share_url string, cookie string) (*ParseResponse, error) {
+	log.Println("[parseShareUrl] start, url:", share_url)
 	client := &http.Client{}
-	payload := fmt.Sprintf(`{"type":"video_channel_url","url":"%s","scene":1}`, shareUrl)
+	payload := fmt.Sprintf(`{"type":"video_channel_url","url":"%s","scene":1}`, share_url)
 	req, err := http.NewRequest("POST", "https://yuanbao.tencent.com/api/weixin/get_parse_result", strings.NewReader(payload))
 	if err != nil {
 		log.Println("[parseShareUrl] create request failed:", err)
@@ -86,13 +86,13 @@ func ParseShareUrl(shareUrl string, cookie string) (*ParseResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyText, err := io.ReadAll(resp.Body)
+	body_text, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("[parseShareUrl] read body failed:", err)
 		return nil, err
 	}
 	var result ParseResponse
-	if err := json.Unmarshal(bodyText, &result); err != nil {
+	if err := json.Unmarshal(body_text, &result); err != nil {
 		log.Println("[parseShareUrl] unmarshal failed:", err)
 		return nil, err
 	}
@@ -100,14 +100,14 @@ func ParseShareUrl(shareUrl string, cookie string) (*ParseResponse, error) {
 	return &result, nil
 }
 
-func getFeedInfo(exportId, generalToken string) (json.RawMessage, error) {
-	log.Println("[getFeedInfo] start, exportId:", exportId, "generalToken:", generalToken)
+func get_feed_info(export_id, general_token string) (json.RawMessage, error) {
+	log.Println("[getFeedInfo] start, exportId:", export_id, "generalToken:", general_token)
 	client := &http.Client{}
-	rid := generateRid()
-	payload := fmt.Sprintf(`{"baseReq":{"generalToken":"%s"},"exportId":"%s"}`, generalToken, exportId)
-	apiUrl := fmt.Sprintf("https://channels.weixin.qq.com/finder-preview/api/feed/get_feed_info?_rid=%s&_pageUrl=https:%%2F%%2Fchannels.weixin.qq.com%%2Ffinder-preview%%2Fpages%%2Ffeed", rid)
+	rid := generate_rid()
+	payload := fmt.Sprintf(`{"baseReq":{"generalToken":"%s"},"exportId":"%s"}`, general_token, export_id)
+	api_url := fmt.Sprintf("https://channels.weixin.qq.com/finder-preview/api/feed/get_feed_info?_rid=%s&_pageUrl=https:%%2F%%2Fchannels.weixin.qq.com%%2Ffinder-preview%%2Fpages%%2Ffeed", rid)
 
-	req, err := http.NewRequest("POST", apiUrl, strings.NewReader(payload))
+	req, err := http.NewRequest("POST", api_url, strings.NewReader(payload))
 	if err != nil {
 		log.Println("[getFeedInfo] create request failed:", err)
 		return nil, err
@@ -117,7 +117,7 @@ func getFeedInfo(exportId, generalToken string) (json.RawMessage, error) {
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "https://channels.weixin.qq.com")
-	referer := fmt.Sprintf("https://channels.weixin.qq.com/finder-preview/pages/feed?entry_card_type=48&comment_scene=39&appid=0&token=%s&entry_scene=0&eid=%s", url.QueryEscape(generalToken), url.QueryEscape(exportId))
+	referer := fmt.Sprintf("https://channels.weixin.qq.com/finder-preview/pages/feed?entry_card_type=48&comment_scene=39&appid=0&token=%s&entry_scene=0&eid=%s", url.QueryEscape(general_token), url.QueryEscape(export_id))
 	req.Header.Set("Referer", referer)
 	req.Header.Set("Sec-Fetch-Dest", "empty")
 	req.Header.Set("Sec-Fetch-Mode", "cors")
@@ -134,63 +134,63 @@ func getFeedInfo(exportId, generalToken string) (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyText, err := io.ReadAll(resp.Body)
+	body_text, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("[getFeedInfo] read body failed:", err)
 		return nil, err
 	}
 	log.Println("[getFeedInfo] success")
-	return bodyText, nil
+	return body_text, nil
 }
 
-func FetchVideoProfileWithShareUrl(shareUrl string, cookie string) (json.RawMessage, error) {
-	log.Println("[fetch] start, shareUrl:", shareUrl)
+func FetchVideoProfileWithShareUrl(share_url string, cookie string) (json.RawMessage, error) {
+	log.Println("[fetch] start, shareUrl:", share_url)
 
 	log.Println("[fetch] step 1/2: parseShareUrl...")
-	parseResult, err := ParseShareUrl(shareUrl, cookie)
+	parse_result, err := ParseShareUrl(share_url, cookie)
 	if err != nil {
 		log.Println("[fetch] step 1/2 failed:", err)
 		return nil, fmt.Errorf("parse share url: %w", err)
 	}
-	log.Println("[fetch] step 1/2 done, exportId:", parseResult.Data.WxExportId)
+	log.Println("[fetch] step 1/2 done, exportId:", parse_result.Data.WxExportId)
 
 	// extract generalToken and exportId from playable_url query params
-	generalToken := ""
-	exportId := ""
-	if u, err := url.Parse(parseResult.Data.PlayableUrl); err == nil {
-		generalToken = u.Query().Get("token")
-		exportId = u.Query().Get("eid")
+	general_token := ""
+	export_id := ""
+	if u, err := url.Parse(parse_result.Data.PlayableUrl); err == nil {
+		general_token = u.Query().Get("token")
+		export_id = u.Query().Get("eid")
 	}
-	if generalToken == "" {
+	if general_token == "" {
 		log.Println("[fetch] warn: generalToken is empty in playable_url")
 	}
-	if exportId == "" {
+	if export_id == "" {
 		log.Println("[fetch] warn: exportId (eid) is empty in playable_url")
 	}
-	log.Println("[fetch] generalToken:", generalToken, "exportId:", exportId)
+	log.Println("[fetch] generalToken:", general_token, "exportId:", export_id)
 
 	log.Println("[fetch] step 2/2: getFeedInfo...")
-	feedResult, err := getFeedInfo(exportId, generalToken)
+	feed_result, err := get_feed_info(export_id, general_token)
 	if err != nil {
 		log.Println("[fetch] step 2/2 failed:", err)
 		return nil, fmt.Errorf("get feed info: %w", err)
 	}
 	log.Println("[fetch] step 2/2 done")
 	log.Println("[fetch] all done")
-	return feedResult, nil
+	return feed_result, nil
 }
 
-func CleanVideoURL(videoURL string) string {
-	u, err := url.Parse(videoURL)
+func CleanVideoURL(video_url string) string {
+	u, err := url.Parse(video_url)
 	if err != nil {
 		return ""
 	}
 	filekey := u.Query().Get("encfilekey")
 	token := u.Query().Get("token")
 	if filekey != "" && token != "" {
-		newURL := u.Scheme + "://" + u.Host + u.Path
-		newURL += "?encfilekey=" + filekey + "&token=" + token
-		return newURL
+		new_url := u.Scheme + "://" + u.Host + u.Path
+		new_url += "?encfilekey=" + filekey + "&token=" + token
+		return new_url
 	}
 	return ""
 }

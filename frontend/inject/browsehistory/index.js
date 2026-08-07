@@ -1,4 +1,5 @@
 /// <reference path="../utils.js" />
+/// <reference path="../virtual-list-view.js" />
 /// <reference path="model.js" />
 /**
  * @file Browse history list page entry.
@@ -36,8 +37,8 @@ function BrowseHistoryPageHeader(props) {
   const vm$ = props.store;
   return View({ class: "wx-content-header" }, [
     View({ class: "wx-content-header-inner" }, [
-    View({ class: "wx-content-brand" }, [
-      View({ class: "wx-content-brand-icon" }, [
+      View({ class: "wx-content-brand" }, [
+        View({ class: "wx-content-brand-icon" }, [
           Timeless.Icon({ name: "clock3", size: 28 }),
         ]),
         View({}, [
@@ -234,11 +235,52 @@ function BrowseHistorySkeletonRow() {
   ]);
 }
 
+function BrowseHistoryListView(props) {
+  const vm$ = props.store;
+  const histories_ = vm$.state.histories;
+
+  return View(
+    {
+      class: props.class || "wx-content-history-list",
+      style: props.style || {},
+    },
+    [
+      VirtualListView({
+        style: {
+          height: "100%",
+          "max-height": "100%",
+          overflow: "auto",
+          position: "relative",
+          "box-sizing": "border-box",
+          "background-color": "transparent",
+          ...(props.listViewStyle || {}),
+        },
+        key: "id",
+        size: props.size || 10,
+        buffer: props.buffer || 6,
+        gutter: props.gutter || 1,
+        itemHeight: props.itemHeight || 72,
+        each: histories_,
+        onReachBottom() {
+          vm$.methods.loadMore();
+        },
+        render(history_) {
+          const history =
+            history_ && history_.value !== undefined
+              ? history_.value
+              : history_;
+          return BrowseHistoryRow({ store: vm$, history });
+        },
+      }),
+    ],
+  );
+}
+
 function BrowseHistoryPageBody(props) {
   const vm$ = props.store;
   return View({ class: "wx-content-main" }, [
     Show({
-      when: vm$.state.loading,
+      when: vm$.state.initial_loading,
       ok() {
         return View(
           { class: "wx-content-rows" },
@@ -272,19 +314,15 @@ function BrowseHistoryPageBody(props) {
                 (histories) => histories.length > 0,
               ),
               ok() {
-                return View({ class: "wx-content-rows" }, [
-                  BrowseHistoryTableHead(),
-                  For({
-                    each: vm$.state.histories,
-                    render(history_) {
-                      const history =
-                        history_ && history_.value !== undefined
-                          ? history_.value
-                          : history_;
-                      return BrowseHistoryRow({ store: vm$, history });
-                    },
-                  }),
-                ]);
+                return View(
+                  {
+                    class: "wx-content-rows wx-content-history-rows",
+                  },
+                  [
+                    BrowseHistoryTableHead(),
+                    BrowseHistoryListView({ store: vm$ }),
+                  ],
+                );
               },
               else() {
                 return View({ class: "wx-content-state" }, [
@@ -303,60 +341,47 @@ function BrowseHistoryPageBody(props) {
   ]);
 }
 
-function BrowseHistoryPagination(props) {
+function BrowseHistoryLoadStatus(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-pagination" }, [
-    View({ class: "wx-content-pagination-summary" }, [vm$.state.range_text]),
-    View({ class: "wx-content-pagination-controls" }, [
-      View(
-        {
-          type: "select",
-          class: "wx-content-select wx-content-page-size",
-          attributes: { "aria-label": "每页数量" },
-          onChange(event) {
-            vm$.methods.setPageSize(event.target.value);
-          },
+  return View({ class: "wx-content-pagination wx-content-load-more" }, [
+    View({ class: "wx-content-pagination-summary" }, [vm$.state.loaded_text]),
+    View({ class: "wx-content-load-more-status" }, [
+      Show({
+        when: vm$.state.loading_more,
+        ok() {
+          return [
+            View({ class: "weui-loading" }),
+            View({}, ["正在加载更多..."]),
+          ];
         },
-        [
-          View({ type: "option", attributes: { value: "12" } }, ["12 条/页"]),
-          View(
-            { type: "option", attributes: { value: "24", selected: true } },
-            ["24 条/页"],
-          ),
-          View({ type: "option", attributes: { value: "48" } }, ["48 条/页"]),
-          View({ type: "option", attributes: { value: "96" } }, ["96 条/页"]),
-        ],
-      ),
-      BrowseHistoryPageActionButton({
-        icon: "chevron-left",
-        title: "上一页",
-        compact: true,
-        class: computed(vm$.state.page, (page) =>
-          page <= 1 ? "wx-content-action-disabled" : "",
-        ),
-        onClick() {
-          vm$.methods.previousPage();
-        },
-      }),
-      View({ class: "wx-content-page-number" }, [
-        computed(
-          { page: vm$.state.page, pageCount: vm$.state.page_count },
-          (state) => `${state.page} / ${state.pageCount}`,
-        ),
-      ]),
-      BrowseHistoryPageActionButton({
-        icon: "chevron-right",
-        title: "下一页",
-        compact: true,
-        class: computed(
-          { page: vm$.state.page, pageCount: vm$.state.page_count },
-          (state) =>
-            state.page >= state.pageCount
-              ? "wx-content-action-disabled"
-              : "",
-        ),
-        onClick() {
-          vm$.methods.nextPage();
+        else() {
+          return Show({
+            when: computed(vm$.state.load_more_error, (error) =>
+              Boolean(error),
+            ),
+            ok() {
+              return [
+                View({ class: "wx-content-load-more-error" }, [
+                  vm$.state.load_more_error,
+                ]),
+                BrowseHistoryPageActionButton({
+                  icon: "refresh-cw",
+                  label: "重试",
+                  compact: true,
+                  onClick() {
+                    vm$.methods.loadMore();
+                  },
+                }),
+              ];
+            },
+            else() {
+              return View({}, [
+                computed(vm$.state.has_more, (hasMore) =>
+                  hasMore ? "继续向下滚动加载更多" : "没有更多记录了",
+                ),
+              ]);
+            },
+          });
         },
       }),
     ]),
@@ -367,7 +392,7 @@ function BrowseHistoryPageView(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "wx-content-page",
+      class: "wx-content-page wx-browse-history-page",
       onMounted() {
         vm$.ready();
       },
@@ -378,7 +403,12 @@ function BrowseHistoryPageView(props) {
         BrowseHistoryPageToolbar({ store: vm$ }),
       ]),
       BrowseHistoryPageBody({ store: vm$ }),
-      BrowseHistoryPagination({ store: vm$ }),
+      Show({
+        when: computed(vm$.state.histories, (histories) => histories.length > 0),
+        ok() {
+          return BrowseHistoryLoadStatus({ store: vm$ });
+        },
+      }),
     ],
   );
 }

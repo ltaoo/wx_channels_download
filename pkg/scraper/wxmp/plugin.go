@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"io"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -139,43 +138,16 @@ func firstOfficialAccountValue(values ...string) string {
 	return ""
 }
 
-func CreateOfficialAccountArticleLoadedPlugin(onArticleLoaded func(profile *OfficialAccountArticleProfile)) *proxy.Plugin {
-	return &proxy.Plugin{
-		Match: "mp.weixin.qq.com",
-		OnRequest: func(ctx proxy.Context) {
-			if ctx.Req().URL.Path != "/__wx_channels_api/officialaccount/article" {
-				return
-			}
-			body, err := io.ReadAll(ctx.Req().Body)
-			if err != nil {
-				fmt.Println("[ECHO]handler", err.Error())
-			}
-			profile, err := NewOfficialAccountArticleProfile(json.RawMessage(body))
-			if err != nil {
-				fmt.Println("[ECHO]handler", err.Error())
-			}
-			if profile != nil && onArticleLoaded != nil {
-				go onArticleLoaded(profile)
-			}
-			if profile != nil {
-				fmt.Printf("\nopened official account article\n%s\n", profile.Title)
-			}
-			ctx.Mock(200, map[string]string{
-				"Content-Type": "application/json",
-			}, "{}")
-		},
+func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version string) *proxy.Plugin {
+	assetBaseURL := frontend.AssetsBaseURLFromConfig(cfg.Protocol, cfg.Hostname, cfg.Port)
+	urlBuild := frontend.NewURLBuild(assetBaseURL, nil)
+	assetVersion := version
+	if assetVersion == "" {
+		assetVersion = "static"
 	}
-}
-
-func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *frontend.ChannelInjectedFiles, version string) *proxy.Plugin {
-	assetBaseURL := frontend.ChannelAssetsSameOriginBaseURL()
+	versionQuery := url.Values{"v": []string{assetVersion}}
 	return &proxy.Plugin{
 		Match: "qq.com",
-		OnRequest: func(ctx proxy.Context) {
-			if ctx.Req().URL.Hostname() == "mp.weixin.qq.com" && (frontend.MockChannelStaticAsset(ctx, ctx.Req().URL.Path, files) || MockStaticAsset(ctx, ctx.Req().URL.Path)) {
-				return
-			}
-		},
 		OnResponse: func(ctx proxy.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
@@ -197,30 +169,44 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, files *f
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScriptSrcs(&injected, script_attr, frontend.InjectAssetURL(assetBaseURL, "error.js"))
+					frontend.AppendScripts(&injected, script_attr, urlBuild("/inject/error.js"))
 				}
-				frontend.AppendSharedLibAssets(&injected, assetBaseURL, version, script_attr, style_attr)
-				frontend.AppendStylesheetHrefs(&injected, style_attr, frontend.InjectAssetURL(assetBaseURL, "components.css"))
+				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.umd.min.js", versionQuery))
+				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.utils.umd.min.js", versionQuery))
+				frontend.AppendStylesheets(&injected, style_attr, urlBuild("/public/timeless/0.30.0/timeless.weui.css", versionQuery))
+				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.weui.umd.min.js", versionQuery))
+				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.dom.umd.min.js", versionQuery))
+				frontend.AppendScripts(&injected, script_attr, urlBuild("/public/timeless/0.30.0/timeless.web.umd.min.js", versionQuery))
+				frontend.AppendStylesheets(&injected, style_attr, urlBuild("/inject/components.css"))
+				frontend_config := make(map[string]any, len(variables)+2)
 				cfg_byte, _ := json.Marshal(cfg)
-				frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var __wx_channels_config__ = %s; var __wx_channels_version__ = "%s";`, string(cfg_byte), version))
-				frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__wx_channels_env__ = Object.assign(window.__wx_channels_env__ || {}, { assetsBaseURL: %q });`, assetBaseURL))
-				variable_byte, _ := json.Marshal(variables)
-				frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`var WXVariable = %s;`, string(variable_byte)))
-				frontend.AppendScriptSrcs(
+				_ = json.Unmarshal(cfg_byte, &frontend_config)
+				for key, value := range variables {
+					frontend_config[key] = value
+				}
+				frontend_config["version"] = version
+				frontend_config["assets_base_url"] = assetBaseURL
+				frontend_config_byte, _ := json.Marshal(frontend_config)
+				frontend.AppendInlineScript(
 					&injected,
 					script_attr,
-					frontend.InjectAssetURL(assetBaseURL, "eventbus.js"),
-					frontend.InjectAssetURL(assetBaseURL, "env.js"),
-					frontend.InjectAssetURL(assetBaseURL, "utils.js"),
-					frontend.InjectAssetURL(assetBaseURL, "components.js"),
-					frontend.InjectAssetURL(assetBaseURL, "virtual-list-view.js"),
-					frontend.InjectAssetURL(assetBaseURL, "download/model.js"),
-					frontend.InjectAssetURL(assetBaseURL, "download/view.js"),
+					fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte),
+				)
+				frontend.AppendScripts(
+					&injected,
+					script_attr,
+					urlBuild("/inject/eventbus.js"),
+					urlBuild("/inject/env.js"),
+					urlBuild("/inject/utils.js"),
+					urlBuild("/inject/components.js"),
+					urlBuild("/inject/virtual-list-view.js"),
+					urlBuild("/inject/download/model.js"),
+					urlBuild("/inject/download/view.js"),
 					ChannelInjectAssetURL(assetBaseURL, "mp.ws.js"),
 				)
 				if cfg.PagespyEnabled {
 					/** Online debugging */
-					frontend.AppendScriptSrcs(&injected, script_attr, frontend.ChannelLibAssetURL(assetBaseURL, version, "pagespy.min.js"), frontend.InjectAssetURL(assetBaseURL, "pagespy.js"))
+					frontend.AppendScripts(&injected, script_attr, urlBuild("/lib/pagespy.min.js", versionQuery), urlBuild("/inject/pagespy.js"))
 				}
 				if cfg.InjectContentScript != "" {
 					frontend.AppendInlineScript(&injected, script_attr, cfg.InjectContentScript)

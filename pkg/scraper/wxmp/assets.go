@@ -5,8 +5,6 @@ import (
 	"io/fs"
 	"strings"
 
-	"wx_channel/frontend"
-	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/webassets"
 )
 
@@ -14,7 +12,6 @@ import (
 var Assets = NewAssets()
 
 type InjectedAssets struct {
-	RootFS   fs.FS
 	InjectFS fs.FS
 }
 
@@ -22,11 +19,7 @@ type InjectedAssets struct {
 const StaticAssetsPath = "/__assets/platform/wxmp"
 
 func NewAssets() *InjectedAssets {
-	return &InjectedAssets{RootFS: embeddedRootFS(), InjectFS: embeddedInjectFS()}
-}
-
-func (a *InjectedAssets) ReadInject(name string) ([]byte, error) {
-	return fs.ReadFile(a.InjectFS, name)
+	return &InjectedAssets{InjectFS: embeddedInjectFS()}
 }
 
 // RegisterStaticAssets registers the assets owned by this package with the
@@ -48,35 +41,6 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 		}
 	}
 	return nil
-}
-
-// MockStaticAsset serves a platform-owned asset for same-origin requests
-// intercepted on mp.weixin.qq.com.
-func MockStaticAsset(ctx proxy.Context, pathname string) bool {
-	const prefix = StaticAssetsPath + "/"
-	if !strings.HasPrefix(pathname, prefix) {
-		return false
-	}
-	rel := strings.TrimPrefix(pathname, prefix)
-	if !fs.ValidPath(rel) {
-		return false
-	}
-	data, err := Assets.ReadInject(rel)
-	if err != nil {
-		return false
-	}
-	etag := frontend.ChannelStaticAssetETag(data)
-	headers := map[string]string{
-		"Content-Type":  frontend.ChannelStaticAssetContentType(rel),
-		"Cache-Control": frontend.ChannelSrcAssetCacheControl,
-		"ETag":          etag,
-	}
-	if req := ctx.Req(); req != nil && req.Header != nil && strings.Contains(req.Header.Get("If-None-Match"), etag) {
-		ctx.Mock(304, headers, "")
-		return true
-	}
-	ctx.Mock(200, headers, string(data))
-	return true
 }
 
 // ChannelInjectAssetURL builds a URL for an asset owned by this package.

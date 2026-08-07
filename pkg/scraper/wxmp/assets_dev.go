@@ -14,7 +14,6 @@ var manager_html []byte
 // Non-embedded builds are used by `go run` during development. Serve the
 // package-local files directly instead of leaving the platform asset registry
 // with a nil filesystem.
-func embeddedRootFS() fs.FS   { return os.DirFS(filepath.Dir(devInjectDir())) }
 func embeddedInjectFS() fs.FS { return os.DirFS(devInjectDir()) }
 
 func devInjectDir() string {

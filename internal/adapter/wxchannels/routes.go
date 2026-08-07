@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
+	"wx_channel/internal/config"
 	"wx_channel/internal/util"
 	scraper "wx_channel/pkg/scraper/wxchannels"
 )
@@ -27,14 +27,13 @@ type RouteRegistrar interface {
 // WebsocketRoutes owns the video-channel browser websocket endpoint and its
 // scraper client lifecycle.
 type WebsocketRoutes struct {
-	client    *scraper.ChannelsClient
-	sphCookie string
+	client *scraper.ChannelsClient
+	cfg    *config.Config
 }
 
-func NewWebsocketRoutes(refreshInterval int, db *gorm.DB, sphCookie string) *WebsocketRoutes {
-	client := scraper.NewChannelsClient(refreshInterval)
-	client.SetDB(db)
-	return &WebsocketRoutes{client: client, sphCookie: sphCookie}
+func NewWebsocketRoutes(refreshInterval int, cfg *config.Config) *WebsocketRoutes {
+	client := scraper.NewChannelsClient(refreshInterval, cfg)
+	return &WebsocketRoutes{client: client, cfg: cfg}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -79,7 +78,10 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 		return
 	}
 
-	cookie := r.sphCookie
+	cookie := ""
+	if r.cfg != nil {
+		cookie = r.cfg.GetString("cloudflare.sphCookie")
+	}
 	if cookie == "" {
 		util.Err(ctx, 400, "cloudflare.sphCookie not configured")
 		return

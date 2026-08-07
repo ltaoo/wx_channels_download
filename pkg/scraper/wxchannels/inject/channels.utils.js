@@ -916,7 +916,7 @@ var WXBase64 = (() => {
         .Info()
         .Str("file", "channels.utils.js")
         .JSON("feed", feed)
-        .Msg("before downloader.browse");
+        .Msg("set_feed");
       WXU.downloader.browse([feed], { platform: "wxchannels" });
     },
     /**
@@ -924,19 +924,13 @@ var WXBase64 = (() => {
      * @param {ChannelsFeed} feed
      */
     set_live_feed(feed) {
-      // var profile = format_feed(feed);
-      // if (!profile) {
-      //   return;
-      // }
-      // fetch("/__wx_channels_api/profile", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify(profile),
-      // });
-      // __wx_channels_live_store__.profile = profile;
       __wx_channels_live_store__.feed = feed;
+      WXU.log
+        .Info()
+        .Str("file", "channels.utils.js")
+        .JSON("feed", feed)
+        .Msg("set_live_feed");
+      WXU.downloader.browse([feed], { platform: "wxchannels" });
     },
     /**
      *
@@ -965,7 +959,7 @@ var WXBase64 = (() => {
       return after_menus_items;
     },
     get version() {
-      return __wx_channels_version__;
+      return window.__d_config.version;
     },
   });
 

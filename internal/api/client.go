@@ -208,58 +208,58 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (c *APIClient) setupStaticAssetRoutes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		c.engine.Handle(method, "/__assets/lib/*filepath", c.handleChannelLibAsset)
-		c.engine.Handle(method, "/__assets/public/*filepath", c.handleChannelPublicAsset)
-		c.engine.Handle(method, "/__assets/src/*filepath", c.handleChannelSrcAsset)
+		c.engine.Handle(method, "/__assets/lib/*filepath", c.handleLibAsset)
+		c.engine.Handle(method, "/__assets/public/*filepath", c.handlePublicAsset)
+		c.engine.Handle(method, "/__assets/src/*filepath", c.handleSrcAsset)
 		c.engine.Handle(method, "/__assets/inject/*filepath", c.handleFrontendInjectAsset)
 		c.engine.Handle(method, "/__assets/platform/*filepath", c.handlePlatformStaticAsset)
 	}
 }
 
-func (c *APIClient) handleChannelLibAsset(ctx *gin.Context) {
+func (c *APIClient) handleLibAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadLib(rel)
+	data, err := frontend.Assets().ReadLib(rel)
 	if err != nil {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
-	data = frontend.ChannelStaticAssetResponseData(rel, data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelLibAssetCacheControl)
+	data = frontend.StaticAssetResponseData(rel, data)
+	ctx.Header("Content-Type", frontend.StaticAssetContentType(rel))
+	ctx.Header("Cache-Control", frontend.LibAssetCacheControl)
 	if ctx.Request.Method == http.MethodHead {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
-func (c *APIClient) handleChannelPublicAsset(ctx *gin.Context) {
+func (c *APIClient) handlePublicAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadPublic(rel)
+	data, err := frontend.Assets().ReadPublic(rel)
 	if err != nil {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
-	data = frontend.ChannelStaticAssetResponseData(rel, data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelPublicAssetCacheControl)
+	data = frontend.StaticAssetResponseData(rel, data)
+	ctx.Header("Content-Type", frontend.StaticAssetContentType(rel))
+	ctx.Header("Cache-Control", frontend.PublicAssetCacheControl)
 	if ctx.Request.Method == http.MethodHead {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadInject(rel)
+	data, err := frontend.Assets().ReadInject(rel)
 	if err != nil {
 		c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
 		return
 	}
-	etag := frontend.ChannelStaticAssetETag(data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelSrcAssetCacheControl)
+	etag := frontend.StaticAssetETag(data)
+	ctx.Header("Content-Type", frontend.StaticAssetContentType(rel))
+	ctx.Header("Cache-Control", frontend.SrcAssetCacheControl)
 	ctx.Header("ETag", etag)
 	if strings.Contains(ctx.GetHeader("If-None-Match"), etag) {
 		ctx.Status(http.StatusNotModified)
@@ -269,23 +269,23 @@ func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
 func (c *APIClient) handlePlatformStaticAsset(ctx *gin.Context) {
 	c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
-func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
+func (c *APIClient) handleSrcAsset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
-	data, err := frontend.Assets.ReadSrc(rel)
+	data, err := frontend.Assets().ReadSrc(rel)
 	if err != nil {
 		ctx.Status(http.StatusNotFound)
 		return
 	}
-	etag := frontend.ChannelStaticAssetETag(data)
-	ctx.Header("Content-Type", frontend.ChannelStaticAssetContentType(rel))
-	ctx.Header("Cache-Control", frontend.ChannelSrcAssetCacheControl)
+	etag := frontend.StaticAssetETag(data)
+	ctx.Header("Content-Type", frontend.StaticAssetContentType(rel))
+	ctx.Header("Cache-Control", frontend.SrcAssetCacheControl)
 	ctx.Header("ETag", etag)
 	if strings.Contains(ctx.GetHeader("If-None-Match"), etag) {
 		ctx.Status(http.StatusNotModified)
@@ -295,5 +295,5 @@ func (c *APIClient) handleChannelSrcAsset(ctx *gin.Context) {
 		ctx.Status(http.StatusOK)
 		return
 	}
-	ctx.Data(http.StatusOK, frontend.ChannelStaticAssetContentType(rel), data)
+	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }

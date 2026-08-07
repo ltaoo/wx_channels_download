@@ -45,7 +45,7 @@ func (c *APIClient) handleChannelsPage(ctx *gin.Context) {
 // }
 
 func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
-	data, err := frontend.Assets.ReadRoot(name)
+	data, err := frontend.Assets().ReadRoot(name)
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
