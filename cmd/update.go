@@ -14,14 +14,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/blang/semver"
 	"github.com/inconshreveable/go-update"
 	"github.com/pterm/pterm"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"wx_channel/pkg/hermes"
 )
 
 var updateCmd = &cobra.Command{
@@ -109,20 +112,9 @@ func do_update() {
 
 	pterm.Info.Println("正在下载并更新...")
 
-	// If it's a compressed file, we need to handle it manually
-	if strings.HasSuffix(assetName, ".zip") || strings.HasSuffix(assetName, ".tar.gz") || strings.HasSuffix(assetName, ".tgz") {
-		if err := update_from_compressed(assetURL, assetName, exe); err != nil {
-			pterm.Error.Println("更新失败:", err)
-			return
-		}
-	} else {
-		// If it's a binary directly (unlikely based on description but possible)
-		spinner, _ := pterm.DefaultSpinner.Start("正在下载并应用更新...")
-		if err := selfupdate.UpdateTo(assetURL, exe); err != nil {
-			spinner.Fail(fmt.Sprintf("更新失败: %v", err))
-			return
-		}
-		spinner.Success("更新完成")
+	if err := download_and_apply_update(assetURL, assetName, exe); err != nil {
+		pterm.Error.Println("更新失败:", err)
+		return
 	}
 
 	pterm.Success.Printf("成功更新至版本 %s\n", latest.TagName)
@@ -169,76 +161,177 @@ func find_asset(release GitHubRelease) (string, string) {
 	return "", ""
 }
 
-// ProgressReader wraps an io.Reader and updates a pterm.ProgressbarPrinter
-type ProgressReader struct {
-	Reader io.Reader
-	Bar    *pterm.ProgressbarPrinter
-}
-
-func (pr *ProgressReader) Read(p []byte) (n int, err error) {
-	n, err = pr.Reader.Read(p)
-	if n > 0 {
-		pr.Bar.Add(n)
+func download_update_asset_with_hermes(
+	rawURL string,
+	filename string,
+	proxyServer hermes.ProxyServer,
+	onProgress func(*hermes.TaskProgress),
+) (string, func(), error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return "", nil, fmt.Errorf("invalid update download URL")
 	}
-	return
+	protocolName := strings.ToLower(parsedURL.Scheme)
+	if protocolName != "http" && protocolName != "https" {
+		return "", nil, fmt.Errorf("unsupported update download protocol %q", protocolName)
+	}
+
+	assetName := filepath.Base(strings.TrimSpace(filename))
+	if assetName == "" || assetName == "." || assetName == string(filepath.Separator) {
+		return "", nil, fmt.Errorf("invalid update asset filename")
+	}
+
+	tempDir, err := os.MkdirTemp("", "wx-channels-update-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create update download directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(tempDir) }
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			cleanup()
+		}
+	}()
+
+	downloader := hermes.New(hermes.HermesNewConfig{
+		Config: hermes.HermesEngineConfig{
+			MaxConcurrent: 1,
+			BasePath:      tempDir,
+		},
+	})
+
+	var terminal atomic.Bool
+	downloader.OnEvent(func(_ int, event hermes.EventType, progress *hermes.TaskProgress) {
+		if event == hermes.EventProgress && !terminal.Load() && progress != nil && onProgress != nil {
+			onProgress(progress)
+		}
+		if event == hermes.EventFinished || event == hermes.EventFailed {
+			terminal.Store(true)
+		}
+	})
+
+	task := downloader.CreateTask(
+		rawURL,
+		hermes.WithFilename(assetName),
+		hermes.WithProxyServer(proxyServer),
+	)
+	if err := task.Wait(); err != nil {
+		terminal.Store(true)
+		return "", nil, fmt.Errorf("download update: %w", err)
+	}
+	terminal.Store(true)
+
+	assetPath := task.FilePath()
+	info, err := os.Stat(assetPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("open downloaded update: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("downloaded update is not a regular file")
+	}
+
+	succeeded = true
+	return assetPath, cleanup, nil
 }
 
-func update_from_compressed(rawURL, filename, exePath string) error {
+type updateHermesProgressBar struct {
+	mu         sync.Mutex
+	bar        *pterm.ProgressbarPrinter
+	downloaded int64
+	stopped    bool
+}
+
+func (p *updateHermesProgressBar) update(progress *hermes.TaskProgress) {
+	if progress == nil || progress.TotalSize <= 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopped {
+		return
+	}
+	if p.bar == nil {
+		bar, err := pterm.DefaultProgressbar.
+			WithTotal(int(progress.TotalSize)).
+			WithTitle("正在下载").
+			Start()
+		if err != nil {
+			return
+		}
+		p.bar = bar
+	}
+	delta := progress.Downloaded - p.downloaded
+	if delta > 0 {
+		p.bar.Add(int(delta))
+		p.downloaded = progress.Downloaded
+	}
+}
+
+func (p *updateHermesProgressBar) stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopped = true
+	if p.bar != nil {
+		_, _ = p.bar.Stop()
+	}
+}
+
+func download_and_apply_update(rawURL, filename, exePath string) error {
 	reqURL := apply_mirror(rawURL)
-	client := create_update_http_client()
-	resp, err := client.Get(reqURL)
+	progress := &updateHermesProgressBar{}
+	assetPath, cleanup, err := download_update_asset_with_hermes(
+		reqURL,
+		filename,
+		hermes.ProxyServer{Address: viper.GetString("update.proxy")},
+		progress.update,
+	)
+	progress.stop()
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer cleanup()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status: %s", resp.Status)
+	source, err := os.Open(assetPath)
+	if err != nil {
+		return fmt.Errorf("open downloaded update: %w", err)
 	}
+	defer source.Close()
 
-	// Create progress bar
-	bar, _ := pterm.DefaultProgressbar.WithTotal(int(resp.ContentLength)).WithTitle("正在下载").Start()
-	defer bar.Stop()
+	return apply_downloaded_update(source, filename, exePath)
+}
 
-	proxyReader := &ProgressReader{
-		Reader: resp.Body,
-		Bar:    bar,
-	}
-
-	// Read content into memory to avoid temp files if possible,
-	// or stream to decompressor.
-	// Since we need to find the binary inside, we stream.
-
+func apply_downloaded_update(source io.Reader, filename, exePath string) error {
 	var binaryReader io.Reader
+	lowerFilename := strings.ToLower(filename)
 
-	if strings.HasSuffix(filename, ".zip") {
+	if strings.HasSuffix(lowerFilename, ".zip") {
 		// For zip, we need random access, so we have to read it all or save to temp file.
 		// Reading to memory is cleaner if not too huge.
-		bodyBytes, err := io.ReadAll(proxyReader)
+		bodyBytes, err := io.ReadAll(source)
 		if err != nil {
-			return err
+			return fmt.Errorf("read zip update: %w", err)
 		}
 
 		zipReader, err := zip.NewReader(bytes.NewReader(bodyBytes), int64(len(bodyBytes)))
 		if err != nil {
-			return err
+			return fmt.Errorf("open zip update: %w", err)
 		}
 
 		for _, file := range zipReader.File {
 			if is_executable_file(file.Name) {
 				rc, err := file.Open()
 				if err != nil {
-					return err
+					return fmt.Errorf("open executable in zip update: %w", err)
 				}
 				defer rc.Close()
 				binaryReader = rc
 				break
 			}
 		}
-	} else if strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".tgz") {
-		gzipReader, err := gzip.NewReader(proxyReader)
+	} else if strings.HasSuffix(lowerFilename, ".tar.gz") || strings.HasSuffix(lowerFilename, ".tgz") {
+		gzipReader, err := gzip.NewReader(source)
 		if err != nil {
-			return err
+			return fmt.Errorf("open gzip update: %w", err)
 		}
 		defer gzipReader.Close()
 
@@ -249,7 +342,7 @@ func update_from_compressed(rawURL, filename, exePath string) error {
 				break
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("read tar update: %w", err)
 			}
 
 			if is_executable_file(header.Name) {
@@ -257,13 +350,18 @@ func update_from_compressed(rawURL, filename, exePath string) error {
 				break
 			}
 		}
+	} else {
+		binaryReader = source
 	}
 
 	if binaryReader == nil {
 		return fmt.Errorf("executable not found in archive")
 	}
 
-	return update.Apply(binaryReader, update.Options{})
+	if err := update.Apply(binaryReader, update.Options{TargetPath: exePath}); err != nil {
+		return fmt.Errorf("apply update: %w", err)
+	}
+	return nil
 }
 
 func is_executable_file(name string) bool {

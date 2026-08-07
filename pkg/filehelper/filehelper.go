@@ -17,18 +17,18 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-// Config 文件传输助手配置
+// Config holds file transfer helper configuration
 type Config struct {
-	CallbackURL string // 消息回调地址
+	CallbackURL string // Message callback URL
 }
 
-// Client 文件传输助手客户端
+// Client is the file transfer helper client
 type Client struct {
 	cfg        *Config
 	logger     *zerolog.Logger
 	httpClient *http.Client
 
-	// 登录状态
+	// Login state fields
 	mu         sync.RWMutex
 	uuid       string
 	uuidTs     time.Time
@@ -48,25 +48,25 @@ type Client struct {
 	// synckey
 	synckey map[string]interface{}
 
-	// 消息缓存
+	// Message cache
 	msgCache   []map[string]interface{}
 	msgCacheMu sync.RWMutex
 
-	// 登录状态
+	// Login state tracking
 	lastLoginCode    int
 	lastLoginMessage string
 
-	// 停止信号
+	// Stop signal
 	stopChan chan struct{}
 }
 
-// SyncKeyItem 同步键值对
+// SyncKeyItem is a sync key-value pair
 type SyncKeyItem struct {
 	Key int `json:"Key"`
 	Val int `json:"Val"`
 }
 
-// InitResponse 初始化响应
+// InitResponse is the initialization response
 type InitResponse struct {
 	BaseResponse struct {
 		Ret     int `json:"Ret"`
@@ -86,7 +86,7 @@ type InitResponse struct {
 	} `json:"User"`
 }
 
-// SyncResponse webwxsync 完整响应
+// SyncResponse is the full webwxsync response
 type SyncResponse struct {
 	BaseResponse struct {
 		Ret    int    `json:"Ret"`
@@ -119,7 +119,7 @@ type SyncResponse struct {
 	} `json:"SyncCheckKey"`
 }
 
-// LoginStatusDetail 登录状态详情
+// LoginStatusDetail contains login status details
 type LoginStatusDetail struct {
 	LoggedIn       bool   `json:"logged_in"`
 	Code           int    `json:"code"`
@@ -129,18 +129,18 @@ type LoginStatusDetail struct {
 	UUIDAgeSeconds int    `json:"uuid_age_seconds,omitempty"`
 }
 
-// NewClient 创建客户端
+// NewClient creates a new client
 func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
 	if logger == nil {
 		nopLogger := zerolog.Nop()
 		logger = &nopLogger
 	}
-	// 创建带 cookie jar 的 http client
+	// Create http client with cookie jar
 	jar, err := cookiejar.New(&cookiejar.Options{
 		PublicSuffixList: publicsuffix.List,
 	})
 	if err != nil {
-		jar = nil // 如果创建失败，不使用 cookie jar
+		jar = nil // If creation fails, don't use cookie jar
 	}
 	return &Client{
 		cfg:    cfg,
@@ -157,11 +157,11 @@ func NewClient(cfg *Config, logger *zerolog.Logger) *Client {
 	}
 }
 
-// GetQRCode 获取登录二维码
+// GetQRCode gets the login QR code
 func (c *Client) GetQRCode() (string, error) {
 	c.resolveHosts()
 
-	// UUID 不存在或过期 (>240s) 时重新获取
+	// Re-fetch if UUID does not exist or is expired (>240s)
 	c.mu.RLock()
 	uuid := c.uuid
 	uuidTs := c.uuidTs
@@ -184,7 +184,7 @@ func (c *Client) GetQRCode() (string, error) {
 	return qrcodeURL, nil
 }
 
-// jsloginGetUUID 获取 UUID
+// jsloginGetUUID gets the UUID
 func (c *Client) jsloginGetUUID() error {
 	timestamp := time.Now().UnixMilli()
 	redirectURI := url.QueryEscape(fmt.Sprintf("https://%s/cgi-bin/mmwebwx-bin/webwxnewloginpage", c.entryHost))
@@ -227,14 +227,14 @@ func (c *Client) jsloginGetUUID() error {
 	c.uuidTs = time.Now()
 	c.mu.Unlock()
 
-	c.logger.Info().Str("uuid", uuid).Msg("获取 UUID 成功")
+	c.logger.Info().Str("uuid", uuid).Msg("UUID retrieved successfully")
 	return nil
 }
 
-// WaitForLogin 等待登录（阻塞调用）
-// 返回: 200=登录成功, 201=已扫码等待确认, 400=二维码过期, 408=等待扫码
+// WaitForLogin waits for login (blocking call).
+// Returns: 200=login success, 201=scanned waiting for confirm, 400=QR code expired, 408=waiting for scan
 func (c *Client) WaitForLogin() (int, string, error) {
-	// 检查是否已经登录
+	// Check if already logged in
 	c.mu.RLock()
 	uuid := c.uuid
 	loggedIn := c.loggedIn
@@ -278,7 +278,7 @@ func (c *Client) WaitForLogin() (int, string, error) {
 
 	bodyStr := string(body)
 
-	// 解析响应
+	// Parse response
 	codeRegex := regexp.MustCompile(`window\.code\s*=\s*(\d+)`)
 	avatarRegex := regexp.MustCompile(`window\.userAvatar\s*=\s*'([^']+)'`)
 	redirectRegex := regexp.MustCompile(`window\.redirect_uri\s*=\s*"([^"]+)"`)
@@ -295,7 +295,7 @@ func (c *Client) WaitForLogin() (int, string, error) {
 
 	switch code {
 	case 200:
-		// 检查是否已经完成登录
+		// Check if login has already been completed
 		c.mu.RLock()
 		loggedIn := c.loggedIn
 		c.mu.RUnlock()
@@ -312,7 +312,7 @@ func (c *Client) WaitForLogin() (int, string, error) {
 		c.lastLoginMessage = "authorized"
 		c.mu.Unlock()
 
-		// 完成登录
+		// Complete login
 		if err := c.completeLogin(redirectURI); err != nil {
 			return 500, "", err
 		}
@@ -347,11 +347,11 @@ func (c *Client) WaitForLogin() (int, string, error) {
 	}
 }
 
-// completeLogin 完成登录
+// completeLogin completes the login process
 func (c *Client) completeLogin(redirectURI string) error {
-	c.logger.Info().Str("redirect_uri", redirectURI).Msg("开始完成登录")
+	c.logger.Info().Str("redirect_uri", redirectURI).Msg("Starting login completion")
 
-	// 解析 redirect_uri 获取参数
+	// Parse redirect_uri to extract parameters
 	parsedURL, err := url.Parse(redirectURI)
 	if err != nil {
 		return fmt.Errorf("解析 redirect_uri 失败: %w", err)
@@ -363,13 +363,13 @@ func (c *Client) completeLogin(redirectURI string) error {
 		domain = c.entryHost
 	}
 
-	// 更新 entry host
+	// Update entry host
 	c.mu.Lock()
 	c.entryHost = domain
 	c.resolveHostsLocked()
 	c.mu.Unlock()
 
-	// 获取参数，使用 fallback 值
+	// Get parameters, using fallback values
 	ticket := query.Get("ticket")
 	uuid := query.Get("uuid")
 	if uuid == "" {
@@ -389,9 +389,9 @@ func (c *Client) completeLogin(redirectURI string) error {
 		Str("uuid", uuid).
 		Str("lang", lang).
 		Str("scan", scan).
-		Msg("webwxnewloginpage 请求参数")
+		Msg("webwxnewloginpage request parameters")
 
-	// 构造请求 URL 和参数（与 Python 保持一致）
+	// Build request URL and parameters (consistent with Python version)
 	apiURL := fmt.Sprintf("https://%s/cgi-bin/mmwebwx-bin/webwxnewloginpage", domain)
 	params := url.Values{}
 	params.Set("fun", "new")
@@ -402,14 +402,14 @@ func (c *Client) completeLogin(redirectURI string) error {
 	params.Set("scan", scan)
 
 	fullURL := apiURL + "?" + params.Encode()
-	c.logger.Info().Str("url", fullURL).Msg("请求 webwxnewloginpage")
+	c.logger.Info().Str("url", fullURL).Msg("Requesting webwxnewloginpage")
 
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %w", err)
 	}
 
-	// 只设置必要的请求头，与 Python 保持一致
+	// Only set necessary request headers, consistent with Python version
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
 	req.Header.Set("mmweb_appid", "wx_webfilehelper")
 
@@ -419,7 +419,7 @@ func (c *Client) completeLogin(redirectURI string) error {
 	}
 	defer resp.Body.Close()
 
-	// 保存响应中的 cookies
+	// Save cookies from response
 	c.SetCookies(resp.Cookies(), extractCookiesFromResponse(resp))
 
 	body, err := io.ReadAll(resp.Body)
@@ -428,9 +428,9 @@ func (c *Client) completeLogin(redirectURI string) error {
 	}
 
 	xmlBody := string(body)
-	c.logger.Info().Str("response", xmlBody).Msg("webwxnewloginpage 响应")
+	c.logger.Info().Str("response", xmlBody).Msg("webwxnewloginpage response")
 
-	// 检查错误响应：微信的响应使用 <error> 作为根元素，<ret>0</ret> 表示成功
+	// Check for error response: WeChat response uses <error> as root element, <ret>0</ret> indicates success
 	retValue := extractXMLTag(xmlBody, "ret")
 	if retValue != "" && retValue != "0" {
 		errMsg := extractXMLTag(xmlBody, "message")
@@ -449,7 +449,7 @@ func (c *Client) completeLogin(redirectURI string) error {
 		return fmt.Errorf("webwxnewloginpage 缺少认证字段，响应: %s", xmlBody[:min(500, len(xmlBody))])
 	}
 
-	// 初始化
+	// Initialize
 	if err := c.webwxinit(); err != nil {
 		return err
 	}
@@ -460,7 +460,7 @@ func (c *Client) completeLogin(redirectURI string) error {
 	c.lastLoginMessage = "logged_in"
 	c.mu.Unlock()
 
-	c.logger.Info().Str("uin", c.uin).Msg("登录成功")
+	c.logger.Info().Str("uin", c.uin).Msg("Login successful")
 	return nil
 }
 
@@ -471,7 +471,7 @@ func min(a, b int) int {
 	return b
 }
 
-// webwxinit 初始化会话
+// webwxinit initializes the session
 func (c *Client) webwxinit() error {
 	c.mu.RLock()
 	passTicket := c.passTicket
@@ -531,11 +531,11 @@ func (c *Client) webwxinit() error {
 	}
 	c.mu.Unlock()
 
-	c.logger.Info().Msg("初始化成功")
+	c.logger.Info().Msg("Initialization successful")
 	return nil
 }
 
-// GetLoginStatusDetail 获取登录状态详情
+// GetLoginStatusDetail returns login status details
 func (c *Client) GetLoginStatusDetail() *LoginStatusDetail {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -555,7 +555,7 @@ func (c *Client) GetLoginStatusDetail() *LoginStatusDetail {
 	}
 }
 
-// StartSyncCheck 启动同步检查（后台运行）
+// StartSyncCheck starts sync checking (runs in background)
 func (c *Client) StartSyncCheck() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -575,20 +575,20 @@ func (c *Client) StartSyncCheck() {
 
 			status, err := c.synccheck()
 			if err != nil {
-				c.logger.Error().Err(err).Msg("同步检查失败")
+				c.logger.Error().Err(err).Msg("Sync check failed")
 				continue
 			}
 
 			if status == "hasMsg" {
-				c.logger.Info().Msg("有新消息")
+				c.logger.Info().Msg("New message received")
 				syncResp, err := c.webwxsync()
 				if err != nil {
-					c.logger.Error().Err(err).Msg("获取消息失败")
+					c.logger.Error().Err(err).Msg("Failed to get messages")
 					continue
 				}
 				c.handleSyncResponse(syncResp)
 			} else if status == "logout" {
-				c.logger.Warn().Msg("已登出")
+				c.logger.Warn().Msg("Logged out")
 				c.mu.Lock()
 				c.loggedIn = false
 				c.mu.Unlock()
@@ -597,7 +597,7 @@ func (c *Client) StartSyncCheck() {
 	}
 }
 
-// synccheck 同步检查
+// synccheck performs a sync check
 func (c *Client) synccheck() (string, error) {
 	c.mu.RLock()
 	skey := c.skey
@@ -662,12 +662,12 @@ func (c *Client) synccheck() (string, error) {
 	return "wait", nil
 }
 
-// WaitSyncCheck 阻塞等待同步检查，返回状态
+// WaitSyncCheck blocks waiting for sync check and returns status
 func (c *Client) WaitSyncCheck() (string, error) {
 	return c.synccheck()
 }
 
-// webwxsync 获取新消息，返回完整响应
+// webwxsync gets new messages and returns the full response
 func (c *Client) webwxsync() (*SyncResponse, error) {
 	c.mu.RLock()
 	skey := c.skey
@@ -722,7 +722,7 @@ func (c *Client) webwxsync() (*SyncResponse, error) {
 		return nil, fmt.Errorf("同步失败: %d", data.BaseResponse.Ret)
 	}
 
-	// 更新 synckey
+	// Update synckey
 	if data.SyncKey.Count > 0 {
 		c.mu.Lock()
 		c.synckey = map[string]interface{}{
@@ -735,7 +735,7 @@ func (c *Client) webwxsync() (*SyncResponse, error) {
 	return &data, nil
 }
 
-// GetLatestMessages 获取最新消息
+// GetLatestMessages returns the latest messages
 func (c *Client) GetLatestMessages(limit int) []map[string]interface{} {
 	c.msgCacheMu.RLock()
 	defer c.msgCacheMu.RUnlock()
@@ -754,12 +754,12 @@ func (c *Client) GetLatestMessages(limit int) []map[string]interface{} {
 	return result
 }
 
-// SyncMessages 同步消息，返回完整响应
+// SyncMessages synchronizes messages and returns the full response
 func (c *Client) SyncMessages() (*SyncResponse, error) {
 	return c.webwxsync()
 }
 
-// SendText 发送文本消息
+// SendText sends a text message
 func (c *Client) SendText(text string) error {
 	c.mu.RLock()
 	entryHost := c.entryHost
@@ -821,17 +821,17 @@ func (c *Client) SendText(text string) error {
 		return fmt.Errorf("发送失败: %d", data.BaseResponse.Ret)
 	}
 
-	c.logger.Info().Str("msgId", data.MsgID).Msg("发送文本成功")
+	c.logger.Info().Str("msgId", data.MsgID).Msg("Text message sent successfully")
 	return nil
 }
 
-// handleSyncResponse 处理同步响应
+// handleSyncResponse processes sync responses
 func (c *Client) handleSyncResponse(resp *SyncResponse) {
 	if resp == nil || len(resp.AddMsgList) == 0 {
 		return
 	}
 
-	// 缓存消息
+	// Cache messages
 	c.msgCacheMu.Lock()
 	for _, msg := range resp.AddMsgList {
 		c.msgCache = append(c.msgCache, msg)
@@ -841,9 +841,9 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 	}
 	c.msgCacheMu.Unlock()
 
-	// 回调通知
+	// Callback notification
 	if c.cfg.CallbackURL == "" {
-		c.logger.Warn().Msg("未配置回调地址，跳过消息通知")
+		c.logger.Warn().Msg("No callback URL configured, skipping message notification")
 		return
 	}
 
@@ -852,7 +852,7 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 			bodyBytes, _ := json.Marshal(m)
 			req, err := http.NewRequest("POST", c.cfg.CallbackURL, strings.NewReader(string(bodyBytes)))
 			if err != nil {
-				c.logger.Error().Err(err).Msg("创建回调请求失败")
+				c.logger.Error().Err(err).Msg("Failed to create callback request")
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
@@ -860,32 +860,32 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 			client := &http.Client{Timeout: 10 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {
-				c.logger.Error().Err(err).Msg("发送回调失败")
+				c.logger.Error().Err(err).Msg("Failed to send callback")
 				return
 			}
 			resp.Body.Close()
 
 			msgId, _ := m["MsgId"].(string)
-			c.logger.Info().Str("msgId", msgId).Msg("消息回调成功")
+			c.logger.Info().Str("msgId", msgId).Msg("Message callback successful")
 		}(msg)
 	}
 }
 
-// IsLoggedIn 检查是否已登录
+// IsLoggedIn checks if the client is logged in
 func (c *Client) IsLoggedIn() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.loggedIn
 }
 
-// GetUUID 获取当前 UUID
+// GetUUID returns the current UUID
 func (c *Client) GetUUID() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.uuid
 }
 
-// Logout 登出
+// Logout logs out the client
 func (c *Client) Logout() error {
 	c.mu.RLock()
 	skey := c.skey
@@ -899,7 +899,7 @@ func (c *Client) Logout() error {
 		return nil
 	}
 
-	// 停止同步检查
+	// Stop sync check
 	close(c.stopChan)
 	c.stopChan = make(chan struct{})
 
@@ -931,7 +931,7 @@ func (c *Client) Logout() error {
 	}
 	resp.Body.Close()
 
-	c.logger.Info().Msg("登出成功")
+	c.logger.Info().Msg("Logout successful")
 
 	c.mu.Lock()
 	c.loggedIn = false
@@ -949,7 +949,7 @@ func (c *Client) Logout() error {
 	return nil
 }
 
-// SetCookies 设置 cookies
+// SetCookies sets the cookies
 func (c *Client) SetCookies(cookies []*http.Cookie, raw string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -957,7 +957,7 @@ func (c *Client) SetCookies(cookies []*http.Cookie, raw string) {
 	c.cookiesRaw = raw
 }
 
-// resolveHosts 解析主机
+// resolveHosts resolves host names
 func (c *Client) resolveHosts() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -978,7 +978,7 @@ func (c *Client) resolveHostsLocked() {
 	}
 }
 
-// setRequestHeaders 设置请求头
+// setRequestHeaders sets request headers
 func (c *Client) setRequestHeaders(req *http.Request) {
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -996,9 +996,9 @@ func (c *Client) setRequestHeaders(req *http.Request) {
 	c.mu.RUnlock()
 }
 
-// 辅助函数
+// Helper functions
 
-// buildBaseRequest 构造 BaseRequest，与 Python 版本保持一致
+// buildBaseRequest builds the BaseRequest, consistent with the Python version
 func (c *Client) buildBaseRequest() map[string]interface{} {
 	c.mu.RLock()
 	uin := c.uin
@@ -1007,7 +1007,7 @@ func (c *Client) buildBaseRequest() map[string]interface{} {
 	deviceID := c.deviceID
 	c.mu.RUnlock()
 
-	// 尝试将 uin 转换为 int，与 Python 版本保持一致
+	// Try to convert uin to int, consistent with the Python version
 	var uinValue interface{}
 	if uinInt, err := strconv.Atoi(uin); err == nil {
 		uinValue = uinInt
@@ -1039,7 +1039,7 @@ func formatSyncKey(synckey map[string]interface{}) string {
 
 	var parts []string
 
-	// 处理 []SyncKeyItem 类型（从 webwxinit 获取）
+	// Handle []SyncKeyItem type (from webwxinit)
 	if items, ok := list.([]SyncKeyItem); ok {
 		for _, item := range items {
 			parts = append(parts, fmt.Sprintf("%d_%d", item.Key, item.Val))
@@ -1047,7 +1047,7 @@ func formatSyncKey(synckey map[string]interface{}) string {
 		return strings.Join(parts, "|")
 	}
 
-	// 处理结构体切片类型（从 SyncResponse 获取）
+	// Handle struct slice type (from SyncResponse)
 	if items, ok := list.([]struct {
 		Key int `json:"Key"`
 		Val int `json:"Val"`
@@ -1058,7 +1058,7 @@ func formatSyncKey(synckey map[string]interface{}) string {
 		return strings.Join(parts, "|")
 	}
 
-	// 处理 []interface{} 类型（从 JSON 反序列化获取）
+	// Handle []interface{} type (from JSON deserialization)
 	if items, ok := list.([]interface{}); ok {
 		for _, item := range items {
 			if m, ok := item.(map[string]interface{}); ok {

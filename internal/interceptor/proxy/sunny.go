@@ -51,10 +51,10 @@ func (p *SunnyNetProxy) Start(port int) error {
 	if runtime.GOOS == "windows" {
 		success := p.Sunny.OpenDrive(0)
 		if success {
-			fmt.Println("进程代理驱动启动成功")
+			fmt.Println("Process proxy driver started successfully")
 			p.Sunny.ProcessAddName("WeChatAppEx.exe")
 		} else {
-			fmt.Println("进程代理驱动启动失败，使用系统代理")
+			fmt.Println("Process proxy driver failed to start, using system proxy")
 		}
 	}
 	return nil
@@ -179,7 +179,7 @@ func (c *sunnyBridgeContext) Res() *ContextRes {
 	hdr := make(h.Header)
 	if c.impl != nil && c.impl.Res != nil {
 		if rr := c.impl.Res(); rr != nil {
-			// SunnyNet 的 Header 类型与 net/http.Header 不同，保持为空以避免类型不匹配
+			// SunnyNet's Header type differs from net/http.Header; keep empty to avoid type mismatch
 			_ = rr
 		}
 	}
@@ -330,7 +330,7 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 			}
 		}
 		return
-	case public.HttpResponseOK: // 请求完成
+	case public.HttpResponseOK: // Request completed
 		ctx := &SunnyNetContext{
 			GetResponseHeader: func(key string) string {
 				return Conn.GetResponseHeader().Get(key)
@@ -389,7 +389,7 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 				}
 				return b, nil
 			},
-			// 为响应阶段也提供请求信息，方便插件获取 Hostname/Path 等
+			// Also provide request info in the response phase, allowing plugins to access Hostname/Path etc.
 			Req: func() *SunnyNetContextReq {
 				u := Conn.URL()
 				parsed_url, _ := url.Parse(u)

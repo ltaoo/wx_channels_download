@@ -50,7 +50,7 @@ https://dash.cloudflare.com/profile/api-tokens
 上述配置完成后，执行下面命令即可部署到 `Cloudflare`
 
 ```bash
-./wx_channels_download deploy
+./wx_channels_download deploy mp
 ```
 
 ### 本地刷新配置
@@ -121,7 +121,7 @@ mp:
 
 ## API
 
-详见 [API - 公众号接口](./api.md#公众号接口)
+详见 [API - 公众号接口](./api.md)
 
 ## 注意事项
 
@@ -134,4 +134,3 @@ mp:
 ### 授权凭证
 
 授权凭证中，只有 `biz` 和 `uin` 是不变的，`biz` 是公众号唯一标记，`uin` 微信用户（你自己）的唯一标记，所以 `mp.remoteServer` 里面不要填非自己的服务，避免别人拿到 `uin`，疯狂调用推送消息列表接口，被微信风控，自己没法用了
-

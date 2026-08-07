@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 错误码定义
+// Error code definitions
 const (
 	CodeSuccess           = 0
 	CodeInvalidParams     = 400
@@ -16,7 +16,7 @@ const (
 	CodeMissingKey        = 4003
 	CodeMissingRefreshUri = 4004
 	CodeTooManyAccounts   = 4005
-	CodeTokenInvalid      = 1002 // 统一 Token 无效错误码
+	CodeTokenInvalid      = 1002 // Unified token invalid error code
 	CodeAccountNotFound   = 1003
 	CodeAccountExpired    = 1004
 	CodeAccountBanned     = 1005
@@ -28,9 +28,10 @@ const (
 	CodeRemotePushFailed  = 2004
 	CodeTimeout           = 5002
 	CodeClientBusy        = 5003
+	CodeDuplicateTask     = 409 // Duplicate download task
 )
 
-// 错误文案映射 [0]英文 [1]中文
+// Error message mapping [0]English [1]Chinese
 var errMsgMap = map[int][2]string{
 	CodeSuccess:           {"success", "成功"},
 	CodeInvalidParams:     {"Invalid parameters", "参数错误"},
@@ -51,6 +52,7 @@ var errMsgMap = map[int][2]string{
 	CodeRemotePushFailed:  {"Push credential failed", "同步凭证到远程服务器失败"},
 	CodeTimeout:           {"Request timeout", "请求超时"},
 	CodeClientBusy:        {"Client busy", "发送缓冲区已满，请稍后重试"},
+	CodeDuplicateTask:     {"Duplicate download task", "下载任务已存在"},
 }
 
 type Response struct {
@@ -78,6 +80,14 @@ func Err(ctx *gin.Context, code int, msg string) {
 	ctx.JSON(http.StatusOK, Response{
 		Code: code,
 		Msg:  msg,
+	})
+}
+
+func ErrWithData(ctx *gin.Context, code int, msg string, data interface{}) {
+	ctx.JSON(http.StatusOK, Response{
+		Code: code,
+		Msg:  msg,
+		Data: data,
 	})
 }
 

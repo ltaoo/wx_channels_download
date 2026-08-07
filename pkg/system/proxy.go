@@ -14,7 +14,7 @@ type HardwarePort struct {
 
 func merge_default_settings(p ProxySettings) ProxySettings {
 	if p.Device == "" {
-		p.Device = "Wi-Fi" // 默认使用 Wi-Fi 设备
+		p.Device = "Wi-Fi" // Default to Wi-Fi device
 		device, err := get_network_interfaces()
 		if err == nil {
 			p.Device = device.Port

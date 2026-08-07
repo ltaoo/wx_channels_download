@@ -17,7 +17,7 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// HashType 定义支持的哈希类型
+// HashType defines the supported hash types
 type HashType string
 
 const (
@@ -27,7 +27,7 @@ const (
 	BLAKE3 HashType = "blake3"
 )
 
-// FileHash 计算文件的哈希值
+// FileHash calculates the hash of a file
 func FileHash(filePath string, hashType HashType) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -58,7 +58,7 @@ func FileHash(filePath string, hashType HashType) (string, error) {
 	return hex.EncodeToString(hashBytes), nil
 }
 
-// StringHash 计算字符串的哈希值
+// StringHash calculates the hash of a string
 func StringHash(data string, hashType HashType) (string, error) {
 	var hash interface{}
 	switch hashType {
@@ -83,7 +83,7 @@ func StringHash(data string, hashType HashType) (string, error) {
 	return hex.EncodeToString(hashBytes), nil
 }
 
-// BytesHash 计算字节数组的哈希值
+// BytesHash calculates the hash of a byte array
 func BytesHash(data []byte, hashType HashType) (string, error) {
 	var hash interface{}
 	switch hashType {
@@ -108,7 +108,7 @@ func BytesHash(data []byte, hashType HashType) (string, error) {
 	return hex.EncodeToString(hashBytes), nil
 }
 
-// FileHashAll 计算文件的所有支持的哈希值
+// FileHashAll computes all supported hash values for a file.
 func FileHashAll(filePath string) (map[HashType]string, error) {
 	hashes := make(map[HashType]string)
 
@@ -123,7 +123,7 @@ func FileHashAll(filePath string) (map[HashType]string, error) {
 	return hashes, nil
 }
 
-// ValidateHash 验证哈希值格式是否正确
+// ValidateHash validates whether a hash string has the correct format
 func ValidateHash(hash string, hashType HashType) bool {
 	expectedLength := 0
 	switch hashType {
@@ -143,73 +143,73 @@ func ValidateHash(hash string, hashType HashType) bool {
 		return false
 	}
 
-	// 检查是否为有效的十六进制字符串
+	// Check if valid hex string
 	_, err := hex.DecodeString(hash)
 	return err == nil
 }
 
-// FileHashWithExtension 参考 TypeScript 实现：计算文件内容的 base64 + 扩展名的 blake3 哈希
-// 返回前 32 个字符的十六进制字符串
+// FileHashWithExtension is based on the TypeScript implementation: calculates the blake3 hash
+// of the file's base64 content + extension, returning the first 32 characters of the hex string
 func FileHashWithExtension(filePath string) (string, error) {
-	// 读取文件内容
+	// Read file contents
 	contents, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
-	// 转换为 base64
+	// Convert to base64
 	base64Contents := base64.StdEncoding.EncodeToString(contents)
 
-	// 获取文件扩展名（不包含点）
+	// Get file extension (without dot)
 	extension := filepath.Ext(filePath)
 	if len(extension) > 0 && extension[0] == '.' {
-		extension = extension[1:] // 去掉点
+		extension = extension[1:] // Remove dot
 	}
 
-	// 拼接 base64 内容和扩展名
+	// Concatenate base64 content and extension
 	data := base64Contents + extension
 
-	// 使用 blake3 计算哈希
+	// Calculate hash using blake3
 	hasher := blake3.New()
 	_, err = hasher.Write([]byte(data))
 	if err != nil {
 		return "", fmt.Errorf("failed to calculate blake3 hash: %w", err)
 	}
 
-	// 获取哈希值并转换为十六进制字符串
+	// Get hash bytes and convert to hex string
 	hashBytes := hasher.Sum(nil)
 	hashHex := hex.EncodeToString(hashBytes)
 
-	// 返回前 32 个字符
+	// Return first 32 characters
 	if len(hashHex) > 32 {
 		return hashHex[:32], nil
 	}
 	return hashHex, nil
 }
 
-// StringHashWithExtension 计算字符串内容 + 扩展名的 blake3 哈希
+// StringHashWithExtension calculates the blake3 hash of string content + extension
 func StringHashWithExtension(content, extension string) (string, error) {
-	// 转换为 base64
+	// Convert to base64
 	base64Contents := base64.StdEncoding.EncodeToString([]byte(content))
 
-	// 清理扩展名（去掉点）
+	// Clean extension (remove dot)
 	cleanExtension := strings.TrimPrefix(extension, ".")
 
-	// 拼接 base64 内容和扩展名
+	// Concatenate base64 content and extension
 	data := base64Contents + cleanExtension
 
-	// 使用 blake3 计算哈希
+	// Calculate hash using blake3
 	hasher := blake3.New()
 	_, err := hasher.Write([]byte(data))
 	if err != nil {
 		return "", fmt.Errorf("failed to calculate blake3 hash: %w", err)
 	}
 
-	// 获取哈希值并转换为十六进制字符串
+	// Get hash bytes and convert to hex string
 	hashBytes := hasher.Sum(nil)
 	hashHex := hex.EncodeToString(hashBytes)
 
-	// 返回前 32 个字符
+	// Return first 32 characters
 	if len(hashHex) > 32 {
 		return hashHex[:32], nil
 	}

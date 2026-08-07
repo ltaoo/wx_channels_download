@@ -175,36 +175,36 @@ func walk(dir string, files_map map[string]FileContainer, dir_start string, igno
 		file_path := filepath.Join(dir, file.Name())
 		relative_filepath, _ := filepath.Rel(dir_start, file_path)
 
-		// 检查是否应该忽略此文件/目录
+		// Check if this file/directory should be ignored
 		if should_ignore(file_path, ignore_patterns) {
 			fmt.Printf("Ignoring: %s\n", relative_filepath)
 			continue
 		}
 
 		if file.IsDir() {
-			// 递归遍历子目录
+			// Recursively traverse subdirectories
 			walk(file_path, files_map, dir_start, ignore_patterns)
 		} else {
-			// 处理文件
+			// Process file
 			info, err := file.Info()
 			if err != nil {
 				log.Printf("Error getting file info for %s: %v", file_path, err)
 				continue
 			}
 
-			// 计算文件哈希值
+			// Compute file hash value
 			file_hash, err := hash.FileHashWithExtension(file_path)
 			if err != nil {
 				log.Printf("Error calculating hash for %s: %v", file_path, err)
-				file_hash = "" // 如果计算失败，设置为空字符串
+				file_hash = "" // If calculation fails, set to empty string
 			}
 
-			// 创建 FileContainer
+			// Create FileContainer
 			_the_file := FileContainer{
 				Filename:    file.Name(),
 				Path:        file_path,
 				SizeInBytes: int(info.Size()),
-				ContentType: getMimeType(file.Name()), // 根据文件类型获取正确的 MIME type
+				ContentType: getMimeType(file.Name()), // Determine the correct MIME type based on file extension
 				Hash:        file_hash,
 			}
 
@@ -229,7 +229,7 @@ func Validate(directory string) (map[string]FileContainer, error) {
 		// log.Fatalf("Directory does not exist: %s", directory)
 		return make(map[string]FileContainer), err
 	}
-	// 获取绝对路径
+	// Get absolute path
 	abs_filepath, err := filepath.Abs(directory)
 	if err != nil {
 		// log.Fatalf("Error getting absolute path: %v", err)

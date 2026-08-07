@@ -81,7 +81,7 @@ jobs:
           DOCKER_BUILDKIT: 1
         run: |
           set -euo pipefail
-          IMAGE="${{ steps.image.outputs.image }}" scripts/build-webtop-image.sh
+          IMAGE="${{ steps.image.outputs.image }}" bash build/build-webtop-image.sh
           docker tag "${{ steps.image.outputs.image }}" "${{ steps.image.outputs.latest_image }}"
 
       - name: Push Docker image

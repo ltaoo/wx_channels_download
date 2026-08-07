@@ -2,19 +2,17 @@ debug:
   error: false
   echolog: false
 
+workdir: ""
+
 pagespy:
+  enabled: false
   protocol: http
   api: 127.0.0.1:6752
-  enabled: false
 
 download:
-  defaultHighest: false
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"
-  pauseWhenDownload: false
   playDoneAudio: true
-  frontend: false
-  forceCheckAllFeeds: false
   remoteServer:
     enabled: false
     protocol: "http"
@@ -26,9 +24,22 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+admin:
+  hostname: "127.0.0.1"
+  port: 2021
+
 update:
   proxy: ""
   mirror: ""
+
+db:
+  type: "sqlite"
+  host: ""
+  port: ""
+  username: ""
+  password: ""
+  filename: ""
+  filepath: "%CWD%/data.db"
 
 proxy:
   system: true
@@ -44,7 +55,13 @@ proxy:
   upstreamProxy: ""
 
 channels:
+  enabled: true
   disableLocationToHome: false
+  download:
+    defaultHighest: false
+    frontend: false
+    pauseWhenDownload: false
+    forceCheckAllFeeds: false
 
 mp:
   enabled: false
@@ -64,4 +81,5 @@ cloudflare:
   adminToken: ""
   workerName: "mp-rss-api"
   d1Name: "mp-rss-db"
+  sphWorkerName: "sph"
   sphCookie: ""
