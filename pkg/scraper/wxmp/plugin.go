@@ -181,7 +181,7 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 				var injected strings.Builder
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js"))
+					frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js", version_query))
 				}
 				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.umd.min.js", version_query))
 				frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.30.0/timeless.utils.umd.min.js", version_query))
@@ -208,18 +208,18 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 					&injected,
 					script_attr,
 					url_build("/public/mitt.umd.js"),
-					url_build("/inject/eventbus.js"),
-					url_build("/inject/env.js"),
-					url_build("/inject/utils.js"),
-					url_build("/inject/components.js"),
-					url_build("/inject/virtual-list-view.js"),
-					url_build("/inject/download/model.js"),
-					url_build("/inject/download/view.js"),
-					InjectAssetURL(asset_base_url, "mp.ws.js"),
+					url_build("/inject/eventbus.js", version_query),
+					url_build("/inject/env.js", version_query),
+					url_build("/inject/utils.js", version_query),
+					url_build("/inject/components.js", version_query),
+					url_build("/inject/virtual-list-view.js", version_query),
+					url_build("/inject/download/model.js", version_query),
+					url_build("/inject/download/view.js", version_query),
+					AssetURL(asset_base_url, "/inject/mp.ws.js", version_query),
 				)
 				if cfg.PagespyEnabled {
 					/** Online debugging */
-					frontend.AppendScripts(&injected, script_attr, url_build("/public/pagespy.min.js", version_query), url_build("/inject/pagespy.js"))
+					frontend.AppendScripts(&injected, script_attr, url_build("/public/pagespy.min.js", version_query), url_build("/inject/pagespy.js", version_query))
 				}
 				if cfg.GlobalScriptURL != "" {
 					frontend.AppendScripts(&injected, script_attr, cfg.GlobalScriptURL)

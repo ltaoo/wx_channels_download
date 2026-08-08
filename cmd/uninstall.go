@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
 )
 
@@ -20,10 +23,23 @@ var uninstall_certificate_cmd = &cobra.Command{
 		if command != "uninstall" {
 			return
 		}
+		if !platform.IsAdmin() {
+			if !platform.RequestAdminPermission() {
+				fmt.Printf("\nERROR: Failed to run. Please right-click and select \"Run as administrator\".\n")
+				wait_for_uninstall_exit(cmd.InOrStdin(), cmd.OutOrStdout())
+			}
+			return
+		}
 		uninstall_certificate_command(&UninstallCertificateCommandArgs{
 			CertFiles: services.LoadCertFiles(),
 		})
+		wait_for_uninstall_exit(cmd.InOrStdin(), cmd.OutOrStdout())
 	},
+}
+
+func wait_for_uninstall_exit(in io.Reader, out io.Writer) {
+	fmt.Fprint(out, "\nPress Enter to close the window...")
+	_, _ = bufio.NewReader(in).ReadString('\n')
 }
 
 func init() {

@@ -1,4 +1,4 @@
-//go:build embed_frontend_inject
+//go:build embed_inject || embed_frontend_inject
 
 package zhihu
 

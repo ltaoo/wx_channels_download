@@ -7,54 +7,73 @@ if (typeof window.__d_config === "undefined") {
 
 var WXEnv = (() => {
   const defaults = {
-    channelsProtocol: "http",
-    channelsHostname: "127.0.0.1:2022",
-    downloadProtocol: "http",
-    downloadHostname: "127.0.0.1:2022",
+    apiHost: "127.0.0.1:2022",
+    apiOrigin: "http://127.0.0.1:2022",
+    apiProtocol: "http",
+    pagespyServerProtocol: "http",
+    pagespyServerAPI: undefined,
+    remoteServerEnabled: false,
+    remoteServerOrigin: "http://127.0.0.1:2022",
+    maxRunning: 3,
+    downloadFilenameTemplate: undefined,
+    defaultHighest: false,
+    downloadPauseWhenDownload: false,
+    downloadInFrontend: false,
+    downloadForceCheckAllFeeds: false,
     assetsFallbackBase: "http://127.0.0.1:2022/__assets",
-    MaxRunning: 3,
   };
-  const runtimeEnv = window.__d_config;
+  const runtime_env = Object.assign(window.__d_config);
+  const api_url = new URL(runtime_env.apiOrigin || defaults.apiOrigin);
+  const api_protocol =
+    runtime_env.apiProtocol || api_url.protocol.replace(":", "");
+  const api_host = runtime_env.apiHost || api_url.host;
+  const derived = {
+    downloaderOrigin: api_url.origin,
+    downloaderProtocol: api_protocol,
+    downloaderWSURL: `${ws_protocol(api_protocol)}://${api_host}/ws/v1/download_task`,
+  };
+  if (runtime_env.remoteServerEnabled) {
+    const remote_server_url = new URL(runtime_env.remoteServerOrigin);
+    const remote_server_protocol = remote_server_url.protocol.replace(":", "");
+    derived.downloaderOrigin = remote_server_url.origin;
+    derived.downloaderProtocol = remote_server_protocol;
+    derived.downloaderWSURL = `${ws_protocol(remote_server_protocol)}://${remote_server_url.host}/ws/v1/download_task`;
+  }
   const ua = navigator.userAgent || navigator.platform || "";
 
   function config() {
     return window.__d_config || {};
   }
 
-  function ownValue(source, name) {
+  function own_value(source, name) {
     if (source && Object.prototype.hasOwnProperty.call(source, name)) {
       return source[name];
     }
     return undefined;
   }
 
-  function explicitEnvValue(name) {
-    const runtimeValue = ownValue(runtimeEnv, name);
-    if (typeof runtimeValue !== "undefined") {
-      return runtimeValue;
+  function get(name) {
+    let v = own_value(derived, name);
+    if (typeof v !== "undefined") {
+      return v;
     }
-    return ownValue(config(), name);
-  }
-
-  function envValue(name) {
-    const value = explicitEnvValue(name);
-    if (typeof value !== "undefined") {
-      return value;
+    v = own_value(runtime_env, name);
+    if (typeof v !== "undefined") {
+      return v;
     }
     return defaults[name];
   }
 
-  function applyRuntimeEnv(values) {
+  function apply_runtime_env(values) {
     if (!values || typeof values !== "object") {
-      return runtimeEnv;
+      return runtime_env;
     }
-    Object.assign(runtimeEnv, values);
-    refreshLegacyGlobals();
-    return runtimeEnv;
+    Object.assign(runtime_env, values);
+    return runtime_env;
   }
 
-  function hostPort(hostname, port) {
-    const host = normalizeHostname(hostname);
+  function host_port(hostname, port) {
+    const host = normalize_hostname(hostname);
     if (!host) {
       return "";
     }
@@ -69,7 +88,7 @@ var WXEnv = (() => {
     return host + ":" + port;
   }
 
-  function normalizeHostname(hostname) {
+  function normalize_hostname(hostname) {
     const value = String(hostname || "").trim();
     if (!value) {
       return "";
@@ -82,7 +101,7 @@ var WXEnv = (() => {
     return value;
   }
 
-  function normalizeHostAddr(addr) {
+  function normalize_host_addr(addr) {
     const value = String(addr || "").trim();
     if (!value) {
       return "";
@@ -91,7 +110,7 @@ var WXEnv = (() => {
     if (!match) {
       return value;
     }
-    const host = normalizeHostname(match[1]);
+    const host = normalize_hostname(match[1]);
     return match[2] ? host + ":" + match[2] : host;
   }
 
@@ -102,29 +121,37 @@ var WXEnv = (() => {
     return protocol + "://" + addr;
   }
 
-  function wsProtocol(protocol) {
+  function ws_protocol(protocol) {
     return protocol === "https" ? "wss" : "ws";
   }
 
-  function channelsServer() {
+  function download_origin() {
+    const value = get("remoteServerEnabled")
+      ? get("remoteServerOrigin")
+      : get("apiOrigin");
+    return String(value || "").replace(/\/$/, "");
+  }
+
+  function download_server() {
+    const value = download_origin();
+    if (!value) {
+      return { addr: "", protocol: "" };
+    }
+    const url = new URL(value);
     return {
-      addr: envValue("channelsHostname") || defaults.channelsHostname,
-      protocol: envValue("channelsProtocol") || defaults.channelsProtocol,
+      addr: url.host,
+      protocol: url.protocol.replace(":", ""),
     };
   }
 
-  function downloadServer() {
-    return {
-      addr: envValue("downloadHostname") || defaults.downloadHostname,
-      protocol: envValue("downloadProtocol") || defaults.downloadProtocol,
-    };
-  }
-
-  function assetsBaseURL() {
+  function assets_base_URL() {
     const cfg = config();
-    const explicitBase = ownValue(cfg, "assets_base_url");
+    const explicitBase = own_value(cfg, "assets_base_url");
     if (explicitBase) {
       return String(explicitBase).replace(/\/$/, "");
+    }
+    if (cfg.apiOrigin) {
+      return String(cfg.apiOrigin).replace(/\/$/, "") + "/__assets";
     }
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
       return (
@@ -135,11 +162,11 @@ var WXEnv = (() => {
     if (cfg.Protocol && cfg.Addr) {
       return origin(cfg.Protocol, cfg.Addr) + "/__assets";
     }
-    return envValue("assetsFallbackBase");
+    return get("assetsFallbackBase");
   }
 
-  function assetUrl(path) {
-    const base = assetsBaseURL();
+  function asset_URL(path) {
+    const base = assets_base_URL();
     if (path.startsWith("/public/")) {
       const version = encodeURIComponent(config().version || "static");
       return `${base}${path}?v=${version}`;
@@ -147,34 +174,8 @@ var WXEnv = (() => {
     return `${base}${path}`;
   }
 
-  function legacyGlobals() {
-    const channels = channelsServer();
-    const download = downloadServer();
-    return {
-      ChannelsHostname: channels.addr,
-      DownloadHostname: download.addr,
-      APIServerProtocol: download.protocol,
-      WSServerProtocol: wsProtocol(download.protocol),
-      WXUserAgent: ua,
-      isWin: /Windows|Win/i.test(ua),
-      isWeChatBrowser: /MicroMessenger/i.test(ua),
-      __wx_assets_base: assetsBaseURL(),
-    };
-  }
-
-  function refreshLegacyGlobals() {
-    const values = legacyGlobals();
-    Object.keys(values).forEach((name) => {
-      window[name] = values[name];
-    });
-    return values;
-  }
-
   return {
-    defaults,
-    runtimeEnv,
-    applyRuntimeEnv,
-    refreshLegacyGlobals,
+    get,
     get config() {
       return config();
     },
@@ -187,91 +188,18 @@ var WXEnv = (() => {
     get isWeChatBrowser() {
       return /MicroMessenger/i.test(ua);
     },
-    get isChannels() {
-      return window.location.href.includes("weixin.qq.com");
-    },
     get isWxwork() {
       return window.ua && window.ua.includes("wxwork");
     },
-    hostPort,
-    normalizeHostname,
-    normalizeHostAddr,
+    hostPort: host_port,
+    normalizeHostname: normalize_hostname,
+    normalizeHostAddr: normalize_host_addr,
     origin,
-    wsProtocol,
-    get configuredAPI() {
-      return downloadServer();
-    },
-    get localAPI() {
-      return channelsServer();
-    },
-    get remoteAPI() {
-      return downloadServer();
-    },
-    get api() {
-      return downloadServer();
-    },
-    get apiServerAddr() {
-      return downloadServer().addr;
-    },
-    get apiServerProtocol() {
-      return downloadServer().protocol;
-    },
-    get apiOrigin() {
-      const api = downloadServer();
-      return origin(api.protocol, api.addr);
-    },
-    get wsServerProtocol() {
-      return wsProtocol(downloadServer().protocol);
-    },
-    get remoteAPIOrigin() {
-      return this.downloadOrigin;
-    },
-    get localAPIOrigin() {
-      return this.channelsOrigin;
-    },
-    get officialAccountOrigin() {
-      return this.downloadOrigin;
-    },
-    get assetsBaseURL() {
-      return assetsBaseURL();
-    },
-    assetUrl,
-    get channelsHostname() {
-      return channelsServer().addr;
-    },
-    get downloadHostname() {
-      return downloadServer().addr;
-    },
-    get channelsOrigin() {
-      const channels = channelsServer();
-      return origin(channels.protocol, channels.addr);
-    },
-    get downloadOrigin() {
-      const download = downloadServer();
-      return origin(download.protocol, download.addr);
-    },
-    get channelsWSURL() {
-      const channels = channelsServer();
-      return wsProtocol(channels.protocol) + "://" + channels.addr + "/ws/channels";
-    },
-    get downloaderWSURL() {
-      return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/v1/download_task";
-    },
-    get mpWSURL() {
-      return this.wsServerProtocol + "://" + this.apiServerAddr + "/ws/mp";
-    },
+    wsProtocol: ws_protocol,
+    assetUrl: asset_URL,
   };
 })();
 
-WXEnv.refreshLegacyGlobals();
-var ChannelsHostname = window.ChannelsHostname;
-var DownloadHostname = window.DownloadHostname;
-var APIServerProtocol = window.APIServerProtocol;
-var WSServerProtocol = window.WSServerProtocol;
-var WXUserAgent = window.WXUserAgent;
-var isWin = window.isWin;
-var isWeChatBrowser = window.isWeChatBrowser;
-var __wx_assets_base = window.__wx_assets_base;
 function __wx_asset_url(path) {
   return WXEnv.assetUrl(path);
 }

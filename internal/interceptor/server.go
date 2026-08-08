@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -24,6 +25,7 @@ type InterceptorServer struct {
 	addr        string
 	server      *http.Server
 	running     bool
+	lifecycleMu sync.Mutex
 }
 
 func NewInterceptorServer(cfg *config.Config, cert *certificate.CertFileAndKeyFile, logger *zerolog.Logger) *InterceptorServer {
@@ -101,6 +103,9 @@ func (s *InterceptorServer) Addr() string {
 }
 
 func (s *InterceptorServer) Start() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
 	var listener net.Listener
 	if !buildtags.UsingSunnyNet {
 		l, err := net.Listen("tcp", s.addr)
@@ -135,6 +140,14 @@ func (s *InterceptorServer) Start() error {
 }
 
 func (s *InterceptorServer) Stop() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	// Disable the system proxy before waiting for active HTTP connections.
+	// Console-close cleanup on Windows may be forcibly terminated after a
+	// short timeout, and leaving the proxy enabled breaks the user's network.
+	interceptorErr := s.Interceptor.Stop()
+
 	var shutdownErr error
 	if s.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -142,11 +155,11 @@ func (s *InterceptorServer) Stop() error {
 		shutdownErr = s.server.Shutdown(ctx)
 		s.server = nil
 	}
-	if err := s.Interceptor.Stop(); err != nil {
-		return fmt.Errorf("failed to stop interceptor: %v", err)
-	}
 	s.running = false
 	s.publishStatus("stopped")
+	if interceptorErr != nil {
+		return fmt.Errorf("failed to stop interceptor: %v", interceptorErr)
+	}
 	if shutdownErr != nil {
 		return shutdownErr
 	}

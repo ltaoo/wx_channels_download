@@ -168,7 +168,7 @@
 
 WXU.onDOMContentLoaded(function () {
   // var error_tip_timer = setTimeout(() => {
-  //   WXU.error({ msg: "Failed to fetch video details", alert: 0 });
+  //   WXU.error({ msg: "Failed to fetch video details", alert: 0, source: "channels.feed.js:171" });
   // }, 5000);
   var loaded = false;
   WXU.onFetchFeedProfile((feed) => {

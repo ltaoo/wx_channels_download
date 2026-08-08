@@ -13,3 +13,7 @@ func need_admin_permission() bool {
 func request_admin_permission() bool {
 	return false
 }
+
+func request_admin_permission_and_wait() (started bool, exited bool) {
+	return false, false
+}

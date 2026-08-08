@@ -48,7 +48,7 @@ func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version 
 			frontend.AppendScripts(
 				&early_injected,
 				"",
-				url_build("/inject/fetch.js"),
+				url_build("/inject/fetch.js", version_query),
 			)
 			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.umd.min.js", version_query))
 			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.30.0/timeless.utils.umd.min.js", version_query))
@@ -68,15 +68,15 @@ func CreateZhihuInterceptorPlugin(cookie string, asset_base_url string, version 
 				&injected,
 				"",
 				url_build("/public/mitt.umd.js"),
-				url_build("/inject/eventbus.js"),
-				url_build("/inject/env.js"),
-				url_build("/inject/utils.js"),
+				url_build("/inject/eventbus.js", version_query),
+				url_build("/inject/env.js", version_query),
+				url_build("/inject/utils.js", version_query),
 			)
 			frontend.AppendScripts(
 				&injected,
 				"",
-				url_build("/inject/download/model.js"),
-				InjectAssetURL(asset_base_url, "zhihu.main.js"),
+				url_build("/inject/download/model.js", version_query),
+				AssetURL(asset_base_url, "/inject/zhihu.main.js", version_query),
 			)
 			if globalScriptPath != "" {
 				frontend.AppendScripts(&injected, "", frontend.UserGlobalScriptAssetPath(globalScriptPath))

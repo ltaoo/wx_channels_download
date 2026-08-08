@@ -624,6 +624,20 @@ func (d *HermesEngine) StopTask(taskID int) error {
 // PauseAllTask pauses all in-progress or queued download tasks.
 func (d *HermesEngine) PauseAllTask() {
 	d.logger.Info().Msg("PauseAllTask")
+	jobs := d.requestPauseAllTasks()
+	for _, taskJob := range jobs {
+		<-taskJob.done
+	}
+}
+
+// RequestPauseAllTask requests all in-progress or queued download tasks to
+// pause without waiting for every task goroutine to exit.
+func (d *HermesEngine) RequestPauseAllTask() {
+	d.logger.Info().Msg("RequestPauseAllTask")
+	d.requestPauseAllTasks()
+}
+
+func (d *HermesEngine) requestPauseAllTasks() []*TaskJob {
 	d.mu.Lock()
 	jobs := make([]*TaskJob, 0, len(d.jobs))
 	for _, taskJob := range d.jobs {
@@ -633,9 +647,7 @@ func (d *HermesEngine) PauseAllTask() {
 	for _, taskJob := range jobs {
 		taskJob.stop(cancelPause)
 	}
-	for _, taskJob := range jobs {
-		<-taskJob.done
-	}
+	return jobs
 }
 
 // DeleteTask stops the execution instance and marks the task as cancelled.

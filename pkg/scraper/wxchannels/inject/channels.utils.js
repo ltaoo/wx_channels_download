@@ -17,9 +17,7 @@ var __wx_channels_store__ = {
   profile: null,
   buffers: [],
 };
-var __wx_channels_live_store__ = {
-  profile: null,
-};
+var __wx_channels_live_store__ = { profile: null };
 function __wx_channels_video_decrypt(t, e, p) {
   for (
     var r = new Uint8Array(t), n = 0;
@@ -451,7 +449,7 @@ var WXBase64 = (() => {
   function __wx_check_feed_existing(opt = {}) {
     var feed = __wx_channels_store__.feed;
     if (!feed) {
-      WXU.error({
+      WXU.error({ source: "channels.utils.js:452",
         alert: Number(!opt.silence),
         msg: "检测不到视频，请提交 issue 反馈",
       });
@@ -1003,7 +1001,7 @@ var WXBase64 = (() => {
     console.log("__wx_channels_download3");
     const files = WXU.build_picture_zip_files(profile);
     if (files.length === 0) {
-      WXU.error({ msg: "没有可下载的内容" });
+      WXU.error({ msg: "没有可下载的内容", source: "channels.utils.js:1004" });
       return;
     }
     const zip = await WXU.Zip();
@@ -1022,7 +1020,7 @@ var WXBase64 = (() => {
       const content = await zip.generateAsync({ type: "blob" });
       await WXU.save(content, profile.filename + ".zip");
     } catch (err) {
-      WXU.error({ msg: "下载失败，" + err.message });
+      WXU.error({ msg: "下载失败，" + err.message, source: "channels.utils.js:1023" });
     } finally {
       ins.hide();
     }
@@ -1050,13 +1048,13 @@ var WXBase64 = (() => {
       console.log("after download create", something);
       const [err, data] = something;
       if (err) {
-        WXU.error({ msg: err.message });
+        WXU.error({ msg: err.message, source: "channels.utils.js:1051" });
         return;
       }
       return;
     }
     if (!filename) {
-      WXU.error({ msg: "文件名生成失败" });
+      WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1057" });
       return;
     }
     feed.filename = filename;
@@ -1083,7 +1081,7 @@ var WXBase64 = (() => {
     const ins = WXU.loading();
     var [err, response] = await WXU.fetch(feed.url);
     if (err) {
-      WXU.error({ msg: err.message });
+      WXU.error({ msg: err.message, source: "channels.utils.js:1084" });
       return;
     }
     const media_blob = await WXU.download_with_progress(response, {
@@ -1109,8 +1107,8 @@ var WXBase64 = (() => {
       WXU.log({ msg: "下载完成，开始解密" });
       var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
       if (err) {
-        WXU.error({ msg: "解密失败，" + err.message, alert: 0 });
-        WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0 });
+        WXU.error({ msg: "解密失败，" + err.message, alert: 0, source: "channels.utils.js:1110" });
+        WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0, source: "channels.utils.js:1111" });
       } else {
         WXU.log({ msg: "解密成功" });
         media_buf = data;
@@ -1119,7 +1117,7 @@ var WXBase64 = (() => {
     if (opt.suffix === ".mp3") {
       const [err, mp3_blob] = await WXU.media_to_mp3(media_buf.buffer);
       if (err) {
-        WXU.error({ msg: err.message });
+        WXU.error({ msg: err.message, source: "channels.utils.js:1120" });
         return;
       }
       WXU.emit(WXU.Events.MP3Downloaded, feed);
@@ -1164,7 +1162,7 @@ ${payload.key || ""}`,
     const [err, profile] = WXU.check_feed_existing();
     if (err) return;
     if (__wx_channels_store__.buffers.length === 0) {
-      WXU.error({ msg: "没有可下载的内容" });
+      WXU.error({ msg: "没有可下载的内容", source: "channels.utils.js:1165" });
       return;
     }
     var filename = WXU.build_filename(
@@ -1173,7 +1171,7 @@ ${payload.key || ""}`,
       WXU.config.downloadFilenameTemplate,
     );
     if (!filename) {
-      WXU.error({ msg: "文件名生成失败" });
+      WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1174" });
       return;
     }
     profile.filename = filename;
@@ -1218,14 +1216,14 @@ ${payload.key || ""}`,
         suffix: ".jpg",
       });
       if (err) {
-        WXU.error({ msg: err.message });
+        WXU.error({ msg: err.message, source: "channels.utils.js:1219" });
         return;
       }
       return;
     }
     var url = feed.cover_url.replace(/^http:/, "https:");
     if (!filename) {
-      WXU.error({ msg: "文件名生成失败" });
+      WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1226" });
       return;
     }
     WXU.log({ msg: `下载封面\n${url}` });
@@ -1233,7 +1231,7 @@ ${payload.key || ""}`,
     var [err, response] = await WXU.fetch(url);
     ins.hide();
     if (err) {
-      WXU.error({ msg: err.message });
+      WXU.error({ msg: err.message, source: "channels.utils.js:1234" });
       return;
     }
     const blob = await response.blob();

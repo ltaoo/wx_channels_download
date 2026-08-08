@@ -38,14 +38,14 @@
 
       try {
         if (!WXU.API.finderUserPage) {
-          WXU.error({
+          WXU.error({ source: "channels.profile.js:41",
             msg: "API 未完成初始化",
           });
           return;
         }
         var { href } = window.location;
         if (!href) {
-          WXU.error({
+          WXU.error({ source: "channels.profile.js:48",
             msg: "当前 URL 为空",
           });
           return;
@@ -57,7 +57,7 @@
           .Str("href", href)
           .Msg("check has username in href");
         if (!queries.username) {
-          WXU.error({
+          WXU.error({ source: "channels.profile.js:60",
             msg: "username 不能为空",
           });
           return;
@@ -85,7 +85,7 @@
             .Msg("before WXU.API.finderUserPage");
           var r = await WXU.API.finderUserPage(payload);
           if (r.errCode !== 0) {
-            WXU.error({
+            WXU.error({ source: "channels.profile.js:88",
               msg: r.errMsg,
               alert: 0,
             });
@@ -104,7 +104,7 @@
             ignore_live_feed: true,
           });
           if (err) {
-            WXU.error({
+            WXU.error({ source: "channels.profile.js:107",
               msg: err.message,
             });
             has_more = false;

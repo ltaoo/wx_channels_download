@@ -85,9 +85,7 @@ function DownloadPageStatusActions(props) {
   return View({ class: "wx-dl-page-status-actions" }, [
     Show({
       when: computed(running_count_, function (t) {
-        var maxRunning =
-          WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
-        return t < maxRunning;
+        return t < MaxRunning;
       }),
       ok: function () {
         return DownloadPageActionButton({
@@ -302,7 +300,7 @@ function DownloadPageTaskActions(props) {
   const task_ = props.task;
   const state_ = props.state;
   const isOpenExternal =
-    WXEnv.config.remoteServerEnabled === true || WXEnv.config.inDocker === true;
+    RemoteServerEnabled === true || InDocker === true;
 
   return View({ class: "wx-dl-page-task-actions-cell" }, [
     Match({
@@ -312,11 +310,10 @@ function DownloadPageTaskActions(props) {
           running_count: vm$.state.running_count,
         },
         (value) => {
-          const maxRunning = WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
           if (value.state.isCompleted) return 1;
           if (value.state.isRunning) return 2;
           if (value.state.isLiveStream && value.state.isPaused) return 5;
-          if (value.running_count >= maxRunning) return 5;
+          if (value.running_count >= MaxRunning) return 5;
           if (value.state.isPaused) return 3;
           if (value.state.isFailed) return 4;
           return 0;

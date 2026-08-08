@@ -131,7 +131,9 @@ class ErrorModal {
         </div>
     </div>
     `;
-    document.body.appendChild(modal);
+    if (document.body) {
+      document.body.appendChild(modal);
+    }
   }
 
   show(error) {

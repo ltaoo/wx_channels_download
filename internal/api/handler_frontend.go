@@ -53,7 +53,22 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	cfgByte, _ := json.Marshal(c.cfg)
+	frontendVariables := map[string]any{
+		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
+		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
+		"apiProtocol":                c.cfg.Protocol,
+		"pagespyServerProtocol":      c.cfg.Original.GetString("pagespy.protocol"),
+		"pagespyServerAPI":           c.cfg.Original.GetString("pagespy.api"),
+		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
+		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
+		"maxRunning":                 c.cfg.Original.GetInt("download.maxRunning"),
+		"downloadFilenameTemplate":   c.cfg.Original.GetString("download.filenameTemplate"),
+		"defaultHighest":             c.cfg.Original.GetBool("channels.download.defaultHighest") || c.cfg.Original.GetBool("download.defaultHighest"),
+		"downloadPauseWhenDownload":  c.cfg.Original.GetBool("channels.download.pauseWhenDownload"),
+		"downloadInFrontend":         c.cfg.Original.GetBool("channels.download.frontend"),
+		"downloadForceCheckAllFeeds": c.cfg.Original.GetBool("channels.download.forceCheckAllFeeds"),
+	}
+	cfgByte, _ := json.Marshal(frontendVariables)
 	html := string(data)
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")

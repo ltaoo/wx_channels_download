@@ -9,6 +9,15 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/windows"
+)
+
+var internet_set_option = windows.NewLazySystemDLL("wininet.dll").NewProc("InternetSetOptionW")
+
+const (
+	internet_option_refresh          = 37
+	internet_option_settings_changed = 39
 )
 
 func enable_proxy(args ProxySettings) error {
@@ -23,7 +32,7 @@ func enable_proxy(args ProxySettings) error {
 	if err := run_reg_command("add", path, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxy_server_url, "/f"); err != nil {
 		return fmt.Errorf("设置 HTTP 代理失败，%v", err)
 	}
-	return nil
+	return notify_proxy_settings_changed()
 }
 
 func disable_proxy(args ProxySettings) error {
@@ -31,6 +40,19 @@ func disable_proxy(args ProxySettings) error {
 
 	if err := run_reg_command("add", path, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
 		return fmt.Errorf("设置 HTTP 代理失败，%v", err)
+	}
+	return notify_proxy_settings_changed()
+}
+
+func notify_proxy_settings_changed() error {
+	if err := internet_set_option.Find(); err != nil {
+		return fmt.Errorf("failed to load InternetSetOptionW: %w", err)
+	}
+	for _, option := range []uintptr{internet_option_settings_changed, internet_option_refresh} {
+		result, _, call_err := internet_set_option.Call(0, option, 0, 0)
+		if result == 0 {
+			return fmt.Errorf("failed to refresh Windows proxy settings: %w", call_err)
+		}
 	}
 	return nil
 }

@@ -111,7 +111,7 @@ WXU.observe_node({ selector: ".slides-scroll", container: "#app", onOk: function
 
 WXU.onDOMContentLoaded(function () {
   var error_tip_timer = setTimeout(() => {
-    WXU.error({ msg: "没有获取到视频详情", alert: 0 });
+    WXU.error({ msg: "没有获取到视频详情", alert: 0, source: "channels.home.js:114" });
   }, 5000);
   var home_page_mounted = false;
   WXU.onFetchFeedProfile((feed) => {

@@ -352,6 +352,9 @@ func (files *UserScripts) ReadPublic(rel string) ([]byte, error) {
 }
 
 func read_asset(asset_fs fs.FS, rel string) ([]byte, error) {
+	if asset_fs == nil {
+		return nil, fs.ErrNotExist
+	}
 	clean, ok := clean_asset_rel(rel)
 	if !ok {
 		return nil, fs.ErrInvalid

@@ -136,7 +136,11 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
-			// fmt.Println("response1", hostname, pathname)
+			// /__assets is reserved for scripts and styles served by OnRequest.
+			// Never treat an upstream SPA fallback for an asset as an HTML page.
+			if strings.HasPrefix(pathname, asset_base_url+"/") {
+				return
+			}
 			if pathname == "/web/pages/feed" && cfg.ChannelsDisableLocationToHome && ctx.Res().StatusCode == 302 {
 				original_req := ctx.Req()
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
@@ -174,13 +178,17 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 				}
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
+				logger.Info().
+					Str("file", "pkg/scraper/wxchannels/plugin.go").
+					Str("hostname", hostname).
+					Str("pathname", pathname).
+					Msg("match channels.weixin.qq.com")
 				resp_body, err := ctx.GetResponseBody()
 				if err != nil {
 					fmt.Println("[error]get response body failed,", err)
 					return
 				}
 				html := string(resp_body)
-				interceptor.RewriteResponseCSPForLocalAssets(ctx, asset_base_url)
 				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
@@ -207,6 +215,11 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 				}
 				frontend_config["version"] = version
 				frontend_config["assets_base_url"] = asset_base_url
+				logger.Info().
+					Str("file", "pkg/scraper/wxchannels/plugin.go").
+					Interface("variables", variables).
+					Interface("frontend_config", frontend_config).
+					Msg("wxchannels frontend config built")
 				frontend_config_byte, _ := json.Marshal(frontend_config)
 				frontend.AppendInlineScript(
 					&injected,
@@ -216,60 +229,58 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/public/mitt.umd.js", version_query),
-					url_build("/inject/eventbus.js"),
-					url_build("/inject/env.js"),
-					url_build("/inject/utils.js"),
-					url_build("/inject/components.js"),
-					url_build("/inject/virtual-list-view.js"),
+					url_build("/public/mitt.umd.js"),
+					url_build("/inject/eventbus.js", version_query),
+					url_build("/inject/env.js", version_query),
+					url_build("/inject/utils.js", version_query),
+					url_build("/inject/components.js", version_query),
+					url_build("/inject/virtual-list-view.js", version_query),
 				)
 				if cfg.PagespyEnabled {
 					frontend.AppendScripts(
 						&injected,
 						crossorigin_attr,
-						url_build("/public/pagespy.min.js", version_query),
-						url_build("/inject/pagespy.js"),
+						url_build("/public/pagespy.min.js"),
+						url_build("/inject/pagespy.js", version_query),
 					)
 				}
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/inject/download/model.js"),
-					url_build("/inject/download/view.js"),
-					url_build("/inject/download/panel.js"),
+					url_build("/inject/download/model.js", version_query),
+					url_build("/inject/download/view.js", version_query),
+					url_build("/inject/download/panel.js", version_query),
 				)
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					InjectAssetURL(asset_base_url, "channels.events.js"),
-					InjectAssetURL(asset_base_url, "channels.env.js"),
-					InjectAssetURL(asset_base_url, "channels.utils.js"),
-					InjectAssetURL(asset_base_url, "channels.ws.js"),
+					AssetURL(asset_base_url, "/inject/channels.events.js", version_query),
+					AssetURL(asset_base_url, "/inject/channels.env.js", version_query),
+					AssetURL(asset_base_url, "/inject/channels.utils.js", version_query),
+					AssetURL(asset_base_url, "/inject/channels.ws.js", version_query),
 				)
 				if global_script_asset_path != "" {
 					frontend.AppendScripts(&injected, crossorigin_attr, global_script_asset_path)
-					if logger != nil {
-						logger.Info().
-							Str("file", "pkg/scraper/wxchannels/plugin.go").
-							Str("path", cfg.GlobalScriptPath).
-							Str("asset_path", global_script_asset_path).
-							Msg("after append global script")
-					}
+					logger.Info().
+						Str("file", "pkg/scraper/wxchannels/plugin.go").
+						Str("path", cfg.GlobalScriptPath).
+						Str("asset_path", global_script_asset_path).
+						Msg("after append global script")
 				}
 				if cfg.InjectContentScript != "" {
 					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
 				if pathname == "/web/pages/home" {
-					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.home.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, AssetURL(asset_base_url, "/inject/channels.home.js", version_query))
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.feed.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, AssetURL(asset_base_url, "/inject/channels.feed.js", version_query))
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.live.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, AssetURL(asset_base_url, "/inject/channels.live.js", version_query))
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScripts(&injected, crossorigin_attr, InjectAssetURL(asset_base_url, "channels.profile.js"))
+					frontend.AppendScripts(&injected, crossorigin_attr, AssetURL(asset_base_url, "/inject/channels.profile.js", version_query))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

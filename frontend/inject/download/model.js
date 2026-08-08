@@ -2,12 +2,16 @@
 /**
  * @file Download manager data model, formatting helpers, and ViewModel
  */
-var APIHostname = WXEnv.apiOrigin;
-var DownloadHostname = WXEnv.downloadOrigin;
+var APIOrigin = WXEnv.get("apiOrigin");
+var DownloaderOrigin = WXEnv.get("downloaderOrigin");
+var DownloaderWSURL = WXEnv.get("downloaderWSURL");
+var MaxRunning = WXEnv.get("maxRunning");
+var RemoteServerEnabled = WXEnv.get("remoteServerEnabled");
+var InDocker = WXEnv.get("inDocker");
 
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
-  hostname: APIHostname,
+  hostname: APIOrigin,
 });
 Timeless.web.provide_http_client(http_client);
 const request = Timeless.request_factory({
@@ -1314,7 +1318,7 @@ function DownloaderPanelViewModel(props = {}) {
           : await reqs.task.list.run(params);
       if (r && r.error) {
         if (!options.silent) {
-          WXU.error({ msg: r.error.message });
+          WXU.error({ msg: r.error.message, source: "model.js:1321" });
         }
         return r;
       }
@@ -1520,13 +1524,13 @@ function DownloaderPanelViewModel(props = {}) {
       active_status_.as(nextStatus);
       const r = await reloadTasks();
       if (r && r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1527" });
       }
     },
     async refreshTasks() {
       const r = await reloadTasks();
       if (r && r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1533" });
       }
     },
     formatTask(task) {
@@ -1560,21 +1564,21 @@ function DownloaderPanelViewModel(props = {}) {
     async startTask(task) {
       const r = await reqs.task.start.run(task.id);
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1567" });
         return;
       }
       const result = r.data && r.data.results && r.data.results[0];
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "启动失败" });
+        WXU.error({ msg: (result && result.error) || "启动失败", source: "model.js:1574" });
       }
     },
     async pauseTask(task, options = {}) {
       const isLiveStream = options.liveStream === true;
       const r = await reqs.task.pause.run(task.id);
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1581" });
         return;
       }
       const result = r.data && r.data.results && r.data.results[0];
@@ -1584,7 +1588,7 @@ function DownloaderPanelViewModel(props = {}) {
           result.status_text || (isLiveStream ? "finished" : "paused"),
         );
       } else {
-        WXU.error({
+        WXU.error({ source: "model.js:1591",
           msg:
             (result && result.error) ||
             (isLiveStream ? "停止录制失败" : "暂停失败"),
@@ -1640,7 +1644,7 @@ function DownloaderPanelViewModel(props = {}) {
     },
     requestDeleteTask(task) {
       if (!task || !task.id) {
-        WXU.error({ msg: "异常操作" });
+        WXU.error({ msg: "异常操作", source: "model.js:1647" });
         return;
       }
       delete_task_.as(task);
@@ -1650,7 +1654,7 @@ function DownloaderPanelViewModel(props = {}) {
     requestDeleteSelectedTasks() {
       const ids = getSelectedTaskIds();
       if (!ids.length) {
-        WXU.error({ msg: "请选择要删除的下载任务" });
+        WXU.error({ msg: "请选择要删除的下载任务", source: "model.js:1657" });
         return;
       }
       delete_task_.as(null);
@@ -1663,7 +1667,7 @@ function DownloaderPanelViewModel(props = {}) {
         deleteFiles: params.deleteFiles,
       });
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1670" });
         return false;
       }
       const result = r.data && r.data.results && r.data.results[0];
@@ -1671,13 +1675,13 @@ function DownloaderPanelViewModel(props = {}) {
         applyDeletedTaskIds([task.id]);
         return true;
       }
-      WXU.error({ msg: (result && result.error) || "删除失败" });
+      WXU.error({ msg: (result && result.error) || "删除失败", source: "model.js:1678" });
       return false;
     },
     async deleteTasksByIds(ids, params = {}) {
       const taskIds = uniqueTaskIds(ids);
       if (!taskIds.length) {
-        WXU.error({ msg: "请选择要删除的下载任务" });
+        WXU.error({ msg: "请选择要删除的下载任务", source: "model.js:1684" });
         return false;
       }
       const r = await reqs.task.delete.run({
@@ -1685,7 +1689,7 @@ function DownloaderPanelViewModel(props = {}) {
         deleteFiles: params.deleteFiles,
       });
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1692" });
         return false;
       }
       const results = r.data && r.data.results ? r.data.results : [];
@@ -1702,7 +1706,7 @@ function DownloaderPanelViewModel(props = {}) {
         applyDeletedTaskIds(deletedIds);
       }
       if (errors.length) {
-        WXU.error({ msg: errors.join("; ") });
+        WXU.error({ msg: errors.join("; "), source: "model.js:1709" });
       }
       return deletedIds.length > 0;
     },
@@ -1713,7 +1717,7 @@ function DownloaderPanelViewModel(props = {}) {
       const task = delete_task_.value;
       const taskIds = uniqueTaskIds(delete_task_ids_.value || []);
       if ((!task || !task.id) && !taskIds.length) {
-        WXU.error({ msg: "异常操作" });
+        WXU.error({ msg: "异常操作", source: "model.js:1720" });
         ui.deleteConfirmDialog$.hide();
         return;
       }
@@ -1738,36 +1742,34 @@ function DownloaderPanelViewModel(props = {}) {
     async resumeTask(task) {
       const r = await reqs.task.resume.run(task.id);
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1745" });
         return;
       }
       const result = r.data && r.data.results && r.data.results[0];
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "恢复失败" });
+        WXU.error({ msg: (result && result.error) || "恢复失败", source: "model.js:1752" });
       }
     },
     async retryTask(task) {
       const r = await reqs.task.retry.run(task.id);
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1758" });
         return;
       }
       const result = r.data && r.data.results && r.data.results[0];
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "重试失败" });
+        WXU.error({ msg: (result && result.error) || "重试失败", source: "model.js:1765" });
       }
     },
     async startAllTasks() {
-      var maxRunning =
-        WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
-      if (running_count_.value >= maxRunning) {
+      if (running_count_.value >= MaxRunning) {
         WXU.warning({
           msg:
-            "已达到最大同时下载任务数（" + maxRunning + "），请等待当前任务完成",
+            "已达到最大同时下载任务数（" + MaxRunning + "），请等待当前任务完成",
         });
         return;
       }
@@ -1775,12 +1777,12 @@ function DownloaderPanelViewModel(props = {}) {
         status: getActiveStatusFilter(),
       });
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1780" });
         return;
       }
       const reloadResult = await reloadTasks();
       if (reloadResult && reloadResult.error) {
-        WXU.error({ msg: reloadResult.error.message });
+        WXU.error({ msg: reloadResult.error.message, source: "model.js:1785" });
       }
     },
     async pauseAllTasks() {
@@ -1788,18 +1790,18 @@ function DownloaderPanelViewModel(props = {}) {
         status: getActiveStatusFilter(),
       });
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1793" });
         return;
       }
       const reloadResult = await reloadTasks();
       if (reloadResult && reloadResult.error) {
-        WXU.error({ msg: reloadResult.error.message });
+        WXU.error({ msg: reloadResult.error.message, source: "model.js:1798" });
       }
     },
     async clearTasks(params = {}) {
       const r = await reqs.task.clear.run(params);
       if (r.error) {
-        WXU.error({ msg: r.error.message });
+        WXU.error({ msg: r.error.message, source: "model.js:1804" });
         return false;
       }
       resetVirtualTasks();
@@ -1837,7 +1839,7 @@ function DownloaderPanelViewModel(props = {}) {
       }
       const platform = String(create_platform_text_.value || "").trim();
       if (!platform) {
-        WXU.error({ msg: "请输入平台名称" });
+        WXU.error({ msg: "请输入平台名称", source: "model.js:1842" });
         return;
       }
       const jsonStr = String(create_platform_json_.value || "").trim();
@@ -1846,7 +1848,7 @@ function DownloaderPanelViewModel(props = {}) {
         try {
           content = JSON.parse(jsonStr);
         } catch (e) {
-          WXU.error({ msg: "内容 JSON 格式错误: " + e.message });
+          WXU.error({ msg: "内容 JSON 格式错误: " + e.message, source: "model.js:1851" });
           return;
         }
       }
@@ -1861,7 +1863,7 @@ function DownloaderPanelViewModel(props = {}) {
           },
         });
         if (r.error) {
-          WXU.error({ msg: r.error.message });
+          WXU.error({ msg: r.error.message, source: "model.js:1866" });
           return;
         }
         const platformPreview =
@@ -1888,7 +1890,7 @@ function DownloaderPanelViewModel(props = {}) {
       }
       const text = String(create_task_text_.value || "").trim();
       if (!text) {
-        WXU.error({ msg: "请输入下载地址" });
+        WXU.error({ msg: "请输入下载地址", source: "model.js:1893" });
         return;
       }
       creating_task_.as(true);
@@ -1898,7 +1900,7 @@ function DownloaderPanelViewModel(props = {}) {
           filename: create_task_filename_.value || "",
         });
         if (r.error) {
-          WXU.error({ msg: r.error.message });
+          WXU.error({ msg: r.error.message, source: "model.js:1903" });
           return;
         }
         const taskPreview =
@@ -1929,19 +1931,19 @@ function DownloaderPanelViewModel(props = {}) {
           filename: filename,
         });
         if (r.error) {
-          WXU.error({ msg: r.error.message });
+          WXU.error({ msg: r.error.message, source: "model.js:1934" });
           return;
         }
         const taskResult = r.data && r.data.tasks && r.data.tasks[0];
         if (taskResult && !taskResult.success) {
-          WXU.error({ msg: taskResult.error || "创建下载任务失败" });
+          WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "model.js:1939" });
           return;
         }
         ui.createTaskPreviewDialog$.hide();
         WXU.toast("下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
-          WXU.error({ msg: reloadResult.error.message });
+          WXU.error({ msg: reloadResult.error.message, source: "model.js:1946" });
         }
       } finally {
         creating_task_.as(false);
@@ -1985,19 +1987,19 @@ function DownloaderPanelViewModel(props = {}) {
             ui.overwriteConfirmDialog$.show();
             return;
           }
-          WXU.error({ msg: r.error.message });
+          WXU.error({ msg: r.error.message, source: "model.js:1990" });
           return;
         }
         const taskResult = r.data && r.data.tasks && r.data.tasks[0];
         if (taskResult && !taskResult.success) {
-          WXU.error({ msg: taskResult.error || "创建下载任务失败" });
+          WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "model.js:1995" });
           return;
         }
         ui.createPlatformTaskPreviewDialog$.hide();
         WXU.toast("平台下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
-          WXU.error({ msg: reloadResult.error.message });
+          WXU.error({ msg: reloadResult.error.message, source: "model.js:2002" });
         }
       } finally {
         creating_task_.as(false);
@@ -2006,13 +2008,13 @@ function DownloaderPanelViewModel(props = {}) {
     async openTask(task) {
       const { id, path, filename } = task;
       if (!id) {
-        WXU.error({
+        WXU.error({ source: "model.js:2011",
           msg: "task id is empty",
         });
         return;
       }
-      if (WXU.config.remoteServerEnabled || WXU.config.inDocker) {
-        var u = APIHostname + "/preview?id=" + id;
+      if (RemoteServerEnabled || InDocker) {
+        var u = APIOrigin + "/preview?id=" + id;
         window.open(u);
         return;
       }
@@ -2020,7 +2022,7 @@ function DownloaderPanelViewModel(props = {}) {
     },
     connect() {
       return new Promise((resolve, reject) => {
-        const ws = new WebSocket(WXEnv.downloaderWSURL);
+        const ws = new WebSocket(DownloaderWSURL);
         ws.onopen = () => {
           if (WXU.downloader) {
             WXU.downloader.status = "connected";
@@ -2028,7 +2030,7 @@ function DownloaderPanelViewModel(props = {}) {
           resolve(true);
         };
         ws.onclose = () => {
-          WXU.error({ msg: "download ws连接已关闭，请刷新页面" });
+          WXU.error({ msg: `download ws连接已关闭，请刷新页面. ${DownloaderWSURL}`, source: "model.js:2033" });
           if (WXU.downloader) {
             WXU.downloader.status = "disconnected";
           }
@@ -2048,7 +2050,10 @@ function DownloaderPanelViewModel(props = {}) {
             if (tasks && tasks.length) {
               tasks.forEach((task) => {
                 if (task && task.id) {
-                  methods.upsert(methods.formatTask(task));
+                  // A task_upsert payload is authoritative for both creates and
+                  // updates. Mark it as prepend-capable so an ID that is not in
+                  // the currently loaded page is not discarded by upsert().
+                  methods.upsert(methods.formatTask(task), { prepend: true });
                 }
               });
             }
@@ -2322,7 +2327,7 @@ function DownloaderPanelViewModel(props = {}) {
       };
       var [err, data] = await WXU.request({
         method: "POST",
-        url: WXEnv.apiOrigin + "/api/v1/download_task/create",
+        url: DownloaderOrigin + "/api/v1/download_task/create",
         body: requestBody,
       });
       if (err && (err.code === 409 || err.status === 409)) {
@@ -2351,7 +2356,7 @@ function DownloaderPanelViewModel(props = {}) {
       };
       WXU.request({
         method: "POST",
-        url: WXEnv.apiOrigin + "/api/browse_history/create",
+        url: DownloaderOrigin + "/api/browse_history/create",
         body: requestBody,
       });
     },
@@ -2372,7 +2377,7 @@ function DownloaderPanelViewModel(props = {}) {
       label: "管理下载任务",
       onClick() {
         ui.dropdown$.hide();
-        window.open(WXEnv.apiOrigin + "/", "_blank");
+        window.open(DownloaderOrigin + "/", "_blank");
       },
     }),
     new Timeless.ui.MenuItemCore({
@@ -2482,7 +2487,7 @@ function DownloaderPanelViewModel(props = {}) {
             .Str("error", err.message || "")
             .Int("code", err.code || 0)
             .Msg("overwriteConfirmDialog: retry creating download task failed");
-          WXU.error({ msg: err.message || "创建下载任务失败" });
+          WXU.error({ msg: err.message || "创建下载任务失败", source: "model.js:2487" });
           return;
         }
         if (data && data.skipped) {
@@ -2582,7 +2587,7 @@ function DownloaderPanelViewModel(props = {}) {
       };
       const r = await reloadTasks();
       if (r.error) {
-        WXU.error({
+        WXU.error({ source: "model.js:2587",
           msg: r.error.message,
         });
         return;
@@ -2598,13 +2603,10 @@ function DownloaderPanelViewModel(props = {}) {
   };
 }
 
-var downloadermodel$ = DownloaderPanelViewModel({});
-downloadermodel$.browse = function (feeds, opt) {
-  return downloadermodel$.methods.createBrowseHistories(feeds, opt);
-};
+var __d_vm$ = DownloaderPanelViewModel({});
 WXU.downloader.create = function (feeds, opt) {
-  return downloadermodel$.methods.createDownloadTask(feeds, opt);
+  return __d_vm$.methods.createDownloadTask(feeds, opt);
 };
 WXU.downloader.browse = function (feeds, opt) {
-  return downloadermodel$.browse(feeds, opt);
+  return __d_vm$.methods.createBrowseHistories(feeds, opt);
 };
