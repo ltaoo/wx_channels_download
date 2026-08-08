@@ -1,8 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set OUTPUT_DIR=%~dp0
-if "%OUTPUT_DIR%" neq "" set OUTPUT_DIR=%OUTPUT_DIR:~0,-1%
+for %%I in ("%~dp0.") do set "OUTPUT_DIR=%%~fI"
+for %%I in ("%~dp0..") do set "PROJECT_DIR=%%~fI"
 
 if "%1" equ "" goto usage
 
@@ -10,15 +10,31 @@ goto %1
 
 :windows
 echo Building Windows x86_64...
-set CGO_ENABLED=0
+where gcc >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: gcc was not found in PATH. A C compiler is required by go-sqlite3.
+    exit /b 1
+)
+set CGO_ENABLED=1
 set GOOS=windows
 set GOARCH=amd64
-go build -trimpath -tags "with_gvisor,embed_inject,sqlite_only" -ldflags="-s -w" -o "%OUTPUT_DIR%\wx_video_download_windows_x86_64.exe"
-if exist wx_channel.exe (
-    del wx_channel.exe
+set "BUILD_OUTPUT=%OUTPUT_DIR%\wx_video_download_windows_x86_64.exe"
+set "FINAL_OUTPUT=%OUTPUT_DIR%\wx_channel.exe"
+pushd "%PROJECT_DIR%"
+call go build -trimpath -tags "with_gvisor,embed_inject,sqlite_only" -ldflags="-s -w" -o "%BUILD_OUTPUT%" .
+if errorlevel 1 (
+    popd
+    echo ERROR: Windows build failed.
+    exit /b 1
 )
-move /Y wx_video_download_windows_x86_64.exe wx_channel.exe >nul 2>&1
-echo Done: %OUTPUT_DIR%\wx_channel.exe
+move /Y "%BUILD_OUTPUT%" "%FINAL_OUTPUT%" >nul
+if errorlevel 1 (
+    popd
+    echo ERROR: Failed to move the Windows executable to %FINAL_OUTPUT%.
+    exit /b 1
+)
+popd
+echo Done: %FINAL_OUTPUT%
 exit /b 0
 
 :windows-sunnynet
@@ -38,6 +54,7 @@ exit /b 1
 :all
 echo Building Windows...
 call :windows
+if errorlevel 1 exit /b 1
 echo.
 echo All done!
 exit /b 0

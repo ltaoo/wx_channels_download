@@ -1,4 +1,4 @@
-//go:build embed_frontend_inject
+//go:build embed_inject || embed_frontend_inject
 
 package frontend
 
@@ -7,7 +7,7 @@ import (
 	"io/fs"
 )
 
-//go:embed src inject public *.html
+//go:embed inject public *.html
 var injectFS embed.FS
 
 func embeddedRootFS() fs.FS {
@@ -15,8 +15,7 @@ func embeddedRootFS() fs.FS {
 }
 
 func embeddedSrcFS() fs.FS {
-	sub, _ := fs.Sub(injectFS, "src")
-	return sub
+	return nil
 }
 
 func embeddedInjectFS() fs.FS {

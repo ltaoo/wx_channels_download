@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/ltaoo/echo"
@@ -13,6 +14,7 @@ import (
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/platform"
 	"wx_channel/pkg/system"
 )
 
@@ -71,6 +73,14 @@ func (c *Interceptor) Start() error {
 			return fmt.Errorf("检查证书失败: %v", err)
 		}
 		if !existing {
+			if !platform.IsAdmin() {
+				if !platform.RequestAdminPermission() {
+					return fmt.Errorf("运行失败，请右键选择「以管理员身份运行」")
+				}
+				// The elevated process inherits the current arguments and will
+				// restart the proxy setup, including certificate installation.
+				os.Exit(0)
+			}
 			fmt.Printf("Installing certificate...\n")
 			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
 				return fmt.Errorf("安装证书失败: %v", err)

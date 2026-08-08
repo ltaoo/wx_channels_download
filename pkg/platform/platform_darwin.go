@@ -43,3 +43,8 @@ func request_admin_permission() bool {
 	err = cmd.Run()
 	return err == nil
 }
+
+func request_admin_permission_and_wait() (started bool, exited bool) {
+	ok := request_admin_permission()
+	return ok, ok
+}

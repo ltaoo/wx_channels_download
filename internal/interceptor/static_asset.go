@@ -45,31 +45,38 @@ func MockFrontendStaticAsset(ctx proxy.Context, pathname string, options Fronten
 		err           error
 		rel           string
 		cache_control string
+		matched       bool
 		raw_size      int
 	)
 	switch {
 	case strings.HasPrefix(pathname, "/__assets/public/"):
+		matched = true
 		rel = strings.TrimPrefix(pathname, "/__assets/public/")
 		data, err = frontend.Assets().ReadPublic(rel)
 		cache_control = frontend.PublicAssetCacheControl
 	case strings.HasPrefix(pathname, "/__assets/inject/"):
+		matched = true
 		rel = strings.TrimPrefix(pathname, "/__assets/inject/")
 		data, err = frontend.Assets().ReadInject(rel)
 		cache_control = frontend.SrcAssetCacheControl
 	case strings.HasPrefix(pathname, "/__assets/src/"):
+		matched = true
 		rel = strings.TrimPrefix(pathname, "/__assets/src/")
 		data, err = frontend.Assets().ReadSrc(rel)
 		cache_control = frontend.SrcAssetCacheControl
 	case user_script_asset_path != "" && pathname == user_script_asset_path:
+		matched = true
 		rel = path.Base(user_script_asset_path)
 		data, err = os.ReadFile(options.UserScriptPath)
 		cache_control = frontend.SrcAssetCacheControl
 	case options.PlatformPrefix != "" && options.PlatformFS != nil && strings.HasPrefix(pathname, options.PlatformPrefix):
+		matched = true
 		rel = strings.TrimPrefix(pathname, options.PlatformPrefix)
 		var ok bool
 		rel, ok = cleanMockAssetRel(rel)
 		if !ok {
-			return false
+			err = fs.ErrInvalid
+			break
 		}
 		data, err = fs.ReadFile(options.PlatformFS, rel)
 		cache_control = frontend.SrcAssetCacheControl
@@ -77,13 +84,21 @@ func MockFrontendStaticAsset(ctx proxy.Context, pathname string, options Fronten
 		return false
 	}
 	if err != nil {
-		if logger != nil && pathname == user_script_asset_path {
+		if logger != nil {
 			logger.Warn().
 				Err(err).
 				Str("file", "internal/interceptor/static_asset.go").
-				Str("asset_path", user_script_asset_path).
-				Str("path", options.UserScriptPath).
-				Msg("failed to read global script asset for interceptor response")
+				Str("pathname", pathname).
+				Str("asset", rel).
+				Msg("failed to read interceptor static asset")
+		}
+		if matched {
+			ctx.Mock(http.StatusNotFound, map[string]string{
+				"Content-Type":                frontend.StaticAssetContentType(rel),
+				"Cache-Control":               "no-store",
+				"Access-Control-Allow-Origin": "*",
+			}, "")
+			return true
 		}
 		return false
 	}

@@ -1,8 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -13,14 +14,16 @@ import (
 )
 
 var (
-	Version         string
-	Cfg             *config.Config
-	device          string
-	config_filepath string
-	workdir         string
-	hostname        string
-	port            int
-	debug           bool
+	Version               string
+	Cfg                   *config.Config
+	device                string
+	config_filepath       string
+	workdir               string
+	hostname              string
+	port                  int
+	debug                 bool
+	start_command_invoked bool
+	start_transferred     bool
 )
 
 var error_prefix = color.RedString("[ERROR]")
@@ -30,22 +33,28 @@ var root_cmd = &cobra.Command{
 	Short: "启动下载程序",
 	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		is_start_command := !cmd.HasParent()
+		if is_start_command {
+			start_command_invoked = true
+		}
 		if err := application.PrepareConfig(Cfg, config_filepath); err != nil {
-			fmt.Println(fmt.Sprintf("%s%v", error_prefix, err))
-			os.Exit(0)
+			return err
 		}
-		shouldExit, err := application.PrepareStartPrivileges(!cmd.HasParent())
+		should_exit, err := application.PrepareStartPrivileges(is_start_command)
 		if err != nil {
-			fmt.Println(error_prefix + err.Error())
+			return err
 		}
-		if shouldExit {
-			os.Exit(0)
-		}
+		start_transferred = should_exit
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		application.Start(Cfg)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if start_transferred {
+			return nil
+		}
+		return application.Start(Cfg)
 	},
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func init() {
@@ -67,8 +76,23 @@ func Execute(cfg *config.Config) error {
 
 	Version = cfg.Version
 	Cfg = cfg
+	start_command_invoked = false
+	start_transferred = false
 
-	return root_cmd.Execute()
+	err := root_cmd.Execute()
+	if err != nil && start_command_invoked {
+		fmt.Fprintf(root_cmd.ErrOrStderr(), "%s %v\n", error_prefix, err)
+		wait_for_start_failure(root_cmd.InOrStdin(), root_cmd.OutOrStdout())
+		// The startup error has already been displayed and acknowledged. Keep the
+		// historical zero exit status instead of making main print it a second time.
+		return nil
+	}
+	return err
+}
+
+func wait_for_start_failure(in io.Reader, out io.Writer) {
+	fmt.Fprint(out, "\nStartup failed. This window will remain open; press Enter to exit...")
+	_, _ = bufio.NewReader(in).ReadString('\n')
 }
 
 func Register(cmd *cobra.Command) {

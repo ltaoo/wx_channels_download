@@ -1,4 +1,4 @@
-﻿package wxchannels
+package wxchannels
 
 import (
 	"encoding/json"
@@ -136,6 +136,11 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
 			pathname := ctx.Req().URL.Path
+			// /__assets is reserved for scripts and styles served by OnRequest.
+			// Never treat an upstream SPA fallback for an asset as an HTML page.
+			if strings.HasPrefix(pathname, asset_base_url+"/") {
+				return
+			}
 			if pathname == "/web/pages/feed" && cfg.ChannelsDisableLocationToHome && ctx.Res().StatusCode == 302 {
 				original_req := ctx.Req()
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
