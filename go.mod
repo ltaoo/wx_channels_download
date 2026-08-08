@@ -33,12 +33,10 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/glebarez/sqlite v1.11.0
-	github.com/golang-migrate/migrate/v4 v4.19.1
-	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/ltaoo/echo v0.12.0
-	github.com/ltaoo/velo v1.0.0
+	github.com/ltaoo/velo v1.0.1
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
 	github.com/rs/zerolog v1.34.0
@@ -50,8 +48,6 @@ require (
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
 	golang.org/x/text v0.32.0
-	gorm.io/driver/mysql v1.6.0
-	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 )
 
@@ -125,7 +121,9 @@ require (
 	github.com/go-playground/validator/v10 v10.17.0 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/gookit/color v1.5.4 // indirect
@@ -192,5 +190,7 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/driver/mysql v1.6.0 // indirect
+	gorm.io/driver/postgres v1.6.0 // indirect
 	modernc.org/sqlite v1.23.1 // indirect
 )

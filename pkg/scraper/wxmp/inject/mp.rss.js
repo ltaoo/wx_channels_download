@@ -1,3 +1,5 @@
+var MPOrigin = "";
+
 var style = document.createElement("style");
 style.textContent = `
     #wechat-tools-container {
@@ -96,7 +98,7 @@ async function submit_credential(acct) {
   WXU.emit(WXU.Events.OfficialAccountRefresh, acct);
   var r = await submitCredentialReq.run(acct);
   if (r.error) {
-    WXU.error({ msg: r.error.message });
+    WXU.error({ msg: r.error.message, source: "mp.rss.js:101" });
   }
 }
 
@@ -114,7 +116,7 @@ function render_rss_button(acct) {
   $btn.innerHTML = Icons.RSSIcon;
   $btn.onclick = function () {
     var origin = (() => {
-      return WXEnv.officialAccountOrigin;
+      return MPOrigin;
     })();
     if (origin === "") {
       return;

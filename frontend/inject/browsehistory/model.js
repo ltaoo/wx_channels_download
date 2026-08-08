@@ -3,7 +3,7 @@
  * @file Browse history list page data requests, pagination state, and formatting logic.
  */
 var BrowseHistoryModel = (() => {
-  const browse_history_api_origin = window.location.origin || WXEnv.apiOrigin;
+  const browse_history_api_origin = window.location.origin || WXEnv.get("apiOrigin");
   const browse_history_http_client = new Timeless.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: browse_history_api_origin,

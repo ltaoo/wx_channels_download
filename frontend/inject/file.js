@@ -7,6 +7,7 @@
  * A loader receives `(folder, context)` and may return an array, or an object
  * containing `files`, `items`, `list`, or `dataSource`.
  */
+var APIOrigin = WXEnv.get("apiOrigin");
 
 function file_picker_normalize_file(file, parent) {
   const value = file || {};
@@ -506,7 +507,7 @@ function FilePickerDialog(props = {}) {
       },
       async loadFiles(folder) {
         const [error, data] = await WXU.request({
-          url: WXEnv.apiOrigin + "/api/v1/fs/list",
+          url: APIOrigin + "/api/v1/fs/list",
           method: "POST",
           body: { dir: folder.path },
         });

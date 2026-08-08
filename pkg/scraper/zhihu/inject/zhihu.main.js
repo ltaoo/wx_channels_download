@@ -299,7 +299,7 @@
     if (!recommendFeed) {
       return;
     }
-    downloadermodel$.browse([recommendFeed], { platform: "zhihu" });
+    WXU.downloader.browse([recommendFeed], { platform: "zhihu" });
   }
 
   function observeCards(root) {

@@ -3,8 +3,10 @@ package wxchannels
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"strings"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/webassets"
 )
 
@@ -15,10 +17,12 @@ type InjectedAssets struct {
 	InjectFS fs.FS
 }
 
+const assetPathPrefix = "/wxchannels"
+
 // StaticAssetsPath is the HTTP mount owned by the video-channel scraper.
-// Keeping platform assets in a namespace prevents filename collisions with
+// Keeping scraper assets in a namespace prevents filename collisions with
 // shared frontend assets and other scraper packages.
-const StaticAssetsPath = "/__assets/platform/wxchannels"
+const StaticAssetsPath = "/__assets" + assetPathPrefix + "/inject"
 
 func NewAssets() *InjectedAssets {
 	return &InjectedAssets{InjectFS: embeddedInjectFS()}
@@ -31,7 +35,7 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	if err := registry.Register(StaticAssetsPath, Assets.InjectFS); err != nil {
 		return err
 	}
-	// Keep explicit aliases for pages injected before the platform namespace was
+	// Keep explicit aliases for pages injected before the scraper namespace was
 	// introduced. Unlike the old API fallback chain, aliases remain owned by
 	// this package and duplicate filenames fail during application setup.
 	entries, err := fs.ReadDir(Assets.InjectFS, ".")
@@ -49,9 +53,9 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	return nil
 }
 
-// InjectAssetURL builds a URL for an asset owned by this package.
+// AssetURL builds a URL for an asset owned by this package.
 // The endpoint is shared with the frontend asset server, but ownership stays
 // in the wxchannels package.
-func InjectAssetURL(baseURL, name string) string {
-	return strings.TrimRight(baseURL, "/") + "/platform/wxchannels/" + strings.TrimLeft(name, "/")
+func AssetURL(baseURL, name string, query ...url.Values) string {
+	return frontend.NewURLBuild(baseURL, nil)(assetPathPrefix+"/"+strings.TrimLeft(name, "/"), query...)
 }

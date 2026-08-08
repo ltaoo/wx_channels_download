@@ -6,8 +6,8 @@
  */
 function DownloaderEntry(props) {
   const vm$ =
-    typeof downloadermodel$ !== undefined
-      ? downloadermodel$
+    typeof __d_vm$ !== undefined
+      ? __d_vm$
       : DownloaderPanelViewModel({});
   return Fragment({}, [
     Popover(
@@ -92,28 +92,39 @@ function DownloaderEntry(props) {
         mounted = true;
       },
     });
-  } else if (window.location.hostname === "mp.weixin.qq.com") {
-    //
-  } else {
-    WXU.observe_node({
-      selector: ".home-header",
-      container: "#app",
-      onOk() {
-        var $header = document.querySelector(".home-header");
-        console.log("[DOWNLOADER]insert_downloader", mounted, $header);
-        if (mounted || !$header) {
-          return;
-        }
-        var $box = $header.children[$header.children.length - 1];
-        if (!$box) return;
-        var $btn_wrap = $box.children[0];
-        if (!$btn_wrap) {
-          $btn_wrap = $box;
-        }
-        var $download_panel_button = Icons.download_btn7();
-        insert_downloader($btn_wrap, $download_panel_button);
-        mounted = true;
-      },
-    });
+    return;
   }
+  WXU.log
+    .Info()
+    .Str("file", "/download/panel.js")
+    .Msg("before observer .home-header");
+  WXU.observe_node({
+    selector: ".home-header",
+    container: "#app",
+    onOk() {
+      var $header = document.querySelector(".home-header");
+      WXU.log
+        .Info()
+        .Str("file", "/download/panel.js")
+        .Bool("$header", !!$header)
+        .Bool("mounted", !!mounted)
+        .Msg("in observer callback");
+      if (mounted || !$header) {
+        return;
+      }
+      var $box = $header.children[$header.children.length - 1];
+      if (!$box) return;
+      var $btn_wrap = $box.children[0];
+      if (!$btn_wrap) {
+        $btn_wrap = $box;
+      }
+      var $download_panel_button = Icons.download_btn7();
+      WXU.log
+        .Info()
+        .Str("file", "/download/panel.js:124")
+        .Msg("before insert_downloader");
+      insert_downloader($btn_wrap, $download_panel_button);
+      mounted = true;
+    },
+  });
 })();

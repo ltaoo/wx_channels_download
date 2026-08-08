@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,7 +32,7 @@ import (
 )
 
 // Start initializes and runs the local admin, API, and interceptor services.
-func Start(cfg *config.Config) {
+func Start(cfg *config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -43,9 +44,7 @@ func Start(cfg *config.Config) {
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
-		color.Red(fmt.Sprintf("Database initialization failed, %s\n\n", err))
-		os.Exit(0)
-		return
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
 
 	api_cfg := api.NewAPIConfig(cfg)
@@ -173,28 +172,38 @@ func Start(cfg *config.Config) {
 			Config:       cfg,
 		})
 		if err != nil {
-			color.Red(fmt.Sprintf("Failed to register platform %s: %v", platform_id, err))
-			return
+			return fmt.Errorf("failed to register platform %s: %w", platform_id, err)
 		}
 		adapter_handles = append(adapter_handles, handle)
 	}
 
+	var cleanup_once sync.Once
+	api_started := false
+	interceptor_start_attempted := false
 	cleanup := func() {
-		fmt.Printf("\nShutting down downloader...\n")
-		for i := len(adapter_handles) - 1; i >= 0; i-- {
-			adapter_handles[i].Stop()
-		}
-		if err := interceptor_srv.Stop(); err != nil {
-			color.Red(fmt.Sprintf("Failed to stop proxy service: %v\n", err))
-		}
-		if err := api_srv.Stop(); err != nil {
-			color.Red(fmt.Sprintf("Failed to stop API service: %v\n", err))
-		}
-		task_store.Shutdown()
-		// if err := admin_srv.Stop(); err != nil {
-		// 	color.Red(fmt.Sprintf("Failed to stop GUI/Admin service: %v\n", err))
-		// }
-		color.Green("Downloader has been shut down")
+		cleanup_once.Do(func() {
+			fmt.Printf("\nShutting down downloader...\n")
+			// Reset the system proxy first. Windows only gives console close
+			// handlers a short grace period before terminating the process.
+			if interceptor_start_attempted {
+				if err := interceptor_srv.Stop(); err != nil {
+					color.Red(fmt.Sprintf("Failed to stop proxy service: %v\n", err))
+				}
+			}
+			for i := len(adapter_handles) - 1; i >= 0; i-- {
+				adapter_handles[i].Stop()
+			}
+			if api_started {
+				if err := api_srv.Stop(); err != nil {
+					color.Red(fmt.Sprintf("Failed to stop API service: %v\n", err))
+				}
+			}
+			task_store.Shutdown()
+			// if err := admin_srv.Stop(); err != nil {
+			// 	color.Red(fmt.Sprintf("Failed to stop GUI/Admin service: %v\n", err))
+			// }
+			color.Green("Downloader has been shut down")
+		})
 	}
 
 	// if err := admin_srv.Start(); err != nil {
@@ -205,17 +214,24 @@ func Start(cfg *config.Config) {
 	// }
 	// color.Green(fmt.Sprintf("GUI/Admin service started successfully, address: %v", admin_srv.Addr()))
 	if err := api_srv.Start(); err != nil {
-		color.Red(fmt.Sprintf("ERROR Failed to start API service: %v\n", err))
 		cleanup()
-		os.Exit(0)
-		return
+		return fmt.Errorf("failed to start API service: %w", err)
 	}
+	api_started = true
 	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_srv.Addr()))
-	if err := interceptor_srv.Start(); err != nil {
-		color.Red(fmt.Sprintf("ERROR Failed to start proxy service: %v\n", err))
+
+	interceptor_start_attempted = true
+	unregister_console_close, err := registerConsoleCloseHandler(stop)
+	if err != nil {
+		interceptor_start_attempted = false
 		cleanup()
-		os.Exit(0)
-		return
+		return fmt.Errorf("failed to register console close handler: %w", err)
+	}
+	defer unregister_console_close()
+
+	if err := interceptor_srv.Start(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to start proxy service: %w", err)
 	}
 	color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", interceptor_srv.Addr()))
 
@@ -258,4 +274,5 @@ func Start(cfg *config.Config) {
 	fmt.Println("\nPress Ctrl+C to exit...")
 	<-ctx.Done()
 	cleanup()
+	return nil
 }

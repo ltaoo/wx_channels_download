@@ -15,6 +15,9 @@ if (typeof WXEnv === "undefined") {
     __wx_fake_params.get("api") === "mock";
   function __wx_existing_api_base() {
     var cfg = window.__d_config || {};
+    if (cfg.apiOrigin) {
+      return cfg.apiOrigin;
+    }
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
       return cfg.apiServerProtocol + "://" + cfg.apiServerAddr;
     }
@@ -33,16 +36,13 @@ if (typeof WXEnv === "undefined") {
     downloadFilenameTemplate: "{{title}}",
     downloadInFrontend: false,
     downloadPauseWhenDownload: false,
-    apiServerProtocol: __wx_fake_api_protocol,
-    apiServerAddr: __wx_fake_api_url.host,
+    apiOrigin: __wx_fake_api_url.origin,
     remoteServerEnabled: false,
   });
 
   WXEnv.applyRuntimeEnv({
     channelsProtocol: __wx_fake_api_protocol,
     channelsHostname: __wx_fake_api_url.host,
-    downloadProtocol: __wx_fake_api_protocol,
-    downloadHostname: __wx_fake_api_url.host,
     assetsFallbackBase: __wx_fake_api_base + "/__assets",
   });
 

@@ -1,5 +1,6 @@
 (() => {
-  var APIHostname = WXEnv.apiOrigin;
+  var APIHostname = WXEnv.get("apiOrigin");
+  var MPWSURL = "";
 
   const http_client = new Timeless.HttpClientCore({
     headers: { "Content-Type": "application/json" },
@@ -105,7 +106,7 @@
   }
   function connect(acct) {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(WXEnv.mpWSURL);
+      const ws = new WebSocket(MPWSURL);
       let ping_timer = null;
       ws.onopen = () => {
         WXU.log({
@@ -185,13 +186,13 @@
     });
     if (error) {
       WXU.log.Error(error).Msg("[mp.wx.js]create failed");
-      WXU.error({ msg: error.message });
+      WXU.error({ msg: error.message, source: "mp.ws.js:189" });
       return;
     }
     WXU.log.Info().Msg("[mp.wx.js]create success");
     var taskResult = data && data.tasks && data.tasks[0];
     if (taskResult && !taskResult.success) {
-      WXU.error({ msg: taskResult.error || "创建下载任务失败" });
+      WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "mp.ws.js:195" });
       return;
     }
     popover$.show(popover_pos($btn));
@@ -247,8 +248,8 @@
 
   function DownloaderEntry(props) {
     const vm$ =
-      typeof downloadermodel$ !== undefined
-        ? downloadermodel$
+      typeof __d_vm$ !== undefined
+        ? __d_vm$
         : DownloaderPanelViewModel({});
     return Button(
       {
@@ -400,7 +401,7 @@
       loading = false;
       loadMoreBtn.disabled = false;
       if (r.error) {
-        WXU.error({ msg: "获取推送列表失败: " + r.error.message });
+        WXU.error({ msg: "获取推送列表失败: " + r.error.message, source: "mp.ws.js:404" });
         loadMoreBtn.textContent = "重试";
         return;
       }
@@ -551,7 +552,7 @@
                   const key = window.key || "";
                   const passTicket = window.pass_ticket || "";
                   if (!biz) {
-                    WXU.error("缺少 biz 参数");
+                    WXU.error({ msg: "缺少 biz 参数", source: "mp.ws.js:555" });
                     return;
                   }
                   WXU.toast("正在提交批量下载...");

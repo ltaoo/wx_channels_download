@@ -5,22 +5,25 @@ if (typeof WXEnv === "undefined") {
   throw new Error("env.js must be loaded before channels.env.js");
 }
 
-(() => {
-  const env = {
-    channelsHostname: "127.0.0.1:2022",
-    channelsProtocol: "http",
-    downloadHostname: "127.0.0.1:2022",
-    downloadProtocol: "http",
+var ChannelsEnv = (() => {
+  var defaults = {
+    apiOrigin: "127.0.0.1:2022",
+    apiProtocol: "http",
+    channelsWSURL: "ws://127.0.0.1:2022/ws/channels"
   };
-
-  const cfg = WXEnv.config;
-  if (cfg.apiServerProtocol && cfg.apiServerAddr) {
-    env.assetsFallbackBase =
-      WXEnv.origin(
-        cfg.apiServerProtocol,
-        WXEnv.normalizeHostAddr(cfg.apiServerAddr),
-      ) + "/__assets";
+  var derived = {};
+  return {
+    get(name) {
+      let v = WXEnv.get(name);
+      if (typeof v !== "undefined") {
+        return v;
+      }
+      return defaults[name];
+    },
   }
-
-  WXEnv.applyRuntimeEnv(env);
 })();
+// var ChannelsEnvGet = ChannelsEnv.get;
+// var ChannelsEnvOrigin = ChannelsEnv.origin;
+// var ChannelsEnvWSProtocol = ChannelsEnv.wsProtocol;
+// var ChannelsEnvNormalizeHostAddr = ChannelsEnv.normalizeHostAddr;
+// var ChannelsEnvConfig = ChannelsEnv.config;

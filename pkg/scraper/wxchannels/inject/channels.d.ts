@@ -7,11 +7,16 @@ type ChannelsConfig = {
   downloadPauseWhenDownload: boolean;
   /** Download in frontend */
   downloadInFrontend: boolean;
-  /** API server address */
-  apiServerAddr: string;
+  /** API server origin */
+  apiOrigin: string;
+  /** API server host, including the port */
+  apiHost: string;
+  /** API server protocol */
+  apiProtocol: string;
+  remoteServerEnabled: boolean;
+  remoteServerOrigin: string;
   channelsHostname: string;
-  downloadHostname: string;
-  MaxRunning: number;
+  maxRunning: number;
   downloadForceCheckAllFeeds: boolean;
 };
 
