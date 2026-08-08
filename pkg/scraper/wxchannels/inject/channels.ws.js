@@ -1,3 +1,5 @@
+var ChannelsWSURL = ChannelsEnv.get("channelsWSURL");
+
 function getShortUri(data) {
   var u = new URL(decodeURIComponent(data.url));
   var pathname = u.pathname;
@@ -108,15 +110,14 @@ async function fetchFeedProfileWith(data) {
 function ChannelsWebsocketClient() {
   const methods = {
     connect_local_ws() {
-      const ws_url = WXEnv.channelsWSURL;
-      const ws = new WebSocket(ws_url);
+      const ws = new WebSocket(ChannelsWSURL);
       ws.onclose = (e) => {
-        WXU.error({
-          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}`,
+        WXU.error({ source: "channels.ws.js:115",
+          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}. ${ChannelsWSURL}`,
         });
       };
       ws.onerror = (e) => {
-        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e) });
+        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e), source: "channels.ws.js:120" });
       };
       ws.onmessage = (ev) => {
         const [err, msg] = WXU.parseJSON(ev.data);

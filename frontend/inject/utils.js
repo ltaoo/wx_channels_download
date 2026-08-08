@@ -36,10 +36,10 @@ if (typeof WXEnv === "undefined") {
   throw new Error("env.js must be loaded before utils.js");
 }
 var WXU = (() => {
-  var APIHostname = WXEnv.apiOrigin;
+  var APIOrigin = WXEnv.get("apiOrigin");
   const http_client = new Timeless.HttpClientCore({
     headers: { "Content-Type": "application/json" },
-    hostname: APIHostname,
+    hostname: APIOrigin,
   });
   Timeless.web.provide_http_client(http_client);
   const request = Timeless.request_factory({
@@ -183,7 +183,6 @@ var WXU = (() => {
     }, delay);
   };
   LogTransport.prototype._flushSync = function () {
-    var apiOrigin = WXEnv.apiOrigin;
     var e;
     while ((e = this.buf.shift())) {
       delete e._retries;
@@ -191,7 +190,7 @@ var WXU = (() => {
         var blob = new Blob([JSON.stringify(e)], {
           type: "application/json",
         });
-        navigator.sendBeacon(apiOrigin + "/report", blob);
+        navigator.sendBeacon(APIOrigin + "/report", blob);
       } catch (ignore) {}
     }
   };
@@ -549,7 +548,12 @@ var WXU = (() => {
         : { msg: params };
     const message = __wx_feedback_text(options, "未知错误");
     var _alert = options.alert != null ? options.alert : 1;
-    logTransport.enqueue({ msg: message, level: "error" });
+    const logger = Logger.Error();
+    console.log("__wx_error - source", options.source);
+    if (options.source) {
+      logger.Str("file", options.source);
+    }
+    logger.Msg(message);
     if (_alert) {
       return __wx_top_tip(message);
     }
@@ -827,36 +831,127 @@ var WXU = (() => {
       startObserve();
     },
     /**
-     * @param {{ url: string; method: 'GET' | 'POST'; body?: any }} opt
+     * @param {{ url: string; method: 'GET' | 'POST'; body?: any; timeout?: number }} opt
      */
     async request(opt) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         var xhr = new XMLHttpRequest();
-        xhr.open(opt.method, opt.url);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.onload = async function () {
-          // console.log("[request]xhr.responseText", xhr.responseText);
+        var method = String(opt.method || "GET").toUpperCase();
+        var url = String(opt.url || "");
+        var settled = false;
+        function finish(err, data) {
+          if (settled) return;
+          settled = true;
+          resolve([err, data]);
+        }
+        function requestError(reason, details = {}) {
+          const err = new Error(`${method} ${url} 请求失败：${reason}`);
+          Object.assign(err, { method, url }, details);
+          return err;
+        }
+        function responseMessage(data) {
+          if (!data || typeof data !== "object") return "";
+          return (
+            data.msg ||
+            data.message ||
+            (typeof data.error === "string" ? data.error : "")
+          );
+        }
+        try {
+          xhr.open(method, url);
+          xhr.setRequestHeader("Content-Type", "application/json");
+        } catch (err) {
+          finish(
+            requestError(err.message || String(err), {
+              type: "setup",
+              cause: err,
+            }),
+            null,
+          );
+          return;
+        }
+        const timeout = Number(opt.timeout);
+        if (Number.isFinite(timeout) && timeout > 0) {
+          xhr.timeout = timeout;
+        }
+        xhr.onload = function () {
+          var response = null;
           try {
-            var data = JSON.parse(xhr.responseText);
-            if (data.code !== 0) {
-              const err = new Error(data.msg);
-              err.code = data.code;
-              err.data = data.data;
-              err.response = data;
-              resolve([err, null]);
+            response = JSON.parse(xhr.responseText);
+          } catch (_ignore) {}
+          if (xhr.status < 200 || xhr.status >= 300) {
+            const status = xhr.status
+              ? `HTTP ${xhr.status}${xhr.statusText ? ` ${xhr.statusText}` : ""}`
+              : "无法连接服务器";
+            const serverMessage = responseMessage(response);
+            finish(
+              requestError(
+                serverMessage ? `${status}：${serverMessage}` : status,
+                {
+                  type: "http",
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                  response: response || xhr.responseText,
+                },
+              ),
+              null,
+            );
+            return;
+          }
+          if (response) {
+            if (response.code !== 0) {
+              const message =
+                responseMessage(response) || `接口返回错误码 ${response.code}`;
+              const err = requestError(message, {
+                type: "api",
+                code: response.code,
+                data: response.data,
+                response,
+              });
+              finish(err, null);
               return;
             }
-            resolve([null, data.data]);
-          } catch (e) {
-            // ignore
+            finish(null, response.data);
+            return;
           }
-          resolve([null, xhr.responseText]);
+          finish(null, xhr.responseText);
         };
-        xhr.onerror = function (err) {
-          // console.log("[request]xhr.onerror", err);
-          resolve([new Error(err.type), null]);
+        xhr.onerror = function () {
+          finish(
+            requestError(
+              "无法连接服务器（服务未启动、连接被拒绝或 CORS 拦截）",
+              {
+                type: "network",
+                status: xhr.status,
+                statusText: xhr.statusText,
+              },
+            ),
+            null,
+          );
         };
-        xhr.send(JSON.stringify(opt.body));
+        xhr.ontimeout = function () {
+          finish(
+            requestError(`请求超时（${xhr.timeout}ms）`, {
+              type: "timeout",
+              timeout: xhr.timeout,
+            }),
+            null,
+          );
+        };
+        xhr.onabort = function () {
+          finish(requestError("请求已取消", { type: "abort" }), null);
+        };
+        try {
+          xhr.send(JSON.stringify(opt.body));
+        } catch (err) {
+          finish(
+            requestError(err.message || String(err), {
+              type: "send",
+              cause: err,
+            }),
+            null,
+          );
+        }
       });
     },
     async save(blob, filename) {

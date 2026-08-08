@@ -12,4 +12,6 @@ type ErrorMsg = {
   alert?: number;
   /** Error message content */
   msg: string;
+  /** Source file and line of the error call */
+  source?: string;
 };

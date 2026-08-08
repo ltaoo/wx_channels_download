@@ -13,7 +13,7 @@ echo Building Windows x86_64...
 set CGO_ENABLED=0
 set GOOS=windows
 set GOARCH=amd64
-go build -trimpath -ldflags="-s -w" -o "%OUTPUT_DIR%\wx_video_download_windows_x86_64.exe"
+go build -trimpath -tags "with_gvisor,embed_inject,sqlite_only" -ldflags="-s -w" -o "%OUTPUT_DIR%\wx_video_download_windows_x86_64.exe"
 if exist wx_channel.exe (
     del wx_channel.exe
 )

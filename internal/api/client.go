@@ -166,9 +166,10 @@ func (c *APIClient) Start() error {
 }
 
 func (c *APIClient) Stop() error {
-	// Pause all Hermes download tasks
+	// Match the previous shutdown behavior: request all tasks to pause, but do
+	// not hold up the service shutdown while task goroutines finish.
 	if c.downloader != nil {
-		c.downloader.PauseAllTask()
+		c.downloader.RequestPauseAllTask()
 	}
 	return nil
 }

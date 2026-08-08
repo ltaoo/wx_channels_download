@@ -20,10 +20,7 @@ function format_download_progress_text(percent) {
 function download_task_preview_url(task) {
   const id = task && task.id;
   if (id === undefined || id === null || id === "") return "";
-  const origin =
-    (typeof WXEnv !== "undefined" && WXEnv.apiOrigin) ||
-    (window.location && window.location.origin) ||
-    "";
+  const origin = DownloaderOrigin;
   const base = String(origin || "").replace(/\/$/, "");
   return `${base}/preview?id=${encodeURIComponent(id)}`;
 }
@@ -32,6 +29,7 @@ function open_download_task_preview(task) {
   if (!url) {
     WXU.error({
       msg: "task id is empty",
+      source: "view.js:33"
     });
     return;
   }
@@ -1467,7 +1465,7 @@ function DownloadTaskCard(props) {
     };
   });
   const isOpenExternal =
-    WXEnv.config.remoteServerEnabled === true || WXEnv.config.inDocker === true;
+    RemoteServerEnabled === true || InDocker === true;
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const offset = computed(state_, (d) => {
@@ -1819,8 +1817,6 @@ function DownloadTaskCard(props) {
                 running_count: running_count_,
               },
               (t) => {
-                var maxRunning =
-                  WXEnv.config.MaxRunning || WXEnv.defaults.MaxRunning;
                 if (t.state.isCompleted) {
                   return 1;
                 }
@@ -1830,7 +1826,7 @@ function DownloadTaskCard(props) {
                 if (t.state.isLiveStream && t.state.isPaused) {
                   return 5;
                 }
-                if (t.running_count >= maxRunning) {
+                if (t.running_count >= MaxRunning) {
                   return 5;
                 }
                 if (t.state.isPaused) {

@@ -1,94 +1,95 @@
 /**
  * @file 直播页
  */
-window.__wx_channels_live_store__ = {};
-function __wx_copy_live_download_command(url) {
-  var filename = (() => {
-    return new Date().valueOf();
-  })();
-  var command = `ffmpeg -i "${url}" -c copy -y "live_${filename}.flv"`;
-  // WXU.log({ prefix: "", msg: "" });
-  // WXU.log({ prefix: "", msg: "直播下载命令" });
-  // WXU.log({ prefix: "", msg: command });
-  WXU.copy(command);
-  WXU.toast("直播下载命令已复制到粘贴板");
-}
-
-/**
- * 为指定按钮添加额外的下载选项菜单
- * @param {HTMLElement} trigger
- * @param {Array} options - 直播流选项列表
- */
-function __wx_attach_live_download_dropdown_menu(trigger, options) {
-  if (trigger.__attacheddropdown) {
-    return trigger.__attacheddropdown;
-  }
-
-  function close_dropdown() {
-    if (dropdown$) {
-      dropdown$.hide({ reason: "download menu action" });
-    }
-  }
-
-  function build_menu_items() {
-    return options.map((opt) => {
-      return new Timeless.ui.MenuItemCore({
-        label: [opt.tag_name, opt.rate, opt.video_quality_level_desc]
-          .filter(Boolean)
-          .join(" "),
-        onClick() {
-          __wx_copy_live_download_command(opt.url);
-          close_dropdown();
-        },
-      });
-    });
-  }
-
-  const dropdown$ = new Timeless.ui.DropdownMenuCore({
-    trigger: "hover",
-    align: "end",
-    items: build_menu_items(),
-  });
-
-  const mount = document.createElement("span");
-  mount.className = "wx-download-dropdown-menu-root";
-  mount.style.display = "contents";
-  document.body.appendChild(mount);
-  Timeless.DOM.render(Timeless.weui.DropdownMenu({ store: dropdown$ }), mount);
-
-  function set_reference() {
-    dropdown$.setReference(
-      {
-        $el: trigger,
-        getRect() {
-          return trigger.getBoundingClientRect();
-        },
-      },
-      { force: true },
-    );
-  }
-
-  trigger.addEventListener("mouseenter", () => {
-    set_reference();
-    dropdown$.handleEnterTrigger();
-  });
-  trigger.addEventListener("mouseleave", () => {
-    dropdown$.handleLeaveTrigger();
-  });
-  trigger.addEventListener("pointerdown", (event) => {
-    event.stopPropagation();
-  });
-
-  if (trigger.dataset) {
-    trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
-  }
-  trigger.__attacheddropdown = dropdown$;
-  return dropdown$;
-}
+var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
 
 (() => {
+  function __wx_copy_live_download_command(url) {
+    var filename = (() => {
+      return new Date().valueOf();
+    })();
+    var command = `ffmpeg -i "${url}" -c copy -y "live_${filename}.flv"`;
+    // WXU.log({ prefix: "", msg: "" });
+    // WXU.log({ prefix: "", msg: "直播下载命令" });
+    // WXU.log({ prefix: "", msg: command });
+    WXU.copy(command);
+    WXU.toast("直播下载命令已复制到粘贴板");
+  }
+
+  /**
+   * 为指定按钮添加额外的下载选项菜单
+   * @param {HTMLElement} trigger
+   * @param {Array} options - 直播流选项列表
+   */
+  function __wx_attach_live_download_dropdown_menu(trigger, options) {
+    if (trigger.__attacheddropdown) {
+      return trigger.__attacheddropdown;
+    }
+
+    function close_dropdown() {
+      if (dropdown$) {
+        dropdown$.hide({ reason: "download menu action" });
+      }
+    }
+
+    function build_menu_items() {
+      return options.map((opt) => {
+        return new Timeless.ui.MenuItemCore({
+          label: [opt.tag_name, opt.rate, opt.video_quality_level_desc]
+            .filter(Boolean)
+            .join(" "),
+          onClick() {
+            __wx_copy_live_download_command(opt.url);
+            close_dropdown();
+          },
+        });
+      });
+    }
+
+    const dropdown$ = new Timeless.ui.DropdownMenuCore({
+      trigger: "hover",
+      align: "end",
+      items: build_menu_items(),
+    });
+
+    const mount = document.createElement("span");
+    mount.className = "wx-download-dropdown-menu-root";
+    mount.style.display = "contents";
+    document.body.appendChild(mount);
+    Timeless.DOM.render(Timeless.weui.DropdownMenu({ store: dropdown$ }), mount);
+
+    function set_reference() {
+      dropdown$.setReference(
+        {
+          $el: trigger,
+          getRect() {
+            return trigger.getBoundingClientRect();
+          },
+        },
+        { force: true },
+      );
+    }
+
+    trigger.addEventListener("mouseenter", () => {
+      set_reference();
+      dropdown$.handleEnterTrigger();
+    });
+    trigger.addEventListener("mouseleave", () => {
+      dropdown$.handleLeaveTrigger();
+    });
+    trigger.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+
+    if (trigger.dataset) {
+      trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
+    }
+    trigger.__attacheddropdown = dropdown$;
+    return dropdown$;
+  }
+
   var error_tip_timer = setTimeout(() => {
-    WXU.error({ msg: "没有捕获到视频详情", alert: 0 });
+    WXU.error({ msg: "没有捕获到视频详情", alert: 0, source: "channels.live.js:92" });
   }, 5000);
   var live_page_mounted = false;
   var profile = null;
@@ -111,7 +112,7 @@ function __wx_attach_live_download_dropdown_menu(trigger, options) {
         !liveData.liveSdkInfo ||
         !liveData.liveSdkInfo.liveCdnUrl
       ) {
-        WXU.error({ msg: "检测不到直播流，请将本工具更新到最新版" });
+        WXU.error({ msg: "检测不到直播流，请将本工具更新到最新版", source: "channels.live.js:115" });
         return;
       }
       var p = __wx_channels_live_store__.profile;
@@ -120,7 +121,7 @@ function __wx_attach_live_download_dropdown_menu(trigger, options) {
         var ins = WXU.loading({ msg: "正在创建直播下载任务..." });
         var [err, data] = await WXU.request({
           method: "POST",
-          url: WXEnv.apiOrigin + "/api/v1/download_task/create",
+          url: ChannelsAPIOrigin + "/api/v1/download_task/create",
           body: {
             objects: [
               {
@@ -133,12 +134,12 @@ function __wx_attach_live_download_dropdown_menu(trigger, options) {
         });
         ins.hide();
         if (err) {
-          WXU.error({ msg: err.message || "创建下载任务失败" });
+          WXU.error({ msg: err.message || "创建下载任务失败", source: "channels.live.js:137" });
           return;
         }
         WXU.toast("直播下载任务已创建");
       } catch (e) {
-        WXU.error({ msg: "创建下载任务失败: " + e.message });
+        WXU.error({ msg: "创建下载任务失败: " + e.message, source: "channels.live.js:142" });
       }
     };
     if (!WXU.API.finderJoinLiveMapper) {

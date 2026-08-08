@@ -22,46 +22,47 @@ type ChannelsConfig struct {
 }
 
 func NewChannelsConfig(c *config.Config, logger *zerolog.Logger) *ChannelsConfig {
+	api_protocol := viper.GetString("api.protocol")
 	api_hostname := viper.GetString("api.hostname")
 	api_port := viper.GetInt("api.port")
+	remote_server_protocol := viper.GetString("download.remoteServer.protocol")
+	remote_server_hostname := viper.GetString("download.remoteServer.hostname")
+	remote_server_port := viper.GetInt("download.remoteServer.port")
 	settings := &ChannelsConfig{
 		Version:                       c.Version,
 		DebugShowError:                viper.GetBool("debug.error"),
 		PagespyEnabled:                viper.GetBool("pagespy.enabled"),
-		ChannelsDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
+		ChannelsDisableLocationToHome: viper.GetBool("channels.disableLocationToHome"),
 		GlobalScriptPath:              c.GlobalScriptPath,
 		InjectContentScript:           c.ContentScriptContent,
 		FrontendVariables: map[string]any{
-			"defaultHighest":             viper.GetBool("channels.download.defaultHighest"),
+			"apiHost":                    api_hostname + ":" + strconv.Itoa(api_port),
+			"apiOrigin":                  api_protocol + "://" + api_hostname + ":" + strconv.Itoa(api_port),
+			"apiProtocol":                api_protocol,
+			"pagespyServerProtocol":      viper.GetString("pagespy.protocol"),
+			"pagespyServerAPI":           viper.GetString("pagespy.api"),
+			"remoteServerEnabled":        viper.GetBool("download.remoteServer.enabled"),
+			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),
+			"maxRunning":                 viper.GetInt("download.maxRunning"),
 			"downloadFilenameTemplate":   viper.GetString("download.filenameTemplate"),
+			"defaultHighest":             viper.GetBool("channels.download.defaultHighest") || viper.GetBool("download.defaultHighest"),
 			"downloadPauseWhenDownload":  viper.GetBool("channels.download.pauseWhenDownload"),
 			"downloadInFrontend":         viper.GetBool("channels.download.frontend"),
 			"downloadForceCheckAllFeeds": viper.GetBool("channels.download.forceCheckAllFeeds"),
-			"apiServerProtocol":          viper.GetString("api.protocol"),
-			"apiServerAddr":              api_hostname + ":" + strconv.Itoa(api_port),
-			"remoteServerEnabled":        viper.GetBool("download.remoteServer.enabled"),
-			"MaxRunning":                 viper.GetInt("download.maxRunning"),
-			"pagespyServerProtocol":      viper.GetString("pagespy.protocol"),
-			"pagespyServerAPI":           viper.GetString("pagespy.api"),
 		},
 		Logger: logger,
 	}
-	if viper.GetBool("channels.disableLocationToHome") {
-		settings.ChannelsDisableLocationToHome = true
-	}
 
-	if logger != nil {
-		if settings.GlobalScriptPath == "" {
-			logger.Info().
-				Str("file", "pkg/scraper/wxchannels/config.go").
-				Msg("wxchannels global script path is empty")
-		} else {
-			logger.Info().
-				Str("file", "pkg/scraper/wxchannels/config.go").
-				Str("path", settings.GlobalScriptPath).
-				Str("asset_path", frontend.UserGlobalScriptAssetPath(settings.GlobalScriptPath)).
-				Msg("wxchannels global script path configured")
-		}
+	if settings.GlobalScriptPath == "" {
+		logger.Info().
+			Str("file", "pkg/scraper/wxchannels/config.go").
+			Msg("wxchannels global script path is empty")
+	} else {
+		logger.Info().
+			Str("file", "pkg/scraper/wxchannels/config.go").
+			Str("path", settings.GlobalScriptPath).
+			Str("asset_path", frontend.UserGlobalScriptAssetPath(settings.GlobalScriptPath)).
+			Msg("wxchannels global script path configured")
 	}
 
 	return settings

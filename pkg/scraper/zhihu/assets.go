@@ -3,8 +3,10 @@ package zhihu
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"strings"
 
+	"wx_channel/frontend"
 	"wx_channel/internal/webassets"
 )
 
@@ -15,10 +17,12 @@ type InjectedAssets struct {
 	InjectFS fs.FS
 }
 
+const assetPathPrefix = "/zhihu"
+
 // StaticAssetsPath is the HTTP mount owned by the zhihu scraper.
-// Keeping platform assets in a namespace prevents filename collisions with
+// Keeping scraper assets in a namespace prevents filename collisions with
 // shared frontend assets and other scraper packages.
-const StaticAssetsPath = "/__assets/platform/zhihu"
+const StaticAssetsPath = "/__assets" + assetPathPrefix + "/inject"
 
 func NewAssets() *InjectedAssets {
 	return &InjectedAssets{InjectFS: embeddedInjectFS()}
@@ -45,7 +49,7 @@ func RegisterStaticAssets(registry *webassets.Registry) error {
 	return nil
 }
 
-// InjectAssetURL builds a URL for an asset owned by this package.
-func InjectAssetURL(baseURL, name string) string {
-	return strings.TrimRight(baseURL, "/") + "/platform/zhihu/" + strings.TrimLeft(name, "/")
+// AssetURL builds a URL for an asset owned by this package.
+func AssetURL(baseURL, name string, query ...url.Values) string {
+	return frontend.NewURLBuild(baseURL, nil)(assetPathPrefix+"/"+strings.TrimLeft(name, "/"), query...)
 }
