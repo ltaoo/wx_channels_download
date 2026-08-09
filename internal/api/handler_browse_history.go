@@ -63,8 +63,8 @@ func (c *APIClient) createBrowseHistorySingle(body services.CreateBrowseHistoryB
 	}, nil
 }
 
-// handleCreateBrowseHistory batch-creates browse history records.
-func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
+// handle_create_browse_history batch-creates browse history records.
+func (c *APIClient) handle_create_browse_history(ctx *gin.Context) {
 	var req browseHistoryCreateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		if c.logger != nil {
@@ -143,7 +143,7 @@ func (c *APIClient) handleCreateBrowseHistory(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) handleFetchBrowseHistoryList(ctx *gin.Context) {
+func (c *APIClient) handle_fetch_browse_history_list(ctx *gin.Context) {
 	var body struct {
 		Username       *string  `json:"username"`
 		PlatformId     string   `json:"platform_id"`

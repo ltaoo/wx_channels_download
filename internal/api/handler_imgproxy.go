@@ -10,7 +10,7 @@ import (
 	"wx_channel/pkg/clawreq"
 )
 
-func (c *APIClient) handleImgProxy(ctx *gin.Context) {
+func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
 	rawURL := ctx.Query("url")
 	if rawURL == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": -1, "msg": "url is required"})

@@ -206,22 +206,6 @@ function DownloadPageTaskCoverURL(task) {
   return String(task.cover_url || task.coverUrl || task.CoverURL || "").trim();
 }
 
-function DownloadPageTaskCoverOpacity(state) {
-  if (!state || state.isCompleted) {
-    return "1";
-  }
-  if (
-    state.isRunning ||
-    state.isPaused ||
-    state.isPending ||
-    state.isFailed
-  ) {
-    const progress = Number(state.pr) || 0;
-    return String(Math.max(0.04, Math.min(1, progress / 100)));
-  }
-  return "1";
-}
-
 function DownloadPageTaskCover(props) {
   const task_ = props.task;
   const state_ = props.state;
@@ -251,9 +235,6 @@ function DownloadPageTaskCover(props) {
           class: "wx-dl-page-task-cover",
           src: computed(task_, (task) => DownloadPageTaskCoverURL(task)),
           alt: computed(task_, (task) => (task && task.name) || ""),
-          style: computed(state_, (state) => ({
-            opacity: DownloadPageTaskCoverOpacity(state),
-          })),
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
@@ -299,8 +280,7 @@ function DownloadPageTaskActions(props) {
   const vm$ = props.store;
   const task_ = props.task;
   const state_ = props.state;
-  const isOpenExternal =
-    RemoteServerEnabled === true || InDocker === true;
+  const isOpenExternal = is_download_open_external();
 
   return View({ class: "wx-dl-page-task-actions-cell" }, [
     Match({
@@ -737,23 +717,23 @@ function DownloaderPageView(props) {
         View({ class: "wx-dl-page-list-wrap" }, [
           DownloadPageTaskTableView({ store: vm$ }),
         ]),
-        CreateTaskDialogView({
-          store: vm$,
-        }),
-        CreatePlatformTaskDialogView({
-          store: vm$,
-        }),
-        CreateTaskPreviewDialogView({
-          store: vm$,
-        }),
-        CreatePlatformTaskPreviewDialogView({
-          store: vm$,
-        }),
-        FilePickerDialog({
-          dialogStore: vm$.ui.importFileDialog$,
-          title: "导入文件",
-          accept: ".db",
-        }),
+        // CreateTaskDialogView({
+        //   store: vm$,
+        // }),
+        // CreatePlatformTaskDialogView({
+        //   store: vm$,
+        // }),
+        // CreateTaskPreviewDialogView({
+        //   store: vm$,
+        // }),
+        // CreatePlatformTaskPreviewDialogView({
+        //   store: vm$,
+        // }),
+        // FilePickerDialog({
+        //   dialogStore: vm$.ui.importFileDialog$,
+        //   title: "导入文件",
+        //   accept: ".db",
+        // }),
         TaskDeleteConfirmDialog({
           store: vm$,
         }),

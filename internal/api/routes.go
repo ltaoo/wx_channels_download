@@ -16,15 +16,15 @@ import (
 
 func (c *APIClient) SetupRoutes() {
 	// favicon
-	c.engine.GET("/favicon.ico", c.handleFavicon)
-	c.setupStaticAssetRoutes()
-	c.engine.GET("/", c.handleIndex)
-	c.engine.GET("/download", c.handleDownloadPage)
-	c.engine.GET("/home", c.handleHomePage)
-	c.engine.GET("/browsehistory", c.handleBrowseHistoryPage)
-	c.engine.GET("/content", c.handleContentPage)
-	c.engine.GET("/preview", c.handlePreviewPage)
-	c.engine.GET("/channels", c.handleChannelsPage)
+	c.engine.GET("/favicon.ico", c.handle_favicon)
+	c.setup_static_asset_routes()
+	c.engine.GET("/", c.handle_index)
+	c.engine.GET("/download", c.handle_download_page)
+	c.engine.GET("/home", c.handle_home_page)
+	c.engine.GET("/browsehistory", c.handle_browse_history_page)
+	c.engine.GET("/content", c.handle_content_page)
+	c.engine.GET("/preview", c.handle_preview_page)
+	c.engine.GET("/channels", c.handle_channels_page)
 	// Official account endpoints
 	// c.engine.GET("/ws/mp", c.official.HandleWebsocket)
 	// c.engine.GET("/ws/manage", c.official.HandleManageWebsocket)
@@ -42,84 +42,84 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/filehelper/logout", c.filehelper.HandleLogout)
 	c.engine.POST("/api/filehelper/parse_finder_feed", c.filehelper.HandleParseFinderFeed)
 	// File operations
-	c.engine.POST("/api/show_file", c.handleShowFile)
-	c.engine.POST("/api/open_file", c.handleHighlightFileInFolder)
-	c.engine.POST("/api/open_download_dir", c.handleOpenDownloadDir)
-	c.engine.POST("/api/open", c.handleOpenURL)
+	c.engine.POST("/api/show_file", c.handle_show_file)
+	c.engine.POST("/api/open_file", c.handle_highlight_file_in_folder)
+	c.engine.POST("/api/open_download_dir", c.handle_open_download_dir)
+	c.engine.POST("/api/open", c.handle_open_url)
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
-	c.engine.GET("/api/file", c.handleFetchFile)
-	c.engine.POST("/api/v1/fs/list", c.handleListFiles)
-	c.engine.POST("/api/v1/fs/search", c.handleSearchFiles)
+	c.engine.GET("/api/file", c.handle_fetch_file)
+	c.engine.POST("/api/v1/fs/list", c.handle_list_files)
+	c.engine.POST("/api/v1/fs/search", c.handle_search_files)
 
-	// c.engine.GET("/migration", c.handleMigrationPage)
-	// c.engine.POST("/api/v1/migration/load", c.handleMigrationLoad)
-	// c.engine.POST("/api/v1/migration/table", c.handleMigrationTable)
-	// c.engine.POST("/api/v1/migration/file/list", c.handleMigrationFileList)
-	// c.engine.GET("/api/v1/migration/common_dirs", c.handleMigrationCommonDirs)
-	// c.engine.POST("/api/task/pipeline/start", c.handleProbePlatformDownloadTask)
-	// c.engine.POST("/api/task/probe", c.handleProbePlatformDownloadTask)
-	// c.engine.GET("/api/task/pipeline/workflow", c.handleFetchPlatformDownloadWorkflow)
-	// c.engine.POST("/api/task/pipeline/resume", c.handleResumePlatformDownloadPipeline)
-	c.engine.POST("/api/browse_history/create", c.handleCreateBrowseHistory)
-	c.engine.POST("/api/browse_history/list", c.handleFetchBrowseHistoryList)
-	c.engine.POST("/api/v1/download_task/prepare", c.handlePrepareDownloadTask)
-	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handlePrepareDownloadTaskByURL)
-	c.engine.POST("/api/v1/download_task/create", c.handleCreateDownloadTask)
-	c.engine.POST("/api/v1/download_task/create_by_url", c.handleCreateDownloadTaskByURL)
-	c.engine.POST("/api/v1/download_task/start", c.handleStartDownloadTask)
-	c.engine.POST("/api/v1/download_task/pause", c.handlePauseDownloadTask)
-	c.engine.POST("/api/v1/download_task/resume", c.handleResumeDownloadTask)
-	c.engine.POST("/api/v1/download_task/retry", c.handleRetryDownloadTask)
-	c.engine.POST("/api/v1/download_task/delete", c.handleDeleteDownloadTask)
-	c.engine.POST("/api/v1/download_task/start_all", c.handleStartAllDownloadTask)
-	c.engine.POST("/api/v1/download_task/pause_all", c.handlePauseAllDownloadTask)
-	c.engine.POST("/api/v1/download_task/clear", c.handleClearDownloadTask)
-	c.engine.POST("/api/v1/download_task/check_files", c.handleCheckDownloadTaskFiles)
-	c.engine.GET("/api/v1/download_task/list", c.handleListDownloadTask)
-	c.engine.GET("/api/v1/download_task/detail", c.handleDownloadTaskDetail)
-	c.engine.GET("/ws/v1/download_task", c.handleDownloadTaskWS)
+	// c.engine.GET("/migration", c.handle_migration_page)
+	// c.engine.POST("/api/v1/migration/load", c.handle_migration_load)
+	// c.engine.POST("/api/v1/migration/table", c.handle_migration_table)
+	// c.engine.POST("/api/v1/migration/file/list", c.handle_migration_file_list)
+	// c.engine.GET("/api/v1/migration/common_dirs", c.handle_migration_common_dirs)
+	// c.engine.POST("/api/task/pipeline/start", c.handle_probe_platform_download_task)
+	// c.engine.POST("/api/task/probe", c.handle_probe_platform_download_task)
+	// c.engine.GET("/api/task/pipeline/workflow", c.handle_fetch_platform_download_workflow)
+	// c.engine.POST("/api/task/pipeline/resume", c.handle_resume_platform_download_pipeline)
+	c.engine.POST("/api/browse_history/create", c.handle_create_browse_history)
+	c.engine.POST("/api/browse_history/list", c.handle_fetch_browse_history_list)
+	c.engine.POST("/api/v1/download_task/prepare", c.handle_prepare_download_task)
+	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handle_prepare_download_task_by_url)
+	c.engine.POST("/api/v1/download_task/create", c.handle_create_download_task)
+	c.engine.POST("/api/v1/download_task/create_by_url", c.handle_create_download_task_by_url)
+	c.engine.POST("/api/v1/download_task/start", c.handle_start_download_task)
+	c.engine.POST("/api/v1/download_task/pause", c.handle_pause_download_task)
+	c.engine.POST("/api/v1/download_task/resume", c.handle_resume_download_task)
+	c.engine.POST("/api/v1/download_task/retry", c.handle_retry_download_task)
+	c.engine.POST("/api/v1/download_task/delete", c.handle_delete_download_task)
+	c.engine.POST("/api/v1/download_task/start_all", c.handle_start_all_download_task)
+	c.engine.POST("/api/v1/download_task/pause_all", c.handle_pause_all_download_task)
+	c.engine.POST("/api/v1/download_task/clear", c.handle_clear_download_task)
+	c.engine.POST("/api/v1/download_task/check_files", c.handle_check_download_task_files)
+	c.engine.GET("/api/v1/download_task/list", c.handle_list_download_task)
+	c.engine.GET("/api/v1/download_task/detail", c.handle_download_task_detail)
+	c.engine.GET("/ws/v1/download_task", c.handle_download_task_ws)
 
-	// c.engine.GET("/api/influencers", c.handleCompatInfluencerList)
-	// c.engine.GET("/api/influencers/:id", c.handleCompatInfluencerGet)
-	// c.engine.POST("/api/influencers", c.handleCompatInfluencerCreate)
-	// c.engine.PUT("/api/influencers/:id", c.handleCompatInfluencerUpdate)
-	// c.engine.GET("/influencers", c.handleCompatInfluencerList)
-	// c.engine.GET("/influencers/:id", c.handleCompatInfluencerGet)
-	// c.engine.POST("/influencers", c.handleCompatInfluencerCreate)
-	// c.engine.PUT("/influencers/:id", c.handleCompatInfluencerUpdate)
+	// c.engine.GET("/api/influencers", c.handle_compat_influencer_list)
+	// c.engine.GET("/api/influencers/:id", c.handle_compat_influencer_get)
+	// c.engine.POST("/api/influencers", c.handle_compat_influencer_create)
+	// c.engine.PUT("/api/influencers/:id", c.handle_compat_influencer_update)
+	// c.engine.GET("/influencers", c.handle_compat_influencer_list)
+	// c.engine.GET("/influencers/:id", c.handle_compat_influencer_get)
+	// c.engine.POST("/influencers", c.handle_compat_influencer_create)
+	// c.engine.PUT("/influencers/:id", c.handle_compat_influencer_update)
 
-	c.engine.GET("/api/account/list", c.handleCompatAccountList)
-	// c.engine.POST("/api/account/synchronize", c.handleCompatAccountSynchronize)
-	// c.engine.POST("/account/list", c.handleCompatAccountList)
-	// c.engine.POST("/account/synchronize", c.handleCompatAccountSynchronize)
+	c.engine.GET("/api/account/list", c.handle_compat_account_list)
+	// c.engine.POST("/api/account/synchronize", c.handle_compat_account_synchronize)
+	// c.engine.POST("/account/list", c.handle_compat_account_list)
+	// c.engine.POST("/account/synchronize", c.handle_compat_account_synchronize)
 
-	c.engine.GET("/api/content/list", c.handleCompatContentList)
-	c.engine.GET("/api/content/detail", c.handleContentDetail)
-	// c.engine.POST("/content/list", c.handleCompatContentList)
-	// c.engine.POST("/api/video/list", c.handleCompatVideoList)
-	// c.engine.POST("/video/list", c.handleCompatVideoList)
+	c.engine.GET("/api/content/list", c.handle_compat_content_list)
+	c.engine.GET("/api/content/detail", c.handle_content_detail)
+	// c.engine.POST("/content/list", c.handle_compat_content_list)
+	// c.engine.POST("/api/video/list", c.handle_compat_video_list)
+	// c.engine.POST("/video/list", c.handle_compat_video_list)
 
-	// c.engine.GET("/api/channels/search/author", c.handleCompatChannelsSearchAuthor)
-	// c.engine.GET("/api/channels/author/videos", c.handleCompatChannelsAuthorVideos)
-	// c.engine.GET("/api/channels/media/profile", c.handleCompatChannelsMediaProfile)
-	// c.engine.GET("/api/channels/task/status", c.handleCompatChannelsTaskStatus)
-	// c.engine.GET("/api/channels/task/start", c.handleCompatChannelsTaskStart)
-	// c.engine.GET("/channels/search/author", c.handleCompatChannelsSearchAuthor)
-	// c.engine.GET("/channels/author/videos", c.handleCompatChannelsAuthorVideos)
-	// c.engine.GET("/channels/media/profile", c.handleCompatChannelsMediaProfile)
-	// c.engine.GET("/channels/task/status", c.handleCompatChannelsTaskStatus)
-	// c.engine.GET("/channels/task/start", c.handleCompatChannelsTaskStart)
+	// c.engine.GET("/api/channels/search/author", c.handle_compat_channels_search_author)
+	// c.engine.GET("/api/channels/author/videos", c.handle_compat_channels_author_videos)
+	// c.engine.GET("/api/channels/media/profile", c.handle_compat_channels_media_profile)
+	// c.engine.GET("/api/channels/task/status", c.handle_compat_channels_task_status)
+	// c.engine.GET("/api/channels/task/start", c.handle_compat_channels_task_start)
+	// c.engine.GET("/channels/search/author", c.handle_compat_channels_search_author)
+	// c.engine.GET("/channels/author/videos", c.handle_compat_channels_author_videos)
+	// c.engine.GET("/channels/media/profile", c.handle_compat_channels_media_profile)
+	// c.engine.GET("/channels/task/status", c.handle_compat_channels_task_status)
+	// c.engine.GET("/channels/task/start", c.handle_compat_channels_task_start)
 	// File operations
-	c.engine.GET("/play", c.handlePlay)
-	c.engine.GET("/file", c.handleStreamVideo)
-	c.engine.GET("/imgproxy", c.handleImgProxy)
+	c.engine.GET("/play", c.handle_play)
+	c.engine.GET("/file", c.handle_stream_video)
+	c.engine.GET("/imgproxy", c.handle_img_proxy)
 	// Official account endpoints (both remote and local)
 	// c.engine.GET("/api/mp/list", c.official.HandleFetchList)
 	// c.engine.GET("/api/mp/msg/list", c.official.HandleFetchMsgList)
 	// c.engine.GET("/api/mp/article/list", c.official.HandleFetchArticleList)
 	// c.engine.POST("/api/mp/delete", c.official.HandleDelete)
 	// c.engine.POST("/api/mp/refresh", c.official.HandleRefreshEvent)
-	// c.engine.POST("/api/mp/download_all", c.handleDownloadAllOfficialAccountMsgs)
+	// c.engine.POST("/api/mp/download_all", c.handle_download_all_official_account_msgs)
 	// c.engine.GET("/rss/mp", c.official.HandleOfficialAccountRSS)
 	// c.engine.GET("/mp/proxy", c.official.HandleOfficialAccountProxy)
 	// c.engine.GET("/mp/home", c.official.HandleOfficialAccountManagerHome)
@@ -130,28 +130,28 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.GET("/qidian/proxy", qidian.HandleImageProxy)
 	// c.engine.GET("/weibo/proxy", weibo.HandleImageProxy)
 	// Other endpoints
-	c.engine.POST("/report", c.handleFrontendReport)
-	c.engine.GET("/api/status", c.handleStatus)
-	c.engine.POST("/api/service/start", c.handleServiceStart)
-	c.engine.POST("/api/service/stop", c.handleServiceStop)
-	c.engine.POST("/api/service/config", c.handleServiceConfigUpdate)
-	c.engine.GET("/api/proxy/status", c.handleProxyStatus)
-	c.engine.POST("/api/proxy/config", c.handleProxyConfigUpdate)
-	c.engine.POST("/api/proxy/restart", c.handleProxyRestart)
-	c.engine.POST("/api/proxy/system/enable", c.handleProxySystemEnable)
-	c.engine.POST("/api/proxy/system/disable", c.handleProxySystemDisable)
-	c.engine.GET("/api/proxy/certificate/status", c.handleProxyCertificateStatus)
-	c.engine.GET("/api/proxy/certificate/pem", c.handleProxyCertificatePEM)
-	c.engine.POST("/api/proxy/certificate/generate", c.handleProxyCertificateGenerate)
-	c.engine.POST("/api/proxy/certificate/install", c.handleProxyCertificateInstall)
-	c.engine.POST("/api/proxy/certificate/replace", c.handleProxyCertificateReplace)
-	c.engine.POST("/api/proxy/certificate/uninstall", c.handleProxyCertificateUninstall)
-	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handleProxyCertificateUninstallByName)
-	c.engine.GET("/api/cookie/extract", c.handleCookieExtract)
-	c.engine.GET("/api/certificate/root/status", c.handleRootCertificateStatus)
-	c.engine.POST("/api/certificate/root/install", c.handleRootCertificateInstall)
-	c.engine.POST("/api/certificate/root/uninstall", c.handleRootCertificateUninstall)
-	// c.engine.GET("/api/test", c.handleTest)
+	c.engine.POST("/report", c.handle_frontend_report)
+	c.engine.GET("/api/status", c.handle_status)
+	c.engine.POST("/api/service/start", c.handle_service_start)
+	c.engine.POST("/api/service/stop", c.handle_service_stop)
+	c.engine.POST("/api/service/config", c.handle_service_config_update)
+	c.engine.GET("/api/proxy/status", c.handle_proxy_status)
+	c.engine.POST("/api/proxy/config", c.handle_proxy_config_update)
+	c.engine.POST("/api/proxy/restart", c.handle_proxy_restart)
+	c.engine.POST("/api/proxy/system/enable", c.handle_proxy_system_enable)
+	c.engine.POST("/api/proxy/system/disable", c.handle_proxy_system_disable)
+	c.engine.GET("/api/proxy/certificate/status", c.handle_proxy_certificate_status)
+	c.engine.GET("/api/proxy/certificate/pem", c.handle_proxy_certificate_pem)
+	c.engine.POST("/api/proxy/certificate/generate", c.handle_proxy_certificate_generate)
+	c.engine.POST("/api/proxy/certificate/install", c.handle_proxy_certificate_install)
+	c.engine.POST("/api/proxy/certificate/replace", c.handle_proxy_certificate_replace)
+	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
+	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
+	c.engine.GET("/api/cookie/extract", c.handle_cookie_extract)
+	c.engine.GET("/api/certificate/root/status", c.handle_root_certificate_status)
+	c.engine.POST("/api/certificate/root/install", c.handle_root_certificate_install)
+	c.engine.POST("/api/certificate/root/uninstall", c.handle_root_certificate_uninstall)
+	// c.engine.GET("/api/test", c.handle_test)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
@@ -159,22 +159,22 @@ func (c *APIClient) SetupRoutes() {
 	})
 }
 
-func (c *APIClient) handleFavicon(ctx *gin.Context) {
+func (c *APIClient) handle_favicon(ctx *gin.Context) {
 	ctx.Header("Content-Type", "image/png")
 	ctx.Header("Cache-Control", "public, max-age=86400")
 	ctx.File("build/winres/icon.png")
 }
 
-func (c *APIClient) handleStatus(ctx *gin.Context) {
-	apiHost := c.cfg.Hostname
-	apiPort := c.cfg.Port
-	proxyAddr := "127.0.0.1:2023"
+func (c *APIClient) handle_status(ctx *gin.Context) {
+	api_host := c.cfg.Hostname
+	api_port := c.cfg.Port
+	proxy_addr := "127.0.0.1:2023"
 	if c.cfg.Original != nil {
 		if host := c.cfg.Original.GetString("api.hostname"); host != "" {
-			apiHost = host
+			api_host = host
 		}
 		if port := c.cfg.Original.GetInt("api.port"); port > 0 {
-			apiPort = port
+			api_port = port
 		}
 		host := c.cfg.Original.GetString("proxy.hostname")
 		port := c.cfg.Original.GetInt("proxy.port")
@@ -184,24 +184,24 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 		if port <= 0 {
 			port = 2023
 		}
-		proxyAddr = fmt.Sprintf("%s:%d", host, port)
+		proxy_addr = fmt.Sprintf("%s:%d", host, port)
 	}
-	apiAddr := fmt.Sprintf("%s:%d", apiHost, apiPort)
+	api_addr := fmt.Sprintf("%s:%d", api_host, api_port)
 	statuses := gin.H{}
-	for name, status := range c.serviceStatusesMap() {
+	for name, status := range c.service_statuses_map() {
 		statuses[name] = status
 	}
 	data := gin.H{
 		"version":         c.cfg.Version,
 		"server_statuses": statuses,
 		"api": gin.H{
-			"addr":      apiAddr,
-			"listening": checkPort(apiAddr),
+			"addr":      api_addr,
+			"listening": check_port(api_addr),
 			"status":    statuses["api"],
 		},
 		"proxy": gin.H{
-			"addr":      proxyAddr,
-			"listening": checkPort(proxyAddr),
+			"addr":      proxy_addr,
+			"listening": check_port(proxy_addr),
 			"status":    statuses["interceptor"],
 		},
 	}
@@ -212,7 +212,7 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
 	})
 }
 
-func checkPort(addr string) bool {
+func check_port(addr string) bool {
 	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 	if err != nil {
 		return false

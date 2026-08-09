@@ -1040,17 +1040,16 @@ var WXBase64 = (() => {
       WXU.config.downloadFilenameTemplate,
     );
     if (!WXU.config.downloadInFrontend) {
-      var something = await WXU.downloader.create([feed], {
+      var [err, data] = await WXU.downloader.create([feed], {
         platform: "wxchannels",
         // filename: window.beforeFilename ? filename : undefined,
         ...opt,
       });
-      console.log("after download create", something);
-      const [err, data] = something;
       if (err) {
         WXU.error({ msg: err.message, source: "channels.utils.js:1051" });
         return;
       }
+      // WXU.toast("创建下载任务成功");
       return;
     }
     if (!filename) {

@@ -8,6 +8,24 @@ var DownloaderWSURL = WXEnv.get("downloaderWSURL");
 var MaxRunning = WXEnv.get("maxRunning");
 var RemoteServerEnabled = WXEnv.get("remoteServerEnabled");
 var InDocker = WXEnv.get("inDocker");
+var DownloadFilenameTemplate = WXEnv.get("downloadFilenameTemplate");
+
+function is_download_runtime_flag_enabled(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
+function is_download_open_external() {
+  return (
+    is_download_runtime_flag_enabled(RemoteServerEnabled) ||
+    is_download_runtime_flag_enabled(InDocker)
+  );
+}
 
 const http_client = new Timeless.HttpClientCore({
   headers: { "Content-Type": "application/json" },
@@ -39,17 +57,7 @@ function format_download_speed(bps) {
 function format_download_size(bytes) {
   const value = Math.max(0, Number(bytes) || 0);
   if (value === 0) return "0.0KB";
-  const units = [
-    "bytes",
-    "KB",
-    "MB",
-    "GB",
-    "TB",
-    "PB",
-    "EB",
-    "ZB",
-    "YB",
-  ];
+  const units = ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
   const exponent = Math.min(
     Math.floor(Math.log(value) / Math.log(1024)),
     units.length - 1,
@@ -390,6 +398,9 @@ function DownloaderPanelViewModel(props = {}) {
   const ITEM_TITLE_STATUS_GAP = 4;
   const ITEM_MAX_TITLE_LINES = 3;
   const ITEM_TITLE_UNITS_PER_LINE = 34;
+  const _pageSize = 50;
+  const LIST_BUFFER = 10;
+  const PAGE_PREFETCH = 2;
   const GUTTER = Math.max(
     0,
     number_or_fallback(
@@ -400,27 +411,15 @@ function DownloaderPanelViewModel(props = {}) {
   const fixed_list_height_ = props.fixedListHeight !== false;
   const sync_list_content_height_ = props.syncListContentHeight !== false;
   const LIST_HEIGHT = Number(props.listHeight) || 380;
-  const _pageSize = 50;
-  const LIST_BUFFER = 10;
-  const PAGE_PREFETCH = 2;
-  const onRequestClose =
-    typeof props.onRequestClose === "function"
-      ? props.onRequestClose
-      : () => {};
   const sort_by_status = props.sort_by_status === true;
-  // const initial_status = normalize_download_status_filter(
-  //   typeof props.initial_status !== "undefined"
-  //     ? props.initial_status
-  //     : typeof props.initialStatus !== "undefined"
-  //       ? props.initialStatus
-  //       : "running",
-  // );
   const initial_status = undefined;
 
   const reqs = {
     task: {
       list: new Timeless.RequestCore(
-        (params) => request.get("/api/v1/download_task/list", params),
+        (params) => {
+          return request.get("/api/v1/download_task/list", params);
+        },
         {
           client: http_client,
           process(r) {
@@ -449,7 +448,11 @@ function DownloaderPanelViewModel(props = {}) {
         { client: http_client },
       ),
       start: new Timeless.RequestCore(
-        (id) => request.post("/api/v1/download_task/start", { task_ids: [id] }),
+        (id) => {
+          return request.post("/api/v1/download_task/start", {
+            task_ids: [id],
+          });
+        },
         { client: http_client },
       ),
       startAll: new Timeless.RequestCore(
@@ -463,7 +466,11 @@ function DownloaderPanelViewModel(props = {}) {
         { client: http_client },
       ),
       pause: new Timeless.RequestCore(
-        (id) => request.post("/api/v1/download_task/pause", { task_ids: [id] }),
+        (id) => {
+          return request.post("/api/v1/download_task/pause", {
+            task_ids: [id],
+          });
+        },
         { client: http_client },
       ),
       pauseAll: new Timeless.RequestCore(
@@ -477,13 +484,19 @@ function DownloaderPanelViewModel(props = {}) {
         { client: http_client },
       ),
       resume: new Timeless.RequestCore(
-        (id) =>
-          request.post("/api/v1/download_task/resume", { task_ids: [id] }),
+        (id) => {
+          return request.post("/api/v1/download_task/resume", {
+            task_ids: [id],
+          });
+        },
         { client: http_client },
       ),
       retry: new Timeless.RequestCore(
-        (id) =>
-          request.post("/api/v1/download_task/retry", { task_ids: [id] }),
+        (id) => {
+          return request.post("/api/v1/download_task/retry", {
+            task_ids: [id],
+          });
+        },
         { client: http_client },
       ),
       clear: new Timeless.RequestCore(
@@ -494,44 +507,39 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      create: new Timeless.RequestCore(
-        (params = {}) =>
-          request.post("/api/v1/download_task/create_by_url", {
+      createWithURL: new Timeless.RequestCore(
+        (params = {}) => {
+          return request.post("/api/v1/download_task/create_by_url", {
             objects: [
               {
                 url: params.url,
                 config: params.config,
               },
             ],
-          }),
+          });
+        },
         { client: http_client },
       ),
       createFromPlatform: new Timeless.RequestCore(
-        (params = {}) =>
-          request.post("/api/v1/download_task/create", {
-            objects: [
-              {
-                platform: params.platform || "",
-                content: params.content || {},
-                config: params.config,
-              },
-            ],
-          }),
+        (params = {}) => {
+          return request.post("/api/v1/download_task/create", params);
+        },
         { client: http_client },
       ),
       prepare: new Timeless.RequestCore(
-        (params = {}) =>
-          request.post("/api/v1/download_task/prepare_by_url", [
+        (params = {}) => {
+          return request.post("/api/v1/download_task/prepare_by_url", [
             {
               url: params.url,
               filename: params.filename || "",
             },
-          ]),
+          ]);
+        },
         { client: http_client },
       ),
       prepareFromPlatform: new Timeless.RequestCore(
-        (params = {}) =>
-          request.post("/api/v1/download_task/prepare", [
+        (params = {}) => {
+          return request.post("/api/v1/download_task/prepare", [
             {
               platform: params.platform || "",
               content: params.content || {},
@@ -539,14 +547,24 @@ function DownloaderPanelViewModel(props = {}) {
                 download_cover: !!params.download_cover,
               },
             },
-          ]),
+          ]);
+        },
         { client: http_client },
       ),
     },
     file: {
       show: new Timeless.RequestCore(
-        ({ path, name, id }) =>
-          request.post("/api/show_file", { path, name, id }),
+        ({ path, name, id }) => {
+          return request.post("/api/show_file", { path, name, id });
+        },
+        { client: http_client },
+      ),
+    },
+    browsehistory: {
+      create: new Timeless.RequestCore(
+        (body) => {
+          return request.post("/api/browse_history/create", body);
+        },
         { client: http_client },
       ),
     },
@@ -580,8 +598,236 @@ function DownloaderPanelViewModel(props = {}) {
   const status_counts_ = ref(empty_download_status_counts());
   const active_status_ = ref(initial_status);
   const overwrite_ = refobj({ value: "overwrite" });
+  const overwrite_apply_all_ = ref(false);
+  const overwrite_processing_ = ref(false);
+  /** @type {object: {}; result: {}; index: number;} */
+  const conflict_tasks_ = refarr([]);
+  // 当前待处理的已存在下载任务
+  const overwrite_conflict_ = refobj({
+    index: 0,
+    total: 0,
+    name: "",
+  });
 
   let duplicated_feed_prepare_download = null;
+
+  function first_non_empty_download_value() {
+    for (let i = 0; i < arguments.length; i += 1) {
+      const value = arguments[i];
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  function clone_download_create_object(object) {
+    const source = object && typeof object === "object" ? object : {};
+    return {
+      ...source,
+      config:
+        source.config && typeof source.config === "object"
+          ? { ...source.config }
+          : {},
+    };
+  }
+
+  function download_create_object_title(object, fallbackIndex) {
+    const source = object && typeof object === "object" ? object : {};
+    const content =
+      source.content && typeof source.content === "object"
+        ? source.content
+        : {};
+    const config =
+      source.config && typeof source.config === "object" ? source.config : {};
+    const author =
+      content.author && typeof content.author === "object"
+        ? content.author
+        : {};
+    const title = first_non_empty_download_value(
+      source.filename,
+      config.filename,
+      content.title,
+      content.Title,
+      content.desc,
+      content.description,
+      content.objectDesc,
+      content.object_desc,
+      content.nickname,
+      author.nickname,
+      content.feed_id,
+      content.feedId,
+      content.id,
+      content.ID,
+      source.platform,
+    );
+    return title ? String(title) : "第 " + (fallbackIndex + 1) + " 个任务";
+  }
+
+  function duplicate_result_code(result) {
+    const value =
+      result &&
+      first_non_empty_download_value(
+        result.code,
+        result.status,
+        result.status_code,
+        result.statusCode,
+      );
+    const code = Number(value);
+    return Number.isFinite(code) ? code : 0;
+  }
+
+  function is_duplicate_task_result(result) {
+    if (!result || result.code === 0 || result.success === true) {
+      return false;
+    }
+    if (result.duplicate === true || result.code === 409) {
+      return true;
+    }
+    return false;
+  }
+
+  function is_download_task_create_success(result) {
+    if (!result) {
+      return false;
+    }
+    const value = first_non_empty_download_value(
+      result.code,
+      result.status,
+      result.status_code,
+      result.statusCode,
+    );
+    if (value !== "") {
+      return Number(value) === 0;
+    }
+    return result.success === true;
+  }
+
+  function download_task_create_result_message(result, fallback) {
+    return first_non_empty_download_value(
+      result && result.msg,
+      result && result.message,
+      result && result.error,
+      fallback,
+    );
+  }
+
+  function make_duplicate_conflict(object, result, index) {
+    const conflict_task = result && typeof result === "object" ? result : {};
+    const conflict_data = conflict_task.data;
+    const name = conflict_data.name || conflict_data.title;
+    return {
+      object: clone_download_create_object(object),
+      result: conflict_task,
+      index,
+      name,
+      title: name,
+    };
+  }
+
+  function collect_duplicate_conflicts(data, body) {
+    const tasks = data && Array.isArray(data.tasks) ? data.tasks : [];
+    const objects = body && Array.isArray(body.objects) ? body.objects : [];
+    const conflicts = [];
+    for (let i = 0; i < tasks.length; i += 1) {
+      const result = tasks[i];
+      if (is_duplicate_task_result(result)) {
+        conflicts.push(make_duplicate_conflict(objects[i], result, i));
+      }
+    }
+    return conflicts;
+  }
+
+  function collect_duplicate_conflicts_from_error(error, body) {
+    const code = Number(error && (error.code || error.status));
+    if (code !== 409) {
+      return [];
+    }
+    const objects = body && Array.isArray(body.objects) ? body.objects : [];
+    return objects.map((object, index) => {
+      return make_duplicate_conflict(
+        object,
+        {
+          code: 409,
+          error: (error && error.message) || "已存在该下载内容",
+        },
+        index,
+      );
+    });
+  }
+
+  function sync_overwrite_conflict_state(queue) {
+    if (!queue || !Array.isArray(queue.conflicts) || !queue.conflicts.length) {
+      overwrite_conflict_.as({
+        index: 0,
+        total: 0,
+        name: "",
+      });
+      return;
+    }
+    const index = Math.min(
+      Math.max(Number(queue.currentIndex) || 0, 0),
+      queue.conflicts.length - 1,
+    );
+    const conflict = queue.conflicts[index] || {};
+    const name = conflict.name;
+    overwrite_conflict_.as({
+      index: index + 1,
+      total: queue.conflicts.length,
+      name,
+    });
+  }
+
+  function show_duplicate_download_confirm_dialog(total) {
+    if (Number(total) > 1) {
+      ui.batchOverwriteConfirmDialog$.show();
+      return;
+    }
+    ui.overwriteConfirmDialog$.show();
+  }
+
+  function hide_duplicate_download_confirm_dialog() {
+    ui.overwriteConfirmDialog$.hide();
+    ui.batchOverwriteConfirmDialog$.hide();
+  }
+
+  function begin_duplicate_download_confirm(body, conflicts, options = {}) {
+    if (!Array.isArray(conflicts) || conflicts.length === 0) {
+      return false;
+    }
+    overwrite_.as({ value: "overwrite" });
+    overwrite_apply_all_.as(false);
+    console.log(
+      "before show_duplicate_download_confirm_dialog",
+      conflicts.length,
+      conflicts[0].name,
+    );
+    show_duplicate_download_confirm_dialog(conflicts.length);
+    overwrite_conflict_.as({
+      tasks: conflicts,
+      index: 1,
+      total: conflicts.length,
+      name: conflicts[0].name,
+    });
+    return true;
+  }
+
+  function build_duplicate_retry_object(conflict, action) {
+    const object = clone_download_create_object(conflict && conflict.object);
+    object.config = {
+      ...(object.config || {}),
+      overwrite: action === "overwrite",
+      duplicate: action === "duplicate",
+    };
+    return object;
+  }
+
+  function duplicate_action_done_text(action) {
+    if (action === "overwrite") return "已覆盖已存在任务";
+    if (action === "duplicate") return "已创建共存任务";
+    if (action === "skip") return "已跳过已存在任务";
+    return "已处理已存在任务";
+  }
 
   function setStatusCounts(counts, total) {
     const normalized = normalize_download_status_counts(counts);
@@ -1571,7 +1817,10 @@ function DownloaderPanelViewModel(props = {}) {
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "启动失败", source: "model.js:1574" });
+        WXU.error({
+          msg: (result && result.error) || "启动失败",
+          source: "model.js:1574",
+        });
       }
     },
     async pauseTask(task, options = {}) {
@@ -1588,7 +1837,8 @@ function DownloaderPanelViewModel(props = {}) {
           result.status_text || (isLiveStream ? "finished" : "paused"),
         );
       } else {
-        WXU.error({ source: "model.js:1591",
+        WXU.error({
+          source: "model.js:1591",
           msg:
             (result && result.error) ||
             (isLiveStream ? "停止录制失败" : "暂停失败"),
@@ -1675,7 +1925,10 @@ function DownloaderPanelViewModel(props = {}) {
         applyDeletedTaskIds([task.id]);
         return true;
       }
-      WXU.error({ msg: (result && result.error) || "删除失败", source: "model.js:1678" });
+      WXU.error({
+        msg: (result && result.error) || "删除失败",
+        source: "model.js:1678",
+      });
       return false;
     },
     async deleteTasksByIds(ids, params = {}) {
@@ -1749,7 +2002,10 @@ function DownloaderPanelViewModel(props = {}) {
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "恢复失败", source: "model.js:1752" });
+        WXU.error({
+          msg: (result && result.error) || "恢复失败",
+          source: "model.js:1752",
+        });
       }
     },
     async retryTask(task) {
@@ -1762,14 +2018,19 @@ function DownloaderPanelViewModel(props = {}) {
       if (result && result.success) {
         updateTaskStatus(task.id, "running");
       } else {
-        WXU.error({ msg: (result && result.error) || "重试失败", source: "model.js:1765" });
+        WXU.error({
+          msg: (result && result.error) || "重试失败",
+          source: "model.js:1765",
+        });
       }
     },
     async startAllTasks() {
       if (running_count_.value >= MaxRunning) {
         WXU.warning({
           msg:
-            "已达到最大同时下载任务数（" + MaxRunning + "），请等待当前任务完成",
+            "已达到最大同时下载任务数（" +
+            MaxRunning +
+            "），请等待当前任务完成",
         });
         return;
       }
@@ -1848,7 +2109,10 @@ function DownloaderPanelViewModel(props = {}) {
         try {
           content = JSON.parse(jsonStr);
         } catch (e) {
-          WXU.error({ msg: "内容 JSON 格式错误: " + e.message, source: "model.js:1851" });
+          WXU.error({
+            msg: "内容 JSON 格式错误: " + e.message,
+            source: "model.js:1851",
+          });
           return;
         }
       }
@@ -1926,7 +2190,7 @@ function DownloaderPanelViewModel(props = {}) {
       try {
         const url = create_task_text_.value || preview.url || "";
         const filename = create_task_filename_.value || preview.task_name || "";
-        const r = await reqs.task.create.run({
+        const r = await reqs.task.createWithURL.run({
           url: url,
           filename: filename,
         });
@@ -1935,15 +2199,24 @@ function DownloaderPanelViewModel(props = {}) {
           return;
         }
         const taskResult = r.data && r.data.tasks && r.data.tasks[0];
-        if (taskResult && !taskResult.success) {
-          WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "model.js:1939" });
+        if (taskResult && !is_download_task_create_success(taskResult)) {
+          WXU.error({
+            msg: download_task_create_result_message(
+              taskResult,
+              "创建下载任务失败",
+            ),
+            source: "model.js:1939",
+          });
           return;
         }
         ui.createTaskPreviewDialog$.hide();
         WXU.toast("下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
-          WXU.error({ msg: reloadResult.error.message, source: "model.js:1946" });
+          WXU.error({
+            msg: reloadResult.error.message,
+            source: "model.js:1946",
+          });
         }
       } finally {
         creating_task_.as(false);
@@ -1964,42 +2237,66 @@ function DownloaderPanelViewModel(props = {}) {
         try {
           content = JSON.parse(create_platform_json_.value || "{}");
         } catch (e) {}
+        const createConfig = {
+          download_cover: create_platform_download_cover_.value,
+        };
+        const requestBody = {
+          objects: [
+            {
+              platform: platform,
+              content: content,
+              save_path: create_platform_save_path_.value || "",
+              filename: create_platform_filename_.value || "",
+              config: createConfig,
+            },
+          ],
+        };
         const r = await reqs.task.createFromPlatform.run({
           platform: platform,
           content: content,
+          save_path: create_platform_save_path_.value || "",
+          filename: create_platform_filename_.value || "",
+          config: createConfig,
         });
         if (r.error) {
           var code = (r.error && (r.error.code || r.error.status)) || 0;
           if (code === 409) {
-            // 409: Task already exists, show duplicate handling dialog
-            duplicated_feed_prepare_download = {
-              objects: [
-                {
-                  platform: platform,
-                  content: content,
-                  config: {
-                    download_cover: create_platform_download_cover_.value,
-                  },
-                },
-              ],
-            };
+            const conflicts = collect_duplicate_conflicts_from_error(
+              r.error,
+              requestBody,
+            );
             ui.createPlatformTaskPreviewDialog$.hide();
-            ui.overwriteConfirmDialog$.show();
+            begin_duplicate_download_confirm(requestBody, conflicts);
             return;
           }
           WXU.error({ msg: r.error.message, source: "model.js:1990" });
           return;
         }
         const taskResult = r.data && r.data.tasks && r.data.tasks[0];
-        if (taskResult && !taskResult.success) {
-          WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "model.js:1995" });
+        if (taskResult && !is_download_task_create_success(taskResult)) {
+          const conflicts = collect_duplicate_conflicts(r.data, requestBody);
+          if (conflicts.length) {
+            ui.createPlatformTaskPreviewDialog$.hide();
+            begin_duplicate_download_confirm(requestBody, conflicts);
+            return;
+          }
+          WXU.error({
+            msg: download_task_create_result_message(
+              taskResult,
+              "创建下载任务失败",
+            ),
+            source: "model.js:1995",
+          });
           return;
         }
         ui.createPlatformTaskPreviewDialog$.hide();
         WXU.toast("平台下载任务创建成功");
         const reloadResult = await reloadTasks();
         if (reloadResult && reloadResult.error) {
-          WXU.error({ msg: reloadResult.error.message, source: "model.js:2002" });
+          WXU.error({
+            msg: reloadResult.error.message,
+            source: "model.js:2002",
+          });
         }
       } finally {
         creating_task_.as(false);
@@ -2008,12 +2305,10 @@ function DownloaderPanelViewModel(props = {}) {
     async openTask(task) {
       const { id, path, filename } = task;
       if (!id) {
-        WXU.error({ source: "model.js:2011",
-          msg: "task id is empty",
-        });
+        WXU.error({ source: "model.js:2011", msg: "task id is empty" });
         return;
       }
-      if (RemoteServerEnabled || InDocker) {
+      if (is_download_open_external()) {
         var u = APIOrigin + "/preview?id=" + id;
         window.open(u);
         return;
@@ -2030,7 +2325,10 @@ function DownloaderPanelViewModel(props = {}) {
           resolve(true);
         };
         ws.onclose = () => {
-          WXU.error({ msg: `download ws连接已关闭，请刷新页面. ${DownloaderWSURL}`, source: "model.js:2033" });
+          WXU.error({
+            msg: `download ws连接已关闭，请刷新页面. ${DownloaderWSURL}`,
+            source: "model.js:2033",
+          });
           if (WXU.downloader) {
             WXU.downloader.status = "disconnected";
           }
@@ -2303,6 +2601,105 @@ function DownloaderPanelViewModel(props = {}) {
       // }
       delete_delete_files_.as((prev) => !prev);
     },
+    setOverwriteAction(action) {
+      if (!["overwrite", "skip", "duplicate"].includes(action)) {
+        return;
+      }
+      WXU.log.Info().Str("action", action).Msg("select overwrite type");
+      overwrite_.as({ value: action });
+    },
+    toggleOverwriteApplyAll() {
+      overwrite_apply_all_.as((prev) => !prev);
+    },
+    async confirmOverwriteDownloadConflict() {
+      console.log(
+        "[download/model.js]confirmOverwriteDownloadConflict",
+        overwrite_processing_.value,
+      );
+      if (overwrite_processing_.value) {
+        return;
+      }
+      const action = overwrite_.value && overwrite_.value.value;
+      if (!["overwrite", "skip", "duplicate"].includes(action)) {
+        WXU.log
+          .Warn()
+          .Msg("overwriteConfirmDialog: action is empty, aborting retry");
+        return;
+      }
+      const start = Math.max(0, Number(overwrite_conflict_.value.index) || 0);
+      const end = overwrite_apply_all_.value
+        ? conflict_tasks_.value.length
+        : Math.min(conflict_tasks_.value.length, start + 1);
+      const selected_conflict_tasks = conflict_tasks_.value.slice(start, end);
+      if (!selected_conflict_tasks.length) {
+        hide_duplicate_download_confirm_dialog();
+        return;
+      }
+      overwrite_processing_.as(true);
+      try {
+        if (action !== "skip") {
+          console.log(
+            "[download/model.js]confirmOverwriteDownloadConflict - before overwrite or duplicate",
+            action,
+            selected_conflict_tasks,
+          );
+          const retry_objects = selected_conflict_tasks.map((conflict) => {
+            return {
+              object: {
+                ...conflict.object,
+                config: {
+                  ...conflict.object.config,
+                  overwrite: action === "overwrite",
+                  duplicate: action === "duplicate",
+                },
+              },
+            };
+          });
+          WXU.log
+            .Info()
+            .Str("action", action)
+            .Int("count", retry_objects.length)
+            .Msg(
+              "overwriteConfirmDialog: preparing to retry creating download task",
+            );
+          const body = { objects: retry_objects };
+          const [err, data] = await methods.createDownloadTaskInDuplicate(body);
+          if (err) {
+            WXU.error({
+              msg: err.message || "创建下载任务失败",
+              source: "model.js:2381",
+            });
+            return;
+          }
+          WXU.toast("创建下载任务成功");
+        }
+        if (overwrite_conflict_.value.index < conflict_tasks_.value.length) {
+          overwrite_.as({ value: action });
+          const task =
+            conflict_tasks_.value[overwrite_conflict_.value.index + 1];
+          console.log(
+            "[download/model.js]confirmOverwriteDownloadConflict - update content",
+            task,
+          );
+          overwrite_conflict_.as({
+            index: overwrite_conflict_.value.index + 1,
+            total: conflict_tasks_.value.length,
+            name: task.name,
+          });
+        }
+      } finally {
+        overwrite_processing_.as(false);
+      }
+    },
+    async createDownloadTaskInDuplicate(body) {
+      var r = await reqs.task.createFromPlatform.run(body);
+      if (r.err) {
+        return [err, null];
+      }
+      const data = r.data;
+      return [null, data];
+    },
+    /** 创建下载任务 */
     async createDownloadTask(feeds, opt = {}) {
       WXU.log
         .Info()
@@ -2311,7 +2708,7 @@ function DownloaderPanelViewModel(props = {}) {
         .Bool("overwrite", !!opt.overwrite)
         .Bool("duplicate", !!opt.duplicate)
         .Msg("[downloader.create]create");
-      var requestBody = {
+      var body = {
         objects: feeds.map((feed) => {
           return {
             platform: opt.platform,
@@ -2325,28 +2722,31 @@ function DownloaderPanelViewModel(props = {}) {
           };
         }),
       };
-      var [err, data] = await WXU.request({
-        method: "POST",
-        url: DownloaderOrigin + "/api/v1/download_task/create",
-        body: requestBody,
-      });
-      if (err && (err.code === 409 || err.status === 409)) {
-        duplicated_feed_prepare_download = requestBody;
-        ui.overwriteConfirmDialog$.show();
-        return [null, { skipped: true }];
-      }
-      WXU.downloader.show();
-      if (err) {
+      var r = await reqs.task.createFromPlatform.run(body);
+      if (r.err) {
         return [err, null];
+      }
+      const data = r.data;
+      const conflicts = collect_duplicate_conflicts(data, body);
+      conflict_tasks_.as(conflicts);
+      if (conflicts.length) {
+        if (conflicts.length === 1) {
+          duplicated_feed_prepare_download = body;
+          ui.overwriteConfirmDialog$.show();
+          return [null, { skipped: true }];
+        }
+        begin_duplicate_download_confirm(body, conflicts);
+        return [new Error("已存在相同的下载任务"), null];
       }
       return [null, data];
     },
+    /** 创建浏览记录 */
     createBrowseHistories(feeds, opt) {
       WXU.log
         .Info()
         .Str("file", "download/model.js")
         .Msg("createBrowseHistories");
-      var requestBody = {
+      var body = {
         objects: feeds.map((feed) => {
           return {
             platform: opt.platform,
@@ -2354,48 +2754,44 @@ function DownloaderPanelViewModel(props = {}) {
           };
         }),
       };
-      WXU.request({
-        method: "POST",
-        url: DownloaderOrigin + "/api/browse_history/create",
-        body: requestBody,
-      });
+      reqs.browsehistory.create.run(body);
     },
   };
 
-  const dropdown$ =new Timeless.ui.DropdownMenuCore({
+  const dropdown$ = new Timeless.ui.DropdownMenuCore({
     trigger: "hover",
     align: "end",
     items: [
-    new Timeless.ui.MenuItemCore({
-      label: "刷新",
-      async onClick() {
-        ui.dropdown$.hide();
-        await methods.refreshTasks();
-      },
-    }),
-    new Timeless.ui.MenuItemCore({
-      label: "管理下载任务",
-      onClick() {
-        ui.dropdown$.hide();
-        window.open(DownloaderOrigin + "/", "_blank");
-      },
-    }),
-    new Timeless.ui.MenuItemCore({
-      label: "清空下载记录",
-      async onClick() {
-        ui.dropdown$.hide();
-        ui.clearConfirmDialog$.show();
-      },
-    }),
-    new Timeless.ui.MenuItemCore({
-      label: "关闭",
-      onClick() {
-        dropdown$.hide();
-        WXU.downloader.hide();
-      },
-    }),
+      new Timeless.ui.MenuItemCore({
+        label: "刷新",
+        async onClick() {
+          ui.dropdown$.hide();
+          await methods.refreshTasks();
+        },
+      }),
+      new Timeless.ui.MenuItemCore({
+        label: "管理下载任务",
+        onClick() {
+          ui.dropdown$.hide();
+          window.open(DownloaderOrigin + "/", "_blank");
+        },
+      }),
+      new Timeless.ui.MenuItemCore({
+        label: "清空下载记录",
+        async onClick() {
+          ui.dropdown$.hide();
+          ui.clearConfirmDialog$.show();
+        },
+      }),
+      new Timeless.ui.MenuItemCore({
+        label: "关闭",
+        onClick() {
+          dropdown$.hide();
+          WXU.downloader.hide();
+        },
+      }),
     ],
-  })
+  });
   const ui = {
     dropdown$,
     importFileDialog$: new Timeless.ui.DialogCore({
@@ -2487,7 +2883,10 @@ function DownloaderPanelViewModel(props = {}) {
             .Str("error", err.message || "")
             .Int("code", err.code || 0)
             .Msg("overwriteConfirmDialog: retry creating download task failed");
-          WXU.error({ msg: err.message || "创建下载任务失败", source: "model.js:2487" });
+          WXU.error({
+            msg: err.message || "创建下载任务失败",
+            source: "model.js:2487",
+          });
           return;
         }
         if (data && data.skipped) {
@@ -2506,6 +2905,16 @@ function DownloaderPanelViewModel(props = {}) {
         ui.overwriteConfirmDialog$.hide();
         await reloadTasks();
         return;
+      },
+    }),
+    singleOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+      async onOk() {
+        return methods.confirmOverwriteDownloadConflict();
+      },
+    }),
+    batchOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+      async onOk() {
+        return methods.confirmOverwriteDownloadConflict();
       },
     }),
   };
@@ -2556,6 +2965,9 @@ function DownloaderPanelViewModel(props = {}) {
       /** Currently selected status filter */
       active_status: active_status_,
       overwrite: overwrite_,
+      overwrite_apply_all: overwrite_apply_all_,
+      overwrite_processing: overwrite_processing_,
+      overwrite_conflict: overwrite_conflict_,
       fixed_list_height: fixed_list_height_,
       list_item_height: ITEM_HEIGHT,
       list_gutter: GUTTER,
@@ -2587,9 +2999,7 @@ function DownloaderPanelViewModel(props = {}) {
       };
       const r = await reloadTasks();
       if (r.error) {
-        WXU.error({ source: "model.js:2587",
-          msg: r.error.message,
-        });
+        WXU.error({ source: "model.js:2587", msg: r.error.message });
         return;
       }
       ready = true;

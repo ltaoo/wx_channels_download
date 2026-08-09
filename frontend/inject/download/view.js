@@ -29,7 +29,7 @@ function open_download_task_preview(task) {
   if (!url) {
     WXU.error({
       msg: "task id is empty",
-      source: "view.js:33"
+      source: "view.js:33",
     });
     return;
   }
@@ -69,8 +69,7 @@ function NumberView(props = {}) {
         key: "key",
         each: characters_,
         render(item) {
-          const width =
-            item.character === "." ? decimalWidth : characterWidth;
+          const width = item.character === "." ? decimalWidth : characterWidth;
           return View(
             {
               class: "wx-number-view-character",
@@ -909,79 +908,78 @@ function ClearTasksConfirmDialog(props) {
     },
     [
       View({ style: { padding: "20px 20px 16px" } }, [
-          View(
-            {
-              style: {
-                "font-size": "17px",
-                "font-weight": "600",
-                "line-height": "24px",
-                "margin-bottom": "8px",
-              },
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "8px",
             },
-            ["删除下载记录"],
-          ),
-          View(
-            {
-              style: {
-                "font-size": "14px",
-                "line-height": "20px",
-                color: "var(--weui-FG-1)",
-                "margin-bottom": "16px",
-              },
+          },
+          ["删除下载记录"],
+        ),
+        View(
+          {
+            style: {
+              "font-size": "14px",
+              "line-height": "20px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "16px",
             },
-            ["确认删除下载记录？"],
-          ),
-          View(
-            {
-              role: "checkbox",
-              tabIndex: "0",
-              attributes: {
-                "aria-checked": computed(
-                  props.store.state.delete_delete_files,
-                  (checked) => (checked ? "true" : "false"),
-                ),
-              },
-              style: {
-                display: "flex",
-                "align-items": "center",
-                gap: "10px",
-                padding: "10px 0",
-                cursor: "pointer",
-                "user-select": "none",
-                "font-size": "14px",
-                "line-height": "20px",
-              },
-              onClick() {
-                // if (loading_.value) {
-                //   return;
-                // }
-                // deleteFiles_.as((prev) => !prev);
-                props.store.methods.handleClickCheckboxConfirmDeleteFiles();
-              },
-              // onKeyDown(e) {
-              //   if (loading_.value) {
-              //     return;
-              //   }
-              //   if (e.key === " " || e.key === "Enter") {
-              //     e.preventDefault();
-              //     deleteFiles_.as((prev) => !prev);
-              //   }
-              // },
+          },
+          ["确认删除下载记录？"],
+        ),
+        View(
+          {
+            role: "checkbox",
+            tabIndex: "0",
+            attributes: {
+              "aria-checked": computed(
+                props.store.state.delete_delete_files,
+                (checked) => (checked ? "true" : "false"),
+              ),
             },
-            [
-              View({ style: checkboxStyle }, [
-                Show({
-                  when: props.store.state.delete_delete_files,
-                  ok() {
-                    return Timeless.Icon({ name: "check", size: 14 });
-                  },
-                }),
-              ]),
-              View({}, ["同时删除已下载的文件"]),
-            ],
-          ),
-        ],
-      ),
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "10px",
+              padding: "10px 0",
+              cursor: "pointer",
+              "user-select": "none",
+              "font-size": "14px",
+              "line-height": "20px",
+            },
+            onClick() {
+              // if (loading_.value) {
+              //   return;
+              // }
+              // deleteFiles_.as((prev) => !prev);
+              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
+            },
+            // onKeyDown(e) {
+            //   if (loading_.value) {
+            //     return;
+            //   }
+            //   if (e.key === " " || e.key === "Enter") {
+            //     e.preventDefault();
+            //     deleteFiles_.as((prev) => !prev);
+            //   }
+            // },
+          },
+          [
+            View({ style: checkboxStyle }, [
+              Show({
+                when: props.store.state.delete_delete_files,
+                ok() {
+                  return Timeless.Icon({ name: "check", size: 14 });
+                },
+              }),
+            ]),
+            View({}, ["同时删除已下载的文件"]),
+          ],
+        ),
+      ]),
     ],
   );
 }
@@ -1168,6 +1166,355 @@ function OverwriteDownloadConfirmDialog(props) {
   );
 }
 
+const OVERWRITE_DOWNLOAD_ACTION_ITEMS = [
+  {
+    value: "overwrite",
+    label: "覆盖",
+    description: "删除已有任务和文件后重新创建",
+    icon: "refresh-cw",
+  },
+  {
+    value: "skip",
+    label: "跳过",
+    description: "保留已有任务，不创建当前任务",
+    icon: "corner-down-right",
+  },
+  {
+    value: "duplicate",
+    label: "重复",
+    description: "保留已有任务，再创建一份",
+    icon: "copy",
+  },
+];
+
+function OverwriteDownloadDialogTitle(props) {
+  return View(
+    {
+      style: {
+        "font-size": "17px",
+        "font-weight": "600",
+        "line-height": "24px",
+        "margin-bottom": "8px",
+      },
+    },
+    [props.text],
+  );
+}
+
+function OverwriteDownloadCurrentDuplicateTask(props) {
+  var conflict_ = props.store.state.overwrite_conflict;
+  return View(
+    {
+      style: {
+        "min-width": "0",
+        "margin-bottom": "12px",
+        "text-align": "left",
+        "font-size": "14px",
+        "font-weight": "600",
+        "line-height": "20px",
+        color: "var(--weui-FG-0)",
+        overflow: "hidden",
+        "text-overflow": "ellipsis",
+        "white-space": "nowrap",
+      },
+    },
+    [
+      computed(conflict_, (t) => {
+        return t.name;
+      }),
+      "(",
+      computed(conflict_, (t) => {
+        return t.index;
+      }),
+      "/",
+      computed(conflict_, (t) => {
+        return t.total;
+      }),
+      ")",
+    ],
+  );
+}
+
+function OverwriteDownloadConflictCard(props) {
+  var conflict_ = props.store.state.overwrite_conflict;
+  return View(
+    {
+      style: {
+        display: "flex",
+        "align-items": "flex-start",
+        gap: "10px",
+        padding: "10px 12px",
+        "border-radius": "8px",
+        background: "var(--weui-BG-1)",
+        "text-align": "left",
+        "margin-bottom": "12px",
+      },
+    },
+    [],
+  );
+}
+
+function OverwriteDownloadActionList(props) {
+  var selectedAction_ = props.store.state.overwrite;
+  var processing_ = props.store.state.overwrite_processing;
+
+  function select(actionValue) {
+    if (processing_ && processing_.value) {
+      return;
+    }
+    props.store.methods.setOverwriteAction(actionValue);
+  }
+
+  function actionRow(item) {
+    return View(
+      {
+        role: "radio",
+        tabIndex: "0",
+        attributes: {
+          "aria-checked": computed(selectedAction_, function (selected) {
+            return selected.value === item.value ? "true" : "false";
+          }),
+        },
+        style: computed(selectedAction_, function (selected) {
+          var checked = selected.value === item.value;
+          return {
+            display: "flex",
+            "align-items": "center",
+            gap: "12px",
+            padding: "10px 12px",
+            "border-radius": "8px",
+            border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
+            background: checked ? "rgba(7, 193, 96, 0.08)" : "transparent",
+            cursor: processing_ && processing_.value ? "default" : "pointer",
+            "user-select": "none",
+          };
+        }),
+        onClick: function () {
+          select(item.value);
+        },
+        onKeyDown: function (e) {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            select(item.value);
+          }
+        },
+      },
+      [
+        View(
+          {
+            style: computed(selectedAction_, function (selected) {
+              var checked = selected.value === item.value;
+              return {
+                width: "28px",
+                height: "28px",
+                "border-radius": "50%",
+                background: checked ? "#07C160" : "var(--weui-BG-1)",
+                color: checked ? "#fff" : "var(--weui-FG-1)",
+                display: "inline-flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "flex-shrink": "0",
+              };
+            }),
+          },
+          [Timeless.Icon({ name: item.icon, size: 16 })],
+        ),
+        View({ style: { "min-width": "0", flex: "1 1 auto" } }, [
+          View(
+            {
+              style: {
+                "font-size": "14px",
+                "font-weight": "600",
+                "line-height": "20px",
+                color: "var(--weui-FG-0)",
+              },
+            },
+            [item.label],
+          ),
+          View(
+            {
+              style: {
+                "font-size": "12px",
+                "line-height": "17px",
+                color: "var(--weui-FG-1)",
+                "margin-top": "2px",
+              },
+            },
+            [item.description],
+          ),
+        ]),
+        Show({
+          when: computed(selectedAction_, function (selected) {
+            return selected.value === item.value;
+          }),
+          ok: function () {
+            return Timeless.Icon({ name: "check", size: 18 });
+          },
+        }),
+      ],
+    );
+  }
+
+  return View(
+    {
+      role: "radiogroup",
+      style: {
+        display: "grid",
+        gap: "8px",
+        "margin-bottom": "12px",
+        "text-align": "left",
+      },
+    },
+    [
+      For({
+        each: OVERWRITE_DOWNLOAD_ACTION_ITEMS,
+        render: actionRow,
+      }),
+    ],
+  );
+}
+
+function OverwriteDownloadApplyAllControl(props) {
+  var applyAll_ = props.store.state.overwrite_apply_all;
+  var processing_ = props.store.state.overwrite_processing;
+  function toggle() {
+    if (!processing_ || !processing_.value) {
+      props.store.methods.toggleOverwriteApplyAll();
+    }
+  }
+  return View(
+    {
+      role: "checkbox",
+      tabIndex: "0",
+      attributes: {
+        "aria-checked": computed(applyAll_, function (checked) {
+          return checked ? "true" : "false";
+        }),
+      },
+      style: {
+        display: "flex",
+        "align-items": "center",
+        gap: "10px",
+        padding: "8px 0 0",
+        cursor: "pointer",
+        "user-select": "none",
+        "font-size": "14px",
+        "line-height": "20px",
+        "text-align": "left",
+      },
+      onClick: toggle,
+      onKeyDown: function (e) {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          toggle();
+        }
+      },
+    },
+    [
+      View(
+        {
+          style: computed(applyAll_, function (checked) {
+            return {
+              width: "18px",
+              height: "18px",
+              "box-sizing": "border-box",
+              "border-radius": "4px",
+              border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
+              background: checked ? "#07C160" : "transparent",
+              color: "#fff",
+              display: "inline-flex",
+              "align-items": "center",
+              "justify-content": "center",
+              "flex-shrink": "0",
+            };
+          }),
+        },
+        [
+          Show({
+            when: applyAll_,
+            ok: function () {
+              return Timeless.Icon({ name: "check", size: 14 });
+            },
+          }),
+        ],
+      ),
+      View({}, ["应用给所有"]),
+    ],
+  );
+}
+
+function OverwriteDownloadProcessingHint(props) {
+  return Show({
+    when: props.store.state.overwrite_processing,
+    ok: function () {
+      return View(
+        {
+          style: {
+            "font-size": "12px",
+            "line-height": "17px",
+            color: "var(--weui-FG-1)",
+            "margin-top": "10px",
+          },
+        },
+        ["正在处理..."],
+      );
+    },
+  });
+}
+
+function OverwriteDownloadDialogContent(props, children) {
+  return View(
+    {
+      style: {
+        "max-width": "calc(100vw - 32px)",
+        "padding-top": "20px",
+        "text-align": "center",
+      },
+    },
+    children,
+  );
+}
+
+function SingleOverwriteDownloadConfirmDialog(props) {
+  return Timeless.weui.Dialog(
+    {
+      store: props.store.ui.singleOverwriteConfirmDialog$,
+      style: {
+        "z-index": "10000",
+      },
+    },
+    [
+      OverwriteDownloadDialogContent(props, [
+        OverwriteDownloadDialogTitle({ text: "已存在确认" }),
+        OverwriteDownloadActionList(props),
+        OverwriteDownloadProcessingHint(props),
+      ]),
+    ],
+  );
+}
+
+const OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX = "10001";
+
+function BatchOverwriteDownloadConfirmDialog(props) {
+  return Timeless.weui.Dialog(
+    {
+      store: props.store.ui.batchOverwriteConfirmDialog$,
+      style: {
+        "z-index": OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX,
+      },
+    },
+    [
+      OverwriteDownloadDialogContent(props, [
+        OverwriteDownloadDialogTitle({ text: "批量已存在确认" }),
+        OverwriteDownloadCurrentDuplicateTask(props),
+        OverwriteDownloadActionList(props),
+        OverwriteDownloadApplyAllControl(props),
+        OverwriteDownloadProcessingHint(props),
+      ]),
+    ],
+  );
+}
+
 function TaskDeleteConfirmDialog(props) {
   const checkboxStyle = computed(
     props.store.state.delete_delete_files,
@@ -1197,66 +1544,65 @@ function TaskDeleteConfirmDialog(props) {
     },
     [
       View({ style: { padding: "20px 20px 16px" } }, [
-          View(
-            {
-              style: {
-                "font-size": "17px",
-                "font-weight": "600",
-                "line-height": "24px",
-                "margin-bottom": "8px",
-              },
+        View(
+          {
+            style: {
+              "font-size": "17px",
+              "font-weight": "600",
+              "line-height": "24px",
+              "margin-bottom": "8px",
             },
-            ["删除下载任务"],
-          ),
-          View(
-            {
-              style: {
-                "font-size": "14px",
-                "line-height": "20px",
-                color: "var(--weui-FG-1)",
-                "margin-bottom": "16px",
-              },
+          },
+          ["删除下载任务"],
+        ),
+        View(
+          {
+            style: {
+              "font-size": "14px",
+              "line-height": "20px",
+              color: "var(--weui-FG-1)",
+              "margin-bottom": "16px",
             },
-            ["确定删除下载任务记录？", "此操作不可恢复。"],
-          ),
-          View(
-            {
-              role: "checkbox",
-              tabIndex: "0",
-              attributes: {
-                "aria-checked": computed(
-                  props.store.state.delete_delete_files,
-                  (checked) => (checked ? "true" : "false"),
-                ),
-              },
-              style: {
-                display: "flex",
-                "align-items": "center",
-                gap: "10px",
-                padding: "10px 0",
-                cursor: "pointer",
-                "user-select": "none",
-                "font-size": "14px",
-                "line-height": "20px",
-              },
-              onClick() {
-                props.store.methods.handleClickCheckboxConfirmDeleteFiles();
-              },
+          },
+          ["确定删除下载任务记录？", "此操作不可恢复。"],
+        ),
+        View(
+          {
+            role: "checkbox",
+            tabIndex: "0",
+            attributes: {
+              "aria-checked": computed(
+                props.store.state.delete_delete_files,
+                (checked) => (checked ? "true" : "false"),
+              ),
             },
-            [
-              View({ style: checkboxStyle }, [
-                Show({
-                  when: props.store.state.delete_delete_files,
-                  ok() {
-                    return Timeless.Icon({ name: "check", size: 14 });
-                  },
-                }),
-              ]),
-              View({}, ["同时删除已下载的文件"]),
-            ],
-          ),
-        ],
-      ),
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "10px",
+              padding: "10px 0",
+              cursor: "pointer",
+              "user-select": "none",
+              "font-size": "14px",
+              "line-height": "20px",
+            },
+            onClick() {
+              props.store.methods.handleClickCheckboxConfirmDeleteFiles();
+            },
+          },
+          [
+            View({ style: checkboxStyle }, [
+              Show({
+                when: props.store.state.delete_delete_files,
+                ok() {
+                  return Timeless.Icon({ name: "check", size: 14 });
+                },
+              }),
+            ]),
+            View({}, ["同时删除已下载的文件"]),
+          ],
+        ),
+      ]),
     ],
   );
 }
@@ -1464,8 +1810,7 @@ function DownloadTaskCard(props) {
       totalFileSize,
     };
   });
-  const isOpenExternal =
-    RemoteServerEnabled === true || InDocker === true;
+  const isOpenExternal = is_download_open_external();
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const offset = computed(state_, (d) => {

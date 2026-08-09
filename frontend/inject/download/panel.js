@@ -6,9 +6,7 @@
  */
 function DownloaderEntry(props) {
   const vm$ =
-    typeof __d_vm$ !== undefined
-      ? __d_vm$
-      : DownloaderPanelViewModel({});
+    typeof __d_vm$ !== undefined ? __d_vm$ : DownloaderPanelViewModel({});
   return Fragment({}, [
     Popover(
       {
@@ -35,6 +33,12 @@ function DownloaderEntry(props) {
       store: vm$,
     }),
     ClearTasksConfirmDialog({
+      store: vm$,
+    }),
+    // SingleOverwriteDownloadConfirmDialog({
+    //   store: vm$,
+    // }),
+    BatchOverwriteDownloadConfirmDialog({
       store: vm$,
     }),
     OverwriteDownloadConfirmDialog({

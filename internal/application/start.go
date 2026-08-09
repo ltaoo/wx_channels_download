@@ -24,6 +24,7 @@ import (
 	"wx_channel/internal/database"
 	"wx_channel/internal/events"
 	"wx_channel/internal/interceptor"
+	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
@@ -40,20 +41,19 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
 	logger := cfg.Logger()
-	cfg.LogGlobalScriptPath()
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
 		return fmt.Errorf("database initialization failed: %w", err)
 	}
+	if err := database.ConfigureSQLiteRuntime(b.DB); err != nil {
+		return fmt.Errorf("database sqlite configuration failed: %w", err)
+	}
 
 	api_cfg := api.NewAPIConfig(cfg)
+	proxy_enabled := cfg.GetBool("proxy.enabled")
 	static_assets := webassets.NewRegistry()
-	if cfg.GlobalScriptPath == "" {
-		logger.Info().
-			Str("file", "internal/application/start.go").
-			Msg("global script path is empty; skipping global script asset registration")
-	} else {
+	if cfg.GlobalScriptPath != "" {
 		global_script_asset_path := frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
 		logger.Info().
 			Str("file", "internal/application/start.go").
@@ -83,6 +83,27 @@ func Start(cfg *config.Config) error {
 	cert_files := services.LoadCertFiles()
 	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files, logger)
 	interceptor_srv.SubscribeEvents(bus)
+
+	if cfg.GetBool("download.remoteServer.enabled") {
+		protocol := cfg.GetString("download.remoteServer.protocol")
+		hostname := cfg.GetString("download.remoteServer.hostname")
+		port := cfg.GetInt("download.remoteServer.port")
+		logger.Info().
+			Str("file", "internal/application/start.go").
+			Str("protocol", protocol).
+			Str("hostname", hostname).
+			Int("port", port).
+			Msg("enable remote server")
+		plugin := &proxy.Plugin{
+			Match: "localhost.weixin.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: protocol,
+				Host:     hostname,
+				Port:     port,
+			},
+		}
+		interceptor_srv.Interceptor.AddPostPlugin(plugin)
+	}
 
 	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
 	if cfg.LogPath() != "" {
@@ -115,11 +136,6 @@ func Start(cfg *config.Config) error {
 				Str("source", "download.hooksScript").
 				Msg("download hook script loaded")
 		}
-	} else {
-		logger.Info().
-			Str("file", "internal/application/start.go").
-			Str("resolved_config_path", configured_hook_path).
-			Msg("download hook script not found")
 	}
 
 	// --- Database store ---
@@ -220,54 +236,56 @@ func Start(cfg *config.Config) error {
 	api_started = true
 	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_srv.Addr()))
 
-	interceptor_start_attempted = true
-	unregister_console_close, err := registerConsoleCloseHandler(stop)
-	if err != nil {
-		interceptor_start_attempted = false
-		cleanup()
-		return fmt.Errorf("failed to register console close handler: %w", err)
-	}
-	defer unregister_console_close()
+	if proxy_enabled {
+		interceptor_start_attempted = true
+		unregister_console_close, err := registerConsoleCloseHandler(stop)
+		if err != nil {
+			interceptor_start_attempted = false
+			cleanup()
+			return fmt.Errorf("failed to register console close handler: %w", err)
+		}
+		defer unregister_console_close()
 
-	if err := interceptor_srv.Start(); err != nil {
-		cleanup()
-		return fmt.Errorf("failed to start proxy service: %w", err)
-	}
-	color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", interceptor_srv.Addr()))
+		if err := interceptor_srv.Start(); err != nil {
+			cleanup()
+			return fmt.Errorf("failed to start proxy service: %w", err)
+		}
+		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", interceptor_srv.Addr()))
 
-	if !buildtags.UsingSunnyNet {
-		if interceptor_srv.ProxyTun() {
-			color.Green("TUN mode enabled, traffic will be auto-forwarded through virtual NIC")
-			color.Green("Please open the page you want to download")
-		} else if !interceptor_srv.ProxySetSystem() {
-			color.Red(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
-			color.Red("Open the page to download after setting the proxy")
-		} else {
-			color.Green("System proxy has been set to the proxy service address")
-			color.Green("Please open the page you want to download")
-			has_changed := false
-			expected_addr := interceptor_srv.Addr()
-			go func() {
-				ticker := time.NewTicker(10 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						cur, err := system.FetchCurProxy(system.ProxySettings{})
-						if err != nil || cur == nil {
-							continue
-						}
-						if cur.Hostname+":"+cur.Port != expected_addr {
-							if !has_changed {
-								color.Red("\nSystem proxy has been modified, please restart the downloader")
+		if !buildtags.UsingSunnyNet {
+			if interceptor_srv.ProxyTun() {
+				color.Green("TUN mode enabled, traffic will be auto-forwarded through virtual NIC")
+				color.Green("Please open the page you want to download")
+			} else if !interceptor_srv.ProxySetSystem() {
+				color.Red(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
+				color.Red("Open the page to download after setting the proxy")
+			} else {
+				color.Green("System proxy has been set to the proxy service address")
+				color.Green("Please open the page you want to download")
+				has_changed := false
+				expected_addr := interceptor_srv.Addr()
+				go func() {
+					ticker := time.NewTicker(10 * time.Second)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case <-ticker.C:
+							cur, err := system.FetchCurProxy(system.ProxySettings{})
+							if err != nil || cur == nil {
+								continue
 							}
-							has_changed = true
+							if cur.Hostname+":"+cur.Port != expected_addr {
+								if !has_changed {
+									color.Red("\nSystem proxy has been modified, please restart the downloader")
+								}
+								has_changed = true
+							}
 						}
 					}
-				}
-			}()
+				}()
+			}
 		}
 	}
 

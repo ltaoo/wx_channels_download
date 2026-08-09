@@ -105,9 +105,15 @@ func (d *HermesEngine) downloadFile(
 			return fmt.Errorf("failed to open temporary file: %w", openErr)
 		}
 
-		err = d.copyReader(ctx, reader, file, prepared.Size, &downloaded, taskID, resourceID, func(total, speed int64) error {
+		lastPersist := time.Now()
+		err = d.copyReader(ctx, reader, file, prepared.Size, &downloaded, taskID, resourceID, func(total, speed int64, force bool) error {
 			resource.Downloaded = total
 			resource.Speed = speed
+			d.updateTracker(taskID, resourceID, total, speed)
+			if !force && time.Since(lastPersist) < progressInterval {
+				return nil
+			}
+			lastPersist = time.Now()
 			return d.persistProgress(taskID, resourceID, segment.ID, total, speed)
 		})
 		readerCloseErr := reader.Close()
@@ -164,7 +170,7 @@ func (d *HermesEngine) copyReader(
 	downloaded *int64,
 	taskID int,
 	resourceID int,
-	onProgress func(total, speed int64) error,
+	onProgress func(total, speed int64, force bool) error,
 ) error {
 	buf := make([]byte, readBufferSize)
 	speedSampler := newProgressSpeedSampler(time.Now(), *downloaded)
@@ -173,7 +179,9 @@ func (d *HermesEngine) copyReader(
 	for {
 		chunkStart := time.Now()
 		if err := context.Cause(ctx); err != nil {
-			_ = onProgress(*downloaded, 0)
+			if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
+				return progressErr
+			}
 			return err
 		}
 		readBuf := buf
@@ -209,7 +217,7 @@ func (d *HermesEngine) copyReader(
 		// 32 KiB block to bytes/second produces meaningless GB/s spikes, so only
 		// refresh the displayed speed after a representative sampling window.
 		speed := speedSampler.Sample(now, *downloaded)
-		if err := onProgress(*downloaded, speed); err != nil {
+		if err := onProgress(*downloaded, speed, false); err != nil {
 			return err
 		}
 		// Progress log every 3 seconds for diagnostics
@@ -238,9 +246,15 @@ func (d *HermesEngine) copyReader(
 		if readErr != nil {
 			if readErr == io.EOF {
 				if expectedSize > 0 && *downloaded != expectedSize {
+					if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
+						return progressErr
+					}
 					return io.ErrUnexpectedEOF
 				}
 				return nil
+			}
+			if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
+				return progressErr
 			}
 			return readErr
 		}
@@ -717,6 +731,13 @@ func waitForRetry(ctx context.Context, attempt int) bool {
 }
 
 func (d *HermesEngine) persistProgress(taskID, resourceID, segmentID int, downloaded, speed int64) error {
+	if store, ok := d.store.(ProgressBatchStore); ok {
+		if err := store.UpdateResourceSegmentProgress(resourceID, segmentID, downloaded, speed); err != nil {
+			return fmt.Errorf("failed to update progress: %w", err)
+		}
+		d.updateTracker(taskID, resourceID, downloaded, speed)
+		return nil
+	}
 	if err := d.store.UpdateSegmentProgress(segmentID, downloaded); err != nil {
 		return fmt.Errorf("failed to update segment progress: %w", err)
 	}
@@ -730,9 +751,23 @@ func (d *HermesEngine) persistProgress(taskID, resourceID, segmentID int, downlo
 func (d *HermesEngine) persistAggregate(taskID, resourceID int, segments []Segment, states []segmentProgress) error {
 	var totalDownloaded int64
 	var totalSpeed int64
+	updates := make([]SegmentProgressUpdate, 0, len(states))
 	for i, state := range states {
 		totalDownloaded += state.downloaded
 		totalSpeed += state.speed
+		updates = append(updates, SegmentProgressUpdate{
+			SegmentID:  segments[i].ID,
+			Downloaded: state.downloaded,
+		})
+	}
+	if store, ok := d.store.(ProgressBatchStore); ok {
+		if err := store.UpdateAggregateResourceProgress(resourceID, updates, totalDownloaded, totalSpeed); err != nil {
+			return fmt.Errorf("failed to update aggregate progress: %w", err)
+		}
+		d.updateTracker(taskID, resourceID, totalDownloaded, totalSpeed)
+		return nil
+	}
+	for i, state := range states {
 		if err := d.store.UpdateSegmentProgress(segments[i].ID, state.downloaded); err != nil {
 			return fmt.Errorf("failed to update segment progress: %w", err)
 		}

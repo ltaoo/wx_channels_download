@@ -318,7 +318,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var data = result.data;
 					// console.log("before Init", data);
-					WXU.emit("channels:Init", data);
+					typeof WXU !== "undefined" && WXU.emit("channels:Init", data);
 					return result;
 				}async`
 						js_script = js_init_reg.ReplaceAllString(js_script, js_init)
@@ -330,7 +330,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var feeds = result.data.object;
 					// console.log("before PCFlowLoaded", result.data);
-					WXU.emit("channels:PCFlowLoaded", feeds);
+					typeof WXU !== "undefined" && WXU.emit("channels:PCFlowLoaded", feeds);
 					return result;
 				}async`
 						js_script = js_pc_flow_reg.ReplaceAllString(js_script, js_pc_flow)
@@ -342,7 +342,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var feeds = result.data.object;
 					// console.log("before RecommendFeedsLoaded", result.data);
-					WXU.emit("channels:RecommendFeedsLoaded", feeds);
+					typeof WXU !== "undefined" && WXU.emit("channels:RecommendFeedsLoaded", feeds);
 					return result;
 				}async`
 						js_script = js_recommend_feeds_reg.ReplaceAllString(js_script, js_recommend_feeds)
@@ -354,7 +354,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var feed = result.data.object;
 					// console.log("before FeedProfileLoaded", result.data);
-					WXU.emit("channels:OnFeedProfileLoaded", feed);
+					typeof WXU !== "undefined" && WXU.emit("channels:OnFeedProfileLoaded", feed);
 					return result;
 				}async`
 						js_script = js_feed_profile_reg.ReplaceAllString(js_script, js_feed_profile)
@@ -365,7 +365,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						$2;
 					})();
 					// console.log("before CommentListLoaded", result.data, $1);
-					WXU.emit("channels:FeedCommentListLoaded", result.data);
+					typeof WXU !== "undefined" && WXU.emit("channels:FeedCommentListLoaded", result.data);
 					return result;
 				}async`
 						js_script = js_comment_list_reg.ReplaceAllString(js_script, js_comment_list)
@@ -420,7 +420,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						})();
 						var feeds = result.data.object;
 						// console.log("before finderGetInteractionedFeedList", result, $1);
-						WXU.emit("channels:InteractionedFeedsLoaded", feeds);
+						typeof WXU !== "undefined" && WXU.emit("channels:InteractionedFeedsLoaded", feeds);
 						return result;
 					}}const`
 						js_script = js_finder_get_interactioned_feed_list_reg.ReplaceAllString(js_script, js_finder_interactioned)
@@ -432,7 +432,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						})();
 						var data = result.data.object;
 						// console.log("before finderGetFeedH5Url", result, $1);
-						WXU.emit("channels:GetFeedH5Url", data);
+						typeof WXU !== "undefined" && WXU.emit("channels:GetFeedH5Url", data);
 						return result;
 					}}const`
 						js_script = js_finder_get_feed_h5_url.ReplaceAllString(js_script, js_finder_feed_h5_url)
@@ -444,7 +444,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var feeds = result.data.object;
 					// console.log("before UserFeedsLoaded", result.data, $1);
-					WXU.emit("channels:UserFeedsLoaded", feeds);
+					typeof WXU !== "undefined" && WXU.emit("channels:UserFeedsLoaded", feeds);
 					return result;
 				}async`
 						js_script = js_user_feeds_reg.ReplaceAllString(js_script, js_user_feed)
@@ -456,7 +456,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						})();
 						var feeds = result.data.object;
 						// console.log("before LiveUserFeedsLoaded", result.data, $1);
-						WXU.emit("channels:LiveUserFeedsLoaded", feeds);
+						typeof WXU !== "undefined" && WXU.emit("channels:LiveUserFeedsLoaded", feeds);
 						return result;
 					}async`
 						js_script = js_live_feed_list_reg.ReplaceAllString(js_script, js_live_feed_list)
@@ -468,7 +468,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var live = result.data;
 					// console.log("before LiveProfileLoaded", result.data);
-					WXU.emit("channels:OnLiveProfileLoaded", live);
+					typeof WXU !== "undefined" && WXU.emit("channels:OnLiveProfileLoaded", live);
 					return result;
 				}async`
 						js_script = js_live_info_reg.ReplaceAllString(js_script, js_live_profile)
@@ -480,7 +480,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					})();
 					var data = result.data;
 					// console.log("before JoinLive", data);
-					WXU.emit("channels:JoinLive", data);
+					typeof WXU !== "undefined" && WXU.emit("channels:JoinLive", data);
 					return result;
 				}async`
 						js_script = js_join_live_reg.ReplaceAllString(js_script, js_join_live)
@@ -510,7 +510,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 							}
 						}
 						api_methods_escaped := strings.ReplaceAll(api_methods, "$", "$$")
-						js_wxapi := `;WXU.emit("channels:APILoaded",` + api_methods_escaped + `);export{`
+						js_wxapi := `;typeof WXU !== "undefined" && WXU.emit("channels:APILoaded",` + api_methods_escaped + `);export{`
 						js_script = js_export_reg.ReplaceAllString(js_script, js_wxapi)
 					}
 					ctx.SetResponseBody(js_script)
@@ -531,7 +531,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						// console.log("before GotoNextFeed", %[1]s, feed);
-						WXU.emit("channels:GotoNextFeed", feed);
+						typeof WXU !== "undefined" && WXU.emit("channels:GotoNextFeed", feed);
 					}`, flow_list_variable_name)
 						js_script = js_go_to_next_flow_reg.ReplaceAllString(js_script, js_go_next_feed)
 					}
@@ -544,12 +544,12 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
 						// console.log("before GotoPrevFeed", %[1]s, feed);
-						WXU.emit("channels:GotoPrevFeed", feed);
+						typeof WXU !== "undefined" && WXU.emit("channels:GotoPrevFeed", feed);
 					}`, flow_list_variable_name)
 						js_script = js_go_to_prev_flow_reg.ReplaceAllString(js_script, js_go_prev_feed)
 					}
 					{
-						js_wxutil := `;WXU.emit("channels:UtilsLoaded",{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{`
+						js_wxutil := `;typeof WXU !== "undefined" && WXU.emit("channels:UtilsLoaded",{decodeBase64ToUint64String:decodeBase64ToUint64String,createAdapterFromGlobalMapper:createAdapterFromGlobalMapper,finderJoinLiveMapper:finderJoinLiveMapper});export{`
 						js_script = js_export_reg.ReplaceAllString(js_script, js_wxutil)
 					}
 					{
@@ -564,7 +564,7 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 							return;
 						}
 						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
-						WXU.emit("channels:HomeFeedChanged", feed);
+						typeof WXU !== "undefined" && WXU.emit("channels:HomeFeedChanged", feed);
 					}`, local_feed_list_variable_name)
 						js_script = js_load_local_playlist_reg.ReplaceAllString(js_script, js_load_local)
 					}

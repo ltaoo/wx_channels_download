@@ -257,7 +257,7 @@ func (h *FileHelperHandler) processFinderMessages(messages []map[string]interfac
 
 		// Process app message (Channels / Finder)
 		if int(msgType) == 49 {
-		// Check if MsgType is 49 (app message)
+			// Check if MsgType is 49 (app message)
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
 				continue

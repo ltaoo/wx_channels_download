@@ -8,13 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"wx_channel/internal/services"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
 	// "wx_channel/pkg/scraper"
 )
 
-func (c *APIClient) handleCompatInfluencerList(ctx *gin.Context) {
+func (c *APIClient) handle_compat_influencer_list(ctx *gin.Context) {
 	pageStr := ctx.Query("page")
 	sizeStr := ctx.Query("page_size")
 	page := 1
@@ -39,7 +39,7 @@ func (c *APIClient) handleCompatInfluencerList(ctx *gin.Context) {
 	result.Ok(ctx, pageResult)
 }
 
-func (c *APIClient) handleCompatInfluencerGet(ctx *gin.Context) {
+func (c *APIClient) handle_compat_influencer_get(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
@@ -66,7 +66,7 @@ type influencerCreateBody struct {
 	Description string `json:"description"`
 }
 
-func (c *APIClient) handleCompatInfluencerCreate(ctx *gin.Context) {
+func (c *APIClient) handle_compat_influencer_create(ctx *gin.Context) {
 	var body influencerCreateBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -96,7 +96,7 @@ type influencerUpdateBody struct {
 	Description string `json:"description"`
 }
 
-func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
+func (c *APIClient) handle_compat_influencer_update(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
@@ -126,7 +126,7 @@ func (c *APIClient) handleCompatInfluencerUpdate(ctx *gin.Context) {
 	result.Ok(ctx, influencer)
 }
 
-func (c *APIClient) handleCompatAccountList(ctx *gin.Context) {
+func (c *APIClient) handle_compat_account_list(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
