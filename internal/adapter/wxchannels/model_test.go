@@ -43,6 +43,31 @@ const sharedPictureFeedJSON = `{
   "errMsg": ""
 }`
 
+const videoFeedJSON = `{
+  "id": "feed123",
+  "objectNonceId": "nonce123",
+  "createtime": 1783650796,
+  "contact": {
+    "username": "finder_user",
+    "nickname": "作者"
+  },
+  "objectDesc": {
+    "description": "视频标题",
+    "mediaType": 4,
+    "media": [{
+      "url": "https://finder.video.qq.com/video.mp4?encfilekey=abc&token=tok",
+      "urlToken": "",
+      "thumbUrl": "https://example.com/thumb.jpg",
+      "width": 1920,
+      "height": 1080,
+      "fileSize": 12345,
+      "videoPlayLen": 60000,
+      "decodeKey": "123",
+      "spec": [{"fileFormat": "1080p"}]
+    }]
+  }
+}`
+
 func TestBuildDownloadTaskSharedPictureFeedCreatesZipResources(t *testing.T) {
 	info, err := NewChannelsAdapter().BuildDownloadTask(json.RawMessage(sharedPictureFeedJSON), json.RawMessage(`{}`))
 	if err != nil {
@@ -93,6 +118,44 @@ func TestBuildDownloadTaskSharedPictureFeedWrappedResponse(t *testing.T) {
 	}
 	if got, want := len(info.Resources), 3; got != want {
 		t.Fatalf("wrapped response resource count = %d, want %d", got, want)
+	}
+}
+
+func TestBuildDownloadTaskPreconstructsSingleResourceTaskNameWithoutTemplate(t *testing.T) {
+	info, err := NewChannelsAdapter().BuildDownloadTask(
+		json.RawMessage(videoFeedJSON),
+		json.RawMessage(`{"spec":"1080p"}`),
+	)
+	if err != nil {
+		t.Fatalf("BuildDownloadTask() error = %v", err)
+	}
+	if info == nil || info.Task == nil {
+		t.Fatal("BuildDownloadTask() returned nil task info")
+	}
+	if got, want := info.Task.Name, "视频标题.mp4"; got != want {
+		t.Fatalf("task name = %q, want %q", got, want)
+	}
+}
+
+func TestBuildDownloadTaskPreconstructsSingleResourceTaskName(t *testing.T) {
+	info, err := NewChannelsAdapter().BuildDownloadTask(
+		json.RawMessage(videoFeedJSON),
+		json.RawMessage(`{"spec":"1080p","filename_template":"{{author}}/{{filename}}_{{spec}}"}`),
+	)
+	if err != nil {
+		t.Fatalf("BuildDownloadTask() error = %v", err)
+	}
+	if info == nil || info.Task == nil {
+		t.Fatal("BuildDownloadTask() returned nil task info")
+	}
+	if got, want := info.Task.Name, "作者/视频标题_1080p.mp4"; got != want {
+		t.Fatalf("task name = %q, want %q", got, want)
+	}
+	if got, want := len(info.Resources), 1; got != want {
+		t.Fatalf("resource count = %d, want %d", got, want)
+	}
+	if got, want := info.Resources[0].Name, "视频标题"; got != want {
+		t.Fatalf("resource name = %q, want unchanged %q", got, want)
 	}
 }
 

@@ -22,7 +22,7 @@ import (
 	"wx_channel/pkg/system"
 )
 
-func (c *APIClient) handlePlay(ctx *gin.Context) {
+func (c *APIClient) handle_play(ctx *gin.Context) {
 	targetURL := ctx.Query("url")
 	if targetURL == "" {
 		result.Err(ctx, 400, "missing targetURL")
@@ -49,7 +49,7 @@ func (c *APIClient) handlePlay(ctx *gin.Context) {
 	decryptor.SimpleProxy(targetURL, ctx.Writer, ctx.Request)
 }
 
-func (c *APIClient) handleOpenDownloadDir(ctx *gin.Context) {
+func (c *APIClient) handle_open_download_dir(ctx *gin.Context) {
 	dir := c.cfg.DownloadDir
 	if err := system.Open(dir); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -62,7 +62,7 @@ type OpenURLBody struct {
 	URL string `json:"url"`
 }
 
-func (c *APIClient) handleOpenURL(ctx *gin.Context) {
+func (c *APIClient) handle_open_url(ctx *gin.Context) {
 	var body OpenURLBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -89,7 +89,7 @@ type ShowFileBody struct {
 	Name string `json:"name"`
 }
 
-func (c *APIClient) handleShowFile(ctx *gin.Context) {
+func (c *APIClient) handle_show_file(ctx *gin.Context) {
 	var body ShowFileBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -116,7 +116,7 @@ type OpenFolderAndHighlightFileBody struct {
 	Name string `json:"name"`
 }
 
-func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
+func (c *APIClient) handle_highlight_file_in_folder(ctx *gin.Context) {
 	var body OpenFolderAndHighlightFileBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -138,7 +138,7 @@ func (c *APIClient) handleHighlightFileInFolder(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
+func (c *APIClient) handle_stream_video(ctx *gin.Context) {
 	path := ctx.Query("path")
 	if path == "" {
 		taskID := ctx.Query("id")
@@ -172,10 +172,10 @@ func (c *APIClient) handleStreamVideo(ctx *gin.Context) {
 }
 
 func (c *APIClient) handleStreamImage(ctx *gin.Context) {
-	c.handleStreamVideo(ctx)
+	c.handle_stream_video(ctx)
 }
 
-func (c *APIClient) handlePreviewPage(ctx *gin.Context) {
+func (c *APIClient) handle_preview_page(ctx *gin.Context) {
 	data, err := frontend.Assets().ReadRoot("preview.html")
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, "preview page not found")
@@ -185,7 +185,7 @@ func (c *APIClient) handlePreviewPage(ctx *gin.Context) {
 	ctx.String(http.StatusOK, string(data))
 }
 
-func (c *APIClient) handleFetchFile(ctx *gin.Context) {
+func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
 	path := ctx.Query("path")
 	if path == "" {
 		result.Err(ctx, 400, "missing path")
@@ -325,7 +325,7 @@ func (c *APIClient) handleGetFileURL(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) handleTest(ctx *gin.Context) {
+func (c *APIClient) handle_test(ctx *gin.Context) {
 	dir := c.cfg.DownloadDir
 	if err := system.Open(dir); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -334,7 +334,7 @@ func (c *APIClient) handleTest(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-func (c *APIClient) handleListFiles(ctx *gin.Context) {
+func (c *APIClient) handle_list_files(ctx *gin.Context) {
 	if c.fs_service == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
 		return
@@ -352,7 +352,7 @@ func (c *APIClient) handleListFiles(ctx *gin.Context) {
 	result.Ok(ctx, files)
 }
 
-func (c *APIClient) handleSearchFiles(ctx *gin.Context) {
+func (c *APIClient) handle_search_files(ctx *gin.Context) {
 	if c.fs_service == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
 		return

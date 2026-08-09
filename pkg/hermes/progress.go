@@ -61,13 +61,24 @@ func (d *HermesEngine) emitProgress(taskID int) {
 	}
 }
 
+// CurrentProgress returns the latest in-memory progress for a task without
+// changing broadcast throttling state. It is intended for read APIs that want
+// fresh progress without querying persisted segment/connection tables.
+func (d *HermesEngine) CurrentProgress(taskID int) *TaskProgress {
+	return d.currentProgress(taskID, false)
+}
+
 // snapshotProgress builds a TaskProgress from the in-memory tracker.
 // Speed values come from the download loop (copyReader/downloadSegment) which
-// computes speed every progressInterval (500ms). The periodic ticker decouples
+// computes speed every progressInterval. The periodic ticker decouples
 // emission frequency from the download loop, making it independently configurable
 // via ProgressEmitInterval without losing speed accuracy.
 // Returns nil if no progress tracker exists for the given task.
 func (d *HermesEngine) snapshotProgress(taskID int) *TaskProgress {
+	return d.currentProgress(taskID, true)
+}
+
+func (d *HermesEngine) currentProgress(taskID int, markEmit bool) *TaskProgress {
 	d.progressMu.Lock()
 	tracker, ok := d.progressCache[taskID]
 	d.progressMu.Unlock()
@@ -102,21 +113,23 @@ func (d *HermesEngine) snapshotProgress(taskID int) *TaskProgress {
 	}
 	// Skip emission if downloaded and speed haven't changed since last broadcast.
 	// This prevents duplicate WS pushes when the progress emit interval (180ms) is
-	// shorter than the segment progress reporting interval (500ms).
+	// shorter than the segment progress reporting interval.
 	// However, if >500ms has passed since the last real emission, emit anyway so
 	// the frontend knows the download is still alive (e.g. during segment
 	// connection establishment which can take 1-5 seconds).
-	isKeepalive := false
-	if totalDownloaded == tracker.lastEmitDownloaded && totalSpeed == tracker.lastEmitSpeed && totalDownloaded != p.TotalSize {
-		if time.Since(tracker.lastEmitTime) < 500*time.Millisecond {
-			return nil
+	if markEmit {
+		isKeepalive := false
+		if totalDownloaded == tracker.lastEmitDownloaded && totalSpeed == tracker.lastEmitSpeed && totalDownloaded != p.TotalSize {
+			if time.Since(tracker.lastEmitTime) < 500*time.Millisecond {
+				return nil
+			}
+			isKeepalive = true
 		}
-		isKeepalive = true
+		p.Keepalive = isKeepalive
+		tracker.lastEmitDownloaded = totalDownloaded
+		tracker.lastEmitSpeed = totalSpeed
+		tracker.lastEmitTime = time.Now()
 	}
-	p.Keepalive = isKeepalive
-	tracker.lastEmitDownloaded = totalDownloaded
-	tracker.lastEmitSpeed = totalSpeed
-	tracker.lastEmitTime = time.Now()
 	return p
 }
 
@@ -142,7 +155,7 @@ func (d *HermesEngine) initTracker(taskID int, resourceSizes map[int]int64, reso
 }
 
 // updateTracker updates a resource's downloaded bytes and speed in the in-memory tracker.
-// speed comes from the download loop (copyReader/downloadSegment) computed at progressInterval (500ms).
+// speed comes from the download loop (copyReader/downloadSegment) computed at progressInterval.
 func (d *HermesEngine) updateTracker(taskID, resourceID int, downloaded, speed int64) {
 	d.progressMu.Lock()
 	tracker, ok := d.progressCache[taskID]

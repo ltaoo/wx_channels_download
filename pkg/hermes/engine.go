@@ -279,12 +279,26 @@ type Store interface {
 	UpdateSegmentProgress(segID int, downloaded int64) error
 }
 
+// SegmentProgressUpdate carries one durable segment-progress update.
+type SegmentProgressUpdate struct {
+	SegmentID  int
+	Downloaded int64
+}
+
 // ResourceStore provides per-resource progress updates for multi-resource tasks.
 // When not implemented, HermesEngine falls back to Store's task-level update methods.
 type ResourceStore interface {
 	UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error
 	UpdateResourceSizeByID(resourceID int, size int64) error
 	FinishResource(resourceID int) error
+}
+
+// ProgressBatchStore lets a persistent store update segment/resource progress
+// in one transaction. Stores that do not implement it use the base Store and
+// ResourceStore methods.
+type ProgressBatchStore interface {
+	UpdateResourceSegmentProgress(resourceID int, segmentID int, downloaded int64, speed int64) error
+	UpdateAggregateResourceProgress(resourceID int, segments []SegmentProgressUpdate, downloaded int64, speed int64) error
 }
 
 // StreamSegmentStore optionally persists the recorder's time-based chunks.
@@ -378,7 +392,7 @@ type progressTracker struct {
 // resourceTracker holds the current download progress and metadata of a single resource.
 // resourceTracker holds the current download progress and metadata of a single resource.
 // speed stores the real-time speed reported by the download loop (copyReader/downloadSegment),
-// which is updated every progressInterval (500ms). snapshotProgress uses this value directly
+// which is updated every progressInterval. snapshotProgress uses this value directly
 // for the WS push rather than re-computing from deltas, ensuring speed is never stale.
 type resourceTracker struct {
 	size       int64

@@ -82,7 +82,7 @@ mp:
 
 `tokenFilepath` 指定调用 `API` 或 `RSS` 时的授权凭证文件，可以留空。或者指定一个 `./token.txt`，那么会读取该文件，每行作为一个 `token`，调用接口时必须传入 `&token=`，否则会拒绝访问。
 
-使用 `chmod +x ./wx_video_download` 给二进制文件添加权限，然后运行命令 `./wx_video_download mp -d` 启动，该命令仅运行公众号相关的功能，且作为守护进程运行
+使用 `chmod +x ./wx_video_download` 给二进制文件添加权限，然后运行命令 `./wx_video_download server` 以前台方式启动，该命令仅运行服务器相关功能
 
 运行成功之后，调用「获取可请求的公众号列表」会返回空列表。调用「获取指定公众号消息列表」会提示 `Please adding Credentials first`
 
@@ -112,5 +112,4 @@ mp:
 调用「获取可请求的公众号列表」，也可以看到刚刚打开的公众号信息
 
 到此，公众号RSS 服务就可以正常使用了。本地 `macOS` 或 `Windows` 上的服务不要关闭，会定时获取在列表中的公众号，刷新凭证，保持「远端服务」的 `RSS` 服务一直可用
-
 

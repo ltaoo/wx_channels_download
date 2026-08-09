@@ -13,16 +13,16 @@ import (
 	"wx_channel/pkg/certificate"
 )
 
-type serviceActionBody struct {
+type service_action_body struct {
 	Name string `json:"name"`
 }
 
-type serviceConfigBody struct {
+type service_config_body struct {
 	Values map[string]interface{} `json:"values"`
 }
 
-func (c *APIClient) handleServiceStart(ctx *gin.Context) {
-	name := c.requestServiceName(ctx)
+func (c *APIClient) handle_service_start(ctx *gin.Context) {
+	name := c.request_service_name(ctx)
 	if name == "" {
 		result.Err(ctx, 400, "service is required")
 		return
@@ -32,11 +32,11 @@ func (c *APIClient) handleServiceStart(ctx *gin.Context) {
 		return
 	}
 	c.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
-	result.Ok(ctx, c.serviceStatusesMap())
+	result.Ok(ctx, c.service_statuses_map())
 }
 
-func (c *APIClient) handleServiceStop(ctx *gin.Context) {
-	name := c.requestServiceName(ctx)
+func (c *APIClient) handle_service_stop(ctx *gin.Context) {
+	name := c.request_service_name(ctx)
 	if name == "" {
 		result.Err(ctx, 400, "service is required")
 		return
@@ -50,20 +50,20 @@ func (c *APIClient) handleServiceStop(ctx *gin.Context) {
 		return
 	}
 	c.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
-	result.Ok(ctx, c.serviceStatusesMap())
+	result.Ok(ctx, c.service_statuses_map())
 }
 
-func (c *APIClient) requestServiceName(ctx *gin.Context) string {
-	var body serviceActionBody
+func (c *APIClient) request_service_name(ctx *gin.Context) string {
+	var body service_action_body
 	_ = ctx.ShouldBindJSON(&body)
 	name := body.Name
 	if name == "" {
 		name = ctx.Query("name")
 	}
-	return normalizeServiceName(name)
+	return normalize_service_name(name)
 }
 
-func normalizeServiceName(name string) string {
+func normalize_service_name(name string) string {
 	switch strings.TrimSpace(strings.ToLower(name)) {
 	case "proxy":
 		return "interceptor"
@@ -72,12 +72,12 @@ func normalizeServiceName(name string) string {
 	}
 }
 
-func (c *APIClient) handleServiceConfigUpdate(ctx *gin.Context) {
+func (c *APIClient) handle_service_config_update(ctx *gin.Context) {
 	if c.cfg == nil || c.cfg.Original == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
-	var body serviceConfigBody
+	var body service_config_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
@@ -89,7 +89,7 @@ func (c *APIClient) handleServiceConfigUpdate(ctx *gin.Context) {
 
 	updated := map[string]interface{}{}
 	for key, value := range body.Values {
-		converted, err := convertServiceConfigValue(key, value)
+		converted, err := convert_service_config_value(key, value)
 		if err != nil {
 			result.Err(ctx, 400, err.Error())
 			return
@@ -106,20 +106,20 @@ func (c *APIClient) handleServiceConfigUpdate(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"values": updated})
 }
 
-func convertServiceConfigValue(key string, value interface{}) (interface{}, error) {
+func convert_service_config_value(key string, value interface{}) (interface{}, error) {
 	switch key {
 	case "api.hostname", "proxy.hostname", "proxy.tcpRelay.hostname", "proxy.defaultInterface", "proxy.upstreamProxy", "cert.file", "cert.key", "cert.name":
 		return strings.TrimSpace(fmt.Sprint(value)), nil
 	case "api.port", "proxy.port", "proxy.tcpRelay.port":
-		return serviceConfigPort(value)
-	case "proxy.system", "proxy.tun", "proxy.tcpRelay.enabled", "proxy.skipInstallRootCert":
-		return serviceConfigBool(value)
+		return service_config_port(value)
+	case "proxy.enabled", "proxy.system", "proxy.tun", "proxy.tcpRelay.enabled", "proxy.skipInstallRootCert":
+		return service_config_bool(value)
 	default:
 		return nil, fmt.Errorf("未知配置项: %s", key)
 	}
 }
 
-func serviceConfigPort(value interface{}) (int, error) {
+func service_config_port(value interface{}) (int, error) {
 	switch v := value.(type) {
 	case int:
 		if v <= 0 {
@@ -142,7 +142,7 @@ func serviceConfigPort(value interface{}) (int, error) {
 	}
 }
 
-func (c *APIClient) handleRootCertificateStatus(ctx *gin.Context) {
+func (c *APIClient) handle_root_certificate_status(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	installed, err := certificate.CheckHasCertificate(cert.Name)
 	if err != nil {
@@ -155,7 +155,7 @@ func (c *APIClient) handleRootCertificateStatus(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) handleRootCertificateInstall(ctx *gin.Context) {
+func (c *APIClient) handle_root_certificate_install(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	if err := certificate.InstallCertificate(cert.Cert); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -167,7 +167,7 @@ func (c *APIClient) handleRootCertificateInstall(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) handleRootCertificateUninstall(ctx *gin.Context) {
+func (c *APIClient) handle_root_certificate_uninstall(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	if err := certificate.UninstallCertificate(cert.Name); err != nil {
 		result.Err(ctx, 500, err.Error())

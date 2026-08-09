@@ -99,6 +99,7 @@ type CreateDownloadTaskByURLBody struct {
 // DuplicateTaskError indicates an existing download task with the same content was found during task creation.
 type DuplicateTaskError struct {
 	ExistingTaskID   int
+	ExistingTaskName string
 	IncomingUniqueID string
 }
 
@@ -1077,6 +1078,22 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 	for i, task := range tasks {
 		taskIDs[i] = task.Id
 	}
+	progressByTask := make(map[int]*hermes.TaskProgress, len(tasks))
+	progressResourceByTask := make(map[int]map[int]hermes.ResourceProgress, len(tasks))
+	if s.downloader != nil {
+		for _, task := range tasks {
+			progress := s.downloader.CurrentProgress(task.Id)
+			if progress == nil {
+				continue
+			}
+			progressByTask[task.Id] = progress
+			byResource := make(map[int]hermes.ResourceProgress, len(progress.Resources))
+			for _, resourceProgress := range progress.Resources {
+				byResource[resourceProgress.ID] = resourceProgress
+			}
+			progressResourceByTask[task.Id] = byResource
+		}
+	}
 
 	type endpointInfo struct {
 		TaskID     int    `gorm:"column:task_id"`
@@ -1108,69 +1125,53 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 		Kind         string `gorm:"column:kind"`
 		ResourceType string `gorm:"column:type"`
 		Size         int64  `gorm:"column:size"`
+		Downloaded   int64  `gorm:"column:downloaded"`
+		Speed        int64  `gorm:"column:speed"`
 		Status       int    `gorm:"column:status"`
 		MergeOrder   int    `gorm:"column:merge_order"`
 	}
 	var resources []resourceInfo
 	if err := s.db.Table("download_resource").
-		Select("id, task_id, name, kind, type, size, status, merge_order").
+		Select("id, task_id, name, kind, type, size, downloaded, speed, status, merge_order").
 		Where("task_id IN ? AND deleted_at IS NULL", taskIDs).
 		Order("task_id ASC, merge_order ASC, id ASC").
 		Scan(&resources).Error; err != nil {
 		return nil, err
 	}
 	sizeByTask := make(map[int]int64, len(tasks))
+	downloadedByTask := make(map[int]int64, len(tasks))
+	downloadedByResource := make(map[int]int64)
+	speedByTask := make(map[int]int64, len(tasks))
+	speedByResource := make(map[int]int64)
 	resourcesByTask := make(map[int][]resourceInfo, len(tasks))
 	for _, r := range resources {
 		resourcesByTask[r.TaskID] = append(resourcesByTask[r.TaskID], r)
 		if r.Size > 0 {
 			sizeByTask[r.TaskID] += r.Size
 		}
+		downloaded := r.Downloaded
+		if downloaded <= 0 && r.Status == 2 && r.Size > 0 {
+			downloaded = r.Size
+		}
+		if downloaded > 0 {
+			downloadedByTask[r.TaskID] += downloaded
+			downloadedByResource[r.ID] = downloaded
+		}
+		if r.Speed > 0 {
+			speedByTask[r.TaskID] += r.Speed
+			speedByResource[r.ID] = r.Speed
+		}
 	}
-
-	type segmentAggregate struct {
-		TaskID          int   `gorm:"column:task_id"`
-		ResourceID      int   `gorm:"column:resource_id"`
-		TotalSize       int64 `gorm:"column:total_size"`
-		TotalDownloaded int64 `gorm:"column:total_downloaded"`
-	}
-	var segmentAggregates []segmentAggregate
-	if err := s.db.Raw(`SELECT r.task_id, r.id AS resource_id, COALESCE(SUM(s.size), 0) AS total_size,
-			COALESCE(SUM(s.downloaded), 0) AS total_downloaded
-		FROM download_segment s
-		JOIN download_resource r ON s.resource_id = r.id
-		WHERE r.task_id IN ? AND r.deleted_at IS NULL AND s.deleted_at IS NULL
-		GROUP BY r.task_id, r.id`, taskIDs).Scan(&segmentAggregates).Error; err != nil {
-		return nil, err
-	}
-	segmentSizeByTask := make(map[int]int64, len(tasks))
-	downloadedByTask := make(map[int]int64, len(tasks))
-	downloadedByResource := make(map[int]int64)
-	for _, agg := range segmentAggregates {
-		segmentSizeByTask[agg.TaskID] += agg.TotalSize
-		downloadedByTask[agg.TaskID] += agg.TotalDownloaded
-		downloadedByResource[agg.ResourceID] = agg.TotalDownloaded
-	}
-
-	type speedAggregate struct {
-		TaskID     int   `gorm:"column:task_id"`
-		ResourceID int   `gorm:"column:resource_id"`
-		Speed      int64 `gorm:"column:speed"`
-	}
-	var speedAggregates []speedAggregate
-	if err := s.db.Raw(`SELECT r.task_id, r.id AS resource_id, COALESCE(MAX(c.speed), 0) AS speed
-		FROM download_connection c
-		JOIN download_endpoint e ON c.endpoint_id = e.id
-		JOIN download_resource r ON e.resource_id = r.id
-		WHERE r.task_id IN ? AND r.deleted_at IS NULL AND e.deleted_at IS NULL AND c.deleted_at IS NULL
-		GROUP BY r.task_id, r.id`, taskIDs).Scan(&speedAggregates).Error; err != nil {
-		return nil, err
-	}
-	speedByTask := make(map[int]int64, len(tasks))
-	speedByResource := make(map[int]int64)
-	for _, agg := range speedAggregates {
-		speedByTask[agg.TaskID] += agg.Speed
-		speedByResource[agg.ResourceID] = agg.Speed
+	for taskID, progress := range progressByTask {
+		if progress.TotalSize > 0 {
+			sizeByTask[taskID] = progress.TotalSize
+		}
+		downloadedByTask[taskID] = progress.Downloaded
+		speedByTask[taskID] = progress.Speed
+		for _, resourceProgress := range progress.Resources {
+			downloadedByResource[resourceProgress.ID] = resourceProgress.Downloaded
+			speedByResource[resourceProgress.ID] = resourceProgress.Speed
+		}
 	}
 
 	type childAggregate struct {
@@ -1216,16 +1217,24 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 
 	for _, task := range tasks {
 		totalSize := sizeByTask[task.Id]
-		if totalSize <= 0 {
-			totalSize = segmentSizeByTask[task.Id]
-		}
 		errorMessage := ""
 		if task.Status == model.TaskStatusFailed {
 			errorMessage = task.ErrorMessage
 		}
 		resourceRows := resourcesByTask[task.Id]
+		progressResources := progressResourceByTask[task.Id]
 		files := make([]DownloadTaskFileRecord, 0, len(resourceRows))
 		for _, r := range resourceRows {
+			resourceSize := r.Size
+			resourceDownloaded := downloadedByResource[r.ID]
+			resourceSpeed := speedByResource[r.ID]
+			if resourceProgress, ok := progressResources[r.ID]; ok {
+				if resourceProgress.Size > resourceSize {
+					resourceSize = resourceProgress.Size
+				}
+				resourceDownloaded = resourceProgress.Downloaded
+				resourceSpeed = resourceProgress.Speed
+			}
 			outputPath := r.Name
 			fileStatus := "waiting"
 			switch r.Status {
@@ -1234,8 +1243,13 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			case 2:
 				fileStatus = "finished"
 			}
+			if resourceSize > 0 && resourceDownloaded >= resourceSize {
+				fileStatus = "finished"
+			} else if resourceDownloaded > 0 || resourceSpeed > 0 || task.Status == model.TaskStatusDownloading {
+				fileStatus = "downloading"
+			}
 			fileError := ""
-			if r.Status != 2 {
+			if fileStatus != "finished" {
 				switch task.Status {
 				case model.TaskStatusFinished:
 					fileStatus = "finished"
@@ -1254,10 +1268,10 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				Kind:       r.Kind,
 				Type:       r.ResourceType,
 				Status:     fileStatus,
-				Size:       r.Size,
-				Downloaded: downloadedByResource[r.ID],
-				Speed:      speedByResource[r.ID],
-				Progress:   TaskProgressPercent(downloadedByResource[r.ID], r.Size, MapResourceTaskStatus(r.Status)),
+				Size:       resourceSize,
+				Downloaded: resourceDownloaded,
+				Speed:      resourceSpeed,
+				Progress:   TaskProgressPercent(resourceDownloaded, resourceSize, MapResourceTaskStatus(r.Status)),
 				URL:        urlByResource[r.ID],
 				OutputPath: outputPath,
 				Error:      fileError,
@@ -1353,6 +1367,7 @@ func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string
 
 	var conflicts []duplicateConflict
 	var existingTaskID int
+	var existingTaskName string
 
 	// Task-level duplicate check: any existing task with the same unique_id (regardless of status)
 	if taskUniqueID != "" {
@@ -1360,6 +1375,7 @@ func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string
 		err := s.db.Where("unique_id = ? AND deleted_at IS NULL", taskUniqueID).First(&existingTask).Error
 		if err == nil {
 			existingTaskID = existingTask.Id
+			existingTaskName = existingTask.Name
 			s.logger.Warn().
 				Int("existing_task_id", existingTask.Id).
 				Str("existing_task_unique_id", existingTask.UniqueID).
@@ -1385,6 +1401,15 @@ func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string
 			First(&dup).Error
 		if err == nil {
 			existingTaskID = dup.TaskId
+			if existingTaskName == "" && dup.TaskId > 0 {
+				var task model.DownloadTask
+				if taskErr := s.db.
+					Select("id", "name").
+					Where("id = ? AND deleted_at IS NULL", dup.TaskId).
+					First(&task).Error; taskErr == nil {
+					existingTaskName = task.Name
+				}
+			}
 			s.logger.Warn().
 				Int("existing_task_id", dup.TaskId).
 				Str("existing_resource_unique_id", dup.UniqueID).
@@ -1402,6 +1427,9 @@ func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string
 	for _, name := range resourceNames {
 		filePath := filepath.Join(saveDir, filepath.Base(name))
 		if fileInfo, err := os.Stat(filePath); err == nil && !fileInfo.IsDir() {
+			if existingTaskName == "" {
+				existingTaskName = filepath.Base(filePath)
+			}
 			conflicts = append(conflicts, duplicateConflict{
 				Type:     "file",
 				FilePath: filePath,
@@ -1435,8 +1463,12 @@ func (s *DownloadTaskService) checkDuplicate(saveDir string, taskUniqueID string
 	if existingTaskID > 0 {
 		errResp.ExistingTaskID = existingTaskID
 	}
+	if existingTaskName != "" {
+		errResp.ExistingTaskName = existingTaskName
+	}
 	s.logger.Warn().
 		Int("existing_task_id", existingTaskID).
+		Str("existing_task_name", existingTaskName).
 		Str("incoming_task_unique_id", taskUniqueID).
 		Strs("incoming_resource_unique_ids", resourceKeys).
 		Msg("download task conflict detected")

@@ -3,7 +3,7 @@
  * @file Content list page data requests, pagination state, and formatting logic.
  */
 var ContentLibraryModel = (() => {
-  const content_api_origin = window.location.origin || WXEnv.get("apiOrigin");
+  const content_api_origin = WXEnv.get("apiOrigin");
   const content_http_client = new Timeless.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: content_api_origin,

@@ -17,33 +17,33 @@ import (
 	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
 )
 
-func (c *APIClient) handleIndex(ctx *gin.Context) {
-	c.handleDownloadPage(ctx)
+func (c *APIClient) handle_index(ctx *gin.Context) {
+	c.handle_download_page(ctx)
 }
 
-func (c *APIClient) handleDownloadPage(ctx *gin.Context) {
+func (c *APIClient) handle_download_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/index.html")
 }
 
-func (c *APIClient) handleHomePage(ctx *gin.Context) {
+func (c *APIClient) handle_home_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/home.html")
 }
 
-func (c *APIClient) handleContentPage(ctx *gin.Context) {
+func (c *APIClient) handle_content_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/content.html")
 }
 
-func (c *APIClient) handleBrowseHistoryPage(ctx *gin.Context) {
+func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/browsehistory.html")
 }
 
-func (c *APIClient) handleChannelsPage(ctx *gin.Context) {
-	log.Println("[ROUTE] handleChannelsPage called, rendering channels.html")
+func (c *APIClient) handle_channels_page(ctx *gin.Context) {
+	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
 	c.renderFrontendFile(ctx, "inject/channels.html")
 }
 
 // TODO: requires velo/fileserver
-// func (c *APIClient) handleMigrationPage(ctx *gin.Context) {
+// func (c *APIClient) handle_migration_page(ctx *gin.Context) {
 // 	c.renderFrontendFile(ctx, "migration.html")
 // }
 
@@ -133,8 +133,8 @@ func (c *APIClient) handleFrontendError(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-// handleFrontendReport handles unified frontend reports, level is "info" or "error".
-func (c *APIClient) handleFrontendReport(ctx *gin.Context) {
+// handle_frontend_report handles unified frontend reports, level is "info" or "error".
+func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")

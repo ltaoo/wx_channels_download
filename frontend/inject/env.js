@@ -28,16 +28,22 @@ var WXEnv = (() => {
     runtime_env.apiProtocol || api_url.protocol.replace(":", "");
   const api_host = runtime_env.apiHost || api_url.host;
   const derived = {
+    apiOrigin: api_url.origin,
+    apiProtocol: api_protocol,
+    apiHost: api_host,
     downloaderOrigin: api_url.origin,
     downloaderProtocol: api_protocol,
     downloaderWSURL: `${ws_protocol(api_protocol)}://${api_host}/ws/v1/download_task`,
   };
   if (runtime_env.remoteServerEnabled) {
-    const remote_server_url = new URL(runtime_env.remoteServerOrigin);
-    const remote_server_protocol = remote_server_url.protocol.replace(":", "");
-    derived.downloaderOrigin = remote_server_url.origin;
-    derived.downloaderProtocol = remote_server_protocol;
-    derived.downloaderWSURL = `${ws_protocol(remote_server_protocol)}://${remote_server_url.host}/ws/v1/download_task`;
+    const remote_proxy_url = new URL("https://localhost.weixin.qq.com");
+    const remote_proxy_protocol = remote_proxy_url.protocol.replace(":", "");
+    derived.apiOrigin = remote_proxy_url.origin;
+    derived.apiProtocol = remote_proxy_protocol;
+    derived.apiHost = remote_proxy_url.host;
+    derived.downloaderOrigin = remote_proxy_url.origin;
+    derived.downloaderProtocol = remote_proxy_protocol;
+    derived.downloaderWSURL = `${ws_protocol(remote_proxy_protocol)}://${remote_proxy_url.host}/ws/v1/download_task`;
   }
   const ua = navigator.userAgent || navigator.platform || "";
 
@@ -125,25 +131,6 @@ var WXEnv = (() => {
     return protocol === "https" ? "wss" : "ws";
   }
 
-  function download_origin() {
-    const value = get("remoteServerEnabled")
-      ? get("remoteServerOrigin")
-      : get("apiOrigin");
-    return String(value || "").replace(/\/$/, "");
-  }
-
-  function download_server() {
-    const value = download_origin();
-    if (!value) {
-      return { addr: "", protocol: "" };
-    }
-    const url = new URL(value);
-    return {
-      addr: url.host,
-      protocol: url.protocol.replace(":", ""),
-    };
-  }
-
   function assets_base_URL() {
     const cfg = config();
     const explicitBase = own_value(cfg, "assets_base_url");
@@ -154,10 +141,7 @@ var WXEnv = (() => {
       return String(cfg.apiOrigin).replace(/\/$/, "") + "/__assets";
     }
     if (cfg.apiServerProtocol && cfg.apiServerAddr) {
-      return (
-        origin(cfg.apiServerProtocol, cfg.apiServerAddr) +
-        "/__assets"
-      );
+      return origin(cfg.apiServerProtocol, cfg.apiServerAddr) + "/__assets";
     }
     if (cfg.Protocol && cfg.Addr) {
       return origin(cfg.Protocol, cfg.Addr) + "/__assets";
@@ -176,6 +160,9 @@ var WXEnv = (() => {
 
   return {
     get,
+    merge(value) {
+      Object.assign(derived, value);
+    },
     get config() {
       return config();
     },

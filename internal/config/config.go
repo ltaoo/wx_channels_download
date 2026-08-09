@@ -136,48 +136,6 @@ func (c *Config) LogPath() string {
 	return c.log_path
 }
 
-func (c *Config) LogGlobalScriptPath() {
-	if c == nil {
-		return
-	}
-	config_key := "inject.globalScript"
-	resolved_path := c.GetString(config_key)
-	raw_script_path := strings.TrimSpace(viper.GetString(config_key))
-	if resolved_path == "" {
-		c.logger.Info().
-			Str("file", "internal/config/config.go").
-			Str("config_key", config_key).
-			Str("raw_path", raw_script_path).
-			Str("workdir", c.WorkDir).
-			Str("rootdir", c.RootDir).
-			Msg("config LogGlobalScriptPath: configured script path is not resolved")
-		return
-	}
-	info, err := os.Stat(resolved_path)
-	if err != nil {
-		c.logger.Info().
-			Err(err).
-			Str("file", "internal/config/config.go").
-			Str("config_key", config_key).
-			Str("raw_path", raw_script_path).
-			Str("workdir", c.WorkDir).
-			Str("rootdir", c.RootDir).
-			Str("resolved_path", resolved_path).
-			Msg("config LogGlobalScriptPath: configured script path does not exist")
-		return
-	}
-	c.logger.Info().
-		Str("file", "internal/config/config.go").
-		Str("config_key", config_key).
-		Str("raw_path", raw_script_path).
-		Str("workdir", c.WorkDir).
-		Str("rootdir", c.RootDir).
-		Str("resolved_path", resolved_path).
-		Bool("is_dir", info.IsDir()).
-		Int64("size", info.Size()).
-		Msg("config LogGlobalScriptPath: configured script path resolved")
-}
-
 func (ctx ConfigValueContext) Get(key string) interface{} {
 	if ctx.Config == nil {
 		return viper.Get(key)
@@ -263,6 +221,14 @@ func (c *Config) LoadConfig() error {
 		Title:        "工作目录",
 		Group:        "General",
 		ProcessValue: ResolveWorkDirValue,
+	})
+	Register(ConfigField{
+		Key:         "proxy.enabled",
+		Type:        ConfigTypeBool,
+		Default:     true,
+		Description: "是否启动代理服务",
+		Title:       "启动代理服务",
+		Group:       "Proxy",
 	})
 	Register(ConfigField{
 		Key:         "proxy.system",

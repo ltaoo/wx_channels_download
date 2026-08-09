@@ -55,6 +55,7 @@ var _ hermes.ResourceOutputStore = (*DBTaskStore)(nil)
 var _ hermes.ResourceCleanupStore = (*DBTaskStore)(nil)
 var _ hermes.StreamSegmentStore = (*DBTaskStore)(nil)
 var _ hermes.StreamResultStore = (*DBTaskStore)(nil)
+var _ hermes.ProgressBatchStore = (*DBTaskStore)(nil)
 
 func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 	var task model.DownloadTask
@@ -329,13 +330,44 @@ func (s *DBTaskStore) DeleteStaleResources(task_id int, stale_resource_ids []int
 
 func (s *DBTaskStore) UpdateResourceProgress(resource_id int, downloaded int64, speed int64) error {
 	now := time.Now().UnixMilli()
-	if err := s.db.Exec(`UPDATE download_connection SET speed = ?, bytes = ?, last_active = ?, updated_at = ?
+	return s.updateResourceProgress(s.db, resource_id, downloaded, speed, now)
+}
+
+func (s *DBTaskStore) updateResourceProgress(db *gorm.DB, resource_id int, downloaded int64, speed int64, now int64) error {
+	if err := db.Exec(`UPDATE download_connection SET speed = ?, bytes = ?, last_active = ?, updated_at = ?
 		WHERE endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id = ?)`,
 		speed, downloaded, now, now, resource_id).Error; err != nil {
 		return err
 	}
-	return s.db.Model(&model.DownloadResource{}).Where("id = ?", resource_id).
-		Updates(map[string]any{"status": 1, "downloaded": downloaded, "speed": speed, "updated_at": now}).Error
+	return db.Exec(`UPDATE download_resource SET status = 1, downloaded = ?, speed = ?, updated_at = ? WHERE id = ?`,
+		downloaded, speed, now, resource_id).Error
+}
+
+func (s *DBTaskStore) UpdateResourceSegmentProgress(resource_id int, segment_id int, downloaded int64, speed int64) error {
+	now := time.Now().UnixMilli()
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE download_segment SET downloaded = ?, updated_at = ? WHERE id = ?`,
+			downloaded, now, segment_id).Error; err != nil {
+			return err
+		}
+		return s.updateResourceProgress(tx, resource_id, downloaded, speed, now)
+	})
+}
+
+func (s *DBTaskStore) UpdateAggregateResourceProgress(resource_id int, updates []hermes.SegmentProgressUpdate, downloaded int64, speed int64) error {
+	now := time.Now().UnixMilli()
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, update := range updates {
+			if update.SegmentID <= 0 {
+				continue
+			}
+			if err := tx.Exec(`UPDATE download_segment SET downloaded = ?, updated_at = ? WHERE id = ?`,
+				update.Downloaded, now, update.SegmentID).Error; err != nil {
+				return err
+			}
+		}
+		return s.updateResourceProgress(tx, resource_id, downloaded, speed, now)
+	})
 }
 
 func (s *DBTaskStore) UpdateResourceSizeByID(resource_id int, size int64) error {

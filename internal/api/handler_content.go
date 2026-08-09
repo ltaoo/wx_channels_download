@@ -12,11 +12,11 @@ import (
 	result "wx_channel/internal/util"
 )
 
-func (c *APIClient) handleCompatVideoList(ctx *gin.Context) {
+func (c *APIClient) handle_compat_video_list(ctx *gin.Context) {
 	c.handleCompatContentListWithType(ctx, "video")
 }
 
-func (c *APIClient) handleCompatContentList(ctx *gin.Context) {
+func (c *APIClient) handle_compat_content_list(ctx *gin.Context) {
 	c.handleCompatContentListWithType(ctx, "")
 }
 
@@ -69,14 +69,14 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 	}
 
 	pageResult, err := c.content_service.ListContents(services.ContentListOptions{
-		AccountID:   accountID,
-		Type: contentType,
-		Keyword:     keyword,
-		StartAt:     body.StartAt,
-		EndAt:       body.EndAt,
-		Page:        page,
-		PageSize:    size,
-		Offset:      &offset,
+		AccountID: accountID,
+		Type:      contentType,
+		Keyword:   keyword,
+		StartAt:   body.StartAt,
+		EndAt:     body.EndAt,
+		Page:      page,
+		PageSize:  size,
+		Offset:    &offset,
 	})
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -85,7 +85,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 	result.Ok(ctx, pageResult)
 }
 
-func (c *APIClient) handleContentDetail(ctx *gin.Context) {
+func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 	if c.content_service == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
@@ -130,23 +130,23 @@ func (c *APIClient) handleContentDetail(ctx *gin.Context) {
 	}
 
 	result.Ok(ctx, gin.H{
-		"id":              item.ID,
-		"platform_id":     item.PlatformID,
-		"type":            item.Type,
-		"external_id":     item.ExternalID,
-		"external_id2":    item.ExternalID2,
-		"external_id3":    item.ExternalID3,
-		"title":           item.Title,
-		"description":     item.Description,
-		"url":             item.URL,
-		"source_url":      item.SourceURL,
-		"cover_url":       item.CoverURL,
-		"cover_width":     item.CoverWidth,
-		"cover_height":    item.CoverHeight,
-		"publish_time":    item.PublishTime,
-		"accounts":        item.Accounts,
-		"download_tasks":  item.DownloadTasks,
-		"resources":       resources,
+		"id":             item.ID,
+		"platform_id":    item.PlatformID,
+		"type":           item.Type,
+		"external_id":    item.ExternalID,
+		"external_id2":   item.ExternalID2,
+		"external_id3":   item.ExternalID3,
+		"title":          item.Title,
+		"description":    item.Description,
+		"url":            item.URL,
+		"source_url":     item.SourceURL,
+		"cover_url":      item.CoverURL,
+		"cover_width":    item.CoverWidth,
+		"cover_height":   item.CoverHeight,
+		"publish_time":   item.PublishTime,
+		"accounts":       item.Accounts,
+		"download_tasks": item.DownloadTasks,
+		"resources":      resources,
 	})
 }
 

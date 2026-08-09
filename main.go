@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	stdlog "log"
 	"os"
 	"path/filepath"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"wx_channel/internal/config"
 )
 
-var AppVer = "26072315"
+var AppVer = "260808"
 var Mode = "debug"
 
 func main() {
@@ -26,6 +27,9 @@ func main() {
 		return
 	}
 	defer log_file.Close()
+	stdLogger := logger.With().Str("source", "stdlog").Logger()
+	stdlog.SetOutput(&stdLogger)
+	stdlog.SetFlags(0)
 
 	cfg := config.New(AppVer, Mode, logger, log_file, log_path)
 	if err := cmd.Execute(cfg); err != nil {

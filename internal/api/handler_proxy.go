@@ -36,11 +36,11 @@ type proxyCertificateGenerateBody struct {
 	ValidYears int    `json:"valid_years"`
 }
 
-func (c *APIClient) handleProxyStatus(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_status(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_config_update(ctx *gin.Context) {
 	if c.cfg == nil || c.cfg.Original == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
@@ -57,7 +57,7 @@ func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
 
 	updated := map[string]interface{}{}
 	for key, value := range body.Values {
-		converted, err := convertServiceConfigValue(key, value)
+		converted, err := convert_service_config_value(key, value)
 		if err != nil {
 			result.Err(ctx, 400, err.Error())
 			return
@@ -82,7 +82,7 @@ func (c *APIClient) handleProxyConfigUpdate(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyRestart(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_restart(ctx *gin.Context) {
 	if err := c.restartProxyService(); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -90,7 +90,7 @@ func (c *APIClient) handleProxyRestart(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxySystemEnable(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_system_enable(ctx *gin.Context) {
 	settings := c.systemProxySettings()
 	if err := system.EnableProxy(settings); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -103,7 +103,7 @@ func (c *APIClient) handleProxySystemEnable(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxySystemDisable(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_system_disable(ctx *gin.Context) {
 	settings := c.systemProxySettings()
 	if err := system.DisableProxy(settings); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -116,11 +116,11 @@ func (c *APIClient) handleProxySystemDisable(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyCertificateStatus(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_status(ctx *gin.Context) {
 	result.Ok(ctx, c.certificateStatusData())
 }
 
-func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 	if c.cfg == nil || c.cfg.Original == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
@@ -180,7 +180,7 @@ func (c *APIClient) handleProxyCertificateGenerate(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_install(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	if err := certificate.InstallCertificate(cert.Cert); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -189,7 +189,7 @@ func (c *APIClient) handleProxyCertificateInstall(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyCertificateUninstall(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_uninstall(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	if err := certificate.UninstallCertificate(cert.Name); err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -202,7 +202,7 @@ type uninstallCertByNameBody struct {
 	Name string `json:"name"`
 }
 
-func (c *APIClient) handleProxyCertificateUninstallByName(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_uninstall_by_name(ctx *gin.Context) {
 	var body uninstallCertByNameBody
 	if err := ctx.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		result.Err(ctx, 400, "缺少证书名称")
@@ -216,7 +216,7 @@ func (c *APIClient) handleProxyCertificateUninstallByName(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	if c.cfg == nil || c.cfg.Original == nil {
 		result.Err(ctx, 500, "配置未初始化")
 		return
@@ -275,7 +275,7 @@ func (c *APIClient) handleProxyCertificateReplace(ctx *gin.Context) {
 	result.Ok(ctx, c.proxyStatusData())
 }
 
-func (c *APIClient) handleProxyCertificatePEM(ctx *gin.Context) {
+func (c *APIClient) handle_proxy_certificate_pem(ctx *gin.Context) {
 	cert := services.LoadCertFiles()
 	ctx.Header("Content-Type", "application/x-pem-file; charset=utf-8")
 	ctx.Header("Content-Disposition", `attachment; filename="root-ca.pem"`)
@@ -312,6 +312,7 @@ func (c *APIClient) proxyConfigData() gin.H {
 		"hostname":               host,
 		"port":                   port,
 		"addr":                   net.JoinHostPort(host, strconv.Itoa(port)),
+		"enabled":                original == nil || original.GetBool("proxy.enabled"),
 		"system":                 original != nil && original.GetBool("proxy.system"),
 		"tun":                    original != nil && original.GetBool("proxy.tun"),
 		"default_interface":      getConfigString(original, "proxy.defaultInterface"),
@@ -346,7 +347,7 @@ func (c *APIClient) proxyServiceStatusData() gin.H {
 		"name":      "interceptor",
 		"addr":      addr,
 		"status":    status,
-		"listening": addr != "" && checkPort(addr),
+		"listening": addr != "" && check_port(addr),
 	}
 }
 
@@ -465,7 +466,7 @@ func (c *APIClient) systemProxySettings() system.ProxySettings {
 	}
 }
 
-func serviceConfigBool(value interface{}) (bool, error) {
+func service_config_bool(value interface{}) (bool, error) {
 	switch v := value.(type) {
 	case bool:
 		return v, nil

@@ -288,6 +288,37 @@ body {
     border-radius: 4px;
     background: #fff;
 }
+.preview-overlay .preview-body.zip-mode {
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+.zip-gallery {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+.zip-item {
+    background: #14171f;
+    border: 1px solid #2a2d35;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.zip-item img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    background: #0b0c0f;
+    display: block;
+}
+.zip-caption {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* States */
 .state-msg {
@@ -351,6 +382,15 @@ function statusBadgeClass(s) {
 
 function fileTypeIcon(ft) {
     return TYPE_ICONS[ft] || TYPE_ICONS.other;
+}
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 async function init() {
@@ -489,6 +529,7 @@ function previewFile(index) {
     const url = `/file?path=${encodeURIComponent(f.local_path)}`;
 
     let bodyHTML = '';
+    let bodyClass = 'preview-body';
     if (ft === 'image') {
         bodyHTML = `<img src="${url}" alt="${f.name}">`;
     } else if (ft === 'video') {
@@ -497,6 +538,9 @@ function previewFile(index) {
         bodyHTML = `<audio controls autoplay><source src="${url}">Your browser does not support audio.</audio>`;
     } else if (ft === 'html') {
         bodyHTML = `<iframe src="${url}" sandbox="allow-same-origin"></iframe>`;
+    } else if (ft === 'zip') {
+        bodyClass += ' zip-mode';
+        bodyHTML = '<div class="state-msg"><div class="spinner"></div><p>Loading zip preview...</p></div>';
     } else {
         bodyHTML = `<div class="state-msg"><p>${f.name}</p><p style="margin-top:8px">${formatBytes(f.size)}</p><p style="margin-top:12px"><a href="${url}" style="color:#4a6fa5">Download / Open</a></p></div>`;
     }
@@ -509,13 +553,44 @@ function previewFile(index) {
             <span class="preview-name">${f.name}</span>
             <button onclick="closePreview()">Close</button>
         </div>
-        <div class="preview-body">${bodyHTML}</div>
+        <div class="${bodyClass}">${bodyHTML}</div>
     `;
     panel.addEventListener('click', function(e) {
         if (e.target === this) closePreview();
     });
     document.body.appendChild(panel);
     document.body.style.overflow = 'hidden';
+
+    if (ft === 'zip') {
+        loadZipPreview(f, panel);
+    }
+}
+
+async function loadZipPreview(file, panel) {
+    const body = panel.querySelector('.preview-body');
+    const downloadURL = `/file?path=${encodeURIComponent(file.local_path)}`;
+    try {
+        const resp = await fetch(`/api/file?path=${encodeURIComponent(file.local_path)}`);
+        if (!resp.ok) throw new Error('Failed to read zip');
+        const json = await resp.json();
+        if (json.code !== 0) throw new Error(json.msg || 'Failed to read zip');
+
+        const images = (json.data && json.data.images) || [];
+        if (!images.length) {
+            body.innerHTML = `<div class="state-msg"><p>No previewable images in zip</p><p style="margin-top:12px"><a href="${downloadURL}" style="color:#4a6fa5">Download / Open</a></p></div>`;
+            return;
+        }
+
+        body.innerHTML = '<div class="zip-gallery">' + images.map(img => `
+            <figure class="zip-item" title="${escapeHtml(img.name)}">
+                <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name)}" loading="lazy">
+                <figcaption class="zip-caption">${escapeHtml(img.name)}</figcaption>
+            </figure>
+        `).join('') + '</div>';
+    } catch (e) {
+        console.error(e);
+        body.innerHTML = `<div class="state-msg"><p>${escapeHtml(e.message)}</p><p style="margin-top:12px"><a href="${downloadURL}" style="color:#4a6fa5">Download / Open</a></p></div>`;
+    }
 }
 
 function closePreview() {

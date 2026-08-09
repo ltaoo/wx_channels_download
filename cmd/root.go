@@ -33,14 +33,14 @@ var root_cmd = &cobra.Command{
 	Short: "启动下载程序",
 	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		is_start_command := !cmd.HasParent()
-		if is_start_command {
+		is_root_start_command := !cmd.HasParent()
+		if is_root_start_command {
 			start_command_invoked = true
 		}
 		if err := application.PrepareConfig(Cfg, config_filepath); err != nil {
 			return err
 		}
-		should_exit, err := application.PrepareStartPrivileges(is_start_command)
+		should_exit, err := application.PrepareStartPrivileges(is_root_start_command)
 		if err != nil {
 			return err
 		}

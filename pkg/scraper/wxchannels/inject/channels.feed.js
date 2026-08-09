@@ -115,55 +115,59 @@
     },
   });
 
-  WXU.observe_node({ selector: ".slides-scroll", container: "#app", onOk: function ($scroll_view) {
-    // console.log("[feed.js].slides-scroll found, setting up MutationObserver");
-    var observer = new MutationObserver(function (mutations) {
-      mutations.forEach(function (mutation) {
-        if (mutation.type !== "childList") return;
-        mutation.addedNodes.forEach(function (node) {
-          if (node.nodeType !== 1 || !node.matches) return;
-          // .slides-item is reused DOM and won't be added; listen for new .click-box.op-item children instead
-          if (node.matches(".click-box.op-item")) {
-            // console.log("[feed.js]matched .click-box.op-item node");
-            handleOpItem(node);
+  WXU.observe_node({
+    selector: ".slides-scroll",
+    container: "#app",
+    onOk: function ($scroll_view) {
+      // console.log("[feed.js].slides-scroll found, setting up MutationObserver");
+      var observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          if (mutation.type !== "childList") return;
+          mutation.addedNodes.forEach(function (node) {
+            if (node.nodeType !== 1 || !node.matches) return;
+            // .slides-item is reused DOM and won't be added; listen for new .click-box.op-item children instead
+            if (node.matches(".click-box.op-item")) {
+              // console.log("[feed.js]matched .click-box.op-item node");
+              handle_option(node);
+              return;
+            }
+            if (node.querySelectorAll) {
+              var $opItems = node.querySelectorAll(".click-box.op-item");
+              if ($opItems.length > 0) {
+                // console.log(
+                //   "[feed.js]found",
+                //   $opItems.length,
+                //   ".click-box.op-item inside added node",
+                // );
+                $opItems.forEach(function ($opItem) {
+                  handle_option($opItem);
+                });
+              }
+            }
+          });
+        });
+        function handle_option($opItem) {
+          // Confirm inside .slides-item
+          var $slide = $opItem.closest(".slides-item");
+          if (!$slide) {
+            console.log("[feed.js]op-item not inside .slides-item, skip");
             return;
           }
-          if (node.querySelectorAll) {
-            var $opItems = node.querySelectorAll(".click-box.op-item");
-            if ($opItems.length > 0) {
-              // console.log(
-              //   "[feed.js]found",
-              //   $opItems.length,
-              //   ".click-box.op-item inside added node",
-              // );
-              $opItems.forEach(function ($opItem) {
-                handleOpItem($opItem);
-              });
-            }
+          if ($slide.querySelector(".download-icon")) {
+            // console.log(
+            //   "[feed.js].download-icon already exists in this slide, skip",
+            // );
+            return;
           }
-        });
+          var $parent = $opItem.parentElement;
+          if ($parent) {
+            insert_download_btn($parent);
+          }
+        }
       });
-      function handleOpItem($opItem) {
-        // Confirm inside .slides-item
-        var $slide = $opItem.closest(".slides-item");
-        if (!$slide) {
-          console.log("[feed.js]op-item not inside .slides-item, skip");
-          return;
-        }
-        if ($slide.querySelector(".download-icon")) {
-          // console.log(
-          //   "[feed.js].download-icon already exists in this slide, skip",
-          // );
-          return;
-        }
-        var $parent = $opItem.parentElement;
-        if ($parent) {
-          insert_download_btn($parent);
-        }
-      }
-    });
-    observer.observe($scroll_view, { childList: true, subtree: true });
-  }});
+      observer.observe($scroll_view, { childList: true, subtree: true });
+    },
+  });
 })();
 
 WXU.onDOMContentLoaded(function () {

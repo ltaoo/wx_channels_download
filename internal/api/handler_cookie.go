@@ -9,10 +9,10 @@ import (
 	"wx_channel/pkg/cookies"
 )
 
-// handleCookieExtract imports Chrome cookies into workdir/cookies.json and
+// handle_cookie_extract imports Chrome cookies into workdir/cookies.json and
 // returns them to the caller. Browser and operating-system details belong to
 // the cookies package.
-func (c *APIClient) handleCookieExtract(ctx *gin.Context) {
+func (c *APIClient) handle_cookie_extract(ctx *gin.Context) {
 	cookiePath := filepath.Join(c.cfg.WorkDir, "cookies.json")
 	imported, err := cookies.ImportChrome(cookies.ChromeImportOptions{
 		Domain:     ctx.Query("domain"),

@@ -15,7 +15,7 @@ func embeddedRootFS() fs.FS {
 }
 
 func embeddedSrcFS() fs.FS {
-	return nil
+	return emptyFS{}
 }
 
 func embeddedInjectFS() fs.FS {
@@ -26,4 +26,10 @@ func embeddedInjectFS() fs.FS {
 func embeddedPublicFS() fs.FS {
 	sub, _ := fs.Sub(injectFS, "public")
 	return sub
+}
+
+type emptyFS struct{}
+
+func (emptyFS) Open(name string) (fs.File, error) {
+	return nil, fs.ErrNotExist
 }

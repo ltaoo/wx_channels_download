@@ -26,6 +26,52 @@ type CreateDownloadTaskRequest struct {
 	Objects []services.CreateDownloadTaskBody `json:"objects"`
 }
 
+// DownloadTaskItem is the compact task shape returned after creating a task.
+type DownloadTaskItem struct {
+	ID           int                    `json:"id"`
+	ContentID    *string                `json:"content_id,omitempty"`
+	ParentTaskID *int                   `json:"parent_task_id,omitempty"`
+	RootTaskID   int                    `json:"root_task_id"`
+	RelationType string                 `json:"relation_type,omitempty"`
+	Name         string                 `json:"name"`
+	UniqueID     string                 `json:"unique_id"`
+	PlatformID   string                 `json:"platform_id"`
+	Status       int                    `json:"status"`
+	SourceURL    string                 `json:"source_url,omitempty"`
+	CoverURL     string                 `json:"cover_url,omitempty"`
+	CoverWidth   string                 `json:"cover_width,omitempty"`
+	CoverHeight  string                 `json:"cover_height,omitempty"`
+	ConfigJSON   string                 `json:"config_json,omitempty"`
+	MetadataJSON string                 `json:"metadata_json,omitempty"`
+	ErrorMessage string                 `json:"error_message,omitempty"`
+	Resources    []DownloadResourceItem `json:"resources"`
+	CreatedAt    int64                  `json:"created_at"`
+	UpdatedAt    int64                  `json:"updated_at"`
+}
+
+// DownloadResourceItem is the compact resource shape embedded in DownloadTaskItem.
+type DownloadResourceItem struct {
+	ID         int     `json:"id"`
+	TaskID     int     `json:"task_id"`
+	ContentID  *string `json:"content_id,omitempty"`
+	Name       string  `json:"name"`
+	Kind       string  `json:"kind"`
+	Type       string  `json:"type"`
+	UniqueID   string  `json:"unique_id"`
+	Size       int64   `json:"size"`
+	Downloaded int64   `json:"downloaded"`
+	Speed      int64   `json:"speed"`
+	Status     int     `json:"status"`
+	OutputPath string  `json:"output_path,omitempty"`
+}
+
+// DownloadTaskCreateItem is the per-object result shape in the batch create response.
+type DownloadTaskCreateItem struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data any    `json:"data"`
+}
+
 // taskV1IDsBody is a request body with task_ids for batch operations (start/pause/resume).
 type taskV1IDsBody struct {
 	TaskIDs []int `json:"task_ids"`
@@ -209,9 +255,9 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 	}, nil
 }
 
-// handlePrepareDownloadTask batch-previews platform download tasks.
+// handle_prepare_download_task batch-previews platform download tasks.
 // POST /api/v1/download_task/prepare
-func (c *APIClient) handlePrepareDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_prepare_download_task(ctx *gin.Context) {
 	var req CreateDownloadTaskRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -300,9 +346,9 @@ func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLB
 	}, nil
 }
 
-// handlePrepareDownloadTaskByURL batch-previews download tasks created by resource URL.
+// handle_prepare_download_task_by_url batch-previews download tasks created by resource URL.
 // POST /api/v1/download_task/prepare_by_url
-func (c *APIClient) handlePrepareDownloadTaskByURL(ctx *gin.Context) {
+func (c *APIClient) handle_prepare_download_task_by_url(ctx *gin.Context) {
 	var req CreateDownloadTaskByURLRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -326,29 +372,103 @@ func (c *APIClient) handlePrepareDownloadTaskByURL(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"previews": previews})
 }
 
-// createDownloadTaskSingle creates a single platform download task and returns the result data or error.
-func (c *APIClient) createDownloadTaskSingle(body services.CreateDownloadTaskBody) (gin.H, error) {
+// createDownloadTaskSingle creates a single platform download task and returns the compact task item or error.
+func (c *APIClient) createDownloadTaskSingle(body services.CreateDownloadTaskBody) (DownloadTaskItem, error) {
 	if c.download_task_service == nil {
-		return nil, fmt.Errorf("下载任务服务未初始化")
+		return DownloadTaskItem{}, fmt.Errorf("下载任务服务未初始化")
 	}
 	result, err := c.download_task_service.CreateTask(body)
 	if err != nil {
-		return nil, err
+		return DownloadTaskItem{}, err
 	}
-	return gin.H{
-		"task":      result.Task,
-		"resource":  result.Resource,
-		"endpoint":  result.Endpoint,
-		"resources": result.Resources,
-		"endpoints": result.Endpoints,
-		"content":   result.Content,
-		"account":   result.Account,
-	}, nil
+	return buildDownloadTaskItem(result), nil
 }
 
-// handleCreateDownloadTask batch-creates platform download tasks.
+func buildDownloadTaskItem(result *services.CreateTaskResult) DownloadTaskItem {
+	if result == nil {
+		return DownloadTaskItem{}
+	}
+	task := result.Task
+	resources := make([]DownloadResourceItem, 0, len(result.Resources))
+	for _, resource := range result.Resources {
+		resources = append(resources, buildDownloadResourceItem(resource))
+	}
+	return DownloadTaskItem{
+		ID:           task.Id,
+		ContentID:    task.ContentId,
+		ParentTaskID: task.ParentTaskID,
+		RootTaskID:   task.RootTaskID,
+		RelationType: task.RelationType,
+		Name:         task.Name,
+		UniqueID:     task.UniqueID,
+		PlatformID:   task.PlatformId,
+		Status:       task.Status,
+		SourceURL:    task.SourceURL,
+		CoverURL:     task.CoverURL,
+		CoverWidth:   task.CoverWidth,
+		CoverHeight:  task.CoverHeight,
+		ConfigJSON:   task.ConfigJSON,
+		MetadataJSON: task.MetadataJSON,
+		ErrorMessage: task.ErrorMessage,
+		Resources:    resources,
+		CreatedAt:    task.CreatedAt,
+		UpdatedAt:    task.UpdatedAt,
+	}
+}
+
+func buildDownloadResourceItem(resource model.DownloadResource) DownloadResourceItem {
+	return DownloadResourceItem{
+		ID:         resource.Id,
+		TaskID:     resource.TaskId,
+		ContentID:  resource.ContentId,
+		Name:       resource.Name,
+		Kind:       resource.Kind,
+		Type:       resource.Type,
+		UniqueID:   resource.UniqueID,
+		Size:       resource.Size,
+		Downloaded: resource.Downloaded,
+		Speed:      resource.Speed,
+		Status:     resource.Status,
+		OutputPath: resource.Name,
+	}
+}
+
+func downloadTaskCreateSuccessItem(data DownloadTaskItem) DownloadTaskCreateItem {
+	return DownloadTaskCreateItem{
+		Code: result.CodeSuccess,
+		Msg:  result.GetMsg(result.CodeSuccess),
+		Data: data,
+	}
+}
+
+func downloadTaskCreateFailedItem(code int, msg string, data any) DownloadTaskCreateItem {
+	if data == nil {
+		data = gin.H{}
+	}
+	return DownloadTaskCreateItem{
+		Code: code,
+		Msg:  msg,
+		Data: data,
+	}
+}
+
+func duplicateDownloadTaskData(err *services.DuplicateTaskError) gin.H {
+	data := gin.H{}
+	if err == nil {
+		return data
+	}
+	if err.ExistingTaskID > 0 {
+		data["id"] = err.ExistingTaskID
+	}
+	if err.ExistingTaskName != "" {
+		data["name"] = err.ExistingTaskName
+	}
+	return data
+}
+
+// handle_create_download_task batch-creates platform download tasks.
 // POST /api/v1/download_task/create
-func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 	var req CreateDownloadTaskRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/create").Err(err).Msg("Failed to parse request body")
@@ -356,14 +476,14 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		return
 	}
 	if len(req.Objects) == 0 {
-		result.Err(ctx, 400, "请求体不能为空数组")
+		result.Err(ctx, 400, "没有传入要下载的内容")
 		return
 	}
 
 	c.logger.Info().Str("api", "POST /api/v1/download_task/create").Int("object_count", len(req.Objects)).Msg("Received batch create download task request")
 
 	var duplicateErr *services.DuplicateTaskError
-	tasks := make([]gin.H, 0, len(req.Objects))
+	tasks := make([]DownloadTaskCreateItem, 0, len(req.Objects))
 	ids := make([]int, 0, len(req.Objects))
 	successCount := 0
 	failCount := 0
@@ -371,34 +491,21 @@ func (c *APIClient) handleCreateDownloadTask(ctx *gin.Context) {
 		data, err := c.createDownloadTaskSingle(body)
 		if err != nil {
 			if errors.As(err, &duplicateErr) {
-				// Single task conflict: return business code 409 (HTTP 200), frontend prompts user
-				if len(req.Objects) == 1 {
-					c.logger.Warn().
-						Str("api", "POST /api/v1/download_task/create").
-						Int("existing_task_id", duplicateErr.ExistingTaskID).
-						Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
-						Msg("Task conflict, already exists")
-					resp := gin.H{"existing_task_id": duplicateErr.ExistingTaskID}
-					result.ErrWithData(ctx, result.CodeDuplicateTask, duplicateErr.Error(), resp)
-					return
-				}
 				c.logger.Warn().
 					Str("api", "POST /api/v1/download_task/create").
 					Int("existing_task_id", duplicateErr.ExistingTaskID).
 					Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
 					Msg("Task conflict in batch, skipping")
-				tasks = append(tasks, gin.H{"success": false, "error": err.Error(), "duplicate": true, "existing_task_id": duplicateErr.ExistingTaskID})
+				tasks = append(tasks, downloadTaskCreateFailedItem(result.CodeDuplicateTask, err.Error(), duplicateDownloadTaskData(duplicateErr)))
 				failCount++
 				continue
 			}
 			c.logger.Warn().Str("platform", body.Platform).Err(err).Msg("Failed to create download task")
-			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})
+			tasks = append(tasks, downloadTaskCreateFailedItem(result.CodeInvalidParams, err.Error(), gin.H{}))
 			failCount++
 		} else {
-			tasks = append(tasks, gin.H{"success": true, "data": data})
-			if task, ok := data["task"].(model.DownloadTask); ok {
-				ids = append(ids, task.Id)
-			}
+			tasks = append(tasks, downloadTaskCreateSuccessItem(data))
+			ids = append(ids, data.ID)
 			successCount++
 		}
 	}
@@ -529,9 +636,9 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 	}, nil
 }
 
-// handleCreateDownloadTaskByURL batch-creates download tasks by resource URL.
+// handle_create_download_task_by_url batch-creates download tasks by resource URL.
 // POST /api/v1/download_task/create_by_url
-func (c *APIClient) handleCreateDownloadTaskByURL(ctx *gin.Context) {
+func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	var req CreateDownloadTaskByURLRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/create_by_url").Err(err).Msg("Failed to parse request body")
@@ -570,9 +677,9 @@ func (c *APIClient) handleCreateDownloadTaskByURL(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"tasks": tasks})
 }
 
-// handleStartDownloadTask batch-starts download tasks.
+// handle_start_download_task batch-starts download tasks.
 // POST /api/v1/download_task/start
-func (c *APIClient) handleStartDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_start_download_task(ctx *gin.Context) {
 	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Err(err).Msg("Failed to parse request body")
@@ -628,9 +735,9 @@ func (c *APIClient) handleStartDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handlePauseDownloadTask batch-pauses download tasks.
+// handle_pause_download_task batch-pauses download tasks.
 // POST /api/v1/download_task/pause
-func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -693,9 +800,9 @@ func (c *APIClient) handlePauseDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handleResumeDownloadTask batch-resumes download tasks.
+// handle_resume_download_task batch-resumes download tasks.
 // POST /api/v1/download_task/resume
-func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
 	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -744,9 +851,9 @@ func (c *APIClient) handleResumeDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handleRetryDownloadTask batch-retries failed/cancelled download tasks.
+// handle_retry_download_task batch-retries failed/cancelled download tasks.
 // POST /api/v1/download_task/retry
-func (c *APIClient) handleRetryDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 	var body taskV1IDsBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Err(err).Msg("Failed to parse request body")
@@ -805,9 +912,9 @@ func (c *APIClient) handleRetryDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"results": results})
 }
 
-// handleDeleteDownloadTask batch-deletes download tasks.
+// handle_delete_download_task batch-deletes download tasks.
 // POST /api/v1/download_task/delete
-func (c *APIClient) handleDeleteDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 	var body deleteDownloadTasksBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Err(err).Msg("Failed to parse request body")
@@ -1159,12 +1266,12 @@ func (c *APIClient) logDownloadTaskLocalFile(taskID int, resource model.Download
 	event.Bool("exists", false).Err(err).Msg("Associated local file candidate inspection failed")
 }
 
-// handleCheckDownloadTaskFiles checks a page of task files without delaying the
+// handle_check_download_task_files checks a page of task files without delaying the
 // task-list response. Paths supplied by the browser are never accessed directly:
 // resource IDs are matched to their persisted task and resolved under the task's
 // configured download roots.
 // POST /api/v1/download_task/check_files
-func (c *APIClient) handleCheckDownloadTaskFiles(ctx *gin.Context) {
+func (c *APIClient) handle_check_download_task_files(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1272,9 +1379,9 @@ func (c *APIClient) handleCheckDownloadTaskFiles(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"files": checkedFiles})
 }
 
-// handleListDownloadTask lists download tasks.
+// handle_list_download_task lists download tasks.
 // GET /api/v1/download_task/list
-func (c *APIClient) handleListDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1440,9 +1547,9 @@ func buildResourceTree(resources []gin.H) *ResourceTreeNode {
 	return root
 }
 
-// handleStartAllDownloadTask batch-starts download tasks.
+// handle_start_all_download_task batch-starts download tasks.
 // POST /api/v1/download_task/start_all
-func (c *APIClient) handleStartAllDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_start_all_download_task(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1489,9 +1596,9 @@ func (c *APIClient) handleStartAllDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"started": started, "total": len(tasks)})
 }
 
-// handlePauseAllDownloadTask batch-pauses download tasks.
+// handle_pause_all_download_task batch-pauses download tasks.
 // POST /api/v1/download_task/pause_all
-func (c *APIClient) handlePauseAllDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1552,9 +1659,9 @@ func (c *APIClient) handlePauseAllDownloadTask(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks), "failures": failures})
 }
 
-// handleClearDownloadTask clears completed/failed/cancelled download tasks.
+// handle_clear_download_task clears completed/failed/cancelled download tasks.
 // POST /api/v1/download_task/clear
-func (c *APIClient) handleClearDownloadTask(ctx *gin.Context) {
+func (c *APIClient) handle_clear_download_task(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
@@ -1617,9 +1724,9 @@ func (c *APIClient) hasStreamResources(taskID int) bool {
 	return count > 0
 }
 
-// handleDownloadTaskDetail returns download task detail with enriched file info.
+// handle_download_task_detail returns download task detail with enriched file info.
 // GET /api/v1/download_task/detail
-func (c *APIClient) handleDownloadTaskDetail(ctx *gin.Context) {
+func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
