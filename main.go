@@ -27,10 +27,6 @@ func main() {
 		return
 	}
 	defer log_file.Close()
-	stdLogger := logger.With().Str("source", "stdlog").Logger()
-	stdlog.SetOutput(&stdLogger)
-	stdlog.SetFlags(0)
-
 	cfg := config.New(AppVer, Mode, logger, log_file, log_path)
 	if err := cmd.Execute(cfg); err != nil {
 		fmt.Printf("Failed to run: %v\n", err.Error())
