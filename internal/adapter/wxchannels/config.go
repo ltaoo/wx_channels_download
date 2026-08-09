@@ -90,15 +90,15 @@ func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 // GetChannelsConfig returns the registered channels plugin config if available.
 // Returns nil if the plugin has not been registered.
 func GetChannelsConfig() *ChannelsPluginConfig {
-	return channelsPluginConfig
+	return channels_plugin_config
 }
 
-// channelsPluginConfig is the singleton instance populated during config loading.
-var channelsPluginConfig *ChannelsPluginConfig
+// channels_plugin_config is the singleton instance populated during config loading.
+var channels_plugin_config *ChannelsPluginConfig
 
 func init() {
-	channelsPluginConfig = &ChannelsPluginConfig{}
-	config.RegisterPlugin(channelsPluginConfig)
+	channels_plugin_config = &ChannelsPluginConfig{}
+	config.RegisterPlugin(channels_plugin_config)
 
 	// Legacy alias for backward compatibility; registered with its flat key directly
 	// to avoid the namespace auto-prefix applied by LoadPluginConfigs.

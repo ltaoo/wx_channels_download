@@ -93,12 +93,42 @@ type ChannelsMediaItem struct {
 	URLToken     string              `json:"urlToken"`
 }
 
+func (m *ChannelsMediaItem) UnmarshalJSON(data []byte) error {
+	type alias ChannelsMediaItem
+	aux := &struct {
+		DecodeKey flexibleString `json:"decodeKey"`
+		*alias
+	}{
+		alias: (*alias)(m),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	m.DecodeKey = string(aux.DecodeKey)
+	return nil
+}
+
 type ChannelsMusicInfo struct {
 	DocId             string `json:"docId"`
 	DocType           int    `json:"docType"`
 	Name              string `json:"name"`
 	Artist            string `json:"artist"`
 	MediaStreamingUrl string `json:"mediaStreamingUrl"`
+}
+
+func (m *ChannelsMusicInfo) UnmarshalJSON(data []byte) error {
+	type alias ChannelsMusicInfo
+	aux := &struct {
+		DocId flexibleString `json:"docId"`
+		*alias
+	}{
+		alias: (*alias)(m),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	m.DocId = string(aux.DocId)
+	return nil
 }
 
 type ChannelsFollowPostInfo struct {
@@ -204,6 +234,41 @@ type ChannelsObject struct {
 	LiveInfo      *ChannelsLiveInfo   `json:"liveInfo,omitempty"`
 	Files         []ChannelsMediaItem `json:"files"`
 	AnchorContact *ChannelsContact    `json:"anchorContact,omitempty"`
+}
+
+func (o *ChannelsObject) UnmarshalJSON(data []byte) error {
+	type alias ChannelsObject
+	aux := &struct {
+		ID flexibleString `json:"id"`
+		*alias
+	}{
+		alias: (*alias)(o),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	o.ID = string(aux.ID)
+	return nil
+}
+
+type flexibleString string
+
+func (s *flexibleString) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*s = ""
+		return nil
+	}
+	if raw[0] == '"' {
+		var value string
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		*s = flexibleString(value)
+		return nil
+	}
+	*s = flexibleString(raw)
+	return nil
 }
 
 type ChannelsContactSearchResp struct {

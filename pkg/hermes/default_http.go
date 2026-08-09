@@ -14,27 +14,27 @@ import (
 	"time"
 )
 
-const defaultHTTPProbeSize = 512
+const default_http_probe_size = 512
 
 // defaultHTTPDriver is the dependency-free HTTP/HTTPS driver used by the
 // high-level API. Applications may replace it with RegisterProtocol.
-type defaultHTTPDriver struct {
+type default_http_driver struct {
 	mu      sync.Mutex
 	clients map[string]*http.Client
 }
 
-func newDefaultHTTPDriver() *defaultHTTPDriver {
-	return &defaultHTTPDriver{clients: make(map[string]*http.Client)}
+func new_default_http_driver() *default_http_driver {
+	return &default_http_driver{clients: make(map[string]*http.Client)}
 }
 
-func (d *defaultHTTPDriver) Protocols() []string {
+func (d *default_http_driver) Protocols() []string {
 	return []string{"http", "https"}
 }
 
-func (d *defaultHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (PreparedResource, error) {
-	req, err := d.newRequest(ctx, endpoint, ReadRequest{
+func (d *default_http_driver) Prepare(ctx context.Context, endpoint Endpoint) (PreparedResource, error) {
+	req, err := d.new_request(ctx, endpoint, ReadRequest{
 		OffsetStart: 0,
-		OffsetEnd:   defaultHTTPProbeSize - 1,
+		OffsetEnd:   default_http_probe_size - 1,
 		UseRange:    true,
 	})
 	if err != nil {
@@ -46,7 +46,7 @@ func (d *defaultHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (Pre
 	}
 	defer resp.Body.Close()
 
-	probe, err := io.ReadAll(io.LimitReader(resp.Body, defaultHTTPProbeSize))
+	probe, err := io.ReadAll(io.LimitReader(resp.Body, default_http_probe_size))
 	if err != nil {
 		return PreparedResource{}, fmt.Errorf("read HTTP probe: %w", err)
 	}
@@ -56,7 +56,7 @@ func (d *defaultHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (Pre
 	}
 
 	if resp.StatusCode == http.StatusPartialContent {
-		start, _, total, ok := parseDefaultHTTPContentRange(resp.Header.Get("Content-Range"))
+		start, _, total, ok := parse_default_http_content_range(resp.Header.Get("Content-Range"))
 		if !ok || start != 0 {
 			return PreparedResource{}, errors.New("server returned an invalid Content-Range")
 		}
@@ -66,7 +66,7 @@ func (d *defaultHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (Pre
 	}
 	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 		var total int64
-		if _, scanErr := fmt.Sscanf(strings.TrimSpace(resp.Header.Get("Content-Range")), "bytes */%d", &total); scanErr == nil && total == 0 {
+		if _, scan_err := fmt.Sscanf(strings.TrimSpace(resp.Header.Get("Content-Range")), "bytes */%d", &total); scan_err == nil && total == 0 {
 			return prepared, nil
 		}
 	}
@@ -74,15 +74,15 @@ func (d *defaultHTTPDriver) Prepare(ctx context.Context, endpoint Endpoint) (Pre
 		return PreparedResource{}, fmt.Errorf("resource probe returned status code %d", resp.StatusCode)
 	}
 	if value := resp.Header.Get("Content-Length"); value != "" {
-		if size, parseErr := strconv.ParseInt(value, 10, 64); parseErr == nil && size >= 0 {
+		if size, parse_err := strconv.ParseInt(value, 10, 64); parse_err == nil && size >= 0 {
 			prepared.Size = size
 		}
 	}
 	return prepared, nil
 }
 
-func (d *defaultHTTPDriver) Open(ctx context.Context, endpoint Endpoint, request ReadRequest) (io.ReadCloser, error) {
-	req, err := d.newRequest(ctx, endpoint, request)
+func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, request ReadRequest) (io.ReadCloser, error) {
+	req, err := d.new_request(ctx, endpoint, request)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (d *defaultHTTPDriver) Open(ctx context.Context, endpoint Endpoint, request
 			resp.Body.Close()
 			return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
 		}
-		start, end, _, ok := parseDefaultHTTPContentRange(resp.Header.Get("Content-Range"))
+		start, end, _, ok := parse_default_http_content_range(resp.Header.Get("Content-Range"))
 		if !ok || start != request.OffsetStart || end > request.OffsetEnd {
 			resp.Body.Close()
 			return nil, errors.New("server returned a Content-Range that does not match the request")
@@ -110,7 +110,7 @@ func (d *defaultHTTPDriver) Open(ctx context.Context, endpoint Endpoint, request
 	return resp.Body, nil
 }
 
-func (d *defaultHTTPDriver) newRequest(ctx context.Context, endpoint Endpoint, request ReadRequest) (*http.Request, error) {
+func (d *default_http_driver) new_request(ctx context.Context, endpoint Endpoint, request ReadRequest) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
 	if err != nil {
 		return nil, err
@@ -129,27 +129,27 @@ func (d *defaultHTTPDriver) newRequest(ctx context.Context, endpoint Endpoint, r
 	return req, nil
 }
 
-func (d *defaultHTTPDriver) do(req *http.Request, proxyServer ProxyServer) (*http.Response, error) {
-	proxyURL, err := proxyServer.URL()
+func (d *default_http_driver) do(req *http.Request, proxy_server ProxyServer) (*http.Response, error) {
+	proxy_url, err := proxy_server.URL()
 	if err != nil {
 		return nil, err
 	}
-	client, err := d.client(proxyURL)
+	client, err := d.client(proxy_url)
 	if err != nil {
 		return nil, err
 	}
 	return client.Do(req)
 }
 
-func (d *defaultHTTPDriver) client(rawProxyURL string) (*http.Client, error) {
-	proxyURL, parsedProxyURL, err := normalizeDefaultHTTPProxyURL(rawProxyURL)
+func (d *default_http_driver) client(raw_proxy_url string) (*http.Client, error) {
+	proxy_url, parsed_proxy_url, err := normalize_default_http_proxy_url(raw_proxy_url)
 	if err != nil {
 		return nil, err
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if client := d.clients[proxyURL]; client != nil {
+	if client := d.clients[proxy_url]; client != nil {
 		return client, nil
 	}
 
@@ -164,33 +164,33 @@ func (d *defaultHTTPDriver) client(rawProxyURL string) (*http.Client, error) {
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	if parsedProxyURL != nil {
-		transport.Proxy = http.ProxyURL(parsedProxyURL)
+	if parsed_proxy_url != nil {
+		transport.Proxy = http.ProxyURL(parsed_proxy_url)
 	}
 	client := &http.Client{Transport: transport}
-	d.clients[proxyURL] = client
+	d.clients[proxy_url] = client
 	return client, nil
 }
 
-func normalizeDefaultHTTPProxyURL(rawProxyURL string) (string, *url.URL, error) {
-	rawProxyURL = strings.TrimSpace(rawProxyURL)
-	if rawProxyURL == "" {
+func normalize_default_http_proxy_url(raw_proxy_url string) (string, *url.URL, error) {
+	raw_proxy_url = strings.TrimSpace(raw_proxy_url)
+	if raw_proxy_url == "" {
 		return "", nil, nil
 	}
-	proxyURL, err := url.Parse(rawProxyURL)
-	if err != nil || proxyURL.Host == "" || proxyURL.Hostname() == "" {
+	proxy_url, err := url.Parse(raw_proxy_url)
+	if err != nil || proxy_url.Host == "" || proxy_url.Hostname() == "" {
 		return "", nil, errors.New("invalid proxy URL")
 	}
-	proxyURL.Scheme = strings.ToLower(proxyURL.Scheme)
-	switch proxyURL.Scheme {
+	proxy_url.Scheme = strings.ToLower(proxy_url.Scheme)
+	switch proxy_url.Scheme {
 	case "http", "https", "socks5":
 	default:
-		return "", nil, fmt.Errorf("unsupported proxy scheme %q", proxyURL.Scheme)
+		return "", nil, fmt.Errorf("unsupported proxy scheme %q", proxy_url.Scheme)
 	}
-	return proxyURL.String(), proxyURL, nil
+	return proxy_url.String(), proxy_url, nil
 }
 
-func parseDefaultHTTPContentRange(value string) (start, end, total int64, ok bool) {
+func parse_default_http_content_range(value string) (start, end, total int64, ok bool) {
 	if _, err := fmt.Sscanf(strings.TrimSpace(value), "bytes %d-%d/%d", &start, &end, &total); err != nil {
 		return 0, 0, 0, false
 	}

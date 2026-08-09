@@ -1648,16 +1648,36 @@ function CreateDownloadTaskDialog(props) {
 }
 
 function DownloadTaskSelectionCheckbox(props) {
-  const checked_ = props.checked;
+  const checked_ =
+    props.checked && props.checked.__is_ref
+      ? props.checked
+      : ref(!!props.checked);
+  const indeterminate_ =
+    props.indeterminate && props.indeterminate.__is_ref
+      ? props.indeterminate
+      : computed(checked_, () => !!props.indeterminate);
   const size = props.size || 18;
-  const boxStyle = computed(checked_, (checked) => {
+  const selectState_ = combine(
+    {
+      checked: checked_,
+      indeterminate: indeterminate_,
+    },
+    (state) => {
+      return {
+        checked: !!state.checked,
+        indeterminate: !!state.indeterminate,
+      };
+    },
+  );
+  const boxStyle = computed(selectState_, (state) => {
+    const active = state.checked || state.indeterminate;
     return {
       width: `${size}px`,
       height: `${size}px`,
       "box-sizing": "border-box",
       "border-radius": "4px",
-      border: "1px solid " + (checked ? "#07C160" : "var(--weui-FG-3)"),
-      background: checked ? "#07C160" : "transparent",
+      border: "1px solid " + (active ? "#07C160" : "var(--weui-FG-3)"),
+      background: active ? "#07C160" : "transparent",
       color: "#fff",
       display: "inline-flex",
       "align-items": "center",
@@ -1672,9 +1692,10 @@ function DownloadTaskSelectionCheckbox(props) {
       tabIndex: "0",
       attributes: {
         "aria-label": props.ariaLabel || "选择下载任务",
-        "aria-checked": computed(checked_, (checked) =>
-          checked ? "true" : "false",
-        ),
+        "aria-checked": computed(selectState_, (state) => {
+          if (state.indeterminate) return "mixed";
+          return state.checked ? "true" : "false";
+        }),
       },
       class: props.class || "",
       style: {
@@ -1707,14 +1728,37 @@ function DownloadTaskSelectionCheckbox(props) {
     },
     [
       View({ style: boxStyle }, [
-        Show({
-          when: checked_,
-          ok() {
-            return [
-              Timeless.Icon({ name: "check", size: Math.max(12, size - 4) }),
-            ];
-          },
+        View({
+          style: computed(selectState_, (state) => {
+            return {
+              width: `${Math.max(8, size - 8)}px`,
+              height: "2px",
+              "border-radius": "1px",
+              background: "currentColor",
+              display: state.indeterminate ? "block" : "none",
+            };
+          }),
         }),
+        View(
+          {
+            style: computed(selectState_, (state) => {
+              return {
+                display:
+                  state.checked && !state.indeterminate
+                    ? "inline-flex"
+                    : "none",
+                "align-items": "center",
+                "justify-content": "center",
+              };
+            }),
+          },
+          [
+            Timeless.Icon({
+              name: "check",
+              size: Math.max(12, size - 4),
+            }),
+          ],
+        ),
       ]),
     ],
   );

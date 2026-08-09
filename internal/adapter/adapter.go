@@ -73,6 +73,7 @@ type RuntimeDeps struct {
 	Logger       *zerolog.Logger
 	Bus          *events.Bus
 	Config       *config.Config
+	Hooks        *hermes.HookManager
 }
 
 // RuntimeHandle owns resources started by an adapter.

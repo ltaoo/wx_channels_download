@@ -24,149 +24,149 @@ import (
 )
 
 const (
-	wxchannelsPostprocessRunFlowID    = "wxchannels_postprocess"
-	wxchannelsPostprocessMainFlowID   = "wxchannels_postprocess_main"
-	wxchannelsPostprocessOutputFlowID = "wxchannels_postprocess_output"
+	wxchannels_postprocess_run_flow_id    = "wxchannels_postprocess"
+	wxchannels_postprocess_main_flow_id   = "wxchannels_postprocess_main"
+	wxchannels_postprocess_output_flow_id = "wxchannels_postprocess_output"
 
-	wxchannelsPostprocessRunKey = "postprocess_run"
+	wxchannels_postprocess_run_key = "postprocess_run"
 
-	ctxKey                     = "context"
-	ctxInputFile               = "input_file"
-	ctxDecodeKey               = "decode_key"
-	ctxDecryptedFile           = "decrypted_file"
-	ctxMP3File                 = "mp3_file"
-	ctxMP4File                 = "mp4_file"
-	ctxTaskType                = "task_config_type"
-	ctxTaskSuffix              = "task_config_suffix"
-	ctxResourceType            = "resource_type"
-	ctxResourceHasDecodeSecret = "resource_has_decode_key"
-	ctxResource                = "resource"
-	ctxResources               = "resources"
-	ctxArchiveRequested        = "archive_requested"
+	ctx_key                        = "context"
+	ctx_input_file                 = "input_file"
+	ctx_decode_key                 = "decode_key"
+	ctx_decrypted_file             = "decrypted_file"
+	ctx_mp3_file                   = "mp3_file"
+	ctx_mp4_file                   = "mp4_file"
+	ctx_task_type                  = "task_config_type"
+	ctx_task_suffix                = "task_config_suffix"
+	ctx_resource_type              = "resource_type"
+	ctx_resource_has_decode_secret = "resource_has_decode_key"
+	ctx_resource                   = "resource"
+	ctx_resources                  = "resources"
+	ctx_archive_requested          = "archive_requested"
 
-	wxchannelsPostprocessContextKeyCtx                  = ctxKey
-	wxchannelsPostprocessContextInputFile               = ctxInputFile
-	wxchannelsPostprocessContextDecodeKey               = ctxDecodeKey
-	wxchannelsPostprocessContextDecryptedFile           = ctxDecryptedFile
-	wxchannelsPostprocessContextMp3File                 = ctxMP3File
-	wxchannelsPostprocessContextMp4File                 = ctxMP4File
-	wxchannelsPostprocessContextTaskType                = ctxTaskType
-	wxchannelsPostprocessContextTaskSuffix              = ctxTaskSuffix
-	wxchannelsPostprocessContextResourceType            = ctxResourceType
-	wxchannelsPostprocessContextResourceHasDecodeSecret = ctxResourceHasDecodeSecret
-	wxchannelsPostprocessContextResource                = ctxResource
-	wxchannelsPostprocessContextTask                    = "task"
-	wxchannelsPostprocessContextResources               = ctxResources
-	wxchannelsPostprocessContextArchiveRequested        = ctxArchiveRequested
-	wxchannelsPostprocessContextBasePath                = "base_path"
+	wxchannels_postprocess_context_key_ctx                    = ctx_key
+	wxchannels_postprocess_context_input_file                 = ctx_input_file
+	wxchannels_postprocess_context_decode_key                 = ctx_decode_key
+	wxchannels_postprocess_context_decrypted_file             = ctx_decrypted_file
+	wxchannels_postprocess_context_mp3_file                   = ctx_mp3_file
+	wxchannels_postprocess_context_mp4_file                   = ctx_mp4_file
+	wxchannels_postprocess_context_task_type                  = ctx_task_type
+	wxchannels_postprocess_context_task_suffix                = ctx_task_suffix
+	wxchannels_postprocess_context_resource_type              = ctx_resource_type
+	wxchannels_postprocess_context_resource_has_decode_secret = ctx_resource_has_decode_secret
+	wxchannels_postprocess_context_resource                   = ctx_resource
+	wxchannels_postprocess_context_task                       = "task"
+	wxchannels_postprocess_context_resources                  = ctx_resources
+	wxchannels_postprocess_context_archive_requested          = ctx_archive_requested
+	wxchannels_postprocess_context_base_path                  = "base_path"
 
-	wxchannelsPostprocessNodeStatusStarted              = "started"
-	wxchannelsPostprocessNodeStatusSucceeded            = "succeeded"
-	wxchannelsPostprocessNodeStatusFailed               = "failed"
-	wxchannelsPostprocessFlowNodeBootstrapContext       = "bootstrap_context"
-	wxchannelsPostprocessFlowNodePrepareResourceContext = "prepare_resource_context"
-	wxchannelsPostprocessFlowNodeDecrypt                = "decrypt"
-	wxchannelsPostprocessFlowNodeConvertMP3             = "convert_mp3"
-	wxchannelsPostprocessFlowNodeFinalizeMP3            = "finalize_mp3"
-	wxchannelsPostprocessFlowNodeStreamConvert          = "stream_convert"
-	wxchannelsPostprocessFlowNodeFinalizeStream         = "finalize_stream"
-	wxchannelsPostprocessFlowNodeZipResources           = "zip_resources"
-	wxchannelsPostprocessFlowNodeTaskJobUpdate          = "task_job_update"
-	wxchannelsPostprocessFlowNodeDone                   = "done"
+	wxchannels_postprocess_node_status_started                = "started"
+	wxchannels_postprocess_node_status_succeeded              = "succeeded"
+	wxchannels_postprocess_node_status_failed                 = "failed"
+	wxchannels_postprocess_flow_node_bootstrap_context        = "bootstrap_context"
+	wxchannels_postprocess_flow_node_prepare_resource_context = "prepare_resource_context"
+	wxchannels_postprocess_flow_node_decrypt                  = "decrypt"
+	wxchannels_postprocess_flow_node_convert_mp3              = "convert_mp3"
+	wxchannels_postprocess_flow_node_finalize_mp3             = "finalize_mp3"
+	wxchannels_postprocess_flow_node_stream_convert           = "stream_convert"
+	wxchannels_postprocess_flow_node_finalize_stream          = "finalize_stream"
+	wxchannels_postprocess_flow_node_zip_resources            = "zip_resources"
+	wxchannels_postprocess_flow_node_task_job_update          = "task_job_update"
+	wxchannels_postprocess_flow_node_done                     = "done"
 )
 
-type postprocessRun struct {
-	task        *hermes.TaskJob
-	resource    *hermes.ResourceJob
-	basePath    string
-	originalExt string
-	log         func(string, ...interface{})
+type postprocess_run struct {
+	task         *hermes.TaskJob
+	resource     *hermes.ResourceJob
+	base_path    string
+	original_ext string
+	log          func(string, ...interface{})
 }
 
-const wxchannelsPostprocessLogValueMaxLen = 260
+const wxchannels_postprocess_log_value_max_len = 260
 
-func runWXChannelsNode(values map[string]interface{}, nodeID string, fn func(*postprocessRun) (interface{}, error)) (interface{}, error) {
-	run, err := postprocessRunFromContext(values)
+func run_wx_channels_node(values map[string]interface{}, node_id string, fn func(*postprocess_run) (interface{}, error)) (interface{}, error) {
+	run, err := postprocess_run_from_context(values)
 	if err != nil {
 		return nil, err
 	}
-	input := postprocessContextSnapshot(values)
-	logPostprocessNode(run, nodeID, wxchannelsPostprocessNodeStatusStarted, input, nil, nil, nil)
+	input := postprocess_context_snapshot(values)
+	log_postprocess_node(run, node_id, wxchannels_postprocess_node_status_started, input, nil, nil, nil)
 	result, err := fn(run)
-	output := postprocessContextSnapshot(values)
-	diff := postprocessContextDiff(input, output)
+	output := postprocess_context_snapshot(values)
+	diff := postprocess_context_diff(input, output)
 	if err != nil {
-		logPostprocessNode(run, nodeID, wxchannelsPostprocessNodeStatusFailed, input, output, diff, err)
+		log_postprocess_node(run, node_id, wxchannels_postprocess_node_status_failed, input, output, diff, err)
 		return result, err
 	}
-	logPostprocessNode(run, nodeID, wxchannelsPostprocessNodeStatusSucceeded, input, output, diff, nil)
+	log_postprocess_node(run, node_id, wxchannels_postprocess_node_status_succeeded, input, output, diff, nil)
 	return result, nil
 }
 
-func logPostprocessNode(run *postprocessRun, nodeID, status string, input map[string]interface{}, output map[string]interface{}, delta map[string][2]interface{}, err error) {
+func log_postprocess_node(run *postprocess_run, node_id, status string, input map[string]interface{}, output map[string]interface{}, delta map[string][2]interface{}, err error) {
 	if run == nil || run.log == nil {
 		return
 	}
 
-	taskID := 0
-	resourceID := 0
-	resourceType := ""
-	resourcePath := ""
+	task_id := 0
+	resource_id := 0
+	resource_type := ""
+	resource_path := ""
 	if run.task != nil {
-		taskID = run.task.ID
+		task_id = run.task.ID
 	}
 	if run.resource != nil {
-		resourceID = run.resource.ID
-		resourceType = run.resource.Type
-		resourcePath = run.resource.FilePath
+		resource_id = run.resource.ID
+		resource_type = run.resource.Type
+		resource_path = run.resource.FilePath
 	}
 	if err != nil {
 		run.log(
 			"Postprocess.wxchannels: node=%s status=%s task_id=%d resource_id=%d resource_type=%q resource_path=%q error=%v input=%s output=%s changed=%s",
-			nodeID, status, taskID, resourceID, resourceType, resourcePath, err,
-			formatContextSnapshot(input), formatContextSnapshot(output), formatContextDiff(delta),
+			node_id, status, task_id, resource_id, resource_type, resource_path, err,
+			format_context_snapshot(input), format_context_snapshot(output), format_context_diff(delta),
 		)
 		return
 	}
 	run.log(
 		"Postprocess.wxchannels: node=%s status=%s task_id=%d resource_id=%d resource_type=%q resource_path=%q input=%s output=%s changed=%s",
-		nodeID, status, taskID, resourceID, resourceType, resourcePath,
-		formatContextSnapshot(input), formatContextSnapshot(output), formatContextDiff(delta),
+		node_id, status, task_id, resource_id, resource_type, resource_path,
+		format_context_snapshot(input), format_context_snapshot(output), format_context_diff(delta),
 	)
 }
 
-func logPostprocessFlow(flowID string, status string, run *postprocessRun, err error) {
+func log_postprocess_flow(flow_id string, status string, run *postprocess_run, err error) {
 	if run == nil || run.log == nil {
 		return
 	}
 
-	taskID := 0
+	task_id := 0
 	if run.task != nil {
-		taskID = run.task.ID
+		task_id = run.task.ID
 	}
 	if err != nil {
-		run.log("Postprocess.wxchannels: flow=%s status=%s task_id=%d error=%v", flowID, status, taskID, err)
+		run.log("Postprocess.wxchannels: flow=%s status=%s task_id=%d error=%v", flow_id, status, task_id, err)
 		return
 	}
-	run.log("Postprocess.wxchannels: flow=%s status=%s task_id=%d", flowID, status, taskID)
+	run.log("Postprocess.wxchannels: flow=%s status=%s task_id=%d", flow_id, status, task_id)
 }
 
-func postprocessContextSnapshot(values map[string]interface{}) map[string]interface{} {
+func postprocess_context_snapshot(values map[string]interface{}) map[string]interface{} {
 	snapshot := map[string]interface{}{}
 	if len(values) == 0 {
 		return snapshot
 	}
 
 	for key, value := range values {
-		if key == wxchannelsPostprocessRunKey || key == wxchannelsPostprocessContextKeyCtx {
+		if key == wxchannels_postprocess_run_key || key == wxchannels_postprocess_context_key_ctx {
 			continue
 		}
-		snapshot[key] = normalizePostprocessContextValue(key, value)
+		snapshot[key] = normalize_postprocess_context_value(key, value)
 	}
 	return snapshot
 }
 
-func normalizePostprocessContextValue(key string, value interface{}) interface{} {
+func normalize_postprocess_context_value(key string, value interface{}) interface{} {
 	if value == nil {
 		return nil
 	}
@@ -181,11 +181,11 @@ func normalizePostprocessContextValue(key string, value interface{}) interface{}
 			"name":          typed.Name,
 			"platform":      typed.Platform,
 			"resource_cnt":  len(typed.Resources),
-			"config_type":   taskConfigType(typed.Config),
-			"config_suffix": taskConfigSuffix(typed.Config),
+			"config_type":   task_config_type(typed.Config),
+			"config_suffix": task_config_suffix(typed.Config),
 		}
 	case hermes.TaskJob:
-		return normalizePostprocessContextValue(key, &typed)
+		return normalize_postprocess_context_value(key, &typed)
 	case *hermes.ResourceJob:
 		if typed == nil {
 			return nil
@@ -200,55 +200,55 @@ func normalizePostprocessContextValue(key string, value interface{}) interface{}
 			"decode_key_exists": typed.Extra["decode_key"] != "",
 		}
 	case hermes.ResourceJob:
-		return normalizePostprocessContextValue(key, &typed)
+		return normalize_postprocess_context_value(key, &typed)
 	case []hermes.ResourceJob:
 		items := make([]interface{}, 0, len(typed))
 		for _, resource := range typed {
-			items = append(items, normalizePostprocessContextValue("resource", resource))
+			items = append(items, normalize_postprocess_context_value("resource", resource))
 		}
-		return normalizeGenericSlice(items)
+		return normalize_generic_slice(items)
 	case []interface{}:
-		if key == wxchannelsPostprocessContextResources {
+		if key == wxchannels_postprocess_context_resources {
 			items := make([]interface{}, 0, len(typed))
 			for _, value := range typed {
-				items = append(items, normalizePostprocessContextValue("resource", value))
+				items = append(items, normalize_postprocess_context_value("resource", value))
 			}
-			return normalizeGenericSlice(items)
+			return normalize_generic_slice(items)
 		}
-		return normalizeGenericSlice(typed)
+		return normalize_generic_slice(typed)
 	case map[string]interface{}:
-		if key == wxchannelsPostprocessContextResource {
-			return normalizePostprocessResourceMap(typed)
+		if key == wxchannels_postprocess_context_resource {
+			return normalize_postprocess_resource_map(typed)
 		}
-		return normalizeGenericMap(typed)
+		return normalize_generic_map(typed)
 	case map[string]string:
-		return normalizeGenericMapString(typed)
+		return normalize_generic_map_string(typed)
 	default:
-		return truncateLogValue(fmt.Sprintf("%v", value))
+		return truncate_log_value(fmt.Sprintf("%v", value))
 	}
 }
 
-func normalizePostprocessResourceMap(raw map[string]interface{}) map[string]interface{} {
+func normalize_postprocess_resource_map(raw map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{
-		"id":                castInt(raw["ID"]),
-		"name":              castString(raw["Name"]),
-		"type":              castString(raw["Type"]),
-		"kind":              castString(raw["Kind"]),
-		"file":              castString(raw["FilePath"]),
-		"size":              castInt64(raw["Size"]),
-		"decode_key_exists": postprocessResourceMapHasDecodeKey(raw),
+		"id":                cast_int(raw["ID"]),
+		"name":              cast_string(raw["Name"]),
+		"type":              cast_string(raw["Type"]),
+		"kind":              cast_string(raw["Kind"]),
+		"file":              cast_string(raw["FilePath"]),
+		"size":              cast_int64(raw["Size"]),
+		"decode_key_exists": postprocess_resource_map_has_decode_key(raw),
 	}
 }
 
-func postprocessResourceMapHasDecodeKey(raw map[string]interface{}) bool {
+func postprocess_resource_map_has_decode_key(raw map[string]interface{}) bool {
 	if raw == nil {
 		return false
 	}
-	if rawDecodeKey, ok := raw["decode_key"]; ok {
-		return castString(rawDecodeKey) != ""
+	if raw_decode_key, ok := raw["decode_key"]; ok {
+		return cast_string(raw_decode_key) != ""
 	}
-	if rawExtra, ok := raw["Extra"].(map[string]interface{}); ok {
-		return castString(rawExtra["decode_key"]) != ""
+	if raw_extra, ok := raw["Extra"].(map[string]interface{}); ok {
+		return cast_string(raw_extra["decode_key"]) != ""
 	}
 	extra, ok := raw["Extra"].(map[string]string)
 	if !ok {
@@ -257,58 +257,58 @@ func postprocessResourceMapHasDecodeKey(raw map[string]interface{}) bool {
 	return extra["decode_key"] != ""
 }
 
-func normalizeGenericSlice(values []interface{}) []interface{} {
-	maxItems := 8
-	if len(values) <= maxItems {
+func normalize_generic_slice(values []interface{}) []interface{} {
+	max_items := 8
+	if len(values) <= max_items {
 		return values
 	}
-	items := append([]interface{}{}, values[:maxItems]...)
+	items := append([]interface{}{}, values[:max_items]...)
 	items = append(items, map[string]interface{}{
-		"_truncated": len(values) - maxItems,
+		"_truncated": len(values) - max_items,
 	})
 	return items
 }
 
-func normalizeGenericMap(values map[string]interface{}) map[string]interface{} {
+func normalize_generic_map(values map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(values))
 	for key, value := range values {
-		out[key] = truncateLogValue(fmt.Sprintf("%v", value))
+		out[key] = truncate_log_value(fmt.Sprintf("%v", value))
 	}
 	return out
 }
 
-func normalizeGenericMapString(values map[string]string) map[string]interface{} {
+func normalize_generic_map_string(values map[string]string) map[string]interface{} {
 	out := make(map[string]interface{}, len(values))
 	for key, value := range values {
-		out[key] = truncateLogValue(value)
+		out[key] = truncate_log_value(value)
 	}
 	return out
 }
 
-func postprocessContextDiff(before map[string]interface{}, after map[string]interface{}) map[string][2]interface{} {
+func postprocess_context_diff(before map[string]interface{}, after map[string]interface{}) map[string][2]interface{} {
 	delta := map[string][2]interface{}{}
 	if len(before) == 0 && len(after) == 0 {
 		return delta
 	}
 
-	for key, beforeValue := range before {
-		if afterValue, ok := after[key]; ok {
-			if !reflect.DeepEqual(beforeValue, afterValue) {
-				delta[key] = [2]interface{}{beforeValue, afterValue}
+	for key, before_value := range before {
+		if after_value, ok := after[key]; ok {
+			if !reflect.DeepEqual(before_value, after_value) {
+				delta[key] = [2]interface{}{before_value, after_value}
 			}
 		} else {
-			delta[key] = [2]interface{}{beforeValue, nil}
+			delta[key] = [2]interface{}{before_value, nil}
 		}
 	}
-	for key, afterValue := range after {
+	for key, after_value := range after {
 		if _, ok := before[key]; !ok {
-			delta[key] = [2]interface{}{nil, afterValue}
+			delta[key] = [2]interface{}{nil, after_value}
 		}
 	}
 	return delta
 }
 
-func formatContextSnapshot(snapshot map[string]interface{}) string {
+func format_context_snapshot(snapshot map[string]interface{}) string {
 	if len(snapshot) == 0 {
 		return "{}"
 	}
@@ -321,12 +321,12 @@ func formatContextSnapshot(snapshot map[string]interface{}) string {
 
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%s", key, truncateLogValue(fmt.Sprintf("%v", snapshot[key]))))
+		parts = append(parts, fmt.Sprintf("%s=%s", key, truncate_log_value(fmt.Sprintf("%v", snapshot[key]))))
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-func formatContextDiff(delta map[string][2]interface{}) string {
+func format_context_diff(delta map[string][2]interface{}) string {
 	if len(delta) == 0 {
 		return "{}"
 	}
@@ -339,58 +339,58 @@ func formatContextDiff(delta map[string][2]interface{}) string {
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
 		values := delta[key]
-		from := truncateLogValue(fmt.Sprintf("%v", values[0]))
-		to := truncateLogValue(fmt.Sprintf("%v", values[1]))
+		from := truncate_log_value(fmt.Sprintf("%v", values[0]))
+		to := truncate_log_value(fmt.Sprintf("%v", values[1]))
 		parts = append(parts, fmt.Sprintf("%s[from=%s,to=%s]", key, from, to))
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-func truncateLogValue(value string) string {
-	if len(value) <= wxchannelsPostprocessLogValueMaxLen {
+func truncate_log_value(value string) string {
+	if len(value) <= wxchannels_postprocess_log_value_max_len {
 		return value
 	}
-	return value[:wxchannelsPostprocessLogValueMaxLen] + "..."
+	return value[:wxchannels_postprocess_log_value_max_len] + "..."
 }
 
-type wxchannelsLoggedGatewayNode struct {
-	IDVal  string
-	Config map[string]interface{}
+type wxchannels_logged_gateway_node struct {
+	id_val string
+	config map[string]interface{}
 }
 
-func newWXChannelsLoggedGatewayNode(config map[string]interface{}) flowengine.Node {
+func new_wx_channels_logged_gateway_node(config map[string]interface{}) flowengine.Node {
 	id, _ := config["id"].(string)
-	return &wxchannelsLoggedGatewayNode{
-		IDVal:  id,
-		Config: config,
+	return &wxchannels_logged_gateway_node{
+		id_val: id,
+		config: config,
 	}
 }
 
-func (n *wxchannelsLoggedGatewayNode) ID() string { return n.IDVal }
+func (n *wxchannels_logged_gateway_node) ID() string { return n.id_val }
 
-func (n *wxchannelsLoggedGatewayNode) Type() string { return "GatewayNode" }
+func (n *wxchannels_logged_gateway_node) Type() string { return "GatewayNode" }
 
-func (n *wxchannelsLoggedGatewayNode) Execute(ctx *flowengine.ProcessContext) (bool, []string, error) {
+func (n *wxchannels_logged_gateway_node) Execute(ctx *flowengine.ProcessContext) (bool, []string, error) {
 	if ctx == nil {
 		return false, nil, errors.New("gateway context is nil")
 	}
-	input := formatContextSnapshot(postprocessContextSnapshot(ctx.Data))
-	n.logf(ctx, "gateway=%s type=%s started decision_input=%s", n.IDVal, n.configValue("gateway_type"), input)
+	input := format_context_snapshot(postprocess_context_snapshot(ctx.Data))
+	n.logf(ctx, "gateway=%s type=%s started decision_input=%s", n.id_val, n.config_value("gateway_type"), input)
 
-	gatewayType, _ := n.Config["gateway_type"].(string)
-	isJoining := false
-	if joining, ok := n.Config["is_joining"].(bool); ok {
-		isJoining = joining
+	gateway_type, _ := n.config["gateway_type"].(string)
+	is_joining := false
+	if joining, ok := n.config["is_joining"].(bool); ok {
+		is_joining = joining
 	}
 
-	if isJoining {
-		return n.handleMerge(ctx, input)
+	if is_joining {
+		return n.handle_merge(ctx, input)
 	}
 
-	switch gatewayType {
+	switch gateway_type {
 	case "Parallel":
-		next := n.nextNodeIDs()
-		n.logf(ctx, "gateway=%s type=Parallel next=%v", n.IDVal, next)
+		next := n.next_node_ids()
+		n.logf(ctx, "gateway=%s type=Parallel next=%v", n.id_val, next)
 		return true, next, nil
 	case "Exclusive":
 		rules := n.rules()
@@ -399,18 +399,18 @@ func (n *wxchannelsLoggedGatewayNode) Execute(ctx *flowengine.ProcessContext) (b
 			if !ok {
 				continue
 			}
-			ok, err := n.evaluateCondition(ctx, condition)
+			ok, err := n.evaluate_condition(ctx, condition)
 			if err != nil {
-				n.logf(ctx, "gateway=%s error condition=%q target=%v err=%v", n.IDVal, condition, rule["target_id"], err)
+				n.logf(ctx, "gateway=%s error condition=%q target=%v err=%v", n.id_val, condition, rule["target_id"], err)
 				return false, nil, err
 			}
-			n.logf(ctx, "gateway=%s condition=%q result=%v target=%v", n.IDVal, condition, ok, rule["target_id"])
+			n.logf(ctx, "gateway=%s condition=%q result=%v target=%v", n.id_val, condition, ok, rule["target_id"])
 			if ok {
-				target := castString(rule["target_id"])
+				target := cast_string(rule["target_id"])
 				ctx.Mu.Lock()
 				ctx.Data[n.ID()+"_target"] = target
 				ctx.Mu.Unlock()
-				n.logf(ctx, "gateway=%s selected=%q", n.IDVal, target)
+				n.logf(ctx, "gateway=%s selected=%q", n.id_val, target)
 				return true, []string{target}, nil
 			}
 		}
@@ -420,58 +420,58 @@ func (n *wxchannelsLoggedGatewayNode) Execute(ctx *flowengine.ProcessContext) (b
 	}
 }
 
-func (n *wxchannelsLoggedGatewayNode) handleMerge(ctx *flowengine.ProcessContext, input string) (bool, []string, error) {
-	waitListRaw, ok := n.Config["wait_for_incoming"]
+func (n *wxchannels_logged_gateway_node) handle_merge(ctx *flowengine.ProcessContext, input string) (bool, []string, error) {
+	wait_list_raw, ok := n.config["wait_for_incoming"]
 	if !ok {
 		return false, nil, errors.New("GatewayNode merge requires wait_for_incoming")
 	}
-	waitList, err := castStringSlice(waitListRaw)
+	wait_list, err := cast_string_slice(wait_list_raw)
 	if err != nil {
 		return false, nil, err
 	}
 
-	allCompleted := true
-	for _, depID := range waitList {
+	all_completed := true
+	for _, dep_id := range wait_list {
 		ctx.Mu.Lock()
-		depState := ctx.NodeStates[depID]
+		dep_state := ctx.NodeStates[dep_id]
 		ctx.Mu.Unlock()
-		if depState != flowengine.StateCompleted {
-			allCompleted = false
+		if dep_state != flowengine.StateCompleted {
+			all_completed = false
 			break
 		}
 	}
-	if !allCompleted {
+	if !all_completed {
 		ctx.Mu.Lock()
 		ctx.NodeStates[n.ID()] = flowengine.StateWaitingForMerge
 		ctx.Mu.Unlock()
-		n.logf(ctx, "gateway=%s waiting merge input=%s", n.IDVal, input)
+		n.logf(ctx, "gateway=%s waiting merge input=%s", n.id_val, input)
 		return true, nil, nil
 	}
 
-	next := n.nextNodeIDs()
-	n.logf(ctx, "gateway=%s merge_done next=%v", n.IDVal, next)
+	next := n.next_node_ids()
+	n.logf(ctx, "gateway=%s merge_done next=%v", n.id_val, next)
 	return true, next, nil
 }
 
-func (n *wxchannelsLoggedGatewayNode) nextNodeIDs() []string {
-	if nextNodeIDs, ok := n.Config["next_node_ids"].([]string); ok {
-		return append([]string{}, nextNodeIDs...)
+func (n *wxchannels_logged_gateway_node) next_node_ids() []string {
+	if next_node_ids, ok := n.config["next_node_ids"].([]string); ok {
+		return append([]string{}, next_node_ids...)
 	}
 
-	if rawTargets, ok := n.Config["next_nodes"].([]flowengine.TargetNode); ok {
-		targets := make([]string, 0, len(rawTargets))
-		for _, target := range rawTargets {
+	if raw_targets, ok := n.config["next_nodes"].([]flowengine.TargetNode); ok {
+		targets := make([]string, 0, len(raw_targets))
+		for _, target := range raw_targets {
 			targets = append(targets, target.TargetID)
 		}
 		return targets
 	}
 
-	if rawTargets, ok := n.Config["next_nodes"].([]interface{}); ok {
-		targets := make([]string, 0, len(rawTargets))
-		for _, raw := range rawTargets {
+	if raw_targets, ok := n.config["next_nodes"].([]interface{}); ok {
+		targets := make([]string, 0, len(raw_targets))
+		for _, raw := range raw_targets {
 			if mapped, ok := raw.(map[string]interface{}); ok {
-				if targetID, ok := mapped["target_id"].(string); ok {
-					targets = append(targets, targetID)
+				if target_id, ok := mapped["target_id"].(string); ok {
+					targets = append(targets, target_id)
 				}
 			}
 			if target, ok := raw.(flowengine.TargetNode); ok {
@@ -484,11 +484,11 @@ func (n *wxchannelsLoggedGatewayNode) nextNodeIDs() []string {
 	return []string{}
 }
 
-func (n *wxchannelsLoggedGatewayNode) rules() []map[string]interface{} {
-	if raw, ok := n.Config["rules"].([]map[string]interface{}); ok {
+func (n *wxchannels_logged_gateway_node) rules() []map[string]interface{} {
+	if raw, ok := n.config["rules"].([]map[string]interface{}); ok {
 		return raw
 	}
-	if raw, ok := n.Config["rules"].([]interface{}); ok {
+	if raw, ok := n.config["rules"].([]interface{}); ok {
 		rules := make([]map[string]interface{}, 0, len(raw))
 		for _, item := range raw {
 			if mapped, ok := item.(map[string]interface{}); ok {
@@ -500,14 +500,14 @@ func (n *wxchannelsLoggedGatewayNode) rules() []map[string]interface{} {
 	return nil
 }
 
-func (n *wxchannelsLoggedGatewayNode) configValue(key string) string {
-	if value, ok := n.Config[key]; ok {
-		return castString(value)
+func (n *wxchannels_logged_gateway_node) config_value(key string) string {
+	if value, ok := n.config[key]; ok {
+		return cast_string(value)
 	}
 	return ""
 }
 
-func (n *wxchannelsLoggedGatewayNode) evaluateCondition(ctx *flowengine.ProcessContext, condition string) (bool, error) {
+func (n *wxchannels_logged_gateway_node) evaluate_condition(ctx *flowengine.ProcessContext, condition string) (bool, error) {
 	program, err := expr.Compile(condition)
 	if err != nil {
 		return false, err
@@ -523,18 +523,18 @@ func (n *wxchannelsLoggedGatewayNode) evaluateCondition(ctx *flowengine.ProcessC
 	return result, nil
 }
 
-func (n *wxchannelsLoggedGatewayNode) logf(ctx *flowengine.ProcessContext, format string, args ...interface{}) {
+func (n *wxchannels_logged_gateway_node) logf(ctx *flowengine.ProcessContext, format string, args ...interface{}) {
 	if ctx == nil || n == nil {
 		return
 	}
-	run, ok := ctx.Data[wxchannelsPostprocessRunKey].(*postprocessRun)
+	run, ok := ctx.Data[wxchannels_postprocess_run_key].(*postprocess_run)
 	if !ok || run == nil || run.log == nil {
 		return
 	}
 	run.log("Postprocess.wxchannels: "+format, args...)
 }
 
-func castStringSlice(value interface{}) ([]string, error) {
+func cast_string_slice(value interface{}) ([]string, error) {
 	switch typed := value.(type) {
 	case []string:
 		return typed, nil
@@ -552,56 +552,56 @@ func castStringSlice(value interface{}) ([]string, error) {
 	return nil, fmt.Errorf("unsupported wait_for_incoming type %T", value)
 }
 
-func logPostprocessFlowNodeExecution(run *postprocessRun, flowEngine *flowengine.FlowEngine, flowID, instanceID string, err error) {
-	if run == nil || run.log == nil || flowEngine == nil || instanceID == "" {
+func log_postprocess_flow_node_execution(run *postprocess_run, flow_engine *flowengine.FlowEngine, flow_id, instance_id string, err error) {
+	if run == nil || run.log == nil || flow_engine == nil || instance_id == "" {
 		return
 	}
 
-	record, hasRecord := flowEngine.GetRunSnapshot(instanceID)
-	if !hasRecord {
+	record, has_record := flow_engine.GetRunSnapshot(instance_id)
+	if !has_record {
 		if err != nil {
-			run.log("Postprocess.wxchannels: flow=%s node_execution_summary unavailable: %v", flowID, err)
+			run.log("Postprocess.wxchannels: flow=%s node_execution_summary unavailable: %v", flow_id, err)
 		} else {
-			run.log("Postprocess.wxchannels: flow=%s node_execution_summary unavailable", flowID)
+			run.log("Postprocess.wxchannels: flow=%s node_execution_summary unavailable", flow_id)
 		}
 		return
 	}
 
-	_, nodeStates := flowEngine.GetRunContext(instanceID)
+	_, node_states := flow_engine.GetRunContext(instance_id)
 
-	nodeIDs := make([]string, 0, len(record.NodeAttempts))
-	for nodeID := range record.NodeAttempts {
-		nodeIDs = append(nodeIDs, nodeID)
+	node_ids := make([]string, 0, len(record.NodeAttempts))
+	for node_id := range record.NodeAttempts {
+		node_ids = append(node_ids, node_id)
 	}
-	for nodeID := range nodeStates {
+	for node_id := range node_states {
 		already := false
-		for _, existingID := range nodeIDs {
-			if existingID == nodeID {
+		for _, existing_id := range node_ids {
+			if existing_id == node_id {
 				already = true
 				break
 			}
 		}
 		if !already {
-			nodeIDs = append(nodeIDs, nodeID)
+			node_ids = append(node_ids, node_id)
 		}
 	}
-	if len(nodeIDs) == 0 {
-		run.log("Postprocess.wxchannels: flow=%s node_execution_summary: no nodes were executed", flowID)
+	if len(node_ids) == 0 {
+		run.log("Postprocess.wxchannels: flow=%s node_execution_summary: no nodes were executed", flow_id)
 		return
 	}
 
-	sort.Strings(nodeIDs)
-	for _, nodeID := range nodeIDs {
+	sort.Strings(node_ids)
+	for _, node_id := range node_ids {
 		state := "unknown"
-		attempts := record.NodeAttempts[nodeID]
+		attempts := record.NodeAttempts[node_id]
 
 		if attempts == 0 {
 			state = "skipped"
 		}
 
-		if len(nodeStates) > 0 {
-			if nodeState, ok := nodeStates[nodeID]; ok {
-				switch nodeState {
+		if len(node_states) > 0 {
+			if node_state, ok := node_states[node_id]; ok {
+				switch node_state {
 				case flowengine.StateCompleted:
 					state = "succeeded"
 				case flowengine.StateFailed:
@@ -613,44 +613,44 @@ func logPostprocessFlowNodeExecution(run *postprocessRun, flowEngine *flowengine
 				case flowengine.StateWaitingForUser, flowengine.StateWaitingForMerge, flowengine.StateWaitingForSubprocess:
 					state = "waiting"
 				default:
-					state = string(nodeState)
+					state = string(node_state)
 				}
 			}
 		}
 
 		// 回退推断：没有节点状态时，以流执行结果判断最后一个活跃节点是否失败。
-		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusFailed && record.CurrentNode == nodeID {
+		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusFailed && record.CurrentNode == node_id {
 			state = "failed"
 		}
 		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusCompleted {
 			state = "succeeded"
 		}
 
-		taskSuffix := ""
-		taskSuffixInfo := ""
+		task_suffix := ""
+		task_suffix_info := ""
 		if attempts > 0 {
-			taskSuffix = fmt.Sprintf(" attempts=%d", attempts)
+			task_suffix = fmt.Sprintf(" attempts=%d", attempts)
 		}
-		if state == "failed" && record.CurrentNode == nodeID && record.Error != "" {
-			taskSuffixInfo = " error=" + record.Error
+		if state == "failed" && record.CurrentNode == node_id && record.Error != "" {
+			task_suffix_info = " error=" + record.Error
 		}
-		run.log("Postprocess.wxchannels: flow=%s node=%s status=%s%s%s", flowID, nodeID, state, taskSuffix, taskSuffixInfo)
+		run.log("Postprocess.wxchannels: flow=%s node=%s status=%s%s%s", flow_id, node_id, state, task_suffix, task_suffix_info)
 	}
 
 	if record.Error != "" && record.CurrentNode != "" {
-		run.log("Postprocess.wxchannels: flow=%s failed_at_node=%s error=%v", flowID, record.CurrentNode, record.Error)
+		run.log("Postprocess.wxchannels: flow=%s failed_at_node=%s error=%v", flow_id, record.CurrentNode, record.Error)
 	}
 	if record.Status != "" {
-		run.log("Postprocess.wxchannels: flow=%s final_status=%s", flowID, record.Status)
+		run.log("Postprocess.wxchannels: flow=%s final_status=%s", flow_id, record.Status)
 	}
 }
 
-var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
-	ID:   wxchannelsPostprocessRunFlowID,
+var wxchannels_postprocess_flow = flowengine.FlowDefinition{
+	ID:   wxchannels_postprocess_run_flow_id,
 	Name: "wxchannels_postprocess",
 	ContextSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessContextKeyCtx, Type: "object", Required: false},
-		{Key: wxchannelsPostprocessContextResource, Type: "object", Required: false, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_context_key_ctx, Type: "object", Required: false},
+		{Key: wxchannels_postprocess_context_resource, Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 			{Key: "ID", Type: "int", Required: true},
 			{Key: "Name", Type: "string", Required: false},
 			{Key: "Kind", Type: "string", Required: false},
@@ -664,13 +664,13 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 				{Key: "decode_key", Type: "string", Required: false},
 			}},
 		}},
-		{Key: ctxInputFile, Type: "string", Required: true},
-		{Key: ctxDecodeKey, Type: "any", Required: false},
-		{Key: ctxResourceType, Type: "string", Required: true},
-		{Key: ctxResourceHasDecodeSecret, Type: "bool", Required: false},
-		{Key: ctxTaskType, Type: "int", Required: false},
-		{Key: ctxTaskSuffix, Type: "string", Required: false},
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: ctx_input_file, Type: "string", Required: true},
+		{Key: ctx_decode_key, Type: "any", Required: false},
+		{Key: ctx_resource_type, Type: "string", Required: true},
+		{Key: ctx_resource_has_decode_secret, Type: "bool", Required: false},
+		{Key: ctx_task_type, Type: "int", Required: false},
+		{Key: ctx_task_suffix, Type: "string", Required: false},
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -709,7 +709,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "开始：准备每个资源的上下文",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -741,7 +741,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 					{Key: "log", Type: "any", Required: false},
 				},
 				},
-				{Key: wxchannelsPostprocessContextResource, Type: "object", Required: false, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_context_resource, Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "ID", Type: "int", Required: true},
 					{Key: "Name", Type: "string", Required: false},
 					{Key: "Kind", Type: "string", Required: false},
@@ -756,21 +756,21 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 					}},
 				},
 				},
-				{Key: ctxInputFile, Type: "string", Required: false},
-				{Key: ctxResourceType, Type: "string", Required: false},
-				{Key: ctxDecodeKey, Type: "any", Required: false},
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_input_file, Type: "string", Required: false},
+				{Key: ctx_resource_type, Type: "string", Required: false},
+				{Key: ctx_decode_key, Type: "any", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxInputFile, Type: "string", Required: true},
-				{Key: ctxResourceType, Type: "string", Required: true},
-				{Key: wxchannelsPostprocessContextResourceHasDecodeSecret, Type: "bool", Required: true},
-				{Key: ctxDecodeKey, Type: "any", Required: false},
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_input_file, Type: "string", Required: true},
+				{Key: ctx_resource_type, Type: "string", Required: true},
+				{Key: wxchannels_postprocess_context_resource_has_decode_secret, Type: "bool", Required: true},
+				{Key: ctx_decode_key, Type: "any", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
-			Config:    map[string]interface{}{"func": prepareResourceContextNode},
+			Config:    map[string]interface{}{"func": prepare_resource_context_node},
 			NextNodes: []flowengine.TargetNode{{TargetID: "route_resource"}},
 		},
 		"route_resource": {
@@ -778,12 +778,12 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "GatewayNode",
 			Name: "资源类型分流",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxResourceType, Type: "string", Required: true},
-				{Key: ctxResourceHasDecodeSecret, Type: "bool", Required: false},
+				{Key: ctx_resource_type, Type: "string", Required: true},
+				{Key: ctx_resource_has_decode_secret, Type: "bool", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxResourceType, Type: "string", Required: true},
-				{Key: ctxResourceHasDecodeSecret, Type: "bool", Required: false},
+				{Key: ctx_resource_type, Type: "string", Required: true},
+				{Key: ctx_resource_has_decode_secret, Type: "bool", Required: false},
 			},
 			Config: map[string]interface{}{
 				"gateway_type": "Exclusive",
@@ -800,13 +800,13 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "微信视频号文件解密",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxInputFile, Type: "string", Required: true},
-				{Key: ctxDecodeKey, Type: "any", Required: false},
+				{Key: ctx_input_file, Type: "string", Required: true},
+				{Key: ctx_decode_key, Type: "any", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxDecryptedFile, Type: "string", Required: false},
+				{Key: ctx_decrypted_file, Type: "string", Required: false},
 			},
-			Config: map[string]interface{}{"func": decryptNode},
+			Config: map[string]interface{}{"func": decrypt_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "route_output_format"},
 			},
@@ -816,12 +816,12 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "GatewayNode",
 			Name: "输出格式分流",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			Config: map[string]interface{}{
 				"gateway_type": "Exclusive",
@@ -837,12 +837,12 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "流媒体转封装为 MP4",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxInputFile, Type: "string", Required: true},
+				{Key: ctx_input_file, Type: "string", Required: true},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxMP4File, Type: "string", Required: false},
+				{Key: ctx_mp4_file, Type: "string", Required: false},
 			},
-			Config: map[string]interface{}{"func": streamConvertNode},
+			Config: map[string]interface{}{"func": stream_convert_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "finalize_stream"},
 			},
@@ -852,7 +852,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "生成流媒体资源结果",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -883,10 +883,10 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 					{Key: "originalExt", Type: "string", Required: false},
 					{Key: "log", Type: "any", Required: false},
 				}},
-				{Key: ctxMP4File, Type: "string", Required: false},
+				{Key: ctx_mp4_file, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": finalizeStreamNode},
+			Config:       map[string]interface{}{"func": finalize_stream_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "task_job_update"},
 			},
@@ -896,12 +896,12 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "FFmpeg 转换 MP3",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxDecryptedFile, Type: "string", Required: true},
+				{Key: ctx_decrypted_file, Type: "string", Required: true},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxMP3File, Type: "string", Required: false},
+				{Key: ctx_mp3_file, Type: "string", Required: false},
 			},
-			Config: map[string]interface{}{"func": convertMP3Node},
+			Config: map[string]interface{}{"func": convert_mp3_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "finalize_mp3"},
 			},
@@ -911,7 +911,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "生成 MP3 资源结果",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -942,10 +942,10 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 					{Key: "originalExt", Type: "string", Required: false},
 					{Key: "log", Type: "any", Required: false},
 				}},
-				{Key: ctxMP3File, Type: "string", Required: true},
+				{Key: ctx_mp3_file, Type: "string", Required: true},
 			},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": finalizeMP3Node},
+			Config:       map[string]interface{}{"func": finalize_mp3_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "task_job_update"},
 			},
@@ -955,7 +955,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "压缩全部 Resources",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -990,7 +990,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			OutputSchema: []flowengine.FieldSchema{
 				{Key: "archive_file", Type: "string", Required: false},
 			},
-			Config: map[string]interface{}{"func": zipResourcesNode},
+			Config: map[string]interface{}{"func": zip_resources_node},
 			NextNodes: []flowengine.TargetNode{
 				{TargetID: "task_job_update"},
 			},
@@ -1000,7 +1000,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "更新传入的 TaskJob",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1033,7 +1033,7 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 				}},
 			},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": taskJobUpdateNode},
+			Config:       map[string]interface{}{"func": task_job_update_node},
 			NextNodes:    []flowengine.TargetNode{},
 		},
 		"done": {
@@ -1042,17 +1042,17 @@ var wxchannelsPostprocessFlow = flowengine.FlowDefinition{
 			Name:         "无需后处理",
 			InputSchema:  []flowengine.FieldSchema{},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": noopPostprocessDoneNode},
+			Config:       map[string]interface{}{"func": noop_postprocess_done_node},
 		},
 	},
 }
 
-var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
-	ID:   wxchannelsPostprocessMainFlowID,
+var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
+	ID:   wxchannels_postprocess_main_flow_id,
 	Name: "wxchannels_postprocess_main",
 	ContextSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessContextKeyCtx, Type: "object", Required: false},
-		{Key: wxchannelsPostprocessContextTask, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_context_key_ctx, Type: "object", Required: false},
+		{Key: wxchannels_postprocess_context_task, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "ID", Type: "int", Required: true},
 			{Key: "Name", Type: "string", Required: false},
 			{Key: "UniqueID", Type: "string", Required: false},
@@ -1064,9 +1064,9 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 				{Key: "suffix", Type: "string", Required: false},
 			}},
 		}},
-		{Key: wxchannelsPostprocessContextBasePath, Type: "string", Required: true},
+		{Key: wxchannels_postprocess_context_base_path, Type: "string", Required: true},
 		{
-			Key:      wxchannelsPostprocessContextResources,
+			Key:      wxchannels_postprocess_context_resources,
 			Type:     "array",
 			Required: false,
 			Fields: []flowengine.FieldSchema{
@@ -1084,10 +1084,10 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 				}},
 			},
 		},
-		{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
-		{Key: ctxTaskType, Type: "int", Required: false},
-		{Key: ctxTaskSuffix, Type: "string", Required: false},
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
+		{Key: ctx_task_type, Type: "int", Required: false},
+		{Key: ctx_task_suffix, Type: "string", Required: false},
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1126,7 +1126,7 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			Type: "FuncNode",
 			Name: "开始：初始化 postprocess 上下文",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessContextTask, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_context_task, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "ID", Type: "int", Required: true},
 					{Key: "Name", Type: "string", Required: false},
 					{Key: "UniqueID", Type: "string", Required: false},
@@ -1139,9 +1139,9 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 					}},
 				},
 				},
-				{Key: wxchannelsPostprocessContextBasePath, Type: "string", Required: true},
-				{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_context_base_path, Type: "string", Required: true},
+				{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1173,11 +1173,11 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 					{Key: "log", Type: "any", Required: false},
 				},
 				},
-				{Key: wxchannelsPostprocessContextKeyCtx, Type: "object", Required: false},
+				{Key: wxchannels_postprocess_context_key_ctx, Type: "object", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
 				{
-					Key:      wxchannelsPostprocessContextResources,
+					Key:      wxchannels_postprocess_context_resources,
 					Type:     "array",
 					Required: true,
 					Fields: []flowengine.FieldSchema{
@@ -1195,11 +1195,11 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 						}},
 					},
 				},
-				{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
-				{Key: wxchannelsPostprocessContextTaskType, Type: "int", Required: false},
-				{Key: wxchannelsPostprocessContextTaskSuffix, Type: "string", Required: false},
+				{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
+				{Key: wxchannels_postprocess_context_task_type, Type: "int", Required: false},
+				{Key: wxchannels_postprocess_context_task_suffix, Type: "string", Required: false},
 			},
-			Config:    map[string]interface{}{"func": bootstrapPostprocessContextNode},
+			Config:    map[string]interface{}{"func": bootstrap_postprocess_context_node},
 			NextNodes: []flowengine.TargetNode{{TargetID: "loop_resources"}},
 		},
 		"loop_resources": {
@@ -1208,7 +1208,7 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			Name: "遍历并处理每个资源",
 			InputSchema: []flowengine.FieldSchema{
 				{
-					Key:      wxchannelsPostprocessContextResources,
+					Key:      wxchannels_postprocess_context_resources,
 					Type:     "array",
 					Required: true,
 					Fields: []flowengine.FieldSchema{
@@ -1226,8 +1226,8 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 						}},
 					},
 				},
-				{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1262,10 +1262,10 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			},
 			OutputSchema: []flowengine.FieldSchema{},
 			Config: map[string]interface{}{
-				"item_key":     wxchannelsPostprocessContextResource,
-				"iterable_key": wxchannelsPostprocessContextResources,
-				"cleanup_keys": []interface{}{wxchannelsPostprocessContextResource, ctxInputFile, ctxResourceType, ctxDecodeKey, ctxResourceHasDecodeSecret, ctxDecryptedFile, ctxMP4File, ctxMP3File},
-				"workflow":     wxchannelsPostprocessFlow,
+				"item_key":     wxchannels_postprocess_context_resource,
+				"iterable_key": wxchannels_postprocess_context_resources,
+				"cleanup_keys": []interface{}{wxchannels_postprocess_context_resource, ctx_input_file, ctx_resource_type, ctx_decode_key, ctx_resource_has_decode_secret, ctx_decrypted_file, ctx_mp4_file, ctx_mp3_file},
+				"workflow":     wxchannels_postprocess_flow,
 			},
 			NextNodes: []flowengine.TargetNode{{TargetID: "archive_requested_gate"}},
 		},
@@ -1274,10 +1274,10 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			Type: "GatewayNode",
 			Name: "是否需要归档",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
+				{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessContextArchiveRequested, Type: "bool", Required: true},
+				{Key: wxchannels_postprocess_context_archive_requested, Type: "bool", Required: true},
 			},
 			Config: map[string]interface{}{
 				"gateway_type": "Exclusive",
@@ -1294,7 +1294,7 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			Type: "WorkflowNode",
 			Name: "执行归档子流程",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1326,11 +1326,11 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 					{Key: "log", Type: "any", Required: false},
 				},
 				},
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"workflow": wxchannelsOutputFlow},
+			Config:       map[string]interface{}{"workflow": wxchannels_output_flow},
 			NextNodes:    []flowengine.TargetNode{{TargetID: "done"}},
 		},
 		"done": {
@@ -1339,19 +1339,19 @@ var wxchannelsPostprocessMainFlow = flowengine.FlowDefinition{
 			Name:         "后处理完成",
 			InputSchema:  []flowengine.FieldSchema{},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": noopPostprocessDoneNode},
+			Config:       map[string]interface{}{"func": noop_postprocess_done_node},
 		},
 	},
 }
 
-var wxchannelsOutputFlow = flowengine.FlowDefinition{
-	ID:   wxchannelsPostprocessOutputFlowID,
+var wxchannels_output_flow = flowengine.FlowDefinition{
+	ID:   wxchannels_postprocess_output_flow_id,
 	Name: "wxchannels_postprocess_output",
 	ContextSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessContextKeyCtx, Type: "object", Required: false},
-		{Key: ctxTaskType, Type: "int", Required: false},
-		{Key: ctxTaskSuffix, Type: "string", Required: false},
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_context_key_ctx, Type: "object", Required: false},
+		{Key: ctx_task_type, Type: "int", Required: false},
+		{Key: ctx_task_suffix, Type: "string", Required: false},
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1390,7 +1390,7 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 			Type: "StartNode",
 			Name: "output_start",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1422,11 +1422,11 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 					{Key: "log", Type: "any", Required: false},
 				},
 				},
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+				{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 					{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "ID", Type: "int", Required: true},
 						{Key: "Name", Type: "string", Required: false},
@@ -1458,8 +1458,8 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 					{Key: "log", Type: "any", Required: false},
 				},
 				},
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			NextNodes: []flowengine.TargetNode{{TargetID: "route_output_format"}},
 		},
@@ -1468,12 +1468,12 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 			Type: "GatewayNode",
 			Name: "输出格式分流",
 			InputSchema: []flowengine.FieldSchema{
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: ctxTaskType, Type: "int", Required: false},
-				{Key: ctxTaskSuffix, Type: "string", Required: false},
+				{Key: ctx_task_type, Type: "int", Required: false},
+				{Key: ctx_task_suffix, Type: "string", Required: false},
 			},
 			Config: map[string]interface{}{
 				"gateway_type": "Exclusive",
@@ -1555,16 +1555,16 @@ var wxchannelsOutputFlow = flowengine.FlowDefinition{
 			Name:         "无需后处理",
 			InputSchema:  []flowengine.FieldSchema{},
 			OutputSchema: []flowengine.FieldSchema{},
-			Config:       map[string]interface{}{"func": noopPostprocessDoneNode},
+			Config:       map[string]interface{}{"func": noop_postprocess_done_node},
 		},
 	},
 }
 
 // GetWXChannelsPostprocessFlowVisualization returns a read-only flow graph payload
 // for frontend visualization.
-func GetWXChannelsPostprocessFlowVisualization(flowID string) (*WXChannelsPostprocessFlowVisualizationPayload, error) {
-	available := []flowengine.FlowDefinition{wxchannelsPostprocessMainFlow, wxchannelsPostprocessFlow, wxchannelsOutputFlow}
-	payload, err := flowengine.BuildFlowVisualizationPayload(available, flowID, flowengine.FlowVisualizationOptions{
+func GetWXChannelsPostprocessFlowVisualization(flow_id string) (*WXChannelsPostprocessFlowVisualizationPayload, error) {
+	available := []flowengine.FlowDefinition{wxchannels_postprocess_main_flow, wxchannels_postprocess_flow, wxchannels_output_flow}
+	payload, err := flowengine.BuildFlowVisualizationPayload(available, flow_id, flowengine.FlowVisualizationOptions{
 		Platform: "wxchannels",
 		Purpose:  "postprocess-flow-visualization",
 		Editable: false,
@@ -1589,13 +1589,13 @@ var DecryptNode = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "微信视频号文件解密",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: ctxInputFile, Type: "string", Required: true},
-		{Key: ctxDecodeKey, Type: "any", Required: false},
+		{Key: ctx_input_file, Type: "string", Required: true},
+		{Key: ctx_decode_key, Type: "any", Required: false},
 	},
 	OutputSchema: []flowengine.FieldSchema{
-		{Key: ctxDecryptedFile, Type: "string", Required: false},
+		{Key: ctx_decrypted_file, Type: "string", Required: false},
 	},
-	Config: map[string]interface{}{"func": decryptNode},
+	Config: map[string]interface{}{"func": decrypt_node},
 }
 
 // ConvertMP3Node converts the decrypted file to MP3 using ffmpeg.
@@ -1609,12 +1609,12 @@ var ConvertMP3Node = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "FFmpeg 转换 MP3",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: ctxDecryptedFile, Type: "string", Required: true},
+		{Key: ctx_decrypted_file, Type: "string", Required: true},
 	},
 	OutputSchema: []flowengine.FieldSchema{
-		{Key: ctxMP3File, Type: "string", Required: false},
+		{Key: ctx_mp3_file, Type: "string", Required: false},
 	},
-	Config: map[string]interface{}{"func": convertMP3Node},
+	Config: map[string]interface{}{"func": convert_mp3_node},
 }
 
 var FinalizeMP3Node = flowengine.NodeDefinition{
@@ -1622,7 +1622,7 @@ var FinalizeMP3Node = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "生成 MP3 资源结果",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1654,10 +1654,10 @@ var FinalizeMP3Node = flowengine.NodeDefinition{
 			{Key: "log", Type: "any", Required: false},
 		},
 		},
-		{Key: ctxMP3File, Type: "string", Required: true},
+		{Key: ctx_mp3_file, Type: "string", Required: true},
 	},
 	OutputSchema: []flowengine.FieldSchema{},
-	Config:       map[string]interface{}{"func": finalizeMP3Node},
+	Config:       map[string]interface{}{"func": finalize_mp3_node},
 }
 
 // StreamConvertNode converts a stream file to a playable format.
@@ -1673,12 +1673,12 @@ var StreamConvertNode = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "流媒体转封装为 MP4",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: ctxInputFile, Type: "string", Required: true},
+		{Key: ctx_input_file, Type: "string", Required: true},
 	},
 	OutputSchema: []flowengine.FieldSchema{
-		{Key: ctxMP4File, Type: "string", Required: false},
+		{Key: ctx_mp4_file, Type: "string", Required: false},
 	},
-	Config: map[string]interface{}{"func": streamConvertNode},
+	Config: map[string]interface{}{"func": stream_convert_node},
 }
 
 // FinalizeStreamNode applies the stream conversion result to the resource model.
@@ -1687,7 +1687,7 @@ var FinalizeStreamNode = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "生成流媒体资源结果",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1719,10 +1719,10 @@ var FinalizeStreamNode = flowengine.NodeDefinition{
 			{Key: "log", Type: "any", Required: false},
 		},
 		},
-		{Key: ctxMP4File, Type: "string", Required: false},
+		{Key: ctx_mp4_file, Type: "string", Required: false},
 	},
 	OutputSchema: []flowengine.FieldSchema{},
-	Config:       map[string]interface{}{"func": finalizeStreamNode},
+	Config:       map[string]interface{}{"func": finalize_stream_node},
 }
 
 var ZipResourcesNode = flowengine.NodeDefinition{
@@ -1730,7 +1730,7 @@ var ZipResourcesNode = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "压缩全部 Resources",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1766,7 +1766,7 @@ var ZipResourcesNode = flowengine.NodeDefinition{
 	OutputSchema: []flowengine.FieldSchema{
 		{Key: "archive_file", Type: "string", Required: false},
 	},
-	Config: map[string]interface{}{"func": zipResourcesNode},
+	Config: map[string]interface{}{"func": zip_resources_node},
 }
 
 // TaskJobUpdateNode commits post-processing results to the exact TaskJob pointer
@@ -1776,7 +1776,7 @@ var TaskJobUpdateNode = flowengine.NodeDefinition{
 	Type: "FuncNode",
 	Name: "更新传入的 TaskJob",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxchannelsPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxchannels_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
@@ -1810,7 +1810,7 @@ var TaskJobUpdateNode = flowengine.NodeDefinition{
 		},
 	},
 	OutputSchema: []flowengine.FieldSchema{},
-	Config:       map[string]interface{}{"func": taskJobUpdateNode},
+	Config:       map[string]interface{}{"func": task_job_update_node},
 }
 
 // Postprocess performs wxchannels-specific decrypt and media conversion.
@@ -1819,18 +1819,18 @@ func (a *ChannelsAdapter) Postprocess(ctx context.Context, info *hermes.TaskJob,
 		deps.Logger.Info().Msg(fmt.Sprintf(msg, args...))
 	}
 	log("Postprocessor.wxchannels: task_id=%d processing %d resources", info.ID, len(info.Resources))
-	archiveRequested := isZIPOutput(info.Config)
-	log("Postprocessor.wxchannels: task_id=%d config.suffix=%q archiveRequested=%v", info.ID, taskConfigSuffix(info.Config), archiveRequested)
+	archive_requested := is_zip_output(info.Config)
+	log("Postprocessor.wxchannels: task_id=%d config.suffix=%q archiveRequested=%v", info.ID, task_config_suffix(info.Config), archive_requested)
 
-	if err := runWXChannelsPostprocessFlow(wxchannelsPostprocessMainFlow, map[string]interface{}{
-		ctxKey:                                       ctx,
-		wxchannelsPostprocessContextTask:             info,
-		wxchannelsPostprocessContextBasePath:         deps.BasePath,
-		wxchannelsPostprocessContextArchiveRequested: archiveRequested,
-		wxchannelsPostprocessRunKey: &postprocessRun{
-			task:     info,
-			basePath: deps.BasePath,
-			log:      log,
+	if err := run_wx_channels_postprocess_flow(wxchannels_postprocess_main_flow, map[string]interface{}{
+		ctx_key:                                          ctx,
+		wxchannels_postprocess_context_task:              info,
+		wxchannels_postprocess_context_base_path:         deps.BasePath,
+		wxchannels_postprocess_context_archive_requested: archive_requested,
+		wxchannels_postprocess_run_key: &postprocess_run{
+			task:      info,
+			base_path: deps.BasePath,
+			log:       log,
 		},
 	}); err != nil {
 		return fmt.Errorf("wxchannels postprocess: %w", err)
@@ -1839,19 +1839,19 @@ func (a *ChannelsAdapter) Postprocess(ctx context.Context, info *hermes.TaskJob,
 	return nil
 }
 
-func isZIPOutput(config map[string]any) bool {
-	return taskConfigType(config) == -1 || strings.EqualFold(taskConfigSuffix(config), ".zip")
+func is_zip_output(config map[string]any) bool {
+	return task_config_type(config) == -1 || strings.EqualFold(task_config_suffix(config), ".zip")
 }
 
-func postprocessResourceName(basePath, filePath string) string {
-	relPath, _ := filepath.Rel(basePath, filePath)
-	if relPath != "" && !filepath.IsAbs(relPath) {
-		return relPath
+func postprocess_resource_name(base_path, file_path string) string {
+	rel_path, _ := filepath.Rel(base_path, file_path)
+	if rel_path != "" && !filepath.IsAbs(rel_path) {
+		return rel_path
 	}
-	return filepath.Base(filePath)
+	return filepath.Base(file_path)
 }
 
-func taskConfigType(config map[string]any) int {
+func task_config_type(config map[string]any) int {
 	if config == nil {
 		return 0
 	}
@@ -1881,7 +1881,7 @@ func taskConfigType(config map[string]any) int {
 	return 0
 }
 
-func taskConfigSuffix(config map[string]any) string {
+func task_config_suffix(config map[string]any) string {
 	if config == nil {
 		return ""
 	}
@@ -1889,85 +1889,85 @@ func taskConfigSuffix(config map[string]any) string {
 	return strings.TrimSpace(value)
 }
 
-func runWXChannelsPostprocessFlow(flow flowengine.FlowDefinition, ctx map[string]interface{}) error {
+func run_wx_channels_postprocess_flow(flow flowengine.FlowDefinition, ctx map[string]interface{}) error {
 	if ctx == nil {
 		ctx = map[string]interface{}{}
 	}
-	if _, ok := ctx[ctxKey]; !ok {
-		ctx[ctxKey] = context.Background()
+	if _, ok := ctx[ctx_key]; !ok {
+		ctx[ctx_key] = context.Background()
 	}
-	run, _ := postprocessRunFromContext(ctx)
-	logPostprocessFlow(flow.ID, "started", run, nil)
+	run, _ := postprocess_run_from_context(ctx)
+	log_postprocess_flow(flow.ID, "started", run, nil)
 	if run != nil && run.log != nil {
-		run.log("Postprocess.wxchannels: flow=%s input=%s", flow.ID, formatContextSnapshot(postprocessContextSnapshot(ctx)))
+		run.log("Postprocess.wxchannels: flow=%s input=%s", flow.ID, format_context_snapshot(postprocess_context_snapshot(ctx)))
 	}
-	flowEngine := flowengine.NewWorkflowEngine()
-	flowEngine.RegisterNode("GatewayNode", newWXChannelsLoggedGatewayNode)
-	flowEngine.SetFlowDefinitions(map[string]flowengine.FlowDefinition{
+	flow_engine := flowengine.NewWorkflowEngine()
+	flow_engine.RegisterNode("GatewayNode", new_wx_channels_logged_gateway_node)
+	flow_engine.SetFlowDefinitions(map[string]flowengine.FlowDefinition{
 		flow.ID: flow,
 	})
-	instanceID, err := flowEngine.StartFlow(flow.ID, ctx)
+	instance_id, err := flow_engine.StartFlow(flow.ID, ctx)
 	if err != nil {
-		logPostprocessFlow(flow.ID, "failed", run, err)
-		logPostprocessFlowNodeExecution(run, flowEngine, flow.ID, instanceID, err)
+		log_postprocess_flow(flow.ID, "failed", run, err)
+		log_postprocess_flow_node_execution(run, flow_engine, flow.ID, instance_id, err)
 		return err
 	}
-	logPostprocessFlow(flow.ID, "succeeded", run, nil)
-	logPostprocessFlowNodeExecution(run, flowEngine, flow.ID, instanceID, nil)
+	log_postprocess_flow(flow.ID, "succeeded", run, nil)
+	log_postprocess_flow_node_execution(run, flow_engine, flow.ID, instance_id, nil)
 	return err
 }
 
-func bootstrapPostprocessContextNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeBootstrapContext, func(run *postprocessRun) (interface{}, error) {
-		task, ok := values[wxchannelsPostprocessContextTask].(*hermes.TaskJob)
+func bootstrap_postprocess_context_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_bootstrap_context, func(run *postprocess_run) (interface{}, error) {
+		task, ok := values[wxchannels_postprocess_context_task].(*hermes.TaskJob)
 		if !ok || task == nil {
 			return nil, fmt.Errorf("缺少 task")
 		}
 
 		run.task = task
-		if run.basePath == "" {
-			run.basePath, _ = values[wxchannelsPostprocessContextBasePath].(string)
+		if run.base_path == "" {
+			run.base_path, _ = values[wxchannels_postprocess_context_base_path].(string)
 		}
-		values[wxchannelsPostprocessRunKey] = run
+		values[wxchannels_postprocess_run_key] = run
 
 		resources := make([]interface{}, 0, len(task.Resources))
 		for i := range task.Resources {
-			resources = append(resources, resourceToContextMap(&task.Resources[i]))
+			resources = append(resources, resource_to_context_map(&task.Resources[i]))
 		}
-		values[wxchannelsPostprocessContextResources] = resources
+		values[wxchannels_postprocess_context_resources] = resources
 
-		values[wxchannelsPostprocessContextTaskType] = taskConfigType(task.Config)
-		values[wxchannelsPostprocessContextTaskSuffix] = taskConfigSuffix(task.Config)
+		values[wxchannels_postprocess_context_task_type] = task_config_type(task.Config)
+		values[wxchannels_postprocess_context_task_suffix] = task_config_suffix(task.Config)
 		return nil, nil
 	})
 }
 
-func postprocessRunFromContext(values map[string]interface{}) (*postprocessRun, error) {
-	run, _ := values[wxchannelsPostprocessRunKey].(*postprocessRun)
+func postprocess_run_from_context(values map[string]interface{}) (*postprocess_run, error) {
+	run, _ := values[wxchannels_postprocess_run_key].(*postprocess_run)
 	if run == nil {
 		return nil, fmt.Errorf("缺少 postprocess_run")
 	}
 	if run.task == nil {
-		task, ok := values[wxchannelsPostprocessContextTask].(*hermes.TaskJob)
+		task, ok := values[wxchannels_postprocess_context_task].(*hermes.TaskJob)
 		if !ok || task == nil {
 			return nil, fmt.Errorf("缺少 task")
 		}
 		run.task = task
 	}
 	if run.resource == nil {
-		run.resource = resolvePostprocessResource(values[wxchannelsPostprocessContextResource])
+		run.resource = resolve_postprocess_resource(values[wxchannels_postprocess_context_resource])
 	}
 	if run.resource != nil {
-		run.originalExt = strings.ToLower(filepath.Ext(run.resource.FilePath))
+		run.original_ext = strings.ToLower(filepath.Ext(run.resource.FilePath))
 	}
 	return run, nil
 }
 
-func prepareResourceContextNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodePrepareResourceContext, func(run *postprocessRun) (interface{}, error) {
-		resource, hasResource := values[wxchannelsPostprocessContextResource].(*hermes.ResourceJob)
-		if !hasResource {
-			resource = resolvePostprocessResource(values[wxchannelsPostprocessContextResource])
+func prepare_resource_context_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_prepare_resource_context, func(run *postprocess_run) (interface{}, error) {
+		resource, has_resource := values[wxchannels_postprocess_context_resource].(*hermes.ResourceJob)
+		if !has_resource {
+			resource = resolve_postprocess_resource(values[wxchannels_postprocess_context_resource])
 		}
 		if run.resource != resource {
 			run.resource = resource
@@ -1976,70 +1976,70 @@ func prepareResourceContextNode(values map[string]interface{}) (interface{}, err
 			return nil, fmt.Errorf("缺少 resource")
 		}
 
-		inputFile := ""
-		if input, ok := values[ctxInputFile].(string); ok {
-			inputFile = input
+		input_file := ""
+		if input, ok := values[ctx_input_file].(string); ok {
+			input_file = input
 		}
-		if inputFile == "" {
-			inputFile = run.resource.FilePath
+		if input_file == "" {
+			input_file = run.resource.FilePath
 		}
-		inputFile = strings.TrimSpace(inputFile)
-		if inputFile == "" {
+		input_file = strings.TrimSpace(input_file)
+		if input_file == "" {
 			return nil, fmt.Errorf("缺少 input_file")
 		}
-		values[ctxInputFile] = inputFile
+		values[ctx_input_file] = input_file
 
-		resourceType := ""
-		if rt, ok := values[ctxResourceType].(string); ok {
-			resourceType = rt
+		resource_type := ""
+		if rt, ok := values[ctx_resource_type].(string); ok {
+			resource_type = rt
 		}
-		if resourceType == "" {
-			resourceType = run.resource.Type
+		if resource_type == "" {
+			resource_type = run.resource.Type
 		}
-		if resourceType == "" {
+		if resource_type == "" {
 			return nil, fmt.Errorf("缺少 resource_type")
 		}
-		values[ctxResourceType] = resourceType
+		values[ctx_resource_type] = resource_type
 
-		decodeKey, ok := values[ctxDecodeKey]
-		if !ok || decodeKey == nil {
-			decodeKey = run.resource.Extra["decode_key"]
+		decode_key, ok := values[ctx_decode_key]
+		if !ok || decode_key == nil {
+			decode_key = run.resource.Extra["decode_key"]
 		}
-		values[ctxDecodeKey] = decodeKey
-		values[wxchannelsPostprocessContextResourceHasDecodeSecret] = decodeKeyToString(decodeKey) != ""
+		values[ctx_decode_key] = decode_key
+		values[wxchannels_postprocess_context_resource_has_decode_secret] = decode_key_to_string(decode_key) != ""
 		if run.log != nil {
 			run.log("Postprocess.wxchannels: resource_context_prepared: resource_id=%d resource_type=%q input_file=%q decode_key=%q resource_has_decode_key=%v",
-				run.resource.ID, resourceType, inputFile, decodeKeyToString(decodeKey), values[wxchannelsPostprocessContextResourceHasDecodeSecret])
+				run.resource.ID, resource_type, input_file, decode_key_to_string(decode_key), values[wxchannels_postprocess_context_resource_has_decode_secret])
 		}
 
-		values[wxchannelsPostprocessContextTaskType] = taskConfigTypeFromContext(values)
-		values[wxchannelsPostprocessContextTaskSuffix] = taskConfigSuffixFromContext(values)
+		values[wxchannels_postprocess_context_task_type] = task_config_type_from_context(values)
+		values[wxchannels_postprocess_context_task_suffix] = task_config_suffix_from_context(values)
 		return nil, nil
 	})
 }
 
-func noopPostprocessDoneNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeDone, func(*postprocessRun) (interface{}, error) {
+func noop_postprocess_done_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_done, func(*postprocess_run) (interface{}, error) {
 		return nil, nil
 	})
 }
 
-func taskConfigTypeFromContext(values map[string]interface{}) int {
+func task_config_type_from_context(values map[string]interface{}) int {
 	if values == nil {
 		return 0
 	}
-	v, ok := values[ctxTaskType]
+	v, ok := values[ctx_task_type]
 	if !ok {
 		return 0
 	}
-	if taskType, ok := v.(int); ok {
-		return taskType
+	if task_type, ok := v.(int); ok {
+		return task_type
 	}
-	if taskType, ok := v.(float64); ok {
-		return int(taskType)
+	if task_type, ok := v.(float64); ok {
+		return int(task_type)
 	}
-	if taskType, ok := v.(string); ok {
-		parsed, err := strconv.Atoi(strings.TrimSpace(taskType))
+	if task_type, ok := v.(string); ok {
+		parsed, err := strconv.Atoi(strings.TrimSpace(task_type))
 		if err == nil {
 			return parsed
 		}
@@ -2047,11 +2047,11 @@ func taskConfigTypeFromContext(values map[string]interface{}) int {
 	return 0
 }
 
-func taskConfigSuffixFromContext(values map[string]interface{}) string {
+func task_config_suffix_from_context(values map[string]interface{}) string {
 	if values == nil {
 		return ""
 	}
-	v, ok := values[ctxTaskSuffix]
+	v, ok := values[ctx_task_suffix]
 	if !ok {
 		return ""
 	}
@@ -2061,7 +2061,7 @@ func taskConfigSuffixFromContext(values map[string]interface{}) string {
 	return ""
 }
 
-func resolvePostprocessResource(value interface{}) *hermes.ResourceJob {
+func resolve_postprocess_resource(value interface{}) *hermes.ResourceJob {
 	if value == nil {
 		return nil
 	}
@@ -2072,19 +2072,19 @@ func resolvePostprocessResource(value interface{}) *hermes.ResourceJob {
 		return &resource
 	}
 	if raw, ok := value.(map[string]interface{}); ok {
-		return resolvePostprocessResourceFromMap(raw)
+		return resolve_postprocess_resource_from_map(raw)
 	}
 	if raw, ok := value.(map[string]string); ok {
 		converted := make(map[string]interface{}, len(raw))
 		for key, v := range raw {
 			converted[key] = v
 		}
-		return resolvePostprocessResourceFromMap(converted)
+		return resolve_postprocess_resource_from_map(converted)
 	}
 	return nil
 }
 
-func resourceToContextMap(resource *hermes.ResourceJob) map[string]interface{} {
+func resource_to_context_map(resource *hermes.ResourceJob) map[string]interface{} {
 	if resource == nil {
 		return map[string]interface{}{}
 	}
@@ -2106,32 +2106,32 @@ func resourceToContextMap(resource *hermes.ResourceJob) map[string]interface{} {
 	}
 }
 
-func resolvePostprocessResourceFromMap(raw map[string]interface{}) *hermes.ResourceJob {
+func resolve_postprocess_resource_from_map(raw map[string]interface{}) *hermes.ResourceJob {
 	resource := &hermes.ResourceJob{}
-	resource.ID = castInt(raw["ID"])
-	resource.Name = castString(raw["Name"])
-	resource.Kind = castString(raw["Kind"])
-	resource.Type = castString(raw["Type"])
-	resource.UniqueID = castString(raw["UniqueID"])
-	resource.FilePath = castString(raw["FilePath"])
-	resource.Size = castInt64(raw["Size"])
-	resource.Downloaded = castInt64(raw["Downloaded"])
-	resource.Speed = castInt64(raw["Speed"])
+	resource.ID = cast_int(raw["ID"])
+	resource.Name = cast_string(raw["Name"])
+	resource.Kind = cast_string(raw["Kind"])
+	resource.Type = cast_string(raw["Type"])
+	resource.UniqueID = cast_string(raw["UniqueID"])
+	resource.FilePath = cast_string(raw["FilePath"])
+	resource.Size = cast_int64(raw["Size"])
+	resource.Downloaded = cast_int64(raw["Downloaded"])
+	resource.Speed = cast_int64(raw["Speed"])
 	resource.Extra = map[string]string{}
 
-	if rawExtra, ok := raw["Extra"].(map[string]interface{}); ok {
-		for key, value := range rawExtra {
-			resource.Extra[key] = castString(value)
+	if raw_extra, ok := raw["Extra"].(map[string]interface{}); ok {
+		for key, value := range raw_extra {
+			resource.Extra[key] = cast_string(value)
 		}
-	} else if rawExtra, ok := raw["Extra"].(map[string]string); ok {
-		for key, value := range rawExtra {
+	} else if raw_extra, ok := raw["Extra"].(map[string]string); ok {
+		for key, value := range raw_extra {
 			resource.Extra[key] = value
 		}
 	}
 	return resource
 }
 
-func castInt64(value interface{}) int64 {
+func cast_int64(value interface{}) int64 {
 	switch typed := value.(type) {
 	case nil:
 		return 0
@@ -2157,11 +2157,11 @@ func castInt64(value interface{}) int64 {
 	return 0
 }
 
-func castInt(value interface{}) int {
-	return int(castInt64(value))
+func cast_int(value interface{}) int {
+	return int(cast_int64(value))
 }
 
-func castString(value interface{}) string {
+func cast_string(value interface{}) string {
 	if value == nil {
 		return ""
 	}
@@ -2176,44 +2176,44 @@ func castString(value interface{}) string {
 	}
 }
 
-func nodeContext(values map[string]interface{}) context.Context {
-	if v, ok := values[ctxKey].(context.Context); ok && v != nil {
+func node_context(values map[string]interface{}) context.Context {
+	if v, ok := values[ctx_key].(context.Context); ok && v != nil {
 		return v
 	}
 	return context.Background()
 }
 
-func decryptNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeDecrypt, func(run *postprocessRun) (interface{}, error) {
-		inputFile, _ := values[ctxInputFile].(string)
-		if inputFile == "" {
+func decrypt_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_decrypt, func(run *postprocess_run) (interface{}, error) {
+		input_file, _ := values[ctx_input_file].(string)
+		if input_file == "" {
 			return nil, fmt.Errorf("缺少 input_file")
 		}
 		if run.task == nil || run.resource == nil {
 			return nil, fmt.Errorf("缺少 task 或 resource")
 		}
 
-		decodeKeyStr := strings.TrimSpace(decodeKeyToString(values[ctxDecodeKey]))
-		key, err := strconv.ParseUint(decodeKeyStr, 10, 64)
+		decode_key_str := strings.TrimSpace(decode_key_to_string(values[ctx_decode_key]))
+		key, err := strconv.ParseUint(decode_key_str, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("解析 decode_key 失败: %w", err)
 		}
 
-		tmpFile := inputFile + ".tmp"
-		if err := wxchannels.DecryptFile(inputFile, tmpFile, key, 131072); err != nil {
-			_ = os.Remove(tmpFile)
+		tmp_file := input_file + ".tmp"
+		if err := wxchannels.DecryptFile(input_file, tmp_file, key, 131072); err != nil {
+			_ = os.Remove(tmp_file)
 			return nil, err
 		}
-		if err := os.Rename(tmpFile, inputFile); err != nil {
-			_ = os.Remove(tmpFile)
+		if err := os.Rename(tmp_file, input_file); err != nil {
+			_ = os.Remove(tmp_file)
 			return nil, fmt.Errorf("原地替换解密文件失败: %w", err)
 		}
-		values[ctxDecryptedFile] = inputFile
+		values[ctx_decrypted_file] = input_file
 		return nil, nil
 	})
 }
 
-func decodeKeyToString(value interface{}) string {
+func decode_key_to_string(value interface{}) string {
 	switch key := value.(type) {
 	case string:
 		return key
@@ -2233,113 +2233,113 @@ func decodeKeyToString(value interface{}) string {
 	return ""
 }
 
-func convertMP3Node(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeConvertMP3, func(*postprocessRun) (interface{}, error) {
-		decryptedFile, _ := values[ctxDecryptedFile].(string)
-		if decryptedFile == "" {
+func convert_mp3_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_convert_mp3, func(*postprocess_run) (interface{}, error) {
+		decrypted_file, _ := values[ctx_decrypted_file].(string)
+		if decrypted_file == "" {
 			return nil, fmt.Errorf("缺少 decrypted_file")
 		}
 
-		baseName := filepath.Base(decryptedFile)
-		ext := filepath.Ext(baseName)
-		mp3File := filepath.Join(filepath.Dir(decryptedFile), strings.TrimSuffix(baseName, ext))
-		tmpFile := mp3File + ".converting"
+		base_name := filepath.Base(decrypted_file)
+		ext := filepath.Ext(base_name)
+		mp3_file := filepath.Join(filepath.Dir(decrypted_file), strings.TrimSuffix(base_name, ext))
+		tmp_file := mp3_file + ".converting"
 
 		cmd := exec.CommandContext(
-			nodeContext(values),
+			node_context(values),
 			"ffmpeg",
-			"-i", decryptedFile,
+			"-i", decrypted_file,
 			"-vn",
 			"-acodec", "libmp3lame",
 			"-ab", "192k",
 			"-f", "mp3",
 			"-y",
-			tmpFile,
+			tmp_file,
 		)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			_ = os.Remove(tmpFile)
+			_ = os.Remove(tmp_file)
 			return nil, fmt.Errorf("ffmpeg 转换失败: %w\n%s", err, string(output))
 		}
-		if err := replaceConvertedFile(decryptedFile, tmpFile, mp3File); err != nil {
+		if err := replace_converted_file(decrypted_file, tmp_file, mp3_file); err != nil {
 			return nil, fmt.Errorf("替换 MP3 转换文件失败: %w", err)
 		}
-		values[ctxMP3File] = mp3File
+		values[ctx_mp3_file] = mp3_file
 		return nil, nil
 	})
 }
 
-func finalizeMP3Node(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeFinalizeMP3, func(run *postprocessRun) (interface{}, error) {
-		mp3File, _ := values[ctxMP3File].(string)
-		if mp3File == "" {
+func finalize_mp3_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_finalize_mp3, func(run *postprocess_run) (interface{}, error) {
+		mp3_file, _ := values[ctx_mp3_file].(string)
+		if mp3_file == "" {
 			return nil, fmt.Errorf("缺少 mp3_file")
 		}
 		if run.resource == nil {
 			return nil, fmt.Errorf("缺少 resource")
 		}
 
-		if run.resource.FilePath != mp3File {
+		if run.resource.FilePath != mp3_file {
 			_ = os.Remove(run.resource.FilePath)
 		}
 		run.resource.Kind = "audio/mpeg"
 		if title := run.resource.Extra["title"]; title != "" {
-			run.resource.Name = sanitizeBGMName(title)
+			run.resource.Name = sanitize_bgm_name(title)
 		} else {
-			run.resource.Name = postprocessResourceName(run.basePath, mp3File)
+			run.resource.Name = postprocess_resource_name(run.base_path, mp3_file)
 		}
-		run.resource.FilePath = mp3File
+		run.resource.FilePath = mp3_file
 		return nil, nil
 	})
 }
 
-func streamConvertNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeStreamConvert, func(run *postprocessRun) (interface{}, error) {
-		inputFile, _ := values[ctxInputFile].(string)
-		if inputFile == "" {
+func stream_convert_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_stream_convert, func(run *postprocess_run) (interface{}, error) {
+		input_file, _ := values[ctx_input_file].(string)
+		if input_file == "" {
 			return nil, fmt.Errorf("缺少 input_file")
 		}
 		if run.task == nil || run.resource == nil {
 			return nil, fmt.Errorf("缺少 task 或 resource")
 		}
 
-		ctx := nodeContext(values)
-		videoCodec, err := probeFirstMediaCodec(ctx, inputFile, "v:0")
+		ctx := node_context(values)
+		video_codec, err := probe_first_media_codec(ctx, input_file, "v:0")
 		if err != nil {
 			return nil, fmt.Errorf("检测直播视频编码失败: %w", err)
 		}
-		if videoCodec == "" {
+		if video_codec == "" {
 			return nil, fmt.Errorf("直播文件不包含视频轨道")
 		}
-		audioCodec, err := probeFirstMediaCodec(ctx, inputFile, "a:0")
+		audio_codec, err := probe_first_media_codec(ctx, input_file, "a:0")
 		if err != nil {
 			return nil, fmt.Errorf("检测直播音频编码失败: %w", err)
 		}
 
-		ext := strings.ToLower(filepath.Ext(inputFile))
-		baseName := filepath.Base(inputFile)
-		mp4File := inputFile
+		ext := strings.ToLower(filepath.Ext(input_file))
+		base_name := filepath.Base(input_file)
+		mp4_file := input_file
 		if ext != ".mp4" {
-			mp4File = filepath.Join(filepath.Dir(inputFile), strings.TrimSuffix(baseName, ext)+".mp4")
+			mp4_file = filepath.Join(filepath.Dir(input_file), strings.TrimSuffix(base_name, ext)+".mp4")
 		}
-		tmpFile := mp4File + ".converting"
+		tmp_file := mp4_file + ".converting"
 
-		cmd := exec.CommandContext(ctx, "ffmpeg", buildStreamMP4Args(inputFile, tmpFile, videoCodec, audioCodec)...)
+		cmd := exec.CommandContext(ctx, "ffmpeg", build_stream_mp4_args(input_file, tmp_file, video_codec, audio_codec)...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			_ = os.Remove(tmpFile)
+			_ = os.Remove(tmp_file)
 			return nil, fmt.Errorf("ffmpeg stream remux 失败: %w\n%s", err, string(output))
 		}
-		if err := replaceConvertedFile(inputFile, tmpFile, mp4File); err != nil {
+		if err := replace_converted_file(input_file, tmp_file, mp4_file); err != nil {
 			return nil, fmt.Errorf("替换 MP4 转换文件失败: %w", err)
 		}
 
-		values[ctxMP4File] = mp4File
+		values[ctx_mp4_file] = mp4_file
 		return nil, nil
 	})
 }
 
-func probeFirstMediaCodec(ctx context.Context, inputFile, selector string) (string, error) {
+func probe_first_media_codec(ctx context.Context, input_file, selector string) (string, error) {
 	cmd := exec.CommandContext(
 		ctx,
 		"ffprobe",
@@ -2347,7 +2347,7 @@ func probeFirstMediaCodec(ctx context.Context, inputFile, selector string) (stri
 		"-select_streams", selector,
 		"-show_entries", "stream=codec_name",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		inputFile,
+		input_file,
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -2357,17 +2357,17 @@ func probeFirstMediaCodec(ctx context.Context, inputFile, selector string) (stri
 	return strings.ToLower(strings.TrimSpace(codec)), nil
 }
 
-func buildStreamMP4Args(inputFile, outputFile, videoCodec, audioCodec string) []string {
+func build_stream_mp4_args(input_file, output_file, video_codec, audio_codec string) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-fflags", "+genpts",
-		"-i", inputFile,
+		"-i", input_file,
 		"-map", "0:v:0",
 		"-map", "0:a:0?",
 		"-map_metadata", "0",
 	}
 
-	switch strings.ToLower(strings.TrimSpace(videoCodec)) {
+	switch strings.ToLower(strings.TrimSpace(video_codec)) {
 	case "hevc", "h265":
 		// Apple system players require the hvc1 sample entry for reliable HEVC
 		// playback. This only rewrites container metadata and preserves quality.
@@ -2386,7 +2386,7 @@ func buildStreamMP4Args(inputFile, outputFile, videoCodec, audioCodec string) []
 		)
 	}
 
-	switch strings.ToLower(strings.TrimSpace(audioCodec)) {
+	switch strings.ToLower(strings.TrimSpace(audio_codec)) {
 	case "":
 	case "aac":
 		args = append(args, "-c:a", "copy", "-bsf:a", "aac_adtstoasc")
@@ -2400,36 +2400,36 @@ func buildStreamMP4Args(inputFile, outputFile, videoCodec, audioCodec string) []
 		"-movflags", "+faststart",
 		"-f", "mp4",
 		"-y",
-		outputFile,
+		output_file,
 	)
 }
 
-func finalizeStreamNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeFinalizeStream, func(run *postprocessRun) (interface{}, error) {
+func finalize_stream_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_finalize_stream, func(run *postprocess_run) (interface{}, error) {
 		if run.resource == nil {
 			return nil, fmt.Errorf("缺少 resource")
 		}
-		mp4File, _ := values[ctxMP4File].(string)
-		if mp4File == "" {
+		mp4_file, _ := values[ctx_mp4_file].(string)
+		if mp4_file == "" {
 			return nil, fmt.Errorf("缺少 mp4_file")
 		}
-		run.resource.FilePath = mp4File
+		run.resource.FilePath = mp4_file
 		if strings.TrimSpace(run.resource.Name) == "" {
-			run.resource.Name = postprocessResourceName(run.basePath, mp4File)
+			run.resource.Name = postprocess_resource_name(run.base_path, mp4_file)
 		}
 		run.resource.Kind = "video/mp4"
 		return nil, nil
 	})
 }
 
-func taskJobUpdateNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeTaskJobUpdate, func(run *postprocessRun) (interface{}, error) {
+func task_job_update_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_task_job_update, func(run *postprocess_run) (interface{}, error) {
 		if run.task == nil {
 			return nil, fmt.Errorf("缺少 task")
 		}
 		if run.resource == nil {
 			for i := range run.task.Resources {
-				if err := updatePostprocessedResource(&run.task.Resources[i]); err != nil {
+				if err := update_postprocessed_resource(&run.task.Resources[i]); err != nil {
 					return nil, fmt.Errorf("更新 TaskJob resource[%d]: %w", i, err)
 				}
 			}
@@ -2444,7 +2444,7 @@ func taskJobUpdateNode(values map[string]interface{}) (interface{}, error) {
 					*target = *run.resource
 					run.resource = target
 				}
-				if err := updatePostprocessedResource(target); err != nil {
+				if err := update_postprocessed_resource(target); err != nil {
 					return nil, fmt.Errorf("更新 TaskJob resource[%d]: %w", i, err)
 				}
 				return nil, nil
@@ -2454,7 +2454,7 @@ func taskJobUpdateNode(values map[string]interface{}) (interface{}, error) {
 	})
 }
 
-func updatePostprocessedResource(resource *hermes.ResourceJob) error {
+func update_postprocessed_resource(resource *hermes.ResourceJob) error {
 	if hermes.CanonicalExtensionForMIMEType(resource.Kind) == "" {
 		return fmt.Errorf("resource kind %q 不是可映射的 MIME type", resource.Kind)
 	}
@@ -2469,26 +2469,26 @@ func updatePostprocessedResource(resource *hermes.ResourceJob) error {
 	return nil
 }
 
-func zipResourcesNode(values map[string]interface{}) (interface{}, error) {
-	return runWXChannelsNode(values, wxchannelsPostprocessFlowNodeZipResources, func(run *postprocessRun) (interface{}, error) {
+func zip_resources_node(values map[string]interface{}) (interface{}, error) {
+	return run_wx_channels_node(values, wxchannels_postprocess_flow_node_zip_resources, func(run *postprocess_run) (interface{}, error) {
 		if run.task == nil {
 			return nil, fmt.Errorf("缺少 task")
 		}
 
-		archiveUniqueID := strings.TrimSpace(run.task.UniqueID) + "_zip"
-		if archiveUniqueID == "_zip" {
-			archiveUniqueID = fmt.Sprintf("task_%d_zip", run.task.ID)
+		archive_unique_id := strings.TrimSpace(run.task.UniqueID) + "_zip"
+		if archive_unique_id == "_zip" {
+			archive_unique_id = fmt.Sprintf("task_%d_zip", run.task.ID)
 		}
-		archivePath := filepath.Join(run.basePath, run.task.SavePath, archiveUniqueID)
+		archive_path := filepath.Join(run.base_path, run.task.SavePath, archive_unique_id)
 		for _, resource := range run.task.Resources {
-			if filepath.Clean(resource.FilePath) == filepath.Clean(archivePath) {
-				return nil, fmt.Errorf("ZIP 输出路径与资源输入路径冲突: %s", archivePath)
+			if filepath.Clean(resource.FilePath) == filepath.Clean(archive_path) {
+				return nil, fmt.Errorf("ZIP 输出路径与资源输入路径冲突: %s", archive_path)
 			}
 		}
-		if err := os.MkdirAll(filepath.Dir(archivePath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(archive_path), 0755); err != nil {
 			return nil, fmt.Errorf("创建 ZIP 输出目录失败: %w", err)
 		}
-		if err := writeResourcesZIP(archivePath, run.task.Resources); err != nil {
+		if err := write_resources_zip(archive_path, run.task.Resources); err != nil {
 			return nil, err
 		}
 
@@ -2501,46 +2501,65 @@ func zipResourcesNode(values map[string]interface{}) (interface{}, error) {
 			}
 		}
 
-		archiveName := strings.TrimSpace(run.task.Name)
-		if archiveName == "" {
-			archiveName = "archive"
+		archive_kind := mime_application_zip
+		archive_name := strings.TrimSpace(run.task.Name)
+		if archive_name == "" {
+			archive_name = "archive"
 		}
-		archiveResource := hermes.ResourceJob{
-			Name:     archiveName,
-			Kind:     "application/zip",
+		archive_resource_name := resource_name_without_canonical_extension(archive_name, archive_kind)
+		archive_resource := hermes.ResourceJob{
+			Name:     archive_resource_name,
+			Kind:     archive_kind,
 			Type:     "FILE",
-			UniqueID: archiveUniqueID,
-			FilePath: archivePath,
-			Extra:    map[string]string{"title": archiveName},
+			UniqueID: archive_unique_id,
+			FilePath: archive_path,
+			Extra:    map[string]string{"title": archive_name},
 		}
 		if len(run.task.Resources) > 0 {
-			archiveResource.ID = run.task.Resources[0].ID
+			archive_resource.ID = run.task.Resources[0].ID
 		}
-		if stat, err := os.Stat(archivePath); err == nil {
-			archiveResource.Size = stat.Size()
+		if stat, err := os.Stat(archive_path); err == nil {
+			archive_resource.Size = stat.Size()
 		}
-		run.task.Resources = []hermes.ResourceJob{archiveResource}
+		run.task.Resources = []hermes.ResourceJob{archive_resource}
 		run.resource = &run.task.Resources[0]
-		values[wxchannelsPostprocessContextResource] = run.resource
-		values["archive_file"] = archivePath
+		values[wxchannels_postprocess_context_resource] = run.resource
+		values["archive_file"] = archive_path
 		return nil, nil
 	})
 }
 
-func writeResourcesZIP(archivePath string, resources []hermes.ResourceJob) error {
-	tmpFile := archivePath + ".archiving"
-	_ = os.Remove(tmpFile)
-	file, err := os.Create(tmpFile)
+func resource_name_without_canonical_extension(name, kind string) string {
+	ext := hermes.CanonicalExtensionForMIMEType(kind)
+	if ext == "" {
+		return name
+	}
+	dir, base := filepath.Split(strings.TrimSpace(name))
+	base_ext := filepath.Ext(base)
+	if !strings.EqualFold(base_ext, ext) {
+		return name
+	}
+	trimmed := strings.TrimSuffix(base, base_ext)
+	if strings.TrimSpace(trimmed) == "" {
+		return name
+	}
+	return dir + trimmed
+}
+
+func write_resources_zip(archive_path string, resources []hermes.ResourceJob) error {
+	tmp_file := archive_path + ".archiving"
+	_ = os.Remove(tmp_file)
+	file, err := os.Create(tmp_file)
 	if err != nil {
 		return fmt.Errorf("创建 ZIP 临时文件失败: %w", err)
 	}
 	writer := zip.NewWriter(file)
-	entryNames := make(map[string]int, len(resources))
+	entry_names := make(map[string]int, len(resources))
 
 	fail := func(cause error) error {
 		_ = writer.Close()
 		_ = file.Close()
-		_ = os.Remove(tmpFile)
+		_ = os.Remove(tmp_file)
 		return cause
 	}
 	for i, resource := range resources {
@@ -2561,49 +2580,49 @@ func writeResourcesZIP(archivePath string, resources []hermes.ResourceJob) error
 			return fail(fmt.Errorf("ZIP 源文件不是普通文件: %s", resource.FilePath))
 		}
 
-		entryName := uniqueZIPEntryName(resource, i, entryNames)
+		entry_name := unique_zip_entry_name(resource, i, entry_names)
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
 			_ = input.Close()
-			return fail(fmt.Errorf("创建 ZIP entry %q 失败: %w", entryName, err))
+			return fail(fmt.Errorf("创建 ZIP entry %q 失败: %w", entry_name, err))
 		}
-		header.Name = entryName
+		header.Name = entry_name
 		header.Method = zip.Deflate
 		entry, err := writer.CreateHeader(header)
 		if err != nil {
 			_ = input.Close()
-			return fail(fmt.Errorf("写入 ZIP entry %q 失败: %w", entryName, err))
+			return fail(fmt.Errorf("写入 ZIP entry %q 失败: %w", entry_name, err))
 		}
-		_, copyErr := io.Copy(entry, input)
-		closeErr := input.Close()
-		if copyErr != nil {
-			return fail(fmt.Errorf("压缩文件 %q 失败: %w", resource.FilePath, copyErr))
+		_, copy_err := io.Copy(entry, input)
+		close_err := input.Close()
+		if copy_err != nil {
+			return fail(fmt.Errorf("压缩文件 %q 失败: %w", resource.FilePath, copy_err))
 		}
-		if closeErr != nil {
-			return fail(fmt.Errorf("关闭 ZIP 源文件 %q 失败: %w", resource.FilePath, closeErr))
+		if close_err != nil {
+			return fail(fmt.Errorf("关闭 ZIP 源文件 %q 失败: %w", resource.FilePath, close_err))
 		}
 	}
 	if err := writer.Close(); err != nil {
 		_ = file.Close()
-		_ = os.Remove(tmpFile)
+		_ = os.Remove(tmp_file)
 		return fmt.Errorf("完成 ZIP 数据写入失败: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(tmpFile)
+		_ = os.Remove(tmp_file)
 		return fmt.Errorf("关闭 ZIP 临时文件失败: %w", err)
 	}
-	if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
-		_ = os.Remove(tmpFile)
+	if err := os.Remove(archive_path); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(tmp_file)
 		return fmt.Errorf("删除已有 ZIP 输出失败: %w", err)
 	}
-	if err := os.Rename(tmpFile, archivePath); err != nil {
-		_ = os.Remove(tmpFile)
+	if err := os.Rename(tmp_file, archive_path); err != nil {
+		_ = os.Remove(tmp_file)
 		return fmt.Errorf("提交 ZIP 输出失败: %w", err)
 	}
 	return nil
 }
 
-func uniqueZIPEntryName(resource hermes.ResourceJob, index int, seen map[string]int) string {
+func unique_zip_entry_name(resource hermes.ResourceJob, index int, seen map[string]int) string {
 	name := filepath.Base(strings.TrimSpace(resource.Name))
 	if name == "." || name == "" {
 		name = filepath.Base(resource.FilePath)
@@ -2625,21 +2644,21 @@ func uniqueZIPEntryName(resource hermes.ResourceJob, index int, seen map[string]
 	return fmt.Sprintf("%s_%d%s", base, seen[name], ext)
 }
 
-// replaceConvertedFile replaces inputFile with the completed conversion. The
+// replace_converted_file replaces input_file with the completed conversion. The
 // temporary output is kept when the final rename fails so it can be recovered.
-func replaceConvertedFile(inputFile, tmpFile, finalFile string) error {
-	if finalFile != inputFile {
-		if err := os.Remove(finalFile); err != nil && !os.IsNotExist(err) {
-			_ = os.Remove(tmpFile)
+func replace_converted_file(input_file, tmp_file, final_file string) error {
+	if final_file != input_file {
+		if err := os.Remove(final_file); err != nil && !os.IsNotExist(err) {
+			_ = os.Remove(tmp_file)
 			return fmt.Errorf("删除已有输出文件失败: %w", err)
 		}
 	}
-	if err := os.Remove(inputFile); err != nil && !os.IsNotExist(err) {
-		_ = os.Remove(tmpFile)
+	if err := os.Remove(input_file); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(tmp_file)
 		return fmt.Errorf("删除原文件失败: %w", err)
 	}
-	if err := os.Rename(tmpFile, finalFile); err != nil {
-		return fmt.Errorf("重命名临时文件 %q 为 %q 失败: %w", tmpFile, finalFile, err)
+	if err := os.Rename(tmp_file, final_file); err != nil {
+		return fmt.Errorf("重命名临时文件 %q 为 %q 失败: %w", tmp_file, final_file, err)
 	}
 	return nil
 }

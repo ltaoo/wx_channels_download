@@ -120,6 +120,12 @@ type CreateDownloadTaskByURLBody struct {
 	RelationType string         `json:"relation_type"`
 }
 
+const (
+	download_existing_action_skip      = "skip"
+	download_existing_action_duplicate = "duplicate"
+	download_existing_action_overwrite = "overwrite"
+)
+
 // resolveDownloadSaveDir resolves the download save directory for a task.
 // Uses app config default when none is specified; relative paths are expanded
 // relative to the working directory.
@@ -372,26 +378,26 @@ func (c *APIClient) handle_prepare_download_task_by_url(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"previews": previews})
 }
 
-// createDownloadTaskSingle creates a single platform download task and returns the compact task item or error.
-func (c *APIClient) createDownloadTaskSingle(body services.CreateDownloadTaskBody) (DownloadTaskItem, error) {
+// create_download_task_single creates a single platform download task and returns the compact task item or error.
+func (c *APIClient) create_download_task_single(body services.CreateDownloadTaskBody) (DownloadTaskItem, error) {
 	if c.download_task_service == nil {
 		return DownloadTaskItem{}, fmt.Errorf("下载任务服务未初始化")
 	}
-	result, err := c.download_task_service.CreateTask(body)
+	create_result, err := c.download_task_service.CreateTask(body)
 	if err != nil {
 		return DownloadTaskItem{}, err
 	}
-	return buildDownloadTaskItem(result), nil
+	return build_download_task_item(create_result), nil
 }
 
-func buildDownloadTaskItem(result *services.CreateTaskResult) DownloadTaskItem {
-	if result == nil {
+func build_download_task_item(create_result *services.CreateTaskResult) DownloadTaskItem {
+	if create_result == nil {
 		return DownloadTaskItem{}
 	}
-	task := result.Task
-	resources := make([]DownloadResourceItem, 0, len(result.Resources))
-	for _, resource := range result.Resources {
-		resources = append(resources, buildDownloadResourceItem(resource))
+	task := create_result.Task
+	resources := make([]DownloadResourceItem, 0, len(create_result.Resources))
+	for _, resource := range create_result.Resources {
+		resources = append(resources, build_download_resource_item(resource))
 	}
 	return DownloadTaskItem{
 		ID:           task.Id,
@@ -416,7 +422,7 @@ func buildDownloadTaskItem(result *services.CreateTaskResult) DownloadTaskItem {
 	}
 }
 
-func buildDownloadResourceItem(resource model.DownloadResource) DownloadResourceItem {
+func build_download_resource_item(resource model.DownloadResource) DownloadResourceItem {
 	return DownloadResourceItem{
 		ID:         resource.Id,
 		TaskID:     resource.TaskId,
@@ -433,7 +439,7 @@ func buildDownloadResourceItem(resource model.DownloadResource) DownloadResource
 	}
 }
 
-func downloadTaskCreateSuccessItem(data DownloadTaskItem) DownloadTaskCreateItem {
+func download_task_create_success_item(data DownloadTaskItem) DownloadTaskCreateItem {
 	return DownloadTaskCreateItem{
 		Code: result.CodeSuccess,
 		Msg:  result.GetMsg(result.CodeSuccess),
@@ -441,7 +447,7 @@ func downloadTaskCreateSuccessItem(data DownloadTaskItem) DownloadTaskCreateItem
 	}
 }
 
-func downloadTaskCreateFailedItem(code int, msg string, data any) DownloadTaskCreateItem {
+func download_task_create_failed_item(code int, msg string, data any) DownloadTaskCreateItem {
 	if data == nil {
 		data = gin.H{}
 	}
@@ -452,7 +458,18 @@ func downloadTaskCreateFailedItem(code int, msg string, data any) DownloadTaskCr
 	}
 }
 
-func duplicateDownloadTaskData(err *services.DuplicateTaskError) gin.H {
+func download_task_create_skipped_item(err *services.DuplicateTaskError) DownloadTaskCreateItem {
+	data := duplicate_download_task_data(err)
+	data["skipped"] = true
+	data["action"] = download_existing_action_skip
+	return DownloadTaskCreateItem{
+		Code: result.CodeSuccess,
+		Msg:  "Skipped existing download task",
+		Data: data,
+	}
+}
+
+func duplicate_download_task_data(err *services.DuplicateTaskError) gin.H {
 	data := gin.H{}
 	if err == nil {
 		return data
@@ -464,6 +481,88 @@ func duplicateDownloadTaskData(err *services.DuplicateTaskError) gin.H {
 		data["name"] = err.ExistingTaskName
 	}
 	return data
+}
+
+func normalize_download_existing_action(action string) string {
+	switch strings.TrimSpace(action) {
+	case "skip":
+		return download_existing_action_skip
+	case "duplicate":
+		return download_existing_action_duplicate
+	case "overwrite":
+		return download_existing_action_overwrite
+	default:
+		return ""
+	}
+}
+
+func (c *APIClient) default_action_when_existing() string {
+	raw := ""
+	if c != nil && c.cfg != nil {
+		raw = strings.TrimSpace(c.cfg.DefaultActionWhenExisting)
+		if c.cfg.Original != nil {
+			raw = strings.TrimSpace(c.cfg.Original.GetString("download.defaultActionWhenExisting"))
+		}
+	}
+	return normalize_download_existing_action(raw)
+}
+
+func clone_download_task_config(config map[string]any) map[string]any {
+	cloned := make(map[string]any, len(config)+2)
+	for key, value := range config {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func (c *APIClient) handle_duplicate_download_task_with_default_action(body services.CreateDownloadTaskBody, duplicate_err *services.DuplicateTaskError, action string) (DownloadTaskCreateItem, int, bool) {
+	switch action {
+	case download_existing_action_skip:
+		c.logger.Info().
+			Str("api", "POST /api/v1/download_task/create").
+			Int("existing_task_id", duplicate_err.ExistingTaskID).
+			Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
+			Str("default_action", action).
+			Msg("Task conflict handled by default action")
+		return download_task_create_skipped_item(duplicate_err), 0, true
+	case download_existing_action_duplicate, download_existing_action_overwrite:
+		retry_body := body
+		retry_body.Config = clone_download_task_config(body.Config)
+		retry_body.Config["duplicate"] = action == download_existing_action_duplicate
+		retry_body.Config["overwrite"] = action == download_existing_action_overwrite
+
+		c.logger.Info().
+			Str("api", "POST /api/v1/download_task/create").
+			Int("existing_task_id", duplicate_err.ExistingTaskID).
+			Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
+			Str("default_action", action).
+			Msg("Retrying conflicted task creation with default action")
+
+		data, err := c.create_download_task_single(retry_body)
+		if err != nil {
+			var retry_duplicate_err *services.DuplicateTaskError
+			if errors.As(err, &retry_duplicate_err) {
+				c.logger.Warn().
+					Str("api", "POST /api/v1/download_task/create").
+					Int("existing_task_id", retry_duplicate_err.ExistingTaskID).
+					Str("incoming_task_unique_id", retry_duplicate_err.IncomingUniqueID).
+					Str("default_action", action).
+					Err(err).
+					Msg("Default existing-task action still resulted in a conflict")
+				return download_task_create_failed_item(result.CodeInvalidParams, err.Error(), duplicate_download_task_data(retry_duplicate_err)), 0, true
+			}
+			c.logger.Warn().
+				Str("api", "POST /api/v1/download_task/create").
+				Str("platform", body.Platform).
+				Str("default_action", action).
+				Err(err).
+				Msg("Default existing-task action failed to create download task")
+			return download_task_create_failed_item(result.CodeInvalidParams, err.Error(), gin.H{}), 0, true
+		}
+		return download_task_create_success_item(data), data.ID, true
+	default:
+		return DownloadTaskCreateItem{}, 0, false
+	}
 }
 
 // handle_create_download_task batch-creates platform download tasks.
@@ -482,39 +581,57 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 
 	c.logger.Info().Str("api", "POST /api/v1/download_task/create").Int("object_count", len(req.Objects)).Msg("Received batch create download task request")
 
-	var duplicateErr *services.DuplicateTaskError
+	default_existing_action := c.default_action_when_existing()
+	var duplicate_err *services.DuplicateTaskError
 	tasks := make([]DownloadTaskCreateItem, 0, len(req.Objects))
 	ids := make([]int, 0, len(req.Objects))
-	successCount := 0
-	failCount := 0
+	success_count := 0
+	fail_count := 0
+	skip_count := 0
 	for _, body := range req.Objects {
-		data, err := c.createDownloadTaskSingle(body)
+		data, err := c.create_download_task_single(body)
 		if err != nil {
-			if errors.As(err, &duplicateErr) {
+			if errors.As(err, &duplicate_err) {
+				if item, id, handled := c.handle_duplicate_download_task_with_default_action(body, duplicate_err, default_existing_action); handled {
+					tasks = append(tasks, item)
+					if id > 0 {
+						ids = append(ids, id)
+					}
+					if item.Code == result.CodeSuccess {
+						success_count++
+						if default_existing_action == download_existing_action_skip {
+							skip_count++
+						}
+					} else {
+						fail_count++
+					}
+					continue
+				}
 				c.logger.Warn().
 					Str("api", "POST /api/v1/download_task/create").
-					Int("existing_task_id", duplicateErr.ExistingTaskID).
-					Str("incoming_task_unique_id", duplicateErr.IncomingUniqueID).
+					Int("existing_task_id", duplicate_err.ExistingTaskID).
+					Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
 					Msg("Task conflict in batch, skipping")
-				tasks = append(tasks, downloadTaskCreateFailedItem(result.CodeDuplicateTask, err.Error(), duplicateDownloadTaskData(duplicateErr)))
-				failCount++
+				tasks = append(tasks, download_task_create_failed_item(result.CodeDuplicateTask, err.Error(), duplicate_download_task_data(duplicate_err)))
+				fail_count++
 				continue
 			}
 			c.logger.Warn().Str("platform", body.Platform).Err(err).Msg("Failed to create download task")
-			tasks = append(tasks, downloadTaskCreateFailedItem(result.CodeInvalidParams, err.Error(), gin.H{}))
-			failCount++
+			tasks = append(tasks, download_task_create_failed_item(result.CodeInvalidParams, err.Error(), gin.H{}))
+			fail_count++
 		} else {
-			tasks = append(tasks, downloadTaskCreateSuccessItem(data))
+			tasks = append(tasks, download_task_create_success_item(data))
 			ids = append(ids, data.ID)
-			successCount++
+			success_count++
 		}
 	}
 
 	c.logger.Info().
 		Str("api", "POST /api/v1/download_task/create").
 		Int("total", len(tasks)).
-		Int("success", successCount).
-		Int("failed", failCount).
+		Int("success", success_count).
+		Int("skipped", skip_count).
+		Int("failed", fail_count).
 		Msg("Batch create download tasks completed")
 
 	result.Ok(ctx, gin.H{"tasks": tasks, "ids": ids})
@@ -653,25 +770,25 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	c.logger.Info().Str("api", "POST /api/v1/download_task/create_by_url").Int("object_count", len(req.Objects)).Msg("Received batch create URL download task request")
 
 	tasks := make([]gin.H, 0, len(req.Objects))
-	successCount := 0
-	failCount := 0
+	success_count := 0
+	fail_count := 0
 	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskByURLSingle(body)
 		if err != nil {
 			c.logger.Warn().Str("url", body.URL).Err(err).Msg("Failed to create URL download task")
 			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})
-			failCount++
+			fail_count++
 		} else {
 			tasks = append(tasks, gin.H{"success": true, "data": data})
-			successCount++
+			success_count++
 		}
 	}
 
 	c.logger.Info().
 		Str("api", "POST /api/v1/download_task/create_by_url").
 		Int("total", len(tasks)).
-		Int("success", successCount).
-		Int("failed", failCount).
+		Int("success", success_count).
+		Int("failed", fail_count).
 		Msg("Batch create URL download tasks completed")
 
 	result.Ok(ctx, gin.H{"tasks": tasks})

@@ -1148,12 +1148,6 @@ ${payload.original_url}
 ${payload.key || ""}`,
     });
     WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
-    if (!suffix) {
-      suffix = ".mp4";
-    }
-    if (payload.type === "picture") {
-      suffix = ".zip";
-    }
     __wx_channels_download4(payload, { spec, suffix });
   }
   /** 下载已加载的视频 */

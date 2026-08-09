@@ -23,18 +23,18 @@ import (
 // Uses a client pool to support concurrent HTTP Range requests, eliminating serial
 // bottlenecks caused by single-client mutex locks.
 type HTTPDriver struct {
-	mu       sync.Mutex
-	pools    map[string]chan *clawreq.Client
-	stdHTTPs map[string]*http.Client
+	mu        sync.Mutex
+	pools     map[string]chan *clawreq.Client
+	std_https map[string]*http.Client
 }
 
-const httpDriverPoolSize = 3
+const http_driver_pool_size = 3
 
 // NewHTTPDriver creates a new HTTP protocol driver instance.
 func NewHTTPDriver() *HTTPDriver {
 	return &HTTPDriver{
-		pools:    make(map[string]chan *clawreq.Client),
-		stdHTTPs: make(map[string]*http.Client),
+		pools:     make(map[string]chan *clawreq.Client),
+		std_https: make(map[string]*http.Client),
 	}
 }
 
@@ -42,11 +42,11 @@ func NewHTTPDriver() *HTTPDriver {
 func (d *HTTPDriver) Protocols() []string { return []string{"http", "https"} }
 
 // prepareProbeSize is the number of bytes downloaded during probing, used for Range capability detection and magic bytes type detection.
-const prepareProbeSize = 512
+const prepare_probe_size = 512
 
 // Prepare probes the resource for size, Range capability, Content-Type, and first 512 bytes (for magic bytes detection).
 func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (hermes.PreparedResource, error) {
-	resp, err := d.do(ctx, endpoint, clawreq.WithHeader("Range", fmt.Sprintf("bytes=0-%d", prepareProbeSize-1)))
+	resp, err := d.do(ctx, endpoint, clawreq.WithHeader("Range", fmt.Sprintf("bytes=0-%d", prepare_probe_size-1)))
 	if err != nil {
 		return hermes.PreparedResource{}, err
 	}
@@ -56,7 +56,7 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 		ProbeData:   resp.Body,
 	}
 	if resp.StatusCode == http.StatusPartialContent {
-		start, end, total, ok := parseContentRange(resp.Header.Get("Content-Range"))
+		start, end, total, ok := parse_content_range(resp.Header.Get("Content-Range"))
 		if !ok || start != 0 {
 			return hermes.PreparedResource{}, errors.New("server returned an invalid Content-Range")
 		}
@@ -67,7 +67,7 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 	}
 	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 		var total int64
-		if _, scanErr := fmt.Sscanf(strings.TrimSpace(resp.Header.Get("Content-Range")), "bytes */%d", &total); scanErr == nil && total == 0 {
+		if _, scan_err := fmt.Sscanf(strings.TrimSpace(resp.Header.Get("Content-Range")), "bytes */%d", &total); scan_err == nil && total == 0 {
 			return prepared, nil
 		}
 	}
@@ -88,14 +88,14 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 // For non-Range requests, still uses clawreq to preserve browser fingerprint.
 func (d *HTTPDriver) Open(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
 	if request.UseRange {
-		return d.openRange(ctx, endpoint, request)
+		return d.open_range(ctx, endpoint, request)
 	}
-	return d.openFull(ctx, endpoint)
+	return d.open_full(ctx, endpoint)
 }
 
 // openRange uses the net/http standard library for Range requests, returning streaming resp.Body.
 // WeChat CDN Range requests do not require browser fingerprint masking; the standard library suffices for real-time progress.
-func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
+func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
 	if err != nil {
 		return nil, err
@@ -110,11 +110,11 @@ func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, re
 		req.Header.Set("Cookie", endpoint.Cookies)
 	}
 
-	proxyURL, err := endpoint.ProxyServer.URL()
+	proxy_url, err := endpoint.ProxyServer.URL()
 	if err != nil {
 		return nil, err
 	}
-	client, err := d.standardHTTPClient(proxyURL)
+	client, err := d.standard_http_client(proxy_url)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, re
 		resp.Body.Close()
 		return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
 	}
-	start, end, _, ok := parseContentRange(resp.Header.Get("Content-Range"))
+	start, end, _, ok := parse_content_range(resp.Header.Get("Content-Range"))
 	if !ok || start != request.OffsetStart || end > request.OffsetEnd {
 		resp.Body.Close()
 		return nil, errors.New("server returned a Content-Range that does not match the request")
@@ -137,7 +137,7 @@ func (d *HTTPDriver) openRange(ctx context.Context, endpoint hermes.Endpoint, re
 }
 
 // openFull downloads the full resource via clawreq (non-Range) to preserve browser fingerprint.
-func (d *HTTPDriver) openFull(ctx context.Context, endpoint hermes.Endpoint) (io.ReadCloser, error) {
+func (d *HTTPDriver) open_full(ctx context.Context, endpoint hermes.Endpoint) (io.ReadCloser, error) {
 	resp, err := d.do(ctx, endpoint)
 	if err != nil {
 		return nil, err
@@ -152,47 +152,47 @@ func (d *HTTPDriver) openFull(ctx context.Context, endpoint hermes.Endpoint) (io
 // to prevent servers like WeChat CDN from transcoding images to webp format.
 // Uses a client pool for concurrent HTTP requests; each goroutine gets an independent client from the pool.
 func (d *HTTPDriver) do(ctx context.Context, endpoint hermes.Endpoint, opts ...clawreq.RequestOption) (*clawreq.Response, error) {
-	allOpts := make([]clawreq.RequestOption, 0, len(opts)+len(endpoint.Headers)+3)
-	allOpts = append(allOpts, clawreq.WithHeader("Accept-Encoding", "identity"))
-	allOpts = append(allOpts, clawreq.WithHeader("Accept", "*/*"))
+	all_opts := make([]clawreq.RequestOption, 0, len(opts)+len(endpoint.Headers)+3)
+	all_opts = append(all_opts, clawreq.WithHeader("Accept-Encoding", "identity"))
+	all_opts = append(all_opts, clawreq.WithHeader("Accept", "*/*"))
 	for key, value := range endpoint.Headers {
-		allOpts = append(allOpts, clawreq.WithHeader(key, value))
+		all_opts = append(all_opts, clawreq.WithHeader(key, value))
 	}
 	if endpoint.Cookies != "" {
-		allOpts = append(allOpts, clawreq.WithCookie(endpoint.Cookies))
+		all_opts = append(all_opts, clawreq.WithCookie(endpoint.Cookies))
 	}
-	allOpts = append(allOpts, opts...)
+	all_opts = append(all_opts, opts...)
 
-	proxyURL, err := endpoint.ProxyServer.URL()
+	proxy_url, err := endpoint.ProxyServer.URL()
 	if err != nil {
 		return nil, err
 	}
-	pool, err := d.browserClientPool(proxyURL)
+	pool, err := d.browser_client_pool(proxy_url)
 	if err != nil {
 		return nil, err
 	}
 	client := <-pool
 	defer func() { pool <- client }()
-	return client.Do(ctx, "GET", endpoint.URL, nil, allOpts...)
+	return client.Do(ctx, "GET", endpoint.URL, nil, all_opts...)
 }
 
-func (d *HTTPDriver) browserClientPool(rawProxyURL string) (chan *clawreq.Client, error) {
-	proxyURL, _, err := normalizeProxyURL(rawProxyURL)
+func (d *HTTPDriver) browser_client_pool(raw_proxy_url string) (chan *clawreq.Client, error) {
+	proxy_url, _, err := normalize_proxy_url(raw_proxy_url)
 	if err != nil {
 		return nil, err
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if pool := d.pools[proxyURL]; pool != nil {
+	if pool := d.pools[proxy_url]; pool != nil {
 		return pool, nil
 	}
 
-	pool := make(chan *clawreq.Client, httpDriverPoolSize)
-	for i := 0; i < httpDriverPoolSize; i++ {
+	pool := make(chan *clawreq.Client, http_driver_pool_size)
+	for i := 0; i < http_driver_pool_size; i++ {
 		client, err := clawreq.New(clawreq.Config{
 			Profile:         clawreq.ProfileChrome,
-			ProxyURL:        proxyURL,
+			ProxyURL:        proxy_url,
 			FollowRedirects: true,
 		})
 		if err != nil {
@@ -200,19 +200,19 @@ func (d *HTTPDriver) browserClientPool(rawProxyURL string) (chan *clawreq.Client
 		}
 		pool <- client
 	}
-	d.pools[proxyURL] = pool
+	d.pools[proxy_url] = pool
 	return pool, nil
 }
 
-func (d *HTTPDriver) standardHTTPClient(rawProxyURL string) (*http.Client, error) {
-	proxyURL, parsedProxyURL, err := normalizeProxyURL(rawProxyURL)
+func (d *HTTPDriver) standard_http_client(raw_proxy_url string) (*http.Client, error) {
+	proxy_url, parsed_proxy_url, err := normalize_proxy_url(raw_proxy_url)
 	if err != nil {
 		return nil, err
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if client := d.stdHTTPs[proxyURL]; client != nil {
+	if client := d.std_https[proxy_url]; client != nil {
 		return client, nil
 	}
 
@@ -228,34 +228,34 @@ func (d *HTTPDriver) standardHTTPClient(rawProxyURL string) (*http.Client, error
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	if parsedProxyURL != nil {
-		transport.Proxy = http.ProxyURL(parsedProxyURL)
+	if parsed_proxy_url != nil {
+		transport.Proxy = http.ProxyURL(parsed_proxy_url)
 	}
 	client := &http.Client{Timeout: 300 * time.Second, Transport: transport}
-	d.stdHTTPs[proxyURL] = client
+	d.std_https[proxy_url] = client
 	return client, nil
 }
 
-func normalizeProxyURL(rawProxyURL string) (string, *url.URL, error) {
-	rawProxyURL = strings.TrimSpace(rawProxyURL)
-	if rawProxyURL == "" {
+func normalize_proxy_url(raw_proxy_url string) (string, *url.URL, error) {
+	raw_proxy_url = strings.TrimSpace(raw_proxy_url)
+	if raw_proxy_url == "" {
 		return "", nil, nil
 	}
 
-	proxyURL, err := url.Parse(rawProxyURL)
-	if err != nil || proxyURL.Host == "" || proxyURL.Hostname() == "" {
+	proxy_url, err := url.Parse(raw_proxy_url)
+	if err != nil || proxy_url.Host == "" || proxy_url.Hostname() == "" {
 		return "", nil, errors.New("invalid proxy URL")
 	}
-	proxyURL.Scheme = strings.ToLower(proxyURL.Scheme)
-	switch proxyURL.Scheme {
+	proxy_url.Scheme = strings.ToLower(proxy_url.Scheme)
+	switch proxy_url.Scheme {
 	case "http", "https", "socks5":
 	default:
-		return "", nil, fmt.Errorf("unsupported proxy scheme %q", proxyURL.Scheme)
+		return "", nil, fmt.Errorf("unsupported proxy scheme %q", proxy_url.Scheme)
 	}
-	return proxyURL.String(), proxyURL, nil
+	return proxy_url.String(), proxy_url, nil
 }
 
-func parseContentRange(value string) (start, end, total int64, ok bool) {
+func parse_content_range(value string) (start, end, total int64, ok bool) {
 	if _, err := fmt.Sscanf(strings.TrimSpace(value), "bytes %d-%d/%d", &start, &end, &total); err != nil {
 		return 0, 0, 0, false
 	}

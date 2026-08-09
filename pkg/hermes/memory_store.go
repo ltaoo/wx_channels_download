@@ -6,53 +6,53 @@ import (
 	"sync"
 )
 
-type memoryStore struct {
-	mu             sync.RWMutex
-	nextTaskID     int
-	nextResourceID int
-	nextSegmentID  int
-	tasks          map[int]*memoryTaskState
-	resourceTasks  map[int]int
-	segments       map[int][]Segment
+type memory_store struct {
+	mu               sync.RWMutex
+	next_task_id     int
+	next_resource_id int
+	next_segment_id  int
+	tasks            map[int]*memory_task_state
+	resource_tasks   map[int]int
+	segments         map[int][]Segment
 }
 
-type memoryTaskState struct {
-	mu        sync.RWMutex
-	job       *TaskJob
-	status    int
-	errorText string
-	done      chan struct{}
-	doneOnce  sync.Once
+type memory_task_state struct {
+	mu         sync.RWMutex
+	job        *TaskJob
+	status     int
+	error_text string
+	done       chan struct{}
+	done_once  sync.Once
 }
 
-func newMemoryStore() *memoryStore {
-	return &memoryStore{
-		tasks:         make(map[int]*memoryTaskState),
-		resourceTasks: make(map[int]int),
-		segments:      make(map[int][]Segment),
+func new_memory_store() *memory_store {
+	return &memory_store{
+		tasks:          make(map[int]*memory_task_state),
+		resource_tasks: make(map[int]int),
+		segments:       make(map[int][]Segment),
 	}
 }
 
-func (s *memoryStore) createTask(job *TaskJob) (*memoryTaskState, error) {
+func (s *memory_store) create_task(job *TaskJob) (*memory_task_state, error) {
 	if job == nil {
 		return nil, errors.New("task is nil")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.nextTaskID++
-	job.ID = s.nextTaskID
+	s.next_task_id++
+	job.ID = s.next_task_id
 	for i := range job.Resources {
-		s.nextResourceID++
-		job.Resources[i].ID = s.nextResourceID
-		for endpointIndex := range job.Resources[i].Endpoints {
-			job.Resources[i].Endpoints[endpointIndex].ID = endpointIndex + 1
+		s.next_resource_id++
+		job.Resources[i].ID = s.next_resource_id
+		for endpoint_index := range job.Resources[i].Endpoints {
+			job.Resources[i].Endpoints[endpoint_index].ID = endpoint_index + 1
 		}
-		s.resourceTasks[job.Resources[i].ID] = job.ID
+		s.resource_tasks[job.Resources[i].ID] = job.ID
 	}
 
-	state := &memoryTaskState{
-		job:    cloneTaskJob(job),
+	state := &memory_task_state{
+		job:    clone_task_job(job),
 		status: TaskStatusWaiting,
 		done:   make(chan struct{}),
 	}
@@ -60,74 +60,74 @@ func (s *memoryStore) createTask(job *TaskJob) (*memoryTaskState, error) {
 	return state, nil
 }
 
-func newFailedMemoryTaskState(err error) *memoryTaskState {
-	state := &memoryTaskState{
+func new_failed_memory_task_state(err error) *memory_task_state {
+	state := &memory_task_state{
 		status: TaskStatusFailed,
 		done:   make(chan struct{}),
 	}
 	if err != nil {
-		state.errorText = err.Error()
+		state.error_text = err.Error()
 	}
-	state.doneOnce.Do(func() { close(state.done) })
+	state.done_once.Do(func() { close(state.done) })
 	return state
 }
 
-func (s *memoryStore) taskState(taskID int) (*memoryTaskState, error) {
+func (s *memory_store) task_state(task_id int) (*memory_task_state, error) {
 	s.mu.RLock()
-	state := s.tasks[taskID]
+	state := s.tasks[task_id]
 	s.mu.RUnlock()
 	if state == nil {
-		return nil, fmt.Errorf("download task %d not found", taskID)
+		return nil, fmt.Errorf("download task %d not found", task_id)
 	}
 	return state, nil
 }
 
-func (s *memoryStore) resourceState(resourceID int) (*memoryTaskState, error) {
+func (s *memory_store) resource_state(resource_id int) (*memory_task_state, error) {
 	s.mu.RLock()
-	taskID := s.resourceTasks[resourceID]
-	state := s.tasks[taskID]
+	task_id := s.resource_tasks[resource_id]
+	state := s.tasks[task_id]
 	s.mu.RUnlock()
 	if state == nil {
-		return nil, fmt.Errorf("download resource %d not found", resourceID)
+		return nil, fmt.Errorf("download resource %d not found", resource_id)
 	}
 	return state, nil
 }
 
-func (s *memoryStore) LoadTask(taskID int) (*TaskJob, error) {
-	state, err := s.taskState(taskID)
+func (s *memory_store) LoadTask(task_id int) (*TaskJob, error) {
+	state, err := s.task_state(task_id)
 	if err != nil {
 		return nil, err
 	}
 	state.mu.RLock()
 	defer state.mu.RUnlock()
-	return cloneTaskJob(state.job), nil
+	return clone_task_job(state.job), nil
 }
 
-func (s *memoryStore) UpdateStatus(taskID int, status int) error {
-	state, err := s.taskState(taskID)
+func (s *memory_store) UpdateStatus(task_id int, status int) error {
+	state, err := s.task_state(task_id)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
 	state.status = status
 	if status == TaskStatusCancelled {
-		state.errorText = "download task was cancelled"
-		state.doneOnce.Do(func() { close(state.done) })
+		state.error_text = "download task was cancelled"
+		state.done_once.Do(func() { close(state.done) })
 	}
 	state.mu.Unlock()
 	return nil
 }
 
-func (s *memoryStore) ActivateTask(int) error {
+func (s *memory_store) ActivateTask(int) error {
 	return nil
 }
 
-func (s *memoryStore) UpdateProgress(int, int64, int64) error {
+func (s *memory_store) UpdateProgress(int, int64, int64) error {
 	return nil
 }
 
-func (s *memoryStore) UpdateResourceSize(taskID int, size int64) error {
-	state, err := s.taskState(taskID)
+func (s *memory_store) UpdateResourceSize(task_id int, size int64) error {
+	state, err := s.task_state(task_id)
 	if err != nil {
 		return err
 	}
@@ -139,37 +139,37 @@ func (s *memoryStore) UpdateResourceSize(taskID int, size int64) error {
 	return nil
 }
 
-func (s *memoryStore) DeactivateConnections(int) error {
+func (s *memory_store) DeactivateConnections(int) error {
 	return nil
 }
 
-func (s *memoryStore) FinishTask(taskID int) error {
-	state, err := s.taskState(taskID)
+func (s *memory_store) FinishTask(task_id int) error {
+	state, err := s.task_state(task_id)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
 	state.status = TaskStatusFinished
-	state.doneOnce.Do(func() { close(state.done) })
+	state.done_once.Do(func() { close(state.done) })
 	state.mu.Unlock()
 	return nil
 }
 
-func (s *memoryStore) RecordError(taskID int, errMsg string) error {
-	state, err := s.taskState(taskID)
+func (s *memory_store) RecordError(task_id int, err_msg string) error {
+	state, err := s.task_state(task_id)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
 	state.status = TaskStatusFailed
-	state.errorText = errMsg
-	state.doneOnce.Do(func() { close(state.done) })
+	state.error_text = err_msg
+	state.done_once.Do(func() { close(state.done) })
 	state.mu.Unlock()
 	return nil
 }
 
-func (s *memoryStore) CreateSegments(resourceID int, rawURL string, ranges []SegmentRange) ([]int, error) {
-	if _, err := s.resourceState(resourceID); err != nil {
+func (s *memory_store) CreateSegments(resource_id int, raw_url string, ranges []SegmentRange) ([]int, error) {
+	if _, err := s.resource_state(resource_id); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -177,53 +177,53 @@ func (s *memoryStore) CreateSegments(resourceID int, rawURL string, ranges []Seg
 	segments := make([]Segment, len(ranges))
 	ids := make([]int, len(ranges))
 	for i, item := range ranges {
-		s.nextSegmentID++
-		ids[i] = s.nextSegmentID
+		s.next_segment_id++
+		ids[i] = s.next_segment_id
 		segments[i] = Segment{
-			ID:          s.nextSegmentID,
+			ID:          s.next_segment_id,
 			Index:       item.Index,
-			URL:         rawURL,
+			URL:         raw_url,
 			OffsetStart: item.OffsetStart,
 			OffsetEnd:   item.OffsetEnd,
 			Size:        item.Size,
 		}
 	}
-	s.segments[resourceID] = segments
+	s.segments[resource_id] = segments
 	return ids, nil
 }
 
-func (s *memoryStore) LoadSegmentInfo(resourceID int) ([]Segment, error) {
-	if _, err := s.resourceState(resourceID); err != nil {
+func (s *memory_store) LoadSegmentInfo(resource_id int) ([]Segment, error) {
+	if _, err := s.resource_state(resource_id); err != nil {
 		return nil, err
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]Segment(nil), s.segments[resourceID]...), nil
+	return append([]Segment(nil), s.segments[resource_id]...), nil
 }
 
-func (s *memoryStore) UpdateSegmentProgress(segmentID int, downloaded int64) error {
+func (s *memory_store) UpdateSegmentProgress(segment_id int, downloaded int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for resourceID, segments := range s.segments {
+	for resource_id, segments := range s.segments {
 		for i := range segments {
-			if segments[i].ID != segmentID {
+			if segments[i].ID != segment_id {
 				continue
 			}
 			segments[i].Downloaded = downloaded
-			s.segments[resourceID] = segments
+			s.segments[resource_id] = segments
 			return nil
 		}
 	}
-	return fmt.Errorf("download segment %d not found", segmentID)
+	return fmt.Errorf("download segment %d not found", segment_id)
 }
 
-func (s *memoryStore) UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error {
-	state, err := s.resourceState(resourceID)
+func (s *memory_store) UpdateResourceProgress(resource_id int, downloaded int64, speed int64) error {
+	state, err := s.resource_state(resource_id)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
-	if resource := findMemoryResource(state.job, resourceID); resource != nil {
+	if resource := find_memory_resource(state.job, resource_id); resource != nil {
 		resource.Downloaded = downloaded
 		resource.Speed = speed
 	}
@@ -231,30 +231,30 @@ func (s *memoryStore) UpdateResourceProgress(resourceID int, downloaded int64, s
 	return nil
 }
 
-func (s *memoryStore) UpdateResourceSizeByID(resourceID int, size int64) error {
-	state, err := s.resourceState(resourceID)
+func (s *memory_store) UpdateResourceSizeByID(resource_id int, size int64) error {
+	state, err := s.resource_state(resource_id)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
-	if resource := findMemoryResource(state.job, resourceID); resource != nil {
+	if resource := find_memory_resource(state.job, resource_id); resource != nil {
 		resource.Size = size
 	}
 	state.mu.Unlock()
 	return nil
 }
 
-func (s *memoryStore) FinishResource(int) error {
+func (s *memory_store) FinishResource(int) error {
 	return nil
 }
 
-func (s *memoryStore) UpdateOutputName(update OutputNameUpdate) error {
-	state, err := s.taskState(update.TaskID)
+func (s *memory_store) UpdateOutputName(update OutputNameUpdate) error {
+	state, err := s.task_state(update.TaskID)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
-	if resource := findMemoryResource(state.job, update.ResourceID); resource != nil && update.ResourceName != "" {
+	if resource := find_memory_resource(state.job, update.ResourceID); resource != nil && update.ResourceName != "" {
 		resource.Name = update.ResourceName
 	}
 	if update.TaskName != "" {
@@ -267,13 +267,13 @@ func (s *memoryStore) UpdateOutputName(update OutputNameUpdate) error {
 	return nil
 }
 
-func (s *memoryStore) UpdateResourceOutput(update ResourceOutputUpdate) error {
-	state, err := s.taskState(update.TaskID)
+func (s *memory_store) UpdateResourceOutput(update ResourceOutputUpdate) error {
+	state, err := s.task_state(update.TaskID)
 	if err != nil {
 		return err
 	}
 	state.mu.Lock()
-	if resource := findMemoryResource(state.job, update.ResourceID); resource != nil {
+	if resource := find_memory_resource(state.job, update.ResourceID); resource != nil {
 		resource.Name = update.ResourceName
 		resource.Kind = update.ResourceKind
 		resource.Size = update.ResourceSize
@@ -282,19 +282,19 @@ func (s *memoryStore) UpdateResourceOutput(update ResourceOutputUpdate) error {
 	return nil
 }
 
-func findMemoryResource(job *TaskJob, resourceID int) *ResourceJob {
+func find_memory_resource(job *TaskJob, resource_id int) *ResourceJob {
 	if job == nil {
 		return nil
 	}
 	for i := range job.Resources {
-		if job.Resources[i].ID == resourceID {
+		if job.Resources[i].ID == resource_id {
 			return &job.Resources[i]
 		}
 	}
 	return nil
 }
 
-func cloneTaskJob(job *TaskJob) *TaskJob {
+func clone_task_job(job *TaskJob) *TaskJob {
 	if job == nil {
 		return nil
 	}
@@ -302,11 +302,11 @@ func cloneTaskJob(job *TaskJob) *TaskJob {
 	for i, resource := range job.Resources {
 		resources[i] = resource
 		resources[i].Endpoints = make([]Endpoint, len(resource.Endpoints))
-		for endpointIndex, endpoint := range resource.Endpoints {
-			resources[i].Endpoints[endpointIndex] = endpoint
-			resources[i].Endpoints[endpointIndex].Headers = cloneStringMap(endpoint.Headers)
+		for endpoint_index, endpoint := range resource.Endpoints {
+			resources[i].Endpoints[endpoint_index] = endpoint
+			resources[i].Endpoints[endpoint_index].Headers = clone_string_map(endpoint.Headers)
 		}
-		resources[i].Extra = cloneStringMap(resource.Extra)
+		resources[i].Extra = clone_string_map(resource.Extra)
 	}
 	return &TaskJob{
 		ID:               job.ID,
@@ -317,12 +317,12 @@ func cloneTaskJob(job *TaskJob) *TaskJob {
 		Platform:         job.Platform,
 		ProxyServer:      job.ProxyServer,
 		Resources:        resources,
-		Config:           cloneAnyMap(job.Config),
-		Metadata:         cloneAnyMap(job.Metadata),
+		Config:           clone_any_map(job.Config),
+		Metadata:         clone_any_map(job.Metadata),
 	}
 }
 
-func cloneStringMap(values map[string]string) map[string]string {
+func clone_string_map(values map[string]string) map[string]string {
 	if values == nil {
 		return nil
 	}
@@ -333,7 +333,7 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func cloneAnyMap(values map[string]any) map[string]any {
+func clone_any_map(values map[string]any) map[string]any {
 	if values == nil {
 		return nil
 	}
@@ -345,8 +345,8 @@ func cloneAnyMap(values map[string]any) map[string]any {
 }
 
 var (
-	_ Store               = (*memoryStore)(nil)
-	_ ResourceStore       = (*memoryStore)(nil)
-	_ OutputNameStore     = (*memoryStore)(nil)
-	_ ResourceOutputStore = (*memoryStore)(nil)
+	_ Store               = (*memory_store)(nil)
+	_ ResourceStore       = (*memory_store)(nil)
+	_ OutputNameStore     = (*memory_store)(nil)
+	_ ResourceOutputStore = (*memory_store)(nil)
 )

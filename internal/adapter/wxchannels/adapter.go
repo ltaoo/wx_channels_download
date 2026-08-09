@@ -13,6 +13,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
@@ -25,6 +26,7 @@ type Deps struct {
 	Logger          *zerolog.Logger
 	Bus             *events.Bus
 	Config          *config.Config
+	Hooks           *hermes.HookManager
 	RefreshInterval int
 }
 
@@ -34,6 +36,8 @@ type ChannelsAdapter struct {
 	runtime_registered bool
 	routes             *WebsocketRoutes
 	interceptor_config *InterceptorPluginConfig
+	hooks              *hermes.HookManager
+	logger             *zerolog.Logger
 }
 
 var (
@@ -139,6 +143,8 @@ func (a *ChannelsAdapter) register(d Deps) error {
 	a.runtime_mu.Lock()
 	a.routes = r
 	a.interceptor_config = interceptor_config
+	a.hooks = d.Hooks
+	a.logger = d.Logger
 	a.runtime_mu.Unlock()
 	registered = true
 	return nil
@@ -159,6 +165,7 @@ func (a *ChannelsAdapter) RegisterRuntime(d adapter.RuntimeDeps) (adapter.Runtim
 		Logger:          d.Logger,
 		Bus:             d.Bus,
 		Config:          d.Config,
+		Hooks:           d.Hooks,
 		RefreshInterval: refresh_interval,
 	}); err != nil {
 		return nil, err
@@ -176,6 +183,8 @@ func (a *ChannelsAdapter) Stop() {
 	a.runtime_registered = false
 	a.routes = nil
 	a.interceptor_config = nil
+	a.hooks = nil
+	a.logger = nil
 	a.runtime_mu.Unlock()
 	if routes != nil {
 		routes.Stop()

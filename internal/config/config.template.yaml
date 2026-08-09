@@ -13,6 +13,7 @@ download:
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"
   playDoneAudio: true
+  defaultActionWhenExisting: ""
   maxRunning: 3
   remoteServer:
     enabled: false

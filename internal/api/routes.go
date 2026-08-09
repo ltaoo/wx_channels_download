@@ -23,6 +23,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/home", c.handle_home_page)
 	c.engine.GET("/browsehistory", c.handle_browse_history_page)
 	c.engine.GET("/content", c.handle_content_page)
+	c.engine.GET("/logs", c.handle_logs_page)
 	c.engine.GET("/preview", c.handle_preview_page)
 	c.engine.GET("/channels", c.handle_channels_page)
 	// Official account endpoints
@@ -95,6 +96,7 @@ func (c *APIClient) SetupRoutes() {
 
 	c.engine.GET("/api/content/list", c.handle_compat_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
+	c.engine.GET("/api/logs", c.handle_logs)
 	// c.engine.POST("/content/list", c.handle_compat_content_list)
 	// c.engine.POST("/api/video/list", c.handle_compat_video_list)
 	// c.engine.POST("/video/list", c.handle_compat_video_list)

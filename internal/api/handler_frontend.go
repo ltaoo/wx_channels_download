@@ -37,6 +37,10 @@ func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/browsehistory.html")
 }
 
+func (c *APIClient) handle_logs_page(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/logs.html")
+}
+
 func (c *APIClient) handle_channels_page(ctx *gin.Context) {
 	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
 	c.renderFrontendFile(ctx, "inject/channels.html")
@@ -245,6 +249,7 @@ func shouldServeByAPI(path string) bool {
 		path == "/preview" ||
 		path == "/content" ||
 		path == "/browsehistory" ||
+		path == "/logs" ||
 		path == "/channels" ||
 		path == "/migration" ||
 		path == "/admin" ||

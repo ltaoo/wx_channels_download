@@ -1872,6 +1872,20 @@ function DownloaderPanelViewModel(props = {}) {
       );
       return true;
     },
+    setLoadedTasksSelected(selected) {
+      const loadedIds = getLoadedTaskIds();
+      if (!loadedIds.length) {
+        return;
+      }
+      if (selected) {
+        selected_task_ids_.as(
+          uniqueTaskIds([...(selected_task_ids_.value || []), ...loadedIds]),
+        );
+      } else {
+        removeSelectedTaskIds(loadedIds);
+      }
+      selection_anchor_task_id = null;
+    },
     toggleTaskSelected(task, options = {}) {
       if (!isLoadedTask(task)) {
         return;

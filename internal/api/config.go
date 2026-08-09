@@ -8,23 +8,25 @@ import (
 )
 
 type APIConfig struct {
-	Version              string
-	Mode                 string
-	Original             *config.Config
-	RootDir              string
-	WorkDir              string
-	DownloadDir          string
-	PlayDoneAudio        bool
-	MaxRunning           int // maximum number of concurrent download tasks
-	Protocol             string
-	Hostname             string
-	Port                 int
-	RemoteServerEnabled  bool   `json:"remoteServerEnabled"`
-	RemoteServerProtocol string `json:"remoteServerProtocol"`
-	RemoteServerHostname string `json:"remoteServerHostname"`
-	RemoteServerPort     int    `json:"remoteServerPort"`
-	CloudflareSphCookie  string
-	FilenameTemplate     string
+	Version                   string
+	Mode                      string
+	Original                  *config.Config
+	RootDir                   string
+	WorkDir                   string
+	LogPath                   string
+	DownloadDir               string
+	PlayDoneAudio             bool
+	MaxRunning                int // maximum number of concurrent download tasks
+	Protocol                  string
+	Hostname                  string
+	Port                      int
+	RemoteServerEnabled       bool   `json:"remoteServerEnabled"`
+	RemoteServerProtocol      string `json:"remoteServerProtocol"`
+	RemoteServerHostname      string `json:"remoteServerHostname"`
+	RemoteServerPort          int    `json:"remoteServerPort"`
+	CloudflareSphCookie       string
+	FilenameTemplate          string
+	DefaultActionWhenExisting string
 
 	HooksScript string
 
@@ -50,6 +52,7 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		Original:             c,
 		RootDir:              c.RootDir,
 		WorkDir:              c.WorkDir,
+		LogPath:              c.LogPath(),
 		DownloadDir:          dir,
 		PlayDoneAudio:        c.GetBool("download.playDoneAudio"),
 		MaxRunning:           3,
@@ -62,8 +65,9 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		RemoteServerPort:     c.GetInt("download.remoteServer.port"),
 		CloudflareSphCookie:  cloudflare_sph_cookie,
 
-		FilenameTemplate: c.GetString("download.filenameTemplate"),
-		HooksScript:      c.HookScriptPath,
+		FilenameTemplate:          c.GetString("download.filenameTemplate"),
+		DefaultActionWhenExisting: c.GetString("download.defaultActionWhenExisting"),
+		HooksScript:               c.HookScriptPath,
 
 		DBType:     c.GetString("db.type"),
 		DBHost:     c.GetString("db.host"),

@@ -17,34 +17,34 @@ import (
 // resource metadata and the eventual output path stay aligned.
 type FilenameProcessor struct {
 	// usedFilenames stores relative path/name keys and their duplicate counts.
-	usedFilenames  map[string]int
-	forbiddenChars *regexp.Regexp
-	maxNameLength  int
-	mu             sync.Mutex
+	used_filenames  map[string]int
+	forbidden_chars *regexp.Regexp
+	max_name_length int
+	mu              sync.Mutex
 }
 
 // NewFilenameProcessor creates a processor using existingFiles as its initial
 // reservation set. rootDir is retained for API compatibility; names produced
 // by the processor are always relative to the task's save path.
-func NewFilenameProcessor(rootDir string, existingFiles map[string]int) *FilenameProcessor {
-	_ = rootDir
-	if existingFiles == nil {
-		existingFiles = make(map[string]int)
+func NewFilenameProcessor(root_dir string, existing_files map[string]int) *FilenameProcessor {
+	_ = root_dir
+	if existing_files == nil {
+		existing_files = make(map[string]int)
 	}
 
 	return &FilenameProcessor{
-		usedFilenames:  existingFiles,
-		forbiddenChars: regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`),
-		maxNameLength:  235,
+		used_filenames:  existing_files,
+		forbidden_chars: regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`),
+		max_name_length: 235,
 	}
 }
 
 // truncateString truncates by bytes without splitting a UTF-8 rune.
-func (fp *FilenameProcessor) truncateString(s string, maxBytes int) string {
-	if len(s) <= maxBytes {
+func (fp *FilenameProcessor) truncate_string(s string, max_bytes int) string {
+	if len(s) <= max_bytes {
 		return s
 	}
-	s = s[:maxBytes]
+	s = s[:max_bytes]
 	for len(s) > 0 {
 		r, size := utf8.DecodeLastRuneInString(s)
 		if r == utf8.RuneError && size == 1 {
@@ -62,23 +62,23 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 		return "", fmt.Errorf("filename cannot be empty")
 	}
 
-	filename = fp.truncateString(filename, fp.maxNameLength)
-	filename = fp.forbiddenChars.ReplaceAllString(filename, "")
+	filename = fp.truncate_string(filename, fp.max_name_length)
+	filename = fp.forbidden_chars.ReplaceAllString(filename, "")
 	filename = strings.TrimSpace(filename)
 	filename = strings.Trim(filename, ".")
 	if filename == "" {
 		return "", fmt.Errorf("filename contains only invalid characters")
 	}
 
-	reservedNames := map[string]bool{
+	reserved_names := map[string]bool{
 		"CON": true, "PRN": true, "AUX": true, "NUL": true,
 		"COM1": true, "COM2": true, "COM3": true, "COM4": true,
 		"COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
 		"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true,
 		"LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
 	}
-	baseName := strings.ToUpper(strings.SplitN(filename, ".", 2)[0])
-	if reservedNames[baseName] {
+	base_name := strings.ToUpper(strings.SplitN(filename, ".", 2)[0])
+	if reserved_names[base_name] {
 		return filename + "_", nil
 	}
 
@@ -98,49 +98,49 @@ func (fp *FilenameProcessor) AppendExtension(filename, extension string) (string
 		return "", fmt.Errorf("extension must start with a dot")
 	}
 	dir, base := filepath.Split(filename)
-	cleanName, err := fp.SanitizeFilename(base)
+	clean_name, err := fp.SanitizeFilename(base)
 	if err != nil {
 		return "", err
 	}
-	maxBaseLength := fp.maxNameLength - len(extension)
-	if maxBaseLength <= 0 {
+	max_base_length := fp.max_name_length - len(extension)
+	if max_base_length <= 0 {
 		return "", fmt.Errorf("extension is too long")
 	}
-	cleanName = fp.truncateString(cleanName, maxBaseLength)
-	if cleanName == "" {
+	clean_name = fp.truncate_string(clean_name, max_base_length)
+	if clean_name == "" {
 		return "", fmt.Errorf("filename contains only invalid characters")
 	}
-	return dir + cleanName + extension, nil
+	return dir + clean_name + extension, nil
 }
 
 // NormalizeFilename sanitizes a relative path without changing its duplicate
 // reservation state.
-func (fp *FilenameProcessor) NormalizeFilename(inputName string) (string, string, error) {
-	inputName = strings.ReplaceAll(inputName, "//", "_")
-	dir, filename := filepath.Split(inputName)
-	cleanName, err := fp.SanitizeFilename(filename)
+func (fp *FilenameProcessor) NormalizeFilename(input_name string) (string, string, error) {
+	input_name = strings.ReplaceAll(input_name, "//", "_")
+	dir, filename := filepath.Split(input_name)
+	clean_name, err := fp.SanitizeFilename(filename)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid filename %q: %w", filename, err)
 	}
 	if dir == "" {
-		return cleanName, "", nil
+		return clean_name, "", nil
 	}
 
 	dir = strings.TrimSuffix(dir, string(filepath.Separator))
-	validDirs := make([]string, 0)
+	valid_dirs := make([]string, 0)
 	for _, component := range strings.Split(dir, string(filepath.Separator)) {
-		validDir, err := fp.SanitizeFilename(component)
+		valid_dir, err := fp.SanitizeFilename(component)
 		if err != nil {
 			continue
 		}
-		validDirs = append(validDirs, validDir)
+		valid_dirs = append(valid_dirs, valid_dir)
 	}
-	return cleanName, filepath.Join(validDirs...), nil
+	return clean_name, filepath.Join(valid_dirs...), nil
 }
 
 // ProcessFilename normalizes inputName and reserves a unique relative path.
-func (fp *FilenameProcessor) ProcessFilename(inputName string) (string, string, error) {
-	cleanName, dir, err := fp.NormalizeFilename(inputName)
+func (fp *FilenameProcessor) ProcessFilename(input_name string) (string, string, error) {
+	clean_name, dir, err := fp.NormalizeFilename(input_name)
 	if err != nil {
 		return "", "", err
 	}
@@ -148,27 +148,27 @@ func (fp *FilenameProcessor) ProcessFilename(inputName string) (string, string, 
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
 
-	pathKey := filepath.Clean(filepath.Join(dir, cleanName))
-	count, exists := fp.usedFilenames[pathKey]
+	path_key := filepath.Clean(filepath.Join(dir, clean_name))
+	count, exists := fp.used_filenames[path_key]
 	if exists {
-		ext := filepath.Ext(cleanName)
-		nameWithoutExt := cleanName[:len(cleanName)-len(ext)]
+		ext := filepath.Ext(clean_name)
+		name_without_ext := clean_name[:len(clean_name)-len(ext)]
 		for {
 			count++
-			newName := fmt.Sprintf("%s(%d)%s", nameWithoutExt, count, ext)
-			newPathKey := filepath.Clean(filepath.Join(dir, newName))
-			if _, used := fp.usedFilenames[newPathKey]; !used {
-				cleanName = newName
-				pathKey = newPathKey
+			new_name := fmt.Sprintf("%s(%d)%s", name_without_ext, count, ext)
+			new_path_key := filepath.Clean(filepath.Join(dir, new_name))
+			if _, used := fp.used_filenames[new_path_key]; !used {
+				clean_name = new_name
+				path_key = new_path_key
 				break
 			}
 		}
 	}
-	fp.usedFilenames[pathKey] = count
+	fp.used_filenames[path_key] = count
 	if exists {
-		fp.usedFilenames[pathKey] = 0
+		fp.used_filenames[path_key] = 0
 	}
-	return cleanName, dir, nil
+	return clean_name, dir, nil
 }
 
 // RemoveFilename releases a previously reserved name, for example before an
@@ -176,12 +176,12 @@ func (fp *FilenameProcessor) ProcessFilename(inputName string) (string, string, 
 func (fp *FilenameProcessor) RemoveFilename(name, dir string) {
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
-	delete(fp.usedFilenames, filepath.Clean(filepath.Join(dir, name)))
+	delete(fp.used_filenames, filepath.Clean(filepath.Join(dir, name)))
 }
 
 // ProcessFilename normalizes a batch while preserving the input maps.
-func ProcessFilename(existingTaskMap map[string]int, items []map[string]string, rootDir string) ([]map[string]string, error) {
-	processor := NewFilenameProcessor(rootDir, existingTaskMap)
+func ProcessFilename(existing_task_map map[string]int, items []map[string]string, root_dir string) ([]map[string]string, error) {
+	processor := NewFilenameProcessor(root_dir, existing_task_map)
 	results := make([]map[string]string, 0, len(items))
 	for _, item := range items {
 		result := make(map[string]string, len(item)+2)
@@ -193,13 +193,13 @@ func ProcessFilename(existingTaskMap map[string]int, items []map[string]string, 
 		if name == "" {
 			return nil, fmt.Errorf("item %v has no name field", item)
 		}
-		finalName, dir, err := processor.ProcessFilename(name)
+		final_name, dir, err := processor.ProcessFilename(name)
 		if err != nil {
 			return nil, fmt.Errorf("process filename for item %v: %w", item, err)
 		}
-		result["name"] = finalName
+		result["name"] = final_name
 		result["original_name"] = name
-		result["full_path"] = filepath.Join(dir, finalName)
+		result["full_path"] = filepath.Join(dir, final_name)
 		results = append(results, result)
 	}
 	return results, nil

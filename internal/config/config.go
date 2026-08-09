@@ -450,6 +450,16 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "download.defaultActionWhenExisting",
+		Type:        ConfigTypeSelect,
+		Default:     "",
+		Options:     []string{"", "skip", "duplicate", "overwrite"},
+		Description: "Default action when a download task already exists; leave empty to return a conflict for the caller to choose",
+		Title:       "Default duplicate action",
+		Group:       "Download",
+		HotReload:   true,
+	})
+	Register(ConfigField{
 		Key:         "db.type",
 		Type:        ConfigTypeSelect,
 		Default:     "sqlite",

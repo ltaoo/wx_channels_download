@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/dop251/goja"
 )
@@ -12,10 +13,11 @@ import (
 // HookManager manages the lifecycle of JS hook functions, compiling and executing user-defined
 // onTaskCreate / onTaskFinish / onFilename hooks via the goja VM.
 type HookManager struct {
-	vm              *goja.Runtime
-	hasCreateHook   bool
-	hasFinishHook   bool
-	hasFilenameHook bool
+	mu                sync.Mutex
+	vm                *goja.Runtime
+	has_create_hook   bool
+	has_finish_hook   bool
+	has_filename_hook bool
 }
 
 // TaskInfo is the task information exposed to hooks.
@@ -79,37 +81,40 @@ func NewHookManager() *HookManager {
 
 // HasCreateHook returns whether an onTaskCreate hook is registered.
 func (hm *HookManager) HasCreateHook() bool {
-	return hm.hasCreateHook
+	return hm.has_create_hook
 }
 
 // HasFinishHook returns whether an onTaskFinish hook is registered.
 func (hm *HookManager) HasFinishHook() bool {
-	return hm.hasFinishHook
+	return hm.has_finish_hook
 }
 
 // HasFilenameHook returns whether an onFilename hook is registered.
 func (hm *HookManager) HasFilenameHook() bool {
-	return hm.hasFilenameHook
+	return hm.has_filename_hook
 }
 
 // Load reads and compiles a JS hook script, detecting whether onTaskCreate / onTaskFinish are defined.
-func (hm *HookManager) Load(scriptPath string) error {
-	data, err := os.ReadFile(scriptPath)
+func (hm *HookManager) Load(script_path string) error {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	data, err := os.ReadFile(script_path)
 	if err != nil {
-		return fmt.Errorf("failed to read hook script %s: %w", scriptPath, err)
+		return fmt.Errorf("failed to read hook script %s: %w", script_path, err)
 	}
 
 	vm := goja.New()
-	registerBuiltins(vm)
+	register_builtins(vm)
 
 	if _, err := vm.RunString(string(data)); err != nil {
 		return fmt.Errorf("failed to execute hook script: %w", err)
 	}
 
 	hm.vm = vm
-	hm.hasCreateHook = isDefinedFunction(vm, "onTaskCreate")
-	hm.hasFinishHook = isDefinedFunction(vm, "onTaskFinish")
-	hm.hasFilenameHook = isDefinedFunction(vm, "onFilename")
+	hm.has_create_hook = is_defined_function(vm, "onTaskCreate")
+	hm.has_finish_hook = is_defined_function(vm, "onTaskFinish")
+	hm.has_filename_hook = is_defined_function(vm, "onFilename")
 
 	return nil
 }
@@ -117,7 +122,10 @@ func (hm *HookManager) Load(scriptPath string) error {
 // InvokeCreateHook calls onTaskCreate with the original task/resources/config and returns the modified result.
 // Returning nil means no modifications; the original task should be kept unchanged.
 func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
-	if !hm.hasCreateHook || hm.vm == nil {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	if !hm.has_create_hook || hm.vm == nil {
 		return nil, nil
 	}
 
@@ -128,17 +136,17 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 		return nil, fmt.Errorf("onTaskCreate is not a function")
 	}
 
-	taskVal, err := hm.toHookValue(input.Task)
+	task_val, err := hm.to_hook_value(input.Task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare onTaskCreate task value: %w", err)
 	}
-	resourcesVal, err := hm.toHookValue(input.Resources)
+	resources_val, err := hm.to_hook_value(input.Resources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare onTaskCreate resources value: %w", err)
 	}
-	configVal := hm.vm.ToValue(input.Config)
+	config_val := hm.vm.ToValue(input.Config)
 
-	result, err := fn(goja.Undefined(), taskVal, resourcesVal, configVal)
+	result, err := fn(goja.Undefined(), task_val, resources_val, config_val)
 	if err != nil {
 		return nil, fmt.Errorf("onTaskCreate execution failed: %w", err)
 	}
@@ -148,13 +156,13 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 	}
 
 	exported := result.Export()
-	jsonBytes, err := json.Marshal(exported)
+	json_bytes, err := json.Marshal(exported)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize onTaskCreate result: %w", err)
 	}
 
 	var modified TaskInput
-	if err := json.Unmarshal(jsonBytes, &modified); err != nil {
+	if err := json.Unmarshal(json_bytes, &modified); err != nil {
 		return nil, fmt.Errorf("failed to deserialize onTaskCreate result: %w", err)
 	}
 
@@ -163,7 +171,10 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 
 // InvokeFinishHook calls onTaskFinish to perform post-download processing (zip, cleanup, etc.).
 func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
-	if !hm.hasFinishHook || hm.vm == nil {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	if !hm.has_finish_hook || hm.vm == nil {
 		return nil
 	}
 
@@ -174,11 +185,11 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 		return fmt.Errorf("onTaskFinish is not a function")
 	}
 
-	ctxVal, err := hm.toHookValue(ctx)
+	ctx_val, err := hm.to_hook_value(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to prepare onTaskFinish context value: %w", err)
 	}
-	_, err = fn(goja.Undefined(), ctxVal)
+	_, err = fn(goja.Undefined(), ctx_val)
 	if err != nil {
 		return fmt.Errorf("onTaskFinish execution failed: %w", err)
 	}
@@ -189,8 +200,11 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 // InvokeFilenameHook calls onFilename and returns the generated filename.
 // systemName is the default system filename (after template processing); the user can adjust based on it.
 // Returning an empty string means the default logic is used.
-func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName string) (string, error) {
-	if !hm.hasFilenameHook || hm.vm == nil {
+func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, system_name string) (string, error) {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	if !hm.has_filename_hook || hm.vm == nil {
 		return "", nil
 	}
 
@@ -201,18 +215,18 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 		return "", fmt.Errorf("onFilename is not a function")
 	}
 
-	systemVal := hm.vm.ToValue(systemName)
-	metaVal, err := hm.toHookValue(params.Meta)
+	system_val := hm.vm.ToValue(system_name)
+	meta_val, err := hm.to_hook_value(params.Meta)
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare onFilename meta value: %w", err)
 	}
-	taskVal, err := hm.toHookValue(params.Task)
+	task_val, err := hm.to_hook_value(params.Task)
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare onFilename task value: %w", err)
 	}
-	configVal := hm.vm.ToValue(params.Config)
+	config_val := hm.vm.ToValue(params.Config)
 
-	result, err := fn(goja.Undefined(), systemVal, metaVal, taskVal, configVal)
+	result, err := fn(goja.Undefined(), system_val, meta_val, task_val, config_val)
 	if err != nil {
 		return "", fmt.Errorf("onFilename execution failed: %w", err)
 	}
@@ -225,19 +239,19 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, systemName str
 	return s, nil
 }
 
-func (hm *HookManager) toHookValue(v any) (goja.Value, error) {
-	jsonBytes, err := json.Marshal(v)
+func (hm *HookManager) to_hook_value(v any) (goja.Value, error) {
+	json_bytes, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 	var data any
-	if err := json.Unmarshal(jsonBytes, &data); err != nil {
+	if err := json.Unmarshal(json_bytes, &data); err != nil {
 		return nil, err
 	}
 	return hm.vm.ToValue(data), nil
 }
 
-func isDefinedFunction(vm *goja.Runtime, name string) bool {
+func is_defined_function(vm *goja.Runtime, name string) bool {
 	val := vm.Get(name)
 	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
 		return false

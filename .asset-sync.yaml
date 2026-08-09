@@ -1,0 +1,23 @@
+version: 1
+manifest: .asset-sync.lock.json
+
+roots:
+  - path: scraper_examples
+    track_files: false
+    include:
+      - "**/*"
+    exclude:
+      - "**/.DS_Store"
+      - "**/*.tmp"
+  - path: cache
+    track_files: false
+    include:
+      - "**/*"
+    exclude:
+      - "**/.DS_Store"
+      - "**/*.tmp"
+
+storage:
+  type: local
+  local_path: ${ASSET_SYNC_STORAGE_ROOT}
+  prefix: wx_channels_download

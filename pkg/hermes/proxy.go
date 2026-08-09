@@ -9,8 +9,8 @@ import (
 const (
 	// TaskProxyServerConfigKey is the preferred task Config key for a structured
 	// proxy server definition.
-	TaskProxyServerConfigKey = "proxy_server"
-	legacyTaskProxyConfigKey = "proxy"
+	TaskProxyServerConfigKey     = "proxy_server"
+	legacy_task_proxy_config_key = "proxy"
 )
 
 // ProxyServer describes a task-level forward proxy. Address accepts a complete
@@ -53,39 +53,39 @@ func (p ProxyServer) URL() (string, error) {
 // applyTaskProxy resolves the task-level proxy once and copies it to every
 // endpoint. This keeps protocol drivers stateless with respect to tasks and
 // allows one engine instance to run tasks through different proxies.
-func applyTaskProxy(task *TaskJob) {
+func apply_task_proxy(task *TaskJob) {
 	if task == nil {
 		return
 	}
 
-	proxyServer := task.ProxyServer
-	proxyServer.Address = strings.TrimSpace(proxyServer.Address)
-	if proxyServer.Address == "" {
-		proxyServer = proxyServerFromConfig(task.Config)
+	proxy_server := task.ProxyServer
+	proxy_server.Address = strings.TrimSpace(proxy_server.Address)
+	if proxy_server.Address == "" {
+		proxy_server = proxy_server_from_config(task.Config)
 	}
-	task.ProxyServer = proxyServer
+	task.ProxyServer = proxy_server
 
-	for resourceIndex := range task.Resources {
-		for endpointIndex := range task.Resources[resourceIndex].Endpoints {
-			task.Resources[resourceIndex].Endpoints[endpointIndex].ProxyServer = proxyServer
+	for resource_index := range task.Resources {
+		for endpoint_index := range task.Resources[resource_index].Endpoints {
+			task.Resources[resource_index].Endpoints[endpoint_index].ProxyServer = proxy_server
 		}
 	}
 }
 
-func proxyServerFromConfig(config map[string]any) ProxyServer {
+func proxy_server_from_config(config map[string]any) ProxyServer {
 	if config == nil {
 		return ProxyServer{}
 	}
-	if proxy, ok := decodeProxyServer(config[TaskProxyServerConfigKey]); ok {
+	if proxy, ok := decode_proxy_server(config[TaskProxyServerConfigKey]); ok {
 		return proxy
 	}
 	// Keep accepting the original string/map key while callers migrate to the
 	// structured proxy_server field.
-	proxy, _ := decodeProxyServer(config[legacyTaskProxyConfigKey])
+	proxy, _ := decode_proxy_server(config[legacy_task_proxy_config_key])
 	return proxy
 }
 
-func decodeProxyServer(value any) (ProxyServer, bool) {
+func decode_proxy_server(value any) (ProxyServer, bool) {
 	switch proxy := value.(type) {
 	case ProxyServer:
 		return proxy, strings.TrimSpace(proxy.Address) != ""
@@ -117,14 +117,14 @@ func decodeProxyServer(value any) (ProxyServer, bool) {
 
 // taskConfigForLog removes the entire proxy definition from structured logs so
 // usernames, passwords, or credentials embedded in an address cannot leak.
-func taskConfigForLog(config map[string]any) map[string]any {
+func task_config_for_log(config map[string]any) map[string]any {
 	if config == nil {
 		return nil
 	}
 	redacted := make(map[string]any, len(config))
 	for key, value := range config {
 		switch key {
-		case TaskProxyServerConfigKey, legacyTaskProxyConfigKey:
+		case TaskProxyServerConfigKey, legacy_task_proxy_config_key:
 			redacted[key] = "<redacted>"
 		default:
 			redacted[key] = value

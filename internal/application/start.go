@@ -186,6 +186,7 @@ func Start(cfg *config.Config) error {
 			Logger:       logger,
 			Bus:          bus,
 			Config:       cfg,
+			Hooks:        hook_manager,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to register platform %s: %w", platform_id, err)
