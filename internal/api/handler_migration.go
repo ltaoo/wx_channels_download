@@ -29,9 +29,9 @@ type MigrationTableRequest struct {
 	PageSize int    `json:"page_size"`
 }
 
-// handleMigrationLoad opens a SQLite database at the given path and returns a list of tables with record counts.
+// handle_migration_load opens a SQLite database at the given path and returns a list of tables with record counts.
 // POST /api/v1/migration/load
-func (c *APIClient) handleMigrationLoad(ctx *gin.Context) {
+func (c *APIClient) handle_migration_load(ctx *gin.Context) {
 	var req MigrationLoadRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "请求参数无效: "+err.Error())
@@ -69,9 +69,9 @@ func (c *APIClient) handleMigrationLoad(ctx *gin.Context) {
 	})
 }
 
-// handleMigrationTable queries data from a specified table (paginated).
+// handle_migration_table queries data from a specified table (paginated).
 // POST /api/v1/migration/table
-func (c *APIClient) handleMigrationTable(ctx *gin.Context) {
+func (c *APIClient) handle_migration_table(ctx *gin.Context) {
 	var req MigrationTableRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		result.Err(ctx, 400, "请求参数无效: "+err.Error())
@@ -152,9 +152,9 @@ func (c *APIClient) handleMigrationTable(ctx *gin.Context) {
 	})
 }
 
-// handleMigrationFileList lists files in a directory (using velo fileserver).
+// handle_migration_file_list lists files in a directory (using velo fileserver).
 // POST /api/v1/migration/file/list
-func (c *APIClient) handleMigrationFileList(ctx *gin.Context) {
+func (c *APIClient) handle_migration_file_list(ctx *gin.Context) {
 	var req struct {
 		Dir string `json:"dir"`
 	}
@@ -189,9 +189,9 @@ func (c *APIClient) handleMigrationFileList(ctx *gin.Context) {
 	})
 }
 
-// handleMigrationCommonDirs returns a list of common directories.
+// handle_migration_common_dirs returns a list of common directories.
 // GET /api/v1/migration/common_dirs
-func (c *APIClient) handleMigrationCommonDirs(ctx *gin.Context) {
+func (c *APIClient) handle_migration_common_dirs(ctx *gin.Context) {
 	dirs := fileserver.FetchCommonDirs()
 	result.Ok(ctx, gin.H{
 		"dirs": dirs,

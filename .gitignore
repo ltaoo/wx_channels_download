@@ -32,8 +32,9 @@ temp_sunnynet
 node_modules
 docs/.vitepress/cache
 docs/.vitepress/dist
-gopeed.db
-data.db
+*.db
+*.db-shm
+*.db-wal
 /*.json
 !.asset-sync.lock.json
 *.log

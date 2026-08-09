@@ -31,6 +31,7 @@ builds:
       - with_gvisor
       - embed_inject
       - sqlite_only
+      - embed_frontend_inject
     ignore:
       - goos: darwin
         goarch: "386"
@@ -54,6 +55,7 @@ builds:
       - with_gvisor
       - embed_inject
       - sqlite_only
+      - embed_frontend_inject
     # TODO: Temporarily disabled macOS signing
     # hooks:
     #   post:
@@ -75,6 +77,7 @@ builds:
       - with_gvisor
       - embed_inject
       - sqlite_only
+      - embed_frontend_inject
 
   # TODO: Temporarily disabled SunnyNet build
   # - id: windows_sunnynet

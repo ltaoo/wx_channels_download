@@ -151,7 +151,7 @@ type ClientWebsocketResponse struct {
 	Data json.RawMessage `json:"data"`
 }
 
-func (c *APIClient) serviceStatusesMap() map[string]string {
+func (c *APIClient) service_statuses_map() map[string]string {
 	c.svc_status_mu.RLock()
 	defer c.svc_status_mu.RUnlock()
 	result := make(map[string]string, len(c.svc_statuses))
@@ -206,7 +206,7 @@ func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.http_handler.ServeHTTP(w, r)
 }
 
-func (c *APIClient) setupStaticAssetRoutes() {
+func (c *APIClient) setup_static_asset_routes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		c.engine.Handle(method, "/__assets/public/*filepath", c.handlePublicAsset)
 		c.engine.Handle(method, "/__assets/src/*filepath", c.handleSrcAsset)

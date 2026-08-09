@@ -334,9 +334,9 @@ type v1TaskClient struct {
 	taskID int
 }
 
-// handleDownloadTaskWS is the download task record push WebSocket.
+// handle_download_task_ws is the download task record push WebSocket.
 // GET /ws/v1/download_task?task_id=1
-func (c *APIClient) handleDownloadTaskWS(ctx *gin.Context) {
+func (c *APIClient) handle_download_task_ws(ctx *gin.Context) {
 	conn, err := v1DownloadTaskUpgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return

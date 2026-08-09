@@ -13,8 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dop251/goja"
+
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
+	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 )
@@ -463,6 +466,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 			Content: content,
 		}
 		setContentExt(info, ext)
+		applySingleResourceTaskName(info, config)
 		return info, nil
 	}
 
@@ -536,6 +540,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 			Content:   content,
 		}
 		setContentExt(info, ext)
+		applySingleResourceTaskName(info, pictureConfig)
 		return info, nil
 	}
 
@@ -545,7 +550,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 		return nil, fmt.Errorf("无法获取视频下载地址")
 	}
 
-	configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
+	videoConfig := buildConfigJSON(config, spec, obj.ObjectDesc.MediaType)
+	configJSON, _ := json.Marshal(videoConfig)
 
 	resourceUniqueID := content.ExternalId
 	resourceKind := mimeVideoMP4
@@ -583,6 +589,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 		Content:   content,
 	}
 	setContentExt(info, ext)
+	applySingleResourceTaskName(info, videoConfig)
 	return info, nil
 }
 
@@ -626,7 +633,8 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 	}
 
 	now := time.Now().Unix()
-	configJSON, _ := json.Marshal(buildConfigJSON(config, configString(config, "spec"), wxchannels.MediaTypeLive))
+	liveConfig := buildConfigJSON(config, configString(config, "spec"), wxchannels.MediaTypeLive)
+	configJSON, _ := json.Marshal(liveConfig)
 	metadataJSON, _ := json.Marshal(map[string]any{
 		"platform":     PlatformID,
 		"id":           liveId,
@@ -676,6 +684,7 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 		RotateMinutes: 10,
 		StreamURL:     jl.LiveSdkInfo.LiveCdnUrl,
 		UniqueID:      uniqueID,
+		Extra:         buildResourceExtraJSON(liveId, title, configString(config, "spec"), sessionStartTime, authorNickname, "", 0, wxchannels.MediaTypeLive),
 	}
 	streamEndpoint := model.DownloadEndpoint{
 		Protocol: "livestream",
@@ -683,7 +692,7 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 		Enabled:  1,
 	}
 
-	return &adapter.DownloadTaskResult{
+	info := &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
@@ -700,7 +709,9 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 		ContentDetail: nil,
 		Account:       account,
 		Content:       content,
-	}, nil
+	}
+	applySingleResourceTaskName(info, liveConfig)
+	return info, nil
 }
 
 // getMediaURL returns the combined download URL for a media item (url + urlToken).
@@ -983,6 +994,157 @@ func buildResourceExtraJSON(id, title, spec string, createdAt int64, author stri
 		DecodeKey:  decodeKey,
 	})
 	return string(data)
+}
+
+func applySingleResourceTaskName(info *adapter.DownloadTaskResult, config map[string]any) {
+	if info == nil || info.Task == nil || len(info.Resources) != 1 || info.Resources[0] == nil {
+		return
+	}
+	if configSuffixIsArchive(config) {
+		return
+	}
+	if name := preconstructSingleResourceTaskName(info.Resources[0].DownloadResource, config); name != "" {
+		info.Task.Name = name
+	}
+}
+
+func preconstructSingleResourceTaskName(resource model.DownloadResource, config map[string]any) string {
+	baseName := strings.TrimSpace(resource.Name)
+	if baseName == "" {
+		return ""
+	}
+
+	ext := hermes.CanonicalExtensionForMIMEType(resource.Kind)
+	if strings.EqualFold(resource.Type, model.ResourceTypeStream) && ext != "" && strings.EqualFold(filepath.Ext(baseName), ext) {
+		baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	}
+
+	if template := filenameTemplateFromConfig(config); template != "" {
+		meta := buildPreconstructTemplateMeta(parsePreconstructResourceExtra(resource.Extra), baseName)
+		if newName := applyPreconstructFilenameTemplate(template, baseName, meta); newName != "" {
+			baseName = newName
+		}
+	}
+
+	baseName = sanitizePreconstructPathComponents(baseName)
+	if baseName == "" {
+		return ""
+	}
+	return baseName + ext
+}
+
+func filenameTemplateFromConfig(config map[string]any) string {
+	for _, key := range []string{
+		"filenameTemplate",
+	} {
+		if value := strings.TrimSpace(configString(config, key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func parsePreconstructResourceExtra(raw string) map[string]string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return nil
+	}
+
+	extra := make(map[string]string, len(attrs))
+	for key, value := range attrs {
+		if value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			extra[key] = typed
+		case fmt.Stringer:
+			extra[key] = typed.String()
+		default:
+			extra[key] = strings.TrimSpace(fmt.Sprintf("%v", value))
+		}
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return extra
+}
+
+func buildPreconstructTemplateMeta(extra map[string]string, currentName string) map[string]string {
+	meta := make(map[string]string, len(extra)+2)
+	for key, value := range extra {
+		meta[key] = value
+	}
+	meta["download_at"] = time.Now().Format("2006-01-02")
+	meta["filename"] = currentName
+	return meta
+}
+
+func applyPreconstructFilenameTemplate(template, name string, meta map[string]string) string {
+	if strings.Contains(template, "{{") {
+		return cleanPreconstructPathSeparators(util.ReplaceTemplateVars(template, meta))
+	}
+
+	vm := goja.New()
+	vm.Set("name", name)
+	vm.Set("task_id", 0)
+	vm.Set("resource_id", 0)
+	vm.Set("url_basename", "")
+	vm.Set("formatTime", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return vm.ToValue("")
+		}
+		return vm.ToValue(time.Now().Format(call.Argument(0).String()))
+	})
+	vm.Set("padStart", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			return call.Arguments[0]
+		}
+		s := call.Argument(0).String()
+		length := int(call.Argument(1).ToInteger())
+		pad := "0"
+		if len(call.Arguments) >= 3 {
+			pad = call.Argument(2).String()
+		}
+		for len(s) < length {
+			s = pad + s
+		}
+		return vm.ToValue(s)
+	})
+
+	result, err := vm.RunString(template)
+	if err != nil {
+		return ""
+	}
+	return cleanPreconstructPathSeparators(result.String())
+}
+
+func cleanPreconstructPathSeparators(s string) string {
+	parts := strings.Split(s, "/")
+	for i, p := range parts {
+		parts[i] = strings.TrimSpace(p)
+	}
+	return strings.Trim(strings.Join(parts, "/"), "/")
+}
+
+func sanitizePreconstructPathComponents(path string) string {
+	parts := strings.Split(path, "/")
+	replacer := strings.NewReplacer(
+		"\\", "_", ":", "_", "*", "_",
+		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
+	)
+	for i, p := range parts {
+		parts[i] = strings.TrimSpace(replacer.Replace(p))
+	}
+	return strings.Trim(strings.Join(parts, "/"), "/")
+}
+
+func configSuffixIsArchive(config map[string]any) bool {
+	suffix := strings.TrimSpace(configString(config, "suffix"))
+	return strings.EqualFold(suffix, ".zip") || strings.EqualFold(suffix, "zip")
 }
 
 // buildConfigJSON returns a map containing the config fields whose value is set / true,

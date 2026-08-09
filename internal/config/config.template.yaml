@@ -39,6 +39,7 @@ db:
   filepath: "%CWD%/data.db"
 
 proxy:
+  enabled: true
   system: true
   hostname: "127.0.0.1"
   port: 2023
