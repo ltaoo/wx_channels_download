@@ -10,24 +10,24 @@ import (
 	"time"
 )
 
-func (d *HermesEngine) downloadFile(
+func (d *HermesEngine) download_file(
 	ctx context.Context,
 	driver ProtocolDriver,
 	endpoint Endpoint,
-	filePath string,
+	file_path string,
 	task *TaskJob,
 	resource *ResourceJob,
 	prepared PreparedResource,
 ) error {
-	resourceID := resource.ID
-	taskID := task.ID
-	segments, err := d.store.LoadSegmentInfo(resourceID)
+	resource_id := resource.ID
+	task_id := task.ID
+	segments, err := d.store.LoadSegmentInfo(resource_id)
 	if err != nil {
 		return fmt.Errorf("failed to load segment information: %w", err)
 	}
-	ranges := []SegmentRange{{Index: 0, OffsetStart: 0, OffsetEnd: maxInt64(0, prepared.Size-1), Size: prepared.Size}}
-	if !segmentsMatchRanges(segments, ranges) {
-		ids, err := d.store.CreateSegments(resourceID, endpoint.URL, ranges)
+	ranges := []SegmentRange{{Index: 0, OffsetStart: 0, OffsetEnd: max_int64(0, prepared.Size-1), Size: prepared.Size}}
+	if !segments_match_ranges(segments, ranges) {
+		ids, err := d.store.CreateSegments(resource_id, endpoint.URL, ranges)
 		if err != nil {
 			return fmt.Errorf("failed to create segment records: %w", err)
 		}
@@ -37,31 +37,31 @@ func (d *HermesEngine) downloadFile(
 		segments = []Segment{{ID: ids[0], Index: 0, URL: endpoint.URL, Size: prepared.Size, OffsetEnd: ranges[0].OffsetEnd}}
 	}
 	segment := &segments[0]
-	partPath := filePath + partialFileSuffix
+	part_path := file_path + partial_file_suffix
 
 	// A crash may happen after persisting completion but before the atomic rename.
 	// Prefer the durable partial file over an older same-sized destination.
-	if prepared.Size > 0 && segment.Downloaded == prepared.Size && fileHasSize(partPath, prepared.Size) {
-		if err := finalizePartialFile(partPath, filePath); err != nil {
+	if prepared.Size > 0 && segment.Downloaded == prepared.Size && file_has_size(part_path, prepared.Size) {
+		if err := finalize_partial_file(part_path, file_path); err != nil {
 			return fmt.Errorf("failed to finalize temporary file: %w", err)
 		}
-		d.updateTracker(taskID, resourceID, prepared.Size, 0)
+		d.update_tracker(task_id, resource_id, prepared.Size, 0)
 		return nil
 	}
 	// A same-sized destination alone is not proof that this resource completed.
 	// Only persisted completion state may make an existing destination reusable.
-	if prepared.Size > 0 && segment.Downloaded == prepared.Size && fileHasSize(filePath, prepared.Size) {
-		d.updateTracker(taskID, resourceID, prepared.Size, 0)
+	if prepared.Size > 0 && segment.Downloaded == prepared.Size && file_has_size(file_path, prepared.Size) {
+		d.update_tracker(task_id, resource_id, prepared.Size, 0)
 		return nil
 	}
 
 	var downloaded int64
-	if fi, statErr := os.Stat(partPath); statErr == nil {
+	if fi, stat_err := os.Stat(part_path); stat_err == nil {
 		downloaded = fi.Size()
 	}
 	if prepared.Size > 0 && (downloaded < 0 || downloaded > prepared.Size) {
 		downloaded = 0
-		if err := os.Truncate(partPath, 0); err != nil {
+		if err := os.Truncate(part_path, 0); err != nil {
 			return fmt.Errorf("failed to reset temporary file: %w", err)
 		}
 	}
@@ -75,68 +75,72 @@ func (d *HermesEngine) downloadFile(
 		downloaded = 0
 	}
 
-	for attempt := 0; attempt < maxReadAttempts; attempt++ {
+	for attempt := 0; attempt < max_read_attempts; attempt++ {
 		if err := context.Cause(ctx); err != nil {
 			return err
 		}
-		useRange := prepared.SupportsRange && downloaded > 0
-		request := ReadRequest{OffsetStart: downloaded, OffsetEnd: prepared.Size - 1, UseRange: useRange}
+		// Start with a Range request whenever the source supports it. The custom
+		// HTTP fingerprint client buffers non-Range responses completely, which
+		// prevents progress from advancing until the network transfer has ended.
+		// Range requests use the streaming HTTP path and also support resuming.
+		use_range := prepared.SupportsRange && prepared.Size > 0
+		request := ReadRequest{OffsetStart: downloaded, OffsetEnd: prepared.Size - 1, UseRange: use_range}
 		reader, err := driver.Open(ctx, endpoint, request)
 		if err != nil {
-			if !waitForRetry(ctx, attempt) {
+			if !wait_for_retry(ctx, attempt) {
 				return context.Cause(ctx)
 			}
-			if attempt == maxReadAttempts-1 {
+			if attempt == max_read_attempts-1 {
 				return fmt.Errorf("failed to open download source: %w", err)
 			}
 			continue
 		}
 
 		flags := os.O_CREATE | os.O_WRONLY
-		if useRange {
+		if use_range {
 			flags |= os.O_APPEND
 		} else {
 			flags |= os.O_TRUNC
 			downloaded = 0
 		}
-		file, openErr := os.OpenFile(partPath, flags, 0644)
-		if openErr != nil {
+		file, open_err := os.OpenFile(part_path, flags, 0644)
+		if open_err != nil {
 			reader.Close()
-			return fmt.Errorf("failed to open temporary file: %w", openErr)
+			return fmt.Errorf("failed to open temporary file: %w", open_err)
 		}
 
-		lastPersist := time.Now()
-		err = d.copyReader(ctx, reader, file, prepared.Size, &downloaded, taskID, resourceID, func(total, speed int64, force bool) error {
+		last_persist := time.Now()
+		err = d.copy_reader(ctx, reader, file, prepared.Size, &downloaded, task_id, resource_id, func(total, speed int64, force bool) error {
 			resource.Downloaded = total
 			resource.Speed = speed
-			d.updateTracker(taskID, resourceID, total, speed)
-			if !force && time.Since(lastPersist) < progressInterval {
+			d.update_tracker(task_id, resource_id, total, speed)
+			if !force && time.Since(last_persist) < progress_interval {
 				return nil
 			}
-			lastPersist = time.Now()
-			return d.persistProgress(taskID, resourceID, segment.ID, total, speed)
+			last_persist = time.Now()
+			return d.persist_progress(task_id, resource_id, segment.ID, total, speed)
 		})
-		readerCloseErr := reader.Close()
-		if err == nil && readerCloseErr != nil {
-			err = readerCloseErr
+		reader_close_err := reader.Close()
+		if err == nil && reader_close_err != nil {
+			err = reader_close_err
 		}
 		if err == nil && (prepared.Size <= 0 || downloaded == prepared.Size) {
-			if syncErr := file.Sync(); syncErr != nil {
-				err = syncErr
-			} else if persistErr := d.persistProgress(taskID, resourceID, segment.ID, downloaded, 0); persistErr != nil {
-				err = persistErr
+			if sync_err := file.Sync(); sync_err != nil {
+				err = sync_err
+			} else if persist_err := d.persist_progress(task_id, resource_id, segment.ID, downloaded, 0); persist_err != nil {
+				err = persist_err
 			} else {
 				resource.Downloaded = downloaded
 				resource.Speed = 0
 			}
 		}
-		closeErr := file.Close()
+		close_err := file.Close()
 		if err == nil {
-			err = closeErr
+			err = close_err
 		}
 		if err == nil && (prepared.Size <= 0 || downloaded == prepared.Size) {
-			if renameErr := os.Rename(partPath, filePath); renameErr != nil {
-				return fmt.Errorf("failed to commit downloaded file: %w", renameErr)
+			if rename_err := os.Rename(part_path, file_path); rename_err != nil {
+				return fmt.Errorf("failed to commit downloaded file: %w", rename_err)
 			}
 			return nil
 		}
@@ -146,7 +150,7 @@ func (d *HermesEngine) downloadFile(
 		if prepared.Size > 0 && downloaded >= prepared.Size {
 			return fmt.Errorf("downloaded data size mismatch: expected %d bytes, got %d bytes", prepared.Size, downloaded)
 		}
-		if attempt == maxReadAttempts-1 {
+		if attempt == max_read_attempts-1 {
 			if err == nil {
 				err = io.ErrUnexpectedEOF
 			}
@@ -155,54 +159,54 @@ func (d *HermesEngine) downloadFile(
 		if !prepared.SupportsRange {
 			downloaded = 0
 		}
-		if !waitForRetry(ctx, attempt) {
+		if !wait_for_retry(ctx, attempt) {
 			return context.Cause(ctx)
 		}
 	}
 	return io.ErrUnexpectedEOF
 }
 
-func (d *HermesEngine) copyReader(
+func (d *HermesEngine) copy_reader(
 	ctx context.Context,
 	reader io.Reader,
 	writer io.Writer,
-	expectedSize int64,
+	expected_size int64,
 	downloaded *int64,
-	taskID int,
-	resourceID int,
-	onProgress func(total, speed int64, force bool) error,
+	task_id int,
+	resource_id int,
+	on_progress func(total, speed int64, force bool) error,
 ) error {
-	buf := make([]byte, readBufferSize)
-	speedSampler := newProgressSpeedSampler(time.Now(), *downloaded)
-	lastLog := time.Now()
-	lastLogDownloaded := *downloaded
+	buf := make([]byte, read_buffer_size)
+	speed_sampler := new_progress_speed_sampler(time.Now(), *downloaded)
+	last_log := time.Now()
+	last_log_downloaded := *downloaded
 	for {
-		chunkStart := time.Now()
+		chunk_start := time.Now()
 		if err := context.Cause(ctx); err != nil {
-			if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
-				return progressErr
+			if progress_err := on_progress(*downloaded, 0, true); progress_err != nil {
+				return progress_err
 			}
 			return err
 		}
-		readBuf := buf
-		if expectedSize > 0 {
-			remaining := expectedSize - *downloaded
+		read_buf := buf
+		if expected_size > 0 {
+			remaining := expected_size - *downloaded
 			if remaining == 0 {
 				return nil
 			}
-			if remaining < int64(len(readBuf)) {
-				readBuf = readBuf[:remaining]
+			if remaining < int64(len(read_buf)) {
+				read_buf = read_buf[:remaining]
 			}
 		}
-		n, readErr := reader.Read(readBuf)
+		n, read_err := reader.Read(read_buf)
 		if n > 0 {
-			if _, err := writer.Write(readBuf[:n]); err != nil {
+			if _, err := writer.Write(read_buf[:n]); err != nil {
 				return fmt.Errorf("failed to write file: %w", err)
 			}
 			*downloaded += int64(n)
 			if d.cfg.SpeedLimit > 0 {
 				expected := time.Duration(float64(n) / float64(d.cfg.SpeedLimit) * float64(time.Second))
-				elapsed := time.Since(chunkStart)
+				elapsed := time.Since(chunk_start)
 				if expected > elapsed {
 					select {
 					case <-ctx.Done():
@@ -216,71 +220,71 @@ func (d *HermesEngine) copyReader(
 		// A single Read can finish in a few microseconds. Extrapolating that one
 		// 32 KiB block to bytes/second produces meaningless GB/s spikes, so only
 		// refresh the displayed speed after a representative sampling window.
-		speed := speedSampler.Sample(now, *downloaded)
-		if err := onProgress(*downloaded, speed, false); err != nil {
+		speed := speed_sampler.sample(now, *downloaded)
+		if err := on_progress(*downloaded, speed, false); err != nil {
 			return err
 		}
 		// Progress log every 3 seconds for diagnostics
-		if now.Sub(lastLog) >= progressLogInterval {
-			if expectedSize > 0 {
-				pct := float64(*downloaded) * 100 / float64(expectedSize)
-				logSpeed := calcSpeed(lastLog, lastLogDownloaded, now, *downloaded)
+		if now.Sub(last_log) >= progress_log_interval {
+			if expected_size > 0 {
+				pct := float64(*downloaded) * 100 / float64(expected_size)
+				log_speed := calc_speed(last_log, last_log_downloaded, now, *downloaded)
 				d.logger.Info().
-					Int("taskID", taskID).
-					Int("resourceID", resourceID).
+					Int("task_id", task_id).
+					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
-					Int64("totalSize", expectedSize).
+					Int64("total_size", expected_size).
 					Float64("percent", pct).
-					Str("speed", formatSpeed(logSpeed)).
+					Str("speed", format_speed(log_speed)).
 					Msg("download progress")
 			} else {
 				d.logger.Info().
-					Int("taskID", taskID).
-					Int("resourceID", resourceID).
+					Int("task_id", task_id).
+					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
 					Msg("download progress (size unknown)")
 			}
-			lastLog = now
-			lastLogDownloaded = *downloaded
+			last_log = now
+			last_log_downloaded = *downloaded
 		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				if expectedSize > 0 && *downloaded != expectedSize {
-					if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
-						return progressErr
+		if read_err != nil {
+			if read_err == io.EOF {
+				if expected_size > 0 && *downloaded != expected_size {
+					if progress_err := on_progress(*downloaded, 0, true); progress_err != nil {
+						return progress_err
 					}
 					return io.ErrUnexpectedEOF
 				}
 				return nil
 			}
-			if progressErr := onProgress(*downloaded, 0, true); progressErr != nil {
-				return progressErr
+			if progress_err := on_progress(*downloaded, 0, true); progress_err != nil {
+				return progress_err
 			}
-			return readErr
+			return read_err
 		}
 	}
 }
 
-func (d *HermesEngine) downloadSegments(
+func (d *HermesEngine) download_segments(
 	ctx context.Context,
 	driver ProtocolDriver,
 	endpoint Endpoint,
-	filePath string,
+	file_path string,
 	task *TaskJob,
 	resource *ResourceJob,
 	prepared PreparedResource,
-	segmentCount int,
+	segment_count int,
 ) error {
-	resourceID := resource.ID
-	taskID := task.ID
-	fileSize := prepared.Size
-	ranges := splitFile(fileSize, segmentCount)
-	segments, err := d.store.LoadSegmentInfo(resourceID)
+	resource_id := resource.ID
+	task_id := task.ID
+	file_size := prepared.Size
+	ranges := split_file(file_size, segment_count)
+	segments, err := d.store.LoadSegmentInfo(resource_id)
 	if err != nil {
 		return fmt.Errorf("failed to load segment information: %w", err)
 	}
-	if !segmentsMatchRanges(segments, ranges) {
-		ids, err := d.store.CreateSegments(resourceID, endpoint.URL, ranges)
+	if !segments_match_ranges(segments, ranges) {
+		ids, err := d.store.CreateSegments(resource_id, endpoint.URL, ranges)
 		if err != nil {
 			return fmt.Errorf("failed to create segment records: %w", err)
 		}
@@ -293,28 +297,28 @@ func (d *HermesEngine) downloadSegments(
 		}
 	}
 
-	partPath := filePath + partialFileSuffix
-	partInfo, statErr := os.Stat(partPath)
-	partValid := statErr == nil && partInfo.Mode().IsRegular() && partInfo.Size() == fileSize
-	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		return fmt.Errorf("failed to inspect temporary file: %w", statErr)
+	part_path := file_path + partial_file_suffix
+	part_info, stat_err := os.Stat(part_path)
+	part_valid := stat_err == nil && part_info.Mode().IsRegular() && part_info.Size() == file_size
+	if stat_err != nil && !errors.Is(stat_err, os.ErrNotExist) {
+		return fmt.Errorf("failed to inspect temporary file: %w", stat_err)
 	}
 	// Prefer a completed .part file: an older same-sized destination may still
 	// exist if the process stopped between progress persistence and rename.
-	if segmentsComplete(segments) && partValid {
-		if err := finalizePartialFile(partPath, filePath); err != nil {
+	if segments_complete(segments) && part_valid {
+		if err := finalize_partial_file(part_path, file_path); err != nil {
 			return fmt.Errorf("failed to commit completed temporary file: %w", err)
 		}
-		d.updateTracker(taskID, resourceID, fileSize, 0)
+		d.update_tracker(task_id, resource_id, file_size, 0)
 		return nil
 	}
 	// A destination is reusable only when both its size and every persisted
 	// segment prove completion. Size alone is unsafe for stale or sparse files.
-	if segmentsComplete(segments) && fileHasSize(filePath, fileSize) {
-		d.updateTracker(taskID, resourceID, fileSize, 0)
+	if segments_complete(segments) && file_has_size(file_path, file_size) {
+		d.update_tracker(task_id, resource_id, file_size, 0)
 		return nil
 	}
-	if !partValid {
+	if !part_valid {
 		for i := range segments {
 			if segments[i].Downloaded == 0 {
 				continue
@@ -326,151 +330,151 @@ func (d *HermesEngine) downloadSegments(
 		}
 	}
 
-	partFile, err := os.OpenFile(partPath, os.O_CREATE|os.O_RDWR, 0644)
+	part_file, err := os.OpenFile(part_path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open temporary file: %w", err)
 	}
-	partClosed := false
+	part_closed := false
 	defer func() {
-		if !partClosed {
-			_ = partFile.Close()
+		if !part_closed {
+			_ = part_file.Close()
 		}
 	}()
-	if !partValid {
-		if err := partFile.Truncate(fileSize); err != nil {
+	if !part_valid {
+		if err := part_file.Truncate(file_size); err != nil {
 			return fmt.Errorf("failed to preallocate temporary file: %w", err)
 		}
 	}
 
-	workerCtx, cancelWorkers := context.WithCancel(ctx)
-	defer cancelWorkers()
-	progressCh := make(chan segmentProgress, len(segments)*2)
+	worker_ctx, cancel_workers := context.WithCancel(ctx)
+	defer cancel_workers()
+	progress_ch := make(chan segment_progress, len(segments)*2)
 	var wg sync.WaitGroup
-	segSem := make(chan struct{}, d.cfg.SegmentConcurrency)
+	seg_sem := make(chan struct{}, d.cfg.SegmentConcurrency)
 	for slot, segment := range segments {
 		if segment.Downloaded >= segment.Size {
-			progressCh <- segmentProgress{slot: slot, downloaded: segment.Size, done: true}
+			progress_ch <- segment_progress{slot: slot, downloaded: segment.Size, done: true}
 			continue
 		}
 		wg.Add(1)
 		go func(slot int, segment Segment) {
 			defer wg.Done()
 			select {
-			case segSem <- struct{}{}:
-			case <-workerCtx.Done():
+			case seg_sem <- struct{}{}:
+			case <-worker_ctx.Done():
 				return
 			}
-			defer func() { <-segSem }()
-			d.downloadSegment(workerCtx, driver, endpoint, partFile, segment, slot, progressCh)
+			defer func() { <-seg_sem }()
+			d.download_segment(worker_ctx, driver, endpoint, part_file, segment, slot, progress_ch)
 		}(slot, segment)
 	}
 	go func() {
 		wg.Wait()
-		close(progressCh)
+		close(progress_ch)
 	}()
 
-	states := make([]segmentProgress, len(segments))
+	states := make([]segment_progress, len(segments))
 	for i, segment := range segments {
 		states[i].slot = i
 		states[i].downloaded = segment.Downloaded
 	}
-	lastLog := time.Now()
-	lastLogDownloaded := int64(0)
+	last_log := time.Now()
+	last_log_downloaded := int64(0)
 	for i := range states {
-		lastLogDownloaded += states[i].downloaded
+		last_log_downloaded += states[i].downloaded
 	}
-	lastPersist := time.Now()
-	var firstErr error
-	var progressEventCount int64
-	lastProgressEventCount := time.Now()
-	lastProgressEventCountN := int64(0)
-	for progress := range progressCh {
-		progressEventCount++
+	last_persist := time.Now()
+	var first_err error
+	var progress_event_count int64
+	last_progress_event_count := time.Now()
+	last_progress_event_count_n := int64(0)
+	for progress := range progress_ch {
+		progress_event_count++
 		if progress.slot < 0 || progress.slot >= len(states) {
-			if firstErr == nil {
-				firstErr = errors.New("received an invalid segment progress index")
-				cancelWorkers()
+			if first_err == nil {
+				first_err = errors.New("received an invalid segment progress index")
+				cancel_workers()
 			}
 			continue
 		}
 		states[progress.slot] = progress
-		if progress.err != nil && firstErr == nil {
-			firstErr = progress.err
-			cancelWorkers()
+		if progress.err != nil && first_err == nil {
+			first_err = progress.err
+			cancel_workers()
 		}
 		// Always update in-memory tracker for real-time WS progress.
-		var totalStateDL, totalStateSpd int64
+		var total_state_dl, total_state_spd int64
 		for _, s := range states {
-			totalStateDL += s.downloaded
-			totalStateSpd += s.speed
+			total_state_dl += s.downloaded
+			total_state_spd += s.speed
 		}
-		d.updateTracker(taskID, resourceID, totalStateDL, totalStateSpd)
-		resource.Downloaded = totalStateDL
-		resource.Speed = totalStateSpd
+		d.update_tracker(task_id, resource_id, total_state_dl, total_state_spd)
+		resource.Downloaded = total_state_dl
+		resource.Speed = total_state_spd
 		// Throttle DB persistence to progressInterval to avoid excessive writes.
-		if time.Since(lastPersist) >= progressInterval || progress.done || progress.err != nil {
+		if time.Since(last_persist) >= progress_interval || progress.done || progress.err != nil {
 			// The partial file is pre-sized, so its length cannot validate which
 			// ranges survived a crash. Make the data durable before allowing the
 			// persisted per-segment offsets to advance.
-			persistErr := partFile.Sync()
-			if persistErr == nil {
-				persistErr = d.persistAggregate(taskID, resourceID, segments, states)
+			persist_err := part_file.Sync()
+			if persist_err == nil {
+				persist_err = d.persist_aggregate(task_id, resource_id, segments, states)
 			}
-			if persistErr != nil && firstErr == nil {
-				firstErr = persistErr
-				cancelWorkers()
+			if persist_err != nil && first_err == nil {
+				first_err = persist_err
+				cancel_workers()
 			}
-			lastPersist = time.Now()
+			last_persist = time.Now()
 		}
 		// Progress log every 3 seconds for diagnostics
-		if time.Since(lastLog) >= progressLogInterval {
-			var totalDl int64
+		if time.Since(last_log) >= progress_log_interval {
+			var total_dl int64
 			for _, s := range states {
-				totalDl += s.downloaded
+				total_dl += s.downloaded
 			}
-			pct := float64(totalDl) * 100 / float64(fileSize)
-			logSpeed := calcSpeed(lastLog, lastLogDownloaded, time.Now(), totalDl)
+			pct := float64(total_dl) * 100 / float64(file_size)
+			log_speed := calc_speed(last_log, last_log_downloaded, time.Now(), total_dl)
 			// Count how many progress events were received per second in this window
-			eventWindow := time.Since(lastProgressEventCount)
-			eventsPerSec := float64(progressEventCount-lastProgressEventCountN) / eventWindow.Seconds()
+			event_window := time.Since(last_progress_event_count)
+			events_per_sec := float64(progress_event_count-last_progress_event_count_n) / event_window.Seconds()
 			d.logger.Info().
-				Int("taskID", taskID).
-				Int("resourceID", resourceID).
-				Int64("downloaded", totalDl).
-				Int64("totalSize", fileSize).
+				Int("task_id", task_id).
+				Int("resource_id", resource_id).
+				Int64("downloaded", total_dl).
+				Int64("total_size", file_size).
 				Float64("percent", pct).
-				Str("speed", formatSpeed(logSpeed)).
-				Int("segmentCount", len(segments)).
-				Int64("totalEvents", progressEventCount).
-				Float64("eventsPerSec", eventsPerSec).
+				Str("speed", format_speed(log_speed)).
+				Int("segment_count", len(segments)).
+				Int64("total_events", progress_event_count).
+				Float64("events_per_sec", events_per_sec).
 				Msg("segment download progress")
 			// Per-slot detail for diagnostics.
 			for _, s := range states {
-				segSize := segments[s.slot].Size
-				var segPct float64
-				if segSize > 0 {
-					segPct = float64(s.downloaded) * 100 / float64(segSize)
+				seg_size := segments[s.slot].Size
+				var seg_pct float64
+				if seg_size > 0 {
+					seg_pct = float64(s.downloaded) * 100 / float64(seg_size)
 				}
 				d.logger.Info().
 					Int("slot", s.slot).
 					Int64("downloaded", s.downloaded).
-					Int64("size", segSize).
-					Float64("pct", segPct).
-					Str("speed", formatSpeed(s.speed)).
+					Int64("size", seg_size).
+					Float64("pct", seg_pct).
+					Str("speed", format_speed(s.speed)).
 					Bool("done", s.done).
 					Msg("seg: detail")
 			}
-			lastLog = time.Now()
-			lastLogDownloaded = totalDl
-			lastProgressEventCount = time.Now()
-			lastProgressEventCountN = progressEventCount
+			last_log = time.Now()
+			last_log_downloaded = total_dl
+			last_progress_event_count = time.Now()
+			last_progress_event_count_n = progress_event_count
 		}
 	}
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
-	if firstErr != nil {
-		return fmt.Errorf("segment download failed: %w", firstErr)
+	if first_err != nil {
+		return fmt.Errorf("segment download failed: %w", first_err)
 	}
 	for _, state := range states {
 		if !state.done {
@@ -479,23 +483,23 @@ func (d *HermesEngine) downloadSegments(
 	}
 	// Make data durable before marking all ranges complete. If persistence then
 	// succeeds but rename is interrupted, the next run finalizes the .part file.
-	if err := partFile.Sync(); err != nil {
+	if err := part_file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync temporary file: %w", err)
 	}
-	if err := d.persistAggregate(taskID, resourceID, segments, states); err != nil {
+	if err := d.persist_aggregate(task_id, resource_id, segments, states); err != nil {
 		return err
 	}
-	if err := partFile.Close(); err != nil {
+	if err := part_file.Close(); err != nil {
 		return fmt.Errorf("failed to close temporary file: %w", err)
 	}
-	partClosed = true
-	if err := os.Rename(partPath, filePath); err != nil {
+	part_closed = true
+	if err := os.Rename(part_path, file_path); err != nil {
 		return fmt.Errorf("failed to commit downloaded file: %w", err)
 	}
 	return nil
 }
 
-func segmentsMatchRanges(segments []Segment, ranges []SegmentRange) bool {
+func segments_match_ranges(segments []Segment, ranges []SegmentRange) bool {
 	if len(segments) != len(ranges) {
 		return false
 	}
@@ -508,27 +512,27 @@ func segmentsMatchRanges(segments []Segment, ranges []SegmentRange) bool {
 	return true
 }
 
-func (d *HermesEngine) downloadSegment(
+func (d *HermesEngine) download_segment(
 	ctx context.Context,
 	driver ProtocolDriver,
 	endpoint Endpoint,
 	file *os.File,
 	segment Segment,
 	slot int,
-	progressCh chan<- segmentProgress,
+	progress_ch chan<- segment_progress,
 ) {
 	downloaded := segment.Downloaded
-	speedSampler := newProgressSpeedSampler(time.Now(), downloaded)
-	lastSegLog := time.Now()
-	lastSegLogDownloaded := downloaded
+	speed_sampler := new_progress_speed_sampler(time.Now(), downloaded)
+	last_seg_log := time.Now()
+	last_seg_log_downloaded := downloaded
 
-	for attempt := 0; attempt < maxReadAttempts; attempt++ {
+	for attempt := 0; attempt < max_read_attempts; attempt++ {
 		if err := context.Cause(ctx); err != nil {
-			progressCh <- segmentProgress{slot: slot, downloaded: downloaded, err: err}
+			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: err}
 			return
 		}
 		request := ReadRequest{OffsetStart: segment.OffsetStart + downloaded, OffsetEnd: segment.OffsetEnd, UseRange: true}
-		openStart := time.Now()
+		open_start := time.Now()
 		d.logger.Info().
 			Int("slot", slot).
 			Int("attempt", attempt+1).
@@ -536,20 +540,20 @@ func (d *HermesEngine) downloadSegment(
 			Int64("remaining", segment.Size-downloaded).
 			Msg("seg: Open() starting")
 		reader, err := driver.Open(ctx, endpoint, request)
-		openElapsed := time.Since(openStart)
+		open_elapsed := time.Since(open_start)
 		if err != nil {
 			d.logger.Info().
 				Int("slot", slot).
 				Int("attempt", attempt+1).
-				Dur("elapsed", openElapsed).
+				Dur("elapsed", open_elapsed).
 				Err(err).
 				Msg("seg: Open() failed")
-			if attempt == maxReadAttempts-1 {
-				progressCh <- segmentProgress{slot: slot, downloaded: downloaded, done: true, err: err}
+			if attempt == max_read_attempts-1 {
+				progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: err}
 				return
 			}
-			if !waitForRetry(ctx, attempt) {
-				progressCh <- segmentProgress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
+			if !wait_for_retry(ctx, attempt) {
+				progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 				return
 			}
 			continue
@@ -557,36 +561,36 @@ func (d *HermesEngine) downloadSegment(
 		d.logger.Info().
 			Int("slot", slot).
 			Int("attempt", attempt+1).
-			Dur("openElapsed", openElapsed).
+			Dur("open_elapsed", open_elapsed).
 			Msg("seg: Open() done, reading")
 
-		buf := make([]byte, readBufferSize)
+		buf := make([]byte, read_buffer_size)
 		for downloaded < segment.Size {
-			chunkStart := time.Now()
+			chunk_start := time.Now()
 			remaining := segment.Size - downloaded
-			readBuf := buf
-			if remaining < int64(len(readBuf)) {
-				readBuf = readBuf[:remaining]
+			read_buf := buf
+			if remaining < int64(len(read_buf)) {
+				read_buf = read_buf[:remaining]
 			}
-			n, readErr := d.readWithTimeout(reader, readBuf)
+			n, read_err := d.read_with_timeout(reader, read_buf)
 			if n > 0 {
-				written, err := file.WriteAt(readBuf[:n], segment.OffsetStart+downloaded)
+				written, err := file.WriteAt(read_buf[:n], segment.OffsetStart+downloaded)
 				if err == nil && written != n {
 					err = io.ErrShortWrite
 				}
 				if err != nil {
 					reader.Close()
-					progressCh <- segmentProgress{slot: slot, downloaded: downloaded, done: true, err: err}
+					progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: err}
 					return
 				}
 				downloaded += int64(n)
 				if d.cfg.SpeedLimit > 0 {
 					expected := time.Duration(float64(n) / float64(d.cfg.SpeedLimit) * float64(time.Second))
-					elapsed := time.Since(chunkStart)
+					elapsed := time.Since(chunk_start)
 					if expected > elapsed {
 						select {
 						case <-ctx.Done():
-							progressCh <- segmentProgress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
+							progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 							return
 						case <-time.After(expected - elapsed):
 						}
@@ -597,27 +601,27 @@ func (d *HermesEngine) downloadSegment(
 			// Sample across at least progressInterval. Per-read timings are far too
 			// short and can turn a normal 32 KiB read into an apparent multi-GB/s
 			// transfer rate.
-			speed := speedSampler.Sample(now, downloaded)
-			progressCh <- segmentProgress{slot: slot, downloaded: downloaded, speed: speed}
+			speed := speed_sampler.sample(now, downloaded)
+			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, speed: speed}
 			// Periodic per-segment progress log for diagnostics (every ~1.5s or at 5% increments).
-			segPct := float64(downloaded) * 100 / float64(segment.Size)
-			if time.Since(lastSegLog) >= 1500*time.Millisecond ||
-				int64(segPct) >= int64(float64(lastSegLogDownloaded)*100/float64(segment.Size))+5 {
-				segLogSpeed := calcSpeed(lastSegLog, lastSegLogDownloaded, now, downloaded)
+			seg_pct := float64(downloaded) * 100 / float64(segment.Size)
+			if time.Since(last_seg_log) >= 1500*time.Millisecond ||
+				int64(seg_pct) >= int64(float64(last_seg_log_downloaded)*100/float64(segment.Size))+5 {
+				seg_log_speed := calc_speed(last_seg_log, last_seg_log_downloaded, now, downloaded)
 				d.logger.Info().
 					Int("slot", slot).
 					Int("index", segment.Index).
 					Int64("dl", downloaded).
 					Int64("size", segment.Size).
-					Float64("pct", segPct).
-					Str("speed", formatSpeed(segLogSpeed)).
+					Float64("pct", seg_pct).
+					Str("speed", format_speed(seg_log_speed)).
 					Msg("seg: progress")
-				lastSegLog = now
-				lastSegLogDownloaded = downloaded
+				last_seg_log = now
+				last_seg_log_downloaded = downloaded
 			}
-			if readErr != nil {
+			if read_err != nil {
 				reader.Close()
-				if errors.Is(readErr, errReadTimeout) {
+				if errors.Is(read_err, err_read_timeout) {
 					d.logger.Info().
 						Int("slot", slot).
 						Int64("progress", downloaded).
@@ -626,13 +630,13 @@ func (d *HermesEngine) downloadSegment(
 				} else {
 					d.logger.Info().
 						Int("slot", slot).
-						Err(readErr).
+						Err(read_err).
 						Int64("progress", downloaded).
 						Int64("total", segment.Size).
 						Msg("seg: Read() error, will retry")
 				}
-				if errors.Is(readErr, context.Canceled) || ctx.Err() != nil {
-					progressCh <- segmentProgress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
+				if errors.Is(read_err, context.Canceled) || ctx.Err() != nil {
+					progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 					return
 				}
 				break
@@ -644,23 +648,23 @@ func (d *HermesEngine) downloadSegment(
 				Int("slot", slot).
 				Int64("size", segment.Size).
 				Msg("seg: finished")
-			progressCh <- segmentProgress{slot: slot, downloaded: downloaded, done: true}
+			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true}
 			return
 		}
-		if attempt < maxReadAttempts-1 && !waitForRetry(ctx, attempt) {
-			progressCh <- segmentProgress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
+		if attempt < max_read_attempts-1 && !wait_for_retry(ctx, attempt) {
+			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 			return
 		}
 	}
-	progressCh <- segmentProgress{slot: slot, downloaded: downloaded, done: true, err: io.ErrUnexpectedEOF}
+	progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: io.ErrUnexpectedEOF}
 }
 
-func fileHasSize(path string, size int64) bool {
+func file_has_size(path string, size int64) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular() && info.Size() == size
 }
 
-func segmentsComplete(segments []Segment) bool {
+func segments_complete(segments []Segment) bool {
 	if len(segments) == 0 {
 		return false
 	}
@@ -672,8 +676,8 @@ func segmentsComplete(segments []Segment) bool {
 	return true
 }
 
-func finalizePartialFile(partPath, filePath string) error {
-	file, err := os.OpenFile(partPath, os.O_RDWR, 0644)
+func finalize_partial_file(part_path, file_path string) error {
+	file, err := os.OpenFile(part_path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
@@ -684,25 +688,25 @@ func finalizePartialFile(partPath, filePath string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(partPath, filePath)
+	return os.Rename(part_path, file_path)
 }
 
-var errReadTimeout = errors.New("read timeout: CDN connection stalled")
+var err_read_timeout = errors.New("read timeout: CDN connection stalled")
 
 // readWithTimeout performs a single Read with a deadline. If the Read does not
 // return within the timeout, the reader is closed to unblock the goroutine and
 // errReadTimeout is returned so the caller can retry.
 // The per-read goroutine overhead is amortized by the 256 KiB read buffer,
 // which reduces the number of Read calls by 8× compared to the old 32 KiB buffer.
-func (d *HermesEngine) readWithTimeout(reader io.Reader, buf []byte) (int, error) {
-	type readResult struct {
+func (d *HermesEngine) read_with_timeout(reader io.Reader, buf []byte) (int, error) {
+	type read_result struct {
 		n   int
 		err error
 	}
-	done := make(chan readResult, 1)
+	done := make(chan read_result, 1)
 	go func() {
 		n, err := reader.Read(buf)
-		done <- readResult{n, err}
+		done <- read_result{n, err}
 	}()
 
 	timer := time.NewTimer(d.cfg.ReadTimeout)
@@ -711,12 +715,12 @@ func (d *HermesEngine) readWithTimeout(reader io.Reader, buf []byte) (int, error
 	case r := <-done:
 		return r.n, r.err
 	case <-timer.C:
-		return 0, errReadTimeout
+		return 0, err_read_timeout
 	}
 }
 
-func waitForRetry(ctx context.Context, attempt int) bool {
-	if attempt >= maxReadAttempts-1 {
+func wait_for_retry(ctx context.Context, attempt int) bool {
+	if attempt >= max_read_attempts-1 {
 		return true
 	}
 	delay := time.Duration(1<<attempt) * 100 * time.Millisecond
@@ -730,41 +734,41 @@ func waitForRetry(ctx context.Context, attempt int) bool {
 	}
 }
 
-func (d *HermesEngine) persistProgress(taskID, resourceID, segmentID int, downloaded, speed int64) error {
+func (d *HermesEngine) persist_progress(task_id, resource_id, segment_id int, downloaded, speed int64) error {
 	if store, ok := d.store.(ProgressBatchStore); ok {
-		if err := store.UpdateResourceSegmentProgress(resourceID, segmentID, downloaded, speed); err != nil {
+		if err := store.UpdateResourceSegmentProgress(resource_id, segment_id, downloaded, speed); err != nil {
 			return fmt.Errorf("failed to update progress: %w", err)
 		}
-		d.updateTracker(taskID, resourceID, downloaded, speed)
+		d.update_tracker(task_id, resource_id, downloaded, speed)
 		return nil
 	}
-	if err := d.store.UpdateSegmentProgress(segmentID, downloaded); err != nil {
+	if err := d.store.UpdateSegmentProgress(segment_id, downloaded); err != nil {
 		return fmt.Errorf("failed to update segment progress: %w", err)
 	}
-	if err := d.updateResourceProgress(taskID, resourceID, downloaded, speed); err != nil {
+	if err := d.update_resource_progress(task_id, resource_id, downloaded, speed); err != nil {
 		return fmt.Errorf("failed to update task progress: %w", err)
 	}
-	d.updateTracker(taskID, resourceID, downloaded, speed)
+	d.update_tracker(task_id, resource_id, downloaded, speed)
 	return nil
 }
 
-func (d *HermesEngine) persistAggregate(taskID, resourceID int, segments []Segment, states []segmentProgress) error {
-	var totalDownloaded int64
-	var totalSpeed int64
+func (d *HermesEngine) persist_aggregate(task_id, resource_id int, segments []Segment, states []segment_progress) error {
+	var total_downloaded int64
+	var total_speed int64
 	updates := make([]SegmentProgressUpdate, 0, len(states))
 	for i, state := range states {
-		totalDownloaded += state.downloaded
-		totalSpeed += state.speed
+		total_downloaded += state.downloaded
+		total_speed += state.speed
 		updates = append(updates, SegmentProgressUpdate{
 			SegmentID:  segments[i].ID,
 			Downloaded: state.downloaded,
 		})
 	}
 	if store, ok := d.store.(ProgressBatchStore); ok {
-		if err := store.UpdateAggregateResourceProgress(resourceID, updates, totalDownloaded, totalSpeed); err != nil {
+		if err := store.UpdateAggregateResourceProgress(resource_id, updates, total_downloaded, total_speed); err != nil {
 			return fmt.Errorf("failed to update aggregate progress: %w", err)
 		}
-		d.updateTracker(taskID, resourceID, totalDownloaded, totalSpeed)
+		d.update_tracker(task_id, resource_id, total_downloaded, total_speed)
 		return nil
 	}
 	for i, state := range states {
@@ -772,9 +776,9 @@ func (d *HermesEngine) persistAggregate(taskID, resourceID int, segments []Segme
 			return fmt.Errorf("failed to update segment progress: %w", err)
 		}
 	}
-	if err := d.updateResourceProgress(taskID, resourceID, totalDownloaded, totalSpeed); err != nil {
+	if err := d.update_resource_progress(task_id, resource_id, total_downloaded, total_speed); err != nil {
 		return fmt.Errorf("failed to update task progress: %w", err)
 	}
-	d.updateTracker(taskID, resourceID, totalDownloaded, totalSpeed)
+	d.update_tracker(task_id, resource_id, total_downloaded, total_speed)
 	return nil
 }

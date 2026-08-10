@@ -11,6 +11,7 @@ type ChannelsPluginConfig struct {
 	DisableLocationToHome      bool
 	RefreshInterval            int
 	DownloadDefaultHighest     bool
+	DownloadCover              bool
 	DownloadFrontend           bool
 	DownloadForceCheckAllFeeds bool
 	DownloadPauseWhenDownload  bool
@@ -57,6 +58,15 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 			HotReload:   true,
 		},
 		{
+			Key:         "download.cover",
+			Type:        config.ConfigTypeBool,
+			Default:     false,
+			Description: "下载视频或图集时是否同时下载封面",
+			Title:       "同时下载封面",
+			Group:       "Channels",
+			HotReload:   true,
+		},
+		{
 			Key:         "download.forceCheckAllFeeds",
 			Type:        config.ConfigTypeBool,
 			Default:     false,
@@ -81,24 +91,18 @@ func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	c.DisableLocationToHome = sub.GetBool("disableLocationToHome")
 	c.RefreshInterval = sub.GetInt("refreshInterval")
 	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest") || viper.GetBool("download.defaultHighest")
+	c.DownloadCover = sub.GetBool("download.cover")
 	c.DownloadFrontend = sub.GetBool("download.frontend")
 	c.DownloadForceCheckAllFeeds = sub.GetBool("download.forceCheckAllFeeds")
 	c.DownloadPauseWhenDownload = sub.GetBool("download.pauseWhenDownload")
 	return nil
 }
 
-// GetChannelsConfig returns the registered channels plugin config if available.
-// Returns nil if the plugin has not been registered.
-func GetChannelsConfig() *ChannelsPluginConfig {
-	return channelsPluginConfig
-}
-
-// channelsPluginConfig is the singleton instance populated during config loading.
-var channelsPluginConfig *ChannelsPluginConfig
+// channels_plugin_config is the singleton instance populated during config loading.
+var channels_plugin_config = &ChannelsPluginConfig{}
 
 func init() {
-	channelsPluginConfig = &ChannelsPluginConfig{}
-	config.RegisterPlugin(channelsPluginConfig)
+	config.RegisterPlugin(channels_plugin_config)
 
 	// Legacy alias for backward compatibility; registered with its flat key directly
 	// to avoid the namespace auto-prefix applied by LoadPluginConfigs.

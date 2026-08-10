@@ -28,6 +28,10 @@ func NewChannelsConfig(c *config.Config, logger *zerolog.Logger) *ChannelsConfig
 	remote_server_protocol := viper.GetString("download.remoteServer.protocol")
 	remote_server_hostname := viper.GetString("download.remoteServer.hostname")
 	remote_server_port := viper.GetInt("download.remoteServer.port")
+	max_running := viper.GetInt("download.maxRunning")
+	if max_running == 0 {
+		max_running = 3
+	}
 	settings := &ChannelsConfig{
 		Version:                       c.Version,
 		DebugShowError:                viper.GetBool("debug.error"),
@@ -43,7 +47,7 @@ func NewChannelsConfig(c *config.Config, logger *zerolog.Logger) *ChannelsConfig
 			"pagespyServerAPI":           viper.GetString("pagespy.api"),
 			"remoteServerEnabled":        viper.GetBool("download.remoteServer.enabled"),
 			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),
-			"maxRunning":                 viper.GetInt("download.maxRunning"),
+			"maxRunning":                 max_running,
 			"downloadFilenameTemplate":   viper.GetString("download.filenameTemplate"),
 			"defaultHighest":             viper.GetBool("channels.download.defaultHighest") || viper.GetBool("download.defaultHighest"),
 			"downloadPauseWhenDownload":  viper.GetBool("channels.download.pauseWhenDownload"),

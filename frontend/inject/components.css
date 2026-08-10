@@ -131,9 +131,6 @@ body[data-weui-theme=dark] {
 .overflow-y-auto {
   overflow-y: auto;
 }
-.t1-popper {
-  z-index: 9999 !important;
-}
 .weui-btn {
   box-sizing: border-box;
   display: inline-flex;

@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,32 +11,44 @@ import (
 	result "wx_channel/internal/util"
 )
 
-func (c *APIClient) handle_compat_video_list(ctx *gin.Context) {
-	c.handleCompatContentListWithType(ctx, "video")
+func (c *APIClient) handle_video_list(ctx *gin.Context) {
+	c.handle_content_list_with_type(ctx, "video")
 }
 
-func (c *APIClient) handle_compat_content_list(ctx *gin.Context) {
-	c.handleCompatContentListWithType(ctx, "")
+func (c *APIClient) handle_content_list(ctx *gin.Context) {
+	c.handle_content_list_with_type(ctx, "")
 }
 
-func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceContentType string) {
+func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_content_type string) {
 	if c.content_service == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
 	var body struct {
-		AccountId   *string    `form:"account_id"`
-		ContentType *string    `form:"content_type"`
-		Keyword     *string    `form:"keyword"`
-		StartAt     *time.Time `form:"start_at" time_format:"2006-01-02"`
-		EndAt       *time.Time `form:"end_at" time_format:"2006-01-02"`
-		Page        *int       `form:"page"`
-		PageSize    *int       `form:"page_size"`
-		Limit       *int       `form:"limit"`
-		Offset      *int       `form:"offset"`
+		AccountId   *string `form:"account_id"`
+		ContentType *string `form:"content_type"`
+		Keyword     *string `form:"keyword"`
+		StartAt     *int64  `form:"start_at"`
+		EndAt       *int64  `form:"end_at"`
+		Page        *int    `form:"page"`
+		PageSize    *int    `form:"page_size"`
+		Limit       *int    `form:"limit"`
+		Offset      *int    `form:"offset"`
 	}
 	if err := ctx.ShouldBindQuery(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
+		return
+	}
+	if body.StartAt != nil && *body.StartAt < 0 {
+		result.Err(ctx, 400, "start_at must be a non-negative Unix timestamp in milliseconds")
+		return
+	}
+	if body.EndAt != nil && *body.EndAt < 0 {
+		result.Err(ctx, 400, "end_at must be a non-negative Unix timestamp in milliseconds")
+		return
+	}
+	if body.StartAt != nil && body.EndAt != nil && *body.StartAt >= *body.EndAt {
+		result.Err(ctx, 400, "start_at must be less than end_at")
 		return
 	}
 	page := 1
@@ -56,21 +67,21 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		offset = *body.Offset
 	}
 
-	contentType := forceContentType
-	if contentType == "" && body.ContentType != nil {
-		contentType = strings.TrimSpace(*body.ContentType)
+	content_type := force_content_type
+	if content_type == "" && body.ContentType != nil {
+		content_type = strings.TrimSpace(*body.ContentType)
 	}
-	var accountID, keyword string
+	var account_id, keyword string
 	if body.AccountId != nil {
-		accountID = *body.AccountId
+		account_id = *body.AccountId
 	}
 	if body.Keyword != nil {
 		keyword = *body.Keyword
 	}
 
-	pageResult, err := c.content_service.ListContents(services.ContentListOptions{
-		AccountID: accountID,
-		Type:      contentType,
+	page_result, err := c.content_service.ListContents(services.ContentListOptions{
+		AccountID: account_id,
+		Type:      content_type,
 		Keyword:   keyword,
 		StartAt:   body.StartAt,
 		EndAt:     body.EndAt,
@@ -82,7 +93,7 @@ func (c *APIClient) handleCompatContentListWithType(ctx *gin.Context, forceConte
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, pageResult)
+	result.Ok(ctx, page_result)
 }
 
 func (c *APIClient) handle_content_detail(ctx *gin.Context) {
@@ -114,17 +125,17 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 
 	resources := make([]resourceWithFile, 0, len(item.Resources))
 	for _, r := range item.Resources {
-		localPath := filepath.Join(c.cfg.DownloadDir, r.Name)
+		local_path := filepath.Join(r.DownloadDir, r.Name)
 		exists := false
-		if _, err := os.Stat(localPath); err == nil {
+		if _, err := os.Stat(local_path); err == nil {
 			exists = true
 		}
-		fileType := fileTypeByExt(r.Name)
+		file_type := file_type_by_ext(r.Name)
 		resources = append(resources, resourceWithFile{
 			ContentResourceRecord: r,
-			LocalPath:             localPath,
-			FileType:              fileType,
-			FileURL:               "/file?path=" + localPath,
+			LocalPath:             local_path,
+			FileType:              file_type,
+			FileURL:               "/api/file?path=" + local_path,
 			Exists:                exists,
 		})
 	}
@@ -150,7 +161,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 	})
 }
 
-func fileTypeByExt(name string) string {
+func file_type_by_ext(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":

@@ -821,7 +821,7 @@ func (c *Client) SendText(text string) error {
 		return fmt.Errorf("发送失败: %d", data.BaseResponse.Ret)
 	}
 
-	c.logger.Info().Str("msgId", data.MsgID).Msg("Text message sent successfully")
+	c.logger.Info().Str("msg_id", data.MsgID).Msg("Text message sent successfully")
 	return nil
 }
 
@@ -866,7 +866,7 @@ func (c *Client) handleSyncResponse(resp *SyncResponse) {
 			resp.Body.Close()
 
 			msgId, _ := m["MsgId"].(string)
-			c.logger.Info().Str("msgId", msgId).Msg("Message callback successful")
+			c.logger.Info().Str("msg_id", msgId).Msg("Message callback successful")
 		}(msg)
 	}
 }

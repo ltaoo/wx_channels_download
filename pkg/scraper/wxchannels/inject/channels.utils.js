@@ -449,7 +449,8 @@ var WXBase64 = (() => {
   function __wx_check_feed_existing(opt = {}) {
     var feed = __wx_channels_store__.feed;
     if (!feed) {
-      WXU.error({ source: "channels.utils.js:452",
+      WXU.error({
+        source: "channels.utils.js:452",
         alert: Number(!opt.silence),
         msg: "检测不到视频，请提交 issue 反馈",
       });
@@ -1020,7 +1021,10 @@ var WXBase64 = (() => {
       const content = await zip.generateAsync({ type: "blob" });
       await WXU.save(content, profile.filename + ".zip");
     } catch (err) {
-      WXU.error({ msg: "下载失败，" + err.message, source: "channels.utils.js:1023" });
+      WXU.error({
+        msg: "下载失败，" + err.message,
+        source: "channels.utils.js:1023",
+      });
     } finally {
       ins.hide();
     }
@@ -1049,7 +1053,11 @@ var WXBase64 = (() => {
         WXU.error({ msg: err.message, source: "channels.utils.js:1051" });
         return;
       }
-      // WXU.toast("创建下载任务成功");
+      if (data.skipped) {
+        return;
+      }
+      WXU.toast("创建下载任务成功");
+      WXU.downloader.show();
       return;
     }
     if (!filename) {
@@ -1106,8 +1114,16 @@ var WXBase64 = (() => {
       WXU.log({ msg: "下载完成，开始解密" });
       var [err, data] = await WXU.decrypt_video(media_buf, feed.key);
       if (err) {
-        WXU.error({ msg: "解密失败，" + err.message, alert: 0, source: "channels.utils.js:1110" });
-        WXU.error({ msg: "尝试使用 decrypt 命令解密", alert: 0, source: "channels.utils.js:1111" });
+        WXU.error({
+          msg: "解密失败，" + err.message,
+          alert: 0,
+          source: "channels.utils.js:1110",
+        });
+        WXU.error({
+          msg: "尝试使用 decrypt 命令解密",
+          alert: 0,
+          source: "channels.utils.js:1111",
+        });
       } else {
         WXU.log({ msg: "解密成功" });
         media_buf = data;
@@ -1148,12 +1164,6 @@ ${payload.original_url}
 ${payload.key || ""}`,
     });
     WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
-    if (!suffix) {
-      suffix = ".mp4";
-    }
-    if (payload.type === "picture") {
-      suffix = ".zip";
-    }
     __wx_channels_download4(payload, { spec, suffix });
   }
   /** 下载已加载的视频 */

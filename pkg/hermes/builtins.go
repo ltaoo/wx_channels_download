@@ -13,21 +13,21 @@ import (
 )
 
 // registerBuiltins registers all built-in utility functions with the goja VM.
-func registerBuiltins(vm *goja.Runtime) {
-	vm.Set("zipFiles", zipFilesFn(vm))
-	vm.Set("removeFiles", removeFilesFn(vm))
-	vm.Set("moveFile", moveFileFn(vm))
-	vm.Set("writeTextFile", writeTextFileFn(vm))
-	vm.Set("fileExists", fileExistsFn(vm))
-	vm.Set("getFileName", getFileNameFn(vm))
-	vm.Set("getDirName", getDirNameFn(vm))
-	vm.Set("joinPath", joinPathFn(vm))
-	vm.Set("readConfigJSON", readConfigJSONFn(vm))
-	vm.Set("writeConfigJSON", writeConfigJSONFn(vm))
+func register_builtins(vm *goja.Runtime) {
+	vm.Set("zipFiles", zip_files_fn(vm))
+	vm.Set("removeFiles", remove_files_fn(vm))
+	vm.Set("moveFile", move_file_fn(vm))
+	vm.Set("writeTextFile", write_text_file_fn(vm))
+	vm.Set("fileExists", file_exists_fn(vm))
+	vm.Set("getFileName", get_file_name_fn(vm))
+	vm.Set("getDirName", get_dir_name_fn(vm))
+	vm.Set("joinPath", join_path_fn(vm))
+	vm.Set("readConfigJSON", read_config_json_fn(vm))
+	vm.Set("writeConfigJSON", write_config_json_fn(vm))
 }
 
 // resolveBasePath reads the current task's basePath from the VM and returns the canonical path.
-func resolveBasePath(vm *goja.Runtime) (string, error) {
+func resolve_base_path(vm *goja.Runtime) (string, error) {
 	val := vm.Get("__basePath")
 	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
 		return "", fmt.Errorf("basePath is not set")
@@ -36,8 +36,8 @@ func resolveBasePath(vm *goja.Runtime) (string, error) {
 }
 
 // safeAbs resolves the given path to an absolute path and verifies it is within the basePath subtree.
-func safeAbs(vm *goja.Runtime, p string) (string, error) {
-	base, err := resolveBasePath(vm)
+func safe_abs(vm *goja.Runtime, p string) (string, error) {
+	base, err := resolve_base_path(vm)
 	if err != nil {
 		return "", err
 	}
@@ -57,32 +57,32 @@ func safeAbs(vm *goja.Runtime, p string) (string, error) {
 }
 
 // zipFilesFn packs multiple source files into a single zip file.
-func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func zip_files_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			return vm.ToValue(fmt.Errorf("zipFiles requires srcPaths and destPath arguments"))
 		}
 
-		srcArgs := call.Argument(0).Export()
-		srcList, ok := srcArgs.([]interface{})
+		src_args := call.Argument(0).Export()
+		src_list, ok := src_args.([]interface{})
 		if !ok {
 			return vm.ToValue(fmt.Errorf("srcPaths must be an array of strings"))
 		}
 
-		srcPaths := make([]string, len(srcList))
-		for i, v := range srcList {
-			srcPaths[i] = fmt.Sprint(v)
+		src_paths := make([]string, len(src_list))
+		for i, v := range src_list {
+			src_paths[i] = fmt.Sprint(v)
 		}
 
-		destPath := call.Argument(1).String()
+		dest_path := call.Argument(1).String()
 
-		safeDest, err := safeAbs(vm, destPath)
+		safe_dest, err := safe_abs(vm, dest_path)
 		if err != nil {
 			return vm.ToValue(err)
 		}
 
 		// Create the zip file
-		f, err := os.Create(safeDest)
+		f, err := os.Create(safe_dest)
 		if err != nil {
 			return vm.ToValue(fmt.Errorf("failed to create zip file: %w", err))
 		}
@@ -91,14 +91,14 @@ func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		zw := zip.NewWriter(f)
 		defer zw.Close()
 
-		for _, src := range srcPaths {
-			safeSrc, err := safeAbs(vm, src)
+		for _, src := range src_paths {
+			safe_src, err := safe_abs(vm, src)
 			if err != nil {
 				return vm.ToValue(err)
 			}
 
-			if err := addFileToZip(zw, safeSrc); err != nil {
-				return vm.ToValue(fmt.Errorf("failed to add %s to zip: %w", safeSrc, err))
+			if err := add_file_to_zip(zw, safe_src); err != nil {
+				return vm.ToValue(fmt.Errorf("failed to add %s to zip: %w", safe_src, err))
 			}
 		}
 
@@ -106,8 +106,8 @@ func zipFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	}
 }
 
-func addFileToZip(zw *zip.Writer, filePath string) error {
-	f, err := os.Open(filePath)
+func add_file_to_zip(zw *zip.Writer, file_path string) error {
+	f, err := os.Open(file_path)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func addFileToZip(zw *zip.Writer, filePath string) error {
 	if err != nil {
 		return err
 	}
-	header.Name = filepath.Base(filePath)
+	header.Name = filepath.Base(file_path)
 	header.Method = zip.Deflate
 
 	w, err := zw.CreateHeader(header)
@@ -135,38 +135,38 @@ func addFileToZip(zw *zip.Writer, filePath string) error {
 }
 
 // removeFilesFn deletes the specified files; directories are not deleted.
-func removeFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func remove_files_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue(fmt.Errorf("removeFiles requires a paths argument"))
 		}
 
-		pathsArg := call.Argument(0).Export()
-		pathsList, ok := pathsArg.([]interface{})
+		paths_arg := call.Argument(0).Export()
+		paths_list, ok := paths_arg.([]interface{})
 		if !ok {
 			return vm.ToValue(fmt.Errorf("paths must be an array of strings"))
 		}
 
-		for _, v := range pathsList {
+		for _, v := range paths_list {
 			p := fmt.Sprint(v)
-			safeP, err := safeAbs(vm, p)
+			safe_p, err := safe_abs(vm, p)
 			if err != nil {
 				return vm.ToValue(err)
 			}
 
-			info, err := os.Stat(safeP)
+			info, err := os.Stat(safe_p)
 			if err != nil {
 				if os.IsNotExist(err) {
 					continue
 				}
-				return vm.ToValue(fmt.Errorf("failed to inspect file %s: %w", safeP, err))
+				return vm.ToValue(fmt.Errorf("failed to inspect file %s: %w", safe_p, err))
 			}
 			if info.IsDir() {
-				return vm.ToValue(fmt.Errorf("removing directories is not allowed: %s", safeP))
+				return vm.ToValue(fmt.Errorf("removing directories is not allowed: %s", safe_p))
 			}
 
-			if err := os.Remove(safeP); err != nil {
-				return vm.ToValue(fmt.Errorf("failed to remove file %s: %w", safeP, err))
+			if err := os.Remove(safe_p); err != nil {
+				return vm.ToValue(fmt.Errorf("failed to remove file %s: %w", safe_p, err))
 			}
 		}
 
@@ -175,7 +175,7 @@ func removeFilesFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // moveFileFn moves/renames a file.
-func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func move_file_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			return vm.ToValue(fmt.Errorf("moveFile requires src and dst arguments"))
@@ -184,21 +184,21 @@ func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		src := call.Argument(0).String()
 		dst := call.Argument(1).String()
 
-		safeSrc, err := safeAbs(vm, src)
+		safe_src, err := safe_abs(vm, src)
 		if err != nil {
 			return vm.ToValue(err)
 		}
-		safeDst, err := safeAbs(vm, dst)
+		safe_dst, err := safe_abs(vm, dst)
 		if err != nil {
 			return vm.ToValue(err)
 		}
 
 		// Ensure the destination directory exists
-		if err := os.MkdirAll(filepath.Dir(safeDst), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(safe_dst), 0755); err != nil {
 			return vm.ToValue(fmt.Errorf("failed to create destination directory: %w", err))
 		}
 
-		if err := os.Rename(safeSrc, safeDst); err != nil {
+		if err := os.Rename(safe_src, safe_dst); err != nil {
 			return vm.ToValue(fmt.Errorf("failed to move file: %w", err))
 		}
 
@@ -207,7 +207,7 @@ func moveFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // writeTextFileFn writes a text file.
-func writeTextFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func write_text_file_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			return vm.ToValue(fmt.Errorf("writeTextFile requires path and text arguments"))
@@ -216,12 +216,12 @@ func writeTextFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		path := call.Argument(0).String()
 		text := call.Argument(1).String()
 
-		safePath, err := safeAbs(vm, path)
+		safe_path, err := safe_abs(vm, path)
 		if err != nil {
 			return vm.ToValue(err)
 		}
 
-		if err := os.WriteFile(safePath, []byte(text), 0644); err != nil {
+		if err := os.WriteFile(safe_path, []byte(text), 0644); err != nil {
 			return vm.ToValue(fmt.Errorf("failed to write file: %w", err))
 		}
 
@@ -230,25 +230,25 @@ func writeTextFileFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // fileExistsFn checks whether a file exists.
-func fileExistsFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func file_exists_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue(false)
 		}
 
 		path := call.Argument(0).String()
-		safePath, err := safeAbs(vm, path)
+		safe_path, err := safe_abs(vm, path)
 		if err != nil {
 			return vm.ToValue(false)
 		}
 
-		_, err = os.Stat(safePath)
+		_, err = os.Stat(safe_path)
 		return vm.ToValue(err == nil)
 	}
 }
 
 // getFileNameFn returns the filename portion of a path.
-func getFileNameFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func get_file_name_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue("")
@@ -258,7 +258,7 @@ func getFileNameFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // getDirNameFn returns the directory portion of a path.
-func getDirNameFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func get_dir_name_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue("")
@@ -268,7 +268,7 @@ func getDirNameFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // joinPathFn joins path segments.
-func joinPathFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func join_path_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		elems := make([]string, len(call.Arguments))
 		for i, arg := range call.Arguments {
@@ -279,15 +279,15 @@ func joinPathFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 }
 
 // readConfigJSONFn parses a JSON string into an object.
-func readConfigJSONFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func read_config_json_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue(nil)
 		}
 
-		jsonStr := call.Argument(0).String()
+		json_str := call.Argument(0).String()
 		var result interface{}
-		if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		if err := json.Unmarshal([]byte(json_str), &result); err != nil {
 			return vm.ToValue(fmt.Errorf("failed to parse JSON: %w", err))
 		}
 		return vm.ToValue(result)
@@ -295,17 +295,17 @@ func readConfigJSONFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value 
 }
 
 // writeConfigJSONFn serializes an object to a JSON string.
-func writeConfigJSONFn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
+func write_config_json_fn(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
 			return vm.ToValue("{}")
 		}
 
 		obj := call.Argument(0).Export()
-		jsonBytes, err := json.Marshal(obj)
+		json_bytes, err := json.Marshal(obj)
 		if err != nil {
 			return vm.ToValue(fmt.Errorf("failed to serialize JSON: %w", err))
 		}
-		return vm.ToValue(string(jsonBytes))
+		return vm.ToValue(string(json_bytes))
 	}
 }

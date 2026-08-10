@@ -51,7 +51,7 @@ func (c *APIClient) getClawreqClient() *clawreq.Client {
 			c.logger.Error().Err(err).Msg("imgproxy: failed to init clawreq client")
 			return
 		}
-		c.clawclient = client
+		c.claw_client = client
 	})
-	return c.clawclient
+	return c.claw_client
 }

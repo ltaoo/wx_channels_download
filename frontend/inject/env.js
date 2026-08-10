@@ -22,7 +22,7 @@ var WXEnv = (() => {
     downloadForceCheckAllFeeds: false,
     assetsFallbackBase: "http://127.0.0.1:2022/__assets",
   };
-  const runtime_env = Object.assign(window.__d_config);
+  const runtime_env = { ...window.__d_config };
   const api_url = new URL(runtime_env.apiOrigin || defaults.apiOrigin);
   const api_protocol =
     runtime_env.apiProtocol || api_url.protocol.replace(":", "");

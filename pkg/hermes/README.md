@@ -15,16 +15,23 @@ Package boundaries:
 
 The zero-config API creates and starts a single-resource HTTP/HTTPS task. The
 returned handle can wait for completion and report the output path. `OnEvent`
-replays lifecycle events that occurred before the callback was registered, so
+replays replayable events that occurred before the callback was registered, so
 it is safe to register immediately after `CreateTask`. With no base path set,
 downloads are written to the process working directory.
 
 ```go
 downloader := hermes.New(hermes.HermesNewConfig{})
-task := downloader.CreateTask(rawURL)
+task := downloader.CreateTask(raw_url)
 
-downloader.OnEvent(func(taskID int, event hermes.EventType, progress *hermes.TaskProgress) {
-    // Handle created, started, progress, finished, and failed events.
+downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
+    switch event {
+    case hermes.EventProgress:
+        progress_data := data.(hermes.TaskProgressEventData)
+        fmt.Printf("task %d: %d bytes downloaded\n", progress_data.TaskID, progress_data.Progress.Downloaded)
+    case hermes.EventFinished:
+        finished_data := data.(hermes.TaskFinishedEventData)
+        fmt.Printf("task %d finished: %v\n", finished_data.TaskID, finished_data.FilePaths)
+    }
 })
 
 if err := task.Wait(); err != nil {
@@ -39,7 +46,7 @@ Optional task settings do not require a custom `Store` or protocol driver:
 task := downloader.CreateTask(
     rawURL,
     hermes.WithFilename("release.zip"),
-    hermes.WithSavePath("downloads"),
+    hermes.WithDownloadDir("downloads"),
     hermes.WithProxyServer(hermes.ProxyServer{
         Address:  "socks5://127.0.0.1:1080",
         Username: "download-user",

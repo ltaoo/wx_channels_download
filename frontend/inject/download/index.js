@@ -115,7 +115,7 @@ function DownloadPageTaskState(task_) {
   return computed(task_, (source) => {
     const task = source || {};
     const pr = format_download_percent(task);
-    const isLiveStream = is_live_stream_download_task(task);
+    const is_live_stream = is_live_stream_download_task(task);
     const normalizedStatus = normalize_download_status(task.status);
     const isPaused = normalizedStatus === "pause";
     const isRunning = normalizedStatus === "running";
@@ -159,7 +159,7 @@ function DownloadPageTaskState(task_) {
             : 0),
       );
       statusText = "下载中";
-      progressText = format_download_progress_text(pr);
+      progressText = is_live_stream ? "" : format_download_progress_text(pr);
       statusColor = "var(--wx-dl-page-primary)";
     } else if (isCompleted) {
       statusText = hasDeletedFiles
@@ -177,12 +177,12 @@ function DownloadPageTaskState(task_) {
     } else if (isPaused) {
       statusText = "已暂停";
       statusColor = "#FBC02D";
-      progressText = format_download_progress_text(pr);
+      progressText = is_live_stream ? "" : format_download_progress_text(pr);
     }
 
     return {
       pr,
-      isLiveStream,
+      isLiveStream: is_live_stream,
       isCompleted,
       isPaused,
       isRunning,
@@ -214,13 +214,14 @@ function DownloadPageTaskCover(props) {
     [],
   );
   const progress = Show({
-    when: computed(state_, (state) => state.isRunning || state.isPaused),
+    when: computed(
+      state_,
+      (state) => !state.isLiveStream && (state.isRunning || state.isPaused),
+    ),
     ok() {
       return View({ class: "wx-dl-page-task-cover-progress" }, [
         NumberView({
-          value: computed(state_, (state) =>
-            format_download_progress_text(state.pr),
-          ),
+          value: computed(state_, (state) => state.progressText),
         }),
       ]);
     },
@@ -416,7 +417,9 @@ function DownloadPageTaskRow(props) {
               type: "a",
               class: "wx-dl-page-task-title",
               attributes: {
-                href: computed(task_, (task) => download_task_preview_url(task)),
+                href: computed(task_, (task) =>
+                  download_task_preview_url(task),
+                ),
                 title: computed(task_, (task) => (task && task.name) || ""),
                 target: "_blank",
                 rel: "noopener noreferrer",
@@ -445,7 +448,9 @@ function DownloadPageTaskRow(props) {
           View(
             {
               class: "wx-dl-page-task-status",
-              style: computed(state_, (state) => ({ color: state.statusColor })),
+              style: computed(state_, (state) => ({
+                color: state.statusColor,
+              })),
             },
             [computed(state_, (state) => state.statusText)],
           ),
@@ -480,7 +485,10 @@ function DownloadPageTaskRow(props) {
             },
           }),
           Show({
-            when: computed(state_, (state) => state.isRunning && !!state.speedText),
+            when: computed(
+              state_,
+              (state) => state.isRunning && !!state.speedText,
+            ),
             ok() {
               return [
                 "·",
@@ -492,7 +500,10 @@ function DownloadPageTaskRow(props) {
           }),
         ]),
         Show({
-          when: computed(state_, (state) => state.isFailed && !!state.errorText),
+          when: computed(
+            state_,
+            (state) => state.isFailed && !!state.errorText,
+          ),
           ok() {
             return View(
               {
@@ -631,10 +642,83 @@ function DownloadPageTaskListView(props) {
   ]);
 }
 
+function DownloadPageTaskListSelectionState(props) {
+  const vm$ = props.store;
+  return combine(
+    {
+      tasks: vm$.state.tasks,
+      selected_ids: vm$.state.selected_task_ids,
+    },
+    (data) => {
+      const taskIds = [];
+      (data.tasks || []).forEach((task_) => {
+        const task = DownloadPageTaskValue(task_);
+        if (!task || task.__placeholder || !task.id) {
+          return;
+        }
+        if (!taskIds.some((id) => id === task.id)) {
+          taskIds.push(task.id);
+        }
+      });
+
+      const selectedIds = data.selected_ids || [];
+      const selectedCount = taskIds.filter((id) => {
+        return selectedIds.some((selectedId) => selectedId === id);
+      }).length;
+
+      return {
+        total: taskIds.length,
+        selected: selectedCount,
+        checked: taskIds.length > 0 && selectedCount === taskIds.length,
+        indeterminate: selectedCount > 0 && selectedCount < taskIds.length,
+      };
+    },
+  );
+}
+
 function DownloadPageTaskTableView(props) {
+  const vm$ = props.store;
+  const selectionState_ = DownloadPageTaskListSelectionState({ store: vm$ });
   return View({ class: "wx-dl-page-task-table" }, [
     View({ class: "wx-dl-page-table-head" }, [
-      View({ class: "wx-dl-page-table-head-cell" }, ["下载任务"]),
+      View(
+        {
+          class: "wx-dl-page-table-head-cell",
+          style: {
+            display: "flex",
+            "align-items": "center",
+            "min-width": "0",
+          },
+        },
+        [
+          DownloadTaskSelectionCheckbox({
+            checked: computed(selectionState_, (state) => state.checked),
+            indeterminate: computed(
+              selectionState_,
+              (state) => state.indeterminate,
+            ),
+            ariaLabel: "全选下载任务",
+            style: {
+              "margin-right": "10px",
+            },
+            onToggle() {
+              vm$.methods.setLoadedTasksSelected(
+                !selectionState_.value.checked,
+              );
+            },
+          }),
+          View(
+            {
+              style: {
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+                "white-space": "nowrap",
+              },
+            },
+            ["下载任务"],
+          ),
+        ],
+      ),
       View(
         { class: "wx-dl-page-table-head-cell wx-dl-page-table-head-action" },
         ["操作"],
@@ -754,11 +838,8 @@ function DownloaderPageView(props) {
       document.body.appendChild(root);
     }
     document.body.classList.add("wx-dl-page-body");
-    document.body.dataset.weuiTheme = document.documentElement.classList.contains(
-      "dark",
-    )
-      ? "dark"
-      : "light";
+    document.body.dataset.weuiTheme =
+      document.documentElement.classList.contains("dark") ? "dark" : "light";
     const vm$ = DownloaderPanelViewModel({
       enableDropdownMenu: false,
       fixedListHeight: false,

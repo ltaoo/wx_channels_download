@@ -12,16 +12,12 @@ var ErrBrowseHistoryNotSupported = errors.New("browse history is not supported")
 type DownloadTaskResult struct {
 	Task      *model.DownloadTask
 	Resources []*ResourceInfo
-	// Extension carries content-type-specific data set by platform adapters.
-	ContentDetail any
-	// Sub-entity lists saved alongside ContentDetail in PrepareTask.
-	AlbumImages   []*model.ContentImage
-	NovelVolumes  []*model.ContentNovelVolume
-	NovelChapters []*model.ContentNovelChapter
 	// Account for the content
 	Account *model.Account
 	// Content is the base content model (common fields).
 	Content *model.Content
+	// Extension carries content-type-specific data set by platform adapters.
+	ContentDetail any
 }
 
 // BrowseHistoryResult is returned by a platform BrowseHistoryBuilder.
@@ -30,9 +26,9 @@ type BrowseHistoryResult struct {
 	Account       *model.Account
 }
 
-// ResourceInfo describes a resource and its mirror endpoints. DownloadResource is embedded for direct access to Name/Kind/Size fields.
+// ResourceInfo describes a resource and its mirror endpoints.
 type ResourceInfo struct {
-	model.DownloadResource
+	Resource  model.DownloadResource
 	Endpoints []model.DownloadEndpoint
 }
 
@@ -52,8 +48,8 @@ func NewDownloadTaskResult(name, uniqueID, platformID, configJSON, metadataJSON 
 // AddResource appends a resource and its endpoints, returning self for chaining.
 func (r *DownloadTaskResult) AddResource(resource model.DownloadResource, endpoints ...model.DownloadEndpoint) *DownloadTaskResult {
 	r.Resources = append(r.Resources, &ResourceInfo{
-		DownloadResource: resource,
-		Endpoints:        endpoints,
+		Resource:  resource,
+		Endpoints: endpoints,
 	})
 	return r
 }

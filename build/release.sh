@@ -177,7 +177,7 @@ echo "🔎 Inspecting remote binary..."
 
 # Start new service
 echo "🚀 Starting service..."
-"${SSH_CMD[@]}" -p "$SERVER_PORT" "${SSH_OPTS[@]}" "$SERVER_TARGET" "cd $SERVER_DIR && ./$BINARY_NAME server start"
+"${SSH_CMD[@]}" -p "$SERVER_PORT" "${SSH_OPTS[@]}" "$SERVER_TARGET" "cd $SERVER_DIR && nohup ./$BINARY_NAME server > server.log 2>&1 < /dev/null &"
 
 # Health check
 echo "🔍 Checking status..."
