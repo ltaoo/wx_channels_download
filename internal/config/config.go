@@ -217,7 +217,7 @@ func (c *Config) LoadConfig() error {
 		Key:          "workdir",
 		Type:         ConfigTypeString,
 		Default:      "",
-		Description:  "运行时工作目录，日志、数据库等运行时文件将写入该目录",
+		Description:  "运行时工作目录，数据库、用户脚本等运行时文件将写入该目录",
 		Title:        "工作目录",
 		Group:        "General",
 		ProcessValue: ResolveWorkDirValue,

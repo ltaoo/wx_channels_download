@@ -6,15 +6,7 @@ title: 下载配置
 
 通过 `config.yaml` 控制下载行为。
 
-## 默认下载原始视频
-
-```yaml
-download:
-  defaultHighest: false
-```
-
-默认为 `false`，下载（包括批量下载）的文件为默认画质，一般是体积较小的文件。修改为 `true` 后，下载（包括批量下载）的文件为原画质
-
+视频号专属的下载行为，请参考[视频号配置](./channels.md)。
 
 ## 下载时的文件名称
 
@@ -57,26 +49,6 @@ download:
 
 下载文件存放的目录，默认为用户下载目录。可以修改为任意「绝对路径目录」。仅在后台下载时生效
 
-## 前端下载
-
-```yaml
-download:
-  frontend: false
-```
-
-是否使用前端下载，默认 `false`
-
-设置为 `true` 后，会在前端进行下载、解密，下载长视频大概率会有问题。并且「下载目录」配置会失效、下载文件名不支持 `/` 字符来创建目录。
-
-## 下载视频时暂停视频播放
-
-```yaml
-download:
-  pauseWhenDownload: false
-```
-
-是否在前端下载时暂停视频播放，默认 `false`。下载完成后会继续播放。
-
 ## 完成音效
 
 ```yaml
@@ -86,6 +58,15 @@ download:
 
 后台下载模式下，下载完成后是否播放完成音效，默认 `true`。
 
+## 最大并发任务数
+
+```yaml
+download:
+  maxRunning: 3
+```
+
+同时运行的下载任务数量上限，默认 `3`。
+
 ## Default action when a task exists
 
 ```yaml
@@ -94,15 +75,6 @@ download:
 ```
 
 When creating a download task, an existing task normally returns a conflict so the caller can choose an action. Set this to `skip`, `duplicate`, or `overwrite` to skip the incoming task, create another copy, or overwrite the existing task.
-
-## 批量下载检查
-
-```yaml
-download:
-  forceCheckAllFeeds: false
-```
-
-批量下载时是否强制检查所有视频，默认 `false`。
 
 ## 远程服务
 
