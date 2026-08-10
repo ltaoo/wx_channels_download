@@ -1,8 +1,8 @@
 ---
-title: 调试与 PageSpy
+title: 调试
 ---
 
-# 调试与 PageSpy
+# 调试
 
 用于开发和调试的配置项。
 
@@ -17,18 +17,3 @@ debug:
 是否全局捕获前端错误，出现错误时弹窗展示错误信息。默认 `true`。
 
 `echolog` 控制 Echo 代理日志，默认 `false`。设置为 `true` 时启用 Echo 日志。
-
-## PageSpy 配置
-
-PageSpy 是一个用于调试移动端网页的工具。
-
-```yaml
-pagespy:
-  enabled: false
-  protocol: "http"
-  api: "127.0.0.1:6752"
-```
-
-- `enabled`: 是否开启 PageSpy，默认 `false`。
-- `protocol`: PageSpy 调试协议，可选 `http` 或 `https`，默认 `https`。
-- `api`: PageSpy 调试 API 地址，默认 `debug.weixin.qq.com`。

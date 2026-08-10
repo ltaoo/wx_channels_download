@@ -12,7 +12,6 @@ import (
 
 type ChannelsConfig struct {
 	Version                       string
-	PagespyEnabled                bool
 	DebugShowError                bool
 	ChannelsDisableLocationToHome bool
 	GlobalScriptPath              string
@@ -35,7 +34,6 @@ func NewChannelsConfig(c *config.Config, logger *zerolog.Logger) *ChannelsConfig
 	settings := &ChannelsConfig{
 		Version:                       c.Version,
 		DebugShowError:                viper.GetBool("debug.error"),
-		PagespyEnabled:                viper.GetBool("pagespy.enabled"),
 		ChannelsDisableLocationToHome: viper.GetBool("channels.disableLocationToHome"),
 		GlobalScriptPath:              c.GlobalScriptPath,
 		InjectContentScript:           c.ContentScriptContent,
@@ -43,8 +41,6 @@ func NewChannelsConfig(c *config.Config, logger *zerolog.Logger) *ChannelsConfig
 			"apiHost":                    api_hostname + ":" + strconv.Itoa(api_port),
 			"apiOrigin":                  api_protocol + "://" + api_hostname + ":" + strconv.Itoa(api_port),
 			"apiProtocol":                api_protocol,
-			"pagespyServerProtocol":      viper.GetString("pagespy.protocol"),
-			"pagespyServerAPI":           viper.GetString("pagespy.api"),
 			"remoteServerEnabled":        viper.GetBool("download.remoteServer.enabled"),
 			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),
 			"maxRunning":                 max_running,

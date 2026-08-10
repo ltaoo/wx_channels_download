@@ -14,7 +14,6 @@ type OfficialAccountConfig struct {
 	WorkDir                   string
 	Enabled                   bool `json:"officialAccountEnabled"`
 	DebugShowError            bool
-	PagespyEnabled            bool
 	Protocol                  string
 	Hostname                  string
 	Port                      int
@@ -43,7 +42,6 @@ func NewOfficialAccountConfig(c *config.Config) *OfficialAccountConfig {
 		Enabled:                   enabled,
 		WorkDir:                   c.WorkDir,
 		DebugShowError:            viper.GetBool("debug.error"),
-		PagespyEnabled:            viper.GetBool("pagespy.enabled"),
 		Protocol:                  protocol,
 		Hostname:                  hostname,
 		Port:                      port,

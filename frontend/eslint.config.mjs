@@ -32,7 +32,6 @@ export default [
         Module: "readonly",
         saveAs: "readonly",
         JSZip: "readonly",
-        PageSpy: "readonly",
         Recorder: "readonly",
         mitt: "readonly",
         Timeless: "readonly",
