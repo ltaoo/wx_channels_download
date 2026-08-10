@@ -186,7 +186,3 @@ var WXEnv = (() => {
     assetUrl: asset_URL,
   };
 })();
-
-function __wx_asset_url(path) {
-  return WXEnv.assetUrl(path);
-}

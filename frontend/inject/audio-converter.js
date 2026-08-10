@@ -1,26 +1,11 @@
 /**
  * @file MP4 to MP3 audio conversion logic
- * Dependency: env.js must be loaded first (provides __wx_asset_url global function)
+ * Dependencies: env.js and utils.js must be loaded first.
  */
+if (typeof WXEnv === "undefined" || typeof WXU === "undefined") {
+  throw new Error("env.js and utils.js must be loaded before audio-converter.js");
+}
 var WXAudio = (() => {
-  const script_loaded_map = {};
-  function __wx_load_script(src) {
-    const existing = script_loaded_map[src];
-    if (existing) {
-      return existing;
-    }
-    const p = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.type = "text/javascript";
-      script.src = src;
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-    script_loaded_map[src] = p;
-    return p;
-  }
-
   function mediaBufferToWav(abuffer, len) {
     len = len || abuffer.length;
     var num_of_chan = abuffer.numberOfChannels;
@@ -138,7 +123,7 @@ var WXAudio = (() => {
         False && False("非单或双声道wav raw pcm格式音频，无法转码");
         return;
       }
-      await __wx_load_script(__wx_asset_url("/public/recorder.min.js"));
+      await WXU.load_script(WXEnv.assetUrl("/public/recorder.min.js"));
       var rec = Recorder(newSet).mock(pcm, sampleRate);
       rec.stop(function (blob, duration) {
         True(blob, duration, rec);
