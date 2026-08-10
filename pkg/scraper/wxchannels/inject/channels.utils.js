@@ -471,12 +471,11 @@ var WXBase64 = (() => {
   // play_cur_video: __wx_channels_play_cur_video,
   /**
    * 构建文件名
-   * @param {ChannelsFeed} feed
+   * @param {FeedProfile} profile
    * @param {string} spec
    * @param {string} template
    */
-  function build_filename(feed, spec, template) {
-    var profile = WXU.format_feed(feed);
+  function build_filename(profile, spec, template) {
     if (!profile) {
       throw new Error("there is no feed");
     }
@@ -506,14 +505,21 @@ var WXBase64 = (() => {
         params.spec = matched.fileFormat;
       }
     }
-    // if (!params.spec) {
-    //   params.spec = "original";
-    // }
     var filename = template
-      ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) =>
-          params[key] === null || params[key] === undefined ? "" : params[key],
-        )
+      ? template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+          return params[key] === null || params[key] === undefined
+            ? ""
+            : params[key];
+        })
       : default_name;
+    WXU.log
+      .Info()
+      .Str("file", "channels.utils.js")
+      .Str("default_name", default_name)
+      .Str("template", template)
+      .Str("before_filename", window.beforeFilename)
+      .Str("filename", filename)
+      .Msg("build_filename - before apply filename template");
     if (typeof window.beforeFilename === "function") {
       return window.beforeFilename(filename, params, profile, spec);
     }
@@ -730,7 +736,7 @@ var WXBase64 = (() => {
         new Timeless.ui.MenuItemCore({
           label: "原始视频",
           onClick() {
-            __wx_channels_handle_click_download__({ spec: "original" });
+            __wx_channels_handle_click_download__({ spec: "" });
             close_dropdown();
           },
         }),
@@ -1038,15 +1044,9 @@ var WXBase64 = (() => {
    */
   async function __wx_channels_download4(feed, opt) {
     console.log("__wx_channels_download4", opt);
-    var filename = WXU.build_filename(
-      feed,
-      opt.spec,
-      WXU.config.downloadFilenameTemplate,
-    );
     if (!WXU.config.downloadInFrontend) {
       var [err, data] = await WXU.downloader.create([feed], {
         platform: "wxchannels",
-        // filename: window.beforeFilename ? filename : undefined,
         ...opt,
       });
       if (err) {
@@ -1060,10 +1060,17 @@ var WXBase64 = (() => {
       WXU.downloader.show();
       return;
     }
+    var profile = WXU.format_feed(feed);
+    var filename = WXU.build_filename(
+      profile,
+      opt.spec,
+      WXU.config.downloadFilenameTemplate,
+    );
     if (!filename) {
       WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1057" });
       return;
     }
+    Object.assign(feed, profile);
     feed.filename = filename;
     if (feed.type === "picture") {
       __wx_channels_download3(feed);
@@ -1085,7 +1092,7 @@ var WXBase64 = (() => {
     if (WXU.config.downloadPauseWhenDownload) {
       WXU.pause_cur_video();
     }
-    const ins = WXU.loading();
+    const ins = WXU.loading("下载中");
     var [err, response] = await WXU.fetch(feed.url);
     if (err) {
       WXU.error({ msg: err.message, source: "channels.utils.js:1084" });
@@ -1136,11 +1143,11 @@ var WXBase64 = (() => {
         return;
       }
       WXU.emit(WXU.Events.MP3Downloaded, feed);
-      WXU.save(mp3_blob, feed.filename + opt.suffix);
+      WXU.save(mp3_blob, feed.filename);
     } else {
       WXU.emit(WXU.Events.MediaDownloaded, feed);
       const result = new Blob([media_buf], { type: "video/mp4" });
-      WXU.save(result, feed.filename + opt.suffix);
+      WXU.save(result, feed.filename);
     }
     ins.hide();
     if (WXU.config.downloadPauseWhenDownload) {
@@ -1166,58 +1173,10 @@ ${payload.key || ""}`,
     WXU.emit(WXU.Events.BeforeDownloadMedia, payload);
     __wx_channels_download4(payload, { spec, suffix });
   }
-  /** 下载已加载的视频 */
-  function __wx_channels_download_cur__() {
-    const [err, profile] = WXU.check_feed_existing();
-    if (err) return;
-    if (__wx_channels_store__.buffers.length === 0) {
-      WXU.error({ msg: "没有可下载的内容", source: "channels.utils.js:1165" });
-      return;
-    }
-    var filename = WXU.build_filename(
-      profile,
-      null,
-      WXU.config.downloadFilenameTemplate,
-    );
-    if (!filename) {
-      WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1174" });
-      return;
-    }
-    profile.filename = filename;
-    profile.data = __wx_channels_store__.buffers;
-    __wx_channels_download(profile);
-  }
-  /** 打印下载原始文件命令 */
-  function __wx_channels_handle_print_download_command() {
-    const [err, profile] = WXU.check_feed_existing();
-    if (err) return;
-    var _profile = { ...profile };
-    var filename = WXU.build_filename(
-      _profile,
-      null,
-      WXU.config.downloadFilenameTemplate,
-    );
-    if (!filename) {
-      alert("文件名生成失败");
-      return;
-    }
-    var command = `download --url "${_profile.url}"`;
-    if (_profile.key) {
-      command += ` --key ${_profile.key}`;
-    }
-    command += ` --filename "${filename}.mp4"`;
-    WXU.log({ msg: command });
-    WXU.toast("请在终端查看下载命令");
-  }
   /** 下载视频封面 */
   async function __wx_channels_handle_download_cover() {
     var [err, feed] = WXU.check_feed_existing();
     if (err) return;
-    var filename = WXU.build_filename(
-      feed,
-      null,
-      WXU.config.downloadFilenameTemplate,
-    );
     if (!WXU.config.downloadInFrontend) {
       var [err, data] = await WXU.downloader.create([feed], {
         platform: "wxchannels",
@@ -1230,11 +1189,18 @@ ${payload.key || ""}`,
       }
       return;
     }
-    var url = feed.cover_url.replace(/^http:/, "https:");
+    var profile = WXU.format_feed(feed);
+    var filename = WXU.build_filename(
+      profile,
+      null,
+      WXU.config.downloadFilenameTemplate,
+    );
     if (!filename) {
       WXU.error({ msg: "文件名生成失败", source: "channels.utils.js:1226" });
       return;
     }
+    Object.assign(feed, profile);
+    var url = feed.cover_url.replace(/^http:/, "https:");
     WXU.log({ msg: `下载封面\n${url}` });
     const ins = WXU.loading();
     var [err, response] = await WXU.fetch(url);
@@ -1251,7 +1217,17 @@ ${payload.key || ""}`,
   function __wx_download_btn_handler() {
     const [err, feed] = WXU.check_feed_existing();
     if (err) return;
-    __wx_channels_handle_click_download__({ spec: "" });
+    __wx_channels_handle_click_download__({
+      spec: (() => {
+        if (WXU.config.defaultHighest) {
+          return "";
+        }
+        const profile = WXU.format_feed(feed);
+        if (profile.spec && profile.spec[0]) {
+          return profile.spec[0].fileFormat;
+        }
+      })(),
+    });
   }
 
   Object.assign(WXU, {
