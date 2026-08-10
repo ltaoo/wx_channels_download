@@ -4,11 +4,6 @@ debug:
 
 workdir: ""
 
-pagespy:
-  enabled: false
-  protocol: http
-  api: 127.0.0.1:6752
-
 download:
   filenameTemplate: "{{filename}}_{{spec}}"
   dir: "%UserDownloads%"

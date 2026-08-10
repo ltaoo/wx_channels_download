@@ -10,8 +10,6 @@ var WXEnv = (() => {
     apiHost: "127.0.0.1:2022",
     apiOrigin: "http://127.0.0.1:2022",
     apiProtocol: "http",
-    pagespyServerProtocol: "http",
-    pagespyServerAPI: undefined,
     remoteServerEnabled: false,
     remoteServerOrigin: "http://127.0.0.1:2022",
     maxRunning: 3,

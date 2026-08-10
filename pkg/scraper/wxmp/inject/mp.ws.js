@@ -36,8 +36,8 @@
     { client: http_client },
   );
 
-  const downloadAllReq = new Timeless.RequestCore(
-    (body) => request.post("/api/mp/download_all", body),
+  const scraperFetchReq = new Timeless.RequestCore(
+    (params) => request.get("/api/scraper/fetch", params),
     { client: http_client },
   );
 
@@ -195,6 +195,362 @@
     WXU.toast("创建下载任务成功");
     console.log("[mp.ws.js]handle_download_click - after create download task");
     WXU.downloader.show();
+  }
+
+  function parse_official_account_msg_list(data) {
+    if (data && Array.isArray(data.list)) {
+      return data.list;
+    }
+    const raw_list = (data && data.general_msg_list) || "";
+    if (!raw_list) {
+      return [];
+    }
+    try {
+      const parsed =
+        typeof raw_list === "string" ? JSON.parse(raw_list) : raw_list;
+      return Array.isArray(parsed.list) ? parsed.list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function decode_official_account_url(raw_url) {
+    if (!raw_url) {
+      return "";
+    }
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(raw_url);
+    try {
+      const parsed_url = new URL(
+        textarea.value,
+        "https://mp.weixin.qq.com",
+      );
+      if (parsed_url.hostname !== "mp.weixin.qq.com") {
+        return "";
+      }
+      return parsed_url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function collect_push_article_entries(items) {
+    const entries = [];
+    const urls = new Set();
+    function append(article, publish_time) {
+      const url = decode_official_account_url(article && article.content_url);
+      if (!url || urls.has(url)) {
+        return;
+      }
+      urls.add(url);
+      entries.push({ article, publish_time, url });
+    }
+    (items || []).forEach((item) => {
+      const article = item.app_msg_ext_info || {};
+      const publish_time = item.comm_msg_info?.datetime || 0;
+      append(article, publish_time);
+      (article.multi_app_msg_item_list || []).forEach((child) => {
+        append(child, publish_time);
+      });
+    });
+    return entries;
+  }
+
+  function article_ids_from_url(article_url, biz, external_id) {
+    const parsed_url = new URL(article_url);
+    let mid = Number(parsed_url.searchParams.get("mid")) || 0;
+    let idx = Number(parsed_url.searchParams.get("idx")) || 0;
+    const external_prefix = biz ? biz + "_" : "";
+    if (
+      (!mid || !idx) &&
+      external_prefix &&
+      external_id?.startsWith(external_prefix)
+    ) {
+      const external_parts = external_id
+        .slice(external_prefix.length)
+        .split("_");
+      mid = mid || Number(external_parts[0]) || 0;
+      idx = idx || Number(external_parts[1]) || 0;
+    }
+    return {
+      biz: parsed_url.searchParams.get("__biz") || biz,
+      idx: idx || 1,
+      mid,
+      sn: parsed_url.searchParams.get("sn") || "",
+    };
+  }
+
+  function build_download_article(fetch_data, entry, credentials) {
+    const parsed_article = (fetch_data && fetch_data.result) || {};
+    const content = (fetch_data && fetch_data.content) || {};
+    const account = (fetch_data && fetch_data.account) || {};
+    const summary = entry.article || {};
+    const ids = article_ids_from_url(
+      entry.url,
+      credentials.biz,
+      content.external_id || "",
+    );
+    const publish_time = Number(content.publish_time || entry.publish_time) || 0;
+    return {
+      bizuin: ids.biz,
+      mid: ids.mid,
+      idx: ids.idx,
+      sn: ids.sn,
+      title: parsed_article.title || content.title || summary.title || "",
+      desc: content.description || summary.digest || "",
+      content_noencode: parsed_article.content || summary.content || "",
+      cdn_url: content.cover_url || summary.cover || "",
+      link: content.url || entry.url,
+      source_url: content.source_url || summary.source_url || entry.url,
+      user_name: parsed_article.author_id || account.external_id || "",
+      nick_name:
+        parsed_article.author_nickname || account.nickname || summary.author || "",
+      round_head_img: parsed_article.author_avatar || account.avatar_url || "",
+      author: parsed_article.creator || summary.author || "",
+      ori_create_time:
+        publish_time > 1000000000000
+          ? Math.floor(publish_time / 1000)
+          : publish_time,
+      page_type: Number(parsed_article.type) || 0,
+      item_show_type: Number(summary.item_show_type) || 0,
+      picture_page_info_list: parsed_article.picture_page_info_list || [],
+      video_page_infos: parsed_article.videos || [],
+      copyright_info: {
+        copyright_stat: Number(summary.copyright_stat) || 0,
+      },
+    };
+  }
+
+  function DownloadAllPushesModel(options) {
+    const progress_ = ref({
+      created: 0,
+      failed: 0,
+      fetched: 0,
+      running: false,
+      stopping: false,
+    });
+    const notice_ = ref(null);
+    const open_download_panel_ = ref(0);
+    let download_panel_opened = false;
+    let stop_signal = false;
+
+    function update_progress(patch) {
+      progress_.as({ ...progress_.value, ...patch });
+    }
+
+    function notify(type, message) {
+      notice_.as({ message, type });
+    }
+
+    function request_stop() {
+      if (!progress_.value.running || stop_signal) {
+        return;
+      }
+      stop_signal = true;
+      update_progress({ stopping: true });
+      notify("info", "正在取消批量下载...");
+    }
+
+    async function start() {
+      if (progress_.value.running) {
+        request_stop();
+        return;
+      }
+      const credentials = options.get_credentials();
+      if (!credentials.biz) {
+        notify("error", "缺少 biz 参数");
+        return;
+      }
+
+      stop_signal = false;
+      download_panel_opened = false;
+      update_progress({
+        created: 0,
+        failed: 0,
+        fetched: 0,
+        running: true,
+        stopping: false,
+      });
+      notify("info", "开始获取全部推送，再次点击可取消");
+
+      let created_count = 0;
+      let failed_count = 0;
+      let fetched_count = 0;
+      let offset = 0;
+      const fetched_urls = new Set();
+      try {
+        while (!stop_signal) {
+          const list_result = await msgListReq.run({
+            biz: credentials.biz,
+            count: 10,
+            key: credentials.key,
+            offset,
+            pass_ticket: credentials.pass_ticket,
+            token: credentials.token,
+            uin: credentials.uin,
+          });
+          if (list_result.error) {
+            throw list_result.error;
+          }
+
+          const list_data = list_result.data || {};
+          const entries = collect_push_article_entries(
+            parse_official_account_msg_list(list_data),
+          ).filter((entry) => {
+            if (fetched_urls.has(entry.url)) {
+              return false;
+            }
+            fetched_urls.add(entry.url);
+            return true;
+          });
+          const articles = [];
+          for (const entry of entries) {
+            if (stop_signal) {
+              break;
+            }
+            const fetch_result = await scraperFetchReq.run({ url: entry.url });
+            fetched_count += 1;
+            if (fetch_result.error) {
+              failed_count += 1;
+              update_progress({ failed: failed_count, fetched: fetched_count });
+              continue;
+            }
+            const article = build_download_article(
+              fetch_result.data || {},
+              entry,
+              credentials,
+            );
+            if (!article.bizuin || !article.mid || !article.user_name) {
+              failed_count += 1;
+              update_progress({ failed: failed_count, fetched: fetched_count });
+              continue;
+            }
+            articles.push(article);
+            update_progress({ fetched: fetched_count });
+          }
+
+          if (!stop_signal && articles.length > 0) {
+            const [error, data] = await WXU.downloader.create(articles, {
+              platform: "wxmp",
+            });
+            if (error) {
+              throw error;
+            }
+            const created_ids = Array.isArray(data && data.ids) ? data.ids : [];
+            created_count += created_ids.length;
+            update_progress({ created: created_count });
+            if (created_ids.length > 0 && !download_panel_opened) {
+              download_panel_opened = true;
+              open_download_panel_.as(open_download_panel_.value + 1);
+            } else if (
+              !WXU.config.downloadForceCheckAllFeeds &&
+              created_count === 0
+            ) {
+              break;
+            }
+          }
+
+          const has_more = Number(list_data.can_msg_continue) !== 0;
+          const next_offset = Number(list_data.next_offset);
+          if (
+            stop_signal ||
+            !has_more ||
+            entries.length === 0 ||
+            !Number.isFinite(next_offset) ||
+            next_offset <= offset
+          ) {
+            break;
+          }
+          offset = next_offset;
+        }
+
+        if (stop_signal) {
+          notify("info", `已取消批量下载，已创建 ${created_count} 个任务`);
+        } else if (failed_count > 0) {
+          notify(
+            "info",
+            `批量下载完成：创建 ${created_count} 个任务，${failed_count} 篇解析失败`,
+          );
+        } else if (created_count === 0) {
+          notify("info", "没有新的推送需要下载");
+        } else {
+          notify("info", `批量下载完成，共创建 ${created_count} 个任务`);
+        }
+      } catch (error) {
+        notify("error", "批量下载失败: " + (error.message || String(error)));
+      } finally {
+        stop_signal = false;
+        update_progress({ running: false, stopping: false });
+      }
+    }
+
+    return {
+      state: {
+        notice: notice_,
+        open_download_panel: open_download_panel_,
+        progress: progress_,
+      },
+      methods: {
+        requestStop: request_stop,
+        start,
+        toggle() {
+          if (progress_.value.running) {
+            request_stop();
+            return;
+          }
+          start();
+        },
+      },
+    };
+  }
+
+  function DownloadAllPushesMenuItem(props) {
+    const model = props.store;
+    const menu_item = new Timeless.ui.MenuItemCore({
+      label: "下载所有推送",
+      onClick() {
+        props.close();
+        model.methods.toggle();
+      },
+    });
+    model.state.progress.subscribe({
+      onChange(progress) {
+        const label = progress.running
+          ? progress.stopping
+            ? "正在取消..."
+            : "取消下载所有推送"
+          : "下载所有推送";
+        if (menu_item.label === label) {
+          return;
+        }
+        menu_item.label = label;
+        // MenuItemCore has no setLabel; setIcon emits its updated state.
+        menu_item.setIcon(menu_item.icon);
+      },
+    });
+    model.state.notice.subscribe({
+      onChange(notice) {
+        if (!notice || !notice.message) {
+          return;
+        }
+        if (notice.type === "error") {
+          WXU.error({
+            msg: notice.message,
+            source: "mp.ws.js:DownloadAllPushesModel",
+          });
+          return;
+        }
+        WXU.toast(notice.message);
+      },
+    });
+    model.state.open_download_panel.subscribe({
+      onChange(sequence) {
+        if (sequence > 0) {
+          WXU.downloader.show();
+        }
+      },
+    });
+    return menu_item;
   }
 
   var before_menus_items = [];
@@ -405,17 +761,7 @@
         return;
       }
       const data = r.data || {};
-      const rawList = data.general_msg_list || "";
-      let list = [];
-      if (rawList) {
-        try {
-          const parsed =
-            typeof rawList === "string" ? JSON.parse(rawList) : rawList;
-          list = parsed.list || [];
-        } catch (e) {
-          list = [];
-        }
-      }
+      const list = parse_official_account_msg_list(data);
       if (list.length === 0 || list.length < pageSize) {
         canLoadMore = false;
         loadMoreBtn.textContent = "没有更多了";
@@ -507,6 +853,21 @@
         dropdown$.hide();
       }
     }
+    const download_all_model = DownloadAllPushesModel({
+      get_credentials() {
+        return {
+          biz: window.biz || window.__biz || "",
+          key: window.key || "",
+          pass_ticket: window.pass_ticket || "",
+          token: WXU.config.officialServerRefreshToken ?? "",
+          uin: window.uin || "",
+        };
+      },
+    });
+    const download_all_menu_item = DownloadAllPushesMenuItem({
+      close: close_dropdown,
+      store: download_all_model,
+    });
     dropdown$ = new Timeless.ui.DropdownMenuCore({
       trigger: "hover",
       align: "end",
@@ -548,31 +909,7 @@
                   dropdown$.hide();
                 },
               }),
-              new Timeless.ui.MenuItemCore({
-                label: "下载所有推送",
-                onClick() {
-                  const biz = window.biz || window.__biz || "";
-                  const token = WXU.config.officialServerRefreshToken ?? "";
-                  const uin = window.uin || "";
-                  const key = window.key || "";
-                  const passTicket = window.pass_ticket || "";
-                  if (!biz) {
-                    WXU.error({ msg: "缺少 biz 参数", source: "mp.ws.js:555" });
-                    return;
-                  }
-                  WXU.toast("正在提交批量下载...");
-                  downloadAllReq.run({
-                    biz,
-                    uin,
-                    key,
-                    pass_ticket: passTicket,
-                    token,
-                  });
-                  dropdown$.hide();
-                  console.log("[mp.ws.js]onClick - after downloadAllReq.run");
-                  WXU.downloader.show();
-                },
-              }),
+              // download_all_menu_item,
             ]
           : []),
         new Timeless.ui.MenuItemCore({

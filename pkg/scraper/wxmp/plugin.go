@@ -217,10 +217,6 @@ func CreateOfficialAccountInterceptorPlugin(cfg *OfficialAccountConfig, version 
 					url_build("/inject/download/view.js", version_query),
 					AssetURL(asset_base_url, "/inject/mp.ws.js", version_query),
 				)
-				if cfg.PagespyEnabled {
-					/** Online debugging */
-					frontend.AppendScripts(&injected, script_attr, url_build("/public/pagespy.min.js", version_query), url_build("/inject/pagespy.js", version_query))
-				}
 				if cfg.GlobalScriptURL != "" {
 					frontend.AppendScripts(&injected, script_attr, cfg.GlobalScriptURL)
 				}

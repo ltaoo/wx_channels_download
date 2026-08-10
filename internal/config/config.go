@@ -348,34 +348,6 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
-		Key:         "pagespy.enabled",
-		Type:        ConfigTypeSelect,
-		Default:     false,
-		Description: "是否开启 PageSpy",
-		Title:       "启用",
-		Group:       "Pagespy",
-		HotReload:   true,
-	})
-	Register(ConfigField{
-		Key:         "pagespy.protocol",
-		Type:        ConfigTypeSelect,
-		Default:     "http",
-		Options:     []string{"http", "https"},
-		Description: "PageSpy 调试协议",
-		Title:       "协议头",
-		Group:       "Pagespy",
-		HotReload:   true,
-	})
-	Register(ConfigField{
-		Key:         "pagespy.api",
-		Type:        ConfigTypeString,
-		Default:     "127.0.0.1:6752",
-		Description: "PageSpy 调试 API 地址",
-		Title:       "API 地址",
-		Group:       "Pagespy",
-		HotReload:   true,
-	})
-	Register(ConfigField{
 		Key:         "debug.error",
 		Type:        ConfigTypeBool,
 		Default:     true,

@@ -236,14 +236,6 @@ func CreateInterceptorPlugins(cfg *ChannelsConfig) []*proxy.Plugin {
 					url_build("/inject/components.js", version_query),
 					url_build("/inject/virtual-list-view.js", version_query),
 				)
-				if cfg.PagespyEnabled {
-					frontend.AppendScripts(
-						&injected,
-						crossorigin_attr,
-						url_build("/public/pagespy.min.js"),
-						url_build("/inject/pagespy.js", version_query),
-					)
-				}
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,

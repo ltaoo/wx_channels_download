@@ -69,8 +69,6 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
 		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
 		"apiProtocol":                c.cfg.Protocol,
-		"pagespyServerProtocol":      c.cfg.Original.GetString("pagespy.protocol"),
-		"pagespyServerAPI":           c.cfg.Original.GetString("pagespy.api"),
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
 		"maxRunning":                 max_running,

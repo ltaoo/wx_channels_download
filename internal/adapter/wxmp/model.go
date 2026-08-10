@@ -47,10 +47,10 @@ func BuildAccountID(external_id string) string {
 
 // ArticleExternalID builds a unique external identifier for an official account article.
 func ArticleExternalID(data *wxmp.ArticleCgiDataNew) string {
-	if data == nil || strings.TrimSpace(data.Bizuin) == "" {
+	if data == nil || strings.TrimSpace(data.Bizuin) == "" || data.Mid <= 0 || data.Idx <= 0 {
 		return ""
 	}
-	return strings.TrimSpace(data.Bizuin)
+	return fmt.Sprintf("%s_%d_%d", strings.TrimSpace(data.Bizuin), data.Mid, data.Idx)
 }
 
 // article_cover_url picks the best cover image URL from the article data.

@@ -168,7 +168,7 @@ export default defineConfig(async () => {
             { text: "脚本", link: "/config/script" },
             { text: "视频号", link: "/config/channels" },
             { text: "Cloudflare", link: "/config/cloudflare" },
-            { text: "调试与 PageSpy", link: "/config/debug" },
+            { text: "调试", link: "/config/debug" },
           ],
         },
         {
