@@ -260,9 +260,6 @@ func (s *memory_store) UpdateOutputName(update OutputNameUpdate) error {
 	if update.TaskName != "" {
 		state.job.Name = update.TaskName
 	}
-	if update.SavePath != "" {
-		state.job.SavePath = update.SavePath
-	}
 	state.mu.Unlock()
 	return nil
 }
@@ -274,6 +271,7 @@ func (s *memory_store) UpdateResourceOutput(update ResourceOutputUpdate) error {
 	}
 	state.mu.Lock()
 	if resource := find_memory_resource(state.job, update.ResourceID); resource != nil {
+		resource.SavePath = update.SavePath
 		resource.Name = update.ResourceName
 		resource.Kind = update.ResourceKind
 		resource.Size = update.ResourceSize

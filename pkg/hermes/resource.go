@@ -316,7 +316,7 @@ func (d *HermesEngine) process_output_filename(task *TaskJob, resource *Resource
 		var current_path string
 		var file_exists bool
 		for _, try_name := range candidate_names {
-			if path, err := d.resolve_resource_path(task.SavePath, try_name, endpoint_url); err == nil {
+			if path, err := d.resolve_resource_path(resource_save_path(task, resource), try_name, endpoint_url); err == nil {
 				if info, stat_err := os.Stat(path); stat_err == nil && info.Size() > 0 {
 					current_path = path
 					file_exists = true
@@ -838,9 +838,31 @@ func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res 
 	}
 }
 
-// absFilePath constructs absolute path: basePath + savePath + name.
+// ResolveOutputPath constructs a resource path under its output container. An
+// absolute save_path overrides the engine base path; a relative save_path
+// remains relative to the engine base for backwards compatibility.
+func ResolveOutputPath(base_path, save_path, name string) string {
+	container_path := strings.TrimSpace(save_path)
+	if container_path == "" {
+		container_path = base_path
+	} else if !filepath.IsAbs(container_path) {
+		container_path = filepath.Join(base_path, container_path)
+	}
+	return filepath.Join(container_path, name)
+}
+
 func (d *HermesEngine) abs_file_path(save_path, name string) string {
-	return filepath.Join(d.cfg.BasePath, save_path, name)
+	return ResolveOutputPath(d.cfg.BasePath, save_path, name)
+}
+
+func resource_save_path(task *TaskJob, resource *ResourceJob) string {
+	if resource != nil && strings.TrimSpace(resource.SavePath) != "" {
+		return resource.SavePath
+	}
+	if task == nil {
+		return ""
+	}
+	return task.SavePath
 }
 
 // relLogPath converts absolute absPath to relative (strips basePath prefix).
@@ -860,7 +882,7 @@ func (d *HermesEngine) file_path_for_job_resource(task *TaskJob, resource *Resou
 	if task == nil || resource == nil {
 		return "", errors.New("task and resource jobs are required")
 	}
-	return d.resolve_resource_path(task.SavePath, resource.UniqueID, endpoint_url)
+	return d.resolve_resource_path(resource_save_path(task, resource), resource.UniqueID, endpoint_url)
 }
 
 func (d *HermesEngine) resolve_resource_path(save_path, unique_id, endpoint_url string) (string, error) {
@@ -996,7 +1018,7 @@ func (d *HermesEngine) find_next_duplicate_name(task *TaskJob, resource *Resourc
 	tmp_ext := ".tmp"
 	for counter := 1; ; counter++ {
 		candidate := fmt.Sprintf("%s(%d)%s", base_name, counter, tmp_ext)
-		candidate_path := d.abs_file_path(task.SavePath, filepath.Join(dir, candidate))
+		candidate_path := d.abs_file_path(resource_save_path(task, resource), filepath.Join(dir, candidate))
 		if _, err := os.Stat(candidate_path); os.IsNotExist(err) {
 			return dir + candidate
 		}
@@ -1010,12 +1032,13 @@ func (d *HermesEngine) find_next_duplicate_name(task *TaskJob, resource *Resourc
 
 // resolveDuplicateFilename appends (1), (2), ... to baseName when the final
 // filename already exists on disk. ext is appended after the duplicate suffix.
-func (d *HermesEngine) resolve_duplicate_filename(save_path, base_name, ext string) string {
+func (d *HermesEngine) resolve_duplicate_filename(save_path string, directories []string, base_name, ext string) string {
 	for counter := 0; ; counter++ {
-		candidate := final_output_name(base_name, ext)
+		candidate_name := final_output_name(base_name, ext)
 		if counter > 0 {
-			candidate = final_output_name_with_suffix(base_name, ext, fmt.Sprintf("(%d)", counter))
+			candidate_name = final_output_name_with_suffix(base_name, ext, fmt.Sprintf("(%d)", counter))
 		}
+		candidate := join_output_path(directories, candidate_name)
 		candidate_path := d.abs_file_path(save_path, candidate)
 		if _, err := os.Stat(candidate_path); os.IsNotExist(err) {
 			return candidate

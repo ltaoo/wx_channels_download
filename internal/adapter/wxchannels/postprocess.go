@@ -1479,7 +1479,7 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 				"gateway_type": "Exclusive",
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
-					{"condition": `task_config_type == -1 || task_config_suffix == ".zip" || task_config_suffix == "zip"`, "target_id": "zip_resources"},
+					{"condition": "false", "target_id": "zip_resources"},
 					{"condition": `task_config_suffix == ".mp3" || task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
 					{"condition": "true", "target_id": "done"},
 				},
@@ -2094,6 +2094,7 @@ func resource_to_context_map(resource *hermes.ResourceJob) map[string]interface{
 	}
 	return map[string]interface{}{
 		"ID":         resource.ID,
+		"SavePath":   resource.SavePath,
 		"Name":       resource.Name,
 		"Kind":       resource.Kind,
 		"Type":       resource.Type,
@@ -2109,6 +2110,7 @@ func resource_to_context_map(resource *hermes.ResourceJob) map[string]interface{
 func resolve_postprocess_resource_from_map(raw map[string]interface{}) *hermes.ResourceJob {
 	resource := &hermes.ResourceJob{}
 	resource.ID = cast_int(raw["ID"])
+	resource.SavePath = cast_string(raw["SavePath"])
 	resource.Name = cast_string(raw["Name"])
 	resource.Kind = cast_string(raw["Kind"])
 	resource.Type = cast_string(raw["Type"])
@@ -2479,7 +2481,7 @@ func zip_resources_node(values map[string]interface{}) (interface{}, error) {
 		if archive_unique_id == "_zip" {
 			archive_unique_id = fmt.Sprintf("task_%d_zip", run.task.ID)
 		}
-		archive_path := filepath.Join(run.base_path, run.task.SavePath, archive_unique_id)
+		archive_path := filepath.Join(run.base_path, archive_unique_id)
 		for _, resource := range run.task.Resources {
 			if filepath.Clean(resource.FilePath) == filepath.Clean(archive_path) {
 				return nil, fmt.Errorf("ZIP 输出路径与资源输入路径冲突: %s", archive_path)

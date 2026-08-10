@@ -52,8 +52,9 @@ type DownloadTaskItem struct {
 // DownloadResourceItem is the compact resource shape embedded in DownloadTaskItem.
 type DownloadResourceItem struct {
 	ID         int     `json:"id"`
-	TaskID     int     `json:"task_id"`
+	TaskID     *int    `json:"task_id,omitempty"`
 	ContentID  *string `json:"content_id,omitempty"`
+	SavePath   string  `json:"save_path"`
 	Name       string  `json:"name"`
 	Kind       string  `json:"kind"`
 	Type       string  `json:"type"`
@@ -63,6 +64,7 @@ type DownloadResourceItem struct {
 	Speed      int64   `json:"speed"`
 	Status     int     `json:"status"`
 	OutputPath string  `json:"output_path,omitempty"`
+	FilePath   string  `json:"file_path,omitempty"`
 }
 
 // DownloadTaskCreateItem is the per-object result shape in the batch create response.
@@ -222,7 +224,7 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 
 	for _, ri := range info.Resources {
 		if len(ri.Endpoints) == 0 {
-			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Name)
+			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Resource.Name)
 		}
 	}
 
@@ -240,8 +242,8 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		}
 		resources = append(resources, gin.H{
 			"index":     i,
-			"name":      ri.Name,
-			"kind":      ri.Kind,
+			"name":      ri.Resource.Name,
+			"kind":      ri.Resource.Kind,
 			"endpoints": eps,
 		})
 		totalEndpoints += len(ri.Endpoints)
@@ -423,10 +425,15 @@ func build_download_task_item(create_result *services.CreateTaskResult) Download
 }
 
 func build_download_resource_item(resource model.DownloadResource) DownloadResourceItem {
+	file_path := ""
+	if strings.TrimSpace(resource.SavePath) != "" {
+		file_path = filepath.Join(resource.SavePath, resource.Name)
+	}
 	return DownloadResourceItem{
 		ID:         resource.Id,
 		TaskID:     resource.TaskId,
 		ContentID:  resource.ContentId,
+		SavePath:   resource.SavePath,
 		Name:       resource.Name,
 		Kind:       resource.Kind,
 		Type:       resource.Type,
@@ -436,6 +443,7 @@ func build_download_resource_item(resource model.DownloadResource) DownloadResou
 		Speed:      resource.Speed,
 		Status:     resource.Status,
 		OutputPath: resource.Name,
+		FilePath:   file_path,
 	}
 }
 
@@ -649,6 +657,14 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 	}
 
 	protocol := strings.ToUpper(parsedURL.Scheme)
+	requested_save_path := body.SavePath
+	if strings.TrimSpace(requested_save_path) == "" {
+		requested_save_path, _ = body.Config["save_path"].(string)
+	}
+	save_dir, err := c.resolveDownloadSaveDir(requested_save_path)
+	if err != nil {
+		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+	}
 
 	filename := body.Filename
 	if filename == "" {
@@ -676,10 +692,20 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 
 	taskName := filename
 
-	// Store original download URL in config_json
-	configJSON, _ := json.Marshal(map[string]string{
-		"url": body.URL,
-	})
+	// Store the task-specific output container together with the source URL.
+	task_config := make(map[string]any, len(body.Config)+3)
+	for key, value := range body.Config {
+		task_config[key] = value
+	}
+	task_config["url"] = body.URL
+	task_config["save_path"] = save_dir
+	if filename != "" {
+		task_config["filename"] = filename
+	}
+	config_json, err := json.Marshal(task_config)
+	if err != nil {
+		return nil, fmt.Errorf("构建下载配置失败: %w", err)
+	}
 
 	// Database not initialized
 	if c.db == nil {
@@ -692,7 +718,7 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 	task := model.DownloadTask{
 		Name:       taskName,
 		Status:     model.TaskStatusWaiting,
-		ConfigJSON: string(configJSON),
+		ConfigJSON: string(config_json),
 	}
 	task.CreatedAt = now
 	task.UpdatedAt = now
@@ -708,10 +734,12 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 		return nil, err
 	}
 
-	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Msg("URL download task written to database")
+	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("save_path", save_dir).Msg("URL download task written to database")
 	// Create resource
+	task_id := task.Id
 	resource := model.DownloadResource{
-		TaskId:     task.Id,
+		TaskId:     &task_id,
+		SavePath:   save_dir,
 		Name:       filename,
 		Kind:       "file",
 		Status:     0,
@@ -1209,9 +1237,9 @@ type downloadTaskLocalFileCandidate struct {
 	CandidateType string
 }
 
-func (c *APIClient) downloadTaskLocalFileRoots(task model.DownloadTask) map[string]string {
+func (c *APIClient) download_task_local_file_roots(task model.DownloadTask, resource *model.DownloadResource) map[string]string {
 	roots := make(map[string]string)
-	addRoot := func(root, source string) {
+	add_root := func(root, source string) {
 		root = strings.TrimSpace(root)
 		if root == "" {
 			return
@@ -1219,24 +1247,31 @@ func (c *APIClient) downloadTaskLocalFileRoots(task model.DownloadTask) map[stri
 		if !filepath.IsAbs(root) && c.cfg != nil && strings.TrimSpace(c.cfg.WorkDir) != "" {
 			root = filepath.Join(c.cfg.WorkDir, root)
 		}
-		absoluteRoot, err := filepath.Abs(root)
+		absolute_root, err := filepath.Abs(root)
 		if err != nil {
 			c.logger.Warn().Int("task_id", task.Id).Str("path_source", source).Str("root", root).Err(err).Msg("Unable to resolve local file candidate root")
 			return
 		}
-		roots[filepath.Clean(absoluteRoot)] = source
+		roots[filepath.Clean(absolute_root)] = source
 	}
 	if c.cfg != nil {
-		addRoot(c.cfg.DownloadDir, "download_root")
+		add_root(c.cfg.DownloadDir, "download_root")
 	}
-	var taskConfig map[string]any
+	var task_config map[string]any
 	if strings.TrimSpace(task.ConfigJSON) != "" {
-		if err := json.Unmarshal([]byte(task.ConfigJSON), &taskConfig); err != nil {
+		if err := json.Unmarshal([]byte(task.ConfigJSON), &task_config); err != nil {
 			c.logger.Warn().Int("task_id", task.Id).Err(err).Msg("Unable to parse task config while resolving local file roots")
 		} else {
-			savePath, _ := taskConfig["save_path"].(string)
-			addRoot(savePath, "task_config_save_path")
+			save_path, _ := task_config["save_path"].(string)
+			add_root(save_path, "task_config_save_path")
 		}
+	}
+	if resource != nil {
+		resource_save_path := strings.TrimSpace(resource.SavePath)
+		if resource_save_path != "" && !filepath.IsAbs(resource_save_path) && c.cfg != nil {
+			resource_save_path = filepath.Join(c.cfg.DownloadDir, resource_save_path)
+		}
+		add_root(resource_save_path, "resource_save_path")
 	}
 	return roots
 }
@@ -1249,7 +1284,7 @@ func pathWithinDownloadRoot(root, target string) bool {
 	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
+func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
 	names := []struct {
 		value  string
 		source string
@@ -1260,7 +1295,7 @@ func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTask, res
 	if names[0].value == "" && names[1].value == "" {
 		return nil
 	}
-	roots := c.downloadTaskLocalFileRoots(task)
+	roots := c.download_task_local_file_roots(task, &resource)
 	seen := make(map[string]struct{})
 	candidates := make([]downloadTaskLocalFileCandidate, 0, len(roots)*6)
 	for root, source := range roots {
@@ -1302,7 +1337,7 @@ func (c *APIClient) downloadTaskLocalFileCandidates(task model.DownloadTask, res
 func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource) error {
 	var deletionErrors []string
 	for _, resource := range resources {
-		candidates := c.downloadTaskLocalFileCandidates(task, resource)
+		candidates := c.download_task_local_file_candidates(task, resource)
 		if len(candidates) == 0 {
 			deletionErrors = append(deletionErrors, fmt.Sprintf("资源 %d (%q) 没有可安全删除的本地文件路径", resource.Id, resource.Name))
 			c.logger.Warn().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Msg("No safe local file candidates were resolved for resource")
@@ -1348,14 +1383,14 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 // mutating the filesystem. The task config path is included because older tasks
 // may have been created with a per-task save_path that differs from DownloadDir.
 func (c *APIClient) logDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource, phase string) {
-	roots := c.downloadTaskLocalFileRoots(task)
+	roots := c.download_task_local_file_roots(task, nil)
 	c.logger.Info().Int("task_id", task.Id).Str("phase", phase).Int("resource_count", len(resources)).Int("candidate_root_count", len(roots)).Msg("Inspecting associated local file candidates")
 	for _, resource := range resources {
 		if strings.TrimSpace(resource.Name) == "" {
 			c.logger.Warn().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("phase", phase).Msg("Cannot resolve local file candidate because resource name is empty")
 			continue
 		}
-		for _, candidate := range c.downloadTaskLocalFileCandidates(task, resource) {
+		for _, candidate := range c.download_task_local_file_candidates(task, resource) {
 			c.logDownloadTaskLocalFile(task.Id, resource, phase, candidate.PathSource, candidate.CandidateType, candidate.Path)
 		}
 	}
@@ -1456,13 +1491,13 @@ func (c *APIClient) handle_check_download_task_files(ctx *gin.Context) {
 		checked := checkDownloadTaskFileResult{TaskID: file.TaskID, ID: file.ID}
 		task, taskExists := taskByID[file.TaskID]
 		resource, resourceExists := resourceByID[file.ID]
-		if !taskExists || !resourceExists || resource.TaskId != task.Id {
+		if !taskExists || !resourceExists || resource.TaskId == nil || *resource.TaskId != task.Id {
 			checked.Error = "下载文件记录不存在"
 			checkedFiles = append(checkedFiles, checked)
 			continue
 		}
 
-		candidates := c.downloadTaskLocalFileCandidates(task, resource)
+		candidates := c.download_task_local_file_candidates(task, resource)
 		if len(candidates) == 0 {
 			checked.Error = "无法解析本地文件路径"
 			checkedFiles = append(checkedFiles, checked)
@@ -1924,16 +1959,16 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 
 	files := make([]fileWithPath, 0, len(record.Files))
 	for _, f := range record.Files {
-		localPath := filepath.Join(c.cfg.DownloadDir, f.OutputPath)
+		local_path := filepath.Join(f.SavePath, f.Name)
 		exists := false
-		if _, statErr := os.Stat(localPath); statErr == nil {
+		if _, stat_err := os.Stat(local_path); stat_err == nil {
 			exists = true
 		}
 		files = append(files, fileWithPath{
 			DownloadTaskFileRecord: f,
-			LocalPath:              localPath,
-			FileType:               fileTypeByExt(f.Name),
-			FileURL:                "/file?path=" + localPath,
+			LocalPath:              local_path,
+			FileType:               file_type_by_ext(f.Name),
+			FileURL:                "/file?path=" + local_path,
 			Exists:                 exists,
 		})
 	}

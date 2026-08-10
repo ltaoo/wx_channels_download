@@ -245,7 +245,7 @@ func (t *Task) FilePath() string {
 	if name == "" {
 		name = resource.UniqueID
 	}
-	return t.engine.abs_file_path(t.state.job.SavePath, name)
+	return t.engine.abs_file_path(resource_save_path(t.state.job, &resource), name)
 }
 
 func failed_task(raw_url string, err error) *Task {

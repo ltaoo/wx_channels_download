@@ -365,6 +365,9 @@ CREATE TABLE IF NOT EXISTS `content` (
   `deleted_at` INTEGER
 );
 
+CREATE INDEX IF NOT EXISTS idx_content_created_at
+ON `content` (`created_at` DESC, `id` DESC);
+
 -- 视频内容扩展表 (ContentVideo) - 视频/短视频特定字段
 CREATE TABLE IF NOT EXISTS `content_video` (
   `id` TEXT PRIMARY KEY,
@@ -681,7 +684,7 @@ CREATE TABLE IF NOT EXISTS `download_task` (
   `config_json` TEXT,
   `metadata_json` TEXT,
   `error_message` TEXT,
-  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `created_at` INTEGER NOT NULL,
   `updated_at` INTEGER NOT NULL DEFAULT 0,
   `deleted_at` INTEGER
 );
@@ -691,11 +694,13 @@ CREATE INDEX IF NOT EXISTS idx_task_unique_id ON `download_task` (`unique_id`);
 CREATE INDEX IF NOT EXISTS idx_download_task_content ON `download_task` (`content_id`);
 CREATE INDEX IF NOT EXISTS idx_download_task_parent ON `download_task` (`parent_task_id`);
 CREATE INDEX IF NOT EXISTS idx_download_task_root ON `download_task` (`root_task_id`);
+CREATE INDEX IF NOT EXISTS idx_download_task_created_at ON `download_task` (`created_at`);
 
 CREATE TABLE IF NOT EXISTS `download_resource` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `task_id` INTEGER NOT NULL,
+  `task_id` INTEGER,
   `content_id` TEXT,
+  `save_path` TEXT NOT NULL DEFAULT '',
   `name` TEXT,
   `kind` TEXT NOT NULL DEFAULT 'file',
   `unique_id` TEXT,

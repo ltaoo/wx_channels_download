@@ -142,7 +142,7 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 			Extra:     extraJSON,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: coverResource,
+			Resource: coverResource,
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "https",
 				URL:      info.CoverURL,
@@ -165,8 +165,8 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 		Enabled:  1,
 	}
 	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: videoResource,
-		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
+		Resource:  videoResource,
+		Endpoints: []model.DownloadEndpoint{videoEndpoint},
 	})
 
 	// DASH audio resource (anime/courses etc.)
@@ -180,7 +180,7 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 			Extra:      extraJSON,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: audioResource,
+			Resource: audioResource,
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "https",
 				URL:      info.AudioURL,

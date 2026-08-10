@@ -19,12 +19,12 @@ import (
 	"wx_channel/pkg/util"
 )
 
-const platformIDWxMP = "wxmp"
+const platform_id_wx_mp = "wxmp"
 
 // PlatformID is the platform identifier for WeChat official accounts.
-const PlatformID = platformIDWxMP
+const PlatformID = platform_id_wx_mp
 
-var wechatHeaders string
+var wechat_headers string
 
 func init() {
 	h := map[string]string{
@@ -32,17 +32,17 @@ func init() {
 		"Referer":    "https://mp.weixin.qq.com/",
 	}
 	b, _ := json.Marshal(h)
-	wechatHeaders = string(b)
+	wechat_headers = string(b)
 }
 
 // BuildContentID builds a content identifier from an external ID.
-func BuildContentID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildContentID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
 // BuildAccountID builds an account identifier from an external ID.
-func BuildAccountID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildAccountID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
 // ArticleExternalID builds a unique external identifier for an official account article.
@@ -53,12 +53,12 @@ func ArticleExternalID(data *wxmp.ArticleCgiDataNew) string {
 	return strings.TrimSpace(data.Bizuin)
 }
 
-// articleCoverURL picks the best cover image URL from the article data.
-func articleCoverURL(data *wxmp.ArticleCgiDataNew) string {
+// article_cover_url picks the best cover image URL from the article data.
+func article_cover_url(data *wxmp.ArticleCgiDataNew) string {
 	return strings.TrimSpace(data.CdnURL)
 }
 
-func buildSourceURL(data *wxmp.ArticleCgiDataNew) string {
+func build_source_url(data *wxmp.ArticleCgiDataNew) string {
 	if data == nil {
 		return ""
 	}
@@ -68,17 +68,17 @@ func buildSourceURL(data *wxmp.ArticleCgiDataNew) string {
 	return strings.TrimSpace(data.SourceURL)
 }
 
-// articleAvatarURL picks the best avatar URL for the publisher account.
-func articleAvatarURL(data *wxmp.ArticleCgiDataNew) string {
-	return firstNonEmptyStr(
+// article_avatar_url picks the best avatar URL for the publisher account.
+func article_avatar_url(data *wxmp.ArticleCgiDataNew) string {
+	return first_non_empty_str(
 		strings.TrimSpace(data.RoundHeadImg),
 		strings.TrimSpace(data.OriHeadImgURL),
 		strings.TrimSpace(data.HdHeadImg),
 	)
 }
 
-// articlePublishTime returns the publish timestamp from the article data.
-func articlePublishTime(data *wxmp.ArticleCgiDataNew) *int64 {
+// article_publish_time returns the publish timestamp from the article data.
+func article_publish_time(data *wxmp.ArticleCgiDataNew) *int64 {
 	if data.OriCreateTime > 0 {
 		t := int64(data.OriCreateTime) * 1000
 		return &t
@@ -95,40 +95,40 @@ func ToContent(data *wxmp.ArticleCgiDataNew) (*model.Content, any, error) {
 	if data == nil {
 		return nil, nil, errors.New("article data is nil")
 	}
-	externalID := ArticleExternalID(data)
-	if externalID == "" {
+	external_id := ArticleExternalID(data)
+	if external_id == "" {
 		return nil, nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	now := util.NowMillis()
-	contentType := "article"
-	if isAlbum(data) {
-		contentType = "album"
+	content_type := "article"
+	if is_album(data) {
+		content_type = "album"
 	}
 	c := &model.Content{
-		Id:          BuildContentID(externalID),
+		Id:          BuildContentID(external_id),
 		PlatformId:  PlatformID,
-		Type:        contentType,
-		ExternalId:  externalID,
+		Type:        content_type,
+		ExternalId:  external_id,
 		ExternalId2: strconv.Itoa(data.Mid),
 		Title:       strings.TrimSpace(data.Title),
 		Description: strings.TrimSpace(data.Desc),
 		URL:         strings.TrimSpace(data.Link),
-		SourceURL:   buildSourceURL(data),
-		CoverURL:    articleCoverURL(data),
-		PublishTime: articlePublishTime(data),
+		SourceURL:   build_source_url(data),
+		CoverURL:    article_cover_url(data),
+		PublishTime: article_publish_time(data),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
 
-	if isAlbum(data) {
-		album, images := buildContentAlbum(data, c.Id)
+	if is_album(data) {
+		album, images := build_content_album(data, c.Id)
 		return c, &ContentAlbumExt{Album: album, Images: images}, nil
 	}
 
-	return c, buildContentArticle(data, c.Id), nil
+	return c, build_content_article(data, c.Id), nil
 }
 
 // ToAccount converts an ArticleCgiData publisher into a model.Account.
@@ -136,20 +136,20 @@ func ToAccount(data *wxmp.ArticleCgiDataNew) (*model.Account, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
-	externalID := data.UserName
-	if externalID == "" {
+	external_id := data.UserName
+	if external_id == "" {
 		return nil, errors.New("missing bizuin in article data")
 	}
 
 	now := util.NowMillis()
 	return &model.Account{
-		Id:         BuildAccountID(externalID),
+		Id:         BuildAccountID(external_id),
 		PlatformId: PlatformID,
 		ExternalId: data.UserName,
 		Alias:      strings.TrimSpace(data.Alias),
 		Nickname:   strings.TrimSpace(data.NickName),
 		Signature:  strings.TrimSpace(data.Signature),
-		AvatarURL:  articleAvatarURL(data),
+		AvatarURL:  article_avatar_url(data),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -162,26 +162,26 @@ func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
-	externalID := ArticleExternalID(data)
-	if externalID == "" {
+	external_id := ArticleExternalID(data)
+	if external_id == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	now := util.NowMillis()
-	contentType := "article"
-	if isAlbum(data) {
-		contentType = "album"
+	content_type := "article"
+	if is_album(data) {
+		content_type = "album"
 	}
 
 	return &model.BrowseHistory{
 		PlatformId:   PlatformID,
 		VisitedTimes: 1,
-		Type:         contentType,
-		ExternalId:   externalID,
+		Type:         content_type,
+		ExternalId:   external_id,
 		Title:        strings.TrimSpace(data.Title),
 		URL:          strings.TrimSpace(data.Link),
-		SourceURL:    buildSourceURL(data),
-		CoverURL:     articleCoverURL(data),
+		SourceURL:    build_source_url(data),
+		CoverURL:     article_cover_url(data),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -189,7 +189,7 @@ func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error
 	}, nil
 }
 
-func isAlbum(data *wxmp.ArticleCgiDataNew) bool {
+func is_album(data *wxmp.ArticleCgiDataNew) bool {
 	if data == nil {
 		return false
 	}
@@ -224,19 +224,19 @@ func ArticleToContentArticle(data *wxmp.ArticleCgiDataNew) (*model.ContentArticl
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
-	externalID := ArticleExternalID(data)
-	if externalID == "" {
+	external_id := ArticleExternalID(data)
+	if external_id == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
-	return buildContentArticle(data, BuildContentID(externalID)), nil
+	return build_content_article(data, BuildContentID(external_id)), nil
 }
 
-func buildContentArticle(data *wxmp.ArticleCgiDataNew, id string) *model.ContentArticle {
+func build_content_article(data *wxmp.ArticleCgiDataNew, id string) *model.ContentArticle {
 	article := &model.ContentArticle{
 		Id:        id,
 		Type:      model.ContentArticleTypeHTML,
-		WordCount: articleWordCount(data.ContentNoencode),
+		WordCount: article_word_count(data.ContentNoencode),
 		HTML:      data.ContentNoencode,
 	}
 	if data.CopyrightInfo.CopyrightStat > 0 {
@@ -252,54 +252,54 @@ type ContentAlbumExt struct {
 	Images []*model.ContentImage
 }
 
-func buildContentAlbum(data *wxmp.ArticleCgiDataNew, contentID string) (*model.ContentAlbum, []*model.ContentImage) {
-	albumImages := make([]*model.ContentImage, 0, len(data.PicturePageInfoList))
+func build_content_album(data *wxmp.ArticleCgiDataNew, content_id string) (*model.ContentAlbum, []*model.ContentImage) {
+	album_images := make([]*model.ContentImage, 0, len(data.PicturePageInfoList))
 	for i, picture := range data.PicturePageInfoList {
-		imageURL := normalizeImageURL(picture.CdnUrl)
-		livePhoto := buildContentImageLivePhoto(picture.LivePhoto)
-		if imageURL == "" && livePhoto == nil {
+		image_url := normalize_image_url(picture.CdnUrl)
+		live_photo := build_content_image_live_photo(picture.LivePhoto)
+		if image_url == "" && live_photo == nil {
 			continue
 		}
-		imageType := model.ContentImageTypeStill
-		if livePhoto != nil {
-			imageType = model.ContentImageTypeLivePhoto
+		image_type := model.ContentImageTypeStill
+		if live_photo != nil {
+			image_type = model.ContentImageTypeLivePhoto
 		}
-		albumImages = append(albumImages, &model.ContentImage{
-			AlbumId:   contentID,
+		album_images = append(album_images, &model.ContentImage{
+			AlbumId:   content_id,
 			SortOrder: i,
-			URL:       imageURL,
+			URL:       image_url,
 			Width:     picture.Width,
 			Height:    picture.Height,
-			ImageType: imageType,
-			LivePhoto: livePhoto,
+			ImageType: image_type,
+			LivePhoto: live_photo,
 		})
 	}
 
 	album := &model.ContentAlbum{
-		Id:          contentID,
-		ImageCount:  len(albumImages),
+		Id:          content_id,
+		ImageCount:  len(album_images),
 		Format:      strings.TrimSpace(data.ImgFormat),
 		Description: strings.TrimSpace(data.Desc),
-		Images:      contentImageValues(albumImages, contentID),
+		Images:      content_image_values(album_images, content_id),
 	}
-	if len(albumImages) > 0 {
-		album.CoverWidth = albumImages[0].Width
-		album.CoverHeight = albumImages[0].Height
+	if len(album_images) > 0 {
+		album.CoverWidth = album_images[0].Width
+		album.CoverHeight = album_images[0].Height
 	}
-	return album, albumImages
+	return album, album_images
 }
 
-func buildContentImageLivePhoto(input wxmp.PictureLivePhoto) *model.ContentImageLivePhoto {
+func build_content_image_live_photo(input wxmp.PictureLivePhoto) *model.ContentImageLivePhoto {
 	formats := make([]model.ContentImageLivePhotoFormat, 0, len(input.FormatInfo))
 	selected := -1
 	for _, source := range input.FormatInfo {
-		videoURL := normalizeImageURL(source.URL)
-		if videoURL == "" {
+		video_url := normalize_image_url(source.URL)
+		if video_url == "" {
 			continue
 		}
 		format := model.ContentImageLivePhotoFormat{
 			FormatId:   source.FormatID,
-			URL:        videoURL,
+			URL:        video_url,
 			Size:       int64(source.FileSize),
 			DurationMs: source.Duration,
 			Width:      source.Width,
@@ -307,7 +307,7 @@ func buildContentImageLivePhoto(input wxmp.PictureLivePhoto) *model.ContentImage
 		}
 		formats = append(formats, format)
 		candidate := len(formats) - 1
-		if selected < 0 || betterLivePhotoFormat(formats[candidate], formats[selected]) {
+		if selected < 0 || better_live_photo_format(formats[candidate], formats[selected]) {
 			selected = candidate
 		}
 	}
@@ -334,24 +334,24 @@ func buildContentImageLivePhoto(input wxmp.PictureLivePhoto) *model.ContentImage
 	}
 }
 
-func betterLivePhotoFormat(candidate, current model.ContentImageLivePhotoFormat) bool {
+func better_live_photo_format(candidate, current model.ContentImageLivePhotoFormat) bool {
 	if candidate.FormatId == 0 && current.FormatId != 0 {
 		return true
 	}
 	if current.FormatId == 0 && candidate.FormatId != 0 {
 		return false
 	}
-	candidatePixels := int64(candidate.Width) * int64(candidate.Height)
-	currentPixels := int64(current.Width) * int64(current.Height)
-	if candidatePixels != currentPixels {
-		return candidatePixels > currentPixels
+	candidate_pixels := int64(candidate.Width) * int64(candidate.Height)
+	current_pixels := int64(current.Width) * int64(current.Height)
+	if candidate_pixels != current_pixels {
+		return candidate_pixels > current_pixels
 	}
 	return candidate.Size > current.Size
 }
 
-func articleWordCount(contentHTML string) int {
-	text := contentHTML
-	if doc, err := goquery.NewDocumentFromReader(strings.NewReader(contentHTML)); err == nil {
+func article_word_count(content_html string) int {
+	text := content_html
+	if doc, err := goquery.NewDocumentFromReader(strings.NewReader(content_html)); err == nil {
 		text = doc.Text()
 	}
 
@@ -369,21 +369,21 @@ func ArticleToContentAccount(data *wxmp.ArticleCgiDataNew) (*model.ContentAccoun
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
-	externalID := ArticleExternalID(data)
-	if externalID == "" {
+	external_id := ArticleExternalID(data)
+	if external_id == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
 
 	return &model.ContentAccount{
-		ContentId: BuildContentID(externalID),
+		ContentId: BuildContentID(external_id),
 		AccountId: BuildAccountID(strings.TrimSpace(data.Bizuin)),
 		Role:      "publisher",
 		CreatedAt: util.NowMillis(),
 	}, nil
 }
 
-// firstNonEmptyStr returns the first non-empty string from the given values.
-func firstNonEmptyStr(values ...string) string {
+// first_non_empty_str returns the first non-empty string from the given values.
+func first_non_empty_str(values ...string) string {
 	for _, v := range values {
 		if v != "" {
 			return v
@@ -392,14 +392,14 @@ func firstNonEmptyStr(values ...string) string {
 	return ""
 }
 
-func (a *OfficialAccountAdapter) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
-	if err := json.Unmarshal(configRaw, &config); err != nil {
+	if err := json.Unmarshal(config_raw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
 	var data wxmp.ArticleCgiDataNew
-	if err := json.Unmarshal(contentJSON, &data); err != nil {
+	if err := json.Unmarshal(content_json, &data); err != nil {
 		return nil, fmt.Errorf("解析文章数据失败: %w", err)
 	}
 
@@ -412,8 +412,8 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(contentJSON json.RawMessage, 
 		return nil, err
 	}
 
-	externalID := ArticleExternalID(&data)
-	if externalID == "" {
+	external_id := ArticleExternalID(&data)
+	if external_id == "" {
 		return nil, fmt.Errorf("无法生成文章唯一标识")
 	}
 
@@ -422,59 +422,57 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(contentJSON json.RawMessage, 
 		title = strings.TrimSpace(data.Title)
 	}
 
-	configJSON, _ := json.Marshal(buildConfigJSON(config))
-	bizType := contentBizType(&data)
-	metadataJSON, _ := json.Marshal(map[string]any{
+	config_json, _ := json.Marshal(build_config_json(config))
+	biz_type := content_biz_type(&data)
+	metadata_json, _ := json.Marshal(map[string]any{
 		"platform":    PlatformID,
-		"external_id": externalID,
+		"external_id": external_id,
 		"author":      strings.TrimSpace(data.NickName),
-		"created_at":  articlePublishTimeVal(&data),
-		"biz_type":    bizType,
+		"created_at":  article_publish_time_val(&data),
+		"biz_type":    biz_type,
 	})
 
-	extraJSON := buildExtraJSON(externalID, title, strings.TrimSpace(data.NickName), articlePublishTimeVal(&data))
-	contentID := content.Id
+	extra_json := build_extra_json(external_id, title, strings.TrimSpace(data.NickName), article_publish_time_val(&data))
+	content_id := content.Id
 
-	var imageResources []*adapter.ResourceInfo
-	var albumImages []*model.ContentImage
-	if albumExt, ok := ext.(*ContentAlbumExt); ok {
-		imageResources = parseAlbumImages(albumExt.Images, contentID, externalID, extraJSON)
-		albumImages = albumExt.Images
-		albumExt.Album.Images = contentImageValues(albumExt.Images, contentID)
-		ext = albumExt.Album
-	} else if bizType == 2 {
+	var image_resources []*adapter.ResourceInfo
+	if album_ext, ok := ext.(*ContentAlbumExt); ok {
+		image_resources = parse_album_images(album_ext.Images, content_id, external_id, extra_json)
+		album_ext.Album.Images = content_image_values(album_ext.Images, content_id)
+		ext = album_ext.Album
+	} else if biz_type == 2 {
 		return nil, fmt.Errorf("图集内容缺少图集详情")
 	} else {
-		imageResources = parseContentImages(data.ContentNoencode, contentID, externalID, extraJSON)
+		image_resources = parse_content_images(data.ContentNoencode, content_id, external_id, extra_json)
 	}
 
-	coverURL := strings.TrimSpace(data.CdnURL)
-	sourceURL := strings.TrimSpace(data.SourceURL)
-	if sourceURL == "" {
-		sourceURL = strings.TrimSpace(data.Link)
+	cover_url := strings.TrimSpace(data.CdnURL)
+	source_url := strings.TrimSpace(data.SourceURL)
+	if source_url == "" {
+		source_url = strings.TrimSpace(data.Link)
 	}
 
-	htmlName := title
-	htmlResource := model.DownloadResource{
-		ContentId:  &contentID,
-		Name:       htmlName,
+	html_name := title
+	html_resource := model.DownloadResource{
+		ContentId:  &content_id,
+		Name:       html_name,
 		Kind:       "html",
-		UniqueID:   externalID + "_html",
+		UniqueID:   external_id + "_html",
 		MergeOrder: 0,
-		Extra:      extraJSON,
+		Extra:      extra_json,
 	}
-	htmlEndpoint := model.DownloadEndpoint{
+	html_endpoint := model.DownloadEndpoint{
 		Protocol: "inline",
 		URL:      data.ContentNoencode,
 		Enabled:  1,
 	}
 
-	resources := make([]*adapter.ResourceInfo, 0, len(imageResources)+1)
+	resources := make([]*adapter.ResourceInfo, 0, len(image_resources)+1)
 	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: htmlResource,
-		Endpoints:        []model.DownloadEndpoint{htmlEndpoint},
+		Resource:  html_resource,
+		Endpoints: []model.DownloadEndpoint{html_endpoint},
 	})
-	for _, r := range imageResources {
+	for _, r := range image_resources {
 		resources = append(resources, r)
 	}
 
@@ -482,91 +480,90 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(contentJSON json.RawMessage, 
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     buildDownloadTaskUniqueID(externalID, configString(config, "suffix")),
+			UniqueID:     build_download_task_unique_id(external_id, config_string(config, "suffix")),
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
-			SourceURL:    sourceURL,
-			CoverURL:     coverURL,
-			ConfigJSON:   string(configJSON),
-			MetadataJSON: string(metadataJSON),
+			SourceURL:    source_url,
+			CoverURL:     cover_url,
+			ConfigJSON:   string(config_json),
+			MetadataJSON: string(metadata_json),
 		},
 		Resources:     resources,
 		ContentDetail: ext,
-		AlbumImages:   albumImages,
 		Account:       account,
 		Content:       content,
 	}, nil
 }
 
-func buildDownloadTaskUniqueID(externalID, suffix string) string {
+func build_download_task_unique_id(external_id, suffix string) string {
 	suffix = strings.TrimSpace(suffix)
 	suffix = strings.TrimPrefix(suffix, ".")
 	if suffix == "" {
-		return externalID + "_html"
+		return external_id + "_html"
 	}
-	return externalID + "_" + suffix
+	return external_id + "_" + suffix
 }
 
-// contentBizType normalizes WeChat's picture-message markers for downstream processing.
-func contentBizType(data *wxmp.ArticleCgiDataNew) int {
-	if isAlbum(data) {
+// content_biz_type normalizes WeChat's picture-message markers for downstream processing.
+func content_biz_type(data *wxmp.ArticleCgiDataNew) int {
+	if is_album(data) {
 		return 2
 	}
 	return 1
 }
 
-// parseContentImages parses ContentNoencode HTML and creates a DownloadResource for each inline image.
-func parseContentImages(contentHTML, contentID, externalID, extraJSON string) []*adapter.ResourceInfo {
-	if contentHTML == "" {
+// parse_content_images parses ContentNoencode HTML and creates a DownloadResource for each inline image.
+func parse_content_images(content_html, content_id, external_id, extra_json string) []*adapter.ResourceInfo {
+	if content_html == "" {
 		return nil
 	}
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(contentHTML))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content_html))
 	if err != nil {
 		return nil
 	}
 
 	var resources []*adapter.ResourceInfo
-	mergeBase := 100
+	merge_base := 100
 
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
-		imgURL := s.AttrOr("data-src", "")
-		if imgURL == "" {
-			imgURL = s.AttrOr("src", "")
+		img_url := s.AttrOr("data-src", "")
+		if img_url == "" {
+			img_url = s.AttrOr("src", "")
 		}
-		imgURL = normalizeImageURL(imgURL)
-		if imgURL == "" {
+		img_url = normalize_image_url(img_url)
+		if img_url == "" {
 			return
 		}
 
-		hash := md5.Sum([]byte(imgURL))
+		hash := md5.Sum([]byte(img_url))
 		filename := hex.EncodeToString(hash[:])
 
 		res := model.DownloadResource{
-			ContentId:  &contentID,
+			ContentId:  &content_id,
 			Name:       filename,
 			Kind:       "image",
-			UniqueID:   fmt.Sprintf("%s_img_%d", externalID, i),
-			MergeOrder: mergeBase + i,
-			Extra:      extraJSON,
+			UniqueID:   fmt.Sprintf("%s_img_%d", external_id, i),
+			MergeOrder: merge_base + i,
+			Extra:      extra_json,
 		}
 		ep := model.DownloadEndpoint{
 			Protocol: "https",
-			URL:      imgURL,
+			URL:      img_url,
 			Enabled:  1,
-			Headers:  wechatHeaders,
+			Headers:  wechat_headers,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: res,
-			Endpoints:        []model.DownloadEndpoint{ep},
+			Resource:  res,
+			Endpoints: []model.DownloadEndpoint{ep},
 		})
 	})
 
 	return resources
 }
 
-// parseAlbumImages creates a DownloadResource for each image in the album.
-func contentImageValues(images []*model.ContentImage, albumID string) []model.ContentImage {
+// content_image_values copies album images into model values.
+func content_image_values(images []*model.ContentImage, album_id string) []model.ContentImage {
 	if len(images) == 0 {
 		return nil
 	}
@@ -577,105 +574,105 @@ func contentImageValues(images []*model.ContentImage, albumID string) []model.Co
 		}
 		value := *image
 		value.Id = 0
-		value.AlbumId = albumID
+		value.AlbumId = album_id
 		value.SortOrder = i
 		if image.LivePhoto != nil {
-			livePhoto := *image.LivePhoto
-			livePhoto.Formats = append([]model.ContentImageLivePhotoFormat(nil), image.LivePhoto.Formats...)
-			value.LivePhoto = &livePhoto
+			live_photo := *image.LivePhoto
+			live_photo.Formats = append([]model.ContentImageLivePhotoFormat(nil), image.LivePhoto.Formats...)
+			value.LivePhoto = &live_photo
 		}
 		values = append(values, value)
 	}
 	return values
 }
 
-func parseAlbumImages(images []*model.ContentImage, contentID, externalID, extraJSON string) []*adapter.ResourceInfo {
+func parse_album_images(images []*model.ContentImage, content_id, external_id, extra_json string) []*adapter.ResourceInfo {
 	if len(images) == 0 {
 		return nil
 	}
 
 	resources := make([]*adapter.ResourceInfo, 0, len(images)*2)
-	mergeOrder := 100
+	merge_order := 100
 
 	for i, image := range images {
 		if image == nil {
 			continue
 		}
-		imgURL := normalizeImageURL(image.URL)
+		img_url := normalize_image_url(image.URL)
 		filename := ""
-		if imgURL != "" {
-			hash := md5.Sum([]byte(imgURL))
+		if img_url != "" {
+			hash := md5.Sum([]byte(img_url))
 			filename = hex.EncodeToString(hash[:])
 			res := model.DownloadResource{
-				ContentId:  &contentID,
+				ContentId:  &content_id,
 				Name:       filename,
 				Kind:       "image",
-				UniqueID:   fmt.Sprintf("%s_album_%d", externalID, i),
-				MergeOrder: mergeOrder,
-				Extra:      extraJSON,
+				UniqueID:   fmt.Sprintf("%s_album_%d", external_id, i),
+				MergeOrder: merge_order,
+				Extra:      extra_json,
 			}
 			ep := model.DownloadEndpoint{
 				Protocol: "https",
-				URL:      imgURL,
+				URL:      img_url,
 				Enabled:  1,
-				Headers:  wechatHeaders,
+				Headers:  wechat_headers,
 			}
 			resources = append(resources, &adapter.ResourceInfo{
-				DownloadResource: res,
-				Endpoints:        []model.DownloadEndpoint{ep},
+				Resource:  res,
+				Endpoints: []model.DownloadEndpoint{ep},
 			})
-			mergeOrder++
+			merge_order++
 		}
 
 		if image.LivePhoto == nil {
 			continue
 		}
-		videoURL := normalizeImageURL(image.LivePhoto.URL)
-		if videoURL == "" {
+		video_url := normalize_image_url(image.LivePhoto.URL)
+		if video_url == "" {
 			continue
 		}
 		if filename == "" {
-			hash := md5.Sum([]byte(videoURL))
+			hash := md5.Sum([]byte(video_url))
 			filename = hex.EncodeToString(hash[:])
 		}
-		videoResource := model.DownloadResource{
-			ContentId:  &contentID,
+		video_resource := model.DownloadResource{
+			ContentId:  &content_id,
 			Name:       filename,
 			Kind:       "video/mp4",
-			UniqueID:   fmt.Sprintf("%s_album_%d_live", externalID, i),
+			UniqueID:   fmt.Sprintf("%s_album_%d_live", external_id, i),
 			Size:       image.LivePhoto.Size,
-			Duration:   durationMillisecondsToSeconds(image.LivePhoto.DurationMs),
-			MergeOrder: mergeOrder,
-			Extra:      extraJSON,
+			Duration:   duration_milliseconds_to_seconds(image.LivePhoto.DurationMs),
+			MergeOrder: merge_order,
+			Extra:      extra_json,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: videoResource,
+			Resource: video_resource,
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: "https",
-				URL:      videoURL,
+				URL:      video_url,
 				Enabled:  1,
-				Headers:  wechatHeaders,
+				Headers:  wechat_headers,
 			}},
 		})
-		mergeOrder++
+		merge_order++
 	}
 
 	return resources
 }
 
-func durationMillisecondsToSeconds(durationMs int64) int64 {
-	if durationMs <= 0 {
+func duration_milliseconds_to_seconds(duration_ms int64) int64 {
+	if duration_ms <= 0 {
 		return 0
 	}
-	seconds := durationMs / 1000
+	seconds := duration_ms / 1000
 	if seconds == 0 {
 		return 1
 	}
 	return seconds
 }
 
-// normalizeImageURL cleans image URLs: handles HTML entities, protocol prefix, enforces HTTPS.
-func normalizeImageURL(raw string) string {
+// normalize_image_url cleans image URLs: handles HTML entities, protocol prefix, enforces HTTPS.
+func normalize_image_url(raw string) string {
 	u := strings.TrimSpace(raw)
 	if u == "" {
 		return ""
@@ -692,9 +689,9 @@ func normalizeImageURL(raw string) string {
 	return u
 }
 
-// articlePublishTimeVal returns the publish timestamp as int64, or 0 if unavailable.
-func articlePublishTimeVal(data *wxmp.ArticleCgiDataNew) int64 {
-	if pt := articlePublishTime(data); pt != nil {
+// article_publish_time_val returns the publish timestamp as int64, or 0 if unavailable.
+func article_publish_time_val(data *wxmp.ArticleCgiDataNew) int64 {
+	if pt := article_publish_time(data); pt != nil {
 		return *pt
 	}
 	if data.CreateTime != "" {
@@ -705,19 +702,19 @@ func articlePublishTimeVal(data *wxmp.ArticleCgiDataNew) int64 {
 	return 0
 }
 
-// buildExtraJSON builds the resource.Extra JSON string.
-func buildExtraJSON(id, title, author string, createdAt int64) string {
+// build_extra_json builds the resource.Extra JSON string.
+func build_extra_json(id, title, author string, created_at int64) string {
 	data, _ := json.Marshal(map[string]string{
 		"id":         id,
 		"title":      title,
 		"author":     author,
-		"created_at": strconv.FormatInt(createdAt, 10),
+		"created_at": strconv.FormatInt(created_at, 10),
 	})
 	return string(data)
 }
 
-// buildConfigJSON returns a map containing only the non-empty config fields.
-func buildConfigJSON(config map[string]any) map[string]any {
+// build_config_json returns a map containing only the non-empty config fields.
+func build_config_json(config map[string]any) map[string]any {
 	m := make(map[string]any, len(config))
 	for key, value := range config {
 		m[key] = value
@@ -725,7 +722,7 @@ func buildConfigJSON(config map[string]any) map[string]any {
 	return m
 }
 
-func configString(config map[string]any, key string) string {
+func config_string(config map[string]any, key string) string {
 	value, _ := config[key].(string)
 	return value
 }

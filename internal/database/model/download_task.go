@@ -1,5 +1,11 @@
 package model
 
+import (
+	"errors"
+
+	"gorm.io/gorm"
+)
+
 // TaskStatus enum for DownloadTask
 const (
 	TaskStatusWaiting     = 0
@@ -49,11 +55,20 @@ type DownloadTask struct {
 
 func (DownloadTask) TableName() string { return "download_task" }
 
-// DownloadResource represents a resource within a task
+func (task *DownloadTask) BeforeCreate(_ *gorm.DB) error {
+	if task.CreatedAt == 0 {
+		return errors.New("download_task.created_at must be explicitly assigned")
+	}
+	return nil
+}
+
+// DownloadResource is an independently persisted downloadable resource.
+// TaskId is optional so resources may exist without a DownloadTask container.
 type DownloadResource struct {
 	Id        int     `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskId    int     `gorm:"not null;index:idx_resource_task" json:"task_id"`
+	TaskId    *int    `gorm:"index:idx_resource_task" json:"task_id,omitempty"`
 	ContentId *string `gorm:"column:content_id" json:"content_id,omitempty"`
+	SavePath  string  `gorm:"column:save_path;not null;default:''" json:"save_path"`
 	Name      string  `json:"name"`
 	Kind      string  `gorm:"not null;default:file" json:"kind"`
 	UniqueID  string  `gorm:"column:unique_id;index:idx_resource_unique_id" json:"unique_id"`

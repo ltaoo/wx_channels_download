@@ -28,7 +28,7 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if r.FilePath == "" {
-			r.FilePath = d.abs_file_path(job.SavePath, r.UniqueID)
+			r.FilePath = d.abs_file_path(resource_save_path(job, r), r.UniqueID)
 		}
 		original_resource_ids = append(original_resource_ids, r.ID)
 		d.logger.Info().
@@ -152,7 +152,6 @@ func (d *HermesEngine) rename_temp_files(save_path string, resources []ResourceJ
 // name that Hermes will use after download finalization.
 type FinalResourceNameInput struct {
 	TaskID           int
-	TaskSavePath     string
 	TaskConfig       map[string]any
 	FilenameTemplate string
 	ResourceID       int
@@ -170,8 +169,8 @@ type FinalResourceNameResult struct {
 	Name              string
 	BaseName          string
 	Extension         string
+	Directories       []string
 	HookMeta          ResourceMeta
-	HookSystemName    string
 	HookName          string
 	HookCalled        bool
 	HookReturnedEmpty bool
@@ -214,29 +213,28 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 	if input.Hooks != nil && input.Hooks.HasFilenameHook() {
 		hook_meta := build_resource_meta(input.ResourceExtra)
 		result.HookMeta = hook_meta
-		result.HookSystemName = base_name
 		result.HookCalled = true
 		params := &FilenameParams{
 			Meta: hook_meta,
 			Task: TaskInfo{
-				Name:     base_name,
-				SavePath: input.TaskSavePath,
-				Config:   input.TaskConfig,
+				Name:   base_name,
+				Config: input.TaskConfig,
 			},
 			Config: input.TaskConfig,
 		}
-		if new_name, err := input.Hooks.InvokeFilenameHook(params, base_name); err != nil {
+		if hook_output, err := input.Hooks.InvokeFilenameHook(params); err != nil {
 			result.HookError = err
-		} else if new_name != "" {
-			result.HookName = new_name
-			base_name = new_name
+		} else if hook_output != nil {
+			result.HookName = hook_output.Name
+			base_name = hook_output.Name
 			result.BaseName = base_name
+			result.Directories = sanitize_output_directories(hook_output.Directories)
 		} else {
 			result.HookReturnedEmpty = true
 		}
 	}
 
-	result.Name = final_output_name(base_name, ext)
+	result.Name = join_output_path(result.Directories, final_output_name(base_name, ext))
 	return result
 }
 
@@ -248,9 +246,11 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 	for i := range job.Resources {
 		r := &job.Resources[i]
+		if strings.TrimSpace(r.SavePath) == "" {
+			r.SavePath = strings.TrimSpace(job.SavePath)
+		}
 		resolved := BuildFinalResourceName(FinalResourceNameInput{
 			TaskID:           job.ID,
-			TaskSavePath:     job.SavePath,
 			TaskConfig:       job.Config,
 			FilenameTemplate: d.cfg.FilenameTemplate,
 			ResourceID:       r.ID,
@@ -271,22 +271,20 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 				Err(resolved.HookError).
 				Int("task_id", job.ID).
 				Int("resource_id", r.ID).
-				Str("system_name", resolved.HookSystemName).
 				Interface("meta", resolved.HookMeta).
 				Msg("filename hook failed")
 		} else if resolved.HookName != "" {
 			d.logger.Info().
 				Int("task_id", job.ID).
 				Int("resource_id", r.ID).
-				Str("system_name", resolved.HookSystemName).
 				Str("hook_name", resolved.HookName).
+				Strs("directories", resolved.Directories).
 				Interface("meta", resolved.HookMeta).
 				Msg("filename hook applied")
 		} else if resolved.HookReturnedEmpty {
 			d.logger.Info().
 				Int("task_id", job.ID).
 				Int("resource_id", r.ID).
-				Str("system_name", resolved.HookSystemName).
 				Interface("meta", resolved.HookMeta).
 				Msg("filename hook returned empty")
 		}
@@ -294,21 +292,23 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 		d.logger.Info().
 			Str("resource_name", r.Name).
 			Str("base_name", resolved.BaseName).
+			Strs("directories", resolved.Directories).
 			Str("extension", resolved.Extension).
 			Msg("run - resolving final resource filename")
 
-		// Sanitize and truncate each path component, then resolve the final name.
-		// The duplicate suffix is inserted before the extension.
+		// Sanitize the filename and explicit directory components, then resolve
+		// duplicates by inserting the numeric suffix before the extension.
 		preferred_name := resolved.Name
 		old_path := strings.TrimSpace(r.FilePath)
+		resource_path := resource_save_path(job, r)
 		if old_path == "" {
-			old_path = d.abs_file_path(job.SavePath, r.UniqueID)
+			old_path = d.abs_file_path(resource_path, r.UniqueID)
 		}
 		final_name := preferred_name
-		if filepath.Clean(old_path) != filepath.Clean(d.abs_file_path(job.SavePath, preferred_name)) {
-			final_name = d.resolve_duplicate_filename(job.SavePath, resolved.BaseName, resolved.Extension)
+		if filepath.Clean(old_path) != filepath.Clean(d.abs_file_path(resource_path, preferred_name)) {
+			final_name = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension)
 		}
-		new_path := d.abs_file_path(job.SavePath, final_name)
+		new_path := d.abs_file_path(resource_path, final_name)
 		if old_path == new_path {
 			r.Name = final_name
 			r.FilePath = new_path
@@ -348,47 +348,60 @@ func final_output_name(base_name, ext string) string {
 	return final_output_name_with_suffix(base_name, ext, "")
 }
 
-// finalOutputNameWithSuffix builds the post-download display filename. Each
-// path component is capped by bytes, and the final component reserves space for
-// the duplicate suffix and extension.
+// finalOutputNameWithSuffix builds the post-download filename. Directory
+// separators in the name are treated as invalid filename characters.
 func final_output_name_with_suffix(base_name, ext, suffix string) string {
-	sanitized := sanitize_path_components(base_name)
+	sanitized := sanitize_output_component(base_name)
 	if sanitized == "" {
-		return strings.Trim(suffix+ext, "/")
+		return strings.TrimSpace(suffix + ext)
 	}
 
 	fp := NewFilenameProcessor("", nil)
-	parts := strings.Split(sanitized, "/")
-	last := len(parts) - 1
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		if i == last {
-			max_base_length := fp.max_name_length - len(suffix) - len(ext)
-			if max_base_length < 0 {
-				max_base_length = 0
-			}
-			parts[i] = fp.truncate_string(part, max_base_length) + suffix + ext
-			continue
-		}
-		parts[i] = fp.truncate_string(part, fp.max_name_length)
+	max_base_length := fp.max_name_length - len(suffix) - len(ext)
+	if max_base_length < 0 {
+		max_base_length = 0
 	}
-	return strings.Trim(strings.Join(parts, "/"), "/")
+	return fp.truncate_string(sanitized, max_base_length) + suffix + ext
 }
 
-// sanitizePathComponents sanitizes each path component (separated by /),
-// replacing characters unsafe for filenames.
-func sanitize_path_components(path string) string {
-	parts := strings.Split(path, "/")
+// sanitizeOutputComponent replaces path separators and characters unsafe for
+// filenames. A component can therefore never create another directory level.
+func sanitize_output_component(value string) string {
 	replacer := strings.NewReplacer(
-		"\\", "_", ":", "_", "*", "_",
+		"/", "_", "\\", "_", ":", "_", "*", "_",
 		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
 	)
-	for i, p := range parts {
-		parts[i] = strings.TrimSpace(replacer.Replace(p))
+	sanitized := strings.TrimSpace(replacer.Replace(value))
+	if sanitized == "." || sanitized == ".." {
+		return strings.Repeat("_", len(sanitized))
 	}
-	return strings.Trim(strings.Join(parts, "/"), "/")
+	return sanitized
+}
+
+// sanitizeOutputDirectories sanitizes each explicit directory while
+// preserving the order supplied by onFilename.
+func sanitize_output_directories(directories []string) []string {
+	if len(directories) == 0 {
+		return nil
+	}
+
+	fp := NewFilenameProcessor("", nil)
+	sanitized := make([]string, 0, len(directories))
+	for _, directory := range directories {
+		component := sanitize_output_component(directory)
+		if component == "" {
+			continue
+		}
+		sanitized = append(sanitized, fp.truncate_string(component, fp.max_name_length))
+	}
+	return sanitized
+}
+
+func join_output_path(directories []string, name string) string {
+	if len(directories) == 0 {
+		return name
+	}
+	return strings.Join(append(append([]string{}, directories...), name), "/")
 }
 
 // persistResourceOutputs writes the Resource values after both postprocessing
@@ -412,7 +425,7 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 			continue
 		}
 		update := ResourceOutputUpdate{
-			TaskID: task_id, ResourceID: r.ID, ResourceName: r.Name,
+			TaskID: task_id, ResourceID: r.ID, SavePath: r.SavePath, ResourceName: r.Name,
 			ResourceKind: r.Kind, ResourceSize: r.Size,
 		}
 		d.logger.Info().

@@ -59,6 +59,7 @@ channels:
   download:
     defaultHighest: false
     frontend: false
+    cover: false
     pauseWhenDownload: false
     forceCheckAllFeeds: false
 

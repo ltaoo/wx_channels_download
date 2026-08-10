@@ -145,8 +145,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			Enabled:  1,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: coverResource,
-			Endpoints:        []model.DownloadEndpoint{coverEndpoint},
+			Resource:  coverResource,
+			Endpoints: []model.DownloadEndpoint{coverEndpoint},
 		})
 	}
 
@@ -164,8 +164,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		Enabled:  1,
 	}
 	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: videoResource,
-		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
+		Resource:  videoResource,
+		Endpoints: []model.DownloadEndpoint{videoEndpoint},
 	})
 
 	return &adapter.DownloadTaskResult{

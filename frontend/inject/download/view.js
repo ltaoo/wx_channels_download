@@ -41,6 +41,8 @@ function NumberView(props = {}) {
     : props.number;
   const characterWidth = props.characterWidth || "0.65em";
   const decimalWidth = props.decimalWidth || "0.3em";
+  const spaceWidth = props.spaceWidth || "0.25em";
+  const separatorWidth = props.separatorWidth || "0.4em";
   const toCharacters = (currentValue) => {
     return Array.from(currentValue == null ? "" : String(currentValue)).map(
       (character, index) => ({
@@ -69,7 +71,14 @@ function NumberView(props = {}) {
         key: "key",
         each: characters_,
         render(item) {
-          const width = item.character === "." ? decimalWidth : characterWidth;
+          let width = characterWidth;
+          if (item.character === ".") {
+            width = decimalWidth;
+          } else if (/\s/.test(item.character)) {
+            width = spaceWidth;
+          } else if (item.character === "/") {
+            width = separatorWidth;
+          }
           return View(
             {
               class: "wx-number-view-character",

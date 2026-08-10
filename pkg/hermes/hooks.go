@@ -23,7 +23,7 @@ type HookManager struct {
 // TaskInfo is the task information exposed to hooks.
 type TaskInfo struct {
 	Name     string         `json:"name"`
-	SavePath string         `json:"save_path"`
+	SavePath string         `json:"save_path,omitempty"`
 	Config   map[string]any `json:"config"`
 }
 
@@ -67,11 +67,17 @@ type FinishContext struct {
 type ResourceMeta map[string]any
 
 // FilenameParams holds the parameters for the onFilename hook.
-// The hook returns a string (filename) or null/empty string (to use the default logic).
 type FilenameParams struct {
 	Meta   ResourceMeta   `json:"meta"`
 	Task   TaskInfo       `json:"task"`
 	Config map[string]any `json:"config"`
+}
+
+// FilenameHookResult is the structured output returned by onFilename.
+// Directories lists relative directory components from outermost to innermost.
+type FilenameHookResult struct {
+	Name        string   `json:"name"`
+	Directories []string `json:"directories"`
 }
 
 // NewHookManager creates an empty HookManager.
@@ -94,20 +100,15 @@ func (hm *HookManager) HasFilenameHook() bool {
 	return hm.has_filename_hook
 }
 
-// Load reads and compiles a JS hook script, detecting whether onTaskCreate / onTaskFinish are defined.
-func (hm *HookManager) Load(script_path string) error {
+// Load compiles a JS hook script, detecting the hook functions it defines.
+func (hm *HookManager) Load(script string) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
-
-	data, err := os.ReadFile(script_path)
-	if err != nil {
-		return fmt.Errorf("failed to read hook script %s: %w", script_path, err)
-	}
 
 	vm := goja.New()
 	register_builtins(vm)
 
-	if _, err := vm.RunString(string(data)); err != nil {
+	if _, err := vm.RunString(script); err != nil {
 		return fmt.Errorf("failed to execute hook script: %w", err)
 	}
 
@@ -117,6 +118,16 @@ func (hm *HookManager) Load(script_path string) error {
 	hm.has_filename_hook = is_defined_function(vm, "onFilename")
 
 	return nil
+}
+
+// LoadFile reads a JS hook script from path and loads its contents.
+func (hm *HookManager) LoadFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read hook script %s: %w", path, err)
+	}
+
+	return hm.Load(string(data))
 }
 
 // InvokeCreateHook calls onTaskCreate with the original task/resources/config and returns the modified result.
@@ -197,46 +208,84 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 	return nil
 }
 
-// InvokeFilenameHook calls onFilename and returns the generated filename.
-// systemName is the default system filename (after template processing); the user can adjust based on it.
-// Returning an empty string means the default logic is used.
-func (hm *HookManager) InvokeFilenameHook(params *FilenameParams, system_name string) (string, error) {
+// InvokeFilenameHook calls onFilename and returns its structured output.
+// Returning null or undefined means the default naming logic is used.
+func (hm *HookManager) InvokeFilenameHook(params *FilenameParams) (*FilenameHookResult, error) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
 	if !hm.has_filename_hook || hm.vm == nil {
-		return "", nil
+		return nil, nil
 	}
 
-	hm.vm.Set("__basePath", params.Task.SavePath)
+	// Filename resolution is intentionally isolated from the task's output
+	// container. Clear any base path left by another hook invocation so filename
+	// hooks cannot accidentally perform filesystem operations against it.
+	hm.vm.Set("__basePath", goja.Undefined())
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onFilename"))
 	if !ok {
-		return "", fmt.Errorf("onFilename is not a function")
+		return nil, fmt.Errorf("onFilename is not a function")
 	}
 
-	system_val := hm.vm.ToValue(system_name)
 	meta_val, err := hm.to_hook_value(params.Meta)
 	if err != nil {
-		return "", fmt.Errorf("failed to prepare onFilename meta value: %w", err)
+		return nil, fmt.Errorf("failed to prepare onFilename meta value: %w", err)
 	}
-	task_val, err := hm.to_hook_value(params.Task)
+	hook_task := params.Task
+	hook_task.SavePath = ""
+	hook_task.Config = filename_hook_config(hook_task.Config)
+	task_val, err := hm.to_hook_value(hook_task)
 	if err != nil {
-		return "", fmt.Errorf("failed to prepare onFilename task value: %w", err)
+		return nil, fmt.Errorf("failed to prepare onFilename task value: %w", err)
 	}
-	config_val := hm.vm.ToValue(params.Config)
+	config_val := hm.vm.ToValue(filename_hook_config(params.Config))
 
-	result, err := fn(goja.Undefined(), system_val, meta_val, task_val, config_val)
+	result, err := fn(goja.Undefined(), meta_val, task_val, config_val)
 	if err != nil {
-		return "", fmt.Errorf("onFilename execution failed: %w", err)
+		return nil, fmt.Errorf("onFilename execution failed: %w", err)
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
-		return "", nil
+		return nil, nil
 	}
 
-	s := strings.TrimSpace(result.String())
-	return s, nil
+	json_bytes, err := json.Marshal(result.Export())
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize onFilename result: %w", err)
+	}
+	var output FilenameHookResult
+	if err := json.Unmarshal(json_bytes, &output); err != nil {
+		return nil, fmt.Errorf("onFilename must return {name, directories}: %w", err)
+	}
+	output.Name = strings.TrimSpace(output.Name)
+	if output.Name == "" {
+		return nil, fmt.Errorf("onFilename result name cannot be empty")
+	}
+	if output.Directories == nil {
+		return nil, fmt.Errorf("onFilename result directories must be an array")
+	}
+	for i := range output.Directories {
+		output.Directories[i] = strings.TrimSpace(output.Directories[i])
+		if output.Directories[i] == "" {
+			return nil, fmt.Errorf("onFilename result directories[%d] cannot be empty", i)
+		}
+	}
+
+	return &output, nil
+}
+
+func filename_hook_config(config map[string]any) map[string]any {
+	if config == nil {
+		return nil
+	}
+	filtered := make(map[string]any, len(config))
+	for key, value := range config {
+		if key != "save_path" {
+			filtered[key] = value
+		}
+	}
+	return filtered
 }
 
 func (hm *HookManager) to_hook_value(v any) (goja.Value, error) {

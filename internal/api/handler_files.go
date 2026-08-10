@@ -86,6 +86,8 @@ func (c *APIClient) handle_open_url(ctx *gin.Context) {
 }
 
 type ShowFileBody struct {
+	ID   int    `json:"id"`
+	Path string `json:"path"`
 	Name string `json:"name"`
 }
 
@@ -95,16 +97,27 @@ func (c *APIClient) handle_show_file(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if body.Name == "" {
-		result.Err(ctx, 400, "Missing the `name`")
+	full_file_path := ""
+	if strings.TrimSpace(body.Path) != "" {
+		relative_path := strings.TrimSpace(body.Path)
+		if filepath.IsAbs(relative_path) {
+			full_file_path = relative_path
+		} else {
+			full_file_path = filepath.Join(c.cfg.DownloadDir, relative_path)
+		}
+	}
+	if full_file_path == "" && strings.TrimSpace(body.Name) != "" {
+		full_file_path = filepath.Join(c.cfg.DownloadDir, body.Name)
+	}
+	if full_file_path == "" {
+		result.Err(ctx, 400, "Missing the resource path")
 		return
 	}
-	fullFilepath := filepath.Join(c.cfg.DownloadDir, body.Name)
-	if _, err := os.Stat(fullFilepath); err != nil {
+	if _, err := os.Stat(full_file_path); err != nil {
 		result.Err(ctx, 404, "文件不存在")
 		return
 	}
-	if err := system.ShowInExplorer(fullFilepath); err != nil {
+	if err := system.ShowInExplorer(full_file_path); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -149,7 +162,7 @@ func (c *APIClient) handle_stream_video(ctx *gin.Context) {
 				var resource model.DownloadResource
 				if c.db.First(&task, id).Error == nil &&
 					c.db.Where("task_id = ?", id).Order("merge_order ASC, id ASC").First(&resource).Error == nil {
-					path = filepath.Join(c.cfg.DownloadDir, resource.Name)
+					path = filepath.Join(resource.SavePath, resource.Name)
 				}
 			}
 		}

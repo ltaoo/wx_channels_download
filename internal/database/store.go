@@ -90,6 +90,7 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 			config = make(map[string]any)
 		}
 	}
+	save_path, _ := config["save_path"].(string)
 	metadata := make(map[string]any)
 	if strings.TrimSpace(task.MetadataJSON) != "" {
 		if err := json.Unmarshal([]byte(task.MetadataJSON), &metadata); err != nil {
@@ -123,8 +124,13 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 			return nil, fmt.Errorf("资源 %d 没有已启用的下载端点", resource.Id)
 		}
 		extra := parseExtra(resource.Extra)
+		resource_save_path := strings.TrimSpace(resource.SavePath)
+		if resource_save_path == "" {
+			resource_save_path = strings.TrimSpace(save_path)
+		}
 		resource_infos = append(resource_infos, hermes.ResourceJob{
 			ID:            resource.Id,
+			SavePath:      resource_save_path,
 			Name:          resource.Name,
 			Kind:          resource.Kind,
 			Type:          resource.Type,
@@ -146,6 +152,7 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 		ID:        task.Id,
 		Name:      task.Name,
 		UniqueID:  task.UniqueID,
+		SavePath:  strings.TrimSpace(save_path),
 		Platform:  task.PlatformId,
 		Resources: resource_infos,
 		Config:    config,
@@ -237,8 +244,8 @@ func (s *DBTaskStore) UpdateResourceSize(task_id int, size int64) error {
 }
 
 func (s *DBTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
-	s.debug("UpdateOutputName called: task_id=%d resource_id=%d task_name=%q resource_name=%q save_path=%q",
-		update.TaskID, update.ResourceID, update.TaskName, update.ResourceName, update.SavePath)
+	s.debug("UpdateOutputName called: task_id=%d resource_id=%d task_name=%q resource_name=%q",
+		update.TaskID, update.ResourceID, update.TaskName, update.ResourceName)
 
 	if update.TaskID <= 0 || update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
 		s.debug("UpdateOutputName invalid parameters, skipping update")
@@ -266,7 +273,7 @@ func (s *DBTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
 			return nil
 		}
 		return tx.Model(&model.DownloadTask{}).Where("id = ?", update.TaskID).
-			Updates(map[string]any{"name": update.TaskName, "save_path": update.SavePath, "updated_at": now}).Error
+			Updates(map[string]any{"name": update.TaskName, "updated_at": now}).Error
 	})
 	if err != nil {
 		s.debug("UpdateOutputName transaction failed: %v", err)
@@ -277,18 +284,21 @@ func (s *DBTaskStore) UpdateOutputName(update hermes.OutputNameUpdate) error {
 }
 
 func (s *DBTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) error {
-	if update.TaskID <= 0 || update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
+	if update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
 		return errors.New("最终资源更新参数无效")
 	}
 	now := time.Now().UnixMilli()
-	result := s.db.Model(&model.DownloadResource{}).
-		Where("id = ? AND task_id = ?", update.ResourceID, update.TaskID).
-		Updates(map[string]any{
-			"name":       update.ResourceName,
-			"kind":       update.ResourceKind,
-			"size":       update.ResourceSize,
-			"updated_at": now,
-		})
+	query := s.db.Model(&model.DownloadResource{}).Where("id = ?", update.ResourceID)
+	if update.TaskID > 0 {
+		query = query.Where("task_id = ?", update.TaskID)
+	}
+	result := query.Updates(map[string]any{
+		"save_path":  update.SavePath,
+		"name":       update.ResourceName,
+		"kind":       update.ResourceKind,
+		"size":       update.ResourceSize,
+		"updated_at": now,
+	})
 	if result.Error != nil {
 		return result.Error
 	}

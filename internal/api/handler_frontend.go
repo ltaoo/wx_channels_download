@@ -57,6 +57,10 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+	max_running := c.cfg.Original.GetInt("download.maxRunning")
+	if max_running == 0 {
+		max_running = 3
+	}
 	frontendVariables := map[string]any{
 		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
 		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
@@ -65,7 +69,7 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		"pagespyServerAPI":           c.cfg.Original.GetString("pagespy.api"),
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
-		"maxRunning":                 c.cfg.Original.GetInt("download.maxRunning"),
+		"maxRunning":                 max_running,
 		"downloadFilenameTemplate":   c.cfg.Original.GetString("download.filenameTemplate"),
 		"defaultHighest":             c.cfg.Original.GetBool("channels.download.defaultHighest") || c.cfg.Original.GetBool("download.defaultHighest"),
 		"downloadPauseWhenDownload":  c.cfg.Original.GetBool("channels.download.pauseWhenDownload"),

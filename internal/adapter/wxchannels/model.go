@@ -404,7 +404,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	configured_spec := config_string(config, "spec")
 	var spec string
 	if configured_spec == "" {
-		if !GetChannelsConfig().DownloadDefaultHighest {
+		if !a.cfg.DownloadDefaultHighest {
 			spec = PickSpec(&obj)
 		}
 	} else if configured_spec != "original" {
@@ -423,49 +423,28 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	base_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "", 0, obj.ObjectDesc.MediaType)
 	decrypt_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, 0, obj.ObjectDesc.MediaType)
 	content_id := content.Id
-	task := func(config_json []byte) *model.DownloadTask {
-		content_id := content.Id
-		task := &model.DownloadTask{
-			ContentId:  &content_id,
-			Name:       title,
-			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
-			PlatformId: PlatformID,
-			Status:     model.TaskStatusWaiting,
-			SourceURL:  content.SourceURL,
-			CoverURL:   content.CoverURL,
-			ConfigJSON: string(config_json),
-		}
-		_ = ext
-		return task
-	}
 
+	is_download_feed_cover := config_string(config, "suffix") == ".jpg"
 	// Cover download: create cover resource only
-	if config_string(config, "suffix") == ".jpg" && cover_url != "" {
+	if is_download_feed_cover && cover_url != "" {
 		cover_config := build_config_json(config, spec, obj.ObjectDesc.MediaType)
 		config_json, _ := json.Marshal(cover_config)
-		cover_resource := model.DownloadResource{
-			ContentId:  &content_id,
-			Name:       title,
-			Kind:       mime_image_jpeg,
-			UniqueID:   content.ExternalId + "_cover",
-			MergeOrder: 0,
-			Extra:      base_extra_json,
-		}
-		cover_endpoint := model.DownloadEndpoint{
-			Protocol: "https",
-			URL:      cover_url,
-			Enabled:  1,
-		}
 		info := &adapter.DownloadTaskResult{
-			Task: task(config_json),
-			Resources: []*adapter.ResourceInfo{{
-				DownloadResource: cover_resource,
-				Endpoints:        []model.DownloadEndpoint{cover_endpoint},
-			}},
-			Account: account,
-			Content: content,
+			Task: &model.DownloadTask{
+				ContentId:  &content_id,
+				Name:       title,
+				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				PlatformId: PlatformID,
+				Status:     model.TaskStatusWaiting,
+				SourceURL:  content.SourceURL,
+				CoverURL:   content.CoverURL,
+				ConfigJSON: string(config_json),
+			},
+			Resources:     []*adapter.ResourceInfo{build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json)},
+			Account:       account,
+			Content:       content,
+			ContentDetail: ext,
 		}
-		set_content_ext(info, ext)
 		a.apply_download_task_name(info, cover_config, base_extra_json)
 		return info, nil
 	}
@@ -480,7 +459,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			return nil, fmt.Errorf("图片类型缺少文件数据")
 		}
 
-		resources := make([]*adapter.ResourceInfo, 0, len(files)+1)
+		resources := make([]*adapter.ResourceInfo, 0, len(files)+2)
 		for i, file := range files {
 			media_url := get_media_url(file)
 			if media_url == "" {
@@ -490,9 +469,9 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			if len(files) > 1 {
 				image_name = fmt.Sprintf("%s_%d", title, i+1)
 			}
-			image_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, i, obj.ObjectDesc.MediaType)
+			image_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, i+1, obj.ObjectDesc.MediaType)
 			resources = append(resources, &adapter.ResourceInfo{
-				DownloadResource: model.DownloadResource{
+				Resource: model.DownloadResource{
 					ContentId: &content_id,
 					Name:      sanitize_filename(image_name),
 					Kind:      mime_image_jpeg,
@@ -512,7 +491,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		bgm := format_bgm(&obj)
 		if bgm != nil {
 			resources = append(resources, &adapter.ResourceInfo{
-				DownloadResource: model.DownloadResource{
+				Resource: model.DownloadResource{
 					ContentId: &content_id,
 					Name:      bgm.name,
 					Kind:      mime_audio_mpeg,
@@ -526,20 +505,29 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				}},
 			})
 		}
+		if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+			resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
+		}
 
 		picture_config := build_config_json(config, spec, wxchannels.MediaTypePicture)
-		if config_string(picture_config, "suffix") == "" {
-			picture_config["suffix"] = ".zip"
-		}
 		config_json, _ := json.Marshal(picture_config)
 
 		info := &adapter.DownloadTaskResult{
-			Task:      task(config_json),
-			Resources: resources,
-			Account:   account,
-			Content:   content,
+			Task: &model.DownloadTask{
+				ContentId:  &content_id,
+				Name:       title,
+				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				PlatformId: PlatformID,
+				Status:     model.TaskStatusWaiting,
+				SourceURL:  content.SourceURL,
+				CoverURL:   content.CoverURL,
+				ConfigJSON: string(config_json),
+			},
+			Resources:     resources,
+			ContentDetail: ext,
+			Account:       account,
+			Content:       content,
 		}
-		set_content_ext(info, ext)
 		a.apply_download_task_name(info, picture_config, base_extra_json)
 		return info, nil
 	}
@@ -578,19 +566,49 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		Enabled:  1,
 	}
 	resources := []*adapter.ResourceInfo{{
-		DownloadResource: video_resource,
-		Endpoints:        []model.DownloadEndpoint{video_endpoint},
+		Resource:  video_resource,
+		Endpoints: []model.DownloadEndpoint{video_endpoint},
 	}}
+	if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+		resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
+	}
 
 	info := &adapter.DownloadTaskResult{
-		Task:      task(config_json),
-		Resources: resources,
-		Account:   account,
-		Content:   content,
+		Task: &model.DownloadTask{
+			ContentId:  &content_id,
+			Name:       title,
+			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+			PlatformId: PlatformID,
+			Status:     model.TaskStatusWaiting,
+			SourceURL:  content.SourceURL,
+			CoverURL:   content.CoverURL,
+			ConfigJSON: string(config_json),
+		},
+		Resources:     resources,
+		ContentDetail: ext,
+		Account:       account,
+		Content:       content,
 	}
-	set_content_ext(info, ext)
 	a.apply_download_task_name(info, video_config, decrypt_extra_json)
 	return info, nil
+}
+
+func build_cover_resource_info(content_id, external_id, title, cover_url, extra_json string) *adapter.ResourceInfo {
+	return &adapter.ResourceInfo{
+		Resource: model.DownloadResource{
+			ContentId:  &content_id,
+			Name:       title,
+			Kind:       mime_image_jpeg,
+			UniqueID:   external_id + "_cover",
+			MergeOrder: 0,
+			Extra:      extra_json,
+		},
+		Endpoints: []model.DownloadEndpoint{{
+			Protocol: "https",
+			URL:      cover_url,
+			Enabled:  1,
+		}},
+	}
 }
 
 // build_live_download_task builds a live-stream download task from a joinLive response.
@@ -703,8 +721,8 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 			MetadataJSON: string(metadata_json),
 		},
 		Resources: []*adapter.ResourceInfo{{
-			DownloadResource: stream_resource,
-			Endpoints:        []model.DownloadEndpoint{stream_endpoint},
+			Resource:  stream_resource,
+			Endpoints: []model.DownloadEndpoint{stream_endpoint},
 		}},
 		ContentDetail: nil,
 		Account:       account,
@@ -1007,15 +1025,11 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 	} else if template != "" || (hooks != nil && hooks.HasFilenameHook()) {
 		extra := resource_extra_map(task_extra_json)
 		if extra == nil && len(info.Resources) > 0 && info.Resources[0] != nil {
-			extra = resource_extra_map(info.Resources[0].DownloadResource.Extra)
+			extra = resource_extra_map(info.Resources[0].Resource.Extra)
 		}
 		task_kind := ""
-		if config_int(config, "type") == wxchannels.MediaTypePicture {
-			task_kind = mime_application_zip
-		}
 		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 			TaskID:           info.Task.Id,
-			TaskSavePath:     config_string(config, "save_path"),
 			TaskConfig:       config,
 			FilenameTemplate: template,
 			ResourceName:     info.Task.Name,
@@ -1033,10 +1047,9 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 }
 
 func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.DownloadTaskResult, config map[string]any, hooks *hermes.HookManager, logger *zerolog.Logger) {
-	resource := info.Resources[0].DownloadResource
+	resource := info.Resources[0].Resource
 	resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 		TaskID:           info.Task.Id,
-		TaskSavePath:     config_string(config, "save_path"),
 		TaskConfig:       config,
 		FilenameTemplate: filename_template_from_config(config),
 		ResourceID:       resource.Id,
@@ -1060,10 +1073,9 @@ func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[
 		if resource_info == nil {
 			continue
 		}
-		resource := &resource_info.DownloadResource
+		resource := &resource_info.Resource
 		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 			TaskID:           info.Task.Id,
-			TaskSavePath:     config_string(config, "save_path"),
 			TaskConfig:       config,
 			FilenameTemplate: template,
 			ResourceID:       resource.Id,
@@ -1087,7 +1099,6 @@ func log_filename_resolution(logger *zerolog.Logger, resolved hermes.FinalResour
 	if logger != nil && resolved.HookError != nil {
 		logger.Warn().
 			Err(resolved.HookError).
-			Str("system_name", resolved.HookSystemName).
 			Interface("meta", resolved.HookMeta).
 			Msg("wxchannels preview filename hook failed")
 	}
@@ -1202,30 +1213,4 @@ func parse_key_from_content(c *model.Content) string {
 func sanitize_filename(name string) string {
 	name_without_ext := strings.TrimSuffix(name, filepath.Ext(name))
 	return name_without_ext
-}
-
-// set_content_ext routes the extension data: *ContentAlbum.Image goes to AlbumImages,
-// []*ContentImage goes to AlbumImages, other non-nil values go to ContentDetail.
-func set_content_ext(dtr *adapter.DownloadTaskResult, ext any) {
-	switch e := ext.(type) {
-	case *model.ContentAlbum:
-		dtr.ContentDetail = e
-		dtr.AlbumImages = content_album_images(e.Images)
-	case []*model.ContentImage:
-		dtr.AlbumImages = e
-	case nil:
-	default:
-		dtr.ContentDetail = e
-	}
-}
-
-func content_album_images(images []model.ContentImage) []*model.ContentImage {
-	if len(images) == 0 {
-		return nil
-	}
-	result := make([]*model.ContentImage, len(images))
-	for i := range images {
-		result[i] = &images[i]
-	}
-	return result
 }

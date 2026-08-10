@@ -11,7 +11,7 @@ import (
 	"wx_channel/pkg/util"
 )
 
-const platformIDZhihu = "zhihu"
+const platform_id_zhihu = "zhihu"
 
 func init() {
 	adapter.Register(&handler{})
@@ -22,31 +22,31 @@ type handler struct{}
 func (h *handler) PlatformID() string { return PlatformID }
 
 // PlatformID is the exportable platform identifier for zhihu.
-const PlatformID = platformIDZhihu
+const PlatformID = platform_id_zhihu
 
-func (h *handler) Fetch(rawURL string) (any, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
+func (h *handler) Fetch(raw_url string) (any, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
 		return nil, fmt.Errorf("知乎URL不能为空")
 	}
 
-	return zhihu.NewClient("").Fetch(rawURL)
+	return zhihu.NewClient("").Fetch(raw_url)
 }
 
 // BuildContentID builds a content identifier from an external ID.
-func BuildContentID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildContentID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
 // BuildAccountID builds an account identifier from an external ID.
-func BuildAccountID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildAccountID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
 // ContentExternalID builds a unique external identifier for zhihu content.
-func ContentExternalID(contentType, token, url string) string {
+func ContentExternalID(content_type, token, url string) string {
 	if token != "" {
-		return "zhihu:" + contentType + ":" + token
+		return "zhihu:" + content_type + ":" + token
 	}
 	return url
 }
@@ -57,25 +57,25 @@ func ToContent(page *zhihu.AnswerPage) (*model.Content, error) {
 		return nil, fmt.Errorf("zhihu answer page is empty")
 	}
 
-	externalID := page.Answer.ID
+	external_id := page.Answer.ID
 	now := util.NowMillis()
 
-	contentURL := page.Source
-	coverURL := zhihu.FirstImageURL(page.Answer.Content, contentURL)
+	content_url := page.Source
+	cover_url := zhihu.FirstImageURL(page.Answer.Content, content_url)
 
 	return &model.Content{
-		Id:           BuildContentID(externalID),
+		Id:           BuildContentID(external_id),
 		PlatformId:   PlatformID,
 		Type:         "answer",
-		ExternalId:   externalID,
+		ExternalId:   external_id,
 		ExternalId2:  page.Question.ID,
 		Title:        page.Question.Title,
 		Description:  page.Answer.Excerpt,
-		URL:          contentURL,
-		SourceURL:    contentURL,
-		CoverURL:     coverURL,
-		PublishTime:  int64Ptr(page.Answer.CreatedTime * 1000),
-		UpdateTime:   int64Ptr(page.Answer.UpdatedTime * 1000),
+		URL:          content_url,
+		SourceURL:    content_url,
+		CoverURL:     cover_url,
+		PublishTime:  int64_ptr(page.Answer.CreatedTime * 1000),
+		UpdateTime:   int64_ptr(page.Answer.UpdatedTime * 1000),
 		LikeCount:    int64(page.Answer.VoteupCount),
 		CommentCount: int64(page.Answer.CommentCount),
 		Timestamps: model.Timestamps{
@@ -91,24 +91,24 @@ func QuestionToContent(page *zhihu.QuestionPage) (*model.Content, error) {
 		return nil, fmt.Errorf("zhihu question page is empty")
 	}
 
-	externalID := page.Question.ID
+	external_id := page.Question.ID
 	now := util.NowMillis()
 
-	contentURL := page.Source
-	coverURL := zhihu.FirstImageURL(page.Question.Excerpt, contentURL)
+	content_url := page.Source
+	cover_url := zhihu.FirstImageURL(page.Question.Excerpt, content_url)
 
 	return &model.Content{
-		Id:           BuildContentID(externalID),
+		Id:           BuildContentID(external_id),
 		PlatformId:   PlatformID,
 		Type:         "question",
-		ExternalId:   externalID,
+		ExternalId:   external_id,
 		Title:        page.Question.Title,
 		Description:  page.Question.Excerpt,
-		URL:          contentURL,
-		SourceURL:    contentURL,
-		CoverURL:     coverURL,
-		PublishTime:  int64Ptr(page.Question.Created * 1000),
-		UpdateTime:   int64Ptr(page.Question.UpdatedTime * 1000),
+		URL:          content_url,
+		SourceURL:    content_url,
+		CoverURL:     cover_url,
+		PublishTime:  int64_ptr(page.Question.Created * 1000),
+		UpdateTime:   int64_ptr(page.Question.UpdatedTime * 1000),
 		LikeCount:    int64(page.Question.VoteupCount),
 		CommentCount: int64(page.Question.CommentCount),
 		Timestamps: model.Timestamps{
@@ -124,24 +124,24 @@ func ArticleToContent(page *zhihu.ArticlePage) (*model.Content, error) {
 		return nil, fmt.Errorf("zhihu article page is empty")
 	}
 
-	externalID := page.Article.ID
+	external_id := page.Article.ID
 	now := util.NowMillis()
 
-	contentURL := page.Source
-	coverURL := firstNonEmptyStr(page.Article.ImageURL, page.Article.ImageURLAlt)
+	content_url := page.Source
+	cover_url := first_non_empty_str(page.Article.ImageURL, page.Article.ImageURLAlt)
 
 	return &model.Content{
-		Id:          BuildContentID(externalID),
+		Id:          BuildContentID(external_id),
 		PlatformId:  PlatformID,
 		Type:        "article",
-		ExternalId:  externalID,
+		ExternalId:  external_id,
 		Title:       page.Article.Title,
 		Description: page.Article.Excerpt,
-		URL:         contentURL,
-		SourceURL:   contentURL,
-		CoverURL:    coverURL,
-		PublishTime: int64Ptr(page.Article.CreatedTime * 1000),
-		UpdateTime:  int64Ptr(page.Article.UpdatedTime * 1000),
+		URL:         content_url,
+		SourceURL:   content_url,
+		CoverURL:    cover_url,
+		PublishTime: int64_ptr(page.Article.CreatedTime * 1000),
+		UpdateTime:  int64_ptr(page.Article.UpdatedTime * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -155,22 +155,22 @@ func ToAccount(user *zhihu.User) (*model.Account, error) {
 		return nil, fmt.Errorf("zhihu user is empty")
 	}
 
-	externalID := zhihu.UserDisplayName(*user)
-	if externalID == "" {
+	external_id := zhihu.UserDisplayName(*user)
+	if external_id == "" {
 		return nil, fmt.Errorf("zhihu user has no identifiable name")
 	}
 
 	now := util.NowMillis()
-	profileURL := zhihu.UserURL(*user)
+	profile_url := zhihu.UserURL(*user)
 
 	return &model.Account{
-		Id:         BuildAccountID(externalID),
+		Id:         BuildAccountID(external_id),
 		PlatformId: PlatformID,
 		ExternalId: user.ID,
 		Nickname:   zhihu.UserDisplayName(*user),
 		Signature:  user.Headline,
 		AvatarURL:  zhihu.UserAvatarURL(*user),
-		ProfileURL: profileURL,
+		ProfileURL: profile_url,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -195,7 +195,7 @@ func AnswerToBrowseHistory(page *zhihu.AnswerPage) (*model.BrowseHistory, error)
 		URL:          page.Source,
 		SourceURL:    page.Source,
 		CoverURL:     zhihu.FirstImageURL(page.Answer.Content, page.Source),
-		PublishTime:  int64Ptr(page.Answer.CreatedTime * 1000),
+		PublishTime:  int64_ptr(page.Answer.CreatedTime * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -220,7 +220,7 @@ func QuestionToBrowseHistory(page *zhihu.QuestionPage) (*model.BrowseHistory, er
 		URL:          page.Source,
 		SourceURL:    page.Source,
 		CoverURL:     zhihu.FirstImageURL(page.Question.Excerpt, page.Source),
-		PublishTime:  int64Ptr(page.Question.Created * 1000),
+		PublishTime:  int64_ptr(page.Question.Created * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -244,8 +244,8 @@ func ArticleToBrowseHistory(page *zhihu.ArticlePage) (*model.BrowseHistory, erro
 		Title:        page.Article.Title,
 		URL:          page.Source,
 		SourceURL:    page.Source,
-		CoverURL:     firstNonEmptyStr(page.Article.ImageURL, page.Article.ImageURLAlt),
-		PublishTime:  int64Ptr(page.Article.CreatedTime * 1000),
+		CoverURL:     first_non_empty_str(page.Article.ImageURL, page.Article.ImageURLAlt),
+		PublishTime:  int64_ptr(page.Article.CreatedTime * 1000),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -262,20 +262,20 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 	}
 
 	target := &feed.Target
-	externalID := strings.TrimSpace(target.ID)
-	if externalID == "" {
+	external_id := strings.TrimSpace(target.ID)
+	if external_id == "" {
 		return nil, fmt.Errorf("知乎推荐内容ID不能为空")
 	}
 
-	contentType := strings.TrimSpace(target.Type)
-	if contentType == "" && target.ArticleType != nil {
-		contentType = strings.TrimSpace(*target.ArticleType)
+	content_type := strings.TrimSpace(target.Type)
+	if content_type == "" && target.ArticleType != nil {
+		content_type = strings.TrimSpace(*target.ArticleType)
 	}
-	if contentType == "" && target.Question != nil {
-		contentType = "answer"
+	if content_type == "" && target.Question != nil {
+		content_type = "answer"
 	}
-	if contentType == "" {
-		contentType = "other"
+	if content_type == "" {
+		content_type = "other"
 	}
 
 	title := ""
@@ -285,52 +285,52 @@ func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.Bro
 	if title == "" && target.Question != nil {
 		title = strings.TrimSpace(target.Question.Title)
 	}
-	title = firstNonEmptyStr(title, target.PreviewText, target.ExcerptNew, target.Excerpt, "知乎内容")
+	title = first_non_empty_str(title, target.PreviewText, target.ExcerptNew, target.Excerpt, "知乎内容")
 
-	contentURL := strings.TrimSpace(target.URL)
-	coverURL := ""
+	content_url := strings.TrimSpace(target.URL)
+	cover_url := ""
 	if target.Thumbnail != nil {
-		coverURL = strings.TrimSpace(*target.Thumbnail)
+		cover_url = strings.TrimSpace(*target.Thumbnail)
 	}
-	if coverURL == "" && target.ImageURL != nil {
-		coverURL = strings.TrimSpace(*target.ImageURL)
+	if cover_url == "" && target.ImageURL != nil {
+		cover_url = strings.TrimSpace(*target.ImageURL)
 	}
-	if coverURL == "" && len(target.Thumbnails) > 0 {
-		coverURL = strings.TrimSpace(target.Thumbnails[0])
+	if cover_url == "" && len(target.Thumbnails) > 0 {
+		cover_url = strings.TrimSpace(target.Thumbnails[0])
 	}
-	if coverURL == "" && target.Linkbox != nil {
-		coverURL = strings.TrimSpace(target.Linkbox.Pic)
+	if cover_url == "" && target.Linkbox != nil {
+		cover_url = strings.TrimSpace(target.Linkbox.Pic)
 	}
-	if coverURL == "" {
-		coverURL = zhihu.FirstImageURL(target.Content, contentURL)
+	if cover_url == "" {
+		cover_url = zhihu.FirstImageURL(target.Content, content_url)
 	}
 
-	publishTimeSeconds := int64(0)
+	publish_time_seconds := int64(0)
 	if target.CreatedTime != nil {
-		publishTimeSeconds = *target.CreatedTime
+		publish_time_seconds = *target.CreatedTime
 	} else if target.Created != nil {
-		publishTimeSeconds = *target.Created
+		publish_time_seconds = *target.Created
 	} else if target.Question != nil {
-		publishTimeSeconds = target.Question.Created
+		publish_time_seconds = target.Question.Created
 	} else {
-		publishTimeSeconds = feed.CreatedTime
+		publish_time_seconds = feed.CreatedTime
 	}
 
-	extraData, _ := json.Marshal(&feed)
+	extra_data, _ := json.Marshal(&feed)
 	now := util.NowMillis()
 
 	return &adapter.BrowseHistoryResult{
 		BrowseHistory: &model.BrowseHistory{
 			PlatformId:   PlatformID,
 			VisitedTimes: 1,
-			Type:         contentType,
-			ExternalId:   externalID,
+			Type:         content_type,
+			ExternalId:   external_id,
 			Title:        title,
-			URL:          contentURL,
-			SourceURL:    contentURL,
-			CoverURL:     coverURL,
-			PublishTime:  int64Ptr(publishTimeSeconds * 1000),
-			ExtraData:    string(extraData),
+			URL:          content_url,
+			SourceURL:    content_url,
+			CoverURL:     cover_url,
+			PublishTime:  int64_ptr(publish_time_seconds * 1000),
+			ExtraData:    string(extra_data),
 			Timestamps: model.Timestamps{
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -348,7 +348,7 @@ func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	}
 
 	author := &feed.Target.Author
-	external_id := firstNonEmptyStr(author.ID, author.URLToken)
+	external_id := first_non_empty_str(author.ID, author.URLToken)
 	if external_id == "" {
 		return nil
 	}
@@ -370,11 +370,11 @@ func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	}
 }
 
-// parseAnswerPageContent attempts to unmarshal the content JSON as a zhihu.AnswerPage.
+// parse_answer_page_content attempts to unmarshal the content JSON as a zhihu.AnswerPage.
 // Returns the parsed page and true if the content appears to be a valid AnswerPage.
-func parseAnswerPageContent(contentJSON json.RawMessage) (*zhihu.AnswerPage, bool) {
+func parse_answer_page_content(content_json json.RawMessage) (*zhihu.AnswerPage, bool) {
 	var page zhihu.AnswerPage
-	if err := json.Unmarshal(contentJSON, &page); err != nil {
+	if err := json.Unmarshal(content_json, &page); err != nil {
 		return nil, false
 	}
 	if page.Source == "" || page.Answer.ID == "" {
@@ -383,16 +383,16 @@ func parseAnswerPageContent(contentJSON json.RawMessage) (*zhihu.AnswerPage, boo
 	return &page, true
 }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
-	if err := json.Unmarshal(configRaw, &config); err != nil {
+	if err := json.Unmarshal(config_raw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
 	// Try AnswerPage format first (from browser injection).
 	// When the content is a pre-built AnswerPage, skip the HTTP fetch.
 	var page *zhihu.AnswerPage
-	if p, ok := parseAnswerPageContent(contentJSON); ok {
+	if p, ok := parse_answer_page_content(content_json); ok {
 		page = p
 	}
 
@@ -400,16 +400,16 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		URL   string `json:"url"`
 		Title string `json:"title"`
 	}
-	_ = json.Unmarshal(contentJSON, &input)
+	_ = json.Unmarshal(content_json, &input)
 
 	client := zhihu.NewClient("")
 
-	var htmlContent string
+	var html_content string
 	if page != nil {
 		// Use the AnswerPage data directly; build HTML from Source.
-		htmlContent, _ = client.BuildHTMLFromURL(page.Source)
-		if htmlContent == "" {
-			htmlContent = "<html><body></body></html>"
+		html_content, _ = client.BuildHTMLFromURL(page.Source)
+		if html_content == "" {
+			html_content = "<html><body></body></html>"
 		}
 	} else {
 		if input.URL == "" {
@@ -419,27 +419,27 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		if err != nil {
 			return nil, fmt.Errorf("获取知乎页面失败: %w", err)
 		}
-		htmlContent = html
+		html_content = html
 		page, _ = client.FetchAnswerPage(input.URL)
 	}
 
 	now := util.NowMillis()
 	title := input.Title
-	contentType := "answer"
-	var externalID string
-	var coverURL string
+	content_type := "answer"
+	var external_id string
+	var cover_url string
 	var content *model.Content
 	var account *model.Account
-	var sourceURL string
+	var source_url string
 
 	if page != nil && page.Answer.ID != "" {
-		externalID = page.Answer.ID
+		external_id = page.Answer.ID
 		if title == "" {
 			title = page.Question.Title
 		}
-		contentType = "answer"
-		coverURL = zhihu.FirstImageURL(page.Answer.Content, page.Source)
-		sourceURL = page.Source
+		content_type = "answer"
+		cover_url = zhihu.FirstImageURL(page.Answer.Content, page.Source)
+		source_url = page.Source
 
 		c, err := ToContent(page)
 		if err == nil {
@@ -451,17 +451,17 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		}
 	} else {
 		// Fall back to parsing the URL
-		if articleURL, ok := zhihu.ParseArticleURL(input.URL); ok {
-			externalID = articleURL.ArticleID
-			contentType = "article"
-			sourceURL = articleURL.Canonical
-		} else if questionURL, ok := zhihu.ParseQuestionURL(input.URL); ok {
-			externalID = questionURL.QuestionID
-			contentType = "question"
-			sourceURL = questionURL.Canonical
+		if article_url, ok := zhihu.ParseArticleURL(input.URL); ok {
+			external_id = article_url.ArticleID
+			content_type = "article"
+			source_url = article_url.Canonical
+		} else if question_url, ok := zhihu.ParseQuestionURL(input.URL); ok {
+			external_id = question_url.QuestionID
+			content_type = "question"
+			source_url = question_url.Canonical
 		} else {
-			externalID = input.URL
-			sourceURL = input.URL
+			external_id = input.URL
+			source_url = input.URL
 		}
 	}
 
@@ -471,14 +471,14 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	if content == nil {
 		content = &model.Content{
-			Id:         BuildContentID(externalID),
+			Id:         BuildContentID(external_id),
 			PlatformId: PlatformID,
-			Type:       contentType,
-			ExternalId: externalID,
+			Type:       content_type,
+			ExternalId: external_id,
 			Title:      title,
-			URL:        sourceURL,
-			SourceURL:  sourceURL,
-			CoverURL:   coverURL,
+			URL:        source_url,
+			SourceURL:  source_url,
+			CoverURL:   cover_url,
 			Timestamps: model.Timestamps{
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -499,53 +499,53 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		}
 	}
 
-	configJSON, _ := json.Marshal(buildConfigJSON(config))
-	metadataJSON, _ := json.Marshal(map[string]any{
+	config_json, _ := json.Marshal(build_config_json(config))
+	metadata_json, _ := json.Marshal(map[string]any{
 		"platform":    PlatformID,
-		"external_id": externalID,
+		"external_id": external_id,
 		"title":       title,
-		"type":        contentType,
+		"type":        content_type,
 	})
 
-	contentID := content.Id
+	content_id := content.Id
 
 	// HTML resource
-	htmlResource := model.DownloadResource{
-		ContentId: &contentID,
+	html_resource := model.DownloadResource{
+		ContentId: &content_id,
 		Name:      title + ".html",
 		Kind:      "html",
-		UniqueID:  externalID + "_html",
+		UniqueID:  external_id + "_html",
 	}
-	htmlEndpoint := model.DownloadEndpoint{
+	html_endpoint := model.DownloadEndpoint{
 		Protocol: "inline",
-		URL:      htmlContent,
+		URL:      html_content,
 		Enabled:  1,
 	}
 
 	resources := []*adapter.ResourceInfo{
 		{
-			DownloadResource: htmlResource,
-			Endpoints:        []model.DownloadEndpoint{htmlEndpoint},
+			Resource:  html_resource,
+			Endpoints: []model.DownloadEndpoint{html_endpoint},
 		},
 	}
 
 	// Cover image resource
-	if coverURL != "" {
-		coverResource := model.DownloadResource{
-			ContentId:  &contentID,
+	if cover_url != "" {
+		cover_resource := model.DownloadResource{
+			ContentId:  &content_id,
 			Name:       title,
 			Kind:       "image",
-			UniqueID:   externalID + "_cover",
+			UniqueID:   external_id + "_cover",
 			MergeOrder: 999,
 		}
-		coverEndpoint := model.DownloadEndpoint{
+		cover_endpoint := model.DownloadEndpoint{
 			Protocol: "https",
-			URL:      coverURL,
+			URL:      cover_url,
 			Enabled:  1,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: coverResource,
-			Endpoints:        []model.DownloadEndpoint{coverEndpoint},
+			Resource:  cover_resource,
+			Endpoints: []model.DownloadEndpoint{cover_endpoint},
 		})
 	}
 
@@ -553,35 +553,35 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     externalID,
+			UniqueID:     external_id,
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
-			SourceURL:    sourceURL,
-			CoverURL:     coverURL,
-			ConfigJSON:   string(configJSON),
-			MetadataJSON: string(metadataJSON),
+			SourceURL:    source_url,
+			CoverURL:     cover_url,
+			ConfigJSON:   string(config_json),
+			MetadataJSON: string(metadata_json),
 		},
 		Resources: resources,
 		ContentDetail: &model.ContentArticle{
 			Id:   content.Id,
 			Type: model.ContentArticleTypeHTML,
-			HTML: htmlContent,
+			HTML: html_content,
 		},
 		Account: account,
 		Content: content,
 	}, nil
 }
 
-// int64Ptr returns a pointer to an int64 value, or nil if the value is zero.
-func int64Ptr(v int64) *int64 {
+// int64_ptr returns a pointer to an int64 value, or nil if the value is zero.
+func int64_ptr(v int64) *int64 {
 	if v <= 0 {
 		return nil
 	}
 	return &v
 }
 
-// firstNonEmptyStr returns the first non-empty string from the given values.
-func firstNonEmptyStr(values ...string) string {
+// first_non_empty_str returns the first non-empty string from the given values.
+func first_non_empty_str(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v)
@@ -590,8 +590,8 @@ func firstNonEmptyStr(values ...string) string {
 	return ""
 }
 
-// buildConfigJSON returns a map containing only the non-empty config fields.
-func buildConfigJSON(config map[string]any) map[string]any {
+// build_config_json returns a map containing only the non-empty config fields.
+func build_config_json(config map[string]any) map[string]any {
 	m := make(map[string]any, len(config))
 	for key, value := range config {
 		m[key] = value
@@ -609,7 +609,7 @@ func BuildBrowseRecordFromObject(page *zhihu.AnswerPage) *model.BrowseHistory {
 
 	now := util.NowMillis()
 
-	extraData, _ := json.Marshal(map[string]any{
+	extra_data, _ := json.Marshal(map[string]any{
 		"question_id":   page.Question.ID,
 		"answer_id":     page.Answer.ID,
 		"voteup_count":  page.Answer.VoteupCount,
@@ -619,7 +619,7 @@ func BuildBrowseRecordFromObject(page *zhihu.AnswerPage) *model.BrowseHistory {
 	})
 
 	return &model.BrowseHistory{
-		PlatformId:   platformIDZhihu,
+		PlatformId:   platform_id_zhihu,
 		VisitedTimes: 1,
 		Type:         "answer",
 		ExternalId:   page.Answer.ID,
@@ -627,8 +627,8 @@ func BuildBrowseRecordFromObject(page *zhihu.AnswerPage) *model.BrowseHistory {
 		URL:          page.Source,
 		SourceURL:    page.Source,
 		CoverURL:     zhihu.FirstImageURL(page.Answer.Content, page.Source),
-		PublishTime:  int64Ptr(page.Answer.CreatedTime * 1000),
-		ExtraData:    string(extraData),
+		PublishTime:  int64_ptr(page.Answer.CreatedTime * 1000),
+		ExtraData:    string(extra_data),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,

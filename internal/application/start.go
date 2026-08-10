@@ -123,7 +123,7 @@ func Start(cfg *config.Config) error {
 		Bool("exists", api_cfg.HooksScript != "").
 		Msg("download hook script discovery")
 	if script := api_cfg.HooksScript; script != "" {
-		if err := hook_manager.Load(script); err != nil {
+		if err := hook_manager.LoadFile(script); err != nil {
 			logger.Warn().
 				Err(err).
 				Str("file", "internal/application/start.go").

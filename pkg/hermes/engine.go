@@ -101,6 +101,7 @@ type TaskJob struct {
 // the same object instead of constructing parallel DTOs.
 type ResourceJob struct {
 	ID        int
+	SavePath  string // Resource-specific output container; falls back to TaskJob.SavePath.
 	Name      string
 	Kind      string // "html", "image", "video", etc.
 	Type      string // "FILE" | "STREAM"
@@ -320,7 +321,6 @@ type OutputNameUpdate struct {
 	ResourceID   int
 	ResourceName string
 	TaskName     string
-	SavePath     string
 }
 
 // OutputNameStore is implemented by stores that persist task/resource output
@@ -333,8 +333,9 @@ type OutputNameStore interface {
 // filename finalization. Kind is the persisted MIME source of truth;
 // Extension is derived from it at runtime.
 type ResourceOutputUpdate struct {
-	TaskID       int
+	TaskID       int // Optional task guard; zero supports standalone resources.
 	ResourceID   int
+	SavePath     string
 	ResourceName string
 	ResourceKind string
 	ResourceSize int64

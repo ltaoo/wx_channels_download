@@ -145,14 +145,14 @@ func accountUpdates(account *model.Account, now int64) map[string]any {
 }
 
 type ContentListOptions struct {
-	AccountID   string
-	Type string
-	Keyword     string
-	StartAt     *time.Time
-	EndAt       *time.Time
-	Page        int
-	PageSize    int
-	Offset      *int
+	AccountID string
+	Type      string
+	Keyword   string
+	StartAt   *int64 // Inclusive Unix timestamp in milliseconds.
+	EndAt     *int64 // Exclusive Unix timestamp in milliseconds.
+	Page      int
+	PageSize  int
+	Offset    *int
 }
 
 type ContentAccountRecord struct {
@@ -194,8 +194,9 @@ type ContentDownloadTaskRecord struct {
 
 type ContentResourceRecord struct {
 	ID            int     `json:"id"`
-	TaskID        int     `json:"task_id"`
+	TaskID        *int    `json:"task_id,omitempty"`
 	ContentID     *string `json:"content_id,omitempty"`
+	SavePath      string  `json:"save_path"`
 	Name          string  `json:"name"`
 	Kind          string  `json:"kind"`
 	UniqueID      string  `json:"unique_id"`
@@ -219,23 +220,23 @@ type ContentResourceRecord struct {
 }
 
 type ContentListItem struct {
-	ID             string                      `json:"id"`
-	PlatformID     string                      `json:"platform_id"`
-	Type           string                      `json:"type"`
-	ExternalID     string                      `json:"external_id"`
-	ExternalID2    string                      `json:"external_id2"`
-	ExternalID3    string                      `json:"external_id3"`
-	Title          string                      `json:"title"`
-	Description    string                      `json:"description"`
-	URL            string                      `json:"url"`
-	SourceURL      string                      `json:"source_url"`
-	CoverURL       string                      `json:"cover_url"`
-	CoverWidth   string  `json:"cover_width"`
-	CoverHeight  string  `json:"cover_height"`
-	PublishTime    int64                       `json:"publish_time"`
-	Accounts       []ContentAccountRecord      `json:"accounts"`
-	DownloadTasks  []ContentDownloadTaskRecord `json:"download_tasks"`
-	Resources      []ContentResourceRecord     `json:"resources"`
+	ID            string                      `json:"id"`
+	PlatformID    string                      `json:"platform_id"`
+	Type          string                      `json:"type"`
+	ExternalID    string                      `json:"external_id"`
+	ExternalID2   string                      `json:"external_id2"`
+	ExternalID3   string                      `json:"external_id3"`
+	Title         string                      `json:"title"`
+	Description   string                      `json:"description"`
+	URL           string                      `json:"url"`
+	SourceURL     string                      `json:"source_url"`
+	CoverURL      string                      `json:"cover_url"`
+	CoverWidth    string                      `json:"cover_width"`
+	CoverHeight   string                      `json:"cover_height"`
+	PublishTime   int64                       `json:"publish_time"`
+	Accounts      []ContentAccountRecord      `json:"accounts"`
+	DownloadTasks []ContentDownloadTaskRecord `json:"download_tasks"`
+	Resources     []ContentResourceRecord     `json:"resources"`
 }
 
 type ContentListResult struct {
@@ -364,6 +365,7 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 				ID:            r.Id,
 				TaskID:        r.TaskId,
 				ContentID:     r.ContentId,
+				SavePath:      r.SavePath,
 				Name:          r.Name,
 				Kind:          r.Kind,
 				UniqueID:      r.UniqueID,
@@ -456,104 +458,113 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
+	if options.StartAt != nil && *options.StartAt < 0 {
+		return nil, fmt.Errorf("start_at must be a non-negative Unix timestamp in milliseconds")
+	}
+	if options.EndAt != nil && *options.EndAt < 0 {
+		return nil, fmt.Errorf("end_at must be a non-negative Unix timestamp in milliseconds")
+	}
+	if options.StartAt != nil && options.EndAt != nil && *options.StartAt >= *options.EndAt {
+		return nil, fmt.Errorf("start_at must be less than end_at")
+	}
 
 	page := options.Page
 	if page < 1 {
 		page = 1
 	}
-	pageSize := options.PageSize
-	if pageSize < 1 {
-		pageSize = 20
+	page_size := options.PageSize
+	if page_size < 1 {
+		page_size = 20
 	}
-	offset := (page - 1) * pageSize
+	offset := (page - 1) * page_size
 	if options.Offset != nil && *options.Offset >= 0 {
 		offset = *options.Offset
 	}
 
-	buildQuery := func() *gorm.DB {
+	build_query := func() *gorm.DB {
 		query := s.db.Model(&model.Content{})
-		if contentType := strings.TrimSpace(options.Type); contentType != "" {
-			query = query.Where("content.type = ?", contentType)
+		if content_type := strings.TrimSpace(options.Type); content_type != "" {
+			query = query.Where("content.type = ?", content_type)
 		}
-		if accountID := strings.TrimSpace(options.AccountID); accountID != "" {
+		if account_id := strings.TrimSpace(options.AccountID); account_id != "" {
 			query = query.
 				Joins("JOIN content_account ON content_account.content_id = content.id").
-				Where("content_account.account_id = ?", accountID)
+				Where("content_account.account_id = ?", account_id)
 		}
 		if keyword := strings.TrimSpace(options.Keyword); keyword != "" {
 			pattern := "%" + keyword + "%"
 			query = query.Where("content.title LIKE ? OR content.description LIKE ?", pattern, pattern)
 		}
 		if options.StartAt != nil {
-			query = query.Where("content.created_at >= ?", options.StartAt.UnixMilli())
+			query = query.Where("content.created_at >= ?", *options.StartAt)
 		}
 		if options.EndAt != nil {
-			query = query.Where("content.created_at <= ?", options.EndAt.UnixMilli())
+			query = query.Where("content.created_at < ?", *options.EndAt)
 		}
 		return query
 	}
 
 	var total int64
-	if err := buildQuery().Distinct("content.id").Count(&total).Error; err != nil {
+	if err := build_query().Distinct("content.id").Count(&total).Error; err != nil {
 		return nil, err
 	}
 
 	var contents []model.Content
-	if err := buildQuery().
+	if err := build_query().
 		Distinct("content.*").
 		Order("content.created_at DESC, content.id DESC").
-		Limit(pageSize).
+		Limit(page_size).
 		Offset(offset).
 		Find(&contents).Error; err != nil {
 		return nil, err
 	}
 
-	contentIDs := make([]string, 0, len(contents))
+	content_ids := make([]string, 0, len(contents))
 	for _, content := range contents {
-		contentIDs = append(contentIDs, content.Id)
+		content_ids = append(content_ids, content.Id)
 	}
 
-	accountsByContentID, downloadTasksByContentID, resourcesByContentID, err := s.loadContentRelations(contentIDs)
+	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.loadContentRelations(content_ids)
 	if err != nil {
 		return nil, err
 	}
 
 	list := make([]ContentListItem, 0, len(contents))
 	for _, content := range contents {
-		publishTime := int64(0)
+		publish_time := int64(0)
 		if content.PublishTime != nil {
-			publishTime = *content.PublishTime
+			publish_time = *content.PublishTime
 		}
-		accounts := accountsByContentID[content.Id]
+		accounts := accounts_by_content_id[content.Id]
 		if accounts == nil {
 			accounts = make([]ContentAccountRecord, 0)
 		}
-		downloadTasks := downloadTasksByContentID[content.Id]
-		if downloadTasks == nil {
-			downloadTasks = make([]ContentDownloadTaskRecord, 0)
+		download_tasks := download_tasks_by_content_id[content.Id]
+		if download_tasks == nil {
+			download_tasks = make([]ContentDownloadTaskRecord, 0)
 		}
-		resourceList := resourcesByContentID[content.Id]
-		if resourceList == nil {
-			resourceList = make([]ContentResourceRecord, 0)
+		resource_list := resources_by_content_id[content.Id]
+		if resource_list == nil {
+			resource_list = make([]ContentResourceRecord, 0)
 		}
 		list = append(list, ContentListItem{
-			ID:             content.Id,
-			PlatformID:     content.PlatformId,
-			Type:           content.Type,
-			ExternalID:     content.ExternalId,
-			ExternalID2:    content.ExternalId2,
-			ExternalID3:    content.ExternalId3,
-			Title:          content.Title,
-			Description:    content.Description,
-			URL:            content.URL,
-			SourceURL:      content.SourceURL,
-			CoverURL:       content.CoverURL,
-			CoverWidth:       content.CoverWidth,
-			CoverHeight:       content.CoverHeight,
-			PublishTime:    publishTime,
-			Accounts:       accounts,
-			DownloadTasks:  downloadTasks,
-			Resources:      resourceList,
+			ID:            content.Id,
+			PlatformID:    content.PlatformId,
+			Type:          content.Type,
+			ExternalID:    content.ExternalId,
+			ExternalID2:   content.ExternalId2,
+			ExternalID3:   content.ExternalId3,
+			Title:         content.Title,
+			Description:   content.Description,
+			URL:           content.URL,
+			SourceURL:     content.SourceURL,
+			CoverURL:      content.CoverURL,
+			CoverWidth:    content.CoverWidth,
+			CoverHeight:   content.CoverHeight,
+			PublishTime:   publish_time,
+			Accounts:      accounts,
+			DownloadTasks: download_tasks,
+			Resources:     resource_list,
 		})
 	}
 
@@ -561,7 +572,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		List:     list,
 		Total:    total,
 		Page:     page,
-		PageSize: pageSize,
+		PageSize: page_size,
 	}, nil
 }
 

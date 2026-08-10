@@ -555,7 +555,11 @@ function DownloaderPanelViewModel(props = {}) {
     file: {
       show: new Timeless.RequestCore(
         ({ path, name, id }) => {
-          return request.post("/api/show_file", { path, name, id });
+          return request.post("/api/show_file", {
+            path,
+            name,
+            id,
+          });
         },
         { client: http_client },
       ),
@@ -1794,13 +1798,13 @@ function DownloaderPanelViewModel(props = {}) {
             return {
               name: `${task.name} +${task.files.length}个文件`,
               filename: file.name,
-              path: file.output_path,
+              path: file.file_path,
             };
           }
           return {
             name: file.name,
             filename: file.name,
-            path: file.output_path,
+            path: file.file_path,
           };
         })(),
       };
@@ -2750,7 +2754,7 @@ function DownloaderPanelViewModel(props = {}) {
           return [null, { skipped: true }];
         }
         begin_duplicate_download_confirm(body, conflicts);
-        return [new Error("已存在相同的下载任务"), null];
+        return [null, { skipped: true }];
       }
       return [null, data];
     },

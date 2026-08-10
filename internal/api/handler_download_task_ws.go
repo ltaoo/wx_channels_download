@@ -31,9 +31,10 @@ const (
 // (which already queries the DB for non-progress events) and invalidated on
 // terminal events (finished / failed / deleted).
 type progressCacheEntry struct {
-	task         model.DownloadTask
-	resourceURLs map[int]string // resourceID -> first URL
-	taskURL      string
+	task                model.DownloadTask
+	resourceURLs        map[int]string // resourceID -> first URL
+	resource_save_paths map[int]string // resourceID -> output container
+	taskURL             string
 }
 
 type taskBroadcastRequest struct {
@@ -64,17 +65,20 @@ func (c *APIClient) cacheTaskProgressMeta(taskID int) {
 
 	type resURL struct {
 		ResourceID int    `gorm:"column:resource_id"`
+		SavePath   string `gorm:"column:save_path"`
 		URL        string `gorm:"column:url"`
 	}
 	var resURLs []resURL
-	_ = c.db.Raw(`SELECT r.id AS resource_id, e.url FROM download_endpoint e
-		JOIN download_resource r ON e.resource_id = r.id
-		WHERE r.task_id = ? AND r.deleted_at IS NULL AND e.deleted_at IS NULL AND e.enabled = 1
+	_ = c.db.Raw(`SELECT r.id AS resource_id, r.save_path, e.url FROM download_resource r
+		LEFT JOIN download_endpoint e ON e.resource_id = r.id AND e.deleted_at IS NULL AND e.enabled = 1
+		WHERE r.task_id = ? AND r.deleted_at IS NULL
 		ORDER BY r.id ASC, e.priority ASC, e.id ASC`, taskID).Scan(&resURLs)
 
 	urlByResource := make(map[int]string)
+	resource_save_paths := make(map[int]string)
 	var taskURL string
 	for _, u := range resURLs {
+		resource_save_paths[u.ResourceID] = u.SavePath
 		if taskURL == "" {
 			taskURL = u.URL
 		}
@@ -85,9 +89,10 @@ func (c *APIClient) cacheTaskProgressMeta(taskID int) {
 
 	progressCacheMu.Lock()
 	progressCache[taskID] = &progressCacheEntry{
-		task:         task,
-		resourceURLs: urlByResource,
-		taskURL:      taskURL,
+		task:                task,
+		resourceURLs:        urlByResource,
+		resource_save_paths: resource_save_paths,
+		taskURL:             taskURL,
 	}
 	progressCacheMu.Unlock()
 
@@ -446,8 +451,10 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 		} else if status == "downloading" {
 			fileResourceStatus = model.TaskStatusDownloading
 		}
+		save_path := entry.resource_save_paths[rp.ID]
 		files = append(files, services.DownloadTaskFileRecord{
 			ID:         rp.ID,
+			SavePath:   save_path,
 			Name:       rp.Name,
 			Kind:       rp.Kind,
 			Type:       rp.Type,
@@ -457,7 +464,6 @@ func (c *APIClient) broadcastDownloadTaskProgress(taskID int, p *hermes.TaskProg
 			Speed:      rp.Speed,
 			Progress:   services.TaskProgressPercent(rp.Downloaded, rp.Size, fileResourceStatus),
 			URL:        entry.resourceURLs[rp.ID],
-			OutputPath: rp.Name,
 			Error:      errorMessage,
 		})
 	}

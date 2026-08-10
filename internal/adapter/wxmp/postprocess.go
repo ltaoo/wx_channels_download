@@ -175,7 +175,7 @@ func assembleHTMLNodeInternal(values map[string]interface{}, run *wxmpPostproces
 			imgURL = s.AttrOr("src", "")
 			srcAttr = "src"
 		}
-		imgURL = normalizeImageURL(imgURL)
+		imgURL = normalize_image_url(imgURL)
 		if imgURL == "" {
 			warnf("assemble_html: img[%d] no valid URL (both data-src and src are empty)", i)
 			return
@@ -693,7 +693,7 @@ func imageResourcesByURL(resources []hermes.ResourceJob) map[string]*hermes.Reso
 			continue
 		}
 		for _, endpoint := range resource.Endpoints {
-			imageURL := normalizeImageURL(endpoint.URL)
+			imageURL := normalize_image_url(endpoint.URL)
 			if imageURL == "" {
 				continue
 			}

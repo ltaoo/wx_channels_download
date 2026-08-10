@@ -84,8 +84,7 @@ const wx_icon_registry = {
       "stroke-width": "2",
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
-      class:
-        "lucide lucide-corner-down-right-icon lucide-corner-down-right",
+      class: "lucide lucide-corner-down-right-icon lucide-corner-down-right",
     },
     children: [
       {
@@ -280,7 +279,9 @@ function Dialog(props, children) {
     }),
     View(
       {
-        dataset: { t: "injected-ui-components-dialog-centered-overlay-content-wrapper" },
+        dataset: {
+          t: "injected-ui-components-dialog-centered-overlay-content-wrapper",
+        },
         class: "fixed inset-0 z-50 flex items-center justify-center p-4",
         style: { "z-index": "10000" },
         onClick(e) {

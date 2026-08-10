@@ -77,7 +77,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*adapter
 
 	// profile page resource
 	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: model.DownloadResource{
+		Resource: model.DownloadResource{
 			ContentId: &contentID,
 			Name:      "profile",
 			Kind:      "html",
@@ -92,7 +92,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*adapter
 	// cover image resource (optional)
 	if novel.CoverURL != "" {
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: model.DownloadResource{
+			Resource: model.DownloadResource{
 				ContentId: &contentID,
 				Name:      "cover",
 				Kind:      "image",
@@ -108,7 +108,7 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*adapter
 	// chapter resources (under chapters/ subdirectory)
 	for _, ch := range novel.Chapters {
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: model.DownloadResource{
+			Resource: model.DownloadResource{
 				ContentId: &contentID,
 				Name:      fmt.Sprintf("chapters/%04d", ch.Index),
 				Kind:      "html",

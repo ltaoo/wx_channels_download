@@ -34,6 +34,7 @@ type Deps struct {
 type ChannelsAdapter struct {
 	runtime_mu         sync.Mutex
 	runtime_registered bool
+	cfg                *ChannelsPluginConfig
 	routes             *WebsocketRoutes
 	interceptor_config *InterceptorPluginConfig
 	hooks              *hermes.HookManager
@@ -52,7 +53,7 @@ func init() {
 }
 
 func NewChannelsAdapter() *ChannelsAdapter {
-	return &ChannelsAdapter{}
+	return &ChannelsAdapter{cfg: channels_plugin_config}
 }
 
 func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
