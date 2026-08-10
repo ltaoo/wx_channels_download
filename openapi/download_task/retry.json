@@ -1,0 +1,48 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "重试下载任务（兼容 wx_channels_api）",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "重试结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "message": "已重试下载",
+                    "new_task_id": "new_task_id_xxx"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

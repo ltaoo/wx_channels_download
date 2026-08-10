@@ -1,0 +1,116 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "批量创建下载任务（兼容 wx_channels_api）",
+    "description": "批量接收 ChannelsObject 结构的原始视频号数据数组，后端自动处理 format_feed、链接拼接、文件名生成等。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "内容 id"
+                },
+                "contact": {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": "string",
+                      "description": "视频号账号 username"
+                    },
+                    "nickname": {
+                      "type": "string",
+                      "description": "视频号昵称"
+                    },
+                    "headUrl": {
+                      "type": "string",
+                      "description": "视频号头像 URL"
+                    }
+                  }
+                },
+                "objectDesc": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "description": "标题/描述"
+                    },
+                    "mediaType": {
+                      "type": "integer",
+                      "description": "媒体类型"
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "description": "媒体 URL"
+                          },
+                          "urlToken": {
+                            "type": "string",
+                            "description": "媒体 token"
+                          },
+                          "coverUrl": {
+                            "type": "string",
+                            "description": "封面 URL"
+                          },
+                          "decodeKey": {
+                            "type": "string",
+                            "description": "解密 key"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "objectNonceId": {
+                  "type": "string",
+                  "description": "nonce id"
+                },
+                "source_url": {
+                  "type": "string",
+                  "description": "来源页面 URL"
+                }
+              },
+              "required": [
+                "id"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "创建结果",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "ids": [
+                      "fqG2OhiJFRYpnELqZmPRW"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
