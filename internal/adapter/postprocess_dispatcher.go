@@ -42,12 +42,12 @@ func (pp *PlatformPostprocessor) Process(ctx context.Context, info *hermes.TaskJ
 		return nil
 	}
 	deps := pp.deps
-	save_path := strings.TrimSpace(info.SavePath)
-	if save_path != "" {
-		if filepath.IsAbs(save_path) {
-			deps.BasePath = save_path
+	download_dir := strings.TrimSpace(info.DownloadDir)
+	if download_dir != "" {
+		if filepath.IsAbs(download_dir) {
+			deps.BasePath = download_dir
 		} else {
-			deps.BasePath = filepath.Join(deps.BasePath, save_path)
+			deps.BasePath = filepath.Join(deps.BasePath, download_dir)
 		}
 	}
 	return postprocessor.Postprocess(ctx, info, deps)

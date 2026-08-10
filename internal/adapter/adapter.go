@@ -1,5 +1,5 @@
 // Package adapter defines the platform adapter contract and global registry.
-// Every platform adapter implements PlatformAdapter (at minimum PlatformHandler).
+// Every platform adapter implements PlatformAdapter (at minimum AdapterHandler).
 // Additional capabilities — RuntimeAdapter, Postprocessor —
 // are optional and discovered via type assertion at runtime.
 package adapter
@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/config"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
@@ -23,14 +24,20 @@ import (
 
 // ---------- Interfaces ----------
 
-// PlatformHandler is the platform handler interface.
+// AdapterHandler is the platform handler interface.
 // Each platform module implements this interface, responsible for parsing its scraper type and generating download tasks.
-type PlatformHandler interface {
+type AdapterHandler interface {
 	// PlatformID returns the unique platform identifier, e.g. "wxchannels", "wx_mp"
 	PlatformID() string
 
 	// Fetch retrieves raw scraper data for a platform-specific URL.
 	Fetch(rawURL string) (any, error)
+
+	// ToContent converts raw scraper data into the shared content model.
+	ToContent(data any) (*model.Content, error)
+
+	// ToAccount converts raw scraper data into the shared account model.
+	ToAccount(data any) (*model.Account, error)
 
 	// BuildDownloadTask generates a download task result from the platform's raw content JSON and download config.
 	// contentJSON: raw JSON data of the platform scraper object
@@ -44,11 +51,11 @@ type PlatformHandler interface {
 }
 
 // PlatformAdapter is the complete interface for a platform adapter.
-// Every adapter must implement PlatformHandler at minimum.
+// Every adapter must implement AdapterHandler at minimum.
 // Additional capabilities — RuntimeAdapter, Postprocessor —
 // are optional and discovered via type assertion at runtime.
 type PlatformAdapter interface {
-	PlatformHandler
+	AdapterHandler
 }
 
 // RouteRegistrar is the HTTP capability exposed by the host to adapters.
@@ -114,7 +121,7 @@ type AdapterContext struct {
 
 var (
 	handlersMu sync.RWMutex
-	handlers   = map[string]PlatformHandler{}
+	handlers   = map[string]AdapterHandler{}
 )
 
 // Register registers a platform adapter. Should be called in init().
@@ -129,7 +136,7 @@ func Register(h PlatformAdapter) {
 }
 
 // Get retrieves a handler by platform ID, returns nil if not found.
-func Get(platformID string) PlatformHandler {
+func Get(platformID string) AdapterHandler {
 	handlersMu.RLock()
 	defer handlersMu.RUnlock()
 	return handlers[platformID]

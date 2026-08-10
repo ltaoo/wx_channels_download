@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -34,12 +33,12 @@ func WithFilename(filename string) TaskOption {
 	}
 }
 
-// WithSavePath sets the task's output directory relative to the engine base
+// WithDownloadDir sets the task's output directory relative to the engine base
 // path.
-func WithSavePath(save_path string) TaskOption {
+func WithDownloadDir(download_dir string) TaskOption {
 	return func(job *TaskJob) {
 		if job != nil {
-			job.SavePath = save_path
+			job.DownloadDir = download_dir
 		}
 	}
 }
@@ -74,44 +73,32 @@ func WithCookies(cookies string) TaskOption {
 }
 
 // OnEvent installs the high-level event callback. When the default in-memory
-// store is active, lifecycle events emitted before registration are replayed.
+// store is active, replayable events emitted before registration are replayed.
 func (d *HermesEngine) OnEvent(handler EventHandler) {
 	if d == nil {
 		return
 	}
 	if handler == nil || !d.replay_events {
-		d.SetEventHandler(handler)
+		d.event_mu.Lock()
+		d.on_event = handler
+		d.event_mu.Unlock()
 		return
 	}
 
 	gate := make(chan struct{})
-	wrapped := func(task_id int, event EventType, progress *TaskProgress) {
+	wrapped := func(event EventType, data EventData) {
 		<-gate
-		handler(task_id, event, progress)
-	}
-	type recorded_event struct {
-		task_id int
-		event   EventType
+		handler(event, data)
 	}
 	d.event_mu.Lock()
 	d.on_event = wrapped
-	task_ids := make([]int, 0, len(d.event_history))
-	for task_id := range d.event_history {
-		task_ids = append(task_ids, task_id)
-	}
-	sort.Ints(task_ids)
-	recorded := make([]recorded_event, 0)
-	for _, task_id := range task_ids {
-		for _, event := range d.event_history[task_id] {
-			recorded = append(recorded, recorded_event{task_id: task_id, event: event})
-		}
-	}
+	recorded := append([]event_record(nil), d.event_history...)
 	d.event_mu.Unlock()
 
 	go func() {
 		defer close(gate)
 		for _, item := range recorded {
-			handler(item.task_id, item.event, nil)
+			handler(item.event, item.data)
 		}
 	}()
 }
@@ -185,7 +172,7 @@ func (d *HermesEngine) CreateTask(raw_url string, options ...TaskOption) *Task {
 		engine: d,
 		state:  state,
 	}
-	if err := d.StartTask(task.ID); err != nil {
+	if err := d.StartCreatedTask(task.ID); err != nil {
 		_ = store.RecordError(task.ID, err.Error())
 	}
 	return task
@@ -245,7 +232,7 @@ func (t *Task) FilePath() string {
 	if name == "" {
 		name = resource.UniqueID
 	}
-	return t.engine.abs_file_path(resource_save_path(t.state.job, &resource), name)
+	return t.engine.abs_file_path(resource_download_dir(t.state.job, &resource), name)
 }
 
 func failed_task(raw_url string, err error) *Task {

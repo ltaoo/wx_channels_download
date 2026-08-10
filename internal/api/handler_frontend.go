@@ -37,6 +37,10 @@ func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/browsehistory.html")
 }
 
+func (c *APIClient) handle_account_page(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/account.html")
+}
+
 func (c *APIClient) handle_logs_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/logs.html")
 }
@@ -85,7 +89,7 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	ctx.String(http.StatusOK, html)
 }
 
-func (c *APIClient) buildHTTPHandler() http.Handler {
+func (c *APIClient) build_http_handler() http.Handler {
 	frontendHandler := frontend.NewServer(c.cfg.Mode)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldServeByAPI(r.URL.Path) {
@@ -249,10 +253,10 @@ func shouldServeByAPI(path string) bool {
 		path == "/home" ||
 		path == "/filehelper" ||
 		path == "/play" ||
-		path == "/file" ||
 		path == "/preview" ||
 		path == "/content" ||
 		path == "/browsehistory" ||
+		path == "/account" ||
 		path == "/logs" ||
 		path == "/channels" ||
 		path == "/migration" ||

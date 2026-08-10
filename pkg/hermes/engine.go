@@ -15,19 +15,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// EventType represents a downloader event type.
-type EventType string
-
-const (
-	EventCreated  EventType = "created"
-	EventStarted  EventType = "started"
-	EventProgress EventType = "progress"
-	EventPaused   EventType = "paused"
-	EventFinished EventType = "finished"
-	EventFailed   EventType = "failed"
-	EventDeleted  EventType = "deleted"
-)
-
 // Task status values maintain stable mapping with the persistence layer's download_task status values.
 const (
 	TaskStatusWaiting     = 0
@@ -78,7 +65,7 @@ type TaskJob struct {
 	ID               int
 	Name             string
 	UniqueID         string // Task-level platform unique identifier
-	SavePath         string
+	DownloadDir      string
 	FilenameTemplate string
 	Platform         string // PlatformId from DB, used by postprocessor for platform routing
 	// ProxyServer applies to every network endpoint in this task. When its
@@ -100,14 +87,14 @@ type TaskJob struct {
 // intentionally kept beside the immutable resource input so later phases mutate
 // the same object instead of constructing parallel DTOs.
 type ResourceJob struct {
-	ID        int
-	SavePath  string // Resource-specific output container; falls back to TaskJob.SavePath.
-	Name      string
-	Kind      string // "html", "image", "video", etc.
-	Type      string // "FILE" | "STREAM"
-	UniqueID  string // Platform-level unique identifier
-	Endpoints []Endpoint
-	Extra     map[string]string // User-defined fields, irrelevant to download, passed through to hooks
+	ID          int
+	DownloadDir string // Resource-specific output container; falls back to TaskJob.DownloadDir.
+	Name        string
+	Kind        string // "html", "image", "video", etc.
+	Type        string // "FILE" | "STREAM"
+	UniqueID    string // Platform-level unique identifier
+	Endpoints   []Endpoint
+	Extra       map[string]string // User-defined fields, irrelevant to download, passed through to hooks
 
 	// Live-stream recording configuration. Timestamps accept Unix seconds or
 	// Unix milliseconds; Duration is expressed in seconds. RotateMinutes is the
@@ -147,32 +134,6 @@ type Segment struct {
 	OffsetEnd   int64
 	Size        int64
 	Downloaded  int64
-}
-
-// EventHandler receives task lifecycle and progress events.
-// A nil progress indicates a non-progress event (e.g., started, finished, failed).
-type EventHandler func(task_id int, event EventType, progress *TaskProgress)
-
-// TaskProgress carries the current aggregate download progress, computed
-// entirely from in-memory state without database queries.
-type TaskProgress struct {
-	TotalSize     int64              `json:"total_size"`
-	Downloaded    int64              `json:"downloaded"`
-	Speed         int64              `json:"speed"`
-	ResourceCount int                `json:"resource_count"`
-	Resources     []ResourceProgress `json:"resources"`
-	Keepalive     bool               `json:"-"` // true when emitted as keepalive (no real progress change)
-}
-
-// ResourceProgress carries a single resource's download progress.
-type ResourceProgress struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name,omitempty"`
-	Kind       string `json:"kind,omitempty"`
-	Type       string `json:"resource_type,omitempty"`
-	Size       int64  `json:"size"`
-	Downloaded int64  `json:"downloaded"`
-	Speed      int64  `json:"speed"`
 }
 
 type segment_progress struct {
@@ -335,7 +296,7 @@ type OutputNameStore interface {
 type ResourceOutputUpdate struct {
 	TaskID       int // Optional task guard; zero supports standalone resources.
 	ResourceID   int
-	SavePath     string
+	DownloadDir  string
 	ResourceName string
 	ResourceKind string
 	ResourceSize int64
@@ -370,7 +331,7 @@ type HermesEngine struct {
 	store          Store
 	logger         zerolog.Logger
 	on_event       EventHandler
-	event_history  map[int][]EventType
+	event_history  []event_record
 	replay_events  bool
 	drivers        map[string]ProtocolDriver
 	hooks          *HookManager
@@ -506,7 +467,7 @@ func New(opt HermesNewConfig) *HermesEngine {
 		jobs:           make(map[int]*TaskJob),
 		store:          store,
 		logger:         logger,
-		event_history:  make(map[int][]EventType),
+		event_history:  make([]event_record, 0),
 		replay_events:  replay_events,
 		drivers:        make(map[string]ProtocolDriver),
 		progress_cache: make(map[int]*progress_tracker),
@@ -514,13 +475,6 @@ func New(opt HermesNewConfig) *HermesEngine {
 	}
 	e.RegisterProtocol(new_default_http_driver())
 	return e
-}
-
-// SetEventHandler sets the task lifecycle and progress event handler. Pass nil to disable event callbacks.
-func (d *HermesEngine) SetEventHandler(handler EventHandler) {
-	d.event_mu.Lock()
-	defer d.event_mu.Unlock()
-	d.on_event = handler
 }
 
 // SetHooks sets the JS hook manager. Pass nil to disable hooks.
@@ -548,9 +502,20 @@ func (d *HermesEngine) RegisterProtocol(driver ProtocolDriver) {
 	}
 }
 
-// StartTask submits a task to the scheduler. Concurrent slot acquisition happens in the background,
-// so queuing does not block API requests.
+// StartTask submits an existing task for start, resume, or retry. Concurrent
+// slot acquisition happens in the background, so queuing does not block API
+// requests.
 func (d *HermesEngine) StartTask(task_id int) error {
+	return d.start_task(task_id, false)
+}
+
+// StartCreatedTask submits a newly persisted task and emits EventCreated with
+// the identity needed by consumers to load its complete record.
+func (d *HermesEngine) StartCreatedTask(task_id int) error {
+	return d.start_task(task_id, true)
+}
+
+func (d *HermesEngine) start_task(task_id int, created bool) error {
 	if task_id <= 0 {
 		return errors.New("taskID must be greater than 0")
 	}
@@ -578,7 +543,11 @@ func (d *HermesEngine) StartTask(task_id int) error {
 		close(task_job.done)
 		return fmt.Errorf("failed to update task status to preparing: %w", err)
 	}
-	d.emit(task_id, EventCreated)
+	if created {
+		d.emit(EventCreated, TaskCreatedEventData{TaskID: task_id})
+	} else {
+		d.emit(EventPreparing, TaskPreparingEventData{TaskID: task_id})
+	}
 	go d.schedule(task_job)
 	return nil
 }
@@ -674,7 +643,7 @@ func (d *HermesEngine) DeleteTask(task_id int) {
 		<-task_job.done
 		_ = d.store.UpdateStatus(task_id, TaskStatusCancelled)
 		d.logger.Info().Int("task_id", task_id).Msg("task deleted")
-		d.emit(task_id, EventDeleted)
+		d.emit(EventDeleted, TaskDeletedEventData{TaskID: task_id})
 		d.delete_tracker(task_id)
 	}
 }
@@ -760,7 +729,7 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	// fields. The same object now travels from queueing through finalization.
 	info.Name = loaded.Name
 	info.UniqueID = loaded.UniqueID
-	info.SavePath = loaded.SavePath
+	info.DownloadDir = loaded.DownloadDir
 	info.FilenameTemplate = loaded.FilenameTemplate
 	info.Platform = loaded.Platform
 	info.ProxyServer = loaded.ProxyServer
@@ -778,7 +747,7 @@ func (d *HermesEngine) run(info *TaskJob) error {
 		Int("task_id", task_id).
 		Str("task_name", info.Name).
 		Str("task_unique_id", info.UniqueID).
-		Str("save_path", info.SavePath).
+		Str("download_dir", info.DownloadDir).
 		Interface("config", task_config_for_log(info.Config)).
 		Int("resource_count", len(resources)).
 		Msg("run - after d.store.LoadTask")
@@ -803,7 +772,7 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	if err := d.store.ActivateTask(task_id); err != nil {
 		return fmt.Errorf("failed to activate task: %w", err)
 	}
-	d.emit(task_id, EventStarted)
+	d.emit(EventStarted, TaskStartedEventData{TaskID: task_id})
 
 	if info.Config == nil {
 		info.Config = make(map[string]any)

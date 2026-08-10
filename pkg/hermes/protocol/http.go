@@ -123,6 +123,12 @@ func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, r
 		return nil, err
 	}
 
+	// Some CDNs return 200 instead of 206 when the requested range starts at
+	// zero and spans the complete representation. The body is still safe to use
+	// as the initial streaming download when its length matches the request.
+	if full_range_response_matches_request(resp, request) {
+		return resp.Body, nil
+	}
 	if resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
 		return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
@@ -134,6 +140,13 @@ func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, r
 	}
 
 	return resp.Body, nil
+}
+
+func full_range_response_matches_request(resp *http.Response, request hermes.ReadRequest) bool {
+	if resp == nil || resp.StatusCode != http.StatusOK || request.OffsetStart != 0 || request.OffsetEnd < 0 {
+		return false
+	}
+	return resp.ContentLength == request.OffsetEnd+1
 }
 
 // openFull downloads the full resource via clawreq (non-Range) to preserve browser fingerprint.

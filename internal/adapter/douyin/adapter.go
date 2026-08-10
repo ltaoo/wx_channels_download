@@ -110,9 +110,9 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		title = videoInfo.Title
 	}
 
-	savePath, _ := config["save_path"].(string)
-	if savePath == "" {
-		savePath = "/downloads/douyin"
+	download_dir, _ := config["download_dir"].(string)
+	if download_dir == "" {
+		download_dir = "/downloads/douyin"
 	}
 
 	configJSON, _ := json.Marshal(buildConfigJSON(config))

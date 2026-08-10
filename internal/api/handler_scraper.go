@@ -44,11 +44,26 @@ func (c *APIClient) handle_scraper_fetch(ctx *gin.Context) {
 		result.Err(ctx, result.CodeFetchMsgFailed, err.Error())
 		return
 	}
+	content, err := handler.ToContent(data)
+	if err != nil {
+		result.Err(ctx, result.CodeFetchMsgFailed, fmt.Sprintf("转换 content 失败: %v", err))
+		return
+	}
+	if content != nil && strings.TrimSpace(content.SourceURL) == "" {
+		content.SourceURL = raw_url
+	}
+	account, err := handler.ToAccount(data)
+	if err != nil {
+		result.Err(ctx, result.CodeFetchMsgFailed, fmt.Sprintf("转换 account 失败: %v", err))
+		return
+	}
 
 	result.Ok(ctx, gin.H{
 		"platform": platform_id,
 		"url":      raw_url,
 		"result":   data,
+		"content":  content,
+		"account":  account,
 	})
 }
 

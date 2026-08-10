@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,10 @@ import (
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
-const ChannelsWebsocketPath = "/ws/channels"
+const (
+	ChannelsWebsocketPath = "/ws/channels"
+	PlayPath              = "/play"
+)
 
 // RouteRegistrar is the narrow HTTP capability required by this adapter.
 type RouteRegistrar interface {
@@ -24,8 +28,7 @@ type RouteRegistrar interface {
 	RegisterPOST(path string, handler gin.HandlerFunc)
 }
 
-// WebsocketRoutes owns the video-channel browser websocket endpoint and its
-// scraper client lifecycle.
+// WebsocketRoutes owns the HTTP routes backed by the Channels scraper client.
 type WebsocketRoutes struct {
 	client *wxchannels.ChannelsClient
 	cfg    *config.Config
@@ -42,6 +45,7 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 		return
 	}
 	registrar.RegisterGET(ChannelsWebsocketPath, r.client.HandleChannelsWebsocket)
+	registrar.RegisterGET(PlayPath, r.HandlePlay)
 	registrar.RegisterGET("/api/channels/parse_sph", r.HandleParseSph)
 	registrar.RegisterPOST("/api/channels/decrypt", r.HandleDecryptVideo)
 	registrar.RegisterGET("/api/channels/contact/search", r.HandleSearchChannelsContact)
@@ -56,6 +60,35 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 	registrar.RegisterGET("/api/channels/shared_feed/profile", r.HandleFetchSharedFeedProfile)
 	registrar.RegisterGET("/api/channels/feed/comment/list", r.HandleFetchFeedCommentList)
 	registrar.RegisterGET("/rss/channels", r.HandleFetchFeedListOfContactRSS)
+}
+
+// HandlePlay proxies or decrypts a remote Channels video stream.
+func (r *WebsocketRoutes) HandlePlay(ctx *gin.Context) {
+	target_url := ctx.Query("url")
+	if target_url == "" {
+		util.Err(ctx, 400, "missing targetURL")
+		return
+	}
+	if !strings.HasPrefix(target_url, "http") {
+		target_url = "https://" + target_url
+	}
+	if _, err := url.Parse(target_url); err != nil {
+		util.Err(ctx, 400, "Invalid URL")
+		return
+	}
+
+	decrypt_key_str := ctx.Query("key")
+	decryptor := wxchannels.NewChannelsVideoDecryptor()
+	if decrypt_key_str != "" {
+		decrypt_key, err := strconv.ParseUint(decrypt_key_str, 0, 64)
+		if err != nil {
+			util.Err(ctx, 400, "invalid decryptKey")
+			return
+		}
+		decryptor.DecryptOnlyInline(ctx.Writer, ctx.Request, target_url, decrypt_key, 131072)
+		return
+	}
+	decryptor.SimpleProxy(target_url, ctx.Writer, ctx.Request)
 }
 
 // HandleFetchPostprocessFlows returns wxchannels postprocess flow configs for read-only visualization.

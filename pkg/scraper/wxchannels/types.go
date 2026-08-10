@@ -401,24 +401,26 @@ type SharedFeedAuthorinfo struct {
 	Authiconurl string `json:"authIconUrl"`
 }
 
+type ChannelsFeedProfileData struct {
+	BaseResponse          BaseResponse    `json:"BaseResponse"`
+	CommentInfo           []any           `json:"commentInfo"`
+	Object                ChannelsObject  `json:"object"`
+	CommentCount          int             `json:"commentCount"`
+	NextCheckObjectStatus int             `json:"nextCheckObjectStatus"`
+	BarrageCommentInfo    []any           `json:"barrageCommentInfo"`
+	RefObjectList         []any           `json:"refObjectList"`
+	PreloadInfo           json.RawMessage `json:"preloadInfo"`
+	TraceBuffer           string          `json:"traceBuffer"`
+	LiveAliasInfo         []any           `json:"liveAliasInfo"`
+	DescCommentInfo       []any           `json:"descCommentInfo"`
+	UserTags              []string        `json:"userTags"`
+	ReportBypass          string          `json:"reportBypass"`
+}
+
 type ChannelsFeedProfileResp struct {
-	ErrCode int    `json:"errCode"`
-	ErrMsg  string `json:"errMsg"`
-	Data    struct {
-		BaseResponse          BaseResponse    `json:"BaseResponse"`
-		CommentInfo           []any           `json:"commentInfo"`
-		Object                ChannelsObject  `json:"object"`
-		CommentCount          int             `json:"commentCount"`
-		NextCheckObjectStatus int             `json:"nextCheckObjectStatus"`
-		BarrageCommentInfo    []any           `json:"barrageCommentInfo"`
-		RefObjectList         []any           `json:"refObjectList"`
-		PreloadInfo           json.RawMessage `json:"preloadInfo"`
-		TraceBuffer           string          `json:"traceBuffer"`
-		LiveAliasInfo         []any           `json:"liveAliasInfo"`
-		DescCommentInfo       []any           `json:"descCommentInfo"`
-		UserTags              []string        `json:"userTags"`
-		ReportBypass          string          `json:"reportBypass"`
-	} `json:"data"`
+	ErrCode int                     `json:"errCode"`
+	ErrMsg  string                  `json:"errMsg"`
+	Data    ChannelsFeedProfileData `json:"data"`
 	Payload struct {
 		NeedObject        int    `json:"needObject"`
 		LastBuffer        string `json:"lastBuffer"`

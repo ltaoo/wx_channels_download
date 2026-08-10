@@ -65,13 +65,13 @@ func (task *DownloadTask) BeforeCreate(_ *gorm.DB) error {
 // DownloadResource is an independently persisted downloadable resource.
 // TaskId is optional so resources may exist without a DownloadTask container.
 type DownloadResource struct {
-	Id        int     `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskId    *int    `gorm:"index:idx_resource_task" json:"task_id,omitempty"`
-	ContentId *string `gorm:"column:content_id" json:"content_id,omitempty"`
-	SavePath  string  `gorm:"column:save_path;not null;default:''" json:"save_path"`
-	Name      string  `json:"name"`
-	Kind      string  `gorm:"not null;default:file" json:"kind"`
-	UniqueID  string  `gorm:"column:unique_id;index:idx_resource_unique_id" json:"unique_id"`
+	Id          int     `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskId      *int    `gorm:"index:idx_resource_task" json:"task_id,omitempty"`
+	ContentId   *string `gorm:"column:content_id" json:"content_id,omitempty"`
+	DownloadDir string  `gorm:"column:download_dir;not null;default:''" json:"download_dir"` // Directory only; Name is stored separately.
+	Name        string  `json:"name"`
+	Kind        string  `gorm:"not null;default:file" json:"kind"`
+	UniqueID    string  `gorm:"column:unique_id;index:idx_resource_unique_id" json:"unique_id"`
 	// Type indicates the resource type: "file" | "stream"
 	Type       string `gorm:"column:type;not null;default:file" json:"type"`
 	Size       int64  `json:"size"`

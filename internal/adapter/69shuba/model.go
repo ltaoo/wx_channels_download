@@ -67,9 +67,9 @@ func BuildDownloadTask(novel *NovelDetail, configJSON json.RawMessage) (*adapter
 	if title == "" {
 		title = novel.Name
 	}
-	savePath, _ := config["save_path"].(string)
-	if savePath == "" {
-		savePath = "/downloads/69shuba"
+	download_dir, _ := config["download_dir"].(string)
+	if download_dir == "" {
+		download_dir = "/downloads/69shuba"
 	}
 	contentID := platformID + ":" + novel.ProfileURL
 

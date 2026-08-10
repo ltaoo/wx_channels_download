@@ -8,8 +8,8 @@ import (
 func (d *HermesEngine) pause_task(task_id int) {
 	_ = d.store.UpdateStatus(task_id, TaskStatusPaused)
 	_ = d.store.DeactivateConnections(task_id)
-	d.logger.Info().Int("taskID", task_id).Msg("task paused")
-	d.emit(task_id, EventPaused)
+	d.logger.Info().Int("task_id", task_id).Msg("task paused")
+	d.emit(EventPaused, TaskPausedEventData{TaskID: task_id})
 	d.delete_tracker(task_id)
 }
 
@@ -17,20 +17,20 @@ func (d *HermesEngine) fail_task(task_id int, err_msg string) {
 	_ = d.store.UpdateStatus(task_id, TaskStatusFailed)
 	_ = d.store.DeactivateConnections(task_id)
 	_ = d.store.RecordError(task_id, err_msg)
-	d.logger.Error().Int("taskID", task_id).Str("error", err_msg).Msg("task failed")
-	d.emit(task_id, EventFailed)
+	d.logger.Error().Int("task_id", task_id).Str("error", err_msg).Msg("task failed")
+	d.emit(EventFailed, TaskFailedEventData{TaskID: task_id, Error: err_msg})
 	d.delete_tracker(task_id)
 }
 
-func (d *HermesEngine) emit(task_id int, event EventType) {
+func (d *HermesEngine) emit(event EventType, data EventData) {
 	d.event_mu.Lock()
 	if d.replay_events {
-		d.event_history[task_id] = append(d.event_history[task_id], event)
+		d.event_history = append(d.event_history, event_record{event: event, data: data})
 	}
 	handler := d.on_event
 	d.event_mu.Unlock()
 	if handler != nil {
-		handler(task_id, event, nil)
+		handler(event, data)
 	}
 }
 
@@ -39,7 +39,7 @@ func (d *HermesEngine) emit(task_id int, event EventType) {
 func (d *HermesEngine) emit_progress(task_id int) {
 	p := d.snapshot_progress(task_id)
 	if p == nil {
-		d.logger.Info().Int("taskID", task_id).Msg("progress: skip emit (no change)")
+		d.logger.Info().Int("task_id", task_id).Msg("progress: skip emit (no change)")
 		return
 	}
 	msg := "progress: emit to handler"
@@ -47,9 +47,9 @@ func (d *HermesEngine) emit_progress(task_id int) {
 		msg = "progress: emit keepalive"
 	}
 	d.logger.Info().
-		Int("taskID", task_id).
+		Int("task_id", task_id).
 		Int64("downloaded", p.Downloaded).
-		Int64("totalSize", p.TotalSize).
+		Int64("total_size", p.TotalSize).
 		Int64("speed", p.Speed).
 		Float64("pct", float64(p.Downloaded)*100/float64(max_int64(1, p.TotalSize))).
 		Msg(msg)
@@ -57,7 +57,7 @@ func (d *HermesEngine) emit_progress(task_id int) {
 	handler := d.on_event
 	d.event_mu.RUnlock()
 	if handler != nil {
-		handler(task_id, EventProgress, p)
+		handler(EventProgress, TaskProgressEventData{TaskID: task_id, Progress: p})
 	}
 }
 

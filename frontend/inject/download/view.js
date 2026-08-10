@@ -397,12 +397,12 @@ function CreatePlatformTaskDialogView(props) {
             );
           },
         }),
-        View({ style: labelStyle }, ["保存路径（可选）"]),
+        View({ style: labelStyle }, ["下载目录（可选）"]),
         Input({
           placeholder: "留空则使用默认下载目录",
           style: inputStyle,
           onInput(e) {
-            vm$.state.create_platform_save_path.as(
+            vm$.state.create_platform_download_dir.as(
               e && e.target ? e.target.value : "",
             );
           },
@@ -710,10 +710,10 @@ function CreateTaskPreviewDialogView(props) {
                   ]),
                 ]),
                 View({ style: sectionStyle }, [
-                  View({ style: labelStyle }, ["保存路径"]),
+                  View({ style: labelStyle }, ["下载目录"]),
                   View({ style: valueStyle }, [
                     computed(preview_, function (p) {
-                      return p && (p.save_path || "-");
+                      return p && (p.download_dir || "-");
                     }),
                   ]),
                 ]),
@@ -817,10 +817,10 @@ function CreatePlatformTaskPreviewDialogView(props) {
                   ]),
                 ]),
                 View({ style: sectionStyle }, [
-                  View({ style: labelStyle }, ["保存路径"]),
+                  View({ style: labelStyle }, ["下载目录"]),
                   View({ style: valueStyle }, [
                     computed(preview_, function (p) {
-                      return p && (p.save_path || "-");
+                      return p && (p.download_dir || "-");
                     }),
                   ]),
                 ]),

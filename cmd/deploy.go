@@ -18,7 +18,7 @@ import (
 	"wx_channel/pkg/cloudflare/worker"
 )
 
-const permissionHint = "提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)"
+const permission_hint = "提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)"
 
 var deploy_cmd = &cobra.Command{
 	Use:   "deploy",
@@ -73,7 +73,7 @@ func deploy_mp() {
 		id, err := find_d1_database_by_name(account_id, api_token, d1_database_name)
 		if err != nil {
 			spinner.Fail(fmt.Sprintf("查找数据库失败: %v", err))
-			pterm.Info.Println(permissionHint)
+			pterm.Info.Println(permission_hint)
 			return
 		}
 		if id != "" {
@@ -84,7 +84,7 @@ func deploy_mp() {
 			new_id, err := create_d1_database(account_id, api_token, d1_database_name)
 			if err != nil {
 				spinner.Fail(fmt.Sprintf("创建数据库失败: %v", err))
-				pterm.Info.Println(permissionHint)
+				pterm.Info.Println(permission_hint)
 				return
 			}
 			d1_database_id = new_id
@@ -101,7 +101,7 @@ func deploy_mp() {
 	spinner, _ := pterm.DefaultSpinner.Start("正在验证 D1 数据库连接...")
 	if err := verify_d1_database(account_id, api_token, d1_database_id); err != nil {
 		spinner.Fail(fmt.Sprintf("D1 数据库验证失败: %v", err))
-		pterm.Info.Println(permissionHint)
+		pterm.Info.Println(permission_hint)
 		return
 	}
 	spinner.Success("D1 数据库连接验证成功")
@@ -141,15 +141,15 @@ func deploy_mp() {
 
 	// 4. Execute deployment
 	// Truncate Account ID to prevent spinner rendering issues from terminal line wrapping
-	shortAccountID := account_id
-	if len(shortAccountID) > 6 {
-		shortAccountID = shortAccountID[:6] + "..."
+	short_account_id := account_id
+	if len(short_account_id) > 6 {
+		short_account_id = short_account_id[:6] + "..."
 	}
 	spinner, _ = pterm.DefaultSpinner.Start(fmt.Sprintf("正在部署到 Cloudflare (Worker: %s)...", worker_name))
 	_, err = worker.Deploy(deploy_body)
 	if err != nil {
 		spinner.Fail(fmt.Sprintf("部署失败: %v", err))
-		pterm.Info.Println(permissionHint)
+		pterm.Info.Println(permission_hint)
 		return
 	}
 	spinner.Success("部署成功!")
@@ -157,12 +157,12 @@ func deploy_mp() {
 	// 5. Get subdomain and output access URL
 	spinner, _ = pterm.DefaultSpinner.Start("正在获取 Worker 访问地址...")
 	subdomain, err := get_workers_subdomain(account_id, api_token)
-	workerUrl := ""
+	worker_url := ""
 	if err != nil {
 		spinner.Warning(fmt.Sprintf("获取子域名失败: %v", err))
-		workerUrl = fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_name)
+		worker_url = fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_name)
 	} else {
-		workerUrl = fmt.Sprintf("https://%s.%s.workers.dev", worker_name, subdomain)
+		worker_url = fmt.Sprintf("https://%s.%s.workers.dev", worker_name, subdomain)
 		spinner.Success("获取访问地址成功")
 	}
 
@@ -174,7 +174,7 @@ func deploy_mp() {
 			pterm.Sprintf("%s: %s\n%s: %s",
 				pterm.Bold.Sprint("Worker Name"), pterm.Cyan(worker_name),
 				// pterm.Bold.Sprint("Worker ID"), pterm.Cyan(worker_id),
-				pterm.Bold.Sprint("URL"), pterm.LightGreen(workerUrl),
+				pterm.Bold.Sprint("URL"), pterm.LightGreen(worker_url),
 			),
 		)}},
 	}
@@ -183,7 +183,7 @@ func deploy_mp() {
 	pterm.Println()
 	pterm.DefaultHeader.WithFullWidth().Println("可用 API 列表")
 
-	tableData := [][]string{
+	table_data := [][]string{
 		{"Method", "Path", "Description"},
 		{"GET", "/api/mp/list", "获取公众号列表"},
 		{"GET", "/api/mp/msg/list", "获取公众号消息列表"},
@@ -193,7 +193,7 @@ func deploy_mp() {
 		{"GET", "/rss/mp", "RSS 订阅地址 (参数: biz)"},
 	}
 
-	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
 
 	pterm.Println()
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("✅ 部署成功! 请访问上面的 URL 使用服务")
@@ -261,9 +261,9 @@ func deploy_sph() {
 		},
 	}
 
-	shortAccountID := account_id
-	if len(shortAccountID) > 6 {
-		shortAccountID = shortAccountID[:6] + "..."
+	short_account_id := account_id
+	if len(short_account_id) > 6 {
+		short_account_id = short_account_id[:6] + "..."
 	}
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("正在部署到 Cloudflare (Worker: %s)...", worker_name))
@@ -277,12 +277,12 @@ func deploy_sph() {
 	// Get subdomain and output access URL
 	spinner, _ = pterm.DefaultSpinner.Start("正在获取 Worker 访问地址...")
 	subdomain, err := get_workers_subdomain(account_id, api_token)
-	workerUrl := ""
+	worker_url := ""
 	if err != nil {
 		spinner.Warning(fmt.Sprintf("获取子域名失败: %v", err))
-		workerUrl = fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_name)
+		worker_url = fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_name)
 	} else {
-		workerUrl = fmt.Sprintf("https://%s.%s.workers.dev", worker_name, subdomain)
+		worker_url = fmt.Sprintf("https://%s.%s.workers.dev", worker_name, subdomain)
 		spinner.Success("获取访问地址成功")
 	}
 
@@ -293,7 +293,7 @@ func deploy_sph() {
 		{{Data: pterm.DefaultBox.WithTitle("Worker Info").Sprint(
 			pterm.Sprintf("%s: %s\n%s: %s",
 				pterm.Bold.Sprint("Worker Name"), pterm.Cyan(worker_name),
-				pterm.Bold.Sprint("URL"), pterm.LightGreen(workerUrl),
+				pterm.Bold.Sprint("URL"), pterm.LightGreen(worker_url),
 			),
 		)}},
 	}
@@ -302,25 +302,25 @@ func deploy_sph() {
 	pterm.Println()
 	pterm.DefaultHeader.WithFullWidth().Println("可用 API")
 
-	tableData := [][]string{
+	table_data := [][]string{
 		{"Method", "Path", "Description"},
 		{"GET", "/", "视频号视频信息查询页面"},
 		{"POST", "/api/fetch_video_profile", "获取视频号视频信息"},
 	}
 
-	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
 
 	pterm.Println()
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgGreen)).Println("部署成功! 请访问上面的 URL 使用服务")
 }
 
-func verify_d1_database(accountID, authToken, databaseID string) error {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s", accountID, databaseID)
+func verify_d1_database(account_id, auth_token, database_id string) error {
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s", account_id, database_id)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("create request failed: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Authorization", "Bearer "+auth_token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -337,9 +337,9 @@ func verify_d1_database(accountID, authToken, databaseID string) error {
 	return nil
 }
 
-func run_migrations(accountID, authToken, databaseID, migrationsDir string) error {
+func run_migrations(account_id, auth_token, database_id, migrations_dir string) error {
 	// 1. Ensure migrations table exists
-	_, err := query_d1(accountID, authToken, databaseID, `CREATE TABLE IF NOT EXISTS d1_migrations (
+	_, err := query_d1(account_id, auth_token, database_id, `CREATE TABLE IF NOT EXISTS d1_migrations (
 		id INTEGER PRIMARY KEY,
 		name TEXT,
 		applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -349,7 +349,7 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 	}
 
 	// 2. Get applied migrations
-	resp, err := query_d1(accountID, authToken, databaseID, "SELECT id FROM d1_migrations", nil)
+	resp, err := query_d1(account_id, auth_token, database_id, "SELECT id FROM d1_migrations", nil)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %v", err)
 	}
@@ -364,7 +364,7 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 	}
 
 	// 3. Read migration files
-	files, err := os.ReadDir(migrationsDir)
+	files, err := os.ReadDir(migrations_dir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %v", err)
 	}
@@ -386,16 +386,16 @@ func run_migrations(accountID, authToken, databaseID, migrationsDir string) erro
 		}
 
 		// fmt.Printf("Applying migration: %s\n", file.Name())
-		content, err := os.ReadFile(filepath.Join(migrationsDir, file.Name()))
+		content, err := os.ReadFile(filepath.Join(migrations_dir, file.Name()))
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %v", file.Name(), err)
 		}
 
 		// Execute migration and record it in a single batch (transaction)
 		// We append the INSERT statement to ensure atomicity.
-		fullSQL := string(content) + fmt.Sprintf("\nINSERT INTO d1_migrations (id, name) VALUES (%d, '%s');", id, file.Name())
+		full_sql := string(content) + fmt.Sprintf("\nINSERT INTO d1_migrations (id, name) VALUES (%d, '%s');", id, file.Name())
 
-		if _, err := query_d1(accountID, authToken, databaseID, fullSQL, nil); err != nil {
+		if _, err := query_d1(account_id, auth_token, database_id, full_sql, nil); err != nil {
 			return fmt.Errorf("failed to execute migration %s: %v", file.Name(), err)
 		}
 		// fmt.Printf("Migration %s applied successfully\n", file.Name())
@@ -422,9 +422,9 @@ type D1Response struct {
 	} `json:"errors"`
 }
 
-func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D1Response, error) {
+func query_d1(account_id, auth_token, database_id, sql_str string, params []any) (*D1Response, error) {
 	req_body := map[string]any{
-		"sql":    sqlStr,
+		"sql":    sql_str,
 		"params": params,
 	}
 	if req_body["params"] == nil {
@@ -436,13 +436,13 @@ func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s/query", accountID, databaseID)
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s/query", account_id, database_id)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json_body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Authorization", "Bearer "+auth_token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -458,16 +458,16 @@ func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		var errorResp D1Response
-		if jsonErr := json.Unmarshal(body, &errorResp); jsonErr == nil && len(errorResp.Errors) > 0 {
+		var error_resp D1Response
+		if json_err := json.Unmarshal(body, &error_resp); json_err == nil && len(error_resp.Errors) > 0 {
 			var sb strings.Builder
-			for _, e := range errorResp.Errors {
+			for _, e := range error_resp.Errors {
 				sb.WriteString(fmt.Sprintf("[%d] %s; ", e.Code, e.Message))
 				if e.Code == 7500 {
 					sb.WriteString(" (提示: Token 缺少 'D1:Edit' 权限，请在 Cloudflare 后台为 Token 添加 Account->Workers D1->Edit 权限)")
 				}
 				if strings.Contains(e.Message, "SQLITE_AUTH") {
-					sb.WriteString(fmt.Sprintf(" (Hint: Check if Token has 'D1:Edit' permission, and AccountID '%s' matches DatabaseID '%s'. Also ensure you are using a Token, not Global Key)", accountID, databaseID))
+					sb.WriteString(fmt.Sprintf(" (Hint: Check if Token has 'D1:Edit' permission, and AccountID '%s' matches DatabaseID '%s'. Also ensure you are using a Token, not Global Key)", account_id, database_id))
 				}
 			}
 			return nil, fmt.Errorf("D1 API error (Status %d): %s", resp.StatusCode, sb.String())
@@ -485,7 +485,7 @@ func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D
 		for _, e := range d1_resp.Errors {
 			sb.WriteString(fmt.Sprintf("[%d] %s; ", e.Code, e.Message))
 			if strings.Contains(e.Message, "SQLITE_AUTH") {
-				sb.WriteString(fmt.Sprintf(" (Hint: Check if Token has 'D1:Edit' permission, and AccountID '%s' matches DatabaseID '%s')", accountID, databaseID))
+				sb.WriteString(fmt.Sprintf(" (Hint: Check if Token has 'D1:Edit' permission, and AccountID '%s' matches DatabaseID '%s')", account_id, database_id))
 			}
 		}
 		return nil, fmt.Errorf("D1 API error: %s", sb.String())
@@ -495,13 +495,13 @@ func query_d1(accountID, authToken, databaseID, sqlStr string, params []any) (*D
 }
 
 // Helper to list/find D1 database by name
-func find_d1_database_by_name(accountID, authToken, name string) (string, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database", accountID)
+func find_d1_database_by_name(account_id, auth_token, name string) (string, error) {
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database", account_id)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("create request failed: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Authorization", "Bearer "+auth_token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -516,7 +516,7 @@ func find_d1_database_by_name(accountID, authToken, name string) (string, error)
 		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var listResp struct {
+	var list_resp struct {
 		Result []struct {
 			UUID string `json:"uuid"`
 			Name string `json:"name"`
@@ -524,15 +524,15 @@ func find_d1_database_by_name(accountID, authToken, name string) (string, error)
 		Success bool `json:"success"`
 	}
 
-	if err := json.Unmarshal(body, &listResp); err != nil {
+	if err := json.Unmarshal(body, &list_resp); err != nil {
 		return "", fmt.Errorf("unmarshal failed: %v", err)
 	}
 
-	if !listResp.Success {
+	if !list_resp.Success {
 		return "", fmt.Errorf("api returned success=false")
 	}
 
-	for _, db := range listResp.Result {
+	for _, db := range list_resp.Result {
 		if db.Name == name {
 			return db.UUID, nil
 		}
@@ -542,16 +542,16 @@ func find_d1_database_by_name(accountID, authToken, name string) (string, error)
 }
 
 // Helper to create D1 database
-func create_d1_database(accountID, authToken, name string) (string, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database", accountID)
-	reqBody := map[string]string{"name": name}
-	jsonBody, _ := json.Marshal(reqBody)
+func create_d1_database(account_id, auth_token, name string) (string, error) {
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/d1/database", account_id)
+	req_body := map[string]string{"name": name}
+	json_body, _ := json.Marshal(req_body)
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json_body))
 	if err != nil {
 		return "", fmt.Errorf("create request failed: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Authorization", "Bearer "+auth_token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -566,7 +566,7 @@ func create_d1_database(accountID, authToken, name string) (string, error) {
 		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var createResp struct {
+	var create_resp struct {
 		Result struct {
 			UUID string `json:"uuid"`
 			Name string `json:"name"`
@@ -574,24 +574,24 @@ func create_d1_database(accountID, authToken, name string) (string, error) {
 		Success bool `json:"success"`
 	}
 
-	if err := json.Unmarshal(body, &createResp); err != nil {
+	if err := json.Unmarshal(body, &create_resp); err != nil {
 		return "", fmt.Errorf("unmarshal failed: %v", err)
 	}
 
-	if !createResp.Success {
+	if !create_resp.Success {
 		return "", fmt.Errorf("api returned success=false")
 	}
 
-	return createResp.Result.UUID, nil
+	return create_resp.Result.UUID, nil
 }
 
-func get_workers_subdomain(accountID, authToken string) (string, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/workers/subdomain", accountID)
+func get_workers_subdomain(account_id, auth_token string) (string, error) {
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/workers/subdomain", account_id)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("create request failed: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Authorization", "Bearer "+auth_token)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -606,20 +606,20 @@ func get_workers_subdomain(accountID, authToken string) (string, error) {
 		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var subdomainResp struct {
+	var subdomain_resp struct {
 		Result struct {
 			Subdomain string `json:"subdomain"`
 		} `json:"result"`
 		Success bool `json:"success"`
 	}
 
-	if err := json.Unmarshal(body, &subdomainResp); err != nil {
+	if err := json.Unmarshal(body, &subdomain_resp); err != nil {
 		return "", fmt.Errorf("unmarshal failed: %v", err)
 	}
 
-	if !subdomainResp.Success {
+	if !subdomain_resp.Success {
 		return "", fmt.Errorf("api returned success=false")
 	}
 
-	return subdomainResp.Result.Subdomain, nil
+	return subdomain_resp.Result.Subdomain, nil
 }

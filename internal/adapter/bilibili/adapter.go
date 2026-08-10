@@ -113,9 +113,9 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 		title = info.Title
 	}
 
-	savePath, _ := config["save_path"].(string)
-	if savePath == "" {
-		savePath = "/downloads/bilibili"
+	download_dir, _ := config["download_dir"].(string)
+	if download_dir == "" {
+		download_dir = "/downloads/bilibili"
 	}
 
 	configJSON, _ := json.Marshal(buildConfigJSON(config))

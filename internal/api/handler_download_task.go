@@ -51,20 +51,20 @@ type DownloadTaskItem struct {
 
 // DownloadResourceItem is the compact resource shape embedded in DownloadTaskItem.
 type DownloadResourceItem struct {
-	ID         int     `json:"id"`
-	TaskID     *int    `json:"task_id,omitempty"`
-	ContentID  *string `json:"content_id,omitempty"`
-	SavePath   string  `json:"save_path"`
-	Name       string  `json:"name"`
-	Kind       string  `json:"kind"`
-	Type       string  `json:"type"`
-	UniqueID   string  `json:"unique_id"`
-	Size       int64   `json:"size"`
-	Downloaded int64   `json:"downloaded"`
-	Speed      int64   `json:"speed"`
-	Status     int     `json:"status"`
-	OutputPath string  `json:"output_path,omitempty"`
-	FilePath   string  `json:"file_path,omitempty"`
+	ID          int     `json:"id"`
+	TaskID      *int    `json:"task_id,omitempty"`
+	ContentID   *string `json:"content_id,omitempty"`
+	DownloadDir string  `json:"download_dir"`
+	Name        string  `json:"name"`
+	Kind        string  `json:"kind"`
+	Type        string  `json:"type"`
+	UniqueID    string  `json:"unique_id"`
+	Size        int64   `json:"size"`
+	Downloaded  int64   `json:"downloaded"`
+	Speed       int64   `json:"speed"`
+	Status      int     `json:"status"`
+	OutputPath  string  `json:"output_path,omitempty"`
+	FilePath    string  `json:"file_path,omitempty"`
 }
 
 // DownloadTaskCreateItem is the per-object result shape in the batch create response.
@@ -83,6 +83,15 @@ type taskV1IDsBody struct {
 type deleteDownloadTasksBody struct {
 	TaskIDs     []int `json:"task_ids"`
 	DeleteFiles bool  `json:"delete_files"`
+}
+
+type clear_download_tasks_body struct {
+	TaskIDs     []int `json:"task_ids"`
+	DeleteFiles bool  `json:"delete_files"`
+}
+
+type clear_all_download_tasks_body struct {
+	DeleteFiles bool `json:"delete_files"`
 }
 
 // checkDownloadTaskFileItem identifies one file returned by the task list API.
@@ -114,10 +123,10 @@ type CreateDownloadTaskByURLRequest struct {
 
 // CreateDownloadTaskByURLBody is a single item in the create-by-URL request.
 type CreateDownloadTaskByURLBody struct {
-	URL          string         `json:"url"`       // resource download URL, required
-	SavePath     string         `json:"save_path"` // save directory
-	Filename     string         `json:"filename"`  // filename (optional, extracted from URL by default)
-	Config       map[string]any `json:"config"`    // custom download config
+	URL          string         `json:"url"`          // resource download URL, required
+	DownloadDir  string         `json:"download_dir"` // download directory
+	Filename     string         `json:"filename"`     // filename (optional, extracted from URL by default)
+	Config       map[string]any `json:"config"`       // custom download config
 	ParentTaskID *int           `json:"parent_task_id"`
 	RelationType string         `json:"relation_type"`
 }
@@ -128,42 +137,42 @@ const (
 	download_existing_action_overwrite = "overwrite"
 )
 
-// resolveDownloadSaveDir resolves the download save directory for a task.
+// resolve_download_dir resolves the download directory for a task.
 // Uses app config default when none is specified; relative paths are expanded
 // relative to the working directory.
-func (c *APIClient) resolveDownloadSaveDir(requested string) (string, error) {
-	savePath := strings.TrimSpace(requested)
-	if savePath == "" && c.cfg != nil {
-		savePath = strings.TrimSpace(c.cfg.DownloadDir)
+func (c *APIClient) resolve_download_dir(requested string) (string, error) {
+	download_dir := strings.TrimSpace(requested)
+	if download_dir == "" && c.cfg != nil {
+		download_dir = strings.TrimSpace(c.cfg.DownloadDir)
 	}
-	if savePath == "" {
-		return "", fmt.Errorf("保存目录不能为空")
+	if download_dir == "" {
+		return "", fmt.Errorf("下载目录不能为空")
 	}
 
-	workDir := ""
+	work_dir := ""
 	if c.cfg != nil {
-		workDir = c.cfg.WorkDir
+		work_dir = c.cfg.WorkDir
 	}
-	if workDir == "" {
+	if work_dir == "" {
 		var err error
-		workDir, err = os.Getwd()
+		work_dir, err = os.Getwd()
 		if err != nil {
 			return "", fmt.Errorf("获取工作目录失败: %w", err)
 		}
 	}
 
-	savePath = config.ResolveWorkDirPath(savePath, workDir)
+	download_dir = config.ResolveWorkDirPath(download_dir, work_dir)
 
-	if err := os.MkdirAll(savePath, 0755); err != nil {
-		return "", fmt.Errorf("创建保存目录 %q 失败: %w", savePath, err)
+	if err := os.MkdirAll(download_dir, 0755); err != nil {
+		return "", fmt.Errorf("创建下载目录 %q 失败: %w", download_dir, err)
 	}
 
-	return savePath, nil
+	return download_dir, nil
 }
 
-// downloadTaskSavePath returns the task save root directory.
-func downloadTaskSavePath(saveDir string) string {
-	return saveDir
+// download_task_download_dir returns the task download root directory.
+func download_task_download_dir(download_dir string) string {
+	return download_dir
 }
 
 // startCreatedDownloadTask hands the newly created task off to Hermes for scheduling.
@@ -175,7 +184,7 @@ func (c *APIClient) startCreatedDownloadTask(taskID int) error {
 		return fmt.Errorf("Hermes 下载器未初始化")
 	}
 	c.logger.Info().Int("task_id", taskID).Msg("Submitting download task to Hermes scheduler")
-	if err := c.downloader.StartTask(taskID); err != nil {
+	if err := c.downloader.StartCreatedTask(taskID); err != nil {
 		c.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
 		return err
 	}
@@ -194,16 +203,16 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
 
-	saveDir, err := c.resolveDownloadSaveDir(body.SavePath)
+	saveDir, err := c.resolve_download_dir(body.DownloadDir)
 	if err != nil {
-		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+		return nil, fmt.Errorf("准备下载目录失败: %w", err)
 	}
 
 	config := make(map[string]any, len(body.Config)+2)
 	for key, value := range body.Config {
 		config[key] = value
 	}
-	config["save_path"] = saveDir
+	config["download_dir"] = saveDir
 	if body.Filename != "" {
 		config["filename"] = body.Filename
 	}
@@ -220,7 +229,7 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("构建下载任务失败: 平台未返回下载任务")
 	}
 
-	savePath := downloadTaskSavePath(saveDir)
+	download_dir := download_task_download_dir(saveDir)
 
 	for _, ri := range info.Resources {
 		if len(ri.Endpoints) == 0 {
@@ -253,7 +262,7 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 	return gin.H{
 		"platform":       body.Platform,
 		"task_name":      info.Task.Name,
-		"save_path":      savePath,
+		"download_dir":   download_dir,
 		"resources":      resources,
 		"tree":           tree,
 		"resource_count": len(info.Resources),
@@ -302,13 +311,13 @@ func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLB
 
 	protocol := strings.ToUpper(parsedURL.Scheme)
 
-	requestedSavePath := body.SavePath
-	if requestedSavePath == "" {
-		requestedSavePath, _ = body.Config["save_path"].(string)
+	requested_download_dir := body.DownloadDir
+	if requested_download_dir == "" {
+		requested_download_dir, _ = body.Config["download_dir"].(string)
 	}
-	saveDir, err := c.resolveDownloadSaveDir(requestedSavePath)
+	saveDir, err := c.resolve_download_dir(requested_download_dir)
 	if err != nil {
-		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+		return nil, fmt.Errorf("准备下载目录失败: %w", err)
 	}
 	filename := body.Filename
 	if filename == "" {
@@ -332,13 +341,13 @@ func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLB
 		return nil, fmt.Errorf("无法确定下载文件名")
 	}
 
-	savePath := downloadTaskSavePath(saveDir)
+	download_dir := download_task_download_dir(saveDir)
 
 	return gin.H{
-		"url":       body.URL,
-		"protocol":  protocol,
-		"task_name": filename,
-		"save_path": savePath,
+		"url":          body.URL,
+		"protocol":     protocol,
+		"task_name":    filename,
+		"download_dir": download_dir,
 		"resources": []gin.H{{
 			"index": 0,
 			"name":  filename,
@@ -426,24 +435,24 @@ func build_download_task_item(create_result *services.CreateTaskResult) Download
 
 func build_download_resource_item(resource model.DownloadResource) DownloadResourceItem {
 	file_path := ""
-	if strings.TrimSpace(resource.SavePath) != "" {
-		file_path = filepath.Join(resource.SavePath, resource.Name)
+	if strings.TrimSpace(resource.DownloadDir) != "" {
+		file_path = filepath.Join(resource.DownloadDir, resource.Name)
 	}
 	return DownloadResourceItem{
-		ID:         resource.Id,
-		TaskID:     resource.TaskId,
-		ContentID:  resource.ContentId,
-		SavePath:   resource.SavePath,
-		Name:       resource.Name,
-		Kind:       resource.Kind,
-		Type:       resource.Type,
-		UniqueID:   resource.UniqueID,
-		Size:       resource.Size,
-		Downloaded: resource.Downloaded,
-		Speed:      resource.Speed,
-		Status:     resource.Status,
-		OutputPath: resource.Name,
-		FilePath:   file_path,
+		ID:          resource.Id,
+		TaskID:      resource.TaskId,
+		ContentID:   resource.ContentId,
+		DownloadDir: resource.DownloadDir,
+		Name:        resource.Name,
+		Kind:        resource.Kind,
+		Type:        resource.Type,
+		UniqueID:    resource.UniqueID,
+		Size:        resource.Size,
+		Downloaded:  resource.Downloaded,
+		Speed:       resource.Speed,
+		Status:      resource.Status,
+		OutputPath:  resource.Name,
+		FilePath:    file_path,
 	}
 }
 
@@ -657,13 +666,13 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 	}
 
 	protocol := strings.ToUpper(parsedURL.Scheme)
-	requested_save_path := body.SavePath
-	if strings.TrimSpace(requested_save_path) == "" {
-		requested_save_path, _ = body.Config["save_path"].(string)
+	requested_download_dir := body.DownloadDir
+	if strings.TrimSpace(requested_download_dir) == "" {
+		requested_download_dir, _ = body.Config["download_dir"].(string)
 	}
-	save_dir, err := c.resolveDownloadSaveDir(requested_save_path)
+	save_dir, err := c.resolve_download_dir(requested_download_dir)
 	if err != nil {
-		return nil, fmt.Errorf("准备保存目录失败: %w", err)
+		return nil, fmt.Errorf("准备下载目录失败: %w", err)
 	}
 
 	filename := body.Filename
@@ -698,7 +707,7 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 		task_config[key] = value
 	}
 	task_config["url"] = body.URL
-	task_config["save_path"] = save_dir
+	task_config["download_dir"] = save_dir
 	if filename != "" {
 		task_config["filename"] = filename
 	}
@@ -734,16 +743,16 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 		return nil, err
 	}
 
-	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("save_path", save_dir).Msg("URL download task written to database")
+	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("download_dir", save_dir).Msg("URL download task written to database")
 	// Create resource
 	task_id := task.Id
 	resource := model.DownloadResource{
-		TaskId:     &task_id,
-		SavePath:   save_dir,
-		Name:       filename,
-		Kind:       "file",
-		Status:     0,
-		MergeOrder: 0,
+		TaskId:      &task_id,
+		DownloadDir: save_dir,
+		Name:        filename,
+		Kind:        "file",
+		Status:      0,
+		MergeOrder:  0,
 	}
 	resource.CreatedAt = now
 	resource.UpdatedAt = now
@@ -1079,9 +1088,16 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 	c.logger.Info().Str("api", "POST /api/v1/download_task/delete").Int("task_count", len(body.TaskIDs)).Bool("delete_files", body.DeleteFiles).Msg("Received batch delete download task request")
 
 	results := make([]gin.H, 0, len(body.TaskIDs))
+	successful_deletions := 0
 	for _, taskID := range body.TaskIDs {
 		r := c.deleteSingleDownloadTask(taskID, body.DeleteFiles)
 		results = append(results, r)
+		if success, _ := r["success"].(bool); success {
+			successful_deletions++
+		}
+	}
+	if successful_deletions > 0 {
+		c.broadcast_download_task_stats()
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
@@ -1173,11 +1189,6 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 		return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 	}
 	c.logger.Info().Int("task_id", task.Id).Msg("Starting database soft deletion")
-	deletedRecord, recordErr := c.download_task_service.BuildTaskRecord(task.Id)
-	if recordErr != nil {
-		c.logger.Warn().Int("task_id", task.Id).Err(recordErr).Msg("Download task deletion failed to build pre-delete broadcast record")
-	}
-
 	taskDelete := c.db.Model(&task).Update("deleted_at", now)
 	c.logDownloadTaskSoftDeleteResult(task.Id, "task", taskDelete.Error, taskDelete.RowsAffected)
 
@@ -1206,12 +1217,8 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 		c.logger.Warn().Int("task_id", task.Id).Msg("Download task deletion found no associated resources to cascade")
 	}
 
-	if deletedRecord != nil {
-		c.broadcastDownloadTaskDelete([]services.DownloadTaskRecord{*deletedRecord})
-		c.logger.Info().Int("task_id", task.Id).Msg("Download task deletion broadcast emitted")
-	} else {
-		c.logger.Warn().Int("task_id", task.Id).Msg("Download task deletion broadcast skipped because no pre-delete record was available")
-	}
+	c.broadcast_download_task_delete([]int{task.Id})
+	c.logger.Info().Int("task_id", task.Id).Msg("Download task deletion broadcast emitted")
 	c.logDownloadTaskLocalFiles(task, resources, "after_delete")
 	c.logger.Info().
 		Int("task_id", task.Id).
@@ -1262,16 +1269,16 @@ func (c *APIClient) download_task_local_file_roots(task model.DownloadTask, reso
 		if err := json.Unmarshal([]byte(task.ConfigJSON), &task_config); err != nil {
 			c.logger.Warn().Int("task_id", task.Id).Err(err).Msg("Unable to parse task config while resolving local file roots")
 		} else {
-			save_path, _ := task_config["save_path"].(string)
-			add_root(save_path, "task_config_save_path")
+			download_dir, _ := task_config["download_dir"].(string)
+			add_root(download_dir, "task_config_download_dir")
 		}
 	}
 	if resource != nil {
-		resource_save_path := strings.TrimSpace(resource.SavePath)
-		if resource_save_path != "" && !filepath.IsAbs(resource_save_path) && c.cfg != nil {
-			resource_save_path = filepath.Join(c.cfg.DownloadDir, resource_save_path)
+		resource_download_dir := strings.TrimSpace(resource.DownloadDir)
+		if resource_download_dir != "" && !filepath.IsAbs(resource_download_dir) && c.cfg != nil {
+			resource_download_dir = filepath.Join(c.cfg.DownloadDir, resource_download_dir)
 		}
-		add_root(resource_save_path, "resource_save_path")
+		add_root(resource_download_dir, "resource_download_dir")
 	}
 	return roots
 }
@@ -1381,7 +1388,7 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 
 // logDownloadTaskLocalFiles records all plausible final and partial paths without
 // mutating the filesystem. The task config path is included because older tasks
-// may have been created with a per-task save_path that differs from DownloadDir.
+// may have been created with a per-task download_dir that differs from DownloadDir.
 func (c *APIClient) logDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource, phase string) {
 	roots := c.download_task_local_file_roots(task, nil)
 	c.logger.Info().Int("task_id", task.Id).Str("phase", phase).Int("resource_count", len(resources)).Int("candidate_root_count", len(roots)).Msg("Inspecting associated local file candidates")
@@ -1811,57 +1818,77 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks), "failures": failures})
 }
 
-// handle_clear_download_task clears completed/failed/cancelled download tasks.
+// handle_clear_download_task clears the requested download task records.
 // POST /api/v1/download_task/clear
 func (c *APIClient) handle_clear_download_task(ctx *gin.Context) {
+	var body clear_download_tasks_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	if len(body.TaskIDs) == 0 {
+		result.Err(ctx, 400, "task_ids 不能为空")
+		return
+	}
 	if c.db == nil {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
 	}
 
-	var body struct {
-		DeleteFiles bool `json:"delete_files"`
-	}
-	ctx.ShouldBindJSON(&body)
+	cleared, results := c.clear_download_task_records(body.TaskIDs, body.DeleteFiles)
+	result.Ok(ctx, gin.H{
+		"cleared": cleared,
+		"total":   len(body.TaskIDs),
+		"results": results,
+	})
+}
 
-	var tasks []model.DownloadTask
-	if err := c.db.Where("deleted_at IS NULL").
-		Where("status IN (?, ?, ?)",
-			model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled).
-		Find(&tasks).Error; err != nil {
+// handle_clear_all_download_task clears all download task records.
+// POST /api/v1/download_task/clear_all
+func (c *APIClient) handle_clear_all_download_task(ctx *gin.Context) {
+	var body clear_all_download_tasks_body
+	if ctx.Request.Body != nil && ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&body); err != nil {
+			result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+			return
+		}
+	}
+	if c.db == nil {
+		result.Err(ctx, 500, "应用未初始化，数据库不可用")
+		return
+	}
+
+	var task_ids []int
+	if err := c.db.Model(&model.DownloadTask{}).
+		Where("deleted_at IS NULL").
+		Order("id ASC").
+		Pluck("id", &task_ids).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
 	}
 
-	now := time.Now().UnixMilli()
-	var cleared int
+	cleared, results := c.clear_download_task_records(task_ids, body.DeleteFiles)
+	result.Ok(ctx, gin.H{
+		"cleared": cleared,
+		"total":   len(task_ids),
+		"results": results,
+	})
+}
 
-	for _, task := range tasks {
-		c.downloader.DeleteTask(task.Id)
-
-		// Soft-delete task
-		c.db.Model(&task).Update("deleted_at", now)
-
-		// Cascade soft-delete related data
-		c.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Update("deleted_at", now)
-
-		var resourceIDs []int
-		c.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Pluck("id", &resourceIDs)
-		if len(resourceIDs) > 0 {
-			c.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resourceIDs).Update("deleted_at", now)
-			c.db.Model(&model.DownloadSegment{}).Where("resource_id IN ?", resourceIDs).Update("deleted_at", now)
-
-			var endpointIDs []int
-			c.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resourceIDs).Pluck("id", &endpointIDs)
-			if len(endpointIDs) > 0 {
-				c.db.Model(&model.DownloadConnection{}).Where("endpoint_id IN ?", endpointIDs).Update("deleted_at", now)
-			}
+func (c *APIClient) clear_download_task_records(task_ids []int, delete_files bool) (int, []gin.H) {
+	results := make([]gin.H, 0, len(task_ids))
+	cleared := 0
+	for _, task_id := range task_ids {
+		clear_result := c.deleteSingleDownloadTask(task_id, delete_files)
+		results = append(results, clear_result)
+		if success, _ := clear_result["success"].(bool); success {
+			cleared++
 		}
-
-		cleared++
 	}
-
-	result.Ok(ctx, gin.H{"cleared": cleared})
+	if cleared > 0 {
+		c.broadcast_download_task_stats()
+	}
+	return cleared, results
 }
 
 // hasStreamResources checks whether the task contains STREAM type resources (live streams).
@@ -1959,7 +1986,7 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 
 	files := make([]fileWithPath, 0, len(record.Files))
 	for _, f := range record.Files {
-		local_path := filepath.Join(f.SavePath, f.Name)
+		local_path := filepath.Join(f.DownloadDir, f.Name)
 		exists := false
 		if _, stat_err := os.Stat(local_path); stat_err == nil {
 			exists = true
@@ -1968,7 +1995,7 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 			DownloadTaskFileRecord: f,
 			LocalPath:              local_path,
 			FileType:               file_type_by_ext(f.Name),
-			FileURL:                "/file?path=" + local_path,
+			FileURL:                "/api/file?path=" + local_path,
 			Exists:                 exists,
 		})
 	}

@@ -92,6 +92,12 @@ func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, reque
 	}
 
 	if request.UseRange {
+		// A 200 response is valid for a range that covers the complete object.
+		// Accept it only when the response length proves that no partial-range
+		// semantics are being lost.
+		if full_range_response_matches_request(resp, request) {
+			return resp.Body, nil
+		}
 		if resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()
 			return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
@@ -108,6 +114,13 @@ func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, reque
 		return nil, fmt.Errorf("server returned error status code: %d", resp.StatusCode)
 	}
 	return resp.Body, nil
+}
+
+func full_range_response_matches_request(resp *http.Response, request ReadRequest) bool {
+	if resp == nil || resp.StatusCode != http.StatusOK || request.OffsetStart != 0 || request.OffsetEnd < 0 {
+		return false
+	}
+	return resp.ContentLength == request.OffsetEnd+1
 }
 
 func (d *default_http_driver) new_request(ctx context.Context, endpoint Endpoint, request ReadRequest) (*http.Request, error) {

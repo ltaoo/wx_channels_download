@@ -29,7 +29,6 @@ var channels_ws_upgrader = websocket.Upgrader{
 
 var (
 	channels_share_url_reg = regexp.MustCompile(`^https://weixin\.qq\.com/sph/[A-Za-z0-9_-]+/?$`)
-	channels_feed_url_reg  = regexp.MustCompile(`^https://channels\.weixin\.qq\.com/web/pages/feed\?oid=[A-Za-z0-9_-]+&nid=[A-Za-z0-9_-]+$`)
 )
 
 type FetchParams struct {
@@ -67,11 +66,16 @@ func (c *ChannelsClient) Fetch(params FetchParams) (any, error) {
 	switch {
 	case channels_share_url_reg.MatchString(raw_url):
 		return c.fetch_profile_with_share_url(raw_url)
-	case channels_feed_url_reg.MatchString(raw_url):
+	case is_channels_feed_url(raw_url):
 		return c.fetch_profile_with_channels_client(raw_url)
 	default:
 		return nil, ErrUnsupportedURL
 	}
+}
+
+func is_channels_feed_url(raw_url string) bool {
+	parts, err := ParseFeedURL(raw_url)
+	return err == nil && parts.Oid != "" && parts.Nid != ""
 }
 
 func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, error) {
@@ -86,7 +90,7 @@ func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, erro
 }
 
 func (c *ChannelsClient) fetch_profile_with_channels_client(raw_url string) (any, error) {
-	return nil, nil
+	return c.FetchFeedPage(raw_url)
 }
 
 func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
@@ -400,7 +404,7 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*C
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchFeedPage(raw_url string) (*FeedPage, error) {
+func (c *ChannelsClient) FetchFeedPage(raw_url string) (*ChannelsObject, error) {
 	parts, err := ParseFeedURL(raw_url)
 	if err != nil {
 		return nil, err
@@ -412,12 +416,7 @@ func (c *ChannelsClient) FetchFeedPage(raw_url string) (*FeedPage, error) {
 	if resp.ErrCode != 0 {
 		return nil, fmt.Errorf("fetch channels feed profile: %s", resp.ErrMsg)
 	}
-	obj := resp.Data.Object
-	return &FeedPage{
-		URL:    *parts,
-		Resp:   resp,
-		Object: obj,
-	}, nil
+	return &resp.Data.Object, nil
 }
 
 func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfileResp, error) {

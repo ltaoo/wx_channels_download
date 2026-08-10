@@ -456,7 +456,7 @@ function render(data) {
     // Single video file: show full-page player
     if (existingFiles.length === 1 && existingFiles[0].file_type === 'video') {
         const f = existingFiles[0];
-        const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+        const url = `/api/file?path=${encodeURIComponent(f.local_path)}`;
         document.getElementById('app').innerHTML = `
             ${headerHTML}
             <div class="video-container">
@@ -472,7 +472,7 @@ function render(data) {
     // Single image file: show full-page image
     if (existingFiles.length === 1 && existingFiles[0].file_type === 'image') {
         const f = existingFiles[0];
-        const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+        const url = `/api/file?path=${encodeURIComponent(f.local_path)}`;
         document.getElementById('app').innerHTML = `
             ${headerHTML}
             <div class="image-container">
@@ -488,7 +488,7 @@ function render(data) {
             const ft = f.file_type || 'other';
             const icon = fileTypeIcon(ft);
             const thumbHTML = (ft === 'image' && f.exists)
-                ? `<img src="/file?path=${encodeURIComponent(f.local_path)}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=icon>${icon}</span>'">`
+                ? `<img src="/api/file?path=${encodeURIComponent(f.local_path)}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=icon>${icon}</span>'">`
                 : `<span class="icon">${icon}</span>`;
             const progressBar = (f.status === 'downloading' && f.progress > 0)
                 ? `<div class="progress-bar"><div class="fill" style="width:${f.progress}%"></div></div>`
@@ -526,7 +526,7 @@ function previewFile(index) {
     if (!f || !f.exists) return;
 
     const ft = f.file_type || 'other';
-    const url = `/file?path=${encodeURIComponent(f.local_path)}`;
+    const url = `/api/file?path=${encodeURIComponent(f.local_path)}`;
 
     let bodyHTML = '';
     let bodyClass = 'preview-body';
@@ -568,9 +568,9 @@ function previewFile(index) {
 
 async function loadZipPreview(file, panel) {
     const body = panel.querySelector('.preview-body');
-    const downloadURL = `/file?path=${encodeURIComponent(file.local_path)}`;
+    const downloadURL = `/api/file?path=${encodeURIComponent(file.local_path)}`;
     try {
-        const resp = await fetch(`/api/file?path=${encodeURIComponent(file.local_path)}`);
+        const resp = await fetch(`/api/file?preview=1&path=${encodeURIComponent(file.local_path)}`);
         if (!resp.ok) throw new Error('Failed to read zip');
         const json = await resp.json();
         if (json.code !== 0) throw new Error(json.msg || 'Failed to read zip');

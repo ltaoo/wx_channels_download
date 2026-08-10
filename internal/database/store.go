@@ -90,7 +90,7 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 			config = make(map[string]any)
 		}
 	}
-	save_path, _ := config["save_path"].(string)
+	download_dir, _ := config["download_dir"].(string)
 	metadata := make(map[string]any)
 	if strings.TrimSpace(task.MetadataJSON) != "" {
 		if err := json.Unmarshal([]byte(task.MetadataJSON), &metadata); err != nil {
@@ -124,13 +124,13 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 			return nil, fmt.Errorf("资源 %d 没有已启用的下载端点", resource.Id)
 		}
 		extra := parseExtra(resource.Extra)
-		resource_save_path := strings.TrimSpace(resource.SavePath)
-		if resource_save_path == "" {
-			resource_save_path = strings.TrimSpace(save_path)
+		resource_download_dir := strings.TrimSpace(resource.DownloadDir)
+		if resource_download_dir == "" {
+			resource_download_dir = strings.TrimSpace(download_dir)
 		}
 		resource_infos = append(resource_infos, hermes.ResourceJob{
 			ID:            resource.Id,
-			SavePath:      resource_save_path,
+			DownloadDir:   resource_download_dir,
 			Name:          resource.Name,
 			Kind:          resource.Kind,
 			Type:          resource.Type,
@@ -149,14 +149,14 @@ func (s *DBTaskStore) LoadTask(task_id int) (*hermes.TaskJob, error) {
 		})
 	}
 	return &hermes.TaskJob{
-		ID:        task.Id,
-		Name:      task.Name,
-		UniqueID:  task.UniqueID,
-		SavePath:  strings.TrimSpace(save_path),
-		Platform:  task.PlatformId,
-		Resources: resource_infos,
-		Config:    config,
-		Metadata:  metadata,
+		ID:          task.Id,
+		Name:        task.Name,
+		UniqueID:    task.UniqueID,
+		DownloadDir: strings.TrimSpace(download_dir),
+		Platform:    task.PlatformId,
+		Resources:   resource_infos,
+		Config:      config,
+		Metadata:    metadata,
 	}, nil
 }
 
@@ -293,11 +293,11 @@ func (s *DBTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) e
 		query = query.Where("task_id = ?", update.TaskID)
 	}
 	result := query.Updates(map[string]any{
-		"save_path":  update.SavePath,
-		"name":       update.ResourceName,
-		"kind":       update.ResourceKind,
-		"size":       update.ResourceSize,
-		"updated_at": now,
+		"download_dir": update.DownloadDir,
+		"name":         update.ResourceName,
+		"kind":         update.ResourceKind,
+		"size":         update.ResourceSize,
+		"updated_at":   now,
 	})
 	if result.Error != nil {
 		return result.Error

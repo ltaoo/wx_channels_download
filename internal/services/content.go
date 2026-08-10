@@ -196,7 +196,7 @@ type ContentResourceRecord struct {
 	ID            int     `json:"id"`
 	TaskID        *int    `json:"task_id,omitempty"`
 	ContentID     *string `json:"content_id,omitempty"`
-	SavePath      string  `json:"save_path"`
+	DownloadDir   string  `json:"download_dir"`
 	Name          string  `json:"name"`
 	Kind          string  `json:"kind"`
 	UniqueID      string  `json:"unique_id"`
@@ -365,7 +365,7 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 				ID:            r.Id,
 				TaskID:        r.TaskId,
 				ContentID:     r.ContentId,
-				SavePath:      r.SavePath,
+				DownloadDir:   r.DownloadDir,
 				Name:          r.Name,
 				Kind:          r.Kind,
 				UniqueID:      r.UniqueID,

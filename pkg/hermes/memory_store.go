@@ -271,7 +271,7 @@ func (s *memory_store) UpdateResourceOutput(update ResourceOutputUpdate) error {
 	}
 	state.mu.Lock()
 	if resource := find_memory_resource(state.job, update.ResourceID); resource != nil {
-		resource.SavePath = update.SavePath
+		resource.DownloadDir = update.DownloadDir
 		resource.Name = update.ResourceName
 		resource.Kind = update.ResourceKind
 		resource.Size = update.ResourceSize
@@ -310,7 +310,7 @@ func clone_task_job(job *TaskJob) *TaskJob {
 		ID:               job.ID,
 		Name:             job.Name,
 		UniqueID:         job.UniqueID,
-		SavePath:         job.SavePath,
+		DownloadDir:      job.DownloadDir,
 		FilenameTemplate: job.FilenameTemplate,
 		Platform:         job.Platform,
 		ProxyServer:      job.ProxyServer,

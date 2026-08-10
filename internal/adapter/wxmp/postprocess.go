@@ -23,45 +23,45 @@ import (
 )
 
 const (
-	wxmpPostprocessPipelineName         = "wxmp_postprocess"
-	wxmpPostprocessRunKey               = "wxmp_postprocess_run"
-	wxmpPostprocessContextEmbeddedNames = "embedded_resource_names"
-	wxmpPostprocessContextOutputFile    = "output_file"
-	wxmpPostprocessContextFinalHTML     = "final_html"
-	wxmpPostprocessContextKeyCtx        = "context"
-	wxmpPostprocessFlowNodeAssembleHTML = "assemble_html"
-	wxmpPostprocessFlowNodeCleanup      = "cleanup_embedded_resources"
-	wxmpPostprocessFlowNodeDone         = "done"
+	wxmp_postprocess_pipeline_name           = "wxmp_postprocess"
+	wxmp_postprocess_run_key                 = "wxmp_postprocess_run"
+	wxmp_postprocess_context_embedded_names  = "embedded_resource_names"
+	wxmp_postprocess_context_output_file     = "output_file"
+	wxmp_postprocess_context_final_html      = "final_html"
+	wxmp_postprocess_context_key_ctx         = "context"
+	wxmp_postprocess_flow_node_assemble_html = "assemble_html"
+	wxmp_postprocess_flow_node_cleanup       = "cleanup_embedded_resources"
+	wxmp_postprocess_flow_node_done          = "done"
 )
 
-type wxmpPostprocessRun struct {
-	task        *hermes.TaskJob
-	db          *gorm.DB
-	logger      zerolog.Logger
-	savePath    string
-	taskName    string
-	bizType     int
-	contentHTML string
+type wxmp_postprocess_run struct {
+	task         *hermes.TaskJob
+	db           *gorm.DB
+	logger       zerolog.Logger
+	download_dir string
+	task_name    string
+	biz_type     int
+	content_html string
 }
 
 // Postprocess assembles downloaded wxmp resources into the final HTML file.
 func (a *OfficialAccountAdapter) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
-	taskID := info.ID
+	task_id := info.ID
 	var meta struct {
 		BizType int `json:"biz_type"`
 	}
 	if info.Metadata != nil {
-		metadataJSON, err := json.Marshal(info.Metadata)
+		metadata_json, err := json.Marshal(info.Metadata)
 		if err != nil {
 			return fmt.Errorf("wxmp postprocess: encode task metadata: %w", err)
 		}
-		if err := json.Unmarshal(metadataJSON, &meta); err != nil {
+		if err := json.Unmarshal(metadata_json, &meta); err != nil {
 			return fmt.Errorf("wxmp postprocess: decode task metadata: %w", err)
 		}
 	}
 	if meta.BizType != 1 {
 		deps.Logger.Info().
-			Int("task_id", taskID).
+			Int("task_id", task_id).
 			Int("biz_type", meta.BizType).
 			Msg("Postprocessor.wxmp: non-article task, skipping HTML image embedding")
 		return nil
@@ -71,45 +71,45 @@ func (a *OfficialAccountAdapter) Postprocess(ctx context.Context, info *hermes.T
 		return fmt.Errorf("wxmp postprocess: database is nil")
 	}
 
-	var htmlResource *hermes.ResourceJob
+	var html_resource *hermes.ResourceJob
 	for i := range info.Resources {
 		resource := &info.Resources[i]
 		kind := strings.ToLower(strings.TrimSpace(resource.Kind))
 		if (kind == "html" || kind == "text/html") && resource.FilePath != "" {
-			htmlResource = resource
+			html_resource = resource
 			break
 		}
 	}
-	if htmlResource == nil {
-		return fmt.Errorf("wxmp postprocess: article task %d has no downloaded HTML resource", taskID)
+	if html_resource == nil {
+		return fmt.Errorf("wxmp postprocess: article task %d has no downloaded HTML resource", task_id)
 	}
-	contentHTML, err := os.ReadFile(htmlResource.FilePath)
+	content_html, err := os.ReadFile(html_resource.FilePath)
 	if err != nil {
-		return fmt.Errorf("wxmp postprocess: read HTML resource %s: %w", htmlResource.FilePath, err)
+		return fmt.Errorf("wxmp postprocess: read HTML resource %s: %w", html_resource.FilePath, err)
 	}
 
 	data := map[string]interface{}{
-		wxmpPostprocessRunKey: &wxmpPostprocessRun{
-			task:        info,
-			db:          deps.DB,
-			logger:      deps.Logger,
-			savePath:    deps.BasePath,
-			taskName:    info.Name,
-			bizType:     meta.BizType,
-			contentHTML: string(contentHTML),
+		wxmp_postprocess_run_key: &wxmp_postprocess_run{
+			task:         info,
+			db:           deps.DB,
+			logger:       deps.Logger,
+			download_dir: deps.BasePath,
+			task_name:    info.Name,
+			biz_type:     meta.BizType,
+			content_html: string(content_html),
 		},
-		wxmpPostprocessContextKeyCtx:     ctx,
-		wxmpPostprocessContextOutputFile: htmlResource.FilePath,
+		wxmp_postprocess_context_key_ctx:     ctx,
+		wxmp_postprocess_context_output_file: html_resource.FilePath,
 	}
 
-	if err := runWXMPPostprocessFlow(wxmpPostprocessFlow, data); err != nil {
+	if err := run_wxmp_postprocess_flow(wxmp_postprocess_flow, data); err != nil {
 		return err
 	}
 	return nil
 }
 
-func wxmpPostprocessRunFromContext(data map[string]interface{}) (*wxmpPostprocessRun, error) {
-	run, _ := data[wxmpPostprocessRunKey].(*wxmpPostprocessRun)
+func wxmp_postprocess_run_from_context(data map[string]interface{}) (*wxmp_postprocess_run, error) {
+	run, _ := data[wxmp_postprocess_run_key].(*wxmp_postprocess_run)
 	if run == nil || run.task == nil {
 		return nil, fmt.Errorf("缺少 wxmp_postprocess_run")
 	}
@@ -121,142 +121,142 @@ func wxmpPostprocessRunFromContext(data map[string]interface{}) (*wxmpPostproces
 
 // AssembleHTMLNode embeds downloaded images in an official-account article and
 // wraps the fragment as a complete HTML document.
-func assembleHTMLNode(values map[string]interface{}) (interface{}, error) {
-	return runWXMPNode(values, wxmpPostprocessFlowNodeAssembleHTML, func(run *wxmpPostprocessRun) (interface{}, error) {
-		return assembleHTMLNodeInternal(values, run)
+func assemble_html_node(values map[string]interface{}) (interface{}, error) {
+	return run_wxmp_node(values, wxmp_postprocess_flow_node_assemble_html, func(run *wxmp_postprocess_run) (interface{}, error) {
+		return assemble_html_node_internal(values, run)
 	})
 }
 
-func assembleHTMLNodeInternal(values map[string]interface{}, run *wxmpPostprocessRun) (interface{}, error) {
-	if run.savePath == "" {
-		return nil, fmt.Errorf("缺少 save_path")
+func assemble_html_node_internal(values map[string]interface{}, run *wxmp_postprocess_run) (interface{}, error) {
+	if run.download_dir == "" {
+		return nil, fmt.Errorf("缺少 download_dir")
 	}
-	taskName := strings.TrimSpace(run.taskName)
-	if taskName == "" {
-		taskName = "article"
+	task_name := strings.TrimSpace(run.task_name)
+	if task_name == "" {
+		task_name = "article"
 	}
-	taskID := run.task.ID
-	bizType := run.bizType
+	task_id := run.task.ID
+	biz_type := run.biz_type
 
 	logf := func(msg string, args ...interface{}) {
-		run.logger.Info().Int("task_id", taskID).Msgf(msg, args...)
+		run.logger.Info().Int("task_id", task_id).Msgf(msg, args...)
 	}
 	warnf := func(msg string, args ...interface{}) {
-		run.logger.Warn().Int("task_id", taskID).Msgf(msg, args...)
+		run.logger.Warn().Int("task_id", task_id).Msgf(msg, args...)
 	}
 
-	logf("assemble_html: savePath=%q taskName=%q bizType=%d", run.savePath, taskName, bizType)
+	logf("assemble_html: download_dir=%q task_name=%q biz_type=%d", run.download_dir, task_name, biz_type)
 
-	if bizType != 1 {
-		return nil, fmt.Errorf("wxmp postprocess: unsupported biz_type %d", bizType)
+	if biz_type != 1 {
+		return nil, fmt.Errorf("wxmp postprocess: unsupported biz_type %d", biz_type)
 	}
-	if run.contentHTML == "" {
+	if run.content_html == "" {
 		return nil, fmt.Errorf("缺少 content_html")
 	}
 
-	embeddedResources := make(map[string]bool)
-	md5ToResource := imageResourcesByURL(run.task.Resources)
-	logf("assemble_html: article mode, mapped %d downloaded image resources from task", len(md5ToResource))
+	embedded_resources := make(map[string]bool)
+	md5_to_resource := image_resources_by_url(run.task.Resources)
+	logf("assemble_html: article mode, mapped %d downloaded image resources from task", len(md5_to_resource))
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(run.contentHTML))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(run.content_html))
 	if err != nil {
 		return nil, fmt.Errorf("解析 content HTML 失败: %w", err)
 	}
 
-	totalImgs := 0
-	matchedImgs := 0
-	dataURIImgs := 0
-	remoteFallbackImgs := 0
+	total_imgs := 0
+	matched_imgs := 0
+	data_uri_imgs := 0
+	remote_fallback_imgs := 0
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
-		totalImgs++
-		imgURL := s.AttrOr("data-src", "")
-		srcAttr := "data-src"
-		if imgURL == "" {
-			imgURL = s.AttrOr("src", "")
-			srcAttr = "src"
+		total_imgs++
+		img_url := s.AttrOr("data-src", "")
+		src_attr := "data-src"
+		if img_url == "" {
+			img_url = s.AttrOr("src", "")
+			src_attr = "src"
 		}
-		imgURL = normalize_image_url(imgURL)
-		if imgURL == "" {
+		img_url = normalize_image_url(img_url)
+		if img_url == "" {
 			warnf("assemble_html: img[%d] no valid URL (both data-src and src are empty)", i)
 			return
 		}
 
-		hash := md5.Sum([]byte(imgURL))
-		hashStr := hex.EncodeToString(hash[:])
-		logf("assemble_html: img[%d] URL=%q attr=%s → hash=%s", i, imgURL, srcAttr, hashStr)
+		hash := md5.Sum([]byte(img_url))
+		hash_str := hex.EncodeToString(hash[:])
+		logf("assemble_html: img[%d] URL=%q attr=%s → hash=%s", i, img_url, src_attr, hash_str)
 
-		if resource, ok := md5ToResource[hashStr]; ok {
-			matchedImgs++
-			dataURI := imageResourceToDataURI(resource)
+		if resource, ok := md5_to_resource[hash_str]; ok {
+			matched_imgs++
+			data_uri := image_resource_to_data_uri(resource)
 
-			if dataURI != "" {
-				s.SetAttr("src", dataURI)
-				dataURIImgs++
-				embeddedResources[wxmpResourceKey(resource)] = true
+			if data_uri != "" {
+				s.SetAttr("src", data_uri)
+				data_uri_imgs++
+				embedded_resources[wxmp_resource_key(resource)] = true
 				logf("assemble_html: img[%d] base64 inline success (resource_id=%d file=%s size=%d)",
-					i, resource.ID, resource.FilePath, len(dataURI))
+					i, resource.ID, resource.FilePath, len(data_uri))
 			} else {
-				s.SetAttr("src", imgURL)
-				remoteFallbackImgs++
+				s.SetAttr("src", img_url)
+				remote_fallback_imgs++
 				warnf("assemble_html: img[%d] base64 read failed, falling back to remote URL (resource_id=%d path=%s)",
 					i, resource.ID, resource.FilePath)
 			}
 			s.RemoveAttr("data-src")
 		} else {
-			warnf("assemble_html: img[%d] no local resource matched (URL=%q hash=%q, md5ToResource keys=%v)",
-				i, imgURL, hashStr, mapKeysResource(md5ToResource))
+			warnf("assemble_html: img[%d] no local resource matched (URL=%q hash=%q, md5_to_resource keys=%v)",
+				i, img_url, hash_str, map_keys_resource(md5_to_resource))
 		}
 	})
 
 	logf("assemble_html: stats total_imgs=%d matched=%d data_uri=%d remote_fallback=%d unmatched=%d embedded_resources=%v",
-		totalImgs, matchedImgs, dataURIImgs, remoteFallbackImgs, totalImgs-matchedImgs, mapKeysBool(embeddedResources))
+		total_imgs, matched_imgs, data_uri_imgs, remote_fallback_imgs, total_imgs-matched_imgs, map_keys_bool(embedded_resources))
 
-	bodyHTML, err := doc.Find("body").Html()
+	body_html, err := doc.Find("body").Html()
 	if err != nil {
-		bodyHTML = run.contentHTML
+		body_html = run.content_html
 	}
-	values[wxmpPostprocessContextEmbeddedNames] = embeddedResources
+	values[wxmp_postprocess_context_embedded_names] = embedded_resources
 
-	fullHTML := AssembleFullHTML(taskName, bodyHTML)
+	full_html := AssembleFullHTML(task_name, body_html)
 
 	// Ensure output file has .html extension.
 	// Sanitize task name to replace "/" which can appear in titles (e.g. "zh-CN/zh-TW")
 	// and would break filepath.Join by creating unintended subdirectories.
-	var outputPath string
-	if outFile, _ := values[wxmpPostprocessContextOutputFile].(string); outFile != "" {
-		outputPath = outFile
+	var output_path string
+	if out_file, _ := values[wxmp_postprocess_context_output_file].(string); out_file != "" {
+		output_path = out_file
 	} else {
-		safeName := strings.ReplaceAll(taskName, "/", "-")
-		if !strings.HasSuffix(safeName, ".html") {
-			safeName += ".html"
+		safe_name := strings.ReplaceAll(task_name, "/", "-")
+		if !strings.HasSuffix(safe_name, ".html") {
+			safe_name += ".html"
 		}
-		outputPath = filepath.Join(run.savePath, safeName)
+		output_path = filepath.Join(run.download_dir, safe_name)
 	}
 
-	dir := filepath.Dir(outputPath)
+	dir := filepath.Dir(output_path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建输出目录失败: %w", err)
 	}
-	if err := os.WriteFile(outputPath, []byte(fullHTML), 0644); err != nil {
+	if err := os.WriteFile(output_path, []byte(full_html), 0644); err != nil {
 		return nil, fmt.Errorf("写入 HTML 文件失败: %w", err)
 	}
 	for i := range run.task.Resources {
 		resource := &run.task.Resources[i]
-		if resource.FilePath != "" && filepath.Clean(resource.FilePath) == filepath.Clean(outputPath) {
+		if resource.FilePath != "" && filepath.Clean(resource.FilePath) == filepath.Clean(output_path) {
 			resource.Kind = "text/html"
-			resource.Size = int64(len(fullHTML))
+			resource.Size = int64(len(full_html))
 			break
 		}
 	}
 
-	values[wxmpPostprocessContextFinalHTML] = outputPath
+	values[wxmp_postprocess_context_final_html] = output_path
 	return nil, nil
 }
 
 // GetWXMPPostprocessFlowVisualization returns a read-only flow graph payload for
 // frontend visualization.
-func GetWXMPPostprocessFlowVisualization(flowID string) (*WXMPPostprocessFlowVisualizationPayload, error) {
-	payload, err := flowengine.BuildFlowVisualizationPayload([]flowengine.FlowDefinition{wxmpPostprocessFlow}, flowID, flowengine.FlowVisualizationOptions{
+func GetWXMPPostprocessFlowVisualization(flow_id string) (*WXMPPostprocessFlowVisualizationPayload, error) {
+	payload, err := flowengine.BuildFlowVisualizationPayload([]flowengine.FlowDefinition{wxmp_postprocess_flow}, flow_id, flowengine.FlowVisualizationOptions{
 		Platform: "wxmp",
 		Purpose:  "postprocess-flow-visualization",
 		Editable: false,
@@ -271,16 +271,16 @@ func GetWXMPPostprocessFlowVisualization(flowID string) (*WXMPPostprocessFlowVis
 type WXMPPostprocessFlowVisualizationPayload = flowengine.FlowVisualizationPayload
 
 var AssembleHTMLNode = flowengine.NodeDefinition{
-	ID:   wxmpPostprocessFlowNodeAssembleHTML,
+	ID:   wxmp_postprocess_flow_node_assemble_html,
 	Name: "assemble_html",
 	Type: "FuncNode",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxmpPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxmp_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
-				{Key: "SavePath", Type: "string", Required: false},
+				{Key: "DownloadDir", Type: "string", Required: false},
 				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
@@ -290,37 +290,37 @@ var AssembleHTMLNode = flowengine.NodeDefinition{
 			}},
 			{Key: "db", Type: "any", Required: false},
 			{Key: "logger", Type: "any", Required: false},
-			{Key: "savePath", Type: "string", Required: false},
-			{Key: "taskName", Type: "string", Required: false},
-			{Key: "bizType", Type: "int", Required: false},
-			{Key: "contentHTML", Type: "string", Required: false},
+			{Key: "download_dir", Type: "string", Required: false},
+			{Key: "task_name", Type: "string", Required: false},
+			{Key: "biz_type", Type: "int", Required: false},
+			{Key: "content_html", Type: "string", Required: false},
 		}},
-		{Key: wxmpPostprocessContextOutputFile, Type: "string", Required: false},
+		{Key: wxmp_postprocess_context_output_file, Type: "string", Required: false},
 	},
 	OutputSchema: []flowengine.FieldSchema{
-		{Key: wxmpPostprocessContextFinalHTML, Type: "string", Required: false},
-		{Key: wxmpPostprocessContextEmbeddedNames, Type: "object", Required: false},
+		{Key: wxmp_postprocess_context_final_html, Type: "string", Required: false},
+		{Key: wxmp_postprocess_context_embedded_names, Type: "object", Required: false},
 	},
 	Config: map[string]interface{}{
-		"func": assembleHTMLNode,
+		"func": assemble_html_node,
 	},
-	NextNodes: []flowengine.TargetNode{{TargetID: wxmpPostprocessFlowNodeCleanup}},
+	NextNodes: []flowengine.TargetNode{{TargetID: wxmp_postprocess_flow_node_cleanup}},
 }
 
-func cleanupEmbeddedImageResourcesNode(values map[string]interface{}) (interface{}, error) {
-	return runWXMPNode(values, wxmpPostprocessFlowNodeCleanup, func(run *wxmpPostprocessRun) (interface{}, error) {
+func cleanup_embedded_image_resources_node(values map[string]interface{}) (interface{}, error) {
+	return run_wxmp_node(values, wxmp_postprocess_flow_node_cleanup, func(run *wxmp_postprocess_run) (interface{}, error) {
 		warnf := func(msg string, args ...interface{}) {
 			run.logger.Warn().Int("task_id", run.task.ID).Msgf(msg, args...)
 		}
 
-		embeddedResources, _ := values[wxmpPostprocessContextEmbeddedNames].(map[string]bool)
-		if len(embeddedResources) == 0 {
+		embedded_resources, _ := values[wxmp_postprocess_context_embedded_names].(map[string]bool)
+		if len(embedded_resources) == 0 {
 			return nil, nil
 		}
 
-		keptResources := make([]hermes.ResourceJob, 0, len(run.task.Resources))
+		kept_resources := make([]hermes.ResourceJob, 0, len(run.task.Resources))
 		for _, r := range run.task.Resources {
-			if embeddedResources[wxmpResourceKey(&r)] {
+			if embedded_resources[wxmp_resource_key(&r)] {
 				if err := os.Remove(r.FilePath); err != nil && !os.IsNotExist(err) {
 					warnf("Postprocessor.wxmp: task_id=%d remove image %s: %v", run.task.ID, r.FilePath, err)
 				}
@@ -329,25 +329,25 @@ func cleanupEmbeddedImageResourcesNode(values map[string]interface{}) (interface
 				}
 				continue
 			}
-			keptResources = append(keptResources, r)
+			kept_resources = append(kept_resources, r)
 		}
 
-		run.task.Resources = keptResources
+		run.task.Resources = kept_resources
 		return nil, nil
 	})
 }
 
 var CleanupEmbeddedImageResourcesNode = flowengine.NodeDefinition{
-	ID:   wxmpPostprocessFlowNodeCleanup,
+	ID:   wxmp_postprocess_flow_node_cleanup,
 	Name: "cleanup_embedded_resources",
 	Type: "FuncNode",
 	InputSchema: []flowengine.FieldSchema{
-		{Key: wxmpPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxmp_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
-				{Key: "SavePath", Type: "string", Required: false},
+				{Key: "DownloadDir", Type: "string", Required: false},
 				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
@@ -357,31 +357,31 @@ var CleanupEmbeddedImageResourcesNode = flowengine.NodeDefinition{
 			}},
 			{Key: "db", Type: "any", Required: false},
 			{Key: "logger", Type: "any", Required: false},
-			{Key: "savePath", Type: "string", Required: false},
-			{Key: "taskName", Type: "string", Required: false},
-			{Key: "bizType", Type: "int", Required: false},
-			{Key: "contentHTML", Type: "string", Required: false},
+			{Key: "download_dir", Type: "string", Required: false},
+			{Key: "task_name", Type: "string", Required: false},
+			{Key: "biz_type", Type: "int", Required: false},
+			{Key: "content_html", Type: "string", Required: false},
 		}},
-		{Key: wxmpPostprocessContextEmbeddedNames, Type: "object", Required: false},
+		{Key: wxmp_postprocess_context_embedded_names, Type: "object", Required: false},
 	},
 	// No explicit output field; this node updates run.task.Resources in place.
 	OutputSchema: []flowengine.FieldSchema{},
 	Config: map[string]interface{}{
-		"func": cleanupEmbeddedImageResourcesNode,
+		"func": cleanup_embedded_image_resources_node,
 	},
-	NextNodes: []flowengine.TargetNode{{TargetID: wxmpPostprocessFlowNodeDone}},
+	NextNodes: []flowengine.TargetNode{{TargetID: wxmp_postprocess_flow_node_done}},
 }
 
-var wxmpPostprocessFlow = flowengine.FlowDefinition{
-	ID:   wxmpPostprocessPipelineName,
-	Name: wxmpPostprocessPipelineName,
+var wxmp_postprocess_flow = flowengine.FlowDefinition{
+	ID:   wxmp_postprocess_pipeline_name,
+	Name: wxmp_postprocess_pipeline_name,
 	ContextSchema: []flowengine.FieldSchema{
-		{Key: wxmpPostprocessRunKey, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
+		{Key: wxmp_postprocess_run_key, Type: "object", Required: true, Fields: []flowengine.FieldSchema{
 			{Key: "task", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "ID", Type: "int", Required: true},
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
-				{Key: "SavePath", Type: "string", Required: false},
+				{Key: "DownloadDir", Type: "string", Required: false},
 				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
@@ -391,116 +391,116 @@ var wxmpPostprocessFlow = flowengine.FlowDefinition{
 			}},
 			{Key: "db", Type: "any", Required: false},
 			{Key: "logger", Type: "any", Required: false},
-			{Key: "savePath", Type: "string", Required: false},
-			{Key: "taskName", Type: "string", Required: false},
-			{Key: "bizType", Type: "int", Required: false},
-			{Key: "contentHTML", Type: "string", Required: false},
+			{Key: "download_dir", Type: "string", Required: false},
+			{Key: "task_name", Type: "string", Required: false},
+			{Key: "biz_type", Type: "int", Required: false},
+			{Key: "content_html", Type: "string", Required: false},
 		}},
-		{Key: wxmpPostprocessContextKeyCtx, Type: "object", Required: false},
-		{Key: wxmpPostprocessContextOutputFile, Type: "string", Required: false},
+		{Key: wxmp_postprocess_context_key_ctx, Type: "object", Required: false},
+		{Key: wxmp_postprocess_context_output_file, Type: "string", Required: false},
 	},
-	StartNodeID: wxmpPostprocessFlowNodeAssembleHTML,
+	StartNodeID: wxmp_postprocess_flow_node_assemble_html,
 	Nodes: map[string]flowengine.NodeDefinition{
-		wxmpPostprocessFlowNodeAssembleHTML: AssembleHTMLNode,
-		wxmpPostprocessFlowNodeCleanup:      CleanupEmbeddedImageResourcesNode,
-		wxmpPostprocessFlowNodeDone: {
-			ID:          wxmpPostprocessFlowNodeDone,
+		wxmp_postprocess_flow_node_assemble_html: AssembleHTMLNode,
+		wxmp_postprocess_flow_node_cleanup:       CleanupEmbeddedImageResourcesNode,
+		wxmp_postprocess_flow_node_done: {
+			ID:          wxmp_postprocess_flow_node_done,
 			Name:        "done",
 			Type:        "EndNode",
 			InputSchema: []flowengine.FieldSchema{},
 			OutputSchema: []flowengine.FieldSchema{
-				{Key: wxmpPostprocessContextFinalHTML, Type: "string", Required: false},
+				{Key: wxmp_postprocess_context_final_html, Type: "string", Required: false},
 			},
 		},
 	},
 }
 
-func runWXMPNode(values map[string]interface{}, nodeID string, fn func(*wxmpPostprocessRun) (interface{}, error)) (interface{}, error) {
-	run, err := wxmpPostprocessRunFromContext(values)
+func run_wxmp_node(values map[string]interface{}, node_id string, fn func(*wxmp_postprocess_run) (interface{}, error)) (interface{}, error) {
+	run, err := wxmp_postprocess_run_from_context(values)
 	if err != nil {
 		return nil, err
 	}
-	taskID := 0
+	task_id := 0
 	if run.task != nil {
-		taskID = run.task.ID
+		task_id = run.task.ID
 	}
-	input := formatWXMPContextSnapshot(values)
-	run.logger.Info().Int("task_id", taskID).Msgf("Postprocess.wxmp: node=%s status=started input=%s", nodeID, input)
+	input := format_wxmp_context_snapshot(values)
+	run.logger.Info().Int("task_id", task_id).Msgf("Postprocess.wxmp: node=%s status=started input=%s", node_id, input)
 
 	output, err := fn(run)
 	if err != nil {
-		run.logger.Info().Int("task_id", taskID).Msgf("Postprocess.wxmp: node=%s status=failed input=%s output=%s error=%v",
-			nodeID, input, formatWXMPContextSnapshot(values), err)
+		run.logger.Info().Int("task_id", task_id).Msgf("Postprocess.wxmp: node=%s status=failed input=%s output=%s error=%v",
+			node_id, input, format_wxmp_context_snapshot(values), err)
 		return nil, err
 	}
 
-	run.logger.Info().Int("task_id", taskID).Msgf("Postprocess.wxmp: node=%s status=succeeded input=%s output=%s",
-		nodeID, input, formatWXMPContextSnapshot(values))
+	run.logger.Info().Int("task_id", task_id).Msgf("Postprocess.wxmp: node=%s status=succeeded input=%s output=%s",
+		node_id, input, format_wxmp_context_snapshot(values))
 	return output, nil
 }
 
-func logWXMPFlow(flowID string, status string, run *wxmpPostprocessRun, err error) {
+func log_wxmp_flow(flow_id string, status string, run *wxmp_postprocess_run, err error) {
 	if run == nil {
 		return
 	}
-	taskID := 0
+	task_id := 0
 	if run.task != nil {
-		taskID = run.task.ID
+		task_id = run.task.ID
 	}
 	if err != nil {
-		run.logger.Info().Int("task_id", taskID).Msgf("Postprocess.wxmp: flow=%s status=%s error=%v", flowID, status, err)
+		run.logger.Info().Int("task_id", task_id).Msgf("Postprocess.wxmp: flow=%s status=%s error=%v", flow_id, status, err)
 		return
 	}
-	run.logger.Info().Int("task_id", taskID).Msgf("Postprocess.wxmp: flow=%s status=%s", flowID, status)
+	run.logger.Info().Int("task_id", task_id).Msgf("Postprocess.wxmp: flow=%s status=%s", flow_id, status)
 }
 
-func logWXMPFlowNodeExecution(run *wxmpPostprocessRun, flowEngine *flowengine.FlowEngine, flowID, instanceID string, err error) {
-	if run == nil || flowEngine == nil || instanceID == "" {
+func log_wxmp_flow_node_execution(run *wxmp_postprocess_run, flow_engine *flowengine.FlowEngine, flow_id, instance_id string, err error) {
+	if run == nil || flow_engine == nil || instance_id == "" {
 		return
 	}
 
-	record, hasRecord := flowEngine.GetRunSnapshot(instanceID)
-	if !hasRecord {
+	record, has_record := flow_engine.GetRunSnapshot(instance_id)
+	if !has_record {
 		if err != nil {
-			run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary unavailable: %v", flowID, err)
+			run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary unavailable: %v", flow_id, err)
 		} else {
-			run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary unavailable", flowID)
+			run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary unavailable", flow_id)
 		}
 		return
 	}
 
-	_, nodeStates := flowEngine.GetRunContext(instanceID)
-	nodeIDs := make([]string, 0, len(record.NodeAttempts))
-	for nodeID := range record.NodeAttempts {
-		nodeIDs = append(nodeIDs, nodeID)
+	_, node_states := flow_engine.GetRunContext(instance_id)
+	node_ids := make([]string, 0, len(record.NodeAttempts))
+	for node_id := range record.NodeAttempts {
+		node_ids = append(node_ids, node_id)
 	}
-	for nodeID := range nodeStates {
+	for node_id := range node_states {
 		exists := false
-		for _, existingID := range nodeIDs {
-			if existingID == nodeID {
+		for _, existing_id := range node_ids {
+			if existing_id == node_id {
 				exists = true
 				break
 			}
 		}
 		if !exists {
-			nodeIDs = append(nodeIDs, nodeID)
+			node_ids = append(node_ids, node_id)
 		}
 	}
-	if len(nodeIDs) == 0 {
-		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary: no nodes were executed", flowID)
+	if len(node_ids) == 0 {
+		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node_execution_summary: no nodes were executed", flow_id)
 		return
 	}
 
-	sort.Strings(nodeIDs)
-	for _, nodeID := range nodeIDs {
+	sort.Strings(node_ids)
+	for _, node_id := range node_ids {
 		state := "unknown"
-		attempts := record.NodeAttempts[nodeID]
+		attempts := record.NodeAttempts[node_id]
 		if attempts == 0 {
 			state = "skipped"
 		}
-		if len(nodeStates) > 0 {
-			if nodeState, ok := nodeStates[nodeID]; ok {
-				switch nodeState {
+		if len(node_states) > 0 {
+			if node_state, ok := node_states[node_id]; ok {
+				switch node_state {
 				case flowengine.StateCompleted:
 					state = "succeeded"
 				case flowengine.StateFailed:
@@ -510,49 +510,49 @@ func logWXMPFlowNodeExecution(run *wxmpPostprocessRun, flowEngine *flowengine.Fl
 				case flowengine.StatePending:
 					state = "pending"
 				default:
-					state = string(nodeState)
+					state = string(node_state)
 				}
 			}
 		}
-		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusFailed && record.CurrentNode == nodeID {
+		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusFailed && record.CurrentNode == node_id {
 			state = "failed"
 		}
 		if state == "unknown" && attempts > 0 && record.Status == flowengine.RunStatusCompleted {
 			state = "succeeded"
 		}
 
-		taskSuffix := ""
+		task_suffix := ""
 		if attempts > 0 {
-			taskSuffix = fmt.Sprintf(" attempts=%d", attempts)
+			task_suffix = fmt.Sprintf(" attempts=%d", attempts)
 		}
-		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node=%s status=%s%s", flowID, nodeID, state, taskSuffix)
+		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s node=%s status=%s%s", flow_id, node_id, state, task_suffix)
 	}
 }
 
-func formatWXMPContextSnapshot(values map[string]interface{}) string {
+func format_wxmp_context_snapshot(values map[string]interface{}) string {
 	if values == nil {
 		return "{}"
 	}
 
 	snapshot := make(map[string]interface{}, len(values))
 	for key, value := range values {
-		if key == wxmpPostprocessRunKey || key == wxmpPostprocessContextKeyCtx {
+		if key == wxmp_postprocess_run_key || key == wxmp_postprocess_context_key_ctx {
 			continue
 		}
 		snapshot[key] = value
 	}
 
-	if run, ok := values[wxmpPostprocessRunKey].(*wxmpPostprocessRun); ok && run != nil {
-		taskID := 0
-		resourceCount := 0
+	if run, ok := values[wxmp_postprocess_run_key].(*wxmp_postprocess_run); ok && run != nil {
+		task_id := 0
+		resource_count := 0
 		if run.task != nil {
-			taskID = run.task.ID
-			resourceCount = len(run.task.Resources)
+			task_id = run.task.ID
+			resource_count = len(run.task.Resources)
 		}
-		snapshot["task_id"] = taskID
-		snapshot["task_name"] = run.taskName
-		snapshot["save_path"] = run.savePath
-		snapshot["resource_count"] = resourceCount
+		snapshot["task_id"] = task_id
+		snapshot["task_name"] = run.task_name
+		snapshot["download_dir"] = run.download_dir
+		snapshot["resource_count"] = resource_count
 	}
 
 	keys := make([]string, 0, len(snapshot))
@@ -569,13 +569,13 @@ func formatWXMPContextSnapshot(values map[string]interface{}) string {
 		}
 		b.WriteString(key)
 		b.WriteString("=")
-		b.WriteString(formatWXMPContextValue(snapshot[key]))
+		b.WriteString(format_wxmp_context_value(snapshot[key]))
 	}
 	b.WriteString("}")
 	return b.String()
 }
 
-func formatWXMPContextValue(value interface{}) string {
+func format_wxmp_context_value(value interface{}) string {
 	if value == nil {
 		return "<nil>"
 	}
@@ -595,58 +595,58 @@ func formatWXMPContextValue(value interface{}) string {
 	}
 }
 
-func runWXMPPostprocessFlow(flow flowengine.FlowDefinition, data map[string]interface{}) error {
+func run_wxmp_postprocess_flow(flow flowengine.FlowDefinition, data map[string]interface{}) error {
 	if data == nil {
 		data = map[string]interface{}{}
 	}
-	if _, ok := data[wxmpPostprocessContextKeyCtx]; !ok {
-		data[wxmpPostprocessContextKeyCtx] = context.Background()
+	if _, ok := data[wxmp_postprocess_context_key_ctx]; !ok {
+		data[wxmp_postprocess_context_key_ctx] = context.Background()
 	}
-	run, _ := data[wxmpPostprocessRunKey].(*wxmpPostprocessRun)
-	logWXMPFlow(flow.ID, "started", run, nil)
+	run, _ := data[wxmp_postprocess_run_key].(*wxmp_postprocess_run)
+	log_wxmp_flow(flow.ID, "started", run, nil)
 	if run != nil {
-		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s input=%s", flow.ID, formatWXMPContextSnapshot(data))
+		run.logger.Info().Msgf("Postprocess.wxmp: flow=%s input=%s", flow.ID, format_wxmp_context_snapshot(data))
 	}
 
-	flowEngine := flowengine.NewWorkflowEngine()
-	flowEngine.SetFlowDefinitions(map[string]flowengine.FlowDefinition{
+	flow_engine := flowengine.NewWorkflowEngine()
+	flow_engine.SetFlowDefinitions(map[string]flowengine.FlowDefinition{
 		flow.ID: flow,
 	})
-	instanceID, err := flowEngine.StartFlow(flow.ID, data)
+	instance_id, err := flow_engine.StartFlow(flow.ID, data)
 	if err != nil {
-		logWXMPFlow(flow.ID, "failed", run, err)
+		log_wxmp_flow(flow.ID, "failed", run, err)
 		if run != nil {
-			logWXMPFlowNodeExecution(run, flowEngine, flow.ID, instanceID, err)
+			log_wxmp_flow_node_execution(run, flow_engine, flow.ID, instance_id, err)
 		}
 		return err
 	}
-	logWXMPFlow(flow.ID, "succeeded", run, nil)
+	log_wxmp_flow(flow.ID, "succeeded", run, nil)
 	if run != nil {
-		logWXMPFlowNodeExecution(run, flowEngine, flow.ID, instanceID, nil)
+		log_wxmp_flow_node_execution(run, flow_engine, flow.ID, instance_id, nil)
 	}
 	return err
 }
 
 // AssembleFullHTML wraps body HTML into a complete standalone HTML document.
-func AssembleFullHTML(title, bodyHTML string) string {
-	return assembleWXMPFullHTML(title, bodyHTML, false)
+func AssembleFullHTML(title, body_html string) string {
+	return assemble_wxmp_full_html(title, body_html, false)
 }
 
-// composeWXMPAlbumHTML wraps album body HTML into a complete HTML document with album layout.
-func assembleAlbumFullHTML(title, bodyHTML string) string {
-	return assembleWXMPFullHTML(title, bodyHTML, true)
+// assemble_album_full_html wraps album body HTML into a complete HTML document with album layout.
+func assemble_album_full_html(title, body_html string) string {
+	return assemble_wxmp_full_html(title, body_html, true)
 }
 
-func assembleWXMPFullHTML(title, bodyHTML string, isAlbum bool) string {
+func assemble_wxmp_full_html(title, body_html string, is_album bool) string {
 	var b strings.Builder
-	var cssBuilder strings.Builder
+	var css_builder strings.Builder
 
-	baseMaxWidth := 677
-	if isAlbum {
-		baseMaxWidth = 1024
+	base_max_width := 677
+	if is_album {
+		base_max_width = 1024
 	}
-	cssBuilder.WriteString(`        html { height: 100%; }`)
-	cssBuilder.WriteString(fmt.Sprintf(`
+	css_builder.WriteString(`        html { height: 100%; }`)
+	css_builder.WriteString(fmt.Sprintf(`
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.6;
@@ -656,9 +656,9 @@ func assembleWXMPFullHTML(title, bodyHTML string, isAlbum bool) string {
             color: #333;
         }
         h1 { font-size: 1.8em; margin-bottom: 0.5em; }
-        img { max-width: 100%%; height: auto; }`, baseMaxWidth))
-	if isAlbum {
-		cssBuilder.WriteString(`
+        img { max-width: 100%%; height: auto; }`, base_max_width))
+	if is_album {
+		css_builder.WriteString(`
         img { display: block; margin-bottom: 20px; border-radius: 6px; }
         .album_desc { font-size: 1.1em; margin-bottom: 30px; color: #666; text-align: center; }
         .album_gallery { max-width: 677px; margin: 0 auto; }`)
@@ -670,34 +670,34 @@ func assembleWXMPFullHTML(title, bodyHTML string, isAlbum bool) string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-	b.WriteString(escapeHTMLStr(title))
+	b.WriteString(escape_html_str(title))
 	b.WriteString(`</title>
     <style>
 `)
-	b.WriteString(cssBuilder.String())
+	b.WriteString(css_builder.String())
 	b.WriteString(`
     </style>
 </head>
 <body>`)
-	b.WriteString(bodyHTML)
+	b.WriteString(body_html)
 	b.WriteString(`</body>
 </html>`)
 	return b.String()
 }
 
-func imageResourcesByURL(resources []hermes.ResourceJob) map[string]*hermes.ResourceJob {
+func image_resources_by_url(resources []hermes.ResourceJob) map[string]*hermes.ResourceJob {
 	result := make(map[string]*hermes.ResourceJob)
 	for i := range resources {
 		resource := &resources[i]
-		if !isEmbeddableWXMPImage(resource) {
+		if !is_embeddable_wxmp_image(resource) {
 			continue
 		}
 		for _, endpoint := range resource.Endpoints {
-			imageURL := normalize_image_url(endpoint.URL)
-			if imageURL == "" {
+			image_url := normalize_image_url(endpoint.URL)
+			if image_url == "" {
 				continue
 			}
-			hash := md5.Sum([]byte(imageURL))
+			hash := md5.Sum([]byte(image_url))
 			result[hex.EncodeToString(hash[:])] = resource
 		}
 
@@ -714,7 +714,7 @@ func imageResourcesByURL(resources []hermes.ResourceJob) map[string]*hermes.Reso
 	return result
 }
 
-func isEmbeddableWXMPImage(resource *hermes.ResourceJob) bool {
+func is_embeddable_wxmp_image(resource *hermes.ResourceJob) bool {
 	if resource == nil || strings.HasSuffix(resource.UniqueID, "_cover") {
 		return false
 	}
@@ -722,9 +722,9 @@ func isEmbeddableWXMPImage(resource *hermes.ResourceJob) bool {
 	return kind == "image" || strings.HasPrefix(kind, "image/")
 }
 
-// imageResourceToDataURI reads a downloaded image from its actual Hermes path.
+// image_resource_to_data_uri reads a downloaded image from its actual Hermes path.
 // The temporary path intentionally has no extension, so MIME comes from Kind.
-func imageResourceToDataURI(resource *hermes.ResourceJob) string {
+func image_resource_to_data_uri(resource *hermes.ResourceJob) string {
 	if resource == nil || strings.TrimSpace(resource.FilePath) == "" {
 		return ""
 	}
@@ -734,12 +734,12 @@ func imageResourceToDataURI(resource *hermes.ResourceJob) string {
 	}
 	mime := strings.ToLower(strings.TrimSpace(resource.Kind))
 	if !strings.HasPrefix(mime, "image/") {
-		mime = mimeByExtension(filepath.Ext(resource.FilePath))
+		mime = mime_by_extension(filepath.Ext(resource.FilePath))
 	}
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
 
-func wxmpResourceKey(resource *hermes.ResourceJob) string {
+func wxmp_resource_key(resource *hermes.ResourceJob) string {
 	if resource == nil {
 		return ""
 	}
@@ -755,8 +755,8 @@ func wxmpResourceKey(resource *hermes.ResourceJob) string {
 	return "name:" + resource.Name
 }
 
-// mimeByExtension maps file extensions to MIME types.
-func mimeByExtension(ext string) string {
+// mime_by_extension maps file extensions to MIME types.
+func mime_by_extension(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".jpg", ".jpeg":
 		return "image/jpeg"
@@ -775,7 +775,7 @@ func mimeByExtension(ext string) string {
 	}
 }
 
-func mapKeysResource(m map[string]*hermes.ResourceJob) []string {
+func map_keys_resource(m map[string]*hermes.ResourceJob) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -783,8 +783,8 @@ func mapKeysResource(m map[string]*hermes.ResourceJob) []string {
 	return keys
 }
 
-// mapKeysBool returns the keys of a map[string]bool as a slice for debug logging.
-func mapKeysBool(m map[string]bool) []string {
+// map_keys_bool returns the keys of a map[string]bool as a slice for debug logging.
+func map_keys_bool(m map[string]bool) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -792,7 +792,7 @@ func mapKeysBool(m map[string]bool) []string {
 	return keys
 }
 
-func escapeHTMLStr(s string) string {
+func escape_html_str(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	s = strings.ReplaceAll(s, ">", "&gt;")

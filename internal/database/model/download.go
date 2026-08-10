@@ -38,7 +38,7 @@ type LiveDownloadTask struct {
 	Title          string  `json:"title"`
 	StreamerName   string  `json:"streamer_name"`
 	CoverURL       string  `json:"cover_url"`
-	SavePath       string  `gorm:"not null" json:"save_path"`
+	DownloadDir    string  `gorm:"not null" json:"download_dir"` // Directory only; Filename is stored separately.
 	Filename       string  `gorm:"not null" json:"filename"`
 	Quality        string  `json:"quality"`
 	Status         int     `json:"status"`

@@ -6,87 +6,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 	result "wx_channel/internal/util"
-	channels "wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 )
 
-func (c *APIClient) handle_play(ctx *gin.Context) {
-	targetURL := ctx.Query("url")
-	if targetURL == "" {
-		result.Err(ctx, 400, "missing targetURL")
-		return
-	}
-	if !strings.HasPrefix(targetURL, "http") {
-		targetURL = "https://" + targetURL
-	}
-	if _, err := url.Parse(targetURL); err != nil {
-		result.Err(ctx, 400, "Invalid URL")
-		return
-	}
-	decryptKeyStr := ctx.Query("key")
-	decryptor := channels.NewChannelsVideoDecryptor()
-	if decryptKeyStr != "" {
-		decryptKey, err := strconv.ParseUint(decryptKeyStr, 0, 64)
-		if err != nil {
-			result.Err(ctx, 400, "invalid decryptKey")
-			return
-		}
-		decryptor.DecryptOnlyInline(ctx.Writer, ctx.Request, targetURL, decryptKey, 131072)
-		return
-	}
-	decryptor.SimpleProxy(targetURL, ctx.Writer, ctx.Request)
-}
-
-func (c *APIClient) handle_open_download_dir(ctx *gin.Context) {
-	dir := c.cfg.DownloadDir
-	if err := system.Open(dir); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
-}
-
-type OpenURLBody struct {
-	URL string `json:"url"`
-}
-
-func (c *APIClient) handle_open_url(ctx *gin.Context) {
-	var body OpenURLBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	targetURL := strings.TrimSpace(body.URL)
-	if targetURL == "" {
-		result.Err(ctx, 400, "Missing the `url`")
-		return
-	}
-	parsedURL, err := url.ParseRequestURI(targetURL)
-	if err != nil || parsedURL.Scheme == "" {
-		result.Err(ctx, 400, "Invalid URL")
-		return
-	}
-	if err := system.Open(targetURL); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
-}
-
 type ShowFileBody struct {
-	ID   int    `json:"id"`
 	Path string `json:"path"`
 	Name string `json:"name"`
 }
@@ -124,70 +56,6 @@ func (c *APIClient) handle_show_file(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-type OpenFolderAndHighlightFileBody struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
-}
-
-func (c *APIClient) handle_highlight_file_in_folder(ctx *gin.Context) {
-	var body OpenFolderAndHighlightFileBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if body.Path == "" || body.Name == "" {
-		result.Err(ctx, 400, "Missing the `path` or `name`")
-		return
-	}
-	fullFilepath := filepath.Join(c.cfg.DownloadDir, body.Path, body.Name)
-	if _, err := os.Stat(fullFilepath); err != nil {
-		result.Err(ctx, 500, "找不到文件")
-		return
-	}
-	if err := system.ShowInExplorer(fullFilepath); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
-}
-
-func (c *APIClient) handle_stream_video(ctx *gin.Context) {
-	path := ctx.Query("path")
-	if path == "" {
-		taskID := ctx.Query("id")
-		if taskID != "" {
-			id, err := strconv.Atoi(taskID)
-			if err == nil && c.db != nil {
-				var task model.DownloadTask
-				var resource model.DownloadResource
-				if c.db.First(&task, id).Error == nil &&
-					c.db.Where("task_id = ?", id).Order("merge_order ASC, id ASC").First(&resource).Error == nil {
-					path = filepath.Join(resource.SavePath, resource.Name)
-				}
-			}
-		}
-	}
-
-	if path == "" {
-		result.Err(ctx, 400, "missing path or id")
-		return
-	}
-
-	if !filepath.IsAbs(path) && c.cfg != nil {
-		path = filepath.Join(c.cfg.DownloadDir, path)
-	}
-
-	if _, err := os.Stat(path); err != nil {
-		result.Err(ctx, 404, "file not found")
-		return
-	}
-	ctx.File(path)
-}
-
-func (c *APIClient) handleStreamImage(ctx *gin.Context) {
-	c.handle_stream_video(ctx)
-}
-
 func (c *APIClient) handle_preview_page(ctx *gin.Context) {
 	data, err := frontend.Assets().ReadRoot("preview.html")
 	if err != nil {
@@ -216,32 +84,12 @@ func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
 		result.Err(ctx, 400, "path is a directory")
 		return
 	}
+	if ctx.Query("preview") != "1" {
+		ctx.File(path)
+		return
+	}
 
 	ext := strings.ToLower(filepath.Ext(path))
-	if c.isImage(ext) {
-		result.Ok(ctx, gin.H{
-			"type": "image",
-			"url":  "/file?path=" + url.QueryEscape(path),
-		})
-		return
-	}
-
-	if ext == ".mp3" || (c.isVideoOrImage(ext) && !c.isImage(ext)) {
-		result.Ok(ctx, gin.H{
-			"type": "video",
-			"url":  "/file?path=" + url.QueryEscape(path),
-		})
-		return
-	}
-
-	if ext == ".html" || ext == ".htm" {
-		result.Ok(ctx, gin.H{
-			"type": "html",
-			"url":  "/file?path=" + url.QueryEscape(path),
-		})
-		return
-	}
-
 	if ext == ".zip" {
 		r, err := zip.OpenReader(path)
 		if err != nil {
@@ -252,8 +100,8 @@ func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
 
 		var images []map[string]string
 		for _, f := range r.File {
-			fExt := strings.ToLower(filepath.Ext(f.Name))
-			if c.isImage(fExt) {
+			file_ext := strings.ToLower(filepath.Ext(f.Name))
+			if c.is_image(file_ext) {
 				rc, err := f.Open()
 				if err != nil {
 					continue
@@ -268,12 +116,12 @@ func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
 					continue
 				}
 
-				base64Str := base64.StdEncoding.EncodeToString(data)
-				mimeType := c.getMimeType(fExt)
-				imgSrc := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str)
+				base64_str := base64.StdEncoding.EncodeToString(data)
+				mime_type := c.get_mime_type(file_ext)
+				image_src := fmt.Sprintf("data:%s;base64,%s", mime_type, base64_str)
 				images = append(images, map[string]string{
 					"name": f.Name,
-					"url":  imgSrc,
+					"url":  image_src,
 				})
 			}
 		}
@@ -287,18 +135,7 @@ func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
 	result.Err(ctx, 400, "unsupported file type")
 }
 
-func (c *APIClient) isVideoOrImage(ext string) bool {
-	if c.isImage(ext) {
-		return true
-	}
-	switch ext {
-	case ".mp4", ".mkv", ".avi", ".mov", ".webm":
-		return true
-	}
-	return false
-}
-
-func (c *APIClient) isImage(ext string) bool {
+func (c *APIClient) is_image(ext string) bool {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
 		return true
@@ -306,7 +143,7 @@ func (c *APIClient) isImage(ext string) bool {
 	return false
 }
 
-func (c *APIClient) getMimeType(ext string) string {
+func (c *APIClient) get_mime_type(ext string) string {
 	switch ext {
 	case ".jpg", ".jpeg":
 		return "image/jpeg"
@@ -322,31 +159,6 @@ func (c *APIClient) getMimeType(ext string) string {
 	return "image/jpeg"
 }
 
-func (c *APIClient) handleGetFileURL(ctx *gin.Context) {
-	id := ctx.Query("id")
-	if id == "" {
-		result.Err(ctx, 400, "missing id")
-		return
-	}
-	u := c.cfg.Protocol + "://" + c.cfg.Hostname
-	if c.cfg.Port != 80 {
-		u += ":" + strconv.Itoa(c.cfg.Port)
-	}
-	u += "/video?id=" + id
-	result.Ok(ctx, gin.H{
-		"url": u,
-	})
-}
-
-func (c *APIClient) handle_test(ctx *gin.Context) {
-	dir := c.cfg.DownloadDir
-	if err := system.Open(dir); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, nil)
-}
-
 func (c *APIClient) handle_list_files(ctx *gin.Context) {
 	if c.fs_service == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
@@ -360,24 +172,6 @@ func (c *APIClient) handle_list_files(ctx *gin.Context) {
 	files, err := c.fs_service.ListFiles(options)
 	if err != nil {
 		result.Err(ctx, 500, "读取文件列表失败: "+err.Error())
-		return
-	}
-	result.Ok(ctx, files)
-}
-
-func (c *APIClient) handle_search_files(ctx *gin.Context) {
-	if c.fs_service == nil {
-		result.Err(ctx, 500, "文件服务未初始化")
-		return
-	}
-	var options services.SearchFilesOptions
-	if err := ctx.ShouldBindJSON(&options); err != nil {
-		result.Err(ctx, 400, "请求参数无效: "+err.Error())
-		return
-	}
-	files, err := c.fs_service.SearchFiles(options)
-	if err != nil {
-		result.Err(ctx, 500, "搜索文件失败: "+err.Error())
 		return
 	}
 	result.Ok(ctx, files)

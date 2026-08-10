@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -14,7 +13,7 @@ import (
 	// "wx_channel/pkg/scraper"
 )
 
-func (c *APIClient) handle_compat_influencer_list(ctx *gin.Context) {
+func (c *APIClient) handle_influencer_list(ctx *gin.Context) {
 	pageStr := ctx.Query("page")
 	sizeStr := ctx.Query("page_size")
 	page := 1
@@ -39,7 +38,7 @@ func (c *APIClient) handle_compat_influencer_list(ctx *gin.Context) {
 	result.Ok(ctx, pageResult)
 }
 
-func (c *APIClient) handle_compat_influencer_get(ctx *gin.Context) {
+func (c *APIClient) handle_influencer_get(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
@@ -66,7 +65,7 @@ type influencerCreateBody struct {
 	Description string `json:"description"`
 }
 
-func (c *APIClient) handle_compat_influencer_create(ctx *gin.Context) {
+func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
 	var body influencerCreateBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
@@ -96,7 +95,7 @@ type influencerUpdateBody struct {
 	Description string `json:"description"`
 }
 
-func (c *APIClient) handle_compat_influencer_update(ctx *gin.Context) {
+func (c *APIClient) handle_influencer_update(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
@@ -126,49 +125,16 @@ func (c *APIClient) handle_compat_influencer_update(ctx *gin.Context) {
 	result.Ok(ctx, influencer)
 }
 
-func (c *APIClient) handle_compat_account_list(ctx *gin.Context) {
+func (c *APIClient) handle_account_list(ctx *gin.Context) {
 	if c.db == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
-	var body struct {
-		HasContent    *bool  `form:"has_content"`
-		ContentFilter string `form:"content_filter"`
-	}
-	if err := ctx.ShouldBindQuery(&body); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-
-	contentFilter := strings.ToLower(strings.TrimSpace(body.ContentFilter))
-	if body.HasContent != nil {
-		if *body.HasContent {
-			contentFilter = "with"
-		} else {
-			contentFilter = "without"
-		}
-	}
-	if contentFilter == "" {
-		contentFilter = "with"
-	}
 
 	var accounts []model.Account
-	query := c.db.Model(&model.Account{})
-	switch contentFilter {
-	case "with", "has", "true":
-		query = query.Where(
-			"EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
-		)
-	case "without", "none", "false":
-		query = query.Where(
-			"NOT EXISTS (SELECT 1 FROM content_account WHERE content_account.account_id = account.id)",
-		)
-	case "all":
-	default:
-		result.Err(ctx, 400, "invalid content_filter")
-		return
-	}
-	if err := query.Order("created_at DESC, id DESC").Find(&accounts).Error; err != nil {
+	if err := c.db.Model(&model.Account{}).
+		Order("created_at DESC, id DESC").
+		Find(&accounts).Error; err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
@@ -207,6 +173,7 @@ func (c *APIClient) handle_compat_account_list(ctx *gin.Context) {
 
 		list = append(list, gin.H{
 			"id":            acc.Id,
+			"platform_id":   acc.PlatformId,
 			"nickname":      acc.Nickname,
 			"avatar_url":    acc.AvatarURL,
 			"external_id":   acc.ExternalId,

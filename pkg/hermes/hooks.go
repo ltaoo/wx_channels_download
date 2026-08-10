@@ -22,9 +22,9 @@ type HookManager struct {
 
 // TaskInfo is the task information exposed to hooks.
 type TaskInfo struct {
-	Name     string         `json:"name"`
-	SavePath string         `json:"save_path,omitempty"`
-	Config   map[string]any `json:"config"`
+	Name        string         `json:"name"`
+	DownloadDir string         `json:"download_dir,omitempty"`
+	Config      map[string]any `json:"config"`
 }
 
 // ResourceInfo is the resource information exposed to hooks.
@@ -54,12 +54,12 @@ type TaskInput struct {
 
 // FinishContext is the context for the onTaskFinish hook.
 type FinishContext struct {
-	Task      TaskInfo       `json:"task"`
-	Config    map[string]any `json:"config"`
-	Metadata  map[string]any `json:"metadata"`
-	Resources []ResourceInfo `json:"resources"`
-	FilePaths []string       `json:"filePaths"`
-	SavePath  string         `json:"savePath"`
+	Task        TaskInfo       `json:"task"`
+	Config      map[string]any `json:"config"`
+	Metadata    map[string]any `json:"metadata"`
+	Resources   []ResourceInfo `json:"resources"`
+	FilePaths   []string       `json:"filePaths"`
+	DownloadDir string         `json:"downloadDir"`
 }
 
 // ResourceMeta is the arbitrary resource metadata exposed to onFilename.
@@ -140,7 +140,7 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 		return nil, nil
 	}
 
-	hm.vm.Set("__basePath", input.Task.SavePath)
+	hm.vm.Set("__basePath", input.Task.DownloadDir)
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskCreate"))
 	if !ok {
@@ -189,7 +189,7 @@ func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
 		return nil
 	}
 
-	hm.vm.Set("__basePath", ctx.SavePath)
+	hm.vm.Set("__basePath", ctx.DownloadDir)
 
 	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskFinish"))
 	if !ok {
@@ -233,7 +233,7 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams) (*FilenameHook
 		return nil, fmt.Errorf("failed to prepare onFilename meta value: %w", err)
 	}
 	hook_task := params.Task
-	hook_task.SavePath = ""
+	hook_task.DownloadDir = ""
 	hook_task.Config = filename_hook_config(hook_task.Config)
 	task_val, err := hm.to_hook_value(hook_task)
 	if err != nil {
@@ -281,7 +281,7 @@ func filename_hook_config(config map[string]any) map[string]any {
 	}
 	filtered := make(map[string]any, len(config))
 	for key, value := range config {
-		if key != "save_path" {
+		if key != "download_dir" {
 			filtered[key] = value
 		}
 	}

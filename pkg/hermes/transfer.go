@@ -79,7 +79,11 @@ func (d *HermesEngine) download_file(
 		if err := context.Cause(ctx); err != nil {
 			return err
 		}
-		use_range := prepared.SupportsRange && downloaded > 0
+		// Start with a Range request whenever the source supports it. The custom
+		// HTTP fingerprint client buffers non-Range responses completely, which
+		// prevents progress from advancing until the network transfer has ended.
+		// Range requests use the streaming HTTP path and also support resuming.
+		use_range := prepared.SupportsRange && prepared.Size > 0
 		request := ReadRequest{OffsetStart: downloaded, OffsetEnd: prepared.Size - 1, UseRange: use_range}
 		reader, err := driver.Open(ctx, endpoint, request)
 		if err != nil {
@@ -226,17 +230,17 @@ func (d *HermesEngine) copy_reader(
 				pct := float64(*downloaded) * 100 / float64(expected_size)
 				log_speed := calc_speed(last_log, last_log_downloaded, now, *downloaded)
 				d.logger.Info().
-					Int("taskID", task_id).
-					Int("resourceID", resource_id).
+					Int("task_id", task_id).
+					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
-					Int64("totalSize", expected_size).
+					Int64("total_size", expected_size).
 					Float64("percent", pct).
 					Str("speed", format_speed(log_speed)).
 					Msg("download progress")
 			} else {
 				d.logger.Info().
-					Int("taskID", task_id).
-					Int("resourceID", resource_id).
+					Int("task_id", task_id).
+					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
 					Msg("download progress (size unknown)")
 			}
@@ -434,15 +438,15 @@ func (d *HermesEngine) download_segments(
 			event_window := time.Since(last_progress_event_count)
 			events_per_sec := float64(progress_event_count-last_progress_event_count_n) / event_window.Seconds()
 			d.logger.Info().
-				Int("taskID", task_id).
-				Int("resourceID", resource_id).
+				Int("task_id", task_id).
+				Int("resource_id", resource_id).
 				Int64("downloaded", total_dl).
-				Int64("totalSize", file_size).
+				Int64("total_size", file_size).
 				Float64("percent", pct).
 				Str("speed", format_speed(log_speed)).
-				Int("segmentCount", len(segments)).
-				Int64("totalEvents", progress_event_count).
-				Float64("eventsPerSec", events_per_sec).
+				Int("segment_count", len(segments)).
+				Int64("total_events", progress_event_count).
+				Float64("events_per_sec", events_per_sec).
 				Msg("segment download progress")
 			// Per-slot detail for diagnostics.
 			for _, s := range states {
@@ -557,7 +561,7 @@ func (d *HermesEngine) download_segment(
 		d.logger.Info().
 			Int("slot", slot).
 			Int("attempt", attempt+1).
-			Dur("openElapsed", open_elapsed).
+			Dur("open_elapsed", open_elapsed).
 			Msg("seg: Open() done, reading")
 
 		buf := make([]byte, read_buffer_size)

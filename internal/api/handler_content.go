@@ -11,15 +11,15 @@ import (
 	result "wx_channel/internal/util"
 )
 
-func (c *APIClient) handle_compat_video_list(ctx *gin.Context) {
-	c.handle_compat_content_list_with_type(ctx, "video")
+func (c *APIClient) handle_video_list(ctx *gin.Context) {
+	c.handle_content_list_with_type(ctx, "video")
 }
 
-func (c *APIClient) handle_compat_content_list(ctx *gin.Context) {
-	c.handle_compat_content_list_with_type(ctx, "")
+func (c *APIClient) handle_content_list(ctx *gin.Context) {
+	c.handle_content_list_with_type(ctx, "")
 }
 
-func (c *APIClient) handle_compat_content_list_with_type(ctx *gin.Context, force_content_type string) {
+func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_content_type string) {
 	if c.content_service == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
@@ -125,7 +125,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 
 	resources := make([]resourceWithFile, 0, len(item.Resources))
 	for _, r := range item.Resources {
-		local_path := filepath.Join(r.SavePath, r.Name)
+		local_path := filepath.Join(r.DownloadDir, r.Name)
 		exists := false
 		if _, err := os.Stat(local_path); err == nil {
 			exists = true
@@ -135,7 +135,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 			ContentResourceRecord: r,
 			LocalPath:             local_path,
 			FileType:              file_type,
-			FileURL:               "/file?path=" + local_path,
+			FileURL:               "/api/file?path=" + local_path,
 			Exists:                exists,
 		})
 	}

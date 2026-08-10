@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS `live_download_task` (
   `cover_url` TEXT, -- 封面图
   
   -- 下载配置
-  `save_path` TEXT NOT NULL, -- 保存路径
+  `download_dir` TEXT NOT NULL, -- 下载目录
   `filename` TEXT NOT NULL, -- 文件名
   `quality` TEXT, -- 质量选项
   
@@ -700,7 +700,7 @@ CREATE TABLE IF NOT EXISTS `download_resource` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `task_id` INTEGER,
   `content_id` TEXT,
-  `save_path` TEXT NOT NULL DEFAULT '',
+  `download_dir` TEXT NOT NULL DEFAULT '', -- 下载目录，不包含文件名
   `name` TEXT,
   `kind` TEXT NOT NULL DEFAULT 'file',
   `unique_id` TEXT,

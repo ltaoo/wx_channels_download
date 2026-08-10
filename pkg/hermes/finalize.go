@@ -28,7 +28,7 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if r.FilePath == "" {
-			r.FilePath = d.abs_file_path(resource_save_path(job, r), r.UniqueID)
+			r.FilePath = d.abs_file_path(resource_download_dir(job, r), r.UniqueID)
 		}
 		original_resource_ids = append(original_resource_ids, r.ID)
 		d.logger.Info().
@@ -104,13 +104,13 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 
 	// 9. Emit final progress and EventFinished
 	d.emit_progress(task_id)
-	d.emit(task_id, EventFinished)
+	d.emit(EventFinished, TaskFinishedEventData{TaskID: task_id, FilePaths: append([]string(nil), final_paths...)})
 	d.delete_tracker(task_id)
 	return nil
 }
 
 // renameTempFiles renames .tmp files to their correct extensions.
-func (d *HermesEngine) rename_temp_files(save_path string, resources []ResourceJob) error {
+func (d *HermesEngine) rename_temp_files(download_dir string, resources []ResourceJob) error {
 	for i := range resources {
 		r := &resources[i]
 		target_ext := CanonicalExtensionForMIMEType(r.Kind)
@@ -123,8 +123,8 @@ func (d *HermesEngine) rename_temp_files(save_path string, resources []ResourceJ
 			continue
 		}
 		new_name := strings.TrimSuffix(r.Name, ".tmp") + target_ext
-		old_path := d.abs_file_path(save_path, r.UniqueID)
-		new_path := d.abs_file_path(save_path, new_name)
+		old_path := d.abs_file_path(download_dir, r.UniqueID)
+		new_path := d.abs_file_path(download_dir, new_name)
 
 		if _, stat_err := os.Stat(old_path); os.IsNotExist(stat_err) {
 			d.logger.Warn().
@@ -246,8 +246,8 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 	for i := range job.Resources {
 		r := &job.Resources[i]
-		if strings.TrimSpace(r.SavePath) == "" {
-			r.SavePath = strings.TrimSpace(job.SavePath)
+		if strings.TrimSpace(r.DownloadDir) == "" {
+			r.DownloadDir = strings.TrimSpace(job.DownloadDir)
 		}
 		resolved := BuildFinalResourceName(FinalResourceNameInput{
 			TaskID:           job.ID,
@@ -300,7 +300,7 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 		// duplicates by inserting the numeric suffix before the extension.
 		preferred_name := resolved.Name
 		old_path := strings.TrimSpace(r.FilePath)
-		resource_path := resource_save_path(job, r)
+		resource_path := resource_download_dir(job, r)
 		if old_path == "" {
 			old_path = d.abs_file_path(resource_path, r.UniqueID)
 		}
@@ -425,7 +425,7 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 			continue
 		}
 		update := ResourceOutputUpdate{
-			TaskID: task_id, ResourceID: r.ID, SavePath: r.SavePath, ResourceName: r.Name,
+			TaskID: task_id, ResourceID: r.ID, DownloadDir: r.DownloadDir, ResourceName: r.Name,
 			ResourceKind: r.Kind, ResourceSize: r.Size,
 		}
 		d.logger.Info().
@@ -465,15 +465,15 @@ func (d *HermesEngine) invoke_finish_hook(job *TaskJob, file_paths_str string) {
 
 	ctx := &FinishContext{
 		Task: TaskInfo{
-			Name:     job.Name,
-			SavePath: job.SavePath,
-			Config:   job.Config,
+			Name:        job.Name,
+			DownloadDir: job.DownloadDir,
+			Config:      job.Config,
 		},
-		Config:    job.Config,
-		Metadata:  job.Metadata,
-		Resources: resources,
-		FilePaths: file_paths,
-		SavePath:  job.SavePath,
+		Config:      job.Config,
+		Metadata:    job.Metadata,
+		Resources:   resources,
+		FilePaths:   file_paths,
+		DownloadDir: job.DownloadDir,
 	}
 
 	if err := d.hooks.InvokeFinishHook(ctx); err != nil {

@@ -25,7 +25,7 @@ type FilenameProcessor struct {
 
 // NewFilenameProcessor creates a processor using existingFiles as its initial
 // reservation set. rootDir is retained for API compatibility; names produced
-// by the processor are always relative to the task's save path.
+// by the processor are always relative to the task's download directory.
 func NewFilenameProcessor(root_dir string, existing_files map[string]int) *FilenameProcessor {
 	_ = root_dir
 	if existing_files == nil {
