@@ -37,6 +37,14 @@ func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/browsehistory.html")
 }
 
+func (c *APIClient) handle_account_page(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/account.html")
+}
+
+func (c *APIClient) handle_logs_page(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/logs.html")
+}
+
 func (c *APIClient) handle_channels_page(ctx *gin.Context) {
 	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
 	c.renderFrontendFile(ctx, "inject/channels.html")
@@ -53,6 +61,10 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+	max_running := c.cfg.Original.GetInt("download.maxRunning")
+	if max_running == 0 {
+		max_running = 3
+	}
 	frontendVariables := map[string]any{
 		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
 		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
@@ -61,7 +73,7 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		"pagespyServerAPI":           c.cfg.Original.GetString("pagespy.api"),
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
-		"maxRunning":                 c.cfg.Original.GetInt("download.maxRunning"),
+		"maxRunning":                 max_running,
 		"downloadFilenameTemplate":   c.cfg.Original.GetString("download.filenameTemplate"),
 		"defaultHighest":             c.cfg.Original.GetBool("channels.download.defaultHighest") || c.cfg.Original.GetBool("download.defaultHighest"),
 		"downloadPauseWhenDownload":  c.cfg.Original.GetBool("channels.download.pauseWhenDownload"),
@@ -77,7 +89,7 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	ctx.String(http.StatusOK, html)
 }
 
-func (c *APIClient) buildHTTPHandler() http.Handler {
+func (c *APIClient) build_http_handler() http.Handler {
 	frontendHandler := frontend.NewServer(c.cfg.Mode)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldServeByAPI(r.URL.Path) {
@@ -241,10 +253,11 @@ func shouldServeByAPI(path string) bool {
 		path == "/home" ||
 		path == "/filehelper" ||
 		path == "/play" ||
-		path == "/file" ||
 		path == "/preview" ||
 		path == "/content" ||
 		path == "/browsehistory" ||
+		path == "/account" ||
+		path == "/logs" ||
 		path == "/channels" ||
 		path == "/migration" ||
 		path == "/admin" ||

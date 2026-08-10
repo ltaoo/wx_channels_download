@@ -189,13 +189,12 @@
       WXU.error({ msg: error.message, source: "mp.ws.js:189" });
       return;
     }
-    WXU.log.Info().Msg("[mp.wx.js]create success");
-    var taskResult = data && data.tasks && data.tasks[0];
-    if (taskResult && !taskResult.success) {
-      WXU.error({ msg: taskResult.error || "创建下载任务失败", source: "mp.ws.js:195" });
+    if (data.skipped) {
       return;
     }
-    popover$.show(popover_pos($btn));
+    WXU.toast("创建下载任务成功");
+    console.log("[mp.ws.js]handle_download_click - after create download task");
+    WXU.downloader.show();
   }
 
   var before_menus_items = [];
@@ -248,9 +247,7 @@
 
   function DownloaderEntry(props) {
     const vm$ =
-      typeof __d_vm$ !== undefined
-        ? __d_vm$
-        : DownloaderPanelViewModel({});
+      typeof __d_vm$ !== undefined ? __d_vm$ : DownloaderPanelViewModel({});
     return Button(
       {
         attributes: {
@@ -269,6 +266,14 @@
         },
       },
       [
+        View(
+          {
+            attributes: { id: "__wx_download_bottom_text" },
+            class: "sns_opr_gap",
+            style: { display: "inline" },
+          },
+          ["下载"],
+        ),
         Popover(
           {
             store: props.popover$,
@@ -279,16 +284,7 @@
               }),
             ],
           },
-          [
-            View(
-              {
-                attributes: { id: "__wx_download_bottom_text" },
-                class: "sns_opr_gap",
-                style: { display: "inline" },
-              },
-              ["下载"],
-            ),
-          ],
+          [],
         ),
         TaskDeleteConfirmDialog({
           store: vm$,
@@ -401,7 +397,10 @@
       loading = false;
       loadMoreBtn.disabled = false;
       if (r.error) {
-        WXU.error({ msg: "获取推送列表失败: " + r.error.message, source: "mp.ws.js:404" });
+        WXU.error({
+          msg: "获取推送列表失败: " + r.error.message,
+          source: "mp.ws.js:404",
+        });
         loadMoreBtn.textContent = "重试";
         return;
       }
@@ -468,17 +467,22 @@
     const msgListDialog$ = new Timeless.ui.DialogCore({
       offsetY: 4,
     });
-    WXU.downloader.show = function () {
-      popover$.show();
-    };
-    WXU.downloader.hide = function () {
-      popover$.hide();
-    };
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
     const $btn = document.createElement("div");
     $btn.className = "sns_opr_btn_con";
     $container.insertBefore($btn, $container.lastElementChild);
     console.log("before render(DownloaderEntry");
+    WXU.downloader.show = function () {
+      popover$.popper.setReference({
+        $el: {},
+        getRect() {},
+      });
+      const pos = popover_pos($btn);
+      popover$.show(pos);
+    };
+    WXU.downloader.hide = function () {
+      popover$.hide();
+    };
     // Render download panel entry into button container
     Timeless.DOM.render(
       DownloaderEntry({
@@ -506,6 +510,7 @@
     dropdown$ = new Timeless.ui.DropdownMenuCore({
       trigger: "hover",
       align: "end",
+      offsetY: -20,
       items: [
         ...__wxmp_render_extra_download_menu_items(
           before_menus_items,
@@ -564,7 +569,8 @@
                     token,
                   });
                   dropdown$.hide();
-                  popover$.show(popover_pos($btn));
+                  console.log("[mp.ws.js]onClick - after downloadAllReq.run");
+                  WXU.downloader.show();
                 },
               }),
             ]
@@ -572,8 +578,9 @@
         new Timeless.ui.MenuItemCore({
           label: "下载面板",
           onClick() {
-            popover$.show(popover_pos($btn));
             dropdown$.hide();
+            console.log("[mp.ws.js]onClick - before popover$.show");
+            WXU.downloader.show();
           },
         }),
       ],

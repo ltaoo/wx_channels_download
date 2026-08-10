@@ -49,9 +49,9 @@ func LoadCertFilesWithInfo() CertFilesInfo {
 
 	// cert.file and cert.key are configured; determine if user-configured or app-generated.
 	// App-generated certs are written to the certs/ subdirectory of the work dir.
-	certFile := viper.GetString("cert.file")
-	if certFile != "" {
-		if absPath, err := filepath.Abs(certFile); err == nil && isUnderCertsDir(absPath) {
+	cert_file := viper.GetString("cert.file")
+	if cert_file != "" {
+		if abs_path, err := filepath.Abs(cert_file); err == nil && is_under_certs_dir(abs_path) {
 			info.Source = CertSourceGenerated
 			return info
 		}
@@ -74,62 +74,62 @@ type AvailableCert struct {
 // including the built-in SunnyNet cert, mitmproxy cert (if present),
 // and the user-configured or generated cert. Exactly one cert is marked active.
 func ScanAvailableCerts() []AvailableCert {
-	activeCert := LoadCertFiles()
+	active_cert := LoadCertFiles()
 	var certs []AvailableCert
 
 	// 1. SunnyNet (always available as fallback)
-	sunnyEntry := AvailableCert{
+	sunny_entry := AvailableCert{
 		Cert:     certificate.DefaultCertFiles,
 		Source:   CertSourceSunnyNet,
 		IsLegacy: true,
-		IsActive: activeCert.Name == certificate.DefaultCertFiles.Name,
+		IsActive: active_cert.Name == certificate.DefaultCertFiles.Name,
 		RiskWarnings: []string{
 			"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议替换为本机生成的证书",
 		},
 	}
-	certs = append(certs, sunnyEntry)
+	certs = append(certs, sunny_entry)
 
 	// 2. mitmproxy (available if cert files exist on disk)
-	if mitmCert := tryLoadMitmproxyCert(); mitmCert != nil {
-		mitmEntry := AvailableCert{
-			Cert:     mitmCert,
+	if mitm_cert := try_load_mitmproxy_cert(); mitm_cert != nil {
+		mitm_entry := AvailableCert{
+			Cert:     mitm_cert,
 			Source:   CertSourceMitmproxy,
 			IsLegacy: true,
-			IsActive: activeCert.Name == "mitmproxy",
+			IsActive: active_cert.Name == "mitmproxy",
 			RiskWarnings: []string{
 				"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险，建议替换为本机生成的证书",
 			},
 		}
-		certs = append(certs, mitmEntry)
+		certs = append(certs, mitm_entry)
 	}
 
 	// 3. Configured/generated cert (available if cert.file + cert.key are set)
-	if confCert, ok := loadConfiguredCertFiles(); ok {
+	if conf_cert, ok := load_configured_cert_files(); ok {
 		source := CertSourceConfigured
-		if absPath, err := filepath.Abs(viper.GetString("cert.file")); err == nil && isUnderCertsDir(absPath) {
+		if abs_path, err := filepath.Abs(viper.GetString("cert.file")); err == nil && is_under_certs_dir(abs_path) {
 			source = CertSourceGenerated
 		}
-		isActive := activeCert.Name == confCert.Name // compare name since object identities differ
+		is_active := active_cert.Name == conf_cert.Name // compare name since object identities differ
 		// Also compare by source: only the configured/generated cert can be active
-		// when activeCert is neither SunnyNet nor mitmproxy.
-		if !isActive && activeCert.Name != certificate.DefaultCertFiles.Name && activeCert.Name != "mitmproxy" {
-			isActive = true
+		// when active_cert is neither SunnyNet nor mitmproxy.
+		if !is_active && active_cert.Name != certificate.DefaultCertFiles.Name && active_cert.Name != "mitmproxy" {
+			is_active = true
 		}
-		confEntry := AvailableCert{
-			Cert:     confCert,
+		conf_entry := AvailableCert{
+			Cert:     conf_cert,
 			Source:   source,
 			IsLegacy: false,
-			IsActive: isActive,
+			IsActive: is_active,
 		}
-		certs = append(certs, confEntry)
+		certs = append(certs, conf_entry)
 	}
 
 	return certs
 }
 
-// tryLoadMitmproxyCert loads the mitmproxy certificate from standard locations.
+// try_load_mitmproxy_cert loads the mitmproxy certificate from standard locations.
 // Returns nil if the cert files are not found.
-func tryLoadMitmproxyCert() *certificate.CertFileAndKeyFile {
+func try_load_mitmproxy_cert() *certificate.CertFileAndKeyFile {
 	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil {
 		dirs = append(dirs, filepath.Join(home, ".mitmproxy"))
@@ -140,21 +140,21 @@ func tryLoadMitmproxyCert() *certificate.CertFileAndKeyFile {
 		}
 	}
 	for _, dir := range dirs {
-		certPath := filepath.Join(dir, "mitmproxy-ca-cert.pem")
-		keyPath := filepath.Join(dir, "mitmproxy-ca.pem")
-		if certBytes, err1 := os.ReadFile(certPath); err1 == nil {
-			if keyBytes, err2 := os.ReadFile(keyPath); err2 == nil {
+		cert_path := filepath.Join(dir, "mitmproxy-ca-cert.pem")
+		key_path := filepath.Join(dir, "mitmproxy-ca.pem")
+		if cert_bytes, err1 := os.ReadFile(cert_path); err1 == nil {
+			if key_bytes, err2 := os.ReadFile(key_path); err2 == nil {
 				return &certificate.CertFileAndKeyFile{
 					Name:       "mitmproxy",
-					Cert:       certBytes,
-					PrivateKey: keyBytes,
+					Cert:       cert_bytes,
+					PrivateKey: key_bytes,
 				}
 			}
 		}
-		if keyBytes, err := os.ReadFile(keyPath); err == nil {
-			rest := keyBytes
-			var certBlocks [][]byte
-			var keyBlock []byte
+		if key_bytes, err := os.ReadFile(key_path); err == nil {
+			rest := key_bytes
+			var cert_blocks [][]byte
+			var key_block []byte
 			for {
 				block, rem := pem.Decode(rest)
 				if block == nil {
@@ -164,20 +164,20 @@ func tryLoadMitmproxyCert() *certificate.CertFileAndKeyFile {
 				if block.Type == "CERTIFICATE" {
 					enc := pem.EncodeToMemory(block)
 					if enc != nil {
-						certBlocks = append(certBlocks, enc)
+						cert_blocks = append(cert_blocks, enc)
 					}
 				} else if strings.Contains(block.Type, "PRIVATE KEY") {
 					enc := pem.EncodeToMemory(block)
 					if enc != nil {
-						keyBlock = enc
+						key_block = enc
 					}
 				}
 			}
-			if len(certBlocks) > 0 && len(keyBlock) > 0 {
+			if len(cert_blocks) > 0 && len(key_block) > 0 {
 				return &certificate.CertFileAndKeyFile{
 					Name:       "mitmproxy",
-					Cert:       bytes.Join(certBlocks, []byte("")),
-					PrivateKey: keyBlock,
+					Cert:       bytes.Join(cert_blocks, []byte("")),
+					PrivateKey: key_block,
 				}
 			}
 		}
@@ -186,29 +186,29 @@ func tryLoadMitmproxyCert() *certificate.CertFileAndKeyFile {
 }
 
 func LoadCertFiles() *certificate.CertFileAndKeyFile {
-	if cert, ok := loadConfiguredCertFiles(); ok {
+	if cert, ok := load_configured_cert_files(); ok {
 		return cert
 	}
-	if mitmCert := tryLoadMitmproxyCert(); mitmCert != nil {
-		return mitmCert
+	if mitm_cert := try_load_mitmproxy_cert(); mitm_cert != nil {
+		return mitm_cert
 	}
 	return certificate.DefaultCertFiles
 }
 
-func loadConfiguredCertFiles() (*certificate.CertFileAndKeyFile, bool) {
-	certFilePath := viper.GetString("cert.file")
-	certKeyFilePath := viper.GetString("cert.key")
-	if certFilePath != "" && certKeyFilePath != "" {
-		if certBytes, err := os.ReadFile(certFilePath); err == nil {
-			if certKeyBytes, err2 := os.ReadFile(certKeyFilePath); err2 == nil {
-				certName := viper.GetString("cert.name")
-				if strings.TrimSpace(certName) == "" {
-					certName = certificate.DefaultCertFiles.Name
+func load_configured_cert_files() (*certificate.CertFileAndKeyFile, bool) {
+	cert_file_path := viper.GetString("cert.file")
+	cert_key_file_path := viper.GetString("cert.key")
+	if cert_file_path != "" && cert_key_file_path != "" {
+		if cert_bytes, err := os.ReadFile(cert_file_path); err == nil {
+			if cert_key_bytes, err2 := os.ReadFile(cert_key_file_path); err2 == nil {
+				cert_name := viper.GetString("cert.name")
+				if strings.TrimSpace(cert_name) == "" {
+					cert_name = certificate.DefaultCertFiles.Name
 				}
 				return &certificate.CertFileAndKeyFile{
-					Name:       certName,
-					Cert:       certBytes,
-					PrivateKey: certKeyBytes,
+					Name:       cert_name,
+					Cert:       cert_bytes,
+					PrivateKey: cert_key_bytes,
 				}, true
 			}
 		}
@@ -216,6 +216,6 @@ func loadConfiguredCertFiles() (*certificate.CertFileAndKeyFile, bool) {
 	return nil, false
 }
 
-func isUnderCertsDir(absCertPath string) bool {
-	return filepath.Base(filepath.Dir(absCertPath)) == "certs"
+func is_under_certs_dir(abs_cert_path string) bool {
+	return filepath.Base(filepath.Dir(abs_cert_path)) == "certs"
 }

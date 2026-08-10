@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ type Task struct {
 	URL string
 
 	engine *HermesEngine
-	state  *memoryTaskState
+	state  *memory_task_state
 }
 
 // TaskOption customizes a task created by CreateTask before it is submitted to
@@ -34,21 +33,21 @@ func WithFilename(filename string) TaskOption {
 	}
 }
 
-// WithSavePath sets the task's output directory relative to the engine base
+// WithDownloadDir sets the task's output directory relative to the engine base
 // path.
-func WithSavePath(savePath string) TaskOption {
+func WithDownloadDir(download_dir string) TaskOption {
 	return func(job *TaskJob) {
 		if job != nil {
-			job.SavePath = savePath
+			job.DownloadDir = download_dir
 		}
 	}
 }
 
 // WithProxyServer routes the task through the given proxy server.
-func WithProxyServer(proxyServer ProxyServer) TaskOption {
+func WithProxyServer(proxy_server ProxyServer) TaskOption {
 	return func(job *TaskJob) {
 		if job != nil {
-			job.ProxyServer = proxyServer
+			job.ProxyServer = proxy_server
 		}
 	}
 }
@@ -59,7 +58,7 @@ func WithHeaders(headers map[string]string) TaskOption {
 		if job == nil || len(job.Resources) == 0 || len(job.Resources[0].Endpoints) == 0 {
 			return
 		}
-		job.Resources[0].Endpoints[0].Headers = cloneStringMap(headers)
+		job.Resources[0].Endpoints[0].Headers = clone_string_map(headers)
 	}
 }
 
@@ -74,44 +73,32 @@ func WithCookies(cookies string) TaskOption {
 }
 
 // OnEvent installs the high-level event callback. When the default in-memory
-// store is active, lifecycle events emitted before registration are replayed.
+// store is active, replayable events emitted before registration are replayed.
 func (d *HermesEngine) OnEvent(handler EventHandler) {
 	if d == nil {
 		return
 	}
-	if handler == nil || !d.replayEvents {
-		d.SetEventHandler(handler)
+	if handler == nil || !d.replay_events {
+		d.event_mu.Lock()
+		d.on_event = handler
+		d.event_mu.Unlock()
 		return
 	}
 
 	gate := make(chan struct{})
-	wrapped := func(taskID int, event EventType, progress *TaskProgress) {
+	wrapped := func(event EventType, data EventData) {
 		<-gate
-		handler(taskID, event, progress)
+		handler(event, data)
 	}
-	type recordedEvent struct {
-		taskID int
-		event  EventType
-	}
-	d.eventMu.Lock()
-	d.onEvent = wrapped
-	taskIDs := make([]int, 0, len(d.eventHistory))
-	for taskID := range d.eventHistory {
-		taskIDs = append(taskIDs, taskID)
-	}
-	sort.Ints(taskIDs)
-	recorded := make([]recordedEvent, 0)
-	for _, taskID := range taskIDs {
-		for _, event := range d.eventHistory[taskID] {
-			recorded = append(recorded, recordedEvent{taskID: taskID, event: event})
-		}
-	}
-	d.eventMu.Unlock()
+	d.event_mu.Lock()
+	d.on_event = wrapped
+	recorded := append([]event_record(nil), d.event_history...)
+	d.event_mu.Unlock()
 
 	go func() {
 		defer close(gate)
 		for _, item := range recorded {
-			handler(item.taskID, item.event, nil)
+			handler(item.event, item.data)
 		}
 	}()
 }
@@ -119,26 +106,26 @@ func (d *HermesEngine) OnEvent(handler EventHandler) {
 // CreateTask creates and immediately starts a single-resource download task.
 // A zero-value HermesNewConfig supplies the in-memory store and HTTP/HTTPS
 // driver required by this method.
-func (d *HermesEngine) CreateTask(rawURL string, options ...TaskOption) *Task {
+func (d *HermesEngine) CreateTask(raw_url string, options ...TaskOption) *Task {
 	if d == nil {
-		return failedTask(rawURL, errors.New("Hermes engine is nil"))
+		return failed_task(raw_url, errors.New("Hermes engine is nil"))
 	}
-	store, ok := d.store.(*memoryStore)
+	store, ok := d.store.(*memory_store)
 	if !ok {
-		return failedTask(rawURL, errors.New("CreateTask requires the default in-memory store"))
+		return failed_task(raw_url, errors.New("CreateTask requires the default in-memory store"))
 	}
 
-	cleanURL := strings.TrimSpace(rawURL)
-	parsedURL, err := url.Parse(cleanURL)
-	if err != nil || parsedURL.Scheme == "" {
-		return failedTask(rawURL, errors.New("invalid download URL"))
+	clean_url := strings.TrimSpace(raw_url)
+	parsed_url, err := url.Parse(clean_url)
+	if err != nil || parsed_url.Scheme == "" {
+		return failed_task(raw_url, errors.New("invalid download URL"))
 	}
-	protocol := strings.ToLower(parsedURL.Scheme)
-	if (protocol == "http" || protocol == "https") && parsedURL.Host == "" {
-		return failedTask(rawURL, errors.New("invalid download URL"))
+	protocol := strings.ToLower(parsed_url.Scheme)
+	if (protocol == "http" || protocol == "https") && parsed_url.Host == "" {
+		return failed_task(raw_url, errors.New("invalid download URL"))
 	}
 
-	filename := defaultTaskFilename(parsedURL)
+	filename := default_task_filename(parsed_url)
 	job := &TaskJob{
 		Name: filename,
 		Resources: []ResourceJob{{
@@ -146,7 +133,7 @@ func (d *HermesEngine) CreateTask(rawURL string, options ...TaskOption) *Task {
 			UniqueID: filename,
 			Endpoints: []Endpoint{{
 				Protocol: protocol,
-				URL:      cleanURL,
+				URL:      clean_url,
 			}},
 		}},
 		Config:   make(map[string]any),
@@ -158,34 +145,34 @@ func (d *HermesEngine) CreateTask(rawURL string, options ...TaskOption) *Task {
 		}
 	}
 	if len(job.Resources) == 0 {
-		return failedTask(rawURL, errors.New("task has no downloadable resources"))
+		return failed_task(raw_url, errors.New("task has no downloadable resources"))
 	}
 
 	filename = filepath.Base(strings.TrimSpace(job.Resources[0].UniqueID))
 	if filename == "" || filename == "." || filename == ".." || filename == string(filepath.Separator) {
-		return failedTask(rawURL, errors.New("unable to determine download filename"))
+		return failed_task(raw_url, errors.New("unable to determine download filename"))
 	}
 	processor := NewFilenameProcessor("", nil)
 	filename, err = processor.SanitizeFilename(filename)
 	if err != nil {
-		return failedTask(rawURL, fmt.Errorf("invalid download filename: %w", err))
+		return failed_task(raw_url, fmt.Errorf("invalid download filename: %w", err))
 	}
 	job.Resources[0].UniqueID = filename
 	if strings.TrimSpace(job.Name) == "" {
 		job.Name = filename
 	}
 
-	state, err := store.createTask(job)
+	state, err := store.create_task(job)
 	if err != nil {
-		return failedTask(rawURL, err)
+		return failed_task(raw_url, err)
 	}
 	task := &Task{
 		ID:     job.ID,
-		URL:    cleanURL,
+		URL:    clean_url,
 		engine: d,
 		state:  state,
 	}
-	if err := d.StartTask(task.ID); err != nil {
+	if err := d.StartCreatedTask(task.ID); err != nil {
 		_ = store.RecordError(task.ID, err.Error())
 	}
 	return task
@@ -221,10 +208,10 @@ func (t *Task) Err() error {
 	}
 	t.state.mu.RLock()
 	defer t.state.mu.RUnlock()
-	if t.state.errorText == "" {
+	if t.state.error_text == "" {
 		return nil
 	}
-	return errors.New(t.state.errorText)
+	return errors.New(t.state.error_text)
 }
 
 // FilePath returns the expected output path for this single-resource task.
@@ -245,19 +232,19 @@ func (t *Task) FilePath() string {
 	if name == "" {
 		name = resource.UniqueID
 	}
-	return t.engine.absFilePath(t.state.job.SavePath, name)
+	return t.engine.abs_file_path(resource_download_dir(t.state.job, &resource), name)
 }
 
-func failedTask(rawURL string, err error) *Task {
+func failed_task(raw_url string, err error) *Task {
 	return &Task{
-		URL:   rawURL,
-		state: newFailedMemoryTaskState(err),
+		URL:   raw_url,
+		state: new_failed_memory_task_state(err),
 	}
 }
 
-func defaultTaskFilename(parsedURL *url.URL) string {
-	if parsedURL != nil {
-		filename := filepath.Base(parsedURL.Path)
+func default_task_filename(parsed_url *url.URL) string {
+	if parsed_url != nil {
+		filename := filepath.Base(parsed_url.Path)
 		if filename != "" && filename != "." && filename != "/" {
 			if decoded, err := url.PathUnescape(filename); err == nil {
 				return decoded

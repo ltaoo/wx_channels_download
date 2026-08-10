@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	stdlog "log"
 	"os"
 	"path/filepath"
 	"time"

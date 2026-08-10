@@ -110,9 +110,9 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		title = videoInfo.Title
 	}
 
-	savePath, _ := config["save_path"].(string)
-	if savePath == "" {
-		savePath = "/downloads/douyin"
+	download_dir, _ := config["download_dir"].(string)
+	if download_dir == "" {
+		download_dir = "/downloads/douyin"
 	}
 
 	configJSON, _ := json.Marshal(buildConfigJSON(config))
@@ -145,8 +145,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 			Enabled:  1,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
-			DownloadResource: coverResource,
-			Endpoints:        []model.DownloadEndpoint{coverEndpoint},
+			Resource:  coverResource,
+			Endpoints: []model.DownloadEndpoint{coverEndpoint},
 		})
 	}
 
@@ -164,8 +164,8 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		Enabled:  1,
 	}
 	resources = append(resources, &adapter.ResourceInfo{
-		DownloadResource: videoResource,
-		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
+		Resource:  videoResource,
+		Endpoints: []model.DownloadEndpoint{videoEndpoint},
 	})
 
 	return &adapter.DownloadTaskResult{

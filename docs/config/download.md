@@ -86,6 +86,15 @@ download:
 
 后台下载模式下，下载完成后是否播放完成音效，默认 `true`。
 
+## Default action when a task exists
+
+```yaml
+download:
+  defaultActionWhenExisting: ""
+```
+
+When creating a download task, an existing task normally returns a conflict so the caller can choose an action. Set this to `skip`, `duplicate`, or `overwrite` to skip the incoming task, create another copy, or overwrite the existing task.
+
 ## 批量下载检查
 
 ```yaml

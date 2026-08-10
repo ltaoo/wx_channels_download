@@ -15,19 +15,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// EventType represents a downloader event type.
-type EventType string
-
-const (
-	EventCreated  EventType = "created"
-	EventStarted  EventType = "started"
-	EventProgress EventType = "progress"
-	EventPaused   EventType = "paused"
-	EventFinished EventType = "finished"
-	EventFailed   EventType = "failed"
-	EventDeleted  EventType = "deleted"
-)
-
 // Task status values maintain stable mapping with the persistence layer's download_task status values.
 const (
 	TaskStatusWaiting     = 0
@@ -47,14 +34,14 @@ const (
 )
 
 const (
-	defaultSegmentCount = 32
-	minimumSegmentSize  = int64(25 * 1024 * 1024)
-	partialFileSuffix   = ".part"
-	progressInterval    = 1 * time.Second
-	progressLogInterval = 3 * time.Second
-	maxReadAttempts     = 3
-	defaultReadTimeout  = 10 * time.Second
-	readBufferSize      = 256 * 1024
+	default_segment_count = 32
+	minimum_segment_size  = int64(25 * 1024 * 1024)
+	partial_file_suffix   = ".part"
+	progress_interval     = 1 * time.Second
+	progress_log_interval = 3 * time.Second
+	max_read_attempts     = 3
+	default_read_timeout  = 10 * time.Second
+	read_buffer_size      = 256 * 1024
 )
 
 // Endpoint contains download source information needed by protocol drivers. Headers and Cookies
@@ -78,7 +65,7 @@ type TaskJob struct {
 	ID               int
 	Name             string
 	UniqueID         string // Task-level platform unique identifier
-	SavePath         string
+	DownloadDir      string
 	FilenameTemplate string
 	Platform         string // PlatformId from DB, used by postprocessor for platform routing
 	// ProxyServer applies to every network endpoint in this task. When its
@@ -88,11 +75,11 @@ type TaskJob struct {
 	Config      map[string]any // Parsed download configuration for hooks
 	Metadata    map[string]any // Parsed content metadata for postprocessors and hooks
 
-	ctx          context.Context
-	cancel       context.CancelCauseFunc
-	done         chan struct{}
-	executionMu  sync.Mutex
-	cancelReason cancellationReason
+	ctx           context.Context
+	cancel        context.CancelCauseFunc
+	done          chan struct{}
+	execution_mu  sync.Mutex
+	cancel_reason cancellation_reason
 }
 
 // ResourceJob is the single resource model used from endpoint selection through
@@ -100,13 +87,14 @@ type TaskJob struct {
 // intentionally kept beside the immutable resource input so later phases mutate
 // the same object instead of constructing parallel DTOs.
 type ResourceJob struct {
-	ID        int
-	Name      string
-	Kind      string // "html", "image", "video", etc.
-	Type      string // "FILE" | "STREAM"
-	UniqueID  string // Platform-level unique identifier
-	Endpoints []Endpoint
-	Extra     map[string]string // User-defined fields, irrelevant to download, passed through to hooks
+	ID          int
+	DownloadDir string // Resource-specific output container; falls back to TaskJob.DownloadDir.
+	Name        string
+	Kind        string // "html", "image", "video", etc.
+	Type        string // "FILE" | "STREAM"
+	UniqueID    string // Platform-level unique identifier
+	Endpoints   []Endpoint
+	Extra       map[string]string // User-defined fields, irrelevant to download, passed through to hooks
 
 	// Live-stream recording configuration. Timestamps accept Unix seconds or
 	// Unix milliseconds; Duration is expressed in seconds. RotateMinutes is the
@@ -148,33 +136,7 @@ type Segment struct {
 	Downloaded  int64
 }
 
-// EventHandler receives task lifecycle and progress events.
-// A nil progress indicates a non-progress event (e.g., started, finished, failed).
-type EventHandler func(taskID int, event EventType, progress *TaskProgress)
-
-// TaskProgress carries the current aggregate download progress, computed
-// entirely from in-memory state without database queries.
-type TaskProgress struct {
-	TotalSize     int64              `json:"total_size"`
-	Downloaded    int64              `json:"downloaded"`
-	Speed         int64              `json:"speed"`
-	ResourceCount int                `json:"resource_count"`
-	Resources     []ResourceProgress `json:"resources"`
-	Keepalive     bool               `json:"-"` // true when emitted as keepalive (no real progress change)
-}
-
-// ResourceProgress carries a single resource's download progress.
-type ResourceProgress struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name,omitempty"`
-	Kind       string `json:"kind,omitempty"`
-	Type       string `json:"resource_type,omitempty"`
-	Size       int64  `json:"size"`
-	Downloaded int64  `json:"downloaded"`
-	Speed      int64  `json:"speed"`
-}
-
-type segmentProgress struct {
+type segment_progress struct {
 	slot       int
 	downloaded int64
 	speed      int64
@@ -197,7 +159,7 @@ type ReadRequest struct {
 	UseRange    bool
 }
 
-type endpointCandidate struct {
+type endpoint_candidate struct {
 	endpoint Endpoint
 	protocol string
 	driver   ProtocolDriver
@@ -260,23 +222,23 @@ type StreamRecorder interface {
 		ctx context.Context,
 		endpoint Endpoint,
 		request StreamRecordRequest,
-		onProgress func(StreamRecordProgress) error,
+		on_progress func(StreamRecordProgress) error,
 	) (StreamRecordResult, error)
 }
 
 // Store isolates the download execution layer from the database.
 type Store interface {
-	LoadTask(taskID int) (*TaskJob, error)
-	UpdateStatus(taskID int, status int) error
-	ActivateTask(taskID int) error
-	UpdateProgress(taskID int, downloaded int64, speed int64) error
-	UpdateResourceSize(taskID int, size int64) error
-	DeactivateConnections(taskID int) error
-	FinishTask(taskID int) error
-	RecordError(taskID int, errMsg string) error
-	CreateSegments(resourceID int, url string, ranges []SegmentRange) ([]int, error)
-	LoadSegmentInfo(resourceID int) ([]Segment, error)
-	UpdateSegmentProgress(segID int, downloaded int64) error
+	LoadTask(task_id int) (*TaskJob, error)
+	UpdateStatus(task_id int, status int) error
+	ActivateTask(task_id int) error
+	UpdateProgress(task_id int, downloaded int64, speed int64) error
+	UpdateResourceSize(task_id int, size int64) error
+	DeactivateConnections(task_id int) error
+	FinishTask(task_id int) error
+	RecordError(task_id int, err_msg string) error
+	CreateSegments(resource_id int, url string, ranges []SegmentRange) ([]int, error)
+	LoadSegmentInfo(resource_id int) ([]Segment, error)
+	UpdateSegmentProgress(seg_id int, downloaded int64) error
 }
 
 // SegmentProgressUpdate carries one durable segment-progress update.
@@ -288,29 +250,29 @@ type SegmentProgressUpdate struct {
 // ResourceStore provides per-resource progress updates for multi-resource tasks.
 // When not implemented, HermesEngine falls back to Store's task-level update methods.
 type ResourceStore interface {
-	UpdateResourceProgress(resourceID int, downloaded int64, speed int64) error
-	UpdateResourceSizeByID(resourceID int, size int64) error
-	FinishResource(resourceID int) error
+	UpdateResourceProgress(resource_id int, downloaded int64, speed int64) error
+	UpdateResourceSizeByID(resource_id int, size int64) error
+	FinishResource(resource_id int) error
 }
 
 // ProgressBatchStore lets a persistent store update segment/resource progress
 // in one transaction. Stores that do not implement it use the base Store and
 // ResourceStore methods.
 type ProgressBatchStore interface {
-	UpdateResourceSegmentProgress(resourceID int, segmentID int, downloaded int64, speed int64) error
-	UpdateAggregateResourceProgress(resourceID int, segments []SegmentProgressUpdate, downloaded int64, speed int64) error
+	UpdateResourceSegmentProgress(resource_id int, segment_id int, downloaded int64, speed int64) error
+	UpdateAggregateResourceProgress(resource_id int, segments []SegmentProgressUpdate, downloaded int64, speed int64) error
 }
 
 // StreamSegmentStore optionally persists the recorder's time-based chunks.
 // Stores that do not implement it still receive aggregate resource progress.
 type StreamSegmentStore interface {
-	SyncStreamSegments(resourceID int, url string, segments []StreamSegmentState) error
+	SyncStreamSegments(resource_id int, url string, segments []StreamSegmentState) error
 }
 
 // StreamResultStore optionally persists media-specific recording metadata that
 // is not part of the generic finite-resource Store contract.
 type StreamResultStore interface {
-	UpdateStreamDuration(resourceID int, durationSeconds int64) error
+	UpdateStreamDuration(resource_id int, duration_seconds int64) error
 }
 
 // OutputNameUpdate keeps persisted download metadata aligned with the output
@@ -320,7 +282,6 @@ type OutputNameUpdate struct {
 	ResourceID   int
 	ResourceName string
 	TaskName     string
-	SavePath     string
 }
 
 // OutputNameStore is implemented by stores that persist task/resource output
@@ -333,8 +294,9 @@ type OutputNameStore interface {
 // filename finalization. Kind is the persisted MIME source of truth;
 // Extension is derived from it at runtime.
 type ResourceOutputUpdate struct {
-	TaskID       int
+	TaskID       int // Optional task guard; zero supports standalone resources.
 	ResourceID   int
+	DownloadDir  string
 	ResourceName string
 	ResourceKind string
 	ResourceSize int64
@@ -350,43 +312,43 @@ type ResourceOutputStore interface {
 // connections and segments) that were removed by post-processing.
 // It is optional so non-persistent HermesEngine users remain supported.
 type ResourceCleanupStore interface {
-	DeleteStaleResources(taskID int, keepResourceIDs []int) error
+	DeleteStaleResources(task_id int, keep_resource_ids []int) error
 }
 
 // Postprocessor defines platform-specific post-download processing.
 // Called by HermesEngine after all resources download, before .tmp renaming and DB updates.
 type Postprocessor interface {
-	Process(ctx context.Context, taskJob *TaskJob) error
+	Process(ctx context.Context, task_job *TaskJob) error
 }
 
 // HermesEngine is a protocol-agnostic finite resource download scheduler.
 // FILE and COLLECTION are scheduled by the same task, STREAM is handled by the recording scheduler.
 type HermesEngine struct {
-	mu            sync.Mutex
-	eventMu       sync.RWMutex
-	sem           chan struct{}
-	jobs          map[int]*TaskJob
-	store         Store
-	logger        zerolog.Logger
-	onEvent       EventHandler
-	eventHistory  map[int][]EventType
-	replayEvents  bool
-	drivers       map[string]ProtocolDriver
-	hooks         *HookManager
-	postprocessor Postprocessor
-	progressMu    sync.Mutex
-	progressCache map[int]*progressTracker // keyed by task ID
-	cfg           HermesEngineConfig
+	mu             sync.Mutex
+	event_mu       sync.RWMutex
+	sem            chan struct{}
+	jobs           map[int]*TaskJob
+	store          Store
+	logger         zerolog.Logger
+	on_event       EventHandler
+	event_history  []event_record
+	replay_events  bool
+	drivers        map[string]ProtocolDriver
+	hooks          *HookManager
+	postprocessor  Postprocessor
+	progress_mu    sync.Mutex
+	progress_cache map[int]*progress_tracker // keyed by task ID
+	cfg            HermesEngineConfig
 }
 
 // progressTracker holds in-memory progress for all resources of a task.
-type progressTracker struct {
-	mu                 sync.Mutex
-	resources          map[int]*resourceTracker
-	order              []int     // resource IDs in merge_order
-	lastEmitDownloaded int64     // last emitted total downloaded, used to skip duplicate broadcasts
-	lastEmitSpeed      int64     // last emitted total speed
-	lastEmitTime       time.Time // last emission time, used for keepalive when segments are connecting
+type progress_tracker struct {
+	mu                   sync.Mutex
+	resources            map[int]*resource_tracker
+	order                []int     // resource IDs in merge_order
+	last_emit_downloaded int64     // last emitted total downloaded, used to skip duplicate broadcasts
+	last_emit_speed      int64     // last emitted total speed
+	last_emit_time       time.Time // last emission time, used for keepalive when segments are connecting
 }
 
 // resourceTracker holds the current download progress and metadata of a single resource.
@@ -394,7 +356,7 @@ type progressTracker struct {
 // speed stores the real-time speed reported by the download loop (copyReader/downloadSegment),
 // which is updated every progressInterval. snapshotProgress uses this value directly
 // for the WS push rather than re-computing from deltas, ensuring speed is never stale.
-type resourceTracker struct {
+type resource_tracker struct {
 	size       int64
 	downloaded int64
 	speed      int64
@@ -403,47 +365,47 @@ type resourceTracker struct {
 	typ        string
 }
 
-type cancellationReason uint8
+type cancellation_reason uint8
 
 const (
-	cancelNone cancellationReason = iota
-	cancelPause
-	cancelStop
-	cancelDelete
+	cancel_none cancellation_reason = iota
+	cancel_pause
+	cancel_stop
+	cancel_delete
 )
 
 // ErrTaskStopRequested is the cancellation cause used when a live recording
 // should stop accepting new media but still finalize its recorded chunks.
 var ErrTaskStopRequested = errors.New("live stream stop requested")
 
-func (j *TaskJob) stop(reason cancellationReason) {
-	j.executionMu.Lock()
-	if j.cancelReason != cancelNone {
+func (j *TaskJob) stop(reason cancellation_reason) {
+	j.execution_mu.Lock()
+	if j.cancel_reason != cancel_none {
 		// Deletion remains authoritative if it races with pause/stop. The first
 		// cancellation cause still controls how an in-flight recorder exits.
-		if reason == cancelDelete {
-			j.cancelReason = cancelDelete
+		if reason == cancel_delete {
+			j.cancel_reason = cancel_delete
 		}
-		j.executionMu.Unlock()
+		j.execution_mu.Unlock()
 		return
 	}
-	j.cancelReason = reason
+	j.cancel_reason = reason
 	cancel := j.cancel
-	j.executionMu.Unlock()
+	j.execution_mu.Unlock()
 	if cancel == nil {
 		return
 	}
-	if reason == cancelStop {
+	if reason == cancel_stop {
 		cancel(ErrTaskStopRequested)
 		return
 	}
 	cancel(context.Canceled)
 }
 
-func (j *TaskJob) cancellationReason() cancellationReason {
-	j.executionMu.Lock()
-	defer j.executionMu.Unlock()
-	return j.cancelReason
+func (j *TaskJob) cancellation_reason() cancellation_reason {
+	j.execution_mu.Lock()
+	defer j.execution_mu.Unlock()
+	return j.cancel_reason
 }
 
 // HermesEngineConfig contains the download scheduler's runtime configuration.
@@ -457,7 +419,7 @@ type HermesEngineConfig struct {
 	ReadTimeout          time.Duration // Timeout for a single Read() call, <=0 uses default 10s
 }
 
-func (cfg HermesEngineConfig) withDefaults() HermesEngineConfig {
+func (cfg HermesEngineConfig) with_defaults() HermesEngineConfig {
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = 3
 	}
@@ -468,7 +430,7 @@ func (cfg HermesEngineConfig) withDefaults() HermesEngineConfig {
 		cfg.SegmentConcurrency = 5
 	}
 	if cfg.ReadTimeout <= 0 {
-		cfg.ReadTimeout = defaultReadTimeout
+		cfg.ReadTimeout = default_read_timeout
 	}
 	return cfg
 }
@@ -482,10 +444,10 @@ type HermesNewConfig struct {
 
 // New creates a new HermesEngine from the given configuration.
 func New(opt HermesNewConfig) *HermesEngine {
-	cfg := opt.Config.withDefaults()
+	cfg := opt.Config.with_defaults()
 	if strings.TrimSpace(cfg.BasePath) == "" {
-		if workingDirectory, err := os.Getwd(); err == nil {
-			cfg.BasePath = workingDirectory
+		if working_directory, err := os.Getwd(); err == nil {
+			cfg.BasePath = working_directory
 		} else {
 			cfg.BasePath = "."
 		}
@@ -496,30 +458,23 @@ func New(opt HermesNewConfig) *HermesEngine {
 	}
 	logger = logger.With().Str("component", "hermes").Logger()
 	store := opt.Store
-	replayEvents := store == nil
+	replay_events := store == nil
 	if store == nil {
-		store = newMemoryStore()
+		store = new_memory_store()
 	}
 	e := &HermesEngine{
-		sem:           make(chan struct{}, cfg.MaxConcurrent),
-		jobs:          make(map[int]*TaskJob),
-		store:         store,
-		logger:        logger,
-		eventHistory:  make(map[int][]EventType),
-		replayEvents:  replayEvents,
-		drivers:       make(map[string]ProtocolDriver),
-		progressCache: make(map[int]*progressTracker),
-		cfg:           cfg,
+		sem:            make(chan struct{}, cfg.MaxConcurrent),
+		jobs:           make(map[int]*TaskJob),
+		store:          store,
+		logger:         logger,
+		event_history:  make([]event_record, 0),
+		replay_events:  replay_events,
+		drivers:        make(map[string]ProtocolDriver),
+		progress_cache: make(map[int]*progress_tracker),
+		cfg:            cfg,
 	}
-	e.RegisterProtocol(newDefaultHTTPDriver())
+	e.RegisterProtocol(new_default_http_driver())
 	return e
-}
-
-// SetEventHandler sets the task lifecycle and progress event handler. Pass nil to disable event callbacks.
-func (d *HermesEngine) SetEventHandler(handler EventHandler) {
-	d.eventMu.Lock()
-	defer d.eventMu.Unlock()
-	d.onEvent = handler
 }
 
 // SetHooks sets the JS hook manager. Pass nil to disable hooks.
@@ -547,10 +502,21 @@ func (d *HermesEngine) RegisterProtocol(driver ProtocolDriver) {
 	}
 }
 
-// StartTask submits a task to the scheduler. Concurrent slot acquisition happens in the background,
-// so queuing does not block API requests.
-func (d *HermesEngine) StartTask(taskID int) error {
-	if taskID <= 0 {
+// StartTask submits an existing task for start, resume, or retry. Concurrent
+// slot acquisition happens in the background, so queuing does not block API
+// requests.
+func (d *HermesEngine) StartTask(task_id int) error {
+	return d.start_task(task_id, false)
+}
+
+// StartCreatedTask submits a newly persisted task and emits EventCreated with
+// the identity needed by consumers to load its complete record.
+func (d *HermesEngine) StartCreatedTask(task_id int) error {
+	return d.start_task(task_id, true)
+}
+
+func (d *HermesEngine) start_task(task_id int, created bool) error {
+	if task_id <= 0 {
 		return errors.New("taskID must be greater than 0")
 	}
 	if d.store == nil {
@@ -558,27 +524,31 @@ func (d *HermesEngine) StartTask(taskID int) error {
 	}
 
 	d.mu.Lock()
-	if _, exists := d.jobs[taskID]; exists {
+	if _, exists := d.jobs[task_id]; exists {
 		d.mu.Unlock()
 		return nil
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
-	taskJob := &TaskJob{ID: taskID, ctx: ctx, cancel: cancel, done: make(chan struct{})}
-	d.jobs[taskID] = taskJob
+	task_job := &TaskJob{ID: task_id, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	d.jobs[task_id] = task_job
 	d.mu.Unlock()
 
-	if err := d.store.UpdateStatus(taskID, TaskStatusPreparing); err != nil {
+	if err := d.store.UpdateStatus(task_id, TaskStatusPreparing); err != nil {
 		cancel(context.Canceled)
 		d.mu.Lock()
-		if d.jobs[taskID] == taskJob {
-			delete(d.jobs, taskID)
+		if d.jobs[task_id] == task_job {
+			delete(d.jobs, task_id)
 		}
 		d.mu.Unlock()
-		close(taskJob.done)
+		close(task_job.done)
 		return fmt.Errorf("failed to update task status to preparing: %w", err)
 	}
-	d.emit(taskID, EventCreated)
-	go d.schedule(taskJob)
+	if created {
+		d.emit(EventCreated, TaskCreatedEventData{TaskID: task_id})
+	} else {
+		d.emit(EventPreparing, TaskPreparingEventData{TaskID: task_id})
+	}
+	go d.schedule(task_job)
 	return nil
 }
 
@@ -599,18 +569,18 @@ func (d *HermesEngine) MaxConcurrent() int {
 
 // PauseTask cancels and waits for the current execution instance to exit, ensuring subsequent Resume
 // will not write files concurrently with the old Writer.
-func (d *HermesEngine) PauseTask(taskID int) {
-	if taskJob := d.findJob(taskID); taskJob != nil {
-		taskJob.stop(cancelPause)
-		<-taskJob.done
+func (d *HermesEngine) PauseTask(task_id int) {
+	if task_job := d.find_job(task_id); task_job != nil {
+		task_job.stop(cancel_pause)
+		<-task_job.done
 	}
 }
 
 // StopTask terminates a live recording and waits until its persisted chunks
 // have been merged and the regular task post-processing pipeline has finished.
 // Unlike PauseTask, a stopped live task cannot be resumed.
-func (d *HermesEngine) StopTask(taskID int) error {
-	if taskID <= 0 {
+func (d *HermesEngine) StopTask(task_id int) error {
+	if task_id <= 0 {
 		return errors.New("taskID must be greater than 0")
 	}
 	if d.store == nil {
@@ -618,29 +588,29 @@ func (d *HermesEngine) StopTask(taskID int) error {
 	}
 
 	d.mu.Lock()
-	taskJob := d.jobs[taskID]
-	created := taskJob == nil
+	task_job := d.jobs[task_id]
+	created := task_job == nil
 	if created {
 		ctx, cancel := context.WithCancelCause(context.Background())
-		taskJob = &TaskJob{ID: taskID, ctx: ctx, cancel: cancel, done: make(chan struct{})}
-		d.jobs[taskID] = taskJob
+		task_job = &TaskJob{ID: task_id, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+		d.jobs[task_id] = task_job
 	}
 	d.mu.Unlock()
 
-	taskJob.stop(cancelStop)
+	task_job.stop(cancel_stop)
 	if created {
-		go d.schedule(taskJob)
+		go d.schedule(task_job)
 	}
-	<-taskJob.done
+	<-task_job.done
 	return nil
 }
 
 // PauseAllTask pauses all in-progress or queued download tasks.
 func (d *HermesEngine) PauseAllTask() {
 	d.logger.Info().Msg("PauseAllTask")
-	jobs := d.requestPauseAllTasks()
-	for _, taskJob := range jobs {
-		<-taskJob.done
+	jobs := d.request_pause_all_tasks()
+	for _, task_job := range jobs {
+		<-task_job.done
 	}
 }
 
@@ -648,58 +618,58 @@ func (d *HermesEngine) PauseAllTask() {
 // pause without waiting for every task goroutine to exit.
 func (d *HermesEngine) RequestPauseAllTask() {
 	d.logger.Info().Msg("RequestPauseAllTask")
-	d.requestPauseAllTasks()
+	d.request_pause_all_tasks()
 }
 
-func (d *HermesEngine) requestPauseAllTasks() []*TaskJob {
+func (d *HermesEngine) request_pause_all_tasks() []*TaskJob {
 	d.mu.Lock()
 	jobs := make([]*TaskJob, 0, len(d.jobs))
-	for _, taskJob := range d.jobs {
-		jobs = append(jobs, taskJob)
+	for _, task_job := range d.jobs {
+		jobs = append(jobs, task_job)
 	}
 	d.mu.Unlock()
-	for _, taskJob := range jobs {
-		taskJob.stop(cancelPause)
+	for _, task_job := range jobs {
+		task_job.stop(cancel_pause)
 	}
 	return jobs
 }
 
 // DeleteTask stops the execution instance and marks the task as cancelled.
 // Soft deletion of database entities is still handled by the API handler.
-func (d *HermesEngine) DeleteTask(taskID int) {
-	d.logger.Info().Int("task_id", taskID).Msg("DeleteTask")
-	if taskJob := d.findJob(taskID); taskJob != nil {
-		taskJob.stop(cancelDelete)
-		<-taskJob.done
-		_ = d.store.UpdateStatus(taskID, TaskStatusCancelled)
-		d.logger.Info().Int("task_id", taskID).Msg("task deleted")
-		d.emit(taskID, EventDeleted)
-		d.deleteTracker(taskID)
+func (d *HermesEngine) DeleteTask(task_id int) {
+	d.logger.Info().Int("task_id", task_id).Msg("DeleteTask")
+	if task_job := d.find_job(task_id); task_job != nil {
+		task_job.stop(cancel_delete)
+		<-task_job.done
+		_ = d.store.UpdateStatus(task_id, TaskStatusCancelled)
+		d.logger.Info().Int("task_id", task_id).Msg("task deleted")
+		d.emit(EventDeleted, TaskDeletedEventData{TaskID: task_id})
+		d.delete_tracker(task_id)
 	}
 }
 
-func (d *HermesEngine) findJob(taskID int) *TaskJob {
+func (d *HermesEngine) find_job(task_id int) *TaskJob {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.jobs[taskID]
+	return d.jobs[task_id]
 }
 
-func (d *HermesEngine) schedule(taskJob *TaskJob) {
-	taskID := taskJob.ID
+func (d *HermesEngine) schedule(task_job *TaskJob) {
+	task_id := task_job.ID
 	acquired := false
 	defer func() {
 		if acquired {
 			<-d.sem
 		}
 		d.mu.Lock()
-		if d.jobs[taskID] == taskJob {
-			delete(d.jobs, taskID)
+		if d.jobs[task_id] == task_job {
+			delete(d.jobs, task_id)
 		}
 		d.mu.Unlock()
-		close(taskJob.done)
+		close(task_job.done)
 	}()
 
-	if taskJob.cancellationReason() == cancelStop {
+	if task_job.cancellation_reason() == cancel_stop {
 		// A stop-only job may be recovering durable chunks after a restart, so
 		// it still needs to run even though its recording context is cancelled.
 		d.sem <- struct{}{}
@@ -708,47 +678,47 @@ func (d *HermesEngine) schedule(taskJob *TaskJob) {
 		select {
 		case d.sem <- struct{}{}:
 			acquired = true
-		case <-taskJob.ctx.Done():
-			d.handleCancellation(taskID, taskJob)
+		case <-task_job.ctx.Done():
+			d.handle_cancellation(task_id, task_job)
 			return
 		}
 	}
 
-	var runErr error
+	var run_err error
 	func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				runErr = fmt.Errorf("download goroutine exited unexpectedly: %v", recovered)
+				run_err = fmt.Errorf("download goroutine exited unexpectedly: %v", recovered)
 				d.logger.Error().
-					Int("task_id", taskID).
+					Int("task_id", task_id).
 					Interface("panic", recovered).
 					Str("stack", string(debug.Stack())).
 					Msg("download goroutine panicked")
 			}
 		}()
-		runErr = d.run(taskJob)
+		run_err = d.run(task_job)
 	}()
 
-	if taskJob.cancellationReason() != cancelStop &&
-		(errors.Is(runErr, context.Canceled) || taskJob.ctx.Err() != nil) {
-		d.handleCancellation(taskID, taskJob)
+	if task_job.cancellation_reason() != cancel_stop &&
+		(errors.Is(run_err, context.Canceled) || task_job.ctx.Err() != nil) {
+		d.handle_cancellation(task_id, task_job)
 		return
 	}
-	if runErr != nil {
-		d.failTask(taskID, runErr.Error())
+	if run_err != nil {
+		d.fail_task(task_id, run_err.Error())
 	}
 }
 
-func (d *HermesEngine) handleCancellation(taskID int, taskJob *TaskJob) {
-	if taskJob.cancellationReason() == cancelPause {
-		d.pauseTask(taskID)
+func (d *HermesEngine) handle_cancellation(task_id int, task_job *TaskJob) {
+	if task_job.cancellation_reason() == cancel_pause {
+		d.pause_task(task_id)
 	}
 }
 
 func (d *HermesEngine) run(info *TaskJob) error {
-	taskID := info.ID
+	task_id := info.ID
 	ctx := info.ctx
-	loaded, err := d.store.LoadTask(taskID)
+	loaded, err := d.store.LoadTask(task_id)
 	if err != nil {
 		return fmt.Errorf("failed to load task information: %w", err)
 	}
@@ -759,14 +729,14 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	// fields. The same object now travels from queueing through finalization.
 	info.Name = loaded.Name
 	info.UniqueID = loaded.UniqueID
-	info.SavePath = loaded.SavePath
+	info.DownloadDir = loaded.DownloadDir
 	info.FilenameTemplate = loaded.FilenameTemplate
 	info.Platform = loaded.Platform
 	info.ProxyServer = loaded.ProxyServer
 	info.Resources = loaded.Resources
 	info.Config = loaded.Config
 	info.Metadata = loaded.Metadata
-	applyTaskProxy(info)
+	apply_task_proxy(info)
 	if len(info.Resources) == 0 {
 		return errors.New("task has no downloadable resources")
 	}
@@ -774,18 +744,18 @@ func (d *HermesEngine) run(info *TaskJob) error {
 
 	// Task start log: record basic task information
 	d.logger.Info().
-		Int("task_id", taskID).
+		Int("task_id", task_id).
 		Str("task_name", info.Name).
 		Str("task_unique_id", info.UniqueID).
-		Str("save_path", info.SavePath).
-		Interface("config", taskConfigForLog(info.Config)).
+		Str("download_dir", info.DownloadDir).
+		Interface("config", task_config_for_log(info.Config)).
 		Int("resource_count", len(resources)).
 		Msg("run - after d.store.LoadTask")
 
 	// Log detailed information for each resource
 	for i, r := range resources {
 		d.logger.Info().
-			Int("task_id", taskID).
+			Int("task_id", task_id).
 			Int("resource_id", r.ID).
 			Int("resource_index", i+1).
 			Str("resource_name", r.Name).
@@ -796,13 +766,13 @@ func (d *HermesEngine) run(info *TaskJob) error {
 			Msg("run - after d.store.LoadTask")
 	}
 
-	if err := d.store.UpdateStatus(taskID, TaskStatusDownloading); err != nil {
+	if err := d.store.UpdateStatus(task_id, TaskStatusDownloading); err != nil {
 		return fmt.Errorf("failed to update task status to downloading: %w", err)
 	}
-	if err := d.store.ActivateTask(taskID); err != nil {
+	if err := d.store.ActivateTask(task_id); err != nil {
 		return fmt.Errorf("failed to activate task: %w", err)
 	}
-	d.emit(taskID, EventStarted)
+	d.emit(EventStarted, TaskStartedEventData{TaskID: task_id})
 
 	if info.Config == nil {
 		info.Config = make(map[string]any)
@@ -819,99 +789,99 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	}
 
 	// Pre-probe all resource sizes, record time overhead
-	probeStart := time.Now()
-	resourceSizes := d.ensureResourceSizes(ctx, taskID, resources)
-	probeElapsed := time.Since(probeStart).Round(time.Millisecond)
+	probe_start := time.Now()
+	resource_sizes := d.ensure_resource_sizes(ctx, task_id, resources)
+	probe_elapsed := time.Since(probe_start).Round(time.Millisecond)
 
-	d.initTracker(taskID, resourceSizes, resources)
+	d.init_tracker(task_id, resource_sizes, resources)
 
 	// Start periodic progress emission
-	progressTicker := time.NewTicker(d.cfg.ProgressEmitInterval)
-	defer progressTicker.Stop()
-	progressDone := make(chan struct{})
-	emitDone := make(chan struct{})
+	progress_ticker := time.NewTicker(d.cfg.ProgressEmitInterval)
+	defer progress_ticker.Stop()
+	progress_done := make(chan struct{})
+	emit_done := make(chan struct{})
 	defer func() {
-		close(progressDone) // signal goroutine to exit on normal completion
-		<-emitDone
+		close(progress_done) // signal goroutine to exit on normal completion
+		<-emit_done
 	}()
 	go func() {
-		defer close(emitDone)
+		defer close(emit_done)
 		for {
 			select {
-			case <-progressTicker.C:
-				d.emitProgress(taskID)
-			case <-progressDone:
-				d.emitProgress(taskID) // Send final progress one last time
+			case <-progress_ticker.C:
+				d.emit_progress(task_id)
+			case <-progress_done:
+				d.emit_progress(task_id) // Send final progress one last time
 				return
 			case <-ctx.Done():
-				d.emitProgress(taskID) // Send final progress one last time
+				d.emit_progress(task_id) // Send final progress one last time
 				return
 			}
 		}
 	}()
 
 	// Summarize and log resource size probe results
-	var totalTaskSize int64
-	knownSizes := 0
-	unknownSizes := 0
+	var total_task_size int64
+	known_sizes := 0
+	unknown_sizes := 0
 	for _, r := range resources {
-		if sz, ok := resourceSizes[r.ID]; ok && sz > 0 {
-			knownSizes++
-			totalTaskSize += sz
+		if sz, ok := resource_sizes[r.ID]; ok && sz > 0 {
+			known_sizes++
+			total_task_size += sz
 			d.logger.Info().
-				Int("task_id", taskID).
+				Int("task_id", task_id).
 				Int("resource_id", r.ID).
 				Str("resource_name", r.Name).
 				Int64("resource_size", sz).
-				Str("resource_size_readable", formatSize(sz)).
+				Str("resource_size_readable", format_size(sz)).
 				Msg("run - resource size probed")
 		} else {
-			unknownSizes++
+			unknown_sizes++
 		}
 	}
-	hasSizes := totalTaskSize > 0 && len(resourceSizes) > 1
+	has_sizes := total_task_size > 0 && len(resource_sizes) > 1
 
-	if totalTaskSize > 0 {
+	if total_task_size > 0 {
 		d.logger.Info().
-			Int("task_id", taskID).
-			Int64("total_size", totalTaskSize).
-			Str("total_size_readable", formatSize(totalTaskSize)).
+			Int("task_id", task_id).
+			Int64("total_size", total_task_size).
+			Str("total_size_readable", format_size(total_task_size)).
 			Int("resource_count", len(resources)).
-			Int("known_size_count", knownSizes).
-			Int("unknown_size_count", unknownSizes).
-			Str("probe_elapsed", probeElapsed.String()).
+			Int("known_size_count", known_sizes).
+			Int("unknown_size_count", unknown_sizes).
+			Str("probe_elapsed", probe_elapsed.String()).
 			Msg("run - task size summary")
 	} else {
 		d.logger.Info().
-			Int("task_id", taskID).
+			Int("task_id", task_id).
 			Int("resource_count", len(resources)).
-			Int("unknown_size_count", unknownSizes).
-			Str("probe_elapsed", probeElapsed.String()).
+			Int("unknown_size_count", unknown_sizes).
+			Str("probe_elapsed", probe_elapsed.String()).
 			Msg("run - task total size unknown, downloading resource by resource")
 	}
 
 	// Concurrently download all resources
-	downloadStart := time.Now()
-	var completedSize atomic.Int64
+	download_start := time.Now()
+	var completed_size atomic.Int64
 
-	type resourceResult struct {
-		filePath string
-		err      error
-		elapsed  time.Duration
+	type resource_result struct {
+		file_path string
+		err       error
+		elapsed   time.Duration
 	}
-	results := make([]*resourceResult, len(resources))
+	results := make([]*resource_result, len(resources))
 
-	downloadCtx, cancelDownloads := context.WithCancel(ctx)
-	defer cancelDownloads()
+	download_ctx, cancel_downloads := context.WithCancel(ctx)
+	defer cancel_downloads()
 
 	var wg sync.WaitGroup
-	var firstErr error
-	var errOnce sync.Once
+	var first_err error
+	var err_once sync.Once
 
 	for i := range resources {
 		resource := &resources[i]
 		d.logger.Info().
-			Int("task_id", taskID).
+			Int("task_id", task_id).
 			Int("resource_id", resource.ID).
 			Int("resource_index", i+1).
 			Int("total_resources", len(resources)).
@@ -922,29 +892,29 @@ func (d *HermesEngine) run(info *TaskJob) error {
 		wg.Add(1)
 		go func(idx int, res *ResourceJob) {
 			defer wg.Done()
-			resStart := time.Now()
-			res.StartTime = resStart
-			filePath, err := d.downloadResource(downloadCtx, info, res)
+			res_start := time.Now()
+			res.StartTime = res_start
+			file_path, err := d.download_resource(download_ctx, info, res)
 			res.FinishTime = time.Now()
 			res.Error = err
 			res.Speed = 0
 			if err == nil && res.Size > 0 {
 				res.Downloaded = res.Size
 			}
-			elapsed := time.Since(resStart).Round(time.Millisecond)
+			elapsed := time.Since(res_start).Round(time.Millisecond)
 
-			results[idx] = &resourceResult{filePath: filePath, err: err, elapsed: elapsed}
+			results[idx] = &resource_result{file_path: file_path, err: err, elapsed: elapsed}
 
 			if err != nil {
-				if info.cancellationReason() == cancelStop ||
-					(!errors.Is(err, context.Canceled) && downloadCtx.Err() == nil) {
-					errOnce.Do(func() {
-						firstErr = fmt.Errorf("failed to download resource %s: %w", res.Name, err)
-						cancelDownloads()
+				if info.cancellation_reason() == cancel_stop ||
+					(!errors.Is(err, context.Canceled) && download_ctx.Err() == nil) {
+					err_once.Do(func() {
+						first_err = fmt.Errorf("failed to download resource %s: %w", res.Name, err)
+						cancel_downloads()
 					})
 				}
 				d.logger.Error().
-					Int("task_id", taskID).
+					Int("task_id", task_id).
 					Int("resource_id", res.ID).
 					Int("resource_index", idx+1).
 					Str("resource_name", res.Name).
@@ -954,11 +924,11 @@ func (d *HermesEngine) run(info *TaskJob) error {
 				return
 			}
 
-			if sz, ok := resourceSizes[res.ID]; ok {
-				completedSize.Add(sz)
+			if sz, ok := resource_sizes[res.ID]; ok {
+				completed_size.Add(sz)
 			}
 			d.logger.Info().
-				Int("task_id", taskID).
+				Int("task_id", task_id).
 				Int("resource_id", res.ID).
 				Int("total_resources", len(resources)).
 				Str("elapsed", elapsed.String()).
@@ -969,56 +939,56 @@ func (d *HermesEngine) run(info *TaskJob) error {
 
 	// Pause/delete must not finalize. A live stop is different: the stream
 	// recorder has already merged its chunks, so continue through postprocess.
-	if err := context.Cause(ctx); err != nil && info.cancellationReason() != cancelStop {
+	if err := context.Cause(ctx); err != nil && info.cancellation_reason() != cancel_stop {
 		return err
 	}
 
-	if firstErr != nil {
-		return firstErr
+	if first_err != nil {
+		return first_err
 	}
-	if info.cancellationReason() == cancelStop {
-		if err := d.store.UpdateStatus(taskID, TaskStatusMerging); err != nil {
+	if info.cancellation_reason() == cancel_stop {
+		if err := d.store.UpdateStatus(task_id, TaskStatusMerging); err != nil {
 			return fmt.Errorf("failed to update stopped live task status to merging: %w", err)
 		}
 	}
 
 	// Collect file paths in original order
-	filePaths := make([]string, 0, len(resources))
+	file_paths := make([]string, 0, len(resources))
 	for _, r := range results {
 		if r != nil {
-			filePaths = append(filePaths, r.filePath)
+			file_paths = append(file_paths, r.file_path)
 		}
 	}
 
-	if hasSizes && totalTaskSize > 0 {
-		downloaded := completedSize.Load()
-		totalRes := len(filePaths)
-		pct := float64(downloaded) * 100 / float64(totalTaskSize)
+	if has_sizes && total_task_size > 0 {
+		downloaded := completed_size.Load()
+		total_res := len(file_paths)
+		pct := float64(downloaded) * 100 / float64(total_task_size)
 		d.logger.Info().
-			Int("task_id", taskID).
+			Int("task_id", task_id).
 			Int64("downloaded_size", downloaded).
-			Int64("total_size", totalTaskSize).
+			Int64("total_size", total_task_size).
 			Float64("progress_percent", pct).
-			Int("completed_resources", totalRes).
+			Int("completed_resources", total_res).
 			Int("total_resources", len(resources)).
 			Msg("run - overall concurrent download progress")
 	}
 
 	// All resources downloaded, log summary information
-	downloadElapsed := time.Since(downloadStart).Round(time.Millisecond)
-	logEvent := d.logger.Info().
-		Int("task_id", taskID).
+	download_elapsed := time.Since(download_start).Round(time.Millisecond)
+	log_event := d.logger.Info().
+		Int("task_id", task_id).
 		Int("resource_count", len(resources)).
-		Str("download_elapsed", downloadElapsed.String())
-	if totalTaskSize > 0 && downloadElapsed.Seconds() > 0 {
-		avgSpeed := int64(float64(totalTaskSize) / downloadElapsed.Seconds())
-		logEvent.
-			Int64("total_size", totalTaskSize).
-			Str("total_size_readable", formatSize(totalTaskSize)).
-			Int64("avg_speed_bytes", avgSpeed).
-			Str("avg_speed", formatSpeed(avgSpeed))
+		Str("download_elapsed", download_elapsed.String())
+	if total_task_size > 0 && download_elapsed.Seconds() > 0 {
+		avg_speed := int64(float64(total_task_size) / download_elapsed.Seconds())
+		log_event.
+			Int64("total_size", total_task_size).
+			Str("total_size_readable", format_size(total_task_size)).
+			Int64("avg_speed_bytes", avg_speed).
+			Str("avg_speed", format_speed(avg_speed))
 	}
-	logEvent.Msg("run - all resources downloaded, starting task finalization")
+	log_event.Msg("run - all resources downloaded, starting task finalization")
 
-	return d.finishTask(info)
+	return d.finish_task(info)
 }

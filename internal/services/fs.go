@@ -53,53 +53,21 @@ type ListFilesOptions struct {
 	Limit     int             `json:"limit"`
 }
 
-// SearchFilesOptions controls fuzzy filename search. Recursive defaults to
-// true when nil so that search traverses the directory tree by default.
-type SearchFilesOptions struct {
-	Dir       string          `json:"dir"`
-	Query     string          `json:"query"`
-	Ignore    []string        `json:"ignore"`
-	Accept    []string        `json:"accept"`
-	Recursive *bool           `json:"recursive"`
-	Depth     int             `json:"depth"`
-	Sort      *FileSortOption `json:"sort"`
-	Offset    int             `json:"offset"`
-	Limit     int             `json:"limit"`
-}
-
 type FileResult struct {
 	Files []FileInfo `json:"files"`
 	Total int        `json:"total"`
 }
 
 func (s *FSService) ListFiles(options ListFilesOptions) (*FileResult, error) {
-	return fetchFiles(fileserver.FetchFilesOption{
-		Dir:       s.resolveDir(options.Dir),
-		Ignore:    withDefaultFileIgnores(options.Ignore),
+	return fetch_files(fileserver.FetchFilesOption{
+		Dir:       s.resolve_dir(options.Dir),
+		Ignore:    with_default_file_ignores(options.Ignore),
 		Accept:    options.Accept,
 		Recursive: options.Recursive,
 		Depth:     options.Depth,
-		Sort:      toFileServerSort(options.Sort),
-		Offset:    normalizeFileOffset(options.Offset),
-		Limit:     normalizeFileLimit(options.Limit),
-	})
-}
-
-func (s *FSService) SearchFiles(options SearchFilesOptions) (*FileResult, error) {
-	recursive := true
-	if options.Recursive != nil {
-		recursive = *options.Recursive
-	}
-	return fetchFiles(fileserver.FetchFilesOption{
-		Dir:       s.resolveDir(options.Dir),
-		Search:    strings.TrimSpace(options.Query),
-		Ignore:    withDefaultFileIgnores(options.Ignore),
-		Accept:    options.Accept,
-		Recursive: recursive,
-		Depth:     options.Depth,
-		Sort:      toFileServerSort(options.Sort),
-		Offset:    normalizeFileOffset(options.Offset),
-		Limit:     normalizeFileLimit(options.Limit),
+		Sort:      to_file_server_sort(options.Sort),
+		Offset:    normalize_file_offset(options.Offset),
+		Limit:     normalize_file_limit(options.Limit),
 	})
 }
 
@@ -117,7 +85,7 @@ func (s *FSService) DocumentsDir() string {
 	return filepath.Join(home, "Documents")
 }
 
-func (s *FSService) resolveDir(dir string) string {
+func (s *FSService) resolve_dir(dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir != "" {
 		return dir
@@ -125,7 +93,7 @@ func (s *FSService) resolveDir(dir string) string {
 	return s.DocumentsDir()
 }
 
-func fetchFiles(options fileserver.FetchFilesOption) (*FileResult, error) {
+func fetch_files(options fileserver.FetchFilesOption) (*FileResult, error) {
 	files, total, err := fileserver.FetchFiles(options)
 	if err != nil {
 		return nil, err
@@ -144,7 +112,7 @@ func fetchFiles(options fileserver.FetchFilesOption) (*FileResult, error) {
 	return &FileResult{Files: result, Total: total}, nil
 }
 
-func toFileServerSort(option *FileSortOption) *fileserver.SortOption {
+func to_file_server_sort(option *FileSortOption) *fileserver.SortOption {
 	if option == nil {
 		return nil
 	}
@@ -154,21 +122,21 @@ func toFileServerSort(option *FileSortOption) *fileserver.SortOption {
 	}
 }
 
-func normalizeFileOffset(offset int) int {
+func normalize_file_offset(offset int) int {
 	if offset < 0 {
 		return 0
 	}
 	return offset
 }
 
-func normalizeFileLimit(limit int) int {
+func normalize_file_limit(limit int) int {
 	if limit < 0 {
 		return 0
 	}
 	return limit
 }
 
-func withDefaultFileIgnores(ignore []string) []string {
+func with_default_file_ignores(ignore []string) []string {
 	result := append([]string(nil), ignore...)
 	for _, pattern := range result {
 		if pattern == ".DS_Store" {

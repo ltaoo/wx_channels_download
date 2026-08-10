@@ -2,7 +2,7 @@ package api
 
 import "net/http"
 
-func withCORS(h http.Handler) http.Handler {
+func with_cors(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if origin == "" {

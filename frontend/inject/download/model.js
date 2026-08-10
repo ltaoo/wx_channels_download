@@ -385,6 +385,31 @@ function count_download_statuses(tasks) {
   return counts;
 }
 
+function merge_download_task_file_updates(files, updates) {
+  const current_files = Array.isArray(files) ? files : [];
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return current_files;
+  }
+  const updates_by_id = new Map();
+  updates.forEach((update) => {
+    if (update && update.id) {
+      updates_by_id.set(String(update.id), update);
+    }
+  });
+  return current_files.map((file) => {
+    const update = file && updates_by_id.get(String(file.id));
+    return update ? Object.assign({}, file, update) : file;
+  });
+}
+
+function merge_download_task_update(task, update) {
+  const merged = Object.assign({}, task, update);
+  if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
+    merged.files = merge_download_task_file_updates(task && task.files, update.files);
+  }
+  return merged;
+}
+
 function number_or_fallback(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -499,9 +524,9 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      clear: new Timeless.RequestCore(
+      clearAll: new Timeless.RequestCore(
         (params = {}) => {
-          return request.post("/api/v1/download_task/clear", {
+          return request.post("/api/v1/download_task/clear_all", {
             delete_files: !!params.deleteFiles,
           });
         },
@@ -554,8 +579,11 @@ function DownloaderPanelViewModel(props = {}) {
     },
     file: {
       show: new Timeless.RequestCore(
-        ({ path, name, id }) => {
-          return request.post("/api/show_file", { path, name, id });
+        ({ path, name }) => {
+          return request.post("/api/show_file", {
+            path,
+            name,
+          });
         },
         { client: http_client },
       ),
@@ -583,7 +611,7 @@ function DownloaderPanelViewModel(props = {}) {
   const create_task_filename_ = ref("");
   const create_platform_text_ = ref("");
   const create_platform_json_ = ref("");
-  const create_platform_save_path_ = ref("");
+  const create_platform_download_dir_ = ref("");
   const create_platform_filename_ = ref("");
   const create_platform_download_cover_ = ref(false);
   const creating_task_ = ref(false);
@@ -1794,13 +1822,13 @@ function DownloaderPanelViewModel(props = {}) {
             return {
               name: `${task.name} +${task.files.length}个文件`,
               filename: file.name,
-              path: file.output_path,
+              path: file.file_path,
             };
           }
           return {
             name: file.name,
             filename: file.name,
-            path: file.output_path,
+            path: file.file_path,
           };
         })(),
       };
@@ -1871,6 +1899,20 @@ function DownloaderPanelViewModel(props = {}) {
         uniqueTaskIds([...(selected_task_ids_.value || []), ...rangeIds]),
       );
       return true;
+    },
+    setLoadedTasksSelected(selected) {
+      const loadedIds = getLoadedTaskIds();
+      if (!loadedIds.length) {
+        return;
+      }
+      if (selected) {
+        selected_task_ids_.as(
+          uniqueTaskIds([...(selected_task_ids_.value || []), ...loadedIds]),
+        );
+      } else {
+        removeSelectedTaskIds(loadedIds);
+      }
+      selection_anchor_task_id = null;
     },
     toggleTaskSelected(task, options = {}) {
       if (!isLoadedTask(task)) {
@@ -2059,8 +2101,12 @@ function DownloaderPanelViewModel(props = {}) {
         WXU.error({ msg: reloadResult.error.message, source: "model.js:1798" });
       }
     },
-    async clearTasks(params = {}) {
-      const r = await reqs.task.clear.run(params);
+    requestClearTasks(deleteFiles = false) {
+      delete_delete_files_.as(!!deleteFiles);
+      ui.clearConfirmDialog$.show();
+    },
+    async clearAllTasks(params = {}) {
+      const r = await reqs.task.clearAll.run(params);
       if (r.error) {
         WXU.error({ msg: r.error.message, source: "model.js:1804" });
         return false;
@@ -2070,8 +2116,12 @@ function DownloaderPanelViewModel(props = {}) {
       return true;
     },
     async confirmClearTasks() {
+      if (clearing_tasks_.value) {
+        return;
+      }
+      clearing_tasks_.as(true);
       try {
-        const ok = await methods.clearTasks({
+        const ok = await methods.clearAllTasks({
           deleteFiles: delete_delete_files_.value,
         });
         if (ok) {
@@ -2089,7 +2139,7 @@ function DownloaderPanelViewModel(props = {}) {
     requestCreatePlatformTask() {
       create_platform_text_.as("");
       create_platform_json_.as("");
-      create_platform_save_path_.as("");
+      create_platform_download_dir_.as("");
       create_platform_filename_.as("");
       create_platform_download_cover_.as(false);
       ui.createPlatformTaskDialog$.show();
@@ -2122,7 +2172,7 @@ function DownloaderPanelViewModel(props = {}) {
           platform: platform,
           content: content,
           config: {
-            save_path: create_platform_save_path_.value || "",
+            download_dir: create_platform_download_dir_.value || "",
             filename: create_platform_filename_.value || "",
           },
         });
@@ -2245,7 +2295,7 @@ function DownloaderPanelViewModel(props = {}) {
             {
               platform: platform,
               content: content,
-              save_path: create_platform_save_path_.value || "",
+              download_dir: create_platform_download_dir_.value || "",
               filename: create_platform_filename_.value || "",
               config: createConfig,
             },
@@ -2254,7 +2304,7 @@ function DownloaderPanelViewModel(props = {}) {
         const r = await reqs.task.createFromPlatform.run({
           platform: platform,
           content: content,
-          save_path: create_platform_save_path_.value || "",
+          download_dir: create_platform_download_dir_.value || "",
           filename: create_platform_filename_.value || "",
           config: createConfig,
         });
@@ -2343,30 +2393,54 @@ function DownloaderPanelViewModel(props = {}) {
           if (err) {
             return;
           }
-          if (msg.type === "task_upsert") {
+          if (msg.type === "task_stats") {
+            if (msg.stats) {
+              setStatusCounts(msg.stats);
+            }
+            return;
+          }
+          if (msg.type === "task_create") {
             const tasks = msg.tasks;
             if (tasks && tasks.length) {
               tasks.forEach((task) => {
                 if (task && task.id) {
-                  // A task_upsert payload is authoritative for both creates and
-                  // updates. Mark it as prepend-capable so an ID that is not in
-                  // the currently loaded page is not discarded by upsert().
+                  // Full REST-isomorphic records can create a new list item.
                   methods.upsert(methods.formatTask(task), { prepend: true });
                 }
               });
             }
             return;
           }
-          if (msg.type === "task_delete") {
+          if (msg.type === "task_upsert") {
             const tasks = msg.tasks;
             if (tasks && tasks.length) {
-              const taskIds = [];
-              tasks.forEach((t) => {
-                if (t && t.id) taskIds.push(t.id);
+              tasks.forEach((task) => {
+                if (task && task.id) {
+                  methods.upsert(methods.formatTask(task), {
+                    existing_only: true,
+                  });
+                }
               });
-              if (taskIds.length) {
-                applyDeletedTaskIds(taskIds);
-              }
+            }
+            return;
+          }
+          if (msg.type === "task_update") {
+            const updates = msg.updates;
+            if (updates && updates.length) {
+              updates.forEach((update) => {
+                if (update && update.id) {
+                  // Lightweight updates only patch records already loaded by
+                  // REST or a preceding full task_create event.
+                  methods.upsert(update, { partial: true });
+                }
+              });
+            }
+            return;
+          }
+          if (msg.type === "task_delete") {
+            const taskIds = msg.task_ids;
+            if (taskIds && taskIds.length) {
+              applyDeletedTaskIds(taskIds);
             }
             return;
           }
@@ -2496,11 +2570,16 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       const current = tasks_.value || [];
-      const matchesFilter = matchesActiveStatusFilter(task);
+      const partial_update = !!(options && options.partial);
+      const existing_only = !!(options && options.existing_only);
       const index = current.findIndex(
         (v) => isLoadedTask(v) && String(v.id) === String(task.id),
       );
       if (index === -1) {
+        if (partial_update || existing_only) {
+          return;
+        }
+        const matchesFilter = matchesActiveStatusFilter(task);
         if (!matchesFilter) {
           return;
         }
@@ -2535,7 +2614,9 @@ function DownloaderPanelViewModel(props = {}) {
       // console.log("[]update task", task);
       const oldStatus = current[index].status || "";
       const next = current.slice();
-      const merged = Object.assign({}, current[index], task);
+      const merged = partial_update
+        ? merge_download_task_update(current[index], task)
+        : Object.assign({}, current[index], task);
       if (!merged.name && current[index].name) {
         merged.name = current[index].name;
       }
@@ -2545,6 +2626,8 @@ function DownloaderPanelViewModel(props = {}) {
       if (!merged.filepath && current[index].filepath) {
         merged.filepath = current[index].filepath;
       }
+      merged.height = estimateTaskItemHeight(merged);
+      const matchesFilter = matchesActiveStatusFilter(merged);
       next[index] = merged;
       if (matchesFilter) {
         tasks_.as(sortTaskSlots(next, virtual_total || next.length));
@@ -2566,9 +2649,9 @@ function DownloaderPanelViewModel(props = {}) {
       }
       if (
         normalize_download_status(oldStatus) !==
-        normalize_download_status(task.status)
+        normalize_download_status(merged.status)
       ) {
-        adjustStatusCounts(oldStatus, task.status, 0);
+        adjustStatusCounts(oldStatus, merged.status, 0);
       }
     },
     setListViewElement(event) {
@@ -2736,7 +2819,7 @@ function DownloaderPanelViewModel(props = {}) {
           return [null, { skipped: true }];
         }
         begin_duplicate_download_confirm(body, conflicts);
-        return [new Error("已存在相同的下载任务"), null];
+        return [null, { skipped: true }];
       }
       return [null, data];
     },
@@ -2780,7 +2863,7 @@ function DownloaderPanelViewModel(props = {}) {
         label: "清空下载记录",
         async onClick() {
           ui.dropdown$.hide();
-          ui.clearConfirmDialog$.show();
+          methods.requestClearTasks(false);
         },
       }),
       new Timeless.ui.MenuItemCore({
@@ -2948,8 +3031,8 @@ function DownloaderPanelViewModel(props = {}) {
       create_platform_text: create_platform_text_,
       /** Platform task creation: content JSON */
       create_platform_json: create_platform_json_,
-      /** Platform task creation: save path */
-      create_platform_save_path: create_platform_save_path_,
+      /** Platform task creation: download directory */
+      create_platform_download_dir: create_platform_download_dir_,
       /** Platform task creation: filename */
       create_platform_filename: create_platform_filename_,
       /** Platform task creation: also download cover */

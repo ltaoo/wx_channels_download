@@ -11,24 +11,24 @@ import (
 // StreamRecorder capability. It deliberately bypasses downloadFile: a live
 // source cannot be resumed with byte ranges and must preserve closed media
 // chunks across pause/reconnect instead of truncating a single .part file.
-func (d *HermesEngine) downloadStream(
+func (d *HermesEngine) download_stream(
 	ctx context.Context,
 	recorder StreamRecorder,
 	endpoint Endpoint,
-	filePath string,
+	file_path string,
 	task *TaskJob,
 	resource *ResourceJob,
 ) error {
 	if recorder == nil {
 		return errors.New("stream recorder is nil")
 	}
-	if err := waitForRecordStart(ctx, resource.RecordStart); err != nil {
+	if err := wait_for_record_start(ctx, resource.RecordStart); err != nil {
 		return err
 	}
 
 	request := StreamRecordRequest{
-		OutputPath:    filePath,
-		StopAt:        streamTimestamp(resource.RecordEnd),
+		OutputPath:    file_path,
+		StopAt:        stream_timestamp(resource.RecordEnd),
 		RotateMinutes: resource.RotateMinutes,
 		RotateSize:    resource.RotateSize,
 	}
@@ -36,7 +36,7 @@ func (d *HermesEngine) downloadStream(
 		request.Duration = time.Duration(resource.Duration) * time.Second
 	}
 
-	startedAt := time.Now()
+	started_at := time.Now()
 	result, err := recorder.RecordStream(ctx, endpoint, request, func(progress StreamRecordProgress) error {
 		if progress.Finalizing {
 			if err := d.store.UpdateStatus(task.ID, TaskStatusMerging); err != nil {
@@ -50,25 +50,25 @@ func (d *HermesEngine) downloadStream(
 				return fmt.Errorf("failed to persist stream segments: %w", err)
 			}
 		}
-		if err := d.updateResourceProgress(task.ID, resource.ID, progress.Downloaded, progress.Speed); err != nil {
+		if err := d.update_resource_progress(task.ID, resource.ID, progress.Downloaded, progress.Speed); err != nil {
 			return fmt.Errorf("failed to persist stream progress: %w", err)
 		}
-		d.updateTracker(task.ID, resource.ID, progress.Downloaded, progress.Speed)
+		d.update_tracker(task.ID, resource.ID, progress.Downloaded, progress.Speed)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	if result.FilePath != "" && result.FilePath != filePath {
+	if result.FilePath != "" && result.FilePath != file_path {
 		return fmt.Errorf("stream recorder returned an unexpected output path: %s", result.FilePath)
 	}
-	resource.FilePath = filePath
+	resource.FilePath = file_path
 	resource.Size = result.Size
 	resource.Downloaded = result.Size
 	resource.Speed = 0
 	if result.Duration <= 0 {
-		result.Duration = time.Since(startedAt)
+		result.Duration = time.Since(started_at)
 	}
 	resource.Duration = int64(result.Duration.Round(time.Second) / time.Second)
 	if resource.Extra == nil {
@@ -81,19 +81,19 @@ func (d *HermesEngine) downloadStream(
 		}
 	}
 
-	if err := d.updateResourceSize(task.ID, resource.ID, result.Size); err != nil {
+	if err := d.update_resource_size(task.ID, resource.ID, result.Size); err != nil {
 		return fmt.Errorf("failed to update final stream size: %w", err)
 	}
-	if err := d.updateResourceProgress(task.ID, resource.ID, result.Size, 0); err != nil {
+	if err := d.update_resource_progress(task.ID, resource.ID, result.Size, 0); err != nil {
 		return fmt.Errorf("failed to update final stream progress: %w", err)
 	}
-	d.updateTrackerSize(task.ID, resource.ID, result.Size)
-	d.updateTracker(task.ID, resource.ID, result.Size, 0)
+	d.update_tracker_size(task.ID, resource.ID, result.Size)
+	d.update_tracker(task.ID, resource.ID, result.Size, 0)
 	return nil
 }
 
-func waitForRecordStart(ctx context.Context, value *int64) error {
-	start := streamTimestamp(value)
+func wait_for_record_start(ctx context.Context, value *int64) error {
+	start := stream_timestamp(value)
 	if start.IsZero() || !start.After(time.Now()) {
 		return nil
 	}
@@ -109,7 +109,7 @@ func waitForRecordStart(ctx context.Context, value *int64) error {
 
 // streamTimestamp accepts both Unix seconds and Unix milliseconds because the
 // persisted schema historically exposed raw int64 timestamps to integrations.
-func streamTimestamp(value *int64) time.Time {
+func stream_timestamp(value *int64) time.Time {
 	if value == nil || *value <= 0 {
 		return time.Time{}
 	}

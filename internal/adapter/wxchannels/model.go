@@ -6,14 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dop251/goja"
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
@@ -22,30 +21,30 @@ import (
 	"wx_channel/pkg/util"
 )
 
-const platformIDWxChannels = "wxchannels"
+const platform_id_wx_channels = "wxchannels"
 
 // PlatformID is the platform identifier for wechat channels.
-const PlatformID = platformIDWxChannels
+const PlatformID = platform_id_wx_channels
 
 // BuildContentID builds a content identifier from an external ID.
-func BuildContentID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildContentID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
 // BuildAccountID builds an account identifier from an external ID.
-func BuildAccountID(externalID string) string {
-	return PlatformID + ":" + externalID
+func BuildAccountID(external_id string) string {
+	return PlatformID + ":" + external_id
 }
 
-type metadataKV struct {
+type metadata_kv struct {
 	Key string `json:"key"`
 }
 
-// cleanMediaURL removes CDN routing parameters (hy, idx, m, uzid) from the media URL.
-func cleanMediaURL(rawURL string) string {
-	u, err := url.Parse(rawURL)
+// clean_media_url removes CDN routing parameters (hy, idx, m, uzid) from the media URL.
+func clean_media_url(raw_url string) string {
+	u, err := url.Parse(raw_url)
 	if err != nil || u == nil {
-		return rawURL
+		return raw_url
 	}
 	q := u.Query()
 	q.Del("hy")
@@ -56,14 +55,14 @@ func cleanMediaURL(rawURL string) string {
 	return u.String()
 }
 
-func firstMediaCoverURL(file wxchannels.ChannelsMediaItem) string {
-	coverURL := strings.TrimSpace(file.CoverUrl)
-	if coverURL != "" {
-		return coverURL
+func first_media_cover_url(file wxchannels.ChannelsMediaItem) string {
+	cover_url := strings.TrimSpace(file.CoverUrl)
+	if cover_url != "" {
+		return cover_url
 	}
-	mediaURL := strings.TrimSpace(file.URL + file.URLToken)
-	if mediaURL != "" {
-		return mediaURL
+	media_url := strings.TrimSpace(file.URL + file.URLToken)
+	if media_url != "" {
+		return media_url
 	}
 	return ""
 }
@@ -74,13 +73,13 @@ func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 		return nil, errors.New("channels object is nil")
 	}
 
-	contact, accountUsername := pickAccountContact(obj)
+	contact, account_username := pick_account_contact(obj)
 
 	now := util.NowMillis()
 	acc := &model.Account{
-		Id:         BuildAccountID(accountUsername),
+		Id:         BuildAccountID(account_username),
 		PlatformId: PlatformID,
-		ExternalId: accountUsername,
+		ExternalId: account_username,
 		Nickname:   contact.Nickname,
 		Signature:  strings.TrimSpace(contact.Signature),
 		AvatarURL:  contact.HeadUrl,
@@ -93,9 +92,9 @@ func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 	return acc, nil
 }
 
-// pickAccountContact selects the appropriate contact and external ID for an account.
+// pick_account_contact selects the appropriate contact and external ID for an account.
 // For live objects, prefers AnchorContact over Contact.
-func pickAccountContact(obj *wxchannels.ChannelsObject) (wxchannels.ChannelsContact, string) {
+func pick_account_contact(obj *wxchannels.ChannelsObject) (wxchannels.ChannelsContact, string) {
 	if obj.LiveInfo != nil && obj.AnchorContact != nil {
 		return *obj.AnchorContact, obj.AnchorContact.Username
 	}
@@ -137,8 +136,8 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 			c.CoverURL = obj.ObjectDesc.Media[0].CoverUrl
 		}
 		if obj.CreateTime > 0 {
-			publishTime := int64(obj.CreateTime)
-			c.PublishTime = &publishTime
+			publish_time := int64(obj.CreateTime)
+			c.PublishTime = &publish_time
 		}
 		return c, nil, nil
 	}
@@ -155,15 +154,15 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 		c.Type = "album"
 		c.Title = obj.ObjectDesc.Description
 		c.Description = obj.ObjectDesc.Description
-		c.CoverURL = firstMediaCoverURL(files[0])
+		c.CoverURL = first_media_cover_url(files[0])
 		c.CoverWidth = strconv.Itoa(int(files[0].Width))
 		c.CoverHeight = strconv.Itoa(int(files[0].Height))
 		if obj.CreateTime > 0 {
-			publishTime := int64(obj.CreateTime)
-			c.PublishTime = &publishTime
+			publish_time := int64(obj.CreateTime)
+			c.PublishTime = &publish_time
 		}
 
-		md, _ := json.Marshal(metadataKV{Key: files[0].DecodeKey})
+		md, _ := json.Marshal(metadata_kv{Key: files[0].DecodeKey})
 		c.Metadata = string(md)
 		images := make([]model.ContentImage, 0, len(files))
 		for i, file := range files {
@@ -203,21 +202,21 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 	c.Type = "video"
 	c.Title = obj.ObjectDesc.Description
 	c.Description = obj.ObjectDesc.Description
-	c.URL = cleanMediaURL(media.URL) + media.URLToken
+	c.URL = clean_media_url(media.URL) + media.URLToken
 	c.CoverURL = media.ThumbUrl
 	c.CoverWidth = strconv.Itoa(int(media.Width))
 	c.CoverHeight = strconv.Itoa(int(media.Height))
 	if c.SourceURL == "" {
-		_, contactUsername := pickAccountContact(obj)
-		c.SourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", contactUsername)
+		_, contact_username := pick_account_contact(obj)
+		c.SourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", contact_username)
 	}
 
 	if obj.CreateTime > 0 {
-		publishTime := int64(obj.CreateTime)
-		c.PublishTime = &publishTime
+		publish_time := int64(obj.CreateTime)
+		c.PublishTime = &publish_time
 	}
 
-	md, _ := json.Marshal(metadataKV{Key: media.DecodeKey})
+	md, _ := json.Marshal(metadata_kv{Key: media.DecodeKey})
 	c.Metadata = string(md)
 	ext := &model.ContentVideo{
 		Id:       c.Id,
@@ -239,7 +238,7 @@ func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*ada
 		return nil, fmt.Errorf("解析视频号内容失败: %w", err)
 	}
 
-	accountUsername := strings.TrimSpace(obj.Contact.Username)
+	account_username := strings.TrimSpace(obj.Contact.Username)
 	now := util.NowMillis()
 
 	var key string
@@ -247,40 +246,40 @@ func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*ada
 		key = obj.ObjectDesc.Media[0].DecodeKey
 	}
 
-	extraData, _ := json.Marshal(map[string]any{
+	extra_data, _ := json.Marshal(map[string]any{
 		"id":         obj.ID,
 		"nonce_id":   obj.ObjectNonceId,
 		"decode_key": key,
 	})
 
-	browseID := PlatformID + ":" + obj.ID
-	contentSourceURL := obj.SourceURL
-	if contentSourceURL == "" {
-		contentSourceURL = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", accountUsername)
+	browse_id := PlatformID + ":" + obj.ID
+	content_source_url := obj.SourceURL
+	if content_source_url == "" {
+		content_source_url = BuildJumpURLFromParts(obj.ID, obj.ObjectNonceId, "", account_username)
 	}
 
-	coverURL := ""
-	coverWidth := ""
-	coverHeight := ""
-	mediaList := obj.Files
-	if len(mediaList) == 0 {
-		mediaList = obj.ObjectDesc.Media
+	cover_url := ""
+	cover_width := ""
+	cover_height := ""
+	media_list := obj.Files
+	if len(media_list) == 0 {
+		media_list = obj.ObjectDesc.Media
 	}
-	if len(mediaList) > 0 {
-		media := mediaList[0]
+	if len(media_list) > 0 {
+		media := media_list[0]
 		if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
-			coverURL = firstMediaCoverURL(media)
+			cover_url = first_media_cover_url(media)
 		} else {
-			coverURL = strings.TrimSpace(media.ThumbUrl)
+			cover_url = strings.TrimSpace(media.ThumbUrl)
 		}
-		coverWidth = strconv.Itoa(int(media.Width))
-		coverHeight = strconv.Itoa(int(media.Height))
+		cover_width = strconv.Itoa(int(media.Width))
+		cover_height = strconv.Itoa(int(media.Height))
 	}
-	publishTime := int64(obj.CreateTime)
+	publish_time := int64(obj.CreateTime)
 
-	contentType := "video"
+	content_type := "video"
 	if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
-		contentType = "album"
+		content_type = "album"
 	}
 
 	account, err := ToAccount(&obj)
@@ -290,19 +289,19 @@ func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*ada
 
 	return &adapter.BrowseHistoryResult{
 		BrowseHistory: &model.BrowseHistory{
-			Id:           browseID,
+			Id:           browse_id,
 			PlatformId:   PlatformID,
 			VisitedTimes: 1,
-			Type:         contentType,
+			Type:         content_type,
 			ExternalId:   obj.ID,
 			Title:        obj.ObjectDesc.Description,
 			URL:          ObjectURL(&obj),
-			SourceURL:    contentSourceURL,
-			CoverURL:     coverURL,
-			CoverWidth:   coverWidth,
-			CoverHeight:  coverHeight,
-			PublishTime:  &publishTime,
-			ExtraData:    string(extraData),
+			SourceURL:    content_source_url,
+			CoverURL:     cover_url,
+			CoverWidth:   cover_width,
+			CoverHeight:  cover_height,
+			PublishTime:  &publish_time,
+			ExtraData:    string(extra_data),
 			Timestamps: model.Timestamps{
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -323,18 +322,18 @@ func ObjectURL(obj *wxchannels.ChannelsObject) string {
 	if len(obj.ObjectDesc.Media) == 0 {
 		return ""
 	}
-	return cleanMediaURL(obj.ObjectDesc.Media[0].URL) + obj.ObjectDesc.Media[0].URLToken
+	return clean_media_url(obj.ObjectDesc.Media[0].URL) + obj.ObjectDesc.Media[0].URLToken
 }
 
 // BuildJumpURLFromParts builds a channels.weixin.qq.com feed page URL from individual fields.
-func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string {
+func BuildJumpURLFromParts(object_id, nonce_id, source_url, username string) string {
 	origin := "https://channels.weixin.qq.com"
-	if sourceURL != "" {
-		return sourceURL
+	if source_url != "" {
+		return source_url
 	}
 
-	oid := objectId
-	nid := nonceId
+	oid := object_id
+	nid := nonce_id
 	u := origin + "/web/pages/feed"
 	if username != "" {
 		u += "?username=" + url.QueryEscape(username)
@@ -343,9 +342,9 @@ func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string
 	}
 
 	if oid != "" {
-		encodedOid := util.EncodeUint64ToBase64(oid)
-		if encodedOid != "" {
-			u += "&oid=" + url.QueryEscape(encodedOid)
+		encoded_oid := util.EncodeUint64ToBase64(oid)
+		if encoded_oid != "" {
+			u += "&oid=" + url.QueryEscape(encoded_oid)
 		}
 	}
 
@@ -355,9 +354,9 @@ func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string
 		if idx := strings.IndexByte(nid, '_'); idx >= 0 {
 			nid = nid[:idx]
 		}
-		encodedNid := util.EncodeUint64ToBase64(nid)
-		if encodedNid != "" {
-			u += "&nid=" + url.QueryEscape(encodedNid)
+		encoded_nid := util.EncodeUint64ToBase64(nid)
+		if encoded_nid != "" {
+			u += "&nid=" + url.QueryEscape(encoded_nid)
 		}
 	}
 
@@ -365,25 +364,26 @@ func BuildJumpURLFromParts(objectId, nonceId, sourceURL, username string) string
 }
 
 const (
-	mimeImageJPEG     = "image/jpeg"
-	mimeAudioMPEG     = "audio/mpeg"
-	mimeVideoMP4      = "video/mp4"
-	mimeVideoMatroska = "video/x-matroska"
+	mime_image_jpeg      = "image/jpeg"
+	mime_audio_mpeg      = "audio/mpeg"
+	mime_video_mp4       = "video/mp4"
+	mime_video_matroska  = "video/x-matroska"
+	mime_application_zip = "application/zip"
 )
 
-func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
-	if err := json.Unmarshal(configRaw, &config); err != nil {
+	if err := json.Unmarshal(config_raw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
 	// Live stream detection: joinLive response contains liveSdkInfo
 	var jl wxchannels.JoinLivePayload
-	if json.Unmarshal(contentJSON, &jl) == nil && jl.LiveSdkInfo != nil && jl.LiveSdkInfo.LiveCdnUrl != "" {
-		return buildLiveDownloadTask(&jl, config)
+	if json.Unmarshal(content_json, &jl) == nil && jl.LiveSdkInfo != nil && jl.LiveSdkInfo.LiveCdnUrl != "" {
+		return a.build_live_download_task(&jl, config)
 	}
 
-	obj, err := parseChannelsObjectForDownload(contentJSON)
+	obj, err := parse_channels_object_for_download(content_json)
 	if err != nil {
 		return nil, err
 	}
@@ -397,76 +397,55 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 		return nil, err
 	}
 
-	title := configString(config, "filename")
+	title := config_string(config, "filename")
 	if title == "" {
 		title = ObjectTitle(&obj)
 	}
-	configuredSpec := configString(config, "spec")
+	configured_spec := config_string(config, "spec")
 	var spec string
-	if configuredSpec == "" {
-		if !GetChannelsConfig().DownloadDefaultHighest {
+	if configured_spec == "" {
+		if !a.cfg.DownloadDefaultHighest {
 			spec = PickSpec(&obj)
 		}
-	} else if configuredSpec != "original" {
-		spec = configuredSpec
+	} else if configured_spec != "original" {
+		spec = configured_spec
 	}
-	log.Printf("DownloadDefaultHighest=%v, config.Spec=%q, final spec=%q", GetChannelsConfig().DownloadDefaultHighest, configuredSpec, spec)
-	coverURL := strings.TrimSpace(content.CoverURL)
+	cover_url := strings.TrimSpace(content.CoverURL)
 	if len(obj.ObjectDesc.Media) > 0 {
 		if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].CoverUrl); candidate != "" {
-			coverURL = candidate
+			cover_url = candidate
 		} else if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].ThumbUrl); candidate != "" {
-			coverURL = candidate
+			cover_url = candidate
 		}
 	}
-	contact, _ := pickAccountContact(&obj)
-	decryptKey := parseKeyFromContent(content)
-	baseExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "", 0, obj.ObjectDesc.MediaType)
-	decryptExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, 0, obj.ObjectDesc.MediaType)
-	contentID := content.Id
-	task := func(configJSON []byte) *model.DownloadTask {
-		contentID := content.Id
-		task := &model.DownloadTask{
-			ContentId:  &contentID,
-			Name:       title,
-			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": configString(config, "suffix"), "spec": spec}),
-			PlatformId: PlatformID,
-			Status:     model.TaskStatusWaiting,
-			SourceURL:  content.SourceURL,
-			CoverURL:   content.CoverURL,
-			ConfigJSON: string(configJSON),
-		}
-		_ = ext
-		return task
-	}
+	contact, _ := pick_account_contact(&obj)
+	decrypt_key := parse_key_from_content(content)
+	base_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, "", 0, obj.ObjectDesc.MediaType)
+	decrypt_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, 0, obj.ObjectDesc.MediaType)
+	content_id := content.Id
 
+	is_download_feed_cover := config_string(config, "suffix") == ".jpg"
 	// Cover download: create cover resource only
-	if configString(config, "suffix") == ".jpg" && coverURL != "" {
-		configJSON, _ := json.Marshal(buildConfigJSON(config, spec, obj.ObjectDesc.MediaType))
-		coverResource := model.DownloadResource{
-			ContentId:  &contentID,
-			Name:       title,
-			Kind:       mimeImageJPEG,
-			UniqueID:   content.ExternalId + "_cover",
-			MergeOrder: 0,
-			Extra:      baseExtraJSON,
-		}
-		coverEndpoint := model.DownloadEndpoint{
-			Protocol: "https",
-			URL:      coverURL,
-			Enabled:  1,
-		}
+	if is_download_feed_cover && cover_url != "" {
+		cover_config := build_config_json(config, spec, obj.ObjectDesc.MediaType)
+		config_json, _ := json.Marshal(cover_config)
 		info := &adapter.DownloadTaskResult{
-			Task: task(configJSON),
-			Resources: []*adapter.ResourceInfo{{
-				DownloadResource: coverResource,
-				Endpoints:        []model.DownloadEndpoint{coverEndpoint},
-			}},
-			Account: account,
-			Content: content,
+			Task: &model.DownloadTask{
+				ContentId:  &content_id,
+				Name:       title,
+				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				PlatformId: PlatformID,
+				Status:     model.TaskStatusWaiting,
+				SourceURL:  content.SourceURL,
+				CoverURL:   content.CoverURL,
+				ConfigJSON: string(config_json),
+			},
+			Resources:     []*adapter.ResourceInfo{build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json)},
+			Account:       account,
+			Content:       content,
+			ContentDetail: ext,
 		}
-		setContentExt(info, ext)
-		applySingleResourceTaskName(info, config)
+		a.apply_download_task_name(info, cover_config, base_extra_json)
 		return info, nil
 	}
 
@@ -480,150 +459,189 @@ func (a *ChannelsAdapter) BuildDownloadTask(contentJSON json.RawMessage, configR
 			return nil, fmt.Errorf("图片类型缺少文件数据")
 		}
 
-		resources := make([]*adapter.ResourceInfo, 0, len(files)+1)
+		resources := make([]*adapter.ResourceInfo, 0, len(files)+2)
 		for i, file := range files {
-			mediaURL := getMediaURL(file)
-			if mediaURL == "" {
+			media_url := get_media_url(file)
+			if media_url == "" {
 				return nil, fmt.Errorf("图片 %d 下载地址为空", i+1)
 			}
-			imageName := title
+			image_name := title
 			if len(files) > 1 {
-				imageName = fmt.Sprintf("%s_%d", title, i+1)
+				image_name = fmt.Sprintf("%s_%d", title, i+1)
 			}
-			imageExtraJSON := buildResourceExtraJSON(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decryptKey, i, obj.ObjectDesc.MediaType)
+			image_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, i+1, obj.ObjectDesc.MediaType)
 			resources = append(resources, &adapter.ResourceInfo{
-				DownloadResource: model.DownloadResource{
-					ContentId: &contentID,
-					Name:      sanitizeFilename(imageName),
-					Kind:      mimeImageJPEG,
+				Resource: model.DownloadResource{
+					ContentId: &content_id,
+					Name:      sanitize_filename(image_name),
+					Kind:      mime_image_jpeg,
 					Size:      int64(file.FileSize),
 					UniqueID:  content.ExternalId + "_" + strconv.Itoa(i),
-					Extra:     imageExtraJSON,
+					Extra:     image_extra_json,
 				},
 				Endpoints: []model.DownloadEndpoint{{
 					Protocol: "https",
-					URL:      mediaURL,
+					URL:      media_url,
 					Enabled:  1,
 				}},
 			})
 		}
 
 		// Background music
-		bgm := formatBGM(&obj)
+		bgm := format_bgm(&obj)
 		if bgm != nil {
 			resources = append(resources, &adapter.ResourceInfo{
-				DownloadResource: model.DownloadResource{
-					ContentId: &contentID,
-					Name:      bgm.Name,
-					Kind:      mimeAudioMPEG,
+				Resource: model.DownloadResource{
+					ContentId: &content_id,
+					Name:      bgm.name,
+					Kind:      mime_audio_mpeg,
 					UniqueID:  content.ExternalId + "_bgm",
-					Extra:     baseExtraJSON,
+					Extra:     base_extra_json,
 				},
 				Endpoints: []model.DownloadEndpoint{{
-					Protocol: endpointProtocol(bgm.URL),
-					URL:      bgm.URL,
+					Protocol: endpoint_protocol(bgm.url),
+					URL:      bgm.url,
 					Enabled:  1,
 				}},
 			})
 		}
-
-		pictureConfig := buildConfigJSON(config, spec, wxchannels.MediaTypePicture)
-		if configString(pictureConfig, "suffix") == "" {
-			pictureConfig["suffix"] = ".zip"
+		if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+			resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
 		}
-		configJSON, _ := json.Marshal(pictureConfig)
+
+		picture_config := build_config_json(config, spec, wxchannels.MediaTypePicture)
+		config_json, _ := json.Marshal(picture_config)
 
 		info := &adapter.DownloadTaskResult{
-			Task:      task(configJSON),
-			Resources: resources,
-			Account:   account,
-			Content:   content,
+			Task: &model.DownloadTask{
+				ContentId:  &content_id,
+				Name:       title,
+				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				PlatformId: PlatformID,
+				Status:     model.TaskStatusWaiting,
+				SourceURL:  content.SourceURL,
+				CoverURL:   content.CoverURL,
+				ConfigJSON: string(config_json),
+			},
+			Resources:     resources,
+			ContentDetail: ext,
+			Account:       account,
+			Content:       content,
 		}
-		setContentExt(info, ext)
-		applySingleResourceTaskName(info, pictureConfig)
+		a.apply_download_task_name(info, picture_config, base_extra_json)
 		return info, nil
 	}
 
 	// Video type
-	downloadURL := BuildDownloadURLWithSpec(&obj, spec)
-	if downloadURL == "" {
+	download_url := BuildDownloadURLWithSpec(&obj, spec)
+	if download_url == "" {
 		return nil, fmt.Errorf("无法获取视频下载地址")
 	}
 
-	videoConfig := buildConfigJSON(config, spec, obj.ObjectDesc.MediaType)
-	configJSON, _ := json.Marshal(videoConfig)
+	video_config := build_config_json(config, spec, obj.ObjectDesc.MediaType)
+	config_json, _ := json.Marshal(video_config)
 
-	resourceUniqueID := content.ExternalId
-	resourceKind := mimeVideoMP4
+	resource_unique_id := content.ExternalId
+	resource_kind := mime_video_mp4
 	if spec != "" {
-		resourceUniqueID = content.ExternalId + "_" + spec
+		resource_unique_id = content.ExternalId + "_" + spec
 	}
-	if configString(config, "suffix") == ".mp3" {
-		resourceUniqueID += "_mp3"
-		resourceKind = mimeAudioMPEG
+	if config_string(config, "suffix") == ".mp3" {
+		resource_unique_id += "_mp3"
+		resource_kind = mime_audio_mpeg
 	}
-	videoResource := model.DownloadResource{
-		ContentId: &contentID,
+	video_resource := model.DownloadResource{
+		ContentId: &content_id,
 		Name:      title,
-		Kind:      resourceKind,
-		UniqueID:  resourceUniqueID,
-		Extra:     decryptExtraJSON,
+		Kind:      resource_kind,
+		UniqueID:  resource_unique_id,
+		Extra:     decrypt_extra_json,
 	}
 	if ve, ok := ext.(*model.ContentVideo); ok {
-		videoResource.Size = ve.Size
+		video_resource.Size = ve.Size
 	}
-	videoEndpoint := model.DownloadEndpoint{
+	video_endpoint := model.DownloadEndpoint{
 		Protocol: "https",
-		URL:      downloadURL,
+		URL:      download_url,
 		Enabled:  1,
 	}
 	resources := []*adapter.ResourceInfo{{
-		DownloadResource: videoResource,
-		Endpoints:        []model.DownloadEndpoint{videoEndpoint},
+		Resource:  video_resource,
+		Endpoints: []model.DownloadEndpoint{video_endpoint},
 	}}
+	if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+		resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
+	}
 
 	info := &adapter.DownloadTaskResult{
-		Task:      task(configJSON),
-		Resources: resources,
-		Account:   account,
-		Content:   content,
+		Task: &model.DownloadTask{
+			ContentId:  &content_id,
+			Name:       title,
+			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+			PlatformId: PlatformID,
+			Status:     model.TaskStatusWaiting,
+			SourceURL:  content.SourceURL,
+			CoverURL:   content.CoverURL,
+			ConfigJSON: string(config_json),
+		},
+		Resources:     resources,
+		ContentDetail: ext,
+		Account:       account,
+		Content:       content,
 	}
-	setContentExt(info, ext)
-	applySingleResourceTaskName(info, videoConfig)
+	a.apply_download_task_name(info, video_config, decrypt_extra_json)
 	return info, nil
 }
 
-// buildLiveDownloadTask builds a live-stream download task from a joinLive response.
-func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any) (*adapter.DownloadTaskResult, error) {
-	liveId := ""
-	sessionStartTime := int64(0)
+func build_cover_resource_info(content_id, external_id, title, cover_url, extra_json string) *adapter.ResourceInfo {
+	return &adapter.ResourceInfo{
+		Resource: model.DownloadResource{
+			ContentId:  &content_id,
+			Name:       title,
+			Kind:       mime_image_jpeg,
+			UniqueID:   external_id + "_cover",
+			MergeOrder: 0,
+			Extra:      extra_json,
+		},
+		Endpoints: []model.DownloadEndpoint{{
+			Protocol: "https",
+			URL:      cover_url,
+			Enabled:  1,
+		}},
+	}
+}
+
+// build_live_download_task builds a live-stream download task from a joinLive response.
+func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayload, config map[string]any) (*adapter.DownloadTaskResult, error) {
+	live_id := ""
+	session_start_time := int64(0)
 	if jl.LiveInfo != nil {
-		liveId = jl.LiveInfo.LiveId
-		sessionStartTime = int64(jl.LiveInfo.StartTime)
+		live_id = jl.LiveInfo.LiveId
+		session_start_time = int64(jl.LiveInfo.StartTime)
 	}
 
-	authorNickname := jl.Nickname
-	authorUsername := jl.Username
-	authorAvatarURL := ""
+	author_nickname := jl.Nickname
+	author_username := jl.Username
+	author_avatar_url := ""
 	if jl.LiveInfo != nil && jl.AnchorContact != nil {
 		if jl.AnchorContact.Nickname != "" {
-			authorNickname = jl.AnchorContact.Nickname
+			author_nickname = jl.AnchorContact.Nickname
 		}
 		if jl.AnchorContact.Username != "" {
-			authorUsername = jl.AnchorContact.Username
+			author_username = jl.AnchorContact.Username
 		}
-		authorAvatarURL = jl.AnchorContact.HeadUrl
+		author_avatar_url = jl.AnchorContact.HeadUrl
 	} else if jl.Contact != nil {
 		if jl.Contact.Nickname != "" {
-			authorNickname = jl.Contact.Nickname
+			author_nickname = jl.Contact.Nickname
 		}
 		if jl.Contact.Username != "" {
-			authorUsername = jl.Contact.Username
+			author_username = jl.Contact.Username
 		}
-		authorAvatarURL = jl.Contact.HeadUrl
+		author_avatar_url = jl.Contact.HeadUrl
 	}
 
-	title := configString(config, "filename")
+	title := config_string(config, "filename")
 	if title == "" {
 		if jl.LiveDescription != "" {
 			title = jl.LiveDescription
@@ -633,20 +651,20 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 	}
 
 	now := time.Now().Unix()
-	liveConfig := buildConfigJSON(config, configString(config, "spec"), wxchannels.MediaTypeLive)
-	configJSON, _ := json.Marshal(liveConfig)
-	metadataJSON, _ := json.Marshal(map[string]any{
+	live_config := build_config_json(config, config_string(config, "spec"), wxchannels.MediaTypeLive)
+	config_json, _ := json.Marshal(live_config)
+	metadata_json, _ := json.Marshal(map[string]any{
 		"platform":     PlatformID,
-		"id":           liveId,
+		"id":           live_id,
 		"content_type": "live",
-		"author":       authorNickname,
+		"author":       author_nickname,
 		"download_at":  now,
 	})
 
 	content := &model.Content{
-		Id:         BuildContentID(liveId),
+		Id:         BuildContentID(live_id),
 		PlatformId: PlatformID,
-		ExternalId: liveId,
+		ExternalId: live_id,
 		Type:       "live",
 		Title:      title,
 		Timestamps: model.Timestamps{
@@ -654,39 +672,39 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 			UpdatedAt: now,
 		},
 	}
-	if sessionStartTime > 0 {
-		pt := sessionStartTime
+	if session_start_time > 0 {
+		pt := session_start_time
 		content.PublishTime = &pt
 	}
 
 	account := &model.Account{
-		Id:         BuildAccountID(authorUsername),
+		Id:         BuildAccountID(author_username),
 		PlatformId: PlatformID,
-		ExternalId: authorUsername,
-		Nickname:   authorNickname,
-		AvatarURL:  authorAvatarURL,
+		ExternalId: author_username,
+		Nickname:   author_nickname,
+		AvatarURL:  author_avatar_url,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
 
-	uniqueID := liveId + "_" + strconv.FormatInt(sessionStartTime, 10)
-	if sessionStartTime == 0 {
-		uniqueID = liveId + "_" + strconv.FormatInt(now, 10)
+	unique_id := live_id + "_" + strconv.FormatInt(session_start_time, 10)
+	if session_start_time == 0 {
+		unique_id = live_id + "_" + strconv.FormatInt(now, 10)
 	}
 
-	streamResource := model.DownloadResource{
+	stream_resource := model.DownloadResource{
 		ContentId:     &content.Id,
 		Name:          title,
-		Kind:          mimeVideoMatroska,
+		Kind:          mime_video_matroska,
 		Type:          model.ResourceTypeStream,
 		RotateMinutes: 10,
 		StreamURL:     jl.LiveSdkInfo.LiveCdnUrl,
-		UniqueID:      uniqueID,
-		Extra:         buildResourceExtraJSON(liveId, title, configString(config, "spec"), sessionStartTime, authorNickname, "", 0, wxchannels.MediaTypeLive),
+		UniqueID:      unique_id,
+		Extra:         build_resource_extra_json(live_id, title, config_string(config, "spec"), session_start_time, author_nickname, "", 0, wxchannels.MediaTypeLive),
 	}
-	streamEndpoint := model.DownloadEndpoint{
+	stream_endpoint := model.DownloadEndpoint{
 		Protocol: "livestream",
 		URL:      jl.LiveSdkInfo.LiveCdnUrl,
 		Enabled:  1,
@@ -696,48 +714,48 @@ func buildLiveDownloadTask(jl *wxchannels.JoinLivePayload, config map[string]any
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     uniqueID,
+			UniqueID:     unique_id,
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
-			ConfigJSON:   string(configJSON),
-			MetadataJSON: string(metadataJSON),
+			ConfigJSON:   string(config_json),
+			MetadataJSON: string(metadata_json),
 		},
 		Resources: []*adapter.ResourceInfo{{
-			DownloadResource: streamResource,
-			Endpoints:        []model.DownloadEndpoint{streamEndpoint},
+			Resource:  stream_resource,
+			Endpoints: []model.DownloadEndpoint{stream_endpoint},
 		}},
 		ContentDetail: nil,
 		Account:       account,
 		Content:       content,
 	}
-	applySingleResourceTaskName(info, liveConfig)
+	a.apply_download_task_name(info, live_config, stream_resource.Extra)
 	return info, nil
 }
 
-// getMediaURL returns the combined download URL for a media item (url + urlToken).
-func getMediaURL(media wxchannels.ChannelsMediaItem) string {
+// get_media_url returns the combined download URL for a media item (url + urlToken).
+func get_media_url(media wxchannels.ChannelsMediaItem) string {
 	return media.URL + media.URLToken
 }
 
-func parseChannelsObjectForDownload(contentJSON json.RawMessage) (wxchannels.ChannelsObject, error) {
+func parse_channels_object_for_download(content_json json.RawMessage) (wxchannels.ChannelsObject, error) {
 	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+	if err := json.Unmarshal(content_json, &obj); err != nil {
 		return obj, err
 	}
-	if channelsObjectHasDownloadShape(&obj) {
+	if channels_object_has_download_shape(&obj) {
 		return obj, nil
 	}
-	sharedObj, ok, err := sharedFeedProfileToChannelsObject(contentJSON)
+	shared_obj, ok, err := shared_feed_profile_to_channels_object(content_json)
 	if err != nil {
 		return obj, err
 	}
 	if ok {
-		return *sharedObj, nil
+		return *shared_obj, nil
 	}
 	return obj, nil
 }
 
-func channelsObjectHasDownloadShape(obj *wxchannels.ChannelsObject) bool {
+func channels_object_has_download_shape(obj *wxchannels.ChannelsObject) bool {
 	if obj == nil {
 		return false
 	}
@@ -747,61 +765,61 @@ func channelsObjectHasDownloadShape(obj *wxchannels.ChannelsObject) bool {
 		len(obj.Files) > 0
 }
 
-func sharedFeedProfileToChannelsObject(contentJSON json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
-	resp, ok, err := parseSharedFeedProfile(contentJSON, true)
+func shared_feed_profile_to_channels_object(content_json json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	resp, ok, err := parse_shared_feed_profile(content_json, true)
 	if err != nil || !ok {
 		return nil, ok, err
 	}
-	feedInfo := resp.Data.Feedinfo
-	if feedInfo.MediaType != wxchannels.MediaTypePicture && len(feedInfo.Picinfo) == 0 {
+	feed_info := resp.Data.Feedinfo
+	if feed_info.MediaType != wxchannels.MediaTypePicture && len(feed_info.Picinfo) == 0 {
 		return nil, false, nil
 	}
-	if len(feedInfo.Picinfo) == 0 {
+	if len(feed_info.Picinfo) == 0 {
 		return nil, true, errors.New("分享详情图片类型缺少 picInfo")
 	}
 
-	media := make([]wxchannels.ChannelsMediaItem, 0, len(feedInfo.Picinfo))
-	for _, pic := range feedInfo.Picinfo {
-		picURL := strings.TrimSpace(pic.URL)
-		if picURL == "" {
+	media := make([]wxchannels.ChannelsMediaItem, 0, len(feed_info.Picinfo))
+	for _, pic := range feed_info.Picinfo {
+		pic_url := strings.TrimSpace(pic.URL)
+		if pic_url == "" {
 			continue
 		}
 		media = append(media, wxchannels.ChannelsMediaItem{
-			URL:      picURL,
+			URL:      pic_url,
 			Width:    pic.Width,
 			Height:   pic.Height,
 			FileSize: pic.FileSize,
-			CoverUrl: strings.TrimSpace(feedInfo.Coverurl),
+			CoverUrl: strings.TrimSpace(feed_info.Coverurl),
 		})
 	}
 	if len(media) == 0 {
 		return nil, true, errors.New("分享详情图片类型 picInfo 未包含下载地址")
 	}
 
-	bgmURL := sharedFeedBGMURL(feedInfo.Bgminfo)
-	contactUsername := sharedFeedAuthorID(resp.Data.Authorinfo)
-	objectID := sharedFeedObjectID(resp, contentJSON)
+	bgm_url := shared_feed_bgm_url(feed_info.Bgminfo)
+	contact_username := shared_feed_author_id(resp.Data.Authorinfo)
+	object_id := shared_feed_object_id(resp, content_json)
 	obj := &wxchannels.ChannelsObject{
-		ID:            objectID,
-		ObjectNonceId: objectID,
-		CreateTime:    feedInfo.Createtime,
+		ID:            object_id,
+		ObjectNonceId: object_id,
+		CreateTime:    feed_info.Createtime,
 		Type:          "picture",
 		Contact: wxchannels.ChannelsContact{
-			Username: contactUsername,
+			Username: contact_username,
 			Nickname: strings.TrimSpace(resp.Data.Authorinfo.Nickname),
 			HeadUrl:  strings.TrimSpace(resp.Data.Authorinfo.Headimgurl),
 		},
 		ObjectDesc: wxchannels.ChannelsObjectDesc{
-			Description: strings.TrimSpace(feedInfo.Description),
+			Description: strings.TrimSpace(feed_info.Description),
 			MediaType:   wxchannels.MediaTypePicture,
 			Media:       media,
 			FollowPostInfo: wxchannels.ChannelsFollowPostInfo{
 				MusicInfo: wxchannels.ChannelsMusicInfo{
-					DocId:             feedInfo.Bgminfo.DocID,
-					DocType:           feedInfo.Bgminfo.DocType,
-					Name:              feedInfo.Bgminfo.Name,
-					Artist:            feedInfo.Bgminfo.Artist,
-					MediaStreamingUrl: bgmURL,
+					DocId:             feed_info.Bgminfo.DocID,
+					DocType:           feed_info.Bgminfo.DocType,
+					Name:              feed_info.Bgminfo.Name,
+					Artist:            feed_info.Bgminfo.Artist,
+					MediaStreamingUrl: bgm_url,
 				},
 			},
 		},
@@ -810,47 +828,47 @@ func sharedFeedProfileToChannelsObject(contentJSON json.RawMessage) (*wxchannels
 	return obj, true, nil
 }
 
-func parseSharedFeedProfile(contentJSON json.RawMessage, allowEnvelope bool) (wxchannels.ChannelsSharedFeedProfileResp, bool, error) {
+func parse_shared_feed_profile(content_json json.RawMessage, allow_envelope bool) (wxchannels.ChannelsSharedFeedProfileResp, bool, error) {
 	var resp wxchannels.ChannelsSharedFeedProfileResp
-	directErr := json.Unmarshal(contentJSON, &resp)
-	if directErr == nil {
+	direct_err := json.Unmarshal(content_json, &resp)
+	if direct_err == nil {
 		if len(resp.Data.Feedinfo.Picinfo) > 0 || resp.Data.Feedinfo.MediaType != 0 {
 			return resp, true, nil
 		}
 	}
 
-	if !allowEnvelope {
-		return resp, false, directErr
+	if !allow_envelope {
+		return resp, false, direct_err
 	}
 	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(contentJSON, &envelope); err != nil {
+	if err := json.Unmarshal(content_json, &envelope); err != nil {
 		return resp, false, err
 	}
-	if _, hasCode := envelope["code"]; !hasCode {
+	if _, has_code := envelope["code"]; !has_code {
 		return resp, false, nil
 	}
-	data, hasData := envelope["data"]
-	if !hasData || len(data) == 0 {
+	data, has_data := envelope["data"]
+	if !has_data || len(data) == 0 {
 		return resp, false, nil
 	}
-	unwrapped, ok, err := parseSharedFeedProfile(data, false)
+	unwrapped, ok, err := parse_shared_feed_profile(data, false)
 	if ok || err == nil {
 		return unwrapped, ok, err
 	}
-	if directErr != nil {
-		return resp, false, directErr
+	if direct_err != nil {
+		return resp, false, direct_err
 	}
 	return resp, false, err
 }
 
-func sharedFeedBGMURL(info wxchannels.SharedFeedBGMInfo) string {
+func shared_feed_bgm_url(info wxchannels.SharedFeedBGMInfo) string {
 	if u := strings.TrimSpace(info.BGMURL); u != "" {
 		return u
 	}
 	return strings.TrimSpace(info.MediaStreamingURL)
 }
 
-func sharedFeedObjectID(resp wxchannels.ChannelsSharedFeedProfileResp, contentJSON json.RawMessage) string {
+func shared_feed_object_id(resp wxchannels.ChannelsSharedFeedProfileResp, content_json json.RawMessage) string {
 	candidate := strings.TrimSpace(resp.Data.Sceneinfo.Dynamicexportid)
 	if candidate == "" {
 		candidate = strings.TrimSpace(resp.Data.Feedinfo.Coverurl)
@@ -859,19 +877,19 @@ func sharedFeedObjectID(resp wxchannels.ChannelsSharedFeedProfileResp, contentJS
 		candidate = strings.TrimSpace(resp.Data.Feedinfo.Picinfo[0].URL)
 	}
 	if candidate == "" {
-		return "shared_" + hashString(string(contentJSON))[:16]
+		return "shared_" + hash_string(string(content_json))[:16]
 	}
-	safe := safeIdentifier(candidate)
+	safe := safe_identifier(candidate)
 	if safe == "" {
-		return "shared_" + hashString(candidate)[:16]
+		return "shared_" + hash_string(candidate)[:16]
 	}
 	if len(safe) > 96 {
-		return safe[:80] + "_" + hashString(candidate)[:12]
+		return safe[:80] + "_" + hash_string(candidate)[:12]
 	}
 	return safe
 }
 
-func sharedFeedAuthorID(author wxchannels.SharedFeedAuthorinfo) string {
+func shared_feed_author_id(author wxchannels.SharedFeedAuthorinfo) string {
 	candidate := strings.TrimSpace(author.Headimgurl)
 	if candidate == "" {
 		candidate = strings.TrimSpace(author.Nickname)
@@ -879,61 +897,61 @@ func sharedFeedAuthorID(author wxchannels.SharedFeedAuthorinfo) string {
 	if candidate == "" {
 		return ""
 	}
-	return "shared_author_" + hashString(candidate)[:16]
+	return "shared_author_" + hash_string(candidate)[:16]
 }
 
-func safeIdentifier(value string) string {
+func safe_identifier(value string) string {
 	var b strings.Builder
-	lastUnderscore := false
+	last_underscore := false
 	for _, r := range strings.TrimSpace(value) {
 		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
 		if ok {
 			b.WriteRune(r)
-			lastUnderscore = false
+			last_underscore = false
 			continue
 		}
-		if !lastUnderscore {
+		if !last_underscore {
 			b.WriteByte('_')
-			lastUnderscore = true
+			last_underscore = true
 		}
 	}
 	return strings.Trim(b.String(), "_")
 }
 
-func hashString(value string) string {
+func hash_string(value string) string {
 	sum := sha1.Sum([]byte(value))
 	return hex.EncodeToString(sum[:])
 }
 
-func endpointProtocol(rawURL string) string {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+func endpoint_protocol(raw_url string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw_url))
 	if err == nil && parsed.Scheme != "" {
 		return strings.ToLower(parsed.Scheme)
 	}
 	return "https"
 }
 
-// bgmInfo holds background music download info extracted from a picture feed.
-type bgmInfo struct {
-	URL  string
-	Name string
+// bgm_info holds background music download info extracted from a picture feed.
+type bgm_info struct {
+	url  string
+	name string
 }
 
-// formatBGM extracts background music info from a picture feed's followPostInfo.
-func formatBGM(obj *wxchannels.ChannelsObject) *bgmInfo {
-	musicInfo := obj.ObjectDesc.FollowPostInfo.MusicInfo
-	if musicInfo.MediaStreamingUrl == "" {
+// format_bgm extracts background music info from a picture feed's followPostInfo.
+func format_bgm(obj *wxchannels.ChannelsObject) *bgm_info {
+	music_info := obj.ObjectDesc.FollowPostInfo.MusicInfo
+	if music_info.MediaStreamingUrl == "" {
 		return nil
 	}
 	name := "bgm"
-	if musicInfo.Name != "" {
-		name = sanitizeBGMName(musicInfo.Name)
+	if music_info.Name != "" {
+		name = sanitize_bgm_name(music_info.Name)
 	}
-	return &bgmInfo{URL: musicInfo.MediaStreamingUrl, Name: name}
+	return &bgm_info{url: music_info.MediaStreamingUrl, name: name}
 }
 
-// sanitizeBGMName removes characters unsafe for filenames.
-func sanitizeBGMName(name string) string {
+// sanitize_bgm_name removes characters unsafe for filenames.
+func sanitize_bgm_name(name string) string {
 	r := strings.NewReplacer(
 		"/", "_", "\\", "_", ":", "_", "*", "_",
 		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
@@ -942,23 +960,23 @@ func sanitizeBGMName(name string) string {
 }
 
 // BuildDownloadTaskUniqueID computes a unique task ID from the content ID and download configuration.
-func BuildDownloadTaskUniqueID(externalID string, config map[string]any) string {
-	suffixConfig := configString(config, "suffix")
-	if suffixConfig == ".jpg" {
-		return externalID + "_cover"
+func BuildDownloadTaskUniqueID(external_id string, config map[string]any) string {
+	suffix_config := config_string(config, "suffix")
+	if suffix_config == ".jpg" {
+		return external_id + "_cover"
 	}
 	var suffix string
-	if spec := configString(config, "spec"); spec != "" {
+	if spec := config_string(config, "spec"); spec != "" {
 		suffix = "_" + spec
 	}
-	if suffixConfig == ".mp3" {
+	if suffix_config == ".mp3" {
 		suffix += "_mp3"
 	}
-	return externalID + suffix
+	return external_id + suffix
 }
 
-// buildResourceExtraJSON builds the resource.Extra JSON string.
-func buildResourceExtraJSON(id, title, spec string, createdAt int64, author string, decodeKey string, idx int, mediaType int) string {
+// build_resource_extra_json builds the resource.Extra JSON string.
+func build_resource_extra_json(id, title, spec string, created_at int64, author string, decode_key string, idx int, media_type int) string {
 
 	now := time.Now().Unix()
 	filename := title
@@ -986,65 +1004,129 @@ func buildResourceExtraJSON(id, title, spec string, createdAt int64, author stri
 		Title:      title,
 		Filename:   filename,
 		Spec:       spec,
-		CreatedAt:  strconv.FormatInt(createdAt, 10),
+		CreatedAt:  strconv.FormatInt(created_at, 10),
 		DownloadAt: strconv.FormatInt(now, 10),
 		Author:     author,
 		Idx:        idx,
-		MediaType:  mediaType,
-		DecodeKey:  decodeKey,
+		MediaType:  media_type,
+		DecodeKey:  decode_key,
 	})
 	return string(data)
 }
 
-func applySingleResourceTaskName(info *adapter.DownloadTaskResult, config map[string]any) {
-	if info == nil || info.Task == nil || len(info.Resources) != 1 || info.Resources[0] == nil {
+func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskResult, config map[string]any, task_extra_json string) {
+	if info == nil || info.Task == nil {
 		return
 	}
-	if configSuffixIsArchive(config) {
-		return
-	}
-	if name := preconstructSingleResourceTaskName(info.Resources[0].DownloadResource, config); name != "" {
-		info.Task.Name = name
-	}
-}
-
-func preconstructSingleResourceTaskName(resource model.DownloadResource, config map[string]any) string {
-	baseName := strings.TrimSpace(resource.Name)
-	if baseName == "" {
-		return ""
-	}
-
-	ext := hermes.CanonicalExtensionForMIMEType(resource.Kind)
-	if strings.EqualFold(resource.Type, model.ResourceTypeStream) && ext != "" && strings.EqualFold(filepath.Ext(baseName), ext) {
-		baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
-	}
-
-	if template := filenameTemplateFromConfig(config); template != "" {
-		meta := buildPreconstructTemplateMeta(parsePreconstructResourceExtra(resource.Extra), baseName)
-		if newName := applyPreconstructFilenameTemplate(template, baseName, meta); newName != "" {
-			baseName = newName
+	hooks, logger := a.filename_hook_context()
+	template := filename_template_from_config(config)
+	if len(info.Resources) == 1 && info.Resources[0] != nil && !config_suffix_is_archive(config) {
+		a.apply_single_resource_task_name(info, config, hooks, logger)
+	} else if template != "" || (hooks != nil && hooks.HasFilenameHook()) {
+		extra := resource_extra_map(task_extra_json)
+		if extra == nil && len(info.Resources) > 0 && info.Resources[0] != nil {
+			extra = resource_extra_map(info.Resources[0].Resource.Extra)
+		}
+		task_kind := ""
+		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
+			TaskID:           info.Task.Id,
+			TaskConfig:       config,
+			FilenameTemplate: template,
+			ResourceName:     info.Task.Name,
+			ResourceKind:     task_kind,
+			ResourceExtra:    extra,
+			Hooks:            hooks,
+		})
+		log_filename_resolution(logger, resolved)
+		if resolved.Name != "" {
+			info.Task.Name = resolved.Name
 		}
 	}
 
-	baseName = sanitizePreconstructPathComponents(baseName)
-	if baseName == "" {
-		return ""
-	}
-	return baseName + ext
+	apply_download_resource_names(info, config, template, hooks, logger)
 }
 
-func filenameTemplateFromConfig(config map[string]any) string {
+func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.DownloadTaskResult, config map[string]any, hooks *hermes.HookManager, logger *zerolog.Logger) {
+	resource := info.Resources[0].Resource
+	resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
+		TaskID:           info.Task.Id,
+		TaskConfig:       config,
+		FilenameTemplate: filename_template_from_config(config),
+		ResourceID:       resource.Id,
+		ResourceName:     resource.Name,
+		ResourceKind:     resource.Kind,
+		ResourceType:     resource.Type,
+		ResourceExtra:    resource_extra_map(resource.Extra),
+		Hooks:            hooks,
+	})
+	log_filename_resolution(logger, resolved)
+	if resolved.Name != "" {
+		info.Task.Name = resolved.Name
+	}
+}
+
+func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[string]any, template string, hooks *hermes.HookManager, logger *zerolog.Logger) {
+	if info == nil || (template == "" && (hooks == nil || !hooks.HasFilenameHook())) {
+		return
+	}
+	for _, resource_info := range info.Resources {
+		if resource_info == nil {
+			continue
+		}
+		resource := &resource_info.Resource
+		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
+			TaskID:           info.Task.Id,
+			TaskConfig:       config,
+			FilenameTemplate: template,
+			ResourceID:       resource.Id,
+			ResourceName:     resource.Name,
+			ResourceKind:     resource.Kind,
+			ResourceType:     resource.Type,
+			ResourceExtra:    resource_extra_map(resource.Extra),
+			Hooks:            hooks,
+		})
+		log_filename_resolution(logger, resolved)
+		if resolved.Name != "" {
+			resource.Name = resolved.Name
+		}
+	}
+}
+
+func log_filename_resolution(logger *zerolog.Logger, resolved hermes.FinalResourceNameResult) {
+	if logger != nil && resolved.TemplateError != nil {
+		logger.Warn().Err(resolved.TemplateError).Msg("wxchannels preview filename template error")
+	}
+	if logger != nil && resolved.HookError != nil {
+		logger.Warn().
+			Err(resolved.HookError).
+			Interface("meta", resolved.HookMeta).
+			Msg("wxchannels preview filename hook failed")
+	}
+}
+
+func filename_template_from_config(config map[string]any) string {
 	for _, key := range []string{
 		"filenameTemplate",
 	} {
-		if value := strings.TrimSpace(configString(config, key)); value != "" {
+		if value := strings.TrimSpace(config_string(config, key)); value != "" {
 			return value
 		}
 	}
 	return ""
 }
 
-func parsePreconstructResourceExtra(raw string) map[string]string {
+func (a *ChannelsAdapter) filename_hook_context() (*hermes.HookManager, *zerolog.Logger) {
+	if a == nil {
+		return nil, nil
+	}
+	a.runtime_mu.Lock()
+	hooks := a.hooks
+	logger := a.logger
+	a.runtime_mu.Unlock()
+	return hooks, logger
+}
+
+func resource_extra_map(raw string) map[string]string {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
@@ -1073,83 +1155,14 @@ func parsePreconstructResourceExtra(raw string) map[string]string {
 	return extra
 }
 
-func buildPreconstructTemplateMeta(extra map[string]string, currentName string) map[string]string {
-	meta := make(map[string]string, len(extra)+2)
-	for key, value := range extra {
-		meta[key] = value
-	}
-	meta["download_at"] = time.Now().Format("2006-01-02")
-	meta["filename"] = currentName
-	return meta
-}
-
-func applyPreconstructFilenameTemplate(template, name string, meta map[string]string) string {
-	if strings.Contains(template, "{{") {
-		return cleanPreconstructPathSeparators(util.ReplaceTemplateVars(template, meta))
-	}
-
-	vm := goja.New()
-	vm.Set("name", name)
-	vm.Set("task_id", 0)
-	vm.Set("resource_id", 0)
-	vm.Set("url_basename", "")
-	vm.Set("formatTime", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) < 1 {
-			return vm.ToValue("")
-		}
-		return vm.ToValue(time.Now().Format(call.Argument(0).String()))
-	})
-	vm.Set("padStart", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) < 2 {
-			return call.Arguments[0]
-		}
-		s := call.Argument(0).String()
-		length := int(call.Argument(1).ToInteger())
-		pad := "0"
-		if len(call.Arguments) >= 3 {
-			pad = call.Argument(2).String()
-		}
-		for len(s) < length {
-			s = pad + s
-		}
-		return vm.ToValue(s)
-	})
-
-	result, err := vm.RunString(template)
-	if err != nil {
-		return ""
-	}
-	return cleanPreconstructPathSeparators(result.String())
-}
-
-func cleanPreconstructPathSeparators(s string) string {
-	parts := strings.Split(s, "/")
-	for i, p := range parts {
-		parts[i] = strings.TrimSpace(p)
-	}
-	return strings.Trim(strings.Join(parts, "/"), "/")
-}
-
-func sanitizePreconstructPathComponents(path string) string {
-	parts := strings.Split(path, "/")
-	replacer := strings.NewReplacer(
-		"\\", "_", ":", "_", "*", "_",
-		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
-	)
-	for i, p := range parts {
-		parts[i] = strings.TrimSpace(replacer.Replace(p))
-	}
-	return strings.Trim(strings.Join(parts, "/"), "/")
-}
-
-func configSuffixIsArchive(config map[string]any) bool {
-	suffix := strings.TrimSpace(configString(config, "suffix"))
+func config_suffix_is_archive(config map[string]any) bool {
+	suffix := strings.TrimSpace(config_string(config, "suffix"))
 	return strings.EqualFold(suffix, ".zip") || strings.EqualFold(suffix, "zip")
 }
 
-// buildConfigJSON returns a map containing the config fields whose value is set / true,
+// build_config_json returns a map containing the config fields whose value is set / true,
 // plus the media type so post-processing can branch on it.
-func buildConfigJSON(config map[string]any, spec string, mediaType int) map[string]any {
+func build_config_json(config map[string]any, spec string, media_type int) map[string]any {
 	m := make(map[string]any, len(config)+2)
 	for key, value := range config {
 		m[key] = value
@@ -1157,17 +1170,33 @@ func buildConfigJSON(config map[string]any, spec string, mediaType int) map[stri
 	if spec != "" {
 		m["spec"] = spec
 	}
-	m["type"] = mediaType
+	m["type"] = media_type
 	return m
 }
 
-func configString(config map[string]any, key string) string {
+func config_string(config map[string]any, key string) string {
 	value, _ := config[key].(string)
 	return value
 }
 
-// parseKeyFromContent extracts the decrypt key from Content.Metadata.
-func parseKeyFromContent(c *model.Content) string {
+func config_int(config map[string]any, key string) int {
+	switch value := config[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	case string:
+		n, _ := strconv.Atoi(value)
+		return n
+	default:
+		return 0
+	}
+}
+
+// parse_key_from_content extracts the decrypt key from Content.Metadata.
+func parse_key_from_content(c *model.Content) string {
 	if c == nil || c.Metadata == "" {
 		return ""
 	}
@@ -1180,34 +1209,8 @@ func parseKeyFromContent(c *model.Content) string {
 	return ""
 }
 
-// sanitizeFilename ensures the filename has an extension, extracting from the URL if needed.
-func sanitizeFilename(name string) string {
-	nameWithoutExt := strings.TrimSuffix(name, filepath.Ext(name))
-	return nameWithoutExt
-}
-
-// setContentExt routes the extension data: *ContentAlbum.Image goes to AlbumImages,
-// []*ContentImage goes to AlbumImages, other non-nil values go to ContentDetail.
-func setContentExt(dtr *adapter.DownloadTaskResult, ext any) {
-	switch e := ext.(type) {
-	case *model.ContentAlbum:
-		dtr.ContentDetail = e
-		dtr.AlbumImages = contentAlbumImages(e.Images)
-	case []*model.ContentImage:
-		dtr.AlbumImages = e
-	case nil:
-	default:
-		dtr.ContentDetail = e
-	}
-}
-
-func contentAlbumImages(images []model.ContentImage) []*model.ContentImage {
-	if len(images) == 0 {
-		return nil
-	}
-	result := make([]*model.ContentImage, len(images))
-	for i := range images {
-		result[i] = &images[i]
-	}
-	return result
+// sanitize_filename ensures the filename has an extension, extracting from the URL if needed.
+func sanitize_filename(name string) string {
+	name_without_ext := strings.TrimSuffix(name, filepath.Ext(name))
+	return name_without_ext
 }

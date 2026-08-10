@@ -74,24 +74,5 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	contentID := content.Id
 	info.Task.ContentId = &contentID
 
-	// Build volumes and chapters
-	info.NovelVolumes = make([]*model.ContentNovelVolume, 0, len(novel.Volumes))
-	info.NovelChapters = make([]*model.ContentNovelChapter, 0, len(novel.Chapters))
-	for _, vol := range novel.Volumes {
-		info.NovelVolumes = append(info.NovelVolumes, &model.ContentNovelVolume{
-			NovelId: content.Id,
-			Idx:     vol.Idx,
-			Title:   vol.Title,
-		})
-		for _, ch := range vol.Chapters {
-			info.NovelChapters = append(info.NovelChapters, &model.ContentNovelChapter{
-				NovelId: content.Id,
-				Idx:     ch.Index,
-				Title:   ch.Title,
-				URL:     ch.URL,
-			})
-		}
-	}
-
 	return info, nil
 }

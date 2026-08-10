@@ -2,6 +2,8 @@ package adapter
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -15,8 +17,8 @@ type PlatformPostprocessor struct {
 	deps PostprocessDeps
 }
 
-func NewPlatformPostprocessor(db *gorm.DB, logger zerolog.Logger, basePath string) *PlatformPostprocessor {
-	return &PlatformPostprocessor{deps: PostprocessDeps{DB: db, Logger: logger, BasePath: basePath}}
+func NewPlatformPostprocessor(db *gorm.DB, logger zerolog.Logger, base_path string) *PlatformPostprocessor {
+	return &PlatformPostprocessor{deps: PostprocessDeps{DB: db, Logger: logger, BasePath: base_path}}
 }
 
 // Process implements hermes.Postprocessor.
@@ -39,5 +41,14 @@ func (pp *PlatformPostprocessor) Process(ctx context.Context, info *hermes.TaskJ
 	if !ok {
 		return nil
 	}
-	return postprocessor.Postprocess(ctx, info, pp.deps)
+	deps := pp.deps
+	download_dir := strings.TrimSpace(info.DownloadDir)
+	if download_dir != "" {
+		if filepath.IsAbs(download_dir) {
+			deps.BasePath = download_dir
+		} else {
+			deps.BasePath = filepath.Join(deps.BasePath, download_dir)
+		}
+	}
+	return postprocessor.Postprocess(ctx, info, deps)
 }

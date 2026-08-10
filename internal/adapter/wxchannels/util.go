@@ -30,15 +30,15 @@ func PickSpec(obj *wxchannels.ChannelsObject) string {
 //     mirroring the JS __wx_channels_download4 original-video logic.
 //   - zip:// URLs are returned as-is.
 func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) string {
-	baseURL := ObjectURL(obj)
+	base_url := ObjectURL(obj)
 
 	// When spec is non-empty: append X-snsvideoflag parameter
 	if spec != "" {
-		return baseURL + "&X-snsvideoflag=" + spec
+		return base_url + "&X-snsvideoflag=" + spec
 	}
 
 	// When spec is empty, download the original video, keeping only encfilekey and token
-	if u, err := url.Parse(baseURL); err == nil {
+	if u, err := url.Parse(base_url); err == nil {
 		filekey := u.Query().Get("encfilekey")
 		token := u.Query().Get("token")
 		if filekey != "" && token != "" {
@@ -55,7 +55,7 @@ func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) strin
 		}
 	}
 
-	return baseURL
+	return base_url
 }
 
 // DecryptKeyInt returns the video decrypt key as int, or 0 on failure.
@@ -87,18 +87,18 @@ func ObjectTitle(obj *wxchannels.ChannelsObject) string {
 
 // DecryptKey exposes the legacy channels conversion capability through the
 // registered handler, so callers do not need to import this package.
-func (a *ChannelsAdapter) DecryptKey(contentJSON json.RawMessage) (int, error) {
+func (a *ChannelsAdapter) DecryptKey(content_json json.RawMessage) (int, error) {
 	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+	if err := json.Unmarshal(content_json, &obj); err != nil {
 		return 0, err
 	}
 	return DecryptKeyInt(&obj), nil
 }
 
 // ConvertContent converts a raw channels object into the shared content model.
-func (a *ChannelsAdapter) ConvertContent(contentJSON json.RawMessage) (*model.Content, error) {
+func (a *ChannelsAdapter) ConvertContent(content_json json.RawMessage) (*model.Content, error) {
 	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(contentJSON, &obj); err != nil {
+	if err := json.Unmarshal(content_json, &obj); err != nil {
 		return nil, err
 	}
 	content, _, err := ToContent(&obj)

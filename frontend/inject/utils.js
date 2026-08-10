@@ -31,7 +31,9 @@ if (typeof window.Timeless !== "undefined") {
   window.SVG = timeless.SVG;
   window.Circle = timeless.Circle;
 }
-
+if (typeof WXE === "undefined") {
+  window.WXE = {};
+}
 if (typeof WXEnv === "undefined") {
   throw new Error("env.js must be loaded before utils.js");
 }

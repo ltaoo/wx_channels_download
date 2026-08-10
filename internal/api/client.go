@@ -20,8 +20,8 @@ import (
 
 type APIClient struct {
 	downloader    *hermes.HermesEngine
-	broadcaster   *taskBroadcaster
-	filehelper    *FileHelperHandler
+	broadcaster   *task_broadcaster
+	file_helper   *FileHelperHandler
 	cfg           *APIConfig
 	engine        *gin.Engine
 	db            *gorm.DB
@@ -36,7 +36,7 @@ type APIClient struct {
 	svc_status_mu       sync.RWMutex
 	svc_statuses        map[string]events.ServiceStatusChanged
 
-	clawclient *clawreq.Client
+	claw_client *clawreq.Client
 
 	// Services
 	account_service        *services.AccountService
@@ -83,8 +83,12 @@ func NewAPIClient(
 		cfg.WorkDir, cfg.DownloadDir,
 	)
 
-	api_client.broadcaster = newTaskBroadcaster()
-	api_client.downloader.SetEventHandler(func(task_id int, event hermes.EventType, progress *hermes.TaskProgress) {
+	api_client.broadcaster = new_task_broadcaster()
+	api_client.downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
+		task_id, progress, ok := download_task_event_data(event, data)
+		if !ok {
+			return
+		}
 		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
 		api_client.broadcaster.notify(api_client, task_id, event, progress)
 		if event == hermes.EventFinished && api_client.bus != nil {
@@ -95,13 +99,49 @@ func NewAPIClient(
 	})
 
 	// // Set file transfer helper Channels auto-download callback
-	// api_client.filehelper.SetFinderAutoDownloadCallback(api_client.autoCreateChannelsTask)
+	// api_client.file_helper.SetFinderAutoDownloadCallback(api_client.auto_create_channels_task)
 	// // Set file transfer helper SPH auto-download callback
-	// api_client.filehelper.SetSphAutoDownloadCallback(api_client.autoDownloadSphVideo)
+	// api_client.file_helper.SetSphAutoDownloadCallback(api_client.auto_download_sph_video)
 
 	api_client.SetupRoutes()
-	// api_client.http_handler = api_client.buildHTTPHandler()
+	// api_client.http_handler = api_client.build_http_handler()
 	return api_client
+}
+
+func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, bool) {
+	switch event {
+	// Task creation.
+	case hermes.EventCreated:
+		event_data, ok := data.(hermes.TaskCreatedEventData)
+		return event_data.TaskID, nil, ok
+
+	// Task completion, including unsuccessful terminal states.
+	case hermes.EventFinished:
+		event_data, ok := data.(hermes.TaskFinishedEventData)
+		return event_data.TaskID, nil, ok
+	case hermes.EventFailed:
+		event_data, ok := data.(hermes.TaskFailedEventData)
+		return event_data.TaskID, nil, ok
+	case hermes.EventDeleted:
+		event_data, ok := data.(hermes.TaskDeletedEventData)
+		return event_data.TaskID, nil, ok
+
+	// Task progress includes start/resume, pause, and byte progress updates.
+	case hermes.EventStarted:
+		event_data, ok := data.(hermes.TaskStartedEventData)
+		return event_data.TaskID, nil, ok
+	case hermes.EventPreparing:
+		event_data, ok := data.(hermes.TaskPreparingEventData)
+		return event_data.TaskID, nil, ok
+	case hermes.EventPaused:
+		event_data, ok := data.(hermes.TaskPausedEventData)
+		return event_data.TaskID, nil, ok
+	case hermes.EventProgress:
+		event_data, ok := data.(hermes.TaskProgressEventData)
+		return event_data.TaskID, event_data.Progress, ok && event_data.Progress != nil
+	default:
+		return 0, nil, false
+	}
 }
 
 func (c *APIClient) SubscribeEvents(bus *events.Bus) {
@@ -191,7 +231,7 @@ func (c *APIClient) RegisterPOST(path string, handler gin.HandlerFunc) {
 }
 
 func (c *APIClient) HTTPHandler() http.Handler {
-	return withCORS(c)
+	return with_cors(c)
 }
 
 // DownloadTaskService returns the download task service.
@@ -201,22 +241,22 @@ func (c *APIClient) DownloadTaskService() *services.DownloadTaskService {
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.http_handler == nil {
-		c.http_handler = c.buildHTTPHandler()
+		c.http_handler = c.build_http_handler()
 	}
 	c.http_handler.ServeHTTP(w, r)
 }
 
 func (c *APIClient) setup_static_asset_routes() {
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		c.engine.Handle(method, "/__assets/public/*filepath", c.handlePublicAsset)
-		c.engine.Handle(method, "/__assets/src/*filepath", c.handleSrcAsset)
-		c.engine.Handle(method, "/__assets/inject/*filepath", c.handleFrontendInjectAsset)
-		c.engine.Handle(method, "/__assets/platform/*filepath", c.handlePlatformStaticAsset)
-		c.engine.Handle(method, "/__assets/user/*filepath", c.handleUserStaticAsset)
+		c.engine.Handle(method, "/__assets/public/*filepath", c.handle_public_asset)
+		c.engine.Handle(method, "/__assets/src/*filepath", c.handle_src_asset)
+		c.engine.Handle(method, "/__assets/inject/*filepath", c.handle_frontend_inject_asset)
+		c.engine.Handle(method, "/__assets/platform/*filepath", c.handle_platform_static_asset)
+		c.engine.Handle(method, "/__assets/user/*filepath", c.handle_user_static_asset)
 	}
 }
 
-func (c *APIClient) handlePublicAsset(ctx *gin.Context) {
+func (c *APIClient) handle_public_asset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
 	data, err := frontend.Assets().ReadPublic(rel)
 	if err != nil {
@@ -233,7 +273,7 @@ func (c *APIClient) handlePublicAsset(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
-func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
+func (c *APIClient) handle_frontend_inject_asset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
 	data, err := frontend.Assets().ReadInject(rel)
 	if err != nil {
@@ -255,11 +295,11 @@ func (c *APIClient) handleFrontendInjectAsset(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, frontend.StaticAssetContentType(rel), data)
 }
 
-func (c *APIClient) handlePlatformStaticAsset(ctx *gin.Context) {
+func (c *APIClient) handle_platform_static_asset(ctx *gin.Context) {
 	c.static_assets.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
-func (c *APIClient) handleUserStaticAsset(ctx *gin.Context) {
+func (c *APIClient) handle_user_static_asset(ctx *gin.Context) {
 	if c.logger != nil {
 		c.logger.Info().
 			Str("method", ctx.Request.Method).
@@ -276,7 +316,7 @@ func (c *APIClient) handleUserStaticAsset(ctx *gin.Context) {
 	}
 }
 
-func (c *APIClient) handleSrcAsset(ctx *gin.Context) {
+func (c *APIClient) handle_src_asset(ctx *gin.Context) {
 	rel := ctx.Param("filepath")
 	data, err := frontend.Assets().ReadSrc(rel)
 	if err != nil {
