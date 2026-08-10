@@ -561,7 +561,7 @@ var WXU = (() => {
     }
   }
   const script_loaded_map = {};
-  function __wx_load_script(src) {
+  function load_script(src) {
     const existing = script_loaded_map[src];
     if (existing) {
       return existing;
@@ -576,6 +576,10 @@ var WXU = (() => {
     });
     script_loaded_map[src] = p;
     return p;
+  }
+  async function load_audio_converter() {
+    await load_script(WXEnv.assetUrl("/inject/audio-converter.js"));
+    return WXAudio;
   }
 
   function remove_zero(num) {
@@ -710,12 +714,12 @@ var WXU = (() => {
      * Type conversion utilities
      */
     async media_buffer_to_wav(...args) {
-      await __wx_load_script(__wx_asset_url("/public/recorder.min.js"));
-      return WXAudio.mediaBufferToWav(...args);
+      const audio_converter = await load_audio_converter();
+      return audio_converter.mediaBufferToWav(...args);
     },
-    // wav_to_mp3_blob: WXAudio.wavBlobToMP3,
     async media_to_mp3(buf) {
-      return WXAudio.mediaToMp3(buf);
+      const audio_converter = await load_audio_converter();
+      return audio_converter.mediaToMp3(buf);
     },
     /**  */
     sleep,
@@ -743,7 +747,7 @@ var WXU = (() => {
         return [err, null];
       }
     },
-    load_script: __wx_load_script,
+    load_script,
     download_with_progress,
     /**
      * @param {() => HTMLElement} selector
@@ -957,11 +961,11 @@ var WXU = (() => {
       });
     },
     async save(blob, filename) {
-      await __wx_load_script(__wx_asset_url("/public/FileSaver.min.js"));
+      await load_script(WXEnv.assetUrl("/public/FileSaver.min.js"));
       saveAs(blob, filename);
     },
     async Zip() {
-      await __wx_load_script(__wx_asset_url("/public/jszip.min.js"));
+      await load_script(WXEnv.assetUrl("/public/jszip.min.js"));
       const zip = new JSZip();
       return zip;
     },

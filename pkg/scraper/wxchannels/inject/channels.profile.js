@@ -38,16 +38,15 @@
 
       try {
         if (!WXU.API.finderUserPage) {
-          WXU.error({ source: "channels.profile.js:41",
+          WXU.error({
+            source: "channels.profile.js:41",
             msg: "API 未完成初始化",
           });
           return;
         }
         var { href } = window.location;
         if (!href) {
-          WXU.error({ source: "channels.profile.js:48",
-            msg: "当前 URL 为空",
-          });
+          WXU.error({ source: "channels.profile.js:48", msg: "当前 URL 为空" });
           return;
         }
         const queries = WXU.get_queries(href);
@@ -57,7 +56,8 @@
           .Str("href", href)
           .Msg("check has username in href");
         if (!queries.username) {
-          WXU.error({ source: "channels.profile.js:60",
+          WXU.error({
+            source: "channels.profile.js:60",
             msg: "username 不能为空",
           });
           return;
@@ -85,7 +85,8 @@
             .Msg("before WXU.API.finderUserPage");
           var r = await WXU.API.finderUserPage(payload);
           if (r.errCode !== 0) {
-            WXU.error({ source: "channels.profile.js:88",
+            WXU.error({
+              source: "channels.profile.js:88",
               msg: r.errMsg,
               alert: 0,
             });
@@ -93,20 +94,12 @@
             return;
           }
           const feeds = r.data.object;
-          // var filename = WXU.build_filename(
-          //   feed,
-          //   opt.spec,
-          //   WXU.config.downloadFilenameTemplate,
-          // );
           var [err, data] = await WXU.downloader.create(feeds, {
             platform: "wxchannels",
-            // filename: window.beforeFilename ? filename : undefined,
             ignore_live_feed: true,
           });
           if (err) {
-            WXU.error({ source: "channels.profile.js:107",
-              msg: err.message,
-            });
+            WXU.error({ source: "channels.profile.js:107", msg: err.message });
             has_more = false;
             return;
           }
