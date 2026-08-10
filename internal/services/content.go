@@ -26,8 +26,8 @@ func (s *ContentService) DB() *gorm.DB {
 }
 
 // UpsertAccountAndLinkContent saves an account and establishes a content association in content_account.
-// When contentID is empty, only the account is saved.
-func (s *ContentService) UpsertAccountAndLinkContent(contentID string, account *model.Account, role string, now int64) (*model.Account, error) {
+// When content_id is empty, only the account is saved.
+func (s *ContentService) UpsertAccountAndLinkContent(content_id string, account *model.Account, role string, now int64) (*model.Account, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
@@ -63,7 +63,7 @@ func (s *ContentService) UpsertAccountAndLinkContent(contentID string, account *
 		case err != nil:
 			return fmt.Errorf("查询账号失败: %w", err)
 		default:
-			updates := accountUpdates(account, now)
+			updates := account_updates(account, now)
 			if len(updates) > 0 {
 				if err := tx.Model(&persisted).Updates(updates).Error; err != nil {
 					return fmt.Errorf("更新账号失败: %w", err)
@@ -74,19 +74,19 @@ func (s *ContentService) UpsertAccountAndLinkContent(contentID string, account *
 			}
 		}
 
-		contentID = strings.TrimSpace(contentID)
-		if contentID == "" {
+		content_id = strings.TrimSpace(content_id)
+		if content_id == "" {
 			return nil
 		}
 
 		var association model.ContentAccount
 		err = tx.
-			Where("content_id = ? AND account_id = ?", contentID, persisted.Id).
+			Where("content_id = ? AND account_id = ?", content_id, persisted.Id).
 			First(&association).Error
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			association = model.ContentAccount{
-				ContentId: contentID,
+				ContentId: content_id,
 				AccountId: persisted.Id,
 				Role:      role,
 				CreatedAt: now,
@@ -109,7 +109,7 @@ func (s *ContentService) UpsertAccountAndLinkContent(contentID string, account *
 	return &persisted, nil
 }
 
-func accountUpdates(account *model.Account, now int64) map[string]any {
+func account_updates(account *model.Account, now int64) map[string]any {
 	updates := map[string]any{"updated_at": now}
 	if account.InfluencerId != nil {
 		updates["influencer_id"] = account.InfluencerId
@@ -201,6 +201,7 @@ type ContentResourceRecord struct {
 	Kind          string  `json:"kind"`
 	UniqueID      string  `json:"unique_id"`
 	Type          string  `json:"type"`
+	URL           string  `json:"url"`
 	Size          int64   `json:"size"`
 	Downloaded    int64   `json:"downloaded"`
 	Speed         int64   `json:"speed"`
@@ -239,6 +240,13 @@ type ContentListItem struct {
 	Resources     []ContentResourceRecord     `json:"resources"`
 }
 
+type ContentDetailItem struct {
+	ContentListItem
+	Content    model.Content `json:"content"`
+	DetailType string        `json:"detail_type"`
+	Detail     any           `json:"detail"`
+}
+
 type ContentListResult struct {
 	List     []ContentListItem `json:"list"`
 	Total    int64             `json:"total"`
@@ -246,23 +254,23 @@ type ContentListResult struct {
 	PageSize int               `json:"page_size"`
 }
 
-// loadContentRelations loads accounts, download tasks, and resources for the given
+// load_content_relations loads accounts, download tasks, and resources for the given
 // content IDs. It is shared by ListContents and GetContentDetail.
-func (s *ContentService) loadContentRelations(contentIDs []string) (
+func (s *ContentService) load_content_relations(content_ids []string) (
 	map[string][]ContentAccountRecord,
 	map[string][]ContentDownloadTaskRecord,
 	map[string][]ContentResourceRecord,
 	error,
 ) {
-	accountsByContentID := make(map[string][]ContentAccountRecord, len(contentIDs))
-	downloadTasksByContentID := make(map[string][]ContentDownloadTaskRecord, len(contentIDs))
-	resourcesByContentID := make(map[string][]ContentResourceRecord, len(contentIDs))
+	accounts_by_content_id := make(map[string][]ContentAccountRecord, len(content_ids))
+	download_tasks_by_content_id := make(map[string][]ContentDownloadTaskRecord, len(content_ids))
+	resources_by_content_id := make(map[string][]ContentResourceRecord, len(content_ids))
 
-	if len(contentIDs) == 0 {
-		return accountsByContentID, downloadTasksByContentID, resourcesByContentID, nil
+	if len(content_ids) == 0 {
+		return accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
 	}
 
-	type contentAccountRow struct {
+	type content_account_row struct {
 		ContentID     string `gorm:"column:content_id"`
 		AccountID     string `gorm:"column:account_id"`
 		Role          string `gorm:"column:role"`
@@ -281,7 +289,7 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 		CreatedAt     int64  `gorm:"column:created_at"`
 		UpdatedAt     int64  `gorm:"column:updated_at"`
 	}
-	var rows []contentAccountRow
+	var rows []content_account_row
 	if err := s.db.Table("content_account").
 		Select(`content_account.content_id, content_account.account_id, content_account.role,
 			account.platform_id, account.influencer_id, account.external_id, account.alias,
@@ -289,13 +297,13 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 			account.is_listen, account.follower_count, account.past_names, account.past_avatars,
 			account.created_at, account.updated_at`).
 		Joins("JOIN account ON account.id = content_account.account_id").
-		Where("content_account.content_id IN ? AND account.deleted_at IS NULL", contentIDs).
+		Where("content_account.content_id IN ? AND account.deleted_at IS NULL", content_ids).
 		Order("content_account.content_id ASC, content_account.account_id ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, nil, nil, err
 	}
 	for _, row := range rows {
-		accountsByContentID[row.ContentID] = append(accountsByContentID[row.ContentID], ContentAccountRecord{
+		accounts_by_content_id[row.ContentID] = append(accounts_by_content_id[row.ContentID], ContentAccountRecord{
 			ID:            row.AccountID,
 			PlatformID:    row.PlatformID,
 			InfluencerID:  row.InfluencerID,
@@ -317,7 +325,7 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 
 	var tasks []model.DownloadTask
 	if err := s.db.
-		Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
+		Where("content_id IN ? AND deleted_at IS NULL", content_ids).
 		Order("content_id ASC, id DESC").
 		Find(&tasks).Error; err != nil {
 		return nil, nil, nil, err
@@ -326,8 +334,8 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 		if task.ContentId == nil {
 			continue
 		}
-		downloadTasksByContentID[*task.ContentId] = append(
-			downloadTasksByContentID[*task.ContentId],
+		download_tasks_by_content_id[*task.ContentId] = append(
+			download_tasks_by_content_id[*task.ContentId],
 			ContentDownloadTaskRecord{
 				ID:           task.Id,
 				ContentID:    task.ContentId,
@@ -350,17 +358,45 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 
 	var resources []model.DownloadResource
 	if err := s.db.
-		Where("content_id IN ? AND deleted_at IS NULL", contentIDs).
+		Where("content_id IN ? AND deleted_at IS NULL", content_ids).
 		Order("content_id ASC, merge_order ASC").
 		Find(&resources).Error; err != nil {
 		return nil, nil, nil, err
+	}
+	resource_ids := make([]int, 0, len(resources))
+	for _, r := range resources {
+		resource_ids = append(resource_ids, r.Id)
+	}
+	url_by_resource_id := make(map[int]string, len(resource_ids))
+	if len(resource_ids) > 0 {
+		type endpoint_row struct {
+			ResourceID int    `gorm:"column:resource_id"`
+			URL        string `gorm:"column:url"`
+		}
+		var endpoints []endpoint_row
+		if err := s.db.Table("download_endpoint").
+			Select("resource_id, url").
+			Where("resource_id IN ? AND deleted_at IS NULL AND enabled = 1", resource_ids).
+			Order("resource_id ASC, priority ASC, id ASC").
+			Scan(&endpoints).Error; err != nil {
+			return nil, nil, nil, err
+		}
+		for _, ep := range endpoints {
+			if _, exists := url_by_resource_id[ep.ResourceID]; !exists {
+				url_by_resource_id[ep.ResourceID] = ep.URL
+			}
+		}
 	}
 	for _, r := range resources {
 		if r.ContentId == nil {
 			continue
 		}
-		resourcesByContentID[*r.ContentId] = append(
-			resourcesByContentID[*r.ContentId],
+		resource_url := url_by_resource_id[r.Id]
+		if resource_url == "" {
+			resource_url = r.StreamURL
+		}
+		resources_by_content_id[*r.ContentId] = append(
+			resources_by_content_id[*r.ContentId],
 			ContentResourceRecord{
 				ID:            r.Id,
 				TaskID:        r.TaskId,
@@ -370,6 +406,7 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 				Kind:          r.Kind,
 				UniqueID:      r.UniqueID,
 				Type:          r.Type,
+				URL:           resource_url,
 				Size:          r.Size,
 				Downloaded:    r.Downloaded,
 				Speed:         r.Speed,
@@ -390,67 +427,144 @@ func (s *ContentService) loadContentRelations(contentIDs []string) (
 		)
 	}
 
-	return accountsByContentID, downloadTasksByContentID, resourcesByContentID, nil
+	return accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
 }
 
-func (s *ContentService) GetContentDetail(contentID string) (*ContentListItem, error) {
+func (s *ContentService) load_content_extension(content model.Content) (string, any, error) {
+	content_type := strings.ToLower(strings.TrimSpace(content.Type))
+	find := func(detail any) (any, error) {
+		if err := s.db.Where("id = ?", content.Id).First(detail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		return detail, nil
+	}
+
+	switch content_type {
+	case "video", "short_video":
+		var detail model.ContentVideo
+		if err := s.db.Where("id = ? AND deleted_at IS NULL", content.Id).First(&detail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return "content_video", nil, nil
+			}
+			return "content_video", nil, err
+		}
+		return "content_video", &detail, nil
+	case "image", "image_set", "album":
+		var detail model.ContentAlbum
+		if err := s.db.
+			Preload("Images", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("sort_order ASC, id ASC")
+			}).
+			Where("id = ?", content.Id).
+			First(&detail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return "content_album", nil, nil
+			}
+			return "content_album", nil, err
+		}
+		return "content_album", &detail, nil
+	case "audio", "music":
+		detail, err := find(&model.ContentAudio{})
+		return "content_audio", detail, err
+	case "article", "blog":
+		detail, err := find(&model.ContentArticle{})
+		return "content_article", detail, err
+	case "live":
+		detail, err := find(&model.ContentLive{})
+		return "content_live", detail, err
+	case "novel":
+		detail, err := find(&model.ContentNovel{})
+		return "content_novel", detail, err
+	case "podcast":
+		detail, err := find(&model.ContentPodcast{})
+		return "content_podcast", detail, err
+	case "document":
+		detail, err := find(&model.ContentDocument{})
+		return "content_document", detail, err
+	case "course":
+		detail, err := find(&model.ContentCourse{})
+		return "content_course", detail, err
+	case "comic":
+		detail, err := find(&model.ContentComic{})
+		return "content_comic", detail, err
+	case "post":
+		detail, err := find(&model.ContentPost{})
+		return "content_post", detail, err
+	default:
+		return "", nil, nil
+	}
+}
+
+func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
 
-	contentID = strings.TrimSpace(contentID)
-	if contentID == "" {
+	content_id = strings.TrimSpace(content_id)
+	if content_id == "" {
 		return nil, fmt.Errorf("content id is required")
 	}
 
 	var content model.Content
-	if err := s.db.Where("id = ?", contentID).First(&content).Error; err != nil {
+	if err := s.db.Where("id = ?", content_id).First(&content).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("content not found: %s", contentID)
+			return nil, fmt.Errorf("content not found: %s", content_id)
 		}
 		return nil, err
 	}
 
-	accountsByContentID, downloadTasksByContentID, resourcesByContentID, err := s.loadContentRelations([]string{content.Id})
+	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id})
 	if err != nil {
 		return nil, err
 	}
 
-	publishTime := int64(0)
+	publish_time := int64(0)
 	if content.PublishTime != nil {
-		publishTime = *content.PublishTime
+		publish_time = *content.PublishTime
 	}
-	accounts := accountsByContentID[content.Id]
+	accounts := accounts_by_content_id[content.Id]
 	if accounts == nil {
 		accounts = make([]ContentAccountRecord, 0)
 	}
-	downloadTasks := downloadTasksByContentID[content.Id]
-	if downloadTasks == nil {
-		downloadTasks = make([]ContentDownloadTaskRecord, 0)
+	download_tasks := download_tasks_by_content_id[content.Id]
+	if download_tasks == nil {
+		download_tasks = make([]ContentDownloadTaskRecord, 0)
 	}
-	resources := resourcesByContentID[content.Id]
+	resources := resources_by_content_id[content.Id]
 	if resources == nil {
 		resources = make([]ContentResourceRecord, 0)
 	}
+	detail_type, detail, err := s.load_content_extension(content)
+	if err != nil {
+		return nil, err
+	}
 
-	return &ContentListItem{
-		ID:            content.Id,
-		PlatformID:    content.PlatformId,
-		Type:          content.Type,
-		ExternalID:    content.ExternalId,
-		ExternalID2:   content.ExternalId2,
-		ExternalID3:   content.ExternalId3,
-		Title:         content.Title,
-		Description:   content.Description,
-		URL:           content.URL,
-		SourceURL:     content.SourceURL,
-		CoverURL:      content.CoverURL,
-		CoverWidth:    content.CoverWidth,
-		CoverHeight:   content.CoverHeight,
-		PublishTime:   publishTime,
-		Accounts:      accounts,
-		DownloadTasks: downloadTasks,
-		Resources:     resources,
+	return &ContentDetailItem{
+		ContentListItem: ContentListItem{
+			ID:            content.Id,
+			PlatformID:    content.PlatformId,
+			Type:          content.Type,
+			ExternalID:    content.ExternalId,
+			ExternalID2:   content.ExternalId2,
+			ExternalID3:   content.ExternalId3,
+			Title:         content.Title,
+			Description:   content.Description,
+			URL:           content.URL,
+			SourceURL:     content.SourceURL,
+			CoverURL:      content.CoverURL,
+			CoverWidth:    content.CoverWidth,
+			CoverHeight:   content.CoverHeight,
+			PublishTime:   publish_time,
+			Accounts:      accounts,
+			DownloadTasks: download_tasks,
+			Resources:     resources,
+		},
+		Content:    content,
+		DetailType: detail_type,
+		Detail:     detail,
 	}, nil
 }
 
@@ -524,7 +638,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		content_ids = append(content_ids, content.Id)
 	}
 
-	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.loadContentRelations(content_ids)
+	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations(content_ids)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +690,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	}, nil
 }
 
-func (s *ContentService) ListBrowseHistory(page, pageSize int) (*PageResult, error) {
+func (s *ContentService) ListBrowseHistory(page, page_size int) (*PageResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
@@ -585,14 +699,14 @@ func (s *ContentService) ListBrowseHistory(page, pageSize int) (*PageResult, err
 		return nil, err
 	}
 	var list []model.BrowseHistory
-	if err := s.db.Order("id DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&list).Error; err != nil {
+	if err := s.db.Order("id DESC").Limit(page_size).Offset((page - 1) * page_size).Find(&list).Error; err != nil {
 		return nil, err
 	}
 	return &PageResult{
 		List:     list,
 		Total:    total,
 		Page:     page,
-		PageSize: pageSize,
+		PageSize: page_size,
 	}, nil
 }
 

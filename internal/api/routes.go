@@ -24,6 +24,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/browsehistory", c.handle_browse_history_page)
 	c.engine.GET("/account", c.handle_account_page)
 	c.engine.GET("/content", c.handle_content_page)
+	c.engine.GET("/content/detail", c.handle_content_detail_page)
 	c.engine.GET("/logs", c.handle_logs_page)
 	c.engine.GET("/preview", c.handle_preview_page)
 	c.engine.GET("/channels", c.handle_channels_page)

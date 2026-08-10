@@ -180,6 +180,30 @@ function download_resource_metrics(file) {
   );
   return `${downloaded} / ${size} · ${speed} · ${progress.toFixed(2)}%`;
 }
+function download_task_file_path(file) {
+  if (!file || typeof file !== "object") {
+    return "";
+  }
+  const explicitPath = String(file.file_path || file.filepath || "").trim();
+  if (explicitPath) {
+    return explicitPath;
+  }
+  const downloadDir = String(file.download_dir || file.downloadDir || "").trim();
+  const name = String(file.name || "").trim();
+  if (!downloadDir) {
+    return name;
+  }
+  if (!name) {
+    return downloadDir;
+  }
+  const separator =
+    downloadDir.includes("\\") && !downloadDir.includes("/") ? "\\" : "/";
+  return (
+    downloadDir.replace(/[\\/]+$/, "") +
+    separator +
+    name.replace(/^[\\/]+/, "")
+  );
+}
 function is_download_waiting_status(status) {
   const normalized = normalize_download_status(status);
   return DOWNLOAD_WAITING_STATUS_KEYS.includes(normalized);
@@ -1818,17 +1842,18 @@ function DownloaderPanelViewModel(props = {}) {
           if (!file) {
             return {};
           }
+          const path = download_task_file_path(file);
           if (task.files.length > 1) {
             return {
               name: `${task.name} +${task.files.length}个文件`,
               filename: file.name,
-              path: file.file_path,
+              path,
             };
           }
           return {
             name: file.name,
             filename: file.name,
-            path: file.file_path,
+            path,
           };
         })(),
       };

@@ -236,13 +236,15 @@ function ContentCard(props) {
   const status = vm$.methods.downloadStatus(content.download_tasks);
   const description = String(content.description || "").trim();
   const showDescription = description && description !== content.title;
+  const detailHref = vm$.methods.detailHref(content);
   return View(
     {
-      class: ["wx-content-card", content.url ? "wx-content-card-clickable" : ""]
+      class: ["wx-content-card", detailHref ? "wx-content-card-clickable" : ""]
         .filter(Boolean)
         .join(" "),
+      attributes: detailHref ? { title: "查看内容详情" } : {},
       onClick() {
-        vm$.methods.openSource(content);
+        vm$.methods.openDetail(content);
       },
     },
     [
@@ -287,8 +289,8 @@ function ContentCard(props) {
                       vm$.methods.formatBytes(content.file_size),
                     ])
                   : null,
-                content.url
-                  ? Timeless.Icon({ name: "external-link", size: 15 })
+                detailHref
+                  ? Timeless.Icon({ name: "chevron-right", size: 15 })
                   : null,
               ].filter(Boolean),
             ),

@@ -119,7 +119,6 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		services.ContentResourceRecord
 		LocalPath string `json:"local_path"`
 		FileType  string `json:"file_type"`
-		FileURL   string `json:"file_url"`
 		Exists    bool   `json:"exists"`
 	}
 
@@ -135,7 +134,6 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 			ContentResourceRecord: r,
 			LocalPath:             local_path,
 			FileType:              file_type,
-			FileURL:               "/api/file?path=" + local_path,
 			Exists:                exists,
 		})
 	}
@@ -155,9 +153,12 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		"cover_width":    item.CoverWidth,
 		"cover_height":   item.CoverHeight,
 		"publish_time":   item.PublishTime,
+		"content":        item.Content,
 		"accounts":       item.Accounts,
 		"download_tasks": item.DownloadTasks,
 		"resources":      resources,
+		"detail_type":    item.DetailType,
+		"detail":         item.Detail,
 	})
 }
 

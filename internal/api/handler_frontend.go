@@ -33,6 +33,10 @@ func (c *APIClient) handle_content_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/content.html")
 }
 
+func (c *APIClient) handle_content_detail_page(ctx *gin.Context) {
+	c.renderFrontendFile(ctx, "inject/content_detail.html")
+}
+
 func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
 	c.renderFrontendFile(ctx, "inject/browsehistory.html")
 }
@@ -253,6 +257,7 @@ func shouldServeByAPI(path string) bool {
 		path == "/play" ||
 		path == "/preview" ||
 		path == "/content" ||
+		path == "/content/detail" ||
 		path == "/browsehistory" ||
 		path == "/account" ||
 		path == "/logs" ||

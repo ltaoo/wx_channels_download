@@ -132,7 +132,19 @@ var ContentLibraryModel = (() => {
     const source = content && typeof content === "object" ? content : {};
     const accounts = Array.isArray(source.accounts)
       ? source.accounts.map(normalize_content_account).filter(Boolean)
+      : Array.isArray(source.Accounts)
+        ? source.Accounts.map(normalize_content_account).filter(Boolean)
       : [];
+    const download_tasks = Array.isArray(source.download_tasks)
+      ? source.download_tasks
+      : Array.isArray(source.DownloadTasks)
+        ? source.DownloadTasks
+        : [];
+    const resources = Array.isArray(source.resources)
+      ? source.resources
+      : Array.isArray(source.Resources)
+        ? source.Resources
+        : [];
     return {
       ...source,
       id: first_non_empty(source.id, source.ID),
@@ -164,12 +176,16 @@ var ContentLibraryModel = (() => {
         source.Description,
       ),
       url: first_non_empty(
-        source.source_url,
-        source.SourceURL,
         source.url,
         source.URL,
         source.content_url,
         source.ContentURL,
+        source.source_url,
+        source.SourceURL,
+      ),
+      source_url: first_non_empty(
+        source.source_url,
+        source.SourceURL,
       ),
       cover_url: first_non_empty(
         source.cover_url,
@@ -177,7 +193,12 @@ var ContentLibraryModel = (() => {
         source.coverUrl,
       ),
       file_size: number_or_default(
-        first_non_empty(source.file_size, source.FileSize, source.size),
+        first_non_empty(
+          source.file_size,
+          source.FileSize,
+          source.size,
+          source.detail && source.detail.size,
+        ),
         0,
       ),
       publish_time: number_or_default(
@@ -193,6 +214,8 @@ var ContentLibraryModel = (() => {
         source.DownloadPath,
       ),
       error_msg: first_non_empty(source.error_msg, source.ErrorMsg),
+      download_tasks,
+      resources,
       accounts,
     };
   }
@@ -326,6 +349,120 @@ var ContentLibraryModel = (() => {
     return new Intl.NumberFormat("zh-CN").format(count);
   }
 
+  function content_detail_id_from_location() {
+    try {
+      return new URLSearchParams(window.location.search).get("id") || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function content_detail_href(content) {
+    const id = String(first_non_empty(content && content.id, content && content.ID)).trim();
+    if (!id) {
+      return "";
+    }
+    return `/content/detail?id=${encodeURIComponent(id)}`;
+  }
+
+  function content_source_url(content) {
+    return String(
+      first_non_empty(
+        content && content.source_url,
+        content && content.SourceURL,
+        content && content.url,
+        content && content.URL,
+      ),
+    ).trim();
+  }
+
+  function content_resource_file_url(resource) {
+    const local_path = String(
+      first_non_empty(
+        resource && resource.local_path,
+        resource && resource.LocalPath,
+        resource && resource.file_path,
+        resource && resource.FilePath,
+      ),
+    ).trim();
+    if (!local_path) {
+      return "";
+    }
+    try {
+      const url = new URL(
+        "/api/file",
+        content_api_origin || window.location.origin,
+      );
+      url.searchParams.set("path", local_path);
+      return url.toString();
+    } catch (_) {
+      return `/api/file?path=${encodeURIComponent(local_path)}`;
+    }
+  }
+
+  function normalize_content_task_status(status) {
+    const value = String(status ?? "").trim().toLowerCase();
+    if (value === "0" || value === "waiting") return "waiting";
+    if (value === "1" || value === "preparing") return "waiting";
+    if (value === "2" || value === "downloading") return "running";
+    if (value === "3" || value === "paused") return "paused";
+    if (value === "4" || value === "merging") return "running";
+    if (value === "5" || value === "finished") return "finished";
+    if (value === "6" || value === "failed") return "failed";
+    if (value === "7" || value === "cancelled" || value === "canceled") {
+      return "failed";
+    }
+    if (value === "pending" || value === "queued") return "waiting";
+    if (value === "completed" || value === "success" || value === "done") {
+      return "finished";
+    }
+    if (value === "fail" || value === "failure" || value === "error") {
+      return "failed";
+    }
+    return value || "waiting";
+  }
+
+  function content_task_status(status) {
+    const tone = normalize_content_task_status(status);
+    const labels = {
+      waiting: "等待中",
+      running: "下载中",
+      paused: "已暂停",
+      finished: "已完成",
+      failed: "失败",
+    };
+    return { label: labels[tone] || "等待中", tone: labels[tone] ? tone : "waiting" };
+  }
+
+  function content_resource_status(resource) {
+    if (resource && resource.exists) {
+      return { label: "已保存", tone: "finished" };
+    }
+    const status = String((resource && resource.status) ?? "").trim().toLowerCase();
+    if (status === "2" || status === "finished" || status === "done") {
+      return { label: "未找到文件", tone: "failed" };
+    }
+    if (status === "1" || status === "downloading" || status === "running") {
+      return { label: "下载中", tone: "running" };
+    }
+    return { label: "未保存", tone: "waiting" };
+  }
+
+  function content_file_type_icon(resource) {
+    const type = String(
+      first_non_empty(resource && resource.file_type, resource && resource.type),
+    ).toLowerCase();
+    const icons = {
+      image: "image",
+      video: "video",
+      audio: "music",
+      html: "file-code",
+      zip: "archive",
+      pdf: "file-text",
+    };
+    return icons[type] || "file";
+  }
+
   function create_model() {
     const PAGE_SIZE_DEFAULT = 24;
     const contents_ = refarr([]);
@@ -336,7 +473,12 @@ var ContentLibraryModel = (() => {
     const content_type_ = ref("");
     const loading_ = ref(false);
     const error_ = ref("");
+    const detail_id_ = ref(content_detail_id_from_location());
+    const detail_ = ref(null);
+    const detail_loading_ = ref(false);
+    const detail_error_ = ref("");
     let request_sequence = 0;
+    let detail_request_sequence = 0;
 
     const content_type_select_ = new Timeless.ui.SelectCore({
       defaultValue: "",
@@ -380,6 +522,19 @@ var ContentLibraryModel = (() => {
               page_size_.value,
             ),
           );
+        },
+      },
+    );
+
+    const detail_request = new Timeless.RequestCore(
+      (params) => content_request.get("/api/content/detail", params),
+      {
+        client: content_http_client,
+        process(response) {
+          if (response.error) {
+            return Timeless.Result.Err(response.error);
+          }
+          return Timeless.Result.Ok(normalize_content_item(response.data));
         },
       },
     );
@@ -442,9 +597,37 @@ var ContentLibraryModel = (() => {
       return result;
     }
 
+    async function load_detail(contentID = detail_id_.value) {
+      const id = String(contentID || "").trim();
+      if (!id) {
+        detail_.as(null);
+        detail_error_.as("缺少内容 ID");
+        return Timeless.Result.Err(new Error("缺少内容 ID"));
+      }
+
+      const sequence = ++detail_request_sequence;
+      detail_loading_.as(true);
+      detail_error_.as("");
+      const result = await detail_request.run({ id });
+      if (sequence !== detail_request_sequence) {
+        return result;
+      }
+      detail_loading_.as(false);
+      if (result.error) {
+        detail_.as(null);
+        detail_error_.as(result.error.message || String(result.error));
+        return result;
+      }
+      detail_.as(result.data);
+      return result;
+    }
+
     const methods = {
       ready() {
         return load(1);
+      },
+      readyDetail() {
+        return load_detail(detail_id_.value);
       },
       refresh() {
         return load(page_.value);
@@ -472,15 +655,42 @@ var ContentLibraryModel = (() => {
         }
         return load(page_.value + 1);
       },
-      openSource(content) {
-        if (!content || !content.url) {
+      openDetail(content) {
+        const href = content_detail_href(content);
+        if (!href) {
           return;
         }
-        window.open(content.url, "_blank", "noopener,noreferrer");
+        window.location.assign(href);
       },
+      backToList() {
+        window.location.assign("/content");
+      },
+      refreshDetail() {
+        return load_detail(detail_id_.value);
+      },
+      openSource(content) {
+        const url = content_source_url(content);
+        if (!url) {
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+      openResource(resource) {
+        const url = content_resource_file_url(resource);
+        if (!url) {
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+      detailHref: content_detail_href,
+      sourceURL: content_source_url,
+      resourceFileURL: content_resource_file_url,
       platformName: content_platform_name,
       typeLabel: content_type_label,
       downloadStatus: content_download_status,
+      taskStatus: content_task_status,
+      resourceStatus: content_resource_status,
+      fileTypeIcon: content_file_type_icon,
       formatTime: format_content_time,
       formatBytes: format_content_bytes,
       accountRoleLabel: content_account_role_label,
@@ -499,6 +709,10 @@ var ContentLibraryModel = (() => {
         content_type: content_type_,
         loading: loading_,
         error: error_,
+        detail_id: detail_id_,
+        detail: detail_,
+        detail_loading: detail_loading_,
+        detail_error: detail_error_,
       },
       ui: {
         content_type: content_type_select_,

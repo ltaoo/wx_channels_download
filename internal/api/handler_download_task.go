@@ -1995,7 +1995,7 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 			DownloadTaskFileRecord: f,
 			LocalPath:              local_path,
 			FileType:               file_type_by_ext(f.Name),
-			FileURL:                "/api/file?path=" + local_path,
+			FileURL:                api_file_url(local_path),
 			Exists:                 exists,
 		})
 	}
