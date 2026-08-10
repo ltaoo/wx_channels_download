@@ -19,13 +19,13 @@ import (
 )
 
 const (
-	defaultLogLimit    = 300
-	maxLogLimit        = 2000
-	defaultLogMaxBytes = 2 * 1024 * 1024
-	maxLogMaxBytes     = 10 * 1024 * 1024
+	default_log_limit     = 300
+	max_log_limit         = 2000
+	default_log_max_bytes = 2 * 1024 * 1024
+	max_log_max_bytes     = 10 * 1024 * 1024
 )
 
-type apiLogEntry struct {
+type api_log_entry struct {
 	Index     int                    `json:"index"`
 	File      string                 `json:"file"`
 	Component string                 `json:"component"`
@@ -38,7 +38,7 @@ type apiLogEntry struct {
 	Formatted string                 `json:"formatted,omitempty"`
 }
 
-type apiLogFileInfo struct {
+type api_log_file_info struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
@@ -51,25 +51,25 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	}
 
 	query := ctx.Request.URL.Query()
-	limit := boundedLogInt(query.Get("limit"), defaultLogLimit, 1, maxLogLimit)
-	maxBytes := boundedLogInt(query.Get("max_bytes"), defaultLogMaxBytes, 64*1024, maxLogMaxBytes)
+	limit := bounded_log_int(query.Get("limit"), default_log_limit, 1, max_log_limit)
+	max_bytes := bounded_log_int(query.Get("max_bytes"), default_log_max_bytes, 64*1024, max_log_max_bytes)
 	keyword := strings.ToLower(strings.TrimSpace(query.Get("keyword")))
-	sourceFilter := strings.ToLower(strings.TrimSpace(query.Get("source")))
-	levels := parseLogLevelFilter(query.Get("levels"))
-	formatJSON := parseLogBool(query.Get("format_json"))
+	source_filter := strings.ToLower(strings.TrimSpace(query.Get("source")))
+	levels := parse_log_level_filter(query.Get("levels"))
+	format_json := parse_log_bool(query.Get("format_json"))
 
-	files := c.discoverLogFiles()
-	entries := make([]apiLogEntry, 0, limit)
+	files := c.discover_log_files()
+	entries := make([]api_log_entry, 0, limit)
 	total := 0
 	seq := 0
 	for _, file := range files {
-		lines, err := tailLogLines(file.Path, maxBytes)
+		lines, err := tail_log_lines(file.Path, max_bytes)
 		if err != nil {
 			continue
 		}
 		for _, line := range lines {
-			entry := parseLogLine(file, line, formatJSON)
-			if !matchLogEntry(entry, levels, keyword, sourceFilter) {
+			entry := parse_log_line(file, line, format_json)
+			if !match_log_entry(entry, levels, keyword, source_filter) {
 				continue
 			}
 			seq++
@@ -102,29 +102,29 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	})
 }
 
-func (c *APIClient) discoverLogFiles() []apiLogFileInfo {
-	logPath := strings.TrimSpace(c.cfg.LogPath)
-	if logPath == "" && c.cfg.Original != nil {
-		logPath = strings.TrimSpace(c.cfg.Original.LogPath())
+func (c *APIClient) discover_log_files() []api_log_file_info {
+	log_path := strings.TrimSpace(c.cfg.LogPath)
+	if log_path == "" && c.cfg.Original != nil {
+		log_path = strings.TrimSpace(c.cfg.Original.LogPath())
 	}
-	if logPath == "" {
+	if log_path == "" {
 		return nil
 	}
-	if !filepath.IsAbs(logPath) && strings.TrimSpace(c.cfg.WorkDir) != "" {
-		logPath = filepath.Join(c.cfg.WorkDir, logPath)
+	if !filepath.IsAbs(log_path) && strings.TrimSpace(c.cfg.WorkDir) != "" {
+		log_path = filepath.Join(c.cfg.WorkDir, log_path)
 	}
-	info, err := os.Stat(logPath)
+	info, err := os.Stat(log_path)
 	if err != nil || info.IsDir() {
 		return nil
 	}
-	return []apiLogFileInfo{{
-		Name: filepath.Base(logPath),
-		Path: logPath,
+	return []api_log_file_info{{
+		Name: filepath.Base(log_path),
+		Path: log_path,
 		Size: info.Size(),
 	}}
 }
 
-func tailLogLines(path string, maxBytes int) ([]string, error) {
+func tail_log_lines(path string, max_bytes int) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -136,8 +136,8 @@ func tailLogLines(path string, maxBytes int) ([]string, error) {
 		return nil, err
 	}
 	start := int64(0)
-	if info.Size() > int64(maxBytes) {
-		start = info.Size() - int64(maxBytes)
+	if info.Size() > int64(max_bytes) {
+		start = info.Size() - int64(max_bytes)
 	}
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
 		return nil, err
@@ -162,9 +162,9 @@ func tailLogLines(path string, maxBytes int) ([]string, error) {
 	return lines, nil
 }
 
-func parseLogLine(file apiLogFileInfo, raw string, formatJSON bool) apiLogEntry {
-	entry := apiLogEntry{
-		Source:  sourceFromLogFile(file.Name),
+func parse_log_line(file api_log_file_info, raw string, format_json bool) api_log_entry {
+	entry := api_log_entry{
+		Source:  source_from_log_file(file.Name),
 		Level:   "info",
 		Message: raw,
 		Raw:     raw,
@@ -172,52 +172,52 @@ func parseLogLine(file apiLogFileInfo, raw string, formatJSON bool) apiLogEntry 
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &obj); err == nil {
 		entry.JSON = obj
-		if value := logStringField(obj, "time", "timestamp"); value != "" {
+		if value := log_string_field(obj, "time", "timestamp"); value != "" {
 			entry.Time = value
 		}
-		if value := logStringField(obj, "level"); value != "" {
+		if value := log_string_field(obj, "level"); value != "" {
 			entry.Level = strings.ToLower(value)
 		}
-		if value := logStringField(obj, "message", "msg"); value != "" {
+		if value := log_string_field(obj, "message", "msg"); value != "" {
 			entry.Message = value
 		}
-		if value := logStringField(obj, "file"); value != "" {
+		if value := log_string_field(obj, "file"); value != "" {
 			entry.File = value
 		}
-		if value := logStringField(obj, "component"); value != "" {
+		if value := log_string_field(obj, "component"); value != "" {
 			entry.Component = value
 		}
-		if value := logStringField(obj, "service", "component", "Client"); value != "" {
+		if value := log_string_field(obj, "service", "component", "Client"); value != "" {
 			entry.Source = value
 		}
-		if formatJSON {
+		if format_json {
 			if data, err := json.MarshalIndent(obj, "", "  "); err == nil {
 				entry.Formatted = string(data)
 			}
 		}
 		return entry
 	}
-	entry.Level = inferTextLogLevel(raw)
+	entry.Level = infer_text_log_level(raw)
 	return entry
 }
 
-func logStringField(obj map[string]interface{}, keys ...string) string {
+func log_string_field(obj map[string]interface{}, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := obj[key]; ok && value != nil {
-			return strings.TrimSpace(strings.Trim(strings.TrimSpace(logValueString(value)), `"`))
+			return strings.TrimSpace(strings.Trim(strings.TrimSpace(log_value_string(value)), `"`))
 		}
 	}
 	for _, key := range keys {
 		for actual, value := range obj {
 			if strings.EqualFold(actual, key) && value != nil {
-				return strings.TrimSpace(strings.Trim(strings.TrimSpace(logValueString(value)), `"`))
+				return strings.TrimSpace(strings.Trim(strings.TrimSpace(log_value_string(value)), `"`))
 			}
 		}
 	}
 	return ""
 }
 
-func logValueString(value interface{}) string {
+func log_value_string(value interface{}) string {
 	switch v := value.(type) {
 	case string:
 		return v
@@ -226,7 +226,7 @@ func logValueString(value interface{}) string {
 	}
 }
 
-func sourceFromLogFile(name string) string {
+func source_from_log_file(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 	if base == "app" {
 		return "app"
@@ -234,7 +234,7 @@ func sourceFromLogFile(name string) string {
 	return base
 }
 
-func inferTextLogLevel(raw string) string {
+func infer_text_log_level(raw string) string {
 	text := strings.ToLower(raw)
 	if strings.Contains(text, "error") || strings.Contains(text, "[error]") || strings.Contains(text, "失败") {
 		return "error"
@@ -248,7 +248,7 @@ func inferTextLogLevel(raw string) string {
 	return "info"
 }
 
-func parseLogLevelFilter(raw string) map[string]bool {
+func parse_log_level_filter(raw string) map[string]bool {
 	out := map[string]bool{}
 	for _, part := range strings.Split(raw, ",") {
 		level := strings.ToLower(strings.TrimSpace(part))
@@ -259,7 +259,7 @@ func parseLogLevelFilter(raw string) map[string]bool {
 	return out
 }
 
-func matchLogEntry(entry apiLogEntry, levels map[string]bool, keyword string, source string) bool {
+func match_log_entry(entry api_log_entry, levels map[string]bool, keyword string, source string) bool {
 	if len(levels) > 0 && !levels[strings.ToLower(entry.Level)] {
 		return false
 	}
@@ -277,7 +277,7 @@ func matchLogEntry(entry apiLogEntry, levels map[string]bool, keyword string, so
 	return strings.Contains(haystack, keyword)
 }
 
-func boundedLogInt(raw string, fallback int, min int, max int) int {
+func bounded_log_int(raw string, fallback int, min int, max int) int {
 	number, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil {
 		number = fallback
@@ -291,7 +291,7 @@ func boundedLogInt(raw string, fallback int, min int, max int) int {
 	return number
 }
 
-func parseLogBool(raw string) bool {
+func parse_log_bool(raw string) bool {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "1", "true", "yes", "on":
 		return true
