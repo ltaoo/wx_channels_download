@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gopeed Migration</title>
+  <script src="/assets/timeless/0.30.0/timeless.umd.min.js"></script>
+  <script src="/assets/timeless/0.30.0/timeless.dom.umd.min.js"></script>
+  <script src="/assets/timeless/0.30.0/timeless.web.umd.min.js"></script>
+  <script src="/assets/timeless/0.30.0/timeless.weui.umd.min.js"></script>
+  <script>
+    var APIOrigin = window.location.origin;
+    Timeless.HttpClientCore = Timeless.weui.kit.HttpClientCore;
+    Timeless.request_factory = Timeless.weui.kit.request_factory;
+    Timeless.RequestCore = Timeless.weui.kit.RequestCore;
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --wx-dl-page-card-width: 1440px;
+      --wx-dl-page-bg: #f5f7fb;
+      --wx-dl-page-surface: #ffffff;
+      --wx-dl-page-surface-muted: #f8fafc;
+      --wx-dl-page-text: #172033;
+      --wx-dl-page-muted: #64748b;
+      --wx-dl-page-border: #e2e8f0;
+      --wx-dl-page-primary: #2563eb;
+      --wx-dl-page-primary-soft: #eff6ff;
+      --wx-dl-page-danger: #dc2626;
+      --wx-dl-page-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --wx-dl-page-bg: #0f1115;
+        --wx-dl-page-surface: #181b21;
+        --wx-dl-page-surface-muted: #20242b;
+        --wx-dl-page-text: rgba(255, 255, 255, 0.9);
+        --wx-dl-page-muted: rgba(255, 255, 255, 0.56);
+        --wx-dl-page-border: rgba(255, 255, 255, 0.1);
+        --wx-dl-page-primary: #60a5fa;
+        --wx-dl-page-primary-soft: rgba(59, 130, 246, 0.14);
+        --wx-dl-page-danger: #f87171;
+        --wx-dl-page-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--wx-dl-page-bg);
+      color: var(--wx-dl-page-text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    button, input { font: inherit; }
+    .root { min-height: 100vh; display: flex; flex-direction: column; }
+    .topbar {
+      flex: 0 0 auto;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: color-mix(in srgb, var(--wx-dl-page-surface) 92%, transparent);
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+    }
+    .topbar-inner,
+    .statusbar-inner,
+    .main {
+      width: min(var(--wx-dl-page-card-width), 100%);
+      margin: 0 auto;
+      padding-left: 28px;
+      padding-right: 28px;
+    }
+    .topbar-inner {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand { min-width: 0; display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--wx-dl-page-primary);
+      background: var(--wx-dl-page-primary-soft);
+      font-size: 22px;
+      font-weight: 760;
+    }
+    .title { margin: 0; color: var(--wx-dl-page-text); font-size: 20px; line-height: 26px; font-weight: 720; }
+    .subtitle {
+      margin-top: 2px;
+      max-width: 860px;
+      overflow: hidden;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .actions { display: flex; align-items: center; gap: 8px; }
+    .btn {
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 7px;
+      background: var(--wx-dl-page-surface);
+      color: var(--wx-dl-page-text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
+      white-space: nowrap;
+    }
+    .btn:hover {
+      border-color: var(--wx-dl-page-primary);
+      background: var(--wx-dl-page-primary-soft);
+      color: var(--wx-dl-page-primary);
+    }
+    .btn:disabled { opacity: .48; cursor: not-allowed; }
+    .btn-primary {
+      border-color: var(--wx-dl-page-primary);
+      background: var(--wx-dl-page-primary);
+      color: #fff;
+      font-weight: 650;
+    }
+    .btn-primary:hover { color: #fff; }
+
+    .statusbar {
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface);
+    }
+    .statusbar-inner {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    .pathbar {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .path-input {
+      width: 100%;
+      min-width: 180px;
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 7px;
+      outline: none;
+      background: var(--wx-dl-page-surface-muted);
+      color: var(--wx-dl-page-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .path-input:focus { border-color: var(--wx-dl-page-primary); }
+    .counts {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 1px;
+    }
+    .count {
+      min-width: 76px;
+      min-height: 42px;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 8px;
+      background: var(--wx-dl-page-surface-muted);
+      color: var(--wx-dl-page-muted);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 5px 10px;
+      text-align: left;
+    }
+    .count.active,
+    .count:hover {
+      border-color: var(--wx-dl-page-primary);
+      background: var(--wx-dl-page-primary-soft);
+      color: var(--wx-dl-page-primary);
+    }
+    .count-label { font-size: 11px; line-height: 15px; }
+    .count-value { color: var(--wx-dl-page-text); font-weight: 720; line-height: 17px; }
+
+    .migration-panel {
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface);
+    }
+    .migration-inner {
+      width: min(var(--wx-dl-page-card-width), 100%);
+      margin: 0 auto;
+      padding: 12px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .migration-row {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .field {
+      min-width: 220px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+    }
+    .field-small {
+      min-width: 96px;
+      flex: 0 0 110px;
+    }
+    .target-input,
+    .limit-input {
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 7px;
+      outline: none;
+      background: var(--wx-dl-page-surface-muted);
+      color: var(--wx-dl-page-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .target-input:focus,
+    .limit-input:focus { border-color: var(--wx-dl-page-primary); }
+    .check-row {
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .migration-result {
+      display: none;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 8px;
+      background: var(--wx-dl-page-surface-muted);
+    }
+    .migration-summary {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .migration-result table { background: transparent; }
+
+    .main {
+      flex: 1;
+      min-height: 0;
+      padding-top: 24px;
+      padding-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+    }
+    .table-wrap {
+      flex: 1;
+      min-height: 460px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 10px;
+      background: var(--wx-dl-page-surface);
+      box-shadow: var(--wx-dl-page-shadow);
+    }
+    .table-head {
+      min-height: 44px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface-muted);
+    }
+    .table-title { font-weight: 680; }
+    .table-meta { color: var(--wx-dl-page-muted); font-size: 12px; }
+    .table-scroll { flex: 1; min-height: 0; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      height: 38px;
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface-muted);
+      color: var(--wx-dl-page-muted);
+      font-size: 11px;
+      font-weight: 680;
+      text-align: left;
+    }
+    td {
+      max-width: 420px;
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--wx-dl-page-text);
+      font-size: 12px;
+      vertical-align: top;
+    }
+    .task-id-cell { max-width: 210px; }
+    .task-name-cell { min-width: 300px; max-width: 520px; }
+    .task-labels-cell { min-width: 280px; max-width: 520px; }
+    .task-time-cell { min-width: 168px; max-width: 190px; color: var(--wx-dl-page-muted); }
+    .task-name-main {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--wx-dl-page-text);
+    }
+    .task-name-meta {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+    }
+    .task-name-meta .meta-item { font-variant-numeric: tabular-nums; }
+    .labels-json {
+      display: block;
+      max-height: 72px;
+      overflow: auto;
+      margin: 0;
+      color: var(--wx-dl-page-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .labels-toolbar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-end;
+      margin-bottom: 6px;
+    }
+    .btn-mini {
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      line-height: 22px;
+    }
+    tr:hover td { background: var(--wx-dl-page-surface-muted); }
+    .number { text-align: right; font-variant-numeric: tabular-nums; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-width: 62px;
+      justify-content: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 6px;
+      background: var(--wx-dl-page-primary-soft);
+      color: var(--wx-dl-page-primary);
+      font-weight: 650;
+    }
+    .status-done { color: #07c160; background: rgba(7, 193, 96, .12); }
+    .status-error { color: var(--wx-dl-page-danger); background: rgba(220, 38, 38, .1); }
+    .status-pause { color: #c48a00; background: rgba(196, 138, 0, .12); }
+    .pagination {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-top: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface);
+    }
+    .page-info { color: var(--wx-dl-page-muted); min-width: 120px; text-align: center; font-size: 12px; }
+    .empty {
+      flex: 1;
+      min-height: 360px;
+      display: grid;
+      place-items: center;
+      color: var(--wx-dl-page-muted);
+      text-align: center;
+      padding: 24px;
+    }
+    .empty-icon { font-size: 34px; margin-bottom: 8px; opacity: .58; }
+
+    .dialog-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, .48);
+      padding: 18px;
+    }
+    .dialog {
+      width: 760px;
+      max-width: 100%;
+      max-height: min(760px, 86vh);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 10px;
+      background: var(--wx-dl-page-surface);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .36);
+    }
+    .dialog-header,
+    .dialog-footer {
+      flex: 0 0 auto;
+      min-height: 50px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+    }
+    .dialog-footer { border-top: 1px solid var(--wx-dl-page-border); border-bottom: 0; justify-content: flex-end; }
+    .dialog-title { font-weight: 680; }
+    .dialog-close {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--wx-dl-page-muted);
+      cursor: pointer;
+      font-size: 20px;
+    }
+    .dialog-close:hover { background: var(--wx-dl-page-surface-muted); color: var(--wx-dl-page-text); }
+    .detail-json {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      margin: 0;
+      padding: 14px;
+      color: var(--wx-dl-page-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .breadcrumb {
+      flex: 0 0 auto;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+    }
+    .crumb {
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--wx-dl-page-primary);
+      cursor: pointer;
+      padding: 3px 6px;
+      white-space: nowrap;
+    }
+    .crumb:hover { background: var(--wx-dl-page-primary-soft); }
+    .file-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+    .file-row {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) 90px 132px;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .file-row:hover,
+    .file-row.selected { background: var(--wx-dl-page-primary-soft); }
+    .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size,
+    .file-time { color: var(--wx-dl-page-muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 2000;
+      max-width: min(640px, calc(100vw - 32px));
+      padding: 10px 14px;
+      border: 1px solid var(--wx-dl-page-border);
+      border-radius: 8px;
+      background: var(--wx-dl-page-surface);
+      color: var(--wx-dl-page-text);
+      box-shadow: 0 10px 34px rgba(0, 0, 0, .28);
+      font-size: 13px;
+    }
+    .toast.error { border-color: var(--wx-dl-page-danger); color: var(--wx-dl-page-danger); }
+
+    @media (max-width: 760px) {
+      .topbar-inner,
+      .statusbar-inner,
+      .main { padding-left: 16px; padding-right: 16px; }
+      .topbar-inner { align-items: flex-start; flex-direction: column; padding-top: 14px; padding-bottom: 14px; }
+      .statusbar-inner { align-items: stretch; flex-direction: column; }
+      .pathbar { flex-wrap: wrap; }
+      .path-input { flex-basis: 100%; }
+      .counts { width: 100%; }
+      .migration-inner { padding-left: 16px; padding-right: 16px; }
+      .field,
+      .field-small { flex: 1 1 100%; }
+      .actions { width: 100%; overflow-x: auto; }
+      .file-row { grid-template-columns: 30px minmax(0, 1fr) 74px; }
+      .file-time { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="root">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-icon">G</div>
+          <div class="heading">
+            <h1 class="title">Gopeed 任务迁移预览</h1>
+            <div class="subtitle" id="subtitle">选择 gopeed.db 或其所在目录，读取旧下载任务列表</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btn-refresh">刷新</button>
+          <button class="btn" id="btn-export-json" disabled>导出 JSON</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="statusbar">
+      <div class="statusbar-inner">
+        <div class="pathbar">
+          <input class="path-input" id="path-input" type="text" placeholder="包含 gopeed.db 的目录，或 gopeed.db 文件路径" />
+          <button class="btn" id="btn-browse">浏览</button>
+          <button class="btn btn-primary" id="btn-load">加载</button>
+        </div>
+        <div class="counts" id="counts"></div>
+      </div>
+    </section>
+
+    <section class="migration-panel">
+      <div class="migration-inner">
+        <div class="migration-row">
+          <label class="field">
+            <span>目标服务</span>
+            <input class="target-input" id="target-url" type="text" value="http://127.0.0.1:2022" />
+          </label>
+          <label class="field">
+            <span>目标数据库</span>
+            <input class="target-input" id="target-db" type="text" placeholder="wx_channels_download data.db 路径" />
+          </label>
+          <label class="field field-small">
+            <span>数量</span>
+            <input class="limit-input" id="migration-limit" type="number" min="0" step="1" placeholder="全部" />
+          </label>
+          <label class="check-row">
+            <input id="migration-dry-run" type="checkbox" checked />
+            <span>dry-run</span>
+          </label>
+          <label class="check-row">
+            <input id="migration-allow-missing" type="checkbox" />
+            <span>允许缺失文件</span>
+          </label>
+          <button class="btn" id="btn-migration-preview" type="button">预览迁移</button>
+          <button class="btn btn-primary" id="btn-migration-execute" type="button">执行迁移</button>
+        </div>
+        <div class="migration-result" id="migration-result"></div>
+      </div>
+    </section>
+
+    <main class="main">
+      <section class="table-wrap">
+        <div class="table-head">
+          <div class="table-title" id="table-title">task</div>
+          <div class="table-meta" id="table-meta">未加载</div>
+        </div>
+        <div class="table-scroll" id="table-scroll">
+          <div class="empty" id="empty">
+            <div>
+              <div class="empty-icon">↓</div>
+              <div>加载 gopeed.db 后查看任务</div>
+            </div>
+          </div>
+          <table id="task-table" style="display:none"></table>
+        </div>
+        <div class="pagination">
+          <button class="btn" id="btn-prev" disabled>上一页</button>
+          <span class="page-info" id="page-info">1 / 1</span>
+          <button class="btn" id="btn-next" disabled>下一页</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const $ = (selector) => document.querySelector(selector);
+      const http_client = new Timeless.HttpClientCore({
+        headers: { "Content-Type": "application/json" },
+        hostname: APIOrigin,
+      });
+      Timeless.web.provide_http_client(http_client);
+      const request = Timeless.request_factory({
+        headers: { "Content-Type": "application/json" },
+        process(r) {
+          if (r.error) {
+            return Timeless.Result.Err(r.error);
+          }
+          const { code, msg, data } = r.data;
+          if (code !== 0) {
+            return Timeless.Result.Err(msg, code, data);
+          }
+          return Timeless.Result.Ok(data);
+        },
+      });
+      const api_requests = {
+        table: new Timeless.RequestCore(
+          (body) => request.post("/api/v1/migration/table", body),
+          { client: http_client },
+        ),
+        commonDirs: new Timeless.RequestCore(
+          () => request.get("/api/v1/migration/common_dirs"),
+          { client: http_client },
+        ),
+        fileList: new Timeless.RequestCore(
+          (body) => request.post("/api/v1/fs/list", body),
+          { client: http_client },
+        ),
+        execute: new Timeless.RequestCore(
+          (body) => request.post("/api/v1/migration/execute", body),
+          { client: http_client },
+        ),
+        profile: new Timeless.RequestCore(
+          (query) => request.get("/api/channels/feed/profile?" + new URLSearchParams(query).toString()),
+          { client: http_client },
+        ),
+      };
+      const pathInput = $("#path-input");
+      const targetInput = $("#target-url");
+      const targetDBInput = $("#target-db");
+      const migrationLimit = $("#migration-limit");
+      const migrationDryRun = $("#migration-dry-run");
+      const migrationAllowMissing = $("#migration-allow-missing");
+      const migrationResult = $("#migration-result");
+      const counts = $("#counts");
+      const table = $("#task-table");
+      const empty = $("#empty");
+      const tableMeta = $("#table-meta");
+      const subtitle = $("#subtitle");
+      const btnLoad = $("#btn-load");
+      const btnRefresh = $("#btn-refresh");
+      const btnExport = $("#btn-export-json");
+      const btnMigrationPreview = $("#btn-migration-preview");
+      const btnMigrationExecute = $("#btn-migration-execute");
+      const btnPrev = $("#btn-prev");
+      const btnNext = $("#btn-next");
+      const pageInfo = $("#page-info");
+      const pageSize = 100;
+      const statusItems = [
+        ["all", "全部"],
+        ["running", "下载中"],
+        ["pause", "暂停"],
+        ["wait", "等待中"],
+        ["done", "已完成"],
+        ["error", "失败"],
+      ];
+      let state = {
+        dataDir: "",
+        dbPath: "",
+        status: "all",
+        page: 1,
+        totalPages: 1,
+        columns: [],
+        rows: [],
+        total: 0,
+        stats: { total: 0 },
+      };
+
+      function toast(message, isError) {
+        const el = document.createElement("div");
+        el.className = "toast" + (isError ? " error" : "");
+        el.textContent = message;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2600);
+      }
+
+      function errorMessage(err) {
+        if (!err) return "请求失败";
+        return err.message || String(err);
+      }
+
+      function escapeHtml(value) {
+        if (value === null || value === undefined) return "";
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function formatSize(bytes) {
+        const value = Number(bytes) || 0;
+        if (value < 1024) return value + " B";
+        const units = ["KB", "MB", "GB", "TB"];
+        let n = value / 1024;
+        let i = 0;
+        while (n >= 1024 && i < units.length - 1) {
+          n = n / 1024;
+          i += 1;
+        }
+        return n.toFixed(1) + " " + units[i];
+      }
+
+      function formatProgress(value) {
+        return Number(value || 0).toFixed(2) + "%";
+      }
+
+      function statusText(status) {
+        const map = {
+          ready: "就绪",
+          running: "下载中",
+          pause: "暂停",
+          wait: "等待中",
+          error: "失败",
+          done: "已完成",
+        };
+        return map[status] || status || "";
+      }
+
+      function stringifyLabels(labels) {
+        if (!labels || typeof labels !== "object") {
+          return "";
+        }
+        try {
+          return JSON.stringify(labels, null, 2);
+        } catch (_) {
+          return String(labels);
+        }
+      }
+
+      function firstLabelValue(labels, keys) {
+        if (!labels || typeof labels !== "object") {
+          return "";
+        }
+        for (const key of keys) {
+          const value = labels[key];
+          if (value !== undefined && value !== null && String(value).trim() !== "") {
+            return String(value).trim();
+          }
+        }
+        return "";
+      }
+
+      function rowOID(row) {
+        return String(row.oid || "").trim() ||
+          firstLabelValue(row.labels, ["oid", "id", "external_id", "objectid", "object_id"]);
+      }
+
+      function rowUID(row) {
+        return String(row.uid || "").trim() ||
+          firstLabelValue(row.labels, ["uid", "nid", "nonce_id", "objectNonceId", "object_nonce_id"]);
+      }
+
+      function rowCacheKey(row) {
+        return firstLabelValue(row.labels, ["id", "oid", "external_id", "objectid", "object_id"]) ||
+          rowOID(row);
+      }
+
+      function showProfileDialog(row, data) {
+        const old = document.querySelector(".dialog-overlay");
+        if (old) old.remove();
+        const overlay = document.createElement("div");
+        const body = JSON.stringify(data || {}, null, 2);
+        overlay.className = "dialog-overlay";
+        overlay.innerHTML =
+          '<div class="dialog">' +
+            '<div class="dialog-header">' +
+              '<span class="dialog-title">详情 · ' + escapeHtml(row.title || row.name || row.id) + '</span>' +
+              '<button class="dialog-close" type="button">&times;</button>' +
+            '</div>' +
+            '<pre class="detail-json">' + escapeHtml(body) + '</pre>' +
+            '<div class="dialog-footer">' +
+              '<button class="btn" id="profile-close" type="button">关闭</button>' +
+            '</div>' +
+          '</div>';
+        const close = () => {
+          overlay.remove();
+          document.removeEventListener("keydown", onKey);
+        };
+        const onKey = (event) => {
+          if (event.key === "Escape") close();
+        };
+        document.body.appendChild(overlay);
+        overlay.querySelector(".dialog-close").onclick = close;
+        overlay.querySelector("#profile-close").onclick = close;
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) close();
+        });
+        document.addEventListener("keydown", onKey);
+      }
+
+      async function showProfileDetail(row, button) {
+        const oid = rowOID(row);
+        const uid = rowUID(row);
+        if (!oid) {
+          toast("缺少 oid", true);
+          return;
+        }
+        const original = button.textContent;
+        button.disabled = true;
+        button.textContent = "读取中";
+        try {
+          localStorage.setItem("gopeed_migration_target_url", targetInput.value.trim());
+          const data = await runRequest(api_requests.profile, {
+            oid,
+            uid,
+            nid: uid,
+            nonce_id: uid,
+            cache_key: rowCacheKey(row),
+            data_dir: pathInput.value.trim(),
+            target_url: targetInput.value.trim(),
+          });
+          showProfileDialog(row, data);
+        } catch (err) {
+          toast(errorMessage(err), true);
+        } finally {
+          button.disabled = false;
+          button.textContent = original;
+        }
+      }
+
+      async function executeSingleMigration(row, button) {
+        if (!row || !row.id) {
+          toast("缺少 task id", true);
+          return;
+        }
+        const ok = window.confirm("确认迁移这一条记录？该操作会直接写入目标数据库，不会启动下载。");
+        if (!ok) return;
+        const original = button.textContent;
+        button.disabled = true;
+        button.textContent = "迁移中";
+        try {
+          localStorage.setItem("gopeed_migration_target_url", targetInput.value.trim());
+          localStorage.setItem("gopeed_migration_target_db", targetDBInput.value.trim());
+          const data = await runRequest(api_requests.execute, {
+            data_dir: pathInput.value.trim(),
+            status: "all",
+            target_url: targetInput.value.trim(),
+            target_db: targetDBInput.value.trim(),
+            limit: 1,
+            dry_run: false,
+            allow_missing: migrationAllowMissing.checked,
+            task_ids: [String(row.id)],
+          });
+          renderMigrationResult(data);
+          toast("单条迁移完成", false);
+          loadTasks(state.page);
+        } catch (err) {
+          toast(errorMessage(err), true);
+        } finally {
+          button.disabled = false;
+          button.textContent = original;
+        }
+      }
+
+      async function runRequest(requestCore, params) {
+        const result = await requestCore.run(params);
+        if (result.error) {
+          throw result.error;
+        }
+        return result.data || {};
+      }
+
+      async function loadTasks(page) {
+        const input = pathInput.value.trim();
+        btnLoad.disabled = true;
+        btnLoad.textContent = "加载中";
+        try {
+          const data = await runRequest(api_requests.table, {
+            data_dir: input,
+            table: "task",
+            status: state.status,
+            page: page || state.page,
+            page_size: pageSize,
+          });
+          state = Object.assign({}, state, data);
+          state.page = data.page || 1;
+          state.totalPages = data.total_pages || 1;
+          pathInput.value = data.data_dir || input;
+          localStorage.setItem("gopeed_migration_path", pathInput.value);
+          renderCounts();
+          renderTable();
+          btnExport.disabled = !state.total;
+          subtitle.textContent = data.db_path || data.data_dir || "";
+        } catch (err) {
+          toast(errorMessage(err), true);
+        } finally {
+          btnLoad.disabled = false;
+          btnLoad.textContent = "加载";
+        }
+      }
+
+      function renderCounts() {
+        const stats = state.stats || {};
+        counts.innerHTML = statusItems.map(([key, label]) => {
+          const value = stats[key === "all" ? "total" : key] || 0;
+          return '<button class="count ' + (state.status === key ? "active" : "") + '" data-status="' + key + '">' +
+            '<span class="count-label">' + label + '</span>' +
+            '<span class="count-value">' + value.toLocaleString() + '</span>' +
+          '</button>';
+        }).join("");
+        counts.querySelectorAll(".count").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.status = el.dataset.status || "all";
+            state.page = 1;
+            loadTasks(1);
+          });
+        });
+      }
+
+      function renderTable() {
+        const rows = state.rows || [];
+        tableMeta.textContent = state.total.toLocaleString() + " 条 · 第 " + state.page + " / " + state.totalPages + " 页";
+        pageInfo.textContent = state.page + " / " + state.totalPages;
+        btnPrev.disabled = state.page <= 1;
+        btnNext.disabled = state.page >= state.totalPages;
+        if (!rows.length) {
+          empty.style.display = "grid";
+          table.style.display = "none";
+          table.innerHTML = "";
+          return;
+        }
+        empty.style.display = "none";
+        table.style.display = "table";
+        table.innerHTML = '<thead><tr>' +
+          '<th>id</th>' +
+          '<th>name / status</th>' +
+          '<th>labels</th>' +
+          '<th>创建时间</th>' +
+          '<th>更新时间</th>' +
+        '</tr></thead><tbody>' + rows.map((row, index) => {
+          const status = String(row.status || "");
+          const labels = stringifyLabels(row.labels);
+          return "<tr>" +
+            '<td class="task-id-cell" title="' + escapeHtml(row.id) + '">' + escapeHtml(row.id) + "</td>" +
+            '<td class="task-name-cell" title="' + escapeHtml(row.name) + '">' +
+              '<div class="task-name-main">' + escapeHtml(row.name) + '</div>' +
+              '<div class="task-name-meta">' +
+                '<span class="status-pill status-' + escapeHtml(status) + '">' + escapeHtml(statusText(status)) + '</span>' +
+                '<span class="meta-item">size ' + escapeHtml(formatSize(row.size)) + '</span>' +
+                '<span class="meta-item">downloaded ' + escapeHtml(formatSize(row.downloaded)) + '</span>' +
+                '<span class="meta-item">progress ' + escapeHtml(formatProgress(row.progress)) + '</span>' +
+              '</div>' +
+            '</td>' +
+            '<td class="task-labels-cell" title="' + escapeHtml(labels) + '">' +
+              '<div class="labels-toolbar">' +
+                '<button class="btn btn-mini profile-detail-btn" type="button" data-row-index="' + index + '">详情</button>' +
+                '<button class="btn btn-mini migrate-row-btn" type="button" data-row-index="' + index + '">迁移</button>' +
+              '</div>' +
+              '<pre class="labels-json">' + escapeHtml(labels) + '</pre>' +
+            '</td>' +
+            '<td class="task-time-cell" title="' + escapeHtml(row.created_at) + '">' + escapeHtml(row.created_at) + '</td>' +
+            '<td class="task-time-cell" title="' + escapeHtml(row.updated_at) + '">' + escapeHtml(row.updated_at) + '</td>' +
+          "</tr>";
+        }).join("") + "</tbody>";
+        table.querySelectorAll(".profile-detail-btn").forEach((button) => {
+          button.addEventListener("click", () => {
+            const index = Number(button.dataset.rowIndex || -1);
+            const row = rows[index];
+            if (row) showProfileDetail(row, button);
+          });
+        });
+        table.querySelectorAll(".migrate-row-btn").forEach((button) => {
+          button.addEventListener("click", () => {
+            const index = Number(button.dataset.rowIndex || -1);
+            const row = rows[index];
+            if (row) executeSingleMigration(row, button);
+          });
+        });
+      }
+
+      async function loadCommonDirs() {
+        try {
+          const data = await runRequest(api_requests.commonDirs);
+          const dirs = data.dirs || [];
+          const saved = localStorage.getItem("gopeed_migration_path");
+          const savedTarget = localStorage.getItem("gopeed_migration_target_url");
+          const savedTargetDB = localStorage.getItem("gopeed_migration_target_db");
+          pathInput.value = saved || data.default_data_dir || dirs[0] || "";
+          targetInput.value = savedTarget || data.target_url || targetInput.value;
+          targetDBInput.value = savedTargetDB || data.target_db || targetDBInput.value;
+        } catch (err) {
+          toast(errorMessage(err), true);
+        }
+      }
+
+      function exportJSON() {
+        runRequest(api_requests.table, {
+          data_dir: pathInput.value.trim(),
+          table: "task",
+          status: state.status,
+          page: 1,
+          page_size: 1000,
+        }).then((data) => {
+          const rows = data.rows || [];
+          const totalPages = data.total_pages || 1;
+          const jobs = [];
+          for (let page = 2; page <= totalPages; page += 1) {
+            jobs.push(runRequest(api_requests.table, {
+              data_dir: pathInput.value.trim(),
+              table: "task",
+              status: state.status,
+              page,
+              page_size: 1000,
+            }));
+          }
+          return Promise.all(jobs).then((pages) => {
+            pages.forEach((pageData) => rows.push.apply(rows, pageData.rows || []));
+            return rows;
+          });
+        }).then((rows) => {
+          const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "gopeed_tasks.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }).catch((err) => toast(errorMessage(err), true));
+      }
+
+      async function executeMigration(forceDryRun) {
+        const dryRun = typeof forceDryRun === "boolean" ? forceDryRun : migrationDryRun.checked;
+        if (!dryRun) {
+          const ok = window.confirm("确认写入目标数据库？该操作会直接创建迁移记录，不会启动下载。");
+          if (!ok) return;
+        }
+        const limit = Number(migrationLimit.value || 0);
+        btnMigrationPreview.disabled = true;
+        btnMigrationExecute.disabled = true;
+        btnMigrationPreview.textContent = dryRun ? "预览中" : "处理中";
+        btnMigrationExecute.textContent = "执行迁移";
+        try {
+          localStorage.setItem("gopeed_migration_target_url", targetInput.value.trim());
+          localStorage.setItem("gopeed_migration_target_db", targetDBInput.value.trim());
+          const data = await runRequest(api_requests.execute, {
+            data_dir: pathInput.value.trim(),
+            status: state.status,
+            target_url: targetInput.value.trim(),
+            target_db: targetDBInput.value.trim(),
+            limit: Number.isFinite(limit) ? limit : 0,
+            dry_run: dryRun,
+            allow_missing: migrationAllowMissing.checked,
+          });
+          renderMigrationResult(data);
+          toast(dryRun ? "迁移预览完成" : "迁移执行完成", false);
+          if (!dryRun) {
+            loadTasks(state.page);
+          }
+        } catch (err) {
+          toast(errorMessage(err), true);
+        } finally {
+          btnMigrationPreview.disabled = false;
+          btnMigrationExecute.disabled = false;
+          btnMigrationPreview.textContent = "预览迁移";
+          btnMigrationExecute.textContent = "执行迁移";
+        }
+      }
+
+      function renderMigrationResult(data) {
+        const items = data.items || [];
+        migrationResult.style.display = "block";
+        const rows = items.slice(0, 100).map((item) => {
+          const ok = item.action === "migrated" || item.action === "dry_run";
+          const status = ok
+            ? '<span class="status-pill status-done">' + escapeHtml(item.action) + '</span>'
+            : '<span class="status-pill status-error">' + escapeHtml(item.action || "failed") + '</span>';
+          return "<tr>" +
+            "<td>" + status + "</td>" +
+            '<td title="' + escapeHtml(item.task_id) + '">' + escapeHtml(item.task_id) + "</td>" +
+            '<td title="' + escapeHtml(item.name) + '">' + escapeHtml(item.name) + "</td>" +
+            '<td title="' + escapeHtml(item.oid) + '">' + escapeHtml(item.oid) + "</td>" +
+            '<td title="' + escapeHtml(item.uid) + '">' + escapeHtml(item.uid) + "</td>" +
+            '<td title="' + escapeHtml(item.save_path) + '">' + escapeHtml(item.save_path) + "</td>" +
+            '<td title="' + escapeHtml(item.error) + '">' + escapeHtml(item.error || item.target_id || (item.profile_cache_hit ? "profile cache" : "")) + "</td>" +
+          "</tr>";
+        }).join("");
+        migrationResult.innerHTML =
+          '<div class="migration-summary">' +
+            '<span>目标: ' + escapeHtml(data.target_url || "") + '</span>' +
+            '<span>目标库: ' + escapeHtml(data.target_db || "") + '</span>' +
+            '<span>总数: ' + Number(data.total || 0).toLocaleString() + '</span>' +
+            '<span>成功: ' + Number(data.success || 0).toLocaleString() + '</span>' +
+            '<span>跳过: ' + Number(data.skipped || 0).toLocaleString() + '</span>' +
+            '<span>失败: ' + Number(data.failed || 0).toLocaleString() + '</span>' +
+            '<span>' + (data.dry_run ? "dry-run" : "write") + '</span>' +
+          '</div>' +
+          '<table><thead><tr>' +
+            '<th>动作</th><th>Task ID</th><th>名称</th><th>oid</th><th>uid</th><th>文件</th><th>结果</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table>';
+      }
+
+      let pickerResolve = null;
+      let pickerDir = "";
+      let selectedPath = "";
+
+      function showPicker() {
+        return new Promise((resolve) => {
+          pickerResolve = resolve;
+          pickerDir = pathInput.value.trim() || "/";
+          renderPicker();
+        });
+      }
+
+      function closePicker(value) {
+        const overlay = document.querySelector(".dialog-overlay");
+        if (overlay) overlay.remove();
+        document.removeEventListener("keydown", onPickerKey);
+        if (pickerResolve) {
+          pickerResolve(value || null);
+          pickerResolve = null;
+        }
+      }
+
+      function onPickerKey(event) {
+        if (event.key === "Escape") closePicker(null);
+      }
+
+      function renderPicker() {
+        const old = document.querySelector(".dialog-overlay");
+        if (old) old.remove();
+        const overlay = document.createElement("div");
+        overlay.className = "dialog-overlay";
+        overlay.innerHTML =
+          '<div class="dialog">' +
+            '<div class="dialog-header">' +
+              '<span class="dialog-title">选择 gopeed.db 或目录</span>' +
+              '<button class="dialog-close" type="button">&times;</button>' +
+            '</div>' +
+            '<div class="breadcrumb" id="breadcrumb"></div>' +
+            '<div class="file-list" id="file-list"><div class="empty">读取中</div></div>' +
+            '<div class="dialog-footer">' +
+              '<button class="btn" id="picker-cancel" type="button">取消</button>' +
+              '<button class="btn btn-primary" id="picker-select" type="button">选择当前目录</button>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector(".dialog-close").onclick = () => closePicker(null);
+        overlay.querySelector("#picker-cancel").onclick = () => closePicker(null);
+        overlay.querySelector("#picker-select").onclick = () => closePicker(selectedPath || pickerDir);
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) closePicker(null);
+        });
+        document.addEventListener("keydown", onPickerKey);
+        loadPickerDir(pickerDir);
+      }
+
+      function dirName(p) {
+        const clean = String(p || "/").replace(/[\\/]+$/, "");
+        const index = Math.max(clean.lastIndexOf("/"), clean.lastIndexOf("\\"));
+        if (index <= 0) return "/";
+        return clean.slice(0, index);
+      }
+
+      function renderBreadcrumb(dir) {
+        const breadcrumb = $("#breadcrumb");
+        if (!breadcrumb) return;
+        const sep = dir.indexOf("\\") >= 0 ? "\\" : "/";
+        const parts = dir.split(/[\\/]/).filter(Boolean);
+        let acc = dir.startsWith("/") ? "" : "";
+        let html = '<button class="crumb" data-dir="/">/</button>';
+        parts.forEach((part) => {
+          acc += sep + part;
+          html += '<span>/</span><button class="crumb" data-dir="' + escapeHtml(acc) + '">' + escapeHtml(part) + "</button>";
+        });
+        breadcrumb.innerHTML = html;
+        breadcrumb.querySelectorAll(".crumb").forEach((el) => {
+          el.addEventListener("click", () => loadPickerDir(el.dataset.dir || "/"));
+        });
+      }
+
+      async function loadPickerDir(dir) {
+        const list = $("#file-list");
+        if (!list) return;
+        list.innerHTML = '<div class="empty">读取中</div>';
+        try {
+          const data = await runRequest(api_requests.fileList, { dir });
+          pickerDir = data.dir || dir;
+          selectedPath = pickerDir;
+          renderBreadcrumb(pickerDir);
+          renderFiles(data.files || []);
+        } catch (err) {
+          list.innerHTML = '<div class="empty">' + escapeHtml(err.message) + "</div>";
+        }
+      }
+
+      function renderFiles(files) {
+        const list = $("#file-list");
+        if (!list) return;
+        let html = "";
+        const parent = dirName(pickerDir);
+        if (parent && parent !== pickerDir) {
+          html += '<div class="file-row" data-path="' + escapeHtml(parent) + '" data-dir="true"><span>↑</span><span class="file-name">..</span><span></span><span></span></div>';
+        }
+        html += files.map((file) => {
+          const icon = file.isDir ? "▣" : "□";
+          return '<div class="file-row" data-path="' + escapeHtml(file.path) + '" data-dir="' + file.isDir + '">' +
+            '<span>' + icon + '</span>' +
+            '<span class="file-name">' + escapeHtml(file.name) + '</span>' +
+            '<span class="file-size">' + (file.isDir ? "" : escapeHtml(formatSize(file.size))) + '</span>' +
+            '<span class="file-time">' + escapeHtml(file.modTime || "") + '</span>' +
+          '</div>';
+        }).join("");
+        list.innerHTML = html || '<div class="empty">空目录</div>';
+        list.querySelectorAll(".file-row").forEach((row) => {
+          row.addEventListener("click", () => {
+            list.querySelectorAll(".selected").forEach((el) => el.classList.remove("selected"));
+            row.classList.add("selected");
+            selectedPath = row.dataset.path || pickerDir;
+          });
+          row.addEventListener("dblclick", () => {
+            if (row.dataset.dir === "true") {
+              loadPickerDir(row.dataset.path);
+            } else {
+              closePicker(row.dataset.path);
+            }
+          });
+        });
+      }
+
+      btnLoad.addEventListener("click", () => loadTasks(1));
+      btnRefresh.addEventListener("click", () => loadTasks(state.page));
+      btnExport.addEventListener("click", exportJSON);
+      btnMigrationPreview.addEventListener("click", () => executeMigration(true));
+      btnMigrationExecute.addEventListener("click", () => executeMigration(false));
+      btnPrev.addEventListener("click", () => {
+        if (state.page > 1) loadTasks(state.page - 1);
+      });
+      btnNext.addEventListener("click", () => {
+        if (state.page < state.totalPages) loadTasks(state.page + 1);
+      });
+      $("#btn-browse").addEventListener("click", async () => {
+        const selected = await showPicker();
+        if (selected) {
+          pathInput.value = selected;
+          loadTasks(1);
+        }
+      });
+      pathInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadTasks(1);
+      });
+
+      renderCounts();
+      loadCommonDirs();
+    })();
+  </script>
+</body>
+
+</html>
