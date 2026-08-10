@@ -85,6 +85,7 @@ replace (
 	golang.org/x/sys => golang.org/x/sys v0.22.0
 	golang.org/x/term => golang.org/x/term v0.14.0
 	golang.org/x/text => golang.org/x/text v0.14.0
+	golang.org/x/time => golang.org/x/time v0.7.0
 )
 
 // Downgrade bogdanfinn TLS stack for Go 1.20 compatibility
@@ -93,6 +94,14 @@ replace (
 	github.com/bogdanfinn/tls-client => github.com/bogdanfinn/tls-client v1.7.8
 	github.com/bogdanfinn/utls => github.com/bogdanfinn/utls v1.6.1
 	github.com/klauspost/compress => github.com/klauspost/compress v1.17.11
+)
+
+// Downgrade transitive dependencies for Go 1.20 compatibility
+replace (
+	github.com/cloudflare/circl => github.com/cloudflare/circl v1.3.6
+	github.com/golang-migrate/migrate/v4 => github.com/golang-migrate/migrate/v4 v4.17.1
+	github.com/google/pprof => github.com/google/pprof v0.0.0-20230207041349-798e818bf904
+	google.golang.org/protobuf => google.golang.org/protobuf v1.33.0
 )
 
 // replace github.com/qtgolang/SunnyNet => ./pkg/SunnyNet
@@ -127,6 +136,8 @@ require (
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/gookit/color v1.5.4 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -180,6 +191,7 @@ require (
 	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	go.uber.org/atomic v1.9.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
