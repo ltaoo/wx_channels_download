@@ -391,6 +391,7 @@
     .status-done { color: #07c160; background: rgba(7, 193, 96, .12); }
     .status-error { color: var(--wx-dl-page-danger); background: rgba(220, 38, 38, .1); }
     .status-pause { color: #c48a00; background: rgba(196, 138, 0, .12); }
+    .detail-fetched-mark { min-width: auto; font-size: 12px; }
     .pagination {
       min-height: 48px;
       display: flex;
@@ -559,6 +560,7 @@
         </div>
         <div class="actions">
           <button class="btn" id="btn-refresh">刷新</button>
+          <button class="btn" id="btn-fetch-all-details" disabled>获取所有任务详情</button>
           <button class="btn" id="btn-export-json" disabled>导出 JSON</button>
         </div>
       </div>
@@ -671,6 +673,14 @@
           (query) => request.get("/api/channels/feed/profile?" + new URLSearchParams(query).toString()),
           { client: http_client },
         ),
+        articleProfile: new Timeless.RequestCore(
+          (query) => request.get("/api/mp/article/profile?" + new URLSearchParams(query).toString()),
+          { client: http_client },
+        ),
+        profileAgentStatus: new Timeless.RequestCore(
+          () => request.get("/api/channels/profile-agent/status"),
+          { client: http_client },
+        ),
       };
       const pathInput = $("#path-input");
       const targetInput = $("#target-url");
@@ -686,13 +696,15 @@
       const subtitle = $("#subtitle");
       const btnLoad = $("#btn-load");
       const btnRefresh = $("#btn-refresh");
+      const btnFetchAllDetails = $("#btn-fetch-all-details");
       const btnExport = $("#btn-export-json");
       const btnMigrationPreview = $("#btn-migration-preview");
       const btnMigrationExecute = $("#btn-migration-execute");
       const btnPrev = $("#btn-prev");
       const btnNext = $("#btn-next");
       const pageInfo = $("#page-info");
-      const pageSize = 100;
+      const visiblePageSize = 100;
+      const bulkPageSize = 1000;
       const statusItems = [
         ["all", "全部"],
         ["running", "下载中"],
@@ -712,6 +724,8 @@
         total: 0,
         stats: { total: 0 },
       };
+      const detailFetchedTaskIDs = new Set();
+      const detailFetchedSources = new Map();
 
       function toast(message, isError) {
         const el = document.createElement("div");
@@ -798,9 +812,128 @@
           firstLabelValue(row.labels, ["uid", "nid", "nonce_id", "objectNonceId", "object_nonce_id"]);
       }
 
+      function rowArticleID(row) {
+        return String(row.article_id || "").trim() ||
+          firstLabelValue(row.labels, ["article_id", "articleid", "mp_article_id"]);
+      }
+
       function rowCacheKey(row) {
         return firstLabelValue(row.labels, ["id", "oid", "external_id", "objectid", "object_id"]) ||
           rowOID(row);
+      }
+
+      function taskDetailKey(row) {
+        if (!row) return "";
+        return String((row && (row.id || row.task_id)) || "").trim() ||
+          rowArticleID(row) ||
+          rowCacheKey(row) ||
+          rowOID(row);
+      }
+
+      function isTaskDetailFetched(row) {
+        const key = taskDetailKey(row);
+        return Boolean(row && (row.detail_fetched || row.profile_cached || (key && detailFetchedTaskIDs.has(key))));
+      }
+
+      function detailFetchedTitle(row) {
+        const key = taskDetailKey(row);
+        const source = key ? detailFetchedSources.get(key) : "";
+        if ((row && row.profile_cached) || source === "cache") {
+          return "缓存中已有详情";
+        }
+        if (source === "agent") {
+          return "已通过 profile agent 获取详情";
+        }
+        if (source === "http") {
+          return "已通过目标 HTTP 获取详情";
+        }
+        return "已获取详情";
+      }
+
+      function markTaskDetailFetched(row, data) {
+        if (!row) return;
+        const key = taskDetailKey(row);
+        if (key) {
+          detailFetchedTaskIDs.add(key);
+          detailFetchedSources.set(key, data && data.cached ? "cache" : (data && data.source) || "fetched");
+        }
+        row.detail_fetched = true;
+        if (data && data.cached) {
+          row.profile_cached = true;
+        }
+      }
+
+      async function fetchTaskDetail(row, dataDirOverride, options) {
+        const articleID = rowArticleID(row);
+        const oid = rowOID(row);
+        const uid = rowUID(row);
+        if (!articleID && !oid) {
+          throw new Error("缺少 oid 或 article_id");
+        }
+        const dataDir = dataDirOverride || pathInput.value.trim();
+        localStorage.setItem("gopeed_migration_target_url", targetInput.value.trim());
+        if (articleID) {
+          return await runRequest(api_requests.articleProfile, {
+            article_id: articleID,
+            data_dir: dataDir,
+          });
+        }
+        const query = {
+          oid,
+          uid,
+          nid: uid,
+          nonce_id: uid,
+          cache_key: rowCacheKey(row),
+          data_dir: dataDir,
+          target_url: targetInput.value.trim(),
+        };
+        if (options && options.forceAgent) {
+          query.force_agent = "1";
+        }
+        return await runRequest(api_requests.profile, query);
+      }
+
+      function rowNeedsChannelsProfile(row) {
+        return !rowArticleID(row) && Boolean(rowOID(row));
+      }
+
+      async function getProfileAgentStatus() {
+        try {
+          return await runRequest(api_requests.profileAgentStatus);
+        } catch (err) {
+          return {
+            connected: false,
+            clients: 0,
+            auth_required: false,
+            error: errorMessage(err),
+          };
+        }
+      }
+
+      async function loadAllTaskRows(dataDir, status, totalHint) {
+        const first = await runRequest(api_requests.table, {
+          data_dir: dataDir,
+          table: "task",
+          status,
+          page: 1,
+          page_size: bulkPageSize,
+        });
+        const rows = first.rows || [];
+        const total = Number(first.total || totalHint || rows.length || 0);
+        const totalPages = Math.max(1, Number(first.total_pages || 1));
+        btnFetchAllDetails.textContent = "加载任务 " + rows.length.toLocaleString() + "/" + total.toLocaleString();
+        for (let page = 2; page <= totalPages; page += 1) {
+          const data = await runRequest(api_requests.table, {
+            data_dir: dataDir,
+            table: "task",
+            status,
+            page,
+            page_size: bulkPageSize,
+          });
+          rows.push.apply(rows, data.rows || []);
+          btnFetchAllDetails.textContent = "加载任务 " + rows.length.toLocaleString() + "/" + total.toLocaleString();
+        }
+        return rows;
       }
 
       function showProfileDialog(row, data) {
@@ -837,32 +970,94 @@
       }
 
       async function showProfileDetail(row, button) {
-        const oid = rowOID(row);
-        const uid = rowUID(row);
-        if (!oid) {
-          toast("缺少 oid", true);
-          return;
-        }
         const original = button.textContent;
         button.disabled = true;
         button.textContent = "读取中";
         try {
-          localStorage.setItem("gopeed_migration_target_url", targetInput.value.trim());
-          const data = await runRequest(api_requests.profile, {
-            oid,
-            uid,
-            nid: uid,
-            nonce_id: uid,
-            cache_key: rowCacheKey(row),
-            data_dir: pathInput.value.trim(),
-            target_url: targetInput.value.trim(),
-          });
+          const data = await fetchTaskDetail(row);
+          markTaskDetailFetched(row, data);
+          renderTable();
           showProfileDialog(row, data);
         } catch (err) {
           toast(errorMessage(err), true);
         } finally {
           button.disabled = false;
           button.textContent = original;
+        }
+      }
+
+      async function fetchAllTaskDetails() {
+        if (!pathInput.value.trim()) {
+          toast("请先选择包含 gopeed.db 的目录", true);
+          return;
+        }
+        if (!state.total) {
+          await loadTasks(1);
+        }
+        const total = Number(state.total || 0);
+        if (!total) {
+          toast("没有可获取详情的任务", true);
+          return;
+        }
+
+        const original = btnFetchAllDetails.textContent;
+        const dataDir = pathInput.value.trim();
+        const status = state.status;
+        let processed = 0;
+        let success = 0;
+        let skipped = 0;
+        let failed = 0;
+
+        btnFetchAllDetails.disabled = true;
+        btnFetchAllDetails.textContent = "加载任务 0/" + total.toLocaleString();
+        try {
+          const rows = await loadAllTaskRows(dataDir, status, total);
+          if (!rows.length) {
+            toast("没有可获取详情的任务", true);
+            return;
+          }
+          const agentStatus = await getProfileAgentStatus();
+          const channelsRows = rows.filter(rowNeedsChannelsProfile);
+          if (channelsRows.length && agentStatus.auth_required && !agentStatus.connected) {
+            toast("profile agent token 已配置，但当前没有 agent 连接", true);
+            return;
+          }
+          const forceAgent = channelsRows.length && agentStatus.connected;
+          const detailTotal = rows.length;
+          btnFetchAllDetails.textContent = "获取中 0/" + detailTotal.toLocaleString();
+
+          for (const row of rows) {
+            processed += 1;
+            btnFetchAllDetails.textContent = "获取中 " + processed.toLocaleString() + "/" + detailTotal.toLocaleString();
+            if (!rowArticleID(row) && !rowOID(row)) {
+              skipped += 1;
+              continue;
+            }
+            try {
+              const data = await fetchTaskDetail(row, dataDir, {
+                forceAgent: forceAgent && rowNeedsChannelsProfile(row),
+              });
+              markTaskDetailFetched(row, data);
+              success += 1;
+              if ((state.rows || []).some((visible) => taskDetailKey(visible) === taskDetailKey(row))) {
+                renderTable();
+              }
+            } catch (_) {
+              failed += 1;
+            }
+          }
+          renderTable();
+          toast(
+            "任务详情获取完成：成功 " + success.toLocaleString() +
+              "，跳过 " + skipped.toLocaleString() +
+              "，失败 " + failed.toLocaleString(),
+            failed > 0,
+          );
+        } catch (err) {
+          toast(errorMessage(err), true);
+        } finally {
+          btnFetchAllDetails.disabled = !state.total;
+          btnFetchAllDetails.textContent = original;
         }
       }
 
@@ -908,7 +1103,7 @@
         return result.data || {};
       }
 
-      async function loadTasks(page) {
+      async function loadTasks(page, options) {
         const input = pathInput.value.trim();
         btnLoad.disabled = true;
         btnLoad.textContent = "加载中";
@@ -918,7 +1113,8 @@
             table: "task",
             status: state.status,
             page: page || state.page,
-            page_size: pageSize,
+            page_size: visiblePageSize,
+            force_reload: Boolean(options && options.forceReload),
           });
           state = Object.assign({}, state, data);
           state.page = data.page || 1;
@@ -927,6 +1123,7 @@
           localStorage.setItem("gopeed_migration_path", pathInput.value);
           renderCounts();
           renderTable();
+          btnFetchAllDetails.disabled = !state.total;
           btnExport.disabled = !state.total;
           subtitle.textContent = data.db_path || data.data_dir || "";
         } catch (err) {
@@ -957,7 +1154,8 @@
 
       function renderTable() {
         const rows = state.rows || [];
-        tableMeta.textContent = state.total.toLocaleString() + " 条 · 第 " + state.page + " / " + state.totalPages + " 页";
+        tableMeta.textContent = state.total.toLocaleString() + " 条 · 第 " + state.page + " / " + state.totalPages + " 页" +
+          (state.cache_hit ? " · 缓存" : "");
         pageInfo.textContent = state.page + " / " + state.totalPages;
         btnPrev.disabled = state.page <= 1;
         btnNext.disabled = state.page >= state.totalPages;
@@ -991,6 +1189,9 @@
             '</td>' +
             '<td class="task-labels-cell" title="' + escapeHtml(labels) + '">' +
               '<div class="labels-toolbar">' +
+                (isTaskDetailFetched(row)
+                  ? '<span class="status-pill status-done detail-fetched-mark" title="' + escapeHtml(detailFetchedTitle(row)) + '">已获取详情</span>'
+                  : '') +
                 '<button class="btn btn-mini profile-detail-btn" type="button" data-row-index="' + index + '">详情</button>' +
                 '<button class="btn btn-mini migrate-row-btn" type="button" data-row-index="' + index + '">迁移</button>' +
               '</div>' +
@@ -1037,7 +1238,7 @@
           table: "task",
           status: state.status,
           page: 1,
-          page_size: 1000,
+          page_size: bulkPageSize,
         }).then((data) => {
           const rows = data.rows || [];
           const totalPages = data.total_pages || 1;
@@ -1048,7 +1249,7 @@
               table: "task",
               status: state.status,
               page,
-              page_size: 1000,
+              page_size: bulkPageSize,
             }));
           }
           return Promise.all(jobs).then((pages) => {
@@ -1268,7 +1469,8 @@
       }
 
       btnLoad.addEventListener("click", () => loadTasks(1));
-      btnRefresh.addEventListener("click", () => loadTasks(state.page));
+      btnRefresh.addEventListener("click", () => loadTasks(state.page, { forceReload: true }));
+      btnFetchAllDetails.addEventListener("click", fetchAllTaskDetails);
       btnExport.addEventListener("click", exportJSON);
       btnMigrationPreview.addEventListener("click", () => executeMigration(true));
       btnMigrationExecute.addEventListener("click", () => executeMigration(false));
