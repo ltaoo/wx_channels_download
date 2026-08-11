@@ -159,6 +159,81 @@ const FEED_INFO_HEADERS = {
   "sec-ch-ua-platform": `"macOS"`,
 };
 
+class FeedInfoUnavailableError extends Error {
+  constructor(detail) {
+    const title = plainTextFromHtml(detail && detail.title) || "视频无法播放";
+    const content = plainTextFromHtml(detail && detail.content);
+    super(content ? `${title}: ${content}` : title);
+    this.name = "FeedInfoUnavailableError";
+    this.code = "FEED_INFO_UNAVAILABLE";
+    this.status = 422;
+    this.detail = {
+      type: Number(detail && detail.type) || 0,
+      title,
+      content,
+    };
+  }
+}
+
+function decodeHtmlEntities(value) {
+  const namedEntities = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+    const normalized = entity.toLowerCase();
+    let codePoint = null;
+    if (normalized.startsWith("#x")) {
+      codePoint = Number.parseInt(normalized.slice(2), 16);
+    } else if (normalized.startsWith("#")) {
+      codePoint = Number.parseInt(normalized.slice(1), 10);
+    }
+    if (codePoint !== null) {
+      return codePoint >= 0 && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : match;
+    }
+    return namedEntities[normalized] || match;
+  });
+}
+
+function plainTextFromHtml(value) {
+  const withoutTags = String(value || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "");
+  return decodeHtmlEntities(withoutTags).replace(/\s+/g, " ").trim();
+}
+
+function feedInfoResponseError(result) {
+  if (!result || typeof result !== "object") {
+    return new Error("getFeedInfo: invalid response");
+  }
+
+  const errCode = Number(result.errCode) || 0;
+  if (errCode !== 0) {
+    const message = plainTextFromHtml(result.errMsg);
+    return new Error(
+      message
+        ? `getFeedInfo: errCode ${errCode}: ${message}`
+        : `getFeedInfo: errCode ${errCode}`
+    );
+  }
+
+  const detail = result.data && result.data.errMsg;
+  if (!detail || typeof detail !== "object") {
+    return null;
+  }
+  const hasError =
+    Number(detail.type) !== 0 ||
+    plainTextFromHtml(detail.title) !== "" ||
+    plainTextFromHtml(detail.content) !== "";
+  return hasError ? new FeedInfoUnavailableError(detail) : null;
+}
+
 async function getFeedInfo(exportId, generalToken) {
   log("[getFeedInfo] start, exportId:", exportId, "generalToken:", generalToken);
   const rid = generateRid();
@@ -184,6 +259,11 @@ async function getFeedInfo(exportId, generalToken) {
     throw new Error(`getFeedInfo: http ${resp.status}`);
   }
   const result = await resp.json();
+  const responseError = feedInfoResponseError(result);
+  if (responseError) {
+    log("[getFeedInfo] response error:", responseError.message);
+    throw responseError;
+  }
   log("[getFeedInfo] success, errCode:", result.errCode);
   return result;
 }
@@ -229,6 +309,9 @@ async function fetchVideoProfile(shareUrl, cookie) {
     feedResult = await getFeedInfo(exportId, generalToken);
   } catch (err) {
     log("[fetch] step 2/2 failed:", err.message);
+    if (err instanceof FeedInfoUnavailableError) {
+      throw err;
+    }
     throw new Error(`get feed info: ${err.message}`);
   }
   log("[fetch] step 2/2 done");
@@ -258,10 +341,16 @@ async function handleFetchVideoProfile(request, env) {
     });
   } catch (err) {
     log("[handleFetchVideoProfile] error:", err.message);
+    const status = Number.isInteger(err.status) ? err.status : 500;
+    const payload = { error: err.message };
+    if (err instanceof FeedInfoUnavailableError) {
+      payload.code = err.code;
+      payload.details = err.detail;
+    }
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify(payload),
       {
-        status: 500,
+        status,
         headers: { ...corsHeaders(), "Content-Type": "application/json" },
       }
     );
