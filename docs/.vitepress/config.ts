@@ -148,16 +148,6 @@ export default defineConfig(async () => {
           ],
         },
         {
-          text: "命令行",
-          items: [
-            { text: "代理服务", link: "/cli/proxy" },
-            { text: "部署独立服务", link: "/cli/deploy" },
-            { text: "删除证书", link: "/cli/uninstall" },
-            { text: "查看版本", link: "/cli/version" },
-            { text: "更新", link: "/cli/update" },
-          ],
-        },
-        {
           text: "配置",
           items: [
             { text: "工作目录", link: "/config/workdir" },
@@ -166,9 +156,43 @@ export default defineConfig(async () => {
             { text: "API 服务", link: "/config/api" },
             { text: "下载", link: "/config/download" },
             { text: "脚本", link: "/config/script" },
-            { text: "视频号", link: "/config/channels" },
+            {
+              text: "视频号",
+              items: [
+                { text: "概览", link: "/config/channels/" },
+                { text: "启用视频号功能", link: "/config/channels/enabled" },
+                {
+                  text: "从详情页重定向到首页",
+                  link: "/config/channels/disable-location-to-home",
+                },
+                {
+                  text: "默认下载原始视频",
+                  link: "/config/channels/default-highest",
+                },
+                { text: "前端下载", link: "/config/channels/frontend" },
+                { text: "同时下载封面", link: "/config/channels/cover" },
+                {
+                  text: "下载时暂停播放",
+                  link: "/config/channels/pause-when-download",
+                },
+                {
+                  text: "批量下载时检查所有视频",
+                  link: "/config/channels/force-check-all-feeds",
+                },
+              ],
+            },
             { text: "Cloudflare", link: "/config/cloudflare" },
             { text: "调试", link: "/config/debug" },
+          ],
+        },
+        {
+          text: "命令行",
+          items: [
+            { text: "代理服务", link: "/cli/proxy" },
+            { text: "部署独立服务", link: "/cli/deploy" },
+            { text: "删除证书", link: "/cli/uninstall" },
+            { text: "查看版本", link: "/cli/version" },
+            { text: "更新", link: "/cli/update" },
           ],
         },
         {
