@@ -190,28 +190,41 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 	}
 }
 func (c *ChannelsClient) Stop() {
+	disconnected_clients := make([]*Client, 0)
 	c.ws_mu.Lock()
 	for client := range c.ws_clients {
 		close(client.Send)
 		delete(c.ws_clients, client)
+		disconnected_clients = append(disconnected_clients, client)
 	}
 	c.ws_mu.Unlock()
+	c.notify_disconnected(disconnected_clients)
+}
+func (c *ChannelsClient) notify_disconnected(clients []*Client) {
+	if c.OnDisconnected != nil {
+		for _, client := range clients {
+			c.OnDisconnected(client)
+		}
+	}
 }
 func (c *ChannelsClient) Broadcast(v interface{}) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
+	disconnected_clients := make([]*Client, 0)
 	c.ws_mu.Lock()
-	defer c.ws_mu.Unlock()
 	for client := range c.ws_clients {
 		select {
 		case client.Send <- data:
 		default:
 			close(client.Send)
 			delete(c.ws_clients, client)
+			disconnected_clients = append(disconnected_clients, client)
 		}
 	}
+	c.ws_mu.Unlock()
+	c.notify_disconnected(disconnected_clients)
 }
 func (wc *ChannelsClient) Validate() error {
 	if !wc.Available() {

@@ -3,6 +3,7 @@ package douyinadapter
 import (
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/douyin"
 	"wx_channel/pkg/util"
@@ -67,4 +68,21 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 			UpdatedAt: now,
 		},
 	}, nil
+}
+
+func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	video_info, err := douyin_video_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content_id := BuildContentID(video_info.VideoID)
+	return []adapter.ContentDetail{{
+		Type: "video",
+		Key:  content_id,
+		Data: &model.ContentVideo{
+			Id:     content_id,
+			URL:    video_info.URL,
+			Format: "mp4",
+		},
+	}}, nil
 }

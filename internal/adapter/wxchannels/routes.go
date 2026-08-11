@@ -19,6 +19,7 @@ import (
 
 const (
 	ChannelsWebsocketPath = "/ws/channels"
+	ChannelsStatusPath    = "/api/channels/status"
 	PlayPath              = "/play"
 )
 
@@ -44,6 +45,7 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 		return
 	}
 	registrar.RegisterGET(ChannelsWebsocketPath, r.client.HandleChannelsWebsocket)
+	registrar.RegisterGET(ChannelsStatusPath, r.HandleStatus)
 	registrar.RegisterGET(PlayPath, r.HandlePlay)
 	registrar.RegisterGET("/api/channels/parse_sph", r.HandleParseSph)
 	registrar.RegisterPOST("/api/channels/decrypt", r.HandleDecryptVideo)
@@ -59,6 +61,13 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 	registrar.RegisterGET("/api/channels/shared_feed/profile", r.HandleFetchSharedFeedProfile)
 	registrar.RegisterGET("/api/channels/feed/comment/list", r.HandleFetchFeedCommentList)
 	registrar.RegisterGET("/rss/channels", r.HandleFetchFeedListOfContactRSS)
+}
+
+// HandleStatus reports whether a Channels page is connected and can receive
+// frontend API requests through channels.ws.js.
+func (r *WebsocketRoutes) HandleStatus(ctx *gin.Context) {
+	available := r != nil && r.client != nil && r.client.Available()
+	util.Ok(ctx, gin.H{"available": available})
 }
 
 // HandlePlay proxies or decrypts a remote Channels video stream.

@@ -3,6 +3,7 @@ package zhihuadapter
 import (
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/zhihu"
 )
@@ -52,4 +53,37 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 	default:
 		return nil, fmt.Errorf("unsupported zhihu fetch data type %T", data)
 	}
+}
+
+func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	content, err := h.ToContent(data)
+	if err != nil {
+		return nil, err
+	}
+	html_content := ""
+	switch page := data.(type) {
+	case *zhihu.AnswerPage:
+		if page != nil {
+			html_content = page.Answer.Content
+		}
+	case zhihu.AnswerPage:
+		html_content = page.Answer.Content
+	case *zhihu.QuestionPage:
+		if page != nil {
+			html_content = page.Question.Detail
+		}
+	case zhihu.QuestionPage:
+		html_content = page.Question.Detail
+	case *zhihu.ArticlePage:
+		if page != nil {
+			html_content = page.Article.Content
+		}
+	case zhihu.ArticlePage:
+		html_content = page.Article.Content
+	}
+	return []adapter.ContentDetail{{
+		Type: content.Type,
+		Key:  content.Id,
+		Data: &model.ContentArticle{Id: content.Id, Type: model.ContentArticleTypeHTML, HTML: html_content},
+	}}, nil
 }

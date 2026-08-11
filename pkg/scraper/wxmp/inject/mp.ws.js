@@ -37,9 +37,59 @@
   );
 
   const scraperFetchReq = new Timeless.RequestCore(
-    (params) => request.get("/api/scraper/fetch", params),
+    (body) => request.post("/api/scraper/fetch", body),
     { client: http_client },
   );
+
+  const scraperJobReq = new Timeless.RequestCore(
+    (params) => request.get("/api/scraper/job", params),
+    { client: http_client },
+  );
+
+  function wait_for_scraper_poll() {
+    return new Promise((resolve) => window.setTimeout(resolve, 300));
+  }
+
+  function scraper_job_result(job) {
+    const status = String((job && job.status) || "");
+    if (status === "completed") {
+      if (!job.output) {
+        return Timeless.Result.Err("fetch job 已完成，但缺少抓取结果");
+      }
+      return Timeless.Result.Ok(job.output);
+    }
+    if (status === "failed") {
+      return Timeless.Result.Err(job.error || "抓取失败");
+    }
+    if (status === "interrupted") {
+      return Timeless.Result.Err("抓取已中断");
+    }
+    return null;
+  }
+
+  async function fetch_scraper_output(url) {
+    const create_result = await scraperFetchReq.run({ url });
+    if (create_result.error) {
+      return create_result;
+    }
+    let job = create_result.data || {};
+    const job_id = String(job.id || "").trim();
+    if (!job_id) {
+      return Timeless.Result.Err("创建 fetch job 失败：响应缺少 id");
+    }
+    while (true) {
+      const terminal_result = scraper_job_result(job);
+      if (terminal_result) {
+        return terminal_result;
+      }
+      await wait_for_scraper_poll();
+      const job_result = await scraperJobReq.run({ id: job_id });
+      if (job_result.error) {
+        return job_result;
+      }
+      job = job_result.data || {};
+    }
+  }
 
   function first_non_empty() {
     for (var i = 0; i < arguments.length; i++) {
@@ -408,7 +458,7 @@
             if (stop_signal) {
               break;
             }
-            const fetch_result = await scraperFetchReq.run({ url: entry.url });
+            const fetch_result = await fetch_scraper_output(entry.url);
             fetched_count += 1;
             if (fetch_result.error) {
               failed_count += 1;

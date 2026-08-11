@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/wxchannels"
 )
@@ -71,4 +72,19 @@ func (a *ChannelsAdapter) ToAccount(data any) (*model.Account, error) {
 		return nil, err
 	}
 	return ToAccount(object)
+}
+
+func (a *ChannelsAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	object, err := channels_object_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content, detail, err := ToContent(object)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, nil
+	}
+	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
 }

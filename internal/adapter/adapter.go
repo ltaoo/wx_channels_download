@@ -39,6 +39,10 @@ type AdapterHandler interface {
 	// ToAccount converts raw scraper data into the shared account model.
 	ToAccount(data any) (*model.Account, error)
 
+	// ToContentDetails converts raw scraper data into ordered, type-specific
+	// content detail records. Fetch jobs publish these records incrementally.
+	ToContentDetails(data any) ([]ContentDetail, error)
+
 	// BuildDownloadTask generates a download task result from the platform's raw content JSON and download config.
 	// contentJSON: raw JSON data of the platform scraper object
 	// configJSON: platform-specific download config JSON (directory, filename, quality, overwrite strategy, etc.)
@@ -56,6 +60,57 @@ type AdapterHandler interface {
 // are optional and discovered via type assertion at runtime.
 type PlatformAdapter interface {
 	AdapterHandler
+}
+
+// ProgressFetchAdapter is an optional fetch capability for adapters that emit
+// progress events associated with a caller-provided request ID.
+type ProgressFetchAdapter interface {
+	FetchWithProgress(raw_url string, request_id string) (any, error)
+}
+
+// FetchOptions controls a context-aware scraper fetch.
+type FetchOptions struct {
+	RequestID       string
+	ForceRefresh    bool
+	ArtifactHandler FetchArtifactHandler
+}
+
+const (
+	FetchArtifactStageContent       = "content"
+	FetchArtifactStageAccount       = "account"
+	FetchArtifactStageContentDetail = "content_detail"
+)
+
+// ContentDetail wraps a type-specific model with a stable key for incremental
+// fetch-job updates.
+type ContentDetail struct {
+	Type string `json:"type"`
+	Key  string `json:"key"`
+	Data any    `json:"data"`
+}
+
+// FetchArtifact is a platform-neutral piece of a fetch result. Context-aware
+// adapters may emit artifacts before their complete raw result is available.
+type FetchArtifact struct {
+	Stage         string
+	Content       *model.Content
+	Account       *model.Account
+	ContentDetail *ContentDetail
+	Current       int
+	Total         int
+}
+
+// FetchArtifactHandler receives ordered fetch artifacts.
+type FetchArtifactHandler func(FetchArtifact)
+
+// ContextProgressFetchAdapter supports cancellation and cache refresh options.
+type ContextProgressFetchAdapter interface {
+	FetchWithProgressContext(fetch_context context.Context, raw_url string, options FetchOptions) (any, error)
+}
+
+// FetchCacheAdapter owns persistent fetch caches associated with source URLs.
+type FetchCacheAdapter interface {
+	ClearFetchCache(raw_url string) (bool, error)
 }
 
 // RouteRegistrar is the HTTP capability exposed by the host to adapters.

@@ -30,7 +30,12 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/channels", c.handle_channels_page)
 	c.engine.GET("/filehelper", c.file_helper.HandlePage)
 	// !!
+	c.engine.POST("/api/scraper/fetch", c.handle_scraper_fetch)
+	// GET remains available for callers migrating from the former synchronous API.
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
+	c.engine.GET("/api/scraper/job", c.handle_scraper_job)
+	c.engine.POST("/api/scraper/fetch/interrupt", c.handle_scraper_fetch_interrupt)
+	c.engine.POST("/api/scraper/cache/clear", c.handle_scraper_cache_clear)
 	// File transfer helper endpoints
 	c.engine.GET("/api/filehelper/qrcode", c.file_helper.HandleGetQRCode)
 	c.engine.GET("/api/filehelper/login/wait", c.file_helper.HandleWaitLogin)
@@ -58,6 +63,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.GET("/api/task/pipeline/workflow", c.handle_fetch_platform_download_workflow)
 	// c.engine.POST("/api/task/pipeline/resume", c.handle_resume_platform_download_pipeline)
 	c.engine.GET("/ws/v1/download_task", c.handle_download_task_ws)
+	c.engine.GET("/ws/scraper", c.handle_scraper_ws)
 	c.engine.POST("/api/browse_history/create", c.handle_create_browse_history)
 	c.engine.POST("/api/browse_history/list", c.handle_fetch_browse_history_list)
 	c.engine.POST("/api/v1/download_task/prepare", c.handle_prepare_download_task)

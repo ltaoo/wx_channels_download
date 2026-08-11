@@ -3,6 +3,7 @@ package shuba69adapter
 import (
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/util"
 )
@@ -67,4 +68,45 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 			UpdatedAt: now,
 		},
 	}, nil
+}
+
+func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	novel, err := novel_detail_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content_id := h.PlatformID() + ":" + novel.ProfileURL
+	details := []adapter.ContentDetail{{
+		Type: "novel",
+		Key:  content_id,
+		Data: &model.ContentNovel{
+			Id:           content_id,
+			AuthorName:   novel.Author,
+			ChapterCount: len(novel.Chapters),
+			VolumeCount:  len(novel.Volumes),
+		},
+	}}
+	for volume_index, volume := range novel.Volumes {
+		idx := volume.Idx
+		if idx <= 0 {
+			idx = volume_index + 1
+		}
+		details = append(details, adapter.ContentDetail{
+			Type: "novel_volume",
+			Key:  fmt.Sprintf("%s:volume:%d", content_id, idx),
+			Data: &model.ContentNovelVolume{NovelId: content_id, Idx: idx, Title: volume.Title},
+		})
+	}
+	for chapter_index, chapter := range novel.Chapters {
+		idx := chapter.Index
+		if idx <= 0 {
+			idx = chapter_index + 1
+		}
+		details = append(details, adapter.ContentDetail{
+			Type: "novel_chapter",
+			Key:  fmt.Sprintf("%s:chapter:%d", content_id, idx),
+			Data: &model.ContentNovelChapter{NovelId: content_id, Idx: idx, Title: chapter.Title, URL: chapter.URL},
+		})
+	}
+	return details, nil
 }

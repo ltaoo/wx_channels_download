@@ -3,6 +3,100 @@
 /**
  * @file Scraper fetch page rendering.
  */
+function HomePopover(props, children) {
+  const {
+    store,
+    content,
+    onTriggerMouseEnter,
+    onTriggerMouseLeave,
+    ...content_props
+  } = props;
+  const presence_state_ = refobj(props.store.presence.state);
+  const was_exiting_ = ref(false);
+  const unlistens = [
+    props.store.presence.onStateChange((state) => {
+      presence_state_.as(state);
+      if (state.exit) {
+        was_exiting_.as(true);
+      }
+      if (state.mounted) {
+        was_exiting_.as(false);
+      }
+    }),
+  ];
+
+  return Timeless.weui.PopoverPrimitive.Root(
+    {
+      onUnmounted() {
+        unlistens.forEach((unlisten) => {
+          if (typeof unlisten === "function") {
+            unlisten();
+          }
+        });
+      },
+    },
+    [
+      View(
+        {
+          class: "wx-home-popover-hover-trigger",
+          onMounted(event) {
+            const trigger_root = event.target;
+            const trigger_children =
+              typeof trigger_root.getChildren === "function"
+                ? trigger_root.getChildren()
+                : [];
+            const trigger =
+              trigger_children.find(
+                (child) => child && child.getType() === "view",
+              ) ||
+              trigger_children[0] ||
+              trigger_root;
+            store.popper.setReference(
+              {
+                $el: trigger,
+                getRect: () => trigger.getBoundingClientRect(),
+              },
+              { force: true },
+            );
+          },
+          onMouseEnter(event) {
+            if (typeof onTriggerMouseEnter === "function") {
+              onTriggerMouseEnter(event);
+            }
+          },
+          onMouseLeave(event) {
+            if (typeof onTriggerMouseLeave === "function") {
+              onTriggerMouseLeave(event);
+            }
+          },
+        },
+        children,
+      ),
+      Timeless.weui.PopoverPrimitive.Portal({ store }, [
+        Timeless.weui.PopoverPrimitive.Content(
+          {
+            ...content_props,
+            store,
+            zIndex: 9999,
+            class: computed(presence_state_, (state) => {
+              const enter_class = "animate-in fade-in-0 zoom-in-95";
+              const exit_class = "animate-out fade-out-0 zoom-out-95";
+              return [
+                state.enter ? enter_class : "",
+                state.exit ? exit_class : "",
+                !state.mounted && was_exiting_.value ? exit_class : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+            }),
+          },
+          content,
+        ),
+      ]),
+    ],
+  );
+}
+
 function HomePageForm(props) {
   const vm$ = props.store;
   return View(
@@ -41,21 +135,44 @@ function HomePageForm(props) {
           },
         }),
       ]),
-      Button(
-        {
-          class: "wx-content-action wx-home-submit",
-          disabled: vm$.state.submit_disabled,
-          attributes: { type: "button" },
-          onClick() {
-            vm$.methods.submit();
+      View({ class: "wx-home-actions" }, [
+        Show({
+          when: vm$.state.loading,
+          ok() {
+            return Button(
+              {
+                class: "wx-content-action wx-home-interrupt",
+                disabled: vm$.state.interrupt_disabled,
+                attributes: { type: "button" },
+                onClick() {
+                  vm$.methods.interruptFetch();
+                },
+              },
+              [
+                Timeless.Icon({ name: "square", size: 14 }),
+                computed(vm$.state.interrupt_loading, (loading) =>
+                  loading ? "中断中" : "中断",
+                ),
+              ],
+            );
           },
-        },
-        [
-          computed(vm$.state.loading, (loading) =>
-            loading ? "获取中" : "确认",
-          ),
-        ],
-      ),
+          else() {
+            return View({ class: "wx-home-idle-actions" }, [
+              Button(
+                {
+                  class: "wx-content-action wx-home-submit",
+                  disabled: vm$.state.submit_disabled,
+                  attributes: { type: "button" },
+                  onClick() {
+                    vm$.methods.submit();
+                  },
+                },
+                [vm$.state.submit_button_text],
+              ),
+            ]);
+          },
+        }),
+      ]),
     ],
   );
 }
@@ -292,6 +409,300 @@ function HomeAccountCard(props) {
   ]);
 }
 
+function HomeDetailValue(value_) {
+  return value_ && value_.value !== undefined ? value_.value : value_;
+}
+
+function HomeNovelChapterItem(props) {
+  const vm$ = props.store;
+  const chapter = props.chapter || {};
+  const children = [
+    View({ class: "wx-home-novel-chapter-index" }, [chapter.index_text]),
+    View({ class: "wx-home-novel-chapter-main" }, [
+      View(
+        {
+          class: "wx-home-novel-chapter-title",
+          attributes: { title: chapter.title },
+        },
+        [chapter.title],
+      ),
+      Show({
+        when: Boolean(chapter.meta_text),
+        ok() {
+          return View({ class: "wx-home-novel-chapter-meta" }, [
+            chapter.meta_text,
+          ]);
+        },
+      }),
+    ]),
+    Show({
+      when: Boolean(chapter.url),
+      ok() {
+        return View({ class: "wx-home-novel-chapter-link" }, [
+          Timeless.Icon({ name: "external-link", size: 13 }),
+        ]);
+      },
+    }),
+  ];
+  if (!chapter.url) {
+    return View({ class: "wx-home-novel-chapter" }, children);
+  }
+  return Button(
+    {
+      class: "wx-home-novel-chapter is-link",
+      attributes: { type: "button", title: "打开章节" },
+      onClick() {
+        vm$.methods.openDetailURL(chapter.url);
+      },
+    },
+    children,
+  );
+}
+
+function HomeNovelDetails(props) {
+  const vm$ = props.store;
+  const novel = vm$.state.content_details.novel;
+  return Show({
+    when: novel.present,
+    ok() {
+      return View({ class: "wx-home-detail-card wx-home-novel-detail" }, [
+        View({ class: "wx-home-detail-card-heading" }, [
+          View({ class: "wx-home-detail-card-title-group" }, [
+            View({ class: "wx-home-detail-card-icon" }, [
+              Timeless.Icon({ name: "file-stack", size: 18 }),
+            ]),
+            View({}, [
+              View({ class: "wx-home-detail-card-title" }, [novel.title]),
+              View({ class: "wx-home-detail-card-subtitle" }, [
+                novel.subtitle,
+              ]),
+            ]),
+          ]),
+          View({ class: "wx-home-detail-badge" }, [novel.progress_text]),
+        ]),
+        View({ class: "wx-home-novel-body" }, [
+          View({ class: "wx-home-detail-metrics" }, [
+            For({
+              each: novel.metrics,
+              render(metric_) {
+                const metric = HomeDetailValue(metric_);
+                return View({ class: "wx-home-detail-metric" }, [
+                  View({ class: "wx-home-detail-metric-label" }, [
+                    metric.label,
+                  ]),
+                  View({ class: "wx-home-detail-metric-value" }, [
+                    metric.value,
+                  ]),
+                ]);
+              },
+            }),
+          ]),
+          Show({
+            when: novel.has_volumes,
+            ok() {
+              return View({ class: "wx-home-novel-section" }, [
+                View({ class: "wx-home-novel-section-heading" }, [
+                  View({ class: "wx-home-novel-section-title" }, ["分卷"]),
+                ]),
+                View({ class: "wx-home-novel-volume-list" }, [
+                  For({
+                    key: "key",
+                    each: novel.volumes,
+                    render(volume_) {
+                      const volume = HomeDetailValue(volume_);
+                      return View({ class: "wx-home-novel-volume" }, [
+                        View({ class: "wx-home-novel-volume-index" }, [
+                          volume.index_text,
+                        ]),
+                        View(
+                          {
+                            class: "wx-home-novel-volume-title",
+                            attributes: { title: volume.title },
+                          },
+                          [volume.title],
+                        ),
+                      ]);
+                    },
+                  }),
+                ]),
+              ]);
+            },
+          }),
+          View({ class: "wx-home-novel-section wx-home-novel-chapters" }, [
+            View({ class: "wx-home-novel-section-heading" }, [
+              View({ class: "wx-home-novel-section-title" }, ["章节列表"]),
+              View({ class: "wx-home-novel-section-meta" }, [
+                novel.progress_text,
+              ]),
+            ]),
+            Show({
+              when: novel.has_chapters,
+              ok() {
+                return View({ class: "wx-home-novel-chapter-list" }, [
+                  For({
+                    key: "key",
+                    each: novel.chapters,
+                    render(chapter_) {
+                      return HomeNovelChapterItem({
+                        store: vm$,
+                        chapter: HomeDetailValue(chapter_),
+                      });
+                    },
+                  }),
+                ]);
+              },
+              else() {
+                return View({ class: "wx-home-detail-empty" }, [
+                  novel.empty_chapter_text,
+                ]);
+              },
+            }),
+            Show({
+              when: novel.has_more_chapters,
+              ok() {
+                return Button(
+                  {
+                    class: "wx-home-novel-more",
+                    attributes: { type: "button" },
+                    onClick() {
+                      vm$.methods.showMoreChapters();
+                    },
+                  },
+                  [novel.more_chapters_text],
+                );
+              },
+            }),
+          ]),
+        ]),
+      ]);
+    },
+  });
+}
+
+function HomeTypedContentDetail(props) {
+  const vm$ = props.store;
+  const detail = props.detail || {};
+  return View(
+    {
+      class: `wx-home-detail-card wx-home-typed-detail wx-home-typed-detail-${detail.kind}`,
+    },
+    [
+      View({ class: "wx-home-detail-card-heading" }, [
+        View({ class: "wx-home-detail-card-title-group" }, [
+          View({ class: "wx-home-detail-card-icon" }, [
+            Timeless.Icon({ name: detail.icon, size: 18 }),
+          ]),
+          View({}, [
+            View({ class: "wx-home-detail-card-title" }, [detail.title]),
+            View({ class: "wx-home-detail-card-subtitle" }, [detail.type]),
+          ]),
+        ]),
+        View({ class: "wx-home-detail-badge" }, [detail.type_name]),
+      ]),
+      View({ class: "wx-home-typed-detail-body" }, [
+        Show({
+          when: detail.fields.length > 0,
+          ok() {
+            return View({ class: "wx-home-detail-field-grid" }, [
+              For({
+                each: detail.fields,
+                render(field_) {
+                  const field = HomeDetailValue(field_);
+                  return View({ class: "wx-home-detail-field" }, [
+                    View({ class: "wx-home-detail-field-label" }, [
+                      field.label,
+                    ]),
+                    View(
+                      {
+                        class: "wx-home-detail-field-value",
+                        attributes: { title: field.value },
+                      },
+                      [field.value],
+                    ),
+                  ]);
+                },
+              }),
+            ]);
+          },
+        }),
+        Show({
+          when: Boolean(detail.preview),
+          ok() {
+            return View({ class: "wx-home-article-preview" }, [detail.preview]);
+          },
+        }),
+        Show({
+          when: detail.images.length > 0,
+          ok() {
+            return View({ class: "wx-home-detail-image-grid" }, [
+              For({
+                key: "key",
+                each: detail.images,
+                render(image_) {
+                  const image = HomeDetailValue(image_);
+                  return View({ class: "wx-home-detail-image-item" }, [
+                    Img({
+                      class: "wx-home-detail-image",
+                      src: image.url,
+                      alt: "",
+                      attributes: {
+                        loading: "lazy",
+                        referrerpolicy: "no-referrer",
+                      },
+                      onError(event) {
+                        event.target.style.display = "none";
+                      },
+                    }),
+                    View({ class: "wx-home-detail-image-meta" }, [image.meta]),
+                  ]);
+                },
+              }),
+            ]);
+          },
+        }),
+        Show({
+          when: Boolean(detail.link_url),
+          ok() {
+            return Button(
+              {
+                class: "wx-home-link-button wx-home-detail-link",
+                attributes: { type: "button" },
+                onClick() {
+                  vm$.methods.openDetailURL(detail.link_url);
+                },
+              },
+              ["打开详情地址", Timeless.Icon({ name: "external-link", size: 14 })],
+            );
+          },
+        }),
+      ]),
+    ],
+  );
+}
+
+function HomeContentDetails(props) {
+  const vm$ = props.store;
+  const details = vm$.state.content_details;
+  return Show({
+    when: details.present,
+    ok() {
+      return Fragment({}, [
+        HomeNovelDetails({ store: vm$ }),
+        For({
+          key: "key",
+          each: details.items,
+          render(detail_) {
+            return HomeTypedContentDetail({
+              store: vm$,
+              detail: HomeDetailValue(detail_),
+            });
+          },
+        }),
+      ]);
+    },
+  });
+}
+
 function HomeRawJSON(props) {
   const vm$ = props.store;
   return View({ class: "wx-home-json" }, [
@@ -350,6 +761,40 @@ function HomeRawJSON(props) {
   ]);
 }
 
+function HomeResultActions(props) {
+  const vm$ = props.store;
+  return View({ class: "wx-home-result-actions" }, [
+    Button(
+      {
+        class: "wx-content-action wx-home-cache-action",
+        disabled: vm$.state.cache_action_disabled,
+        attributes: {
+          type: "button",
+          title: "清理该 URL 的抓取缓存",
+        },
+        onClick() {
+          vm$.methods.clearFetchCache();
+        },
+      },
+      ["清理缓存"],
+    ),
+    Button(
+      {
+        class: "wx-content-action wx-home-refresh",
+        disabled: vm$.state.cache_action_disabled,
+        attributes: {
+          type: "button",
+          title: "忽略现有缓存并重新抓取",
+        },
+        onClick() {
+          vm$.methods.forceRefresh();
+        },
+      },
+      ["重新抓取"],
+    ),
+  ]);
+}
+
 function HomePageResult(props) {
   const vm$ = props.store;
   return Show({
@@ -360,13 +805,103 @@ function HomePageResult(props) {
           HomeContentCard({ store: vm$ }),
           HomeAccountCard({ store: vm$ }),
         ]),
+        HomeContentDetails({ store: vm$ }),
         HomeRawJSON({ store: vm$ }),
+        HomeResultActions({ store: vm$ }),
       ]);
     },
   });
 }
 
-function HomePageHeader() {
+function HomePlatformStatus(props) {
+  const vm$ = props.store;
+  const status = vm$.state.platform_status;
+  return HomePopover(
+    {
+      store: vm$.ui.platform_status_popover,
+      side: "bottom",
+      align: "end",
+      onTriggerMouseEnter() {
+        vm$.methods.showPlatformStatusPopover();
+      },
+      onTriggerMouseLeave() {
+        vm$.methods.schedulePlatformStatusPopoverHide();
+      },
+      content: [
+        View(
+          {
+            class: "wx-home-platform-status-popover",
+            onMouseEnter() {
+              vm$.methods.showPlatformStatusPopover();
+            },
+            onMouseLeave() {
+              vm$.methods.schedulePlatformStatusPopoverHide();
+            },
+          },
+          [
+            Show({
+              when: status.has_items,
+              ok() {
+                return View({ class: "wx-home-platform-status-list" }, [
+                  For({
+                    key: "render_key",
+                    each: status.items,
+                    render(item_) {
+                      const item = HomeDetailValue(item_);
+                      return View({ class: item.status_class }, [
+                        View({ class: "wx-home-platform-status-dot" }),
+                        View({ class: "wx-home-platform-status-main" }, [
+                          View({ class: "wx-home-platform-status-name" }, [
+                            item.platform_name,
+                          ]),
+                          View({ class: "wx-home-platform-status-id" }, [
+                            item.platform,
+                          ]),
+                        ]),
+                        View({ class: "wx-home-platform-status-value" }, [
+                          item.status_text,
+                        ]),
+                      ]);
+                    },
+                  }),
+                ]);
+              },
+              else() {
+                return View({ class: "wx-home-platform-status-empty" }, [
+                  "等待平台状态推送",
+                ]);
+              },
+            }),
+          ],
+        ),
+      ],
+    },
+    [
+      Button(
+        {
+          class: status.trigger_class,
+          attributes: {
+            type: "button",
+            title: "查看平台状态",
+            "aria-label": "查看平台状态",
+          },
+        },
+        [
+          View({ class: "wx-home-platform-status-dot" }),
+          View({ class: "wx-home-platform-status-trigger-label" }, [
+            "平台状态",
+          ]),
+          View({ class: "wx-home-platform-status-trigger-summary" }, [
+            status.summary,
+          ]),
+        ],
+      ),
+    ],
+  );
+}
+
+function HomePageHeader(props) {
+  const vm$ = props.store;
   return View({ class: "wx-content-header" }, [
     View({ class: "wx-content-header-inner" }, [
       View({ class: "wx-content-brand" }, [
@@ -380,14 +915,52 @@ function HomePageHeader() {
           ]),
         ]),
       ]),
+      View({ class: "wx-home-header-actions" }, [
+        HomePlatformStatus({ store: vm$ }),
+      ]),
     ]),
   ]);
 }
 
+function HomeFetchProgress(props) {
+  const vm$ = props.store;
+  return Show({
+    when: vm$.state.progress_visible,
+    ok() {
+      return View({ class: "wx-home-fetch-progress" }, [
+        View({ class: "wx-home-fetch-progress-meta" }, [
+          View({ class: "wx-home-fetch-progress-count" }, [
+            vm$.state.progress_count_text,
+          ]),
+          View({ class: "wx-home-fetch-progress-percent" }, [
+            vm$.state.progress_percent_text,
+          ]),
+        ]),
+        View({ class: "wx-home-fetch-progress-track" }, [
+          View({
+            class: "wx-home-fetch-progress-bar",
+            style: computed(vm$.state.progress_percent, (percent) => ({
+              width: `${percent}%`,
+            })),
+          }),
+        ]),
+      ]);
+    },
+  });
+}
+
 function HomePageView(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-page wx-home-page" }, [
-    HomePageHeader(),
+  return View({
+    class: "wx-content-page wx-home-page",
+    onMounted() {
+      vm$.methods.connectProgress();
+    },
+    onUnmounted() {
+      vm$.methods.dispose();
+    },
+  }, [
+    HomePageHeader({ store: vm$ }),
     View({ class: "wx-content-main wx-home-main" }, [
       View({ class: "wx-home-content" }, [
         HomePageForm({ store: vm$ }),
@@ -412,6 +985,7 @@ function HomePageView(props) {
             );
           },
         }),
+        HomeFetchProgress({ store: vm$ }),
         HomePageResult({ store: vm$ }),
       ]),
     ]),

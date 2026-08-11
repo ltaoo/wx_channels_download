@@ -35,6 +35,8 @@ type APIClient struct {
 	cached_proxy_addr   string
 	svc_status_mu       sync.RWMutex
 	svc_statuses        map[string]events.ServiceStatusChanged
+	platform_status_mu  sync.RWMutex
+	platform_statuses   map[string]events.PlatformStatusChanged
 
 	claw_client *clawreq.Client
 
@@ -44,6 +46,7 @@ type APIClient struct {
 	browse_history_service *services.BrowseService
 	download_task_service  *services.DownloadTaskService
 	fs_service             *services.FSService
+	scraper_job_service    *services.ScraperJobService
 }
 
 func NewAPIClient(
@@ -84,6 +87,10 @@ func NewAPIClient(
 		fs_service:             fs_service,
 		downloader:             downloader,
 	}
+	api_client.scraper_job_service = services.NewScraperJobService(
+		api_client.ensure_scraper_platform_available,
+		scraper_ws_hub.broadcast_job_event,
+	)
 
 	api_client.download_task_service = services.NewDownloadTaskService(
 		db, &logger, downloader, hook_manager,
@@ -175,6 +182,33 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		c.svc_statuses[ev.Name] = ev
 		c.svc_status_mu.Unlock()
 	})
+	bus.Subscribe(events.TypeScraperFetchProgress, func(e events.Event) {
+		progress, ok := e.(events.ScraperFetchProgress)
+		if !ok {
+			return
+		}
+		c.scraper_job_service.UpdateProgress(progress)
+	})
+	bus.Subscribe(events.TypePlatformStatusChanged, func(e events.Event) {
+		status, ok := e.(events.PlatformStatusChanged)
+		if !ok || strings.TrimSpace(status.Platform) == "" {
+			return
+		}
+		status.Platform = strings.TrimSpace(status.Platform)
+
+		c.platform_status_mu.Lock()
+		if c.platform_statuses == nil {
+			c.platform_statuses = make(map[string]events.PlatformStatusChanged)
+		}
+		previous_status, exists := c.platform_statuses[status.Platform]
+		if exists && previous_status.Available == status.Available {
+			c.platform_status_mu.Unlock()
+			return
+		}
+		c.platform_statuses[status.Platform] = status
+		c.platform_status_mu.Unlock()
+		scraper_ws_hub.broadcast_platform_status(&status)
+	})
 }
 
 type APIClientWSMessage struct {
@@ -213,6 +247,9 @@ func (c *APIClient) Start() error {
 }
 
 func (c *APIClient) Stop() error {
+	if c.scraper_job_service != nil {
+		c.scraper_job_service.InterruptAll()
+	}
 	// Match the previous shutdown behavior: request all tasks to pause, but do
 	// not hold up the service shutdown while task goroutines finish.
 	if c.downloader != nil {

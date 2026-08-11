@@ -137,6 +137,7 @@ func (a *ChannelsAdapter) register(d Deps) error {
 	}
 
 	r := NewWebsocketRoutes(d.RefreshInterval, d.Config)
+	bind_platform_status_events(r, d.Bus)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 	}
@@ -149,6 +150,25 @@ func (a *ChannelsAdapter) register(d Deps) error {
 	a.runtime_mu.Unlock()
 	registered = true
 	return nil
+}
+
+func bind_platform_status_events(routes *WebsocketRoutes, bus *events.Bus) {
+	if routes == nil || routes.client == nil || bus == nil {
+		return
+	}
+	publish_status := func() {
+		bus.Publish(events.PlatformStatusChanged{
+			Platform:  PlatformID,
+			Available: routes.client.Available(),
+		})
+	}
+	routes.client.OnConnected = func(_ *wxchannels.Client) {
+		publish_status()
+	}
+	routes.client.OnDisconnected = func(_ *wxchannels.Client) {
+		publish_status()
+	}
+	publish_status()
 }
 
 // RegisterRuntime exposes the complete adapter through the shared registry

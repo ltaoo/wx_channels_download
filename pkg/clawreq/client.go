@@ -40,6 +40,11 @@ const (
 // Config controls how a Client is built.
 type Config struct {
 	// Profile defaults to chrome.
+	//
+	// The captured Chrome 151 profile under profiles/151.0.7922.109 is
+	// intentionally not selectable yet. Enabling it requires upgrading this
+	// module to Go 1.24.1 and replacing the current CycleTLS backend with a
+	// modern tls-client version that supports Chrome 151's TLS features.
 	Profile Profile
 	// Timeout defaults to 30 seconds.
 	Timeout time.Duration

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/wxmp"
 )
@@ -95,4 +96,23 @@ func (a *OfficialAccountAdapter) ToAccount(data any) (*model.Account, error) {
 		return nil, err
 	}
 	return ToAccount(article_data)
+}
+
+func (a *OfficialAccountAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	article_data, err := article_data_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content, detail, err := ToContent(article_data)
+	if err != nil {
+		return nil, err
+	}
+	if album_ext, ok := detail.(*ContentAlbumExt); ok {
+		album_ext.Album.Images = content_image_values(album_ext.Images, content.Id)
+		detail = album_ext.Album
+	}
+	if detail == nil {
+		return nil, nil
+	}
+	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
 }

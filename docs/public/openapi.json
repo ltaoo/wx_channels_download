@@ -50,6 +50,9 @@
     }
   ],
   "paths": {
+    "/api/channels/status": {
+      "$ref": "./openapi/channels/status.json"
+    },
     "/api/channels/contact/search": {
       "$ref": "./openapi/channels/contact_search.json"
     },
