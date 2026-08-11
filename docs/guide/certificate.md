@@ -10,7 +10,7 @@ title: 手动安装根证书
 
 ### 下载安装
 
-<a href="/SunnyRoot.cer" download>点击下载 SunnyRoot.cer</a>  
+<a href="/wx_channels_download/SunnyRoot.cer" download>点击下载 SunnyRoot.cer</a>
 
 
 ## Windows
