@@ -687,7 +687,7 @@ type ArticleCgiDataNew struct {
 	AdvertisementNum         int                 `json:"advertisement_num"`
 	AdvertisementInfo        []interface{}       `json:"advertisement_info"`
 	OriCreateTime            int                 `json:"ori_create_time"`
-	UserUin                  string              `json:"user_uin"`
+	UserUin                  FlexibleString      `json:"user_uin"`
 	TotalItemNum             int                 `json:"total_item_num"`
 	IsAsync                  int                 `json:"is_async"`
 	CommentID                string              `json:"comment_id"`

@@ -1,18 +1,22 @@
-# Gopeed Migration Viewer
+# Migrate Gopeed
 
 独立的 Gopeed `gopeed.db` 任务查看应用，用于迁移前预览旧下载任务。
 
 ## Run
 
 ```bash
-cd gopeed-migration
+cd migrate-gopeed
 go run . --data-dir .. --port 8026 --target-url http://127.0.0.1:2022 --target-db ../data.db
 ```
 
 打开 `http://127.0.0.1:8026/migration`。
 
-默认 `--mode dev`，前端资源由 `github.com/ltaoo/velo/frontendserver` 直接从本地 `web` 目录读取，修改 `web/migration.html` 或 `web/assets` 后刷新浏览器即可看到效果。
-如果从其他目录启动，可以通过 `--frontend-root /path/to/gopeed-migration/web` 指定前端目录。`--mode release` 或 `--mode prod` 会使用编译进二进制的 embedded frontend。
+普通构建默认 `--mode debug`，等同于 `dev`，前端资源由 `github.com/ltaoo/velo/frontendserver` 直接从本地 `web` 目录读取，修改 `web/migration.html` 或 `web/assets` 后刷新浏览器即可看到效果。
+如果从其他目录启动，可以通过 `--frontend-root /path/to/migrate-gopeed/web` 指定前端目录。使用 `embed_frontend_inject`、`embed_inject`、`release` 或 `prod` build tag 打包时会默认进入 `release`，直接使用编译进二进制的 embedded frontend；也可通过 `-ldflags "-X main.Mode=release"` 固定。
+
+```bash
+go build -tags embed_frontend_inject -o migrate-gopeed .
+```
 
 `--data-dir` 指向包含 `gopeed.db` 的目录。页面和接口也支持直接传入 `gopeed.db` 文件路径。
 `--target-url` 指向当前 wx_channels_download 服务地址，用于读取视频号详情。
@@ -31,6 +35,28 @@ go run . --data-dir .. --port 8026 --target-url http://127.0.0.1:2022 --target-d
 4. 直接写入 `download_task`、`download_resource`、`download_endpoint`、`content`、`account`、`content_account` 等记录，不启动下载流程。
 5. `download_task.config_json` 只记录 `download_dir`、`.mp4` 文件的 `suffix`、以及 labels 中已有的 `spec`。
 6. `download_task.metadata_json` 只记录 `gopeedid`；重新迁移时按该字段跳过已迁移的 Gopeed 记录。
+
+
+## 远端服务迁移
+
+部署在 linux 服务器上没有视频号无法获取详情
+
+先在服务器启动一个迁移服务
+
+```bash
+./migrate-gopeed -profile-agent-token abc --host 0.0.0.0 -port 8026
+```
+
+然后在有视频号的电脑上启动迁移服务
+
+```bash
+./migrate-gopeed -profile-agent -profile-agent-url ws://192.168.1.118:8026/ws/channels/profile-agent -profile-agent-token abc -profile-agent-local-url http://127.0.0.1:2022
+```
+
+`profile-agent-url` 就是部署在服务器上的迁移服务地址
+`profile-agent-token` 验证用的
+`profile-agent-local-url` 这个有必要吗?
+
 
 ## API
 
