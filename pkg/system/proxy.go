@@ -14,9 +14,14 @@ type HardwarePort struct {
 	Interface string
 }
 
+// default_network_service is the fallback used when the primary network service cannot be
+// determined. Only macOS reads it: Windows writes the proxy to the registry and Linux goes
+// through gsettings, and both are global rather than per network service.
+const default_network_service = "Wi-Fi"
+
 func merge_default_settings(p ProxySettings) ProxySettings {
 	if p.Device == "" {
-		p.Device = "Wi-Fi" // Default to Wi-Fi device
+		p.Device = default_network_service
 		device, err := get_network_interfaces()
 		if err == nil {
 			p.Device = device.Port

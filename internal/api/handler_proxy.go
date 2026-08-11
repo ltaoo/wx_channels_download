@@ -316,6 +316,7 @@ func (c *APIClient) proxyConfigData() gin.H {
 		"system":                 original != nil && original.GetBool("proxy.system"),
 		"tun":                    original != nil && original.GetBool("proxy.tun"),
 		"default_interface":      getConfigString(original, "proxy.defaultInterface"),
+		"network_service":        getConfigString(original, "proxy.networkService"),
 		"skip_install_root_cert": original != nil && original.GetBool("proxy.skipInstallRootCert"),
 		"upstream_proxy":         getConfigString(original, "proxy.upstreamProxy"),
 		"tcp_relay": gin.H{
@@ -460,7 +461,10 @@ func (c *APIClient) buildCertEntry(ac services.AvailableCert) gin.H {
 
 func (c *APIClient) systemProxySettings() system.ProxySettings {
 	cfg := c.proxyConfigData()
+	device, _ := cfg["network_service"].(string)
 	return system.ProxySettings{
+		// Empty means "detect the primary network service", matching what enable_proxy does.
+		Device:   device,
 		Hostname: fmt.Sprint(cfg["hostname"]),
 		Port:     strconv.Itoa(proxyFirstPositive(proxyToIntDefault(cfg["port"], 2023), 2023)),
 	}

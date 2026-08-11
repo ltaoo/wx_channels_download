@@ -329,6 +329,16 @@ func (c *Config) LoadConfig() error {
 		Group:       "Proxy",
 		HotReload:   true,
 	})
+	// 不支持热重载：切换网络服务需要先关闭旧服务上的系统代理，否则旧服务会残留一条
+	// 指向已停止的代理的设置，导致该服务被选为主服务时无法联网。
+	Register(ConfigField{
+		Key:         "proxy.networkService",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "设置系统代理时使用的网络服务名称，留空时自动取当前主服务。仅在自动检测失败时才需要指定，可用值见 networksetup -listallnetworkservices",
+		Title:       "网络服务",
+		Group:       "Proxy",
+	})
 	Register(ConfigField{
 		Key:         "proxy.skipInstallRootCert",
 		Type:        ConfigTypeBool,
