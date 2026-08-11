@@ -5,7 +5,7 @@ WX_HOME="${WX_VIDEO_HOME:-/config/wx_video_download}"
 WX_SEED_HOME="${WX_VIDEO_SEED_HOME:-/usr/local/share/wx_video_download}"
 WX_CONFIG="${WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH:-${WX_HOME}/config.yaml}"
 WX_BIN="${WX_HOME}/wx_video_download"
-CERT_PATH="/usr/local/share/ca-certificates/SunnyRoot.crt"
+CERT_PATH="/usr/local/share/ca-certificates/SunnyNet.crt"
 
 run_as_abc() {
     if command -v s6-setuidgid >/dev/null 2>&1; then
@@ -46,5 +46,6 @@ if command -v certutil >/dev/null 2>&1 && id abc >/dev/null 2>&1 && [ -f "$CERT_
         run_as_abc certutil -d sql:/config/.pki/nssdb -N --empty-password || true
     fi
     run_as_abc certutil -d sql:/config/.pki/nssdb -D -n SunnyRoot >/dev/null 2>&1 || true
-    run_as_abc certutil -d sql:/config/.pki/nssdb -A -n SunnyRoot -t "CT,C,C" -i "$CERT_PATH" || true
+    run_as_abc certutil -d sql:/config/.pki/nssdb -D -n SunnyNet >/dev/null 2>&1 || true
+    run_as_abc certutil -d sql:/config/.pki/nssdb -A -n SunnyNet -t "CT,C,C" -i "$CERT_PATH" || true
 fi

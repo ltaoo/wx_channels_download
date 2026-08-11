@@ -54,7 +54,7 @@ func fetchCertificates() ([]Certificate, error) {
 }
 
 func installCertificate(cert_data []byte) error {
-	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
+	cert_file, err := os.CreateTemp("", "SunnyNet.cer")
 	if err != nil {
 		return fmt.Errorf("permission denied while creating the certificate file: %w", err)
 	}
