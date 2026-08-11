@@ -247,6 +247,19 @@ func Start(cfg *config.Config) error {
 		}
 		defer unregister_console_close()
 
+		// Resolve the target network service once, before the proxy is enabled, and pin it for
+		// the rest of the run. Start and Stop both resolve an empty device on their own, so
+		// leaving it empty would let them disagree when the primary service changes mid-run:
+		// the proxy would be cleared on the service that is primary at exit while staying
+		// enabled on the one it was written to, which breaks connectivity once that service
+		// becomes primary again.
+		proxy_service, proxy_warning := system.ProxyTargetDescription(interceptor_srv.ProxyDevice())
+		if proxy_service != "" {
+			// Empty means the platform has no per-service proxy (Windows, Linux); leave whatever
+			// was configured alone there rather than overwriting it.
+			interceptor_srv.SetProxyDevice(proxy_service)
+		}
+
 		if err := interceptor_srv.Start(); err != nil {
 			cleanup()
 			return fmt.Errorf("failed to start proxy service: %w", err)
@@ -261,7 +274,14 @@ func Start(cfg *config.Config) error {
 				color.Red(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
 				color.Red("Open the page to download after setting the proxy")
 			} else {
-				color.Green("System proxy has been set to the proxy service address")
+				if proxy_warning != "" {
+					color.Yellow("Warning: " + proxy_warning)
+				}
+				if proxy_service != "" {
+					color.Green(fmt.Sprintf("System proxy for network service %v has been set to the proxy service address", proxy_service))
+				} else {
+					color.Green("System proxy has been set to the proxy service address")
+				}
 				color.Green("Please open the page you want to download")
 				has_changed := false
 				expected_addr := interceptor_srv.Addr()
@@ -273,7 +293,10 @@ func Start(cfg *config.Config) error {
 						case <-ctx.Done():
 							return
 						case <-ticker.C:
-							cur, err := system.FetchCurProxy(system.ProxySettings{})
+							// Poll the same network service the proxy was written to; with an empty
+							// Device this would inspect the fallback service instead and never notice
+							// a change.
+							cur, err := system.FetchCurProxy(system.ProxySettings{Device: interceptor_srv.ProxyDevice()})
 							if err != nil || cur == nil {
 								continue
 							}

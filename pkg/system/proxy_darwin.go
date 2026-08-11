@@ -110,49 +110,89 @@ func read_network_proxy(device string, secure bool) (*network_proxy_info, error)
 	return info, nil
 }
 
-func get_network_interfaces() (*HardwarePort, error) {
-	// Get all hardware port information
-	cmd := exec.Command("networksetup", "-listallhardwareports")
+var service_uuid_re = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// scutil_field runs `scutil show <key>` and returns the value of the `<field> : <value>` line.
+func scutil_field(key string, field string) (string, error) {
+	cmd := exec.Command("scutil")
+	cmd.Stdin = strings.NewReader("show " + key + "\n")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("执行 networksetup 命令失败: %v", err)
+		return "", fmt.Errorf("执行 scutil show %s 失败: %v", key, err)
 	}
-	// Parse hardware port information
-	var ports []HardwarePort
-	lines := strings.Split(string(output), "\n")
+	for _, line := range strings.Split(string(output), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[0]) == field {
+			return strings.TrimSpace(parts[1]), nil
+		}
+	}
+	return "", nil
+}
 
-	var cur_port HardwarePort
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Hardware Port:") {
-			if cur_port.Port != "" {
-				ports = append(ports, cur_port)
-			}
-			cur_port = HardwarePort{}
-			cur_port.Port = strings.TrimPrefix(line, "Hardware Port: ")
-		} else if strings.HasPrefix(line, "Device:") {
-			cur_port.Device = strings.TrimPrefix(line, "Device: ")
+// global_ipv4_key and global_ipv6_key hold the primary service per protocol. They are
+// independent: an IPv6-only network has no IPv4 global key at all, so both are consulted.
+const (
+	global_ipv4_key = "State:/Network/Global/IPv4"
+	global_ipv6_key = "State:/Network/Global/IPv6"
+)
+
+// get_network_interfaces returns the primary network service. Port holds the service name that
+// can be passed straight to networksetup (such as "Wi-Fi"), and Device holds the matching
+// interface name (such as "en0" or "utun4").
+//
+// This deliberately avoids looking the primary interface up in
+// `networksetup -listallhardwareports`. That list only covers physical hardware, so a VPN
+// service does not appear in it at all and a utun primary interface never matches, leaving the
+// caller on a hardcoded fallback service. Since macOS stores the proxy per network service and
+// only the primary service applies, that fallback writes the proxy somewhere that is not in
+// effect, and networksetup reports no error. The list is also keyed by hardware port name,
+// while networksetup addresses services by service name; the two coincide for physical
+// adapters on a default setup but are separate fields. Reading the primary service from the
+// configuration store avoids both problems and treats physical adapters and VPNs alike.
+func get_network_interfaces() (*HardwarePort, error) {
+	for _, global_key := range []string{global_ipv4_key, global_ipv6_key} {
+		uuid, err := scutil_field(global_key, "PrimaryService")
+		if err != nil {
+			return nil, err
 		}
+		if uuid == "" {
+			continue
+		}
+		// The value is interpolated into the next command, so validate its shape first.
+		if !service_uuid_re.MatchString(uuid) {
+			return nil, fmt.Errorf("主网络服务标识格式异常: %q", uuid)
+		}
+		name, err := scutil_field("Setup:/Network/Service/"+uuid, "UserDefinedName")
+		if err != nil {
+			return nil, err
+		}
+		if name == "" {
+			return nil, fmt.Errorf("主网络服务 %s 没有名称", uuid)
+		}
+		iface, _ := scutil_field(global_key, "PrimaryInterface")
+		return &HardwarePort{Port: name, Device: iface, Interface: iface}, nil
 	}
-	if cur_port.Port != "" {
-		ports = append(ports, cur_port)
+	return nil, fmt.Errorf("未找到主网络服务，当前可能没有活动网络")
+}
+
+// ProxyTargetDescription reports the network service the system proxy will be written to,
+// along with a warning to surface when detection had to fall back. macOS keeps proxy settings
+// per network service and only honours the primary one, so a wrong guess leaves interception
+// silently inactive with no error from networksetup.
+func ProxyTargetDescription(configured string) (service string, warning string) {
+	if configured != "" {
+		return configured, ""
 	}
-	// Get network interface information
-	cmd = exec.Command("scutil", "--nwi")
-	output, err = cmd.Output()
+	port, err := get_network_interfaces()
 	if err != nil {
-		return nil, fmt.Errorf("执行 scutil 命令失败: %v", err)
+		return default_network_service, fmt.Sprintf(
+			"could not determine the primary network service (%v), falling back to %s.\n"+
+				"If the download button never appears (common while a VPN is connected), pass --dev "+
+				"with the service name; run `networksetup -listallnetworkservices` to list them",
+			err, default_network_service)
 	}
-	// Use regex to parse interface information
-	re := regexp.MustCompile(`Network interfaces{0,1}: ([0-9a-zA-Z]{1,})`)
-	matches := re.FindStringSubmatch(string(output))
-	// Match interface information with hardware ports
-	if len(matches) >= 2 {
-		for i := range ports {
-			if ports[i].Device == matches[1] {
-				return &ports[i], nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("未找到硬件端口信息")
+	return port.Port, ""
 }

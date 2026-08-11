@@ -58,7 +58,7 @@ var root_cmd = &cobra.Command{
 }
 
 func init() {
-	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "代理服务器网络设备")
+	root_cmd.PersistentFlags().StringVar(&device, "dev", "", "设置系统代理的网络服务名称，留空时自动取当前主服务")
 	root_cmd.PersistentFlags().StringVarP(&config_filepath, "config", "c", "", "配置文件路径")
 	root_cmd.PersistentFlags().StringVar(&workdir, "workdir", "", "运行时工作目录")
 	root_cmd.PersistentFlags().StringVar(&hostname, "hostname", "127.0.0.1", "代理服务器主机名")
@@ -67,6 +67,7 @@ func init() {
 
 	viper.BindPFlag("workdir", root_cmd.PersistentFlags().Lookup("workdir"))
 	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
+	viper.BindPFlag("proxy.networkService", root_cmd.PersistentFlags().Lookup("dev"))
 	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
 }

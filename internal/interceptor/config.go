@@ -34,6 +34,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 		ProxySetSystem:           viper.GetBool("proxy.system"),
 		ProxyTun:                 viper.GetBool("proxy.tun"),
 		ProxyDefaultInterface:    viper.GetString("proxy.defaultInterface"),
+		ProxyDevice:              viper.GetString("proxy.networkService"),
 		ProxyServerPort:          viper.GetInt("proxy.port"),
 		ProxyServerHostname:      viper.GetString("proxy.hostname"),
 		ProxyTCPRelayEnabled:     viper.GetBool("proxy.tcpRelay.enabled"),

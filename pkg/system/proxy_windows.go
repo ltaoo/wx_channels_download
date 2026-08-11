@@ -134,6 +134,12 @@ func get_network_interfaces() (*HardwarePort, error) {
 	return nil, errors.New("not support")
 }
 
+// ProxyTargetDescription has nothing to report on Windows: the proxy lives in the registry and
+// applies globally, so there is no network service to pick and no way to pick the wrong one.
+func ProxyTargetDescription(configured string) (service string, warning string) {
+	return "", ""
+}
+
 func read_reg_value(path string, name string) (string, error) {
 	cmd := exec.Command("reg", "query", path, "/v", name)
 	output, err := cmd.CombinedOutput()

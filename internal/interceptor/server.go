@@ -98,6 +98,19 @@ func (s *InterceptorServer) ProxySetSystem() bool {
 	return s.Interceptor.Settings.ProxySetSystem
 }
 
+// ProxyDevice returns the network service name the system proxy is written to, or an empty
+// string when it should be detected automatically.
+func (s *InterceptorServer) ProxyDevice() string {
+	return s.Interceptor.Settings.ProxyDevice
+}
+
+// SetProxyDevice pins the network service used for the system proxy. Callers resolve it once
+// before starting so that enabling and disabling cannot end up on different services when the
+// primary service changes while the application runs.
+func (s *InterceptorServer) SetProxyDevice(device string) {
+	s.Interceptor.Settings.ProxyDevice = device
+}
+
 func (s *InterceptorServer) Addr() string {
 	return s.addr
 }

@@ -43,6 +43,10 @@ func PrepareStartPrivileges(isStartCommand bool) (shouldExit bool, err error) {
 		// close handler finishes. The original, non-elevated process survives as
 		// a guardian and resets only the proxy address owned by this application.
 		_, _ = system.DisableProxyIfMatches(system.ProxySettings{
+			// Empty falls back to detecting the primary service, which is all a separate process
+			// can do; an explicitly configured service still has to be honoured, otherwise this
+			// clears the proxy somewhere it was never written.
+			Device:   viper.GetString("proxy.networkService"),
 			Hostname: viper.GetString("proxy.hostname"),
 			Port:     strconv.Itoa(viper.GetInt("proxy.port")),
 		})

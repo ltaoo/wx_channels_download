@@ -100,6 +100,12 @@ func get_network_interfaces() (*HardwarePort, error) {
 	return nil, errors.New("not support")
 }
 
+// ProxyTargetDescription has nothing to report on Linux: the proxy is set through gsettings or
+// KIO and applies globally, so there is no network service to pick.
+func ProxyTargetDescription(configured string) (service string, warning string) {
+	return "", ""
+}
+
 func linux_proxy_backends() []linux_proxy_backend {
 	backends := []linux_proxy_backend{
 		{

@@ -7,6 +7,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
@@ -51,7 +52,9 @@ type UninstallCertificateCommandArgs struct {
 }
 
 func uninstall_certificate_command(args *UninstallCertificateCommandArgs) {
-	settings := system.ProxySettings{}
+	// Empty falls back to detecting the primary service; an explicitly configured service still
+	// has to be honoured, otherwise this clears the proxy somewhere it was never written.
+	settings := system.ProxySettings{Device: viper.GetString("proxy.networkService")}
 	if err := system.DisableProxy(settings); err != nil {
 		fmt.Printf("\nERROR: Failed to cancel proxy: %v\n", err.Error())
 		return
