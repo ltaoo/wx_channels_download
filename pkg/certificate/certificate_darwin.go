@@ -15,7 +15,7 @@ func fetchCertificates() ([]Certificate, error) {
 	cmd := exec.Command("security", "find-certificate", "-a")
 	output, err2 := cmd.Output()
 	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("获取证书时发生错误，%v\n", err2.Error()))
+		return nil, errors.New(fmt.Sprintf("failed to fetch certificates: %v\n", err2.Error()))
 	}
 	var certificates []Certificate
 	lines := strings.Split(string(output), "\n")
@@ -56,22 +56,49 @@ func fetchCertificates() ([]Certificate, error) {
 func installCertificate(cert_data []byte) error {
 	cert_file, err := os.CreateTemp("", "SunnyRoot.cer")
 	if err != nil {
-		return errors.New(fmt.Sprintf("没有创建证书的权限，%v\n", err.Error()))
+		return fmt.Errorf("permission denied while creating the certificate file: %w", err)
 	}
-	defer os.Remove(cert_file.Name())
+	defer func() {
+		_ = os.Remove(cert_file.Name())
+	}()
 	if _, err := cert_file.Write(cert_data); err != nil {
-		return errors.New(fmt.Sprintf("获取证书失败，%v\n", err.Error()))
+		_ = cert_file.Close()
+		return fmt.Errorf("failed to write the certificate: %w", err)
 	}
 	if err := cert_file.Close(); err != nil {
-		return errors.New(fmt.Sprintf("生成证书失败，%v\n", err.Error()))
+		return fmt.Errorf("failed to generate the certificate: %w", err)
 	}
-	cmd := fmt.Sprintf("security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '%s'", cert_file.Name())
-	ps := exec.Command("bash", "-c", cmd)
-	output, err2 := ps.CombinedOutput()
-	if err2 != nil {
-		return errors.New(fmt.Sprintf("安装证书时发生错误，%v\n", string(output)))
+
+	// execute-with-privileges acquires an interactive AuthorizationRef in the
+	// logged-in user's security session and forwards it to the root child. This
+	// lets the child both write System.keychain and update admin trust settings.
+	// A plain root process created by `do shell script` has no such authorization
+	// session, while a direct unprivileged call cannot write System.keychain.
+	ps := new_install_certificate_command(cert_file.Name())
+	output, install_err := ps.CombinedOutput()
+	if install_err != nil {
+		output_text := strings.TrimSpace(string(output))
+		if output_text == "" {
+			return fmt.Errorf("certificate installation authorization command failed: %w", install_err)
+		}
+		return fmt.Errorf("certificate installation authorization command failed: %w; output: %s", install_err, output_text)
 	}
 	return nil
+}
+
+func new_install_certificate_command(cert_path string) *exec.Cmd {
+	return exec.Command(
+		"/usr/bin/security",
+		"execute-with-privileges",
+		"/usr/bin/security",
+		"add-trusted-cert",
+		"-d",
+		"-r",
+		"trustRoot",
+		"-k",
+		"/Library/Keychains/System.keychain",
+		cert_path,
+	)
 }
 
 func checkCertificateTrusted(cert_name string) (bool, error) {
@@ -139,7 +166,7 @@ func uninstallCertificate(certificate_name string) error {
 		}
 	}
 	if matched == nil {
-		return errors.New("没有找到匹配的根证书")
+		return errors.New("no matching root certificate found")
 	}
 	// Use osascript with administrator privileges to modify the system keychain.
 	escaped := strings.ReplaceAll(certificate_name, "'", "'\\''")
@@ -147,7 +174,7 @@ func uninstallCertificate(certificate_name string) error {
 	ps := exec.Command("osascript", "-e", script)
 	output, err2 := ps.CombinedOutput()
 	if err2 != nil {
-		return errors.New(fmt.Sprintf("删除证书时发生错误，%v\n", string(output)))
+		return errors.New(fmt.Sprintf("failed to delete the certificate: %v\n", string(output)))
 	}
 	return nil
 }

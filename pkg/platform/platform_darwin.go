@@ -30,18 +30,23 @@ func request_admin_permission() bool {
 		return false
 	}
 
-	params := strings.Join(os.Args[1:], " ")
-
-	// Escape backslashes and double quotes for the AppleScript string
-	cmdStr := fmt.Sprintf("%s %s", exe, params)
-	cmdStr = strings.ReplaceAll(cmdStr, "\\", "\\\\")
-	cmdStr = strings.ReplaceAll(cmdStr, "\"", "\\\"")
-
-	script := fmt.Sprintf("do shell script \"%s\" with administrator privileges", cmdStr)
+	command_parts := make([]string, 0, len(os.Args))
+	command_parts = append(command_parts, shell_quote(exe))
+	for _, arg := range os.Args[1:] {
+		command_parts = append(command_parts, shell_quote(arg))
+	}
+	command_text := strings.Join(command_parts, " ")
+	escaped_command := strings.ReplaceAll(command_text, "\\", "\\\\")
+	escaped_command = strings.ReplaceAll(escaped_command, "\"", "\\\"")
+	script := fmt.Sprintf("do shell script \"%s\" with administrator privileges", escaped_command)
 
 	cmd := exec.Command("osascript", "-e", script)
 	err = cmd.Run()
 	return err == nil
+}
+
+func shell_quote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func request_admin_permission_and_wait() (started bool, exited bool) {
