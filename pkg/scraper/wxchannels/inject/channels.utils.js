@@ -736,7 +736,7 @@ var WXBase64 = (() => {
         new Timeless.ui.MenuItemCore({
           label: "原始视频",
           onClick() {
-            __wx_channels_handle_click_download__({ spec: "" });
+            __wx_channels_handle_click_download__({ spec: "original" });
             close_dropdown();
           },
         }),
