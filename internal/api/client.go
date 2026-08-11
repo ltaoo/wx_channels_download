@@ -55,6 +55,13 @@ func NewAPIClient(
 	hook_manager *hermes.HookManager,
 ) *APIClient {
 	logger := parent_logger.With().Logger()
+	engine := gin.New()
+	engine.Use(
+		gin.LoggerWithConfig(gin.LoggerConfig{
+			SkipPaths: []string{"/report"},
+		}),
+		gin.Recovery(),
+	)
 
 	// Initialize services
 	account_service := services.NewAccountService(db)
@@ -67,7 +74,7 @@ func NewAPIClient(
 
 	api_client := &APIClient{
 		cfg:                    cfg,
-		engine:                 gin.Default(),
+		engine:                 engine,
 		db:                     db,
 		logger:                 &logger,
 		static_assets:          static_assets,
