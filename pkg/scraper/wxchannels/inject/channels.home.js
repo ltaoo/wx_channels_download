@@ -62,60 +62,72 @@ WXU.observe_node({
   },
 });
 
-WXU.observe_node({ selector: ".slides-scroll", container: "#app", onOk: function ($scroll_view) {
-  // console.log("[feed.js].slides-scroll found, setting up MutationObserver");
-  var observer = new MutationObserver(function (mutations) {
-    mutations.forEach(function (mutation) {
-      if (mutation.type !== "childList") return;
-      mutation.addedNodes.forEach(function (node) {
-        if (node.nodeType !== 1 || !node.matches) return;
-        // .slides-item is reused DOM and won't be added; listen for new .click-box.op-item children instead
-        if (node.matches(".click-box.op-item")) {
-          // console.log("[feed.js]matched .click-box.op-item node");
-          handleOpItem(node);
+WXU.observe_node({
+  selector: ".slides-scroll",
+  container: "#app",
+  onOk: function ($scroll_view) {
+    // console.log("[feed.js].slides-scroll found, setting up MutationObserver");
+    var observer = new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+        if (mutation.type !== "childList") return;
+        mutation.addedNodes.forEach(function (node) {
+          if (node.nodeType !== 1 || !node.matches) return;
+          // .slides-item is reused DOM and won't be added; listen for new .click-box.op-item children instead
+          if (node.matches(".click-box.op-item")) {
+            // console.log("[feed.js]matched .click-box.op-item node");
+            handleOpItem(node);
+            return;
+          }
+          if (node.querySelectorAll) {
+            var $opItems = node.querySelectorAll(".click-box.op-item");
+            if ($opItems.length > 0) {
+              // console.log(
+              //   "[feed.js]found",
+              //   $opItems.length,
+              //   ".click-box.op-item inside added node",
+              // );
+              $opItems.forEach(function ($opItem) {
+                handleOpItem($opItem);
+              });
+            }
+          }
+        });
+      });
+      function handleOpItem($opItem) {
+        // Confirm inside .slides-item
+        var $slide = $opItem.closest(".slides-item");
+        if (!$slide) {
+          console.log("[feed.js]op-item not inside .slides-item, skip");
           return;
         }
-        if (node.querySelectorAll) {
-          var $opItems = node.querySelectorAll(".click-box.op-item");
-          if ($opItems.length > 0) {
-            // console.log(
-            //   "[feed.js]found",
-            //   $opItems.length,
-            //   ".click-box.op-item inside added node",
-            // );
-            $opItems.forEach(function ($opItem) {
-              handleOpItem($opItem);
-            });
-          }
+        if ($slide.querySelector(".download-icon")) {
+          return;
         }
-      });
+        var $parent = $opItem.parentElement;
+        if ($parent) {
+          __wx_insert_download_btn($parent);
+        }
+      }
     });
-    function handleOpItem($opItem) {
-      // Confirm inside .slides-item
-      var $slide = $opItem.closest(".slides-item");
-      if (!$slide) {
-        console.log("[feed.js]op-item not inside .slides-item, skip");
-        return;
-      }
-      if ($slide.querySelector(".download-icon")) {
-        return;
-      }
-      var $parent = $opItem.parentElement;
-      if ($parent) {
-        __wx_insert_download_btn($parent);
-      }
-    }
-  });
-  observer.observe($scroll_view, { childList: true, subtree: true });
-}});
+    observer.observe($scroll_view, { childList: true, subtree: true });
+  },
+});
 
 WXU.onDOMContentLoaded(function () {
   var error_tip_timer = setTimeout(() => {
-    WXU.error({ msg: "没有获取到视频详情", alert: 0, source: "channels.home.js:114" });
+    WXU.error({
+      msg: "没有获取到视频详情",
+      alert: 0,
+      source: "channels.home.js:114",
+    });
   }, 5000);
   var home_page_mounted = false;
   WXU.onFetchFeedProfile((feed) => {
-    console.log("[home.js]WXU.onFetchFeedProfile", feed, home_page_mounted);
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js")
+      .Bool("mounted", home_page_mounted)
+      .Msg("onFetchFeedProfile callback");
     if (home_page_mounted) {
       return;
     }

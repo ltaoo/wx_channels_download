@@ -2498,6 +2498,67 @@ function DownloadTaskListView(props) {
   );
 }
 
+function DownloaderConnectionUnavailableView(props) {
+  const vm$ = props.store;
+  const connecting_ = vm$.state.websocket_connecting;
+  return View(
+    {
+      style: {
+        display: "flex",
+        "min-height": "160px",
+        "box-sizing": "border-box",
+        "flex-direction": "column",
+        "align-items": "center",
+        "justify-content": "center",
+        gap: "12px",
+        padding: "24px",
+      },
+    },
+    [
+      View(
+        {
+          style: {
+            color: "var(--weui-FG-1)",
+            "font-size": "14px",
+            "line-height": "20px",
+          },
+        },
+        ["无法连接下载服务"],
+      ),
+      Button(
+        {
+          disabled: connecting_,
+          style: computed(connecting_, (connecting) => ({
+            height: "30px",
+            padding: "0 14px",
+            border: "0",
+            "border-radius": "6px",
+            background: "#07c160",
+            color: "#fff",
+            cursor: connecting ? "default" : "pointer",
+            opacity: connecting ? "0.6" : "1",
+            "font-size": "13px",
+          })),
+          attributes: {
+            type: "button",
+            "aria-busy": computed(connecting_, (connecting) =>
+              connecting ? "true" : "false",
+            ),
+          },
+          onClick() {
+            vm$.methods.retryWebsocketConnection();
+          },
+        },
+        [
+          computed(connecting_, (connecting) =>
+            connecting ? "连接中..." : "点击重试",
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 function DownloaderPanelView(props) {
   const vm$ = props.store;
   const task_count_ = vm$.state.task_count;
@@ -2505,6 +2566,10 @@ function DownloaderPanelView(props) {
   const active_status_ = vm$.state.active_status;
   const selected_task_count_ = vm$.state.selected_task_count;
   const showStatusCounts = props.showStatusCounts === true;
+  const connected_content_style_ = computed(
+    vm$.state.websocket_connected,
+    (connected) => ({ display: connected ? "" : "none" }),
+  );
 
   return View(
     {
@@ -2518,7 +2583,7 @@ function DownloaderPanelView(props) {
       },
     },
     [
-      View({ class: "wx-dl-header" }, [
+      View({ class: "wx-dl-header", style: connected_content_style_ }, [
         View({ class: "wx-dl-heading" }, [
           View({ class: "wx-dl-title" }, [
             "Downloads",
@@ -2654,6 +2719,16 @@ function DownloaderPanelView(props) {
       DownloadTaskListView({
         store: vm$,
         paddingBottom: 12,
+        style: connected_content_style_,
+      }),
+      Show({
+        when: computed(
+          vm$.state.websocket_connected,
+          (connected) => !connected,
+        ),
+        ok() {
+          return DownloaderConnectionUnavailableView({ store: vm$ });
+        },
       }),
     ],
   );

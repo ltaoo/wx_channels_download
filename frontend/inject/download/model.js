@@ -440,6 +440,7 @@ function number_or_fallback(value, fallback) {
 }
 
 function DownloaderPanelViewModel(props = {}) {
+  const WEBSOCKET_RETRY_INTERVAL = 5000;
   const ITEM_HEIGHT = Number(props.itemHeight) || 82;
   const ITEM_TITLE_LINE_HEIGHT = 20;
   const ITEM_STATUS_LINE_HEIGHT = 18;
@@ -641,6 +642,8 @@ function DownloaderPanelViewModel(props = {}) {
   const creating_task_ = ref(false);
   const create_task_preview_ = ref(null);
   const create_platform_preview_ = ref(null);
+  const websocket_connected_ = ref(false);
+  const websocket_connecting_ = ref(false);
   const selected_task_ids_ = refarr([]);
   const running_count_ = computed(tasks_, (t) => {
     return t.filter(
@@ -662,6 +665,47 @@ function DownloaderPanelViewModel(props = {}) {
   });
 
   let duplicated_feed_prepare_download = null;
+  let websocket_ = null;
+  let websocket_connect_promise_ = null;
+  let websocket_reconnect_promise_ = null;
+  let websocket_retry_timer_ = null;
+
+  function cancel_websocket_retry() {
+    if (websocket_retry_timer_ === null) {
+      return;
+    }
+    clearTimeout(websocket_retry_timer_);
+    websocket_retry_timer_ = null;
+  }
+
+  function schedule_websocket_retry() {
+    if (websocket_connected_.value || websocket_retry_timer_ !== null) {
+      return;
+    }
+    websocket_retry_timer_ = setTimeout(() => {
+      websocket_retry_timer_ = null;
+      methods.retryWebsocketConnection().then(
+        (connected) => {
+          if (!connected && !websocket_connected_.value) {
+            schedule_websocket_retry();
+          }
+        },
+        () => {
+          schedule_websocket_retry();
+        },
+      );
+    }, WEBSOCKET_RETRY_INTERVAL);
+  }
+
+  function set_websocket_connected(connected) {
+    websocket_connected_.as(!!connected);
+    if (connected) {
+      cancel_websocket_retry();
+    }
+    if (WXU.downloader) {
+      WXU.downloader.status = connected ? "connected" : "disconnected";
+    }
+  }
 
   function first_non_empty_download_value() {
     for (let i = 0; i < arguments.length; i += 1) {
@@ -2391,26 +2435,73 @@ function DownloaderPanelViewModel(props = {}) {
       reqs.file.show.run({ path, name: filename, id });
     },
     connect() {
-      return new Promise((resolve, reject) => {
-        const ws = new WebSocket(DownloaderWSURL);
+      if (
+        websocket_connected_.value &&
+        websocket_ &&
+        websocket_.readyState === WebSocket.OPEN
+      ) {
+        return Promise.resolve(true);
+      }
+      if (websocket_connect_promise_) {
+        return websocket_connect_promise_;
+      }
+      websocket_connecting_.as(true);
+      const connection_promise = new Promise((resolve, reject) => {
+        let ws;
+        try {
+          ws = new WebSocket(DownloaderWSURL);
+        } catch (error) {
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          reject(error);
+          return;
+        }
+        websocket_ = ws;
+        let opened = false;
         ws.onopen = () => {
-          if (WXU.downloader) {
-            WXU.downloader.status = "connected";
+          if (websocket_ !== ws) {
+            ws.close();
+            return;
           }
+          opened = true;
+          websocket_connecting_.as(false);
+          set_websocket_connected(true);
           resolve(true);
         };
         ws.onclose = () => {
+          if (websocket_ !== ws) {
+            return;
+          }
+          websocket_ = null;
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
           WXU.error({
-            msg: `download ws连接已关闭，请刷新页面. ${DownloaderWSURL}`,
+            msg: `download ws连接已关闭. ${DownloaderWSURL}`,
             source: "model.js:2033",
           });
-          if (WXU.downloader) {
-            WXU.downloader.status = "disconnected";
+          if (!opened) {
+            reject(new Error("download websocket connection closed"));
           }
         };
         ws.onerror = (e) => {
-          if (WXU.downloader && WXU.downloader.status !== "connected") {
-            reject(e);
+          if (websocket_ !== ws) {
+            return;
+          }
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          if (!opened) {
+            websocket_ = null;
+            reject(
+              e instanceof Error
+                ? e
+                : new Error("download websocket connection failed"),
+            );
+            try {
+              ws.close();
+            } catch (error) {}
           }
         };
         ws.onmessage = (ev) => {
@@ -2538,6 +2629,57 @@ function DownloaderPanelViewModel(props = {}) {
           }
         };
       });
+      websocket_connect_promise_ = connection_promise;
+      connection_promise.then(
+        () => {
+          if (websocket_connect_promise_ === connection_promise) {
+            websocket_connect_promise_ = null;
+          }
+        },
+        () => {
+          if (websocket_connect_promise_ === connection_promise) {
+            websocket_connect_promise_ = null;
+          }
+        },
+      );
+      return connection_promise;
+    },
+    retryWebsocketConnection() {
+      if (websocket_reconnect_promise_) {
+        return websocket_reconnect_promise_;
+      }
+      cancel_websocket_retry();
+      const reconnect_promise = (async () => {
+        try {
+          await methods.connect();
+          const result = await reloadTasks();
+          if (result && result.error) {
+            WXU.error({
+              msg: result.error.message,
+              source: "model.js:retryWebsocketConnection",
+            });
+            return false;
+          }
+          ready = true;
+          return true;
+        } catch (error) {
+          return false;
+        }
+      })();
+      websocket_reconnect_promise_ = reconnect_promise;
+      reconnect_promise.then(
+        () => {
+          if (websocket_reconnect_promise_ === reconnect_promise) {
+            websocket_reconnect_promise_ = null;
+          }
+        },
+        () => {
+          if (websocket_reconnect_promise_ === reconnect_promise) {
+            websocket_reconnect_promise_ = null;
+          }
+        },
+      );
+      return reconnect_promise;
     },
     batchInsert(tasks) {
       if (!tasks || !tasks.length) return;
@@ -3068,6 +3210,10 @@ function DownloaderPanelViewModel(props = {}) {
       create_task_preview: create_task_preview_,
       /** Platform task preview data */
       create_platform_preview: create_platform_preview_,
+      /** Whether the downloader WebSocket connection is open */
+      websocket_connected: websocket_connected_,
+      /** Whether a downloader WebSocket connection attempt is in progress */
+      websocket_connecting: websocket_connecting_,
       /** Download task count for each status */
       status_counts: status_counts_,
       /** Currently selected status filter */
@@ -3091,30 +3237,18 @@ function DownloaderPanelViewModel(props = {}) {
       if (ready) {
         return;
       }
-      WXU.downloader.status = "disconnected";
-      WXU.downloader.reconnect = async function () {
-        if (WXU.downloader.status === "connected") return true;
-        for (let i = 0; i < 3; i++) {
-          try {
-            await reloadTasks();
-            return true;
-          } catch (e) {
-            console.warn("Reconnect attempt " + (i + 1) + " failed");
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-        }
-        return false;
+      WXU.downloader.reconnect = function () {
+        return methods.retryWebsocketConnection();
       };
-      const r = await reloadTasks();
-      if (r.error) {
-        WXU.error({ source: "model.js:2587", msg: r.error.message });
+      const connected = await methods.retryWebsocketConnection();
+      if (!connected) {
         return;
       }
       ready = true;
-      methods.connect();
       setTimeout(maybeLoadMoreTasks, 0);
     },
     clean() {
+      cancel_websocket_retry();
       resetVirtualTasks();
       status_counts_.as(empty_download_status_counts());
     },

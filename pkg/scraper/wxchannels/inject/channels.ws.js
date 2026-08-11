@@ -18,9 +18,7 @@ async function fetchExportIdWithShareId(data) {
     return [new Error("can't get the uri from url, " + data.url), null];
   }
   await WXU.load_script(WXEnv.assetUrl("/public/axios.min.js"));
-  await WXU.load_script(
-    WXEnv.assetUrl("/platform/wxchannels/getFeedInfo.js"),
-  );
+  await WXU.load_script(WXEnv.assetUrl("/platform/wxchannels/getFeedInfo.js"));
   // await WXU.load_script(WXEnv.assetUrl("/public/merlin.js"));
   if (typeof getFeedInfo !== "function") {
     return [new Error("the getFeedInfo is not a function"), null];
@@ -69,11 +67,22 @@ async function fetchFeedProfileWith(data) {
     } else {
       try {
         var u = new URL(decodeURIComponent(data.url), window.location.origin);
-        console.log('WXU.API.decodeBase64ToUint64String', WXU.Base64, WXU.API.decodeBase64ToUint64String);
-        data.oid = WXU.Base64.decodeBase64ToUint64String(u.searchParams.get("oid"));
-        data.nid = WXU.Base64.decodeBase64ToUint64String(u.searchParams.get("nid"));
+        console.log(
+          "WXU.API.decodeBase64ToUint64String",
+          WXU.Base64,
+          WXU.API.decodeBase64ToUint64String,
+        );
+        data.oid = WXU.Base64.decodeBase64ToUint64String(
+          u.searchParams.get("oid"),
+        );
+        data.nid = WXU.Base64.decodeBase64ToUint64String(
+          u.searchParams.get("nid"),
+        );
       } catch (parseErr) {
-        return [new Error("failed to parse feed URL: " + parseErr.message), null];
+        return [
+          new Error("failed to parse feed URL: " + parseErr.message),
+          null,
+        ];
       }
     }
   }
@@ -112,12 +121,16 @@ function ChannelsWebsocketClient() {
     connect_local_ws() {
       const ws = new WebSocket(ChannelsWSURL);
       ws.onclose = (e) => {
-        WXU.error({ source: "channels.ws.js:115",
-          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}. ${ChannelsWSURL}`,
+        WXU.error({
+          source: "channels.ws.js:115",
+          msg: `channels ws连接已关闭，reason: "${e.reason}"，code: "${e.code}"`,
         });
       };
       ws.onerror = (e) => {
-        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e), source: "channels.ws.js:120" });
+        WXU.error({
+          msg: "channels ws连接发生错误，" + JSON.stringify(e),
+          source: "channels.ws.js:120",
+        });
       };
       ws.onmessage = (ev) => {
         const [err, msg] = WXU.parseJSON(ev.data);
