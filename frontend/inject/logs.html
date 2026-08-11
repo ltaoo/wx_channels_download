@@ -281,6 +281,40 @@
       white-space: nowrap;
     }
 
+    .wx-logs-field-value-copyable {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 0;
+      background: transparent;
+      cursor: copy;
+      text-align: left;
+    }
+
+    .wx-logs-field-value-copyable:hover,
+    .wx-logs-field-value-copyable:focus-visible {
+      background: var(--wx-content-primary-soft);
+      color: var(--wx-content-primary);
+    }
+
+    .wx-logs-field-value-copyable:focus-visible {
+      outline: 2px solid var(--wx-content-primary);
+      outline-offset: -2px;
+    }
+
+    .wx-logs-field-value-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .wx-logs-field-copy-icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      opacity: 0.68;
+    }
+
     .wx-logs-fields-empty {
       color: var(--wx-content-muted);
     }

@@ -368,6 +368,9 @@ type Errmsg struct {
 }
 type SharedFeedinfo struct {
 	Picinfo         []SharedFeedPicInfo `json:"picInfo"`
+	VideoURL        string              `json:"videoUrl"`
+	H264VideoInfo   SharedFeedVideoInfo `json:"h264VideoInfo"`
+	H265VideoInfo   SharedFeedVideoInfo `json:"h265VideoInfo"`
 	Description     string              `json:"description"`
 	MediaType       int                 `json:"mediaType"`
 	Favcountfmt     string              `json:"favCountFmt"`
@@ -378,6 +381,10 @@ type SharedFeedinfo struct {
 	Createtime      int                 `json:"createtime"`
 	Ishardad        bool                `json:"isHardAd"`
 	Coverurl        string              `json:"coverUrl"`
+}
+
+type SharedFeedVideoInfo struct {
+	VideoURL string `json:"videoUrl"`
 }
 
 type SharedFeedPicInfo struct {

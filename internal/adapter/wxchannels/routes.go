@@ -31,12 +31,11 @@ type RouteRegistrar interface {
 // WebsocketRoutes owns the HTTP routes backed by the Channels scraper client.
 type WebsocketRoutes struct {
 	client *wxchannels.ChannelsClient
-	cfg    *config.Config
 }
 
 func NewWebsocketRoutes(refresh_interval int, cfg *config.Config) *WebsocketRoutes {
 	client := wxchannels.NewChannelsClient(refresh_interval, cfg)
-	return &WebsocketRoutes{client: client, cfg: cfg}
+	return &WebsocketRoutes{client: client}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -111,18 +110,14 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 		return
 	}
 
-	cookie := ""
-	if r.cfg != nil {
-		cookie = r.cfg.GetString("cloudflare.sphCookie")
-	}
-	if cookie == "" {
-		util.Err(ctx, 400, "cloudflare.sphCookie not configured")
-		return
-	}
-
-	raw_resp, err := wxchannels.FetchVideoProfileWithShareUrl(share_url, cookie)
+	raw_result, err := r.client.Fetch(wxchannels.FetchParams{URL: share_url})
 	if err != nil {
 		util.Err(ctx, 400, err.Error())
+		return
+	}
+	raw_resp, ok := raw_result.(json.RawMessage)
+	if !ok {
+		util.Err(ctx, 500, "unexpected shared profile response")
 		return
 	}
 

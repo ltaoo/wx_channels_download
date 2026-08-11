@@ -48,60 +48,6 @@ function LogsPageFormatTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function LogsPageFieldText(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function LogsPageFieldRows(entry) {
-  const data = entry.json || entry.JSON || null;
-  const skip = new Set([
-    "time",
-    "timestamp",
-    "level",
-    "message",
-    "msg",
-    "file",
-    "component",
-  ]);
-  const rows = [];
-  if (data && typeof data === "object") {
-    for (const [key, value] of Object.entries(data)) {
-      if (!skip.has(String(key).toLowerCase())) {
-        rows.push([key, LogsPageFieldText(value)]);
-      }
-    }
-  }
-  return rows.filter((row) => {
-    return row[1] !== undefined && row[1] !== null && String(row[1]) !== "";
-  });
-}
-
-function LogsPageStructuredField(entry, field) {
-  if (!entry) {
-    return "";
-  }
-  const data = entry.json || entry.JSON || null;
-  if (data && typeof data === "object") {
-    const wanted = String(field || "").toLowerCase();
-    for (const [key, value] of Object.entries(data)) {
-      if (String(key).toLowerCase() === wanted) {
-        return LogsPageFieldText(value);
-      }
-    }
-  }
-  return "";
-}
-
 function LogsPageLevelClass(level) {
   const normalized = String(level || "info").toLowerCase();
   if (normalized === "debug" || normalized === "warn" || normalized === "error") {
@@ -259,14 +205,10 @@ function LogsPageError(props) {
 }
 
 function LogsPageRow(props) {
+  const vm$ = props.store;
   const entry = LogsPageEntryValue(props.entry) || {};
-  const file =
-    LogsPageStructuredField(entry, "file") || entry.file || entry.File || "";
-  const component =
-    LogsPageStructuredField(entry, "component") ||
-    entry.component ||
-    entry.Component ||
-    "";
+  const file = entry.file || entry.File || "";
+  const component = entry.component || entry.Component || "";
   return View({ class: "wx-logs-table-row", attributes: { role: "row" } }, [
     View({ class: "wx-logs-level-cell", attributes: { role: "cell" } }, [
       View({ class: LogsPageLevelClass(entry.level) }, [entry.level || "info"]),
@@ -292,13 +234,14 @@ function LogsPageRow(props) {
       entry.message || entry.raw || "",
     ]),
     View({ class: "wx-logs-fields-cell", attributes: { role: "cell" } }, [
-      LogsPageFieldsCell(entry),
+      LogsPageFieldsCell({ entry, store: vm$ }),
     ]),
   ]);
 }
 
-function LogsPageFieldsCell(entry) {
-  const fields = LogsPageFieldRows(entry);
+function LogsPageFieldsCell(props) {
+  const vm$ = props.store;
+  const fields = vm$.methods.fieldRows(props.entry);
   if (fields.length === 0) {
     return View({ class: "wx-logs-fields-empty" }, ["-"]);
   }
@@ -307,9 +250,32 @@ function LogsPageFieldsCell(entry) {
       each: fields,
       render(row) {
         const text = `${row[0]}=${row[1]}`;
+        const copyable = vm$.methods.isJsonFieldValue(row[1]);
         return View({ class: "wx-logs-field", attributes: { title: text } }, [
           View({ class: "wx-logs-field-key" }, [row[0]]),
-          View({ class: "wx-logs-field-value" }, [row[1]]),
+          copyable
+            ? View(
+                {
+                  type: "button",
+                  class:
+                    "wx-logs-field-value wx-logs-field-value-copyable",
+                  attributes: {
+                    type: "button",
+                    title: `点击复制 ${row[0]} 的 JSON 值`,
+                    "aria-label": `复制 ${row[0]} 的 JSON 值`,
+                  },
+                  onClick() {
+                    vm$.methods.copyJsonFieldValue(row[1]);
+                  },
+                },
+                [
+                  View({ class: "wx-logs-field-value-text" }, [row[1]]),
+                  View({ class: "wx-logs-field-copy-icon" }, [
+                    Timeless.Icon({ name: "copy", size: 12 }),
+                  ]),
+                ],
+              )
+            : View({ class: "wx-logs-field-value" }, [row[1]]),
         ]);
       },
     }),
@@ -342,7 +308,7 @@ function LogsPageTable(props) {
       itemHeight: 48,
       each: vm$.state.entries,
       render(entry) {
-        return LogsPageRow({ entry });
+        return LogsPageRow({ entry, store: vm$ });
       },
     }),
   ]);

@@ -1,239 +1,8 @@
 /// <reference path="../utils.js" />
+/// <reference path="model.js" />
 /**
- * @file Scraper fetch page Model and View.
+ * @file Scraper fetch page rendering.
  */
-var HomePageModel = (() => {
-  const home_api_origin = WXEnv.get("apiOrigin");
-  const home_http_client = new Timeless.HttpClientCore({
-    headers: { "Content-Type": "application/json" },
-    hostname: home_api_origin,
-  });
-  Timeless.web.provide_http_client(home_http_client);
-
-  const home_request = Timeless.request_factory({
-    headers: { "Content-Type": "application/json" },
-    process(response) {
-      if (response.error) {
-        return Timeless.Result.Err(response.error);
-      }
-      const payload = response.data || {};
-      if (payload.code !== 0) {
-        return Timeless.Result.Err(
-          payload.msg || "获取失败",
-          payload.code,
-          payload.data,
-        );
-      }
-      return Timeless.Result.Ok(payload.data || {});
-    },
-  });
-
-  function create_model() {
-    const url_ = ref("");
-    const loading_ = ref(false);
-    const error_ = ref("");
-    const result_ = ref(null);
-    const download_loading_ = ref(false);
-    const download_error_ = ref("");
-    const download_success_ = ref("");
-    let request_sequence = 0;
-
-    const fetch_request = new Timeless.RequestCore(
-      (params) => home_request.get("/api/scraper/fetch", params),
-      {
-        client: home_http_client,
-      },
-    );
-    const download_request = new Timeless.RequestCore(
-      (body) => home_request.post("/api/v1/download_task/create", body),
-      {
-        client: home_http_client,
-      },
-    );
-
-    const submit_disabled_ = combine(
-      {
-        url: url_,
-        loading: loading_,
-        downloadLoading: download_loading_,
-      },
-      (state) =>
-        state.loading ||
-        state.downloadLoading ||
-        !String(state.url || "").trim(),
-    );
-    const status_text_ = combine(
-      {
-        loading: loading_,
-        error: error_,
-        downloadLoading: download_loading_,
-        downloadError: download_error_,
-        downloadSuccess: download_success_,
-      },
-      (state) => {
-        if (state.loading) {
-          return "正在获取...";
-        }
-        if (state.downloadLoading) {
-          return "正在创建下载任务...";
-        }
-        return (
-          state.error || state.downloadError || state.downloadSuccess || ""
-        );
-      },
-    );
-    const busy_ = combine(
-      { loading: loading_, downloadLoading: download_loading_ },
-      (state) => state.loading || state.downloadLoading,
-    );
-    const has_error_ = combine(
-      { error: error_, downloadError: download_error_ },
-      (state) => Boolean(state.error || state.downloadError),
-    );
-    const has_result_ = computed(result_, (data) => Boolean(data));
-    const result_platform_ = computed(
-      result_,
-      (data) => (data && data.platform) || "result",
-    );
-    const result_text_ = computed(result_, (data) =>
-      data ? JSON.stringify(data, null, 2) : "",
-    );
-    const download_disabled_ = combine(
-      {
-        result: result_,
-        loading: download_loading_,
-        success: download_success_,
-      },
-      (state) => !state.result || state.loading || Boolean(state.success),
-    );
-    const download_button_text_ = combine(
-      { loading: download_loading_, success: download_success_ },
-      (state) => {
-        if (state.loading) {
-          return "创建中";
-        }
-        return state.success ? "已创建" : "下载";
-      },
-    );
-
-    async function submit() {
-      if (loading_.value || download_loading_.value) {
-        return null;
-      }
-      const raw_url = String(url_.value || "").trim();
-      if (!raw_url) {
-        error_.as("请输入 URL");
-        return null;
-      }
-
-      const sequence = ++request_sequence;
-      loading_.as(true);
-      error_.as("");
-      result_.as(null);
-      download_error_.as("");
-      download_success_.as("");
-
-      const result = await fetch_request.run({ url: raw_url });
-      if (sequence !== request_sequence) {
-        return result;
-      }
-      loading_.as(false);
-      if (result.error) {
-        error_.as(result.error.message || String(result.error));
-        return result;
-      }
-
-      result_.as(result.data || {});
-      return result;
-    }
-
-    async function create_download_task() {
-      if (download_loading_.value || download_success_.value) {
-        return null;
-      }
-
-      const fetch_result = result_.value;
-      const platform = String(
-        (fetch_result && fetch_result.platform) || "",
-      ).trim();
-      const content = fetch_result && fetch_result.result;
-      if (!platform || content === undefined || content === null) {
-        download_error_.as("解析结果缺少 platform 或 result");
-        return null;
-      }
-
-      download_loading_.as(true);
-      download_error_.as("");
-      download_success_.as("");
-      const body = {
-        objects: [
-          {
-            platform,
-            content,
-            config: { platform },
-          },
-        ],
-      };
-      const result = await download_request.run(body);
-      download_loading_.as(false);
-      if (result.error) {
-        download_error_.as(result.error.message || String(result.error));
-        return result;
-      }
-
-      const tasks =
-        result.data && Array.isArray(result.data.tasks)
-          ? result.data.tasks
-          : [];
-      const failed_task = tasks.find(
-        (task) => task && Number(task.code || 0) !== 0,
-      );
-      if (failed_task) {
-        download_error_.as(failed_task.msg || "创建下载任务失败");
-        return result;
-      }
-
-      download_success_.as("下载任务创建成功");
-      return result;
-    }
-
-    const methods = {
-      setURL(value) {
-        url_.as(String(value || ""));
-        if (error_.value) {
-          error_.as("");
-        }
-      },
-      submit,
-      createDownloadTask: create_download_task,
-    };
-
-    return {
-      state: {
-        url: url_,
-        loading: loading_,
-        error: error_,
-        result: result_,
-        download_loading: download_loading_,
-        download_error: download_error_,
-        download_success: download_success_,
-        submit_disabled: submit_disabled_,
-        status_text: status_text_,
-        busy: busy_,
-        has_error: has_error_,
-        has_result: has_result_,
-        result_platform: result_platform_,
-        result_text: result_text_,
-        download_disabled: download_disabled_,
-        download_button_text: download_button_text_,
-      },
-      methods,
-    };
-  }
-
-  return create_model;
-})();
-
 function HomePageForm(props) {
   const vm$ = props.store;
   return View(
@@ -291,39 +60,307 @@ function HomePageForm(props) {
   );
 }
 
+function HomeContentCover(props) {
+  const content = props.content;
+  return View({ class: "wx-home-content-cover" }, [
+    View({ class: "wx-home-content-cover-fallback" }, [
+      Timeless.Icon({ name: "file", size: 34 }),
+      content.content_type_name,
+    ]),
+    Show({
+      when: content.cover_url,
+      ok() {
+        return Img({
+          class: "wx-home-content-cover-image",
+          src: content.cover_url,
+          alt: content.title,
+          attributes: {
+            loading: "lazy",
+            referrerpolicy: "no-referrer",
+          },
+          onError(event) {
+            event.target.style.display = "none";
+          },
+        });
+      },
+    }),
+  ]);
+}
+
+function HomeContentCard(props) {
+  const vm$ = props.store;
+  const content = vm$.state.content;
+  return View({ class: "wx-home-card wx-home-content-card" }, [
+    View({ class: "wx-home-card-heading" }, [
+      View({ class: "wx-home-card-title-group" }, [
+        View({ class: "wx-home-card-icon" }, [
+          Timeless.Icon({ name: "file", size: 17 }),
+        ]),
+        View({}, [
+          View({ class: "wx-home-card-kicker" }, ["CONTENT"]),
+          View({ class: "wx-home-card-title" }, ["内容"]),
+        ]),
+      ]),
+      Button(
+        {
+          class: "wx-content-action wx-home-download",
+          disabled: vm$.state.download_disabled,
+          attributes: {
+            type: "button",
+            title: "创建下载任务",
+          },
+          onClick() {
+            vm$.methods.createDownloadTask();
+          },
+        },
+        [
+          Timeless.Icon({ name: "download", size: 16 }),
+          View({ class: "wx-content-action-label" }, [
+            vm$.state.download_button_text,
+          ]),
+        ],
+      ),
+    ]),
+    View({ class: "wx-home-content-card-body" }, [
+      HomeContentCover({ content }),
+      View({ class: "wx-home-content-info" }, [
+        View({ class: "wx-home-badges" }, [
+          View({ class: "wx-home-badge wx-home-badge-primary" }, [
+            content.platform_name,
+          ]),
+          View({ class: "wx-home-badge" }, [content.content_type_name]),
+        ]),
+        View(
+          {
+            class: "wx-home-content-title",
+            attributes: { title: content.title },
+          },
+          [content.title],
+        ),
+        Show({
+          when: content.show_description,
+          ok() {
+            return View({ class: "wx-home-content-description" }, [
+              content.description,
+            ]);
+          },
+        }),
+        View({ class: "wx-home-content-meta" }, [
+          Timeless.Icon({ name: "clock3", size: 14 }),
+          content.publish_time_text,
+        ]),
+        View({ class: "wx-home-metrics" }, [
+          HomeContentMetric({ label: "浏览", value: content.view_count_text }),
+          HomeContentMetric({ label: "点赞", value: content.like_count_text }),
+          HomeContentMetric({
+            label: "评论",
+            value: content.comment_count_text,
+          }),
+        ]),
+        Show({
+          when: content.content_url,
+          ok() {
+            return Button(
+              {
+                class: "wx-home-link-button",
+                attributes: { type: "button", title: "打开原内容" },
+                onClick() {
+                  vm$.methods.openContent();
+                },
+              },
+              [
+                "打开原内容",
+                Timeless.Icon({ name: "external-link", size: 14 }),
+              ],
+            );
+          },
+        }),
+      ]),
+    ]),
+  ]);
+}
+
+function HomeContentMetric(props) {
+  return View({ class: "wx-home-metric" }, [
+    View({ class: "wx-home-metric-label" }, [props.label]),
+    View({ class: "wx-home-metric-value" }, [props.value]),
+  ]);
+}
+
+function HomeAccountAvatar(props) {
+  const account = props.account;
+  return View({ class: "wx-home-account-avatar" }, [
+    View({ class: "wx-home-account-avatar-fallback" }, [
+      account.avatar_fallback,
+    ]),
+    Show({
+      when: account.avatar_url,
+      ok() {
+        return Img({
+          class: "wx-home-account-avatar-image",
+          src: account.avatar_url,
+          alt: account.nickname,
+          attributes: {
+            loading: "lazy",
+            referrerpolicy: "no-referrer",
+          },
+          onError(event) {
+            event.target.style.display = "none";
+          },
+        });
+      },
+    }),
+  ]);
+}
+
+function HomeAccountCard(props) {
+  const vm$ = props.store;
+  const account = vm$.state.account;
+  return View({ class: "wx-home-card wx-home-account-card" }, [
+    View({ class: "wx-home-card-heading" }, [
+      View({ class: "wx-home-card-title-group" }, [
+        View({ class: "wx-home-card-icon" }, [
+          Timeless.Icon({ name: "user", size: 17 }),
+        ]),
+        View({}, [
+          View({ class: "wx-home-card-kicker" }, ["ACCOUNT"]),
+          View({ class: "wx-home-card-title" }, ["账号"]),
+        ]),
+      ]),
+      View({ class: "wx-home-badge wx-home-badge-primary" }, [
+        account.platform_name,
+      ]),
+    ]),
+    Show({
+      when: account.present,
+      ok() {
+        return View({ class: "wx-home-account-card-body" }, [
+          HomeAccountAvatar({ account }),
+          View({ class: "wx-home-account-name" }, [account.nickname]),
+          Show({
+            when: account.identity,
+            ok() {
+              return View({ class: "wx-home-account-identity" }, [
+                account.identity,
+              ]);
+            },
+          }),
+          Show({
+            when: account.signature,
+            ok() {
+              return View({ class: "wx-home-account-signature" }, [
+                account.signature,
+              ]);
+            },
+          }),
+          View({ class: "wx-home-account-follower" }, [
+            Timeless.Icon({ name: "users", size: 15 }),
+            account.follower_count_text,
+          ]),
+          Show({
+            when: account.profile_url,
+            ok() {
+              return Button(
+                {
+                  class: "wx-home-link-button wx-home-account-link",
+                  attributes: { type: "button", title: "打开账号主页" },
+                  onClick() {
+                    vm$.methods.openAccount();
+                  },
+                },
+                [
+                  "打开账号主页",
+                  Timeless.Icon({ name: "external-link", size: 14 }),
+                ],
+              );
+            },
+          }),
+        ]);
+      },
+      else() {
+        return View({ class: "wx-home-account-empty" }, [
+          View({ class: "wx-home-account-empty-icon" }, [
+            Timeless.Icon({ name: "user-round-x", size: 26 }),
+          ]),
+          View({ class: "wx-home-account-name" }, [account.nickname]),
+          View({ class: "wx-home-account-signature" }, [
+            "当前解析结果没有关联账号信息",
+          ]),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function HomeRawJSON(props) {
+  const vm$ = props.store;
+  return View({ class: "wx-home-json" }, [
+    Button(
+      {
+        class: computed(vm$.state.json_expanded, (expanded) =>
+          expanded
+            ? "wx-home-json-toggle is-expanded"
+            : "wx-home-json-toggle",
+        ),
+        attributes: {
+          type: "button",
+          "aria-controls": "wx-home-json-body",
+          "aria-expanded": vm$.state.json_expanded,
+        },
+        onClick() {
+          vm$.methods.toggleJSON();
+        },
+      },
+      [
+        View({ class: "wx-home-json-toggle-main" }, [
+          View({ class: "wx-home-json-icon" }, [
+            Timeless.Icon({ name: "braces", size: 17 }),
+          ]),
+          View({}, [
+            View({ class: "wx-home-json-title" }, [vm$.state.json_toggle_text]),
+            View({ class: "wx-home-json-subtitle" }, [
+              "完整接口响应，仅供调试与核对",
+            ]),
+          ]),
+        ]),
+        Show({
+          when: vm$.state.json_expanded,
+          ok() {
+            return Timeless.Icon({ name: "chevron-up", size: 17 });
+          },
+          else() {
+            return Timeless.Icon({ name: "chevron-down", size: 17 });
+          },
+        }),
+      ],
+    ),
+    Show({
+      when: vm$.state.json_expanded,
+      ok() {
+        return View(
+          {
+            type: "pre",
+            class: "wx-home-json-body",
+            attributes: { id: "wx-home-json-body" },
+          },
+          [vm$.state.result_text],
+        );
+      },
+    }),
+  ]);
+}
+
 function HomePageResult(props) {
   const vm$ = props.store;
   return Show({
     when: vm$.state.has_result,
     ok() {
       return View({ class: "wx-home-result" }, [
-        View({ class: "wx-home-result-head" }, [
-          View({ class: "wx-content-row-platform" }, [
-            vm$.state.result_platform,
-          ]),
-          Button(
-            {
-              class: "wx-content-action wx-home-download",
-              disabled: vm$.state.download_disabled,
-              attributes: {
-                type: "button",
-                title: "创建下载任务",
-              },
-              onClick() {
-                vm$.methods.createDownloadTask();
-              },
-            },
-            [
-              Timeless.Icon({ name: "download", size: 16 }),
-              View({ class: "wx-content-action-label" }, [
-                vm$.state.download_button_text,
-              ]),
-            ],
-          ),
+        View({ class: "wx-home-card-grid" }, [
+          HomeContentCard({ store: vm$ }),
+          HomeAccountCard({ store: vm$ }),
         ]),
-        View({ type: "pre", class: "wx-home-result-body" }, [
-          vm$.state.result_text,
-        ]),
+        HomeRawJSON({ store: vm$ }),
       ]);
     },
   });
@@ -359,8 +396,8 @@ function HomePageView(props) {
           ok() {
             return View(
               {
-                class: computed(vm$.state.has_error, (hasError) =>
-                  hasError ? "wx-home-status error" : "wx-home-status",
+                class: computed(vm$.state.has_error, (has_error) =>
+                  has_error ? "wx-home-status error" : "wx-home-status",
                 ),
               },
               [

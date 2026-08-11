@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
 	"wx_channel/pkg/clawreq"
@@ -37,7 +39,8 @@ var articleURLRe = regexp.MustCompile(`^/p/([0-9]+)$`)
 type Client struct {
 	clawreqClient *clawreq.Client
 	httpClient    *http.Client
-	cookieStr     string
+	cookie_reader *cookies.Reader
+	logger        *zerolog.Logger
 	workdir       string
 	OnProgress    func(downloaded int64)
 }
@@ -301,21 +304,35 @@ func canonicalAnswerURL(questionID, answerID string) string {
 // NewClient creates a zhihu scraper client with the given workdir.
 // The workdir is used to locate cookies.json for authentication.
 func NewClient(workdir string) *Client {
-	c := &Client{workdir: workdir}
+	client := NewClientWithCookieReader(cookies.NewPersistentReader(workdir), nil)
+	client.workdir = workdir
+	return client
+}
+
+// NewClientWithCookieReader creates a zhihu scraper client that retains the
+// provided persistent cookie reader reference. The logger is optional.
+func NewClientWithCookieReader(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Client {
+	c := &Client{
+		cookie_reader: cookie_reader,
+		logger:        logger,
+	}
 	c.initClawreqClient()
-	c.loadCookies()
 	return c
 }
 
-// SetWorkdir updates the workdir and reloads cookies from cookies.json.
+// SetWorkdir updates the workdir used by the persistent cookie reader.
 func (c *Client) SetWorkdir(workdir string) {
 	c.workdir = workdir
-	c.loadCookies()
+	c.cookie_reader = cookies.NewPersistentReader(workdir)
 }
 
-// LoadCookies reloads cookies from the workdir's cookies.json file.
+// LoadCookies refreshes the persistent cookie reader. Cookie data is read when
+// a request is created so the latest cookies.json contents are used.
 func (c *Client) LoadCookies() {
-	c.loadCookies()
+	if c == nil {
+		return
+	}
+	c.cookie_reader = cookies.NewPersistentReader(c.workdir)
 }
 
 func (c *Client) initClawreqClient() {
@@ -330,44 +347,16 @@ func (c *Client) initClawreqClient() {
 	c.httpClient = &http.Client{Timeout: 120 * time.Second}
 }
 
-func (c *Client) loadCookies() {
-	if c.workdir == "" {
-		return
-	}
-	path := filepath.Join(c.workdir, "cookies.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("zhihu: failed to read cookies.json: %v", err)
-		}
-		return
-	}
-	var cookieList []cookies.Cookie
-	if err := json.Unmarshal(data, &cookieList); err != nil {
-		log.Printf("zhihu: failed to parse cookies.json: %v", err)
-		return
-	}
-	if len(cookieList) == 0 {
-		return
-	}
-	filtered := make([]cookies.Cookie, 0, len(cookieList))
-	for _, ck := range cookieList {
-		if strings.HasSuffix(ck.Domain, "zhihu.com") || ck.Domain == "zhihu.com" {
-			filtered = append(filtered, ck)
-		}
-	}
-	if len(filtered) == 0 {
-		log.Printf("zhihu: no zhihu.com cookies found in cookies.json (%d total)", len(cookieList))
-		return
-	}
-	log.Printf("zhihu: loaded %d zhihu cookies from cookies.json (%d total)", len(filtered), len(cookieList))
-	c.cookieStr = cookies.FormatCookieHeader(filtered)
-}
-
 // cookie returns the current cookie string, falling back to viper config.
 func (c *Client) cookie() string {
-	if c != nil && c.cookieStr != "" {
-		return c.cookieStr
+	if c != nil && c.cookie_reader != nil {
+		cookie_value, err := c.cookie_reader.HeaderForDomain(zhihu_cookie_domain)
+		if err == nil {
+			return cookie_value
+		}
+		if !errors.Is(err, cookies.ErrCookieNotFound) {
+			log.Printf("zhihu: failed to read persistent cookies: %v", err)
+		}
 	}
 	return strings.TrimSpace(viper.GetString("zhihu.cookie"))
 }
@@ -476,8 +465,9 @@ func (c *Client) doBytesWithClawreq(method, rawURL, referer string) ([]byte, err
 	}
 
 	var opts []clawreq.RequestOption
-	if cookie := c.cookie(); cookie != "" {
-		opts = append(opts, clawreq.WithCookie(cookie))
+	cookie_header := c.cookie()
+	if cookie_header != "" {
+		opts = append(opts, clawreq.WithCookie(cookie_header))
 	}
 	opts = append(opts,
 		clawreq.WithReferer(referer),
@@ -488,10 +478,12 @@ func (c *Client) doBytesWithClawreq(method, rawURL, referer string) ([]byte, err
 		}),
 	)
 
+	c.log_request(method, rawURL, cookie_header)
 	resp, err := client.Do(context.Background(), method, rawURL, nil, opts...)
 	if err != nil {
 		return nil, err
 	}
+	c.log_response(method, rawURL, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("zhihu status %d body=%s", resp.StatusCode, debugSnippet(resp.Body))
 	}
@@ -519,15 +511,18 @@ func (c *Client) doBytesWithHTTP(method, rawURL, referer string) ([]byte, error)
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	if cookie := c.cookie(); cookie != "" {
-		req.Header.Set("Cookie", cookie)
+	cookie_header := c.cookie()
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
 	}
 
+	c.log_request(method, rawURL, cookie_header)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	c.log_response(method, rawURL, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("zhihu status %d body=%s", resp.StatusCode, debugSnippet(body))
@@ -664,15 +659,18 @@ func (c *Client) downloadVideo(ctx context.Context, rawURL string, referer strin
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	if cookie := c.cookie(); cookie != "" {
-		req.Header.Set("Cookie", cookie)
+	cookie_header := c.cookie()
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
 	}
 
+	c.log_request(http.MethodGet, rawURL, cookie_header)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+	c.log_response(http.MethodGet, rawURL, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return "", fmt.Errorf("zhihu video status %d body=%s", resp.StatusCode, debugSnippet(body))
@@ -782,8 +780,9 @@ func (c *Client) doImageBytesWithClawreq(rawURL string, referer string) ([]byte,
 	}
 
 	var opts []clawreq.RequestOption
-	if cookie := c.cookie(); cookie != "" {
-		opts = append(opts, clawreq.WithCookie(cookie))
+	cookie_header := c.cookie()
+	if cookie_header != "" {
+		opts = append(opts, clawreq.WithCookie(cookie_header))
 	}
 	opts = append(opts,
 		clawreq.WithReferer(referer),
@@ -795,10 +794,12 @@ func (c *Client) doImageBytesWithClawreq(rawURL string, referer string) ([]byte,
 		}),
 	)
 
+	c.log_request(http.MethodGet, rawURL, cookie_header)
 	resp, err := client.Do(context.Background(), http.MethodGet, rawURL, nil, opts...)
 	if err != nil {
 		return nil, "", err
 	}
+	c.log_response(http.MethodGet, rawURL, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("zhihu image status %d body=%s", resp.StatusCode, debugSnippet(resp.Body))
 	}
@@ -821,15 +822,18 @@ func (c *Client) doImageBytesWithHTTP(rawURL string, referer string) ([]byte, st
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	if cookie := c.cookie(); cookie != "" {
-		req.Header.Set("Cookie", cookie)
+	cookie_header := c.cookie()
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
 	}
 
+	c.log_request(http.MethodGet, rawURL, cookie_header)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
 	defer resp.Body.Close()
+	c.log_response(http.MethodGet, rawURL, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, "", fmt.Errorf("zhihu image status %d body=%s", resp.StatusCode, debugSnippet(body))
@@ -994,24 +998,24 @@ func (c *Client) doAPIBytesWithClawreq(endpoint, referer string) ([]byte, error)
 		return nil, fmt.Errorf("zhihu: clawreq client not initialized")
 	}
 
-	apiURL := SourceURL + strings.TrimPrefix(endpoint, "/")
-	cookie := c.cookie()
+	api_url := SourceURL + strings.TrimPrefix(endpoint, "/")
+	cookie_header := c.cookie()
 	headers := map[string]string{
-		"Accept":            "*/*",
-		"Accept-Language":   "zh-CN,zh;q=0.9,en;q=0.8",
-		"Cache-Control":     "no-cache",
-		"Pragma":            "no-cache",
-		"X-Requested-With":  "fetch",
-		"Sec-Fetch-Dest":    "empty",
-		"Sec-Fetch-Mode":    "cors",
-		"Sec-Fetch-Site":    "same-origin",
+		"Accept":           "*/*",
+		"Accept-Language":  "zh-CN,zh;q=0.9,en;q=0.8",
+		"Cache-Control":    "no-cache",
+		"Pragma":           "no-cache",
+		"X-Requested-With": "fetch",
+		"Sec-Fetch-Dest":   "empty",
+		"Sec-Fetch-Mode":   "cors",
+		"Sec-Fetch-Site":   "same-origin",
 	}
 	if referer != "" {
 		headers["Referer"] = referer
 	}
 	// Append x-zse signed headers when d_c0 cookie is available.
-	if cookie != "" {
-		if dc0 := strings.Trim(getCookieValue(cookie, "d_c0"), `"`); dc0 != "" {
+	if cookie_header != "" {
+		if dc0 := strings.Trim(getCookieValue(cookie_header, "d_c0"), `"`); dc0 != "" {
 			for k, v := range buildSignedHeader(endpoint, dc0) {
 				headers[k] = v
 			}
@@ -1019,15 +1023,17 @@ func (c *Client) doAPIBytesWithClawreq(endpoint, referer string) ([]byte, error)
 	}
 
 	var opts []clawreq.RequestOption
-	if cookie != "" {
-		opts = append(opts, clawreq.WithCookie(cookie))
+	if cookie_header != "" {
+		opts = append(opts, clawreq.WithCookie(cookie_header))
 	}
 	opts = append(opts, clawreq.WithHeaders(headers))
 
-	resp, err := client.Do(context.Background(), http.MethodGet, apiURL, nil, opts...)
+	c.log_request(http.MethodGet, api_url, cookie_header)
+	resp, err := client.Do(context.Background(), http.MethodGet, api_url, nil, opts...)
 	if err != nil {
 		return nil, err
 	}
+	c.log_response(http.MethodGet, api_url, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("zhihu api status %d body=%s", resp.StatusCode, debugSnippet(resp.Body))
 	}
@@ -1038,10 +1044,10 @@ func (c *Client) doAPIBytesWithClawreq(endpoint, referer string) ([]byte, error)
 }
 
 func (c *Client) doAPIBytesWithHTTP(endpoint, referer string) ([]byte, error) {
-	apiURL := SourceURL + strings.TrimPrefix(endpoint, "/")
-	cookie := c.cookie()
+	api_url := SourceURL + strings.TrimPrefix(endpoint, "/")
+	cookie_header := c.cookie()
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	req, err := http.NewRequest(http.MethodGet, api_url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,20 +1063,22 @@ func (c *Client) doAPIBytesWithHTTP(endpoint, referer string) ([]byte, error) {
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	if cookie != "" {
-		req.Header.Set("Cookie", cookie)
-		if dc0 := strings.Trim(getCookieValue(cookie, "d_c0"), `"`); dc0 != "" {
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
+		if dc0 := strings.Trim(getCookieValue(cookie_header, "d_c0"), `"`); dc0 != "" {
 			for k, v := range buildSignedHeader(endpoint, dc0) {
 				req.Header.Set(k, v)
 			}
 		}
 	}
 
+	c.log_request(http.MethodGet, api_url, cookie_header)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	c.log_response(http.MethodGet, api_url, resp.StatusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("zhihu api status %d body=%s", resp.StatusCode, debugSnippet(body))

@@ -771,9 +771,64 @@ func shared_feed_profile_to_channels_object(content_json json.RawMessage) (*wxch
 		return nil, ok, err
 	}
 	feed_info := resp.Data.Feedinfo
-	if feed_info.MediaType != wxchannels.MediaTypePicture && len(feed_info.Picinfo) == 0 {
-		return nil, false, nil
+	switch feed_info.MediaType {
+	case wxchannels.MediaTypeVideo:
+		return shared_video_profile_to_channels_object(resp, content_json)
+	case wxchannels.MediaTypePicture:
+		return shared_picture_profile_to_channels_object(resp, content_json)
 	}
+	if len(feed_info.Picinfo) > 0 {
+		return shared_picture_profile_to_channels_object(resp, content_json)
+	}
+	return nil, false, nil
+}
+
+func shared_video_profile_to_channels_object(resp wxchannels.ChannelsSharedFeedProfileResp, content_json json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	feed_info := resp.Data.Feedinfo
+	video_url := shared_feed_video_url(feed_info)
+	if video_url == "" {
+		return nil, true, errors.New("分享详情视频类型缺少 videoUrl")
+	}
+
+	bgm_url := shared_feed_bgm_url(feed_info.Bgminfo)
+	contact_username := shared_feed_author_id(resp.Data.Authorinfo)
+	object_id := shared_feed_object_id(resp, content_json)
+	media := []wxchannels.ChannelsMediaItem{{
+		URL:       video_url,
+		ThumbUrl:  strings.TrimSpace(feed_info.Coverurl),
+		CoverUrl:  strings.TrimSpace(feed_info.Coverurl),
+		MediaType: wxchannels.MediaTypeVideo,
+	}}
+	obj := &wxchannels.ChannelsObject{
+		ID:            object_id,
+		ObjectNonceId: object_id,
+		CreateTime:    feed_info.Createtime,
+		Type:          "video",
+		Contact: wxchannels.ChannelsContact{
+			Username: contact_username,
+			Nickname: strings.TrimSpace(resp.Data.Authorinfo.Nickname),
+			HeadUrl:  strings.TrimSpace(resp.Data.Authorinfo.Headimgurl),
+		},
+		ObjectDesc: wxchannels.ChannelsObjectDesc{
+			Description: strings.TrimSpace(feed_info.Description),
+			MediaType:   wxchannels.MediaTypeVideo,
+			Media:       media,
+			FollowPostInfo: wxchannels.ChannelsFollowPostInfo{
+				MusicInfo: wxchannels.ChannelsMusicInfo{
+					DocId:             feed_info.Bgminfo.DocID,
+					DocType:           feed_info.Bgminfo.DocType,
+					Name:              feed_info.Bgminfo.Name,
+					Artist:            feed_info.Bgminfo.Artist,
+					MediaStreamingUrl: bgm_url,
+				},
+			},
+		},
+	}
+	return obj, true, nil
+}
+
+func shared_picture_profile_to_channels_object(resp wxchannels.ChannelsSharedFeedProfileResp, content_json json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	feed_info := resp.Data.Feedinfo
 	if len(feed_info.Picinfo) == 0 {
 		return nil, true, errors.New("分享详情图片类型缺少 picInfo")
 	}
@@ -826,6 +881,16 @@ func shared_feed_profile_to_channels_object(content_json json.RawMessage) (*wxch
 		Files: media,
 	}
 	return obj, true, nil
+}
+
+func shared_feed_video_url(feed_info wxchannels.SharedFeedinfo) string {
+	if video_url := strings.TrimSpace(feed_info.H264VideoInfo.VideoURL); video_url != "" {
+		return video_url
+	}
+	if video_url := strings.TrimSpace(feed_info.VideoURL); video_url != "" {
+		return video_url
+	}
+	return strings.TrimSpace(feed_info.H265VideoInfo.VideoURL)
 }
 
 func parse_shared_feed_profile(content_json json.RawMessage, allow_envelope bool) (wxchannels.ChannelsSharedFeedProfileResp, bool, error) {

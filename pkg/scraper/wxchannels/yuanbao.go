@@ -2,7 +2,9 @@ package wxchannels
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"math/rand"
@@ -29,6 +31,20 @@ type ParseData struct {
 	PlayableUrl             string `json:"playable_url"`
 }
 
+type feed_info_err_msg struct {
+	Type    int    `json:"type"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type feed_info_error_response struct {
+	Data struct {
+		ErrMsg *feed_info_err_msg `json:"errMsg"`
+	} `json:"data"`
+	ErrCode int    `json:"errCode"`
+	ErrMsg  string `json:"errMsg"`
+}
+
 func generate_rid() string {
 	timestamp_hex := fmt.Sprintf("%x", time.Now().Unix())
 	random_hex := make([]byte, 8)
@@ -36,6 +52,53 @@ func generate_rid() string {
 		random_hex[i] = "0123456789abcdef"[rand.Intn(16)]
 	}
 	return timestamp_hex + "-" + string(random_hex)
+}
+
+func plain_text_from_html(value string) string {
+	var text strings.Builder
+	inside_tag := false
+	for _, r := range value {
+		switch r {
+		case '<':
+			inside_tag = true
+		case '>':
+			inside_tag = false
+		default:
+			if !inside_tag {
+				text.WriteRune(r)
+			}
+		}
+	}
+	return strings.Join(strings.Fields(html.UnescapeString(text.String())), " ")
+}
+
+func parse_feed_info_error(body_text []byte) error {
+	var response feed_info_error_response
+	if err := json.Unmarshal(body_text, &response); err != nil {
+		return fmt.Errorf("decode get feed info response: %w", err)
+	}
+
+	if response.ErrCode != 0 {
+		message := plain_text_from_html(response.ErrMsg)
+		if message == "" {
+			return fmt.Errorf("get feed info returned errCode %d", response.ErrCode)
+		}
+		return fmt.Errorf("get feed info returned errCode %d: %s", response.ErrCode, message)
+	}
+
+	err_msg := response.Data.ErrMsg
+	if err_msg == nil || (err_msg.Type == 0 && strings.TrimSpace(err_msg.Title) == "" && strings.TrimSpace(err_msg.Content) == "") {
+		return nil
+	}
+
+	title := plain_text_from_html(err_msg.Title)
+	content := plain_text_from_html(err_msg.Content)
+	message := strings.TrimSpace(strings.Join([]string{title, content}, ": "))
+	message = strings.Trim(message, ": ")
+	if message == "" {
+		message = fmt.Sprintf("feed info error type %d", err_msg.Type)
+	}
+	return errors.New(message)
 }
 
 func ParseShareUrl(share_url string, cookie string) (*ParseResponse, error) {
@@ -137,6 +200,10 @@ func get_feed_info(export_id, general_token string) (json.RawMessage, error) {
 	body_text, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("[getFeedInfo] read body failed:", err)
+		return nil, err
+	}
+	if err := parse_feed_info_error(body_text); err != nil {
+		log.Println("[getFeedInfo] response error:", err)
 		return nil, err
 	}
 	log.Println("[getFeedInfo] success")

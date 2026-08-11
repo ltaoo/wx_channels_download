@@ -21,6 +21,11 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+cookie:
+  uuid: ""
+  password: ""
+  key: ""
+
 update:
   proxy: ""
   mirror: ""

@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,7 +51,7 @@ func ImportChrome(options ChromeImportOptions) (ChromeImportResult, error) {
 		result.Cookies = filterByDomain(result.Cookies, options.Domain)
 	}
 	if options.OutputPath != "" {
-		if err := saveJSON(result.Cookies, options.OutputPath); err != nil {
+		if err := SaveJSON(result.Cookies, options.OutputPath); err != nil {
 			return ChromeImportResult{}, err
 		}
 	}
@@ -256,20 +255,6 @@ func stripHostHash(plaintext []byte, hostKey string, dbVersion int) []byte {
 		return plaintext[len(hash):]
 	}
 	return plaintext
-}
-
-func saveJSON(cookieList []Cookie, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("cookies: create output directory: %w", err)
-	}
-	data, err := json.MarshalIndent(cookieList, "", "  ")
-	if err != nil {
-		return fmt.Errorf("cookies: marshal JSON: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("cookies: write JSON: %w", err)
-	}
-	return nil
 }
 
 func chromeExpiresToUnix(expiresUTC int64) int64 {

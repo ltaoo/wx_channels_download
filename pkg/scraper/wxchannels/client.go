@@ -17,6 +17,7 @@ import (
 
 	"wx_channel/internal/config"
 	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 )
 
 var channels_ws_upgrader = websocket.Upgrader{
@@ -30,6 +31,8 @@ var channels_ws_upgrader = websocket.Upgrader{
 var (
 	channels_share_url_reg = regexp.MustCompile(`^https://weixin\.qq\.com/sph/[A-Za-z0-9_-]+/?$`)
 )
+
+const yuanbao_cookie_domain = ".tencent.com"
 
 type FetchParams struct {
 	URL string `json:"url"`
@@ -45,12 +48,17 @@ type ChannelsClient struct {
 	req_seq          uint64
 	refresh_interval int
 	cfg              *config.Config
+	cookie_reader    *cookies.Reader
 	OnConnected      func(client *Client)
 	OnDisconnected   func(client *Client)
 	OnMessage        func(client *Client, message []byte)
 }
 
 func NewChannelsClient(refresh_interval int, cfg *config.Config) *ChannelsClient {
+	work_dir := ""
+	if cfg != nil {
+		work_dir = cfg.WorkDir
+	}
 	return &ChannelsClient{
 		ws_clients:       make(map[*Client]bool),
 		requests:         make(map[string]chan ClientWebsocketResponse),
@@ -58,6 +66,7 @@ func NewChannelsClient(refresh_interval int, cfg *config.Config) *ChannelsClient
 		req_seq:          uint64(time.Now().UnixNano()),
 		refresh_interval: refresh_interval,
 		cfg:              cfg,
+		cookie_reader:    cookies.NewPersistentReader(work_dir),
 	}
 }
 
@@ -79,14 +88,32 @@ func is_channels_feed_url(raw_url string) bool {
 }
 
 func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, error) {
-	if c.cfg == nil {
-		return nil, errors.New("config is not initialized")
-	}
-	cookie := strings.TrimSpace(c.cfg.GetString("cloudflare.sphCookie"))
-	if cookie == "" {
-		return nil, errors.New("cloudflare.sphCookie not configured")
+	cookie, err := c.resolve_sph_cookie()
+	if err != nil {
+		return nil, err
 	}
 	return FetchVideoProfileWithShareUrl(raw_url, cookie)
+}
+
+func (c *ChannelsClient) resolve_sph_cookie() (string, error) {
+	if c.cfg == nil {
+		return "", errors.New("config is not initialized")
+	}
+	cookie := strings.TrimSpace(c.cfg.GetString("cloudflare.sphCookie"))
+	if cookie != "" {
+		return cookie, nil
+	}
+	if c.cookie_reader == nil {
+		return "", errors.New("cloudflare.sphCookie not configured and persistent cookie reader is unavailable")
+	}
+	cookie, err := c.cookie_reader.HeaderForDomain(yuanbao_cookie_domain)
+	if err == nil {
+		return cookie, nil
+	}
+	if errors.Is(err, cookies.ErrCookieNotFound) {
+		return "", errors.New("cloudflare.sphCookie not configured and no yuanbao.tencent.com cookie was found")
+	}
+	return "", fmt.Errorf("read yuanbao.tencent.com cookie: %w", err)
 }
 
 func (c *ChannelsClient) fetch_profile_with_channels_client(raw_url string) (any, error) {

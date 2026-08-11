@@ -25,6 +25,9 @@ type APIConfig struct {
 	RemoteServerHostname      string `json:"remoteServerHostname"`
 	RemoteServerPort          int    `json:"remoteServerPort"`
 	CloudflareSphCookie       string
+	CookieUUID                string
+	CookiePassword            string
+	CookieKey                 string
 	FilenameTemplate          string
 	DefaultActionWhenExisting string
 
@@ -64,6 +67,9 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		RemoteServerHostname: c.GetString("download.remoteServer.hostname"),
 		RemoteServerPort:     c.GetInt("download.remoteServer.port"),
 		CloudflareSphCookie:  cloudflare_sph_cookie,
+		CookieUUID:           c.GetString("cookie.uuid"),
+		CookiePassword:       c.GetString("cookie.password"),
+		CookieKey:            c.GetString("cookie.key"),
 
 		FilenameTemplate:          c.GetString("download.filenameTemplate"),
 		DefaultActionWhenExisting: c.GetString("download.defaultActionWhenExisting"),

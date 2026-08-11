@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
 )
@@ -17,7 +21,11 @@ func init() {
 	adapter.Register(&handler{})
 }
 
-type handler struct{}
+type handler struct {
+	runtime_mu    sync.RWMutex
+	cookie_reader *cookies.Reader
+	logger        *zerolog.Logger
+}
 
 func (h *handler) PlatformID() string { return PlatformID }
 
@@ -30,7 +38,22 @@ func (h *handler) Fetch(raw_url string) (any, error) {
 		return nil, fmt.Errorf("知乎URL不能为空")
 	}
 
-	return zhihu.NewClient("").Fetch(raw_url)
+	return h.scraper_client().Fetch(raw_url)
+}
+
+func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Logger) {
+	h.runtime_mu.Lock()
+	h.cookie_reader = cookie_reader
+	h.logger = logger
+	h.runtime_mu.Unlock()
+}
+
+func (h *handler) scraper_client() *zhihu.Client {
+	h.runtime_mu.RLock()
+	cookie_reader := h.cookie_reader
+	logger := h.logger
+	h.runtime_mu.RUnlock()
+	return zhihu.NewClientWithCookieReader(cookie_reader, logger)
 }
 
 // BuildContentID builds a content identifier from an external ID.
@@ -402,7 +425,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	}
 	_ = json.Unmarshal(content_json, &input)
 
-	client := zhihu.NewClient("")
+	client := h.scraper_client()
 
 	var html_content string
 	if page != nil {

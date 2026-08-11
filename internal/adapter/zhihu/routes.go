@@ -4,8 +4,10 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/util"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -17,12 +19,13 @@ type RouteRegistrar interface {
 
 // Routes owns the zhihu HTTP endpoints.
 type Routes struct {
-	workdir string
+	cookie_reader *cookies.Reader
+	logger        *zerolog.Logger
 }
 
-// NewRoutes creates a Routes instance with the given workdir (used to locate cookies.json).
-func NewRoutes(workdir string) *Routes {
-	return &Routes{workdir: workdir}
+// NewRoutes creates routes that share the runtime cookie reader and logger.
+func NewRoutes(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Routes {
+	return &Routes{cookie_reader: cookie_reader, logger: logger}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
@@ -46,7 +49,7 @@ func (r *Routes) HandleFetch(ctx *gin.Context) {
 
 	log.Printf("[zhihu] HandleFetch called with url=%s", rawURL)
 
-	client := zhihu.NewClient(r.workdir)
+	client := zhihu.NewClientWithCookieReader(r.cookie_reader, r.logger)
 	html, err := client.BuildHTMLFromURL(rawURL)
 	if err != nil {
 		log.Printf("[zhihu] BuildHTMLFromURL failed: %v", err)

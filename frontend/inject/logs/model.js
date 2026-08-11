@@ -134,6 +134,42 @@ var LogsPageModel = (() => {
     return rows;
   }
 
+  function json_object_field_text(value) {
+    const text = field_text(value);
+    const normalized = text.trim();
+    if (!normalized.startsWith("{") || !normalized.endsWith("}")) {
+      return "";
+    }
+    try {
+      const parsed = JSON.parse(normalized);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return "";
+      }
+    } catch {
+      return "";
+    }
+    return text;
+  }
+
+  async function write_clipboard(text) {
+    if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {
+        // Fall back to the document-based helper for non-secure/denied contexts.
+      }
+    }
+    if (window.WXU && typeof WXU.copy === "function") {
+      WXU.copy(text);
+      return;
+    }
+    throw new Error("当前浏览器不支持复制到剪贴板");
+  }
+
   function redact_export_text(value) {
     const text = field_text(value);
     return text.replace(/\/Users\/[^\r\n"'<>]*/g, (path) => {
@@ -428,6 +464,30 @@ var LogsPageModel = (() => {
         export_entries(list);
         if (window.WXU && WXU.toast) {
           WXU.toast("日志已导出");
+        }
+      },
+      fieldRows(entry) {
+        return log_field_rows(entry);
+      },
+      isJsonFieldValue(value) {
+        return json_object_field_text(value) !== "";
+      },
+      async copyJsonFieldValue(value) {
+        const text = json_object_field_text(value);
+        if (!text) {
+          return false;
+        }
+        try {
+          await write_clipboard(text);
+          if (window.WXU && WXU.toast) {
+            WXU.toast("JSON 已复制");
+          }
+          return true;
+        } catch {
+          if (window.WXU && WXU.toast) {
+            WXU.toast("复制失败");
+          }
+          return false;
         }
       },
       destroy() {

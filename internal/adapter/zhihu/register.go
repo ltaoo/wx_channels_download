@@ -10,6 +10,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -22,6 +23,7 @@ type Deps struct {
 	Logger         *zerolog.Logger
 	Bus            *events.Bus
 	Config         *config.Config
+	CookieReader   *cookies.Reader
 }
 
 // Handle owns the adapter's runtime components.
@@ -55,7 +57,11 @@ func Register(d Deps) (*Handle, error) {
 	if d.Config != nil {
 		workdir = d.Config.WorkDir
 	}
-	r := NewRoutes(workdir)
+	cookie_reader := d.CookieReader
+	if cookie_reader == nil {
+		cookie_reader = cookies.NewPersistentReader(workdir)
+	}
+	r := NewRoutes(cookie_reader, d.Logger)
 	if d.RouteRegistrar != nil {
 		r.RegisterRoutes(d.RouteRegistrar)
 		if d.Logger != nil {
@@ -68,8 +74,14 @@ func Register(d Deps) (*Handle, error) {
 
 // RegisterRuntime exposes the adapter through the shared registry contract.
 func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
+	work_dir := ""
+	if d.Config != nil {
+		work_dir = d.Config.WorkDir
+	}
+	cookie_reader := cookies.NewPersistentReader(work_dir)
+	h.set_runtime(cookie_reader, d.Logger)
 	if d.Logger != nil {
-		d.Logger.Info().Msg("zhihu adapter registering runtime")
+		d.Logger.Info().Str("workdir", work_dir).Msg("zhihu adapter registering runtime")
 	}
 	return Register(Deps{
 		StaticAssets:   d.StaticAssets,
@@ -79,6 +91,7 @@ func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle,
 		Logger:         d.Logger,
 		Bus:            d.Bus,
 		Config:         d.Config,
+		CookieReader:   cookie_reader,
 	})
 }
 
