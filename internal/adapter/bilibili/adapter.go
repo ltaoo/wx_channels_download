@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
@@ -21,13 +24,60 @@ func init() {
 	adapter.Register(&handler{})
 }
 
-type handler struct{}
+type handler struct {
+	runtime_mu sync.RWMutex
+	logger     *zerolog.Logger
+}
+
+var (
+	_ adapter.PlatformAdapter      = (*handler)(nil)
+	_ adapter.ProgressFetchAdapter = (*handler)(nil)
+	_ adapter.RuntimeAdapter       = (*handler)(nil)
+	_ adapter.RuntimeHandle        = (*handler)(nil)
+)
 
 func (h *handler) PlatformID() string { return PlatformID }
 
-func (h *handler) Fetch(rawURL string) (any, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
+// RegisterRuntime attaches the application logger to the Bilibili adapter.
+func (h *handler) RegisterRuntime(runtime_deps adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
+	if h == nil {
+		return nil, fmt.Errorf("bilibili adapter is nil")
+	}
+	h.runtime_mu.Lock()
+	h.logger = runtime_deps.Logger
+	h.runtime_mu.Unlock()
+	if runtime_deps.Logger != nil {
+		runtime_deps.Logger.Info().
+			Str("component", "bilibili_adapter").
+			Msg("bilibili adapter runtime registered")
+	}
+	return h, nil
+}
+
+// Stop releases the Bilibili adapter runtime.
+func (h *handler) Stop() {}
+
+func (h *handler) get_logger() *zerolog.Logger {
+	if h == nil {
+		return nil
+	}
+	h.runtime_mu.RLock()
+	defer h.runtime_mu.RUnlock()
+	return h.logger
+}
+
+func (h *handler) Fetch(raw_url string) (any, error) {
+	return h.fetch(raw_url, "")
+}
+
+// FetchWithProgress adds the scraper job ID to Bilibili API diagnostics.
+func (h *handler) FetchWithProgress(raw_url string, request_id string) (any, error) {
+	return h.fetch(raw_url, strings.TrimSpace(request_id))
+}
+
+func (h *handler) fetch(raw_url string, request_id string) (any, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
 		return nil, fmt.Errorf("B站URL不能为空")
 	}
 
@@ -35,7 +85,12 @@ func (h *handler) Fetch(rawURL string) (any, error) {
 	if cfg := GetBilibiliConfig(); cfg != nil {
 		cookie = cfg.Cookie
 	}
-	return bilibili.NewClient(cookie).GetVideoInfo(rawURL, 0)
+	logger := h.get_logger()
+	if logger != nil && request_id != "" {
+		request_logger := logger.With().Str("job_id", request_id).Logger()
+		logger = &request_logger
+	}
+	return bilibili.NewClientWithLogger(cookie, logger).GetVideoInfo(raw_url, 0)
 }
 
 func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
@@ -67,7 +122,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 	}
 
 	// Call scraper to get video info
-	client := bilibili.NewClient(cookie)
+	client := bilibili.NewClientWithLogger(cookie, h.get_logger())
 	videoInfos, err := client.GetVideoInfo(input.URL, input.PageNum)
 	if err != nil {
 		return nil, fmt.Errorf("获取B站视频信息失败: %w", err)
