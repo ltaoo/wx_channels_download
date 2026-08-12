@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/douyin"
 )
@@ -27,6 +28,7 @@ func init() {
 type handler struct {
 	runtime_mu sync.RWMutex
 	logger     *zerolog.Logger
+	config     *config.Config
 }
 
 var (
@@ -39,12 +41,16 @@ var (
 func (h *handler) PlatformID() string { return PlatformID }
 
 // RegisterRuntime attaches the application logger to the Douyin adapter.
-func (h *handler) RegisterRuntime(deps adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
+func (h *handler) RegisterRuntime(deps *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
 	if h == nil {
 		return nil, fmt.Errorf("douyin adapter is nil")
 	}
+	if deps == nil {
+		return nil, fmt.Errorf("douyin runtime dependencies are nil")
+	}
 	h.runtime_mu.Lock()
 	h.logger = deps.Logger
+	h.config = deps.Config
 	h.runtime_mu.Unlock()
 	if deps.Logger != nil {
 		deps.Logger.Info().
@@ -55,7 +61,15 @@ func (h *handler) RegisterRuntime(deps adapter.RuntimeDeps) (adapter.RuntimeHand
 }
 
 // Stop releases the Douyin adapter runtime.
-func (h *handler) Stop() {}
+func (h *handler) Stop() {
+	if h == nil {
+		return
+	}
+	h.runtime_mu.Lock()
+	h.logger = nil
+	h.config = nil
+	h.runtime_mu.Unlock()
+}
 
 func (h *handler) get_logger() *zerolog.Logger {
 	if h == nil {
@@ -64,6 +78,19 @@ func (h *handler) get_logger() *zerolog.Logger {
 	h.runtime_mu.RLock()
 	defer h.runtime_mu.RUnlock()
 	return h.logger
+}
+
+func (h *handler) config_string(key string) string {
+	if h == nil {
+		return ""
+	}
+	h.runtime_mu.RLock()
+	runtime_config := h.config
+	h.runtime_mu.RUnlock()
+	if runtime_config == nil {
+		return ""
+	}
+	return runtime_config.GetString(key)
 }
 
 func (h *handler) Fetch(raw_url string) (any, error) {
@@ -81,10 +108,7 @@ func (h *handler) fetch(raw_url string, request_id string) (any, error) {
 		return nil, fmt.Errorf("抖音URL不能为空")
 	}
 
-	cookie := ""
-	if cfg := GetDouyinConfig(); cfg != nil {
-		cookie = cfg.Cookie
-	}
+	cookie := h.config_string("douyin.cookie")
 	logger := h.get_logger()
 	if logger != nil && request_id != "" {
 		request_logger := logger.With().Str("job_id", request_id).Logger()
@@ -189,6 +213,12 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  video_resource,
 			Endpoints: []model.DownloadEndpoint{video_endpoint},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindVideo,
+				Role:     model.ContentAssetRoleVideoVariant,
+				AssetKey: "default",
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
 		})
 	}
 
@@ -228,10 +258,7 @@ func (h *handler) download_model_data(content_json json.RawMessage) (*douyin_mod
 		return nil, fmt.Errorf("解析抖音数据失败: %w", mobile_err)
 	}
 
-	cookie := ""
-	if cfg := GetDouyinConfig(); cfg != nil {
-		cookie = cfg.Cookie
-	}
+	cookie := h.config_string("douyin.cookie")
 	client := douyin.NewClientWithLogger(cookie, h.get_logger())
 	video_info, err := client.GetVideoInfo(input.URL)
 	if err != nil {
@@ -309,9 +336,19 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 			URL:      image.url,
 			Enabled:  1,
 		}
+		image_key := model.BuildContentAlbumImageKey(image.uri, image.url, image_index)
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  image_resource,
 			Endpoints: []model.DownloadEndpoint{image_endpoint},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindImage,
+				Role:            model.ContentAssetRolePrimary,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, extension),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+			}},
 		})
 	}
 	if model_data.bgm_url != "" {

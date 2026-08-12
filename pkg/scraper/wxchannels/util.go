@@ -7,12 +7,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Client struct {
+type WebsocketClient struct {
 	Conn *websocket.Conn
 	Send chan []byte
 }
 
-func (c *Client) write_pump() {
+func (c *WebsocketClient) write_pump() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer func() {
 		ticker.Stop()

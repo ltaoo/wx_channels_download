@@ -266,6 +266,7 @@ func build_content_album(data *wxmp.ArticleCgiDataNew, content_id string) (*mode
 		}
 		album_images = append(album_images, &model.ContentImage{
 			AlbumId:   content_id,
+			ImageKey:  model.BuildContentAlbumImageKey("", "", i),
 			SortOrder: i,
 			URL:       image_url,
 			Width:     picture.Width,
@@ -599,6 +600,10 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 			continue
 		}
 		img_url := normalize_image_url(image.URL)
+		image_key := strings.TrimSpace(image.ImageKey)
+		if image_key == "" {
+			image_key = model.BuildContentAlbumImageKey("", "", i)
+		}
 		filename := ""
 		if img_url != "" {
 			hash := md5.Sum([]byte(img_url))
@@ -620,6 +625,15 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 			resources = append(resources, &adapter.ResourceInfo{
 				Resource:  res,
 				Endpoints: []model.DownloadEndpoint{ep},
+				ContentAssets: []adapter.ContentAssetReference{{
+					Kind:            model.ContentAssetKindImage,
+					Role:            model.ContentAssetRolePrimary,
+					AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "original"),
+					Relation:        model.DownloadResourceAssetRelationSource,
+					SubjectType:     model.ContentAssetSubjectAlbumImage,
+					SubjectKey:      image_key,
+					SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+				}},
 			})
 			merge_order++
 		}
@@ -652,6 +666,15 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 				URL:      video_url,
 				Enabled:  1,
 				Headers:  wechat_headers,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindVideo,
+				Role:            model.ContentAssetRoleLivePhoto,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "live_photo"),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 			}},
 		})
 		merge_order++

@@ -427,6 +427,7 @@ func douyin_album_from_data(data *douyin_model_data) *model.ContentAlbum {
 	for image_index, image := range data.images {
 		images = append(images, model.ContentImage{
 			AlbumId:   content_id,
+			ImageKey:  model.BuildContentAlbumImageKey(image.uri, image.url, image_index),
 			SortOrder: image_index,
 			URL:       image.url,
 			Width:     image.width,

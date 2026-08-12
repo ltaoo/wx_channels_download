@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 )
 
 type scraper_cache_clear_body struct {
@@ -17,17 +17,17 @@ type scraper_cache_clear_body struct {
 func (c *APIClient) handle_scraper_cache_clear(ctx *gin.Context) {
 	var body scraper_cache_clear_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, result.CodeInvalidParams, "请求参数无效")
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
 	raw_url := strings.TrimSpace(body.URL)
 	if raw_url == "" {
-		result.Err(ctx, result.CodeMissingUrl, "缺少参数：url")
+		result.Err(ctx, api_code_missing_url, "缺少参数：url")
 		return
 	}
 	platform_id, err := services.DetectScraperPlatform(raw_url)
 	if err != nil {
-		result.Err(ctx, result.CodeInvalidParams, err.Error())
+		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
 	handler := adapter.Get(platform_id)
@@ -43,7 +43,7 @@ func (c *APIClient) handle_scraper_cache_clear(ctx *gin.Context) {
 	}
 	removed, err := cache_handler.ClearFetchCache(raw_url)
 	if err != nil {
-		result.Err(ctx, result.CodeFetchMsgFailed, err.Error())
+		result.Err(ctx, api_code_scraper_operation_failed, err.Error())
 		return
 	}
 	result.Ok(ctx, gin.H{

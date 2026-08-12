@@ -823,6 +823,14 @@ func (c *Config) GetBool(path string) bool {
 	return config_value_bool(c.process_value(path, viper.Get(path)))
 }
 
+func (c *Config) GetStringSlice(path string) []string {
+	return viper.GetStringSlice(path)
+}
+
+func (c *Config) IsSet(path string) bool {
+	return viper.IsSet(path)
+}
+
 func (c *Config) GetFloat64(path string) float64 {
 	if !has_value_processor(path) {
 		return viper.GetFloat64(path)

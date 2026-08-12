@@ -479,6 +479,7 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	}
 
 	content := info.Content
+	normalize_content_taxonomy(content)
 	if b, err := json.Marshal(content); err == nil {
 		s.logger.Info().RawJSON("content", b).Msg("content detail")
 	}
@@ -586,6 +587,16 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		if err := s.db.Create(&resource).Error; err != nil {
 			return nil, fmt.Errorf("创建资源失败: %w", err)
 		}
+		if err := save_download_resource_assets(
+			s.db,
+			&resource,
+			resource_infos[i],
+			content,
+			info.ContentDetail,
+			now,
+		); err != nil {
+			return nil, fmt.Errorf("关联下载资源与内容资产失败: %w", err)
+		}
 		resources = append(resources, resource)
 		for _, endpoint_info := range resource_infos[i].Endpoints {
 			endpoint := endpoint_info
@@ -620,6 +631,44 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		Content:   content,
 		Account:   account,
 	}, nil
+}
+
+// normalize_content_taxonomy keeps Content.Type small and stable. Historical
+// adapter-specific type names remain available in Content.Subtype.
+func normalize_content_taxonomy(content *model.Content) {
+	if content == nil {
+		return
+	}
+	content_type := strings.ToLower(strings.TrimSpace(content.Type))
+	content_subtype := strings.ToLower(strings.TrimSpace(content.Subtype))
+	canonical_type := content_type
+
+	switch content_type {
+	case "short_video", "long_video", "movie", "film", "tv_episode", "clip", "live_replay":
+		canonical_type = model.ContentTypeVideo
+	case "music", "audiobook", "voice", "radio", "space_recording":
+		canonical_type = model.ContentTypeAudio
+	case "image_set", "gallery", "photo_album", "illustration_set":
+		canonical_type = model.ContentTypeAlbum
+	case "blog", "news", "newsletter", "question", "answer", "wiki":
+		canonical_type = model.ContentTypeArticle
+	case "microblog", "tweet", "status", "thread", "comment":
+		canonical_type = model.ContentTypePost
+	case "ebook", "pdf", "slides", "spreadsheet":
+		canonical_type = model.ContentTypeDocument
+	case "livestream", "audio_room":
+		canonical_type = model.ContentTypeLive
+	case "playlist", "series", "feed", "bookmark_collection":
+		canonical_type = model.ContentTypeCollection
+	case "chat", "ai_chat", "human_chat", "email_thread":
+		canonical_type = model.ContentTypeConversation
+	}
+
+	if content_subtype == "" && canonical_type != content_type {
+		content_subtype = content_type
+	}
+	content.Type = canonical_type
+	content.Subtype = content_subtype
 }
 
 // CreateTaskByURL creates a single download task via resource URL.
@@ -1363,7 +1412,893 @@ func save_content_extension(db *gorm.DB, detail any) error {
 	if detail == nil {
 		return nil
 	}
+	switch content_detail := detail.(type) {
+	case *model.ContentVideo:
+		return save_content_video(db, content_detail)
+	case model.ContentVideo:
+		content_video := content_detail
+		return save_content_video(db, &content_video)
+	case *model.ContentNovel:
+		return save_content_novel(db, content_detail)
+	case model.ContentNovel:
+		content_novel := content_detail
+		return save_content_novel(db, &content_novel)
+	case *model.ContentAlbum:
+		return save_content_album(db, content_detail)
+	case model.ContentAlbum:
+		content_album := content_detail
+		return save_content_album(db, &content_album)
+	case *model.ContentConversation:
+		return save_content_conversation(db, content_detail)
+	case model.ContentConversation:
+		content_conversation := content_detail
+		return save_content_conversation(db, &content_conversation)
+	}
 	return db.Session(&gorm.Session{FullSaveAssociations: true}).Save(detail).Error
+}
+
+func save_content_conversation(db *gorm.DB, content_conversation *model.ContentConversation) error {
+	if content_conversation == nil {
+		return nil
+	}
+	content_conversation.Id = strings.TrimSpace(content_conversation.Id)
+	if content_conversation.Id == "" {
+		return fmt.Errorf("content_conversation.id 不能为空")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		branches := content_conversation.Branches
+		messages := content_conversation.Messages
+		if content_conversation.MessageCount == 0 {
+			content_conversation.MessageCount = len(messages)
+		}
+		if content_conversation.BranchCount == 0 {
+			content_conversation.BranchCount = len(branches)
+		}
+		if err := tx.Omit("Branches", "Messages").Save(content_conversation).Error; err != nil {
+			return err
+		}
+
+		for branch_index := range branches {
+			branch := &branches[branch_index]
+			branch.ConversationId = content_conversation.Id
+			if strings.TrimSpace(branch.BranchKey) == "" {
+				branch.BranchKey = model.BuildContentConversationBranchKey("", branch.LeafMessageKey, branch_index)
+			}
+			if branch.SortOrder < 0 {
+				branch.SortOrder = branch_index
+			}
+			var existing_branch model.ContentConversationBranch
+			find_err := tx.
+				Where("conversation_id = ? AND branch_key = ?", branch.ConversationId, branch.BranchKey).
+				First(&existing_branch).Error
+			if find_err == nil {
+				branch.Id = existing_branch.Id
+			} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+				return find_err
+			}
+			if err := tx.Save(branch).Error; err != nil {
+				return err
+			}
+		}
+
+		for message_index := range messages {
+			message := &messages[message_index]
+			parts := message.Parts
+			message.ConversationId = content_conversation.Id
+			if strings.TrimSpace(message.MessageKey) == "" {
+				message.MessageKey = model.BuildContentConversationMessageKey("", message_index)
+			}
+			if message.Sequence < 0 {
+				message.Sequence = message_index
+			}
+			if strings.TrimSpace(message.Role) == "" {
+				message.Role = model.ContentConversationMessageRoleUnknown
+			}
+			var existing_message model.ContentConversationMessage
+			find_err := tx.
+				Where("conversation_id = ? AND message_key = ?", message.ConversationId, message.MessageKey).
+				First(&existing_message).Error
+			if find_err == nil {
+				message.Id = existing_message.Id
+			} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+				return find_err
+			}
+			if err := tx.Omit("Parts", "Assets").Save(message).Error; err != nil {
+				return err
+			}
+
+			for part_index := range parts {
+				part := &parts[part_index]
+				part.ConversationId = content_conversation.Id
+				part.MessageId = message.Id
+				part.MessageKey = message.MessageKey
+				if strings.TrimSpace(part.PartKey) == "" {
+					part.PartKey = model.BuildContentConversationMessagePartKey("", part_index)
+				}
+				part.SubjectKey = model.BuildContentConversationMessagePartSubjectKey(message.MessageKey, part.PartKey)
+				if part.SortOrder < 0 {
+					part.SortOrder = part_index
+				}
+				if strings.TrimSpace(part.Type) == "" {
+					part.Type = model.ContentConversationPartTypeText
+				}
+				var existing_part model.ContentConversationMessagePart
+				find_err := tx.
+					Where(
+						"conversation_id = ? AND message_key = ? AND part_key = ?",
+						part.ConversationId,
+						part.MessageKey,
+						part.PartKey,
+					).
+					First(&existing_part).Error
+				if find_err == nil {
+					part.Id = existing_part.Id
+				} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+					return find_err
+				}
+				if err := tx.Omit("Assets").Save(part).Error; err != nil {
+					return err
+				}
+			}
+			message.Parts = parts
+		}
+
+		content_conversation.Branches = branches
+		content_conversation.Messages = messages
+		return nil
+	})
+}
+
+func save_content_album(db *gorm.DB, content_album *model.ContentAlbum) error {
+	if content_album == nil {
+		return nil
+	}
+	content_album.Id = strings.TrimSpace(content_album.Id)
+	if content_album.Id == "" {
+		return fmt.Errorf("content_album.id 不能为空")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		images := content_album.Images
+		if err := tx.Omit("Images").Save(content_album).Error; err != nil {
+			return err
+		}
+		for image_index := range images {
+			content_image := &images[image_index]
+			content_image.AlbumId = content_album.Id
+			if content_image.SortOrder < 0 {
+				content_image.SortOrder = image_index
+			}
+			if strings.TrimSpace(content_image.ImageKey) == "" {
+				content_image.ImageKey = model.BuildContentAlbumImageKey("", content_image.URL, content_image.SortOrder)
+			}
+			var existing_image model.ContentImage
+			find_err := tx.
+				Where("album_id = ? AND image_key = ?", content_image.AlbumId, content_image.ImageKey).
+				First(&existing_image).Error
+			if find_err == nil {
+				content_image.Id = existing_image.Id
+			} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+				return find_err
+			}
+			if err := tx.Omit("Assets").Save(content_image).Error; err != nil {
+				return err
+			}
+		}
+		content_album.Images = images
+		return nil
+	})
+}
+
+func save_content_novel(db *gorm.DB, content_novel *model.ContentNovel) error {
+	if content_novel == nil {
+		return nil
+	}
+	content_novel.Id = strings.TrimSpace(content_novel.Id)
+	if content_novel.Id == "" {
+		return fmt.Errorf("content_novel.id 不能为空")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		volumes := content_novel.Volumes
+		chapters := content_novel.Chapters
+		if err := tx.Omit("Volumes", "Chapters").Save(content_novel).Error; err != nil {
+			return err
+		}
+
+		volume_id_by_key := make(map[string]uint, len(volumes))
+		for volume_index := range volumes {
+			volume := &volumes[volume_index]
+			volume.NovelId = content_novel.Id
+			if volume.Idx <= 0 {
+				volume.Idx = volume_index + 1
+			}
+			if strings.TrimSpace(volume.VolumeKey) == "" {
+				volume.VolumeKey = model.BuildContentNovelVolumeKey("", volume.Idx)
+			}
+			var existing_volume model.ContentNovelVolume
+			find_err := tx.
+				Where("novel_id = ? AND volume_key = ?", volume.NovelId, volume.VolumeKey).
+				First(&existing_volume).Error
+			if find_err == nil {
+				volume.Id = existing_volume.Id
+			} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+				return find_err
+			}
+			if err := tx.Save(volume).Error; err != nil {
+				return err
+			}
+			volume_id_by_key[volume.VolumeKey] = volume.Id
+		}
+
+		for chapter_index := range chapters {
+			chapter := &chapters[chapter_index]
+			chapter.NovelId = content_novel.Id
+			if chapter.Idx <= 0 {
+				chapter.Idx = chapter_index + 1
+			}
+			if strings.TrimSpace(chapter.ChapterKey) == "" {
+				chapter.ChapterKey = model.BuildContentNovelChapterKey("", chapter.URL, chapter.Idx)
+			}
+			if volume_id, exists := volume_id_by_key[strings.TrimSpace(chapter.VolumeKey)]; exists {
+				chapter.VolumeId = &volume_id
+			}
+
+			var existing_chapter model.ContentNovelChapter
+			find_err := tx.
+				Where("novel_id = ? AND chapter_key = ?", chapter.NovelId, chapter.ChapterKey).
+				First(&existing_chapter).Error
+			if find_err == nil {
+				chapter.Id = existing_chapter.Id
+			} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+				return find_err
+			}
+			if err := tx.Omit("Assets").Save(chapter).Error; err != nil {
+				return err
+			}
+		}
+
+		content_novel.Volumes = volumes
+		content_novel.Chapters = chapters
+		return nil
+	})
+}
+
+func save_content_video(db *gorm.DB, content_video *model.ContentVideo) error {
+	if content_video == nil {
+		return nil
+	}
+	if strings.TrimSpace(content_video.Id) == "" {
+		return fmt.Errorf("content_video.id 不能为空")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		variants := content_video.Variants
+		subtitle_tracks := content_video.SubtitleTracks
+		if len(subtitle_tracks) == 0 && strings.TrimSpace(content_video.SubtitleURL) != "" {
+			subtitle_tracks = []model.ContentVideoSubtitleTrack{{
+				TrackKey:     "legacy:und",
+				LanguageCode: "und",
+				Kind:         model.ContentVideoSubtitleKindSubtitle,
+				Sources: []model.ContentVideoSubtitleSource{{
+					SourceKey: "default",
+					Format:    media_format_from_url(content_video.SubtitleURL),
+					URL:       content_video.SubtitleURL,
+				}},
+			}}
+		}
+		if len(subtitle_tracks) > 0 {
+			content_video.HasSubtitle = 1
+		}
+		if err := tx.Omit("Variants", "SubtitleTracks").Save(content_video).Error; err != nil {
+			return err
+		}
+
+		now := time.Now().UnixMilli()
+		if len(variants) == 0 {
+			variants = []model.ContentVideoVariant{default_content_video_variant(content_video)}
+		}
+		for variant_index := range variants {
+			variant := &variants[variant_index]
+			if variant.VideoId == "" {
+				variant.VideoId = content_video.Id
+			}
+			if err := save_content_video_variant(tx, variant, now); err != nil {
+				return err
+			}
+		}
+
+		for track_index := range subtitle_tracks {
+			track := &subtitle_tracks[track_index]
+			if track.VideoId == "" {
+				track.VideoId = content_video.Id
+			}
+			if err := save_content_video_subtitle_track(tx, track, now); err != nil {
+				return err
+			}
+		}
+
+		content_video.Variants = variants
+		content_video.SubtitleTracks = subtitle_tracks
+		return nil
+	})
+}
+
+func default_content_video_variant(content_video *model.ContentVideo) model.ContentVideoVariant {
+	variant := model.ContentVideoVariant{
+		VideoId:    content_video.Id,
+		VariantKey: "default",
+		Size:       content_video.Size,
+		Codec:      content_video.Codec,
+		Format:     content_video.Format,
+		StreamType: model.ContentVideoVariantStreamTypeProgressive,
+		HasVideo:   1,
+		HasAudio:   1,
+		IsDefault:  1,
+		URL:        content_video.URL,
+	}
+	variant.Width = positive_int_pointer(content_video.Width)
+	variant.Height = positive_int_pointer(content_video.Height)
+	variant.FPS = positive_int_pointer(content_video.FPS)
+	variant.Bitrate = positive_int_pointer(content_video.Bitrate)
+	return variant
+}
+
+func positive_int_pointer(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	result := value
+	return &result
+}
+
+func save_content_video_variant(db *gorm.DB, variant *model.ContentVideoVariant, now int64) error {
+	variant.VideoId = strings.TrimSpace(variant.VideoId)
+	variant.VariantKey = strings.TrimSpace(variant.VariantKey)
+	if variant.VideoId == "" {
+		return fmt.Errorf("content_video_variant.video_id 不能为空")
+	}
+	if variant.VariantKey == "" {
+		variant.VariantKey = "default"
+	}
+	if variant.StreamType == "" {
+		variant.StreamType = model.ContentVideoVariantStreamTypeProgressive
+	}
+	if variant.HasVideo == 0 {
+		variant.HasVideo = 1
+	}
+	if variant.VariantKey == "default" {
+		variant.IsDefault = 1
+	}
+
+	asset := model.ContentAsset{
+		ContentId: variant.VideoId,
+		Kind:      model.ContentAssetKindVideo,
+		Role:      model.ContentAssetRoleVideoVariant,
+		AssetKey:  variant.VariantKey,
+		MIMEType:  content_asset_mime_type(model.ContentAssetKindVideo, variant.Format),
+		Size:      variant.Size,
+		Metadata:  variant.Metadata,
+	}
+	if err := ensure_content_asset(db, &asset, now); err != nil {
+		return err
+	}
+	variant.AssetId = asset.Id
+	if variant.CreatedAt == 0 {
+		variant.CreatedAt = now
+	}
+	variant.UpdatedAt = now
+	return db.Omit("Asset").Save(variant).Error
+}
+
+func save_content_video_subtitle_track(db *gorm.DB, track *model.ContentVideoSubtitleTrack, now int64) error {
+	track.VideoId = strings.TrimSpace(track.VideoId)
+	track.TrackKey = strings.TrimSpace(track.TrackKey)
+	track.LanguageCode = strings.TrimSpace(track.LanguageCode)
+	if track.VideoId == "" {
+		return fmt.Errorf("content_video_subtitle_track.video_id 不能为空")
+	}
+	if track.LanguageCode == "" {
+		track.LanguageCode = "und"
+	}
+	if track.Kind == "" {
+		track.Kind = model.ContentVideoSubtitleKindSubtitle
+	}
+	if track.TrackKey == "" {
+		track.TrackKey = track.LanguageCode + ":" + track.Kind
+	}
+
+	sources := track.Sources
+	var existing_track model.ContentVideoSubtitleTrack
+	find_err := db.
+		Where("video_id = ? AND track_key = ?", track.VideoId, track.TrackKey).
+		First(&existing_track).Error
+	if find_err == nil {
+		track.Id = existing_track.Id
+	} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+		return find_err
+	}
+	if track.CreatedAt == 0 {
+		track.CreatedAt = now
+	}
+	track.UpdatedAt = now
+	if err := db.Omit("Sources").Save(track).Error; err != nil {
+		return err
+	}
+
+	for source_index := range sources {
+		source := &sources[source_index]
+		source.TrackId = track.Id
+		if err := save_content_video_subtitle_source(db, track, source, now); err != nil {
+			return err
+		}
+	}
+	track.Sources = sources
+	return nil
+}
+
+func save_content_video_subtitle_source(
+	db *gorm.DB,
+	track *model.ContentVideoSubtitleTrack,
+	source *model.ContentVideoSubtitleSource,
+	now int64,
+) error {
+	source.SourceKey = strings.TrimSpace(source.SourceKey)
+	if source.SourceKey == "" {
+		source.SourceKey = strings.ToLower(strings.TrimSpace(source.Format))
+	}
+	if source.SourceKey == "" {
+		source.SourceKey = "default"
+	}
+	asset_key := model.BuildContentVideoSubtitleAssetKey(track.TrackKey, source.SourceKey)
+	asset := model.ContentAsset{
+		ContentId:    track.VideoId,
+		Kind:         model.ContentAssetKindText,
+		Role:         model.ContentAssetRoleSubtitle,
+		AssetKey:     asset_key,
+		LanguageCode: track.LanguageCode,
+		MIMEType:     content_asset_mime_type(model.ContentAssetKindText, source.Format),
+		Metadata:     source.Metadata,
+	}
+	if err := ensure_content_asset(db, &asset, now); err != nil {
+		return err
+	}
+	source.AssetId = asset.Id
+	if source.CreatedAt == 0 {
+		source.CreatedAt = now
+	}
+	source.UpdatedAt = now
+	return db.Omit("Asset").Save(source).Error
+}
+
+func ensure_content_asset(db *gorm.DB, asset *model.ContentAsset, now int64) error {
+	asset.ContentId = strings.TrimSpace(asset.ContentId)
+	asset.Kind = strings.TrimSpace(asset.Kind)
+	asset.Role = strings.TrimSpace(asset.Role)
+	asset.AssetKey = strings.TrimSpace(asset.AssetKey)
+	if asset.ContentId == "" || asset.Kind == "" || asset.Role == "" || asset.AssetKey == "" {
+		return fmt.Errorf(
+			"内容资产 identity 不完整: content_id=%q kind=%q role=%q asset_key=%q",
+			asset.ContentId,
+			asset.Kind,
+			asset.Role,
+			asset.AssetKey,
+		)
+	}
+
+	var existing_asset model.ContentAsset
+	find_err := db.
+		Where("content_id = ? AND role = ? AND asset_key = ?", asset.ContentId, asset.Role, asset.AssetKey).
+		First(&existing_asset).Error
+	if find_err == nil {
+		asset.Id = existing_asset.Id
+		updates := make(map[string]any)
+		if asset.MIMEType != "" && asset.MIMEType != existing_asset.MIMEType {
+			updates["mime_type"] = asset.MIMEType
+		}
+		if asset.Size > 0 && asset.Size != existing_asset.Size {
+			updates["size"] = asset.Size
+		}
+		if asset.Metadata != "" && asset.Metadata != existing_asset.Metadata {
+			updates["metadata"] = asset.Metadata
+		}
+		if asset.Kind != "" && asset.Kind != existing_asset.Kind {
+			updates["kind"] = asset.Kind
+		}
+		if asset.Label != "" && asset.Label != existing_asset.Label {
+			updates["label"] = asset.Label
+		}
+		if asset.LanguageCode != "" && asset.LanguageCode != existing_asset.LanguageCode {
+			updates["language_code"] = asset.LanguageCode
+		}
+		if existing_asset.DeletedAt != nil && asset.DeletedAt == nil {
+			updates["deleted_at"] = nil
+		}
+		if len(updates) > 0 {
+			updates["updated_at"] = now
+			if err := db.Model(&existing_asset).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+		return find_err
+	}
+	if asset.CreatedAt == 0 {
+		asset.CreatedAt = now
+	}
+	asset.UpdatedAt = now
+	return db.Omit("DownloadResources").Create(asset).Error
+}
+
+func save_download_resource_assets(
+	db *gorm.DB,
+	resource *model.DownloadResource,
+	resource_info *adapter.ResourceInfo,
+	content *model.Content,
+	content_detail any,
+	now int64,
+) error {
+	content_id := ""
+	if resource.ContentId != nil {
+		content_id = strings.TrimSpace(*resource.ContentId)
+	}
+	if content_id == "" && content != nil {
+		content_id = strings.TrimSpace(content.Id)
+	}
+	if content_id == "" {
+		return nil
+	}
+
+	content_asset_references := resource_info.ContentAssets
+	if len(content_asset_references) == 0 {
+		content_asset_references = []adapter.ContentAssetReference{default_content_asset_reference(*resource, content)}
+	}
+	for reference_index := range content_asset_references {
+		reference := content_asset_references[reference_index]
+		reference.Kind = strings.TrimSpace(reference.Kind)
+		reference.Role = strings.TrimSpace(reference.Role)
+		reference.AssetKey = strings.TrimSpace(reference.AssetKey)
+		reference.Relation = strings.TrimSpace(reference.Relation)
+		if reference.Kind == "" || reference.Role == "" {
+			inferred_kind, inferred_role := content_asset_kind_and_role_from_resource(*resource)
+			if reference.Kind == "" {
+				reference.Kind = inferred_kind
+			}
+			if reference.Role == "" {
+				reference.Role = inferred_role
+			}
+		}
+		if reference.AssetKey == "" {
+			reference.AssetKey = content_asset_key_from_resource(*resource, reference.Role)
+		}
+		if reference.Relation == "" {
+			reference.Relation = model.DownloadResourceAssetRelationSource
+		}
+
+		asset := model.ContentAsset{
+			ContentId: content_id,
+			Kind:      reference.Kind,
+			Role:      reference.Role,
+			AssetKey:  reference.AssetKey,
+			MIMEType:  resource_mime_type(*resource),
+			Size:      resource.Size,
+		}
+		if err := ensure_content_asset(db, &asset, now); err != nil {
+			return err
+		}
+		if asset.Role == model.ContentAssetRoleVideoVariant {
+			if err := ensure_resource_video_variant(db, &asset, resource_info, content_detail, now); err != nil {
+				return err
+			}
+		}
+		if err := save_content_asset_subject_link(db, &asset, reference, now); err != nil {
+			return err
+		}
+
+		resource_asset := model.DownloadResourceAsset{
+			ResourceId: resource.Id,
+			AssetId:    asset.Id,
+			Relation:   reference.Relation,
+			CreatedAt:  now,
+		}
+		if err := db.FirstOrCreate(
+			&resource_asset,
+			model.DownloadResourceAsset{
+				ResourceId: resource_asset.ResourceId,
+				AssetId:    resource_asset.AssetId,
+				Relation:   resource_asset.Relation,
+			},
+		).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensure_resource_video_variant(
+	db *gorm.DB,
+	asset *model.ContentAsset,
+	resource_info *adapter.ResourceInfo,
+	content_detail any,
+	now int64,
+) error {
+	var existing_variant model.ContentVideoVariant
+	find_err := db.Where("asset_id = ?", asset.Id).First(&existing_variant).Error
+	if find_err == nil {
+		return nil
+	}
+	if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+		return find_err
+	}
+
+	var content_video model.ContentVideo
+	if err := db.Where("id = ?", asset.ContentId).First(&content_video).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	variant := model.ContentVideoVariant{
+		AssetId:    asset.Id,
+		VideoId:    asset.ContentId,
+		VariantKey: asset.AssetKey,
+		Size:       resource_info.Resource.Size,
+		Format:     media_format_from_resource(resource_info.Resource),
+		StreamType: model.ContentVideoVariantStreamTypeProgressive,
+		HasVideo:   1,
+		HasAudio:   1,
+		URL:        first_resource_endpoint_url(resource_info),
+		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+	}
+	if asset.AssetKey == "default" {
+		variant.IsDefault = 1
+	} else {
+		variant.Spec = asset.AssetKey
+	}
+	if video_detail, ok := content_detail.(*model.ContentVideo); ok && asset.AssetKey == "default" {
+		default_variant := default_content_video_variant(video_detail)
+		default_variant.AssetId = asset.Id
+		default_variant.CreatedAt = now
+		default_variant.UpdatedAt = now
+		if variant.URL != "" {
+			default_variant.URL = variant.URL
+		}
+		if variant.Size > 0 {
+			default_variant.Size = variant.Size
+		}
+		variant = default_variant
+	}
+	return db.Omit("Asset").Create(&variant).Error
+}
+
+func save_content_asset_subject_link(
+	db *gorm.DB,
+	asset *model.ContentAsset,
+	reference adapter.ContentAssetReference,
+	now int64,
+) error {
+	subject_type := strings.TrimSpace(reference.SubjectType)
+	subject_key := strings.TrimSpace(reference.SubjectKey)
+	if subject_type == "" && subject_key == "" {
+		return nil
+	}
+	if subject_type == "" || subject_key == "" {
+		return fmt.Errorf("内容资产 subject 不完整: type=%q key=%q", subject_type, subject_key)
+	}
+
+	switch subject_type {
+	case model.ContentAssetSubjectNovelChapter:
+		var chapter model.ContentNovelChapter
+		if err := db.
+			Where("novel_id = ? AND chapter_key = ?", asset.ContentId, subject_key).
+			First(&chapter).Error; err != nil {
+			return fmt.Errorf("查找小说章节 %q 失败: %w", subject_key, err)
+		}
+	case model.ContentAssetSubjectAlbumImage:
+		var content_image model.ContentImage
+		if err := db.
+			Where("album_id = ? AND image_key = ?", asset.ContentId, subject_key).
+			First(&content_image).Error; err != nil {
+			return fmt.Errorf("查找图集图片 %q 失败: %w", subject_key, err)
+		}
+	case model.ContentAssetSubjectConversationMessage:
+		var message model.ContentConversationMessage
+		if err := db.
+			Where("conversation_id = ? AND message_key = ?", asset.ContentId, subject_key).
+			First(&message).Error; err != nil {
+			return fmt.Errorf("查找对话消息 %q 失败: %w", subject_key, err)
+		}
+	case model.ContentAssetSubjectConversationMessagePart:
+		var message_part model.ContentConversationMessagePart
+		if err := db.
+			Where("conversation_id = ? AND subject_key = ?", asset.ContentId, subject_key).
+			First(&message_part).Error; err != nil {
+			return fmt.Errorf("查找对话消息内容块 %q 失败: %w", subject_key, err)
+		}
+	default:
+		// Other subject types are forward-compatible. Their owning adapter is
+		// responsible for supplying a stable subject key.
+	}
+
+	subject_relation := strings.TrimSpace(reference.SubjectRelation)
+	if subject_relation == "" {
+		subject_relation = model.ContentAssetSubjectRelationRepresentation
+	}
+	asset_link := model.ContentAssetLink{
+		ContentId:   asset.ContentId,
+		SubjectType: subject_type,
+		SubjectKey:  subject_key,
+		AssetId:     asset.Id,
+		Relation:    subject_relation,
+		CreatedAt:   now,
+	}
+	return db.FirstOrCreate(
+		&asset_link,
+		model.ContentAssetLink{
+			ContentId:   asset_link.ContentId,
+			SubjectType: asset_link.SubjectType,
+			SubjectKey:  asset_link.SubjectKey,
+			AssetId:     asset_link.AssetId,
+			Relation:    asset_link.Relation,
+		},
+	).Error
+}
+
+func default_content_asset_reference(resource model.DownloadResource, content *model.Content) adapter.ContentAssetReference {
+	asset_kind, asset_role := content_asset_kind_and_role_from_resource(resource)
+	reference := adapter.ContentAssetReference{
+		Kind:     asset_kind,
+		Role:     asset_role,
+		AssetKey: content_asset_key_from_resource(resource, asset_role),
+		Relation: model.DownloadResourceAssetRelationSource,
+	}
+	var extra struct {
+		ChapterIndex int    `json:"chapter_index"`
+		SourceURL    string `json:"source_url"`
+	}
+	if json.Unmarshal([]byte(resource.Extra), &extra) == nil && extra.ChapterIndex > 0 {
+		chapter_key := model.BuildContentNovelChapterKey("", extra.SourceURL, extra.ChapterIndex)
+		representation_key := media_format_from_resource(resource)
+		if representation_key == "" {
+			representation_key = "default"
+		}
+		reference.Role = model.ContentAssetRoleNovelChapter
+		reference.AssetKey = model.BuildContentNovelChapterAssetKey(chapter_key, representation_key)
+		reference.SubjectType = model.ContentAssetSubjectNovelChapter
+		reference.SubjectKey = chapter_key
+		reference.SubjectRelation = model.ContentAssetSubjectRelationRepresentation
+	} else if content != nil {
+		switch strings.ToLower(strings.TrimSpace(content.Type)) {
+		case "article", "blog":
+			if asset_kind == model.ContentAssetKindText || asset_kind == model.ContentAssetKindDocument {
+				reference.Role = model.ContentAssetRoleArticleBody
+			}
+		case "novel":
+			if asset_kind == model.ContentAssetKindText || asset_kind == model.ContentAssetKindDocument || asset_kind == model.ContentAssetKindArchive {
+				reference.Role = model.ContentAssetRoleNovelBook
+			}
+		case "conversation":
+			reference.Role = model.ContentAssetRoleConversationExport
+		}
+	}
+	return reference
+}
+
+func content_asset_kind_and_role_from_resource(resource model.DownloadResource) (string, string) {
+	kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+	name := strings.ToLower(strings.TrimSpace(resource.Name))
+	unique_id := strings.ToLower(strings.TrimSpace(resource.UniqueID))
+	switch {
+	case kind == "video" || strings.HasPrefix(kind, "video/"):
+		return model.ContentAssetKindVideo, model.ContentAssetRoleVideoVariant
+	case kind == "audio" || strings.HasPrefix(kind, "audio/"):
+		return model.ContentAssetKindAudio, model.ContentAssetRoleAudioVariant
+	case strings.Contains(kind, "subtitle"),
+		strings.HasSuffix(name, ".srt"),
+		strings.HasSuffix(name, ".vtt"),
+		strings.HasSuffix(name, ".ass"):
+		return model.ContentAssetKindText, model.ContentAssetRoleSubtitle
+	case strings.HasSuffix(unique_id, "_cover"):
+		return model.ContentAssetKindImage, model.ContentAssetRoleCover
+	case kind == "image" || strings.HasPrefix(kind, "image/"):
+		return model.ContentAssetKindImage, model.ContentAssetRolePrimary
+	case kind == "text" || strings.HasPrefix(kind, "text/") || kind == "html":
+		return model.ContentAssetKindText, model.ContentAssetRolePrimary
+	case kind == "application/json" || strings.HasSuffix(name, ".json"):
+		return model.ContentAssetKindData, model.ContentAssetRoleAttachment
+	case kind == "application/pdf" || strings.HasSuffix(name, ".pdf"):
+		return model.ContentAssetKindDocument, model.ContentAssetRoleAttachment
+	case kind == "application/zip" || kind == "application/x-zip-compressed" || strings.HasSuffix(name, ".zip"):
+		return model.ContentAssetKindArchive, model.ContentAssetRoleAttachment
+	default:
+		return model.ContentAssetKindBinary, model.ContentAssetRoleAttachment
+	}
+}
+
+func content_asset_key_from_resource(resource model.DownloadResource, asset_role string) string {
+	if asset_role == model.ContentAssetRoleVideoVariant {
+		var extra struct {
+			Spec string `json:"spec"`
+		}
+		if json.Unmarshal([]byte(resource.Extra), &extra) == nil {
+			spec := strings.TrimSpace(extra.Spec)
+			if spec != "" && spec != "original" {
+				return spec
+			}
+		}
+		return "default"
+	}
+	if unique_id := strings.TrimSpace(resource.UniqueID); unique_id != "" {
+		return unique_id
+	}
+	if name := strings.TrimSpace(resource.Name); name != "" {
+		return name
+	}
+	return "resource:" + strconv.Itoa(resource.Id)
+}
+
+func resource_mime_type(resource model.DownloadResource) string {
+	kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+	if strings.Contains(kind, "/") {
+		return kind
+	}
+	format := media_format_from_resource(resource)
+	asset_kind, _ := content_asset_kind_and_role_from_resource(resource)
+	return content_asset_mime_type(asset_kind, format)
+}
+
+func media_format_from_resource(resource model.DownloadResource) string {
+	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(resource.Name)), ".")
+	if extension != "" {
+		return extension
+	}
+	kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+	if separator_index := strings.Index(kind, "/"); separator_index >= 0 && separator_index+1 < len(kind) {
+		return kind[separator_index+1:]
+	}
+	return ""
+}
+
+func media_format_from_url(raw_url string) string {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(parsed_url.Path)), ".")
+}
+
+func content_asset_mime_type(asset_kind string, format string) string {
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		return ""
+	}
+	switch asset_kind {
+	case model.ContentAssetKindVideo:
+		return "video/" + format
+	case model.ContentAssetKindAudio:
+		return "audio/" + format
+	case model.ContentAssetKindText:
+		switch format {
+		case "vtt":
+			return "text/vtt"
+		case "srt":
+			return "application/x-subrip"
+		case "ass", "ssa":
+			return "text/x-ssa"
+		}
+	}
+	return ""
+}
+
+func first_resource_endpoint_url(resource_info *adapter.ResourceInfo) string {
+	if resource_info == nil || len(resource_info.Endpoints) == 0 {
+		return ""
+	}
+	return resource_info.Endpoints[0].URL
 }
 
 func (s *DownloadTaskService) resolve_save_dir(requested string) (string, error) {

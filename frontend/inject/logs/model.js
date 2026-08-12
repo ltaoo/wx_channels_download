@@ -19,13 +19,13 @@ var LogsPageModel = (() => {
   ];
 
   const logs_api_origin = WXEnv.get("apiOrigin");
-  const logs_http_client = new Timeless.HttpClientCore({
+  const logs_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: logs_api_origin,
   });
   Timeless.web.provide_http_client(logs_http_client);
 
-  const logs_request = Timeless.request_factory({
+  const logs_request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
       if (response.error) {
@@ -59,7 +59,7 @@ var LogsPageModel = (() => {
   }
 
   function option(label, value) {
-    return new Timeless.ui.SelectItemCore({ label, value });
+    return new Timeless.vm.SelectItemCore({ label, value });
   }
 
   function format_datetime(value) {
@@ -310,7 +310,7 @@ var LogsPageModel = (() => {
     let timer = null;
     let request_sequence = 0;
 
-    const source_select_ = new Timeless.ui.SelectCore({
+    const source_select_ = new Timeless.vm.SelectCore({
       defaultValue: "all",
       placeholder: "全部组件",
       options: [option("全部组件", "all")],
@@ -319,7 +319,7 @@ var LogsPageModel = (() => {
         load();
       },
     });
-    const level_select_ = new Timeless.ui.SelectCore({
+    const level_select_ = new Timeless.vm.SelectCore({
       defaultValue: "all",
       placeholder: "全部级别",
       options: LOG_LEVEL_OPTIONS.map((item) => option(item.label, item.value)),
@@ -328,7 +328,7 @@ var LogsPageModel = (() => {
         load();
       },
     });
-    const limit_select_ = new Timeless.ui.SelectCore({
+    const limit_select_ = new Timeless.vm.SelectCore({
       defaultValue: "300",
       placeholder: "显示条数",
       options: LOG_LIMIT_OPTIONS.map((item) => option(item.label, item.value)),
@@ -338,7 +338,7 @@ var LogsPageModel = (() => {
       },
     });
 
-    const logs_request_core = new Timeless.RequestCore(
+    const logs_request_core = new Timeless.kit.RequestCore(
       (params) => logs_request.get("/api/logs", params),
       {
         client: logs_http_client,

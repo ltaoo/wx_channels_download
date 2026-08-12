@@ -91,14 +91,6 @@ func (c *Shuba69PluginConfig) ApplyConfig(sub *config.SubViper) error {
 	return nil
 }
 
-// GetShuba69Config returns the registered 69shuba plugin config if available.
-func GetShuba69Config() *Shuba69PluginConfig {
-	return shuba69PluginConfig
-}
-
-var shuba69PluginConfig *Shuba69PluginConfig
-
 func init() {
-	shuba69PluginConfig = &Shuba69PluginConfig{}
-	config.RegisterPlugin(shuba69PluginConfig)
+	config.RegisterPlugin(&Shuba69PluginConfig{})
 }

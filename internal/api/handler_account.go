@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 	// "wx_channel/pkg/scraper"
 )
 

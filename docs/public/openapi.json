@@ -148,9 +148,6 @@
     },
     "/api/mp/download_all": {
       "$ref": "./openapi/mp/download_all.json"
-    },
-    "/mp/home": {
-      "$ref": "./openapi/mp/home.json"
     }
   }
 }

@@ -24,6 +24,8 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
+const max_redirect_count = 10
+
 const chrome112JA3 = "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0"
 
 // Profile names the browser fingerprint to use for a client.
@@ -139,59 +141,151 @@ func (c *Client) Do(ctx context.Context, method string, rawURL string, body io.R
 	default:
 	}
 
-	requestURL, err := url.Parse(rawURL)
+	request_url, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
-	requestOpts := requestOptions{headers: DefaultHeaders(c.profile)}
+	request_opts := requestOptions{headers: DefaultHeaders(c.profile)}
 	for _, opt := range opts {
 		if opt != nil {
-			opt(&requestOpts)
+			opt(&request_opts)
 		}
 	}
-	if requestOpts.referer != "" {
-		requestOpts.headers.Set("Referer", requestOpts.referer)
+	if request_opts.referer != "" {
+		request_opts.headers.Set("Referer", request_opts.referer)
 	}
-	if requestOpts.cookie != "" {
-		requestOpts.headers.Set("Cookie", requestOpts.cookie)
+	if request_opts.cookie != "" {
+		request_opts.headers.Set("Cookie", request_opts.cookie)
 	}
 
-	bodyBytes, err := readAllBody(body)
+	body_bytes, err := readAllBody(body)
 	if err != nil {
 		return nil, err
 	}
-	spec := resolveBrowserSpec(c.profile)
-	userAgent := spec.userAgent
-	if headerUserAgent := strings.TrimSpace(requestOpts.headers.Get("User-Agent")); headerUserAgent != "" {
-		userAgent = headerUserAgent
-	}
-	options := cycletls.Options{
-		Ja3:             spec.ja3,
-		UserAgent:       userAgent,
-		Headers:         headerMap(requestOpts.headers),
-		Body:            string(bodyBytes),
-		Proxy:           c.proxyURL,
-		Cookies:         c.cookiesFor(requestURL, requestOpts.cookie == ""),
-		Timeout:         timeoutSeconds(timeoutForContext(ctx, c.timeout)),
-		DisableRedirect: !c.followRedirects,
-		HeaderOrder:     spec.headerOrder,
-	}
 
-	cycleResp, err := c.doCycle(ctx, rawURL, options, method)
-	if err != nil {
-		return nil, err
-	}
-	if c.jar != nil && len(cycleResp.Cookies) > 0 {
-		c.jar.SetCookies(requestURL, cycleResp.Cookies)
-	}
+	request_ctx, cancel_request := context.WithTimeout(ctx, c.timeout)
+	defer cancel_request()
 
-	return &Response{
-		StatusCode: cycleResp.Status,
-		Status:     responseStatus(cycleResp.Status),
-		Header:     responseHeaders(cycleResp.Headers),
-		Body:       decodeBody(cycleResp.Body, responseHeaders(cycleResp.Headers)),
-		FinalURL:   cycleResp.FinalUrl,
-	}, nil
+	current_url := request_url
+	current_method := strings.ToUpper(method)
+	current_body := body_bytes
+	current_headers := request_opts.headers.Clone()
+	redirect_count := 0
+
+	for {
+		cycle_options := c.cycle_options(request_ctx, current_url, current_headers, current_body)
+		cycle_response, request_err := c.doCycle(request_ctx, current_url.String(), cycle_options, current_method)
+		if request_err != nil {
+			return nil, request_err
+		}
+		if c.jar != nil && len(cycle_response.Cookies) > 0 {
+			c.jar.SetCookies(current_url, cycle_response.Cookies)
+		}
+
+		response_headers := responseHeaders(cycle_response.Headers)
+		response := &Response{
+			StatusCode: cycle_response.Status,
+			Status:     responseStatus(cycle_response.Status),
+			Header:     response_headers,
+			Body:       decodeBody(cycle_response.Body, response_headers),
+			FinalURL:   current_url.String(),
+		}
+		if !c.followRedirects || !is_redirect_status(response.StatusCode) {
+			return response, nil
+		}
+
+		location := strings.TrimSpace(response.Header.Get("Location"))
+		if location == "" {
+			return response, nil
+		}
+		if redirect_count >= max_redirect_count {
+			return response, fmt.Errorf("clawreq: stopped after %d redirects", max_redirect_count)
+		}
+		next_url, resolve_err := current_url.Parse(location)
+		if resolve_err != nil {
+			return response, fmt.Errorf("clawreq: invalid redirect location %q: %w", location, resolve_err)
+		}
+		if next_url.Scheme != "http" && next_url.Scheme != "https" {
+			return response, fmt.Errorf("clawreq: unsupported redirect scheme %q", next_url.Scheme)
+		}
+
+		current_headers = redirect_headers(current_headers, current_url, next_url)
+		current_method, current_body = redirect_request(current_method, current_body, response.StatusCode)
+		current_url = next_url
+		redirect_count++
+	}
+}
+
+func (c *Client) cycle_options(ctx context.Context, request_url *url.URL, headers http.Header, body []byte) cycletls.Options {
+	browser_spec := resolveBrowserSpec(c.profile)
+	user_agent := browser_spec.userAgent
+	if header_user_agent := strings.TrimSpace(headers.Get("User-Agent")); header_user_agent != "" {
+		user_agent = header_user_agent
+	}
+	return cycletls.Options{
+		Ja3:       browser_spec.ja3,
+		UserAgent: user_agent,
+		Headers:   headerMap(headers),
+		Body:      string(body),
+		Proxy:     c.proxyURL,
+		Cookies:   c.cookiesFor(request_url, headers.Get("Cookie") == ""),
+		Timeout:   timeoutSeconds(timeoutForContext(ctx, c.timeout)),
+		// CycleTLS stores Host as a regular header, so its automatic redirect
+		// path can reuse the previous host on a cross-host redirect. Always stop
+		// after one hop and let Client.Do rebuild the next request instead.
+		DisableRedirect: true,
+		HeaderOrder:     browser_spec.headerOrder,
+	}
+}
+
+func is_redirect_status(status_code int) bool {
+	switch status_code {
+	case http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect:
+		return true
+	default:
+		return false
+	}
+}
+
+func redirect_request(method string, body []byte, status_code int) (string, []byte) {
+	switch status_code {
+	case http.StatusMovedPermanently, http.StatusFound:
+		if method != http.MethodGet && method != http.MethodHead {
+			return http.MethodGet, nil
+		}
+	case http.StatusSeeOther:
+		if method != http.MethodHead {
+			return http.MethodGet, nil
+		}
+	}
+	return method, body
+}
+
+func redirect_headers(headers http.Header, from_url *url.URL, to_url *url.URL) http.Header {
+	redirected_headers := headers.Clone()
+	if should_forward_sensitive_headers(from_url, to_url) {
+		return redirected_headers
+	}
+	redirected_headers.Del("Authorization")
+	redirected_headers.Del("Www-Authenticate")
+	redirected_headers.Del("Cookie")
+	return redirected_headers
+}
+
+func should_forward_sensitive_headers(from_url *url.URL, to_url *url.URL) bool {
+	if from_url == nil || to_url == nil {
+		return false
+	}
+	from_host := strings.TrimSuffix(strings.ToLower(from_url.Hostname()), ".")
+	to_host := strings.TrimSuffix(strings.ToLower(to_url.Hostname()), ".")
+	if from_host == "" || to_host == "" {
+		return false
+	}
+	return to_host == from_host || strings.HasSuffix(to_host, "."+from_host)
 }
 
 // CloseIdleConnections is present for API symmetry. CycleTLS creates and closes

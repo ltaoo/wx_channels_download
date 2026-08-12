@@ -25,7 +25,7 @@ function HomePopover(props, children) {
     }),
   ];
 
-  return Timeless.weui.PopoverPrimitive.Root(
+  return Timeless.ui.PopoverPrimitive.Root(
     {
       onUnmounted() {
         unlistens.forEach((unlisten) => {
@@ -72,8 +72,8 @@ function HomePopover(props, children) {
         },
         children,
       ),
-      Timeless.weui.PopoverPrimitive.Portal({ store }, [
-        Timeless.weui.PopoverPrimitive.Content(
+      Timeless.ui.PopoverPrimitive.Portal({ store }, [
+        Timeless.ui.PopoverPrimitive.Content(
           {
             ...content_props,
             store,

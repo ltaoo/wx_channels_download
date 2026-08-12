@@ -14,11 +14,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 )
 
 // CreateDownloadTaskRequest is the request body for creating download tasks.
@@ -458,8 +458,8 @@ func build_download_resource_item(resource model.DownloadResource) DownloadResou
 
 func download_task_create_success_item(data DownloadTaskItem) DownloadTaskCreateItem {
 	return DownloadTaskCreateItem{
-		Code: result.CodeSuccess,
-		Msg:  result.GetMsg(result.CodeSuccess),
+		Code: api_code_success,
+		Msg:  api_success_message,
 		Data: data,
 	}
 }
@@ -480,7 +480,7 @@ func download_task_create_skipped_item(err *services.DuplicateTaskError) Downloa
 	data["skipped"] = true
 	data["action"] = download_existing_action_skip
 	return DownloadTaskCreateItem{
-		Code: result.CodeSuccess,
+		Code: api_code_success,
 		Msg:  "Skipped existing download task",
 		Data: data,
 	}
@@ -566,7 +566,7 @@ func (c *APIClient) handle_duplicate_download_task_with_default_action(body serv
 					Str("default_action", action).
 					Err(err).
 					Msg("Default existing-task action still resulted in a conflict")
-				return download_task_create_failed_item(result.CodeInvalidParams, err.Error(), duplicate_download_task_data(retry_duplicate_err)), 0, true
+				return download_task_create_failed_item(api_code_invalid_params, err.Error(), duplicate_download_task_data(retry_duplicate_err)), 0, true
 			}
 			c.logger.Warn().
 				Str("api", "POST /api/v1/download_task/create").
@@ -574,7 +574,7 @@ func (c *APIClient) handle_duplicate_download_task_with_default_action(body serv
 				Str("default_action", action).
 				Err(err).
 				Msg("Default existing-task action failed to create download task")
-			return download_task_create_failed_item(result.CodeInvalidParams, err.Error(), gin.H{}), 0, true
+			return download_task_create_failed_item(api_code_invalid_params, err.Error(), gin.H{}), 0, true
 		}
 		return download_task_create_success_item(data), data.ID, true
 	default:
@@ -614,7 +614,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					if id > 0 {
 						ids = append(ids, id)
 					}
-					if item.Code == result.CodeSuccess {
+					if item.Code == api_code_success {
 						success_count++
 						if default_existing_action == download_existing_action_skip {
 							skip_count++
@@ -629,12 +629,12 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					Int("existing_task_id", duplicate_err.ExistingTaskID).
 					Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
 					Msg("Task conflict in batch, skipping")
-				tasks = append(tasks, download_task_create_failed_item(result.CodeDuplicateTask, err.Error(), duplicate_download_task_data(duplicate_err)))
+				tasks = append(tasks, download_task_create_failed_item(api_code_duplicate_download_task, err.Error(), duplicate_download_task_data(duplicate_err)))
 				fail_count++
 				continue
 			}
 			c.logger.Warn().Str("platform", body.Platform).Err(err).Msg("Failed to create download task")
-			tasks = append(tasks, download_task_create_failed_item(result.CodeInvalidParams, err.Error(), gin.H{}))
+			tasks = append(tasks, download_task_create_failed_item(api_code_invalid_params, err.Error(), gin.H{}))
 			fail_count++
 		} else {
 			tasks = append(tasks, download_task_create_success_item(data))

@@ -11,6 +11,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/scraper/fanqienovel"
 	"wx_channel/pkg/util"
 )
@@ -137,9 +138,10 @@ func ToContentNovelVolumes(result *fanqienovel.FanqieFetchResult, content_id str
 			idx = volume_index + 1
 		}
 		volumes = append(volumes, model.ContentNovelVolume{
-			NovelId: content_id,
-			Idx:     idx,
-			Title:   strings.TrimSpace(volume.Title),
+			NovelId:   content_id,
+			VolumeKey: model.BuildContentNovelVolumeKey("", idx),
+			Idx:       idx,
+			Title:     strings.TrimSpace(volume.Title),
 		})
 	}
 	return volumes, nil
@@ -159,11 +161,13 @@ func ToContentNovelChapters(result *fanqienovel.FanqieFetchResult, content_id st
 				idx = chapter_index + 1
 			}
 			chapters = append(chapters, model.ContentNovelChapter{
-				NovelId:   content_id,
-				Idx:       idx,
-				Title:     strings.TrimSpace(chapter.Title),
-				URL:       strings.TrimSpace(chapter.URL),
-				WordCount: count_text_characters(chapter.Content),
+				NovelId:    content_id,
+				ChapterKey: model.BuildContentNovelChapterKey("", chapter.URL, idx),
+				VolumeKey:  model.BuildContentNovelVolumeKey("", chapter.VolumeIdx),
+				Idx:        idx,
+				Title:      strings.TrimSpace(chapter.Title),
+				URL:        strings.TrimSpace(chapter.URL),
+				WordCount:  count_text_characters(chapter.Content),
 			})
 		}
 		return chapters, nil
@@ -172,14 +176,20 @@ func ToContentNovelChapters(result *fanqienovel.FanqieFetchResult, content_id st
 	chapter_count := result.Profile.ChapterCount
 	chapters := make([]model.ContentNovelChapter, 0, chapter_count)
 	chapter_index := 0
-	for _, volume := range result.Profile.Volumes {
+	for volume_index, volume := range result.Profile.Volumes {
+		volume_idx := volume.Idx
+		if volume_idx <= 0 {
+			volume_idx = volume_index + 1
+		}
 		for _, chapter := range volume.Chapters {
 			chapter_index++
 			chapters = append(chapters, model.ContentNovelChapter{
-				NovelId: content_id,
-				Idx:     chapter_index,
-				Title:   strings.TrimSpace(chapter.Title),
-				URL:     strings.TrimSpace(chapter.URL),
+				NovelId:    content_id,
+				ChapterKey: model.BuildContentNovelChapterKey("", chapter.URL, chapter_index),
+				VolumeKey:  model.BuildContentNovelVolumeKey("", volume_idx),
+				Idx:        chapter_index,
+				Title:      strings.TrimSpace(chapter.Title),
+				URL:        strings.TrimSpace(chapter.URL),
 			})
 		}
 	}
@@ -230,11 +240,13 @@ func fetched_chapter_content_detail(chapter fanqienovel.FanqieFetchedChapter, co
 		Type: "novel_chapter",
 		Key:  fmt.Sprintf("%s:chapter:%d", content_id, idx),
 		Data: &model.ContentNovelChapter{
-			NovelId:   content_id,
-			Idx:       idx,
-			Title:     strings.TrimSpace(chapter.Title),
-			URL:       strings.TrimSpace(chapter.URL),
-			WordCount: count_text_characters(chapter.Content),
+			NovelId:    content_id,
+			ChapterKey: model.BuildContentNovelChapterKey("", chapter.URL, idx),
+			VolumeKey:  model.BuildContentNovelVolumeKey("", chapter.VolumeIdx),
+			Idx:        idx,
+			Title:      strings.TrimSpace(chapter.Title),
+			URL:        strings.TrimSpace(chapter.URL),
+			WordCount:  count_text_characters(chapter.Content),
 		},
 	}
 }
@@ -261,6 +273,8 @@ func ToNovelModelSet(result *fanqienovel.FanqieFetchResult) (*NovelModelSet, err
 	if err != nil {
 		return nil, err
 	}
+	novel.Volumes = volumes
+	novel.Chapters = chapters
 	return &NovelModelSet{
 		Content:  content,
 		Novel:    novel,
@@ -272,10 +286,10 @@ func ToNovelModelSet(result *fanqienovel.FanqieFetchResult) (*NovelModelSet, err
 
 // BuildDownloadTask builds a collection task containing every fetched chapter.
 func BuildDownloadTask(result *fanqienovel.FanqieFetchResult, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
-	return build_download_task(result, config_json, "")
+	return build_download_task(result, config_json, nil)
 }
 
-func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json.RawMessage, work_dir string) (*adapter.DownloadTaskResult, error) {
+func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json.RawMessage, file_cache *cache.CacheProvider) (*adapter.DownloadTaskResult, error) {
 	model_set, err := ToNovelModelSet(result)
 	if err != nil {
 		return nil, err
@@ -321,8 +335,8 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 		endpoint_protocol_name := "inline"
 		endpoint_url := chapter_content
 		cache_reused := false
-		if strings.TrimSpace(work_dir) != "" {
-			cached_html, cache_err := fanqienovel.LookupChapterHTMLCache(work_dir, result.Profile.URL, chapter.URL)
+		if file_cache != nil && file_cache.Enabled() {
+			cached_html, cache_err := fanqienovel.LookupChapterHTMLCacheWithCache(file_cache, result.Profile.URL, chapter.URL)
 			if cache_err != nil {
 				return nil, fmt.Errorf("查找章节 %q 缓存失败: %w", chapter_title, cache_err)
 			}
@@ -343,6 +357,11 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 			"source_url":    chapter.URL,
 			"cache_reused":  cache_reused,
 		})
+		chapter_key := model.BuildContentNovelChapterKey("", chapter.URL, idx)
+		representation_key := "txt"
+		if resource_kind == "text/html" {
+			representation_key = "html"
+		}
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
 				ContentId: &model_set.Content.Id,
@@ -356,6 +375,15 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 				Protocol: endpoint_protocol_name,
 				URL:      endpoint_url,
 				Enabled:  1,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindText,
+				Role:            model.ContentAssetRoleNovelChapter,
+				AssetKey:        model.BuildContentNovelChapterAssetKey(chapter_key, representation_key),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectNovelChapter,
+				SubjectKey:      chapter_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 			}},
 		})
 	}
@@ -373,8 +401,8 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 				endpoint_protocol_name := endpoint_protocol(chapter_url)
 				endpoint_url := chapter_url
 				cache_reused := false
-				if strings.TrimSpace(work_dir) != "" {
-					cached_html, cache_err := fanqienovel.LookupChapterHTMLCache(work_dir, result.Profile.URL, chapter_url)
+				if file_cache != nil && file_cache.Enabled() {
+					cached_html, cache_err := fanqienovel.LookupChapterHTMLCacheWithCache(file_cache, result.Profile.URL, chapter_url)
 					if cache_err != nil {
 						return nil, fmt.Errorf("查找章节 %q 缓存失败: %w", chapter.Title, cache_err)
 					}
@@ -393,6 +421,7 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 					"source_url":    chapter_url,
 					"cache_reused":  cache_reused,
 				})
+				chapter_key := model.BuildContentNovelChapterKey("", chapter_url, chapter_index)
 				resources = append(resources, &adapter.ResourceInfo{
 					Resource: model.DownloadResource{
 						ContentId: &model_set.Content.Id,
@@ -406,6 +435,15 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 						Protocol: endpoint_protocol_name,
 						URL:      endpoint_url,
 						Enabled:  1,
+					}},
+					ContentAssets: []adapter.ContentAssetReference{{
+						Kind:            model.ContentAssetKindText,
+						Role:            model.ContentAssetRoleNovelChapter,
+						AssetKey:        model.BuildContentNovelChapterAssetKey(chapter_key, "html"),
+						Relation:        model.DownloadResourceAssetRelationSource,
+						SubjectType:     model.ContentAssetSubjectNovelChapter,
+						SubjectKey:      chapter_key,
+						SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 					}},
 				})
 			}

@@ -12,10 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"wx_channel/internal/config"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 )
@@ -38,39 +36,40 @@ type FetchParams struct {
 	URL string `json:"url"`
 }
 
-type ChannelsClient struct {
-	ws_clients       map[*Client]bool
+// ClientOptions contains application-provided values needed by Client.
+// Keeping this contract explicit prevents the reusable scraper from depending
+// on the application's internal configuration package.
+type ClientOptions struct {
+	RefreshInterval int
+	CookieReader    *cookies.Reader
+}
+
+type Client struct {
+	ws_clients       map[*WebsocketClient]bool
 	ws_mu            sync.RWMutex
-	engine           *gin.Engine
 	requests         map[string]chan ClientWebsocketResponse
 	requests_mu      sync.RWMutex
 	cache            *cache.Cache
 	req_seq          uint64
 	refresh_interval int
-	cfg              *config.Config
 	cookie_reader    *cookies.Reader
-	OnConnected      func(client *Client)
-	OnDisconnected   func(client *Client)
-	OnMessage        func(client *Client, message []byte)
+	OnConnected      func(client *WebsocketClient)
+	OnDisconnected   func(client *WebsocketClient)
+	OnMessage        func(client *WebsocketClient, message []byte)
 }
 
-func NewChannelsClient(refresh_interval int, cfg *config.Config) *ChannelsClient {
-	work_dir := ""
-	if cfg != nil {
-		work_dir = cfg.WorkDir
-	}
-	return &ChannelsClient{
-		ws_clients:       make(map[*Client]bool),
+func NewClient(options ClientOptions) *Client {
+	return &Client{
+		ws_clients:       make(map[*WebsocketClient]bool),
 		requests:         make(map[string]chan ClientWebsocketResponse),
 		cache:            cache.New(),
 		req_seq:          uint64(time.Now().UnixNano()),
-		refresh_interval: refresh_interval,
-		cfg:              cfg,
-		cookie_reader:    cookies.NewPersistentReader(work_dir),
+		refresh_interval: options.RefreshInterval,
+		cookie_reader:    options.CookieReader,
 	}
 }
 
-func (c *ChannelsClient) Fetch(params FetchParams) (any, error) {
+func (c *Client) Fetch(params FetchParams) (any, error) {
 	raw_url := strings.TrimSpace(params.URL)
 	switch {
 	case channels_share_url_reg.MatchString(raw_url):
@@ -87,7 +86,7 @@ func is_channels_feed_url(raw_url string) bool {
 	return err == nil && parts.Oid != "" && parts.Nid != ""
 }
 
-func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, error) {
+func (c *Client) fetch_profile_with_share_url(raw_url string) (any, error) {
 	cookie, err := c.resolve_sph_cookie()
 	if err != nil {
 		return nil, err
@@ -95,38 +94,31 @@ func (c *ChannelsClient) fetch_profile_with_share_url(raw_url string) (any, erro
 	return FetchVideoProfileWithShareUrl(raw_url, cookie)
 }
 
-func (c *ChannelsClient) resolve_sph_cookie() (string, error) {
-	if c.cfg == nil {
-		return "", errors.New("config is not initialized")
-	}
-	cookie := strings.TrimSpace(c.cfg.GetString("cloudflare.sphCookie"))
-	if cookie != "" {
-		return cookie, nil
-	}
+func (c *Client) resolve_sph_cookie() (string, error) {
 	if c.cookie_reader == nil {
-		return "", errors.New("cloudflare.sphCookie not configured and persistent cookie reader is unavailable")
+		return "", errors.New("persistent cookie reader is unavailable")
 	}
 	cookie, err := c.cookie_reader.HeaderForDomain(yuanbao_cookie_domain)
 	if err == nil {
 		return cookie, nil
 	}
 	if errors.Is(err, cookies.ErrCookieNotFound) {
-		return "", errors.New("cloudflare.sphCookie not configured and no yuanbao.tencent.com cookie was found")
+		return "", errors.New("no yuanbao.tencent.com cookie was found")
 	}
 	return "", fmt.Errorf("read yuanbao.tencent.com cookie: %w", err)
 }
 
-func (c *ChannelsClient) fetch_profile_with_channels_client(raw_url string) (any, error) {
+func (c *Client) fetch_profile_with_channels_client(raw_url string) (any, error) {
 	return c.FetchFeedPage(raw_url)
 }
 
-func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
-	conn, err := channels_ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+func (c *Client) ServeWebsocket(writer http.ResponseWriter, request *http.Request) {
+	conn, err := channels_ws_upgrader.Upgrade(writer, request, nil)
 	if err != nil {
 		return
 	}
 	c.ws_mu.Lock()
-	client := &Client{Conn: conn, Send: make(chan []byte, 256)}
+	client := &WebsocketClient{Conn: conn, Send: make(chan []byte, 256)}
 	c.ws_clients[client] = true
 	c.ws_mu.Unlock()
 
@@ -189,8 +181,8 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
 		}
 	}
 }
-func (c *ChannelsClient) Stop() {
-	disconnected_clients := make([]*Client, 0)
+func (c *Client) Stop() {
+	disconnected_clients := make([]*WebsocketClient, 0)
 	c.ws_mu.Lock()
 	for client := range c.ws_clients {
 		close(client.Send)
@@ -200,19 +192,19 @@ func (c *ChannelsClient) Stop() {
 	c.ws_mu.Unlock()
 	c.notify_disconnected(disconnected_clients)
 }
-func (c *ChannelsClient) notify_disconnected(clients []*Client) {
+func (c *Client) notify_disconnected(clients []*WebsocketClient) {
 	if c.OnDisconnected != nil {
 		for _, client := range clients {
 			c.OnDisconnected(client)
 		}
 	}
 }
-func (c *ChannelsClient) Broadcast(v interface{}) {
+func (c *Client) Broadcast(v interface{}) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
-	disconnected_clients := make([]*Client, 0)
+	disconnected_clients := make([]*WebsocketClient, 0)
 	c.ws_mu.Lock()
 	for client := range c.ws_clients {
 		select {
@@ -226,19 +218,19 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
 	c.ws_mu.Unlock()
 	c.notify_disconnected(disconnected_clients)
 }
-func (wc *ChannelsClient) Validate() error {
+func (wc *Client) Validate() error {
 	if !wc.Available() {
 		return errors.New("please initialize the client socket connection first")
 	}
 	return nil
 }
 
-func (wc *ChannelsClient) Available() bool {
+func (wc *Client) Available() bool {
 	wc.ws_mu.RLock()
 	defer wc.ws_mu.RUnlock()
 	return len(wc.ws_clients) > 0
 }
-func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+func (c *Client) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -262,7 +254,7 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 		c.requests_mu.Unlock()
 	}()
 	c.ws_mu.Lock()
-	var client *Client
+	var client *WebsocketClient
 	for c := range c.ws_clients {
 		client = c
 		break
@@ -293,7 +285,7 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
 }
 
 // Search for users by keyword
-func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker string) (*ChannelsContactSearchResp, error) {
+func (c *Client) SearchChannelsContact(keyword string, next_marker string) (*ChannelsContactSearchResp, error) {
 	if keyword == "" {
 		return nil, errors.New("keyword cannot be empty")
 	}
@@ -318,7 +310,7 @@ func (c *ChannelsClient) SearchChannelsContact(keyword string, next_marker strin
 }
 
 // Fetch video feed list for a specific user
-func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsFeedListOfContact(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
@@ -342,7 +334,7 @@ func (c *ChannelsClient) FetchChannelsFeedListOfContact(username, next_marker st
 }
 
 // Fetch live replay list for a specific user
-func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsLiveReplayList(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
@@ -366,7 +358,7 @@ func (c *ChannelsClient) FetchChannelsLiveReplayList(username, next_marker strin
 }
 
 // Fetch favorited or liked feed list for the user
-func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsInteractionedFeedList(flag, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
 	cache_key := "channels:interactioned_list:" + flag + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
@@ -385,7 +377,7 @@ func (c *ChannelsClient) FetchChannelsInteractionedFeedList(flag, next_marker st
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*ChannelsFollowListResp, error) {
+func (c *Client) FetchChannelsFollowList(next_marker string) (*ChannelsFollowListResp, error) {
 	cache_key := "channels:follow_list:" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*ChannelsFollowListResp); ok {
@@ -404,7 +396,7 @@ func (c *ChannelsClient) FetchChannelsFollowList(next_marker string) (*ChannelsF
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsPlayHistory(next_marker string) (*ChannelsPlayHistoryResp, error) {
+func (c *Client) FetchChannelsPlayHistory(next_marker string) (*ChannelsPlayHistoryResp, error) {
 	cache_key := "channels:play_history:" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
 		if resp, ok := val.(*ChannelsPlayHistoryResp); ok {
@@ -423,7 +415,7 @@ func (c *ChannelsClient) FetchChannelsPlayHistory(next_marker string) (*Channels
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsFeedProfileResp, error) {
+func (c *Client) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)
 	cache_key := "channels:feed_profile:" + kk
@@ -444,7 +436,7 @@ func (c *ChannelsClient) FetchChannelsFeedProfile(oid, uid, url, eid string) (*C
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchFeedPage(raw_url string) (*ChannelsObject, error) {
+func (c *Client) FetchFeedPage(raw_url string) (*ChannelsObject, error) {
 	parts, err := ParseFeedURL(raw_url)
 	if err != nil {
 		return nil, err
@@ -459,7 +451,7 @@ func (c *ChannelsClient) FetchFeedPage(raw_url string) (*ChannelsObject, error) 
 	return &resp.Data.Object, nil
 }
 
-func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfileResp, error) {
+func (c *Client) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfileResp, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s", url)
 	cache_key := "channels:shared_feed_profile:" + kk
@@ -481,7 +473,7 @@ func (c *ChannelsClient) FetchChannelsSharedFeedProfile(url string) (*ChannelsFe
 
 }
 
-func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*ChannelsFeedCommentListResp, error) {
+func (c *Client) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*ChannelsFeedCommentListResp, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
@@ -512,7 +504,7 @@ func (c *ChannelsClient) FetchChannelsFeedCommentList(oid, nid, comment_id, next
 	return &r, nil
 }
 
-func (c *ChannelsClient) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedShareUrlResp, error) {
+func (c *Client) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedShareUrlResp, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
@@ -538,7 +530,7 @@ func (c *ChannelsClient) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedSha
 }
 
 // Reload the channels page
-func (c *ChannelsClient) ReloadChannels() error {
+func (c *Client) ReloadChannels() error {
 	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
 	return err
 }

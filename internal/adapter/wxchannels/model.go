@@ -168,6 +168,7 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 		for i, file := range files {
 			images = append(images, model.ContentImage{
 				AlbumId:   c.Id,
+				ImageKey:  model.BuildContentAlbumImageKey(file.DecodeKey, file.URL+file.URLToken, i),
 				SortOrder: i,
 				URL:       file.URL + file.URLToken,
 				Width:     int(file.Width),
@@ -404,7 +405,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	configured_spec := config_string(config, "spec")
 	var spec string
 	if configured_spec == "" {
-		if !a.cfg.DownloadDefaultHighest {
+		if !a.config_bool("channels.download.defaultHighest") && !a.config_bool("download.defaultHighest") {
 			spec = PickSpec(&obj)
 		}
 	} else if configured_spec != "original" {
@@ -470,6 +471,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				image_name = fmt.Sprintf("%s_%d", title, i+1)
 			}
 			image_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, i+1, obj.ObjectDesc.MediaType)
+			image_key := model.BuildContentAlbumImageKey(file.DecodeKey, media_url, i)
 			resources = append(resources, &adapter.ResourceInfo{
 				Resource: model.DownloadResource{
 					ContentId: &content_id,
@@ -483,6 +485,15 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 					Protocol: "https",
 					URL:      media_url,
 					Enabled:  1,
+				}},
+				ContentAssets: []adapter.ContentAssetReference{{
+					Kind:            model.ContentAssetKindImage,
+					Role:            model.ContentAssetRolePrimary,
+					AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "jpeg"),
+					Relation:        model.DownloadResourceAssetRelationSource,
+					SubjectType:     model.ContentAssetSubjectAlbumImage,
+					SubjectKey:      image_key,
+					SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 				}},
 			})
 		}
@@ -505,7 +516,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				}},
 			})
 		}
-		if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+		if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
 			resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
 		}
 
@@ -565,11 +576,28 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		URL:      download_url,
 		Enabled:  1,
 	}
+	content_asset_kind := model.ContentAssetKindVideo
+	content_asset_role := model.ContentAssetRoleVideoVariant
+	content_asset_key := spec
+	if content_asset_key == "" {
+		content_asset_key = "default"
+	}
+	if resource_kind == mime_audio_mpeg {
+		content_asset_kind = model.ContentAssetKindAudio
+		content_asset_role = model.ContentAssetRoleAudioVariant
+		content_asset_key = resource_unique_id
+	}
 	resources := []*adapter.ResourceInfo{{
 		Resource:  video_resource,
 		Endpoints: []model.DownloadEndpoint{video_endpoint},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     content_asset_kind,
+			Role:     content_asset_role,
+			AssetKey: content_asset_key,
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
 	}}
-	if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+	if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
 		resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
 	}
 

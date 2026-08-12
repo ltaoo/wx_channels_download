@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 	"wx_channel/pkg/cookies"
 )
 

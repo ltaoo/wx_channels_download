@@ -40,14 +40,6 @@ func (c *DouyinPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	return nil
 }
 
-// GetDouyinConfig returns the registered douyin plugin config if available.
-func GetDouyinConfig() *DouyinPluginConfig {
-	return douyinPluginConfig
-}
-
-var douyinPluginConfig *DouyinPluginConfig
-
 func init() {
-	douyinPluginConfig = &DouyinPluginConfig{}
-	config.RegisterPlugin(douyinPluginConfig)
+	config.RegisterPlugin(&DouyinPluginConfig{})
 }

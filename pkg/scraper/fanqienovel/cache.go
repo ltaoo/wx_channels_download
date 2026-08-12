@@ -9,12 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+
+	"wx_channel/pkg/cache"
 )
 
 const cache_directory_name = "fanqienovel"
-
-var html_cache_mu sync.RWMutex
 
 // HTMLCacheFile describes one HTML page already persisted in the fetch cache.
 type HTMLCacheFile struct {
@@ -45,62 +44,84 @@ func cache_url_key(raw_url string) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
-func cache_root_path(work_dir string) string {
-	work_dir = strings.TrimSpace(work_dir)
-	if work_dir == "" {
-		return ""
-	}
-	return filepath.Join(work_dir, "cache", cache_directory_name)
-}
-
-func cache_namespace_path(work_dir string, source_url string) (string, error) {
-	root_path := cache_root_path(work_dir)
-	if root_path == "" {
-		return "", nil
-	}
+func cache_namespace_path(source_url string) (string, error) {
 	key, err := cache_url_key(source_url)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root_path, key), nil
+	return key, nil
 }
 
-func html_cache_file_path(work_dir string, source_url string, request_url string) (string, error) {
-	namespace_path, err := cache_namespace_path(work_dir, source_url)
-	if err != nil || namespace_path == "" {
+func html_cache_relative_path(source_url string, request_url string) (string, error) {
+	namespace_path, err := cache_namespace_path(source_url)
+	if err != nil {
 		return "", err
 	}
 	request_key, err := cache_url_key(request_url)
 	if err != nil {
 		return "", err
 	}
-	cache_path := filepath.Join(namespace_path, request_key+".html")
-	absolute_path, err := filepath.Abs(cache_path)
-	if err != nil {
-		return "", fmt.Errorf("resolve fanqienovel cache path: %w", err)
-	}
-	return absolute_path, nil
+	return filepath.ToSlash(filepath.Join(namespace_path, request_key+".html")), nil
 }
 
 func (c *FanqieClient) cache_file_path(request_url string) (string, error) {
-	if c == nil || strings.TrimSpace(c.work_dir) == "" || strings.TrimSpace(c.cache_source_url) == "" {
+	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() || strings.TrimSpace(c.cache_source_url) == "" {
 		return "", nil
 	}
-	return html_cache_file_path(c.work_dir, c.cache_source_url, request_url)
+	relative_path, err := html_cache_relative_path(c.cache_source_url, request_url)
+	if err != nil {
+		return "", err
+	}
+	return c.file_cache.Path(relative_path)
 }
 
 // HTMLCacheFilePath returns the deterministic path for a cached request page.
 // The file does not need to exist yet.
 func HTMLCacheFilePath(work_dir string, source_url string, request_url string) (string, error) {
+	cache_registry, err := cache.NewProviderRegistry(work_dir)
+	if err != nil {
+		return "", err
+	}
+	file_cache, err := cache_registry.Namespace(cache_directory_name)
+	if err != nil {
+		return "", err
+	}
+	return HTMLCacheFilePathWithCache(file_cache, source_url, request_url)
+}
+
+// HTMLCacheFilePathWithCache returns the deterministic cache path using a
+// runtime-supplied namespace-scoped persistent cache.
+func HTMLCacheFilePathWithCache(file_cache *cache.CacheProvider, source_url string, request_url string) (string, error) {
 	if _, err := parse_book_id(strings.TrimSpace(source_url)); err != nil {
 		return "", err
 	}
-	return html_cache_file_path(work_dir, strings.TrimSpace(source_url), strings.TrimSpace(request_url))
+	if file_cache == nil || !file_cache.Enabled() {
+		return "", nil
+	}
+	relative_path, err := html_cache_relative_path(strings.TrimSpace(source_url), strings.TrimSpace(request_url))
+	if err != nil {
+		return "", err
+	}
+	return file_cache.Path(relative_path)
 }
 
 // LookupChapterHTMLCache locates the cached raw HTML for a chapter without
 // performing a network request. A nil result means that chapter is not cached.
 func LookupChapterHTMLCache(work_dir string, source_url string, chapter_url string) (*HTMLCacheFile, error) {
+	cache_registry, err := cache.NewProviderRegistry(work_dir)
+	if err != nil {
+		return nil, err
+	}
+	file_cache, err := cache_registry.Namespace(cache_directory_name)
+	if err != nil {
+		return nil, err
+	}
+	return LookupChapterHTMLCacheWithCache(file_cache, source_url, chapter_url)
+}
+
+// LookupChapterHTMLCacheWithCache locates a chapter in a runtime-supplied
+// namespace-scoped persistent cache.
+func LookupChapterHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url string, chapter_url string) (*HTMLCacheFile, error) {
 	chapter_id, err := parse_chapter_id(chapter_url)
 	if err != nil {
 		return nil, err
@@ -113,14 +134,15 @@ func LookupChapterHTMLCache(work_dir string, source_url string, chapter_url stri
 	parsed_url.RawPath = ""
 	parsed_url.RawQuery = "enter_from=page"
 	parsed_url.Fragment = ""
-	cache_path, err := HTMLCacheFilePath(work_dir, source_url, parsed_url.String())
+	cache_path, err := HTMLCacheFilePathWithCache(file_cache, source_url, parsed_url.String())
 	if err != nil || cache_path == "" {
 		return nil, err
 	}
-
-	html_cache_mu.RLock()
-	file_info, stat_err := os.Stat(cache_path)
-	html_cache_mu.RUnlock()
+	relative_path, err := html_cache_relative_path(source_url, parsed_url.String())
+	if err != nil {
+		return nil, err
+	}
+	file_info, stat_err := file_cache.Stat(relative_path)
 	if errors.Is(stat_err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -134,13 +156,14 @@ func LookupChapterHTMLCache(work_dir string, source_url string, chapter_url stri
 }
 
 func (c *FanqieClient) read_cached_html(request_url string) ([]byte, bool, error) {
-	cache_path, err := c.cache_file_path(request_url)
-	if err != nil || cache_path == "" {
+	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() || strings.TrimSpace(c.cache_source_url) == "" {
+		return nil, false, nil
+	}
+	relative_path, err := html_cache_relative_path(c.cache_source_url, request_url)
+	if err != nil {
 		return nil, false, err
 	}
-	html_cache_mu.RLock()
-	data, read_err := os.ReadFile(cache_path)
-	html_cache_mu.RUnlock()
+	data, read_err := c.file_cache.Read(relative_path)
 	if errors.Is(read_err, os.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -155,70 +178,57 @@ func (c *FanqieClient) read_cached_html(request_url string) ([]byte, bool, error
 }
 
 func (c *FanqieClient) write_cached_html(request_url string, data []byte) error {
-	cache_path, err := c.cache_file_path(request_url)
-	if err != nil || cache_path == "" {
+	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() || strings.TrimSpace(c.cache_source_url) == "" {
+		return nil
+	}
+	relative_path, err := html_cache_relative_path(c.cache_source_url, request_url)
+	if err != nil {
 		return err
 	}
-	html_cache_mu.Lock()
-	defer html_cache_mu.Unlock()
-	if err := os.MkdirAll(filepath.Dir(cache_path), 0755); err != nil {
-		return fmt.Errorf("create fanqienovel cache directory: %w", err)
-	}
-	temporary_file, err := os.CreateTemp(filepath.Dir(cache_path), ".html-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create fanqienovel cache file: %w", err)
-	}
-	temporary_path := temporary_file.Name()
-	defer os.Remove(temporary_path)
-	if _, err := temporary_file.Write(data); err != nil {
-		_ = temporary_file.Close()
-		return fmt.Errorf("write fanqienovel cache file: %w", err)
-	}
-	if err := temporary_file.Close(); err != nil {
-		return fmt.Errorf("close fanqienovel cache file: %w", err)
-	}
-	if err := os.Remove(cache_path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("replace fanqienovel cache file: %w", err)
-	}
-	if err := os.Rename(temporary_path, cache_path); err != nil {
-		return fmt.Errorf("commit fanqienovel cache file: %w", err)
-	}
-	return nil
+	return c.file_cache.Write(relative_path, data)
 }
 
 func (c *FanqieClient) remove_cached_html(request_url string) error {
-	cache_path, err := c.cache_file_path(request_url)
-	if err != nil || cache_path == "" {
-		return err
-	}
-	html_cache_mu.Lock()
-	remove_err := os.Remove(cache_path)
-	html_cache_mu.Unlock()
-	if errors.Is(remove_err, os.ErrNotExist) {
+	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() || strings.TrimSpace(c.cache_source_url) == "" {
 		return nil
 	}
-	return remove_err
+	relative_path, err := html_cache_relative_path(c.cache_source_url, request_url)
+	if err != nil {
+		return err
+	}
+	return c.file_cache.Remove(relative_path)
 }
 
 // ClearHTMLCache removes all cached profile and chapter HTML associated with
 // one source book URL.
 func ClearHTMLCache(work_dir string, source_url string) (bool, error) {
+	cache_registry, err := cache.NewProviderRegistry(work_dir)
+	if err != nil {
+		return false, err
+	}
+	file_cache, err := cache_registry.Namespace(cache_directory_name)
+	if err != nil {
+		return false, err
+	}
+	return ClearHTMLCacheWithCache(file_cache, source_url)
+}
+
+// ClearHTMLCacheWithCache removes cached pages for one book from a
+// runtime-supplied namespace-scoped persistent cache.
+func ClearHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url string) (bool, error) {
 	if _, err := parse_book_id(source_url); err != nil {
 		return false, err
 	}
-	namespace_path, err := cache_namespace_path(work_dir, source_url)
-	if err != nil || namespace_path == "" {
+	if file_cache == nil || !file_cache.Enabled() {
+		return false, nil
+	}
+	namespace_path, err := cache_namespace_path(source_url)
+	if err != nil {
 		return false, err
 	}
-	html_cache_mu.Lock()
-	defer html_cache_mu.Unlock()
-	if _, err := os.Stat(namespace_path); errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	} else if err != nil {
-		return false, fmt.Errorf("stat fanqienovel cache: %w", err)
-	}
-	if err := os.RemoveAll(namespace_path); err != nil {
+	removed, err := file_cache.RemoveAll(namespace_path)
+	if err != nil {
 		return false, fmt.Errorf("clear fanqienovel cache: %w", err)
 	}
-	return true, nil
+	return removed, nil
 }

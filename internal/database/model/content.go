@@ -5,33 +5,35 @@ import (
 )
 
 type Content struct {
-	Id            string `gorm:"primaryKey" json:"id"`
-	PlatformId    string `gorm:"not null;index:idx_content_platform_type,priority:1;index:idx_content_external_id,priority:1" json:"platform_id"`
-	Type          string `gorm:"not null;index:idx_content_platform_type,priority:2;index:idx_content_type" json:"type"`
-	ExternalId    string `gorm:"not null;index:idx_content_external_id,priority:2" json:"external_id"`
-	ExternalId2   string `json:"external_id2"`
-	ExternalId3   string `json:"external_id3"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	URL           string `json:"url"`
-	SourceURL     string `json:"source_url"`
-	CoverURL      string `json:"cover_url"`
-	CoverWidth    string `json:"cover_width"`
-	CoverHeight   string `json:"cover_height"`
-	PublishTime   *int64 `json:"publish_time"`
-	UpdateTime    *int64 `json:"update_time"`
-	IsPrivate     int    `json:"is_private"`
-	ViewCount     int64  `json:"view_count"`
-	LikeCount     int64  `json:"like_count"`
-	CommentCount  int64  `json:"comment_count"`
-	ShareCount    int64  `json:"share_count"`
-	CollectCount  int64  `json:"collect_count"`
-	Unread        int    `json:"unread"`
-	SourceDeleted int    `json:"source_deleted"`
-	Validated     int    `json:"validated"`
-	Tags          string `json:"tags"`
-	Category      string `json:"category"`
-	Metadata      string `json:"metadata"`
+	Id            string         `gorm:"primaryKey" json:"id"`
+	PlatformId    string         `gorm:"not null;index:idx_content_platform_type,priority:1;index:idx_content_external_id,priority:1" json:"platform_id"`
+	Type          string         `gorm:"not null;index:idx_content_platform_type,priority:2;index:idx_content_type" json:"type"`
+	Subtype       string         `gorm:"index:idx_content_subtype" json:"subtype"`
+	ExternalId    string         `gorm:"not null;index:idx_content_external_id,priority:2" json:"external_id"`
+	ExternalId2   string         `json:"external_id2"`
+	ExternalId3   string         `json:"external_id3"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description"`
+	URL           string         `json:"url"`
+	SourceURL     string         `json:"source_url"`
+	CoverURL      string         `json:"cover_url"`
+	CoverWidth    string         `json:"cover_width"`
+	CoverHeight   string         `json:"cover_height"`
+	PublishTime   *int64         `json:"publish_time"`
+	UpdateTime    *int64         `json:"update_time"`
+	IsPrivate     int            `json:"is_private"`
+	ViewCount     int64          `json:"view_count"`
+	LikeCount     int64          `json:"like_count"`
+	CommentCount  int64          `json:"comment_count"`
+	ShareCount    int64          `json:"share_count"`
+	CollectCount  int64          `json:"collect_count"`
+	Unread        int            `json:"unread"`
+	SourceDeleted int            `json:"source_deleted"`
+	Validated     int            `json:"validated"`
+	Tags          string         `json:"tags"`
+	Category      string         `json:"category"`
+	Metadata      string         `json:"metadata"`
+	Assets        []ContentAsset `gorm:"foreignKey:ContentId;references:Id" json:"assets,omitempty"`
 	Timestamps
 }
 
@@ -45,24 +47,106 @@ func (c *Content) BeforeCreate(tx *gorm.DB) error {
 }
 
 type ContentVideo struct {
-	Id              string `gorm:"primaryKey" json:"id"`
-	Duration        int64  `json:"duration"`
-	Width           int    `json:"width"`
-	Height          int    `json:"height"`
-	FPS             int    `json:"fps"`
-	Bitrate         int    `json:"bitrate"`
-	Size            int64  `json:"size"`
-	Codec           string `json:"codec"`
-	Format          string `json:"format"`
-	HasSubtitle     int    `json:"has_subtitle"`
-	SubtitleURL     string `json:"subtitle_url"`
-	AudioTrackCount int    `json:"audio_track_count"`
-	URL             string `json:"url"`
-	PlayTimes       int64  `json:"play_times"`
-	DeletedAt       *int64 `gorm:"column:deleted_at;index" json:"deleted_at"`
+	Id              string                      `gorm:"primaryKey" json:"id"`
+	Duration        int64                       `json:"duration"`
+	Width           int                         `json:"width"`
+	Height          int                         `json:"height"`
+	FPS             int                         `json:"fps"`
+	Bitrate         int                         `json:"bitrate"`
+	Size            int64                       `json:"size"`
+	Codec           string                      `json:"codec"`
+	Format          string                      `json:"format"`
+	HasSubtitle     int                         `json:"has_subtitle"`
+	SubtitleURL     string                      `json:"subtitle_url"`
+	AudioTrackCount int                         `json:"audio_track_count"`
+	URL             string                      `json:"url"`
+	PlayTimes       int64                       `json:"play_times"`
+	Variants        []ContentVideoVariant       `gorm:"foreignKey:VideoId;references:Id" json:"variants"`
+	SubtitleTracks  []ContentVideoSubtitleTrack `gorm:"foreignKey:VideoId;references:Id" json:"subtitle_tracks"`
+	DeletedAt       *int64                      `gorm:"column:deleted_at;index" json:"deleted_at"`
 }
 
 func (ContentVideo) TableName() string { return "content_video" }
+
+const (
+	ContentVideoVariantStreamTypeProgressive = "progressive"
+	ContentVideoVariantStreamTypeVideoOnly   = "video_only"
+	ContentVideoVariantStreamTypeManifest    = "manifest"
+)
+
+// ContentVideoVariant describes one selectable/downloadable video
+// representation. AssetId is also the primary key of ContentAsset.
+type ContentVideoVariant struct {
+	AssetId      uint         `gorm:"primaryKey;autoIncrement:false" json:"asset_id"`
+	VideoId      string       `gorm:"not null;index:idx_content_video_variant_video;uniqueIndex:idx_content_video_variant_identity,priority:1" json:"video_id"`
+	VariantKey   string       `gorm:"not null;uniqueIndex:idx_content_video_variant_identity,priority:2" json:"variant_key"`
+	Spec         string       `json:"spec"`
+	Quality      string       `json:"quality"`
+	Width        *int         `json:"width"`
+	Height       *int         `json:"height"`
+	FPS          *int         `json:"fps"`
+	Bitrate      *int         `json:"bitrate"`
+	Size         int64        `json:"size"`
+	Codec        string       `json:"codec"`
+	Format       string       `json:"format"`
+	StreamType   string       `json:"stream_type"`
+	HasVideo     int          `json:"has_video"`
+	HasAudio     int          `json:"has_audio"`
+	IsDefault    int          `json:"is_default"`
+	URL          string       `json:"url"`
+	URLExpiresAt *int64       `gorm:"column:url_expires_at" json:"url_expires_at"`
+	Metadata     string       `json:"metadata"`
+	Asset        ContentAsset `gorm:"foreignKey:AssetId;references:Id" json:"asset"`
+	Timestamps
+}
+
+func (ContentVideoVariant) TableName() string { return "content_video_variant" }
+
+const (
+	ContentVideoSubtitleKindSubtitle = "subtitle"
+	ContentVideoSubtitleKindCaption  = "caption"
+	ContentVideoSubtitleKindForced   = "forced"
+)
+
+// ContentVideoSubtitleTrack is one logical language/role subtitle track.
+type ContentVideoSubtitleTrack struct {
+	Id                uint                         `gorm:"primaryKey;autoIncrement" json:"id"`
+	VideoId           string                       `gorm:"not null;index:idx_content_video_subtitle_track_video;uniqueIndex:idx_content_video_subtitle_track_identity,priority:1" json:"video_id"`
+	TrackKey          string                       `gorm:"not null;uniqueIndex:idx_content_video_subtitle_track_identity,priority:2" json:"track_key"`
+	LanguageCode      string                       `gorm:"not null;default:und;index:idx_content_video_subtitle_track_language" json:"language_code"`
+	LanguageName      string                       `json:"language_name"`
+	Label             string                       `json:"label"`
+	Kind              string                       `json:"kind"`
+	IsDefault         int                          `json:"is_default"`
+	IsForced          int                          `json:"is_forced"`
+	IsAutoGenerated   int                          `json:"is_auto_generated"`
+	IsHearingImpaired int                          `json:"is_hearing_impaired"`
+	Sources           []ContentVideoSubtitleSource `gorm:"foreignKey:TrackId;references:Id" json:"sources"`
+	Timestamps
+}
+
+func (ContentVideoSubtitleTrack) TableName() string {
+	return "content_video_subtitle_track"
+}
+
+// ContentVideoSubtitleSource is one concrete downloadable subtitle file.
+// AssetId is also the primary key of ContentAsset.
+type ContentVideoSubtitleSource struct {
+	AssetId      uint         `gorm:"primaryKey;autoIncrement:false" json:"asset_id"`
+	TrackId      uint         `gorm:"not null;index:idx_content_video_subtitle_source_track;uniqueIndex:idx_content_video_subtitle_source_identity,priority:1" json:"track_id"`
+	SourceKey    string       `gorm:"not null;uniqueIndex:idx_content_video_subtitle_source_identity,priority:2" json:"source_key"`
+	Format       string       `json:"format"`
+	URL          string       `json:"url"`
+	URLExpiresAt *int64       `gorm:"column:url_expires_at" json:"url_expires_at"`
+	Encoding     string       `json:"encoding"`
+	Metadata     string       `json:"metadata"`
+	Asset        ContentAsset `gorm:"foreignKey:AssetId;references:Id" json:"asset"`
+	Timestamps
+}
+
+func (ContentVideoSubtitleSource) TableName() string {
+	return "content_video_subtitle_source"
+}
 
 const (
 	ContentImageTypeStill     = "still"
@@ -95,7 +179,8 @@ type ContentImageLivePhoto struct {
 
 type ContentImage struct {
 	Id        uint                   `gorm:"primaryKey;autoIncrement" json:"id"`
-	AlbumId   string                 `gorm:"not null;index:idx_content_image_album" json:"album_id"`
+	AlbumId   string                 `gorm:"not null;index:idx_content_image_album;uniqueIndex:idx_content_image_identity,priority:1" json:"album_id"`
+	ImageKey  string                 `gorm:"not null;uniqueIndex:idx_content_image_identity,priority:2" json:"image_key"`
 	SortOrder int                    `json:"sort_order"`
 	URL       string                 `json:"url"`
 	Width     int                    `json:"width"`
@@ -104,6 +189,7 @@ type ContentImage struct {
 	Ext       string                 `json:"ext"`
 	ImageType string                 `gorm:"not null;default:still" json:"image_type"`
 	LivePhoto *ContentImageLivePhoto `gorm:"embedded;embeddedPrefix:live_photo_" json:"live_photo,omitempty"`
+	Assets    []ContentAssetLink     `gorm:"-" json:"assets,omitempty"`
 	DeletedAt *int64                 `gorm:"column:deleted_at;index" json:"deleted_at"`
 }
 
@@ -185,37 +271,44 @@ type ContentLive struct {
 func (ContentLive) TableName() string { return "content_live" }
 
 type ContentNovel struct {
-	Id           string `gorm:"primaryKey" json:"id"`
-	AuthorName   string `json:"author_name"`
-	WordCount    int    `json:"word_count"`
-	ChapterCount int    `json:"chapter_count"`
-	VolumeCount  int    `json:"volume_count"`
-	SeriesName   string `json:"series_name"`
-	IsFinished   int    `json:"is_finished"`
-	Text         string `gorm:"type:longtext" json:"text"`
-	HTML         string `gorm:"type:longtext" json:"html"`
+	Id           string                `gorm:"primaryKey" json:"id"`
+	AuthorName   string                `json:"author_name"`
+	WordCount    int                   `json:"word_count"`
+	ChapterCount int                   `json:"chapter_count"`
+	VolumeCount  int                   `json:"volume_count"`
+	SeriesName   string                `json:"series_name"`
+	IsFinished   int                   `json:"is_finished"`
+	Text         string                `gorm:"type:longtext" json:"text"`
+	HTML         string                `gorm:"type:longtext" json:"html"`
+	Volumes      []ContentNovelVolume  `gorm:"foreignKey:NovelId;references:Id" json:"volumes,omitempty"`
+	Chapters     []ContentNovelChapter `gorm:"foreignKey:NovelId;references:Id" json:"chapters,omitempty"`
 }
 
 func (ContentNovel) TableName() string { return "content_novel" }
 
 type ContentNovelVolume struct {
-	Id      uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	NovelId string `gorm:"not null;index:idx_novel_volume_novel" json:"novel_id"`
-	Idx     int    `json:"idx"`
-	Title   string `json:"title"`
+	Id        uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	NovelId   string `gorm:"not null;index:idx_novel_volume_novel;uniqueIndex:idx_novel_volume_identity,priority:1" json:"novel_id"`
+	VolumeKey string `gorm:"not null;uniqueIndex:idx_novel_volume_identity,priority:2" json:"volume_key"`
+	Idx       int    `json:"idx"`
+	Title     string `json:"title"`
 }
 
 func (ContentNovelVolume) TableName() string { return "content_novel_volume" }
 
 type ContentNovelChapter struct {
-	Id        uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	NovelId   string `gorm:"not null;index:idx_novel_chapter_novel" json:"novel_id"`
-	VolumeId  *uint  `json:"volume_id"`
-	Idx       int    `json:"idx"`
-	Title     string `json:"title"`
-	URL       string `json:"url"`
-	Locked    bool   `json:"locked"`
-	WordCount int    `json:"word_count"`
+	Id         uint               `gorm:"primaryKey;autoIncrement" json:"id"`
+	NovelId    string             `gorm:"not null;index:idx_novel_chapter_novel;index:idx_novel_chapter_novel_extra,priority:1;uniqueIndex:idx_novel_chapter_identity,priority:1" json:"novel_id"`
+	ChapterKey string             `gorm:"not null;uniqueIndex:idx_novel_chapter_identity,priority:2" json:"chapter_key"`
+	VolumeId   *uint              `json:"volume_id"`
+	VolumeKey  string             `json:"volume_key"`
+	Idx        int                `json:"idx"`
+	Title      string             `json:"title"`
+	URL        string             `json:"url"`
+	Locked     bool               `json:"locked"`
+	IsExtra    bool               `gorm:"not null;default:false;index:idx_novel_chapter_novel_extra,priority:2" json:"is_extra"`
+	WordCount  int                `json:"word_count"`
+	Assets     []ContentAssetLink `gorm:"-" json:"assets,omitempty"`
 }
 
 func (ContentNovelChapter) TableName() string { return "content_novel_chapter" }

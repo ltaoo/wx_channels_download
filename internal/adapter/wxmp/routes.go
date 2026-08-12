@@ -3,71 +3,142 @@ package wxmpadapter
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
+	"wx_channel/internal/adapter"
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/config"
-	"wx_channel/internal/util"
 	"wx_channel/pkg/scraper/wxmp"
 )
 
+const WebsocketPath = "/ws/mp"
+
+// These numeric codes belong to the wxmp HTTP API contract. The scraper only
+// exposes ErrorKind values and does not depend on this transport convention.
 const (
-	WebsocketPath       = "/ws/mp"
-	ManageWebsocketPath = "/ws/manage"
+	api_code_invalid_params      = 400
+	api_code_missing_biz         = 4001
+	api_code_missing_url         = 4002
+	api_code_missing_refresh_uri = 4004
+	api_code_token_invalid       = 1002
+	api_code_account_not_found   = 1003
+	api_code_account_expired     = 1004
+	api_code_account_banned      = 1005
+	api_code_proxy_request       = 2000
+	api_code_proxy_dispatch      = 2001
+	api_code_fetch_message       = 2002
+	api_code_data_parse          = 2003
+	api_code_client_not_ready    = 5001
+	api_code_timeout             = 5002
+	api_code_client_busy         = 5003
 )
 
-// RouteRegistrar is the narrow HTTP capability required by this adapter.
-type RouteRegistrar interface {
-	RegisterGET(path string, handler gin.HandlerFunc)
-	RegisterPOST(path string, handler gin.HandlerFunc)
+var api_error_messages = map[int]string{
+	api_code_invalid_params:      "参数错误",
+	api_code_missing_biz:         "缺少参数：biz",
+	api_code_missing_url:         "缺少参数：url",
+	api_code_missing_refresh_uri: "缺少参数：refresh_uri",
+	api_code_token_invalid:       "令牌无效",
+	api_code_account_not_found:   "未找到匹配的公众号",
+	api_code_account_expired:     "公众号凭证已失效",
+	api_code_account_banned:      "账号被封禁",
+	api_code_proxy_request:       "代理请求创建失败",
+	api_code_proxy_dispatch:      "代理请求转发失败",
+	api_code_fetch_message:       "获取消息列表失败",
+	api_code_data_parse:          "数据解析失败",
+	api_code_client_not_ready:    "请先初始化客户端 socket 连接",
+	api_code_timeout:             "请求超时",
+	api_code_client_busy:         "发送缓冲区已满，请稍后重试",
 }
 
-// Routes owns the official-account client lifecycle and endpoints.
+func write_api_error(ctx *gin.Context, code int) {
+	message, ok := api_error_messages[code]
+	if !ok {
+		message = "未知错误"
+	}
+	result.Err(ctx, code, message)
+}
+
+func api_code_for_error_kind(kind wxmp.ErrorKind, fallback_code int) int {
+	switch kind {
+	case wxmp.ErrorKindInvalidArgument:
+		return api_code_invalid_params
+	case wxmp.ErrorKindMissingBiz:
+		return api_code_missing_biz
+	case wxmp.ErrorKindMissingURL:
+		return api_code_missing_url
+	case wxmp.ErrorKindMissingRefreshURI:
+		return api_code_missing_refresh_uri
+	case wxmp.ErrorKindTokenInvalid:
+		return api_code_token_invalid
+	case wxmp.ErrorKindAccountNotFound:
+		return api_code_account_not_found
+	case wxmp.ErrorKindAccountExpired:
+		return api_code_account_expired
+	case wxmp.ErrorKindAccountBanned:
+		return api_code_account_banned
+	case wxmp.ErrorKindProxyRequest:
+		return api_code_proxy_request
+	case wxmp.ErrorKindProxyDispatch:
+		return api_code_proxy_dispatch
+	case wxmp.ErrorKindFetchMessage:
+		return api_code_fetch_message
+	case wxmp.ErrorKindDataParse:
+		return api_code_data_parse
+	case wxmp.ErrorKindClientNotReady:
+		return api_code_client_not_ready
+	case wxmp.ErrorKindTimeout:
+		return api_code_timeout
+	case wxmp.ErrorKindClientBusy:
+		return api_code_client_busy
+	default:
+		return fallback_code
+	}
+}
+
+// Routes owns the official-account server lifecycle and endpoints.
 type Routes struct {
-	client *wxmp.OfficialAccountClient
+	server *wxmp.OfficialAccountServer
 }
 
-func NewRoutes(cfg *config.Config, logger *zerolog.Logger, db *gorm.DB) *Routes {
+func NewRoutes(cfg *config.Config, logger *zerolog.Logger) *Routes {
 	if cfg == nil || logger == nil {
 		return &Routes{}
 	}
-	client := wxmp.NewOfficialAccountClient(wxmp.NewOfficialAccountConfig(cfg), logger)
-	client.SetDB(db)
-	return &Routes{client: client}
+	server := wxmp.NewOfficialAccountServer(new_official_account_config(cfg), logger)
+	return &Routes{server: server}
 }
 
 // RegisterRoutes installs the previously local-only official-account routes.
-func (r *Routes) RegisterRoutes(registrar RouteRegistrar) {
-	if r == nil || r.client == nil || registrar == nil {
+func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
+	if r == nil || r.server == nil || registrar == nil {
 		return
 	}
-	registrar.RegisterGET(WebsocketPath, r.client.HandleWebsocket)
-	registrar.RegisterGET(ManageWebsocketPath, r.client.HandleManageWebsocket)
-	registrar.RegisterGET("/api/mp/ws_pool", r.client.HandleFetchOfficialAccountClients)
-	registrar.RegisterGET("/api/mp/list", r.client.HandleFetchList)
-	registrar.RegisterGET("/api/mp/msg/list", r.client.HandleFetchMsgList)
-	registrar.RegisterGET("/api/mp/article/list", r.client.HandleFetchArticleList)
+	registrar.RegisterGET(WebsocketPath, r.handle_websocket)
+	registrar.RegisterGET("/api/mp/ws_pool", r.handle_fetch_official_account_clients)
+	registrar.RegisterGET("/api/mp/list", r.handle_fetch_list)
+	registrar.RegisterGET("/api/mp/msg/list", r.handle_fetch_message_list)
+	registrar.RegisterGET("/api/mp/article/list", r.handle_fetch_article_list)
 	registrar.RegisterGET("/api/mp/postprocess/flows", r.HandleFetchPostprocessFlows)
-	registrar.RegisterGET("/rss/mp", r.client.HandleOfficialAccountRSS)
-	registrar.RegisterGET("/mp/proxy", r.client.HandleOfficialAccountProxy)
-	registrar.RegisterGET("/mp/home", r.client.HandleOfficialAccountManagerHome)
-	registrar.RegisterPOST("/api/mp/refresh_with_frontend", r.client.HandleRefreshOfficialAccountWithFrontend)
-	registrar.RegisterPOST("/api/mp/delete", r.client.HandleDelete)
-	registrar.RegisterPOST("/api/mp/refresh", r.client.HandleRefreshEvent)
+	registrar.RegisterGET("/rss/mp", r.handle_official_account_rss)
+	registrar.RegisterGET("/mp/proxy", r.handle_official_account_proxy)
+	registrar.RegisterPOST("/api/mp/refresh_with_frontend", r.handle_refresh_with_frontend)
+	registrar.RegisterPOST("/api/mp/delete", r.handle_delete)
+	registrar.RegisterPOST("/api/mp/refresh", r.handle_refresh_event)
 }
 
 // HandleFetchPostprocessFlows returns wxmp postprocess flow configs for read-only visualization.
 func (r *Routes) HandleFetchPostprocessFlows(ctx *gin.Context) {
-	flowID := ctx.Query("flow_id")
-	payload, err := GetWXMPPostprocessFlowVisualization(flowID)
+	flow_id := ctx.Query("flow_id")
+	payload, err := GetWXMPPostprocessFlowVisualization(flow_id)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, payload)
+	result.Ok(ctx, payload)
 }
 
 func (r *Routes) Stop() {
-	if r != nil && r.client != nil {
-		r.client.Stop()
+	if r != nil && r.server != nil {
+		r.server.Stop()
 	}
 }

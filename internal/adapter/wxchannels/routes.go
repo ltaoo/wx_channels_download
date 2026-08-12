@@ -12,8 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/internal/config"
-	"wx_channel/internal/util"
+	"wx_channel/internal/adapter"
+	result "wx_channel/internal/apiresult"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
@@ -23,28 +24,23 @@ const (
 	PlayPath              = "/play"
 )
 
-// RouteRegistrar is the narrow HTTP capability required by this adapter.
-type RouteRegistrar interface {
-	RegisterGET(path string, handler gin.HandlerFunc)
-	RegisterPOST(path string, handler gin.HandlerFunc)
-}
-
 // WebsocketRoutes owns the HTTP routes backed by the Channels scraper client.
 type WebsocketRoutes struct {
-	client *wxchannels.ChannelsClient
+	client *wxchannels.Client
 }
 
-func NewWebsocketRoutes(refresh_interval int, cfg *config.Config) *WebsocketRoutes {
-	client := wxchannels.NewChannelsClient(refresh_interval, cfg)
+func NewWebsocketRoutes(refresh_interval int, cookie_reader *cookies.Reader) *WebsocketRoutes {
+	options := wxchannels.ClientOptions{RefreshInterval: refresh_interval, CookieReader: cookie_reader}
+	client := wxchannels.NewClient(options)
 	return &WebsocketRoutes{client: client}
 }
 
 // RegisterRoutes installs routes owned by this adapter.
-func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
+func (r *WebsocketRoutes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	if r == nil || r.client == nil || registrar == nil {
 		return
 	}
-	registrar.RegisterGET(ChannelsWebsocketPath, r.client.HandleChannelsWebsocket)
+	registrar.RegisterGET(ChannelsWebsocketPath, r.handle_websocket)
 	registrar.RegisterGET(ChannelsStatusPath, r.HandleStatus)
 	registrar.RegisterGET(PlayPath, r.HandlePlay)
 	registrar.RegisterGET("/api/channels/parse_sph", r.HandleParseSph)
@@ -63,25 +59,29 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar RouteRegistrar) {
 	registrar.RegisterGET("/rss/channels", r.HandleFetchFeedListOfContactRSS)
 }
 
+func (r *WebsocketRoutes) handle_websocket(ctx *gin.Context) {
+	r.client.ServeWebsocket(ctx.Writer, ctx.Request)
+}
+
 // HandleStatus reports whether a Channels page is connected and can receive
 // frontend API requests through channels.ws.js.
 func (r *WebsocketRoutes) HandleStatus(ctx *gin.Context) {
 	available := r != nil && r.client != nil && r.client.Available()
-	util.Ok(ctx, gin.H{"available": available})
+	result.Ok(ctx, gin.H{"available": available})
 }
 
 // HandlePlay proxies or decrypts a remote Channels video stream.
 func (r *WebsocketRoutes) HandlePlay(ctx *gin.Context) {
 	target_url := ctx.Query("url")
 	if target_url == "" {
-		util.Err(ctx, 400, "missing targetURL")
+		result.Err(ctx, 400, "missing targetURL")
 		return
 	}
 	if !strings.HasPrefix(target_url, "http") {
 		target_url = "https://" + target_url
 	}
 	if _, err := url.Parse(target_url); err != nil {
-		util.Err(ctx, 400, "Invalid URL")
+		result.Err(ctx, 400, "Invalid URL")
 		return
 	}
 
@@ -90,7 +90,7 @@ func (r *WebsocketRoutes) HandlePlay(ctx *gin.Context) {
 	if decrypt_key_str != "" {
 		decrypt_key, err := strconv.ParseUint(decrypt_key_str, 0, 64)
 		if err != nil {
-			util.Err(ctx, 400, "invalid decryptKey")
+			result.Err(ctx, 400, "invalid decryptKey")
 			return
 		}
 		decryptor.DecryptOnlyInline(ctx.Writer, ctx.Request, target_url, decrypt_key, 131072)
@@ -104,29 +104,29 @@ func (r *WebsocketRoutes) HandleFetchPostprocessFlows(ctx *gin.Context) {
 	flow_id := ctx.Query("flow_id")
 	payload, err := GetWXChannelsPostprocessFlowVisualization(flow_id)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
 
-	util.Ok(ctx, payload)
+	result.Ok(ctx, payload)
 }
 
 // HandleParseSph parses an SPH share link to retrieve video information.
 func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 	share_url := ctx.Query("url")
 	if share_url == "" {
-		util.Err(ctx, 400, "url parameter is required")
+		result.Err(ctx, 400, "url parameter is required")
 		return
 	}
 
 	raw_result, err := r.client.Fetch(wxchannels.FetchParams{URL: share_url})
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
 	raw_resp, ok := raw_result.(json.RawMessage)
 	if !ok {
-		util.Err(ctx, 500, "unexpected shared profile response")
+		result.Err(ctx, 500, "unexpected shared profile response")
 		return
 	}
 
@@ -144,12 +144,12 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 				}
 			}
 		}
-		util.Ok(ctx, data)
+		result.Ok(ctx, data)
 		return
 	}
 
 	// If parsing fails, pass through the raw response directly
-	util.Ok(ctx, json.RawMessage(raw_resp))
+	result.Ok(ctx, json.RawMessage(raw_resp))
 }
 
 // HandleSearchChannelsContact searches for Channels authors.
@@ -159,10 +159,10 @@ func (r *WebsocketRoutes) HandleSearchChannelsContact(ctx *gin.Context) {
 
 	resp, err := r.client.SearchChannelsContact(keyword, next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchFeedListOfContact fetches the video list for a given user.
@@ -172,10 +172,10 @@ func (r *WebsocketRoutes) HandleFetchFeedListOfContact(ctx *gin.Context) {
 
 	resp, err := r.client.FetchChannelsFeedListOfContact(username, next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchLiveReplayList fetches the live replay list for a given user.
@@ -185,10 +185,10 @@ func (r *WebsocketRoutes) HandleFetchLiveReplayList(ctx *gin.Context) {
 
 	resp, err := r.client.FetchChannelsLiveReplayList(username, next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchInteractionedFeedList fetches the user's favorited or liked video list.
@@ -198,15 +198,15 @@ func (r *WebsocketRoutes) HandleFetchInteractionedFeedList(ctx *gin.Context) {
 
 	resp, err := r.client.FetchChannelsInteractionedFeedList(flag, next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchFollowList fetches the user's following list.
 func (r *WebsocketRoutes) HandleFetchFollowList(ctx *gin.Context) {
-	util.Ok(ctx, nil)
+	result.Ok(ctx, nil)
 }
 
 // HandleFetchPlayHistory fetches the user's watch history.
@@ -215,10 +215,10 @@ func (r *WebsocketRoutes) HandleFetchPlayHistory(ctx *gin.Context) {
 
 	resp, err := r.client.FetchChannelsPlayHistory(next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchFeedCommentList fetches the video comment list.
@@ -229,10 +229,10 @@ func (r *WebsocketRoutes) HandleFetchFeedCommentList(ctx *gin.Context) {
 func (r *WebsocketRoutes) HandleFetchFeedShareUrl(ctx *gin.Context) {
 	oid := ctx.Query("oid")
 	if oid == "" {
-		util.Err(ctx, 400, "missing oid")
+		result.Err(ctx, 400, "missing oid")
 		return
 	}
-	util.Err(ctx, 400, "need to process")
+	result.Err(ctx, 400, "need to process")
 }
 
 // HandleFetchFeedProfile fetches details for a given video.
@@ -257,20 +257,20 @@ func (r *WebsocketRoutes) HandleFetchFeedProfile(ctx *gin.Context) {
 
 	resp, err := r.client.FetchChannelsFeedProfile(oid, nid, req_url, eid)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
-	util.Ok(ctx, resp)
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchSharedFeedProfile fetches shared video details.
 func (r *WebsocketRoutes) HandleFetchSharedFeedProfile(ctx *gin.Context) {
 	req_url := ctx.Query("url")
 	if req_url == "" {
-		util.Err(ctx, 400, "missing url")
+		result.Err(ctx, 400, "missing url")
 		return
 	}
-	util.Err(ctx, 400, "need to process")
+	result.Err(ctx, 400, "need to process")
 }
 
 // RSS types
@@ -315,7 +315,7 @@ func (r *WebsocketRoutes) HandleFetchFeedListOfContactRSS(ctx *gin.Context) {
 
 	_, err := r.client.FetchChannelsFeedListOfContact(username, next_marker)
 	if err != nil {
-		util.Err(ctx, 400, err.Error())
+		result.Err(ctx, 400, err.Error())
 		return
 	}
 
@@ -336,29 +336,29 @@ func (r *WebsocketRoutes) HandleFetchFeedListOfContactRSS(ctx *gin.Context) {
 func (r *WebsocketRoutes) HandleDecryptVideo(ctx *gin.Context) {
 	filepath := ctx.Query("filepath")
 	if filepath == "" {
-		util.Err(ctx, 400, "filepath parameter is required")
+		result.Err(ctx, 400, "filepath parameter is required")
 		return
 	}
 	key, err := strconv.Atoi(ctx.Query("key"))
 	if err != nil || key == 0 {
-		util.Err(ctx, 400, "key parameter is required and must be a non-zero integer")
+		result.Err(ctx, 400, "key parameter is required and must be a non-zero integer")
 		return
 	}
 
 	data, err := os.ReadFile(filepath)
 	if err != nil {
-		util.Err(ctx, 400, "failed to read file: "+err.Error())
+		result.Err(ctx, 400, "failed to read file: "+err.Error())
 		return
 	}
 
 	wxchannels.DecryptData(data, 131072, uint64(key))
 
 	if err := os.WriteFile(filepath, data, 0644); err != nil {
-		util.Err(ctx, 400, "failed to write file: "+err.Error())
+		result.Err(ctx, 400, "failed to write file: "+err.Error())
 		return
 	}
 
-	util.Ok(ctx, gin.H{"filepath": filepath})
+	result.Ok(ctx, gin.H{"filepath": filepath})
 }
 
 func (r *WebsocketRoutes) Stop() {

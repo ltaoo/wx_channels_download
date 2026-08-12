@@ -12,7 +12,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/pterm/pterm"
-
 	"github.com/ltaoo/velo"
 
 	"wx_channel/frontend"
@@ -27,6 +26,8 @@ import (
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
 	"wx_channel/pkg/system"
@@ -41,6 +42,11 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
 	logger := cfg.Logger()
+	cache_registry, err := cache.NewProviderRegistry(cfg.WorkDir)
+	if err != nil {
+		return fmt.Errorf("persistent cache initialization failed: %w", err)
+	}
+	cookie_reader := cookies.NewPersistentReader(cfg.WorkDir)
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
@@ -179,7 +185,11 @@ func Start(cfg *config.Config) error {
 		if !ok {
 			continue
 		}
-		handle, err := runtime_adapter.RegisterRuntime(adapter.RuntimeDeps{
+		cache_provider, err := cache_registry.Namespace(platform_id)
+		if err != nil {
+			return fmt.Errorf("failed to create cache namespace for platform %s: %w", platform_id, err)
+		}
+		adapter_options := &adapter.AdapterOptions{
 			StaticAssets: static_assets,
 			Routes:       api_srv.APIClient,
 			Interceptor:  interceptor_srv.Interceptor,
@@ -187,8 +197,11 @@ func Start(cfg *config.Config) error {
 			Logger:       logger,
 			Bus:          bus,
 			Config:       cfg,
+			Cache:        cache_provider,
+			Cookies:      cookie_reader,
 			Hooks:        hook_manager,
-		})
+		}
+		handle, err := runtime_adapter.RegisterRuntime(adapter_options)
 		if err != nil {
 			return fmt.Errorf("failed to register platform %s: %w", platform_id, err)
 		}
@@ -272,8 +285,8 @@ func Start(cfg *config.Config) error {
 				color.Green("TUN mode enabled, traffic will be auto-forwarded through virtual NIC")
 				color.Green("Please open the page you want to download")
 			} else if !interceptor_srv.ProxySetSystem() {
-				color.Red(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
-				color.Red("Open the page to download after setting the proxy")
+				color.Yellow(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
+				color.Yellow("Open the page to download after setting the proxy")
 			} else {
 				if proxy_warning != "" {
 					color.Yellow("Warning: " + proxy_warning)

@@ -4,13 +4,13 @@
  */
 var ContentLibraryModel = (() => {
   const content_api_origin = WXEnv.get("apiOrigin");
-  const content_http_client = new Timeless.HttpClientCore({
+  const content_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: content_api_origin,
   });
   Timeless.web.provide_http_client(content_http_client);
 
-  const content_request = Timeless.request_factory({
+  const content_request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
       if (response.error) {
@@ -480,26 +480,26 @@ var ContentLibraryModel = (() => {
     let request_sequence = 0;
     let detail_request_sequence = 0;
 
-    const content_type_select_ = new Timeless.ui.SelectCore({
+    const content_type_select_ = new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部类型",
       options: [
-        new Timeless.ui.SelectItemCore({ label: "全部类型", value: "" }),
-        new Timeless.ui.SelectItemCore({ label: "视频", value: "video" }),
-        new Timeless.ui.SelectItemCore({
+        new Timeless.vm.SelectItemCore({ label: "全部类型", value: "" }),
+        new Timeless.vm.SelectItemCore({ label: "视频", value: "video" }),
+        new Timeless.vm.SelectItemCore({
           label: "短视频",
           value: "short_video",
         }),
-        new Timeless.ui.SelectItemCore({ label: "图片", value: "image" }),
-        new Timeless.ui.SelectItemCore({
+        new Timeless.vm.SelectItemCore({ label: "图片", value: "image" }),
+        new Timeless.vm.SelectItemCore({
           label: "图集",
           value: "image_set",
         }),
-        new Timeless.ui.SelectItemCore({ label: "文章", value: "article" }),
-        new Timeless.ui.SelectItemCore({ label: "小说", value: "novel" }),
-        new Timeless.ui.SelectItemCore({ label: "音频", value: "audio" }),
-        new Timeless.ui.SelectItemCore({ label: "播客", value: "podcast" }),
-        new Timeless.ui.SelectItemCore({ label: "直播", value: "live" }),
+        new Timeless.vm.SelectItemCore({ label: "文章", value: "article" }),
+        new Timeless.vm.SelectItemCore({ label: "小说", value: "novel" }),
+        new Timeless.vm.SelectItemCore({ label: "音频", value: "audio" }),
+        new Timeless.vm.SelectItemCore({ label: "播客", value: "podcast" }),
+        new Timeless.vm.SelectItemCore({ label: "直播", value: "live" }),
       ],
       onChange(value) {
         content_type_.as(String(value || ""));
@@ -507,7 +507,7 @@ var ContentLibraryModel = (() => {
       },
     });
 
-    const list_request = new Timeless.RequestCore(
+    const list_request = new Timeless.kit.RequestCore(
       (params) => content_request.get("/api/content/list", params),
       {
         client: content_http_client,
@@ -526,7 +526,7 @@ var ContentLibraryModel = (() => {
       },
     );
 
-    const detail_request = new Timeless.RequestCore(
+    const detail_request = new Timeless.kit.RequestCore(
       (params) => content_request.get("/api/content/detail", params),
       {
         client: content_http_client,

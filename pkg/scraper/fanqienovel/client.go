@@ -14,6 +14,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/clawreq"
 )
 
@@ -89,7 +90,7 @@ type FanqieClient struct {
 	base_url         string
 	cookie           string
 	progress_handler FetchProgressHandler
-	work_dir         string
+	file_cache       *cache.CacheProvider
 	cache_source_url string
 	force_refresh    bool
 	fetch_context    context.Context
@@ -185,7 +186,21 @@ func (c *FanqieClient) SetWorkDir(work_dir string) {
 	if c == nil {
 		return
 	}
-	c.work_dir = strings.TrimSpace(work_dir)
+	cache_registry, err := cache.NewProviderRegistry(work_dir)
+	if err != nil {
+		c.file_cache = nil
+		return
+	}
+	c.file_cache, _ = cache_registry.Namespace(cache_directory_name)
+}
+
+// SetPersistentCache configures the namespace-scoped persistent HTML cache
+// supplied by the runtime composition root.
+func (c *FanqieClient) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c == nil {
+		return
+	}
+	c.file_cache = file_cache
 }
 
 // SetProgressHandler configures an optional progress callback for Fetch.

@@ -27,12 +27,12 @@ function is_download_open_external() {
   );
 }
 
-const http_client = new Timeless.HttpClientCore({
+const http_client = new Timeless.kit.HttpClientCore({
   headers: { "Content-Type": "application/json" },
   hostname: APIOrigin,
 });
 Timeless.web.provide_http_client(http_client);
-const request = Timeless.request_factory({
+const request = Timeless.kit.request_factory({
   headers: { "Content-Type": "application/json" },
   process(r) {
     if (r.error) {
@@ -466,7 +466,7 @@ function DownloaderPanelViewModel(props = {}) {
 
   const reqs = {
     task: {
-      list: new Timeless.RequestCore(
+      list: new Timeless.kit.RequestCore(
         (params) => {
           return request.get("/api/v1/download_task/list", params);
         },
@@ -488,7 +488,7 @@ function DownloaderPanelViewModel(props = {}) {
           },
         },
       ),
-      delete: new Timeless.RequestCore(
+      delete: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/delete", {
             task_ids: params.ids,
@@ -497,7 +497,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      start: new Timeless.RequestCore(
+      start: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/start", {
             task_ids: [id],
@@ -505,7 +505,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      startAll: new Timeless.RequestCore(
+      startAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           const body = {};
           if (params.status && params.status !== "all") {
@@ -515,7 +515,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      pause: new Timeless.RequestCore(
+      pause: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/pause", {
             task_ids: [id],
@@ -523,7 +523,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      pauseAll: new Timeless.RequestCore(
+      pauseAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           const body = {};
           if (params.status && params.status !== "all") {
@@ -533,7 +533,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      resume: new Timeless.RequestCore(
+      resume: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/resume", {
             task_ids: [id],
@@ -541,7 +541,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      retry: new Timeless.RequestCore(
+      retry: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/retry", {
             task_ids: [id],
@@ -549,7 +549,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      clearAll: new Timeless.RequestCore(
+      clearAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/clear_all", {
             delete_files: !!params.deleteFiles,
@@ -557,7 +557,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      createWithURL: new Timeless.RequestCore(
+      createWithURL: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/create_by_url", {
             objects: [
@@ -570,13 +570,13 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      createFromPlatform: new Timeless.RequestCore(
+      createFromPlatform: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/create", params);
         },
         { client: http_client },
       ),
-      prepare: new Timeless.RequestCore(
+      prepare: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/prepare_by_url", [
             {
@@ -587,7 +587,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      prepareFromPlatform: new Timeless.RequestCore(
+      prepareFromPlatform: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/prepare", [
             {
@@ -603,7 +603,7 @@ function DownloaderPanelViewModel(props = {}) {
       ),
     },
     file: {
-      show: new Timeless.RequestCore(
+      show: new Timeless.kit.RequestCore(
         ({ path, name }) => {
           return request.post("/api/show_file", {
             path,
@@ -614,7 +614,7 @@ function DownloaderPanelViewModel(props = {}) {
       ),
     },
     browsehistory: {
-      create: new Timeless.RequestCore(
+      create: new Timeless.kit.RequestCore(
         (body) => {
           return request.post("/api/browse_history/create", body);
         },
@@ -1581,7 +1581,7 @@ function DownloaderPanelViewModel(props = {}) {
     try {
       // Each page owns its request instance so adjacent prefetches can verify
       // concurrently without sharing RequestCore loading state.
-      const checkLocal = new Timeless.RequestCore(
+      const checkLocal = new Timeless.kit.RequestCore(
         (items) =>
           request.post("/api/v1/download_task/check_files", { files: items }),
         { client: http_client },
@@ -3008,32 +3008,32 @@ function DownloaderPanelViewModel(props = {}) {
     },
   };
 
-  const dropdown$ = new Timeless.ui.DropdownMenuCore({
+  const dropdown$ = new Timeless.vm.DropdownMenuCore({
     trigger: "hover",
     align: "end",
     items: [
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "刷新",
         async onClick() {
           ui.dropdown$.hide();
           await methods.refreshTasks();
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "管理下载任务",
         onClick() {
           ui.dropdown$.hide();
           window.open(DownloaderOrigin + "/", "_blank");
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "清空下载记录",
         async onClick() {
           ui.dropdown$.hide();
           methods.requestClearTasks(false);
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "关闭",
         onClick() {
           dropdown$.hide();
@@ -3044,47 +3044,47 @@ function DownloaderPanelViewModel(props = {}) {
   });
   const ui = {
     dropdown$,
-    importFileDialog$: new Timeless.ui.DialogCore({
+    importFileDialog$: new Timeless.vm.DialogCore({
       closeable: true,
     }),
-    createTaskDialog$: new Timeless.ui.DialogCore({
+    createTaskDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreateTask();
       },
     }),
-    createPlatformTaskDialog$: new Timeless.ui.DialogCore({
+    createPlatformTaskDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreatePlatformTask();
       },
     }),
-    createTaskPreviewDialog$: new Timeless.ui.DialogCore({
+    createTaskPreviewDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreateTaskFromPreview();
       },
     }),
-    createPlatformTaskPreviewDialog$: new Timeless.ui.DialogCore({
+    createPlatformTaskPreviewDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreatePlatformTaskFromPreview();
       },
     }),
-    input_create_download_task$: new Timeless.ui.InputCore({
+    input_create_download_task$: new Timeless.vm.InputCore({
       defaultValue: "",
     }),
-    deleteConfirmDialog$: new Timeless.ui.DialogCore({
+    deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
         methods.confirmDeleteTask();
       },
     }),
-    clearConfirmDialog$: new Timeless.ui.DialogCore({
+    clearConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
         methods.confirmClearTasks();
       },
     }),
-    overwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    overwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         const action = overwrite_.value.value;
         WXU.log
@@ -3157,12 +3157,12 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       },
     }),
-    singleOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    singleOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         return methods.confirmOverwriteDownloadConflict();
       },
     }),
-    batchOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    batchOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         return methods.confirmOverwriteDownloadConflict();
       },

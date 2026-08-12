@@ -19,6 +19,8 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 )
 
@@ -124,10 +126,12 @@ type InterceptorRegistrar interface {
 	AddPostPlugin(plugin interface{})
 }
 
-// RuntimeDeps contains host capabilities shared with a runtime adapter.
-// Keeping this contract in the registry allows a future dynamic loader to
-// construct adapters without application code importing concrete packages.
-type RuntimeDeps struct {
+// AdapterOptions contains host capabilities shared with one runtime adapter. The
+// application creates a platform-scoped instance and passes its pointer to the
+// adapter. Adapters must treat it as immutable; concrete host structures are
+// exposed by pointer, while framework-facing capabilities use narrow
+// interfaces.
+type AdapterOptions struct {
 	StaticAssets *webassets.Registry
 	Routes       RouteRegistrar
 	Interceptor  InterceptorRegistrar
@@ -135,6 +139,8 @@ type RuntimeDeps struct {
 	Logger       *zerolog.Logger
 	Bus          *events.Bus
 	Config       *config.Config
+	Cache        *cache.CacheProvider // already scoped to the adapter's platform namespace
+	Cookies      *cookies.Reader
 	Hooks        *hermes.HookManager
 }
 
@@ -146,7 +152,7 @@ type RuntimeHandle interface {
 // RuntimeAdapter is implemented by adapters that install routes, assets,
 // interceptor hooks, or other long-lived runtime components.
 type RuntimeAdapter interface {
-	RegisterRuntime(RuntimeDeps) (RuntimeHandle, error)
+	RegisterRuntime(*AdapterOptions) (RuntimeHandle, error)
 }
 
 // PostprocessDeps contains host services required during download postprocessing.
@@ -159,17 +165,6 @@ type PostprocessDeps struct {
 // Postprocessor is an optional adapter capability.
 type Postprocessor interface {
 	Postprocess(context.Context, *hermes.TaskJob, PostprocessDeps) error
-}
-
-// ---------- AdapterContext ----------
-
-// AdapterContext bundles the shared dependencies that platform adapters need:
-// database access, structured logging, an event bus, and the absolute download root.
-type AdapterContext struct {
-	DB       *gorm.DB
-	Logger   *zerolog.Logger
-	Bus      *events.Bus
-	BasePath string // absolute download root directory
 }
 
 // ---------- Global registry ----------

@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
-	result "wx_channel/internal/util"
+	result "wx_channel/internal/apiresult"
 	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
 )
 

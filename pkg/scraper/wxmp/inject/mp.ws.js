@@ -2,12 +2,12 @@
   var APIHostname = WXEnv.get("apiOrigin");
   var MPWSURL = "";
 
-  const http_client = new Timeless.HttpClientCore({
+  const http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: APIHostname,
   });
   Timeless.web.provide_http_client(http_client);
-  const request = Timeless.request_factory({
+  const request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(r) {
       if (r.error) {
@@ -21,7 +21,7 @@
     },
   });
 
-  const submitCredentialReq = new Timeless.RequestCore(
+  const submitCredentialReq = new Timeless.kit.RequestCore(
     (acct) =>
       request.post(
         "/api/mp/refresh?token=" +
@@ -31,17 +31,17 @@
     { client: http_client },
   );
 
-  const msgListReq = new Timeless.RequestCore(
+  const msgListReq = new Timeless.kit.RequestCore(
     (params) => request.get("/api/mp/msg/list", params),
     { client: http_client },
   );
 
-  const scraperFetchReq = new Timeless.RequestCore(
+  const scraperFetchReq = new Timeless.kit.RequestCore(
     (body) => request.post("/api/scraper/fetch", body),
     { client: http_client },
   );
 
-  const scraperJobReq = new Timeless.RequestCore(
+  const scraperJobReq = new Timeless.kit.RequestCore(
     (params) => request.get("/api/scraper/job", params),
     { client: http_client },
   );
@@ -556,7 +556,7 @@
 
   function DownloadAllPushesMenuItem(props) {
     const model = props.store;
-    const menu_item = new Timeless.ui.MenuItemCore({
+    const menu_item = new Timeless.vm.MenuItemCore({
       label: "下载所有推送",
       onClick() {
         props.close();
@@ -613,7 +613,7 @@
   }
 
   function __wxmp_create_download_menu_item(options, trigger, close) {
-    return new Timeless.ui.MenuItemCore({
+    return new Timeless.vm.MenuItemCore({
       label: __wxmp_download_menu_label(options.label),
       tooltip: options.tooltip || options.title,
       disabled: !!options.disabled,
@@ -856,11 +856,11 @@
     if (no_container) {
       return;
     }
-    const popover$ = new Timeless.ui.PopoverCore({
+    const popover$ = new Timeless.vm.PopoverCore({
       offsetY: 4,
       destroyOnClose: false,
     });
-    const msgListDialog$ = new Timeless.ui.DialogCore({
+    const msgListDialog$ = new Timeless.vm.DialogCore({
       offsetY: 4,
     });
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
@@ -918,7 +918,7 @@
       close: close_dropdown,
       store: download_all_model,
     });
-    dropdown$ = new Timeless.ui.DropdownMenuCore({
+    dropdown$ = new Timeless.vm.DropdownMenuCore({
       trigger: "hover",
       align: "end",
       offsetY: -20,
@@ -928,7 +928,7 @@
           $btn,
           close_dropdown,
         ),
-        new Timeless.ui.MenuItemCore({
+        new Timeless.vm.MenuItemCore({
           label: "复制文章HTML",
           onClick() {
             const content = window.cgiDataNew.content_noencode;
@@ -941,7 +941,7 @@
             dropdown$.hide();
           },
         }),
-        new Timeless.ui.MenuItemCore({
+        new Timeless.vm.MenuItemCore({
           label: "复制页面HTML",
           onClick() {
             const content = window.body.innerHTML;
@@ -952,7 +952,7 @@
         }),
         ...(WXEnv.isWeChatBrowser
           ? [
-              new Timeless.ui.MenuItemCore({
+              new Timeless.vm.MenuItemCore({
                 label: "推送列表",
                 onClick() {
                   msgListDialog$.show();
@@ -962,7 +962,7 @@
               // download_all_menu_item,
             ]
           : []),
-        new Timeless.ui.MenuItemCore({
+        new Timeless.vm.MenuItemCore({
           label: "下载面板",
           onClick() {
             dropdown$.hide();

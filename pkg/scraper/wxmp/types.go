@@ -279,8 +279,8 @@ type officialAccountPageVariable struct {
 	Article   officialAccountArticleVariable   `json:"article,omitempty"`
 }
 
-func build_official_account_variables(htmlText string) map[string]interface{} {
-	page := extractOfficialAccountPageVariable(htmlText)
+func BuildOfficialAccountVariables(html_text string) map[string]interface{} {
+	page := extractOfficialAccountPageVariable(html_text)
 	variables := map[string]interface{}{}
 	if page.Publisher.AvatarURL == "" &&
 		page.Publisher.Nickname == "" &&
@@ -300,7 +300,7 @@ func extractOfficialAccountPageVariable(htmlText string) officialAccountPageVari
 	}
 
 	nickname := decodeWechatJSString(topLevelStringProperty(block, "nick_name"))
-	avatarURL := firstNonEmpty(
+	avatar_url := first_non_empty(
 		decodeWechatJSString(topLevelStringProperty(block, "round_head_img")),
 		decodeWechatJSString(topLevelStringProperty(block, "ori_head_img_url")),
 		decodeWechatJSString(topLevelStringProperty(block, "hd_head_img")),
@@ -308,7 +308,7 @@ func extractOfficialAccountPageVariable(htmlText string) officialAccountPageVari
 
 	return officialAccountPageVariable{
 		Publisher: officialAccountPublisherVariable{
-			AvatarURL: avatarURL,
+			AvatarURL: avatar_url,
 			Nickname:  nickname,
 			Biz:       decodeWechatJSString(topLevelStringProperty(block, "bizuin")),
 			Username:  decodeWechatJSString(topLevelStringProperty(block, "user_name")),

@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
@@ -27,6 +28,7 @@ func init() {
 type handler struct {
 	runtime_mu sync.RWMutex
 	logger     *zerolog.Logger
+	config     *config.Config
 }
 
 var (
@@ -39,15 +41,19 @@ var (
 func (h *handler) PlatformID() string { return PlatformID }
 
 // RegisterRuntime attaches the application logger to the Bilibili adapter.
-func (h *handler) RegisterRuntime(runtime_deps adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
+func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
 	if h == nil {
 		return nil, fmt.Errorf("bilibili adapter is nil")
 	}
+	if adapter_options == nil {
+		return nil, fmt.Errorf("bilibili runtime dependencies are nil")
+	}
 	h.runtime_mu.Lock()
-	h.logger = runtime_deps.Logger
+	h.logger = adapter_options.Logger
+	h.config = adapter_options.Config
 	h.runtime_mu.Unlock()
-	if runtime_deps.Logger != nil {
-		runtime_deps.Logger.Info().
+	if adapter_options.Logger != nil {
+		adapter_options.Logger.Info().
 			Str("component", "bilibili_adapter").
 			Msg("bilibili adapter runtime registered")
 	}
@@ -55,7 +61,15 @@ func (h *handler) RegisterRuntime(runtime_deps adapter.RuntimeDeps) (adapter.Run
 }
 
 // Stop releases the Bilibili adapter runtime.
-func (h *handler) Stop() {}
+func (h *handler) Stop() {
+	if h == nil {
+		return
+	}
+	h.runtime_mu.Lock()
+	h.logger = nil
+	h.config = nil
+	h.runtime_mu.Unlock()
+}
 
 func (h *handler) get_logger() *zerolog.Logger {
 	if h == nil {
@@ -64,6 +78,19 @@ func (h *handler) get_logger() *zerolog.Logger {
 	h.runtime_mu.RLock()
 	defer h.runtime_mu.RUnlock()
 	return h.logger
+}
+
+func (h *handler) config_string(key string) string {
+	if h == nil {
+		return ""
+	}
+	h.runtime_mu.RLock()
+	runtime_config := h.config
+	h.runtime_mu.RUnlock()
+	if runtime_config == nil {
+		return ""
+	}
+	return runtime_config.GetString(key)
 }
 
 func (h *handler) Fetch(raw_url string) (any, error) {
@@ -81,10 +108,7 @@ func (h *handler) fetch(raw_url string, request_id string) (any, error) {
 		return nil, fmt.Errorf("B站URL不能为空")
 	}
 
-	cookie := ""
-	if cfg := GetBilibiliConfig(); cfg != nil {
-		cookie = cfg.Cookie
-	}
+	cookie := h.config_string("bilibili.cookie")
 	logger := h.get_logger()
 	if logger != nil && request_id != "" {
 		request_logger := logger.With().Str("job_id", request_id).Logger()
@@ -116,10 +140,7 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 		return nil, fmt.Errorf("B站URL不能为空")
 	}
 
-	cookie := ""
-	if cfg := GetBilibiliConfig(); cfg != nil {
-		cookie = cfg.Cookie
-	}
+	cookie := h.config_string("bilibili.cookie")
 
 	// Call scraper to get video info
 	client := bilibili.NewClientWithLogger(cookie, h.get_logger())
@@ -222,6 +243,12 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource:  videoResource,
 		Endpoints: []model.DownloadEndpoint{videoEndpoint},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindVideo,
+			Role:     model.ContentAssetRoleVideoVariant,
+			AssetKey: "default",
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
 	})
 
 	// DASH audio resource (anime/courses etc.)
@@ -240,6 +267,12 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 				Protocol: "https",
 				URL:      info.AudioURL,
 				Enabled:  1,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindAudio,
+				Role:     model.ContentAssetRoleAudioVariant,
+				AssetKey: info.VideoID + "_audio",
+				Relation: model.DownloadResourceAssetRelationSource,
 			}},
 		})
 	}

@@ -28,8 +28,22 @@ type BrowseHistoryResult struct {
 
 // ResourceInfo describes a resource and its mirror endpoints.
 type ResourceInfo struct {
-	Resource  model.DownloadResource
-	Endpoints []model.DownloadEndpoint
+	Resource      model.DownloadResource
+	Endpoints     []model.DownloadEndpoint
+	ContentAssets []ContentAssetReference
+}
+
+// ContentAssetReference connects an adapter resource to a stable archive asset.
+// SubjectType and SubjectKey optionally bind the asset to a nested entity such
+// as a novel chapter.
+type ContentAssetReference struct {
+	Kind            string `json:"kind"`
+	Role            string `json:"role"`
+	AssetKey        string `json:"asset_key"`
+	Relation        string `json:"relation"`
+	SubjectType     string `json:"subject_type,omitempty"`
+	SubjectKey      string `json:"subject_key,omitempty"`
+	SubjectRelation string `json:"subject_relation,omitempty"`
 }
 
 // NewDownloadTaskResult creates a DownloadTaskResult with the given task-level fields.

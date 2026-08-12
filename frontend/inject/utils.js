@@ -3,8 +3,6 @@
  */
 if (typeof window.Timeless !== "undefined") {
   var timeless = window.Timeless;
-  Object.assign(timeless, timeless.weui.kit);
-  timeless.ui = timeless.weui.ui;
   // Rendering
   window.h = timeless.h;
   window.View = timeless.View;
@@ -39,12 +37,12 @@ if (typeof WXEnv === "undefined") {
 }
 var WXU = (() => {
   var APIOrigin = WXEnv.get("apiOrigin");
-  const http_client = new Timeless.HttpClientCore({
+  const http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: APIOrigin,
   });
   Timeless.web.provide_http_client(http_client);
-  const request = Timeless.request_factory({
+  const request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(r) {
       if (r.error) {
@@ -58,7 +56,7 @@ var WXU = (() => {
     },
   });
   const reqs = {
-    report: new Timeless.RequestCore(
+    report: new Timeless.kit.RequestCore(
       function report(params) {
         return request.post("/report", { ...params, level: "info" });
       },

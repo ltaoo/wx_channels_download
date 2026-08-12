@@ -5,7 +5,7 @@
  * extend WXE on demand via pkg/scraper/wxchannels/inject/channels.events.js.
  */
 var WXE = (() => {
-  var eventbus = mitt();
+  var eventbus = Timeless.mitt();
   var Events = {
     /** DOM fully loaded and parsed */
     DOMContentLoaded: "DOMContentLoaded",

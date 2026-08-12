@@ -4,13 +4,13 @@
  */
 var AccountModel = (() => {
   const account_api_origin = WXEnv.get("apiOrigin");
-  const account_http_client = new Timeless.HttpClientCore({
+  const account_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: account_api_origin,
   });
   Timeless.web.provide_http_client(account_http_client);
 
-  const account_request = Timeless.request_factory({
+  const account_request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
       if (response.error) {
@@ -165,7 +165,7 @@ var AccountModel = (() => {
     const error_ = ref("");
     let request_sequence = 0;
 
-    const list_request = new Timeless.RequestCore(
+    const list_request = new Timeless.kit.RequestCore(
       () => account_request.get("/api/account/list"),
       {
         client: account_http_client,

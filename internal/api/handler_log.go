@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	result "wx_channel/internal/util"
+	result "wx_channel/internal/apiresult"
 )
 
 const (

@@ -23,7 +23,7 @@ var zb = []uint8{
 	89, 216, 202, 220, 50, 221, 152, 140, 33, 235, 214,
 }
 
-func buildSignedHeader(apiPath, dc0 string) map[string]string {
+func build_signed_header(apiPath, dc0 string) map[string]string {
 	xzse93 := "101_3_3.0"
 	sum := md5.Sum([]byte(fmt.Sprintf("%s+%s+%s", xzse93, apiPath, dc0)))
 	return map[string]string{
@@ -136,7 +136,7 @@ func rotate(value uint32, shift uint) uint32 {
 	return (value << shift) | (value >> (32 - shift))
 }
 
-func getCookieValue(cookieStr, key string) string {
+func get_cookie_value(cookieStr, key string) string {
 	parts := strings.Split(cookieStr, ";")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)

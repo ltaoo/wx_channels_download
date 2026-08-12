@@ -1,5 +1,214 @@
 package zhihu
 
+import (
+	"encoding/json"
+)
+
+type AnswerURL struct {
+	QuestionID string
+	AnswerID   string
+	Canonical  string
+}
+
+type QuestionURL struct {
+	QuestionID string
+	Canonical  string
+}
+
+type ArticleURL struct {
+	ArticleID string
+	Canonical string
+}
+
+type User struct {
+	ID                string            `json:"id"`
+	URL               string            `json:"url"`
+	URLToken          string            `json:"urlToken"`
+	URLTokenSnake     string            `json:"url_token"`
+	Name              string            `json:"name"`
+	Headline          string            `json:"headline"`
+	HeadlineRender    string            `json:"headlineRender"`
+	AvatarURL         string            `json:"avatarUrl"`
+	AvatarURLSnake    string            `json:"avatar_url"`
+	AvatarURLTemplate string            `json:"avatarUrlTemplate"`
+	UseDefaultAvatar  bool              `json:"useDefaultAvatar"`
+	IsOrg             bool              `json:"isOrg"`
+	Type              string            `json:"type"`
+	UserType          string            `json:"userType"`
+	Badge             []json.RawMessage `json:"badge"`
+	BadgeV2           BadgeV2           `json:"badgeV2"`
+	Gender            int               `json:"gender"`
+	IsAdvertiser      bool              `json:"isAdvertiser"`
+	IsPrivacy         bool              `json:"isPrivacy"`
+	IsFollowed        bool              `json:"isFollowed"`
+	IPInfo            string            `json:"ipInfo"`
+	VIPInfo           VIPInfo           `json:"vipInfo"`
+}
+
+type Question struct {
+	ID                     string                     `json:"id"`
+	Type                   string                     `json:"type"`
+	Title                  string                     `json:"title"`
+	QuestionType           string                     `json:"questionType"`
+	Created                int64                      `json:"created"`
+	UpdatedTime            int64                      `json:"updatedTime"`
+	URL                    string                     `json:"url"`
+	IsMuted                bool                       `json:"isMuted"`
+	IsVisible              bool                       `json:"isVisible"`
+	IsNormal               bool                       `json:"isNormal"`
+	IsEditable             bool                       `json:"isEditable"`
+	AdminClosedComment     bool                       `json:"adminClosedComment"`
+	HasPublishingDraft     bool                       `json:"hasPublishingDraft"`
+	AnswerCount            int                        `json:"answerCount"`
+	VisitCount             int                        `json:"visitCount"`
+	CommentCount           int                        `json:"commentCount"`
+	FollowerCount          int                        `json:"followerCount"`
+	CollapsedAnswerCount   int                        `json:"collapsedAnswerCount"`
+	Excerpt                string                     `json:"excerpt"`
+	CommentPermission      string                     `json:"commentPermission"`
+	Detail                 string                     `json:"detail"`
+	EditableDetail         string                     `json:"editableDetail"`
+	Status                 QuestionStatus             `json:"status"`
+	Topics                 []Topic                    `json:"topics"`
+	Author                 User                       `json:"author"`
+	CanComment             CanComment                 `json:"canComment"`
+	ThumbnailInfo          ThumbnailInfo              `json:"thumbnailInfo"`
+	ReviewInfo             ReviewInfo                 `json:"reviewInfo"`
+	RelatedCards           []json.RawMessage          `json:"relatedCards"`
+	MuteInfo               MuteInfo                   `json:"muteInfo"`
+	ShowAuthor             bool                       `json:"showAuthor"`
+	IsLabeled              bool                       `json:"isLabeled"`
+	IsBannered             bool                       `json:"isBannered"`
+	ShowEncourageAuthor    bool                       `json:"showEncourageAuthor"`
+	VoteupCount            int                        `json:"voteupCount"`
+	CanVote                bool                       `json:"canVote"`
+	ReactionInstruction    map[string]json.RawMessage `json:"reactionInstruction"`
+	InvisibleAuthor        bool                       `json:"invisibleAuthor"`
+	AnswerCountDescription string                     `json:"answerCountDescription"`
+	Relationship           QuestionRelationship       `json:"relationship"`
+}
+
+type Answer struct {
+	ID                          string                     `json:"id"`
+	Type                        string                     `json:"type"`
+	AdminClosedComment          bool                       `json:"adminClosedComment"`
+	AllowSegmentInteraction     int                        `json:"allowSegmentInteraction"`
+	AnnotationAction            json.RawMessage            `json:"annotationAction"`
+	AnswerType                  string                     `json:"answerType"`
+	Author                      User                       `json:"author"`
+	BizExt                      AnswerBizExt               `json:"bizExt"`
+	CanComment                  CanComment                 `json:"canComment"`
+	CollapseReason              string                     `json:"collapseReason"`
+	CollapsedBy                 string                     `json:"collapsedBy"`
+	CommentCount                int                        `json:"commentCount"`
+	CommentPermission           string                     `json:"commentPermission"`
+	Content                     string                     `json:"content"`
+	ContentNeedTruncated        bool                       `json:"contentNeedTruncated"`
+	CreatedTime                 int64                      `json:"createdTime"`
+	EditableContent             string                     `json:"editableContent"`
+	Excerpt                     string                     `json:"excerpt"`
+	Extras                      string                     `json:"extras"`
+	FavlistsCount               int                        `json:"favlistsCount"`
+	ForceLoginWhenClickReadMore bool                       `json:"forceLoginWhenClickReadMore"`
+	HasColumn                   bool                       `json:"hasColumn"`
+	IPInfo                      string                     `json:"ipInfo"`
+	IsCollapsed                 bool                       `json:"isCollapsed"`
+	IsCopyable                  bool                       `json:"isCopyable"`
+	IsJumpNative                bool                       `json:"isJumpNative"`
+	IsLabeled                   bool                       `json:"isLabeled"`
+	IsNavigator                 bool                       `json:"isNavigator"`
+	IsNormal                    bool                       `json:"isNormal"`
+	IsSticky                    bool                       `json:"isSticky"`
+	IsVisible                   bool                       `json:"isVisible"`
+	NavigatorVote               bool                       `json:"navigatorVote"`
+	PodcastAudioEnter           PodcastAudioEnter          `json:"podcastAudioEnter"`
+	Question                    QuestionRef                `json:"question"`
+	Reaction                    AnswerReaction             `json:"reaction"`
+	ReactionInstruction         map[string]json.RawMessage `json:"reactionInstruction"`
+	Relationship                AnswerRelationship         `json:"relationship"`
+	RelevantInfo                RelevantInfo               `json:"relevantInfo"`
+	ReshipmentSettings          string                     `json:"reshipmentSettings"`
+	RewardInfo                  RewardInfo                 `json:"rewardInfo"`
+	SuggestEdit                 SuggestEdit                `json:"suggestEdit"`
+	ThanksCount                 int                        `json:"thanksCount"`
+	UpdatedTime                 int64                      `json:"updatedTime"`
+	URL                         string                     `json:"url"`
+	VoteNextStep                string                     `json:"voteNextStep"`
+	VoteupCount                 int                        `json:"voteupCount"`
+}
+
+type Article struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	Excerpt     string `json:"excerpt"`
+	ImageURL    string `json:"imageUrl"`
+	ImageURLAlt string `json:"image_url"`
+	Author      User   `json:"author"`
+	CreatedTime int64  `json:"created"`
+	UpdatedTime int64  `json:"updated"`
+}
+
+type Comment struct {
+	ID          string
+	ContentHTML string
+	ContentText string
+	CreatedTime int64
+	Author      User
+	ReplyTo     *User
+	Replies     []Comment
+}
+
+type AnswerPage struct {
+	URL             AnswerURL
+	Source          string
+	PageHTML        string
+	Question        Question
+	Answer          Answer
+	Comments        []Comment
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
+}
+
+type QuestionPage struct {
+	URL             QuestionURL
+	Source          string
+	PageHTML        string
+	Question        Question
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
+}
+
+type ArticlePage struct {
+	URL             ArticleURL
+	Source          string
+	PageHTML        string
+	Article         Article
+	InitialData     *InitialData
+	InitialDataJSON json.RawMessage
+}
+
+type comment_payload struct {
+	ID         json.RawMessage   `json:"id"`
+	Content    string            `json:"content"`
+	ContentTag string            `json:"content_tag"`
+	Created    int64             `json:"created_time"`
+	CreatedAt  int64             `json:"createdAt"`
+	Author     User              `json:"author"`
+	ReplyTo    *User             `json:"reply_to_author"`
+	Child      []comment_payload `json:"child_comments"`
+}
+
+type comment_response struct {
+	Data   []comment_payload `json:"data"`
+	Paging comment_paging    `json:"paging"`
+}
+
+type comment_paging struct {
+	IsEnd bool   `json:"is_end"`
+	Next  string `json:"next"`
+}
+
 // RecommendFeed represents an item returned by Zhihu's recommendation feed.
 type RecommendFeed struct {
 	ID           string              `json:"id"`

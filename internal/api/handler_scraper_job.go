@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 )
 
 type scraper_fetch_create_body struct {
@@ -26,11 +26,11 @@ type scraper_fetch_interrupt_body struct {
 func (c *APIClient) handle_scraper_fetch(ctx *gin.Context) {
 	request, err := scraper_fetch_request_from_http(ctx)
 	if err != nil {
-		result.Err(ctx, result.CodeInvalidParams, err.Error())
+		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
 	if request.URL == "" {
-		result.Err(ctx, result.CodeMissingUrl, "缺少参数：url")
+		result.Err(ctx, api_code_missing_url, "缺少参数：url")
 		return
 	}
 
@@ -40,7 +40,7 @@ func (c *APIClient) handle_scraper_fetch(ctx *gin.Context) {
 		ForceRefresh: request.ForceRefresh,
 	})
 	if err != nil {
-		result.Err(ctx, result.CodeInvalidParams, err.Error())
+		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
 	result.Ok(ctx, job)
@@ -93,12 +93,12 @@ func (c *APIClient) ensure_scraper_platform_available(platform_id string) error 
 func (c *APIClient) handle_scraper_job(ctx *gin.Context) {
 	job_id := strings.TrimSpace(ctx.Query("id"))
 	if job_id == "" {
-		result.Err(ctx, result.CodeInvalidParams, "缺少参数：id")
+		result.Err(ctx, api_code_invalid_params, "缺少参数：id")
 		return
 	}
 	job := c.scraper_job_service.Get(job_id, true)
 	if job == nil {
-		result.Err(ctx, result.CodeInvalidParams, "fetch job 不存在")
+		result.Err(ctx, api_code_invalid_params, "fetch job 不存在")
 		return
 	}
 	result.Ok(ctx, job)
@@ -107,7 +107,7 @@ func (c *APIClient) handle_scraper_job(ctx *gin.Context) {
 func (c *APIClient) handle_scraper_fetch_interrupt(ctx *gin.Context) {
 	var body scraper_fetch_interrupt_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		result.Err(ctx, result.CodeInvalidParams, "请求参数无效")
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
 	job_id := strings.TrimSpace(body.ID)
@@ -115,7 +115,7 @@ func (c *APIClient) handle_scraper_fetch_interrupt(ctx *gin.Context) {
 		job_id = strings.TrimSpace(body.RequestID)
 	}
 	if job_id == "" {
-		result.Err(ctx, result.CodeInvalidParams, "缺少参数：id")
+		result.Err(ctx, api_code_invalid_params, "缺少参数：id")
 		return
 	}
 	interrupted := c.scraper_job_service.Interrupt(job_id)

@@ -34,7 +34,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
 
     function build_menu_items() {
       return options.map((opt) => {
-        return new Timeless.ui.MenuItemCore({
+        return new Timeless.vm.MenuItemCore({
           label: [opt.tag_name, opt.rate, opt.video_quality_level_desc]
             .filter(Boolean)
             .join(" "),
@@ -46,7 +46,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
       });
     }
 
-    const dropdown$ = new Timeless.ui.DropdownMenuCore({
+    const dropdown$ = new Timeless.vm.DropdownMenuCore({
       trigger: "hover",
       align: "end",
       items: build_menu_items(),
@@ -80,7 +80,6 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     trigger.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
-
     if (trigger.dataset) {
       trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
     }

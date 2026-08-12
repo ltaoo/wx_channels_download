@@ -3,39 +3,23 @@ package zhihuadapter
 import (
 	"fmt"
 
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/config"
-	"wx_channel/internal/events"
-	"wx_channel/internal/webassets"
-	"wx_channel/pkg/cookies"
-	"wx_channel/pkg/scraper/zhihu"
 )
-
-// Deps holds the dependencies needed to register the zhihu adapter.
-type Deps struct {
-	StaticAssets   *webassets.Registry
-	RouteRegistrar RouteRegistrar
-	Interceptor    adapter.InterceptorRegistrar
-	DB             *gorm.DB
-	Logger         *zerolog.Logger
-	Bus            *events.Bus
-	Config         *config.Config
-	CookieReader   *cookies.Reader
-}
 
 // Handle owns the adapter's runtime components.
 type Handle struct {
-	routes *Routes
+	routes          *Routes
+	runtime_handler *handler
 }
 
 // Register wires up static assets, interceptor plugins, and HTTP routes.
-func Register(d Deps) (*Handle, error) {
+func Register(d *adapter.AdapterOptions) (*Handle, error) {
+	if d == nil {
+		return nil, fmt.Errorf("zhihu runtime dependencies are nil")
+	}
 	// 1. Static assets
 	if d.StaticAssets != nil {
-		if err := zhihu.RegisterStaticAssets(d.StaticAssets); err != nil {
+		if err := register_static_assets(d.StaticAssets); err != nil {
 			return nil, fmt.Errorf("zhihu static assets: %w", err)
 		}
 	}
@@ -43,29 +27,17 @@ func Register(d Deps) (*Handle, error) {
 	// 2. Interceptor plugins
 	icfg := NewConfig(d.Config)
 	if d.Interceptor != nil {
-		for _, p := range icfg.GetPlugins(adapter.AdapterContext{
-			DB:     d.DB,
-			Logger: d.Logger,
-			Bus:    d.Bus,
-		}) {
+		for _, p := range icfg.GetPlugins() {
 			d.Interceptor.AddPostPlugin(p)
 		}
 	}
 
 	// 3. Routes
-	workdir := ""
-	if d.Config != nil {
-		workdir = d.Config.WorkDir
-	}
-	cookie_reader := d.CookieReader
-	if cookie_reader == nil {
-		cookie_reader = cookies.NewPersistentReader(workdir)
-	}
-	r := NewRoutes(cookie_reader, d.Logger)
-	if d.RouteRegistrar != nil {
-		r.RegisterRoutes(d.RouteRegistrar)
+	r := NewRoutes(d.Cookies, d.Logger)
+	if d.Routes != nil {
+		r.RegisterRoutes(d.Routes)
 		if d.Logger != nil {
-			d.Logger.Info().Str("workdir", workdir).Msg("zhihu routes registered")
+			d.Logger.Info().Msg("zhihu routes registered")
 		}
 	}
 
@@ -73,31 +45,34 @@ func Register(d Deps) (*Handle, error) {
 }
 
 // RegisterRuntime exposes the adapter through the shared registry contract.
-func (h *handler) RegisterRuntime(d adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
-	work_dir := ""
-	if d.Config != nil {
-		work_dir = d.Config.WorkDir
+func (h *handler) RegisterRuntime(d *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
+	if d == nil {
+		return nil, fmt.Errorf("zhihu runtime dependencies are nil")
 	}
-	cookie_reader := cookies.NewPersistentReader(work_dir)
-	h.set_runtime(cookie_reader, d.Logger)
+	h.set_runtime(d.Cookies, d.Logger)
 	if d.Logger != nil {
-		d.Logger.Info().Str("workdir", work_dir).Msg("zhihu adapter registering runtime")
+		d.Logger.Info().Msg("zhihu adapter registering runtime")
 	}
-	return Register(Deps{
-		StaticAssets:   d.StaticAssets,
-		RouteRegistrar: d.Routes,
-		Interceptor:    d.Interceptor,
-		DB:             d.DB,
-		Logger:         d.Logger,
-		Bus:            d.Bus,
-		Config:         d.Config,
-		CookieReader:   cookie_reader,
-	})
+	handle, err := Register(d)
+	if err != nil {
+		h.set_runtime(nil, nil)
+		return nil, err
+	}
+	handle.runtime_handler = h
+	return handle, nil
 }
 
 // Stop shuts down the adapter's routes.
 func (h *Handle) Stop() {
-	if h != nil && h.routes != nil {
+	if h == nil {
+		return
+	}
+	if h.routes != nil {
 		h.routes.Stop()
 	}
+	if h.runtime_handler != nil {
+		h.runtime_handler.set_runtime(nil, nil)
+	}
+	h.routes = nil
+	h.runtime_handler = nil
 }

@@ -10,6 +10,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/scraper/fanqienovel"
 )
 
@@ -22,7 +23,7 @@ const PlatformID = platform_id_fanqienovel
 type FanqieNovelAdapter struct {
 	runtime_mu sync.RWMutex
 	bus        *events.Bus
-	work_dir   string
+	file_cache *cache.CacheProvider
 }
 
 var _ adapter.PlatformAdapter = (*FanqieNovelAdapter)(nil)
@@ -66,7 +67,7 @@ func (a *FanqieNovelAdapter) FetchWithProgressContext(fetch_context context.Cont
 		a.publish_progress(progress)
 		a.emit_fetch_artifacts(progress, options.ArtifactHandler)
 	})
-	client.SetWorkDir(a.runtime_work_dir())
+	client.SetPersistentCache(a.runtime_file_cache())
 	return client.Fetch(fanqienovel.FetchParams{
 		URL:          raw_url,
 		RequestID:    strings.TrimSpace(options.RequestID),
@@ -77,15 +78,17 @@ func (a *FanqieNovelAdapter) FetchWithProgressContext(fetch_context context.Cont
 
 // ClearFetchCache removes cached profile and chapter HTML for raw_url.
 func (a *FanqieNovelAdapter) ClearFetchCache(raw_url string) (bool, error) {
-	return fanqienovel.ClearHTMLCache(a.runtime_work_dir(), strings.TrimSpace(raw_url))
+	return fanqienovel.ClearHTMLCacheWithCache(a.runtime_file_cache(), strings.TrimSpace(raw_url))
 }
 
-func (a *FanqieNovelAdapter) RegisterRuntime(runtime_deps adapter.RuntimeDeps) (adapter.RuntimeHandle, error) {
-	a.runtime_mu.Lock()
-	a.bus = runtime_deps.Bus
-	if runtime_deps.Config != nil {
-		a.work_dir = runtime_deps.Config.WorkDir
+func (a *FanqieNovelAdapter) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
+	if adapter_options == nil {
+		return nil, fmt.Errorf("fanqienovel runtime dependencies are nil")
 	}
+	file_cache := adapter_options.Cache
+	a.runtime_mu.Lock()
+	a.bus = adapter_options.Bus
+	a.file_cache = file_cache
 	a.runtime_mu.Unlock()
 	return a, nil
 }
@@ -93,15 +96,15 @@ func (a *FanqieNovelAdapter) RegisterRuntime(runtime_deps adapter.RuntimeDeps) (
 func (a *FanqieNovelAdapter) Stop() {
 	a.runtime_mu.Lock()
 	a.bus = nil
-	a.work_dir = ""
+	a.file_cache = nil
 	a.runtime_mu.Unlock()
 }
 
-func (a *FanqieNovelAdapter) runtime_work_dir() string {
+func (a *FanqieNovelAdapter) runtime_file_cache() *cache.CacheProvider {
 	a.runtime_mu.RLock()
-	work_dir := a.work_dir
+	file_cache := a.file_cache
 	a.runtime_mu.RUnlock()
-	return work_dir
+	return file_cache
 }
 
 func (a *FanqieNovelAdapter) publish_progress(progress fanqienovel.FetchProgress) {
@@ -252,5 +255,5 @@ func (a *FanqieNovelAdapter) BuildDownloadTask(content_json json.RawMessage, con
 			return nil, err
 		}
 	}
-	return build_download_task(result, config_json, a.runtime_work_dir())
+	return build_download_task(result, config_json, a.runtime_file_cache())
 }

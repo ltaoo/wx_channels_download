@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/ltaoo/velo/fileserver"
-	result "wx_channel/internal/util"
+	result "wx_channel/internal/apiresult"
 )
 
 // MigrationLoadRequest is the request to load a database.

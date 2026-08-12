@@ -53,7 +53,7 @@ func (h *handler) scraper_client() *zhihu.Client {
 	cookie_reader := h.cookie_reader
 	logger := h.logger
 	h.runtime_mu.RUnlock()
-	return zhihu.NewClientWithCookieReader(cookie_reader, logger)
+	return zhihu.NewClient(cookie_reader, logger)
 }
 
 // BuildContentID builds a content identifier from an external ID.
@@ -414,9 +414,9 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 
 	// Try AnswerPage format first (from browser injection).
 	// When the content is a pre-built AnswerPage, skip the HTTP fetch.
-	var page *zhihu.AnswerPage
+	var page_data any
 	if p, ok := parse_answer_page_content(content_json); ok {
-		page = p
+		page_data = p
 	}
 
 	var input struct {
@@ -425,91 +425,37 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	}
 	_ = json.Unmarshal(content_json, &input)
 
-	client := h.scraper_client()
-
-	var html_content string
-	if page != nil {
-		// Use the AnswerPage data directly; build HTML from Source.
-		html_content, _ = client.BuildHTMLFromURL(page.Source)
-		if html_content == "" {
-			html_content = "<html><body></body></html>"
-		}
-	} else {
+	if page_data == nil {
 		if input.URL == "" {
 			return nil, fmt.Errorf("知乎URL不能为空")
 		}
-		html, err := client.BuildHTMLFromURL(input.URL)
+		fetched_page, err := h.scraper_client().Fetch(input.URL)
 		if err != nil {
 			return nil, fmt.Errorf("获取知乎页面失败: %w", err)
 		}
-		html_content = html
-		page, _ = client.FetchAnswerPage(input.URL)
+		page_data = fetched_page
 	}
 
-	now := util.NowMillis()
-	title := input.Title
-	content_type := "answer"
-	var external_id string
-	var cover_url string
-	var content *model.Content
-	var account *model.Account
-	var source_url string
-
-	if page != nil && page.Answer.ID != "" {
-		external_id = page.Answer.ID
-		if title == "" {
-			title = page.Question.Title
-		}
-		content_type = "answer"
-		cover_url = zhihu.FirstImageURL(page.Answer.Content, page.Source)
-		source_url = page.Source
-
-		c, err := ToContent(page)
-		if err == nil {
-			content = c
-		}
-		a, err := ToAccount(&page.Answer.Author)
-		if err == nil {
-			account = a
-		}
-	} else {
-		// Fall back to parsing the URL
-		if article_url, ok := zhihu.ParseArticleURL(input.URL); ok {
-			external_id = article_url.ArticleID
-			content_type = "article"
-			source_url = article_url.Canonical
-		} else if question_url, ok := zhihu.ParseQuestionURL(input.URL); ok {
-			external_id = question_url.QuestionID
-			content_type = "question"
-			source_url = question_url.Canonical
-		} else {
-			external_id = input.URL
-			source_url = input.URL
-		}
+	content, err := h.ToContent(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("转换知乎内容失败: %w", err)
 	}
-
+	if strings.TrimSpace(input.Title) != "" {
+		content.Title = strings.TrimSpace(input.Title)
+	}
+	title := strings.TrimSpace(content.Title)
 	if title == "" {
 		title = "知乎内容"
+		content.Title = title
 	}
+	external_id := content.ExternalId
+	content_type := content.Type
+	cover_url := content.CoverURL
+	source_url := first_non_empty_str(content.SourceURL, content.URL, input.URL)
 
-	if content == nil {
-		content = &model.Content{
-			Id:         BuildContentID(external_id),
-			PlatformId: PlatformID,
-			Type:       content_type,
-			ExternalId: external_id,
-			Title:      title,
-			URL:        source_url,
-			SourceURL:  source_url,
-			CoverURL:   cover_url,
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		}
-	}
-
-	if account == nil {
+	account, account_err := h.ToAccount(page_data)
+	if account_err != nil {
+		now := util.NowMillis()
 		account = &model.Account{
 			Id:         BuildAccountID("unknown"),
 			PlatformId: PlatformID,
@@ -522,6 +468,16 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		}
 	}
 
+	postprocess_data, err := marshal_postprocess_payload(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("序列化知乎页面失败: %w", err)
+	}
+
+	var content_detail any
+	if details, detail_err := h.ToContentDetails(page_data); detail_err == nil && len(details) > 0 {
+		content_detail = details[0].Data
+	}
+
 	config_json, _ := json.Marshal(build_config_json(config))
 	metadata_json, _ := json.Marshal(map[string]any{
 		"platform":    PlatformID,
@@ -531,6 +487,9 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	})
 
 	content_id := content.Id
+	postprocess_extra, _ := json.Marshal(map[string]string{
+		postprocess_marker_key: postprocess_marker_value,
+	})
 
 	// HTML resource
 	html_resource := model.DownloadResource{
@@ -538,10 +497,11 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		Name:      title + ".html",
 		Kind:      "html",
 		UniqueID:  external_id + "_html",
+		Extra:     string(postprocess_extra),
 	}
 	html_endpoint := model.DownloadEndpoint{
 		Protocol: "inline",
-		URL:      html_content,
+		URL:      string(postprocess_data),
 		Enabled:  1,
 	}
 
@@ -584,14 +544,10 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},
-		Resources: resources,
-		ContentDetail: &model.ContentArticle{
-			Id:   content.Id,
-			Type: model.ContentArticleTypeHTML,
-			HTML: html_content,
-		},
-		Account: account,
-		Content: content,
+		Resources:     resources,
+		ContentDetail: content_detail,
+		Account:       account,
+		Content:       content,
 	}, nil
 }
 

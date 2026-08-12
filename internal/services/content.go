@@ -224,6 +224,7 @@ type ContentListItem struct {
 	ID            string                      `json:"id"`
 	PlatformID    string                      `json:"platform_id"`
 	Type          string                      `json:"type"`
+	Subtype       string                      `json:"subtype"`
 	ExternalID    string                      `json:"external_id"`
 	ExternalID2   string                      `json:"external_id2"`
 	ExternalID3   string                      `json:"external_id3"`
@@ -445,7 +446,26 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 	switch content_type {
 	case "video", "short_video":
 		var detail model.ContentVideo
-		if err := s.db.Where("id = ? AND deleted_at IS NULL", content.Id).First(&detail).Error; err != nil {
+		if err := s.db.
+			Preload("Variants", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("is_default DESC, height DESC, bitrate DESC, asset_id ASC")
+			}).
+			Preload("Variants.Asset", "deleted_at IS NULL").
+			Preload("Variants.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
+			}).
+			Preload("SubtitleTracks", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("is_default DESC, language_code ASC, id ASC")
+			}).
+			Preload("SubtitleTracks.Sources", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("format ASC, asset_id ASC")
+			}).
+			Preload("SubtitleTracks.Sources.Asset", "deleted_at IS NULL").
+			Preload("SubtitleTracks.Sources.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
+			}).
+			Where("id = ? AND deleted_at IS NULL", content.Id).
+			First(&detail).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return "content_video", nil, nil
 			}
@@ -465,19 +485,39 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 			}
 			return "content_album", nil, err
 		}
+		if err := s.load_content_album_image_assets(&detail); err != nil {
+			return "content_album", nil, err
+		}
 		return "content_album", &detail, nil
-	case "audio", "music":
+	case "audio", "music", "audiobook":
 		detail, err := find(&model.ContentAudio{})
 		return "content_audio", detail, err
-	case "article", "blog":
+	case "article", "blog", "question", "answer", "news", "newsletter", "webpage":
 		detail, err := find(&model.ContentArticle{})
 		return "content_article", detail, err
 	case "live":
 		detail, err := find(&model.ContentLive{})
 		return "content_live", detail, err
 	case "novel":
-		detail, err := find(&model.ContentNovel{})
-		return "content_novel", detail, err
+		var detail model.ContentNovel
+		if err := s.db.
+			Preload("Volumes", func(db *gorm.DB) *gorm.DB {
+				return db.Order("idx ASC, id ASC")
+			}).
+			Preload("Chapters", func(db *gorm.DB) *gorm.DB {
+				return db.Order("idx ASC, id ASC")
+			}).
+			Where("id = ?", content.Id).
+			First(&detail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return "content_novel", nil, nil
+			}
+			return "content_novel", nil, err
+		}
+		if err := s.load_content_novel_chapter_assets(&detail); err != nil {
+			return "content_novel", nil, err
+		}
+		return "content_novel", &detail, nil
 	case "podcast":
 		detail, err := find(&model.ContentPodcast{})
 		return "content_podcast", detail, err
@@ -493,9 +533,295 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 	case "post":
 		detail, err := find(&model.ContentPost{})
 		return "content_post", detail, err
+	case "conversation", "chat", "ai_chat", "human_chat", "email_thread":
+		var detail model.ContentConversation
+		if err := s.db.
+			Preload("Branches", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("is_current DESC, sort_order ASC, id ASC")
+			}).
+			Preload("Messages", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("sequence ASC, id ASC")
+			}).
+			Preload("Messages.Parts", func(db *gorm.DB) *gorm.DB {
+				return db.Where("deleted_at IS NULL").Order("sort_order ASC, id ASC")
+			}).
+			Where("id = ?", content.Id).
+			First(&detail).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return "content_conversation", nil, nil
+			}
+			return "content_conversation", nil, err
+		}
+		if err := s.load_content_conversation_assets(&detail); err != nil {
+			return "content_conversation", nil, err
+		}
+		return "content_conversation", &detail, nil
 	default:
 		return "", nil, nil
 	}
+}
+
+func (s *ContentService) load_content_conversation_assets(content_conversation *model.ContentConversation) error {
+	if content_conversation == nil || len(content_conversation.Messages) == 0 {
+		return nil
+	}
+
+	message_keys := make([]string, 0, len(content_conversation.Messages))
+	part_subject_keys := make([]string, 0)
+	for message_index := range content_conversation.Messages {
+		message := &content_conversation.Messages[message_index]
+		if message_key := strings.TrimSpace(message.MessageKey); message_key != "" {
+			message_keys = append(message_keys, message_key)
+		}
+		for part_index := range message.Parts {
+			part_subject_key := strings.TrimSpace(message.Parts[part_index].SubjectKey)
+			if part_subject_key != "" {
+				part_subject_keys = append(part_subject_keys, part_subject_key)
+			}
+		}
+	}
+
+	message_assets, err := s.load_content_asset_links(
+		content_conversation.Id,
+		model.ContentAssetSubjectConversationMessage,
+		message_keys,
+	)
+	if err != nil {
+		return err
+	}
+	part_assets, err := s.load_content_asset_links(
+		content_conversation.Id,
+		model.ContentAssetSubjectConversationMessagePart,
+		part_subject_keys,
+	)
+	if err != nil {
+		return err
+	}
+
+	for message_index := range content_conversation.Messages {
+		message := &content_conversation.Messages[message_index]
+		message.Assets = message_assets[message.MessageKey]
+		if message.Assets == nil {
+			message.Assets = make([]model.ContentAssetLink, 0)
+		}
+		for part_index := range message.Parts {
+			part := &message.Parts[part_index]
+			part.Assets = part_assets[part.SubjectKey]
+			if part.Assets == nil {
+				part.Assets = make([]model.ContentAssetLink, 0)
+			}
+		}
+	}
+	return nil
+}
+
+// GetContentConversationBranch returns one ordered root-to-leaf path from an
+// archived conversation tree. An empty branch_key selects CurrentBranchKey,
+// then the branch marked current, then the first stored branch.
+func (s *ContentService) GetContentConversationBranch(
+	content_id string,
+	branch_key string,
+) ([]model.ContentConversationMessage, error) {
+	if s.db == nil {
+		return nil, ErrDBNotInitialized
+	}
+	content_id = strings.TrimSpace(content_id)
+	branch_key = strings.TrimSpace(branch_key)
+	if content_id == "" {
+		return nil, fmt.Errorf("content id is required")
+	}
+
+	_, detail_value, err := s.load_content_extension(model.Content{
+		Id:   content_id,
+		Type: model.ContentTypeConversation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	content_conversation, ok := detail_value.(*model.ContentConversation)
+	if !ok || content_conversation == nil {
+		return nil, fmt.Errorf("content conversation not found: %s", content_id)
+	}
+	if len(content_conversation.Branches) == 0 {
+		return content_conversation.Messages, nil
+	}
+
+	var selected_branch *model.ContentConversationBranch
+	if branch_key != "" {
+		for branch_index := range content_conversation.Branches {
+			branch := &content_conversation.Branches[branch_index]
+			if branch.BranchKey == branch_key {
+				selected_branch = branch
+				break
+			}
+		}
+	} else {
+		current_branch_key := strings.TrimSpace(content_conversation.CurrentBranchKey)
+		if current_branch_key != "" {
+			for branch_index := range content_conversation.Branches {
+				branch := &content_conversation.Branches[branch_index]
+				if branch.BranchKey == current_branch_key {
+					selected_branch = branch
+					break
+				}
+			}
+		}
+		if selected_branch == nil {
+			for branch_index := range content_conversation.Branches {
+				branch := &content_conversation.Branches[branch_index]
+				if branch.IsCurrent == 1 {
+					selected_branch = branch
+					break
+				}
+			}
+		}
+		if selected_branch == nil {
+			selected_branch = &content_conversation.Branches[0]
+		}
+	}
+	if selected_branch == nil {
+		return nil, fmt.Errorf("conversation branch not found: %s", branch_key)
+	}
+
+	messages_by_key := make(map[string]model.ContentConversationMessage, len(content_conversation.Messages))
+	for message_index := range content_conversation.Messages {
+		message := content_conversation.Messages[message_index]
+		messages_by_key[message.MessageKey] = message
+	}
+	message_key := strings.TrimSpace(selected_branch.LeafMessageKey)
+	if message_key == "" {
+		return nil, fmt.Errorf("conversation branch %s has no leaf message", selected_branch.BranchKey)
+	}
+	reversed_messages := make([]model.ContentConversationMessage, 0)
+	visited_message_keys := make(map[string]struct{})
+	root_message_key := strings.TrimSpace(selected_branch.RootMessageKey)
+	reached_root := false
+	for message_key != "" {
+		if _, visited := visited_message_keys[message_key]; visited {
+			return nil, fmt.Errorf("conversation branch contains a message cycle at %s", message_key)
+		}
+		visited_message_keys[message_key] = struct{}{}
+		message, exists := messages_by_key[message_key]
+		if !exists {
+			return nil, fmt.Errorf("conversation message not found in branch: %s", message_key)
+		}
+		reversed_messages = append(reversed_messages, message)
+		if root_message_key != "" && message_key == root_message_key {
+			reached_root = true
+			break
+		}
+		message_key = strings.TrimSpace(message.ParentMessageKey)
+	}
+	if root_message_key != "" && !reached_root {
+		return nil, fmt.Errorf(
+			"conversation branch %s cannot reach root message %s",
+			selected_branch.BranchKey,
+			root_message_key,
+		)
+	}
+
+	ordered_messages := make([]model.ContentConversationMessage, len(reversed_messages))
+	for message_index := range reversed_messages {
+		ordered_messages[len(reversed_messages)-1-message_index] = reversed_messages[message_index]
+	}
+	return ordered_messages, nil
+}
+
+func (s *ContentService) load_content_novel_chapter_assets(content_novel *model.ContentNovel) error {
+	if content_novel == nil || len(content_novel.Chapters) == 0 {
+		return nil
+	}
+	chapter_keys := make([]string, 0, len(content_novel.Chapters))
+	for chapter_index := range content_novel.Chapters {
+		chapter_key := strings.TrimSpace(content_novel.Chapters[chapter_index].ChapterKey)
+		if chapter_key != "" {
+			chapter_keys = append(chapter_keys, chapter_key)
+		}
+	}
+	if len(chapter_keys) == 0 {
+		return nil
+	}
+
+	asset_links_by_chapter_key, err := s.load_content_asset_links(
+		content_novel.Id,
+		model.ContentAssetSubjectNovelChapter,
+		chapter_keys,
+	)
+	if err != nil {
+		return err
+	}
+	for chapter_index := range content_novel.Chapters {
+		chapter := &content_novel.Chapters[chapter_index]
+		chapter.Assets = asset_links_by_chapter_key[chapter.ChapterKey]
+		if chapter.Assets == nil {
+			chapter.Assets = make([]model.ContentAssetLink, 0)
+		}
+	}
+	return nil
+}
+
+func (s *ContentService) load_content_album_image_assets(content_album *model.ContentAlbum) error {
+	if content_album == nil || len(content_album.Images) == 0 {
+		return nil
+	}
+	image_keys := make([]string, 0, len(content_album.Images))
+	for image_index := range content_album.Images {
+		image_key := strings.TrimSpace(content_album.Images[image_index].ImageKey)
+		if image_key != "" {
+			image_keys = append(image_keys, image_key)
+		}
+	}
+	if len(image_keys) == 0 {
+		return nil
+	}
+	asset_links_by_image_key, err := s.load_content_asset_links(
+		content_album.Id,
+		model.ContentAssetSubjectAlbumImage,
+		image_keys,
+	)
+	if err != nil {
+		return err
+	}
+	for image_index := range content_album.Images {
+		content_image := &content_album.Images[image_index]
+		content_image.Assets = asset_links_by_image_key[content_image.ImageKey]
+		if content_image.Assets == nil {
+			content_image.Assets = make([]model.ContentAssetLink, 0)
+		}
+	}
+	return nil
+}
+
+func (s *ContentService) load_content_asset_links(
+	content_id string,
+	subject_type string,
+	subject_keys []string,
+) (map[string][]model.ContentAssetLink, error) {
+	asset_links_by_subject_key := make(map[string][]model.ContentAssetLink, len(subject_keys))
+	if len(subject_keys) == 0 {
+		return asset_links_by_subject_key, nil
+	}
+	var asset_links []model.ContentAssetLink
+	if err := s.db.
+		Preload("Asset", "deleted_at IS NULL").
+		Preload("Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
+		}).
+		Where(
+			"content_id = ? AND subject_type = ? AND subject_key IN ?",
+			content_id,
+			subject_type,
+			subject_keys,
+		).
+		Order("created_at ASC, asset_id ASC").
+		Find(&asset_links).Error; err != nil {
+		return nil, err
+	}
+	for link_index := range asset_links {
+		link := asset_links[link_index]
+		asset_links_by_subject_key[link.SubjectKey] = append(asset_links_by_subject_key[link.SubjectKey], link)
+	}
+	return asset_links_by_subject_key, nil
 }
 
 func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem, error) {
@@ -509,7 +835,15 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 	}
 
 	var content model.Content
-	if err := s.db.Where("id = ?", content_id).First(&content).Error; err != nil {
+	if err := s.db.
+		Preload("Assets", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("sort_order ASC, id ASC")
+		}).
+		Preload("Assets.DownloadResources", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
+		}).
+		Where("id = ?", content_id).
+		First(&content).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("content not found: %s", content_id)
 		}
@@ -547,6 +881,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			ID:            content.Id,
 			PlatformID:    content.PlatformId,
 			Type:          content.Type,
+			Subtype:       content.Subtype,
 			ExternalID:    content.ExternalId,
 			ExternalID2:   content.ExternalId2,
 			ExternalID3:   content.ExternalId3,
@@ -665,6 +1000,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			ID:            content.Id,
 			PlatformID:    content.PlatformId,
 			Type:          content.Type,
+			Subtype:       content.Subtype,
 			ExternalID:    content.ExternalId,
 			ExternalID2:   content.ExternalId2,
 			ExternalID3:   content.ExternalId3,

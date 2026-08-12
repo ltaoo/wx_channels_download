@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 )
 
 func (c *APIClient) handle_video_list(ctx *gin.Context) {

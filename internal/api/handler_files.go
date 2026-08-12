@@ -14,8 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/frontend"
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 	"wx_channel/pkg/system"
 )
 

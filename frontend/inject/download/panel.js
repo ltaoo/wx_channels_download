@@ -85,7 +85,7 @@ function DownloaderEntry(props) {
 }
 
 (() => {
-  const popover$ = new Timeless.ui.PopoverCore({
+  const popover$ = new Timeless.vm.PopoverCore({
     offsetY: 4,
     destroyOnClose: false,
   });

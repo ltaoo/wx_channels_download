@@ -4,13 +4,13 @@
  */
 var BrowseHistoryModel = (() => {
   const browse_history_api_origin = WXEnv.get("apiOrigin");
-  const browse_history_http_client = new Timeless.HttpClientCore({
+  const browse_history_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: browse_history_api_origin,
   });
   Timeless.web.provide_http_client(browse_history_http_client);
 
-  const browse_history_request = Timeless.request_factory({
+  const browse_history_request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
       if (response.error) {
@@ -293,18 +293,18 @@ var BrowseHistoryModel = (() => {
     let request_sequence = 0;
 
     const platform_options = [
-      new Timeless.ui.SelectItemCore({ label: "全部平台", value: "" }),
-      new Timeless.ui.SelectItemCore({ label: "视频号", value: "wxchannels" }),
-      new Timeless.ui.SelectItemCore({ label: "公众号", value: "wxmp" }),
-      new Timeless.ui.SelectItemCore({ label: "抖音", value: "douyin" }),
-      new Timeless.ui.SelectItemCore({ label: "Bilibili", value: "bilibili" }),
-      new Timeless.ui.SelectItemCore({ label: "小红书", value: "xiaohongshu" }),
-      new Timeless.ui.SelectItemCore({ label: "YouTube", value: "youtube" }),
-      new Timeless.ui.SelectItemCore({ label: "知乎", value: "zhihu" }),
-      new Timeless.ui.SelectItemCore({ label: "豆瓣", value: "douban" }),
-      new Timeless.ui.SelectItemCore({ label: "微博", value: "weibo" }),
+      new Timeless.vm.SelectItemCore({ label: "全部平台", value: "" }),
+      new Timeless.vm.SelectItemCore({ label: "视频号", value: "wxchannels" }),
+      new Timeless.vm.SelectItemCore({ label: "公众号", value: "wxmp" }),
+      new Timeless.vm.SelectItemCore({ label: "抖音", value: "douyin" }),
+      new Timeless.vm.SelectItemCore({ label: "Bilibili", value: "bilibili" }),
+      new Timeless.vm.SelectItemCore({ label: "小红书", value: "xiaohongshu" }),
+      new Timeless.vm.SelectItemCore({ label: "YouTube", value: "youtube" }),
+      new Timeless.vm.SelectItemCore({ label: "知乎", value: "zhihu" }),
+      new Timeless.vm.SelectItemCore({ label: "豆瓣", value: "douban" }),
+      new Timeless.vm.SelectItemCore({ label: "微博", value: "weibo" }),
     ];
-    const platform_select_ = new Timeless.ui.SelectCore({
+    const platform_select_ = new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部平台",
       options: platform_options,
@@ -314,7 +314,7 @@ var BrowseHistoryModel = (() => {
       },
     });
 
-    const list_request = new Timeless.RequestCore(
+    const list_request = new Timeless.kit.RequestCore(
       (params) =>
         browse_history_request.post("/api/browse_history/list", params),
       {

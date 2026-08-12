@@ -4,13 +4,13 @@
  */
 var HomePageModel = (() => {
   const home_api_origin = WXEnv.get("apiOrigin");
-  const home_http_client = new Timeless.HttpClientCore({
+  const home_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: home_api_origin,
   });
   Timeless.web.provide_http_client(home_http_client);
 
-  const home_request = Timeless.request_factory({
+  const home_request = Timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
       if (response.error) {
@@ -539,7 +539,7 @@ var HomePageModel = (() => {
     const cache_error_ = ref("");
     const chapter_display_limit_ = ref(100);
     const platform_statuses_ = ref([]);
-    const platform_status_popover_ = new Timeless.ui.PopoverCore({
+    const platform_status_popover_ = new Timeless.vm.PopoverCore({
       offsetY: 8,
       destroyOnClose: false,
     });
@@ -553,31 +553,31 @@ var HomePageModel = (() => {
     let platform_status_hide_timeout_id_ = 0;
     let disposed_ = false;
 
-    const fetch_request = new Timeless.RequestCore(
+    const fetch_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/scraper/fetch", body),
       {
         client: home_http_client,
       },
     );
-    const job_request = new Timeless.RequestCore(
+    const job_request = new Timeless.kit.RequestCore(
       (params) => home_request.get("/api/scraper/job", params),
       {
         client: home_http_client,
       },
     );
-    const download_request = new Timeless.RequestCore(
+    const download_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/v1/download_task/create", body),
       {
         client: home_http_client,
       },
     );
-    const interrupt_request = new Timeless.RequestCore(
+    const interrupt_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/scraper/fetch/interrupt", body),
       {
         client: home_http_client,
       },
     );
-    const cache_clear_request = new Timeless.RequestCore(
+    const cache_clear_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/scraper/cache/clear", body),
       {
         client: home_http_client,
