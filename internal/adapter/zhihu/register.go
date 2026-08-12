@@ -49,16 +49,17 @@ func (h *handler) RegisterRuntime(d *adapter.AdapterOptions) (adapter.RuntimeHan
 	if d == nil {
 		return nil, fmt.Errorf("zhihu runtime dependencies are nil")
 	}
-	h.set_runtime(d.Cookies, d.Logger)
+	h.set_runtime(d.Cookies, d.Logger, d.Bus)
 	if d.Logger != nil {
 		d.Logger.Info().Msg("zhihu adapter registering runtime")
 	}
 	handle, err := Register(d)
 	if err != nil {
-		h.set_runtime(nil, nil)
+		h.set_runtime(nil, nil, nil)
 		return nil, err
 	}
 	handle.runtime_handler = h
+	h.RefreshPlatformStatus()
 	return handle, nil
 }
 
@@ -71,7 +72,8 @@ func (h *Handle) Stop() {
 		h.routes.Stop()
 	}
 	if h.runtime_handler != nil {
-		h.runtime_handler.set_runtime(nil, nil)
+		h.runtime_handler.stop_status_check()
+		h.runtime_handler.set_runtime(nil, nil, nil)
 	}
 	h.routes = nil
 	h.runtime_handler = nil

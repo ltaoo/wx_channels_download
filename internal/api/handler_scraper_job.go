@@ -77,19 +77,6 @@ func scraper_fetch_request_from_http(ctx *gin.Context) (scraper_fetch_create_bod
 	return request, nil
 }
 
-// ensure_scraper_platform_available applies availability only to platforms
-// that explicitly publish runtime status. Ordinary HTTP-backed scrapers do not
-// need to register a status and remain fetchable by default.
-func (c *APIClient) ensure_scraper_platform_available(platform_id string) error {
-	c.platform_status_mu.RLock()
-	status, tracked := c.platform_statuses[platform_id]
-	c.platform_status_mu.RUnlock()
-	if tracked && !status.Available {
-		return fmt.Errorf("平台当前不可用，无法获取: %s", platform_id)
-	}
-	return nil
-}
-
 func (c *APIClient) handle_scraper_job(ctx *gin.Context) {
 	job_id := strings.TrimSpace(ctx.Query("id"))
 	if job_id == "" {

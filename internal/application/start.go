@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/pterm/pterm"
 	"github.com/ltaoo/velo"
+	"github.com/pterm/pterm"
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
@@ -168,6 +168,7 @@ func Start(cfg *config.Config) error {
 	// --- API service ---
 	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager)
 	api_srv.SubscribeEvents(bus)
+	publish_registered_adapter_statuses(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
@@ -331,4 +332,20 @@ func Start(cfg *config.Config) error {
 	<-ctx.Done()
 	cleanup()
 	return nil
+}
+
+func publish_registered_adapter_statuses(bus *events.Bus) {
+	if bus == nil {
+		return
+	}
+	for _, descriptor := range adapter.StatusDescriptors() {
+		bus.Publish(events.PlatformStatusChanged{
+			Platform:  descriptor.Platform,
+			Key:       descriptor.Key,
+			Name:      descriptor.Name,
+			Status:    "unavailable",
+			Available: false,
+			Reason:    "等待 adapter 状态上报",
+		})
+	}
 }

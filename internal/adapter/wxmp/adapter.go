@@ -9,16 +9,20 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/events"
 	"wx_channel/pkg/scraper/wxmp"
 )
 
 // OfficialAccountAdapter owns all wxmp platform and runtime capabilities.
 type OfficialAccountAdapter struct {
-	runtime_mu         sync.Mutex
-	runtime_registered bool
-	client             *wxmp.Client
-	routes             *Routes
-	interceptor_config *InterceptorPluginConfig
+	runtime_mu          sync.Mutex
+	runtime_registered  bool
+	client              *wxmp.Client
+	routes              *Routes
+	interceptor_config  *InterceptorPluginConfig
+	status_mu           sync.Mutex
+	status_bus          *events.Bus
+	cancel_status_check func()
 }
 
 var (
@@ -78,6 +82,9 @@ func (a *OfficialAccountAdapter) register(d *adapter.AdapterOptions) error {
 		a.client = wxmp.NewClient(nil, d.Logger)
 	}
 	a.runtime_mu.Unlock()
+	a.status_mu.Lock()
+	a.status_bus = d.Bus
+	a.status_mu.Unlock()
 
 	registered := false
 	defer func() {
@@ -87,6 +94,10 @@ func (a *OfficialAccountAdapter) register(d *adapter.AdapterOptions) error {
 		a.runtime_mu.Lock()
 		a.runtime_registered = false
 		a.runtime_mu.Unlock()
+		a.stop_status_check()
+		a.status_mu.Lock()
+		a.status_bus = nil
+		a.status_mu.Unlock()
 	}()
 
 	if d.StaticAssets != nil {
@@ -121,6 +132,7 @@ func (a *OfficialAccountAdapter) RegisterRuntime(d *adapter.AdapterOptions) (ada
 	if err := a.register(d); err != nil {
 		return nil, err
 	}
+	a.RefreshPlatformStatus()
 	return a, nil
 }
 
@@ -135,6 +147,10 @@ func (a *OfficialAccountAdapter) Stop() {
 	a.routes = nil
 	a.interceptor_config = nil
 	a.runtime_mu.Unlock()
+	a.stop_status_check()
+	a.status_mu.Lock()
+	a.status_bus = nil
+	a.status_mu.Unlock()
 	if routes != nil {
 		routes.Stop()
 	}

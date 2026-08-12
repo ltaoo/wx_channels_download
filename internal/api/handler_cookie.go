@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/cookies"
@@ -38,6 +39,7 @@ func (c *APIClient) handle_cookie_extract(ctx *gin.Context) {
 		Int("skipped", imported.Skipped).
 		Str("path", cookie_path).
 		Msg("Chrome cookies imported and saved")
+	c.refresh_adapter_platform_statuses()
 
 	result.Ok(ctx, gin.H{
 		"count":   len(imported.Cookies),
@@ -78,7 +80,8 @@ func (c *APIClient) handle_cookie_update(ctx *gin.Context) {
 		Int("local_storage_domains", update_result.LocalStorageDomains).
 		Str("crypto_type", update_result.CryptoType).
 		Str("path", cookie_path).
-		Msg("CookieCloud cookies updated and saved")
+		Msg("cookies updated and saved")
+	c.refresh_adapter_platform_statuses()
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"action": "done",
@@ -91,6 +94,17 @@ func (c *APIClient) handle_cookie_update(ctx *gin.Context) {
 			"path":                  cookie_path,
 		},
 	})
+}
+
+func (c *APIClient) refresh_adapter_platform_statuses() {
+	for _, platform_id := range adapter.IDs() {
+		handler := adapter.Get(platform_id)
+		refresher, ok := handler.(adapter.PlatformStatusRefresher)
+		if !ok {
+			continue
+		}
+		refresher.RefreshPlatformStatus()
+	}
 }
 
 func handle_cookie_cloud_service_error(c *APIClient, ctx *gin.Context, err error) {

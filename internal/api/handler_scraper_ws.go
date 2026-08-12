@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/events"
 	"wx_channel/internal/services"
 )
@@ -153,16 +154,43 @@ func (c *APIClient) handle_scraper_ws(ctx *gin.Context) {
 
 // add_scraper_ws_client queues platform snapshots before later live updates.
 func (c *APIClient) add_scraper_ws_client(client *scraper_ws_client) {
-	c.platform_status_mu.RLock()
 	scraper_ws_hub.add(client)
-	for _, status := range c.platform_statuses {
+	for _, status := range c.scraper_platform_status_snapshots() {
 		status_snapshot := status
 		client.enqueue(scraper_ws_message{
 			Type:           platform_status_ws_update,
 			PlatformStatus: &status_snapshot,
 		})
 	}
-	c.platform_status_mu.RUnlock()
+}
+
+func (c *APIClient) scraper_platform_status_snapshots() []events.PlatformStatusChanged {
+	descriptors := adapter.StatusDescriptors()
+	statuses := make([]events.PlatformStatusChanged, 0, len(descriptors))
+	c.platform_status_mu.RLock()
+	defer c.platform_status_mu.RUnlock()
+	for _, descriptor := range descriptors {
+		status, exists := c.platform_statuses[descriptor.Key]
+		if !exists {
+			status = events.PlatformStatusChanged{
+				Platform:  descriptor.Platform,
+				Key:       descriptor.Key,
+				Name:      descriptor.Name,
+				Status:    "unavailable",
+				Available: false,
+				Reason:    "等待 adapter 状态上报",
+			}
+		} else {
+			if status.Name == "" {
+				status.Name = descriptor.Name
+			}
+			if status.Key == "" {
+				status.Key = descriptor.Key
+			}
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses
 }
 
 func (c *scraper_ws_client) enqueue(payload scraper_ws_message) {

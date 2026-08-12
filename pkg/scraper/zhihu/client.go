@@ -61,7 +61,6 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 	return nil, fmt.Errorf("不支持的知乎URL: %s", raw_url)
 }
 
-
 func ParseAnswerURL(raw_url string) (AnswerURL, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw_url))
 	if err != nil {
@@ -144,6 +143,19 @@ func NewClient(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Client {
 	}
 	c.init_clawreq_client()
 	return c
+}
+
+// SetHTTPTimeout overrides the standard HTTP client timeout. It is primarily
+// used by lightweight availability checks so startup status cannot hang for the
+// longer content-fetch timeout.
+func (c *Client) SetHTTPTimeout(timeout time.Duration) {
+	if c == nil || timeout <= 0 {
+		return
+	}
+	if c.http_client == nil {
+		c.http_client = &http.Client{}
+	}
+	c.http_client.Timeout = timeout
 }
 
 func (c *Client) init_clawreq_client() {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -115,6 +116,27 @@ type FetchCacheAdapter interface {
 	ClearFetchCache(raw_url string) (bool, error)
 }
 
+// PlatformStatusRefresher is an optional runtime capability for adapters whose
+// availability depends on mutable local state such as cookies.
+type PlatformStatusRefresher interface {
+	RefreshPlatformStatus()
+}
+
+// PlatformStatusDescriptor describes one user-visible availability entry. Most
+// adapters expose one descriptor keyed by PlatformID; adapters with URL-specific
+// capabilities may expose several descriptors under the same platform.
+type PlatformStatusDescriptor struct {
+	Platform string
+	Key      string
+	Name     string
+}
+
+// PlatformStatusDescriber is implemented by adapters that expose one or more
+// status entries instead of a single platform-wide status.
+type PlatformStatusDescriber interface {
+	PlatformStatuses() []PlatformStatusDescriptor
+}
+
 // RouteRegistrar is the HTTP capability exposed by the host to adapters.
 type RouteRegistrar interface {
 	RegisterGET(path string, handler gin.HandlerFunc)
@@ -202,4 +224,46 @@ func IDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// StatusDescriptors returns all registered status entries in stable order.
+func StatusDescriptors() []PlatformStatusDescriptor {
+	handlersMu.RLock()
+	defer handlersMu.RUnlock()
+	descriptors := make([]PlatformStatusDescriptor, 0, len(handlers))
+	for platform_id, handler := range handlers {
+		if describer, ok := handler.(PlatformStatusDescriber); ok {
+			for _, descriptor := range describer.PlatformStatuses() {
+				descriptor = normalize_status_descriptor(platform_id, descriptor)
+				if descriptor.Key != "" {
+					descriptors = append(descriptors, descriptor)
+				}
+			}
+			continue
+		}
+		descriptors = append(descriptors, PlatformStatusDescriptor{
+			Platform: platform_id,
+			Key:      platform_id,
+		})
+	}
+	sort.Slice(descriptors, func(i, j int) bool {
+		if descriptors[i].Platform == descriptors[j].Platform {
+			return descriptors[i].Key < descriptors[j].Key
+		}
+		return descriptors[i].Platform < descriptors[j].Platform
+	})
+	return descriptors
+}
+
+func normalize_status_descriptor(platform_id string, descriptor PlatformStatusDescriptor) PlatformStatusDescriptor {
+	descriptor.Platform = strings.TrimSpace(descriptor.Platform)
+	if descriptor.Platform == "" {
+		descriptor.Platform = platform_id
+	}
+	descriptor.Key = strings.TrimSpace(descriptor.Key)
+	if descriptor.Key == "" {
+		descriptor.Key = descriptor.Platform
+	}
+	descriptor.Name = strings.TrimSpace(descriptor.Name)
+	return descriptor
 }

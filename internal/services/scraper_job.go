@@ -18,13 +18,11 @@ import (
 )
 
 const (
-	scraper_platform_wxchannels  = "wxchannels"
-	scraper_platform_wxmp        = "wxmp"
-	scraper_platform_douyin      = "douyin"
-	scraper_platform_bilibili    = "bilibili"
-	scraper_platform_zhihu       = "zhihu"
-	scraper_platform_69shuba     = "69shuba"
-	scraper_platform_fanqienovel = "fanqienovel"
+	scraper_platform_wxchannels = "wxchannels"
+	scraper_platform_wxmp       = "wxmp"
+	scraper_platform_douyin     = "douyin"
+	scraper_platform_bilibili   = "bilibili"
+	scraper_platform_zhihu      = "zhihu"
 )
 
 const (
@@ -108,7 +106,7 @@ type ScraperFetchRequest struct {
 type ScraperFetchRunner func(fetch_context context.Context, job *ScraperFetchJob) (*ScraperFetchOutput, error)
 
 // ScraperPlatformChecker rejects a fetch when a platform is known to be unavailable.
-type ScraperPlatformChecker func(platform_id string) error
+type ScraperPlatformChecker func(platform_id string, status_key string) error
 
 // ScraperJobEventHandler receives immutable job snapshots and ordered events.
 type ScraperJobEventHandler func(job *ScraperFetchJob, event *ScraperFetchJobEvent)
@@ -151,47 +149,65 @@ func (s *ScraperJobService) SetFetchRunner(fetch_runner ScraperFetchRunner) {
 	s.job_mu.Unlock()
 }
 
+type ScraperPlatformResolution struct {
+	Platform  string
+	StatusKey string
+}
+
 // DetectScraperPlatform maps a supported scraper URL to its adapter ID.
 func DetectScraperPlatform(raw_url string) (string, error) {
+	resolution, err := ResolveScraperPlatform(raw_url)
+	if err != nil {
+		return "", err
+	}
+	return resolution.Platform, nil
+}
+
+// ResolveScraperPlatform maps a supported scraper URL to its adapter ID and
+// the status entry that should gate that URL.
+func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 	raw_url = strings.TrimSpace(raw_url)
 	if raw_url == "" {
-		return "", fmt.Errorf("url 不能为空")
+		return ScraperPlatformResolution{}, fmt.Errorf("url 不能为空")
 	}
 
 	if _, err := douyin_scraper.ExtractURL(raw_url); err == nil {
-		return scraper_platform_douyin, nil
+		return scraper_platform_resolution(scraper_platform_douyin, ""), nil
 	}
 
 	if strings.HasPrefix(strings.ToLower(raw_url), "zhihu://") {
-		return scraper_platform_zhihu, nil
+		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
 	}
 
 	parsed_url, err := url.Parse(raw_url)
 	if err != nil || parsed_url.Hostname() == "" {
-		return "", fmt.Errorf("无法解析 URL: %s", raw_url)
+		return ScraperPlatformResolution{}, fmt.Errorf("无法解析 URL: %s", raw_url)
 	}
 
 	host := strings.ToLower(parsed_url.Hostname())
 	switch {
 	case host == "weixin.qq.com" && strings.HasPrefix(parsed_url.EscapedPath(), "/sph/"):
-		return scraper_platform_wxchannels, nil
+		return scraper_platform_resolution(scraper_platform_wxchannels, "wxchannels:sph"), nil
 	case host == "channels.weixin.qq.com":
-		return scraper_platform_wxchannels, nil
+		return scraper_platform_resolution(scraper_platform_wxchannels, "wxchannels:page"), nil
 	case host == "mp.weixin.qq.com":
-		return scraper_platform_wxmp, nil
+		return scraper_platform_resolution(scraper_platform_wxmp, ""), nil
 	case scraper_host_matches(host, "douyin.com") || scraper_host_matches(host, "iesdouyin.com"):
-		return scraper_platform_douyin, nil
+		return scraper_platform_resolution(scraper_platform_douyin, ""), nil
 	case scraper_host_matches(host, "bilibili.com") || host == "b23.tv" || host == "bili2233.cn":
-		return scraper_platform_bilibili, nil
+		return scraper_platform_resolution(scraper_platform_bilibili, ""), nil
 	case host == "www.zhihu.com" || host == "zhuanlan.zhihu.com":
-		return scraper_platform_zhihu, nil
-	case scraper_host_matches(host, "fanqienovel.com"):
-		return scraper_platform_fanqienovel, nil
-	case strings.Contains(host, "69shuba"):
-		return scraper_platform_69shuba, nil
+		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
 	default:
-		return "", fmt.Errorf("暂不支持该 URL: %s", raw_url)
+		return ScraperPlatformResolution{}, fmt.Errorf("暂不支持该 URL: %s", raw_url)
 	}
+}
+
+func scraper_platform_resolution(platform_id string, status_key string) ScraperPlatformResolution {
+	if strings.TrimSpace(status_key) == "" {
+		status_key = platform_id
+	}
+	return ScraperPlatformResolution{Platform: platform_id, StatusKey: status_key}
 }
 
 func scraper_host_matches(host, domain string) bool {
@@ -201,7 +217,7 @@ func scraper_host_matches(host, domain string) bool {
 // Create starts an asynchronous scraper fetch job.
 func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJob, error) {
 	raw_url := strings.TrimSpace(request.URL)
-	platform_id, err := DetectScraperPlatform(raw_url)
+	resolution, err := ResolveScraperPlatform(raw_url)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -210,6 +226,7 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 			Msg("scraper fetch: platform detection failed")
 		return nil, err
 	}
+	platform_id := resolution.Platform
 	s.job_mu.RLock()
 	has_custom_runner := s.fetch_runner != nil
 	s.job_mu.RUnlock()
@@ -221,10 +238,11 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 		return nil, fmt.Errorf("未注册的平台 adapter: %s", platform_id)
 	}
 	if s.platform_checker != nil {
-		if err := s.platform_checker(platform_id); err != nil {
+		if err := s.platform_checker(platform_id, resolution.StatusKey); err != nil {
 			s.logger.Warn().
 				Err(err).
 				Str("platform", platform_id).
+				Str("status_key", resolution.StatusKey).
 				Str("source_url", raw_url).
 				Msg("scraper fetch: platform is unavailable")
 			return nil, err

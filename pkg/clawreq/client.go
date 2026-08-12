@@ -311,6 +311,17 @@ func WithHeaders(headers map[string]string) RequestOption {
 	}
 }
 
+// WithOnlyHeaders replaces the default browser headers with exactly the
+// caller-provided headers.
+func WithOnlyHeaders(headers map[string]string) RequestOption {
+	return func(opts *requestOptions) {
+		opts.headers = http.Header{}
+		for name, value := range headers {
+			opts.headers.Set(name, value)
+		}
+	}
+}
+
 // WithCookie sets the Cookie header for a single request.
 func WithCookie(cookie string) RequestOption {
 	return func(opts *requestOptions) {

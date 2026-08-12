@@ -78,7 +78,6 @@ var HomePageModel = (() => {
     format: "格式",
     has_subtitle: "字幕",
     audio_track_count: "音轨数",
-    play_times: "播放次数",
     word_count: "字数",
     reading_time: "阅读时长",
     chapter_number: "章节序号",
@@ -90,7 +89,6 @@ var HomePageModel = (() => {
     image_count: "图片数",
     cover_width: "封面宽度",
     cover_height: "封面高度",
-    viewer_count: "观看人数",
   };
 
   function first_non_empty(...values) {
@@ -210,7 +208,53 @@ var HomePageModel = (() => {
       "html",
       "markdown",
       "images",
+      "cover_url",
+      "CoverURL",
+      "coverUrl",
+      "poster_url",
+      "PosterURL",
+      "posterUrl",
+      "thumb_url",
+      "ThumbURL",
+      "thumbUrl",
+      "thumbnail_url",
+      "ThumbnailURL",
+      "thumbnailUrl",
+      "video_url",
+      "VideoURL",
+      "videoUrl",
+      "origin_video_url",
+      "OriginVideoURL",
+      "originVideoUrl",
+      "play_url",
+      "PlayURL",
+      "playUrl",
+      "media_url",
+      "MediaURL",
+      "mediaUrl",
+      "download_url",
+      "DownloadURL",
+      "downloadUrl",
       "deleted_at",
+      "view_count",
+      "ViewCount",
+      "views",
+      "like_count",
+      "LikeCount",
+      "likes",
+      "comment_count",
+      "CommentCount",
+      "comments",
+      "follower_count",
+      "FollowerCount",
+      "followers",
+      "fans_count",
+      "FansCount",
+      "play_count",
+      "play_times",
+      "share_count",
+      "favorite_count",
+      "collect_count",
     ]);
     const fields = [];
     for (const [key, value] of Object.entries(data || {})) {
@@ -245,7 +289,59 @@ var HomePageModel = (() => {
     return fields;
   }
 
-  function normalize_typed_content_detail(detail, detail_index) {
+  function normalize_video_detail_media(data, content) {
+    const video_url = String(
+      first_non_empty(
+        data.video_url,
+        data.VideoURL,
+        data.videoUrl,
+        data.origin_video_url,
+        data.OriginVideoURL,
+        data.originVideoUrl,
+        data.play_url,
+        data.PlayURL,
+        data.playUrl,
+        data.media_url,
+        data.MediaURL,
+        data.mediaUrl,
+        data.download_url,
+        data.DownloadURL,
+        data.downloadUrl,
+        data.url,
+        data.URL,
+        data.stream_url,
+        data.StreamURL,
+        data.streamUrl,
+      ),
+    ).trim();
+    const cover_url = String(
+      first_non_empty(
+        data.cover_url,
+        data.CoverURL,
+        data.coverUrl,
+        data.poster_url,
+        data.PosterURL,
+        data.posterUrl,
+        data.thumb_url,
+        data.ThumbURL,
+        data.thumbUrl,
+        data.thumbnail_url,
+        data.ThumbnailURL,
+        data.thumbnailUrl,
+        data.cover,
+        content && content.cover_url,
+      ),
+    ).trim();
+    return {
+      present: Boolean(video_url || cover_url),
+      video_url,
+      cover_url,
+      has_video: Boolean(video_url),
+      has_cover: Boolean(cover_url),
+    };
+  }
+
+  function normalize_typed_content_detail(detail, detail_index, content) {
     const type = String((detail && detail.type) || "").trim().toLowerCase();
     const data =
       detail && detail.data && typeof detail.data === "object"
@@ -261,9 +357,17 @@ var HomePageModel = (() => {
     let title = `${content_type_name(type)}详情`;
     let preview = "";
     let images = [];
+    let media = {
+      present: false,
+      video_url: "",
+      cover_url: "",
+      has_video: false,
+      has_cover: false,
+    };
     if (["video", "short_video"].includes(type)) {
       kind = "video";
       icon = "file-play";
+      media = normalize_video_detail_media(data, content);
     } else if (article_types.includes(type)) {
       kind = "article";
       icon = "file-text";
@@ -274,14 +378,27 @@ var HomePageModel = (() => {
       kind = "album";
       icon = "file-image";
       images = (Array.isArray(data.images) ? data.images : [])
-        .map((image, image_index) => ({
-          key: String(image.id || image.url || image_index),
-          url: String(image.url || "").trim(),
-          meta:
-            [image.width, image.height].filter(Boolean).join(" × ") ||
-            image.ext ||
-            "图片",
-        }))
+        .map((image, image_index) => {
+          const live_photo =
+            image.live_photo ||
+            image.live_info ||
+            image.livePhoto ||
+            image.liveInfo;
+          const is_live_photo = Boolean(
+            image.image_type === "live_photo" ||
+              (live_photo && typeof live_photo === "object"),
+          );
+          return {
+            key: String(image.id || image.url || image_index),
+            url: String(image.url || "").trim(),
+            meta:
+              [image.width, image.height].filter(Boolean).join(" × ") ||
+              image.ext ||
+              "图片",
+            is_live_photo,
+            live_photo_label: is_live_photo ? "实况" : "",
+          };
+        })
         .filter((image) => image.url)
         .slice(0, 12);
     } else if (type === "live") {
@@ -299,6 +416,7 @@ var HomePageModel = (() => {
       fields: normalize_generic_detail_fields(data),
       preview,
       images,
+      media,
       link_url: String(first_non_empty(data.url, data.stream_url)).trim(),
     };
   }
@@ -312,6 +430,7 @@ var HomePageModel = (() => {
     const volumes = [];
     const chapters = [];
     const items = [];
+    const content = normalize_content(result || {});
     for (let detail_index = 0; detail_index < details.length; detail_index += 1) {
       const detail = details[detail_index] || {};
       const type = String(detail.type || "").trim().toLowerCase();
@@ -348,13 +467,12 @@ var HomePageModel = (() => {
         });
         continue;
       }
-      items.push(normalize_typed_content_detail(detail, detail_index));
+      items.push(normalize_typed_content_detail(detail, detail_index, content));
     }
 
     volumes.sort((left, right) => left.idx - right.idx);
     chapters.sort((left, right) => left.idx - right.idx);
     const novel_present = Boolean(novel_data || volumes.length || chapters.length);
-    const content = normalize_content(result || {});
     const chapter_total = Math.max(
       chapters.length,
       number_or_default(novel_data && novel_data.chapter_count, 0),
@@ -429,18 +547,6 @@ var HomePageModel = (() => {
     const description = String(
       first_non_empty(source.description, source.Description),
     ).trim();
-    const view_count = number_or_default(
-      first_non_empty(source.view_count, source.ViewCount),
-      0,
-    );
-    const like_count = number_or_default(
-      first_non_empty(source.like_count, source.LikeCount),
-      0,
-    );
-    const comment_count = number_or_default(
-      first_non_empty(source.comment_count, source.CommentCount),
-      0,
-    );
     return {
       present: Boolean(result && result.content),
       id: first_non_empty(source.id, source.ID),
@@ -464,9 +570,6 @@ var HomePageModel = (() => {
       publish_time_text: format_time(
         first_non_empty(source.publish_time, source.PublishTime),
       ),
-      view_count_text: format_count(view_count),
-      like_count_text: format_count(like_count),
-      comment_count_text: format_count(comment_count),
     };
   }
 
@@ -495,11 +598,6 @@ var HomePageModel = (() => {
       source.ExternalID,
     );
     const identity = alias && alias !== nickname ? alias : external_id;
-    const follower_count = number_or_default(
-      first_non_empty(source.follower_count, source.FollowerCount),
-      0,
-    );
-
     return {
       present: Boolean(result && result.account),
       nickname,
@@ -518,7 +616,6 @@ var HomePageModel = (() => {
         source.profileUrl,
       ),
       platform_name: platform_name(platform_id),
-      follower_count_text: `${format_count(follower_count)} 粉丝`,
       avatar_fallback: String(nickname).slice(0, 1),
     };
   }
@@ -600,20 +697,46 @@ var HomePageModel = (() => {
     const platform_status_items_ = computed(platform_statuses_, (statuses) =>
       (Array.isArray(statuses) ? statuses : [])
         .slice()
-        .sort((left, right) => left.platform.localeCompare(right.platform))
-        .map((status) => ({
-          key: status.platform,
-          render_key: `${status.platform}:${
-            status.available ? "available" : "unavailable"
-          }`,
-          platform: status.platform,
-          platform_name: platform_name(status.platform),
-          available: status.available,
-          status_text: status.available ? "可用" : "不可用",
-          status_class: status.available
-            ? "wx-home-platform-status-item is-available"
-            : "wx-home-platform-status-item is-unavailable",
-        })),
+        .sort((left, right) => {
+          const platform_compare = String(left.platform || "").localeCompare(
+            String(right.platform || ""),
+          );
+          if (platform_compare !== 0) {
+            return platform_compare;
+          }
+          return String(left.key || left.platform || "").localeCompare(
+            String(right.key || right.platform || ""),
+          );
+        })
+        .map((status) => {
+          const status_key = String(status.key || status.platform || "").trim();
+          const reason =
+            !status.available && status.status !== "checking"
+              ? status.reason
+              : "";
+          return {
+            key: status_key,
+            render_key: `${status_key}:${status.status}:${reason || ""}`,
+            platform_name:
+              String(status.name || "").trim() || platform_name(status.platform),
+            available: status.available,
+            status: status.status,
+            reason,
+            has_reason: Boolean(reason),
+            status_text:
+              status.status === "checking"
+                ? "检测中"
+                : status.available
+                  ? "可用"
+                  : "不可用",
+            status_class:
+              status.status === "checking"
+                ? "wx-home-platform-status-item is-checking"
+                : status.available
+                  ? "wx-home-platform-status-item is-available"
+                  : "wx-home-platform-status-item is-unavailable",
+          };
+        }),
     );
     const platform_status_has_items_ = computed(
       platform_statuses_,
@@ -639,9 +762,17 @@ var HomePageModel = (() => {
         if (items.length === 0) {
           return "wx-home-platform-status-trigger is-pending";
         }
-        return items.every((status) => status.available)
-          ? "wx-home-platform-status-trigger is-available"
-          : "wx-home-platform-status-trigger is-unavailable";
+        if (
+          items.some(
+            (status) => !status.available && status.status !== "checking",
+          )
+        ) {
+          return "wx-home-platform-status-trigger is-unavailable";
+        }
+        if (items.some((status) => status.status === "checking")) {
+          return "wx-home-platform-status-trigger is-checking";
+        }
+        return "wx-home-platform-status-trigger is-available";
       },
     );
     const status_text_ = combine(
@@ -798,18 +929,6 @@ var HomePageModel = (() => {
         normalized_content_,
         (content) => content.publish_time_text,
       ),
-      view_count_text: computed(
-        normalized_content_,
-        (content) => content.view_count_text,
-      ),
-      like_count_text: computed(
-        normalized_content_,
-        (content) => content.like_count_text,
-      ),
-      comment_count_text: computed(
-        normalized_content_,
-        (content) => content.comment_count_text,
-      ),
     };
     const account_ = {
       present: computed(normalized_account_, (account) => account.present),
@@ -827,10 +946,6 @@ var HomePageModel = (() => {
       platform_name: computed(
         normalized_account_,
         (account) => account.platform_name,
-      ),
-      follower_count_text: computed(
-        normalized_account_,
-        (account) => account.follower_count_text,
       ),
       avatar_fallback: computed(
         normalized_account_,
@@ -987,15 +1102,31 @@ var HomePageModel = (() => {
       if (!platform_id) {
         return;
       }
+      const status_key = String(status.key || platform_id).trim();
       const next_statuses = Array.isArray(platform_statuses_.value)
         ? [...platform_statuses_.value]
         : [];
       const status_index = next_statuses.findIndex(
-        (item) => item.platform === platform_id,
+        (item) => String(item.key || item.platform || "").trim() === status_key,
       );
+      const raw_status = String(status.status || "").trim().toLowerCase();
+      const normalized_status =
+        raw_status === "checking" ||
+        raw_status === "available" ||
+        raw_status === "unavailable"
+          ? raw_status
+          : status.available === true
+            ? "available"
+            : "unavailable";
       const next_status = {
+        key: status_key,
         platform: platform_id,
-        available: status.available === true,
+        name: String(status.name || "").trim(),
+        available: normalized_status === "available",
+        status: normalized_status,
+        reason: String(status.reason || status.message || status.error || "")
+          .trim()
+          .replace(/\s+/g, " "),
       };
       if (status_index >= 0) {
         next_statuses[status_index] = next_status;

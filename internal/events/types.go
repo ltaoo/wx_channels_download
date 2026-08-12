@@ -96,11 +96,15 @@ type ScraperFetchProgress struct {
 
 func (e ScraperFetchProgress) Type() string { return TypeScraperFetchProgress }
 
-// PlatformStatusChanged reports whether a platform scraper currently has the
-// long-lived connection it needs to serve requests.
+// PlatformStatusChanged reports whether a platform scraper is currently
+// fetchable and, when it is not, why users cannot use it.
 type PlatformStatusChanged struct {
 	Platform  string `json:"platform"`
+	Key       string `json:"key,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Status    string `json:"status,omitempty"`
 	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func (e PlatformStatusChanged) Type() string { return TypePlatformStatusChanged }

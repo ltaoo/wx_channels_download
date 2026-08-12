@@ -108,6 +108,13 @@ func (c *Client) resolve_sph_cookie() (string, error) {
 	return "", fmt.Errorf("read yuanbao.tencent.com cookie: %w", err)
 }
 
+// CheckSphCookie verifies that a persistent yuanbao.tencent.com cookie is
+// available for SPH share-link parsing.
+func (c *Client) CheckSphCookie() error {
+	_, err := c.resolve_sph_cookie()
+	return err
+}
+
 func (c *Client) fetch_profile_with_channels_client(raw_url string) (any, error) {
 	return c.FetchFeedPage(raw_url)
 }

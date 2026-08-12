@@ -12,6 +12,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
 	"wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
 )
@@ -56,6 +57,13 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 		adapter_options.Logger.Info().
 			Str("component", "bilibili_adapter").
 			Msg("bilibili adapter runtime registered")
+	}
+	if adapter_options.Bus != nil {
+		adapter_options.Bus.Publish(events.PlatformStatusChanged{
+			Platform:  PlatformID,
+			Status:    "available",
+			Available: true,
+		})
 	}
 	return h, nil
 }

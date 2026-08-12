@@ -13,6 +13,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
 	"wx_channel/pkg/scraper/douyin"
 )
 
@@ -56,6 +57,13 @@ func (h *handler) RegisterRuntime(deps *adapter.AdapterOptions) (adapter.Runtime
 		deps.Logger.Info().
 			Str("component", "douyin_adapter").
 			Msg("douyin adapter runtime registered")
+	}
+	if deps.Bus != nil {
+		deps.Bus.Publish(events.PlatformStatusChanged{
+			Platform:  PlatformID,
+			Status:    "available",
+			Available: true,
+		})
 	}
 	return h, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
@@ -22,9 +23,12 @@ func init() {
 }
 
 type handler struct {
-	runtime_mu    sync.RWMutex
-	cookie_reader *cookies.Reader
-	logger        *zerolog.Logger
+	runtime_mu          sync.RWMutex
+	cookie_reader       *cookies.Reader
+	logger              *zerolog.Logger
+	status_mu           sync.Mutex
+	status_bus          *events.Bus
+	cancel_status_check func()
 }
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -41,11 +45,15 @@ func (h *handler) Fetch(raw_url string) (any, error) {
 	return h.scraper_client().Fetch(raw_url)
 }
 
-func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Logger) {
+func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Logger, bus *events.Bus) {
 	h.runtime_mu.Lock()
 	h.cookie_reader = cookie_reader
 	h.logger = logger
 	h.runtime_mu.Unlock()
+
+	h.status_mu.Lock()
+	h.status_bus = bus
+	h.status_mu.Unlock()
 }
 
 func (h *handler) scraper_client() *zhihu.Client {

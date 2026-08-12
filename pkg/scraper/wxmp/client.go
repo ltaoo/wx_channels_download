@@ -1,6 +1,8 @@
 package wxmp
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +18,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"wx_channel/pkg/clawreq"
 )
 
 // Client fetches pages and API responses from WeChat.
@@ -30,24 +34,11 @@ func NewClient(_ *OfficialAccountConfig, parent_logger *zerolog.Logger) *Client 
 }
 
 func (c *Client) Fetch(target_url string, referer string) (*http.Response, error) {
-	http_client := &http.Client{Timeout: 15 * time.Second}
-	request, err := http.NewRequest(http.MethodGet, target_url, nil)
+	response, err := c.fetch_with_clawreq(target_url, 15*time.Second, windows_wechat_clawreq_headers(referer))
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("content-type", "application/json")
-	request.Header.Set("accept-language", "en-US,en;q=0.9")
-	request.Header.Set("priority", "u=1, i")
-	request.Header.Set("referer", referer)
-	request.Header.Set("sec-fetch-dest", "empty")
-	request.Header.Set("sec-fetch-mode", "cors")
-	request.Header.Set("sec-fetch-site", "same-origin")
-	request.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf2541022) XWEB/16467 Flue")
-	response, err := http_client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return http_response_from_clawreq(response), nil
 }
 
 func (c *Client) FetchArticle(raw_url string) (*WechatOfficialArticle, error) {
@@ -83,29 +74,68 @@ func (c *Client) Scrape(raw_url string) ([]byte, error) {
 	if raw_url == "" {
 		return nil, fmt.Errorf("url is empty")
 	}
-	http_client := &http.Client{Timeout: 25 * time.Second}
-	request, err := http.NewRequest(http.MethodGet, raw_url, nil)
+	response, err := c.fetch_with_clawreq(raw_url, 25*time.Second, windows_wechat_clawreq_headers(""))
 	if err != nil {
 		return nil, err
 	}
-	set_wechat_headers(request, "")
-	response, err := http_client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-		return nil, fmt.Errorf("bad status: %s body=%s", response.Status, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("bad status: %s body=%s", response.Status, strings.TrimSpace(string(debug_body_snippet(response.Body))))
 	}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	if is_verification_page(string(body)) {
+	if is_verification_page(string(response.Body)) {
 		return nil, fmt.Errorf("wechat verification page returned for %s", raw_url)
 	}
-	return body, nil
+	return response.Body, nil
+}
+
+func (c *Client) fetch_with_clawreq(raw_url string, timeout time.Duration, headers map[string]string) (*clawreq.Response, error) {
+	client, err := clawreq.New(clawreq.Config{
+		Profile:         clawreq.ProfileChrome,
+		Timeout:         timeout,
+		FollowRedirects: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize wxmp clawreq client: %w", err)
+	}
+	opts := []clawreq.RequestOption{
+		clawreq.WithOnlyHeaders(headers),
+	}
+	return client.Do(context.Background(), http.MethodGet, raw_url, nil, opts...)
+}
+
+func http_response_from_clawreq(response *clawreq.Response) *http.Response {
+	if response == nil {
+		return &http.Response{
+			StatusCode: 0,
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+			Header:     http.Header{},
+		}
+	}
+	return &http.Response{
+		StatusCode: response.StatusCode,
+		Status:     response.Status,
+		Header:     response.Header.Clone(),
+		Body:       io.NopCloser(bytes.NewReader(response.Body)),
+	}
+}
+
+func windows_wechat_clawreq_headers(referer string) map[string]string {
+	return map[string]string{
+		"Content-Type":    "application/json",
+		"Accept-Language": "en-US,en;q=0.9",
+		"Priority":        "u=1, i",
+		"Referer":         referer,
+		"Sec-Fetch-Dest":  "empty",
+		"Sec-Fetch-Mode":  "cors",
+		"Sec-Fetch-Site":  "same-origin",
+		"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf2541022) XWEB/16467 Flue",
+	}
+}
+
+func debug_body_snippet(body []byte) []byte {
+	if len(body) <= 2048 {
+		return body
+	}
+	return body[:2048]
 }
 
 func new_wechat_official_article(data *CgiDataNew, publish_time_text string) *WechatOfficialArticle {

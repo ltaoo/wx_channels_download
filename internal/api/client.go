@@ -88,7 +88,7 @@ func NewAPIClient(
 		downloader:             downloader,
 	}
 	api_client.scraper_job_service = services.NewScraperJobService(
-		api_client.ensure_scraper_platform_available,
+		nil,
 		scraper_ws_hub.broadcast_job_event,
 		&logger,
 	)
@@ -192,24 +192,60 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 	})
 	bus.Subscribe(events.TypePlatformStatusChanged, func(e events.Event) {
 		status, ok := e.(events.PlatformStatusChanged)
-		if !ok || strings.TrimSpace(status.Platform) == "" {
+		if !ok {
 			return
 		}
-		status.Platform = strings.TrimSpace(status.Platform)
+		var valid bool
+		status, valid = normalize_platform_status(status)
+		if !valid {
+			return
+		}
 
 		c.platform_status_mu.Lock()
 		if c.platform_statuses == nil {
 			c.platform_statuses = make(map[string]events.PlatformStatusChanged)
 		}
-		previous_status, exists := c.platform_statuses[status.Platform]
-		if exists && previous_status.Available == status.Available {
+		previous_status, exists := c.platform_statuses[status.Key]
+		if exists &&
+			previous_status.Available == status.Available &&
+			previous_status.Status == status.Status &&
+			previous_status.Name == status.Name &&
+			previous_status.Reason == status.Reason {
 			c.platform_status_mu.Unlock()
 			return
 		}
-		c.platform_statuses[status.Platform] = status
+		c.platform_statuses[status.Key] = status
 		c.platform_status_mu.Unlock()
 		scraper_ws_hub.broadcast_platform_status(&status)
 	})
+}
+
+func normalize_platform_status(status events.PlatformStatusChanged) (events.PlatformStatusChanged, bool) {
+	status.Platform = strings.TrimSpace(status.Platform)
+	status.Key = strings.TrimSpace(status.Key)
+	status.Name = strings.TrimSpace(status.Name)
+	status.Status = strings.TrimSpace(status.Status)
+	status.Reason = strings.TrimSpace(status.Reason)
+	if status.Platform == "" {
+		return status, false
+	}
+	if status.Key == "" {
+		status.Key = status.Platform
+	}
+	if status.Status == "" {
+		if status.Available {
+			status.Status = "available"
+		} else {
+			status.Status = "unavailable"
+		}
+	}
+	switch status.Status {
+	case "available":
+		status.Available = true
+	case "checking", "unavailable":
+		status.Available = false
+	}
+	return status, true
 }
 
 type APIClientWSMessage struct {

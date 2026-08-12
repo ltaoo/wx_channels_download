@@ -24,13 +24,21 @@ type ChannelsAdapter struct {
 	interceptor_config *InterceptorPluginConfig
 	hooks              *hermes.HookManager
 	logger             *zerolog.Logger
+	status_bus         *events.Bus
 }
 
 var (
-	_ adapter.PlatformAdapter = (*ChannelsAdapter)(nil)
-	_ adapter.RuntimeAdapter  = (*ChannelsAdapter)(nil)
-	_ adapter.RuntimeHandle   = (*ChannelsAdapter)(nil)
-	_ adapter.Postprocessor   = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformAdapter         = (*ChannelsAdapter)(nil)
+	_ adapter.RuntimeAdapter          = (*ChannelsAdapter)(nil)
+	_ adapter.RuntimeHandle           = (*ChannelsAdapter)(nil)
+	_ adapter.Postprocessor           = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformStatusDescriber = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformStatusRefresher = (*ChannelsAdapter)(nil)
+)
+
+const (
+	wxchannels_status_key_page = PlatformID + ":page"
+	wxchannels_status_key_sph  = PlatformID + ":sph"
 )
 
 func init() {
@@ -42,6 +50,13 @@ func NewChannelsAdapter() *ChannelsAdapter {
 }
 
 func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
+
+func (a *ChannelsAdapter) PlatformStatuses() []adapter.PlatformStatusDescriptor {
+	return []adapter.PlatformStatusDescriptor{
+		{Platform: PlatformID, Key: wxchannels_status_key_page, Name: "视频号页面"},
+		{Platform: PlatformID, Key: wxchannels_status_key_sph, Name: "视频号分享链接"},
+	}
+}
 
 func (a *ChannelsAdapter) Fetch(raw_url string) (any, error) {
 	if a == nil {
@@ -135,6 +150,7 @@ func (a *ChannelsAdapter) register(d *adapter.AdapterOptions) error {
 	a.hooks = d.Hooks
 	a.logger = d.Logger
 	a.config = d.Config
+	a.status_bus = d.Bus
 	a.runtime_mu.Unlock()
 	registered = true
 	return nil
@@ -144,19 +160,74 @@ func bind_platform_status_events(routes *WebsocketRoutes, bus *events.Bus) {
 	if routes == nil || routes.client == nil || bus == nil {
 		return
 	}
-	publish_status := func() {
-		bus.Publish(events.PlatformStatusChanged{
-			Platform:  PlatformID,
-			Available: routes.client.Available(),
-		})
-	}
 	routes.client.OnConnected = func(_ *wxchannels.WebsocketClient) {
-		publish_status()
+		publish_wxchannels_platform_statuses(routes, bus)
 	}
 	routes.client.OnDisconnected = func(_ *wxchannels.WebsocketClient) {
-		publish_status()
+		publish_wxchannels_platform_statuses(routes, bus)
 	}
-	publish_status()
+	publish_wxchannels_platform_statuses(routes, bus)
+}
+
+func publish_wxchannels_platform_statuses(routes *WebsocketRoutes, bus *events.Bus) {
+	publish_wxchannels_page_status(routes, bus)
+	publish_wxchannels_sph_status(routes, bus)
+}
+
+func publish_wxchannels_page_status(routes *WebsocketRoutes, bus *events.Bus) {
+	if routes == nil || routes.client == nil || bus == nil {
+		return
+	}
+	available := routes.client.Available()
+	reason := ""
+	if !available {
+		reason = "等待视频号页面连接"
+	}
+	bus.Publish(events.PlatformStatusChanged{
+		Platform:  PlatformID,
+		Key:       wxchannels_status_key_page,
+		Name:      "视频号页面",
+		Status:    platform_status_name(available),
+		Available: available,
+		Reason:    reason,
+	})
+}
+
+func publish_wxchannels_sph_status(routes *WebsocketRoutes, bus *events.Bus) {
+	if routes == nil || routes.client == nil || bus == nil {
+		return
+	}
+	err := routes.client.CheckSphCookie()
+	available := err == nil
+	bus.Publish(events.PlatformStatusChanged{
+		Platform:  PlatformID,
+		Key:       wxchannels_status_key_sph,
+		Name:      "视频号分享链接",
+		Status:    platform_status_name(available),
+		Available: available,
+		Reason:    wxchannels_sph_status_reason(err),
+	})
+}
+
+func wxchannels_sph_status_reason(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := strings.TrimSpace(err.Error())
+	if strings.Contains(text, "no yuanbao.tencent.com cookie") {
+		return "缺少 yuanbao.tencent.com Cookie"
+	}
+	if text == "" {
+		return "无法读取 yuanbao.tencent.com Cookie"
+	}
+	return "读取 yuanbao.tencent.com Cookie 失败：" + text
+}
+
+func platform_status_name(available bool) string {
+	if available {
+		return "available"
+	}
+	return "unavailable"
 }
 
 // RegisterRuntime exposes the complete adapter through the shared registry
@@ -166,6 +237,17 @@ func (a *ChannelsAdapter) RegisterRuntime(d *adapter.AdapterOptions) (adapter.Ru
 		return nil, err
 	}
 	return a, nil
+}
+
+func (a *ChannelsAdapter) RefreshPlatformStatus() {
+	if a == nil {
+		return
+	}
+	a.runtime_mu.Lock()
+	routes := a.routes
+	bus := a.status_bus
+	a.runtime_mu.Unlock()
+	publish_wxchannels_platform_statuses(routes, bus)
 }
 
 // Stop shuts down the adapter's routes.
@@ -181,6 +263,7 @@ func (a *ChannelsAdapter) Stop() {
 	a.hooks = nil
 	a.logger = nil
 	a.config = nil
+	a.status_bus = nil
 	a.runtime_mu.Unlock()
 	if routes != nil {
 		routes.Stop()

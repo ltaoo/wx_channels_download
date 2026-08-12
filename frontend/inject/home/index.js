@@ -204,9 +204,47 @@ function HomeContentCover(props) {
   ]);
 }
 
+function HomeDecodeHTMLText(value) {
+  const text = String(value === undefined || value === null ? "" : value);
+  if (text.indexOf("&") === -1) {
+    return text;
+  }
+  const entities = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    nbsp: " ",
+  };
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+    const key = String(entity || "").toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(entities, key)) {
+      return entities[key];
+    }
+    if (key.charAt(0) !== "#") {
+      return match;
+    }
+    const code_point =
+      key.charAt(1) === "x"
+        ? parseInt(key.slice(2), 16)
+        : parseInt(key.slice(1), 10);
+    if (!Number.isFinite(code_point)) {
+      return match;
+    }
+    try {
+      return String.fromCodePoint(code_point);
+    } catch (ignore) {
+      return match;
+    }
+  });
+}
+
 function HomeContentCard(props) {
   const vm$ = props.store;
   const content = vm$.state.content;
+  const account = vm$.state.account;
+  const description = computed(content.description, HomeDecodeHTMLText);
   return View({ class: "wx-home-card wx-home-content-card" }, [
     View({ class: "wx-home-card-heading" }, [
       View({ class: "wx-home-card-title-group" }, [
@@ -218,28 +256,47 @@ function HomeContentCard(props) {
           View({ class: "wx-home-card-title" }, ["内容"]),
         ]),
       ]),
-      Button(
-        {
-          class: "wx-content-action wx-home-download",
-          disabled: vm$.state.download_disabled,
-          attributes: {
-            type: "button",
-            title: "创建下载任务",
+      View({ class: "wx-home-card-actions" }, [
+        Button(
+          {
+            class: "wx-content-action wx-home-download",
+            disabled: vm$.state.download_disabled,
+            attributes: {
+              type: "button",
+              title: "创建下载任务",
+            },
+            onClick() {
+              vm$.methods.createDownloadTask();
+            },
           },
-          onClick() {
-            vm$.methods.createDownloadTask();
+          [
+            Timeless.Icon({ name: "download", size: 16 }),
+            View({ class: "wx-content-action-label" }, [
+              vm$.state.download_button_text,
+            ]),
+          ],
+        ),
+        Show({
+          when: content.content_url,
+          ok() {
+            return Button(
+              {
+                class: "wx-content-action wx-home-open-content",
+                attributes: { type: "button", title: "打开原内容" },
+                onClick() {
+                  vm$.methods.openContent();
+                },
+              },
+              [
+                Timeless.Icon({ name: "external-link", size: 15 }),
+                View({ class: "wx-content-action-label" }, ["打开原内容"]),
+              ],
+            );
           },
-        },
-        [
-          Timeless.Icon({ name: "download", size: 16 }),
-          View({ class: "wx-content-action-label" }, [
-            vm$.state.download_button_text,
-          ]),
-        ],
-      ),
+        }),
+      ]),
     ]),
     View({ class: "wx-home-content-card-body" }, [
-      HomeContentCover({ content }),
       View({ class: "wx-home-content-info" }, [
         View({ class: "wx-home-badges" }, [
           View({ class: "wx-home-badge wx-home-badge-primary" }, [
@@ -258,50 +315,33 @@ function HomeContentCard(props) {
           when: content.show_description,
           ok() {
             return View({ class: "wx-home-content-description" }, [
-              content.description,
+              description,
             ]);
           },
         }),
+        HomeContentAccount({ account }),
         View({ class: "wx-home-content-meta" }, [
           Timeless.Icon({ name: "clock3", size: 14 }),
           content.publish_time_text,
         ]),
-        View({ class: "wx-home-metrics" }, [
-          HomeContentMetric({ label: "浏览", value: content.view_count_text }),
-          HomeContentMetric({ label: "点赞", value: content.like_count_text }),
-          HomeContentMetric({
-            label: "评论",
-            value: content.comment_count_text,
-          }),
-        ]),
-        Show({
-          when: content.content_url,
-          ok() {
-            return Button(
-              {
-                class: "wx-home-link-button",
-                attributes: { type: "button", title: "打开原内容" },
-                onClick() {
-                  vm$.methods.openContent();
-                },
-              },
-              [
-                "打开原内容",
-                Timeless.Icon({ name: "external-link", size: 14 }),
-              ],
-            );
-          },
-        }),
       ]),
     ]),
   ]);
 }
 
-function HomeContentMetric(props) {
-  return View({ class: "wx-home-metric" }, [
-    View({ class: "wx-home-metric-label" }, [props.label]),
-    View({ class: "wx-home-metric-value" }, [props.value]),
-  ]);
+function HomeContentAccount(props) {
+  const account = props.account;
+  return Show({
+    when: account.present,
+    ok() {
+      return View({ class: "wx-home-content-account" }, [
+        HomeAccountAvatar({ account }),
+        View({ class: "wx-home-content-account-main" }, [
+          View({ class: "wx-home-account-name" }, [account.nickname]),
+        ]),
+      ]);
+    },
+  });
 }
 
 function HomeAccountAvatar(props) {
@@ -330,87 +370,129 @@ function HomeAccountAvatar(props) {
   ]);
 }
 
-function HomeAccountCard(props) {
+function HomeDetailValue(value_) {
+  return value_ && value_.value !== undefined ? value_.value : value_;
+}
+
+function HomeVideoDetailMedia(props) {
   const vm$ = props.store;
-  const account = vm$.state.account;
-  return View({ class: "wx-home-card wx-home-account-card" }, [
-    View({ class: "wx-home-card-heading" }, [
-      View({ class: "wx-home-card-title-group" }, [
-        View({ class: "wx-home-card-icon" }, [
-          Timeless.Icon({ name: "user", size: 17 }),
-        ]),
-        View({}, [
-          View({ class: "wx-home-card-kicker" }, ["ACCOUNT"]),
-          View({ class: "wx-home-card-title" }, ["账号"]),
-        ]),
-      ]),
-      View({ class: "wx-home-badge wx-home-badge-primary" }, [
-        account.platform_name,
-      ]),
-    ]),
-    Show({
-      when: account.present,
-      ok() {
-        return View({ class: "wx-home-account-card-body" }, [
-          HomeAccountAvatar({ account }),
-          View({ class: "wx-home-account-name" }, [account.nickname]),
+  const detail = props.detail || {};
+  const media = detail.media || {};
+  return Show({
+    when: media.present,
+    ok() {
+      return View(
+        {
+          class: [
+            "wx-home-detail-video-frame",
+            media.has_video ? "has-video" : "",
+            media.has_cover ? "has-cover" : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        },
+        [
           Show({
-            when: account.identity,
+            when: media.has_video,
             ok() {
-              return View({ class: "wx-home-account-identity" }, [
-                account.identity,
-              ]);
+              return Timeless.Video(
+                {
+                  class: "wx-home-detail-video",
+                  attributes: {
+                    src: media.video_url,
+                    poster: media.cover_url,
+                    controls: "controls",
+                    preload: "metadata",
+                    playsinline: "playsinline",
+                    "webkit-playsinline": "webkit-playsinline",
+                    referrerpolicy: "no-referrer",
+                  },
+                  onPlay(event) {
+                    const root = event.currentTarget.closest(
+                      ".wx-home-detail-video-frame",
+                    );
+                    if (root) {
+                      root.classList.add("is-playing");
+                    }
+                  },
+                  onPause(event) {
+                    const root = event.currentTarget.closest(
+                      ".wx-home-detail-video-frame",
+                    );
+                    if (root) {
+                      root.classList.remove("is-playing");
+                    }
+                  },
+                  onEnded(event) {
+                    const root = event.currentTarget.closest(
+                      ".wx-home-detail-video-frame",
+                    );
+                    if (root) {
+                      root.classList.remove("is-playing");
+                    }
+                  },
+                },
+                ["当前浏览器不支持视频播放"],
+              );
+            },
+            else() {
+              return Img({
+                class: "wx-home-detail-video-cover",
+                src: media.cover_url,
+                alt: detail.title,
+                attributes: {
+                  loading: "lazy",
+                  referrerpolicy: "no-referrer",
+                },
+                onError(event) {
+                  event.target.style.display = "none";
+                },
+              });
             },
           }),
           Show({
-            when: account.signature,
-            ok() {
-              return View({ class: "wx-home-account-signature" }, [
-                account.signature,
-              ]);
-            },
-          }),
-          View({ class: "wx-home-account-follower" }, [
-            Timeless.Icon({ name: "users", size: 15 }),
-            account.follower_count_text,
-          ]),
-          Show({
-            when: account.profile_url,
+            when: Boolean(media.has_video || detail.link_url),
             ok() {
               return Button(
                 {
-                  class: "wx-home-link-button wx-home-account-link",
-                  attributes: { type: "button", title: "打开账号主页" },
-                  onClick() {
-                    vm$.methods.openAccount();
+                  class: "wx-home-detail-video-play",
+                  attributes: {
+                    type: "button",
+                    title: media.has_video ? "播放视频" : "打开视频地址",
+                    "aria-label": media.has_video ? "播放视频" : "打开视频地址",
+                  },
+                  onClick(event) {
+                    event.stopPropagation();
+                    const trigger = event.currentTarget || event.target;
+                    const root =
+                      trigger && typeof trigger.closest === "function"
+                        ? trigger.closest(".wx-home-detail-video-frame")
+                        : null;
+                    const video = root ? root.querySelector("video") : null;
+                    if (video && typeof video.play === "function") {
+                      video.controls = true;
+                      const play_result = video.play();
+                      if (
+                        play_result &&
+                        typeof play_result.catch === "function"
+                      ) {
+                        play_result.catch(() => {});
+                      }
+                      return;
+                    }
+                    if (detail.link_url) {
+                      vm$.methods.openDetailURL(detail.link_url);
+                    }
                   },
                 },
-                [
-                  "打开账号主页",
-                  Timeless.Icon({ name: "external-link", size: 14 }),
-                ],
+                [Timeless.Icon({ name: "play", size: 22 })],
               );
             },
           }),
-        ]);
-      },
-      else() {
-        return View({ class: "wx-home-account-empty" }, [
-          View({ class: "wx-home-account-empty-icon" }, [
-            Timeless.Icon({ name: "user-round-x", size: 26 }),
-          ]),
-          View({ class: "wx-home-account-name" }, [account.nickname]),
-          View({ class: "wx-home-account-signature" }, [
-            "当前解析结果没有关联账号信息",
-          ]),
-        ]);
-      },
-    }),
-  ]);
-}
-
-function HomeDetailValue(value_) {
-  return value_ && value_.value !== undefined ? value_.value : value_;
+        ],
+      );
+    },
+  });
 }
 
 function HomeNovelChapterItem(props) {
@@ -600,6 +682,7 @@ function HomeTypedContentDetail(props) {
         View({ class: "wx-home-detail-badge" }, [detail.type_name]),
       ]),
       View({ class: "wx-home-typed-detail-body" }, [
+        HomeVideoDetailMedia({ store: vm$, detail }),
         Show({
           when: detail.fields.length > 0,
           ok() {
@@ -651,6 +734,21 @@ function HomeTypedContentDetail(props) {
                       },
                       onError(event) {
                         event.target.style.display = "none";
+                      },
+                    }),
+                    Show({
+                      when: image.is_live_photo,
+                      ok() {
+                        return View(
+                          {
+                            class: "wx-home-detail-image-live-badge",
+                            attributes: { title: "实况图" },
+                          },
+                          [
+                            Timeless.Icon({ name: "play", size: 10 }),
+                            image.live_photo_label,
+                          ],
+                        );
                       },
                     }),
                     View({ class: "wx-home-detail-image-meta" }, [image.meta]),
@@ -801,10 +899,7 @@ function HomePageResult(props) {
     when: vm$.state.has_result,
     ok() {
       return View({ class: "wx-home-result" }, [
-        View({ class: "wx-home-card-grid" }, [
-          HomeContentCard({ store: vm$ }),
-          HomeAccountCard({ store: vm$ }),
-        ]),
+        HomeContentCard({ store: vm$ }),
         HomeContentDetails({ store: vm$ }),
         HomeRawJSON({ store: vm$ }),
         HomeResultActions({ store: vm$ }),
@@ -851,15 +946,26 @@ function HomePlatformStatus(props) {
                       return View({ class: item.status_class }, [
                         View({ class: "wx-home-platform-status-dot" }),
                         View({ class: "wx-home-platform-status-main" }, [
-                          View({ class: "wx-home-platform-status-name" }, [
-                            item.platform_name,
+                          View({ class: "wx-home-platform-status-head" }, [
+                            View({ class: "wx-home-platform-status-name" }, [
+                              item.platform_name,
+                            ]),
+                            View({ class: "wx-home-platform-status-value" }, [
+                              item.status_text,
+                            ]),
                           ]),
-                          View({ class: "wx-home-platform-status-id" }, [
-                            item.platform,
-                          ]),
-                        ]),
-                        View({ class: "wx-home-platform-status-value" }, [
-                          item.status_text,
+                          Show({
+                            when: item.has_reason,
+                            ok() {
+                              return View(
+                                {
+                                  class: "wx-home-platform-status-reason",
+                                  attributes: { title: item.reason },
+                                },
+                                [item.reason],
+                              );
+                            },
+                          }),
                         ]),
                       ]);
                     },
@@ -868,7 +974,7 @@ function HomePlatformStatus(props) {
               },
               else() {
                 return View({ class: "wx-home-platform-status-empty" }, [
-                  "等待平台状态推送",
+                  "正在连接 /ws/scraper",
                 ]);
               },
             }),
