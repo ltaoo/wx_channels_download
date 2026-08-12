@@ -14,7 +14,9 @@ const chrome_151_version = "151.0.7922.109"
 // X25519MLKEM768, new ALPS, ECH GREASE, randomized extensions, and Chrome's
 // HTTP/2 settings together.
 //
-//go:embed profiles/151.0.7922.109/profile.json
+// //go:embed profiles/151.0.7922.109/profile.json
+// var chrome_151_profile_json []byte
+
 var chrome_151_profile_json []byte
 
 type stored_browser_profile struct {

@@ -9,9 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	douyin_scraper "wx_channel/pkg/scraper/douyin"
 )
 
 const (
@@ -117,16 +120,27 @@ type ScraperJobService struct {
 	fetch_runner     ScraperFetchRunner
 	platform_checker ScraperPlatformChecker
 	event_handler    ScraperJobEventHandler
+	logger           zerolog.Logger
 }
 
 func NewScraperJobService(
 	platform_checker ScraperPlatformChecker,
 	event_handler ScraperJobEventHandler,
+	parent_loggers ...*zerolog.Logger,
 ) *ScraperJobService {
+	logger := zerolog.Nop()
+	var parent_logger *zerolog.Logger
+	if len(parent_loggers) > 0 {
+		parent_logger = parent_loggers[0]
+	}
+	if parent_logger != nil {
+		logger = parent_logger.With().Str("component", "scraper_job").Logger()
+	}
 	return &ScraperJobService{
 		jobs:             make(map[string]*ScraperFetchJob),
 		platform_checker: platform_checker,
 		event_handler:    event_handler,
+		logger:           logger,
 	}
 }
 
@@ -142,6 +156,10 @@ func DetectScraperPlatform(raw_url string) (string, error) {
 	raw_url = strings.TrimSpace(raw_url)
 	if raw_url == "" {
 		return "", fmt.Errorf("url 不能为空")
+	}
+
+	if _, err := douyin_scraper.ExtractURL(raw_url); err == nil {
+		return scraper_platform_douyin, nil
 	}
 
 	if strings.HasPrefix(strings.ToLower(raw_url), "zhihu://") {
@@ -185,16 +203,30 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 	raw_url := strings.TrimSpace(request.URL)
 	platform_id, err := DetectScraperPlatform(raw_url)
 	if err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("requested_job_id", strings.TrimSpace(request.ID)).
+			Str("source_url", raw_url).
+			Msg("scraper fetch: platform detection failed")
 		return nil, err
 	}
 	s.job_mu.RLock()
 	has_custom_runner := s.fetch_runner != nil
 	s.job_mu.RUnlock()
 	if adapter.Get(platform_id) == nil && !has_custom_runner {
+		s.logger.Error().
+			Str("platform", platform_id).
+			Str("source_url", raw_url).
+			Msg("scraper fetch: adapter is not registered")
 		return nil, fmt.Errorf("未注册的平台 adapter: %s", platform_id)
 	}
 	if s.platform_checker != nil {
 		if err := s.platform_checker(platform_id); err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("platform", platform_id).
+				Str("source_url", raw_url).
+				Msg("scraper fetch: platform is unavailable")
 			return nil, err
 		}
 	}
@@ -225,6 +257,12 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 	s.jobs[job_id] = job
 	snapshot := clone_scraper_fetch_job(job, true)
 	s.job_mu.Unlock()
+	s.logger.Info().
+		Str("job_id", job_id).
+		Str("platform", platform_id).
+		Str("source_url", raw_url).
+		Bool("force_refresh", request.ForceRefresh).
+		Msg("scraper fetch: job created")
 
 	go s.run_scraper_fetch_job(fetch_context, job_id)
 	return snapshot, nil
@@ -233,14 +271,26 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 func (s *ScraperJobService) run_scraper_fetch_job(fetch_context context.Context, job_id string) {
 	defer func() {
 		if panic_value := recover(); panic_value != nil {
+			s.logger.Error().
+				Interface("panic", panic_value).
+				Str("job_id", job_id).
+				Msg("scraper fetch: job panicked")
 			s.finish_scraper_fetch_job(job_id, nil, fmt.Errorf("scraper fetch panic: %v", panic_value))
 		}
 	}()
 
 	job := s.start_scraper_fetch_job(job_id)
 	if job == nil {
+		s.logger.Warn().
+			Str("job_id", job_id).
+			Msg("scraper fetch: job could not be started")
 		return
 	}
+	s.logger.Info().
+		Str("job_id", job.ID).
+		Str("platform", job.Platform).
+		Str("source_url", job.URL).
+		Msg("scraper fetch: job started")
 	s.job_mu.RLock()
 	runner := s.fetch_runner
 	s.job_mu.RUnlock()
@@ -249,6 +299,11 @@ func (s *ScraperJobService) run_scraper_fetch_job(fetch_context context.Context,
 	}
 	output, err := runner(fetch_context, job)
 	if fetch_context.Err() != nil {
+		s.logger.Warn().
+			Err(fetch_context.Err()).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: context canceled")
 		s.Interrupt(job_id)
 		return
 	}
@@ -280,6 +335,10 @@ func (s *ScraperJobService) start_scraper_fetch_job(job_id string) *ScraperFetch
 func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context, job *ScraperFetchJob) (*ScraperFetchOutput, error) {
 	handler := adapter.Get(job.Platform)
 	if handler == nil {
+		s.logger.Error().
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: adapter lookup failed")
 		return nil, fmt.Errorf("未注册的平台 adapter: %s", job.Platform)
 	}
 
@@ -287,6 +346,20 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 	var err error
 	context_handler, supports_context := handler.(adapter.ContextProgressFetchAdapter)
 	progress_handler, supports_progress := handler.(adapter.ProgressFetchAdapter)
+	fetch_mode := "fetch"
+	if supports_context {
+		fetch_mode = "context_progress"
+	} else if supports_progress {
+		fetch_mode = "progress"
+	}
+	fetch_started_at := time.Now()
+	s.logger.Info().
+		Str("job_id", job.ID).
+		Str("platform", job.Platform).
+		Str("source_url", job.URL).
+		Str("fetch_mode", fetch_mode).
+		Str("adapter_type", fmt.Sprintf("%T", handler)).
+		Msg("scraper fetch: adapter call started")
 	switch {
 	case supports_context:
 		data, err = context_handler.FetchWithProgressContext(fetch_context, job.URL, adapter.FetchOptions{
@@ -302,11 +375,30 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		data, err = handler.Fetch(job.URL)
 	}
 	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Str("fetch_mode", fetch_mode).
+			Dur("fetch_elapsed", time.Since(fetch_started_at)).
+			Msg("scraper fetch: adapter call failed")
 		return nil, err
 	}
+	s.logger.Info().
+		Str("job_id", job.ID).
+		Str("platform", job.Platform).
+		Str("fetch_mode", fetch_mode).
+		Str("result_type", fmt.Sprintf("%T", data)).
+		Dur("fetch_elapsed", time.Since(fetch_started_at)).
+		Msg("scraper fetch: adapter call completed")
 
 	content, err := handler.ToContent(data)
 	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: content conversion failed")
 		return nil, fmt.Errorf("转换 content 失败: %w", err)
 	}
 	if content != nil && strings.TrimSpace(content.SourceURL) == "" {
@@ -320,6 +412,11 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 	}
 	account, err := handler.ToAccount(data)
 	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: account conversion failed")
 		return nil, fmt.Errorf("转换 account 失败: %w", err)
 	}
 	if account != nil {
@@ -330,6 +427,11 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 	}
 	content_details, err := handler.ToContentDetails(data)
 	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: content detail conversion failed")
 		return nil, fmt.Errorf("转换 content detail 失败: %w", err)
 	}
 	for detail_index := range content_details {
@@ -341,6 +443,14 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Total:         len(content_details),
 		})
 	}
+	s.logger.Info().
+		Str("job_id", job.ID).
+		Str("platform", job.Platform).
+		Bool("content_created", content != nil).
+		Bool("account_created", account != nil).
+		Int("content_detail_count", len(content_details)).
+		Dur("total_elapsed", time.Since(fetch_started_at)).
+		Msg("scraper fetch: result conversion completed")
 	return &ScraperFetchOutput{
 		JobID:          job.ID,
 		Platform:       job.Platform,
@@ -498,7 +608,33 @@ func (s *ScraperJobService) finish_scraper_fetch_job(job_id string, output *Scra
 	event := new_scraper_fetch_job_event(job, event_stage)
 	event.Error = job.Error
 	snapshot := clone_scraper_fetch_job(job, false)
+	platform_id := job.Platform
+	source_url := job.URL
+	started_at := job.StartedAt
+	final_status := job.Status
 	s.job_mu.Unlock()
+	elapsed := time.Duration(0)
+	if started_at > 0 {
+		elapsed = time.Duration(now-started_at) * time.Millisecond
+	}
+	if fetch_err != nil {
+		s.logger.Error().
+			Err(fetch_err).
+			Str("job_id", job_id).
+			Str("platform", platform_id).
+			Str("source_url", source_url).
+			Str("status", final_status).
+			Dur("elapsed", elapsed).
+			Msg("scraper fetch: job failed")
+	} else {
+		s.logger.Info().
+			Str("job_id", job_id).
+			Str("platform", platform_id).
+			Str("source_url", source_url).
+			Str("status", final_status).
+			Dur("elapsed", elapsed).
+			Msg("scraper fetch: job completed")
+	}
 	if cancel_fetch != nil {
 		cancel_fetch()
 	}
@@ -595,7 +731,12 @@ func (s *ScraperJobService) Interrupt(job_id string) bool {
 	}
 	event := new_scraper_fetch_job_event(job, ScraperJobEventInterrupted)
 	snapshot := clone_scraper_fetch_job(job, false)
+	platform_id := job.Platform
 	s.job_mu.Unlock()
+	s.logger.Warn().
+		Str("job_id", job_id).
+		Str("platform", platform_id).
+		Msg("scraper fetch: job interrupted")
 	if cancel_fetch != nil {
 		cancel_fetch()
 	}

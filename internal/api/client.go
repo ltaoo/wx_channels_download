@@ -90,6 +90,7 @@ func NewAPIClient(
 	api_client.scraper_job_service = services.NewScraperJobService(
 		api_client.ensure_scraper_platform_available,
 		scraper_ws_hub.broadcast_job_event,
+		&logger,
 	)
 
 	api_client.download_task_service = services.NewDownloadTaskService(
