@@ -196,6 +196,43 @@
     .count-label { font-size: 11px; line-height: 15px; }
     .count-value { color: var(--wx-dl-page-text); font-weight: 720; line-height: 17px; }
 
+    .detail-panel {
+      display: none;
+      border-bottom: 1px solid var(--wx-dl-page-border);
+      background: var(--wx-dl-page-surface);
+    }
+    .detail-panel.active { display: block; }
+    .detail-inner {
+      width: min(var(--wx-dl-page-card-width), 100%);
+      margin: 0 auto;
+      padding: 10px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .detail-summary {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .detail-filters {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+    }
+    .detail-filter-btn.active {
+      border-color: var(--wx-dl-page-primary);
+      background: var(--wx-dl-page-primary-soft);
+      color: var(--wx-dl-page-primary);
+    }
+
     .migration-panel {
       border-bottom: 1px solid var(--wx-dl-page-border);
       background: var(--wx-dl-page-surface);
@@ -330,6 +367,7 @@
     .task-id-cell { max-width: 210px; }
     .task-name-cell { min-width: 300px; max-width: 520px; }
     .task-labels-cell { min-width: 280px; max-width: 520px; }
+    .task-detail-cell { min-width: 260px; max-width: 420px; }
     .task-time-cell { min-width: 168px; max-width: 190px; color: var(--wx-dl-page-muted); }
     .task-name-main {
       overflow: hidden;
@@ -392,6 +430,15 @@
     .status-error { color: var(--wx-dl-page-danger); background: rgba(220, 38, 38, .1); }
     .status-pause { color: #c48a00; background: rgba(196, 138, 0, .12); }
     .detail-fetched-mark { min-width: auto; font-size: 12px; }
+    .detail-result-text {
+      margin-top: 6px;
+      color: var(--wx-dl-page-muted);
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .detail-result-text.error { color: var(--wx-dl-page-danger); }
     .pagination {
       min-height: 48px;
       display: flex;
@@ -537,6 +584,9 @@
       .pathbar { flex-wrap: wrap; }
       .path-input { flex-basis: 100%; }
       .counts { width: 100%; }
+      .detail-inner { align-items: stretch; flex-direction: column; padding-left: 16px; padding-right: 16px; }
+      .detail-summary { white-space: normal; }
+      .detail-filters { width: 100%; }
       .migration-inner { padding-left: 16px; padding-right: 16px; }
       .field,
       .field-small { flex: 1 1 100%; }
@@ -574,6 +624,13 @@
           <button class="btn btn-primary" id="btn-load">加载</button>
         </div>
         <div class="counts" id="counts"></div>
+      </div>
+    </section>
+
+    <section class="detail-panel" id="detail-panel">
+      <div class="detail-inner">
+        <div class="detail-summary" id="detail-summary"></div>
+        <div class="detail-filters" id="detail-filters"></div>
       </div>
     </section>
 
@@ -690,6 +747,9 @@
       const migrationAllowMissing = $("#migration-allow-missing");
       const migrationResult = $("#migration-result");
       const counts = $("#counts");
+      const detailPanel = $("#detail-panel");
+      const detailSummary = $("#detail-summary");
+      const detailFilters = $("#detail-filters");
       const table = $("#task-table");
       const empty = $("#empty");
       const tableMeta = $("#table-meta");
@@ -713,10 +773,24 @@
         ["done", "已完成"],
         ["error", "失败"],
       ];
+      const detailFilterItems = [
+        ["all", "全部"],
+        ["success", "成功"],
+        ["failed", "失败"],
+        ["skipped", "跳过"],
+      ];
+      const detailFilterNames = {
+        all: "全部",
+        success: "成功",
+        failed: "失败",
+        skipped: "跳过",
+      };
       let state = {
         dataDir: "",
         dbPath: "",
         status: "all",
+        detailFilter: "all",
+        detailPage: 1,
         page: 1,
         totalPages: 1,
         columns: [],
@@ -726,6 +800,8 @@
       };
       const detailFetchedTaskIDs = new Set();
       const detailFetchedSources = new Map();
+      const detailFetchResults = new Map();
+      let detailFetchBatch = null;
 
       function toast(message, isError) {
         const el = document.createElement("div");
@@ -776,6 +852,11 @@
           done: "已完成",
         };
         return map[status] || status || "";
+      }
+
+      function statusFilterText(status) {
+        const item = statusItems.find(([key]) => key === status);
+        return item ? item[1] : statusText(status) || status || "全部";
       }
 
       function stringifyLabels(labels) {
@@ -830,15 +911,84 @@
           rowOID(row);
       }
 
+      function explicitTaskDetailResult(row) {
+        if (!row) return null;
+        const key = taskDetailKey(row);
+        if (key && detailFetchResults.has(key)) {
+          return detailFetchResults.get(key);
+        }
+        if (row.detail_fetch_status) {
+          return {
+            status: row.detail_fetch_status,
+            error: row.detail_fetch_error || "",
+            source: row.detail_fetch_source || "",
+            cached: Boolean(row.profile_cached),
+            cacheKey: row.profile_cache_key || "",
+          };
+        }
+        return null;
+      }
+
+      function taskDetailResult(row) {
+        if (!row) return null;
+        const explicit = explicitTaskDetailResult(row);
+        if (explicit) {
+          return explicit;
+        }
+        if (row.detail_fetched || row.profile_cached) {
+          return {
+            status: "success",
+            error: "",
+            source: row.profile_cached ? "cache" : "",
+            cached: Boolean(row.profile_cached),
+            cacheKey: row.profile_cache_key || "",
+          };
+        }
+        return null;
+      }
+
+      function setTaskDetailResult(row, status, values) {
+        if (!row) return;
+        const result = Object.assign({
+          status,
+          error: "",
+          source: "",
+          cached: false,
+          profileURL: "",
+          cacheKey: "",
+        }, values || {});
+        const key = taskDetailKey(row);
+        if (key) {
+          detailFetchResults.set(key, result);
+        }
+        row.detail_fetch_status = result.status;
+        row.detail_fetch_error = result.error || "";
+        row.detail_fetch_source = result.source || "";
+        if (result.cacheKey) {
+          row.profile_cache_key = result.cacheKey;
+        }
+        if (result.cached || result.source === "cache") {
+          row.profile_cached = true;
+        }
+        if (result.status === "success") {
+          row.detail_fetched = true;
+        }
+      }
+
       function isTaskDetailFetched(row) {
+        const result = taskDetailResult(row);
+        if (result && result.status === "success") {
+          return true;
+        }
         const key = taskDetailKey(row);
         return Boolean(row && (row.detail_fetched || row.profile_cached || (key && detailFetchedTaskIDs.has(key))));
       }
 
       function detailFetchedTitle(row) {
+        const result = taskDetailResult(row);
         const key = taskDetailKey(row);
-        const source = key ? detailFetchedSources.get(key) : "";
-        if ((row && row.profile_cached) || source === "cache") {
+        const source = result ? result.source : (key ? detailFetchedSources.get(key) : "");
+        if ((result && (result.cached || result.source === "cache")) || (row && row.profile_cached) || source === "cache") {
           return "缓存中已有详情";
         }
         if (source === "agent") {
@@ -853,14 +1003,114 @@
       function markTaskDetailFetched(row, data) {
         if (!row) return;
         const key = taskDetailKey(row);
+        const source = data && data.cached ? "cache" : (data && data.source) || "fetched";
         if (key) {
           detailFetchedTaskIDs.add(key);
-          detailFetchedSources.set(key, data && data.cached ? "cache" : (data && data.source) || "fetched");
+          detailFetchedSources.set(key, source);
         }
+        setTaskDetailResult(row, "success", {
+          source,
+          cached: Boolean(data && data.cached),
+          profileURL: (data && (data.profile_url || data.article_url)) || "",
+          cacheKey: (data && data.cache_key) || "",
+        });
         row.detail_fetched = true;
         if (data && data.cached) {
           row.profile_cached = true;
         }
+      }
+
+      function detailFilterActive() {
+        return Boolean(detailFetchBatch && state.detailFilter && state.detailFilter !== "all");
+      }
+
+      function detailRowsForFilter(filter) {
+        const rows = (detailFetchBatch && detailFetchBatch.rows) || [];
+        if (!filter || filter === "all") {
+          return rows;
+        }
+        return rows.filter((row) => {
+          const result = explicitTaskDetailResult(row);
+          return result && result.status === filter;
+        });
+      }
+
+      function detailFilterCount(filter) {
+        if (!detailFetchBatch) return 0;
+        if (!filter || filter === "all") {
+          return Number(detailFetchBatch.total || detailRowsForFilter("all").length || 0);
+        }
+        return Number(detailFetchBatch[filter] || 0);
+      }
+
+      function renderDetailPanel() {
+        if (!detailFetchBatch) {
+          detailPanel.classList.remove("active");
+          detailSummary.textContent = "";
+          detailFilters.innerHTML = "";
+          return;
+        }
+        detailPanel.classList.add("active");
+        const total = Number(detailFetchBatch.total || 0);
+        const processed = Number(detailFetchBatch.processed || 0);
+        const success = Number(detailFetchBatch.success || 0);
+        const skipped = Number(detailFetchBatch.skipped || 0);
+        const failed = Number(detailFetchBatch.failed || 0);
+        const statusLabel = statusFilterText(detailFetchBatch.status || "all");
+        const progress = processed < total
+          ? " · 获取中 " + processed.toLocaleString() + "/" + total.toLocaleString()
+          : " · 已完成";
+        detailSummary.textContent = "最近一次详情获取(" + statusLabel + "): 总数 " + total.toLocaleString() +
+          "，成功 " + success.toLocaleString() +
+          "，跳过 " + skipped.toLocaleString() +
+          "，失败 " + failed.toLocaleString() +
+          progress;
+        detailFilters.innerHTML = detailFilterItems.map(([key, label]) => {
+          const count = detailFilterCount(key);
+          return '<button class="btn btn-mini detail-filter-btn ' + (state.detailFilter === key ? "active" : "") +
+            '" type="button" data-detail-filter="' + key + '">' +
+            escapeHtml(label) + " " + count.toLocaleString() +
+          '</button>';
+        }).join("");
+        detailFilters.querySelectorAll(".detail-filter-btn").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.detailFilter = button.dataset.detailFilter || "all";
+            state.detailPage = 1;
+            renderDetailPanel();
+            renderTable();
+          });
+        });
+      }
+
+      function rowVisibleInCurrentTable(row) {
+        const key = taskDetailKey(row);
+        return Boolean(key && (state.rows || []).some((visible) => taskDetailKey(visible) === key));
+      }
+
+      function renderDetailResult(row) {
+        const result = taskDetailResult(row);
+        if (!result) {
+          return "";
+        }
+        const status = result.status || "";
+        const label = status === "success" ? "获取成功" : status === "failed" ? "获取失败" : status === "skipped" ? "已跳过" : status;
+        const pillClass = status === "success" ? "status-done" : status === "failed" ? "status-error" : "status-pause";
+        let detail = "";
+        if (status === "success") {
+          if (result.cached || result.source === "cache") {
+            detail = "缓存命中";
+          } else if (result.source) {
+            detail = "来源: " + result.source;
+          }
+          if (result.cacheKey) {
+            detail += (detail ? " · " : "") + "cache " + result.cacheKey;
+          }
+        } else {
+          detail = result.error || "未返回失败原因";
+        }
+        return '<span class="status-pill ' + pillClass + '">' + escapeHtml(label) + '</span>' +
+          (detail ? '<div class="detail-result-text ' + (status === "failed" ? "error" : "") +
+            '" title="' + escapeHtml(detail) + '">' + escapeHtml(detail) + '</div>' : "");
       }
 
       async function fetchTaskDetail(row, dataDirOverride, options) {
@@ -979,7 +1229,10 @@
           renderTable();
           showProfileDialog(row, data);
         } catch (err) {
-          toast(errorMessage(err), true);
+          const reason = errorMessage(err);
+          setTaskDetailResult(row, "failed", { error: reason });
+          renderTable();
+          toast(reason, true);
         } finally {
           button.disabled = false;
           button.textContent = original;
@@ -1010,17 +1263,37 @@
 
         btnFetchAllDetails.disabled = true;
         btnFetchAllDetails.textContent = "加载任务 0/" + total.toLocaleString();
+        detailFetchResults.clear();
+        detailFetchBatch = {
+          dataDir,
+          status,
+          total,
+          processed: 0,
+          success: 0,
+          skipped: 0,
+          failed: 0,
+          rows: [],
+        };
+        state.detailFilter = "all";
+        state.detailPage = 1;
+        renderDetailPanel();
         try {
           const rows = await loadAllTaskRows(dataDir, status, total);
           if (!rows.length) {
+            detailFetchBatch = null;
+            renderDetailPanel();
             toast("没有可获取详情的任务", true);
             return;
           }
+          detailFetchBatch.rows = rows;
+          detailFetchBatch.total = rows.length;
+          renderDetailPanel();
           const agentStatus = await getProfileAgentStatus();
           const channelsRows = rows.filter(rowNeedsChannelsProfile);
+          let blockedChannelsReason = "";
           if (channelsRows.length && agentStatus.auth_required && !agentStatus.connected) {
-            toast("profile agent token 已配置，但当前没有 agent 连接", true);
-            return;
+            blockedChannelsReason = "profile agent token 已配置，但当前没有 agent 连接";
+            toast(blockedChannelsReason, true);
           }
           const forceAgent = channelsRows.length && agentStatus.connected;
           const detailTotal = rows.length;
@@ -1031,6 +1304,36 @@
             btnFetchAllDetails.textContent = "获取中 " + processed.toLocaleString() + "/" + detailTotal.toLocaleString();
             if (!rowArticleID(row) && !rowOID(row)) {
               skipped += 1;
+              setTaskDetailResult(row, "skipped", { error: "缺少 oid 或 article_id" });
+              if (rowVisibleInCurrentTable(row) || detailFilterActive()) {
+                renderTable();
+              }
+              if (detailFetchBatch) {
+                detailFetchBatch.processed = processed;
+                detailFetchBatch.success = success;
+                detailFetchBatch.skipped = skipped;
+                detailFetchBatch.failed = failed;
+              }
+              if (processed % 10 === 0 || processed === detailTotal) {
+                renderDetailPanel();
+              }
+              continue;
+            }
+            if (blockedChannelsReason && rowNeedsChannelsProfile(row)) {
+              failed += 1;
+              setTaskDetailResult(row, "failed", { error: blockedChannelsReason });
+              if (rowVisibleInCurrentTable(row) || detailFilterActive()) {
+                renderTable();
+              }
+              if (detailFetchBatch) {
+                detailFetchBatch.processed = processed;
+                detailFetchBatch.success = success;
+                detailFetchBatch.skipped = skipped;
+                detailFetchBatch.failed = failed;
+              }
+              if (processed % 10 === 0 || processed === detailTotal) {
+                renderDetailPanel();
+              }
               continue;
             }
             try {
@@ -1039,13 +1342,33 @@
               });
               markTaskDetailFetched(row, data);
               success += 1;
-              if ((state.rows || []).some((visible) => taskDetailKey(visible) === taskDetailKey(row))) {
+              if (rowVisibleInCurrentTable(row) || detailFilterActive()) {
                 renderTable();
               }
-            } catch (_) {
+            } catch (err) {
               failed += 1;
+              setTaskDetailResult(row, "failed", { error: errorMessage(err) });
+              if (rowVisibleInCurrentTable(row) || detailFilterActive()) {
+                renderTable();
+              }
+            }
+            if (detailFetchBatch) {
+              detailFetchBatch.processed = processed;
+              detailFetchBatch.success = success;
+              detailFetchBatch.skipped = skipped;
+              detailFetchBatch.failed = failed;
+            }
+            if (processed % 10 === 0 || processed === detailTotal) {
+              renderDetailPanel();
             }
           }
+          if (detailFetchBatch) {
+            detailFetchBatch.processed = processed;
+            detailFetchBatch.success = success;
+            detailFetchBatch.skipped = skipped;
+            detailFetchBatch.failed = failed;
+          }
+          renderDetailPanel();
           renderTable();
           toast(
             "任务详情获取完成：成功 " + success.toLocaleString() +
@@ -1119,9 +1442,16 @@
           state = Object.assign({}, state, data);
           state.page = data.page || 1;
           state.totalPages = data.total_pages || 1;
+          if (detailFetchBatch && detailFetchBatch.dataDir && detailFetchBatch.dataDir !== (data.data_dir || input)) {
+            detailFetchBatch = null;
+            detailFetchResults.clear();
+            state.detailFilter = "all";
+            state.detailPage = 1;
+          }
           pathInput.value = data.data_dir || input;
           localStorage.setItem("gopeed_migration_path", pathInput.value);
           renderCounts();
+          renderDetailPanel();
           renderTable();
           btnFetchAllDetails.disabled = !state.total;
           btnExport.disabled = !state.total;
@@ -1147,20 +1477,44 @@
           el.addEventListener("click", () => {
             state.status = el.dataset.status || "all";
             state.page = 1;
+            state.detailFilter = "all";
+            state.detailPage = 1;
+            renderDetailPanel();
             loadTasks(1);
           });
         });
       }
 
       function renderTable() {
-        const rows = state.rows || [];
-        tableMeta.textContent = state.total.toLocaleString() + " 条 · 第 " + state.page + " / " + state.totalPages + " 页" +
-          (state.cache_hit ? " · 缓存" : "");
-        pageInfo.textContent = state.page + " / " + state.totalPages;
-        btnPrev.disabled = state.page <= 1;
-        btnNext.disabled = state.page >= state.totalPages;
+        const activeDetailFilter = detailFilterActive();
+        let rows = state.rows || [];
+        let total = Number(state.total || 0);
+        let page = Number(state.page || 1);
+        let totalPages = Number(state.totalPages || 1);
+        if (activeDetailFilter) {
+          const detailRows = detailRowsForFilter(state.detailFilter);
+          total = detailRows.length;
+          totalPages = Math.max(1, Math.ceil(total / visiblePageSize));
+          if (state.detailPage > totalPages) {
+            state.detailPage = totalPages;
+          }
+          page = Number(state.detailPage || 1);
+          const start = (page - 1) * visiblePageSize;
+          rows = detailRows.slice(start, start + visiblePageSize);
+          tableMeta.textContent = "详情" + (detailFilterNames[state.detailFilter] || state.detailFilter) +
+            " " + total.toLocaleString() + " 条 · 第 " + page + " / " + totalPages + " 页";
+        } else {
+          tableMeta.textContent = total.toLocaleString() + " 条 · 第 " + page + " / " + totalPages + " 页" +
+            (state.cache_hit ? " · 缓存" : "");
+        }
+        pageInfo.textContent = page + " / " + totalPages;
+        btnPrev.disabled = page <= 1;
+        btnNext.disabled = page >= totalPages;
         if (!rows.length) {
           empty.style.display = "grid";
+          empty.innerHTML = '<div><div class="empty-icon">↓</div><div>' +
+            escapeHtml(activeDetailFilter ? "没有详情" + (detailFilterNames[state.detailFilter] || state.detailFilter) + "记录" : "加载 gopeed.db 后查看任务") +
+            '</div></div>';
           table.style.display = "none";
           table.innerHTML = "";
           return;
@@ -1171,6 +1525,7 @@
           '<th>id</th>' +
           '<th>name / status</th>' +
           '<th>labels</th>' +
+          '<th>详情结果</th>' +
           '<th>创建时间</th>' +
           '<th>更新时间</th>' +
         '</tr></thead><tbody>' + rows.map((row, index) => {
@@ -1197,6 +1552,7 @@
               '</div>' +
               '<pre class="labels-json">' + escapeHtml(labels) + '</pre>' +
             '</td>' +
+            '<td class="task-detail-cell">' + renderDetailResult(row) + '</td>' +
             '<td class="task-time-cell" title="' + escapeHtml(row.created_at) + '">' + escapeHtml(row.created_at) + '</td>' +
             '<td class="task-time-cell" title="' + escapeHtml(row.updated_at) + '">' + escapeHtml(row.updated_at) + '</td>' +
           "</tr>";
@@ -1468,27 +1824,56 @@
         });
       }
 
-      btnLoad.addEventListener("click", () => loadTasks(1));
-      btnRefresh.addEventListener("click", () => loadTasks(state.page, { forceReload: true }));
+      btnLoad.addEventListener("click", () => {
+        state.detailFilter = "all";
+        state.detailPage = 1;
+        loadTasks(1);
+      });
+      btnRefresh.addEventListener("click", () => {
+        state.detailFilter = "all";
+        state.detailPage = 1;
+        loadTasks(state.page, { forceReload: true });
+      });
       btnFetchAllDetails.addEventListener("click", fetchAllTaskDetails);
       btnExport.addEventListener("click", exportJSON);
       btnMigrationPreview.addEventListener("click", () => executeMigration(true));
       btnMigrationExecute.addEventListener("click", () => executeMigration(false));
       btnPrev.addEventListener("click", () => {
+        if (detailFilterActive()) {
+          if (state.detailPage > 1) {
+            state.detailPage -= 1;
+            renderTable();
+          }
+          return;
+        }
         if (state.page > 1) loadTasks(state.page - 1);
       });
       btnNext.addEventListener("click", () => {
+        if (detailFilterActive()) {
+          const totalPages = Math.max(1, Math.ceil(detailRowsForFilter(state.detailFilter).length / visiblePageSize));
+          if (state.detailPage < totalPages) {
+            state.detailPage += 1;
+            renderTable();
+          }
+          return;
+        }
         if (state.page < state.totalPages) loadTasks(state.page + 1);
       });
       $("#btn-browse").addEventListener("click", async () => {
         const selected = await showPicker();
         if (selected) {
           pathInput.value = selected;
+          state.detailFilter = "all";
+          state.detailPage = 1;
           loadTasks(1);
         }
       });
       pathInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") loadTasks(1);
+        if (event.key === "Enter") {
+          state.detailFilter = "all";
+          state.detailPage = 1;
+          loadTasks(1);
+        }
       });
 
       renderCounts();
