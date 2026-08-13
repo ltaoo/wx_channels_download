@@ -19,6 +19,9 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/favicon.ico", c.handle_favicon)
 	c.setup_static_asset_routes()
 	c.engine.GET("/", c.handle_index)
+	// c.engine.GET("/", func(ctx *gin.Context) {
+	// 	c.renderFrontendFile(ctx, "index.html")
+	// })
 	c.engine.GET("/download", c.handle_download_page)
 	c.engine.GET("/home", c.handle_home_page)
 	c.engine.GET("/browsehistory", c.handle_browse_history_page)

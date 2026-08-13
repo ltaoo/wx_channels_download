@@ -1,0 +1,255 @@
+:root {
+  color: #18181b;
+  background: #f4f4f5;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+}
+
+.application-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+
+.app-sider {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 24px 18px;
+  color: #f4f4f5;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+}
+
+.app-brand__mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: #18181b;
+  font-weight: 800;
+  background: #fafafa;
+  border-radius: 11px;
+}
+
+.app-brand__title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.app-brand__subtitle {
+  margin-top: 2px;
+  color: #a1a1aa;
+  font-size: 11px;
+}
+
+.app-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.app-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  color: #a1a1aa;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.app-menu__item:hover {
+  color: #fafafa;
+  background: #27272a;
+}
+
+.app-menu__item--active {
+  color: #18181b;
+  background: #fafafa;
+}
+
+.app-menu__item--active:hover {
+  color: #18181b;
+  background: #fff;
+}
+
+.app-menu__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+}
+
+.app-content {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #f4f4f5;
+}
+
+.demo-page {
+  min-height: 100%;
+  padding: clamp(32px, 7vw, 96px);
+  overflow: auto;
+}
+
+.demo-page--a {
+  background:
+    radial-gradient(circle at 85% 12%, rgb(59 130 246 / 18%), transparent 32%),
+    #f8fafc;
+}
+
+.demo-page--b {
+  background:
+    radial-gradient(circle at 85% 12%, rgb(168 85 247 / 18%), transparent 32%),
+    #fafafa;
+}
+
+.demo-page__eyebrow {
+  margin-bottom: 16px;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.demo-page__title {
+  max-width: 720px;
+  margin: 0;
+  color: #18181b;
+  font-size: clamp(40px, 7vw, 76px);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.demo-page__description {
+  max-width: 600px;
+  margin: 24px 0 40px;
+  color: #52525b;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.demo-page__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+  padding: 24px;
+  color: #52525b;
+  background: rgb(255 255 255 / 82%);
+  border: 1px solid #e4e4e7;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgb(24 24 27 / 8%);
+  backdrop-filter: blur(12px);
+}
+
+.demo-page__card strong {
+  color: #18181b;
+}
+
+.route-loading,
+.route-error {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.route-loading {
+  color: #71717a;
+}
+
+.route-error {
+  flex-direction: column;
+  gap: 12px;
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.route-error pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .app-sider {
+    padding-inline: 12px;
+  }
+
+  .app-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .app-brand > :last-child,
+  .app-menu__item > :last-child {
+    display: none;
+  }
+
+  .app-menu__item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-menu__item {
+    transition: none;
+  }
+}

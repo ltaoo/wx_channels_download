@@ -6,22 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Timeless vanilla js example</title>
   <base href="/" />
-  <script type="importmap">
-    {
-      "imports": {
-        "@/": "./src/"
-      }
-    }
-  </script>
+  <link href="src/style.css" rel="stylesheet" />
 
-  <!-- <link href="public/timeless/0.31.0/timeless.weui.css" rel="stylesheet" /> -->
   <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
-  <script src="public/tailwindcss@4.js"></script>
-  <style type="text/tailwindcss">
-    @import "tailwindcss/theme.css";
-    @import "tailwindcss/preflight.css";
-    @import "tailwindcss/utilities.css";
-  </style>
   <style>
     .download-speed-chart {
       --download-speed-line: #2563eb;
@@ -83,11 +70,9 @@
       }
     }
   </style>
-  <script src="public/timeless/0.31.0/timeless.umd.min.js"></script>
-  <script src="public/timeless/0.31.0/timeless.dom.umd.min.js"></script>
-  <script src="public/timeless/0.31.0/timeless.web.umd.min.js"></script>
-
-  <script src="public/timeless/0.31.0/timeless.weui.umd.min.js"></script>
+  <script src="public/timeless/0.31.1/timeless.umd.min.js"></script>
+  <script src="public/timeless/0.31.1/timeless.dom.umd.min.js"></script>
+  <script src="public/timeless/0.31.1/timeless.web.umd.min.js"></script>
   <script>
     Object.assign(window, Timeless);
   </script>
@@ -95,7 +80,7 @@
 
 <body>
   <div id="root"></div>
-  <script type="module" src="src/index.js"></script>
+  <script src="src/index.js"></script>
 </body>
 
 </html>

@@ -9,9 +9,11 @@ export default [
     files: ["src/**/*.js"],
     languageOptions: {
       ecmaVersion: 2021,
-      sourceType: "module",
+      sourceType: "script",
       globals: {
         ...globals.browser,
+        Timeless: "writable",
+        register: "writable",
         __wx_channels_store__: "writable",
         __wx_channels_tip__: "writable",
         __wx_channels_cur_video: "writable",

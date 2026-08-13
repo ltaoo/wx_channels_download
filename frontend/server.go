@@ -7,7 +7,7 @@ import (
 	"github.com/ltaoo/velo/frontendserver"
 )
 
-//go:embed index.html migration.html public
+//go:embed index.html public src
 var embeddedFS embed.FS
 
 // FS exports the embedded frontend filesystem for use in production mode
