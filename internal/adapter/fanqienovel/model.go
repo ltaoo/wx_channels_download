@@ -328,7 +328,7 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 		if chapter_title == "" {
 			chapter_title = fmt.Sprintf("chapter_%04d", idx)
 		}
-		chapter_name := fmt.Sprintf("chapters/%04d_%s.txt", idx, sanitize_filename(chapter_title))
+		chapter_name := fmt.Sprintf("chapters/%04d_%s", idx, sanitize_filename(chapter_title))
 		chapter_content := chapter_title + "\n\n" + strings.TrimSpace(chapter.Content) + "\n"
 		resource_kind := "text/plain"
 		resource_size := int64(len(chapter_content))
@@ -341,7 +341,6 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 				return nil, fmt.Errorf("查找章节 %q 缓存失败: %w", chapter_title, cache_err)
 			}
 			if cached_html != nil {
-				chapter_name = fmt.Sprintf("chapters/%04d_%s.html", idx, sanitize_filename(chapter_title))
 				resource_kind = "text/html"
 				resource_size = cached_html.Size
 				endpoint_protocol_name = "file"
@@ -392,7 +391,7 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 		for _, volume := range result.Profile.Volumes {
 			for _, chapter := range volume.Chapters {
 				chapter_index := len(resources) + 1
-				chapter_name := fmt.Sprintf("chapters/%04d_%s.html", chapter_index, sanitize_filename(chapter.Title))
+				chapter_name := fmt.Sprintf("chapters/%04d_%s", chapter_index, sanitize_filename(chapter.Title))
 				chapter_url := strings.TrimSpace(chapter.URL)
 				if chapter_url == "" {
 					continue

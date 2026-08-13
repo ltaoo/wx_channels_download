@@ -293,7 +293,7 @@ func build_download_task(result *ttk.TtkFetchResult, config_json json.RawMessage
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
 				ContentId: &model_set.Content.Id,
-				Name:      fmt.Sprintf("chapters/%04d_%s.txt", idx, sanitize_filename(chapter_title)),
+				Name:      fmt.Sprintf("chapters/%04d_%s", idx, sanitize_filename(chapter_title)),
 				Kind:      "text/plain",
 				UniqueID:  model_set.Content.ExternalId + "_chapter_" + strconv.Itoa(idx),
 				Size:      int64(len(chapter_content)),

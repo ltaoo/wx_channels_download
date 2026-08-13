@@ -231,7 +231,7 @@ func build_download_task(novel *shuba69.Novel, config_json json.RawMessage, cook
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource: model.DownloadResource{
 			ContentId: &model_set.Content.Id,
-			Name:      "profile.html",
+			Name:      "profile",
 			Kind:      "text/html",
 			UniqueID:  model_set.Content.ExternalId + "_profile",
 		},
@@ -272,7 +272,7 @@ func build_download_task(novel *shuba69.Novel, config_json json.RawMessage, cook
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
 				ContentId: &model_set.Content.Id,
-				Name:      fmt.Sprintf("chapters/%04d_%s.html", idx, sanitize_filename(chapter_title)),
+				Name:      fmt.Sprintf("chapters/%04d_%s", idx, sanitize_filename(chapter_title)),
 				Kind:      "text/html",
 				UniqueID:  model_set.Content.ExternalId + "_chapter_" + strconv.Itoa(idx),
 				Extra:     string(extra_data),

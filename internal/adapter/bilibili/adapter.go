@@ -238,7 +238,7 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 	// Video resource
 	videoResource := model.DownloadResource{
 		ContentId: &contentID,
-		Name:      title + ".mp4",
+		Name:      title,
 		Kind:      "video",
 		UniqueID:  info.VideoID,
 		Extra:     extraJSON,
@@ -263,7 +263,7 @@ func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config m
 	if info.AudioURL != "" {
 		audioResource := model.DownloadResource{
 			ContentId:  &contentID,
-			Name:       title + ".audio.m4a",
+			Name:       title + "_audio",
 			Kind:       "audio",
 			UniqueID:   info.VideoID + "_audio",
 			MergeOrder: 1,

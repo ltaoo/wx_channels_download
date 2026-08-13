@@ -530,7 +530,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	// HTML resource
 	html_resource := model.DownloadResource{
 		ContentId: &content_id,
-		Name:      title + ".html",
+		Name:      title,
 		Kind:      "html",
 		UniqueID:  external_id + "_html",
 		Extra:     string(postprocess_extra),

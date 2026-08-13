@@ -1843,12 +1843,12 @@ func is_zip_output(config map[string]any) bool {
 	return task_config_type(config) == -1 || strings.EqualFold(task_config_suffix(config), ".zip")
 }
 
-func postprocess_resource_name(base_path, file_path string) string {
+func postprocess_resource_name(base_path, file_path, kind string) string {
 	rel_path, _ := filepath.Rel(base_path, file_path)
 	if rel_path != "" && !filepath.IsAbs(rel_path) {
-		return rel_path
+		return resource_name_without_canonical_extension(rel_path, kind)
 	}
-	return filepath.Base(file_path)
+	return resource_name_without_canonical_extension(filepath.Base(file_path), kind)
 }
 
 func task_config_type(config map[string]any) int {
@@ -2285,11 +2285,11 @@ func finalize_mp3_node(values map[string]interface{}) (interface{}, error) {
 			_ = os.Remove(run.resource.FilePath)
 		}
 		run.resource.Kind = "audio/mpeg"
-		if title := run.resource.Extra["title"]; title != "" {
-			run.resource.Name = sanitize_bgm_name(title)
-		} else {
-			run.resource.Name = postprocess_resource_name(run.base_path, mp3_file)
-		}
+		// if title := run.resource.Extra["title"]; title != "" {
+		// 	run.resource.Name = sanitize_bgm_name(title)
+		// } else {
+		// }
+		run.resource.Name = postprocess_resource_name(run.base_path, mp3_file, "audio/mpeg")
 		run.resource.FilePath = mp3_file
 		return nil, nil
 	})
@@ -2417,7 +2417,7 @@ func finalize_stream_node(values map[string]interface{}) (interface{}, error) {
 		}
 		run.resource.FilePath = mp4_file
 		if strings.TrimSpace(run.resource.Name) == "" {
-			run.resource.Name = postprocess_resource_name(run.base_path, mp4_file)
+			run.resource.Name = postprocess_resource_name(run.base_path, mp4_file, "video/mp4")
 		}
 		run.resource.Kind = "video/mp4"
 		return nil, nil

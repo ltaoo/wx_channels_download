@@ -29,7 +29,11 @@ type BrowseHistoryResult struct {
 	Account       *model.Account
 }
 
-// ResourceInfo describes a resource and its mirror endpoints.
+// ResourceInfo describes a resource and its mirror endpoints. Adapter-generated
+// Resource.Name values are extensionless display names so Hermes can append the
+// extension derived from the final MIME Kind. Explicit filenameTemplate and
+// hook results may contain extensions; they are not stripped before Hermes
+// appends the final MIME extension.
 type ResourceInfo struct {
 	Resource      model.DownloadResource
 	Endpoints     []model.DownloadEndpoint

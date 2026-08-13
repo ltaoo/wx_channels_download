@@ -1130,14 +1130,14 @@ function HomeDownloadAssetRelation(props) {
     View(
       {
         class: "wx-home-download-relation-node",
-        attributes: { title: resource.name },
+        attributes: { title: resource.display_name },
       },
       [
         View({ class: "wx-home-download-relation-node-type" }, [
           "DownloadResource",
         ]),
         View({ class: "wx-home-download-relation-node-value" }, [
-          resource.name,
+          resource.display_name,
         ]),
       ],
     ),
@@ -1159,9 +1159,9 @@ function HomeDownloadResourceItem(props) {
         View(
           {
             class: "wx-home-download-resource-name",
-            attributes: { title: resource.name },
+            attributes: { title: resource.display_name },
           },
-          [resource.name],
+          [resource.display_name],
         ),
         View({ class: "wx-home-download-resource-meta" }, [
           resource.meta_text,

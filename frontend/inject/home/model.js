@@ -81,6 +81,45 @@ var HomePageModel = (() => {
     related: "相关内容",
   };
 
+  const download_resource_suffixes = {
+    image: ".jpg",
+    video: ".mp4",
+    audio: ".mp3",
+    html: ".html",
+    text: ".txt",
+    json: ".json",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/avif": ".avif",
+    "image/svg+xml": ".svg",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "video/x-msvideo": ".avi",
+    "video/x-matroska": ".mkv",
+    "video/mp2t": ".ts",
+    "video/x-flv": ".flv",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "audio/ogg": ".ogg",
+    "audio/wav": ".wav",
+    "audio/flac": ".flac",
+    "text/html": ".html",
+    "text/plain": ".txt",
+    "text/css": ".css",
+    "text/csv": ".csv",
+    "text/markdown": ".md",
+    "application/json": ".json",
+    "application/xml": ".xml",
+    "application/pdf": ".pdf",
+    "application/zip": ".zip",
+  };
+
   const content_detail_field_names = {
     type: "内容格式",
     duration: "时长",
@@ -292,6 +331,14 @@ var HomePageModel = (() => {
     return "file";
   }
 
+  function suffix_map(kind) {
+    const normalized_kind = String(kind || "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    return download_resource_suffixes[normalized_kind] || "";
+  }
+
   function normalize_content_video_variant(variant, index) {
     const source = variant && typeof variant === "object" ? variant : {};
     const variant_key = String(
@@ -483,6 +530,7 @@ var HomePageModel = (() => {
       ),
       index_text: String(index + 1).padStart(2, "0"),
       name,
+      display_name: `${name}${suffix_map(kind)}`,
       kind,
       icon: download_resource_icon(kind),
       meta_text: [

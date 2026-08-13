@@ -230,7 +230,7 @@ func (h *handler) build_download_task_from_model_data(model_data *douyin_model_d
 	} else {
 		video_resource := model.DownloadResource{
 			ContentId: &content_id,
-			Name:      title + ".mp4",
+			Name:      title,
 			Kind:      "video",
 			UniqueID:  model_data.video_id,
 			Extra:     extra_json,
@@ -353,7 +353,6 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 		if len(model_data.images) > 1 {
 			image_name += "_" + fmt.Sprintf("%02d", image_index+1)
 		}
-		image_name += "." + extension
 		image_resource := model.DownloadResource{
 			ContentId: &content_id,
 			Name:      image_name,
@@ -384,7 +383,7 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 	if model_data.bgm_url != "" {
 		bgm_resource := model.DownloadResource{
 			ContentId: &content_id,
-			Name:      title + "_bgm.mp3",
+			Name:      title + "_bgm",
 			Kind:      "audio",
 			UniqueID:  model_data.video_id + "_bgm",
 			Duration:  model_data.bgm_duration,
