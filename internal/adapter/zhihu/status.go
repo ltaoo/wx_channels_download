@@ -75,7 +75,6 @@ func (h *handler) check_status() events.PlatformStatusChanged {
 	h.runtime_mu.RLock()
 	cookie_reader := h.cookie_reader
 	logger := h.logger
-	browser_fetcher := h.browser_fetcher
 	h.runtime_mu.RUnlock()
 
 	if cookie_reader == nil {
@@ -87,12 +86,7 @@ func (h *handler) check_status() events.PlatformStatusChanged {
 		}
 		return zhihu_unavailable(compact_zhihu_status_reason("读取知乎 Cookie 失败：", err))
 	}
-	if browser_fetcher == nil || !browser_fetcher.Available() {
-		return zhihu_unavailable("知乎 Cookie 已读取；请开启代理并在浏览器中打开任意知乎页面")
-	}
-
 	client := zhihu.NewClient(cookie_reader, logger)
-	client.SetBrowserFetcher(browser_fetcher)
 	client.SetHTTPTimeout(zhihu_status_check_timeout)
 	if _, err := client.Fetch(zhihu_status_check_url); err != nil {
 		return zhihu_unavailable(compact_zhihu_status_reason("知乎 Cookie 检测失败：", err))

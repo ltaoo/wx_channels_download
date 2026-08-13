@@ -59,16 +59,9 @@ func (h *handler) RegisterRuntime(d *adapter.AdapterOptions) (adapter.RuntimeHan
 	if err != nil {
 		h.set_runtime(nil, nil, nil)
 		h.set_persistent_cache(nil)
-		h.set_browser_fetcher(nil)
 		return nil, err
 	}
 	handle.runtime_handler = h
-	if handle.routes != nil {
-		h.set_browser_fetcher(handle.routes.browser_relay)
-		handle.routes.browser_relay.SetAvailabilityCallback(func(_ bool) {
-			h.RefreshPlatformStatus()
-		})
-	}
 	h.RefreshPlatformStatus()
 	return handle, nil
 }
@@ -78,14 +71,10 @@ func (h *Handle) Stop() {
 	if h == nil {
 		return
 	}
-	if h.routes != nil {
-		h.routes.Stop()
-	}
 	if h.runtime_handler != nil {
 		h.runtime_handler.stop_status_check()
 		h.runtime_handler.set_runtime(nil, nil, nil)
 		h.runtime_handler.set_persistent_cache(nil)
-		h.runtime_handler.set_browser_fetcher(nil)
 	}
 	h.routes = nil
 	h.runtime_handler = nil

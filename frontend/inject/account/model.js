@@ -114,6 +114,7 @@ var AccountModel = (() => {
       qidian: "起点中文网",
       fanqienovel: "番茄小说",
       "69shuba": "69书吧",
+      ttk: "TT看书",
     };
     const platform_id = String((account && account.platform_id) || "").trim();
     return names[platform_id] || platform_id || "未知平台";

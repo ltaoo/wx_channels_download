@@ -238,6 +238,7 @@ var ContentLibraryModel = (() => {
       qidian: "起点中文网",
       fanqienovel: "番茄小说",
       "69shuba": "69书吧",
+      ttk: "TT看书",
     };
     return names[content.platform_id] || content.platform_id || "未知平台";
   }

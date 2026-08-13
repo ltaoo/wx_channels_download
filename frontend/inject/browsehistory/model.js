@@ -195,6 +195,7 @@ var BrowseHistoryModel = (() => {
       qidian: "起点中文网",
       fanqienovel: "番茄小说",
       "69shuba": "69书吧",
+      ttk: "TT看书",
     };
     return names[history.platform_id] || history.platform_id || "未知平台";
   }

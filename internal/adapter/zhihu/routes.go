@@ -18,7 +18,6 @@ type Routes struct {
 	cookie_reader *cookies.Reader
 	logger        *zerolog.Logger
 	file_cache    *cache.CacheProvider
-	browser_relay *zhihu.BrowserRelay
 }
 
 // NewRoutes creates routes that share the runtime cookie reader and logger.
@@ -26,7 +25,6 @@ func NewRoutes(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Routes {
 	return &Routes{
 		cookie_reader: cookie_reader,
 		logger:        logger,
-		browser_relay: zhihu.NewBrowserRelay(logger),
 	}
 }
 
@@ -43,16 +41,6 @@ func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 		return
 	}
 	registrar.RegisterGET("/api/zhihu/fetch", r.HandleFetch)
-	registrar.RegisterGET(zhihu.BrowserWebSocketPath, r.HandleBrowserWebSocket)
-}
-
-// HandleBrowserWebSocket attaches an injected real Zhihu browser tab.
-func (r *Routes) HandleBrowserWebSocket(ctx *gin.Context) {
-	if r == nil || r.browser_relay == nil {
-		ctx.AbortWithStatus(503)
-		return
-	}
-	r.browser_relay.HandleWebSocket(ctx.Writer, ctx.Request)
 }
 
 // HandleFetch fetches and parses zhihu page data by URL.
@@ -70,7 +58,6 @@ func (r *Routes) HandleFetch(ctx *gin.Context) {
 
 	client := zhihu.NewClient(r.cookie_reader, r.logger)
 	client.SetPersistentCache(r.file_cache)
-	client.SetBrowserFetcher(r.browser_relay)
 	page, err := client.Fetch(raw_url)
 	if err != nil {
 		log.Printf("[zhihu] Fetch failed: %v", err)
@@ -83,13 +70,4 @@ func (r *Routes) HandleFetch(ctx *gin.Context) {
 		"url":  raw_url,
 		"page": page,
 	})
-}
-
-// Stop closes browser connections owned by these routes.
-func (r *Routes) Stop() {
-	if r == nil || r.browser_relay == nil {
-		return
-	}
-	r.browser_relay.Close()
-	r.browser_relay = nil
 }

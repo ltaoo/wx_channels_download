@@ -4,6 +4,8 @@
  */
 var HomePageModel = (() => {
   const home_api_origin = WXEnv.get("apiOrigin");
+  const active_job_storage_key =
+    "wx_channels_download.home.active_scraper_job_id";
   const home_http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: home_api_origin,
@@ -43,6 +45,7 @@ var HomePageModel = (() => {
     qidian: "起点中文网",
     fanqienovel: "番茄小说",
     "69shuba": "69书吧",
+    ttk: "TT看书",
   };
 
   const content_type_names = {
@@ -64,6 +67,18 @@ var HomePageModel = (() => {
     course: "课程",
     comic: "漫画",
     live: "直播",
+  };
+
+  const content_relation_names = {
+    answer_of: "回答所属问题",
+    contains: "包含",
+    part_of: "属于",
+    reply_to: "回复",
+    quote_of: "引用",
+    repost_of: "转发",
+    translation_of: "翻译自",
+    derived_from: "派生自",
+    related: "相关内容",
   };
 
   const content_detail_field_names = {
@@ -103,6 +118,26 @@ var HomePageModel = (() => {
   function number_or_default(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
+  }
+
+  function load_active_job_id() {
+    try {
+      return String(window.localStorage.getItem(active_job_storage_key) || "")
+        .trim();
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function save_active_job_id(job_id) {
+    const normalized_job_id = String(job_id || "").trim();
+    try {
+      if (normalized_job_id) {
+        window.localStorage.setItem(active_job_storage_key, normalized_job_id);
+        return;
+      }
+      window.localStorage.removeItem(active_job_storage_key);
+    } catch (error) {}
   }
 
   function platform_name(value) {
@@ -212,20 +247,500 @@ var HomePageModel = (() => {
     };
   }
 
-  function normalize_detail_preview(value) {
-    const text = String(value || "")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&(?:nbsp|ensp|emsp);/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, " ")
-      .trim();
-    return text.length > 280 ? `${text.slice(0, 280)}…` : text;
+  function download_info_value(source, ...keys) {
+    if (!source || typeof source !== "object") {
+      return undefined;
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        return source[key];
+      }
+    }
+    return undefined;
+  }
+
+  function download_info_object(source, ...keys) {
+    const value = download_info_value(source, ...keys);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  }
+
+  function download_info_array(source, ...keys) {
+    const value = download_info_value(source, ...keys);
+    return Array.isArray(value) ? value : [];
+  }
+
+  function download_resource_icon(kind) {
+    const normalized_kind = String(kind || "").toLowerCase();
+    if (normalized_kind.includes("image")) {
+      return "file-image";
+    }
+    if (
+      normalized_kind.includes("video") ||
+      normalized_kind.includes("audio")
+    ) {
+      return "file-play";
+    }
+    if (
+      normalized_kind.includes("html") ||
+      normalized_kind.includes("text") ||
+      normalized_kind.includes("json")
+    ) {
+      return "file-text";
+    }
+    return "file";
+  }
+
+  function normalize_content_video_variant(variant, index) {
+    const source = variant && typeof variant === "object" ? variant : {};
+    const variant_key = String(
+      first_non_empty(
+        source.variant_key,
+        source.VariantKey,
+        source.spec,
+        source.Spec,
+        `variant-${index + 1}`,
+      ),
+    );
+    const width = number_or_default(
+      first_non_empty(source.width, source.Width),
+      0,
+    );
+    const height = number_or_default(
+      first_non_empty(source.height, source.Height),
+      0,
+    );
+    const dimensions = width > 0 && height > 0 ? `${width} × ${height}` : "";
+    const meta_text = [
+      dimensions,
+      first_non_empty(source.codec, source.Codec),
+      first_non_empty(source.format, source.Format),
+      first_non_empty(source.stream_type, source.StreamType),
+      format_bytes(first_non_empty(source.size, source.Size)),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      key: `${variant_key}:${index}`,
+      title: String(
+        first_non_empty(
+          source.quality,
+          source.Quality,
+          source.spec,
+          source.Spec,
+          variant_key,
+        ),
+      ),
+      variant_key,
+      meta_text,
+      default_text:
+        Number(first_non_empty(source.is_default, source.IsDefault)) > 0
+          ? "默认"
+          : "可选",
+      url: String(first_non_empty(source.url, source.URL)).trim(),
+    };
+  }
+
+  function normalize_content_video_subtitle_source(source_value, index) {
+    const source =
+      source_value && typeof source_value === "object" ? source_value : {};
+    const source_key = String(
+      first_non_empty(
+        source.source_key,
+        source.SourceKey,
+        source.format,
+        source.Format,
+        `source-${index + 1}`,
+      ),
+    );
+    return {
+      key: `${source_key}:${index}`,
+      title: String(
+        first_non_empty(source.format, source.Format, source_key),
+      ).toUpperCase(),
+      meta_text: [
+        first_non_empty(source.encoding, source.Encoding),
+        format_bytes(first_non_empty(source.size, source.Size)),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      url: String(first_non_empty(source.url, source.URL)).trim(),
+    };
+  }
+
+  function normalize_content_video_subtitle_track(track, index) {
+    const source = track && typeof track === "object" ? track : {};
+    const track_key = String(
+      first_non_empty(
+        source.track_key,
+        source.TrackKey,
+        `track-${index + 1}`,
+      ),
+    );
+    const flags = [];
+    if (Number(first_non_empty(source.is_default, source.IsDefault)) > 0) {
+      flags.push("默认");
+    }
+    if (Number(first_non_empty(source.is_forced, source.IsForced)) > 0) {
+      flags.push("强制");
+    }
+    if (
+      Number(
+        first_non_empty(source.is_auto_generated, source.IsAutoGenerated),
+      ) > 0
+    ) {
+      flags.push("自动生成");
+    }
+    const sources = download_info_array(source, "sources", "Sources").map(
+      normalize_content_video_subtitle_source,
+    );
+    return {
+      key: `${track_key}:${index}`,
+      title: String(
+        first_non_empty(
+          source.label,
+          source.Label,
+          source.language_name,
+          source.LanguageName,
+          source.language_code,
+          source.LanguageCode,
+          track_key,
+        ),
+      ),
+      track_key,
+      meta_text: [
+        first_non_empty(source.language_code, source.LanguageCode),
+        first_non_empty(source.kind, source.Kind),
+        ...flags,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      sources,
+      has_sources: sources.length > 0,
+    };
+  }
+
+  function normalize_download_content_asset(asset, index) {
+    const source = asset && typeof asset === "object" ? asset : {};
+    const asset_key = String(
+      first_non_empty(source.asset_key, source.AssetKey, `asset-${index + 1}`),
+    );
+    const subject_text = [
+      first_non_empty(source.subject_type, source.SubjectType),
+      first_non_empty(source.subject_key, source.SubjectKey),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      key: `${asset_key}:${index}`,
+      asset_key,
+      kind: String(first_non_empty(source.kind, source.Kind, "asset")),
+      role: String(first_non_empty(source.role, source.Role, "关联资产")),
+      relation: String(
+        first_non_empty(source.relation, source.Relation, "source"),
+      ),
+      subject_text,
+    };
+  }
+
+  function normalize_download_resource(resource_info, index, content_id) {
+    const source =
+      resource_info && typeof resource_info === "object" ? resource_info : {};
+    const resource = download_info_object(source, "Resource", "resource");
+    const endpoints = download_info_array(source, "Endpoints", "endpoints");
+    const content_assets = download_info_array(
+      source,
+      "ContentAssets",
+      "content_assets",
+    ).map(normalize_download_content_asset);
+    const name = String(
+      first_non_empty(
+        resource.name,
+        resource.Name,
+        resource.unique_id,
+        `资源 ${index + 1}`,
+      ),
+    );
+    const kind = String(
+      first_non_empty(resource.kind, resource.Kind, resource.type, "file"),
+    );
+    const resource_content_id = String(
+      first_non_empty(
+        resource.content_id,
+        resource.ContentId,
+        resource.ContentID,
+        content_id,
+      ),
+    );
+    return {
+      key: String(
+        first_non_empty(
+          resource.unique_id,
+          resource.UniqueID,
+          `${name}:${index}`,
+        ),
+      ),
+      index_text: String(index + 1).padStart(2, "0"),
+      name,
+      kind,
+      icon: download_resource_icon(kind),
+      meta_text: [
+        kind,
+        format_bytes(first_non_empty(resource.size, resource.Size)),
+        `${endpoints.length} 个下载端点`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      status_text: "等待下载",
+      content_id: resource_content_id,
+      content_assets,
+      has_content_assets: content_assets.length > 0,
+    };
+  }
+
+  function normalize_download_info(result) {
+    const download_info =
+      result &&
+      result.download_info &&
+      typeof result.download_info === "object"
+        ? result.download_info
+        : null;
+    if (!download_info) {
+      return {
+        present: false,
+        resource_count_text: "0",
+        resources: [],
+        task: {
+          id_text: "-",
+          name: "下载任务",
+          meta_text: "",
+          status_text: "等待创建",
+        },
+      };
+    }
+    const task = download_info_object(download_info, "Task", "task");
+    const content = download_info_object(download_info, "Content", "content");
+    const content_id = String(
+      first_non_empty(
+        content.id,
+        content.Id,
+        task.content_id,
+        task.ContentId,
+        result && result.content && result.content.id,
+      ),
+    );
+    const resources = download_info_array(
+      download_info,
+      "Resources",
+      "resources",
+    ).map((resource, index) =>
+      normalize_download_resource(resource, index, content_id),
+    );
+    const task_statuses = {
+      0: "等待创建",
+      1: "准备中",
+      2: "下载中",
+      3: "已暂停",
+      4: "合并中",
+      5: "已完成",
+      6: "失败",
+      7: "已取消",
+    };
+    const task_status = number_or_default(
+      first_non_empty(task.status, task.Status),
+      0,
+    );
+    const task_id = number_or_default(first_non_empty(task.id, task.Id), 0);
+    return {
+      present: true,
+      resource_count_text: String(resources.length),
+      resources,
+      task: {
+        id_text: task_id > 0 ? `#${task_id}` : "-",
+        name: String(first_non_empty(task.name, task.Name, "下载任务")),
+        meta_text: [
+          platform_name(first_non_empty(task.platform_id, task.PlatformId)),
+          first_non_empty(task.unique_id, task.UniqueID),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        status_text: task_statuses[task_status] || `状态 ${task_status}`,
+      },
+    };
+  }
+
+  function parse_article_color(value, color_probe, color_cache) {
+    const color = String(value || "").trim();
+    if (!color || !color_probe) {
+      return null;
+    }
+    if (color_cache.has(color)) {
+      return color_cache.get(color);
+    }
+    color_probe.style.color = "";
+    color_probe.style.color = color;
+    if (!color_probe.style.color) {
+      color_cache.set(color, null);
+      return null;
+    }
+    const resolved_color = window.getComputedStyle(color_probe).color;
+    if (!/^rgba?\(/i.test(String(resolved_color || ""))) {
+      color_cache.set(color, null);
+      return null;
+    }
+    const components = String(resolved_color || "").match(/[\d.]+/g) || [];
+    if (components.length < 3) {
+      color_cache.set(color, null);
+      return null;
+    }
+    const red = Math.min(255, Math.max(0, Number(components[0])));
+    const green = Math.min(255, Math.max(0, Number(components[1])));
+    const blue = Math.min(255, Math.max(0, Number(components[2])));
+    const alpha =
+      components.length > 3
+        ? Math.min(1, Math.max(0, Number(components[3])))
+        : 1;
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const saturation = maximum > 0 ? (maximum - minimum) / maximum : 0;
+    const linearize = (component) => {
+      const normalized = component / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance =
+      0.2126 * linearize(red) +
+      0.7152 * linearize(green) +
+      0.0722 * linearize(blue);
+    const parsed_color = { alpha, saturation, luminance };
+    color_cache.set(color, parsed_color);
+    return parsed_color;
+  }
+
+  function normalize_article_theme_html(value) {
+    const html = String(value || "");
+    if (!html || typeof document === "undefined") {
+      return html;
+    }
+    const template = document.createElement("template");
+    const color_probe = document.createElement("span");
+    const color_cache = new Map();
+    template.innerHTML = html;
+    color_probe.style.cssText =
+      "position:fixed;left:-9999px;visibility:hidden;pointer-events:none";
+    document.documentElement.appendChild(color_probe);
+    try {
+      const parse_color = (color) =>
+        parse_article_color(color, color_probe, color_cache);
+      const is_neutral_dark = (color) => {
+        const parsed_color = parse_color(color);
+        return Boolean(
+          parsed_color &&
+            parsed_color.alpha > 0.05 &&
+            parsed_color.saturation <= 0.18 &&
+            parsed_color.luminance <= 0.35,
+        );
+      };
+      const is_neutral_light = (color) => {
+        const parsed_color = parse_color(color);
+        return Boolean(
+          parsed_color &&
+            parsed_color.alpha > 0.05 &&
+            parsed_color.saturation <= 0.18 &&
+            parsed_color.luminance >= 0.72,
+        );
+      };
+      template.content.querySelectorAll("[style]").forEach((element) => {
+        const color = element.style.getPropertyValue("color");
+        const text_fill_color = element.style.getPropertyValue(
+          "-webkit-text-fill-color",
+        );
+        const background_color = element.style.getPropertyValue(
+          "background-color",
+        );
+        if (is_neutral_dark(color)) {
+          element.style.removeProperty("color");
+        }
+        if (is_neutral_dark(text_fill_color)) {
+          element.style.removeProperty("-webkit-text-fill-color");
+        }
+        if (is_neutral_light(background_color)) {
+          element.style.removeProperty("background-color");
+        }
+        if (!element.style.cssText.trim()) {
+          element.removeAttribute("style");
+        }
+      });
+      template.content.querySelectorAll("font[color]").forEach((element) => {
+        if (is_neutral_dark(element.getAttribute("color"))) {
+          element.removeAttribute("color");
+        }
+      });
+      template.content.querySelectorAll("[bgcolor]").forEach((element) => {
+        if (is_neutral_light(element.getAttribute("bgcolor"))) {
+          element.removeAttribute("bgcolor");
+        }
+      });
+      return template.innerHTML;
+    } finally {
+      color_probe.remove();
+    }
+  }
+
+  function normalize_article_body(data, create_article_html_content) {
+    const source = data && typeof data === "object" ? data : {};
+    const declared_format = String(source.type || "").trim().toLowerCase();
+    const supported_formats = ["html", "markdown", "text"];
+    const declared_content = supported_formats.includes(declared_format)
+      ? first_non_empty(source[declared_format], source.content)
+      : "";
+    if (declared_content !== "") {
+      const content = String(declared_content);
+      const is_html = declared_format === "html";
+      return {
+        present: Boolean(content.trim()),
+        format: declared_format,
+        is_html,
+        content:
+          is_html && typeof create_article_html_content === "function"
+            ? create_article_html_content(content)
+            : content,
+      };
+    }
+
+    for (const format of supported_formats) {
+      const value = source[format];
+      if (value !== undefined && value !== null && value !== "") {
+        const content = String(value);
+        const is_html = format === "html";
+        return {
+          present: Boolean(content.trim()),
+          format,
+          is_html,
+          content:
+            is_html && typeof create_article_html_content === "function"
+              ? create_article_html_content(content)
+              : content,
+        };
+      }
+    }
+
+    const content = String(source.content || "");
+    const format = supported_formats.includes(declared_format)
+      ? declared_format
+      : "text";
+    const is_html = format === "html";
+    return {
+      present: Boolean(content.trim()),
+      format,
+      is_html,
+      content:
+        is_html && typeof create_article_html_content === "function"
+          ? create_article_html_content(content)
+          : content,
+    };
   }
 
   function normalize_detail_field(label, value) {
@@ -379,7 +894,151 @@ var HomePageModel = (() => {
     };
   }
 
-  function normalize_typed_content_detail(detail, detail_index, content) {
+  function normalize_content_detail_subject(detail, fallback_content, detail_type) {
+    const source =
+      detail && detail.content && typeof detail.content === "object"
+        ? detail.content
+        : {};
+    const id = String(
+      first_non_empty(source.id, source.ID, detail && detail.key),
+    ).trim();
+    const type = String(
+      first_non_empty(
+        source.subtype,
+        source.Subtype,
+        source.type,
+        source.Type,
+        detail_type,
+      ),
+    )
+      .trim()
+      .toLowerCase();
+    const title = String(
+      first_non_empty(
+        source.title,
+        source.Title,
+        source.description,
+        source.Description,
+        fallback_content && fallback_content.title,
+        id,
+      ),
+    ).trim();
+    const url = String(
+      first_non_empty(
+        source.url,
+        source.URL,
+        source.source_url,
+        source.SourceURL,
+        fallback_content && fallback_content.content_url,
+      ),
+    ).trim();
+    const type_name = content_type_name(type);
+    return {
+      present: Boolean(Object.keys(source).length > 0 || id),
+      id,
+      type,
+      type_name,
+      title,
+      url,
+      has_url: Boolean(url),
+      meta_text: [type_name, id].filter(Boolean).join(" · "),
+    };
+  }
+
+  function normalize_content_detail_relation(detail) {
+    const source =
+      detail && detail.relation && typeof detail.relation === "object"
+        ? detail.relation
+        : {};
+    const type = String(first_non_empty(source.type, source.Type))
+      .trim()
+      .toLowerCase();
+    const source_content_id = String(
+      first_non_empty(
+        source.source_content_id,
+        source.SourceContentId,
+        source.SourceContentID,
+      ),
+    ).trim();
+    const target_content_id = String(
+      first_non_empty(
+        source.target_content_id,
+        source.TargetContentId,
+        source.TargetContentID,
+      ),
+    ).trim();
+    return {
+      present: Boolean(type && source_content_id && target_content_id),
+      type,
+      type_name: content_relation_names[type] || type,
+      source_content_id,
+      target_content_id,
+    };
+  }
+
+  function normalize_content_relations(items, content) {
+    const content_by_id = new Map();
+    if (content && content.id) {
+      content_by_id.set(String(content.id), {
+        id: String(content.id),
+        type: String(content.type || ""),
+        type_name: content.content_type_name,
+        title: content.title,
+        url: content.content_url,
+        has_url: Boolean(content.content_url),
+        meta_text: [content.content_type_name, content.id]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    }
+    for (const item of items) {
+      if (item.subject && item.subject.id) {
+        content_by_id.set(item.subject.id, item.subject);
+      }
+    }
+    const relation_items = [];
+    for (const item of items) {
+      const relation = item.relation || {};
+      if (!relation.present) {
+        continue;
+      }
+      const source = content_by_id.get(relation.source_content_id) || {
+        id: relation.source_content_id,
+        type_name: "内容",
+        title: relation.source_content_id,
+        url: "",
+        has_url: false,
+        meta_text: relation.source_content_id,
+      };
+      const target = content_by_id.get(relation.target_content_id) || {
+        id: relation.target_content_id,
+        type_name: "内容",
+        title: relation.target_content_id,
+        url: "",
+        has_url: false,
+        meta_text: relation.target_content_id,
+      };
+      relation_items.push({
+        key: `${relation.source_content_id}:${relation.type}:${relation.target_content_id}`,
+        type: relation.type,
+        type_name: relation.type_name,
+        source,
+        target,
+      });
+    }
+    return {
+      present: relation_items.length > 0,
+      count_text: `${relation_items.length} 个关联`,
+      items: relation_items,
+    };
+  }
+
+  function normalize_typed_content_detail(
+    detail,
+    detail_index,
+    content,
+    create_article_html_content,
+  ) {
     const type = String((detail && detail.type) || "").trim().toLowerCase();
     const data =
       detail && detail.data && typeof detail.data === "object"
@@ -388,13 +1047,23 @@ var HomePageModel = (() => {
     const key = String(
       (detail && detail.key) || data.id || `${type}:${detail_index}`,
     );
+    const subject = normalize_content_detail_subject(detail, content, type);
+    const relation = normalize_content_detail_relation(detail);
     const article_types = ["article", "answer", "question", "post", "blog"];
     const image_types = ["album", "image_set", "image"];
     let kind = "generic";
     let icon = "file-text";
     let title = `${content_type_name(type)}详情`;
-    let preview = "";
+    let model_name = "ContentDetail";
+    let article_body = {
+      present: false,
+      format: "text",
+      is_html: false,
+      content: "",
+    };
     let images = [];
+    let variants = [];
+    let subtitle_tracks = [];
     let media = {
       present: false,
       video_url: "",
@@ -405,16 +1074,32 @@ var HomePageModel = (() => {
     if (["video", "short_video"].includes(type)) {
       kind = "video";
       icon = "file-play";
+      model_name = "ContentVideo";
       media = normalize_video_detail_media(data, content);
+      variants = download_info_array(data, "variants", "Variants").map(
+        normalize_content_video_variant,
+      );
+      subtitle_tracks = download_info_array(
+        data,
+        "subtitle_tracks",
+        "SubtitleTracks",
+      ).map(normalize_content_video_subtitle_track);
     } else if (article_types.includes(type)) {
       kind = "article";
       icon = "file-text";
-      preview = normalize_detail_preview(
-        first_non_empty(data.markdown, data.text, data.html),
-      );
+      model_name = "ContentArticle";
+      if (type === "answer") {
+        title = "回答正文";
+      } else if (type === "question") {
+        title = "问题描述";
+      } else if (type === "article" || type === "blog") {
+        title = "文章正文";
+      }
+      article_body = normalize_article_body(data, create_article_html_content);
     } else if (image_types.includes(type)) {
       kind = "album";
       icon = "file-image";
+      model_name = "ContentAlbum";
       images = (Array.isArray(data.images) ? data.images : [])
         .map((image, image_index) => {
           const live_photo =
@@ -443,6 +1128,7 @@ var HomePageModel = (() => {
       kind = "live";
       icon = "file-play";
       title = "直播详情";
+      model_name = "ContentLive";
     }
     return {
       key,
@@ -451,19 +1137,82 @@ var HomePageModel = (() => {
       kind,
       icon,
       title,
+      model_name: [model_name, subject.meta_text].filter(Boolean).join(" · "),
+      subject,
+      relation,
       fields: normalize_generic_detail_fields(data),
-      preview,
+      article_body,
       images,
       media,
+      variants,
+      subtitle_tracks,
+      has_variants: variants.length > 0,
+      has_subtitle_tracks: subtitle_tracks.length > 0,
       link_url: String(first_non_empty(data.url, data.stream_url)).trim(),
     };
   }
 
-  function normalize_content_details(result) {
-    const details =
+  function normalize_content_details(result, create_article_html_content) {
+    const source_details =
       result && Array.isArray(result.content_details)
         ? result.content_details
         : [];
+    const details = source_details.map((detail) => ({
+      ...(detail || {}),
+      data:
+        detail && detail.data && typeof detail.data === "object"
+          ? { ...detail.data }
+          : {},
+    }));
+    const download_info =
+      result &&
+      result.download_info &&
+      typeof result.download_info === "object"
+        ? result.download_info
+        : {};
+    const download_content = download_info_object(
+      download_info,
+      "Content",
+      "content",
+    );
+    const download_detail = download_info_object(
+      download_info,
+      "ContentDetail",
+      "content_detail",
+    );
+    const download_detail_type = String(
+      first_non_empty(download_content.type, download_content.Type),
+    )
+      .trim()
+      .toLowerCase();
+    if (download_detail_type && Object.keys(download_detail).length > 0) {
+      const detail_index = details.findIndex(
+        (detail) =>
+          String((detail && detail.type) || "")
+            .trim()
+            .toLowerCase() === download_detail_type,
+      );
+      if (detail_index >= 0) {
+        details[detail_index].data = {
+          ...details[detail_index].data,
+          ...download_detail,
+        };
+      } else {
+        details.push({
+          key: String(
+            first_non_empty(
+              download_content.id,
+              download_content.Id,
+              download_detail.id,
+              download_detail.Id,
+              download_detail_type,
+            ),
+          ),
+          type: download_detail_type,
+          data: download_detail,
+        });
+      }
+    }
     let novel_data = null;
     const volumes = [];
     const chapters = [];
@@ -505,7 +1254,14 @@ var HomePageModel = (() => {
         });
         continue;
       }
-      items.push(normalize_typed_content_detail(detail, detail_index, content));
+      items.push(
+        normalize_typed_content_detail(
+          detail,
+          detail_index,
+          content,
+          create_article_html_content,
+        ),
+      );
     }
 
     volumes.sort((left, right) => left.idx - right.idx);
@@ -536,14 +1292,18 @@ var HomePageModel = (() => {
         novel_data ? (Number(novel_data.is_finished) > 0 ? "已完结" : "连载中") : "获取中",
       ),
     ].filter(Boolean);
+    const relations = normalize_content_relations(items, content);
 
     return {
       present: details.length > 0,
       count_text: `${details.length} 项详情`,
+      relations,
       novel: {
         present: novel_present,
         title: novel_title,
-        subtitle: author_name ? `作者：${author_name}` : "小说结构",
+        subtitle: author_name
+          ? `ContentNovel · 作者：${author_name}`
+          : "ContentNovel · 小说结构",
         progress_text:
           chapter_total > 0
             ? `已获取 ${chapters.length}/${chapter_total} 章`
@@ -588,6 +1348,7 @@ var HomePageModel = (() => {
     return {
       present: Boolean(result && result.content),
       id: first_non_empty(source.id, source.ID),
+      type: String(content_type || "").trim().toLowerCase(),
       title,
       description,
       show_description: Boolean(description && description !== title),
@@ -672,11 +1433,18 @@ var HomePageModel = (() => {
     const interrupt_loading_ = ref(false);
     const cache_loading_ = ref(false);
     const cache_error_ = ref("");
+    const cache_content_loading_ = ref(false);
+    const cache_content_error_ = ref("");
+    const cache_content_entry_ = ref(null);
+    const cache_content_data_ = ref(null);
     const chapter_display_limit_ = ref(100);
     const platform_statuses_ = ref([]);
     const platform_status_popover_ = new Timeless.vm.PopoverCore({
       offsetY: 8,
       destroyOnClose: false,
+    });
+    const cache_content_dialog_ = new Timeless.vm.DialogCore({
+      closeable: true,
     });
     let request_sequence = 0;
     let active_job_id_ = "";
@@ -686,7 +1454,63 @@ var HomePageModel = (() => {
     let poll_timeout_id_ = 0;
     let resolving_terminal_job_id_ = "";
     let platform_status_hide_timeout_id_ = 0;
+    let cache_content_request_sequence = 0;
     let disposed_ = false;
+    const article_html_cache_ = new Map();
+    const article_html_tasks_ = new Set();
+
+    function schedule_article_html_task(callback) {
+      let task = null;
+      if (typeof window.requestIdleCallback === "function") {
+        const task_id = window.requestIdleCallback(callback, { timeout: 500 });
+        task = { id: task_id, idle: true };
+      } else {
+        const task_id = window.setTimeout(callback, 0);
+        task = { id: task_id, idle: false };
+      }
+      article_html_tasks_.add(task);
+      return task;
+    }
+
+    function cancel_article_html_tasks() {
+      article_html_tasks_.forEach((task) => {
+        if (task.idle && typeof window.cancelIdleCallback === "function") {
+          window.cancelIdleCallback(task.id);
+          return;
+        }
+        window.clearTimeout(task.id);
+      });
+      article_html_tasks_.clear();
+    }
+
+    function create_article_html_content(value) {
+      const html = String(value || "");
+      if (article_html_cache_.has(html)) {
+        return article_html_cache_.get(html);
+      }
+      const content_ = ref(html);
+      article_html_cache_.set(html, content_);
+      const task = schedule_article_html_task(() => {
+        article_html_tasks_.delete(task);
+        if (disposed_) {
+          return;
+        }
+        try {
+          const normalized_html = normalize_article_theme_html(html);
+          if (!content_.isStrictEqual(normalized_html)) {
+            content_.as(normalized_html);
+          }
+        } catch (error) {
+          console.warn("normalize article theme html failed", error);
+        }
+      });
+      return content_;
+    }
+
+    function reset_article_html_processing() {
+      cancel_article_html_tasks();
+      article_html_cache_.clear();
+    }
 
     const fetch_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/scraper/fetch", body),
@@ -714,6 +1538,12 @@ var HomePageModel = (() => {
     );
     const cache_clear_request = new Timeless.kit.RequestCore(
       (body) => home_request.post("/api/scraper/cache/clear", body),
+      {
+        client: home_http_client,
+      },
+    );
+    const cache_content_request = new Timeless.kit.RequestCore(
+      (params) => home_request.get("/api/scraper/cache/content", params),
       {
         client: home_http_client,
       },
@@ -872,6 +1702,10 @@ var HomePageModel = (() => {
     );
     const has_result_ = computed(result_, (data) => Boolean(data));
     const normalized_cache_ = computed(result_, normalize_cache);
+    const normalized_download_info_ = computed(
+      result_,
+      normalize_download_info,
+    );
     const progress_visible_ = combine(
       { loading: loading_, progress: fetch_progress_ },
       (state) =>
@@ -938,9 +1772,8 @@ var HomePageModel = (() => {
     );
     const normalized_content_ = computed(result_, normalize_content);
     const normalized_account_ = computed(result_, normalize_account);
-    const normalized_content_details_ = computed(
-      result_,
-      normalize_content_details,
+    const normalized_content_details_ = computed(result_, (result) =>
+      normalize_content_details(result, create_article_html_content),
     );
     const content_ = {
       present: computed(normalized_content_, (content) => content.present),
@@ -979,6 +1812,63 @@ var HomePageModel = (() => {
         normalized_cache_,
         (cache) => cache.summary_text,
       ),
+    };
+    const cache_content_ = {
+      loading: cache_content_loading_,
+      error: cache_content_error_,
+      title: computed(cache_content_entry_, (entry) =>
+        String((entry && entry.name) || "缓存内容"),
+      ),
+      path: computed(cache_content_entry_, (entry) =>
+        String((entry && entry.path) || ""),
+      ),
+      meta_text: combine(
+        { entry: cache_content_entry_, data: cache_content_data_ },
+        (state) => {
+          const data = state.data || {};
+          const entry = state.entry || {};
+          const size_text =
+            format_bytes(number_or_default(data.size, entry.size || 0)) ||
+            "大小未知";
+          const content_type = String(data.content_type || "").trim();
+          return [size_text, content_type].filter(Boolean).join(" · ");
+        },
+      ),
+      text: computed(cache_content_data_, (data) =>
+        String((data && data.content) || ""),
+      ),
+    };
+    const download_info_ = {
+      present: computed(
+        normalized_download_info_,
+        (download_info) => download_info.present,
+      ),
+      resource_count_text: computed(
+        normalized_download_info_,
+        (download_info) => download_info.resource_count_text,
+      ),
+      resources: computed(
+        normalized_download_info_,
+        (download_info) => download_info.resources,
+      ),
+      task: {
+        id_text: computed(
+          normalized_download_info_,
+          (download_info) => download_info.task.id_text,
+        ),
+        name: computed(
+          normalized_download_info_,
+          (download_info) => download_info.task.name,
+        ),
+        meta_text: computed(
+          normalized_download_info_,
+          (download_info) => download_info.task.meta_text,
+        ),
+        status_text: computed(
+          normalized_download_info_,
+          (download_info) => download_info.task.status_text,
+        ),
+      },
     };
     const account_ = {
       present: computed(normalized_account_, (account) => account.present),
@@ -1081,6 +1971,20 @@ var HomePageModel = (() => {
           },
         ),
       },
+    };
+    const content_relations_ = {
+      present: computed(
+        normalized_content_details_,
+        (details) => details.relations.present,
+      ),
+      count_text: computed(
+        normalized_content_details_,
+        (details) => details.relations.count_text,
+      ),
+      items: computed(
+        normalized_content_details_,
+        (details) => details.relations.items,
+      ),
     };
     const result_text_ = computed(result_, (data) =>
       data ? JSON.stringify(data, null, 2) : "",
@@ -1300,6 +2204,30 @@ var HomePageModel = (() => {
       return next_details;
     }
 
+    function upsert_cache_entry(entries, cache_entry) {
+      if (!cache_entry || typeof cache_entry !== "object") {
+        return entries;
+      }
+      const path = String(cache_entry.path || "").trim();
+      if (!path) {
+        return entries;
+      }
+      const key = String(cache_entry.key || path).trim();
+      const next_entries = Array.isArray(entries) ? [...entries] : [];
+      const entry_index = next_entries.findIndex((entry) => {
+        const entry_key = String((entry && entry.key) || "").trim();
+        const entry_path = String((entry && entry.path) || "").trim();
+        return (entry_key && entry_key === key) || entry_path === path;
+      });
+      const next_entry = { ...cache_entry, key, path };
+      if (entry_index >= 0) {
+        next_entries[entry_index] = next_entry;
+      } else {
+        next_entries.push(next_entry);
+      }
+      return next_entries;
+    }
+
     function apply_fetch_job_payload(job, event) {
       const content = (event && event.content) || job.content;
       const account = (event && event.account) || job.account;
@@ -1307,7 +2235,18 @@ var HomePageModel = (() => {
         ? job.content_details
         : [];
       const event_detail = event && event.content_detail;
-      if (!content && !account && job_details.length === 0 && !event_detail) {
+      const job_cache_entries = Array.isArray(job.cache_entries)
+        ? job.cache_entries
+        : [];
+      const event_cache_entry = event && event.cache_entry;
+      if (
+        !content &&
+        !account &&
+        job_details.length === 0 &&
+        !event_detail &&
+        job_cache_entries.length === 0 &&
+        !event_cache_entry
+      ) {
         return;
       }
 
@@ -1326,6 +2265,13 @@ var HomePageModel = (() => {
         );
       }
       content_details = upsert_content_detail(content_details, event_detail);
+      let cache_entries = Array.isArray(current_result.cache_entries)
+        ? current_result.cache_entries
+        : [];
+      for (const cache_entry of job_cache_entries) {
+        cache_entries = upsert_cache_entry(cache_entries, cache_entry);
+      }
+      cache_entries = upsert_cache_entry(cache_entries, event_cache_entry);
       result_.as({
         ...current_result,
         job_id: job.id,
@@ -1334,6 +2280,7 @@ var HomePageModel = (() => {
         content: content || current_result.content,
         account: account || current_result.account,
         content_details,
+        cache_entries,
       });
     }
 
@@ -1400,6 +2347,55 @@ var HomePageModel = (() => {
         return result;
       }
       apply_scraper_job(result.data || {}, sequence);
+      return result;
+    }
+
+    async function restore_scraper_job() {
+      if (disposed_ || loading_.value || active_job_id_) {
+        return null;
+      }
+      const job_id = load_active_job_id();
+      if (!job_id) {
+        return null;
+      }
+
+      const sequence = ++request_sequence;
+      active_job_id_ = job_id;
+      resolving_terminal_job_id_ = "";
+      loading_.as(true);
+      error_.as("");
+      fetch_notice_.as("");
+      fetch_progress_.as({
+        request_id: job_id,
+        stage: "restore",
+        status: "pending",
+        current: 0,
+        total: 0,
+        percent: 0,
+        message: "正在恢复抓取任务...",
+      });
+
+      const result = await refresh_scraper_job(sequence);
+      if (
+        disposed_ ||
+        sequence !== request_sequence ||
+        job_id !== active_job_id_
+      ) {
+        return result;
+      }
+      if (result && result.error) {
+        loading_.as(false);
+        active_job_id_ = "";
+        save_active_job_id("");
+        fetch_progress_.as(null);
+        return result;
+      }
+
+      const job = (result && result.data) || {};
+      const raw_url = String(job.url || "").trim();
+      if (raw_url) {
+        url_.as(raw_url);
+      }
       return result;
     }
 
@@ -1544,6 +2540,8 @@ var HomePageModel = (() => {
 
     function dispose() {
       disposed_ = true;
+      reset_article_html_processing();
+      reset_cache_content(true);
       request_sequence += 1;
       active_job_id_ = "";
       resolving_terminal_job_id_ = "";
@@ -1566,8 +2564,11 @@ var HomePageModel = (() => {
       const sequence = ++request_sequence;
       const force_refresh = Boolean(options.force_refresh);
       finish_job_tracking();
+      reset_article_html_processing();
+      reset_cache_content(true);
       disposed_ = false;
       active_job_id_ = "";
+      save_active_job_id("");
       resolving_terminal_job_id_ = "";
       loading_.as(true);
       error_.as("");
@@ -1610,6 +2611,7 @@ var HomePageModel = (() => {
         return result;
       }
       active_job_id_ = job_id;
+      save_active_job_id(job_id);
       apply_scraper_job(job, sequence);
       if (loading_.value) {
         try {
@@ -1646,6 +2648,57 @@ var HomePageModel = (() => {
       return result;
     }
 
+    function reset_cache_content(hide_dialog = false) {
+      cache_content_request_sequence += 1;
+      cache_content_loading_.as(false);
+      cache_content_error_.as("");
+      cache_content_entry_.as(null);
+      cache_content_data_.as(null);
+      if (hide_dialog) {
+        cache_content_dialog_.hide();
+      }
+    }
+
+    async function open_cache_content(cache_entry) {
+      const entry =
+        cache_entry && typeof cache_entry === "object" ? cache_entry : {};
+      const cache_key = String(entry.key || entry.path || "").trim();
+      const fetch_result = result_.value || {};
+      const job_id = String(fetch_result.job_id || active_job_id_ || "").trim();
+      const sequence = ++cache_content_request_sequence;
+      cache_content_entry_.as(entry);
+      cache_content_data_.as(null);
+      cache_content_error_.as("");
+      cache_content_dialog_.show();
+      if (!job_id || !cache_key) {
+        cache_content_loading_.as(false);
+        cache_content_error_.as("无法定位该缓存条目");
+        return null;
+      }
+
+      cache_content_loading_.as(true);
+      const result = await cache_content_request.run({
+        id: job_id,
+        key: cache_key,
+      });
+      if (sequence !== cache_content_request_sequence) {
+        return result;
+      }
+      cache_content_loading_.as(false);
+      if (result.error) {
+        cache_content_error_.as(
+          result.error.message || String(result.error),
+        );
+        return result;
+      }
+      cache_content_data_.as(result.data || {});
+      return result;
+    }
+
+    function close_cache_content() {
+      cache_content_dialog_.hide();
+    }
+
     async function clear_fetch_cache() {
       if (cache_action_disabled_.value) {
         return null;
@@ -1667,6 +2720,7 @@ var HomePageModel = (() => {
       fetch_progress_.as(null);
       const removed = Boolean(result.data && result.data.removed);
       result_.as({ ...fetch_result, cache_entries: [] });
+      reset_cache_content(true);
       fetch_notice_.as(removed ? "抓取缓存已清理" : "该 URL 暂无抓取缓存");
       return result;
     }
@@ -1748,6 +2802,8 @@ var HomePageModel = (() => {
       },
       interruptFetch: interrupt_fetch,
       clearFetchCache: clear_fetch_cache,
+      openCacheContent: open_cache_content,
+      closeCacheContent: close_cache_content,
       createDownloadTask: create_download_task,
       toggleJSON() {
         json_expanded_.as(!json_expanded_.value);
@@ -1767,8 +2823,12 @@ var HomePageModel = (() => {
       showPlatformStatusPopover: show_platform_status_popover,
       schedulePlatformStatusPopoverHide:
         schedule_platform_status_popover_hide,
-      connectProgress() {
+      async connectProgress() {
         disposed_ = false;
+        await restore_scraper_job();
+        if (disposed_) {
+          return false;
+        }
         return connect_scraper_websocket().catch(() => false);
       },
       dispose,
@@ -1783,7 +2843,10 @@ var HomePageModel = (() => {
         content: content_,
         account: account_,
         content_details: content_details_,
+        content_relations: content_relations_,
+        download_info: download_info_,
         cache: cache_,
+        cache_content: cache_content_,
         json_expanded: json_expanded_,
         download_loading: download_loading_,
         download_error: download_error_,
@@ -1819,6 +2882,7 @@ var HomePageModel = (() => {
       },
       ui: {
         platform_status_popover: platform_status_popover_,
+        cache_content_dialog: cache_content_dialog_,
       },
       methods,
     };

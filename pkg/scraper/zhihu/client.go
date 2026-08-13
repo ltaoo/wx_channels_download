@@ -35,13 +35,11 @@ var question_url_re = regexp.MustCompile(`^/question/([0-9]+)$`)
 var article_url_re = regexp.MustCompile(`^/p/([0-9]+)$`)
 
 type Client struct {
-	http_client     *http.Client
-	cookie_reader   *cookies.Reader
-	logger          *zerolog.Logger
-	file_cache      *cache.CacheProvider
-	browser_fetcher BrowserFetcher
-	request_timeout time.Duration
-	OnProgress      func(downloaded int64)
+	http_client   *http.Client
+	cookie_reader *cookies.Reader
+	logger        *zerolog.Logger
+	file_cache    *cache.CacheProvider
+	OnProgress    func(downloaded int64)
 }
 
 func (c *Client) Fetch(raw_url string) (any, error) {
@@ -140,21 +138,11 @@ func canonical_answer_url(question_id, answer_id string) string {
 // latest persistent cookie data on demand.
 func NewClient(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Client {
 	c := &Client{
-		cookie_reader:   cookie_reader,
-		logger:          logger,
-		http_client:     &http.Client{Timeout: 120 * time.Second},
-		request_timeout: 120 * time.Second,
+		cookie_reader: cookie_reader,
+		logger:        logger,
+		http_client:   &http.Client{Timeout: 120 * time.Second},
 	}
 	return c
-}
-
-// SetBrowserFetcher configures the real-browser request capability used for
-// Zhihu HTML and API responses protected by ZSE.
-func (c *Client) SetBrowserFetcher(browser_fetcher BrowserFetcher) {
-	if c == nil {
-		return
-	}
-	c.browser_fetcher = browser_fetcher
 }
 
 // SetHTTPTimeout overrides the standard HTTP client timeout. It is primarily
@@ -168,13 +156,12 @@ func (c *Client) SetHTTPTimeout(timeout time.Duration) {
 		c.http_client = &http.Client{}
 	}
 	c.http_client.Timeout = timeout
-	c.request_timeout = timeout
 }
 
-// cookie returns the current cookie string from the injected persistent reader.
-func (c *Client) cookie() string {
+// cookie returns the current URL-matched cookie string from cookies.json.
+func (c *Client) cookie(raw_url string) string {
 	if c != nil && c.cookie_reader != nil {
-		cookie_value, err := c.cookie_reader.HeaderForDomain(zhihu_cookie_domain)
+		cookie_value, err := c.cookie_reader.HeaderForURL(raw_url)
 		if err == nil {
 			return cookie_value
 		}
@@ -190,7 +177,7 @@ func (c *Client) FetchAnswerPage(raw_url string) (*AnswerPage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu answer url")
 	}
-	body, err := c.do_bytes(http.MethodGet, answer_url.Canonical, answer_url.Canonical)
+	body, err := c.do_bytes(http.MethodGet, answer_url.Canonical, SourceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +199,7 @@ func (c *Client) FetchQuestionPage(raw_url string) (*QuestionPage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu question url")
 	}
-	body, err := c.do_bytes(http.MethodGet, question_url.Canonical, question_url.Canonical)
+	body, err := c.do_bytes(http.MethodGet, question_url.Canonical, SourceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +216,7 @@ func (c *Client) FetchArticlePage(raw_url string) (*ArticlePage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu article url")
 	}
-	body, err := c.do_bytes(http.MethodGet, article_url.Canonical, article_url.Canonical)
+	body, err := c.do_bytes(http.MethodGet, article_url.Canonical, SourceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +230,7 @@ func (c *Client) FetchArticlePage(raw_url string) (*ArticlePage, error) {
 
 func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {
 	if method != http.MethodGet {
-		return nil, fmt.Errorf("unsupported zhihu browser method %s", method)
+		return nil, fmt.Errorf("unsupported zhihu HTTP method %s", method)
 	}
 	cached_html, cached, err := c.read_cached_html(raw_url)
 	if err != nil {
@@ -255,37 +242,29 @@ func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {
 		}
 		_ = c.remove_cached_html(raw_url)
 	}
-	if c.browser_fetcher == nil {
-		return nil, ErrBrowserUnavailable
-	}
-	var request_context context.Context = context.Background()
-	cancel_request := func() {}
-	if c.request_timeout > 0 {
-		request_context, cancel_request = context.WithTimeout(request_context, c.request_timeout)
-	}
-	defer cancel_request()
-
-	c.log_request(method, raw_url, c.cookie())
-	response, err := c.browser_fetcher.Fetch(request_context, BrowserRequest{
-		URL:     raw_url,
-		Referer: referer,
-		Kind:    "html",
-		Headers: map[string]string{
-			"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-		},
-	})
+	req, err := http.NewRequest(method, raw_url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if response == nil {
-		return nil, fmt.Errorf("zhihu browser returned an empty response")
+	set_zhihu_document_headers(req, referer)
+	cookie_header := c.cookie(raw_url)
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
 	}
-	c.log_response(method, raw_url, response.StatusCode)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("zhihu browser status %d body=%s", response.StatusCode, debug_snippet(response.Body))
+	c.log_request(method, raw_url, cookie_header)
+	resp, err := c.http_client.Do(req)
+	if err != nil {
+		return nil, err
 	}
-	html_data := response.Body
+	defer resp.Body.Close()
+	c.log_response(method, raw_url, resp.StatusCode)
+	html_data, read_err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if read_err != nil {
+		return nil, read_err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("zhihu HTTP status %d body=%s", resp.StatusCode, debug_snippet(html_data))
+	}
 	if c.OnProgress != nil {
 		c.OnProgress(int64(len(html_data)))
 	}
@@ -295,6 +274,27 @@ func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {
 		}
 	}
 	return html_data, nil
+}
+
+func set_zhihu_document_headers(req *http.Request, referer string) {
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Priority", "u=0, i")
+	req.Header.Set("Sec-CH-UA", `"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"`)
+	req.Header.Set("Sec-CH-UA-Mobile", "?0")
+	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "same-site")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", zhihu_user_agent)
+	if strings.TrimSpace(referer) == "" {
+		referer = SourceURL
+	}
+	req.Header.Set("Referer", referer)
 }
 
 func debug_snippet(body []byte) string {
@@ -422,7 +422,7 @@ func (c *Client) download_video(ctx context.Context, raw_url string, referer str
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	cookie_header := c.cookie()
+	cookie_header := c.cookie(raw_url)
 	if cookie_header != "" {
 		req.Header.Set("Cookie", cookie_header)
 	}
@@ -546,7 +546,7 @@ func (c *Client) do_image_bytes_with_http(raw_url string, referer string) ([]byt
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	cookie_header := c.cookie()
+	cookie_header := c.cookie(raw_url)
 	if cookie_header != "" {
 		req.Header.Set("Cookie", cookie_header)
 	}
@@ -702,52 +702,45 @@ func (c *Client) do_api_bytes(endpoint, referer string) ([]byte, error) {
 	if !strings.HasPrefix(endpoint, "/") {
 		return nil, fmt.Errorf("invalid zhihu api endpoint")
 	}
-	if c.browser_fetcher == nil {
-		return nil, ErrBrowserUnavailable
-	}
 	api_url := SourceURL + strings.TrimPrefix(endpoint, "/")
-	cookie_header := c.cookie()
-	headers := map[string]string{
-		"Accept":           "*/*",
-		"Cache-Control":    "no-cache",
-		"Pragma":           "no-cache",
-		"X-Requested-With": "fetch",
-	}
-	// Append x-zse signed headers when d_c0 cookie is available.
-	if cookie_header != "" {
-		if dc0 := strings.Trim(get_cookie_value(cookie_header, "d_c0"), `"`); dc0 != "" {
-			for k, v := range build_signed_header(endpoint, dc0) {
-				headers[k] = v
-			}
-		}
-	}
-	var request_context context.Context = context.Background()
-	cancel_request := func() {}
-	if c.request_timeout > 0 {
-		request_context, cancel_request = context.WithTimeout(request_context, c.request_timeout)
-	}
-	defer cancel_request()
-	c.log_request(http.MethodGet, api_url, cookie_header)
-	response, err := c.browser_fetcher.Fetch(request_context, BrowserRequest{
-		URL:     api_url,
-		Referer: referer,
-		Kind:    "fetch",
-		Headers: headers,
-	})
+	req, err := http.NewRequest(http.MethodGet, api_url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if response == nil {
-		return nil, fmt.Errorf("zhihu browser returned an empty API response")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("User-Agent", zhihu_user_agent)
+	req.Header.Set("X-Requested-With", "fetch")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
 	}
-	c.log_response(http.MethodGet, api_url, response.StatusCode)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("zhihu api status %d body=%s", response.StatusCode, debug_snippet(response.Body))
+	cookie_header := c.cookie(api_url)
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
+	}
+	c.log_request(http.MethodGet, api_url, cookie_header)
+	resp, err := c.http_client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	c.log_response(http.MethodGet, api_url, resp.StatusCode)
+	body, read_err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	if read_err != nil {
+		return nil, read_err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("zhihu api status %d body=%s", resp.StatusCode, debug_snippet(body))
 	}
 	if c.OnProgress != nil {
-		c.OnProgress(int64(len(response.Body)))
+		c.OnProgress(int64(len(body)))
 	}
-	return response.Body, nil
+	return body, nil
 }
 
 func endpoint_from_url(raw_url string) string {
@@ -924,9 +917,7 @@ func first_non_empty(values ...string) string {
 	return ""
 }
 
-// Querying the request host includes cookies scoped to both www.zhihu.com and
-// its parent domain, .zhihu.com.
-const zhihu_cookie_domain = "www.zhihu.com"
+const zhihu_user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
 func (c *Client) log_request(method string, raw_url string, cookie_header string) {
 	if c == nil || c.logger == nil {

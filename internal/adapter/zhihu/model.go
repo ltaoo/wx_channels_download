@@ -28,7 +28,6 @@ type handler struct {
 	cookie_reader       *cookies.Reader
 	logger              *zerolog.Logger
 	file_cache          *cache.CacheProvider
-	browser_fetcher     zhihu.BrowserFetcher
 	status_mu           sync.Mutex
 	status_bus          *events.Bus
 	cancel_status_check func()
@@ -71,29 +70,14 @@ func (h *handler) set_persistent_cache(file_cache *cache.CacheProvider) {
 	h.runtime_mu.Unlock()
 }
 
-func (h *handler) set_browser_fetcher(browser_fetcher zhihu.BrowserFetcher) {
-	h.runtime_mu.Lock()
-	h.browser_fetcher = browser_fetcher
-	h.runtime_mu.Unlock()
-}
-
-func (h *handler) runtime_browser_fetcher() zhihu.BrowserFetcher {
-	h.runtime_mu.RLock()
-	browser_fetcher := h.browser_fetcher
-	h.runtime_mu.RUnlock()
-	return browser_fetcher
-}
-
 func (h *handler) scraper_client() *zhihu.Client {
 	h.runtime_mu.RLock()
 	cookie_reader := h.cookie_reader
 	logger := h.logger
 	file_cache := h.file_cache
-	browser_fetcher := h.browser_fetcher
 	h.runtime_mu.RUnlock()
 	client := zhihu.NewClient(cookie_reader, logger)
 	client.SetPersistentCache(file_cache)
-	client.SetBrowserFetcher(browser_fetcher)
 	return client
 }
 

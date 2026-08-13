@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -56,6 +58,54 @@ func (r *Reader) HeaderForDomain(domain string) (string, error) {
 	return FormatCookieHeader(matched), nil
 }
 
+// HeaderForURL returns the cookies a browser would attach to the request URL.
+// The persistent file is reloaded for every call so a newly synchronized
+// cookies.json takes effect without recreating the client.
+func (r *Reader) HeaderForURL(raw_url string) (string, error) {
+	request_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil || request_url.Hostname() == "" {
+		return "", ErrCookieNotFound
+	}
+	request_domain := normalize_persistent_domain(request_url.Hostname())
+	if request_domain == "" || r == nil || r.work_dir == "" {
+		return "", ErrCookieNotFound
+	}
+
+	cookie_list, err := r.load()
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().Unix()
+	request_path := request_url.EscapedPath()
+	if request_path == "" {
+		request_path = "/"
+	}
+	secure_request := strings.EqualFold(request_url.Scheme, "https")
+	matched := make([]Cookie, 0)
+	for _, cookie := range cookie_list {
+		if cookie.Name == "" || !persistent_cookie_domain_matches(cookie.Domain, request_domain) {
+			continue
+		}
+		if cookie.Expires > 0 && cookie.Expires <= now {
+			continue
+		}
+		if cookie.Secure && !secure_request {
+			continue
+		}
+		if !persistent_cookie_path_matches(cookie.Path, request_path) {
+			continue
+		}
+		matched = append(matched, cookie)
+	}
+	if len(matched) == 0 {
+		return "", ErrCookieNotFound
+	}
+	sort.SliceStable(matched, func(left_index, right_index int) bool {
+		return len(matched[left_index].Path) > len(matched[right_index].Path)
+	})
+	return FormatCookieHeader(matched), nil
+}
+
 func (r *Reader) load() ([]Cookie, error) {
 	path := filepath.Join(r.work_dir, persistent_cookie_file_name)
 	json_file_mu.Lock()
@@ -90,4 +140,17 @@ func persistent_cookie_domain_matches(cookie_domain string, request_domain strin
 		return request_domain == domain_scope || strings.HasSuffix(request_domain, "."+domain_scope)
 	}
 	return request_domain == cookie_domain
+}
+
+func persistent_cookie_path_matches(cookie_path string, request_path string) bool {
+	if cookie_path == "" {
+		cookie_path = "/"
+	}
+	if request_path == cookie_path {
+		return true
+	}
+	if !strings.HasPrefix(request_path, cookie_path) {
+		return false
+	}
+	return strings.HasSuffix(cookie_path, "/") || (len(request_path) > len(cookie_path) && request_path[len(cookie_path)] == '/')
 }

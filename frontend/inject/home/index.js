@@ -1,4 +1,5 @@
 /// <reference path="../utils.js" />
+/// <reference path="../components.js" />
 /// <reference path="model.js" />
 /**
  * @file Scraper fetch page rendering.
@@ -327,6 +328,75 @@ function HomeContentCard(props) {
       ]),
     ]),
   ]);
+}
+
+function HomeContentRelationNode(props) {
+  const vm$ = props.store;
+  const node = props.node || {};
+  return Button(
+    {
+      class: "wx-home-content-relation-node",
+      disabled: !node.has_url,
+      attributes: {
+        type: "button",
+        title: node.has_url ? node.url : node.id,
+      },
+      onClick() {
+        vm$.methods.openDetailURL(node.url);
+      },
+    },
+    [
+      View({ class: "wx-home-content-relation-node-type" }, [node.type_name]),
+      View({ class: "wx-home-content-relation-node-title" }, [node.title]),
+      View({ class: "wx-home-content-relation-node-meta" }, [node.meta_text]),
+    ],
+  );
+}
+
+function HomeContentRelations(props) {
+  const vm$ = props.store;
+  const relations = vm$.state.content_relations;
+  return Show({
+    when: relations.present,
+    ok() {
+      return View({ class: "wx-home-card wx-home-content-relations" }, [
+        View({ class: "wx-home-card-heading" }, [
+          View({ class: "wx-home-card-title-group" }, [
+            View({ class: "wx-home-card-icon" }, [
+              Timeless.Icon({ name: "git-branch", size: 17 }),
+            ]),
+            View({}, [
+              View({ class: "wx-home-card-kicker" }, ["RELATIONS"]),
+              View({ class: "wx-home-card-title" }, ["内容关联"]),
+            ]),
+          ]),
+          View({ class: "wx-home-detail-badge" }, [relations.count_text]),
+        ]),
+        View({ class: "wx-home-content-relation-list" }, [
+          For({
+            key: "key",
+            each: relations.items,
+            render(relation_) {
+              const relation = HomeDetailValue(relation_);
+              return View({ class: "wx-home-content-relation" }, [
+                HomeContentRelationNode({ store: vm$, node: relation.source }),
+                View({ class: "wx-home-content-relation-edge" }, [
+                  Timeless.Icon({ name: "arrow-right", size: 15 }),
+                  View({ class: "wx-home-content-relation-edge-name" }, [
+                    relation.type_name,
+                  ]),
+                  View({ class: "wx-home-content-relation-edge-type" }, [
+                    relation.type,
+                  ]),
+                ]),
+                HomeContentRelationNode({ store: vm$, node: relation.target }),
+              ]);
+            },
+          }),
+        ]),
+      ]);
+    },
+  });
 }
 
 function HomeContentAccount(props) {
@@ -661,6 +731,168 @@ function HomeNovelDetails(props) {
   });
 }
 
+function HomeVideoVariantItem(props) {
+  const variant = props.variant || {};
+  return View({ class: "wx-home-video-supplement-item" }, [
+    View({ class: "wx-home-video-supplement-main" }, [
+      View(
+        {
+          class: "wx-home-video-supplement-title",
+          attributes: { title: variant.variant_key },
+        },
+        [variant.title],
+      ),
+      View({ class: "wx-home-video-supplement-meta" }, [
+        variant.meta_text || variant.variant_key,
+      ]),
+      Show({
+        when: Boolean(variant.url),
+        ok() {
+          return View(
+            {
+              class: "wx-home-video-supplement-url",
+              attributes: { title: variant.url },
+            },
+            [variant.url],
+          );
+        },
+      }),
+    ]),
+    View({ class: "wx-home-video-supplement-badge" }, [variant.default_text]),
+  ]);
+}
+
+function HomeVideoSubtitleTrackItem(props) {
+  const track = props.track || {};
+  return View({ class: "wx-home-video-subtitle-track" }, [
+    View({ class: "wx-home-video-supplement-item" }, [
+      View({ class: "wx-home-video-supplement-main" }, [
+        View(
+          {
+            class: "wx-home-video-supplement-title",
+            attributes: { title: track.track_key },
+          },
+          [track.title],
+        ),
+        View({ class: "wx-home-video-supplement-meta" }, [
+          track.meta_text || track.track_key,
+        ]),
+      ]),
+      View({ class: "wx-home-video-supplement-badge" }, [
+        `${track.sources.length} 个源`,
+      ]),
+    ]),
+    Show({
+      when: track.has_sources,
+      ok() {
+        return View({ class: "wx-home-video-subtitle-sources" }, [
+          For({
+            key: "key",
+            each: track.sources,
+            render(source_) {
+              const source = HomeDetailValue(source_);
+              return View({ class: "wx-home-video-subtitle-source" }, [
+                View({ class: "wx-home-video-subtitle-source-type" }, [
+                  source.title,
+                ]),
+                View(
+                  {
+                    class: "wx-home-video-subtitle-source-url",
+                    attributes: { title: source.url },
+                  },
+                  [source.url || source.meta_text || "未提供地址"],
+                ),
+              ]);
+            },
+          }),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function HomeVideoSupplements(props) {
+  const detail = props.detail || {};
+  return Fragment({}, [
+    Show({
+      when: detail.has_variants,
+      ok() {
+        return View({ class: "wx-home-video-supplement" }, [
+          View({ class: "wx-home-video-supplement-heading" }, [
+            View({ class: "wx-home-video-supplement-label" }, [
+              "ContentVideoVariant",
+            ]),
+            View({ class: "wx-home-video-supplement-count" }, [
+              String(detail.variants.length),
+            ]),
+          ]),
+          View({ class: "wx-home-video-supplement-list" }, [
+            For({
+              key: "key",
+              each: detail.variants,
+              render(variant_) {
+                return HomeVideoVariantItem({
+                  variant: HomeDetailValue(variant_),
+                });
+              },
+            }),
+          ]),
+        ]);
+      },
+    }),
+    Show({
+      when: detail.has_subtitle_tracks,
+      ok() {
+        return View({ class: "wx-home-video-supplement" }, [
+          View({ class: "wx-home-video-supplement-heading" }, [
+            View({ class: "wx-home-video-supplement-label" }, [
+              "ContentVideoSubtitleTrack",
+            ]),
+            View({ class: "wx-home-video-supplement-count" }, [
+              String(detail.subtitle_tracks.length),
+            ]),
+          ]),
+          View({ class: "wx-home-video-supplement-list" }, [
+            For({
+              key: "key",
+              each: detail.subtitle_tracks,
+              render(track_) {
+                return HomeVideoSubtitleTrackItem({
+                  track: HomeDetailValue(track_),
+                });
+              },
+            }),
+          ]),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function HomeArticleBody(props) {
+  const article_body = props.article_body || {};
+  return Show({
+    when: article_body.present,
+    ok() {
+      if (article_body.is_html) {
+        return Timeless.RichText({
+          class: "wx-home-article-content is-html",
+          content: article_body.content,
+          attributes: {
+            "data-content-format": "html",
+          },
+        });
+      }
+      return View(
+        {
+          class: `wx-home-article-content is-${article_body.format || "text"}`,
+        },
+        [article_body.content],
+      );
+    },
+  });
+}
+
 function HomeTypedContentDetail(props) {
   const vm$ = props.store;
   const detail = props.detail || {};
@@ -676,44 +908,47 @@ function HomeTypedContentDetail(props) {
           ]),
           View({}, [
             View({ class: "wx-home-detail-card-title" }, [detail.title]),
-            View({ class: "wx-home-detail-card-subtitle" }, [detail.type]),
+            View({ class: "wx-home-detail-card-subtitle" }, [
+              detail.model_name,
+            ]),
           ]),
         ]),
         View({ class: "wx-home-detail-badge" }, [detail.type_name]),
       ]),
       View({ class: "wx-home-typed-detail-body" }, [
-        HomeVideoDetailMedia({ store: vm$, detail }),
         Show({
-          when: detail.fields.length > 0,
+          when: detail.subject.present,
           ok() {
-            return View({ class: "wx-home-detail-field-grid" }, [
-              For({
-                each: detail.fields,
-                render(field_) {
-                  const field = HomeDetailValue(field_);
-                  return View({ class: "wx-home-detail-field" }, [
-                    View({ class: "wx-home-detail-field-label" }, [
-                      field.label,
-                    ]),
-                    View(
-                      {
-                        class: "wx-home-detail-field-value",
-                        attributes: { title: field.value },
+            return View({ class: "wx-home-detail-subject" }, [
+              View({ class: "wx-home-detail-subject-main" }, [
+                View({ class: "wx-home-detail-subject-title" }, [
+                  detail.subject.title,
+                ]),
+                View({ class: "wx-home-detail-subject-meta" }, [
+                  detail.subject.meta_text,
+                ]),
+              ]),
+              Show({
+                when: detail.subject.has_url,
+                ok() {
+                  return Button(
+                    {
+                      class: "wx-content-action wx-home-detail-subject-open",
+                      attributes: { type: "button" },
+                      onClick() {
+                        vm$.methods.openDetailURL(detail.subject.url);
                       },
-                      [field.value],
-                    ),
-                  ]);
+                    },
+                    [Timeless.Icon({ name: "external-link", size: 13 }), "打开"],
+                  );
                 },
               }),
             ]);
           },
         }),
-        Show({
-          when: Boolean(detail.preview),
-          ok() {
-            return View({ class: "wx-home-article-preview" }, [detail.preview]);
-          },
-        }),
+        HomeVideoDetailMedia({ store: vm$, detail }),
+        HomeVideoSupplements({ detail }),
+        HomeArticleBody({ article_body: detail.article_body }),
         Show({
           when: detail.images.length > 0,
           ok() {
@@ -756,21 +991,6 @@ function HomeTypedContentDetail(props) {
                 },
               }),
             ]);
-          },
-        }),
-        Show({
-          when: Boolean(detail.link_url),
-          ok() {
-            return Button(
-              {
-                class: "wx-home-link-button wx-home-detail-link",
-                attributes: { type: "button" },
-                onClick() {
-                  vm$.methods.openDetailURL(detail.link_url);
-                },
-              },
-              ["打开详情地址", Timeless.Icon({ name: "external-link", size: 14 })],
-            );
           },
         }),
       ]),
@@ -859,6 +1079,196 @@ function HomeRawJSON(props) {
   ]);
 }
 
+function HomeDownloadAssetRelation(props) {
+  const resource = props.resource || {};
+  const asset = props.asset || {};
+  return View({ class: "wx-home-download-relation" }, [
+    View(
+      {
+        class: "wx-home-download-relation-node",
+        attributes: { title: resource.content_id },
+      },
+      [
+        View({ class: "wx-home-download-relation-node-type" }, ["Content"]),
+        View({ class: "wx-home-download-relation-node-value" }, [
+          resource.content_id || "当前内容",
+        ]),
+      ],
+    ),
+    View({ class: "wx-home-download-relation-arrow" }, [
+      Timeless.Icon({ name: "arrow-right", size: 14 }),
+    ]),
+    View(
+      {
+        class: "wx-home-download-relation-node is-asset",
+        attributes: {
+          title: [asset.kind, asset.role, asset.asset_key]
+            .filter(Boolean)
+            .join(" · "),
+        },
+      },
+      [
+        View({ class: "wx-home-download-relation-node-type" }, [
+          "ContentAsset",
+        ]),
+        View({ class: "wx-home-download-relation-node-value" }, [
+          [asset.kind, asset.role, asset.asset_key].filter(Boolean).join(" · "),
+        ]),
+        Show({
+          when: Boolean(asset.subject_text),
+          ok() {
+            return View({ class: "wx-home-download-relation-subject" }, [
+              asset.subject_text,
+            ]);
+          },
+        }),
+      ],
+    ),
+    View({ class: "wx-home-download-relation-arrow" }, [
+      Timeless.Icon({ name: "arrow-right", size: 14 }),
+    ]),
+    View(
+      {
+        class: "wx-home-download-relation-node",
+        attributes: { title: resource.name },
+      },
+      [
+        View({ class: "wx-home-download-relation-node-type" }, [
+          "DownloadResource",
+        ]),
+        View({ class: "wx-home-download-relation-node-value" }, [
+          resource.name,
+        ]),
+      ],
+    ),
+    View({ class: "wx-home-download-relation-kind" }, [asset.relation]),
+  ]);
+}
+
+function HomeDownloadResourceItem(props) {
+  const resource = props.resource || {};
+  return View({ class: "wx-home-download-resource" }, [
+    View({ class: "wx-home-download-resource-row" }, [
+      View({ class: "wx-home-download-resource-index" }, [
+        resource.index_text,
+      ]),
+      View({ class: "wx-home-download-resource-icon" }, [
+        Timeless.Icon({ name: resource.icon, size: 18 }),
+      ]),
+      View({ class: "wx-home-download-resource-main" }, [
+        View(
+          {
+            class: "wx-home-download-resource-name",
+            attributes: { title: resource.name },
+          },
+          [resource.name],
+        ),
+        View({ class: "wx-home-download-resource-meta" }, [
+          resource.meta_text,
+        ]),
+      ]),
+      View({ class: "wx-home-download-status" }, [resource.status_text]),
+    ]),
+    Show({
+      when: resource.has_content_assets,
+      ok() {
+        return View({ class: "wx-home-download-relations" }, [
+          For({
+            key: "key",
+            each: resource.content_assets,
+            render(asset_) {
+              return HomeDownloadAssetRelation({
+                resource,
+                asset: HomeDetailValue(asset_),
+              });
+            },
+          }),
+        ]);
+      },
+    }),
+  ]);
+}
+
+function HomeDownloadSection(props) {
+  return View({ class: "wx-home-download-section" }, [
+    View({ class: "wx-home-download-section-head" }, [
+      View({ class: "wx-home-download-section-title" }, [props.title]),
+      View({ class: "wx-home-download-section-count" }, [props.count]),
+    ]),
+    View({ class: "wx-home-download-section-body" }, props.children || []),
+  ]);
+}
+
+function HomeDownloadInfo(props) {
+  const vm$ = props.store;
+  const download_info = vm$.state.download_info;
+  const task = download_info.task;
+  return Show({
+    when: download_info.present,
+    ok() {
+      return View({ class: "wx-home-card wx-home-download-info" }, [
+        View({ class: "wx-home-card-heading" }, [
+          View({ class: "wx-home-card-title-group" }, [
+            View({ class: "wx-home-card-icon" }, [
+              Timeless.Icon({ name: "download", size: 17 }),
+            ]),
+            View({}, [
+              View({ class: "wx-home-card-kicker" }, ["DOWNLOAD INFO"]),
+              View({ class: "wx-home-card-title" }, ["下载任务预览"]),
+            ]),
+          ]),
+          View({ class: "wx-home-download-preview-badge" }, ["尚未创建"]),
+        ]),
+        View({ class: "wx-home-download-body" }, [
+          HomeDownloadSection({
+            title: "资源文件",
+            count: download_info.resource_count_text,
+            children: [
+              View({ class: "wx-home-download-resource-list" }, [
+                For({
+                  key: "key",
+                  each: download_info.resources,
+                  render(resource_) {
+                    return HomeDownloadResourceItem({
+                      resource: HomeDetailValue(resource_),
+                    });
+                  },
+                }),
+              ]),
+            ],
+          }),
+          HomeDownloadSection({
+            title: "下载任务",
+            count: 1,
+            children: [
+              View({ class: "wx-home-download-task-list" }, [
+                View({ class: "wx-home-download-task" }, [
+                  View({ class: "wx-home-download-task-id" }, [task.id_text]),
+                  View({ class: "wx-home-download-task-main" }, [
+                    View(
+                      {
+                        class: "wx-home-download-task-name",
+                        attributes: { title: task.name },
+                      },
+                      [task.name],
+                    ),
+                    View({ class: "wx-home-download-task-meta" }, [
+                      task.meta_text || "任务将在确认后创建",
+                    ]),
+                  ]),
+                  View({ class: "wx-home-download-status" }, [
+                    task.status_text,
+                  ]),
+                ]),
+              ]),
+            ],
+          }),
+        ]),
+      ]);
+    },
+  });
+}
+
 function HomeResultActions(props) {
   const vm$ = props.store;
   return View({ class: "wx-home-result-actions" }, [
@@ -923,34 +1333,126 @@ function HomeCacheCard(props) {
             each: cache.entries,
             render(entry_) {
               const entry = HomeDetailValue(entry_);
-              return View({ class: "wx-home-cache-entry" }, [
-                View({ class: "wx-home-cache-entry-icon" }, [
-                  Timeless.Icon({ name: "file", size: 16 }),
-                ]),
-                View({ class: "wx-home-cache-entry-main" }, [
-                  View(
-                    {
-                      class: "wx-home-cache-entry-name",
-                      attributes: { title: entry.name },
-                    },
-                    [entry.name],
-                  ),
-                  View(
-                    {
-                      class: "wx-home-cache-entry-path",
-                      attributes: { title: entry.path },
-                    },
-                    [entry.path],
-                  ),
-                ]),
-                View({ class: "wx-home-cache-entry-size" }, [entry.size_text]),
-              ]);
+              return Button(
+                {
+                  class: "wx-home-cache-entry",
+                  attributes: {
+                    type: "button",
+                    title: `查看缓存内容：${entry.name}`,
+                    "aria-label": `查看缓存内容：${entry.name}`,
+                  },
+                  onClick() {
+                    vm$.methods.openCacheContent(entry);
+                  },
+                },
+                [
+                  View({ class: "wx-home-cache-entry-icon" }, [
+                    Timeless.Icon({ name: "file", size: 16 }),
+                  ]),
+                  View({ class: "wx-home-cache-entry-main" }, [
+                    View(
+                      {
+                        class: "wx-home-cache-entry-name",
+                        attributes: { title: entry.name },
+                      },
+                      [entry.name],
+                    ),
+                    View(
+                      {
+                        class: "wx-home-cache-entry-path",
+                        attributes: { title: entry.path },
+                      },
+                      [entry.path],
+                    ),
+                  ]),
+                  View({ class: "wx-home-cache-entry-trailing" }, [
+                    View({ class: "wx-home-cache-entry-size" }, [
+                      entry.size_text,
+                    ]),
+                    Timeless.Icon({ name: "chevron-right", size: 15 }),
+                  ]),
+                ],
+              );
             },
           }),
         ]),
       ]);
     },
   });
+}
+
+function HomeCacheContentDialog(props) {
+  const vm$ = props.store;
+  const cache_content = vm$.state.cache_content;
+  return Dialog(
+    {
+      store: vm$.ui.cache_content_dialog,
+      class: "wx-home-cache-dialog",
+    },
+    [
+      View({ class: "wx-home-cache-dialog-header" }, [
+        View({ class: "wx-home-cache-dialog-heading" }, [
+          View({ class: "wx-home-cache-dialog-title" }, [
+            cache_content.title,
+          ]),
+          View({ class: "wx-home-cache-dialog-meta" }, [
+            cache_content.meta_text,
+          ]),
+        ]),
+        Button(
+          {
+            class: "wx-home-cache-dialog-close",
+            attributes: { type: "button", "aria-label": "关闭缓存内容" },
+            onClick() {
+              vm$.methods.closeCacheContent();
+            },
+          },
+          ["×"],
+        ),
+      ]),
+      View(
+        {
+          class: "wx-home-cache-dialog-path",
+          attributes: { title: cache_content.path },
+        },
+        [cache_content.path],
+      ),
+      View({ class: "wx-home-cache-dialog-body" }, [
+        Show({
+          when: cache_content.loading,
+          ok() {
+            return View({ class: "wx-home-cache-dialog-state" }, [
+              View({ class: "weui-loading" }),
+              "正在读取缓存内容...",
+            ]);
+          },
+          else() {
+            return Show({
+              when: computed(cache_content.error, (error) => Boolean(error)),
+              ok() {
+                return View(
+                  {
+                    class:
+                      "wx-home-cache-dialog-state wx-home-cache-dialog-error",
+                  },
+                  [cache_content.error],
+                );
+              },
+              else() {
+                return View(
+                  {
+                    type: "pre",
+                    class: "wx-home-cache-dialog-content",
+                  },
+                  [cache_content.text],
+                );
+              },
+            });
+          },
+        }),
+      ]),
+    ],
+  );
 }
 
 function HomePageResult(props) {
@@ -960,7 +1462,9 @@ function HomePageResult(props) {
     ok() {
       return View({ class: "wx-home-result" }, [
         HomeContentCard({ store: vm$ }),
+        HomeContentRelations({ store: vm$ }),
         HomeContentDetails({ store: vm$ }),
+        HomeDownloadInfo({ store: vm$ }),
         HomeRawJSON({ store: vm$ }),
         HomeResultActions({ store: vm$ }),
         HomeCacheCard({ store: vm$ }),
@@ -1156,6 +1660,7 @@ function HomePageView(props) {
         HomePageResult({ store: vm$ }),
       ]),
     ]),
+    HomeCacheContentDialog({ store: vm$ }),
   ]);
 }
 
