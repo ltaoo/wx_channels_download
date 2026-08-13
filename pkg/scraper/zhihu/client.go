@@ -140,7 +140,7 @@ func NewClient(cookie_reader *cookies.Reader, logger *zerolog.Logger) *Client {
 	c := &Client{
 		cookie_reader: cookie_reader,
 		logger:        logger,
-		http_client:   &http.Client{Timeout: 120 * time.Second},
+		http_client:   &http.Client{Timeout: 120 * time.Second, Transport: zhihu_http_transport()},
 	}
 	return c
 }
@@ -153,7 +153,7 @@ func (c *Client) SetHTTPTimeout(timeout time.Duration) {
 		return
 	}
 	if c.http_client == nil {
-		c.http_client = &http.Client{}
+		c.http_client = &http.Client{Transport: zhihu_http_transport()}
 	}
 	c.http_client.Timeout = timeout
 }
@@ -177,7 +177,7 @@ func (c *Client) FetchAnswerPage(raw_url string) (*AnswerPage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu answer url")
 	}
-	body, err := c.do_bytes(http.MethodGet, answer_url.Canonical, SourceURL)
+	body, err := c.do_bytes(http.MethodGet, answer_url.Canonical, answer_url.Canonical)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (c *Client) FetchQuestionPage(raw_url string) (*QuestionPage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu question url")
 	}
-	body, err := c.do_bytes(http.MethodGet, question_url.Canonical, SourceURL)
+	body, err := c.do_bytes(http.MethodGet, question_url.Canonical, question_url.Canonical)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (c *Client) FetchArticlePage(raw_url string) (*ArticlePage, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu article url")
 	}
-	body, err := c.do_bytes(http.MethodGet, article_url.Canonical, SourceURL)
+	body, err := c.do_bytes(http.MethodGet, article_url.Canonical, article_url.Canonical)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ func set_zhihu_document_headers(req *http.Request, referer string) {
 	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
 	req.Header.Set("Sec-Fetch-Dest", "document")
 	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-Site", "same-site")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Sec-Fetch-User", "?1")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 	req.Header.Set("User-Agent", zhihu_user_agent)
@@ -295,6 +295,12 @@ func set_zhihu_document_headers(req *http.Request, referer string) {
 		referer = SourceURL
 	}
 	req.Header.Set("Referer", referer)
+}
+
+func zhihu_http_transport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableCompression = true
+	return transport
 }
 
 func debug_snippet(body []byte) string {

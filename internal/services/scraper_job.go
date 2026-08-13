@@ -16,6 +16,7 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
+	youtube_scraper "wx_channel/pkg/scraper/youtube"
 )
 
 const (
@@ -25,6 +26,7 @@ const (
 	scraper_platform_bilibili   = "bilibili"
 	scraper_platform_zhihu      = "zhihu"
 	scraper_platform_ttk        = "ttk"
+	scraper_platform_youtube    = "youtube"
 )
 
 const (
@@ -36,6 +38,7 @@ const (
 )
 
 const (
+	ScraperJobEventRaw           = "raw"
 	ScraperJobEventStarted       = "started"
 	ScraperJobEventProgress      = "progress"
 	ScraperJobEventContent       = "content"
@@ -68,6 +71,7 @@ type ScraperFetchJobEvent struct {
 	Sequence      int64                        `json:"sequence"`
 	Stage         string                       `json:"stage"`
 	Status        string                       `json:"status"`
+	RawResult     any                          `json:"raw_result,omitempty"`
 	Content       *model.Content               `json:"content,omitempty"`
 	Account       *model.Account               `json:"account,omitempty"`
 	ContentDetail *adapter.ContentDetail       `json:"content_detail,omitempty"`
@@ -87,6 +91,7 @@ type ScraperFetchJob struct {
 	ForceRefresh        bool                         `json:"force_refresh"`
 	Status              string                       `json:"status"`
 	Progress            *events.ScraperFetchProgress `json:"progress,omitempty"`
+	RawResult           any                          `json:"raw_result,omitempty"`
 	Content             *model.Content               `json:"content,omitempty"`
 	Account             *model.Account               `json:"account,omitempty"`
 	ContentDetails      []adapter.ContentDetail      `json:"content_details,omitempty"`
@@ -187,6 +192,10 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
 	}
 
+	if _, ok := youtube_scraper.ExtractVideoID(raw_url); ok {
+		return scraper_platform_resolution(scraper_platform_youtube, ""), nil
+	}
+
 	parsed_url, err := url.Parse(raw_url)
 	if err != nil || parsed_url.Hostname() == "" {
 		return ScraperPlatformResolution{}, fmt.Errorf("无法解析 URL: %s", raw_url)
@@ -275,6 +284,15 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 		UpdatedAt:    created_at,
 		cancel_fetch: cancel_fetch,
 	}
+	job.Progress = new_scraper_fetch_progress(
+		job,
+		"queued",
+		ScraperJobStatusPending,
+		0,
+		0,
+		2,
+		"抓取任务已创建，等待执行...",
+	)
 
 	s.job_mu.Lock()
 	if _, exists := s.jobs[job_id]; exists {
@@ -352,8 +370,21 @@ func (s *ScraperJobService) start_scraper_fetch_job(job_id string) *ScraperFetch
 	job.Status = ScraperJobStatusRunning
 	job.StartedAt = now
 	job.UpdatedAt = now
+	job.Progress = new_scraper_fetch_progress(
+		job,
+		"started",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		5,
+		"抓取任务已开始，正在准备平台解析...",
+	)
 	snapshot := clone_scraper_fetch_job(job, false)
 	event := new_scraper_fetch_job_event(job, ScraperJobEventStarted)
+	if job.Progress != nil {
+		progress := *job.Progress
+		event.Progress = &progress
+	}
 	runner_job := clone_scraper_fetch_job(job, false)
 	s.job_mu.Unlock()
 	s.publish_event(snapshot, event)
@@ -380,6 +411,15 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 	} else if supports_progress {
 		fetch_mode = "progress"
 	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"fetch",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		10,
+		"正在请求平台内容...",
+	)
 	fetch_started_at := time.Now()
 	s.logger.Info().
 		Str("job_id", job.ID).
@@ -403,6 +443,15 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		data, err = handler.Fetch(job.URL)
 	}
 	if err != nil {
+		s.emit_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("请求平台内容失败: %s", err.Error()),
+		)
 		s.logger.Error().
 			Err(err).
 			Str("job_id", job.ID).
@@ -419,9 +468,48 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		Str("result_type", fmt.Sprintf("%T", data)).
 		Dur("fetch_elapsed", time.Since(fetch_started_at)).
 		Msg("scraper fetch: adapter call completed")
+	s.emit_scraper_fetch_progress(
+		job,
+		"fetched",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		55,
+		"平台内容已返回，正在解析内容信息...",
+	)
+	raw_artifact_emitted := false
+	emit_raw_artifact := func() {
+		if raw_artifact_emitted {
+			return
+		}
+		raw_artifact_emitted = true
+		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
+			Stage:     adapter.FetchArtifactStageRaw,
+			RawResult: data,
+		})
+	}
 
+	s.emit_scraper_fetch_progress(
+		job,
+		"content",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		62,
+		"正在转换内容信息...",
+	)
 	content, err := handler.ToContent(data)
 	if err != nil {
+		emit_raw_artifact()
+		s.emit_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("转换内容信息失败: %s", err.Error()),
+		)
 		s.logger.Error().
 			Err(err).
 			Str("job_id", job.ID).
@@ -438,8 +526,27 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Content: content,
 		})
 	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"account",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		70,
+		"正在转换账号信息...",
+	)
 	account, err := handler.ToAccount(data)
 	if err != nil {
+		emit_raw_artifact()
+		s.emit_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("转换账号信息失败: %s", err.Error()),
+		)
 		s.logger.Error().
 			Err(err).
 			Str("job_id", job.ID).
@@ -453,8 +560,27 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Account: account,
 		})
 	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"content_detail",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		76,
+		"正在转换内容详情...",
+	)
 	content_details, err := handler.ToContentDetails(data)
 	if err != nil {
+		emit_raw_artifact()
+		s.emit_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("转换内容详情失败: %s", err.Error()),
+		)
 		s.logger.Error().
 			Err(err).
 			Str("job_id", job.ID).
@@ -471,6 +597,15 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Total:         len(content_details),
 		})
 	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"cache",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		84,
+		"正在整理抓取缓存...",
+	)
 	var cache_entries []adapter.FetchCacheEntry
 	if cache_handler, supports_cache := handler.(adapter.FetchCacheAdapter); supports_cache {
 		cache_entries, err = cache_handler.FetchCacheEntries(job.URL, data)
@@ -483,8 +618,27 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			cache_entries = nil
 		}
 	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"download_preview",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		92,
+		"正在生成下载任务预览...",
+	)
 	download_info, err := build_scraper_download_info(handler, job.Platform, data)
 	if err != nil {
+		emit_raw_artifact()
+		s.emit_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("构建下载任务预览失败: %s", err.Error()),
+		)
 		s.logger.Error().
 			Err(err).
 			Str("job_id", job.ID).
@@ -586,6 +740,13 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 	event := (*ScraperFetchJobEvent)(nil)
 	emitted_cache_entry := (*adapter.FetchCacheEntry)(nil)
 	switch stage {
+	case adapter.FetchArtifactStageRaw:
+		if artifact.RawResult == nil {
+			s.job_mu.Unlock()
+			return
+		}
+		should_broadcast = job.RawResult == nil
+		job.RawResult = clone_scraper_raw_result(artifact.RawResult)
 	case adapter.FetchArtifactStageContent:
 		if artifact.Content == nil {
 			s.job_mu.Unlock()
@@ -657,6 +818,7 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 	job.UpdatedAt = now
 	if should_broadcast {
 		event = new_scraper_fetch_job_event(job, stage)
+		event.RawResult = clone_scraper_raw_result(artifact.RawResult)
 		event.Content = artifact.Content
 		event.Account = artifact.Account
 		if artifact.ContentDetail != nil {
@@ -683,6 +845,65 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 func (s *ScraperJobService) publish_event(job *ScraperFetchJob, event *ScraperFetchJobEvent) {
 	if s.event_handler != nil {
 		s.event_handler(job, event)
+	}
+}
+
+func (s *ScraperJobService) emit_scraper_fetch_progress(
+	job *ScraperFetchJob,
+	stage string,
+	status string,
+	current int,
+	total int,
+	percent float64,
+	message string,
+) {
+	if job == nil {
+		return
+	}
+	progress := new_scraper_fetch_progress(job, stage, status, current, total, percent, message)
+	if progress == nil {
+		return
+	}
+	s.UpdateProgress(*progress)
+}
+
+func new_scraper_fetch_progress(
+	job *ScraperFetchJob,
+	stage string,
+	status string,
+	current int,
+	total int,
+	percent float64,
+	message string,
+) *events.ScraperFetchProgress {
+	if job == nil {
+		return nil
+	}
+	if status == "" {
+		status = job.Status
+	}
+	if current < 0 {
+		current = 0
+	}
+	if total < 0 {
+		total = 0
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return &events.ScraperFetchProgress{
+		RequestID: job.ID,
+		Platform:  job.Platform,
+		URL:       job.URL,
+		Stage:     strings.TrimSpace(stage),
+		Status:    status,
+		Current:   current,
+		Total:     total,
+		Percent:   percent,
+		Message:   strings.TrimSpace(message),
 	}
 }
 
@@ -718,9 +939,27 @@ func (s *ScraperJobService) finish_scraper_fetch_job(job_id string, output *Scra
 	if fetch_err != nil {
 		job.Status = ScraperJobStatusFailed
 		job.Error = fetch_err.Error()
+		job.Progress = new_scraper_fetch_progress(
+			job,
+			"failed",
+			ScraperJobStatusFailed,
+			0,
+			0,
+			0,
+			fmt.Sprintf("抓取失败: %s", fetch_err.Error()),
+		)
 	} else {
 		job.Status = ScraperJobStatusCompleted
 		job.Output = output
+		job.Progress = new_scraper_fetch_progress(
+			job,
+			"finished",
+			ScraperJobStatusCompleted,
+			1,
+			1,
+			100,
+			"抓取完成，结果已生成",
+		)
 	}
 	event_stage := ScraperJobEventFinished
 	if fetch_err != nil {
@@ -728,6 +967,12 @@ func (s *ScraperJobService) finish_scraper_fetch_job(job_id string, output *Scra
 	}
 	event := new_scraper_fetch_job_event(job, event_stage)
 	event.Error = job.Error
+	if job.Progress != nil {
+		progress := *job.Progress
+		event.Progress = &progress
+		event.Current = progress.Current
+		event.Total = progress.Total
+	}
 	snapshot := clone_scraper_fetch_job(job, false)
 	platform_id := job.Platform
 	source_url := job.URL
@@ -845,12 +1090,14 @@ func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *Scraper
 		cloned.Progress = &progress
 	}
 	if !include_output {
+		cloned.RawResult = nil
 		cloned.Content = nil
 		cloned.Account = nil
 		cloned.ContentDetails = nil
 		cloned.CacheEntries = nil
 		cloned.Output = nil
 	} else {
+		cloned.RawResult = clone_scraper_raw_result(job.RawResult)
 		cloned.ContentDetails = append([]adapter.ContentDetail(nil), job.ContentDetails...)
 		cloned.CacheEntries = append([]adapter.FetchCacheEntry(nil), job.CacheEntries...)
 		if job.Output != nil {
@@ -861,6 +1108,23 @@ func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *Scraper
 		}
 	}
 	return &cloned
+}
+
+func clone_scraper_raw_result(raw_result any) any {
+	switch value := raw_result.(type) {
+	case json.RawMessage:
+		return append(json.RawMessage(nil), value...)
+	case *json.RawMessage:
+		if value == nil {
+			return nil
+		}
+		cloned := append(json.RawMessage(nil), (*value)...)
+		return &cloned
+	case []byte:
+		return append([]byte(nil), value...)
+	default:
+		return value
+	}
 }
 
 func scraper_job_is_terminal(status string) bool {
@@ -891,8 +1155,16 @@ func (s *ScraperJobService) Interrupt(job_id string) bool {
 	if job.Progress != nil {
 		job.Progress.Status = ScraperJobStatusInterrupted
 		job.Progress.Message = "获取已中断"
+		job.Progress.Stage = "interrupted"
+		job.Progress.Percent = 0
 	}
 	event := new_scraper_fetch_job_event(job, ScraperJobEventInterrupted)
+	if job.Progress != nil {
+		progress := *job.Progress
+		event.Progress = &progress
+		event.Current = progress.Current
+		event.Total = progress.Total
+	}
 	snapshot := clone_scraper_fetch_job(job, false)
 	platform_id := job.Platform
 	s.job_mu.Unlock()
