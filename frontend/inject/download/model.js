@@ -188,7 +188,9 @@ function download_task_file_path(file) {
   if (explicitPath) {
     return explicitPath;
   }
-  const downloadDir = String(file.download_dir || file.downloadDir || "").trim();
+  const downloadDir = String(
+    file.download_dir || file.downloadDir || "",
+  ).trim();
   const name = String(file.name || "").trim();
   if (!downloadDir) {
     return name;
@@ -199,9 +201,7 @@ function download_task_file_path(file) {
   const separator =
     downloadDir.includes("\\") && !downloadDir.includes("/") ? "\\" : "/";
   return (
-    downloadDir.replace(/[\\/]+$/, "") +
-    separator +
-    name.replace(/^[\\/]+/, "")
+    downloadDir.replace(/[\\/]+$/, "") + separator + name.replace(/^[\\/]+/, "")
   );
 }
 function is_download_waiting_status(status) {
@@ -429,7 +429,10 @@ function merge_download_task_file_updates(files, updates) {
 function merge_download_task_update(task, update) {
   const merged = Object.assign({}, task, update);
   if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
-    merged.files = merge_download_task_file_updates(task && task.files, update.files);
+    merged.files = merge_download_task_file_updates(
+      task && task.files,
+      update.files,
+    );
   }
   return merged;
 }
@@ -2477,13 +2480,15 @@ function DownloaderPanelViewModel(props = {}) {
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
-          WXU.error({
-            msg: `download ws连接已关闭. ${DownloaderWSURL}`,
-            source: "model.js:2033",
-          });
-          if (!opened) {
-            reject(new Error("download websocket connection closed"));
+          if (opened) {
+            WXU.error({
+              msg: `download websocket connection closed.`,
+              source: "model.js:2033",
+            });
+            WXU.log.flushNow();
+            return;
           }
+          reject(new Error("download websocket connection closed"));
         };
         ws.onerror = (e) => {
           if (websocket_ !== ws) {

@@ -298,6 +298,17 @@ func (h *task_ws_pool) remove(client *v1_task_client) {
 	}
 }
 
+// close_all asks every download task WebSocket writer to send a normal close
+// frame, then removes the clients so the pool can be reused after a restart.
+func (h *task_ws_pool) close_all() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for client := range h.clients {
+		delete(h.clients, client)
+		close(client.send)
+	}
+}
+
 // BroadcastTasks pushes a unified task record array to clients subscribed to the given task_ids.
 func (h *task_ws_pool) BroadcastTasks(task_ids []int, payload DownloadTaskWSMessage) {
 	data, err := json.Marshal(payload)
@@ -662,7 +673,10 @@ func (c *v1_task_client) write_pump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.conn.WriteMessage(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "server closing"),
+				)
 				return
 			}
 			writer, err := c.conn.NextWriter(websocket.TextMessage)

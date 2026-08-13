@@ -102,12 +102,15 @@ var WXU = (() => {
   };
 
   // ── LogTransport (queue → batch → send with retry) ──────────────
-  function LogTransport(reportFn, cfg) {
+  function LogTransport(reportFn, immediateReportFn, cfg) {
     this.reportFn = reportFn;
+    this.immediateReportFn = immediateReportFn;
     this.cfg = cfg;
     this.buf = new CircularBuffer(cfg.bufferCapacity);
     this._timer = null;
-    this._flushing = false;
+    this._flushingGeneration = null;
+    this._generation = 0;
+    this._retryTimers = new Map();
   }
   LogTransport.prototype.enqueue = function (entry) {
     if (LOG_LEVEL_VALUES[entry.level] < LOG_LEVEL_VALUES[this.cfg.minLevel]) {
@@ -131,68 +134,98 @@ var WXU = (() => {
   };
   LogTransport.prototype._flush = function () {
     var self = this;
-    if (self._flushing) return;
-    self._flushing = true;
-    var batch = [];
-    var count = 0;
-    while (count < self.cfg.batchSize) {
-      var e = self.buf.shift();
-      if (!e) break;
-      batch.push(e);
-      count++;
+    if (self._flushingGeneration !== null) return;
+    var generation = self._generation;
+    self._flushingGeneration = generation;
+    var sent = 0;
+    function finish() {
+      if (self._flushingGeneration !== generation) return;
+      self._flushingGeneration = null;
+      if (self.buf.size > 0) self._scheduleFlush();
     }
-    function sendOne(idx) {
-      if (idx >= batch.length) {
-        self._flushing = false;
-        if (self.buf.size > 0) self._scheduleFlush();
+    function sendNext() {
+      if (generation !== self._generation || sent >= self.cfg.batchSize) {
+        finish();
         return;
       }
-      self._send(batch[idx]).then(function () {
-        sendOne(idx + 1);
-      });
+      var entry = self.buf.shift();
+      if (!entry) {
+        finish();
+        return;
+      }
+      sent++;
+      self._send(entry, generation).then(sendNext);
     }
-    sendOne(0);
+    sendNext();
   };
-  LogTransport.prototype._send = function (entry) {
+  LogTransport.prototype._send = function (entry, generation) {
     var _retries = entry._retries;
     delete entry._retries;
     try {
       var result = this.reportFn(entry);
       if (result && typeof result.then === "function") {
         var self = this;
-        return result.then(function (r) {
-          if (r && r.error) self._maybeRetry(entry, _retries);
-        });
+        return result.then(
+          function (r) {
+            if (r && r.error) {
+              self._maybeRetry(entry, _retries, generation);
+            }
+          },
+          function () {
+            self._maybeRetry(entry, _retries, generation);
+          },
+        );
       }
     } catch (e) {
-      this._maybeRetry(entry, _retries);
+      this._maybeRetry(entry, _retries, generation);
     }
     return Promise.resolve();
   };
-  LogTransport.prototype._maybeRetry = function (entry, retries) {
-    if (retries >= this.cfg.maxRetries) return;
+  LogTransport.prototype._maybeRetry = function (entry, retries, generation) {
+    if (generation !== this._generation || retries >= this.cfg.maxRetries) {
+      return;
+    }
     entry._retries = retries + 1;
     var delay = Math.min(
       this.cfg.baseRetryMs * Math.pow(2, retries),
       this.cfg.maxRetryMs,
     );
     var self = this;
-    setTimeout(function () {
+    var retryTimer = setTimeout(function () {
+      self._retryTimers.delete(retryTimer);
+      if (generation !== self._generation) return;
       self.buf.push(entry);
       self._scheduleFlush();
     }, delay);
+    self._retryTimers.set(retryTimer, entry);
   };
-  LogTransport.prototype._flushSync = function () {
-    var e;
-    while ((e = this.buf.shift())) {
-      delete e._retries;
+  // Immediately submits everything still queued and invalidates delayed
+  // flushes/retries. Immediate-send failures are deliberately not requeued.
+  LogTransport.prototype.flushNow = function () {
+    this._generation++;
+    this._flushingGeneration = null;
+    if (this._timer !== null) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+    var retryEntries = [];
+    this._retryTimers.forEach(function (retryEntry, retryTimer) {
+      clearTimeout(retryTimer);
+      retryEntries.push(retryEntry);
+    });
+    this._retryTimers.clear();
+
+    var sends = [];
+    var entry;
+    while ((entry = retryEntries.shift()) || (entry = this.buf.shift())) {
+      delete entry._retries;
       try {
-        var blob = new Blob([JSON.stringify(e)], {
-          type: "application/json",
-        });
-        navigator.sendBeacon(APIOrigin + "/report", blob);
+        sends.push(
+          Promise.resolve(this.immediateReportFn(entry)).catch(function () {}),
+        );
       } catch (ignore) {}
     }
+    return Promise.all(sends).then(function () {});
   };
 
   var defaultRandomAlphabet =
@@ -435,9 +468,21 @@ var WXU = (() => {
    *   Usage: WXU.log.Info().Str("key", val).Int("n", 1).Msg("description")
    */
   // ── shared log transport instance ──────────────────────────────
-  var logTransport = new LogTransport(function (entry) {
-    return reqs.report.run(entry);
-  }, LOG_CFG);
+  var logTransport = new LogTransport(
+    function (entry) {
+      return reqs.report.run(entry);
+    },
+    function (entry) {
+      var blob = new Blob([JSON.stringify(entry)], {
+        type: "application/json",
+      });
+      if (navigator.sendBeacon(APIOrigin + "/report", blob)) {
+        return true;
+      }
+      return reqs.report.run(entry);
+    },
+    LOG_CFG,
+  );
 
   class LogBuilder {
     _setField(key, val) {
@@ -537,6 +582,10 @@ var WXU = (() => {
   };
   Logger.Debug = function () {
     return new LogBuilder("debug", logTransport);
+  };
+  /** Immediately send and clear queued logs without scheduling retries. */
+  Logger.flushNow = function () {
+    return logTransport.flushNow();
   };
   /**
    * @param {ErrorMsg} params
@@ -681,10 +730,10 @@ var WXU = (() => {
 
   // ── page unload: best-effort drain pending logs via sendBeacon ──
   window.addEventListener("pagehide", function () {
-    logTransport._flushSync();
+    logTransport.flushNow();
   });
   window.addEventListener("beforeunload", function () {
-    logTransport._flushSync();
+    logTransport.flushNow();
   });
 
   return {

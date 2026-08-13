@@ -287,6 +287,7 @@ func (c *APIClient) Stop() error {
 	if c.scraper_job_service != nil {
 		c.scraper_job_service.InterruptAll()
 	}
+	v1_task_hub.close_all()
 	// Match the previous shutdown behavior: request all tasks to pause, but do
 	// not hold up the service shutdown while task goroutines finish.
 	if c.downloader != nil {
