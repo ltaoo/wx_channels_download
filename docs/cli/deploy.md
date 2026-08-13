@@ -92,6 +92,8 @@ mp:
 
 部署视频号视频信息查询页面到 Cloudflare Worker，提供 Web 界面查询视频号视频下载地址。
 
+!!不要提供给外部使用，仅自己使用即可，有被限制使用 yuanbao 的风险!!
+
 ```sh
 wx_video_download deploy sph
 ```
@@ -117,6 +119,8 @@ cloudflare:
 
 元宝 Web 端指 https://yuanbao.tencent.com/ 网站，登录后获取 `cookie` 作为配置即可。
 元宝 Web 端 Cookie 有效期约 1 个月，失效后重新登录获取新的 Cookie，并到 Cloudflare Worker 更新 `COOKIE` 环境变量即可。
+
+!!不要提供给外部使用，仅自己使用即可，有被限制使用 yuanbao 的风险!!
 
 ### 部署内容
 
