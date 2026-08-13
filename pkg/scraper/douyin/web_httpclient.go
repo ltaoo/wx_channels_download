@@ -99,12 +99,13 @@ func (c *HttpResponse) ToJSON(v any) error {
 	}
 	if err := json.Unmarshal(c.body, v); err != nil {
 		return fmt.Errorf(
-			"decode JSON response: http_status=%d content_type=%q content_encoding=%q content_length=%d body_bytes=%d: %w",
+			"decode JSON response: http_status=%d content_type=%q content_encoding=%q content_length=%d body_bytes=%d body_preview=%q: %w",
 			c.status_code,
 			c.content_type,
 			c.content_encoding,
 			c.content_length,
 			len(c.body),
+			log_body_preview(c.body),
 			err,
 		)
 	}

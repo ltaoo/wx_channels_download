@@ -48,6 +48,25 @@ var HomePageModel = (() => {
     ttk: "TT看书",
   };
 
+  const scraper_fetch_stage_names = {
+    start: "创建任务",
+    queued: "排队中",
+    restore: "恢复任务",
+    started: "准备解析",
+    fetch: "请求平台",
+    fetched: "平台已响应",
+    raw: "原始内容",
+    content: "内容信息",
+    account: "账号信息",
+    content_detail: "内容详情",
+    cache: "抓取缓存",
+    cache_entry: "缓存文件",
+    download_preview: "下载预览",
+    finished: "完成",
+    failed: "失败",
+    interrupted: "已中断",
+  };
+
   const content_type_names = {
     video: "视频",
     short_video: "短视频",
@@ -154,6 +173,14 @@ var HomePageModel = (() => {
     return "";
   }
 
+  function has_own_property(source, key) {
+    return Boolean(
+      source &&
+        typeof source === "object" &&
+        Object.prototype.hasOwnProperty.call(source, key),
+    );
+  }
+
   function number_or_default(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -161,8 +188,9 @@ var HomePageModel = (() => {
 
   function load_active_job_id() {
     try {
-      return String(window.localStorage.getItem(active_job_storage_key) || "")
-        .trim();
+      return String(
+        window.localStorage.getItem(active_job_storage_key) || "",
+      ).trim();
     } catch (error) {
       return "";
     }
@@ -185,7 +213,9 @@ var HomePageModel = (() => {
   }
 
   function content_type_name(value) {
-    const content_type = String(value || "").trim().toLowerCase();
+    const content_type = String(value || "")
+      .trim()
+      .toLowerCase();
     return content_type_names[content_type] || content_type || "内容";
   }
 
@@ -208,6 +238,19 @@ var HomePageModel = (() => {
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
+    }).format(new Date(timestamp));
+  }
+
+  function format_clock_time(value) {
+    const timestamp = normalize_epoch_ms(value);
+    if (!timestamp) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
       hour12: false,
     }).format(new Date(timestamp));
   }
@@ -248,11 +291,25 @@ var HomePageModel = (() => {
     return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
   }
 
+  function progress_unit_name(progress) {
+    const stage = String((progress && progress.stage) || "").trim();
+    const platform = String((progress && progress.platform) || "").trim();
+    if (stage === "content_detail") {
+      return platform === "fanqienovel" ||
+        platform === "ttk" ||
+        platform === "69shuba"
+        ? "章"
+        : "项详情";
+    }
+    if (stage === "cache" || stage === "cache_entry") {
+      return "个缓存";
+    }
+    return "步";
+  }
+
   function normalize_cache(result) {
     const source_entries =
-      result && Array.isArray(result.cache_entries)
-        ? result.cache_entries
-        : [];
+      result && Array.isArray(result.cache_entries) ? result.cache_entries : [];
     const entries = source_entries
       .map((entry, index) => {
         const source = entry && typeof entry === "object" ? entry : {};
@@ -419,11 +476,7 @@ var HomePageModel = (() => {
   function normalize_content_video_subtitle_track(track, index) {
     const source = track && typeof track === "object" ? track : {};
     const track_key = String(
-      first_non_empty(
-        source.track_key,
-        source.TrackKey,
-        `track-${index + 1}`,
-      ),
+      first_non_empty(source.track_key, source.TrackKey, `track-${index + 1}`),
     );
     const flags = [];
     if (Number(first_non_empty(source.is_default, source.IsDefault)) > 0) {
@@ -549,9 +602,7 @@ var HomePageModel = (() => {
 
   function normalize_download_info(result) {
     const download_info =
-      result &&
-      result.download_info &&
-      typeof result.download_info === "object"
+      result && result.download_info && typeof result.download_info === "object"
         ? result.download_info
         : null;
     if (!download_info) {
@@ -686,18 +737,18 @@ var HomePageModel = (() => {
         const parsed_color = parse_color(color);
         return Boolean(
           parsed_color &&
-            parsed_color.alpha > 0.05 &&
-            parsed_color.saturation <= 0.18 &&
-            parsed_color.luminance <= 0.35,
+          parsed_color.alpha > 0.05 &&
+          parsed_color.saturation <= 0.18 &&
+          parsed_color.luminance <= 0.35,
         );
       };
       const is_neutral_light = (color) => {
         const parsed_color = parse_color(color);
         return Boolean(
           parsed_color &&
-            parsed_color.alpha > 0.05 &&
-            parsed_color.saturation <= 0.18 &&
-            parsed_color.luminance >= 0.72,
+          parsed_color.alpha > 0.05 &&
+          parsed_color.saturation <= 0.18 &&
+          parsed_color.luminance >= 0.72,
         );
       };
       template.content.querySelectorAll("[style]").forEach((element) => {
@@ -705,9 +756,8 @@ var HomePageModel = (() => {
         const text_fill_color = element.style.getPropertyValue(
           "-webkit-text-fill-color",
         );
-        const background_color = element.style.getPropertyValue(
-          "background-color",
-        );
+        const background_color =
+          element.style.getPropertyValue("background-color");
         if (is_neutral_dark(color)) {
           element.style.removeProperty("color");
         }
@@ -739,7 +789,9 @@ var HomePageModel = (() => {
 
   function normalize_article_body(data, create_article_html_content) {
     const source = data && typeof data === "object" ? data : {};
-    const declared_format = String(source.type || "").trim().toLowerCase();
+    const declared_format = String(source.type || "")
+      .trim()
+      .toLowerCase();
     const supported_formats = ["html", "markdown", "text"];
     const declared_content = supported_formats.includes(declared_format)
       ? first_non_empty(source[declared_format], source.content)
@@ -942,7 +994,11 @@ var HomePageModel = (() => {
     };
   }
 
-  function normalize_content_detail_subject(detail, fallback_content, detail_type) {
+  function normalize_content_detail_subject(
+    detail,
+    fallback_content,
+    detail_type,
+  ) {
     const source =
       detail && detail.content && typeof detail.content === "object"
         ? detail.content
@@ -1087,7 +1143,9 @@ var HomePageModel = (() => {
     content,
     create_article_html_content,
   ) {
-    const type = String((detail && detail.type) || "").trim().toLowerCase();
+    const type = String((detail && detail.type) || "")
+      .trim()
+      .toLowerCase();
     const data =
       detail && detail.data && typeof detail.data === "object"
         ? detail.data
@@ -1157,7 +1215,7 @@ var HomePageModel = (() => {
             image.liveInfo;
           const is_live_photo = Boolean(
             image.image_type === "live_photo" ||
-              (live_photo && typeof live_photo === "object"),
+            (live_photo && typeof live_photo === "object"),
           );
           return {
             key: String(image.id || image.url || image_index),
@@ -1213,9 +1271,7 @@ var HomePageModel = (() => {
           : {},
     }));
     const download_info =
-      result &&
-      result.download_info &&
-      typeof result.download_info === "object"
+      result && result.download_info && typeof result.download_info === "object"
         ? result.download_info
         : {};
     const download_content = download_info_object(
@@ -1266,18 +1322,30 @@ var HomePageModel = (() => {
     const chapters = [];
     const items = [];
     const content = normalize_content(result || {});
-    for (let detail_index = 0; detail_index < details.length; detail_index += 1) {
+    for (
+      let detail_index = 0;
+      detail_index < details.length;
+      detail_index += 1
+    ) {
       const detail = details[detail_index] || {};
-      const type = String(detail.type || "").trim().toLowerCase();
-      const data = detail.data && typeof detail.data === "object" ? detail.data : {};
+      const type = String(detail.type || "")
+        .trim()
+        .toLowerCase();
+      const data =
+        detail.data && typeof detail.data === "object" ? detail.data : {};
       if (type === "novel") {
         novel_data = data;
         continue;
       }
       if (type === "novel_volume") {
-        const idx = Math.max(0, number_or_default(data.idx, volumes.length + 1));
+        const idx = Math.max(
+          0,
+          number_or_default(data.idx, volumes.length + 1),
+        );
         volumes.push({
-          key: String(detail.key || `${data.novel_id || "novel"}:volume:${idx}`),
+          key: String(
+            detail.key || `${data.novel_id || "novel"}:volume:${idx}`,
+          ),
           idx,
           index_text: idx > 0 ? `第 ${idx} 卷` : "卷",
           title: String(data.title || `第 ${idx || volumes.length + 1} 卷`),
@@ -1285,10 +1353,15 @@ var HomePageModel = (() => {
         continue;
       }
       if (type === "novel_chapter") {
-        const idx = Math.max(0, number_or_default(data.idx, chapters.length + 1));
+        const idx = Math.max(
+          0,
+          number_or_default(data.idx, chapters.length + 1),
+        );
         const word_count = Math.max(0, number_or_default(data.word_count, 0));
         chapters.push({
-          key: String(detail.key || `${data.novel_id || "novel"}:chapter:${idx}`),
+          key: String(
+            detail.key || `${data.novel_id || "novel"}:chapter:${idx}`,
+          ),
           idx,
           index_text: idx > 0 ? `第 ${idx} 章` : "章节",
           title: String(data.title || `第 ${idx || chapters.length + 1} 章`),
@@ -1314,7 +1387,9 @@ var HomePageModel = (() => {
 
     volumes.sort((left, right) => left.idx - right.idx);
     chapters.sort((left, right) => left.idx - right.idx);
-    const novel_present = Boolean(novel_data || volumes.length || chapters.length);
+    const novel_present = Boolean(
+      novel_data || volumes.length || chapters.length,
+    );
     const chapter_total = Math.max(
       chapters.length,
       number_or_default(novel_data && novel_data.chapter_count, 0),
@@ -1328,16 +1403,35 @@ var HomePageModel = (() => {
       number_or_default(novel_data && novel_data.word_count, 0),
     );
     const novel_title = String(
-      first_non_empty(novel_data && novel_data.series_name, content.title, "小说详情"),
+      first_non_empty(
+        novel_data && novel_data.series_name,
+        content.title,
+        "小说详情",
+      ),
     );
-    const author_name = String((novel_data && novel_data.author_name) || "").trim();
+    const author_name = String(
+      (novel_data && novel_data.author_name) || "",
+    ).trim();
     const novel_metrics = [
-      normalize_detail_field("章节", chapter_total > 0 ? `${chapter_total} 章` : "统计中"),
-      normalize_detail_field("分卷", volume_total > 0 ? `${volume_total} 卷` : "未分卷"),
-      normalize_detail_field("字数", word_count > 0 ? `${format_count(word_count)} 字` : "统计中"),
+      normalize_detail_field(
+        "章节",
+        chapter_total > 0 ? `${chapter_total} 章` : "统计中",
+      ),
+      normalize_detail_field(
+        "分卷",
+        volume_total > 0 ? `${volume_total} 卷` : "未分卷",
+      ),
+      normalize_detail_field(
+        "字数",
+        word_count > 0 ? `${format_count(word_count)} 字` : "统计中",
+      ),
       normalize_detail_field(
         "状态",
-        novel_data ? (Number(novel_data.is_finished) > 0 ? "已完结" : "连载中") : "获取中",
+        novel_data
+          ? Number(novel_data.is_finished) > 0
+            ? "已完结"
+            : "连载中"
+          : "获取中",
       ),
     ].filter(Boolean);
     const relations = normalize_content_relations(items, content);
@@ -1396,7 +1490,9 @@ var HomePageModel = (() => {
     return {
       present: Boolean(result && result.content),
       id: first_non_empty(source.id, source.ID),
-      type: String(content_type || "").trim().toLowerCase(),
+      type: String(content_type || "")
+        .trim()
+        .toLowerCase(),
       title,
       description,
       show_description: Boolean(description && description !== title),
@@ -1440,10 +1536,7 @@ var HomePageModel = (() => {
       "未获取到账号",
     );
     const alias = first_non_empty(source.alias, source.Alias);
-    const external_id = first_non_empty(
-      source.external_id,
-      source.ExternalID,
-    );
+    const external_id = first_non_empty(source.external_id, source.ExternalID);
     const identity = alias && alias !== nickname ? alias : external_id;
     return {
       present: Boolean(result && result.account),
@@ -1467,12 +1560,97 @@ var HomePageModel = (() => {
     };
   }
 
+  function raw_result_payload(source, include_result_key = false) {
+    if (!source || typeof source !== "object") {
+      return { present: false, value: undefined };
+    }
+    if (has_own_property(source, "raw_result")) {
+      return {
+        present: source.raw_result !== undefined,
+        value: source.raw_result,
+      };
+    }
+    if (has_own_property(source, "RawResult")) {
+      return {
+        present: source.RawResult !== undefined,
+        value: source.RawResult,
+      };
+    }
+    if (include_result_key && has_own_property(source, "result")) {
+      return { present: source.result !== undefined, value: source.result };
+    }
+    return { present: false, value: undefined };
+  }
+
+  function raw_result_type(value) {
+    if (Array.isArray(value)) {
+      return "array";
+    }
+    if (value === null) {
+      return "null";
+    }
+    return typeof value;
+  }
+
+  function raw_result_text(value) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed && /^[{[]/.test(trimmed)) {
+        try {
+          return JSON.stringify(JSON.parse(trimmed), null, 2);
+        } catch (error) {}
+      }
+      return value;
+    }
+    const serialized = JSON.stringify(value, null, 2);
+    return serialized === undefined ? String(value) : serialized;
+  }
+
+  function normalize_raw_result(result) {
+    const payload = raw_result_payload(result, true);
+    if (!payload.present) {
+      return {
+        present: false,
+        type_text: "",
+        meta_text: "",
+        text: "",
+      };
+    }
+    const text = raw_result_text(payload.value);
+    const type_text = raw_result_type(payload.value);
+    const char_count = text.length;
+    const platform_text = platform_name(result && result.platform);
+    return {
+      present: true,
+      type_text,
+      meta_text: [platform_text, type_text, `${char_count} 字符`]
+        .filter(Boolean)
+        .join(" · "),
+      text,
+    };
+  }
+
+  function has_display_result(result) {
+    if (!result || typeof result !== "object") {
+      return false;
+    }
+    return Boolean(
+      result.content ||
+        result.account ||
+        (Array.isArray(result.content_details) &&
+          result.content_details.length) ||
+        (Array.isArray(result.cache_entries) && result.cache_entries.length) ||
+        result.download_info,
+    );
+  }
+
   function create_model() {
     const url_ = ref("");
     const loading_ = ref(false);
     const error_ = ref("");
     const result_ = ref(null);
     const json_expanded_ = ref(false);
+    const raw_result_expanded_ = ref(true);
     const download_loading_ = ref(false);
     const download_error_ = ref("");
     const download_success_ = ref("");
@@ -1487,13 +1665,15 @@ var HomePageModel = (() => {
     const cache_content_data_ = ref(null);
     const chapter_display_limit_ = ref(100);
     const platform_statuses_ = ref([]);
-    const platform_status_popover_ = new Timeless.vm.PopoverCore({
-      offsetY: 8,
-      destroyOnClose: false,
-    });
-    const cache_content_dialog_ = new Timeless.vm.DialogCore({
-      closeable: true,
-    });
+    const ui = {
+      platform_status_popover: new Timeless.vm.PopoverCore({
+        offsetY: 8,
+        destroyOnClose: false,
+      }),
+      cache_content_dialog: new Timeless.vm.DialogCore({
+        closeable: true,
+      }),
+    };
     let request_sequence = 0;
     let active_job_id_ = "";
     let websocket_ = null;
@@ -1504,6 +1684,7 @@ var HomePageModel = (() => {
     let platform_status_hide_timeout_id_ = 0;
     let cache_content_request_sequence = 0;
     let disposed_ = false;
+    let progress_updated_at_ = 0;
     const article_html_cache_ = new Map();
     const article_html_tasks_ = new Set();
 
@@ -1634,7 +1815,8 @@ var HomePageModel = (() => {
             key: status_key,
             render_key: `${status_key}:${status.status}:${reason || ""}`,
             platform_name:
-              String(status.name || "").trim() || platform_name(status.platform),
+              String(status.name || "").trim() ||
+              platform_name(status.platform),
             available: status.available,
             status: status.status,
             reason,
@@ -1736,8 +1918,7 @@ var HomePageModel = (() => {
         download_loading: download_loading_,
         cache_loading: cache_loading_,
       },
-      (state) =>
-        state.loading || state.download_loading || state.cache_loading,
+      (state) => state.loading || state.download_loading || state.cache_loading,
     );
     const has_error_ = combine(
       {
@@ -1749,6 +1930,16 @@ var HomePageModel = (() => {
         Boolean(state.error || state.download_error || state.cache_error),
     );
     const has_result_ = computed(result_, (data) => Boolean(data));
+    const display_result_present_ = computed(result_, has_display_result);
+    const result_visible_ = combine(
+      { present: display_result_present_, loading: loading_ },
+      (state) => Boolean(state.present) && !state.loading,
+    );
+    const normalized_raw_result_ = computed(result_, normalize_raw_result);
+    const raw_result_visible_ = combine(
+      { raw: normalized_raw_result_, result_visible: result_visible_ },
+      (state) => state.raw.present && !state.result_visible,
+    );
     const normalized_cache_ = computed(result_, normalize_cache);
     const normalized_download_info_ = computed(
       result_,
@@ -1756,17 +1947,27 @@ var HomePageModel = (() => {
     );
     const progress_visible_ = combine(
       { loading: loading_, progress: fetch_progress_ },
-      (state) =>
-        Boolean(
-          state.loading &&
-            state.progress &&
-            number_or_default(state.progress.total, 0) > 0,
-        ),
+      (state) => Boolean(state.loading && state.progress),
     );
     const progress_percent_ = computed(fetch_progress_, (progress) => {
       const percent = number_or_default(progress && progress.percent, 0);
       return Math.min(100, Math.max(0, percent));
     });
+    const progress_has_total_ = computed(
+      fetch_progress_,
+      (progress) => number_or_default(progress && progress.total, 0) > 0,
+    );
+    const progress_has_percent_ = computed(
+      progress_percent_,
+      (percent) => percent > 0,
+    );
+    const progress_stage_text_ = computed(fetch_progress_, (progress) => {
+      const stage = String((progress && progress.stage) || "").trim();
+      return scraper_fetch_stage_names[stage] || stage || "正在处理";
+    });
+    const progress_message_ = computed(fetch_progress_, (progress) =>
+      String((progress && progress.message) || "").trim(),
+    );
     const progress_percent_text_ = computed(
       progress_percent_,
       (percent) => `${Math.round(percent)}%`,
@@ -1784,10 +1985,26 @@ var HomePageModel = (() => {
         0,
         number_or_default(progress && progress.cache_hits, 0),
       );
+      if (total <= 0) {
+        return "";
+      }
+      const unit = progress_unit_name(progress);
       return cache_hits > 0
-        ? `${current}/${total} 章 · 已复用 ${cache_hits} 页缓存`
-        : `${current}/${total} 章`;
+        ? `${current}/${total} ${unit} · 已复用 ${cache_hits} 页缓存`
+        : `${current}/${total} ${unit}`;
     });
+    const progress_updated_text_ = computed(fetch_progress_, (progress) => {
+      const updated_at = number_or_default(progress && progress.updated_at, 0);
+      const text = format_clock_time(updated_at);
+      return text ? `更新 ${text}` : "";
+    });
+    const progress_bar_class_ = combine(
+      { has_percent: progress_has_percent_, loading: loading_ },
+      (state) =>
+        state.loading && !state.has_percent
+          ? "wx-home-fetch-progress-bar is-indeterminate"
+          : "wx-home-fetch-progress-bar",
+    );
     const submit_button_text_ = computed(fetch_progress_, (progress) => {
       if (
         progress &&
@@ -1814,9 +2031,8 @@ var HomePageModel = (() => {
     const cache_button_text_ = computed(cache_loading_, (loading) =>
       loading ? "清除中" : "清除缓存",
     );
-    const interrupt_disabled_ = computed(
-      interrupt_loading_,
-      (loading) => Boolean(loading),
+    const interrupt_disabled_ = computed(interrupt_loading_, (loading) =>
+      Boolean(loading),
     );
     const normalized_content_ = computed(result_, normalize_content);
     const normalized_account_ = computed(result_, normalize_account);
@@ -1856,10 +2072,7 @@ var HomePageModel = (() => {
     const cache_ = {
       present: computed(normalized_cache_, (cache) => cache.present),
       entries: computed(normalized_cache_, (cache) => cache.entries),
-      summary_text: computed(
-        normalized_cache_,
-        (cache) => cache.summary_text,
-      ),
+      summary_text: computed(normalized_cache_, (cache) => cache.summary_text),
     };
     const cache_content_ = {
       loading: cache_content_loading_,
@@ -1956,10 +2169,7 @@ var HomePageModel = (() => {
         normalized_content_details_,
         (details) => details.count_text,
       ),
-      items: computed(
-        normalized_content_details_,
-        (details) => details.items,
-      ),
+      items: computed(normalized_content_details_, (details) => details.items),
       novel: {
         present: computed(
           normalized_content_details_,
@@ -2040,6 +2250,18 @@ var HomePageModel = (() => {
     const json_toggle_text_ = computed(json_expanded_, (expanded) =>
       expanded ? "收起原始 JSON" : "查看原始 JSON",
     );
+    const raw_result_ = {
+      visible: raw_result_visible_,
+      expanded: raw_result_expanded_,
+      toggle_text: computed(raw_result_expanded_, (expanded) =>
+        expanded ? "收起抓取内容" : "查看抓取内容",
+      ),
+      meta_text: computed(
+        normalized_raw_result_,
+        (raw_result) => raw_result.meta_text,
+      ),
+      text: computed(normalized_raw_result_, (raw_result) => raw_result.text),
+    };
     const download_disabled_ = combine(
       {
         result: result_,
@@ -2080,14 +2302,26 @@ var HomePageModel = (() => {
       if (!request_id || request_id !== active_job_id_) {
         return;
       }
+      progress_updated_at_ = Date.now();
+      const stage = String(progress.stage || "").trim();
+      const status = String(progress.status || "").trim();
+      const message = String(progress.message || "").trim();
       const normalized_progress = {
         ...progress,
+        request_id,
+        stage,
+        status,
         current: Math.max(0, number_or_default(progress.current, 0)),
         total: Math.max(0, number_or_default(progress.total, 0)),
         percent: Math.min(
           100,
           Math.max(0, number_or_default(progress.percent, 0)),
         ),
+        message:
+          message ||
+          scraper_fetch_stage_names[stage] ||
+          (status === "pending" ? "等待执行..." : "正在获取..."),
+        updated_at: number_or_default(progress.updated_at, 0) || progress_updated_at_,
       };
       fetch_progress_.as(normalized_progress);
       if (normalized_progress.status === "interrupted") {
@@ -2111,7 +2345,9 @@ var HomePageModel = (() => {
       const status_index = next_statuses.findIndex(
         (item) => String(item.key || item.platform || "").trim() === status_key,
       );
-      const raw_status = String(status.status || "").trim().toLowerCase();
+      const raw_status = String(status.status || "")
+        .trim()
+        .toLowerCase();
       const normalized_status =
         raw_status === "checking" ||
         raw_status === "available" ||
@@ -2173,14 +2409,14 @@ var HomePageModel = (() => {
 
     function show_platform_status_popover() {
       clear_platform_status_popover_hide();
-      platform_status_popover_.show();
+      ui.platform_status_popover.show();
     }
 
     function schedule_platform_status_popover_hide() {
       clear_platform_status_popover_hide();
       platform_status_hide_timeout_id_ = window.setTimeout(() => {
         platform_status_hide_timeout_id_ = 0;
-        platform_status_popover_.hide();
+        ui.platform_status_popover.hide();
       }, 120);
     }
 
@@ -2201,7 +2437,12 @@ var HomePageModel = (() => {
       resolving_terminal_job_id_ = job_id;
 
       let final_job = job;
-      if (job.status === "completed" && !job.output) {
+      const current_raw = raw_result_payload(result_.value, true);
+      const job_raw = raw_result_payload(job);
+      if (
+        (job.status === "completed" && !job.output) ||
+        (job.status === "failed" && !current_raw.present && !job_raw.present)
+      ) {
         const result = await job_request.run({ id: job_id });
         if (sequence !== request_sequence || job_id !== active_job_id_) {
           return;
@@ -2213,10 +2454,8 @@ var HomePageModel = (() => {
         }
         final_job = result.data || job;
       }
+      apply_fetch_job_payload(final_job, null);
 
-      loading_.as(false);
-      interrupt_loading_.as(false);
-      finish_job_tracking();
       if (final_job.status === "completed") {
         if (!final_job.output) {
           error_.as("fetch job 已完成，但缺少抓取结果");
@@ -2230,6 +2469,9 @@ var HomePageModel = (() => {
       } else {
         error_.as(final_job.error || "获取失败");
       }
+      interrupt_loading_.as(false);
+      finish_job_tracking();
+      loading_.as(false);
     }
 
     function upsert_content_detail(details, content_detail) {
@@ -2276,7 +2518,42 @@ var HomePageModel = (() => {
       return next_entries;
     }
 
+    function progress_from_scraper_event(job, event) {
+      if (!event || typeof event !== "object") {
+        return null;
+      }
+      if (event.progress) {
+        return event.progress;
+      }
+      const stage = String(event.stage || "").trim();
+      const current = Math.max(0, number_or_default(event.current, 0));
+      const total = Math.max(0, number_or_default(event.total, 0));
+      if (!stage || total <= 0) {
+        return null;
+      }
+      const messages = {
+        content_detail: `正在整理内容详情 ${current}/${total}`,
+        cache_entry: `正在整理缓存文件 ${current}/${total}`,
+      };
+      if (!Object.prototype.hasOwnProperty.call(messages, stage)) {
+        return null;
+      }
+      return {
+        request_id: job.id,
+        platform: job.platform,
+        url: job.url,
+        stage,
+        status: job.status,
+        current,
+        total,
+        percent: total > 0 ? (current * 100) / total : 0,
+        message: messages[stage],
+      };
+    }
+
     function apply_fetch_job_payload(job, event) {
+      const event_raw = raw_result_payload(event);
+      const job_raw = raw_result_payload(job);
       const content = (event && event.content) || job.content;
       const account = (event && event.account) || job.account;
       const job_details = Array.isArray(job.content_details)
@@ -2288,6 +2565,8 @@ var HomePageModel = (() => {
         : [];
       const event_cache_entry = event && event.cache_entry;
       if (
+        !event_raw.present &&
+        !job_raw.present &&
         !content &&
         !account &&
         job_details.length === 0 &&
@@ -2325,6 +2604,11 @@ var HomePageModel = (() => {
         job_id: job.id,
         platform: job.platform,
         url: job.url,
+        ...(event_raw.present
+          ? { raw_result: event_raw.value }
+          : job_raw.present
+            ? { raw_result: job_raw.value }
+            : {}),
         content: content || current_result.content,
         account: account || current_result.account,
         content_details,
@@ -2345,26 +2629,9 @@ var HomePageModel = (() => {
         return;
       }
       apply_fetch_job_payload(job, event);
-      const progress = (event && event.progress) || job.progress;
+      const progress = progress_from_scraper_event(job, event) || job.progress;
       if (progress) {
         apply_fetch_progress(progress);
-      } else if (
-        event &&
-        event.stage === "content_detail" &&
-        number_or_default(event.total, 0) > 0
-      ) {
-        const current = Math.max(0, number_or_default(event.current, 0));
-        const total = Math.max(0, number_or_default(event.total, 0));
-        apply_fetch_progress({
-          request_id: job_id,
-          platform: job.platform,
-          stage: event.stage,
-          status: job.status,
-          current,
-          total,
-          percent: total > 0 ? (current * 100) / total : 0,
-          message: `正在获取内容详情 ${current}/${total}`,
-        });
       } else {
         const current_progress = fetch_progress_.value || {};
         fetch_progress_.as({
@@ -2517,6 +2784,12 @@ var HomePageModel = (() => {
           }
           if (loading_.value && active_job_id_) {
             schedule_job_poll(request_sequence, 2000);
+            const current_progress = fetch_progress_.value || {};
+            fetch_progress_.as({
+              ...current_progress,
+              message: current_progress.message || "已连接实时进度推送",
+              updated_at: Date.now(),
+            });
           }
           window.clearTimeout(timeout_id);
           if (!settled) {
@@ -2563,6 +2836,12 @@ var HomePageModel = (() => {
             reject(new Error("scraper progress websocket connection closed"));
           }
           if (loading_.value && active_job_id_) {
+            const current_progress = fetch_progress_.value || {};
+            fetch_progress_.as({
+              ...current_progress,
+              message: "实时进度连接已断开，正在用轮询继续更新...",
+              updated_at: Date.now(),
+            });
             schedule_job_poll(request_sequence, 250);
           }
           if (!disposed_) {
@@ -2596,7 +2875,7 @@ var HomePageModel = (() => {
       finish_job_tracking();
       close_scraper_websocket();
       clear_platform_status_popover_hide();
-      platform_status_popover_.hide();
+      ui.platform_status_popover.hide();
     }
 
     async function submit(options = {}) {
@@ -2702,9 +2981,9 @@ var HomePageModel = (() => {
       cache_content_error_.as("");
       cache_content_entry_.as(null);
       cache_content_data_.as(null);
-      if (hide_dialog) {
-        cache_content_dialog_.hide();
-      }
+      // if (hide_dialog) {
+      //   ui.cache_content_dialog.hide();
+      // }
     }
 
     async function open_cache_content(cache_entry) {
@@ -2717,7 +2996,7 @@ var HomePageModel = (() => {
       cache_content_entry_.as(entry);
       cache_content_data_.as(null);
       cache_content_error_.as("");
-      cache_content_dialog_.show();
+      ui.cache_content_dialog.show();
       if (!job_id || !cache_key) {
         cache_content_loading_.as(false);
         cache_content_error_.as("无法定位该缓存条目");
@@ -2734,9 +3013,7 @@ var HomePageModel = (() => {
       }
       cache_content_loading_.as(false);
       if (result.error) {
-        cache_content_error_.as(
-          result.error.message || String(result.error),
-        );
+        cache_content_error_.as(result.error.message || String(result.error));
         return result;
       }
       cache_content_data_.as(result.data || {});
@@ -2744,7 +3021,7 @@ var HomePageModel = (() => {
     }
 
     function close_cache_content() {
-      cache_content_dialog_.hide();
+      ui.cache_content_dialog.hide();
     }
 
     async function clear_fetch_cache() {
@@ -2856,6 +3133,9 @@ var HomePageModel = (() => {
       toggleJSON() {
         json_expanded_.as(!json_expanded_.value);
       },
+      toggleRawResult() {
+        raw_result_expanded_.as(!raw_result_expanded_.value);
+      },
       openContent() {
         open_external_url(normalized_content_.value.content_url);
       },
@@ -2869,8 +3149,7 @@ var HomePageModel = (() => {
         chapter_display_limit_.as(chapter_display_limit_.value + 100);
       },
       showPlatformStatusPopover: show_platform_status_popover,
-      schedulePlatformStatusPopoverHide:
-        schedule_platform_status_popover_hide,
+      schedulePlatformStatusPopoverHide: schedule_platform_status_popover_hide,
       async connectProgress() {
         disposed_ = false;
         await restore_scraper_job();
@@ -2895,6 +3174,7 @@ var HomePageModel = (() => {
         download_info: download_info_,
         cache: cache_,
         cache_content: cache_content_,
+        raw_result: raw_result_,
         json_expanded: json_expanded_,
         download_loading: download_loading_,
         download_error: download_error_,
@@ -2906,8 +3186,14 @@ var HomePageModel = (() => {
         cache_error: cache_error_,
         progress_visible: progress_visible_,
         progress_percent: progress_percent_,
+        progress_has_total: progress_has_total_,
+        progress_has_percent: progress_has_percent_,
+        progress_stage_text: progress_stage_text_,
+        progress_message: progress_message_,
         progress_percent_text: progress_percent_text_,
         progress_count_text: progress_count_text_,
+        progress_updated_text: progress_updated_text_,
+        progress_bar_class: progress_bar_class_,
         submit_button_text: submit_button_text_,
         cache_action_disabled: cache_action_disabled_,
         cache_button_text: cache_button_text_,
@@ -2917,6 +3203,7 @@ var HomePageModel = (() => {
         busy: busy_,
         has_error: has_error_,
         has_result: has_result_,
+        result_visible: result_visible_,
         result_text: result_text_,
         json_toggle_text: json_toggle_text_,
         download_disabled: download_disabled_,
@@ -2928,10 +3215,7 @@ var HomePageModel = (() => {
           trigger_class: platform_status_trigger_class_,
         },
       },
-      ui: {
-        platform_status_popover: platform_status_popover_,
-        cache_content_dialog: cache_content_dialog_,
-      },
+      ui,
       methods,
     };
   }

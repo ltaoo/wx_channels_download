@@ -249,18 +249,49 @@
 .wx-home-fetch-progress {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 11px 12px;
   border: 1px solid var(--wx-content-border);
   border-radius: 8px;
   background: var(--wx-content-panel-soft);
 }
 
-.wx-home-fetch-progress-meta {
+.wx-home-fetch-progress-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
+}
+
+.wx-home-fetch-progress-stage {
+  min-width: 0;
+  color: var(--wx-content-text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-home-fetch-progress-right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--wx-content-muted);
+  font-size: 12px;
+}
+
+.wx-home-fetch-progress-message {
+  color: var(--wx-content-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.wx-home-fetch-progress-count,
+.wx-home-fetch-progress-updated {
   color: var(--wx-content-muted);
   font-size: 12px;
 }
@@ -283,6 +314,26 @@
   border-radius: inherit;
   background: var(--wx-content-primary);
   transition: width 160ms ease;
+}
+
+.wx-home-fetch-progress-bar.is-indeterminate {
+  width: 34% !important;
+  min-width: 34%;
+  animation: wx-home-fetch-progress-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes wx-home-fetch-progress-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  55% {
+    transform: translateX(90%);
+  }
+
+  100% {
+    transform: translateX(210%);
+  }
 }
 
 .wx-home-result {
@@ -1440,6 +1491,12 @@ button.wx-home-novel-chapter {
   gap: 7px;
 }
 
+.wx-home-video-variant-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
 .wx-home-video-supplement-item {
   min-width: 0;
   padding: 9px 10px;
@@ -1789,8 +1846,18 @@ button.wx-home-novel-chapter {
     width: min(1800px, 100%);
   }
 
+  .wx-home-video-variant-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .wx-home-novel-chapter-list {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+}
+
+@media (min-width: 1580px) {
+  .wx-home-video-variant-list {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -1801,6 +1868,10 @@ button.wx-home-novel-chapter {
 
   .wx-home-novel-volume-list {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wx-home-video-variant-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1817,6 +1888,10 @@ button.wx-home-novel-chapter {
   }
 
   .wx-home-novel-chapter-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wx-home-video-variant-list {
     grid-template-columns: minmax(0, 1fr);
   }
 

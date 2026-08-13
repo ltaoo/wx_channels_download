@@ -85,6 +85,7 @@ type FetchOptions struct {
 }
 
 const (
+	FetchArtifactStageRaw           = "raw"
 	FetchArtifactStageContent       = "content"
 	FetchArtifactStageAccount       = "account"
 	FetchArtifactStageContentDetail = "content_detail"
@@ -107,6 +108,7 @@ type ContentDetail struct {
 // adapters may emit artifacts before their complete raw result is available.
 type FetchArtifact struct {
 	Stage         string
+	RawResult     any
 	Content       *model.Content
 	Account       *model.Account
 	ContentDetail *ContentDetail

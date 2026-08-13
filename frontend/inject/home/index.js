@@ -826,17 +826,22 @@ function HomeVideoSupplements(props) {
               String(detail.variants.length),
             ]),
           ]),
-          View({ class: "wx-home-video-supplement-list" }, [
-            For({
-              key: "key",
-              each: detail.variants,
-              render(variant_) {
-                return HomeVideoVariantItem({
-                  variant: HomeDetailValue(variant_),
-                });
-              },
-            }),
-          ]),
+          View(
+            {
+              class: "wx-home-video-supplement-list wx-home-video-variant-list",
+            },
+            [
+              For({
+                key: "key",
+                each: detail.variants,
+                render(variant_) {
+                  return HomeVideoVariantItem({
+                    variant: HomeDetailValue(variant_),
+                  });
+                },
+              }),
+            ],
+          ),
         ]);
       },
     }),
@@ -1077,6 +1082,70 @@ function HomeRawJSON(props) {
       },
     }),
   ]);
+}
+
+function HomeFetchedRawContent(props) {
+  const vm$ = props.store;
+  const raw_result = vm$.state.raw_result;
+  return Show({
+    when: raw_result.visible,
+    ok() {
+      return View({ class: "wx-home-json wx-home-raw-fetch" }, [
+        Button(
+          {
+            class: computed(raw_result.expanded, (expanded) =>
+              expanded
+                ? "wx-home-json-toggle is-expanded"
+                : "wx-home-json-toggle",
+            ),
+            attributes: {
+              type: "button",
+              "aria-controls": "wx-home-raw-fetch-body",
+              "aria-expanded": raw_result.expanded,
+            },
+            onClick() {
+              vm$.methods.toggleRawResult();
+            },
+          },
+          [
+            View({ class: "wx-home-json-toggle-main" }, [
+              View({ class: "wx-home-json-icon" }, [
+                Timeless.Icon({ name: "braces", size: 17 }),
+              ]),
+              View({}, [
+                View({ class: "wx-home-json-title" }, ["抓取原始内容"]),
+                View({ class: "wx-home-json-subtitle" }, [
+                  raw_result.meta_text,
+                ]),
+              ]),
+            ]),
+            Show({
+              when: raw_result.expanded,
+              ok() {
+                return Timeless.Icon({ name: "chevron-up", size: 17 });
+              },
+              else() {
+                return Timeless.Icon({ name: "chevron-down", size: 17 });
+              },
+            }),
+          ],
+        ),
+        Show({
+          when: raw_result.expanded,
+          ok() {
+            return View(
+              {
+                type: "pre",
+                class: "wx-home-json-body",
+                attributes: { id: "wx-home-raw-fetch-body" },
+              },
+              [raw_result.text],
+            );
+          },
+        }),
+      ]);
+    },
+  });
 }
 
 function HomeDownloadAssetRelation(props) {
@@ -1384,6 +1453,7 @@ function HomeCacheCard(props) {
 function HomeCacheContentDialog(props) {
   const vm$ = props.store;
   const cache_content = vm$.state.cache_content;
+
   return Dialog(
     {
       store: vm$.ui.cache_content_dialog,
@@ -1458,7 +1528,7 @@ function HomeCacheContentDialog(props) {
 function HomePageResult(props) {
   const vm$ = props.store;
   return Show({
-    when: vm$.state.has_result,
+    when: vm$.state.result_visible,
     ok() {
       return View({ class: "wx-home-result" }, [
         HomeContentCard({ store: vm$ }),
@@ -1599,22 +1669,48 @@ function HomeFetchProgress(props) {
     when: vm$.state.progress_visible,
     ok() {
       return View({ class: "wx-home-fetch-progress" }, [
-        View({ class: "wx-home-fetch-progress-meta" }, [
-          View({ class: "wx-home-fetch-progress-count" }, [
-            vm$.state.progress_count_text,
+        View({ class: "wx-home-fetch-progress-head" }, [
+          View({ class: "wx-home-fetch-progress-stage" }, [
+            vm$.state.progress_stage_text,
           ]),
-          View({ class: "wx-home-fetch-progress-percent" }, [
-            vm$.state.progress_percent_text,
+          View({ class: "wx-home-fetch-progress-right" }, [
+            Show({
+              when: vm$.state.progress_updated_text,
+              ok() {
+                return View({ class: "wx-home-fetch-progress-updated" }, [
+                  vm$.state.progress_updated_text,
+                ]);
+              },
+            }),
+            Show({
+              when: vm$.state.progress_has_percent,
+              ok() {
+                return View({ class: "wx-home-fetch-progress-percent" }, [
+                  vm$.state.progress_percent_text,
+                ]);
+              },
+            }),
           ]),
+        ]),
+        View({ class: "wx-home-fetch-progress-message" }, [
+          vm$.state.progress_message,
         ]),
         View({ class: "wx-home-fetch-progress-track" }, [
           View({
-            class: "wx-home-fetch-progress-bar",
+            class: vm$.state.progress_bar_class,
             style: computed(vm$.state.progress_percent, (percent) => ({
               width: `${percent}%`,
             })),
           }),
         ]),
+        Show({
+          when: vm$.state.progress_has_total,
+          ok() {
+            return View({ class: "wx-home-fetch-progress-count" }, [
+              vm$.state.progress_count_text,
+            ]);
+          },
+        }),
       ]);
     },
   });
@@ -1657,6 +1753,7 @@ function HomePageView(props) {
           },
         }),
         HomeFetchProgress({ store: vm$ }),
+        HomeFetchedRawContent({ store: vm$ }),
         HomePageResult({ store: vm$ }),
       ]),
     ]),

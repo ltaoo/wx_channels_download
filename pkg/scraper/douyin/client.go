@@ -68,17 +68,19 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 		Dur("mobile_elapsed", time.Since(mobile_started_at)).
 		Msg("douyin fetch: mobile fetch failed, falling back to web API")
 
-	// Mobile failed, try web
+	// Try web API.
 	web_started_at := time.Now()
 	video_id, extract_err := c.web.ExtraVideoId(douyin_url)
 	if extract_err != nil {
-		c.logger.Error().
+		log_event := c.logger.Error().
 			Err(extract_err).
-			Errs("previous_errors", []error{mobile_err}).
 			Dur("web_elapsed", time.Since(web_started_at)).
-			Dur("elapsed", time.Since(started_at)).
-			Msg("douyin fetch: web video ID extraction failed")
-		return nil, fmt.Errorf("douyin: both methods failed: mobile=%v, web_extract=%v", mobile_err, extract_err)
+			Dur("elapsed", time.Since(started_at))
+		if mobile_err != nil {
+			log_event = log_event.Errs("previous_errors", []error{mobile_err})
+		}
+		log_event.Msg("douyin fetch: web video ID extraction failed")
+		return nil, wrap_web_extract_error(mobile_err, extract_err)
 	}
 	c.logger.Info().
 		Str("video_id", video_id).
@@ -86,24 +88,28 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 
 	resp, fetch_err := c.web.FetchVideoProfile(video_id)
 	if fetch_err != nil {
-		c.logger.Error().
+		log_event := c.logger.Error().
 			Err(fetch_err).
-			Errs("previous_errors", []error{mobile_err}).
 			Str("video_id", video_id).
 			Dur("web_elapsed", time.Since(web_started_at)).
-			Dur("elapsed", time.Since(started_at)).
-			Msg("douyin fetch: web API failed")
-		return nil, fmt.Errorf("douyin: mobile failed: %v; web fetch failed: %w", mobile_err, fetch_err)
+			Dur("elapsed", time.Since(started_at))
+		if mobile_err != nil {
+			log_event = log_event.Errs("previous_errors", []error{mobile_err})
+		}
+		log_event.Msg("douyin fetch: web API failed")
+		return nil, wrap_web_fetch_error(mobile_err, fetch_err)
 	}
 
 	if resp.StatusCode != 0 {
 		c.logger.Error().
 			Int("douyin_status_code", resp.StatusCode).
+			Int("body_bytes", len(resp.raw_body)).
+			Str("body_preview", log_body_preview(resp.raw_body)).
 			Str("video_id", video_id).
 			Dur("web_elapsed", time.Since(web_started_at)).
 			Dur("elapsed", time.Since(started_at)).
 			Msg("douyin fetch: web API returned an application error")
-		return nil, fmt.Errorf("douyin: mobile failed: %v; web API returned status_code=%d", mobile_err, resp.StatusCode)
+		return nil, wrap_web_status_error(mobile_err, resp)
 	}
 
 	info := convertWebResp(resp)
@@ -113,6 +119,36 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 		Dur("elapsed", time.Since(started_at)).
 		Msg("douyin fetch: completed with web API")
 	return info, nil
+}
+
+func wrap_web_extract_error(mobile_err error, extract_err error) error {
+	if mobile_err != nil {
+		return fmt.Errorf("douyin: mobile failed: %v; web extract failed: %w", mobile_err, extract_err)
+	}
+	return fmt.Errorf("douyin: web extract failed: %w", extract_err)
+}
+
+func wrap_web_fetch_error(mobile_err error, fetch_err error) error {
+	if mobile_err != nil {
+		return fmt.Errorf("douyin: mobile failed: %v; web fetch failed: %w", mobile_err, fetch_err)
+	}
+	return fmt.Errorf("douyin: web fetch failed: %w", fetch_err)
+}
+
+func wrap_web_status_error(mobile_err error, resp *DouyinWebVideoProfileResp) error {
+	status_code := 0
+	body_bytes := 0
+	body_preview := ""
+	if resp != nil {
+		status_code = resp.StatusCode
+		body_bytes = len(resp.raw_body)
+		body_preview = log_body_preview(resp.raw_body)
+	}
+	web_status := fmt.Sprintf("web API returned status_code=%d body_bytes=%d body_preview=%q", status_code, body_bytes, body_preview)
+	if mobile_err != nil {
+		return fmt.Errorf("douyin: mobile failed: %v; %s", mobile_err, web_status)
+	}
+	return fmt.Errorf("douyin: %s", web_status)
 }
 
 // GetVideoInfo retrieves structured video information from the web API.
@@ -130,7 +166,7 @@ func (c *Client) GetVideoInfo(raw_url string) (*VideoInfo, error) {
 		return nil, fmt.Errorf("douyin: web fetch failed: %w", err)
 	}
 	if resp.StatusCode != 0 {
-		return nil, fmt.Errorf("douyin: web API returned status_code=%d", resp.StatusCode)
+		return nil, wrap_web_status_error(nil, resp)
 	}
 	return convertWebResp(resp), nil
 }

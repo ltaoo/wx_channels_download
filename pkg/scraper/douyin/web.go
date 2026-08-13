@@ -88,7 +88,12 @@ func (c *DouyinWebClient) FetchVideoProfile(aweme_id string) (*DouyinWebVideoPro
 			Int("body_bytes", len(resp.body)).
 			Str("body_preview", log_body_preview(resp.body)).
 			Msg("douyin web: API returned unexpected HTTP status")
-		return nil, fmt.Errorf("unexpected HTTP status: %d", resp.status_code)
+		return nil, fmt.Errorf(
+			"unexpected HTTP status: %d body_bytes=%d body_preview=%q",
+			resp.status_code,
+			len(resp.body),
+			log_body_preview(resp.body),
+		)
 	}
 
 	var result DouyinWebVideoProfileResp
@@ -105,6 +110,7 @@ func (c *DouyinWebClient) FetchVideoProfile(aweme_id string) (*DouyinWebVideoPro
 			Msg("douyin web: API JSON decode failed")
 		return nil, err
 	}
+	result.raw_body = append([]byte(nil), resp.body...)
 	c.logger.Info().
 		Str("video_id", aweme_id).
 		Int("douyin_status_code", result.StatusCode).

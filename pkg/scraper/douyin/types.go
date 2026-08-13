@@ -13,16 +13,17 @@ type VideoInfo struct {
 type DouyinWebVideoProfileResp struct {
 	AwemeDetail AwemeDetail `json:"aweme_detail"`
 	StatusCode  int         `json:"status_code"`
+	raw_body    []byte
 }
 
 // AwemeDetail holds video detail data.
 type AwemeDetail struct {
-	AwemeId  string  `json:"aweme_id"`
-	Desc     string  `json:"desc"`
-	Author   Author  `json:"author"`
-	Video    Video   `json:"video"`
-	Music    Music   `json:"music"`
-	Duration int     `json:"duration"`
+	AwemeId   string    `json:"aweme_id"`
+	Desc      string    `json:"desc"`
+	Author    Author    `json:"author"`
+	Video     Video     `json:"video"`
+	Music     Music     `json:"music"`
+	Duration  int       `json:"duration"`
 	ShareInfo ShareInfo `json:"share_info"`
 }
 
@@ -55,57 +56,57 @@ type BitRate struct {
 
 // PlayAddr holds playback URL information.
 type PlayAddr struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // PlayAddrH264 holds H264 playback URL information.
 type PlayAddrH264 struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // PlayAddr265 holds H265 playback URL information.
 type PlayAddr265 struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // Cover holds cover image information.
 type Cover struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // OriginCover holds original cover image information.
 type OriginCover struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // Music holds music information.
 type Music struct {
-	Title  string  `json:"title"`
-	Author string  `json:"author"`
+	Title   string  `json:"title"`
+	Author  string  `json:"author"`
 	PlayUrl PlayUrl `json:"play_url"`
 }
 
 // PlayUrl holds music playback URL information.
 type PlayUrl struct {
-	Uri      string   `json:"uri"`
-	UrlList  []string `json:"url_list"`
-	Width    int      `json:"width"`
-	Height   int      `json:"height"`
+	Uri     string   `json:"uri"`
+	UrlList []string `json:"url_list"`
+	Width   int      `json:"width"`
+	Height  int      `json:"height"`
 }
 
 // ShareInfo holds share information.
