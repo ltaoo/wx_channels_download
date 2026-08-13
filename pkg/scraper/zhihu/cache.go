@@ -1,11 +1,10 @@
-package wxmp
+package zhihu
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +12,7 @@ import (
 	"wx_channel/pkg/cache"
 )
 
-// HTMLCacheFile describes one persisted wxmp HTML response.
+// HTMLCacheFile describes one persisted Zhihu HTML response.
 type HTMLCacheFile struct {
 	Path string
 	Size int64
@@ -28,26 +27,26 @@ func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
 	c.file_cache = file_cache
 }
 
-func normalize_cache_url(raw_url string) (string, error) {
-	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
-	if err != nil || parsed_url.Scheme == "" || parsed_url.Host == "" {
-		return "", fmt.Errorf("invalid wxmp cache url %q", raw_url)
+func canonical_cache_url(raw_url string) (string, error) {
+	resolved_url := ResolveRealURL(strings.TrimSpace(raw_url))
+	if article_url, ok := ParseArticleURL(resolved_url); ok {
+		return article_url.Canonical, nil
 	}
-	parsed_url.Scheme = strings.ToLower(parsed_url.Scheme)
-	parsed_url.Host = strings.ToLower(parsed_url.Host)
-	parsed_url.Fragment = ""
-	if parsed_url.Path == "" {
-		parsed_url.Path = "/"
+	if question_url, ok := ParseQuestionURL(resolved_url); ok {
+		return question_url.Canonical, nil
 	}
-	return parsed_url.String(), nil
+	if answer_url, ok := ParseAnswerURL(resolved_url); ok {
+		return answer_url.Canonical, nil
+	}
+	return "", fmt.Errorf("invalid zhihu cache url %q", raw_url)
 }
 
 func html_cache_relative_path(raw_url string) (string, error) {
-	normalized_url, err := normalize_cache_url(raw_url)
+	canonical_url, err := canonical_cache_url(raw_url)
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256([]byte(normalized_url))
+	digest := sha256.Sum256([]byte(canonical_url))
 	request_key := hex.EncodeToString(digest[:])
 	return filepath.ToSlash(filepath.Join("html", request_key+".html")), nil
 }
@@ -65,7 +64,7 @@ func (c *Client) read_cached_html(raw_url string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if read_err != nil {
-		return nil, false, fmt.Errorf("read wxmp HTML cache: %w", read_err)
+		return nil, false, fmt.Errorf("read zhihu HTML cache: %w", read_err)
 	}
 	if len(html_data) == 0 {
 		_ = c.file_cache.Remove(relative_path)
@@ -83,6 +82,17 @@ func (c *Client) write_cached_html(raw_url string, html_data []byte) error {
 		return err
 	}
 	return c.file_cache.Write(relative_path, html_data)
+}
+
+func (c *Client) remove_cached_html(raw_url string) error {
+	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() {
+		return nil
+	}
+	relative_path, err := html_cache_relative_path(raw_url)
+	if err != nil {
+		return err
+	}
+	return c.file_cache.Remove(relative_path)
 }
 
 // LookupHTMLCache locates the cached HTML for raw_url without performing a
@@ -104,7 +114,7 @@ func LookupHTMLCache(file_cache *cache.CacheProvider, raw_url string) (*HTMLCach
 		return nil, nil
 	}
 	if stat_err != nil {
-		return nil, fmt.Errorf("stat wxmp HTML cache: %w", stat_err)
+		return nil, fmt.Errorf("stat zhihu HTML cache: %w", stat_err)
 	}
 	if !file_info.Mode().IsRegular() || file_info.Size() <= 0 {
 		return nil, nil
@@ -124,10 +134,10 @@ func ClearHTMLCache(file_cache *cache.CacheProvider, raw_url string) (bool, erro
 	if _, err := file_cache.Stat(relative_path); errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	} else if err != nil {
-		return false, fmt.Errorf("stat wxmp HTML cache: %w", err)
+		return false, fmt.Errorf("stat zhihu HTML cache: %w", err)
 	}
 	if err := file_cache.Remove(relative_path); err != nil {
-		return false, fmt.Errorf("clear wxmp HTML cache: %w", err)
+		return false, fmt.Errorf("clear zhihu HTML cache: %w", err)
 	}
 	return true, nil
 }

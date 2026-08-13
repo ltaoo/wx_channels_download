@@ -18,6 +18,9 @@ type DownloadTaskResult struct {
 	Content *model.Content
 	// Extension carries content-type-specific data set by platform adapters.
 	ContentDetail any
+	// ContentDetails carries the complete content graph returned by adapters
+	// that discover related top-level content during one fetch.
+	ContentDetails []ContentDetail
 }
 
 // BrowseHistoryResult is returned by a platform BrowseHistoryBuilder.

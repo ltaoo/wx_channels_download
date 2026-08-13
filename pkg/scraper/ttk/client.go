@@ -15,42 +15,62 @@ import (
 
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/clawreq"
+	"wx_channel/pkg/cookies"
 )
+
+const ttk_cookie_domain = ".ttks.tw"
 
 // Client fetches TTK novel profiles and chapter contents.
 type Client struct {
 	claw_client      *clawreq.Client
 	claw_client_err  error
 	cookie           string
+	cookie_provider  *cookies.Reader
 	user_agent       string
 	progress_handler FetchProgressHandler
 	file_cache       *cache.CacheProvider
 }
 
-// NewClient creates a TTK client.
-func NewClient() *Client {
-	return NewClientWithOptions("", "")
+// NewClient creates a TTK client. When provided, cookie_provider is queried
+// for the latest .ttks.tw cookies before every outbound request.
+func NewClient(cookie_providers ...*cookies.Reader) *Client {
+	return NewClientWithOptions("", "", cookie_providers...)
 }
 
 // NewClientWithCookie creates a TTK client with a Cookie header.
-func NewClientWithCookie(cookie string) *Client {
-	return NewClientWithOptions(cookie, "")
+func NewClientWithCookie(cookie string, cookie_providers ...*cookies.Reader) *Client {
+	return NewClientWithOptions(cookie, "", cookie_providers...)
 }
 
 // NewClientWithOptions creates a TTK client with optional Cookie and
-// User-Agent headers.
-func NewClientWithOptions(cookie string, user_agent string) *Client {
+// User-Agent headers. An explicit Cookie takes precedence over cookies read
+// from cookie_provider.
+func NewClientWithOptions(cookie string, user_agent string, cookie_providers ...*cookies.Reader) *Client {
 	claw_client, claw_client_err := clawreq.New(clawreq.Config{
 		Profile:         clawreq.ProfileChrome,
 		Timeout:         30 * time.Second,
 		FollowRedirects: true,
 	})
+	var cookie_provider *cookies.Reader
+	if len(cookie_providers) > 0 {
+		cookie_provider = cookie_providers[0]
+	}
 	return &Client{
 		claw_client:     claw_client,
 		claw_client_err: claw_client_err,
 		cookie:          strings.TrimSpace(cookie),
+		cookie_provider: cookie_provider,
 		user_agent:      strings.TrimSpace(user_agent),
 	}
+}
+
+// SetCookieProvider configures the persistent cookie provider used by future
+// requests. The provider is retained so updated cookies are read on demand.
+func (c *Client) SetCookieProvider(cookie_provider *cookies.Reader) {
+	if c == nil {
+		return
+	}
+	c.cookie_provider = cookie_provider
 }
 
 // Fetch fetches a TTK novel profile and every chapter in directory order.
@@ -329,6 +349,8 @@ func (c *Client) parse_novel_chapters_document(document *goquery.Document, page_
 	novel.Title = clean_title(novel.Title)
 
 	novel.Author = first_text(document, []string{
+		`meta[name="og:novel:author"]`,
+		`meta[property="og:novel:author"]`,
 		".author",
 		".novel-author",
 		".book-author",
@@ -336,18 +358,21 @@ func (c *Client) parse_novel_chapters_document(document *goquery.Document, page_
 	})
 	novel.Author = clean_author(novel.Author)
 
-	chapter_selectors := []string{
-		"#chapters_frame .chapter_cell a",
-		".chapters_frame .chapter_cell a",
-		"#chapter_list a",
-		".chapter-list a",
-		".chapters a",
-		".catalog a",
-		".book-chapters a",
+	novel.CoverURL = normalize_url(first_text(document, []string{
+		`meta[name="og:image"]`,
+		`meta[property="og:image"]`,
+	}), page_url)
+	if novel.CoverURL == "" {
+		novel.CoverURL = normalize_url(first_attribute(document, []string{
+			`.novel-cover img`,
+			`.book-cover img`,
+			`amp-img[src*="/files/article/image/"]`,
+		}, "src"), page_url)
 	}
+
 	seen_urls := make(map[string]bool)
-	for _, selector := range chapter_selectors {
-		document.Find(selector).Each(func(_ int, selection *goquery.Selection) {
+	append_chapters := func(chapter_links *goquery.Selection) {
+		chapter_links.Each(func(_ int, selection *goquery.Selection) {
 			href, exists := selection.Attr("href")
 			if !exists {
 				return
@@ -367,15 +392,60 @@ func (c *Client) parse_novel_chapters_document(document *goquery.Document, page_
 				URL:   full_url,
 			})
 		})
+	}
+
+	chapter_links := find_ttk_chapter_links(document)
+	if chapter_links != nil {
+		append_chapters(chapter_links)
+	}
+	chapter_selectors := []string{
+		"#chapters_frame .chapter_cell a",
+		"#chapter_list a",
+		".chapter-list a",
+		".chapters a",
+		".catalog a",
+		".book-chapters a",
+	}
+	for _, selector := range chapter_selectors {
 		if len(novel.Chapters) > 0 {
 			break
 		}
+		append_chapters(document.Find(selector))
 	}
 
 	if novel.Title == "" {
 		return nil, errors.New("ttk novel title is empty")
 	}
 	return novel, nil
+}
+
+func find_ttk_chapter_links(document *goquery.Document) *goquery.Selection {
+	chapter_frames := document.Find(".chapters_frame")
+	var full_chapter_frame *goquery.Selection
+	chapter_frames.EachWithBreak(func(_ int, chapter_frame *goquery.Selection) bool {
+		chapter_heading := strings.TrimSpace(chapter_frame.PrevAllFiltered(".chapters_title").First().Text())
+		if strings.Contains(chapter_heading, "全部章節") || strings.Contains(chapter_heading, "全部章节") {
+			full_chapter_frame = chapter_frame
+			return false
+		}
+		return true
+	})
+
+	if full_chapter_frame == nil && chapter_frames.Length() > 1 {
+		full_chapter_frame = chapter_frames.Eq(1)
+	}
+	if full_chapter_frame == nil && chapter_frames.Length() == 1 {
+		full_chapter_frame = chapter_frames.First()
+	}
+	if full_chapter_frame == nil {
+		return nil
+	}
+
+	chapter_links := full_chapter_frame.Find(".chapter_cell a")
+	if chapter_links.Length() == 0 {
+		chapter_links = full_chapter_frame.Find("a")
+	}
+	return chapter_links
 }
 
 // FetchChapterContent fetches and parses a TTK chapter page.
@@ -533,14 +603,21 @@ func (c *Client) fetch_html(fetch_context context.Context, request_url string, r
 			"Sec-Fetch-Site":  "same-origin",
 		}),
 	}
-	if c.cookie != "" {
-		request_options = append(request_options, clawreq.WithCookie(c.cookie))
+	cookie_header, err := c.resolve_cookie()
+	if err != nil {
+		return "", err
+	}
+	if cookie_header != "" {
+		request_options = append(request_options, clawreq.WithCookie(cookie_header))
 	}
 	if c.user_agent != "" {
 		request_options = append(request_options, clawreq.WithHeader("User-Agent", c.user_agent))
 	}
 	if referer = strings.TrimSpace(referer); referer != "" {
 		request_options = append(request_options, clawreq.WithReferer(referer))
+	}
+	if err := ttk_outbound_request_limiter.wait(fetch_context); err != nil {
+		return "", fmt.Errorf("wait for ttk request interval: %w", err)
 	}
 
 	response, err := c.claw_client.Get(fetch_context, strings.TrimSpace(request_url), request_options...)
@@ -551,6 +628,26 @@ func (c *Client) fetch_html(fetch_context context.Context, request_url string, r
 		return "", fmt.Errorf("ttk returned HTTP %d", response.StatusCode)
 	}
 	return response.Text()
+}
+
+func (c *Client) resolve_cookie() (string, error) {
+	if c == nil {
+		return "", errors.New("ttk client is not initialized")
+	}
+	if cookie_header := strings.TrimSpace(c.cookie); cookie_header != "" {
+		return cookie_header, nil
+	}
+	if c.cookie_provider == nil {
+		return "", nil
+	}
+	cookie_header, err := c.cookie_provider.HeaderForDomain(ttk_cookie_domain)
+	if errors.Is(err, cookies.ErrCookieNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s cookies: %w", ttk_cookie_domain, err)
+	}
+	return strings.TrimSpace(cookie_header), nil
 }
 
 func normalize_url(reference string, page_url string) string {
@@ -669,6 +766,22 @@ func first_text(document *goquery.Document, selectors []string) string {
 		}
 		if text := strings.TrimSpace(selection.Text()); text != "" {
 			return text
+		}
+	}
+	return ""
+}
+
+func first_attribute(document *goquery.Document, selectors []string, attribute_name string) string {
+	if document == nil {
+		return ""
+	}
+	for _, selector := range selectors {
+		selection := document.Find(selector).First()
+		if selection.Length() == 0 {
+			continue
+		}
+		if value := strings.TrimSpace(selection.AttrOr(attribute_name, "")); value != "" {
+			return value
 		}
 	}
 	return ""

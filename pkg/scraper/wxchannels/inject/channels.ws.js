@@ -193,8 +193,9 @@ function ChannelsWebsocketClient() {
           if (opened) {
             WXU.error({
               source: "channels.ws.js:onclose",
-              msg: `channels ws连接已关闭，10秒后自动重连，reason: "${e.reason}"，code: "${e.code}"`,
+              msg: `channels ws连接已关闭，reason: "${e.reason}"，code: "${e.code}"`,
             });
+            WXU.log.flushNow();
             return;
           }
           reject(new Error("channels websocket connection closed"));

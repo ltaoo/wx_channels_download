@@ -430,10 +430,17 @@ func html_to_text(fragment string) string {
 }
 
 func answer_question_url(page *zhihu.AnswerPage) string {
-	if page == nil || page.URL.QuestionID == "" {
+	if page == nil {
 		return ""
 	}
-	return "https://www.zhihu.com/question/" + url.PathEscape(page.URL.QuestionID)
+	question_id := strings.TrimSpace(page.URL.QuestionID)
+	if question_id == "" {
+		question_id = strings.TrimSpace(page.Question.ID)
+	}
+	if question_id == "" {
+		return ""
+	}
+	return "https://www.zhihu.com/question/" + url.PathEscape(question_id)
 }
 
 func format_time(unix_time int64) string {

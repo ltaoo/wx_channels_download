@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -23,6 +24,7 @@ const (
 	scraper_platform_douyin     = "douyin"
 	scraper_platform_bilibili   = "bilibili"
 	scraper_platform_zhihu      = "zhihu"
+	scraper_platform_ttk        = "ttk"
 )
 
 const (
@@ -39,6 +41,7 @@ const (
 	ScraperJobEventContent       = "content"
 	ScraperJobEventAccount       = "account"
 	ScraperJobEventContentDetail = "content_detail"
+	ScraperJobEventCacheEntry    = "cache_entry"
 	ScraperJobEventFinished      = "finished"
 	ScraperJobEventFailed        = "failed"
 	ScraperJobEventInterrupted   = "interrupted"
@@ -48,14 +51,15 @@ var scraper_fetch_job_sequence atomic.Uint64
 
 // ScraperFetchOutput is the successful result produced by a scraper fetch job.
 type ScraperFetchOutput struct {
-	JobID          string                    `json:"job_id"`
-	Platform       string                    `json:"platform"`
-	URL            string                    `json:"url"`
-	Result         any                       `json:"result"`
-	Content        *model.Content            `json:"content"`
-	Account        *model.Account            `json:"account"`
-	ContentDetails []adapter.ContentDetail   `json:"content_details,omitempty"`
-	CacheEntries   []adapter.FetchCacheEntry `json:"cache_entries,omitempty"`
+	JobID          string                      `json:"job_id"`
+	Platform       string                      `json:"platform"`
+	URL            string                      `json:"url"`
+	Result         any                         `json:"result"`
+	Content        *model.Content              `json:"content"`
+	Account        *model.Account              `json:"account"`
+	ContentDetails []adapter.ContentDetail     `json:"content_details,omitempty"`
+	CacheEntries   []adapter.FetchCacheEntry   `json:"cache_entries,omitempty"`
+	DownloadInfo   *adapter.DownloadTaskResult `json:"download_info,omitempty"`
 }
 
 // ScraperFetchJobEvent is one ordered WebSocket event in a fetch job.
@@ -67,6 +71,7 @@ type ScraperFetchJobEvent struct {
 	Content       *model.Content               `json:"content,omitempty"`
 	Account       *model.Account               `json:"account,omitempty"`
 	ContentDetail *adapter.ContentDetail       `json:"content_detail,omitempty"`
+	CacheEntry    *adapter.FetchCacheEntry     `json:"cache_entry,omitempty"`
 	Progress      *events.ScraperFetchProgress `json:"progress,omitempty"`
 	Current       int                          `json:"current,omitempty"`
 	Total         int                          `json:"total,omitempty"`
@@ -76,24 +81,26 @@ type ScraperFetchJobEvent struct {
 
 // ScraperFetchJob is the in-memory state exposed by the scraper job API.
 type ScraperFetchJob struct {
-	ID             string                       `json:"id"`
-	Platform       string                       `json:"platform"`
-	URL            string                       `json:"url"`
-	ForceRefresh   bool                         `json:"force_refresh"`
-	Status         string                       `json:"status"`
-	Progress       *events.ScraperFetchProgress `json:"progress,omitempty"`
-	Content        *model.Content               `json:"content,omitempty"`
-	Account        *model.Account               `json:"account,omitempty"`
-	ContentDetails []adapter.ContentDetail      `json:"content_details,omitempty"`
-	Output         *ScraperFetchOutput          `json:"output,omitempty"`
-	Error          string                       `json:"error,omitempty"`
-	CreatedAt      int64                        `json:"created_at"`
-	UpdatedAt      int64                        `json:"updated_at"`
-	StartedAt      int64                        `json:"started_at,omitempty"`
-	FinishedAt     int64                        `json:"finished_at,omitempty"`
-	cancel_fetch   context.CancelFunc
-	detail_indexes map[string]int
-	event_sequence int64
+	ID                  string                       `json:"id"`
+	Platform            string                       `json:"platform"`
+	URL                 string                       `json:"url"`
+	ForceRefresh        bool                         `json:"force_refresh"`
+	Status              string                       `json:"status"`
+	Progress            *events.ScraperFetchProgress `json:"progress,omitempty"`
+	Content             *model.Content               `json:"content,omitempty"`
+	Account             *model.Account               `json:"account,omitempty"`
+	ContentDetails      []adapter.ContentDetail      `json:"content_details,omitempty"`
+	CacheEntries        []adapter.FetchCacheEntry    `json:"cache_entries,omitempty"`
+	Output              *ScraperFetchOutput          `json:"output,omitempty"`
+	Error               string                       `json:"error,omitempty"`
+	CreatedAt           int64                        `json:"created_at"`
+	UpdatedAt           int64                        `json:"updated_at"`
+	StartedAt           int64                        `json:"started_at,omitempty"`
+	FinishedAt          int64                        `json:"finished_at,omitempty"`
+	cancel_fetch        context.CancelFunc
+	detail_indexes      map[string]int
+	cache_entry_indexes map[string]int
+	event_sequence      int64
 }
 
 // ScraperFetchRequest describes a request to start an asynchronous scraper job.
@@ -199,6 +206,8 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 		return scraper_platform_resolution(scraper_platform_bilibili, ""), nil
 	case host == "www.zhihu.com" || host == "zhuanlan.zhihu.com":
 		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
+	case host == "ttks.tw" || host == "www.ttks.tw":
+		return scraper_platform_resolution(scraper_platform_ttk, ""), nil
 	default:
 		return ScraperPlatformResolution{}, fmt.Errorf("暂不支持该 URL: %s", raw_url)
 	}
@@ -474,11 +483,21 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			cache_entries = nil
 		}
 	}
+	download_info, err := build_scraper_download_info(handler, job.Platform, data)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("job_id", job.ID).
+			Str("platform", job.Platform).
+			Msg("scraper fetch: download info build failed")
+		return nil, fmt.Errorf("构建下载任务预览失败: %w", err)
+	}
 	s.logger.Info().
 		Str("job_id", job.ID).
 		Str("platform", job.Platform).
 		Bool("content_created", content != nil).
 		Bool("account_created", account != nil).
+		Bool("download_info_created", download_info != nil).
 		Int("content_detail_count", len(content_details)).
 		Int("cache_entry_count", len(cache_entries)).
 		Dur("total_elapsed", time.Since(fetch_started_at)).
@@ -492,7 +511,29 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		Account:        account,
 		ContentDetails: content_details,
 		CacheEntries:   cache_entries,
+		DownloadInfo:   download_info,
 	}, nil
+}
+
+// build_scraper_download_info builds a task preview only for adapters that can
+// consume their in-memory Fetch payload without another platform request.
+func build_scraper_download_info(handler adapter.AdapterHandler, platform_id string, data any) (*adapter.DownloadTaskResult, error) {
+	fetch_builder, ok := handler.(adapter.FetchDownloadTaskBuilder)
+	if !ok {
+		return nil, nil
+	}
+	config_json, err := json.Marshal(map[string]any{"platform": platform_id})
+	if err != nil {
+		return nil, fmt.Errorf("序列化下载配置失败: %w", err)
+	}
+	download_info, err := fetch_builder.BuildDownloadTaskFromFetch(data, config_json)
+	if err != nil {
+		return nil, err
+	}
+	if download_info == nil {
+		return nil, fmt.Errorf("平台未返回下载任务")
+	}
+	return download_info, nil
 }
 
 func (s *ScraperJobService) emit_scraper_output_artifacts(job_id string, output *ScraperFetchOutput) {
@@ -520,6 +561,15 @@ func (s *ScraperJobService) emit_scraper_output_artifacts(job_id string, output 
 			Total:         len(output.ContentDetails),
 		})
 	}
+	for cache_entry_index := range output.CacheEntries {
+		cache_entry := output.CacheEntries[cache_entry_index]
+		s.emit_scraper_fetch_artifact(job_id, adapter.FetchArtifact{
+			Stage:      adapter.FetchArtifactStageCacheEntry,
+			CacheEntry: &cache_entry,
+			Current:    cache_entry_index + 1,
+			Total:      len(output.CacheEntries),
+		})
+	}
 }
 
 func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact adapter.FetchArtifact) {
@@ -534,6 +584,7 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 	stage := strings.TrimSpace(artifact.Stage)
 	should_broadcast := false
 	event := (*ScraperFetchJobEvent)(nil)
+	emitted_cache_entry := (*adapter.FetchCacheEntry)(nil)
 	switch stage {
 	case adapter.FetchArtifactStageContent:
 		if artifact.Content == nil {
@@ -569,6 +620,36 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 			job.ContentDetails = append(job.ContentDetails, detail)
 			should_broadcast = true
 		}
+	case adapter.FetchArtifactStageCacheEntry:
+		if artifact.CacheEntry == nil {
+			s.job_mu.Unlock()
+			return
+		}
+		cache_entry := *artifact.CacheEntry
+		cache_entry.Key = strings.TrimSpace(cache_entry.Key)
+		cache_entry.Name = strings.TrimSpace(cache_entry.Name)
+		cache_entry.URL = strings.TrimSpace(cache_entry.URL)
+		cache_entry.Path = strings.TrimSpace(cache_entry.Path)
+		if cache_entry.Path == "" {
+			s.job_mu.Unlock()
+			return
+		}
+		if cache_entry.Key == "" {
+			cache_entry.Key = cache_entry.Path
+		}
+		if job.cache_entry_indexes == nil {
+			job.cache_entry_indexes = make(map[string]int)
+		}
+		if cache_entry_index, exists := job.cache_entry_indexes[cache_entry.Key]; exists {
+			should_broadcast = job.CacheEntries[cache_entry_index] != cache_entry
+			job.CacheEntries[cache_entry_index] = cache_entry
+		} else {
+			job.cache_entry_indexes[cache_entry.Key] = len(job.CacheEntries)
+			job.CacheEntries = append(job.CacheEntries, cache_entry)
+			should_broadcast = true
+		}
+		cache_entry_copy := cache_entry
+		emitted_cache_entry = &cache_entry_copy
 	default:
 		s.job_mu.Unlock()
 		return
@@ -582,10 +663,17 @@ func (s *ScraperJobService) emit_scraper_fetch_artifact(job_id string, artifact 
 			detail := *artifact.ContentDetail
 			event.ContentDetail = &detail
 		}
+		if emitted_cache_entry != nil {
+			cache_entry := *emitted_cache_entry
+			event.CacheEntry = &cache_entry
+		}
 		event.Current = artifact.Current
 		event.Total = artifact.Total
 	}
 	snapshot := clone_scraper_fetch_job(job, false)
+	if event != nil && stage == adapter.FetchArtifactStageCacheEntry {
+		snapshot.CacheEntries = append([]adapter.FetchCacheEntry(nil), job.CacheEntries...)
+	}
 	s.job_mu.Unlock()
 	if event != nil {
 		s.publish_event(snapshot, event)
@@ -706,6 +794,44 @@ func (s *ScraperJobService) Get(job_id string, include_output bool) *ScraperFetc
 	return job
 }
 
+// GetCacheEntry resolves one server-issued cache entry without accepting a
+// filesystem path from the caller.
+func (s *ScraperJobService) GetCacheEntry(job_id string, cache_key string) *adapter.FetchCacheEntry {
+	job_id = strings.TrimSpace(job_id)
+	cache_key = strings.TrimSpace(cache_key)
+	if job_id == "" || cache_key == "" {
+		return nil
+	}
+
+	s.job_mu.RLock()
+	defer s.job_mu.RUnlock()
+	job := s.jobs[job_id]
+	if job == nil {
+		return nil
+	}
+	find_cache_entry := func(entries []adapter.FetchCacheEntry) *adapter.FetchCacheEntry {
+		for entry_index := range entries {
+			entry := entries[entry_index]
+			entry_key := strings.TrimSpace(entry.Key)
+			if entry_key == "" {
+				entry_key = strings.TrimSpace(entry.Path)
+			}
+			if entry_key == cache_key {
+				entry_copy := entry
+				return &entry_copy
+			}
+		}
+		return nil
+	}
+	if entry := find_cache_entry(job.CacheEntries); entry != nil {
+		return entry
+	}
+	if job.Output != nil {
+		return find_cache_entry(job.Output.CacheEntries)
+	}
+	return nil
+}
+
 func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *ScraperFetchJob {
 	if job == nil {
 		return nil
@@ -713,6 +839,7 @@ func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *Scraper
 	cloned := *job
 	cloned.cancel_fetch = nil
 	cloned.detail_indexes = nil
+	cloned.cache_entry_indexes = nil
 	if job.Progress != nil {
 		progress := *job.Progress
 		cloned.Progress = &progress
@@ -721,9 +848,11 @@ func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *Scraper
 		cloned.Content = nil
 		cloned.Account = nil
 		cloned.ContentDetails = nil
+		cloned.CacheEntries = nil
 		cloned.Output = nil
 	} else {
 		cloned.ContentDetails = append([]adapter.ContentDetail(nil), job.ContentDetails...)
+		cloned.CacheEntries = append([]adapter.FetchCacheEntry(nil), job.CacheEntries...)
 		if job.Output != nil {
 			output := *job.Output
 			output.ContentDetails = append([]adapter.ContentDetail(nil), job.Output.ContentDetails...)

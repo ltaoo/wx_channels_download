@@ -11,6 +11,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
@@ -26,10 +27,18 @@ type handler struct {
 	runtime_mu          sync.RWMutex
 	cookie_reader       *cookies.Reader
 	logger              *zerolog.Logger
+	file_cache          *cache.CacheProvider
+	browser_fetcher     zhihu.BrowserFetcher
 	status_mu           sync.Mutex
 	status_bus          *events.Bus
 	cancel_status_check func()
 }
+
+var (
+	_ adapter.PlatformAdapter          = (*handler)(nil)
+	_ adapter.FetchCacheAdapter        = (*handler)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+)
 
 func (h *handler) PlatformID() string { return PlatformID }
 
@@ -56,12 +65,36 @@ func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Log
 	h.status_mu.Unlock()
 }
 
+func (h *handler) set_persistent_cache(file_cache *cache.CacheProvider) {
+	h.runtime_mu.Lock()
+	h.file_cache = file_cache
+	h.runtime_mu.Unlock()
+}
+
+func (h *handler) set_browser_fetcher(browser_fetcher zhihu.BrowserFetcher) {
+	h.runtime_mu.Lock()
+	h.browser_fetcher = browser_fetcher
+	h.runtime_mu.Unlock()
+}
+
+func (h *handler) runtime_browser_fetcher() zhihu.BrowserFetcher {
+	h.runtime_mu.RLock()
+	browser_fetcher := h.browser_fetcher
+	h.runtime_mu.RUnlock()
+	return browser_fetcher
+}
+
 func (h *handler) scraper_client() *zhihu.Client {
 	h.runtime_mu.RLock()
 	cookie_reader := h.cookie_reader
 	logger := h.logger
+	file_cache := h.file_cache
+	browser_fetcher := h.browser_fetcher
 	h.runtime_mu.RUnlock()
-	return zhihu.NewClient(cookie_reader, logger)
+	client := zhihu.NewClient(cookie_reader, logger)
+	client.SetPersistentCache(file_cache)
+	client.SetBrowserFetcher(browser_fetcher)
+	return client
 }
 
 // BuildContentID builds a content identifier from an external ID.
@@ -401,17 +434,25 @@ func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	}
 }
 
-// parse_answer_page_content attempts to unmarshal the content JSON as a zhihu.AnswerPage.
-// Returns the parsed page and true if the content appears to be a valid AnswerPage.
-func parse_answer_page_content(content_json json.RawMessage) (*zhihu.AnswerPage, bool) {
-	var page zhihu.AnswerPage
-	if err := json.Unmarshal(content_json, &page); err != nil {
-		return nil, false
+// parse_zhihu_page_content recognizes every structured result returned by
+// Fetch so task previews can reuse it without another platform request.
+func parse_zhihu_page_content(content_json json.RawMessage) (any, bool) {
+	var answer_page zhihu.AnswerPage
+	if err := json.Unmarshal(content_json, &answer_page); err == nil && answer_page.Source != "" && answer_page.Answer.ID != "" {
+		return &answer_page, true
 	}
-	if page.Source == "" || page.Answer.ID == "" {
-		return nil, false
+
+	var question_page zhihu.QuestionPage
+	if err := json.Unmarshal(content_json, &question_page); err == nil && question_page.Source != "" && question_page.Question.ID != "" {
+		return &question_page, true
 	}
-	return &page, true
+
+	var article_page zhihu.ArticlePage
+	if err := json.Unmarshal(content_json, &article_page); err == nil && article_page.Source != "" && article_page.Article.ID != "" {
+		return &article_page, true
+	}
+
+	return nil, false
 }
 
 func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -420,11 +461,10 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
-	// Try AnswerPage format first (from browser injection).
-	// When the content is a pre-built AnswerPage, skip the HTTP fetch.
+	// Structured Fetch results skip the HTTP fetch.
 	var page_data any
-	if p, ok := parse_answer_page_content(content_json); ok {
-		page_data = p
+	if parsed_page, ok := parse_zhihu_page_content(content_json); ok {
+		page_data = parsed_page
 	}
 
 	var input struct {
@@ -481,9 +521,13 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		return nil, fmt.Errorf("序列化知乎页面失败: %w", err)
 	}
 
+	content_details, err := h.ToContentDetails(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("转换知乎内容详情失败: %w", err)
+	}
 	var content_detail any
-	if details, detail_err := h.ToContentDetails(page_data); detail_err == nil && len(details) > 0 {
-		content_detail = details[0].Data
+	if len(content_details) > 0 {
+		content_detail = content_details[0].Data
 	}
 
 	config_json, _ := json.Marshal(build_config_json(config))
@@ -552,10 +596,11 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},
-		Resources:     resources,
-		ContentDetail: content_detail,
-		Account:       account,
-		Content:       content,
+		Resources:      resources,
+		ContentDetail:  content_detail,
+		ContentDetails: content_details,
+		Account:        account,
+		Content:        content,
 	}, nil
 }
 

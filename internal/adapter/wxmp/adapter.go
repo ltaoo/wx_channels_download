@@ -28,11 +28,12 @@ type OfficialAccountAdapter struct {
 }
 
 var (
-	_ adapter.PlatformAdapter   = (*OfficialAccountAdapter)(nil)
-	_ adapter.RuntimeAdapter    = (*OfficialAccountAdapter)(nil)
-	_ adapter.RuntimeHandle     = (*OfficialAccountAdapter)(nil)
-	_ adapter.FetchCacheAdapter = (*OfficialAccountAdapter)(nil)
-	_ adapter.Postprocessor     = (*OfficialAccountAdapter)(nil)
+	_ adapter.PlatformAdapter          = (*OfficialAccountAdapter)(nil)
+	_ adapter.RuntimeAdapter           = (*OfficialAccountAdapter)(nil)
+	_ adapter.RuntimeHandle            = (*OfficialAccountAdapter)(nil)
+	_ adapter.FetchCacheAdapter        = (*OfficialAccountAdapter)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*OfficialAccountAdapter)(nil)
+	_ adapter.Postprocessor            = (*OfficialAccountAdapter)(nil)
 )
 
 func init() {

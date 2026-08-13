@@ -34,6 +34,7 @@ func Register(d *adapter.AdapterOptions) (*Handle, error) {
 
 	// 3. Routes
 	r := NewRoutes(d.Cookies, d.Logger)
+	r.set_persistent_cache(d.Cache)
 	if d.Routes != nil {
 		r.RegisterRoutes(d.Routes)
 		if d.Logger != nil {
@@ -50,15 +51,24 @@ func (h *handler) RegisterRuntime(d *adapter.AdapterOptions) (adapter.RuntimeHan
 		return nil, fmt.Errorf("zhihu runtime dependencies are nil")
 	}
 	h.set_runtime(d.Cookies, d.Logger, d.Bus)
+	h.set_persistent_cache(d.Cache)
 	if d.Logger != nil {
 		d.Logger.Info().Msg("zhihu adapter registering runtime")
 	}
 	handle, err := Register(d)
 	if err != nil {
 		h.set_runtime(nil, nil, nil)
+		h.set_persistent_cache(nil)
+		h.set_browser_fetcher(nil)
 		return nil, err
 	}
 	handle.runtime_handler = h
+	if handle.routes != nil {
+		h.set_browser_fetcher(handle.routes.browser_relay)
+		handle.routes.browser_relay.SetAvailabilityCallback(func(_ bool) {
+			h.RefreshPlatformStatus()
+		})
+	}
 	h.RefreshPlatformStatus()
 	return handle, nil
 }
@@ -74,6 +84,8 @@ func (h *Handle) Stop() {
 	if h.runtime_handler != nil {
 		h.runtime_handler.stop_status_check()
 		h.runtime_handler.set_runtime(nil, nil, nil)
+		h.runtime_handler.set_persistent_cache(nil)
+		h.runtime_handler.set_browser_fetcher(nil)
 	}
 	h.routes = nil
 	h.runtime_handler = nil

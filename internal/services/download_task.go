@@ -569,8 +569,8 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		account = persisted_account
 	}
 
-	if err := save_content_extension(s.db, info.ContentDetail); err != nil {
-		return nil, fmt.Errorf("保存扩展数据失败: %w", err)
+	if err := save_content_details(s.db, content, info.ContentDetail, info.ContentDetails, now); err != nil {
+		return nil, fmt.Errorf("保存内容详情与关联关系失败: %w", err)
 	}
 
 	resources := make([]model.DownloadResource, 0, len(resource_infos))
@@ -1435,6 +1435,84 @@ func save_content_extension(db *gorm.DB, detail any) error {
 		return save_content_conversation(db, &content_conversation)
 	}
 	return db.Session(&gorm.Session{FullSaveAssociations: true}).Save(detail).Error
+}
+
+func save_content_details(
+	db *gorm.DB,
+	root_content *model.Content,
+	primary_detail any,
+	content_details []adapter.ContentDetail,
+	now int64,
+) error {
+	if db == nil {
+		return ErrDBNotInitialized
+	}
+	if len(content_details) == 0 {
+		return save_content_extension(db, primary_detail)
+	}
+
+	root_content_id := ""
+	if root_content != nil {
+		root_content_id = strings.TrimSpace(root_content.Id)
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		for detail_index := range content_details {
+			detail := content_details[detail_index]
+			related_content := detail.Content
+			if related_content == nil {
+				continue
+			}
+			related_content.Id = strings.TrimSpace(related_content.Id)
+			if related_content.Id == "" {
+				return fmt.Errorf("content detail %q has an empty content id", detail.Key)
+			}
+			if related_content.Id == root_content_id {
+				continue
+			}
+			normalize_content_taxonomy(related_content)
+			if related_content.CreatedAt == 0 {
+				related_content.CreatedAt = now
+			}
+			related_content.UpdatedAt = now
+			if err := tx.Save(related_content).Error; err != nil {
+				return fmt.Errorf("save related content %q: %w", related_content.Id, err)
+			}
+		}
+
+		for detail_index := range content_details {
+			detail := content_details[detail_index]
+			if err := save_content_extension(tx, detail.Data); err != nil {
+				return fmt.Errorf("save content detail %q: %w", detail.Key, err)
+			}
+		}
+
+		for detail_index := range content_details {
+			detail := content_details[detail_index]
+			if detail.Relation == nil {
+				continue
+			}
+			relation := *detail.Relation
+			relation.SourceContentId = strings.TrimSpace(relation.SourceContentId)
+			relation.TargetContentId = strings.TrimSpace(relation.TargetContentId)
+			relation.Type = strings.TrimSpace(relation.Type)
+			if relation.SourceContentId == "" || relation.TargetContentId == "" || relation.Type == "" {
+				return fmt.Errorf("content detail %q has an incomplete relation", detail.Key)
+			}
+			if relation.CreatedAt == 0 {
+				relation.CreatedAt = now
+			}
+			if err := tx.Save(&relation).Error; err != nil {
+				return fmt.Errorf(
+					"save content relation %q --%s--> %q: %w",
+					relation.SourceContentId,
+					relation.Type,
+					relation.TargetContentId,
+					err,
+				)
+			}
+		}
+		return nil
+	})
 }
 
 func save_content_conversation(db *gorm.DB, content_conversation *model.ContentConversation) error {

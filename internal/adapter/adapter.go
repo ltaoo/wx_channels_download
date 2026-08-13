@@ -71,6 +71,12 @@ type ProgressFetchAdapter interface {
 	FetchWithProgress(raw_url string, request_id string) (any, error)
 }
 
+// FetchDownloadTaskBuilder builds a download task preview from the adapter's
+// in-memory Fetch result without issuing another platform request.
+type FetchDownloadTaskBuilder interface {
+	BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*DownloadTaskResult, error)
+}
+
 // FetchOptions controls a context-aware scraper fetch.
 type FetchOptions struct {
 	RequestID       string
@@ -82,14 +88,19 @@ const (
 	FetchArtifactStageContent       = "content"
 	FetchArtifactStageAccount       = "account"
 	FetchArtifactStageContentDetail = "content_detail"
+	FetchArtifactStageCacheEntry    = "cache_entry"
 )
 
 // ContentDetail wraps a type-specific model with a stable key for incremental
-// fetch-job updates.
+// fetch-job updates. Content identifies the top-level archive item that owns
+// Data when a fetch result contains more than one item. Relation optionally
+// links that item to the fetch result's root Content.
 type ContentDetail struct {
-	Type string `json:"type"`
-	Key  string `json:"key"`
-	Data any    `json:"data"`
+	Type     string                 `json:"type"`
+	Key      string                 `json:"key"`
+	Data     any                    `json:"data"`
+	Content  *model.Content         `json:"content,omitempty"`
+	Relation *model.ContentRelation `json:"relation,omitempty"`
 }
 
 // FetchArtifact is a platform-neutral piece of a fetch result. Context-aware
@@ -99,6 +110,7 @@ type FetchArtifact struct {
 	Content       *model.Content
 	Account       *model.Account
 	ContentDetail *ContentDetail
+	CacheEntry    *FetchCacheEntry
 	Current       int
 	Total         int
 }

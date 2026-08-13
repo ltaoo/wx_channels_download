@@ -76,6 +76,13 @@ func (c *Client) Scrape(raw_url string) ([]byte, error) {
 	if raw_url == "" {
 		return nil, fmt.Errorf("url is empty")
 	}
+	cached_html, cached, err := c.read_cached_html(raw_url)
+	if err != nil {
+		return nil, fmt.Errorf("read cached wxmp html response for %q: %w", raw_url, err)
+	}
+	if cached {
+		return cached_html, nil
+	}
 	response, err := c.fetch_with_clawreq(raw_url, 25*time.Second, windows_wechat_clawreq_headers(""))
 	if err != nil {
 		return nil, err
@@ -504,28 +511,37 @@ func (c *Client) FetchAllMsgURLs(acct *OfficialAccount) ([]string, error) {
 }
 
 func (c *Client) FetchFullContent(raw_url string) string {
-	request, err := http.NewRequest(http.MethodGet, raw_url, nil)
-	if err != nil {
-		return ""
-	}
-	request.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-	request.Header.Set("accept-language", "zh-CN,zh;q=0.9")
-	request.Header.Set("upgrade-insecure-requests", "1")
-	request.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
-	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
-	if err != nil {
-		return ""
-	}
-	defer response.Body.Close()
-	response_body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return ""
-	}
-	if err := c.write_cached_html(raw_url, response_body); err != nil {
+	response_body, cached, cache_err := c.read_cached_html(raw_url)
+	if cache_err != nil {
 		if c.logger != nil {
-			c.logger.Error().Err(err).Str("url", raw_url).Msg("cache wxmp full-content HTML response")
+			c.logger.Error().Err(cache_err).Str("url", raw_url).Msg("read cached wxmp full-content HTML response")
 		}
 		return ""
+	}
+	if !cached {
+		request, err := http.NewRequest(http.MethodGet, raw_url, nil)
+		if err != nil {
+			return ""
+		}
+		request.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		request.Header.Set("accept-language", "zh-CN,zh;q=0.9")
+		request.Header.Set("upgrade-insecure-requests", "1")
+		request.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+		response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+		if err != nil {
+			return ""
+		}
+		defer response.Body.Close()
+		response_body, err = io.ReadAll(response.Body)
+		if err != nil {
+			return ""
+		}
+		if err := c.write_cached_html(raw_url, response_body); err != nil {
+			if c.logger != nil {
+				c.logger.Error().Err(err).Str("url", raw_url).Msg("cache wxmp full-content HTML response")
+			}
+			return ""
+		}
 	}
 	body := string(response_body)
 	content_pattern := regexp.MustCompile(`(?s)<div[^>]*id="js_content"[^>]*>(.*?)</div>`)

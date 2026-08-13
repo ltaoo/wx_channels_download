@@ -88,3 +88,17 @@ func (a *ChannelsAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, e
 	}
 	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
 }
+
+// BuildDownloadTaskFromFetch normalizes all Fetch response shapes to the
+// ChannelsObject consumed by BuildDownloadTask without fetching the URL again.
+func (a *ChannelsAdapter) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	object, err := channels_object_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content_json, err := json.Marshal(object)
+	if err != nil {
+		return nil, fmt.Errorf("encode wxchannels download task content: %w", err)
+	}
+	return a.BuildDownloadTask(content_json, config_json)
+}

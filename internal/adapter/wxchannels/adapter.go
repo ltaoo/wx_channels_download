@@ -28,12 +28,13 @@ type ChannelsAdapter struct {
 }
 
 var (
-	_ adapter.PlatformAdapter         = (*ChannelsAdapter)(nil)
-	_ adapter.RuntimeAdapter          = (*ChannelsAdapter)(nil)
-	_ adapter.RuntimeHandle           = (*ChannelsAdapter)(nil)
-	_ adapter.Postprocessor           = (*ChannelsAdapter)(nil)
-	_ adapter.PlatformStatusDescriber = (*ChannelsAdapter)(nil)
-	_ adapter.PlatformStatusRefresher = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformAdapter          = (*ChannelsAdapter)(nil)
+	_ adapter.RuntimeAdapter           = (*ChannelsAdapter)(nil)
+	_ adapter.RuntimeHandle            = (*ChannelsAdapter)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*ChannelsAdapter)(nil)
+	_ adapter.Postprocessor            = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformStatusDescriber  = (*ChannelsAdapter)(nil)
+	_ adapter.PlatformStatusRefresher  = (*ChannelsAdapter)(nil)
 )
 
 const (

@@ -70,6 +70,7 @@ const (
 	ContentRelationContains      = "contains"
 	ContentRelationPartOf        = "part_of"
 	ContentRelationEpisodeOf     = "episode_of"
+	ContentRelationAnswerOf      = "answer_of"
 	ContentRelationReplyTo       = "reply_to"
 	ContentRelationQuoteOf       = "quote_of"
 	ContentRelationRepostOf      = "repost_of"

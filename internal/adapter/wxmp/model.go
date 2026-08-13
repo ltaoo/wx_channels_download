@@ -472,6 +472,12 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource:  html_resource,
 		Endpoints: []model.DownloadEndpoint{html_endpoint},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindText,
+			Role:     model.ContentAssetRoleArticleBody,
+			AssetKey: "body:html",
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
 	})
 	for _, r := range image_resources {
 		resources = append(resources, r)
@@ -557,6 +563,12 @@ func parse_content_images(content_html, content_id, external_id, extra_json stri
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  res,
 			Endpoints: []model.DownloadEndpoint{ep},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindImage,
+				Role:     model.ContentAssetRoleAttachment,
+				AssetKey: "inline_image:" + filename,
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
 		})
 	})
 

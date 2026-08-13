@@ -116,3 +116,18 @@ func (a *OfficialAccountAdapter) ToContentDetails(data any) ([]adapter.ContentDe
 	}
 	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
 }
+
+// BuildDownloadTaskFromFetch normalizes the wrapper returned by FetchArticle
+// and delegates to BuildDownloadTask so the preview and task creation share the
+// same task-building implementation.
+func (a *OfficialAccountAdapter) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	article_data, err := article_data_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content_json, err := json.Marshal(article_data)
+	if err != nil {
+		return nil, fmt.Errorf("encode wxmp download task content: %w", err)
+	}
+	return a.BuildDownloadTask(content_json, config_json)
+}

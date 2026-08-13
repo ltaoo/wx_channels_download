@@ -33,10 +33,11 @@ type handler struct {
 }
 
 var (
-	_ adapter.PlatformAdapter      = (*handler)(nil)
-	_ adapter.ProgressFetchAdapter = (*handler)(nil)
-	_ adapter.RuntimeAdapter       = (*handler)(nil)
-	_ adapter.RuntimeHandle        = (*handler)(nil)
+	_ adapter.PlatformAdapter          = (*handler)(nil)
+	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+	_ adapter.RuntimeAdapter           = (*handler)(nil)
+	_ adapter.RuntimeHandle            = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -145,6 +146,27 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	if err != nil {
 		return nil, err
 	}
+	return h.build_download_task_from_model_data(model_data, config)
+}
+
+// BuildDownloadTaskFromFetch builds the preview from the already normalized
+// mobile or web Fetch result without resolving the source URL again.
+func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	config := make(map[string]any)
+	if len(strings.TrimSpace(string(config_json))) > 0 && string(config_json) != "null" {
+		if err := json.Unmarshal(config_json, &config); err != nil {
+			return nil, fmt.Errorf("解析下载配置失败: %w", err)
+		}
+	}
+
+	model_data, err := douyin_model_data_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return h.build_download_task_from_model_data(model_data, config)
+}
+
+func (h *handler) build_download_task_from_model_data(model_data *douyin_model_data, config map[string]any) (*adapter.DownloadTaskResult, error) {
 	if model_data.content_type == douyin_content_type_album && len(model_data.images) == 0 {
 		return nil, fmt.Errorf("抖音图集 %s 图片列表为空", model_data.video_id)
 	}

@@ -23,7 +23,10 @@ func (c *WebsocketClient) write_pump() {
 		case message, ok := <-c.Send:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.Conn.WriteMessage(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "server closing"),
+				)
 				return
 			}
 			w, err := c.Conn.NextWriter(websocket.TextMessage)

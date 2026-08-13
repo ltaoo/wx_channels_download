@@ -126,6 +126,15 @@ func HTMLCacheFilePathWithCache(file_cache *cache.CacheProvider, source_url stri
 	return file_cache.Path(relative_path)
 }
 
+// LookupProfileHTMLCacheWithCache locates the cached raw HTML for a TTK novel
+// profile without performing a network request.
+func LookupProfileHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url string) (*HTMLCacheFile, error) {
+	if _, err := validate_novel_url(source_url); err != nil {
+		return nil, err
+	}
+	return lookup_html_cache_with_cache(file_cache, source_url, source_url)
+}
+
 // LookupChapterHTMLCache locates the cached raw HTML for a chapter without
 // performing a network request. A nil result means that chapter is not cached.
 func LookupChapterHTMLCache(work_dir string, source_url string, chapter_url string) (*HTMLCacheFile, error) {
@@ -149,11 +158,16 @@ func LookupChapterHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url
 	if err := validate_ttk_url(chapter_url); err != nil {
 		return nil, err
 	}
-	cache_path, err := HTMLCacheFilePathWithCache(file_cache, source_url, strings.TrimSpace(chapter_url))
+	return lookup_html_cache_with_cache(file_cache, source_url, chapter_url)
+}
+
+func lookup_html_cache_with_cache(file_cache *cache.CacheProvider, source_url string, request_url string) (*HTMLCacheFile, error) {
+	request_url = strings.TrimSpace(request_url)
+	cache_path, err := HTMLCacheFilePathWithCache(file_cache, source_url, request_url)
 	if err != nil || cache_path == "" {
 		return nil, err
 	}
-	relative_path, err := html_cache_relative_path(source_url, strings.TrimSpace(chapter_url))
+	relative_path, err := html_cache_relative_path(source_url, request_url)
 	if err != nil {
 		return nil, err
 	}

@@ -74,6 +74,7 @@ type TtkNovel struct {
 	Title    string       `json:"title"`
 	URL      string       `json:"url"`
 	Author   string       `json:"author,omitempty"`
+	CoverURL string       `json:"cover_url,omitempty"`
 	Chapters []TtkChapter `json:"chapters,omitempty"`
 }
 

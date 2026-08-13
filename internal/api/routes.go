@@ -38,6 +38,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
 	c.engine.GET("/api/scraper/job", c.handle_scraper_job)
 	c.engine.POST("/api/scraper/fetch/interrupt", c.handle_scraper_fetch_interrupt)
+	c.engine.GET("/api/scraper/cache/content", c.handle_scraper_cache_content)
 	c.engine.POST("/api/scraper/cache/clear", c.handle_scraper_cache_clear)
 	// File transfer helper endpoints
 	c.engine.GET("/api/filehelper/qrcode", c.file_helper.HandleGetQRCode)

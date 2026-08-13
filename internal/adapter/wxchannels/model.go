@@ -67,6 +67,69 @@ func first_media_cover_url(file wxchannels.ChannelsMediaItem) string {
 	return ""
 }
 
+func positive_dimension_pointer(value float32) *int {
+	dimension := int(value)
+	if dimension <= 0 {
+		return nil
+	}
+	return &dimension
+}
+
+func to_content_video_variants(obj *wxchannels.ChannelsObject, video_id string) []model.ContentVideoVariant {
+	if obj == nil || len(obj.ObjectDesc.Media) == 0 {
+		return nil
+	}
+
+	media := obj.ObjectDesc.Media[0]
+	specs := obj.Spec
+	if len(media.Spec) > 0 {
+		specs = media.Spec
+	}
+
+	variants := make([]model.ContentVideoVariant, 0, len(specs)+1)
+	variants = append(variants, model.ContentVideoVariant{
+		VideoId:    video_id,
+		VariantKey: "default",
+		Spec:       "original",
+		Width:      positive_dimension_pointer(media.Width),
+		Height:     positive_dimension_pointer(media.Height),
+		Size:       int64(media.FileSize),
+		StreamType: model.ContentVideoVariantStreamTypeProgressive,
+		HasVideo:   1,
+		HasAudio:   1,
+		IsDefault:  1,
+		URL:        BuildDownloadURLWithSpec(obj, ""),
+	})
+
+	seen_variant_keys := make(map[string]struct{}, len(specs)+1)
+	seen_variant_keys["default"] = struct{}{}
+	for _, spec := range specs {
+		variant_key := strings.TrimSpace(spec.FileFormat)
+		if variant_key == "" {
+			continue
+		}
+		if _, ok := seen_variant_keys[variant_key]; ok {
+			continue
+		}
+		seen_variant_keys[variant_key] = struct{}{}
+
+		variant := model.ContentVideoVariant{
+			VideoId:    video_id,
+			VariantKey: variant_key,
+			Spec:       variant_key,
+			Width:      positive_dimension_pointer(spec.Width),
+			Height:     positive_dimension_pointer(spec.Height),
+			StreamType: model.ContentVideoVariantStreamTypeProgressive,
+			HasVideo:   1,
+			HasAudio:   1,
+			URL:        BuildDownloadURLWithSpec(obj, variant_key),
+		}
+		variants = append(variants, variant)
+	}
+
+	return variants
+}
+
 // ToAccount converts a ChannelsObject into a model.Account.
 func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 	if obj == nil {
@@ -226,6 +289,7 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 		Height:   int(media.Height),
 		Size:     int64(media.FileSize),
 		URL:      c.URL,
+		Variants: to_content_video_variants(obj, c.Id),
 	}
 
 	return c, ext, nil
