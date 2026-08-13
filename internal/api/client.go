@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,6 +48,28 @@ type APIClient struct {
 	fs_service             *services.FSService
 }
 
+func new_api_engine(output io.Writer) *gin.Engine {
+	engine := gin.New()
+	engine.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		Output: output,
+		Formatter: func(params gin.LogFormatterParams) string {
+			path := ""
+			if params.Request != nil && params.Request.URL != nil {
+				path = params.Request.URL.Path
+			}
+			return fmt.Sprintf("[GIN] %v |%3d| %13v | %15s |%-7s %q\n",
+				params.TimeStamp.Format("2006/01/02 - 15:04:05"),
+				params.StatusCode,
+				params.Latency,
+				params.ClientIP,
+				params.Method,
+				path,
+			)
+		},
+	}), gin.Recovery())
+	return engine
+}
+
 func NewAPIClient(
 	cfg *APIConfig,
 	parent_logger *zerolog.Logger,
@@ -67,7 +91,7 @@ func NewAPIClient(
 
 	api_client := &APIClient{
 		cfg:                    cfg,
-		engine:                 gin.Default(),
+		engine:                 new_api_engine(gin.DefaultWriter),
 		db:                     db,
 		logger:                 &logger,
 		static_assets:          static_assets,
