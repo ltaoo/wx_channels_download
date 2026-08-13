@@ -291,6 +291,79 @@
   gap: 14px;
 }
 
+.wx-home-cache-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.wx-home-cache-summary {
+  color: var(--wx-content-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.wx-home-cache-list {
+  max-height: 360px;
+  padding: 6px 14px;
+  overflow: auto;
+}
+
+.wx-home-cache-entry {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.wx-home-cache-entry + .wx-home-cache-entry {
+  border-top: 1px solid var(--wx-content-border);
+}
+
+.wx-home-cache-entry-icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--wx-content-primary-soft);
+  color: var(--wx-content-primary);
+}
+
+.wx-home-cache-entry-main {
+  min-width: 0;
+}
+
+.wx-home-cache-entry-name {
+  overflow: hidden;
+  color: var(--wx-content-text);
+  font-size: 12px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-home-cache-entry-path {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--wx-content-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-home-cache-entry-size {
+  color: var(--wx-content-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .wx-home-card,
 .wx-home-json {
   min-width: 0;
@@ -1061,6 +1134,28 @@ button.wx-home-novel-chapter {
   .wx-home-idle-actions,
   .wx-home-result-actions {
     flex-wrap: wrap;
+  }
+
+  .wx-home-cache-card .wx-home-card-heading,
+  .wx-home-cache-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wx-home-cache-heading-actions {
+    width: 100%;
+  }
+
+  .wx-home-cache-summary {
+    white-space: normal;
+  }
+
+  .wx-home-cache-entry {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .wx-home-cache-entry-size {
+    grid-column: 2;
   }
 
   .wx-home-submit,

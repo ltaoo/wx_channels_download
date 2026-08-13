@@ -78,7 +78,55 @@ func (a *FanqieNovelAdapter) FetchWithProgressContext(fetch_context context.Cont
 
 // ClearFetchCache removes cached profile and chapter HTML for raw_url.
 func (a *FanqieNovelAdapter) ClearFetchCache(raw_url string) (bool, error) {
-	return fanqienovel.ClearHTMLCacheWithCache(a.runtime_file_cache(), strings.TrimSpace(raw_url))
+	return fanqienovel.ClearHTMLCache(a.runtime_file_cache(), strings.TrimSpace(raw_url))
+}
+
+// FetchCacheEntries returns the profile and chapter HTML persisted by Fetch.
+func (a *FanqieNovelAdapter) FetchCacheEntries(raw_url string, data any) ([]adapter.FetchCacheEntry, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	file_cache := a.runtime_file_cache()
+	source_url := strings.TrimSpace(raw_url)
+	entries := make([]adapter.FetchCacheEntry, 0, len(result.Chapters)+1)
+	seen_paths := make(map[string]struct{}, len(result.Chapters)+1)
+	append_entry := func(key string, name string, request_url string, cache_file *fanqienovel.HTMLCacheFile) {
+		if cache_file == nil || strings.TrimSpace(cache_file.Path) == "" {
+			return
+		}
+		if _, exists := seen_paths[cache_file.Path]; exists {
+			return
+		}
+		seen_paths[cache_file.Path] = struct{}{}
+		entries = append(entries, adapter.FetchCacheEntry{
+			Key:  key,
+			Name: name,
+			URL:  request_url,
+			Path: cache_file.Path,
+			Size: cache_file.Size,
+		})
+	}
+
+	profile_url := strings.TrimSpace(result.Profile.URL)
+	profile_cache, err := fanqienovel.LookupProfileHTMLCache(file_cache, source_url)
+	if err != nil {
+		return nil, err
+	}
+	append_entry("profile", "作品页面", profile_url, profile_cache)
+	for chapter_index, chapter := range result.Chapters {
+		chapter_url := strings.TrimSpace(chapter.URL)
+		chapter_cache, cache_err := fanqienovel.LookupChapterHTMLCache(file_cache, source_url, chapter_url)
+		if cache_err != nil {
+			return nil, cache_err
+		}
+		chapter_name := strings.TrimSpace(chapter.Title)
+		if chapter_name == "" {
+			chapter_name = fmt.Sprintf("第 %d 章", chapter_index+1)
+		}
+		append_entry(fmt.Sprintf("chapter-%d", chapter_index+1), chapter_name, chapter_url, chapter_cache)
+	}
+	return entries, nil
 }
 
 func (a *FanqieNovelAdapter) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {

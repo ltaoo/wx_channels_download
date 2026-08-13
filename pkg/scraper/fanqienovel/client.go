@@ -181,19 +181,6 @@ func (c *FanqieClient) SetCookie(cookie string) {
 	c.cookie = strings.TrimSpace(cookie)
 }
 
-// SetWorkDir enables persistent HTML caching beneath the runtime workdir.
-func (c *FanqieClient) SetWorkDir(work_dir string) {
-	if c == nil {
-		return
-	}
-	cache_registry, err := cache.NewProviderRegistry(work_dir)
-	if err != nil {
-		c.file_cache = nil
-		return
-	}
-	c.file_cache, _ = cache_registry.Namespace(cache_directory_name)
-}
-
 // SetPersistentCache configures the namespace-scoped persistent HTML cache
 // supplied by the runtime composition root.
 func (c *FanqieClient) SetPersistentCache(file_cache *cache.CacheProvider) {

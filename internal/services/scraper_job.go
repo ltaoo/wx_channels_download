@@ -48,13 +48,14 @@ var scraper_fetch_job_sequence atomic.Uint64
 
 // ScraperFetchOutput is the successful result produced by a scraper fetch job.
 type ScraperFetchOutput struct {
-	JobID          string                  `json:"job_id"`
-	Platform       string                  `json:"platform"`
-	URL            string                  `json:"url"`
-	Result         any                     `json:"result"`
-	Content        *model.Content          `json:"content"`
-	Account        *model.Account          `json:"account"`
-	ContentDetails []adapter.ContentDetail `json:"content_details,omitempty"`
+	JobID          string                    `json:"job_id"`
+	Platform       string                    `json:"platform"`
+	URL            string                    `json:"url"`
+	Result         any                       `json:"result"`
+	Content        *model.Content            `json:"content"`
+	Account        *model.Account            `json:"account"`
+	ContentDetails []adapter.ContentDetail   `json:"content_details,omitempty"`
+	CacheEntries   []adapter.FetchCacheEntry `json:"cache_entries,omitempty"`
 }
 
 // ScraperFetchJobEvent is one ordered WebSocket event in a fetch job.
@@ -461,12 +462,25 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Total:         len(content_details),
 		})
 	}
+	var cache_entries []adapter.FetchCacheEntry
+	if cache_handler, supports_cache := handler.(adapter.FetchCacheAdapter); supports_cache {
+		cache_entries, err = cache_handler.FetchCacheEntries(job.URL, data)
+		if err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("job_id", job.ID).
+				Str("platform", job.Platform).
+				Msg("scraper fetch: cache inspection failed")
+			cache_entries = nil
+		}
+	}
 	s.logger.Info().
 		Str("job_id", job.ID).
 		Str("platform", job.Platform).
 		Bool("content_created", content != nil).
 		Bool("account_created", account != nil).
 		Int("content_detail_count", len(content_details)).
+		Int("cache_entry_count", len(cache_entries)).
 		Dur("total_elapsed", time.Since(fetch_started_at)).
 		Msg("scraper fetch: result conversion completed")
 	return &ScraperFetchOutput{
@@ -477,6 +491,7 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		Content:        content,
 		Account:        account,
 		ContentDetails: content_details,
+		CacheEntries:   cache_entries,
 	}, nil
 }
 
@@ -712,6 +727,7 @@ func clone_scraper_fetch_job(job *ScraperFetchJob, include_output bool) *Scraper
 		if job.Output != nil {
 			output := *job.Output
 			output.ContentDetails = append([]adapter.ContentDetail(nil), job.Output.ContentDetails...)
+			output.CacheEntries = append([]adapter.FetchCacheEntry(nil), job.Output.CacheEntries...)
 			cloned.Output = &output
 		}
 	}

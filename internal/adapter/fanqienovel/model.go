@@ -336,7 +336,7 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 		endpoint_url := chapter_content
 		cache_reused := false
 		if file_cache != nil && file_cache.Enabled() {
-			cached_html, cache_err := fanqienovel.LookupChapterHTMLCacheWithCache(file_cache, result.Profile.URL, chapter.URL)
+			cached_html, cache_err := fanqienovel.LookupChapterHTMLCache(file_cache, result.Profile.URL, chapter.URL)
 			if cache_err != nil {
 				return nil, fmt.Errorf("查找章节 %q 缓存失败: %w", chapter_title, cache_err)
 			}
@@ -402,7 +402,7 @@ func build_download_task(result *fanqienovel.FanqieFetchResult, config_json json
 				endpoint_url := chapter_url
 				cache_reused := false
 				if file_cache != nil && file_cache.Enabled() {
-					cached_html, cache_err := fanqienovel.LookupChapterHTMLCacheWithCache(file_cache, result.Profile.URL, chapter_url)
+					cached_html, cache_err := fanqienovel.LookupChapterHTMLCache(file_cache, result.Profile.URL, chapter_url)
 					if cache_err != nil {
 						return nil, fmt.Errorf("查找章节 %q 缓存失败: %w", chapter.Title, cache_err)
 					}

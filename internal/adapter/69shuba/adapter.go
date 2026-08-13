@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ var (
 	_ adapter.PlatformAdapter             = (*Shuba69Adapter)(nil)
 	_ adapter.ProgressFetchAdapter        = (*Shuba69Adapter)(nil)
 	_ adapter.ContextProgressFetchAdapter = (*Shuba69Adapter)(nil)
+	_ adapter.FetchCacheAdapter           = (*Shuba69Adapter)(nil)
 	_ adapter.RuntimeAdapter              = (*Shuba69Adapter)(nil)
 	_ adapter.RuntimeHandle               = (*Shuba69Adapter)(nil)
 )
@@ -197,6 +199,35 @@ func (a *Shuba69Adapter) runtime_file_cache() *cache.CacheProvider {
 	file_cache := a.file_cache
 	a.runtime_mu.RUnlock()
 	return file_cache
+}
+
+// FetchCacheEntries returns the profile and chapter-directory HTML persisted
+// by Fetch.
+func (a *Shuba69Adapter) FetchCacheEntries(raw_url string, _ any) ([]adapter.FetchCacheEntry, error) {
+	cache_files, err := shuba69.LookupHTMLCaches(a.runtime_file_cache(), strings.TrimSpace(raw_url))
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]adapter.FetchCacheEntry, 0, len(cache_files))
+	for _, cache_file := range cache_files {
+		file_name := filepath.Base(cache_file.HTMLPath)
+		name := "章节目录"
+		if file_name == "profile.html" {
+			name = "作品页面"
+		}
+		entries = append(entries, adapter.FetchCacheEntry{
+			Key:  file_name,
+			Name: name,
+			Path: cache_file.HTMLPath,
+			Size: cache_file.Size,
+		})
+	}
+	return entries, nil
+}
+
+// ClearFetchCache removes cached HTML associated with raw_url.
+func (a *Shuba69Adapter) ClearFetchCache(raw_url string) (bool, error) {
+	return shuba69.ClearHTMLCache(a.runtime_file_cache(), strings.TrimSpace(raw_url))
 }
 
 func (a *Shuba69Adapter) config_string(key string) string {

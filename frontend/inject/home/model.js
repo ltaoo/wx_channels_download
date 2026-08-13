@@ -174,6 +174,44 @@ var HomePageModel = (() => {
     return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
   }
 
+  function normalize_cache(result) {
+    const source_entries =
+      result && Array.isArray(result.cache_entries)
+        ? result.cache_entries
+        : [];
+    const entries = source_entries
+      .map((entry, index) => {
+        const source = entry && typeof entry === "object" ? entry : {};
+        const path = String(source.path || "").trim();
+        if (!path) {
+          return null;
+        }
+        const path_parts = path.split(/[\\/]/).filter(Boolean);
+        const fallback_name = path_parts[path_parts.length - 1] || "缓存文件";
+        const size = Math.max(0, number_or_default(source.size, 0));
+        return {
+          key: String(source.key || `${path}:${index}`),
+          name: String(source.name || fallback_name),
+          path,
+          url: String(source.url || "").trim(),
+          size,
+          size_text: format_bytes(size) || "大小未知",
+        };
+      })
+      .filter(Boolean);
+    const total_size = entries.reduce((sum, entry) => sum + entry.size, 0);
+    const count = entries.length;
+    return {
+      present: count > 0,
+      entries,
+      count,
+      total_size,
+      summary_text: total_size
+        ? `${count} 个文件 · ${format_bytes(total_size)}`
+        : `${count} 个文件`,
+    };
+  }
+
   function normalize_detail_preview(value) {
     const text = String(value || "")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -833,6 +871,7 @@ var HomePageModel = (() => {
         Boolean(state.error || state.download_error || state.cache_error),
     );
     const has_result_ = computed(result_, (data) => Boolean(data));
+    const normalized_cache_ = computed(result_, normalize_cache);
     const progress_visible_ = combine(
       { loading: loading_, progress: fetch_progress_ },
       (state) =>
@@ -879,7 +918,7 @@ var HomePageModel = (() => {
     });
     const cache_action_disabled_ = combine(
       {
-        url: url_,
+        cache: normalized_cache_,
         loading: loading_,
         download_loading: download_loading_,
         cache_loading: cache_loading_,
@@ -888,7 +927,10 @@ var HomePageModel = (() => {
         state.loading ||
         state.download_loading ||
         state.cache_loading ||
-        !String(state.url || "").trim(),
+        !state.cache.present,
+    );
+    const cache_button_text_ = computed(cache_loading_, (loading) =>
+      loading ? "清除中" : "清除缓存",
     );
     const interrupt_disabled_ = computed(
       interrupt_loading_,
@@ -928,6 +970,14 @@ var HomePageModel = (() => {
       publish_time_text: computed(
         normalized_content_,
         (content) => content.publish_time_text,
+      ),
+    };
+    const cache_ = {
+      present: computed(normalized_cache_, (cache) => cache.present),
+      entries: computed(normalized_cache_, (cache) => cache.entries),
+      summary_text: computed(
+        normalized_cache_,
+        (cache) => cache.summary_text,
       ),
     };
     const account_ = {
@@ -1600,7 +1650,11 @@ var HomePageModel = (() => {
       if (cache_action_disabled_.value) {
         return null;
       }
-      const raw_url = String(url_.value || "").trim();
+      const fetch_result = result_.value;
+      const raw_url = String((fetch_result && fetch_result.url) || "").trim();
+      if (!raw_url) {
+        return null;
+      }
       cache_loading_.as(true);
       cache_error_.as("");
       fetch_notice_.as("");
@@ -1612,6 +1666,7 @@ var HomePageModel = (() => {
       }
       fetch_progress_.as(null);
       const removed = Boolean(result.data && result.data.removed);
+      result_.as({ ...fetch_result, cache_entries: [] });
       fetch_notice_.as(removed ? "抓取缓存已清理" : "该 URL 暂无抓取缓存");
       return result;
     }
@@ -1728,6 +1783,7 @@ var HomePageModel = (() => {
         content: content_,
         account: account_,
         content_details: content_details_,
+        cache: cache_,
         json_expanded: json_expanded_,
         download_loading: download_loading_,
         download_error: download_error_,
@@ -1743,6 +1799,7 @@ var HomePageModel = (() => {
         progress_count_text: progress_count_text_,
         submit_button_text: submit_button_text_,
         cache_action_disabled: cache_action_disabled_,
+        cache_button_text: cache_button_text_,
         interrupt_disabled: interrupt_disabled_,
         submit_disabled: submit_disabled_,
         status_text: status_text_,

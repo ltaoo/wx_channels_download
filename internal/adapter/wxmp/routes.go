@@ -7,6 +7,7 @@ import (
 	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/config"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/scraper/wxmp"
 )
 
@@ -106,6 +107,13 @@ func NewRoutes(cfg *config.Config, logger *zerolog.Logger) *Routes {
 	}
 	server := wxmp.NewOfficialAccountServer(new_official_account_config(cfg), logger)
 	return &Routes{server: server}
+}
+
+func (r *Routes) set_persistent_cache(file_cache *cache.CacheProvider) {
+	if r == nil || r.server == nil {
+		return
+	}
+	r.server.SetPersistentCache(file_cache)
 }
 
 // RegisterRoutes installs the previously local-only official-account routes.

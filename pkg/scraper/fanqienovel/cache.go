@@ -13,8 +13,6 @@ import (
 	"wx_channel/pkg/cache"
 )
 
-const cache_directory_name = "fanqienovel"
-
 // HTMLCacheFile describes one HTML page already persisted in the fetch cache.
 type HTMLCacheFile struct {
 	Path string
@@ -75,23 +73,9 @@ func (c *FanqieClient) cache_file_path(request_url string) (string, error) {
 	return c.file_cache.Path(relative_path)
 }
 
-// HTMLCacheFilePath returns the deterministic path for a cached request page.
-// The file does not need to exist yet.
-func HTMLCacheFilePath(work_dir string, source_url string, request_url string) (string, error) {
-	cache_registry, err := cache.NewProviderRegistry(work_dir)
-	if err != nil {
-		return "", err
-	}
-	file_cache, err := cache_registry.Namespace(cache_directory_name)
-	if err != nil {
-		return "", err
-	}
-	return HTMLCacheFilePathWithCache(file_cache, source_url, request_url)
-}
-
-// HTMLCacheFilePathWithCache returns the deterministic cache path using a
-// runtime-supplied namespace-scoped persistent cache.
-func HTMLCacheFilePathWithCache(file_cache *cache.CacheProvider, source_url string, request_url string) (string, error) {
+// HTMLCacheFilePath returns the deterministic cache path using a
+// namespace-scoped persistent cache. The file does not need to exist yet.
+func HTMLCacheFilePath(file_cache *cache.CacheProvider, source_url string, request_url string) (string, error) {
 	if _, err := parse_book_id(strings.TrimSpace(source_url)); err != nil {
 		return "", err
 	}
@@ -105,40 +89,14 @@ func HTMLCacheFilePathWithCache(file_cache *cache.CacheProvider, source_url stri
 	return file_cache.Path(relative_path)
 }
 
-// LookupChapterHTMLCache locates the cached raw HTML for a chapter without
-// performing a network request. A nil result means that chapter is not cached.
-func LookupChapterHTMLCache(work_dir string, source_url string, chapter_url string) (*HTMLCacheFile, error) {
-	cache_registry, err := cache.NewProviderRegistry(work_dir)
-	if err != nil {
-		return nil, err
-	}
-	file_cache, err := cache_registry.Namespace(cache_directory_name)
-	if err != nil {
-		return nil, err
-	}
-	return LookupChapterHTMLCacheWithCache(file_cache, source_url, chapter_url)
-}
-
-// LookupChapterHTMLCacheWithCache locates a chapter in a runtime-supplied
-// namespace-scoped persistent cache.
-func LookupChapterHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url string, chapter_url string) (*HTMLCacheFile, error) {
-	chapter_id, err := parse_chapter_id(chapter_url)
-	if err != nil {
-		return nil, err
-	}
-	parsed_url, err := url.Parse(strings.TrimSpace(chapter_url))
-	if err != nil || parsed_url.Scheme == "" || parsed_url.Host == "" {
-		return nil, fmt.Errorf("invalid chapter url %q", chapter_url)
-	}
-	parsed_url.Path = "/reader/" + chapter_id
-	parsed_url.RawPath = ""
-	parsed_url.RawQuery = "enter_from=page"
-	parsed_url.Fragment = ""
-	cache_path, err := HTMLCacheFilePathWithCache(file_cache, source_url, parsed_url.String())
+// LookupHTMLCache locates one cached raw HTML response without performing a
+// network request. A nil result means the response is not cached.
+func LookupHTMLCache(file_cache *cache.CacheProvider, source_url string, request_url string) (*HTMLCacheFile, error) {
+	cache_path, err := HTMLCacheFilePath(file_cache, source_url, request_url)
 	if err != nil || cache_path == "" {
 		return nil, err
 	}
-	relative_path, err := html_cache_relative_path(source_url, parsed_url.String())
+	relative_path, err := html_cache_relative_path(source_url, request_url)
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +105,35 @@ func LookupChapterHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url
 		return nil, nil
 	}
 	if stat_err != nil {
-		return nil, fmt.Errorf("stat fanqienovel chapter cache: %w", stat_err)
+		return nil, fmt.Errorf("stat fanqienovel HTML cache: %w", stat_err)
 	}
 	if !file_info.Mode().IsRegular() || file_info.Size() <= 0 {
 		return nil, nil
 	}
 	return &HTMLCacheFile{Path: cache_path, Size: file_info.Size()}, nil
+}
+
+// LookupProfileHTMLCache locates the canonical profile page cached for one
+// source book URL.
+func LookupProfileHTMLCache(file_cache *cache.CacheProvider, source_url string) (*HTMLCacheFile, error) {
+	book_id, err := parse_book_id(strings.TrimSpace(source_url))
+	if err != nil {
+		return nil, err
+	}
+	request_url := strings.TrimRight(fanqie_base_url, "/") + "/page/" + book_id
+	return LookupHTMLCache(file_cache, source_url, request_url)
+}
+
+// LookupChapterHTMLCache locates a chapter in a namespace-scoped persistent
+// cache without performing a network request. A nil result means that chapter
+// is not cached.
+func LookupChapterHTMLCache(file_cache *cache.CacheProvider, source_url string, chapter_url string) (*HTMLCacheFile, error) {
+	chapter_id, err := parse_chapter_id(chapter_url)
+	if err != nil {
+		return nil, err
+	}
+	request_url := strings.TrimRight(fanqie_base_url, "/") + "/reader/" + chapter_id + "?enter_from=page"
+	return LookupHTMLCache(file_cache, source_url, request_url)
 }
 
 func (c *FanqieClient) read_cached_html(request_url string) ([]byte, bool, error) {
@@ -199,23 +180,9 @@ func (c *FanqieClient) remove_cached_html(request_url string) error {
 	return c.file_cache.Remove(relative_path)
 }
 
-// ClearHTMLCache removes all cached profile and chapter HTML associated with
-// one source book URL.
-func ClearHTMLCache(work_dir string, source_url string) (bool, error) {
-	cache_registry, err := cache.NewProviderRegistry(work_dir)
-	if err != nil {
-		return false, err
-	}
-	file_cache, err := cache_registry.Namespace(cache_directory_name)
-	if err != nil {
-		return false, err
-	}
-	return ClearHTMLCacheWithCache(file_cache, source_url)
-}
-
-// ClearHTMLCacheWithCache removes cached pages for one book from a
-// runtime-supplied namespace-scoped persistent cache.
-func ClearHTMLCacheWithCache(file_cache *cache.CacheProvider, source_url string) (bool, error) {
+// ClearHTMLCache removes cached pages for one book from a namespace-scoped
+// persistent cache.
+func ClearHTMLCache(file_cache *cache.CacheProvider, source_url string) (bool, error) {
 	if _, err := parse_book_id(source_url); err != nil {
 		return false, err
 	}

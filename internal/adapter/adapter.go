@@ -111,8 +111,18 @@ type ContextProgressFetchAdapter interface {
 	FetchWithProgressContext(fetch_context context.Context, raw_url string, options FetchOptions) (any, error)
 }
 
+// FetchCacheEntry describes one persistent file produced by a scraper fetch.
+type FetchCacheEntry struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	URL  string `json:"url,omitempty"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
 // FetchCacheAdapter owns persistent fetch caches associated with source URLs.
 type FetchCacheAdapter interface {
+	FetchCacheEntries(raw_url string, data any) ([]FetchCacheEntry, error)
 	ClearFetchCache(raw_url string) (bool, error)
 }
 

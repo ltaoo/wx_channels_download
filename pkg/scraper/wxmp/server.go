@@ -204,6 +204,15 @@ func NewOfficialAccountServer(cfg *OfficialAccountConfig, parent_logger *zerolog
 	return c
 }
 
+// SetPersistentCache configures the HTML cache used by the server's scraper
+// client.
+func (c *OfficialAccountServer) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c == nil || c.client == nil {
+		return
+	}
+	c.client.SetPersistentCache(file_cache)
+}
+
 func (c *OfficialAccountServer) ServeWebsocket(writer http.ResponseWriter, request *http.Request) {
 	conn, err := official_ws_upgrader.Upgrade(writer, request, nil)
 	if err != nil {

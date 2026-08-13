@@ -311,6 +311,10 @@ function HomeContentCard(props) {
           },
           [content.title],
         ),
+        View({ class: "wx-home-content-meta" }, [
+          Timeless.Icon({ name: "clock3", size: 14 }),
+          content.publish_time_text,
+        ]),
         Show({
           when: content.show_description,
           ok() {
@@ -320,10 +324,6 @@ function HomeContentCard(props) {
           },
         }),
         HomeContentAccount({ account }),
-        View({ class: "wx-home-content-meta" }, [
-          Timeless.Icon({ name: "clock3", size: 14 }),
-          content.publish_time_text,
-        ]),
       ]),
     ]),
   ]);
@@ -864,20 +864,6 @@ function HomeResultActions(props) {
   return View({ class: "wx-home-result-actions" }, [
     Button(
       {
-        class: "wx-content-action wx-home-cache-action",
-        disabled: vm$.state.cache_action_disabled,
-        attributes: {
-          type: "button",
-          title: "清理该 URL 的抓取缓存",
-        },
-        onClick() {
-          vm$.methods.clearFetchCache();
-        },
-      },
-      ["清理缓存"],
-    ),
-    Button(
-      {
         class: "wx-content-action wx-home-refresh",
         disabled: vm$.state.cache_action_disabled,
         attributes: {
@@ -893,6 +879,80 @@ function HomeResultActions(props) {
   ]);
 }
 
+function HomeCacheCard(props) {
+  const vm$ = props.store;
+  const cache = vm$.state.cache;
+  return Show({
+    when: cache.present,
+    ok() {
+      return View({ class: "wx-home-card wx-home-cache-card" }, [
+        View({ class: "wx-home-card-heading" }, [
+          View({ class: "wx-home-card-title-group" }, [
+            View({ class: "wx-home-card-icon" }, [
+              Timeless.Icon({ name: "file-stack", size: 17 }),
+            ]),
+            View({}, [
+              View({ class: "wx-home-card-kicker" }, ["CACHE"]),
+              View({ class: "wx-home-card-title" }, ["抓取缓存"]),
+            ]),
+          ]),
+          View({ class: "wx-home-cache-heading-actions" }, [
+            View({ class: "wx-home-cache-summary" }, [cache.summary_text]),
+            Button(
+              {
+                class: "wx-content-action wx-home-cache-action",
+                disabled: vm$.state.cache_action_disabled,
+                attributes: {
+                  type: "button",
+                  title: "清除该 URL 的抓取缓存",
+                },
+                onClick() {
+                  vm$.methods.clearFetchCache();
+                },
+              },
+              [
+                Timeless.Icon({ name: "trash2", size: 14 }),
+                vm$.state.cache_button_text,
+              ],
+            ),
+          ]),
+        ]),
+        View({ class: "wx-home-cache-list" }, [
+          For({
+            key: "key",
+            each: cache.entries,
+            render(entry_) {
+              const entry = HomeDetailValue(entry_);
+              return View({ class: "wx-home-cache-entry" }, [
+                View({ class: "wx-home-cache-entry-icon" }, [
+                  Timeless.Icon({ name: "file", size: 16 }),
+                ]),
+                View({ class: "wx-home-cache-entry-main" }, [
+                  View(
+                    {
+                      class: "wx-home-cache-entry-name",
+                      attributes: { title: entry.name },
+                    },
+                    [entry.name],
+                  ),
+                  View(
+                    {
+                      class: "wx-home-cache-entry-path",
+                      attributes: { title: entry.path },
+                    },
+                    [entry.path],
+                  ),
+                ]),
+                View({ class: "wx-home-cache-entry-size" }, [entry.size_text]),
+              ]);
+            },
+          }),
+        ]),
+      ]);
+    },
+  });
+}
+
 function HomePageResult(props) {
   const vm$ = props.store;
   return Show({
@@ -903,6 +963,7 @@ function HomePageResult(props) {
         HomeContentDetails({ store: vm$ }),
         HomeRawJSON({ store: vm$ }),
         HomeResultActions({ store: vm$ }),
+        HomeCacheCard({ store: vm$ }),
       ]);
     },
   });

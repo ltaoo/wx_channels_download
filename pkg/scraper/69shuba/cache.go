@@ -3,7 +3,9 @@ package shuba69
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,6 +18,7 @@ const cache_directory_name = "69shuba"
 type HTMLCacheEntry struct {
 	Directory string `json:"directory"`
 	HTMLPath  string `json:"html_path"`
+	Size      int64  `json:"size"`
 }
 
 // SetWorkDir enables persistent response caching beneath the runtime workdir.
@@ -62,7 +65,7 @@ func (c *Client) cache_response(page_kind string, raw_url string, html_text stri
 	if err != nil {
 		return nil, err
 	}
-	entry := &HTMLCacheEntry{Directory: directory_path, HTMLPath: html_path}
+	entry := &HTMLCacheEntry{Directory: directory_path, HTMLPath: html_path, Size: int64(len(html_text))}
 	if err := c.file_cache.Write(cache_path, []byte(html_text)); err != nil {
 		return nil, err
 	}
@@ -108,4 +111,61 @@ func response_cache_directory_path(raw_url string) (string, error) {
 		book_namespace = "book-" + matches[1]
 	}
 	return book_namespace, nil
+}
+
+// LookupHTMLCaches returns the persisted profile and directory HTML for one
+// novel URL without performing a network request.
+func LookupHTMLCaches(file_cache *cache.CacheProvider, raw_url string) ([]HTMLCacheEntry, error) {
+	if file_cache == nil || !file_cache.Enabled() {
+		return nil, nil
+	}
+	cache_directory, err := response_cache_directory_path(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	directory_path, err := file_cache.Path(filepath.ToSlash(cache_directory))
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]HTMLCacheEntry, 0, 2)
+	for _, file_name := range []string{"profile.html", "chapters.html"} {
+		relative_path := filepath.ToSlash(filepath.Join(cache_directory, file_name))
+		file_info, stat_err := file_cache.Stat(relative_path)
+		if errors.Is(stat_err, os.ErrNotExist) {
+			continue
+		}
+		if stat_err != nil {
+			return nil, fmt.Errorf("stat 69shuba HTML cache: %w", stat_err)
+		}
+		if !file_info.Mode().IsRegular() || file_info.Size() <= 0 {
+			continue
+		}
+		html_path, path_err := file_cache.Path(relative_path)
+		if path_err != nil {
+			return nil, path_err
+		}
+		entries = append(entries, HTMLCacheEntry{
+			Directory: directory_path,
+			HTMLPath:  html_path,
+			Size:      file_info.Size(),
+		})
+	}
+	return entries, nil
+}
+
+// ClearHTMLCache removes the persisted profile and directory HTML for one
+// novel URL.
+func ClearHTMLCache(file_cache *cache.CacheProvider, raw_url string) (bool, error) {
+	if file_cache == nil || !file_cache.Enabled() {
+		return false, nil
+	}
+	cache_directory, err := response_cache_directory_path(raw_url)
+	if err != nil {
+		return false, err
+	}
+	removed, err := file_cache.RemoveAll(filepath.ToSlash(cache_directory))
+	if err != nil {
+		return false, fmt.Errorf("clear 69shuba HTML cache: %w", err)
+	}
+	return removed, nil
 }

@@ -19,13 +19,15 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/clawreq"
 )
 
 // Client fetches pages and API responses from WeChat.
 // Server-side RSS, API, and WebSocket state belongs to OfficialAccountServer.
 type Client struct {
-	logger *zerolog.Logger
+	logger     *zerolog.Logger
+	file_cache *cache.CacheProvider
 }
 
 func NewClient(_ *OfficialAccountConfig, parent_logger *zerolog.Logger) *Client {
@@ -83,6 +85,9 @@ func (c *Client) Scrape(raw_url string) ([]byte, error) {
 	}
 	if is_verification_page(string(response.Body)) {
 		return nil, fmt.Errorf("wechat verification page returned for %s", raw_url)
+	}
+	if err := c.write_cached_html(raw_url, response.Body); err != nil {
+		return nil, fmt.Errorf("cache wxmp html response for %q: %w", raw_url, err)
 	}
 	return response.Body, nil
 }
@@ -514,6 +519,12 @@ func (c *Client) FetchFullContent(raw_url string) string {
 	defer response.Body.Close()
 	response_body, err := io.ReadAll(response.Body)
 	if err != nil {
+		return ""
+	}
+	if err := c.write_cached_html(raw_url, response_body); err != nil {
+		if c.logger != nil {
+			c.logger.Error().Err(err).Str("url", raw_url).Msg("cache wxmp full-content HTML response")
+		}
 		return ""
 	}
 	body := string(response_body)
