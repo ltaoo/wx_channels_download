@@ -10,12 +10,21 @@ class ErrorModal {
     var style = document.createElement("style");
     style.textContent = `
     .error-modal {
+        --error-modal-overlay: rgba(0, 0, 0, 0.5);
+        --error-modal-surface: #fff;
+        --error-modal-border: #eee;
+        --error-modal-text: #333;
+        --error-modal-muted: #666;
+        --error-modal-muted-hover: #333;
+        --error-modal-danger: #f44336;
+        --error-modal-danger-hover: #d32f2f;
+        --error-modal-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
+        background-color: var(--error-modal-overlay);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -29,11 +38,11 @@ class ErrorModal {
         visibility: visible;
     }
     .error-modal-content {
-        background-color: #fff;
+        background-color: var(--error-modal-surface);
         border-radius: 8px;
         width: 90%;
         max-width: 400px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: var(--error-modal-shadow);
         transform: translateY(-50px);
         transition: transform 0.3s ease;
     }
@@ -44,7 +53,7 @@ class ErrorModal {
 
     .error-modal-header {
         padding: 8px 12px;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--error-modal-border);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -53,7 +62,7 @@ class ErrorModal {
     .error-modal-title {
         margin: 0;
         font-size: 1.25rem;
-        color: #f44336;
+        color: var(--error-modal-danger);
     }
 
     .error-modal-close {
@@ -61,32 +70,32 @@ class ErrorModal {
         border: none;
         font-size: 1.5rem;
         cursor: pointer;
-        color: #666;
+        color: var(--error-modal-muted);
         padding: 0;
         line-height: 1;
     }
 
     .error-modal-close:hover {
-        color: #333;
+        color: var(--error-modal-muted-hover);
     }
 
     .error-modal-body {
-	overflow-y: auto;
+        overflow-y: auto;
         padding: 12px;
-        color: #333;
+        color: var(--error-modal-text);
         line-height: 1.5;
-	max-height:400px;
+        max-height: 400px;
     }
 
     .error-modal-footer {
         padding: 8px 12px;
-        border-top: 1px solid #eee;
+        border-top: 1px solid var(--error-modal-border);
         display: flex;
         justify-content: flex-end;
     }
 
     .error-modal-confirm {
-        background-color: #f44336;
+        background-color: var(--error-modal-danger);
         color: white;
         border: none;
         padding: 8px 8px;
@@ -97,7 +106,36 @@ class ErrorModal {
     }
 
     .error-modal-confirm:hover {
-        background-color: #d32f2f;
+        background-color: var(--error-modal-danger-hover);
+    }
+
+    .dark .error-modal,
+    body[data-weui-theme="dark"] .error-modal {
+        --error-modal-overlay: rgba(0, 0, 0, 0.68);
+        --error-modal-surface: #191919;
+        --error-modal-border: rgba(255, 255, 255, 0.12);
+        --error-modal-text: rgba(255, 255, 255, 0.88);
+        --error-modal-muted: rgba(255, 255, 255, 0.56);
+        --error-modal-muted-hover: rgba(255, 255, 255, 0.9);
+        --error-modal-danger: #fa5151;
+        --error-modal-danger-hover: #c84040;
+        --error-modal-shadow: 0 8px 28px rgba(0, 0, 0, 0.48);
+        color-scheme: dark;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        body:not([data-weui-theme="light"]) .error-modal {
+            --error-modal-overlay: rgba(0, 0, 0, 0.68);
+            --error-modal-surface: #191919;
+            --error-modal-border: rgba(255, 255, 255, 0.12);
+            --error-modal-text: rgba(255, 255, 255, 0.88);
+            --error-modal-muted: rgba(255, 255, 255, 0.56);
+            --error-modal-muted-hover: rgba(255, 255, 255, 0.9);
+            --error-modal-danger: #fa5151;
+            --error-modal-danger-hover: #c84040;
+            --error-modal-shadow: 0 8px 28px rgba(0, 0, 0, 0.48);
+            color-scheme: dark;
+        }
     }
 
     @media (max-width: 480px) {

@@ -114,7 +114,9 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 				url_build("/inject/virtual-list-view.js", version_query),
 				url_build("/inject/download/model.js", version_query),
 				url_build("/inject/download/view.js", version_query),
-				asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
+				asset_url(asset_base_url, "/inject/mp.utils.js", version_query),
+				asset_url(asset_base_url, "/inject/mp.components.js", version_query),
+				asset_url(asset_base_url, "/inject/mp.main.js", version_query),
 			)
 			if cfg.GlobalScriptURL != "" {
 				frontend.AppendScripts(&injected, script_attr, cfg.GlobalScriptURL)

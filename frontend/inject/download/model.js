@@ -1670,7 +1670,7 @@ function DownloaderPanelViewModel(props = {}) {
       applyTaskPage(r.data, options);
       // Render the requested page first; local-file checks and their state
       // updates deliberately run in the background and never block pagination.
-      verifyTaskPageFiles(r.data && r.data.list, file_verification_generation);
+      // verifyTaskPageFiles(r.data && r.data.list, file_verification_generation);
       setTimeout(maybeLoadMoreTasks, 0);
       return r;
     } finally {

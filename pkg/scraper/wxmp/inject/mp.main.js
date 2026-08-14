@@ -1,6 +1,37 @@
+/// <reference path="./mp.utils.js" />
+
 (() => {
+  if (!window.WXMPUtils) {
+    throw new Error("mp.utils.js must be loaded before mp.main.js");
+  }
+  const {
+    build_download_article,
+    collect_push_article_entries,
+    first_non_empty,
+    get_page_data_value,
+    get_url_param,
+    parse_official_account_msg_list,
+  } = window.WXMPUtils;
+
   var APIHostname = WXEnv.get("apiOrigin");
   var MPWSURL = "";
+  var credentials = {};
+
+  function insert_page_style() {
+    if (document.getElementById("__wxmp_page_style__")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "__wxmp_page_style__";
+    style.textContent = `
+      #activity-detail .t1-popper {
+        z-index: 99999 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  insert_page_style();
 
   const http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
@@ -28,11 +59,6 @@
           (WXU.config.officialServerRefreshToken ?? ""),
         acct,
       ),
-    { client: http_client },
-  );
-
-  const msgListReq = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/mp/msg/list", params),
     { client: http_client },
   );
 
@@ -91,38 +117,6 @@
     }
   }
 
-  function first_non_empty() {
-    for (var i = 0; i < arguments.length; i++) {
-      var value = arguments[i];
-      if (value === undefined || value === null) {
-        continue;
-      }
-      value = String(value).trim();
-      if (value) {
-        return value;
-      }
-    }
-    return "";
-  }
-  function get_page_data_value(key) {
-    if (window.cgiDataNew && window.cgiDataNew[key] !== undefined) {
-      return window.cgiDataNew[key];
-    }
-    if (window.cgiData && window.cgiData[key] !== undefined) {
-      return window.cgiData[key];
-    }
-    return "";
-  }
-  function get_url_param(raw_url, key) {
-    if (!raw_url) {
-      return "";
-    }
-    try {
-      return new URL(raw_url, window.location.href).searchParams.get(key) || "";
-    } catch {
-      return "";
-    }
-  }
   async function handle_api_call(msg, socket) {
     var { id, key, data } = msg;
     function resp(body) {
@@ -223,7 +217,7 @@
     const articles = [article];
     WXU.log
       .Info()
-      .Str("file", "mp.ws.js")
+      .Str("file", "mp.main.js")
       .JSON("article", { title: article.title })
       .Msg("before downloader.browse");
     WXU.downloader.browse(articles, { platform: "wxmp" });
@@ -236,142 +230,20 @@
     });
     if (error) {
       WXU.log.Error(error).Msg("[mp.wx.js]create failed");
-      WXU.error({ msg: error.message, source: "mp.ws.js:189" });
+      WXU.error({ msg: error.message, source: "mp.main.js:189" });
       return;
     }
     if (data.skipped) {
       return;
     }
     WXU.toast("创建下载任务成功");
-    console.log("[mp.ws.js]handle_download_click - after create download task");
+    console.log(
+      "[mp.main.js]handle_download_click - after create download task",
+    );
     WXU.downloader.show();
   }
 
-  function parse_official_account_msg_list(data) {
-    if (data && Array.isArray(data.list)) {
-      return data.list;
-    }
-    const raw_list = (data && data.general_msg_list) || "";
-    if (!raw_list) {
-      return [];
-    }
-    try {
-      const parsed =
-        typeof raw_list === "string" ? JSON.parse(raw_list) : raw_list;
-      return Array.isArray(parsed.list) ? parsed.list : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function decode_official_account_url(raw_url) {
-    if (!raw_url) {
-      return "";
-    }
-    const textarea = document.createElement("textarea");
-    textarea.innerHTML = String(raw_url);
-    try {
-      const parsed_url = new URL(
-        textarea.value,
-        "https://mp.weixin.qq.com",
-      );
-      if (parsed_url.hostname !== "mp.weixin.qq.com") {
-        return "";
-      }
-      return parsed_url.href;
-    } catch {
-      return "";
-    }
-  }
-
-  function collect_push_article_entries(items) {
-    const entries = [];
-    const urls = new Set();
-    function append(article, publish_time) {
-      const url = decode_official_account_url(article && article.content_url);
-      if (!url || urls.has(url)) {
-        return;
-      }
-      urls.add(url);
-      entries.push({ article, publish_time, url });
-    }
-    (items || []).forEach((item) => {
-      const article = item.app_msg_ext_info || {};
-      const publish_time = item.comm_msg_info?.datetime || 0;
-      append(article, publish_time);
-      (article.multi_app_msg_item_list || []).forEach((child) => {
-        append(child, publish_time);
-      });
-    });
-    return entries;
-  }
-
-  function article_ids_from_url(article_url, biz, external_id) {
-    const parsed_url = new URL(article_url);
-    let mid = Number(parsed_url.searchParams.get("mid")) || 0;
-    let idx = Number(parsed_url.searchParams.get("idx")) || 0;
-    const external_prefix = biz ? biz + "_" : "";
-    if (
-      (!mid || !idx) &&
-      external_prefix &&
-      external_id?.startsWith(external_prefix)
-    ) {
-      const external_parts = external_id
-        .slice(external_prefix.length)
-        .split("_");
-      mid = mid || Number(external_parts[0]) || 0;
-      idx = idx || Number(external_parts[1]) || 0;
-    }
-    return {
-      biz: parsed_url.searchParams.get("__biz") || biz,
-      idx: idx || 1,
-      mid,
-      sn: parsed_url.searchParams.get("sn") || "",
-    };
-  }
-
-  function build_download_article(fetch_data, entry, credentials) {
-    const parsed_article = (fetch_data && fetch_data.result) || {};
-    const content = (fetch_data && fetch_data.content) || {};
-    const account = (fetch_data && fetch_data.account) || {};
-    const summary = entry.article || {};
-    const ids = article_ids_from_url(
-      entry.url,
-      credentials.biz,
-      content.external_id || "",
-    );
-    const publish_time = Number(content.publish_time || entry.publish_time) || 0;
-    return {
-      bizuin: ids.biz,
-      mid: ids.mid,
-      idx: ids.idx,
-      sn: ids.sn,
-      title: parsed_article.title || content.title || summary.title || "",
-      desc: content.description || summary.digest || "",
-      content_noencode: parsed_article.content || summary.content || "",
-      cdn_url: content.cover_url || summary.cover || "",
-      link: content.url || entry.url,
-      source_url: content.source_url || summary.source_url || entry.url,
-      user_name: parsed_article.author_id || account.external_id || "",
-      nick_name:
-        parsed_article.author_nickname || account.nickname || summary.author || "",
-      round_head_img: parsed_article.author_avatar || account.avatar_url || "",
-      author: parsed_article.creator || summary.author || "",
-      ori_create_time:
-        publish_time > 1000000000000
-          ? Math.floor(publish_time / 1000)
-          : publish_time,
-      page_type: Number(parsed_article.type) || 0,
-      item_show_type: Number(summary.item_show_type) || 0,
-      picture_page_info_list: parsed_article.picture_page_info_list || [],
-      video_page_infos: parsed_article.videos || [],
-      copyright_info: {
-        copyright_stat: Number(summary.copyright_stat) || 0,
-      },
-    };
-  }
-
-  function DownloadAllPushesModel(options) {
+  function DownloadAllPushesModel() {
     const progress_ = ref({
       created: 0,
       failed: 0,
@@ -406,7 +278,6 @@
         request_stop();
         return;
       }
-      const credentials = options.get_credentials();
       if (!credentials.biz) {
         notify("error", "缺少 biz 参数");
         return;
@@ -586,7 +457,7 @@
         if (notice.type === "error") {
           WXU.error({
             msg: notice.message,
-            source: "mp.ws.js:DownloadAllPushesModel",
+            source: "mp.main.js:DownloadAllPushesModel",
           });
           return;
         }
@@ -601,6 +472,118 @@
       },
     });
     return menu_item;
+  }
+
+  function MsgListModel(props = {}) {
+    const page_size = props.page_size || 10;
+    const items_ = refarr([]);
+    const loading_ = ref(false);
+    const error_ = ref("");
+    const can_load_more_ = ref(true);
+    let current_offset = 0;
+
+    const reqs = {
+      msg: {
+        list: new Timeless.kit.RequestCore(
+          (params) => request.get("/api/mp/msg/list", params),
+          { client: http_client },
+        ),
+      },
+    };
+
+    async function load_more() {
+      if (loading_.value || !can_load_more_.value) {
+        return;
+      }
+      if (!credentials.biz) {
+        error_.as("缺少 biz 参数");
+        return;
+      }
+      error_.as("");
+      loading_.as(true);
+      const request_offset = current_offset;
+      const r = await reqs.msg.list.run({
+        biz: credentials.biz,
+        count: page_size,
+        key: credentials.key,
+        offset: request_offset,
+        pass_ticket: credentials.pass_ticket,
+        token: credentials.token,
+        uin: credentials.uin,
+      });
+      loading_.as(false);
+      if (r.error) {
+        error_.as(r.error.message);
+        return;
+      }
+      const data = r.data || {};
+      const items = parse_official_account_msg_list(data);
+      const has_next_offset =
+        Object.prototype.hasOwnProperty.call(data, "next_offset") &&
+        data.next_offset !== null &&
+        String(data.next_offset).trim() !== "";
+      const next_offset = has_next_offset
+        ? Number(data.next_offset)
+        : Number.NaN;
+      const has_server_more =
+        data.can_msg_continue === undefined
+          ? items.length >= page_size
+          : Number(data.can_msg_continue) !== 0;
+      const can_load_more = items.length > 0 && has_server_more;
+
+      if (has_server_more && items.length === 0) {
+        error_.as(
+          `分页响应异常：offset=${request_offset} 返回空列表但仍标记有更多数据`,
+        );
+        return;
+      }
+      if (has_server_more && has_next_offset) {
+        if (
+          !Number.isSafeInteger(next_offset) ||
+          next_offset <= request_offset
+        ) {
+          error_.as(
+            `分页游标未前进：offset=${request_offset}, next_offset=${String(data.next_offset)}`,
+          );
+        }
+        current_offset = next_offset;
+      } else if (has_server_more) {
+        current_offset = request_offset + items.length;
+      }
+      items_.as(items_.value.concat(items), { reset: true });
+      can_load_more_.as(can_load_more);
+    }
+
+    function ensure_loaded() {
+      if (items_.value.length === 0) {
+        load_more();
+      }
+    }
+
+    return {
+      state: {
+        can_load_more: can_load_more_,
+        error: error_,
+        items: items_,
+        loading: loading_,
+      },
+      methods: {
+        ensureLoaded: ensure_loaded,
+        loadMore: load_more,
+      },
+    };
+  }
+
+  function MsgListMenuItem(props) {
+    const model = props.store;
+    return new Timeless.vm.MenuItemCore({
+      label: "推送列表",
+      onClick() {
+        props.close();
+        props.open();
+        model.methods.ensureLoaded();
+      },
+    });
   }
 
   var before_menus_items = [];
@@ -704,142 +687,7 @@
       ],
     );
   }
-  function MsgListPanel(props) {
-    const { dialog$ } = props;
-    const biz = window.biz || window.__biz || "";
-    const token = WXU.config.officialServerRefreshToken ?? "";
-    const uin = window.uin || "";
-    const key = window.key || "";
-    const passTicket = window.pass_ticket || "";
 
-    let currentOffset = 0;
-    let loading = false;
-    let msgList = [];
-    let canLoadMore = true;
-    const pageSize = 10;
-
-    const container = document.createElement("div");
-    container.className = "wx-dl-panel-container";
-    container.style.cssText = "width: 400px; max-height: 512px;";
-
-    const header = document.createElement("div");
-    header.className = "wx-dl-header";
-    const heading = document.createElement("div");
-    heading.className = "wx-dl-heading";
-    const title = document.createElement("div");
-    title.className = "wx-dl-title";
-    title.textContent = "推送列表";
-    heading.appendChild(title);
-    header.appendChild(heading);
-    const closeBtn = document.createElement("div");
-    closeBtn.className = "wx-dl-more-btn";
-    closeBtn.style.cssText =
-      "cursor: pointer; font-size: 18px; padding: 4px 8px; line-height: 1;";
-    closeBtn.textContent = "✕";
-    closeBtn.onclick = () => dialog$.hide();
-    header.appendChild(closeBtn);
-    container.appendChild(header);
-
-    const listEl = document.createElement("div");
-    listEl.className = "wx-dl-dark-scroll";
-    listEl.style.cssText =
-      "display: flex; flex-direction: column; gap: 8px; padding: 0 12px; overflow-y: auto; flex: 1; min-height: 0;";
-    container.appendChild(listEl);
-
-    const loadMoreBtn = document.createElement("button");
-    loadMoreBtn.textContent = "加载更多";
-    loadMoreBtn.style.cssText =
-      "margin: 12px; padding: 8px 16px; border: 1px solid var(--weui-FG-6, #eee); border-radius: 4px; background: var(--popup-content-bg-color, #f7f7f7); color: var(--weui-FG-0); cursor: pointer; width: calc(100% - 24px); font-size: 13px; flex-shrink: 0;";
-    loadMoreBtn.onclick = () => fetchList();
-    container.appendChild(loadMoreBtn);
-
-    function renderItem(item) {
-      const el = document.createElement("div");
-      el.style.cssText =
-        "padding: 10px 12px; border-radius: 6px; background: var(--popup-content-bg-color, var(--weui-BG-2, #f7f7f7));";
-      const msgInfo = item.app_msg_ext_info || {};
-      const title = msgInfo.title || "无标题";
-      const digest = msgInfo.digest || "";
-      const link = msgInfo.content_url || "";
-      const time = item.comm_msg_info?.datetime
-        ? new Date(item.comm_msg_info.datetime * 1000).toLocaleString()
-        : "";
-      el.innerHTML = `
-        <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px; color: var(--weui-FG-0);">
-          ${link ? `<a href="${escapeHtml(link)}" target="_blank" style="color: inherit; text-decoration: none;">${escapeHtml(unescapeHtml(title))}</a>` : escapeHtml(unescapeHtml(title))}
-        </div>
-        ${digest ? `<div style="font-size: 12px; color: var(--weui-FG-1, #888); margin-bottom: 4px;">${unescapeHtml(digest)}</div>` : ""}
-        ${time ? `<div style="font-size: 11px; color: var(--weui-FG-1, #aaa);">${time}</div>` : ""}
-      `;
-      return el;
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement("div");
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    function unescapeHtml(str) {
-      const div = document.createElement("div");
-      div.innerHTML = str;
-      return div.textContent;
-    }
-
-    async function fetchList() {
-      if (loading) return;
-      loading = true;
-      loadMoreBtn.textContent = "加载中...";
-      loadMoreBtn.disabled = true;
-      var r = await msgListReq.run({
-        biz: biz,
-        offset: currentOffset,
-        count: pageSize,
-        token: token,
-        uin: uin,
-        key: key,
-        pass_ticket: passTicket,
-      });
-      loading = false;
-      loadMoreBtn.disabled = false;
-      if (r.error) {
-        WXU.error({
-          msg: "获取推送列表失败: " + r.error.message,
-          source: "mp.ws.js:404",
-        });
-        loadMoreBtn.textContent = "重试";
-        return;
-      }
-      const data = r.data || {};
-      const list = parse_official_account_msg_list(data);
-      if (list.length === 0 || list.length < pageSize) {
-        canLoadMore = false;
-        loadMoreBtn.textContent = "没有更多了";
-        loadMoreBtn.disabled = true;
-        if (list.length === 0) return;
-      }
-      msgList = msgList.concat(list);
-      list.forEach((item) => {
-        listEl.appendChild(renderItem(item));
-      });
-      if (data.next_offset !== undefined) {
-        currentOffset = data.next_offset;
-      } else {
-        currentOffset += list.length;
-      }
-      if (canLoadMore) {
-        loadMoreBtn.textContent = "加载更多";
-      }
-    }
-
-    dialog$.onStateChange((state) => {
-      if (state.visible && msgList.length === 0) {
-        fetchList();
-      }
-    });
-
-    return container;
-  }
   function popover_pos($btn) {
     const { x, y, width } = $btn.getBoundingClientRect();
     return {
@@ -852,7 +700,11 @@
     var $wraps = document.querySelectorAll(".interaction_bar");
     var $container = $wraps[$wraps.length - 1];
     const no_container = !$container || !$container.lastElementChild;
-    console.log("[mp.ws.js]before if (no_container", $container, no_container);
+    console.log(
+      "[mp.main.js]before if (no_container",
+      $container,
+      no_container,
+    );
     if (no_container) {
       return;
     }
@@ -860,7 +712,7 @@
       offsetY: 4,
       destroyOnClose: false,
     });
-    const msgListDialog$ = new Timeless.vm.DialogCore({
+    const msg_list_dialog$ = new Timeless.vm.DialogCore({
       offsetY: 4,
     });
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
@@ -903,25 +755,22 @@
         dropdown$.hide();
       }
     }
-    const download_all_model = DownloadAllPushesModel({
-      get_credentials() {
-        return {
-          biz: window.biz || window.__biz || "",
-          key: window.key || "",
-          pass_ticket: window.pass_ticket || "",
-          token: WXU.config.officialServerRefreshToken ?? "",
-          uin: window.uin || "",
-        };
-      },
-    });
+    const download_all_model = DownloadAllPushesModel();
     const download_all_menu_item = DownloadAllPushesMenuItem({
       close: close_dropdown,
       store: download_all_model,
     });
+    const msglist$ = MsgListModel();
+    const msg_list_menu_item = MsgListMenuItem({
+      close: close_dropdown,
+      open() {
+        msg_list_dialog$.show();
+      },
+      store: msglist$,
+    });
     dropdown$ = new Timeless.vm.DropdownMenuCore({
       trigger: "hover",
       align: "end",
-      offsetY: -20,
       items: [
         ...__wxmp_render_extra_download_menu_items(
           before_menus_items,
@@ -952,13 +801,7 @@
         }),
         ...(WXEnv.isWeChatBrowser
           ? [
-              new Timeless.vm.MenuItemCore({
-                label: "推送列表",
-                onClick() {
-                  msgListDialog$.show();
-                  dropdown$.hide();
-                },
-              }),
+              msg_list_menu_item,
               // download_all_menu_item,
             ]
           : []),
@@ -966,7 +809,7 @@
           label: "下载面板",
           onClick() {
             dropdown$.hide();
-            console.log("[mp.ws.js]onClick - before popover$.show");
+            console.log("[mp.main.js]onClick - before popover$.show");
             WXU.downloader.show();
           },
         }),
@@ -1011,18 +854,28 @@
     $btn.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
-    // Push message list panel
-    const msgListPanel = MsgListPanel({ dialog$: msgListDialog$ });
-    const msgListOverlay = document.createElement("div");
-    msgListOverlay.style.cssText =
+
+    const msg_list_overlay = document.createElement("div");
+    msg_list_overlay.style.cssText =
       "display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
-    msgListOverlay.appendChild(msgListPanel);
-    msgListOverlay.addEventListener("click", (e) => {
-      if (e.target === msgListOverlay) msgListDialog$.hide();
+    const msg_list_panel_root = document.createElement("div");
+    msg_list_panel_root.style.display = "contents";
+    msg_list_overlay.appendChild(msg_list_panel_root);
+    msg_list_overlay.addEventListener("click", (event) => {
+      if (event.target === msg_list_overlay) {
+        msg_list_dialog$.hide();
+      }
     });
-    document.body.appendChild(msgListOverlay);
-    msgListDialog$.onStateChange((state) => {
-      msgListOverlay.style.display = state.visible ? "flex" : "none";
+    document.body.appendChild(msg_list_overlay);
+    Timeless.DOM.render(
+      MsgListPanel({
+        dialog$: msg_list_dialog$,
+        store: msglist$,
+      }),
+      msg_list_panel_root,
+    );
+    msg_list_dialog$.onStateChange((state) => {
+      msg_list_overlay.style.display = state.visible ? "flex" : "none";
     });
   }
   async function main() {
@@ -1032,7 +885,7 @@
     );
     WXU.log
       .Info()
-      .Str("file", "mp.ws.js")
+      .Str("file", "mp.main.js")
       .Str("url", location.href)
       .Bool("is_article_url", isArticleURL)
       .Msg("main");
@@ -1048,6 +901,31 @@
         sn: sp.get("sn"),
       });
     }
+    credentials = {
+      biz: first_non_empty(
+        window.biz,
+        window.__biz,
+        get_page_data_value("bizuin"),
+        get_url_param(window.location.href, "__biz"),
+        get_url_param(get_page_data_value("link"), "__biz"),
+      ),
+      key: first_non_empty(
+        window.key,
+        get_page_data_value("key"),
+        get_url_param(window.location.href, "key"),
+      ),
+      pass_ticket: first_non_empty(
+        window.pass_ticket,
+        get_page_data_value("pass_ticket"),
+        get_url_param(window.location.href, "pass_ticket"),
+      ),
+      token: WXU.config.officialServerRefreshToken ?? "",
+      uin: first_non_empty(
+        window.uin,
+        get_page_data_value("user_uin"),
+        get_url_param(window.location.href, "uin"),
+      ),
+    };
     report_article_loaded();
     WXU.observe_node({
       selector: ".interaction_bar",
