@@ -250,36 +250,94 @@ function LogsPageFieldsCell(props) {
       each: fields,
       render(row) {
         const text = `${row[0]}=${row[1]}`;
-        const copyable = vm$.methods.isJsonFieldValue(row[1]);
+        const is_json = vm$.methods.isJsonFieldValue(row[1]);
         return View({ class: "wx-logs-field", attributes: { title: text } }, [
           View({ class: "wx-logs-field-key" }, [row[0]]),
-          copyable
-            ? View(
-                {
-                  type: "button",
-                  class:
-                    "wx-logs-field-value wx-logs-field-value-copyable",
-                  attributes: {
+          is_json
+            ? View({ class: "wx-logs-field-json-actions" }, [
+                View(
+                  {
                     type: "button",
-                    title: `点击复制 ${row[0]} 的 JSON 值`,
-                    "aria-label": `复制 ${row[0]} 的 JSON 值`,
+                    class:
+                      "wx-logs-field-value wx-logs-field-value-preview",
+                    attributes: {
+                      type: "button",
+                      title: `点击查看 ${row[0]} 的格式化 JSON`,
+                      "aria-label": `查看 ${row[0]} 的格式化 JSON`,
+                    },
+                    onClick() {
+                      vm$.methods.showJsonFieldValue(row[0], row[1]);
+                    },
                   },
-                  onClick() {
-                    vm$.methods.copyJsonFieldValue(row[1]);
+                  [View({ class: "wx-logs-field-value-text" }, [row[1]])],
+                ),
+                View(
+                  {
+                    type: "button",
+                    class: "wx-logs-field-copy-button",
+                    attributes: {
+                      type: "button",
+                      title: `复制 ${row[0]} 的 JSON 值`,
+                      "aria-label": `复制 ${row[0]} 的 JSON 值`,
+                    },
+                    onClick() {
+                      vm$.methods.copyJsonFieldValue(row[1]);
+                    },
                   },
-                },
-                [
-                  View({ class: "wx-logs-field-value-text" }, [row[1]]),
-                  View({ class: "wx-logs-field-copy-icon" }, [
-                    Timeless.Icon({ name: "copy", size: 12 }),
-                  ]),
-                ],
-              )
+                  [
+                    View({ class: "wx-logs-field-copy-icon" }, [
+                      Timeless.Icon({ name: "copy", size: 12 }),
+                    ]),
+                  ],
+                ),
+              ])
             : View({ class: "wx-logs-field-value" }, [row[1]]),
         ]);
       },
     }),
   ]);
+}
+
+function LogsPageJsonPreviewDialog(props) {
+  const vm$ = props.store;
+  return Dialog(
+    {
+      store: vm$.ui.json_preview_dialog,
+      class: "wx-logs-json-dialog",
+    },
+    [
+      View({ class: "wx-logs-json-dialog-header" }, [
+        View({ class: "wx-logs-json-dialog-heading" }, [
+          View({ class: "wx-logs-json-dialog-title" }, [
+            vm$.state.json_preview_title,
+          ]),
+          View({ class: "wx-logs-json-dialog-subtitle" }, [
+            "格式化 JSON 内容",
+          ]),
+        ]),
+        View(
+          {
+            type: "button",
+            class: "wx-logs-json-dialog-close",
+            attributes: {
+              type: "button",
+              title: "关闭",
+              "aria-label": "关闭 JSON 预览",
+            },
+            onClick() {
+              vm$.methods.closeJsonFieldValue();
+            },
+          },
+          ["×"],
+        ),
+      ]),
+      View({ class: "wx-logs-json-dialog-body" }, [
+        View({ type: "pre", class: "wx-logs-json-dialog-content" }, [
+          vm$.state.json_preview_text,
+        ]),
+      ]),
+    ],
+  );
 }
 
 function LogsPageTableHead() {
@@ -417,6 +475,7 @@ function LogsPageView(props) {
         LogsPageError({ store: vm$ }),
         LogsPageList({ store: vm$ }),
       ]),
+      LogsPageJsonPreviewDialog({ store: vm$ }),
     ],
   );
 }

@@ -2565,7 +2565,6 @@ function DownloaderPanelView(props) {
   const status_counts_ = vm$.state.status_counts;
   const active_status_ = vm$.state.active_status;
   const selected_task_count_ = vm$.state.selected_task_count;
-  const showStatusCounts = props.showStatusCounts === true;
   const connected_content_style_ = computed(
     vm$.state.websocket_connected,
     (connected) => ({ display: connected ? "" : "none" }),
@@ -2574,7 +2573,6 @@ function DownloaderPanelView(props) {
   return View(
     {
       class: "wx-dl-panel-container",
-      style: props.showViewAll ? { "padding-bottom": "0" } : {},
       onMounted() {
         vm$.ready();
       },
@@ -2591,73 +2589,6 @@ function DownloaderPanelView(props) {
               return d > 0 ? `（${d}）` : "";
             }),
           ]),
-          Show({
-            when: computed(status_counts_, (counts) => {
-              return (
-                showStatusCounts &&
-                normalize_download_status_counts(counts).total > 0
-              );
-            }),
-            ok() {
-              return [
-                View({ class: "wx-dl-status-counts" }, [
-                  For({
-                    each: DOWNLOAD_STATUS_COUNT_ITEMS,
-                    render(item) {
-                      return View(
-                        {
-                          role: "button",
-                          tabIndex: "0",
-                          attributes: {
-                            "aria-pressed": computed(
-                              active_status_,
-                              (status) =>
-                                status === item.key ? "true" : "false",
-                            ),
-                          },
-                          class: computed(active_status_, (status) =>
-                            [
-                              "wx-dl-status-count",
-                              "wx-dl-status-count-filter",
-                              status === item.key
-                                ? "wx-dl-status-count-active"
-                                : "",
-                              item.key === "error"
-                                ? "wx-dl-status-count-error"
-                                : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" "),
-                          ),
-                          onClick() {
-                            vm$.methods.setStatusFilter(item.key);
-                          },
-                          onKeyDown(e) {
-                            if (e.key === " " || e.key === "Enter") {
-                              e.preventDefault();
-                              vm$.methods.setStatusFilter(item.key);
-                            }
-                          },
-                        },
-                        [
-                          View({ class: "wx-dl-status-count-label" }, [
-                            item.label,
-                          ]),
-                          View({ class: "wx-dl-status-count-value" }, [
-                            computed(status_counts_, (counts) => {
-                              return String(
-                                get_download_status_count(counts, item),
-                              );
-                            }),
-                          ]),
-                        ],
-                      );
-                    },
-                  }),
-                ]),
-              ];
-            },
-          }),
         ]),
         Show({
           when: computed(selected_task_count_, (count) => count > 0),

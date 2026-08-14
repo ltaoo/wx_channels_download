@@ -2959,9 +2959,7 @@ function DownloaderPanelViewModel(props = {}) {
       WXU.log
         .Info()
         .Str("feed_count", feeds.length)
-        .Str("spec", opt.spec)
-        .Bool("overwrite", !!opt.overwrite)
-        .Bool("duplicate", !!opt.duplicate)
+        .Str("opt", JSON.stringify(opt))
         .Msg("[downloader.create]create");
       var body = {
         objects: feeds.map((feed) => {
@@ -3116,19 +3114,18 @@ function DownloaderPanelViewModel(props = {}) {
         const duplicate = action === "duplicate";
         WXU.log
           .Info()
-          .Str("feed_id", obj.content.id || "")
+          .Str("file", "/download/model.js")
+          .Str("id", obj.content.id || "")
+          .Str("object", obj)
           .Str("action", action)
           .Bool("overwrite", overwrite)
           .Bool("duplicate", duplicate)
-          .Str("stored_config", JSON.stringify(obj.config))
           .Msg(
             "overwriteConfirmDialog: preparing to retry creating download task",
           );
-
         const [err, data] = await methods.createDownloadTask([obj.content], {
-          platform: "wxchannels",
-          spec: obj.config.spec,
-          suffix: obj.config.suffix,
+          ...obj.config,
+          platform: obj.platform,
           overwrite,
           duplicate,
         });

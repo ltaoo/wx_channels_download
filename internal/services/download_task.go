@@ -71,6 +71,7 @@ type CreateDownloadTaskBody struct {
 	DownloadDir  string          `json:"download_dir"`
 	Filename     string          `json:"filename"`
 	Config       map[string]any  `json:"config"`
+	AutoStart    *bool           `json:"auto_start"`
 	ParentTaskID *int            `json:"parent_task_id"`
 	RelationType string          `json:"relation_type"`
 }
@@ -88,6 +89,7 @@ type CreateDownloadTaskByURLBody struct {
 	DownloadDir  string         `json:"download_dir"`
 	Filename     string         `json:"filename"`
 	Config       map[string]any `json:"config"`
+	AutoStart    *bool          `json:"auto_start"`
 	ParentTaskID *int           `json:"parent_task_id"`
 	RelationType string         `json:"relation_type"`
 }
@@ -617,10 +619,12 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	first_resource := resources[0]
 	first_endpoint := endpoints[0]
 
-	if err := s.start_created_download_task(task.Id); err != nil {
-		return nil, fmt.Errorf("启动下载任务失败: %w", err)
+	if body.AutoStart == nil || *body.AutoStart {
+		if err := s.start_created_download_task(task.Id); err != nil {
+			return nil, fmt.Errorf("启动下载任务失败: %w", err)
+		}
+		task.Status = model.TaskStatusPreparing
 	}
-	task.Status = model.TaskStatusPreparing
 
 	return &CreateTaskResult{
 		Task:      task,
@@ -793,10 +797,12 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 		return nil, fmt.Errorf("创建端点失败: %w", err)
 	}
 
-	if err := s.start_created_download_task(task.Id); err != nil {
-		return nil, fmt.Errorf("启动下载任务失败: %w", err)
+	if body.AutoStart == nil || *body.AutoStart {
+		if err := s.start_created_download_task(task.Id); err != nil {
+			return nil, fmt.Errorf("启动下载任务失败: %w", err)
+		}
+		task.Status = model.TaskStatusPreparing
 	}
-	task.Status = model.TaskStatusPreparing
 
 	return &CreateTaskByURLResult{
 		Task:     task,

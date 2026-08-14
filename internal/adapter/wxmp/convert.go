@@ -71,6 +71,7 @@ func article_data_from_legacy(data *wxmp.CgiDataNew) (*wxmp.ArticleCgiDataNew, e
 		Bizuin:              data.BizUin,
 		Mid:                 int(data.Mid),
 		Idx:                 int(data.Idx),
+		Sn:                  data.Sn,
 		OriHeadImgURL:       data.OriHeadImgUrl,
 		PageType:            data.PageType,
 		ItemShowType:        data.ItemShowType,

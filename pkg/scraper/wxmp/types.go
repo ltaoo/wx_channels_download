@@ -201,6 +201,10 @@ type PicturePageInfo struct {
 }
 
 type WechatOfficialArticle struct {
+	BizUin              string              `json:"bizuin"`
+	Mid                 FlexibleInt         `json:"mid"`
+	Idx                 FlexibleInt         `json:"idx"`
+	Sn                  string              `json:"sn"`
 	Type                int                 `json:"type"`
 	Title               string              `json:"title"`
 	Content             string              `json:"content"`

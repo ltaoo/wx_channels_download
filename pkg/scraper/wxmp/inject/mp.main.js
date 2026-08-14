@@ -477,6 +477,8 @@
   function MsgListModel(props = {}) {
     const page_size = props.page_size || 10;
     const items_ = refarr([]);
+    const downloading_items_ = refarr([]);
+    const download_notice_ = ref(null);
     const loading_ = ref(false);
     const error_ = ref("");
     const can_load_more_ = ref(true);
@@ -490,6 +492,70 @@
         ),
       },
     };
+
+    function notify_download(type, message) {
+      download_notice_.as({ type, message });
+    }
+
+    function set_item_downloading(item, downloading) {
+      const downloading_items = downloading_items_.value;
+      const next_items = downloading
+        ? downloading_items.includes(item)
+          ? downloading_items
+          : downloading_items.concat(item)
+        : downloading_items.filter((downloading_item) => {
+            return downloading_item !== item;
+          });
+      if (next_items !== downloading_items) {
+        downloading_items_.as(next_items, { reset: true });
+      }
+    }
+
+    async function download_item(item) {
+      if (!item || downloading_items_.value.includes(item)) {
+        return;
+      }
+      set_item_downloading(item, true);
+      try {
+        const entry = collect_push_article_entries([item])[0];
+        if (!entry || !entry.url) {
+          throw new Error("推送缺少有效的文章地址");
+        }
+        const fetch_result = await fetch_scraper_output(entry.url);
+        if (fetch_result.error) {
+          throw fetch_result.error;
+        }
+        const article = build_download_article(
+          fetch_result.data || {},
+          entry,
+          credentials,
+        );
+        if (!article.bizuin || !article.mid || !article.user_name) {
+          throw new Error("文章信息不完整，无法创建下载任务");
+        }
+        if (!WXU.downloader || typeof WXU.downloader.create !== "function") {
+          throw new Error("下载器尚未就绪");
+        }
+        const [error, data] = await WXU.downloader.create([article], {
+          platform: "wxmp",
+        });
+        if (error) {
+          throw error;
+        }
+        if (data && data.skipped) {
+          return;
+        }
+        notify_download("success", "创建下载任务成功");
+      } catch (error) {
+        notify_download(
+          "error",
+          "创建下载任务失败: " +
+            (error && error.message ? error.message : String(error)),
+        );
+      } finally {
+        set_item_downloading(item, false);
+      }
+    }
 
     async function load_more() {
       if (loading_.value || !can_load_more_.value) {
@@ -518,10 +584,7 @@
       }
       const data = r.data || {};
       const items = parse_official_account_msg_list(data);
-      const has_next_offset =
-        Object.prototype.hasOwnProperty.call(data, "next_offset") &&
-        data.next_offset !== null &&
-        String(data.next_offset).trim() !== "";
+      const has_next_offset = !!data.next_offset;
       const next_offset = has_next_offset
         ? Number(data.next_offset)
         : Number.NaN;
@@ -563,11 +626,14 @@
     return {
       state: {
         can_load_more: can_load_more_,
+        download_notice: download_notice_,
+        downloading_items: downloading_items_,
         error: error_,
         items: items_,
         loading: loading_,
       },
       methods: {
+        downloadItem: download_item,
         ensureLoaded: ensure_loaded,
         loadMore: load_more,
       },
@@ -669,7 +735,6 @@
             content: [
               DownloaderPanelView({
                 store: vm$,
-                showStatusCounts: false,
               }),
             ],
           },
@@ -688,13 +753,6 @@
     );
   }
 
-  function popover_pos($btn) {
-    const { x, y, width } = $btn.getBoundingClientRect();
-    return {
-      x: x + width,
-      y: y - 48,
-    };
-  }
   function insert_download_button() {
     document.body.classList.add("wx-officialaccount-download-menu-mounted");
     var $wraps = document.querySelectorAll(".interaction_bar");
@@ -722,11 +780,12 @@
     console.log("before render(DownloaderEntry");
     WXU.downloader.show = function () {
       popover$.popper.setReference({
-        $el: {},
-        getRect() {},
+        $el: $btn,
+        getRect() {
+          return $btn.getBoundingClientRect();
+        },
       });
-      const pos = popover_pos($btn);
-      popover$.show(pos);
+      popover$.show();
     };
     WXU.downloader.hide = function () {
       popover$.hide();
@@ -857,7 +916,7 @@
 
     const msg_list_overlay = document.createElement("div");
     msg_list_overlay.style.cssText =
-      "display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
+      "display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
     const msg_list_panel_root = document.createElement("div");
     msg_list_panel_root.style.display = "contents";
     msg_list_overlay.appendChild(msg_list_panel_root);

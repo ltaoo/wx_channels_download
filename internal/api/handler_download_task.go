@@ -127,6 +127,7 @@ type CreateDownloadTaskByURLBody struct {
 	DownloadDir  string         `json:"download_dir"` // download directory
 	Filename     string         `json:"filename"`     // filename (optional, extracted from URL by default)
 	Config       map[string]any `json:"config"`       // custom download config
+	AutoStart    *bool          `json:"auto_start"`
 	ParentTaskID *int           `json:"parent_task_id"`
 	RelationType string         `json:"relation_type"`
 }
@@ -605,6 +606,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 	success_count := 0
 	fail_count := 0
 	skip_count := 0
+	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.create_download_task_single(body)
 		if err != nil {
@@ -613,6 +615,10 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					tasks = append(tasks, item)
 					if id > 0 {
 						ids = append(ids, id)
+						if body.AutoStart != nil && !*body.AutoStart {
+							c.broadcast_download_task_create(id)
+							manual_start_count++
+						}
 					}
 					if item.Code == api_code_success {
 						success_count++
@@ -640,7 +646,14 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 			tasks = append(tasks, download_task_create_success_item(data))
 			ids = append(ids, data.ID)
 			success_count++
+			if body.AutoStart != nil && !*body.AutoStart {
+				c.broadcast_download_task_create(data.ID)
+				manual_start_count++
+			}
 		}
+	}
+	if manual_start_count > 0 {
+		c.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -777,11 +790,13 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 		return nil, fmt.Errorf("创建端点失败: %w", err)
 	}
 
-	// Hand off to scheduler; task enters PREPARING first, transitions to DOWNLOADING after acquiring a concurrency slot.
-	if err := c.startCreatedDownloadTask(task.Id); err != nil {
-		return nil, fmt.Errorf("启动下载任务失败: %w", err)
+	// Hand off to scheduler when requested. Otherwise the persisted task remains waiting.
+	if body.AutoStart == nil || *body.AutoStart {
+		if err := c.startCreatedDownloadTask(task.Id); err != nil {
+			return nil, fmt.Errorf("启动下载任务失败: %w", err)
+		}
+		task.Status = model.TaskStatusPreparing // Hermes has written to DB; here we only update the in-memory variable for the response
 	}
-	task.Status = model.TaskStatusPreparing // Hermes has written to DB; here we only update the in-memory variable for the response
 
 	return gin.H{
 		"task":     task,
@@ -809,6 +824,7 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	tasks := make([]gin.H, 0, len(req.Objects))
 	success_count := 0
 	fail_count := 0
+	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskByURLSingle(body)
 		if err != nil {
@@ -818,7 +834,16 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 		} else {
 			tasks = append(tasks, gin.H{"success": true, "data": data})
 			success_count++
+			if body.AutoStart != nil && !*body.AutoStart {
+				if task, ok := data["task"].(model.DownloadTask); ok {
+					c.broadcast_download_task_create(task.Id)
+					manual_start_count++
+				}
+			}
 		}
+	}
+	if manual_start_count > 0 {
+		c.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().

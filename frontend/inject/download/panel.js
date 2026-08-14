@@ -40,8 +40,6 @@ function DownloaderEntry(props) {
         content: [
           DownloaderPanelView({
             store: vm$,
-            showStatusCounts: false,
-            showViewAll: true,
           }),
         ],
       },

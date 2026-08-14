@@ -134,21 +134,29 @@ var LogsPageModel = (() => {
     return rows;
   }
 
-  function json_object_field_text(value) {
+  function json_object_field(value) {
     const text = field_text(value);
     const normalized = text.trim();
     if (!normalized.startsWith("{") || !normalized.endsWith("}")) {
-      return "";
+      return null;
     }
     try {
       const parsed = JSON.parse(normalized);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return "";
+        return null;
       }
+      return {
+        text,
+        formatted_text: JSON.stringify(parsed, null, 2),
+      };
     } catch {
-      return "";
+      return null;
     }
-    return text;
+  }
+
+  function json_object_field_text(value) {
+    const json_field = json_object_field(value);
+    return json_field ? json_field.text : "";
   }
 
   async function write_clipboard(text) {
@@ -307,6 +315,16 @@ var LogsPageModel = (() => {
     const format_json_ = ref(true);
     const auto_refresh_ = ref(false);
     const last_loaded_at_ = ref("");
+    const json_preview_title_ = ref("JSON 预览");
+    const json_preview_text_ = ref("");
+    const json_preview_dialog_ = new Timeless.vm.DialogCore({
+      closeable: true,
+    });
+    const hide_json_preview_dialog = json_preview_dialog_.hide.bind(
+      json_preview_dialog_,
+    );
+    json_preview_dialog_.hide = (options = {}) =>
+      hide_json_preview_dialog({ destroy: false, ...options });
     let timer = null;
     let request_sequence = 0;
 
@@ -472,6 +490,22 @@ var LogsPageModel = (() => {
       isJsonFieldValue(value) {
         return json_object_field_text(value) !== "";
       },
+      showJsonFieldValue(field, value) {
+        const json_field = json_object_field(value);
+        if (!json_field) {
+          return false;
+        }
+        const field_name = String(field || "").trim();
+        json_preview_dialog_.show();
+        json_preview_title_.as(
+          field_name ? `${field_name} · JSON` : "JSON 预览",
+        );
+        json_preview_text_.as(json_field.formatted_text);
+        return true;
+      },
+      closeJsonFieldValue() {
+        json_preview_dialog_.hide();
+      },
       async copyJsonFieldValue(value) {
         const text = json_object_field_text(value);
         if (!text) {
@@ -512,11 +546,14 @@ var LogsPageModel = (() => {
         auto_refresh: auto_refresh_,
         last_loaded_at: last_loaded_at_,
         summary_text: summary_text_,
+        json_preview_title: json_preview_title_,
+        json_preview_text: json_preview_text_,
       },
       ui: {
         source: source_select_,
         level: level_select_,
         limit: limit_select_,
+        json_preview_dialog: json_preview_dialog_,
       },
       methods,
       ready: methods.ready,

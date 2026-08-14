@@ -7,86 +7,240 @@
   }
   const { decode_html_text, decode_official_account_url } = window.WXMPUtils;
 
+  function normalize_msg_cover_url(value) {
+    const decoded_url = decode_html_text(value).trim();
+    if (!decoded_url) {
+      return "";
+    }
+    try {
+      const cover_url = new URL(decoded_url, "https://mp.weixin.qq.com");
+      if (cover_url.protocol === "http:") {
+        cover_url.protocol = "https:";
+      }
+      return cover_url.protocol === "https:" ? cover_url.href : "";
+    } catch {
+      return "";
+    }
+  }
+
   function MsgListItem(props) {
+    const model = props.store;
     const item = props.item || {};
     const msg_info = item.app_msg_ext_info || {};
     const article_url = decode_official_account_url(msg_info.content_url);
+    const cover_url = normalize_msg_cover_url(msg_info.cover);
     const title = decode_html_text(msg_info.title) || "无标题";
     const digest = decode_html_text(msg_info.digest);
     const publish_time = Number(item.comm_msg_info?.datetime) || 0;
+    const downloading_ = computed(
+      model.state.downloading_items,
+      (downloading_items) => downloading_items.includes(item),
+    );
+    const download_idle_ = computed(
+      downloading_,
+      (downloading) => !downloading,
+    );
 
     return View(
       {
         style: {
+          display: "flex",
+          "align-items": "flex-start",
+          gap: "10px",
+          height: "100px",
           padding: "10px 12px",
+          overflow: "hidden",
+          "box-sizing": "border-box",
           "border-radius": "6px",
           background:
             "var(--popup-content-bg-color, var(--weui-BG-2, #f7f7f7))",
         },
       },
       [
+        Show({
+          when: Boolean(cover_url),
+          ok() {
+            return Img({
+              src: cover_url,
+              alt: title,
+              attributes: {
+                loading: "lazy",
+                referrerpolicy: "no-referrer",
+              },
+              style: {
+                width: "96px",
+                height: "72px",
+                "flex-shrink": "0",
+                "border-radius": "4px",
+                "object-fit": "cover",
+                background: "var(--weui-BG-3, #ededed)",
+              },
+              onError(event) {
+                event.target.style.display = "none";
+              },
+            });
+          },
+        }),
         View(
           {
             style: {
-              "font-size": "14px",
-              "font-weight": "500",
-              "margin-bottom": "4px",
-              color: "var(--weui-FG-0)",
+              display: "flex",
+              "flex-direction": "column",
+              "justify-content": "space-between",
+              "align-self": "stretch",
+              flex: "1",
+              "min-width": "0",
             },
           },
           [
-            article_url
-              ? View(
-                  {
-                    type: "a",
-                    attributes: {
-                      href: article_url,
-                      target: "_blank",
-                      rel: "noopener noreferrer",
-                    },
-                    style: {
-                      color: "inherit",
-                      "text-decoration": "none",
-                    },
-                  },
-                  [title],
-                )
-              : title,
-          ],
-        ),
-        Show({
-          when: Boolean(digest),
-          ok() {
-            return View(
+            View(
               {
                 style: {
-                  "font-size": "12px",
-                  color: "var(--weui-FG-1, #888)",
-                  "margin-bottom": "4px",
-                },
-              },
-              [digest],
-            );
-          },
-        }),
-        Show({
-          when: publish_time > 0,
-          ok() {
-            return View(
-              {
-                style: {
-                  "font-size": "11px",
-                  color: "var(--weui-FG-1, #aaa)",
+                  "min-height": "0",
+                  overflow: "hidden",
                 },
               },
               [
-                Timeless.utils
-                  .dayjs(publish_time * 1000)
-                  .format("YYYY-MM-DD HH:mm"),
+                View(
+                  {
+                    style: {
+                      display: "-webkit-box",
+                      overflow: "hidden",
+                      "font-size": "14px",
+                      "font-weight": "500",
+                      "line-height": "18px",
+                      "margin-bottom": "4px",
+                      color: "var(--weui-FG-0)",
+                      "overflow-wrap": "anywhere",
+                      "white-space": "normal",
+                      "-webkit-box-orient": "vertical",
+                      "-webkit-line-clamp": "2",
+                    },
+                  },
+                  [
+                    article_url
+                      ? View(
+                          {
+                            type: "a",
+                            attributes: {
+                              href: article_url,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                            },
+                            style: {
+                              color: "inherit",
+                              "text-decoration": "none",
+                            },
+                          },
+                          [title],
+                        )
+                      : title,
+                  ],
+                ),
+                Show({
+                  when: Boolean(digest),
+                  ok() {
+                    return View(
+                      {
+                        style: {
+                          "font-size": "12px",
+                          color: "var(--weui-FG-1, #888)",
+                          display: "-webkit-box",
+                          overflow: "hidden",
+                          "line-height": "16px",
+                          "-webkit-box-orient": "vertical",
+                          "-webkit-line-clamp": "1",
+                        },
+                      },
+                      [digest],
+                    );
+                  },
+                }),
               ],
-            );
-          },
-        }),
+            ),
+            View(
+              {
+                style: {
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "space-between",
+                  "min-height": "22px",
+                },
+              },
+              [
+                Show({
+                  when: publish_time > 0,
+                  ok() {
+                    return View(
+                      {
+                        style: {
+                          "font-size": "11px",
+                          color: "var(--weui-FG-1, #aaa)",
+                          "white-space": "nowrap",
+                        },
+                      },
+                      [
+                        Timeless.utils
+                          .dayjs(publish_time * 1000)
+                          .format("YYYY-MM-DD HH:mm"),
+                      ],
+                    );
+                  },
+                }),
+                Button(
+                  {
+                    disabled: downloading_,
+                    attributes: {
+                      type: "button",
+                      "aria-label": "下载 " + title,
+                    },
+                    style: {
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "flex-shrink": "0",
+                      margin: "0",
+                      padding: "2px 6px",
+                      border: "1px solid var(--weui-FG-6, #ddd)",
+                      "border-radius": "4px",
+                      background: "var(--weui-BG-2, #f7f7f7)",
+                      color: "var(--weui-FG-0)",
+                      cursor: "pointer",
+                      "font-size": "11px",
+                      "line-height": "16px",
+                      "white-space": "nowrap",
+                    },
+                    onClick(event) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      model.methods.downloadItem(item);
+                    },
+                  },
+                  [
+                    Show({
+                      when: downloading_,
+                      ok() {
+                        return View({
+                          class: "weui-loading",
+                          style: {
+                            width: "12px",
+                            height: "12px",
+                            margin: "0",
+                          },
+                        });
+                      },
+                    }),
+                    Show({
+                      when: download_idle_,
+                      ok() {
+                        return Timeless.Icon({ name: "download", size: 12 });
+                      },
+                    }),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -146,16 +300,37 @@
       {
         class: "wx-dl-panel-container",
         onMounted() {
-          return model.state.error.subscribe({
+          const unsubscribe_error = model.state.error.subscribe({
             onChange(error) {
-              if (error) {
-                WXU.error({
-                  msg: "获取推送列表失败: " + error,
-                  source: "mp.components.js:MsgListPanel",
-                });
+              if (!error) {
+                return;
               }
+              WXU.error({
+                msg: "获取推送列表失败: " + error,
+                source: "mp.components.js:MsgListPanel",
+              });
             },
           });
+          const unsubscribe_download_notice =
+            model.state.download_notice.subscribe({
+              onChange(notice) {
+                if (!notice || !notice.message) {
+                  return;
+                }
+                if (notice.type === "error") {
+                  WXU.error({
+                    msg: notice.message,
+                    source: "mp.components.js:MsgListPanel.downloadItem",
+                  });
+                  return;
+                }
+                WXU.toast(notice.message);
+              },
+            });
+          return () => {
+            unsubscribe_error();
+            unsubscribe_download_notice();
+          };
         },
       },
       [
@@ -256,7 +431,7 @@
                   size: 6,
                   buffer: 4,
                   gutter: 8,
-                  itemHeight: 82,
+                  itemHeight: 100,
                   paddingBottom: 0,
                   each: model.state.items,
                   onReachBottom: load_more_on_reach_bottom,
@@ -265,6 +440,7 @@
                       item_ && item_.value !== undefined ? item_.value : item_;
                     return MsgListItem({
                       item,
+                      store: model,
                     });
                   },
                 });

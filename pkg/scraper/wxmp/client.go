@@ -61,8 +61,10 @@ func (c *Client) FetchArticle(raw_url string) (*WechatOfficialArticle, error) {
 		if fallback_err != nil {
 			return nil, err
 		}
+		apply_article_url_identifiers(article, raw_url)
 		return article, nil
 	}
+	apply_cgi_data_url_identifiers(data, raw_url)
 	if publish_time_text == "" {
 		publish_time_text = format_publish_time(data.CreateTime, int(data.OriCreateTime))
 	}
@@ -155,6 +157,10 @@ func new_wechat_official_article(data *CgiDataNew, publish_time_text string) *We
 		return &WechatOfficialArticle{}
 	}
 	article := &WechatOfficialArticle{
+		BizUin:              data.BizUin,
+		Mid:                 data.Mid,
+		Idx:                 data.Idx,
+		Sn:                  data.Sn,
 		Type:                data.PageType,
 		Title:               data.Title,
 		Content:             data.ContentNoEncode,
@@ -174,6 +180,54 @@ func new_wechat_official_article(data *CgiDataNew, publish_time_text string) *We
 		}
 	}
 	return article
+}
+
+func apply_cgi_data_url_identifiers(data *CgiDataNew, raw_url string) {
+	if data == nil {
+		return
+	}
+	parsed_url, err := url.Parse(raw_url)
+	if err != nil {
+		return
+	}
+	query := parsed_url.Query()
+	if data.BizUin == "" {
+		data.BizUin = query.Get("__biz")
+	}
+	if data.Mid == 0 {
+		data.Mid = parse_flexible_int(query.Get("mid"))
+	}
+	if data.Idx == 0 {
+		data.Idx = parse_flexible_int(query.Get("idx"))
+	}
+	if data.Sn == "" {
+		data.Sn = query.Get("sn")
+	}
+}
+
+func apply_article_url_identifiers(article *WechatOfficialArticle, raw_url string) {
+	if article == nil {
+		return
+	}
+	data := &CgiDataNew{
+		BizUin: article.BizUin,
+		Mid:    article.Mid,
+		Idx:    article.Idx,
+		Sn:     article.Sn,
+	}
+	apply_cgi_data_url_identifiers(data, raw_url)
+	article.BizUin = data.BizUin
+	article.Mid = data.Mid
+	article.Idx = data.Idx
+	article.Sn = data.Sn
+}
+
+func parse_flexible_int(value string) FlexibleInt {
+	parsed_value, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return FlexibleInt(parsed_value)
 }
 
 func ExtractArticleID(raw_url string) string {
@@ -318,6 +372,7 @@ func (c *Client) fetch_msg_list(logger zerolog.Logger, acct *OfficialAccount, of
 	}
 	target_url := c.BuildMsgListURL(acct, offset)
 	referer := c.BuildMsgListReferer(acct)
+	logger.Info().Str("url", target_url).Msg("fetch msg list: request")
 	response, err := c.Fetch(target_url, referer)
 	if err != nil {
 		kind := ErrorKindFetchMessage
@@ -353,7 +408,7 @@ func (c *Client) fetch_msg_list(logger zerolog.Logger, acct *OfficialAccount, of
 		}
 		return nil, new_scraper_error(ErrorKindFetchMessage, message, nil)
 	}
-	logger.Info().Int("ret", data.Ret).Msg("fetch msg list: completed")
+	logger.Info().Int("ret", data.Ret).RawJSON("response", response_body).Msg("fetch msg list: completed")
 	return &data, nil
 }
 
