@@ -14,33 +14,33 @@ import (
 )
 
 func (c *APIClient) handle_influencer_list(ctx *gin.Context) {
-	pageStr := ctx.Query("page")
-	sizeStr := ctx.Query("page_size")
+	page_str := ctx.Query("page")
+	size_str := ctx.Query("page_size")
 	page := 1
 	size := 20
-	if pageStr != "" {
-		if v, err := strconv.Atoi(pageStr); err == nil && v > 0 {
-			page = v
+	if page_str != "" {
+		if value, err := strconv.Atoi(page_str); err == nil && value > 0 {
+			page = value
 		}
 	}
-	if sizeStr != "" {
-		if v, err := strconv.Atoi(sizeStr); err == nil && v > 0 {
-			size = v
+	if size_str != "" {
+		if value, err := strconv.Atoi(size_str); err == nil && value > 0 {
+			size = value
 		}
 	}
 
 	// Use service
-	pageResult, err := c.account_service.ListInfluencers(page, size)
+	page_result, err := c.account_service.ListInfluencers(page, size)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, pageResult)
+	result.Ok(ctx, page_result)
 }
 
 func (c *APIClient) handle_influencer_get(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.Atoi(idStr)
+	id_str := ctx.Param("id")
+	id, err := strconv.Atoi(id_str)
 	if err != nil || id <= 0 {
 		result.Err(ctx, 400, "invalid id")
 		return
@@ -60,9 +60,21 @@ func (c *APIClient) handle_influencer_get(ctx *gin.Context) {
 }
 
 type influencerCreateBody struct {
-	Name        string `json:"name"`
-	AvatarURL   string `json:"avatar_url"`
-	Description string `json:"description"`
+	Name               string  `json:"name"`
+	Alias              string  `json:"alias"`
+	AvatarURL          string  `json:"avatar_url"`
+	Sex                int     `json:"sex"`
+	Description        string  `json:"description"`
+	Biography          string  `json:"biography"`
+	ProfilePath        string  `json:"profile_path"`
+	Birthday           string  `json:"birthday"`
+	PlaceOfBirth       string  `json:"place_of_birth"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Profile            string  `json:"profile"`
+	TMDBId             *string `json:"tmdb_id"`
+	DoubanId           *string `json:"douban_id"`
+	IMDBId             *string `json:"imdb_id"`
+	MetadataJSON       string  `json:"metadata_json"`
 }
 
 func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
@@ -78,9 +90,21 @@ func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
 
 	// Use service
 	influencer, err := c.account_service.CreateInfluencer(&services.CreateInfluencerInput{
-		Name:        body.Name,
-		AvatarURL:   body.AvatarURL,
-		Description: body.Description,
+		Name:               body.Name,
+		Alias:              body.Alias,
+		AvatarURL:          body.AvatarURL,
+		Sex:                body.Sex,
+		Description:        body.Description,
+		Biography:          body.Biography,
+		ProfilePath:        body.ProfilePath,
+		Birthday:           body.Birthday,
+		PlaceOfBirth:       body.PlaceOfBirth,
+		KnownForDepartment: body.KnownForDepartment,
+		Profile:            body.Profile,
+		TMDBId:             body.TMDBId,
+		DoubanId:           body.DoubanId,
+		IMDBId:             body.IMDBId,
+		MetadataJSON:       body.MetadataJSON,
 	})
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -90,14 +114,26 @@ func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
 }
 
 type influencerUpdateBody struct {
-	Name        string `json:"name"`
-	AvatarURL   string `json:"avatar_url"`
-	Description string `json:"description"`
+	Name               string  `json:"name"`
+	Alias              string  `json:"alias"`
+	AvatarURL          string  `json:"avatar_url"`
+	Sex                *int    `json:"sex"`
+	Description        string  `json:"description"`
+	Biography          string  `json:"biography"`
+	ProfilePath        string  `json:"profile_path"`
+	Birthday           string  `json:"birthday"`
+	PlaceOfBirth       string  `json:"place_of_birth"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Profile            string  `json:"profile"`
+	TMDBId             *string `json:"tmdb_id"`
+	DoubanId           *string `json:"douban_id"`
+	IMDBId             *string `json:"imdb_id"`
+	MetadataJSON       string  `json:"metadata_json"`
 }
 
 func (c *APIClient) handle_influencer_update(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.Atoi(idStr)
+	id_str := ctx.Param("id")
+	id, err := strconv.Atoi(id_str)
 	if err != nil || id <= 0 {
 		result.Err(ctx, 400, "invalid id")
 		return
@@ -110,9 +146,21 @@ func (c *APIClient) handle_influencer_update(ctx *gin.Context) {
 
 	// Use service
 	influencer, err := c.account_service.UpdateInfluencer(id, &services.UpdateInfluencerInput{
-		Name:        body.Name,
-		AvatarURL:   body.AvatarURL,
-		Description: body.Description,
+		Name:               body.Name,
+		Alias:              body.Alias,
+		AvatarURL:          body.AvatarURL,
+		Sex:                body.Sex,
+		Description:        body.Description,
+		Biography:          body.Biography,
+		ProfilePath:        body.ProfilePath,
+		Birthday:           body.Birthday,
+		PlaceOfBirth:       body.PlaceOfBirth,
+		KnownForDepartment: body.KnownForDepartment,
+		Profile:            body.Profile,
+		TMDBId:             body.TMDBId,
+		DoubanId:           body.DoubanId,
+		IMDBId:             body.IMDBId,
+		MetadataJSON:       body.MetadataJSON,
 	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

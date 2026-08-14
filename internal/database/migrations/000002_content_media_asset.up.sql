@@ -821,3 +821,130 @@ CREATE INDEX IF NOT EXISTS `idx_content_conversation_message_part_type`
 ON `content_conversation_message_part` (`type`);
 CREATE INDEX IF NOT EXISTS `idx_content_conversation_message_part_deleted_at`
 ON `content_conversation_message_part` (`deleted_at`);
+
+-- TMDB-style series and episode profiles. Episodes and series remain normal
+-- content rows and are connected through content_relation.
+CREATE TABLE IF NOT EXISTS `content_episode` (
+  `id` TEXT PRIMARY KEY,
+  `media_type` INTEGER NOT NULL DEFAULT 1,
+  `name` TEXT,
+  `original_name` TEXT,
+  `overview` TEXT,
+  `air_date` TEXT,
+  `still_path` TEXT,
+  `sort_order` INTEGER NOT NULL DEFAULT 0,
+  `runtime` INTEGER NOT NULL DEFAULT 0,
+  `duration` INTEGER NOT NULL DEFAULT 0,
+  `season_number` INTEGER NOT NULL DEFAULT 1,
+  `episode_number` TEXT,
+  `long_title` TEXT,
+  `section_id` INTEGER NOT NULL DEFAULT 0,
+  `section_type` INTEGER NOT NULL DEFAULT 0,
+  `badge` TEXT,
+  `vote_average` REAL NOT NULL DEFAULT 0,
+  `vote_count` INTEGER NOT NULL DEFAULT 0,
+  `production_code` TEXT,
+  `tmdb_id` TEXT,
+  `douban_id` TEXT,
+  `imdb_id` TEXT,
+  `metadata_json` TEXT,
+  FOREIGN KEY (`id`) REFERENCES `content` (`id`)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_episode_tmdb_id`
+ON `content_episode` (`tmdb_id`) WHERE `tmdb_id` IS NOT NULL AND `tmdb_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_episode_douban_id`
+ON `content_episode` (`douban_id`) WHERE `douban_id` IS NOT NULL AND `douban_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_episode_imdb_id`
+ON `content_episode` (`imdb_id`) WHERE `imdb_id` IS NOT NULL AND `imdb_id` <> '';
+
+CREATE TABLE IF NOT EXISTS `content_series` (
+  `id` TEXT PRIMARY KEY,
+  `media_type` INTEGER NOT NULL DEFAULT 1,
+  `name` TEXT,
+  `original_name` TEXT,
+  `alias` TEXT,
+  `overview` TEXT,
+  `poster_path` TEXT,
+  `backdrop_path` TEXT,
+  `air_date` TEXT,
+  `original_language` TEXT,
+  `origin_country_json` TEXT,
+  `genres_json` TEXT,
+  `sort_order` INTEGER NOT NULL DEFAULT 0,
+  `source_count` INTEGER NOT NULL DEFAULT 0,
+  `episode_count` INTEGER NOT NULL DEFAULT 0,
+  `section_count` INTEGER NOT NULL DEFAULT 0,
+  `season_count` INTEGER NOT NULL DEFAULT 1,
+  `vote_average` REAL NOT NULL DEFAULT 0,
+  `vote_count` INTEGER NOT NULL DEFAULT 0,
+  `popularity` REAL NOT NULL DEFAULT 0,
+  `in_production` INTEGER NOT NULL DEFAULT 0,
+  `status` TEXT,
+  `tips` TEXT,
+  `homepage` TEXT,
+  `tagline` TEXT,
+  `tmdb_id` TEXT,
+  `douban_id` TEXT,
+  `imdb_id` TEXT,
+  `metadata_json` TEXT,
+  FOREIGN KEY (`id`) REFERENCES `content` (`id`)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_series_tmdb_id`
+ON `content_series` (`tmdb_id`) WHERE `tmdb_id` IS NOT NULL AND `tmdb_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_series_douban_id`
+ON `content_series` (`douban_id`) WHERE `douban_id` IS NOT NULL AND `douban_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_content_series_imdb_id`
+ON `content_series` (`imdb_id`) WHERE `imdb_id` IS NOT NULL AND `imdb_id` <> '';
+
+-- Influencer is the local person profile. One person can hold multiple roles
+-- in the same series; role-specific context belongs in metadata_json.
+ALTER TABLE `influencer` ADD COLUMN `alias` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `biography` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `profile_path` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `birthday` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `place_of_birth` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `known_for_department` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `profile` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `tmdb_id` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `douban_id` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `imdb_id` TEXT;
+ALTER TABLE `influencer` ADD COLUMN `metadata_json` TEXT;
+
+CREATE INDEX IF NOT EXISTS `idx_influencer_name` ON `influencer` (`name`);
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_influencer_tmdb_id`
+ON `influencer` (`tmdb_id`) WHERE `tmdb_id` IS NOT NULL AND `tmdb_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_influencer_douban_id`
+ON `influencer` (`douban_id`) WHERE `douban_id` IS NOT NULL AND `douban_id` <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_influencer_imdb_id`
+ON `influencer` (`imdb_id`) WHERE `imdb_id` IS NOT NULL AND `imdb_id` <> '';
+
+ALTER TABLE `content_influencer` RENAME TO `content_influencer_legacy`;
+
+CREATE TABLE `content_influencer` (
+  `content_id` TEXT NOT NULL,
+  `influencer_id` INTEGER NOT NULL,
+  `role` TEXT NOT NULL DEFAULT 'creator',
+  `sort_order` INTEGER NOT NULL DEFAULT 0,
+  `metadata_json` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (`content_id`, `influencer_id`, `role`),
+  FOREIGN KEY (`content_id`) REFERENCES `content` (`id`),
+  FOREIGN KEY (`influencer_id`) REFERENCES `influencer` (`id`)
+);
+
+INSERT OR IGNORE INTO `content_influencer` (
+  `content_id`, `influencer_id`, `role`, `created_at`, `updated_at`
+)
+SELECT
+  `content_id`, `influencer_id`, COALESCE(NULLIF(TRIM(`role`), ''), 'creator'), `created_at`, `created_at`
+FROM `content_influencer_legacy`;
+
+DROP TABLE `content_influencer_legacy`;
+
+CREATE INDEX IF NOT EXISTS `idx_content_influencer_influencer`
+ON `content_influencer` (`influencer_id`);
+CREATE INDEX IF NOT EXISTS `idx_content_influencer_content_role`
+ON `content_influencer` (`content_id`, `role`, `sort_order`);

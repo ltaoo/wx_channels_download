@@ -97,11 +97,28 @@ const (
 // Data when a fetch result contains more than one item. Relation optionally
 // links that item to the fetch result's root Content.
 type ContentDetail struct {
-	Type     string                 `json:"type"`
-	Key      string                 `json:"key"`
-	Data     any                    `json:"data"`
-	Content  *model.Content         `json:"content,omitempty"`
-	Relation *model.ContentRelation `json:"relation,omitempty"`
+	Type        string                       `json:"type"`
+	Key         string                       `json:"key"`
+	Data        any                          `json:"data"`
+	Content     *model.Content               `json:"content,omitempty"`
+	Relation    *model.ContentRelation       `json:"relation,omitempty"`
+	Influencers []ContentInfluencerReference `json:"influencers,omitempty"`
+}
+
+// ContentInfluencerReference groups one person with every role they have in a
+// related content item. The service resolves or creates the Influencer before
+// persisting the role records.
+type ContentInfluencerReference struct {
+	Influencer *model.Influencer       `json:"influencer"`
+	Roles      []ContentInfluencerRole `json:"roles"`
+}
+
+// ContentInfluencerRole describes one independently addressable role. Multiple
+// rows are allowed for the same content and influencer.
+type ContentInfluencerRole struct {
+	Role         string `json:"role"`
+	SortOrder    int    `json:"sort_order"`
+	MetadataJSON string `json:"metadata_json"`
 }
 
 // FetchArtifact is a platform-neutral piece of a fetch result. Context-aware

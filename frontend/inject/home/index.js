@@ -331,18 +331,12 @@ function HomeContentCard(props) {
 }
 
 function HomeContentRelationNode(props) {
-  const vm$ = props.store;
   const node = props.node || {};
-  return Button(
+  return View(
     {
       class: "wx-home-content-relation-node",
-      disabled: !node.has_url,
       attributes: {
-        type: "button",
-        title: node.has_url ? node.url : node.id,
-      },
-      onClick() {
-        vm$.methods.openDetailURL(node.url);
+        title: node.has_url ? node.url : node.id || node.title,
       },
     },
     [
@@ -351,6 +345,88 @@ function HomeContentRelationNode(props) {
       View({ class: "wx-home-content-relation-node-meta" }, [node.meta_text]),
     ],
   );
+}
+
+function HomeContentInfluencerEntity(props) {
+  const node = props.node || {};
+  return View(
+    {
+      class: [
+        "wx-home-content-influencer-entity",
+        props.content ? "is-content" : "is-influencer",
+      ].join(" "),
+    },
+    [
+      View({ class: "wx-home-content-influencer-entity-type" }, [
+        node.type_name,
+      ]),
+      View({ class: "wx-home-content-influencer-entity-title" }, [node.title]),
+    ],
+  );
+}
+
+function HomeContentInfluencers(props) {
+  const vm$ = props.store;
+  const influencers = vm$.state.content_relations.influencers;
+  return Show({
+    when: influencers.present,
+    ok() {
+      return View({ class: "wx-home-content-influencers" }, [
+        View({ class: "wx-home-content-influencer-heading" }, [
+          View({ class: "wx-home-content-influencer-title" }, [
+            Timeless.Icon({ name: "user", size: 12 }),
+            "相关人物",
+          ]),
+          View({ class: "wx-home-content-influencer-count" }, [
+            influencers.count_text,
+          ]),
+        ]),
+        View(
+          {
+            class:
+              "wx-home-content-relation-list wx-home-content-influencer-list",
+          },
+          [
+            For({
+              key: "key",
+              each: influencers.items,
+              render(relation_) {
+                const relation = HomeDetailValue(relation_);
+                return View(
+                  {
+                    class:
+                      "wx-home-content-relation wx-home-content-influencer-relation",
+                  },
+                  [
+                    View({ class: "wx-home-content-relation-flow" }, [
+                      HomeContentInfluencerEntity({
+                        node: relation.source,
+                      }),
+                      View({ class: "wx-home-content-relation-edge" }, [
+                        Timeless.Icon({ name: "arrow-right", size: 11 }),
+                        View(
+                          { class: "wx-home-content-relation-edge-name" },
+                          [relation.role_text],
+                        ),
+                        View(
+                          { class: "wx-home-content-relation-edge-type" },
+                          [relation.type],
+                        ),
+                      ]),
+                      HomeContentInfluencerEntity({
+                        node: relation.target,
+                        content: true,
+                      }),
+                    ]),
+                  ],
+                );
+              },
+            }),
+          ],
+        ),
+      ]);
+    },
+  });
 }
 
 function HomeContentRelations(props) {
@@ -372,28 +448,69 @@ function HomeContentRelations(props) {
           ]),
           View({ class: "wx-home-detail-badge" }, [relations.count_text]),
         ]),
-        View({ class: "wx-home-content-relation-list" }, [
-          For({
-            key: "key",
-            each: relations.items,
-            render(relation_) {
-              const relation = HomeDetailValue(relation_);
-              return View({ class: "wx-home-content-relation" }, [
-                HomeContentRelationNode({ store: vm$, node: relation.source }),
-                View({ class: "wx-home-content-relation-edge" }, [
-                  Timeless.Icon({ name: "arrow-right", size: 15 }),
-                  View({ class: "wx-home-content-relation-edge-name" }, [
-                    relation.type_name,
-                  ]),
-                  View({ class: "wx-home-content-relation-edge-type" }, [
-                    relation.type,
-                  ]),
-                ]),
-                HomeContentRelationNode({ store: vm$, node: relation.target }),
-              ]);
-            },
-          }),
-        ]),
+        Show({
+          when: relations.content_present,
+          ok() {
+            return View(
+              {
+                class: "wx-home-content-relation-list",
+              },
+              [
+                For({
+                  key: "key",
+                  each: relations.items,
+                  render(chain_) {
+                    const chain = HomeDetailValue(chain_);
+                    return View({ class: "wx-home-content-relation" }, [
+                      View({ class: "wx-home-content-relation-path" }, [
+                        chain.type_path_text,
+                      ]),
+                      View({ class: "wx-home-content-relation-flow" }, [
+                        For({
+                          key: "key",
+                          each: chain.segments,
+                          render(segment_) {
+                            const segment = HomeDetailValue(segment_);
+                            if (segment.kind === "node") {
+                              return HomeContentRelationNode({
+                                node: segment.node,
+                              });
+                            }
+                            const edge = segment.edge || {};
+                            return View(
+                              { class: "wx-home-content-relation-edge" },
+                              [
+                                Timeless.Icon({
+                                  name: "arrow-right",
+                                  size: 15,
+                                }),
+                                View(
+                                  {
+                                    class:
+                                      "wx-home-content-relation-edge-name",
+                                  },
+                                  [edge.type_name],
+                                ),
+                                View(
+                                  {
+                                    class:
+                                      "wx-home-content-relation-edge-type",
+                                  },
+                                  [edge.type],
+                                ),
+                              ],
+                            );
+                          },
+                        }),
+                      ]),
+                    ]);
+                  },
+                }),
+              ],
+            );
+          },
+        }),
+        HomeContentInfluencers({ store: vm$ }),
       ]);
     },
   });

@@ -5,22 +5,19 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	"wx_channel/pkg/scraper/bilibili"
-	"wx_channel/pkg/util"
 )
 
-const platformIDBilibili = "bilibili"
+const platform_id_bilibili = "bilibili"
 
 // PlatformID is the platform identifier for bilibili.
-const PlatformID = platformIDBilibili
+const PlatformID = platform_id_bilibili
 
 func init() {
 	adapter.Register(&handler{})
@@ -33,10 +30,11 @@ type handler struct {
 }
 
 var (
-	_ adapter.PlatformAdapter      = (*handler)(nil)
-	_ adapter.ProgressFetchAdapter = (*handler)(nil)
-	_ adapter.RuntimeAdapter       = (*handler)(nil)
-	_ adapter.RuntimeHandle        = (*handler)(nil)
+	_ adapter.PlatformAdapter          = (*handler)(nil)
+	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+	_ adapter.RuntimeAdapter           = (*handler)(nil)
+	_ adapter.RuntimeHandle            = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -122,26 +120,27 @@ func (h *handler) fetch(raw_url string, request_id string) (any, error) {
 		request_logger := logger.With().Str("job_id", request_id).Logger()
 		logger = &request_logger
 	}
-	return bilibili.NewClientWithLogger(cookie, logger).GetVideoInfo(raw_url, 0)
+	client := bilibili.NewClientWithLogger(cookie, logger)
+	return client.Fetch(raw_url)
 }
 
-func (h *handler) BuildBrowseHistory(contentJSON json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+func (h *handler) BuildBrowseHistory(_ json.RawMessage) (*adapter.BrowseHistoryResult, error) {
 	return nil, adapter.ErrBrowseHistoryNotSupported
 }
 
-type bilibiliContentJSON struct {
+type bilibili_content_json struct {
 	URL     string `json:"url"`
 	PageNum int    `json:"page_num"`
 }
 
-func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.RawMessage) (*adapter.DownloadTaskResult, error) {
+func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
-	if err := json.Unmarshal(configRaw, &config); err != nil {
+	if err := json.Unmarshal(config_raw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
-	var input bilibiliContentJSON
-	if err := json.Unmarshal(contentJSON, &input); err != nil {
+	var input bilibili_content_json
+	if err := json.Unmarshal(content_json, &input); err != nil {
 		return nil, fmt.Errorf("解析B站URL失败: %w", err)
 	}
 	if input.URL == "" {
@@ -150,182 +149,30 @@ func (h *handler) BuildDownloadTask(contentJSON json.RawMessage, configRaw json.
 
 	cookie := h.config_string("bilibili.cookie")
 
-	// Call scraper to get video info
 	client := bilibili.NewClientWithLogger(cookie, h.get_logger())
-	videoInfos, err := client.GetVideoInfo(input.URL, input.PageNum)
+	if bilibili.IsBangumiPlayURL(input.URL) {
+		data, err := client.Fetch(input.URL)
+		if err != nil {
+			return nil, fmt.Errorf("获取B站番剧信息失败: %w", err)
+		}
+		bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(data)
+		if err != nil {
+			return nil, fmt.Errorf("解析B站番剧信息失败: %w", err)
+		}
+		if !is_bangumi {
+			return nil, fmt.Errorf("B站番剧返回了不支持的数据类型 %T", data)
+		}
+		bangumi_info.SourceURL = input.URL
+		return build_task_from_bangumi_info(bangumi_info, config)
+	}
+
+	video_infos, err := client.GetVideoInfo(input.URL, input.PageNum)
 	if err != nil {
 		return nil, fmt.Errorf("获取B站视频信息失败: %w", err)
 	}
-	if len(videoInfos) == 0 {
+	if len(video_infos) == 0 {
 		return nil, fmt.Errorf("未获取到B站视频")
 	}
 
-	return buildTaskFromVideoInfo(videoInfos[0], input.URL, config)
-}
-
-func buildTaskFromVideoInfo(info *bilibili.VideoInfo, sourceURL string, config map[string]any) (*adapter.DownloadTaskResult, error) {
-	now := util.NowMillis()
-
-	content := &model.Content{
-		Id:         BuildContentID(info.VideoID),
-		PlatformId: platformIDBilibili,
-		ExternalId: info.VideoID,
-		Type:       "video",
-		Title:      info.Title,
-		URL:        info.URL,
-		CoverURL:   info.CoverURL,
-		SourceURL:  sourceURL,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	account := &model.Account{
-		Id:         BuildAccountID(info.VideoID),
-		PlatformId: platformIDBilibili,
-		ExternalId: info.VideoID,
-		Nickname:   "B站用户",
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	title, _ := config["filename"].(string)
-	if title == "" {
-		title = info.Title
-	}
-
-	download_dir, _ := config["download_dir"].(string)
-	if download_dir == "" {
-		download_dir = "/downloads/bilibili"
-	}
-
-	configJSON, _ := json.Marshal(buildConfigJSON(config))
-	metadataJSON, _ := json.Marshal(map[string]any{
-		"platform":    PlatformID,
-		"external_id": info.VideoID,
-		"title":       info.Title,
-		"download_at": time.Now().Unix(),
-	})
-
-	extraJSON := buildExtraJSON(info.VideoID, info.Title)
-	contentID := content.Id
-
-	var resources []*adapter.ResourceInfo
-
-	// Cover resource (optional)
-	downloadCover, _ := config["download_cover"].(bool)
-	if downloadCover && info.CoverURL != "" {
-		coverResource := model.DownloadResource{
-			ContentId: &contentID,
-			Name:      title,
-			Kind:      "image",
-			UniqueID:  info.VideoID + "_cover",
-			Extra:     extraJSON,
-		}
-		resources = append(resources, &adapter.ResourceInfo{
-			Resource: coverResource,
-			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
-				URL:      info.CoverURL,
-				Enabled:  1,
-			}},
-		})
-	}
-
-	// Video resource
-	videoResource := model.DownloadResource{
-		ContentId: &contentID,
-		Name:      title,
-		Kind:      "video",
-		UniqueID:  info.VideoID,
-		Extra:     extraJSON,
-	}
-	videoEndpoint := model.DownloadEndpoint{
-		Protocol: "https",
-		URL:      info.URL,
-		Enabled:  1,
-	}
-	resources = append(resources, &adapter.ResourceInfo{
-		Resource:  videoResource,
-		Endpoints: []model.DownloadEndpoint{videoEndpoint},
-		ContentAssets: []adapter.ContentAssetReference{{
-			Kind:     model.ContentAssetKindVideo,
-			Role:     model.ContentAssetRoleVideoVariant,
-			AssetKey: "default",
-			Relation: model.DownloadResourceAssetRelationSource,
-		}},
-	})
-
-	// DASH audio resource (anime/courses etc.)
-	if info.AudioURL != "" {
-		audioResource := model.DownloadResource{
-			ContentId:  &contentID,
-			Name:       title + "_audio",
-			Kind:       "audio",
-			UniqueID:   info.VideoID + "_audio",
-			MergeOrder: 1,
-			Extra:      extraJSON,
-		}
-		resources = append(resources, &adapter.ResourceInfo{
-			Resource: audioResource,
-			Endpoints: []model.DownloadEndpoint{{
-				Protocol: "https",
-				URL:      info.AudioURL,
-				Enabled:  1,
-			}},
-			ContentAssets: []adapter.ContentAssetReference{{
-				Kind:     model.ContentAssetKindAudio,
-				Role:     model.ContentAssetRoleAudioVariant,
-				AssetKey: info.VideoID + "_audio",
-				Relation: model.DownloadResourceAssetRelationSource,
-			}},
-		})
-	}
-
-	return &adapter.DownloadTaskResult{
-		Task: &model.DownloadTask{
-			ContentId:    &content.Id,
-			Name:         title,
-			UniqueID:     info.VideoID,
-			PlatformId:   PlatformID,
-			Status:       model.TaskStatusWaiting,
-			ConfigJSON:   string(configJSON),
-			MetadataJSON: string(metadataJSON),
-		},
-		Resources: resources,
-		ContentDetail: &model.ContentVideo{
-			Id:     content.Id,
-			URL:    info.URL,
-			Format: "mp4",
-		},
-		Account: account,
-		Content: content,
-	}, nil
-}
-
-func BuildContentID(externalID string) string {
-	return platformIDBilibili + ":" + externalID
-}
-
-func BuildAccountID(externalID string) string {
-	return platformIDBilibili + ":" + externalID
-}
-
-func buildExtraJSON(id, title string) string {
-	data, _ := json.Marshal(map[string]string{
-		"id":    id,
-		"title": title,
-	})
-	return string(data)
-}
-
-func buildConfigJSON(config map[string]any) map[string]any {
-	m := make(map[string]any, len(config))
-	for key, value := range config {
-		m[key] = value
-	}
-	return m
+	return build_task_from_video_info(video_infos[0], input.URL, config)
 }

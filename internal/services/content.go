@@ -220,6 +220,32 @@ type ContentResourceRecord struct {
 	UpdatedAt     int64   `json:"updated_at"`
 }
 
+// ContentInfluencerRecord exposes one person-role association attached to a
+// content item. A person may appear multiple times with different Role values.
+type ContentInfluencerRecord struct {
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	Alias              string  `json:"alias"`
+	AvatarURL          string  `json:"avatar_url"`
+	Sex                int     `json:"sex"`
+	Description        string  `json:"description"`
+	Biography          string  `json:"biography"`
+	ProfilePath        string  `json:"profile_path"`
+	Birthday           string  `json:"birthday"`
+	PlaceOfBirth       string  `json:"place_of_birth"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Profile            string  `json:"profile"`
+	TMDBId             *string `json:"tmdb_id,omitempty"`
+	DoubanId           *string `json:"douban_id,omitempty"`
+	IMDBId             *string `json:"imdb_id,omitempty"`
+	Role               string  `json:"role"`
+	SortOrder          int     `json:"sort_order"`
+	RoleMetadataJSON   string  `json:"role_metadata_json"`
+	MetadataJSON       string  `json:"metadata_json"`
+	CreatedAt          int64   `json:"created_at"`
+	UpdatedAt          int64   `json:"updated_at"`
+}
+
 type ContentListItem struct {
 	ID            string                      `json:"id"`
 	PlatformID    string                      `json:"platform_id"`
@@ -237,6 +263,7 @@ type ContentListItem struct {
 	CoverHeight   string                      `json:"cover_height"`
 	PublishTime   int64                       `json:"publish_time"`
 	Accounts      []ContentAccountRecord      `json:"accounts"`
+	Influencers   []ContentInfluencerRecord   `json:"influencers"`
 	DownloadTasks []ContentDownloadTaskRecord `json:"download_tasks"`
 	Resources     []ContentResourceRecord     `json:"resources"`
 }
@@ -255,20 +282,23 @@ type ContentListResult struct {
 	PageSize int               `json:"page_size"`
 }
 
-// load_content_relations loads accounts, download tasks, and resources for the given
-// content IDs. It is shared by ListContents and GetContentDetail.
+// load_content_relations loads accounts, influencers, download tasks, and
+// resources for the given content IDs. It is shared by ListContents and
+// GetContentDetail.
 func (s *ContentService) load_content_relations(content_ids []string) (
 	map[string][]ContentAccountRecord,
+	map[string][]ContentInfluencerRecord,
 	map[string][]ContentDownloadTaskRecord,
 	map[string][]ContentResourceRecord,
 	error,
 ) {
 	accounts_by_content_id := make(map[string][]ContentAccountRecord, len(content_ids))
+	influencers_by_content_id := make(map[string][]ContentInfluencerRecord, len(content_ids))
 	download_tasks_by_content_id := make(map[string][]ContentDownloadTaskRecord, len(content_ids))
 	resources_by_content_id := make(map[string][]ContentResourceRecord, len(content_ids))
 
 	if len(content_ids) == 0 {
-		return accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
+		return accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
 	}
 
 	type content_account_row struct {
@@ -301,7 +331,75 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 		Where("content_account.content_id IN ? AND account.deleted_at IS NULL", content_ids).
 		Order("content_account.content_id ASC, content_account.account_id ASC").
 		Scan(&rows).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+
+	type content_influencer_row struct {
+		ContentID          string  `gorm:"column:content_id"`
+		InfluencerID       int     `gorm:"column:influencer_id"`
+		Role               string  `gorm:"column:role"`
+		SortOrder          int     `gorm:"column:sort_order"`
+		RoleMetadataJSON   string  `gorm:"column:role_metadata_json"`
+		Name               string  `gorm:"column:name"`
+		Alias              string  `gorm:"column:alias"`
+		AvatarURL          string  `gorm:"column:avatar_url"`
+		Sex                int     `gorm:"column:sex"`
+		Description        string  `gorm:"column:description"`
+		Biography          string  `gorm:"column:biography"`
+		ProfilePath        string  `gorm:"column:profile_path"`
+		Birthday           string  `gorm:"column:birthday"`
+		PlaceOfBirth       string  `gorm:"column:place_of_birth"`
+		KnownForDepartment string  `gorm:"column:known_for_department"`
+		Profile            string  `gorm:"column:profile"`
+		TMDBId             *string `gorm:"column:tmdb_id"`
+		DoubanId           *string `gorm:"column:douban_id"`
+		IMDBId             *string `gorm:"column:imdb_id"`
+		MetadataJSON       string  `gorm:"column:metadata_json"`
+		CreatedAt          int64   `gorm:"column:created_at"`
+		UpdatedAt          int64   `gorm:"column:updated_at"`
+	}
+	var influencer_rows []content_influencer_row
+	if err := s.db.Table("content_influencer").
+		Select(`content_influencer.content_id, content_influencer.influencer_id,
+			content_influencer.role, content_influencer.sort_order,
+			content_influencer.metadata_json AS role_metadata_json,
+			influencer.name, influencer.alias, influencer.avatar_url, influencer.sex,
+			influencer.description, influencer.biography, influencer.profile_path,
+			influencer.birthday, influencer.place_of_birth,
+			influencer.known_for_department, influencer.profile,
+			influencer.tmdb_id, influencer.douban_id, influencer.imdb_id,
+			influencer.metadata_json, content_influencer.created_at,
+			content_influencer.updated_at`).
+		Joins("JOIN influencer ON influencer.id = content_influencer.influencer_id").
+		Where("content_influencer.content_id IN ? AND influencer.deleted_at IS NULL", content_ids).
+		Order("content_influencer.content_id ASC, content_influencer.sort_order ASC, content_influencer.influencer_id ASC, content_influencer.role ASC").
+		Scan(&influencer_rows).Error; err != nil {
+		return nil, nil, nil, nil, err
+	}
+	for _, row := range influencer_rows {
+		influencers_by_content_id[row.ContentID] = append(influencers_by_content_id[row.ContentID], ContentInfluencerRecord{
+			ID:                 row.InfluencerID,
+			Name:               row.Name,
+			Alias:              row.Alias,
+			AvatarURL:          row.AvatarURL,
+			Sex:                row.Sex,
+			Description:        row.Description,
+			Biography:          row.Biography,
+			ProfilePath:        row.ProfilePath,
+			Birthday:           row.Birthday,
+			PlaceOfBirth:       row.PlaceOfBirth,
+			KnownForDepartment: row.KnownForDepartment,
+			Profile:            row.Profile,
+			TMDBId:             row.TMDBId,
+			DoubanId:           row.DoubanId,
+			IMDBId:             row.IMDBId,
+			Role:               row.Role,
+			SortOrder:          row.SortOrder,
+			RoleMetadataJSON:   row.RoleMetadataJSON,
+			MetadataJSON:       row.MetadataJSON,
+			CreatedAt:          row.CreatedAt,
+			UpdatedAt:          row.UpdatedAt,
+		})
 	}
 	for _, row := range rows {
 		accounts_by_content_id[row.ContentID] = append(accounts_by_content_id[row.ContentID], ContentAccountRecord{
@@ -329,7 +427,7 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 		Where("content_id IN ? AND deleted_at IS NULL", content_ids).
 		Order("content_id ASC, id DESC").
 		Find(&tasks).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	for _, task := range tasks {
 		if task.ContentId == nil {
@@ -362,7 +460,7 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 		Where("content_id IN ? AND deleted_at IS NULL", content_ids).
 		Order("content_id ASC, merge_order ASC").
 		Find(&resources).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	resource_ids := make([]int, 0, len(resources))
 	for _, r := range resources {
@@ -380,7 +478,7 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 			Where("resource_id IN ? AND deleted_at IS NULL AND enabled = 1", resource_ids).
 			Order("resource_id ASC, priority ASC, id ASC").
 			Scan(&endpoints).Error; err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		for _, ep := range endpoints {
 			if _, exists := url_by_resource_id[ep.ResourceID]; !exists {
@@ -428,11 +526,12 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 		)
 	}
 
-	return accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
+	return accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
 }
 
 func (s *ContentService) load_content_extension(content model.Content) (string, any, error) {
 	content_type := strings.ToLower(strings.TrimSpace(content.Type))
+	content_subtype := strings.ToLower(strings.TrimSpace(content.Subtype))
 	find := func(detail any) (any, error) {
 		if err := s.db.Where("id = ?", content.Id).First(detail).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -441,6 +540,24 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 			return nil, err
 		}
 		return detail, nil
+	}
+	if content_subtype == model.ContentSubtypeEpisode {
+		detail, err := find(&model.ContentEpisode{})
+		if err != nil {
+			return "content_episode", nil, err
+		}
+		if detail != nil {
+			return "content_episode", detail, nil
+		}
+	}
+	if content_type == model.ContentTypeCollection && content_subtype == model.ContentSubtypeSeries {
+		detail, err := find(&model.ContentSeries{})
+		if err != nil {
+			return "content_series", nil, err
+		}
+		if detail != nil {
+			return "content_series", detail, nil
+		}
 	}
 
 	switch content_type {
@@ -850,7 +967,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 		return nil, err
 	}
 
-	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id})
+	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id})
 	if err != nil {
 		return nil, err
 	}
@@ -862,6 +979,10 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 	accounts := accounts_by_content_id[content.Id]
 	if accounts == nil {
 		accounts = make([]ContentAccountRecord, 0)
+	}
+	influencers := influencers_by_content_id[content.Id]
+	if influencers == nil {
+		influencers = make([]ContentInfluencerRecord, 0)
 	}
 	download_tasks := download_tasks_by_content_id[content.Id]
 	if download_tasks == nil {
@@ -894,6 +1015,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			CoverHeight:   content.CoverHeight,
 			PublishTime:   publish_time,
 			Accounts:      accounts,
+			Influencers:   influencers,
 			DownloadTasks: download_tasks,
 			Resources:     resources,
 		},
@@ -973,7 +1095,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		content_ids = append(content_ids, content.Id)
 	}
 
-	accounts_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations(content_ids)
+	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations(content_ids)
 	if err != nil {
 		return nil, err
 	}
@@ -987,6 +1109,10 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		accounts := accounts_by_content_id[content.Id]
 		if accounts == nil {
 			accounts = make([]ContentAccountRecord, 0)
+		}
+		influencers := influencers_by_content_id[content.Id]
+		if influencers == nil {
+			influencers = make([]ContentInfluencerRecord, 0)
 		}
 		download_tasks := download_tasks_by_content_id[content.Id]
 		if download_tasks == nil {
@@ -1013,6 +1139,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			CoverHeight:   content.CoverHeight,
 			PublishTime:   publish_time,
 			Accounts:      accounts,
+			Influencers:   influencers,
 			DownloadTasks: download_tasks,
 			Resources:     resource_list,
 		})

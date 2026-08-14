@@ -56,6 +56,25 @@ func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
 	}
 }
 
+// Fetch retrieves the structured result for a supported Bilibili URL.
+// Bangumi play pages return a BangumiInfo combining PlayURLSSRData with the
+// episode page API response; other URL types retain the existing VideoInfo
+// list result.
+func (c *Client) Fetch(raw_url string) (any, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
+		return nil, fmt.Errorf("B站URL不能为空")
+	}
+	if IsBangumiPlayURL(raw_url) {
+		bangumi_info, err := c.GetBangumiInfo(raw_url)
+		if err != nil {
+			return nil, err
+		}
+		return bangumi_info, nil
+	}
+	return c.GetVideoInfo(raw_url, 0)
+}
+
 // GetVideoInfo retrieves Bilibili video information.
 // Supported URL types: regular videos (BV/AV), bangumi episodes (ep), bangumi seasons (ss), courses (cheese).
 // page_num specifies the part/page number; 0 means get all.

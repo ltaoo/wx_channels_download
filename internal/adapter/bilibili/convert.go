@@ -1,13 +1,36 @@
 package bilibiliadapter
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/bilibili"
 	"wx_channel/pkg/util"
 )
+
+func bilibili_bangumi_info_from_fetch(data any) (*bilibili.BangumiInfo, bool, error) {
+	switch value := data.(type) {
+	case *bilibili.PlayURLSSRData:
+		if value == nil {
+			return nil, true, fmt.Errorf("bilibili playurl SSR data is nil")
+		}
+		return bangumi_info_from_playurl(value), true, nil
+	case bilibili.PlayURLSSRData:
+		return bangumi_info_from_playurl(&value), true, nil
+	case *bilibili.BangumiInfo:
+		if value == nil {
+			return nil, true, fmt.Errorf("bilibili bangumi info is nil")
+		}
+		return value, true, nil
+	case bilibili.BangumiInfo:
+		return &value, true, nil
+	default:
+		return nil, false, nil
+	}
+}
 
 func bilibili_video_info_from_fetch(data any) (*bilibili.VideoInfo, error) {
 	switch value := data.(type) {
@@ -34,6 +57,19 @@ func bilibili_video_info_from_fetch(data any) (*bilibili.VideoInfo, error) {
 }
 
 func (h *handler) ToContent(data any) (*model.Content, error) {
+	bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	if is_bangumi {
+		selected_stream := best_bangumi_video_stream(bangumi_info.PlayURLSSRData.Data.Result.VideoInfo.Dash.Video)
+		content := bangumi_video_content(bangumi_info, selected_stream, util.NowMillis())
+		if content == nil {
+			return nil, fmt.Errorf("bilibili bangumi video id is empty")
+		}
+		return content, nil
+	}
+
 	video_info, err := bilibili_video_info_from_fetch(data)
 	if err != nil {
 		return nil, err
@@ -59,6 +95,18 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 }
 
 func (h *handler) ToAccount(data any) (*model.Account, error) {
+	bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	if is_bangumi {
+		external_id := bangumi_external_id(bangumi_info)
+		if external_id == "" {
+			return nil, fmt.Errorf("bilibili bangumi id is empty")
+		}
+		return build_bangumi_account(util.NowMillis()), nil
+	}
+
 	video_info, err := bilibili_video_info_from_fetch(data)
 	if err != nil {
 		return nil, err
@@ -81,6 +129,15 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 }
 
 func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	if is_bangumi {
+		selected_stream := best_bangumi_video_stream(bangumi_info.PlayURLSSRData.Data.Result.VideoInfo.Dash.Video)
+		return bangumi_content_details(bangumi_info, selected_stream, util.NowMillis())
+	}
+
 	video_info, err := bilibili_video_info_from_fetch(data)
 	if err != nil {
 		return nil, err
@@ -95,4 +152,28 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 			Format: "mp4",
 		},
 	}}, nil
+}
+
+// BuildDownloadTaskFromFetch converts the structured result returned by Fetch
+// without requesting the Bilibili page a second time.
+func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	config := make(map[string]any)
+	if config_text := strings.TrimSpace(string(config_json)); config_text != "" {
+		if err := json.Unmarshal(config_json, &config); err != nil {
+			return nil, fmt.Errorf("解析下载配置失败: %w", err)
+		}
+	}
+
+	bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	if is_bangumi {
+		return build_task_from_bangumi_info(bangumi_info, config)
+	}
+	video_info, err := bilibili_video_info_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return build_task_from_video_info(video_info, "", config)
 }

@@ -68,6 +68,73 @@ type ContentVideo struct {
 
 func (ContentVideo) TableName() string { return "content_video" }
 
+// ContentEpisode describes one logical episode. Its parent series is modeled
+// with ContentRelationEpisodeOf so episode and series remain independently
+// addressable archive items.
+type ContentEpisode struct {
+	Id             string  `gorm:"primaryKey" json:"id"`
+	MediaType      int     `json:"type"`
+	Name           string  `json:"name"`
+	OriginalName   string  `json:"original_name"`
+	Overview       string  `json:"overview"`
+	AirDate        string  `json:"air_date"`
+	StillPath      string  `json:"still_path"`
+	SortOrder      int     `json:"order"`
+	Runtime        int     `json:"runtime"`
+	Duration       int64   `json:"duration"`
+	SeasonNumber   int     `json:"season_number"`
+	EpisodeNumber  string  `json:"episode_number"`
+	LongTitle      string  `json:"long_title"`
+	SectionId      int64   `json:"section_id"`
+	SectionType    int     `json:"section_type"`
+	Badge          string  `json:"badge"`
+	VoteAverage    float64 `json:"vote_average"`
+	VoteCount      int64   `json:"vote_count"`
+	ProductionCode string  `json:"production_code"`
+	TMDBId         *string `json:"tmdb_id,omitempty"`
+	DoubanId       *string `json:"douban_id,omitempty"`
+	IMDBId         *string `json:"imdb_id,omitempty"`
+	MetadataJSON   string  `json:"metadata_json"`
+}
+
+func (ContentEpisode) TableName() string { return "content_episode" }
+
+// ContentSeries is the TMDB-style profile of one show or bangumi. Individual
+// ContentEpisode records point to it through ContentRelationEpisodeOf.
+type ContentSeries struct {
+	Id                string  `gorm:"primaryKey" json:"id"`
+	MediaType         int     `json:"type"`
+	Name              string  `json:"name"`
+	OriginalName      string  `json:"original_name"`
+	Alias             string  `json:"alias"`
+	Overview          string  `json:"overview"`
+	PosterPath        string  `json:"poster_path"`
+	BackdropPath      string  `json:"backdrop_path"`
+	AirDate           string  `json:"air_date"`
+	OriginalLanguage  string  `json:"original_language"`
+	OriginCountryJSON string  `json:"origin_country_json"`
+	GenresJSON        string  `json:"genres_json"`
+	SortOrder         int     `json:"order"`
+	SourceCount       int     `json:"source_count"`
+	EpisodeCount      int     `json:"episode_count"`
+	SectionCount      int     `json:"section_count"`
+	SeasonCount       int     `json:"season_count"`
+	VoteAverage       float64 `json:"vote_average"`
+	VoteCount         int64   `json:"vote_count"`
+	Popularity        float64 `json:"popularity"`
+	InProduction      int     `json:"in_production"`
+	Status            string  `json:"status"`
+	Tips              string  `json:"tips"`
+	Homepage          string  `json:"homepage"`
+	Tagline           string  `json:"tagline"`
+	TMDBId            *string `json:"tmdb_id,omitempty"`
+	DoubanId          *string `json:"douban_id,omitempty"`
+	IMDBId            *string `json:"imdb_id,omitempty"`
+	MetadataJSON      string  `json:"metadata_json"`
+}
+
+func (ContentSeries) TableName() string { return "content_series" }
+
 const (
 	ContentVideoVariantStreamTypeProgressive = "progressive"
 	ContentVideoVariantStreamTypeVideoOnly   = "video_only"
@@ -247,8 +314,11 @@ func (ContentAccount) TableName() string { return "content_account" }
 type ContentInfluencer struct {
 	ContentId    string `gorm:"primaryKey;index:idx_content_influencer_influencer" json:"content_id"`
 	InfluencerId int    `gorm:"primaryKey;index:idx_content_influencer_influencer" json:"influencer_id"`
-	Role         string `json:"role"`
+	Role         string `gorm:"primaryKey" json:"role"`
+	SortOrder    int    `json:"sort_order"`
+	MetadataJSON string `json:"metadata_json"`
 	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 }
 
 func (ContentInfluencer) TableName() string { return "content_influencer" }

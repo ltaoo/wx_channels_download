@@ -92,6 +92,7 @@ var HomePageModel = (() => {
     answer_of: "回答所属问题",
     contains: "包含",
     part_of: "属于",
+    episode_of: "单集属于系列",
     reply_to: "回复",
     quote_of: "引用",
     repost_of: "转发",
@@ -1080,6 +1081,216 @@ var HomePageModel = (() => {
     };
   }
 
+  function normalize_content_influencer_node(source) {
+    const influencer =
+      source && typeof source === "object" ? source : {};
+    let id = String(
+      first_non_empty(
+        influencer.id,
+        influencer.ID,
+        influencer.influencer_id,
+        influencer.InfluencerId,
+        influencer.InfluencerID,
+      ),
+    ).trim();
+    if (id === "0") {
+      id = "";
+    }
+    const name = String(
+      first_non_empty(
+        influencer.name,
+        influencer.Name,
+        influencer.alias,
+        influencer.Alias,
+        id,
+      ),
+    ).trim();
+    if (!name) {
+      return null;
+    }
+    const alias = String(
+      first_non_empty(influencer.alias, influencer.Alias),
+    ).trim();
+    const department = String(
+      first_non_empty(
+        influencer.known_for_department,
+        influencer.KnownForDepartment,
+      ),
+    ).trim();
+    const profile_url = String(
+      first_non_empty(
+        influencer.profile_url,
+        influencer.ProfileURL,
+        influencer.url,
+        influencer.URL,
+      ),
+    ).trim();
+    const identity = String(
+      first_non_empty(
+        influencer.tmdb_id,
+        influencer.TMDBId,
+        influencer.TMDBID,
+        influencer.douban_id,
+        influencer.DoubanId,
+        influencer.DoubanID,
+        influencer.imdb_id,
+        influencer.IMDBId,
+        influencer.IMDBID,
+      ),
+    ).trim();
+    return {
+      id,
+      key: id || name.toLowerCase(),
+      type: "influencer",
+      type_name: "Influencer",
+      title: name,
+      url: profile_url,
+      has_url: Boolean(profile_url),
+      avatar_url: String(
+        first_non_empty(influencer.avatar_url, influencer.AvatarURL),
+      ).trim(),
+      avatar_fallback: name.slice(0, 1),
+      meta_text:
+        [alias && alias !== name ? alias : "", department, identity]
+          .filter(Boolean)
+          .join(" · ") || "人物档案",
+    };
+  }
+
+  function normalize_content_influencer_roles(reference, influencer) {
+    let sources = [];
+    if (reference && Array.isArray(reference.roles)) {
+      sources = reference.roles;
+    } else if (reference && Array.isArray(reference.Roles)) {
+      sources = reference.Roles;
+    } else if (
+      reference &&
+      first_non_empty(reference.role, reference.Role)
+    ) {
+      sources = [reference];
+    }
+    if (sources.length === 0 && influencer) {
+      const department = first_non_empty(
+        influencer.known_for_department,
+        influencer.KnownForDepartment,
+      );
+      if (department) {
+        sources = [{ role: department }];
+      }
+    }
+    const roles_by_name = new Map();
+    for (let role_index = 0; role_index < sources.length; role_index += 1) {
+      const source = sources[role_index] || {};
+      const role = String(first_non_empty(source.role, source.Role)).trim();
+      if (!role) {
+        continue;
+      }
+      const sort_order = number_or_default(
+        first_non_empty(source.sort_order, source.SortOrder),
+        role_index,
+      );
+      const current = roles_by_name.get(role);
+      if (!current || sort_order < current.sort_order) {
+        roles_by_name.set(role, {
+          key: role,
+          role,
+          sort_order,
+          metadata_json: String(
+            first_non_empty(
+              source.metadata_json,
+              source.MetadataJSON,
+              source.role_metadata_json,
+              source.RoleMetadataJSON,
+            ),
+          ).trim(),
+        });
+      }
+    }
+    return Array.from(roles_by_name.values()).sort(
+      (left, right) =>
+        left.sort_order - right.sort_order ||
+        left.role.localeCompare(right.role, "zh-CN"),
+    );
+  }
+
+  function normalize_content_detail_influencers(detail, subject) {
+    let references = [];
+    if (detail && Array.isArray(detail.influencers)) {
+      references = detail.influencers;
+    } else if (detail && Array.isArray(detail.Influencers)) {
+      references = detail.Influencers;
+    }
+    if (references.length === 0 || !subject || !subject.present) {
+      return [];
+    }
+    const relations_by_influencer = new Map();
+    for (
+      let reference_index = 0;
+      reference_index < references.length;
+      reference_index += 1
+    ) {
+      const reference = references[reference_index] || {};
+      const influencer_source =
+        (reference.influencer && typeof reference.influencer === "object"
+          ? reference.influencer
+          : null) ||
+        (reference.Influencer && typeof reference.Influencer === "object"
+          ? reference.Influencer
+          : null) ||
+        reference;
+      const influencer = normalize_content_influencer_node(influencer_source);
+      if (!influencer) {
+        continue;
+      }
+      const roles = normalize_content_influencer_roles(
+        reference,
+        influencer_source,
+      );
+      if (roles.length === 0) {
+        continue;
+      }
+      const relation_key = `${subject.id}:content_influencer:${influencer.key}`;
+      const existing = relations_by_influencer.get(relation_key);
+      if (existing) {
+        const roles_by_name = new Map(
+          existing.roles.map((role) => [role.role, role]),
+        );
+        for (const role of roles) {
+          const current = roles_by_name.get(role.role);
+          if (!current || role.sort_order < current.sort_order) {
+            roles_by_name.set(role.role, role);
+          }
+        }
+        existing.roles = Array.from(roles_by_name.values()).sort(
+          (left, right) =>
+            left.sort_order - right.sort_order ||
+            left.role.localeCompare(right.role, "zh-CN"),
+        );
+        existing.role_text = existing.roles
+          .map((role) => role.role)
+          .join(" / ");
+        existing.sort_order = existing.roles[0].sort_order;
+        continue;
+      }
+      relations_by_influencer.set(relation_key, {
+        key: relation_key,
+        type: "content_influencer",
+        type_name: "人物角色",
+        type_path_text: `influencer → content_influencer → ${subject.type || "content"}`,
+        source: influencer,
+        target: subject,
+        roles,
+        role_text: roles.map((role) => role.role).join(" / "),
+        sort_order: roles[0].sort_order,
+      });
+    }
+    return Array.from(relations_by_influencer.values()).sort(
+      (left, right) =>
+        left.sort_order - right.sort_order ||
+        left.source.title.localeCompare(right.source.title, "zh-CN"),
+    );
+  }
+
   function normalize_content_relations(items, content) {
     const content_by_id = new Map();
     if (content && content.id) {
@@ -1101,7 +1312,9 @@ var HomePageModel = (() => {
       }
     }
     const relation_items = [];
+    const influencer_relations = [];
     for (const item of items) {
+      influencer_relations.push(...(item.influencer_relations || []));
       const relation = item.relation || {};
       if (!relation.present) {
         continue;
@@ -1130,11 +1343,108 @@ var HomePageModel = (() => {
         target,
       });
     }
+    const relation_chains = merge_content_relation_chains(relation_items);
+    const count_parts = [];
+    if (relation_chains.length > 0) {
+      count_parts.push(`${relation_chains.length} 条关系链`);
+    }
+    if (influencer_relations.length > 0) {
+      count_parts.push(`${influencer_relations.length} 个人物关联`);
+    }
     return {
-      present: relation_items.length > 0,
-      count_text: `${relation_items.length} 个关联`,
-      items: relation_items,
+      present: relation_chains.length > 0 || influencer_relations.length > 0,
+      content_present: relation_chains.length > 0,
+      count_text: count_parts.join(" · "),
+      items: relation_chains,
+      influencers: {
+        present: influencer_relations.length > 0,
+        count_text: `${influencer_relations.length} 个关联`,
+        items: influencer_relations,
+      },
     };
+  }
+
+  function merge_content_relation_chains(relation_items) {
+    if (!Array.isArray(relation_items) || relation_items.length === 0) {
+      return [];
+    }
+    const incoming_by_content_id = new Map();
+    const outgoing_by_content_id = new Map();
+    for (const relation of relation_items) {
+      const source_id = relation.source.id;
+      const target_id = relation.target.id;
+      if (!outgoing_by_content_id.has(source_id)) {
+        outgoing_by_content_id.set(source_id, []);
+      }
+      if (!incoming_by_content_id.has(target_id)) {
+        incoming_by_content_id.set(target_id, []);
+      }
+      outgoing_by_content_id.get(source_id).push(relation);
+      incoming_by_content_id.get(target_id).push(relation);
+    }
+
+    const used_relation_keys = new Set();
+    const relation_chains = [];
+    const append_chain = (first_relation) => {
+      if (!first_relation || used_relation_keys.has(first_relation.key)) {
+        return;
+      }
+      const nodes = [first_relation.source];
+      const edges = [];
+      let relation = first_relation;
+      while (relation && !used_relation_keys.has(relation.key)) {
+        used_relation_keys.add(relation.key);
+        edges.push(relation);
+        nodes.push(relation.target);
+
+        const target_id = relation.target.id;
+        const incoming = incoming_by_content_id.get(target_id) || [];
+        const outgoing = (outgoing_by_content_id.get(target_id) || []).filter(
+          (candidate) => !used_relation_keys.has(candidate.key),
+        );
+        relation =
+          incoming.length === 1 && outgoing.length === 1 ? outgoing[0] : null;
+      }
+
+      const segments = [];
+      for (let node_index = 0; node_index < nodes.length; node_index += 1) {
+        const node = nodes[node_index];
+        segments.push({
+          key: `node:${node_index}:${node.id}`,
+          kind: "node",
+          node,
+        });
+        if (node_index < edges.length) {
+          const edge = edges[node_index];
+          segments.push({
+            key: `edge:${edge.key}`,
+            kind: "edge",
+            edge,
+          });
+        }
+      }
+      relation_chains.push({
+        key: `chain:${edges.map((edge) => edge.key).join("|")}`,
+        type_path_text: nodes
+          .map((node) => node.type || "content")
+          .join(" → "),
+        nodes,
+        edges,
+        segments,
+      });
+    };
+
+    for (const relation of relation_items) {
+      const source_incoming =
+        incoming_by_content_id.get(relation.source.id) || [];
+      if (source_incoming.length !== 1) {
+        append_chain(relation);
+      }
+    }
+    for (const relation of relation_items) {
+      append_chain(relation);
+    }
+    return relation_chains;
   }
 
   function normalize_typed_content_detail(
@@ -1155,6 +1465,10 @@ var HomePageModel = (() => {
     );
     const subject = normalize_content_detail_subject(detail, content, type);
     const relation = normalize_content_detail_relation(detail);
+    const influencer_relations = normalize_content_detail_influencers(
+      detail,
+      subject,
+    );
     const article_types = ["article", "answer", "question", "post", "blog"];
     const image_types = ["album", "image_set", "image"];
     let kind = "generic";
@@ -1246,6 +1560,7 @@ var HomePageModel = (() => {
       model_name: [model_name, subject.meta_text].filter(Boolean).join(" · "),
       subject,
       relation,
+      influencer_relations,
       fields: normalize_generic_detail_fields(data),
       article_body,
       images,
@@ -2239,10 +2554,28 @@ var HomePageModel = (() => {
         normalized_content_details_,
         (details) => details.relations.count_text,
       ),
+      content_present: computed(
+        normalized_content_details_,
+        (details) => details.relations.content_present,
+      ),
       items: computed(
         normalized_content_details_,
         (details) => details.relations.items,
       ),
+      influencers: {
+        present: computed(
+          normalized_content_details_,
+          (details) => details.relations.influencers.present,
+        ),
+        count_text: computed(
+          normalized_content_details_,
+          (details) => details.relations.influencers.count_text,
+        ),
+        items: computed(
+          normalized_content_details_,
+          (details) => details.relations.influencers.items,
+        ),
+      },
     };
     const result_text_ = computed(result_, (data) =>
       data ? JSON.stringify(data, null, 2) : "",

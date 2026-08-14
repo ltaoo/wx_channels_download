@@ -36,11 +36,22 @@ type AuthCredential struct {
 func (AuthCredential) TableName() string { return "auth_credential" }
 
 type Influencer struct {
-	Id          int    `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name        string `gorm:"not null" json:"name"`
-	AvatarURL   string `json:"avatar_url"`
-	Sex         int    `json:"sex"`
-	Description string `json:"description"`
+	Id                 int     `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name               string  `gorm:"not null;index:idx_influencer_name" json:"name"`
+	Alias              string  `json:"alias"`
+	AvatarURL          string  `json:"avatar_url"`
+	Sex                int     `json:"sex"`
+	Description        string  `json:"description"`
+	Biography          string  `json:"biography"`
+	ProfilePath        string  `json:"profile_path"`
+	Birthday           string  `json:"birthday"`
+	PlaceOfBirth       string  `json:"place_of_birth"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Profile            string  `json:"profile"`
+	TMDBId             *string `gorm:"uniqueIndex:idx_influencer_tmdb_id" json:"tmdb_id,omitempty"`
+	DoubanId           *string `gorm:"uniqueIndex:idx_influencer_douban_id" json:"douban_id,omitempty"`
+	IMDBId             *string `gorm:"uniqueIndex:idx_influencer_imdb_id" json:"imdb_id,omitempty"`
+	MetadataJSON       string  `json:"metadata_json"`
 	Timestamps
 }
 
@@ -88,15 +99,15 @@ type BrowseHistory struct {
 	PlatformId   string `gorm:"not null" json:"platform_id"`
 	VisitedTimes int64  `gorm:"not null" json:"visited_times"`
 	Type         string `json:"type"`
-	ExternalId        string  `json:"external_id"`
-	Title             string  `json:"title"`
-	URL               string  `json:"url"`
-	SourceURL         string  `json:"source_url"`
-	CoverURL          string  `json:"cover_url"`
-	CoverWidth        string  `json:"cover_width"`
-	CoverHeight       string  `json:"cover_height"`
-	PublishTime       *int64  `json:"publish_time"`
-	ExtraData         string  `json:"extra_data"`
+	ExternalId   string `json:"external_id"`
+	Title        string `json:"title"`
+	URL          string `json:"url"`
+	SourceURL    string `json:"source_url"`
+	CoverURL     string `json:"cover_url"`
+	CoverWidth   string `json:"cover_width"`
+	CoverHeight  string `json:"cover_height"`
+	PublishTime  *int64 `json:"publish_time"`
+	ExtraData    string `json:"extra_data"`
 	Timestamps
 }
 
@@ -137,15 +148,15 @@ func (b *BrowseHistory) Upsert(db *gorm.DB) error {
 		return db.Model(&existing).UpdateColumns(map[string]any{
 			"visited_times": existing.VisitedTimes + 1,
 			"type":          b.Type,
-			"title":               b.Title,
-			"url":                 b.URL,
-			"source_url":          b.SourceURL,
-			"cover_url":           b.CoverURL,
-			"cover_width":         b.CoverWidth,
-			"cover_height":        b.CoverHeight,
-			"publish_time":        b.PublishTime,
-			"extra_data":          b.ExtraData,
-			"updated_at":          b.UpdatedAt,
+			"title":         b.Title,
+			"url":           b.URL,
+			"source_url":    b.SourceURL,
+			"cover_url":     b.CoverURL,
+			"cover_width":   b.CoverWidth,
+			"cover_height":  b.CoverHeight,
+			"publish_time":  b.PublishTime,
+			"extra_data":    b.ExtraData,
+			"updated_at":    b.UpdatedAt,
 		}).Error
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {

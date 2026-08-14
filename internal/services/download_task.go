@@ -1488,6 +1488,17 @@ func save_content_details(
 
 		for detail_index := range content_details {
 			detail := content_details[detail_index]
+			content_id := strings.TrimSpace(detail.Key)
+			if detail.Content != nil && strings.TrimSpace(detail.Content.Id) != "" {
+				content_id = strings.TrimSpace(detail.Content.Id)
+			}
+			if err := save_content_influencer_references(tx, content_id, detail.Influencers, now); err != nil {
+				return fmt.Errorf("save content detail %q influencers: %w", detail.Key, err)
+			}
+		}
+
+		for detail_index := range content_details {
+			detail := content_details[detail_index]
 			if detail.Relation == nil {
 				continue
 			}
@@ -1513,6 +1524,157 @@ func save_content_details(
 		}
 		return nil
 	})
+}
+
+func save_content_influencer_references(
+	db *gorm.DB,
+	content_id string,
+	references []adapter.ContentInfluencerReference,
+	now int64,
+) error {
+	if len(references) == 0 {
+		return nil
+	}
+	content_id = strings.TrimSpace(content_id)
+	if content_id == "" {
+		return fmt.Errorf("content influencer has an empty content id")
+	}
+	for reference_index := range references {
+		reference := &references[reference_index]
+		influencer, err := upsert_content_influencer(db, reference.Influencer, now)
+		if err != nil {
+			return err
+		}
+		for role_index := range reference.Roles {
+			role := reference.Roles[role_index]
+			role.Role = strings.TrimSpace(role.Role)
+			if role.Role == "" {
+				return fmt.Errorf("influencer %q has an empty role", influencer.Name)
+			}
+			relation := model.ContentInfluencer{
+				ContentId:    content_id,
+				InfluencerId: influencer.Id,
+				Role:         role.Role,
+				SortOrder:    role.SortOrder,
+				MetadataJSON: role.MetadataJSON,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			var existing_relation model.ContentInfluencer
+			find_err := db.Where(
+				"content_id = ? AND influencer_id = ? AND role = ?",
+				content_id,
+				influencer.Id,
+				role.Role,
+			).First(&existing_relation).Error
+			switch {
+			case find_err == nil:
+				relation.CreatedAt = existing_relation.CreatedAt
+			case !errors.Is(find_err, gorm.ErrRecordNotFound):
+				return find_err
+			}
+			if err := db.Save(&relation).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func upsert_content_influencer(db *gorm.DB, input *model.Influencer, now int64) (*model.Influencer, error) {
+	if input == nil {
+		return nil, fmt.Errorf("content influencer is nil")
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" {
+		return nil, fmt.Errorf("content influencer name is empty")
+	}
+
+	var persisted model.Influencer
+	find_err := gorm.ErrRecordNotFound
+	if input.Id > 0 {
+		find_err = db.Where("deleted_at IS NULL AND id = ?", input.Id).First(&persisted).Error
+	}
+	for _, identity := range []struct {
+		column string
+		value  *string
+	}{
+		{column: "tmdb_id", value: input.TMDBId},
+		{column: "douban_id", value: input.DoubanId},
+		{column: "imdb_id", value: input.IMDBId},
+	} {
+		if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+			break
+		}
+		if identity.value == nil || strings.TrimSpace(*identity.value) == "" {
+			continue
+		}
+		find_err = db.Where("deleted_at IS NULL").
+			Where(identity.column+" = ?", strings.TrimSpace(*identity.value)).
+			First(&persisted).Error
+	}
+	if errors.Is(find_err, gorm.ErrRecordNotFound) {
+		find_err = db.Where("deleted_at IS NULL AND name = ?", input.Name).Order("id ASC").First(&persisted).Error
+	}
+	if find_err == nil {
+		updates := influencer_profile_updates(&persisted, input, now)
+		if len(updates) > 0 {
+			if err := db.Model(&persisted).Updates(updates).Error; err != nil {
+				return nil, err
+			}
+			if err := db.Where("id = ?", persisted.Id).First(&persisted).Error; err != nil {
+				return nil, err
+			}
+		}
+		return &persisted, nil
+	}
+	if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+		return nil, find_err
+	}
+
+	persisted = *input
+	persisted.Id = 0
+	persisted.CreatedAt = now
+	persisted.UpdatedAt = now
+	if err := db.Create(&persisted).Error; err != nil {
+		return nil, err
+	}
+	return &persisted, nil
+}
+
+func influencer_profile_updates(existing *model.Influencer, input *model.Influencer, now int64) map[string]any {
+	updates := map[string]any{"updated_at": now}
+	for column, value := range map[string]string{
+		"name":           input.Name,
+		"alias":          input.Alias,
+		"avatar_url":     input.AvatarURL,
+		"description":    input.Description,
+		"biography":      input.Biography,
+		"profile_path":   input.ProfilePath,
+		"birthday":       input.Birthday,
+		"place_of_birth": input.PlaceOfBirth,
+		"profile":        input.Profile,
+	} {
+		if strings.TrimSpace(value) != "" {
+			updates[column] = value
+		}
+	}
+	if existing.KnownForDepartment == "" && strings.TrimSpace(input.KnownForDepartment) != "" {
+		updates["known_for_department"] = input.KnownForDepartment
+	}
+	if existing.MetadataJSON == "" && strings.TrimSpace(input.MetadataJSON) != "" {
+		updates["metadata_json"] = input.MetadataJSON
+	}
+	for column, value := range map[string]*string{
+		"tmdb_id":   input.TMDBId,
+		"douban_id": input.DoubanId,
+		"imdb_id":   input.IMDBId,
+	} {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			updates[column] = strings.TrimSpace(*value)
+		}
+	}
+	return updates
 }
 
 func save_content_conversation(db *gorm.DB, content_conversation *model.ContentConversation) error {

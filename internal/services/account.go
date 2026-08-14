@@ -20,17 +20,52 @@ func NewAccountService(db *gorm.DB) *AccountService {
 }
 
 type Influencer struct {
-	Id          int    `json:"id"`
-	Name        string `json:"name"`
-	AvatarURL   string `json:"avatar_url"`
-	Sex         int    `json:"sex"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-	DeletedAt   *int64 `json:"deleted_at"`
+	Id                 int     `json:"id"`
+	Name               string  `json:"name"`
+	Alias              string  `json:"alias"`
+	AvatarURL          string  `json:"avatar_url"`
+	Sex                int     `json:"sex"`
+	Description        string  `json:"description"`
+	Biography          string  `json:"biography"`
+	ProfilePath        string  `json:"profile_path"`
+	Birthday           string  `json:"birthday"`
+	PlaceOfBirth       string  `json:"place_of_birth"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Profile            string  `json:"profile"`
+	TMDBId             *string `json:"tmdb_id,omitempty"`
+	DoubanId           *string `json:"douban_id,omitempty"`
+	IMDBId             *string `json:"imdb_id,omitempty"`
+	MetadataJSON       string  `json:"metadata_json"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+	DeletedAt          *int64  `json:"deleted_at"`
 }
 
-func (s *AccountService) ListInfluencers(page, pageSize int) (*PageResult, error) {
+func influencer_response(influencer model.Influencer) Influencer {
+	return Influencer{
+		Id:                 influencer.Id,
+		Name:               influencer.Name,
+		Alias:              influencer.Alias,
+		AvatarURL:          influencer.AvatarURL,
+		Sex:                influencer.Sex,
+		Description:        influencer.Description,
+		Biography:          influencer.Biography,
+		ProfilePath:        influencer.ProfilePath,
+		Birthday:           influencer.Birthday,
+		PlaceOfBirth:       influencer.PlaceOfBirth,
+		KnownForDepartment: influencer.KnownForDepartment,
+		Profile:            influencer.Profile,
+		TMDBId:             influencer.TMDBId,
+		DoubanId:           influencer.DoubanId,
+		IMDBId:             influencer.IMDBId,
+		MetadataJSON:       influencer.MetadataJSON,
+		CreatedAt:          strconv.FormatInt(influencer.CreatedAt, 10),
+		UpdatedAt:          strconv.FormatInt(influencer.UpdatedAt, 10),
+		DeletedAt:          influencer.DeletedAt,
+	}
+}
+
+func (s *AccountService) ListInfluencers(page, page_size int) (*PageResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
@@ -39,27 +74,18 @@ func (s *AccountService) ListInfluencers(page, pageSize int) (*PageResult, error
 		return nil, err
 	}
 	var list []model.Influencer
-	if err := s.db.Order("id DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&list).Error; err != nil {
+	if err := s.db.Order("id DESC").Limit(page_size).Offset((page - 1) * page_size).Find(&list).Error; err != nil {
 		return nil, err
 	}
 	out := make([]Influencer, 0, len(list))
-	for _, m := range list {
-		out = append(out, Influencer{
-			Id:          m.Id,
-			Name:        m.Name,
-			AvatarURL:   m.AvatarURL,
-			Sex:         m.Sex,
-			Description: m.Description,
-			CreatedAt:   strconv.FormatInt(m.CreatedAt, 10),
-			UpdatedAt:   strconv.FormatInt(m.UpdatedAt, 10),
-			DeletedAt:   m.DeletedAt,
-		})
+	for _, influencer := range list {
+		out = append(out, influencer_response(influencer))
 	}
 	return &PageResult{
 		List:     out,
 		Total:    total,
 		Page:     page,
-		PageSize: pageSize,
+		PageSize: page_size,
 	}, nil
 }
 
@@ -67,26 +93,30 @@ func (s *AccountService) GetInfluencer(id int) (*Influencer, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
-	var m model.Influencer
-	if err := s.db.First(&m, id).Error; err != nil {
+	var influencer model.Influencer
+	if err := s.db.First(&influencer, id).Error; err != nil {
 		return nil, err
 	}
-	return &Influencer{
-		Id:          m.Id,
-		Name:        m.Name,
-		AvatarURL:   m.AvatarURL,
-		Sex:         m.Sex,
-		Description: m.Description,
-		CreatedAt:   strconv.FormatInt(m.CreatedAt, 10),
-		UpdatedAt:   strconv.FormatInt(m.UpdatedAt, 10),
-		DeletedAt:   m.DeletedAt,
-	}, nil
+	response := influencer_response(influencer)
+	return &response, nil
 }
 
 type CreateInfluencerInput struct {
-	Name        string
-	AvatarURL   string
-	Description string
+	Name               string
+	Alias              string
+	AvatarURL          string
+	Sex                int
+	Description        string
+	Biography          string
+	ProfilePath        string
+	Birthday           string
+	PlaceOfBirth       string
+	KnownForDepartment string
+	Profile            string
+	TMDBId             *string
+	DoubanId           *string
+	IMDBId             *string
+	MetadataJSON       string
 }
 
 func (s *AccountService) CreateInfluencer(input *CreateInfluencerInput) (*Influencer, error) {
@@ -94,34 +124,50 @@ func (s *AccountService) CreateInfluencer(input *CreateInfluencerInput) (*Influe
 		return nil, ErrDBNotInitialized
 	}
 	now := utilpkg.NowMillis()
-	m := model.Influencer{
-		Name:        input.Name,
-		AvatarURL:   input.AvatarURL,
-		Description: input.Description,
+	influencer := model.Influencer{
+		Name:               input.Name,
+		Alias:              input.Alias,
+		AvatarURL:          input.AvatarURL,
+		Sex:                input.Sex,
+		Description:        input.Description,
+		Biography:          input.Biography,
+		ProfilePath:        input.ProfilePath,
+		Birthday:           input.Birthday,
+		PlaceOfBirth:       input.PlaceOfBirth,
+		KnownForDepartment: input.KnownForDepartment,
+		Profile:            input.Profile,
+		TMDBId:             input.TMDBId,
+		DoubanId:           input.DoubanId,
+		IMDBId:             input.IMDBId,
+		MetadataJSON:       input.MetadataJSON,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
 	}
-	if err := s.db.Create(&m).Error; err != nil {
+	if err := s.db.Create(&influencer).Error; err != nil {
 		return nil, err
 	}
-	return &Influencer{
-		Id:          m.Id,
-		Name:        m.Name,
-		AvatarURL:   m.AvatarURL,
-		Sex:         m.Sex,
-		Description: m.Description,
-		CreatedAt:   strconv.FormatInt(m.CreatedAt, 10),
-		UpdatedAt:   strconv.FormatInt(m.UpdatedAt, 10),
-		DeletedAt:   m.DeletedAt,
-	}, nil
+	response := influencer_response(influencer)
+	return &response, nil
 }
 
 type UpdateInfluencerInput struct {
-	Name        string
-	AvatarURL   string
-	Description string
+	Name               string
+	Alias              string
+	AvatarURL          string
+	Sex                *int
+	Description        string
+	Biography          string
+	ProfilePath        string
+	Birthday           string
+	PlaceOfBirth       string
+	KnownForDepartment string
+	Profile            string
+	TMDBId             *string
+	DoubanId           *string
+	IMDBId             *string
+	MetadataJSON       string
 }
 
 func (s *AccountService) UpdateInfluencer(id int, input *UpdateInfluencerInput) (*Influencer, error) {
@@ -134,31 +180,51 @@ func (s *AccountService) UpdateInfluencer(id int, input *UpdateInfluencerInput) 
 	if input.Name != "" {
 		updates["name"] = input.Name
 	}
+	if input.Alias != "" {
+		updates["alias"] = input.Alias
+	}
 	if input.AvatarURL != "" {
 		updates["avatar_url"] = input.AvatarURL
 	}
+	if input.Sex != nil {
+		updates["sex"] = *input.Sex
+	}
 	if input.Description != "" {
 		updates["description"] = input.Description
+	}
+	for column, value := range map[string]string{
+		"biography":            input.Biography,
+		"profile_path":         input.ProfilePath,
+		"birthday":             input.Birthday,
+		"place_of_birth":       input.PlaceOfBirth,
+		"known_for_department": input.KnownForDepartment,
+		"profile":              input.Profile,
+		"metadata_json":        input.MetadataJSON,
+	} {
+		if value != "" {
+			updates[column] = value
+		}
+	}
+	for column, value := range map[string]*string{
+		"tmdb_id":   input.TMDBId,
+		"douban_id": input.DoubanId,
+		"imdb_id":   input.IMDBId,
+	} {
+		if value != nil {
+			updates[column] = *value
+		}
 	}
 	if len(updates) > 1 {
 		if err := s.db.Model(&model.Influencer{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return nil, err
 		}
 	}
-	var m model.Influencer
-	if err := s.db.First(&m, id).Error; err != nil {
+	var influencer model.Influencer
+	if err := s.db.First(&influencer, id).Error; err != nil {
 		return nil, err
 	}
-	return &Influencer{
-		Id:          m.Id,
-		Name:        m.Name,
-		AvatarURL:   m.AvatarURL,
-		Sex:         m.Sex,
-		Description: m.Description,
-		CreatedAt:   strconv.FormatInt(m.CreatedAt, 10),
-		UpdatedAt:   strconv.FormatInt(m.UpdatedAt, 10),
-		DeletedAt:   m.DeletedAt,
-	}, nil
+	response := influencer_response(influencer)
+	return &response, nil
 }
 
 var ErrDBNotInitialized = &ServiceError{"db not initialized"}

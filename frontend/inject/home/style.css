@@ -630,13 +630,27 @@
 
 .wx-home-content-relation {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(118px, auto) minmax(0, 1fr);
+  display: block;
+}
+
+.wx-home-content-relation-path {
+  margin-bottom: 8px;
+  color: var(--wx-content-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.wx-home-content-relation-flow {
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 10px;
 }
 
 .wx-home-content-relation-node {
+  flex: 1 1 0;
   min-width: 0;
   padding: 10px 11px;
   display: block;
@@ -645,23 +659,6 @@
   background: var(--wx-content-panel-soft);
   color: inherit;
   text-align: left;
-}
-
-.wx-home-content-relation-node:not(:disabled) {
-  cursor: pointer;
-}
-
-.wx-home-content-relation-node:not(:disabled):hover {
-  border-color: color-mix(
-    in srgb,
-    var(--wx-content-primary) 40%,
-    var(--wx-content-border)
-  );
-  background: var(--wx-content-primary-soft);
-}
-
-.wx-home-content-relation-node:disabled {
-  opacity: 1;
 }
 
 .wx-home-content-relation-node-type,
@@ -694,6 +691,7 @@
 }
 
 .wx-home-content-relation-edge {
+  flex: 0 0 96px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -711,6 +709,116 @@
 
 .wx-home-content-relation-edge-type {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.wx-home-content-influencers {
+  padding: 5px 10px 7px;
+}
+
+.wx-home-content-influencer-heading {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.wx-home-content-influencer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--wx-content-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.wx-home-content-influencer-title svg {
+  color: var(--wx-content-primary);
+}
+
+.wx-home-content-influencer-count {
+  color: var(--wx-content-muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.wx-home-content-influencer-list {
+  padding: 3px 0 0;
+}
+
+.wx-home-content-influencer-list
+  .wx-home-content-relation
+  + .wx-home-content-relation {
+  margin-top: 3px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.wx-home-content-influencer-relation .wx-home-content-relation-flow {
+  width: auto;
+  max-width: 100%;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.wx-home-content-influencer-entity {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--wx-content-text);
+  line-height: 1.2;
+}
+
+.wx-home-content-influencer-entity-type {
+  flex: 0 0 auto;
+  color: var(--wx-content-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+}
+
+.wx-home-content-influencer-entity-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-home-content-influencer-entity.is-content {
+  max-width: 180px;
+  color: var(--wx-content-muted);
+}
+
+.wx-home-content-influencer-relation .wx-home-content-relation-edge {
+  min-width: 0;
+  display: inline-flex;
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  color: var(--wx-content-muted);
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.wx-home-content-influencer-relation .wx-home-content-relation-edge svg {
+  transform: none;
+}
+
+.wx-home-content-influencer-relation
+  .wx-home-content-relation-edge-name {
+  color: var(--wx-content-muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.wx-home-content-influencer-relation
+  .wx-home-content-relation-edge-type {
+  font-size: 8px;
 }
 
 .wx-home-download,
@@ -1895,12 +2003,17 @@ button.wx-home-novel-chapter {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .wx-home-content-relation {
-    grid-template-columns: minmax(0, 1fr);
+  .wx-home-content-relation-flow {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .wx-home-content-relation-edge svg {
     transform: rotate(90deg);
+  }
+
+  .wx-home-content-relation-edge {
+    flex-basis: auto;
   }
 
   .wx-home-download-relation {
