@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdhtml "html"
 	"io"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/rs/zerolog"
 	xhtml "golang.org/x/net/html"
+
+	"wx_channel/pkg/cookies"
 )
 
 const (
@@ -39,6 +42,7 @@ const (
 // with the reflow_id expected by Douyin.
 type DouyinPCClient struct {
 	http_client      *http.Client
+	cookie_reader    *cookies.Reader
 	request_timeout  time.Duration
 	request_attempts int
 	logger           zerolog.Logger
@@ -52,7 +56,13 @@ func NewDouyinPCClient() *DouyinPCClient {
 
 // NewDouyinPCClientWithLogger creates a PC-compatible scraper with diagnostics.
 func NewDouyinPCClientWithLogger(parent_logger *zerolog.Logger) *DouyinPCClient {
-	return NewDouyinPCClientWithHTTPClient(nil, parent_logger)
+	return NewDouyinPCClientWithCookieReader(nil, parent_logger)
+}
+
+// NewDouyinPCClientWithCookieReader creates a PC-compatible scraper that
+// refreshes Douyin cookies from the persistent reader for every request.
+func NewDouyinPCClientWithCookieReader(cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *DouyinPCClient {
+	return NewDouyinPCClientWithHTTPClientAndCookieReader(nil, cookie_reader, parent_logger)
 }
 
 // NewDouyinPCClientWithHTTPClient creates a PC-compatible scraper using the
@@ -60,11 +70,18 @@ func NewDouyinPCClientWithLogger(parent_logger *zerolog.Logger) *DouyinPCClient 
 // HTTP_PROXY or HTTPS_PROXY. The custom-client form is useful when callers need
 // their own transport, proxy, cookie jar, or test double.
 func NewDouyinPCClientWithHTTPClient(http_client *http.Client, parent_logger *zerolog.Logger) *DouyinPCClient {
+	return NewDouyinPCClientWithHTTPClientAndCookieReader(http_client, nil, parent_logger)
+}
+
+// NewDouyinPCClientWithHTTPClientAndCookieReader creates a PC-compatible
+// scraper with both a custom HTTP client and persistent Douyin cookies.
+func NewDouyinPCClientWithHTTPClientAndCookieReader(http_client *http.Client, cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *DouyinPCClient {
 	if http_client == nil {
 		http_client = new_douyin_pc_http_client()
 	}
 	return &DouyinPCClient{
 		http_client:      http_client,
+		cookie_reader:    cookie_reader,
 		request_timeout:  douyin_pc_request_timeout,
 		request_attempts: douyin_pc_request_attempts,
 		logger:           new_component_logger(parent_logger, "douyin_pc"),
@@ -186,6 +203,14 @@ func (c *DouyinPCClient) get(request_url string, headers map[string]string) ([]b
 	}
 	for key, value := range headers {
 		req.Header.Set(key, value)
+	}
+	if c.cookie_reader != nil {
+		cookie_header, cookie_err := c.cookie_reader.HeaderForDomain("www.douyin.com")
+		if cookie_err == nil && cookie_header != "" {
+			req.Header.Set("Cookie", cookie_header)
+		} else if cookie_err != nil && !errors.Is(cookie_err, cookies.ErrCookieNotFound) {
+			c.logger.Warn().Err(cookie_err).Msg("douyin PC: failed to read persistent cookies")
+		}
 	}
 
 	resp, err := c.http_client.Do(req)

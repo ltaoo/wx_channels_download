@@ -14,6 +14,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/douyin"
 )
 
@@ -30,6 +31,7 @@ type handler struct {
 	runtime_mu sync.RWMutex
 	logger     *zerolog.Logger
 	config     *config.Config
+	cookies    *cookies.Reader
 }
 
 var (
@@ -53,6 +55,7 @@ func (h *handler) RegisterRuntime(deps *adapter.AdapterOptions) (adapter.Runtime
 	h.runtime_mu.Lock()
 	h.logger = deps.Logger
 	h.config = deps.Config
+	h.cookies = deps.Cookies
 	h.runtime_mu.Unlock()
 	if deps.Logger != nil {
 		deps.Logger.Info().
@@ -77,6 +80,7 @@ func (h *handler) Stop() {
 	h.runtime_mu.Lock()
 	h.logger = nil
 	h.config = nil
+	h.cookies = nil
 	h.runtime_mu.Unlock()
 }
 
@@ -102,6 +106,16 @@ func (h *handler) config_string(key string) string {
 	return runtime_config.GetString(key)
 }
 
+func (h *handler) cookie_reader() *cookies.Reader {
+	if h == nil {
+		return nil
+	}
+	h.runtime_mu.RLock()
+	cookie_reader := h.cookies
+	h.runtime_mu.RUnlock()
+	return cookie_reader
+}
+
 func (h *handler) Fetch(raw_url string) (any, error) {
 	return h.fetch(raw_url, "")
 }
@@ -123,7 +137,7 @@ func (h *handler) fetch(raw_url string, request_id string) (any, error) {
 		request_logger := logger.With().Str("job_id", request_id).Logger()
 		logger = &request_logger
 	}
-	return douyin.NewClientWithLogger(cookie, logger).Fetch(raw_url)
+	return douyin.NewClientWithLoggerAndCookieReader(cookie, h.cookie_reader(), logger).Fetch(raw_url)
 }
 
 func (h *handler) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
@@ -289,7 +303,7 @@ func (h *handler) download_model_data(content_json json.RawMessage) (*douyin_mod
 	}
 
 	cookie := h.config_string("douyin.cookie")
-	client := douyin.NewClientWithLogger(cookie, h.get_logger())
+	client := douyin.NewClientWithLoggerAndCookieReader(cookie, h.cookie_reader(), h.get_logger())
 	video_info, err := client.GetVideoInfo(input.URL)
 	if err != nil {
 		return nil, fmt.Errorf("获取抖音视频信息失败: %w", err)

@@ -177,6 +177,38 @@ func douyin_model_data_from_json(raw_json json.RawMessage) (*douyin_model_data, 
 		return nil, fmt.Errorf("douyin mobile JSON is empty")
 	}
 
+	// DouyinPCClient returns the normalized detail envelope directly, while the
+	// legacy client returns _ROUTER_DATA. Convert the former into the same page
+	// shape so the model conversion below remains shared.
+	var detail_envelope struct {
+		AwemeDetail json.RawMessage `json:"aweme_detail"`
+		StatusCode  int             `json:"status_code"`
+		ItemID      string          `json:"_item_id"`
+	}
+	if err := json.Unmarshal(raw_json, &detail_envelope); err == nil && len(detail_envelope.AwemeDetail) > 0 && string(detail_envelope.AwemeDetail) != "null" {
+		var item douyin_mobile_item
+		if err := json.Unmarshal(detail_envelope.AwemeDetail, &item); err != nil {
+			return nil, fmt.Errorf("parse douyin detail JSON: %w", err)
+		}
+		page_json, err := json.Marshal(douyin_mobile_page{
+			LastPath: detail_envelope.ItemID,
+			VideoInfoRes: douyin_mobile_video_info_response{
+				StatusCode: detail_envelope.StatusCode,
+				ItemList:   []douyin_mobile_item{item},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build douyin detail page: %w", err)
+		}
+		router_json, err := json.Marshal(douyin_mobile_router_data{
+			LoaderData: map[string]json.RawMessage{douyin_mobile_video_page_key: page_json},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build douyin detail router data: %w", err)
+		}
+		raw_json = router_json
+	}
+
 	var router_data douyin_mobile_router_data
 	if err := json.Unmarshal(raw_json, &router_data); err != nil {
 		return nil, fmt.Errorf("parse douyin mobile JSON: %w", err)

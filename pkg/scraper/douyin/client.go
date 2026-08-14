@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"wx_channel/pkg/cookies"
 )
 
 // Client is the Douyin video scraper client.
@@ -26,9 +28,25 @@ func NewClient(cookie string) *Client {
 
 // NewClientWithLogger creates a Douyin client with structured diagnostics.
 func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
+	return new_client(cookie, nil, parent_logger)
+}
+
+// NewClientWithCookieReader creates a Douyin client backed by persistent
+// cookies for the PC-compatible detail flow.
+func NewClientWithCookieReader(cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *Client {
+	return new_client("", cookie_reader, parent_logger)
+}
+
+// NewClientWithLoggerAndCookieReader creates a Douyin client using both the
+// configured web cookie string and persistent cookies for PC requests.
+func NewClientWithLoggerAndCookieReader(cookie string, cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *Client {
+	return new_client(cookie, cookie_reader, parent_logger)
+}
+
+func new_client(cookie string, cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *Client {
 	logger := new_component_logger(parent_logger, "douyin_scraper")
 	return &Client{
-		pc:     NewDouyinPCClientWithLogger(parent_logger),
+		pc:     NewDouyinPCClientWithCookieReader(cookie_reader, parent_logger),
 		mobile: NewDouyinMobileClientWithLogger(parent_logger),
 		web:    NewDouyinWebClientWithLogger(cookie, parent_logger),
 		logger: logger,
