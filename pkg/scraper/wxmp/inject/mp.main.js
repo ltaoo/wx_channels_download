@@ -27,6 +27,15 @@
       #activity-detail .t1-popper {
         z-index: 99999 !important;
       }
+      body .t1-popper {
+        z-index: 99999 !important;
+      }
+      .interaction_bar .sns_opr_btn:after {
+        min-width: 32px !important;
+      }
+      .interaction_bar .sns_opr_btn .sns_opr_gap {
+        width: 32px !important;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -700,9 +709,37 @@
     },
   });
 
+  function DownloaderConnectionStatusDot(props) {
+    return View(
+      {
+        style: computed(props.connected, (connected) => ({
+          position: "absolute",
+          top: "-2px",
+          right: "-2px",
+          width: "6px",
+          height: "6px",
+          "border-radius": "9999px",
+          "background-color": connected ? "#22c55e" : "#ef4444",
+          "box-sizing": "border-box",
+        })),
+        attributes: {
+          title: computed(props.connected, (connected) =>
+            connected ? "WebSocket 已连接" : "WebSocket 已断开",
+          ),
+          "aria-label": computed(props.connected, (connected) =>
+            connected ? "WebSocket 已连接" : "WebSocket 已断开",
+          ),
+        },
+      },
+      [],
+    );
+  }
+
   function DownloaderEntry(props) {
     const vm$ =
-      typeof __d_vm$ !== undefined ? __d_vm$ : DownloaderPanelViewModel({});
+      props.store ||
+      (typeof __d_vm$ !== "undefined" ? __d_vm$ : DownloaderPanelViewModel({}));
+
     return Button(
       {
         attributes: {
@@ -710,7 +747,9 @@
         },
         class:
           "sns_opr_btn sns_write_comment_btn __wx_download_btn bar-expand-hotarea js_wx_tap_highlight wx_tap_link",
+        style: { position: "relative" },
         onMounted() {
+          vm$.methods.connect().catch(() => {});
           if (props.onMounted) {
             props.onMounted(vm$);
           }
@@ -725,10 +764,12 @@
           {
             attributes: { id: "__wx_download_bottom_text" },
             class: "sns_opr_gap",
-            style: { display: "inline" },
           },
           ["下载"],
         ),
+        DownloaderConnectionStatusDot({
+          connected: vm$.state.websocket_connected,
+        }),
         Popover(
           {
             store: props.popover$,
@@ -749,35 +790,46 @@
         OverwriteDownloadConfirmDialog({
           store: vm$,
         }),
+        Dialog(
+          {
+            store: props.msg_list_dialog$,
+          },
+          [
+            MsgListPanel({
+              store: props.msglist$,
+            }),
+          ],
+        ),
       ],
     );
   }
 
   function insert_download_button() {
     document.body.classList.add("wx-officialaccount-download-menu-mounted");
-    var $wraps = document.querySelectorAll(".interaction_bar");
-    var $container = $wraps[$wraps.length - 1];
-    const no_container = !$container || !$container.lastElementChild;
-    console.log(
-      "[mp.main.js]before if (no_container",
-      $container,
-      no_container,
-    );
-    if (no_container) {
-      return;
-    }
+
     const popover$ = new Timeless.vm.PopoverCore({
       offsetY: 4,
       destroyOnClose: false,
     });
+    const downloadervm$ =
+      typeof __d_vm$ !== "undefined" ? __d_vm$ : DownloaderPanelViewModel({});
+
+    const msglist$ = MsgListModel();
     const msg_list_dialog$ = new Timeless.vm.DialogCore({
       offsetY: 4,
     });
     // Create button container and insert into page (following panel.js pattern: insert DOM element first, then render VDOM into it)
     const $btn = document.createElement("div");
     $btn.className = "sns_opr_btn_con";
-    $container.insertBefore($btn, $container.lastElementChild);
-    console.log("before render(DownloaderEntry");
+    setTimeout(() => {
+      var $wraps = document.querySelectorAll(".interaction_bar");
+      var $container = $wraps[$wraps.length - 1];
+      const no_container = !$container || !$container.lastElementChild;
+      if (no_container) {
+        return;
+      }
+      $container.insertBefore($btn, $container.lastElementChild);
+    }, 1800);
     WXU.downloader.show = function () {
       popover$.popper.setReference({
         $el: $btn,
@@ -794,6 +846,9 @@
     Timeless.DOM.render(
       DownloaderEntry({
         popover$,
+        msglist$,
+        msg_list_dialog$,
+        store: downloadervm$,
         onClick: handle_download_click,
       }),
       $btn,
@@ -814,12 +869,11 @@
         dropdown$.hide();
       }
     }
-    const download_all_model = DownloadAllPushesModel();
-    const download_all_menu_item = DownloadAllPushesMenuItem({
-      close: close_dropdown,
-      store: download_all_model,
-    });
-    const msglist$ = MsgListModel();
+    // const download_all_model = DownloadAllPushesModel();
+    // const download_all_menu_item = DownloadAllPushesMenuItem({
+    //   close: close_dropdown,
+    //   store: download_all_model,
+    // });
     const msg_list_menu_item = MsgListMenuItem({
       close: close_dropdown,
       open() {
@@ -868,19 +922,18 @@
           label: "下载面板",
           onClick() {
             dropdown$.hide();
-            console.log("[mp.main.js]onClick - before popover$.show");
             WXU.downloader.show();
           },
         }),
       ],
     });
-    const dropdownRoot = document.createElement("span");
-    dropdownRoot.className = "wx-download-dropdown-menu-root";
-    dropdownRoot.style.display = "contents";
-    document.body.appendChild(dropdownRoot);
+    const $dropdown_root = document.createElement("span");
+    $dropdown_root.className = "wx-download-dropdown-menu-root";
+    $dropdown_root.style.display = "contents";
+    document.body.appendChild($dropdown_root);
     Timeless.DOM.render(
       Timeless.weui.DropdownMenu({ store: dropdown$ }),
-      dropdownRoot,
+      $dropdown_root,
     );
     function set_dropdown_reference() {
       dropdown$.setReference(
@@ -893,7 +946,16 @@
         { force: true },
       );
     }
+    function is_downloader_connected() {
+      return !!downloadervm$.state.websocket_connected.value;
+    }
     function show_dropdown() {
+      if (!is_downloader_connected()) {
+        dropdown$.hide({ reason: "download websocket disconnected" });
+        WXU.downloader.show();
+        return;
+      }
+      WXU.downloader.hide();
       set_dropdown_reference();
       dropdown$.handleEnterTrigger();
     }
@@ -904,38 +966,44 @@
       event.preventDefault();
       event.stopPropagation();
       dropdown$.hide({ reason: "download button click" });
-      // console.log("handle_download_click");
+      if (!is_downloader_connected()) {
+        WXU.downloader.show();
+        return;
+      }
       await create_download_task(popover$, $btn);
     }
+    downloadervm$.state.websocket_connected.subscribe({
+      onChange(connected) {
+        if (!connected) {
+          dropdown$.hide({ reason: "download websocket disconnected" });
+        }
+      },
+    });
     $btn.addEventListener("mouseenter", show_dropdown);
     $btn.addEventListener("mouseleave", hide_dropdown);
-    // $btn.addEventListener("click", handle_download_click);
     $btn.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
 
-    const msg_list_overlay = document.createElement("div");
-    msg_list_overlay.style.cssText =
-      "display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
-    const msg_list_panel_root = document.createElement("div");
-    msg_list_panel_root.style.display = "contents";
-    msg_list_overlay.appendChild(msg_list_panel_root);
-    msg_list_overlay.addEventListener("click", (event) => {
-      if (event.target === msg_list_overlay) {
-        msg_list_dialog$.hide();
-      }
-    });
-    document.body.appendChild(msg_list_overlay);
-    Timeless.DOM.render(
-      MsgListPanel({
-        dialog$: msg_list_dialog$,
-        store: msglist$,
-      }),
-      msg_list_panel_root,
-    );
-    msg_list_dialog$.onStateChange((state) => {
-      msg_list_overlay.style.display = state.visible ? "flex" : "none";
-    });
+    // const msg_list_overlay = document.createElement("div");
+    // msg_list_overlay.style.cssText =
+    //   "display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;";
+    // const msg_list_panel_root = document.createElement("div");
+    // msg_list_panel_root.style.display = "contents";
+    // msg_list_overlay.appendChild(msg_list_panel_root);
+    // msg_list_overlay.addEventListener("click", (event) => {
+    //   if (event.target === msg_list_overlay) {
+    //     msg_list_dialog$.hide();
+    //   }
+    // });
+    // document.body.appendChild(msg_list_overlay);
+    // Timeless.DOM.render(
+    //   ,
+    //   msg_list_panel_root,
+    // );
+    // msg_list_dialog$.onStateChange((state) => {
+    //   msg_list_overlay.style.display = state.visible ? "flex" : "none";
+    // });
   }
   async function main() {
     const isArticleURL = !!(
@@ -987,11 +1055,12 @@
     };
     report_article_loaded();
     WXU.observe_node({
-      selector: ".interaction_bar",
+      selector: ".sns_opr_btn_con",
       container: "body",
-      onOk(node) {
+      onOk() {
         WXU.log
           .Info()
+          .Bool("download button is inserted", __download_btn_inserted)
           .Msg("main - find the container to insert download button");
         if (__download_btn_inserted) {
           return;

@@ -1653,7 +1653,6 @@ function HomePageResult(props) {
         HomeContentDetails({ store: vm$ }),
         HomeDownloadInfo({ store: vm$ }),
         HomeRawJSON({ store: vm$ }),
-        HomeResultActions({ store: vm$ }),
         HomeCacheCard({ store: vm$ }),
       ]);
     },

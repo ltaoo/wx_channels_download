@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 
 	"wx_channel/pkg/hermes"
@@ -32,19 +33,21 @@ func (d *InlineDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (h
 }
 
 // Open returns a ReadCloser reading from in-memory data, supporting Range requests.
-func (d *InlineDriver) Open(ctx context.Context, endpoint hermes.Endpoint, req hermes.ReadRequest) (io.ReadCloser, error) {
+func (d *InlineDriver) Open(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
 	data := []byte(endpoint.URL)
-
-	start := req.OffsetStart
-	end := int64(len(data)) - 1
-
-	if req.OffsetEnd > 0 && req.OffsetEnd < end {
-		end = req.OffsetEnd
+	data_size := int64(len(data))
+	offset_start := request.OffsetStart
+	if offset_start < 0 || offset_start > data_size {
+		return nil, fmt.Errorf("inline endpoint range starts outside content: %d", offset_start)
 	}
 
-	if start > end {
-		start = end
+	offset_end := data_size
+	if request.UseRange && request.OffsetEnd >= offset_start && request.OffsetEnd < data_size {
+		offset_end = request.OffsetEnd + 1
 	}
 
-	return io.NopCloser(bytes.NewReader(data[start : end+1])), nil
+	return io.NopCloser(bytes.NewReader(data[offset_start:offset_end])), nil
 }

@@ -1892,7 +1892,7 @@ function DownloaderPanelViewModel(props = {}) {
           const path = download_task_file_path(file);
           if (task.files.length > 1) {
             return {
-              name: `${task.name} +${task.files.length}个文件`,
+              name: `${task.name} 等${task.files.length}个文件`,
               filename: file.name,
               path,
             };
