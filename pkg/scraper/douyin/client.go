@@ -9,8 +9,10 @@ import (
 )
 
 // Client is the Douyin video scraper client.
-// Fetch prefers raw mobile data and falls back to the structured web API.
+// Fetch prefers the browser-free PC-compatible detail flow and falls back to
+// the legacy mobile router data and structured web API.
 type Client struct {
+	pc     *DouyinPCClient
 	mobile *DouyinMobileClient
 	web    *DouyinWebClient
 	logger zerolog.Logger
@@ -26,13 +28,15 @@ func NewClient(cookie string) *Client {
 func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
 	logger := new_component_logger(parent_logger, "douyin_scraper")
 	return &Client{
+		pc:     NewDouyinPCClientWithLogger(parent_logger),
 		mobile: NewDouyinMobileClientWithLogger(parent_logger),
 		web:    NewDouyinWebClientWithLogger(cookie, parent_logger),
 		logger: logger,
 	}
 }
 
-// Fetch retrieves raw mobile JSON, falling back to structured web API data.
+// Fetch retrieves detail JSON with the PC-compatible flow first, falling back
+// to raw mobile JSON and then structured web API data.
 func (c *Client) Fetch(raw_url string) (any, error) {
 	started_at := time.Now()
 	c.logger.Info().
@@ -52,7 +56,24 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 		Str("douyin_url", douyin_url).
 		Msg("douyin fetch: URL extracted")
 
-	// Try mobile first (no cookie required)
+	// Try the PC-compatible detail flow first. It returns the normalized
+	// aweme_detail JSON required by current Douyin share pages.
+	pc_started_at := time.Now()
+	detail_json, pc_err := c.pc.FetchDetail(douyin_url)
+	if pc_err == nil {
+		c.logger.Info().
+			Int("detail_json_bytes", len(detail_json)).
+			Dur("pc_elapsed", time.Since(pc_started_at)).
+			Dur("elapsed", time.Since(started_at)).
+			Msg("douyin fetch: completed with PC-compatible detail JSON")
+		return detail_json, nil
+	}
+	c.logger.Warn().
+		Err(pc_err).
+		Dur("pc_elapsed", time.Since(pc_started_at)).
+		Msg("douyin fetch: PC-compatible detail failed, falling back to mobile")
+
+	// Try legacy mobile router data (no cookie required).
 	mobile_started_at := time.Now()
 	router_json, mobile_err := c.mobile.Parse(douyin_url)
 	if mobile_err == nil {
@@ -77,7 +98,9 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 			Dur("web_elapsed", time.Since(web_started_at)).
 			Dur("elapsed", time.Since(started_at))
 		if mobile_err != nil {
-			log_event = log_event.Errs("previous_errors", []error{mobile_err})
+			log_event = log_event.Errs("previous_errors", []error{pc_err, mobile_err})
+		} else {
+			log_event = log_event.Errs("previous_errors", []error{pc_err})
 		}
 		log_event.Msg("douyin fetch: web video ID extraction failed")
 		return nil, wrap_web_extract_error(mobile_err, extract_err)
@@ -94,7 +117,9 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 			Dur("web_elapsed", time.Since(web_started_at)).
 			Dur("elapsed", time.Since(started_at))
 		if mobile_err != nil {
-			log_event = log_event.Errs("previous_errors", []error{mobile_err})
+			log_event = log_event.Errs("previous_errors", []error{pc_err, mobile_err})
+		} else {
+			log_event = log_event.Errs("previous_errors", []error{pc_err})
 		}
 		log_event.Msg("douyin fetch: web API failed")
 		return nil, wrap_web_fetch_error(mobile_err, fetch_err)
