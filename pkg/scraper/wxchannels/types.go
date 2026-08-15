@@ -798,30 +798,6 @@ type MediaProfile struct {
 	Pageurl  string             `json:"pageurl"`
 }
 
-type FrontendTip struct {
-	End          int     `json:"end"`
-	Replace      int     `json:"replace"`
-	IgnorePrefix int     `json:"ignore_prefix"`
-	Prefix       *string `json:"prefix"`
-	Msg          string  `json:"msg"`
-}
-
-type FrontendErrorTip struct {
-	Alert int    `json:"alert"`
-	Msg   string `json:"msg"`
-}
-
-// FrontendReport is a unified frontend report, level is "info" or "error"
-type FrontendReport struct {
-	Level        string  `json:"level"`
-	Message      string  `json:"message"`
-	Msg          string  `json:"msg"`
-	End          int     `json:"end,omitempty"`
-	Replace      int     `json:"replace,omitempty"`
-	IgnorePrefix int     `json:"ignore_prefix,omitempty"`
-	Prefix       *string `json:"prefix,omitempty"`
-}
-
 // aliases
 type ChannelMediaSpec = InterceptorMediaSpec
 type ChannelPicture = InterceptorPicture

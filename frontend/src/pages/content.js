@@ -19,5 +19,5 @@
     ]);
   }
 
-  global.register("b", PageBView);
+  global.register("content_page", PageBView);
 })(window);

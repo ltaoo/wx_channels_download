@@ -18,20 +18,10 @@ func (c *APIClient) SetupRoutes() {
 	// favicon
 	c.engine.GET("/favicon.ico", c.handle_favicon)
 	c.setup_static_asset_routes()
-	c.engine.GET("/", c.handle_index)
-	// c.engine.GET("/", func(ctx *gin.Context) {
-	// 	c.renderFrontendFile(ctx, "index.html")
-	// })
-	c.engine.GET("/download", c.handle_download_page)
-	c.engine.GET("/home", c.handle_home_page)
-	c.engine.GET("/browsehistory", c.handle_browse_history_page)
-	c.engine.GET("/account", c.handle_account_page)
-	c.engine.GET("/content", c.handle_content_page)
-	c.engine.GET("/content/detail", c.handle_content_detail_page)
-	c.engine.GET("/logs", c.handle_logs_page)
-	c.engine.GET("/preview", c.handle_preview_page)
-	c.engine.GET("/channels", c.handle_channels_page)
-	c.engine.GET("/filehelper", c.file_helper.HandlePage)
+	// c.engine.GET("/", c.handle_index)
+	c.engine.GET("/", func(ctx *gin.Context) {
+		c.renderFrontendFile(ctx, "index.html")
+	})
 	// !!
 	c.engine.POST("/api/scraper/fetch", c.handle_scraper_fetch)
 	// GET remains available for callers migrating from the former synchronous API.

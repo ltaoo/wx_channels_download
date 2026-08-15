@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -14,50 +13,36 @@ import (
 
 	"wx_channel/frontend"
 	result "wx_channel/internal/apiresult"
-	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
 )
 
+type FrontendTip struct {
+	End          int     `json:"end"`
+	Replace      int     `json:"replace"`
+	IgnorePrefix int     `json:"ignore_prefix"`
+	Prefix       *string `json:"prefix"`
+	Msg          string  `json:"msg"`
+}
+
+type FrontendErrorTip struct {
+	Alert int    `json:"alert"`
+	Msg   string `json:"msg"`
+}
+
+// FrontendReport is a unified frontend report, level is "info" or "error"
+type FrontendReport struct {
+	Level        string  `json:"level"`
+	Message      string  `json:"message"`
+	Msg          string  `json:"msg"`
+	End          int     `json:"end,omitempty"`
+	Replace      int     `json:"replace,omitempty"`
+	IgnorePrefix int     `json:"ignore_prefix,omitempty"`
+	Prefix       *string `json:"prefix,omitempty"`
+}
+
+
 func (c *APIClient) handle_index(ctx *gin.Context) {
-	c.handle_download_page(ctx)
+	c.renderFrontendFile(ctx, "index.html")
 }
-
-func (c *APIClient) handle_download_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/index.html")
-}
-
-func (c *APIClient) handle_home_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/home.html")
-}
-
-func (c *APIClient) handle_content_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/content.html")
-}
-
-func (c *APIClient) handle_content_detail_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/content_detail.html")
-}
-
-func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/browsehistory.html")
-}
-
-func (c *APIClient) handle_account_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/account.html")
-}
-
-func (c *APIClient) handle_logs_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/logs.html")
-}
-
-func (c *APIClient) handle_channels_page(ctx *gin.Context) {
-	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
-	c.renderFrontendFile(ctx, "inject/channels.html")
-}
-
-// TODO: requires velo/fileserver
-// func (c *APIClient) handle_migration_page(ctx *gin.Context) {
-// 	c.renderFrontendFile(ctx, "migration.html")
-// }
 
 func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	data, err := frontend.Assets().ReadRoot(name)
@@ -109,7 +94,7 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendTip
+	var data FrontendTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -138,7 +123,7 @@ func (c *APIClient) handleFrontendError(ctx *gin.Context) {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendErrorTip
+	var data FrontendErrorTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -155,7 +140,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		return
 	}
 
-	var data scraper_wxchannels.FrontendReport
+	var data FrontendReport
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -250,22 +235,7 @@ func zerologLevel(level string) zerolog.Level {
 }
 
 func shouldServeByAPI(path string) bool {
-	if path == "/" ||
-		path == "/favicon.ico" ||
-		path == "/home" ||
-		path == "/filehelper" ||
-		path == "/play" ||
-		path == "/preview" ||
-		path == "/content" ||
-		path == "/content/detail" ||
-		path == "/browsehistory" ||
-		path == "/account" ||
-		path == "/logs" ||
-		path == "/channels" ||
-		path == "/migration" ||
-		path == "/admin" ||
-		path == "/influencers" ||
-		path == "/report" {
+	if path == "/favicon.ico" || path == "/" || path == "/play" || path == "/report" {
 		return true
 	}
 
@@ -274,16 +244,6 @@ func shouldServeByAPI(path string) bool {
 		"/ws/",
 		"/rss/",
 		"/mp/",
-		"/browse_history/",
-		"/influencers/",
-		"/account/",
-		"/video/",
-		"/channels/",
-		"/xiaohongshu/",
-		"/bilibili/",
-		"/douban/",
-		"/instagram/",
-		"/weibo/",
 		"/__assets/",
 	}
 	for _, prefix := range apiPrefixes {

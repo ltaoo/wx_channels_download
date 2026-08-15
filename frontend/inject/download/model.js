@@ -2,6 +2,7 @@
 /**
  * @file Download manager data model, formatting helpers, and ViewModel
  */
+
 var APIOrigin = WXEnv.get("apiOrigin");
 var DownloaderOrigin = WXEnv.get("downloaderOrigin");
 var DownloaderWSURL = WXEnv.get("downloaderWSURL");

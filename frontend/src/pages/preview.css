@@ -1,0 +1,453 @@
+.wx-preview-page {
+  --wx-preview-bg: #0b0c0f;
+  --wx-preview-panel: #14171f;
+  --wx-preview-panel-soft: #1a1d27;
+  --wx-preview-border: #2a2d35;
+  --wx-preview-text: #e6e6e6;
+  --wx-preview-muted: #999;
+  --wx-preview-subtle: #777;
+  --wx-preview-accent: #4a6fa5;
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--wx-preview-text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  background: var(--wx-preview-bg);
+}
+
+.wx-preview-header {
+  flex: 0 0 auto;
+  padding: 12px 24px;
+  background: var(--wx-preview-panel);
+  border-bottom: 1px solid var(--wx-preview-border);
+}
+
+.wx-preview-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wx-preview-account-avatar {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  background: #1e2130;
+  border-radius: 50%;
+}
+
+.wx-preview-account-name {
+  overflow: hidden;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-preview-title {
+  display: -webkit-box;
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wx-preview-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wx-preview-muted);
+  font-size: 12px;
+}
+
+.wx-preview-platform {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wx-preview-platform-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.wx-preview-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  color: #aaa;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--wx-preview-border);
+  border-radius: 3px;
+}
+
+.wx-preview-video-container,
+.wx-preview-image-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.wx-preview-video-container {
+  background: #000;
+}
+
+.wx-preview-image-container {
+  padding: 20px;
+  overflow: auto;
+}
+
+.wx-preview-video {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: calc(100% - 28px);
+  outline: none;
+}
+
+.wx-preview-image {
+  max-width: 100%;
+  max-height: calc(100% - 28px);
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.wx-preview-filename {
+  max-width: 100%;
+  padding: 4px 12px;
+  overflow: hidden;
+  color: #888;
+  font-size: 12px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-preview-main {
+  min-height: 0;
+  flex: 1;
+  padding: 20px 24px;
+  overflow: auto;
+}
+
+.wx-preview-files-title {
+  margin: 0 0 12px;
+  color: #ccc;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wx-preview-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.wx-preview-file-card {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: var(--wx-preview-panel);
+  border: 1px solid var(--wx-preview-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
+}
+
+.wx-preview-file-card:hover:not(:disabled),
+.wx-preview-file-card:focus-visible {
+  border-color: var(--wx-preview-accent);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.wx-preview-file-card:disabled,
+.wx-preview-file-card.is-missing {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.wx-preview-file-thumb {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 120px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--wx-preview-panel-soft);
+}
+
+.wx-preview-file-thumbnail-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wx-preview-file-thumbnail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wx-preview-file-icon {
+  font-size: 40px;
+  opacity: 0.5;
+}
+
+.wx-preview-file-status {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  padding: 2px 6px;
+  color: #aaa;
+  font-size: 10px;
+  background: rgb(0 0 0 / 70%);
+  border-radius: 3px;
+}
+
+.wx-preview-file-info {
+  padding: 10px 12px;
+}
+
+.wx-preview-file-name {
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-preview-file-meta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--wx-preview-subtle);
+  font-size: 11px;
+}
+
+.wx-preview-progress {
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: var(--wx-preview-border);
+  border-radius: 2px;
+}
+
+.wx-preview-progress-value {
+  height: 100%;
+  background: var(--wx-preview-accent);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.wx-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  color: var(--wx-preview-text);
+  background: rgb(0 0 0 / 92%);
+}
+
+.wx-preview-overlay-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  background: #111;
+  border-bottom: 1px solid var(--wx-preview-border);
+}
+
+.wx-preview-overlay-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-preview-close,
+.wx-preview-retry {
+  padding: 6px 16px;
+  color: #ccc;
+  font: inherit;
+  font-size: 13px;
+  background: none;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.wx-preview-close:hover,
+.wx-preview-retry:hover {
+  background: var(--wx-preview-border);
+}
+
+.wx-preview-overlay-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+}
+
+.wx-preview-overlay-body.is-zip {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.wx-preview-overlay-image,
+.wx-preview-overlay-video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  outline: none;
+}
+
+.wx-preview-overlay-audio {
+  width: min(400px, 100%);
+}
+
+.wx-preview-overlay-frame {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  border: 0;
+  border-radius: 4px;
+}
+
+.wx-preview-download-link {
+  display: inline-block;
+  margin-top: 12px;
+  color: #8ab4f8;
+  text-decoration: none;
+}
+
+.wx-preview-download-link:hover {
+  text-decoration: underline;
+}
+
+.wx-preview-zip-gallery {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.wx-preview-zip-item {
+  margin: 0;
+  overflow: hidden;
+  background: var(--wx-preview-panel);
+  border: 1px solid var(--wx-preview-border);
+  border-radius: 6px;
+}
+
+.wx-preview-zip-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: var(--wx-preview-bg);
+}
+
+.wx-preview-zip-caption {
+  padding: 8px 10px;
+  overflow: hidden;
+  color: #aaa;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-preview-state {
+  display: flex;
+  width: 100%;
+  min-height: 160px;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--wx-preview-subtle);
+  text-align: center;
+}
+
+.wx-preview-state-title {
+  margin: 0 0 8px;
+  color: #aaa;
+  font-size: 16px;
+}
+
+.wx-preview-state-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wx-preview-spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 16px;
+  border: 3px solid var(--wx-preview-border);
+  border-top-color: var(--wx-preview-accent);
+  border-radius: 50%;
+  animation: wx-preview-spin 0.8s linear infinite;
+}
+
+@keyframes wx-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .wx-preview-header {
+    padding: 12px 16px;
+  }
+
+  .wx-preview-main {
+    padding: 16px;
+  }
+
+  .wx-preview-file-grid,
+  .wx-preview-zip-gallery {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .wx-preview-overlay-body {
+    padding: 12px;
+  }
+}

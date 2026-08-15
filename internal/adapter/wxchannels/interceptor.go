@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
@@ -200,42 +199,6 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 				UserScriptPath: cfg.global_script_path,
 				Logger:         logger,
 			}) {
-				return
-			}
-			if pathname == "/__wx_channels_api/tip" {
-				var data wxchannels.FrontendTip
-				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
-					fmt.Println("[ECHO]handler", err.Error())
-				}
-				prefix_text := "[FRONTEND]"
-				prefix := data.Prefix
-				if prefix == nil {
-					prefix = &prefix_text
-				}
-				if data.End == 1 {
-					fmt.Println()
-				} else if data.Replace == 1 {
-					fmt.Printf("\r\033[K%v%s", *prefix, data.Msg)
-				} else if data.IgnorePrefix == 1 {
-					fmt.Printf("%s\n", data.Msg)
-				} else {
-					fmt.Printf("%v%s\n", *prefix, data.Msg)
-				}
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/json",
-				}, "{}")
-				return
-			}
-			if pathname == "/__wx_channels_api/error" {
-				var data wxchannels.FrontendErrorTip
-				if err := json.NewDecoder(ctx.Req().Body).Decode(&data); err != nil {
-					fmt.Println("[ECHO]handler", err.Error())
-				}
-				prefix_text := "[FRONTEND ERROR]"
-				color.Red(fmt.Sprintf("%v%s\n", prefix_text, data.Msg))
-				ctx.Mock(200, map[string]string{
-					"Content-Type": "application/json",
-				}, "{}")
 				return
 			}
 		},

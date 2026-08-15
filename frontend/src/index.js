@@ -4,15 +4,36 @@ var Timeless;
 /** @type {(page_name: string, component: Function) => void} */
 var register;
 
+window.h = Timeless.h;
+window.View = Timeless.View;
+window.Button = Timeless.Button;
+window.Fragment = Timeless.Fragment;
+window.Input = Timeless.Input;
+window.Img = Timeless.Img;
+// Control flow
+window.Show = Timeless.Show;
+window.For = Timeless.For;
+window.Switch = Timeless.Switch;
+window.Match = Timeless.Match;
+// Reactivity
+window.ref = Timeless.ref;
+window.refobj = Timeless.refobj;
+window.refarr = Timeless.refarr;
+window.computed = Timeless.computed;
+window.combine = Timeless.combine;
+window.isElement = Timeless.isElement;
+// Styling
+window.cn = Timeless.classNames;
+window.classNames = Timeless.classNames;
+// SVG helpers
+window.SVG = Timeless.SVG;
+window.Circle = Timeless.Circle;
+
 (function (global) {
   "use strict";
 
-  var View = Timeless.View;
-  var Button = Timeless.Button;
-  var For = Timeless.For;
-  var Result = Timeless.Result;
-
   var components = Object.create(null);
+  var css_records = Object.create(null);
   var load_records = Object.create(null);
 
   /**
@@ -38,12 +59,67 @@ var register;
   /**
    *
    * @param {string} page_name
+   * @param {string | undefined} css_url
+   * @returns {Promise<HTMLLinkElement | null>}
+   */
+  function load_style(page_name, css_url) {
+    if (!css_url) {
+      return Promise.resolve(null);
+    }
+
+    var current_record = css_records[css_url];
+    if (current_record && current_record.status === "loaded") {
+      return Promise.resolve(current_record.link);
+    }
+    if (current_record && current_record.status === "loading") {
+      return current_record.promise;
+    }
+
+    /** @type {undefined | Function} */
+    var resolve_load;
+    /** @type {undefined | Function} */
+    var reject_load;
+    var promise = new Promise(function (resolve, reject) {
+      resolve_load = resolve;
+      reject_load = reject;
+    });
+    var link = document.createElement("link");
+    var record = {
+      link: link,
+      promise: promise,
+      status: "loading",
+      url: css_url,
+    };
+
+    css_records[css_url] = record;
+    link.rel = "stylesheet";
+    link.href = css_url;
+    link.dataset.page = page_name;
+    link.onload = function () {
+      record.status = "loaded";
+      resolve_load(link);
+    };
+    link.onerror = function () {
+      record.status = "failed";
+      reject_load(new Error("页面样式加载失败：" + css_url));
+    };
+    document.head.appendChild(link);
+
+    return promise;
+  }
+
+  /**
+   *
+   * @param {string} page_name
    * @param {string} script_url
+   * @param {string | undefined} css_url
    * @returns
    */
-  function load(page_name, script_url) {
+  function load(page_name, script_url, css_url) {
     if (components[page_name]) {
-      return Promise.resolve(components[page_name]);
+      return load_style(page_name, css_url).then(function () {
+        return components[page_name];
+      });
     }
 
     var current_record = load_records[page_name];
@@ -66,6 +142,7 @@ var register;
       resolve: resolve_load,
       script: script,
       status: "loading",
+      css_url: css_url,
       url: script_url,
     };
 
@@ -88,7 +165,14 @@ var register;
       record.status = "failed";
       reject_load(new Error("页面脚本加载失败：" + script_url));
     };
-    document.head.appendChild(script);
+    load_style(page_name, css_url)
+      .then(function () {
+        document.head.appendChild(script);
+      })
+      .catch(function (error) {
+        record.status = "failed";
+        reject_load(error);
+      });
 
     return promise;
   }
@@ -97,30 +181,68 @@ var register;
    *
    * @param {string} page_name
    * @param {string} script_url
+   * @param {string | undefined} css_url
    * @returns
    */
-  function lazy(page_name, script_url) {
+  function lazy(page_name, script_url, css_url) {
     return function () {
-      return load(page_name, script_url);
+      return load(page_name, script_url, css_url);
     };
   }
 
   var routes_configure = {
+    preview: {
+      title: "预览",
+      pathname: "/preview",
+      component: lazy(
+        "preview_page",
+        "src/pages/preview.js",
+        "src/pages/preview.css",
+      ),
+    },
     shell: {
       title: "路由示例",
       pathname: "/",
       component: SiderLayoutView,
       children: {
-        a: {
-          is_default: true,
-          title: "页面 A",
-          pathname: "/a",
-          component: lazy("a", "src/pages/a.js"),
+        download: {
+          title: "下载",
+          pathname: "/",
+          component: lazy("download_page", "src/pages/download.js"),
         },
-        b: {
-          title: "页面 B",
-          pathname: "/b",
-          component: lazy("b", "src/pages/b.js"),
+        scraper: {
+          is_default: true,
+          title: "内容抓取",
+          pathname: "/scraper",
+          component: lazy(
+            "scraper_page",
+            "src/pages/scraper.js",
+            "src/pages/scraper.css",
+          ),
+        },
+        content: {
+          title: "内容管理",
+          pathname: "/content",
+          component: lazy("content_page", "src/pages/content.js"),
+        },
+        browsehistory: {
+          title: "浏览记录",
+          pathname: "/browsehistory",
+          component: lazy("browsehistory_page", "src/pages/browsehistory.js"),
+        },
+        account: {
+          title: "帐号管理",
+          pathname: "/account",
+          component: lazy(
+            "account_page",
+            "src/pages/account.js",
+            "src/pages/account.css",
+          ),
+        },
+        logs: {
+          title: "日志",
+          pathname: "/logs",
+          component: lazy("logs_page", "src/pages/logs.js"),
         },
       },
     },
@@ -210,8 +332,12 @@ var register;
       view: props.view,
       history: history$,
       menus: [
-        { title: "页面 A", name: "root.shell.a", label: "A" },
-        { title: "页面 B", name: "root.shell.b", label: "B" },
+        { title: "下载", name: "root.shell.download" },
+        { title: "内容抓取", name: "root.shell.scraper" },
+        { title: "内容管理", name: "root.shell.content" },
+        { title: "浏览记录", name: "root.shell.browsehistory" },
+        { title: "帐号管理", name: "root.shell.account" },
+        { title: "日志", name: "root.shell.logs" },
       ],
     });
 
@@ -227,8 +353,8 @@ var register;
           View({ class: "app-brand" }, [
             View({ class: "app-brand__mark" }, ["W"]),
             View({}, [
-              View({ class: "app-brand__title" }, ["路由示例"]),
-              View({ class: "app-brand__subtitle" }, ["Script lazy load"]),
+              View({ class: "app-brand__title" }, ["内容工作台"]),
+              View({ class: "app-brand__subtitle" }, ["解析 · 下载 · 归档"]),
             ]),
           ]),
           View({ as: "nav", class: "app-menu", ariaLabel: "页面导航" }, [
@@ -249,10 +375,7 @@ var register;
                       menu$.handleClick(menu);
                     },
                   },
-                  [
-                    View({ as: "span", class: "app-menu__icon" }, [menu.label]),
-                    View({ as: "span" }, [menu.title]),
-                  ],
+                  [View({ as: "span" }, [menu.title])],
                 );
               },
             }),

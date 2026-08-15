@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"wx_channel/frontend"
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/system"
@@ -55,16 +53,6 @@ func (c *APIClient) handle_show_file(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, nil)
-}
-
-func (c *APIClient) handle_preview_page(ctx *gin.Context) {
-	data, err := frontend.Assets().ReadRoot("preview.html")
-	if err != nil {
-		ctx.String(http.StatusInternalServerError, "preview page not found")
-		return
-	}
-	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, string(data))
 }
 
 func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
