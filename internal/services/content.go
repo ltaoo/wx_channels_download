@@ -147,6 +147,7 @@ func account_updates(account *model.Account, now int64) map[string]any {
 type ContentListOptions struct {
 	AccountID string
 	Type      string
+	Scope     string
 	Keyword   string
 	StartAt   *int64 // Inclusive Unix timestamp in milliseconds.
 	EndAt     *int64 // Exclusive Unix timestamp in milliseconds.
@@ -154,6 +155,11 @@ type ContentListOptions struct {
 	PageSize  int
 	Offset    *int
 }
+
+const (
+	ContentListScopeAll  = "all"
+	ContentListScopeTask = "task"
+)
 
 type ContentAccountRecord struct {
 	ID            string `json:"id"`
@@ -268,11 +274,67 @@ type ContentListItem struct {
 	Resources     []ContentResourceRecord     `json:"resources"`
 }
 
+const (
+	ContentRelationDirectionBoth     = "both"
+	ContentRelationDirectionIncoming = "incoming"
+	ContentRelationDirectionOutgoing = "outgoing"
+)
+
+type ContentRelationListOptions struct {
+	ContentID string
+	Direction string
+	Type      string
+	Page      int
+	PageSize  int
+	Offset    *int
+}
+
+// ContentRelationContentRecord is the independently addressable content at
+// the other end of a relationship.
+type ContentRelationContentRecord struct {
+	ID          string `json:"id"`
+	PlatformID  string `json:"platform_id"`
+	Type        string `json:"type"`
+	Subtype     string `json:"subtype"`
+	ExternalID  string `json:"external_id"`
+	ExternalID2 string `json:"external_id2"`
+	ExternalID3 string `json:"external_id3"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	SourceURL   string `json:"source_url"`
+	CoverURL    string `json:"cover_url"`
+	PublishTime int64  `json:"publish_time"`
+	UpdateTime  int64  `json:"update_time"`
+}
+
+// ContentRelationRecord describes one relation relative to the requested
+// content. Direction is incoming when related content points to the requested
+// content, and outgoing when the requested content points to related content.
+type ContentRelationRecord struct {
+	SourceContentID string                       `json:"source_content_id"`
+	TargetContentID string                       `json:"target_content_id"`
+	RelationType    string                       `json:"relation_type"`
+	Direction       string                       `json:"direction"`
+	SortOrder       int                          `json:"sort_order"`
+	Metadata        string                       `json:"metadata"`
+	CreatedAt       int64                        `json:"created_at"`
+	Content         ContentRelationContentRecord `json:"content"`
+}
+
+type ContentRelationListResult struct {
+	List     []ContentRelationRecord `json:"list"`
+	Total    int64                   `json:"total"`
+	Page     int                     `json:"page"`
+	PageSize int                     `json:"page_size"`
+}
+
 type ContentDetailItem struct {
 	ContentListItem
-	Content    model.Content `json:"content"`
-	DetailType string        `json:"detail_type"`
-	Detail     any           `json:"detail"`
+	Content    model.Content             `json:"content"`
+	DetailType string                    `json:"detail_type"`
+	Detail     any                       `json:"detail"`
+	Relations  ContentRelationListResult `json:"relations"`
 }
 
 type ContentListResult struct {
@@ -569,16 +631,6 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 			}).
 			Preload("Variants.Asset", "deleted_at IS NULL").
 			Preload("Variants.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
-				return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
-			}).
-			Preload("SubtitleTracks", func(db *gorm.DB) *gorm.DB {
-				return db.Where("deleted_at IS NULL").Order("is_default DESC, language_code ASC, id ASC")
-			}).
-			Preload("SubtitleTracks.Sources", func(db *gorm.DB) *gorm.DB {
-				return db.Where("deleted_at IS NULL").Order("format ASC, asset_id ASC")
-			}).
-			Preload("SubtitleTracks.Sources.Asset", "deleted_at IS NULL").
-			Preload("SubtitleTracks.Sources.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
 				return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
 			}).
 			Where("id = ? AND deleted_at IS NULL", content.Id).
@@ -941,6 +993,168 @@ func (s *ContentService) load_content_asset_links(
 	return asset_links_by_subject_key, nil
 }
 
+// ListContentRelations returns independently addressable content connected to
+// one content row. Both directions are supported so callers can resolve an
+// answer's question and a question's answers with the same API.
+func (s *ContentService) ListContentRelations(options ContentRelationListOptions) (*ContentRelationListResult, error) {
+	if s.db == nil {
+		return nil, ErrDBNotInitialized
+	}
+	content_id := strings.TrimSpace(options.ContentID)
+	if content_id == "" {
+		return nil, fmt.Errorf("content id is required")
+	}
+	direction := strings.ToLower(strings.TrimSpace(options.Direction))
+	if direction == "" {
+		direction = ContentRelationDirectionBoth
+	}
+	if direction != ContentRelationDirectionBoth &&
+		direction != ContentRelationDirectionIncoming &&
+		direction != ContentRelationDirectionOutgoing {
+		return nil, fmt.Errorf("unsupported content relation direction: %s", direction)
+	}
+
+	page := options.Page
+	if page < 1 {
+		page = 1
+	}
+	page_size := options.PageSize
+	if page_size < 1 {
+		page_size = 20
+	}
+	if page_size > 200 {
+		page_size = 200
+	}
+	offset := (page - 1) * page_size
+	if options.Offset != nil && *options.Offset >= 0 {
+		offset = *options.Offset
+	}
+
+	build_query := func() *gorm.DB {
+		query := s.db.Table("content_relation AS relation")
+		switch direction {
+		case ContentRelationDirectionIncoming:
+			query = query.
+				Joins("JOIN content AS related_content ON related_content.id = relation.source_content_id").
+				Where("relation.target_content_id = ?", content_id)
+		case ContentRelationDirectionOutgoing:
+			query = query.
+				Joins("JOIN content AS related_content ON related_content.id = relation.target_content_id").
+				Where("relation.source_content_id = ?", content_id)
+		default:
+			query = query.
+				Joins(`JOIN content AS related_content ON
+					(relation.source_content_id = ? AND related_content.id = relation.target_content_id)
+					OR (relation.target_content_id = ? AND related_content.id = relation.source_content_id)`, content_id, content_id).
+				Where("relation.source_content_id = ? OR relation.target_content_id = ?", content_id, content_id)
+		}
+		query = query.Where("related_content.deleted_at IS NULL")
+		if relation_type := strings.TrimSpace(options.Type); relation_type != "" {
+			query = query.Where("relation.type = ?", relation_type)
+		}
+		return query
+	}
+
+	var total int64
+	if err := build_query().Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	type content_relation_row struct {
+		SourceContentID    string `gorm:"column:source_content_id"`
+		TargetContentID    string `gorm:"column:target_content_id"`
+		RelationType       string `gorm:"column:relation_type"`
+		SortOrder          int    `gorm:"column:sort_order"`
+		Metadata           string `gorm:"column:metadata"`
+		CreatedAt          int64  `gorm:"column:created_at"`
+		ContentID          string `gorm:"column:content_id"`
+		ContentPlatformID  string `gorm:"column:content_platform_id"`
+		ContentType        string `gorm:"column:content_type"`
+		ContentSubtype     string `gorm:"column:content_subtype"`
+		ContentExternalID  string `gorm:"column:content_external_id"`
+		ContentExternalID2 string `gorm:"column:content_external_id2"`
+		ContentExternalID3 string `gorm:"column:content_external_id3"`
+		ContentTitle       string `gorm:"column:content_title"`
+		ContentDescription string `gorm:"column:content_description"`
+		ContentURL         string `gorm:"column:content_url"`
+		ContentSourceURL   string `gorm:"column:content_source_url"`
+		ContentCoverURL    string `gorm:"column:content_cover_url"`
+		ContentPublishTime *int64 `gorm:"column:content_publish_time"`
+		ContentUpdateTime  *int64 `gorm:"column:content_update_time"`
+	}
+	var rows []content_relation_row
+	if err := build_query().
+		Select(`relation.source_content_id, relation.target_content_id,
+			relation.type AS relation_type, relation.sort_order, relation.metadata,
+			relation.created_at, related_content.id AS content_id,
+			related_content.platform_id AS content_platform_id,
+			related_content.type AS content_type, related_content.subtype AS content_subtype,
+			related_content.external_id AS content_external_id,
+			related_content.external_id2 AS content_external_id2,
+			related_content.external_id3 AS content_external_id3,
+			related_content.title AS content_title,
+			related_content.description AS content_description,
+			related_content.url AS content_url,
+			related_content.source_url AS content_source_url,
+			related_content.cover_url AS content_cover_url,
+			related_content.publish_time AS content_publish_time,
+			related_content.update_time AS content_update_time`).
+		Order("relation.sort_order ASC, COALESCE(related_content.publish_time, 0) DESC, relation.created_at DESC, related_content.id ASC").
+		Limit(page_size).
+		Offset(offset).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	list := make([]ContentRelationRecord, 0, len(rows))
+	for row_index := range rows {
+		row := rows[row_index]
+		relation_direction := ContentRelationDirectionIncoming
+		if row.SourceContentID == content_id {
+			relation_direction = ContentRelationDirectionOutgoing
+		}
+		publish_time := int64(0)
+		if row.ContentPublishTime != nil {
+			publish_time = *row.ContentPublishTime
+		}
+		update_time := int64(0)
+		if row.ContentUpdateTime != nil {
+			update_time = *row.ContentUpdateTime
+		}
+		list = append(list, ContentRelationRecord{
+			SourceContentID: row.SourceContentID,
+			TargetContentID: row.TargetContentID,
+			RelationType:    row.RelationType,
+			Direction:       relation_direction,
+			SortOrder:       row.SortOrder,
+			Metadata:        row.Metadata,
+			CreatedAt:       row.CreatedAt,
+			Content: ContentRelationContentRecord{
+				ID:          row.ContentID,
+				PlatformID:  row.ContentPlatformID,
+				Type:        row.ContentType,
+				Subtype:     row.ContentSubtype,
+				ExternalID:  row.ContentExternalID,
+				ExternalID2: row.ContentExternalID2,
+				ExternalID3: row.ContentExternalID3,
+				Title:       row.ContentTitle,
+				Description: row.ContentDescription,
+				URL:         row.ContentURL,
+				SourceURL:   row.ContentSourceURL,
+				CoverURL:    row.ContentCoverURL,
+				PublishTime: publish_time,
+				UpdateTime:  update_time,
+			},
+		})
+	}
+	return &ContentRelationListResult{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: page_size,
+	}, nil
+}
+
 func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
@@ -957,6 +1171,16 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			return db.Where("deleted_at IS NULL").Order("sort_order ASC, id ASC")
 		}).
 		Preload("Assets.DownloadResources", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
+		}).
+		Preload("TextTracks", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("is_default DESC, language_code ASC, id ASC")
+		}).
+		Preload("TextTracks.Sources", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("format ASC, asset_id ASC")
+		}).
+		Preload("TextTracks.Sources.Asset", "deleted_at IS NULL").
+		Preload("TextTracks.Sources.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
 			return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
 		}).
 		Where("id = ?", content_id).
@@ -996,6 +1220,15 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 	if err != nil {
 		return nil, err
 	}
+	relations, err := s.ListContentRelations(ContentRelationListOptions{
+		ContentID: content.Id,
+		Direction: ContentRelationDirectionBoth,
+		Page:      1,
+		PageSize:  100,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &ContentDetailItem{
 		ContentListItem: ContentListItem{
@@ -1022,12 +1255,20 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 		Content:    content,
 		DetailType: detail_type,
 		Detail:     detail,
+		Relations:  *relations,
 	}, nil
 }
 
 func (s *ContentService) ListContents(options ContentListOptions) (*ContentListResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
+	}
+	scope := strings.ToLower(strings.TrimSpace(options.Scope))
+	if scope == "" {
+		scope = ContentListScopeAll
+	}
+	if scope != ContentListScopeAll && scope != ContentListScopeTask {
+		return nil, fmt.Errorf("unsupported content list scope %q", options.Scope)
 	}
 	if options.StartAt != nil && *options.StartAt < 0 {
 		return nil, fmt.Errorf("start_at must be a non-negative Unix timestamp in milliseconds")
@@ -1054,6 +1295,14 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 
 	build_query := func() *gorm.DB {
 		query := s.db.Model(&model.Content{})
+		if scope == ContentListScopeTask {
+			query = query.Where(`EXISTS (
+				SELECT 1
+				FROM download_task
+				WHERE download_task.content_id = content.id
+					AND download_task.deleted_at IS NULL
+			)`)
+		}
 		if content_type := strings.TrimSpace(options.Type); content_type != "" {
 			query = query.Where("content.type = ?", content_type)
 		}

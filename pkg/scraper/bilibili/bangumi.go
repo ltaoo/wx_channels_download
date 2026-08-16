@@ -17,8 +17,10 @@ import (
 const bangumi_html_limit = 32 << 20
 
 var playurl_ssr_assignment_pattern = regexp.MustCompile(`(?:const|let|var)\s+playurlSSRData\s*=`)
+var bangumi_media_initial_state_assignment_pattern = regexp.MustCompile(`window\.__INITIAL_STATE__\s*=`)
 var bangumi_episode_path_pattern = regexp.MustCompile(`^/bangumi/play/ep(\d+)(?:/)?$`)
 var bangumi_play_path_pattern = regexp.MustCompile(`^/bangumi/play/[^/]+(?:/)?$`)
+var bangumi_media_path_pattern = regexp.MustCompile(`^/bangumi/media/md(\d+)(?:/)?$`)
 
 // BangumiInfo combines episode page metadata with every DASH stream embedded
 // in a Bilibili bangumi play page.
@@ -156,6 +158,25 @@ func IsBangumiPlayURL(raw_url string) bool {
 	return bangumi_play_path_pattern.MatchString(parsed_url.Path)
 }
 
+// IsBangumiMediaURL reports whether raw_url points to a Bilibili
+// /bangumi/media/md<id> page.
+func IsBangumiMediaURL(raw_url string) bool {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed_url.Hostname())
+	if host != "bilibili.com" && !strings.HasSuffix(host, ".bilibili.com") {
+		return false
+	}
+	return bangumi_media_path_pattern.MatchString(parsed_url.Path)
+}
+
+// IsBangumiURL reports whether raw_url is a supported Bilibili bangumi page.
+func IsBangumiURL(raw_url string) bool {
+	return IsBangumiPlayURL(raw_url) || IsBangumiMediaURL(raw_url)
+}
+
 // IsBangumiEpisodeURL reports whether raw_url is a Bilibili bangumi episode
 // play URL.
 func IsBangumiEpisodeURL(raw_url string) bool {
@@ -169,8 +190,18 @@ func IsBangumiEpisodeURL(raw_url string) bool {
 // GetBangumiInfo downloads a Bilibili bangumi episode page and parses its
 // server-rendered playurlSSRData value.
 func (c *Client) GetBangumiInfo(raw_url string) (*BangumiInfo, error) {
-	if !IsBangumiPlayURL(raw_url) {
-		return nil, fmt.Errorf("不是有效的B站番剧播放URL: %s", raw_url)
+	requested_url := strings.TrimSpace(raw_url)
+	if !IsBangumiURL(requested_url) {
+		return nil, fmt.Errorf("不是有效的B站番剧URL: %s", raw_url)
+	}
+	if IsBangumiMediaURL(requested_url) {
+		resolved_url, err := c.resolve_bangumi_media_play_url(requested_url)
+		if err != nil {
+			return nil, err
+		}
+		raw_url = resolved_url
+	} else {
+		raw_url = requested_url
 	}
 
 	html_data, final_url, err := c.fetch_bangumi_html(raw_url)
@@ -193,7 +224,52 @@ func (c *Client) GetBangumiInfo(raw_url string) (*BangumiInfo, error) {
 	info.SeasonData = *season_data
 	apply_bangumi_season_metadata(info)
 	apply_bangumi_page_metadata(info)
+	if IsBangumiMediaURL(requested_url) {
+		info.SourceURL = requested_url
+	}
 	return info, nil
+}
+
+func (c *Client) resolve_bangumi_media_play_url(raw_url string) (string, error) {
+	html_data, final_url, err := c.fetch_bangumi_html(raw_url)
+	if err != nil {
+		return "", err
+	}
+	season_id, err := parse_bangumi_media_season_id(html_data)
+	if err != nil {
+		return "", fmt.Errorf("解析B站番剧详情页失败: %w", err)
+	}
+
+	parsed_url, err := url.Parse(final_url)
+	if err != nil {
+		return "", fmt.Errorf("解析B站番剧详情页URL失败: %w", err)
+	}
+	parsed_url.Path = fmt.Sprintf("/bangumi/play/ss%d", season_id)
+	parsed_url.RawPath = ""
+	parsed_url.RawQuery = ""
+	parsed_url.Fragment = ""
+	return parsed_url.String(), nil
+}
+
+func parse_bangumi_media_season_id(html_data []byte) (int64, error) {
+	assignment_location := bangumi_media_initial_state_assignment_pattern.FindIndex(html_data)
+	if assignment_location == nil {
+		return 0, fmt.Errorf("页面中未找到 window.__INITIAL_STATE__")
+	}
+
+	var initial_state struct {
+		MediaInfo struct {
+			SeasonID int64 `json:"season_id"`
+		} `json:"mediaInfo"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(html_data[assignment_location[1]:]))
+	if err := decoder.Decode(&initial_state); err != nil {
+		return 0, fmt.Errorf("解析 window.__INITIAL_STATE__ JSON 失败: %w", err)
+	}
+	if initial_state.MediaInfo.SeasonID <= 0 {
+		return 0, fmt.Errorf("页面中未找到有效的 mediaInfo.season_id")
+	}
+	return initial_state.MediaInfo.SeasonID, nil
 }
 
 // ParseBangumiHTML parses episode metadata and playurlSSRData from an already

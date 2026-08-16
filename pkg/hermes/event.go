@@ -66,8 +66,22 @@ type TaskPausedEventData struct {
 // TaskFinishedEventData is emitted after a task and its resource outputs have
 // been finalized successfully.
 type TaskFinishedEventData struct {
-	TaskID    int      `json:"task_id"`
-	FilePaths []string `json:"file_paths"`
+	TaskID    int                    `json:"task_id"`
+	FilePaths []string               `json:"file_paths"`
+	Resources []TaskFinishedResource `json:"resources"`
+}
+
+// TaskFinishedResource is Hermes' authoritative final resource snapshot. Name
+// includes the canonical extension and any duplicate suffix selected while
+// committing the downloaded file.
+type TaskFinishedResource struct {
+	ID          int    `json:"id"`
+	DownloadDir string `json:"download_dir"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Type        string `json:"type"`
+	Size        int64  `json:"size"`
+	FilePath    string `json:"file_path"`
 }
 
 // TaskFailedEventData is emitted after a task has entered the failed state.

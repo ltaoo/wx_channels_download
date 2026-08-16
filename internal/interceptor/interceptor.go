@@ -119,7 +119,7 @@ func (c *Interceptor) Stop() error {
 			Hostname: c.Settings.ProxyServerHostname,
 			Port:     strconv.Itoa(c.Settings.ProxyServerPort),
 		}
-		err := system.DisableProxy(arg)
+		_, err := system.DisableProxyIfMatches(arg)
 		if err != nil {
 			return fmt.Errorf("failed to disable system proxy: %v", err)
 		}

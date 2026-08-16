@@ -35,199 +35,17 @@ if (typeof WXE === "undefined") {
 if (typeof WXEnv === "undefined") {
   throw new Error("env.js must be loaded before utils.js");
 }
+if (!window.DLUtils) {
+  throw new Error("dl.utils.js must be loaded before utils.js");
+}
 var WXU = (() => {
+  const dl_utils = window.DLUtils;
   var APIOrigin = WXEnv.get("apiOrigin");
   const http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: APIOrigin,
   });
   Timeless.web.provide_http_client(http_client);
-  const request = Timeless.kit.request_factory({
-    headers: { "Content-Type": "application/json" },
-    process(r) {
-      if (r.error) {
-        return Timeless.Result.Err(r.error);
-      }
-      const { code, msg, data } = r.data;
-      if (code !== 0) {
-        return Timeless.Result.Err(msg, code, data);
-      }
-      return Timeless.Result.Ok(data);
-    },
-  });
-  const reqs = {
-    report: new Timeless.kit.RequestCore(
-      function report(params) {
-        return request.post("/report", { ...params, level: "info" });
-      },
-      { client: http_client },
-    ),
-  };
-  // ── log transport config ────────────────────────────────────────
-  var LOG_LEVEL_VALUES = { debug: 0, info: 1, warn: 2, error: 3 };
-  var LOG_CFG = {
-    bufferCapacity: 256,
-    batchSize: 16,
-    flushIntervalMs: 2000,
-    minLevel: "debug",
-    maxRetries: 3,
-    baseRetryMs: 1000,
-    maxRetryMs: 30000,
-  };
-
-  // ── CircularBuffer (lossy-safe ring buffer) ─────────────────────
-  function CircularBuffer(capacity) {
-    this.buf = new Array(capacity);
-    this.capacity = capacity;
-    this.head = 0;
-    this.tail = 0;
-    this.size = 0;
-  }
-  CircularBuffer.prototype.push = function (item) {
-    this.buf[this.head] = item;
-    this.head = (this.head + 1) % this.capacity;
-    if (this.size < this.capacity) {
-      this.size++;
-    } else {
-      this.tail = (this.tail + 1) % this.capacity;
-    }
-  };
-  CircularBuffer.prototype.shift = function () {
-    if (this.size === 0) return null;
-    var item = this.buf[this.tail];
-    this.buf[this.tail] = undefined;
-    this.tail = (this.tail + 1) % this.capacity;
-    this.size--;
-    return item;
-  };
-
-  // ── LogTransport (queue → batch → send with retry) ──────────────
-  function LogTransport(reportFn, immediateReportFn, cfg) {
-    this.reportFn = reportFn;
-    this.immediateReportFn = immediateReportFn;
-    this.cfg = cfg;
-    this.buf = new CircularBuffer(cfg.bufferCapacity);
-    this._timer = null;
-    this._flushingGeneration = null;
-    this._generation = 0;
-    this._retryTimers = new Map();
-  }
-  LogTransport.prototype.enqueue = function (entry) {
-    if (LOG_LEVEL_VALUES[entry.level] < LOG_LEVEL_VALUES[this.cfg.minLevel]) {
-      return;
-    }
-    entry._retries = 0;
-    this.buf.push(entry);
-    this._scheduleFlush();
-  };
-  LogTransport.prototype._scheduleFlush = function () {
-    if (this._timer !== null) return;
-    if (this.buf.size >= this.cfg.batchSize) {
-      this._flush();
-      return;
-    }
-    var self = this;
-    this._timer = setTimeout(function () {
-      self._timer = null;
-      self._flush();
-    }, this.cfg.flushIntervalMs);
-  };
-  LogTransport.prototype._flush = function () {
-    var self = this;
-    if (self._flushingGeneration !== null) return;
-    var generation = self._generation;
-    self._flushingGeneration = generation;
-    var sent = 0;
-    function finish() {
-      if (self._flushingGeneration !== generation) return;
-      self._flushingGeneration = null;
-      if (self.buf.size > 0) self._scheduleFlush();
-    }
-    function sendNext() {
-      if (generation !== self._generation || sent >= self.cfg.batchSize) {
-        finish();
-        return;
-      }
-      var entry = self.buf.shift();
-      if (!entry) {
-        finish();
-        return;
-      }
-      sent++;
-      self._send(entry, generation).then(sendNext);
-    }
-    sendNext();
-  };
-  LogTransport.prototype._send = function (entry, generation) {
-    var _retries = entry._retries;
-    delete entry._retries;
-    try {
-      var result = this.reportFn(entry);
-      if (result && typeof result.then === "function") {
-        var self = this;
-        return result.then(
-          function (r) {
-            if (r && r.error) {
-              self._maybeRetry(entry, _retries, generation);
-            }
-          },
-          function () {
-            self._maybeRetry(entry, _retries, generation);
-          },
-        );
-      }
-    } catch (e) {
-      this._maybeRetry(entry, _retries, generation);
-    }
-    return Promise.resolve();
-  };
-  LogTransport.prototype._maybeRetry = function (entry, retries, generation) {
-    if (generation !== this._generation || retries >= this.cfg.maxRetries) {
-      return;
-    }
-    entry._retries = retries + 1;
-    var delay = Math.min(
-      this.cfg.baseRetryMs * Math.pow(2, retries),
-      this.cfg.maxRetryMs,
-    );
-    var self = this;
-    var retryTimer = setTimeout(function () {
-      self._retryTimers.delete(retryTimer);
-      if (generation !== self._generation) return;
-      self.buf.push(entry);
-      self._scheduleFlush();
-    }, delay);
-    self._retryTimers.set(retryTimer, entry);
-  };
-  // Immediately submits everything still queued and invalidates delayed
-  // flushes/retries. Immediate-send failures are deliberately not requeued.
-  LogTransport.prototype.flushNow = function () {
-    this._generation++;
-    this._flushingGeneration = null;
-    if (this._timer !== null) {
-      clearTimeout(this._timer);
-      this._timer = null;
-    }
-    var retryEntries = [];
-    this._retryTimers.forEach(function (retryEntry, retryTimer) {
-      clearTimeout(retryTimer);
-      retryEntries.push(retryEntry);
-    });
-    this._retryTimers.clear();
-
-    var sends = [];
-    var entry;
-    while ((entry = retryEntries.shift()) || (entry = this.buf.shift())) {
-      delete entry._retries;
-      try {
-        sends.push(
-          Promise.resolve(this.immediateReportFn(entry)).catch(function () {}),
-        );
-      } catch (ignore) {}
-    }
-    return Promise.all(sends).then(function () {});
-  };
-
   var defaultRandomAlphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   function __wx_uid__() {
@@ -381,23 +199,6 @@ var WXU = (() => {
     }
     return value == null || value === "" ? fallback : String(value);
   }
-  function __wx_top_tip(text) {
-    __wx_ensure_feedback_style();
-    const tip = document.createElement("div");
-    tip.className = "weui-toptips weui-toptips_warn wx-feedback-toptips";
-    tip.setAttribute("role", "alert");
-    tip.setAttribute("aria-live", "assertive");
-    tip.textContent = __wx_feedback_text(text);
-    document.body.appendChild(tip);
-    setTimeout(() => {
-      tip.remove();
-    }, 3000);
-    return {
-      hide() {
-        tip.remove();
-      },
-    };
-  }
   function __wx_create_toast(text, loading) {
     __wx_ensure_feedback_style();
     const root = document.createElement("div");
@@ -430,17 +231,6 @@ var WXU = (() => {
     document.body.appendChild(root);
     return root;
   }
-  function __wx_toast(text) {
-    const root = __wx_create_toast(__wx_feedback_text(text), false);
-    setTimeout(() => {
-      root.remove();
-    }, 2200);
-    return {
-      hide() {
-        root.remove();
-      },
-    };
-  }
   function __wx_loading(options = "加载中") {
     const text = __wx_feedback_text(options, "加载中");
     const root = __wx_create_toast(text, true);
@@ -461,151 +251,6 @@ var WXU = (() => {
     textArea.select();
     document.execCommand("copy");
     document.body.removeChild(textArea);
-  }
-  // ── fluent logger (zerolog-style) ──────────────────────────────────
-  /**
-   * LogBuilder chained log builder, consistent with zerolog API.
-   *   Usage: WXU.log.Info().Str("key", val).Int("n", 1).Msg("description")
-   */
-  // ── shared log transport instance ──────────────────────────────
-  var logTransport = new LogTransport(
-    function (entry) {
-      return reqs.report.run(entry);
-    },
-    function (entry) {
-      var blob = new Blob([JSON.stringify(entry)], {
-        type: "application/json",
-      });
-      if (navigator.sendBeacon(APIOrigin + "/report", blob)) {
-        return true;
-      }
-      return reqs.report.run(entry);
-    },
-    LOG_CFG,
-  );
-
-  class LogBuilder {
-    _setField(key, val) {
-      this._fields[key] = val;
-      return this;
-    }
-    _normalizeValue(val) {
-      if (val === null || typeof val === "undefined") {
-        return val;
-      }
-      if (typeof val === "bigint") {
-        return val.toString();
-      }
-      if (typeof val === "symbol" || typeof val === "function") {
-        return String(val);
-      }
-      if (val instanceof Date) {
-        return val.toISOString();
-      }
-      if (val instanceof Error) {
-        return {
-          name: val.name,
-          message: val.message,
-          stack: val.stack,
-        };
-      }
-      return val;
-    }
-    _coerceJSONValue(key, val) {
-      if (typeof val === "string") {
-        try {
-          val = JSON.parse(val);
-        } catch (_ignore) {}
-      }
-      return this._setField(key, this._normalizeValue(val));
-    }
-    constructor(level, transport) {
-      this._fields = {};
-      this._level = level;
-      this._transport = transport;
-    }
-    Str(key, val) {
-      return this._setField(key, this._normalizeValue(val));
-    }
-    Err(err) {
-      return this._setField("error", this._normalizeValue(err));
-    }
-    Object(key, val) {
-      return this._coerceJSONValue(key, val);
-    }
-    Obj(key, val) {
-      return this.Object(key, val);
-    }
-    Dict(key, val) {
-      return this.Object(key, val);
-    }
-    Interface(key, val) {
-      return this._setField(key, this._normalizeValue(val));
-    }
-    JSON(key, val) {
-      return this._coerceJSONValue(key, val);
-    }
-    Int(key, val) {
-      return this._setField(key, val);
-    }
-    RawJSON(key, val) {
-      return this._coerceJSONValue(key, val);
-    }
-    Bool(key, val) {
-      return this._setField(key, val);
-    }
-    Float(key, val) {
-      return this._setField(key, val);
-    }
-    Msg(msg) {
-      const message = this._normalizeValue(msg);
-      const payload = { ...this._fields, message, level: this._level };
-      console.log("[log]", payload);
-      this._transport.enqueue(payload);
-    }
-  }
-
-  // WXU.log is both a function (backward compatible) and a namespace (fluent style)
-  /** @param {LogMsg} params - Legacy call style, kept for backward compatibility */
-  function Logger(params) {
-    console.log("[log]", params);
-    logTransport.enqueue(Object.assign({ level: "info" }, params));
-  }
-  Logger.Info = function () {
-    return new LogBuilder("info", logTransport);
-  };
-  Logger.Warn = function () {
-    return new LogBuilder("warn", logTransport);
-  };
-  Logger.Error = function () {
-    return new LogBuilder("error", logTransport);
-  };
-  Logger.Debug = function () {
-    return new LogBuilder("debug", logTransport);
-  };
-  /** Immediately send and clear queued logs without scheduling retries. */
-  Logger.flushNow = function () {
-    return logTransport.flushNow();
-  };
-  /**
-   * @param {ErrorMsg} params
-   */
-  function __wx_error(params) {
-    const options =
-      params && typeof params === "object" && !(params instanceof Error)
-        ? params
-        : { msg: params };
-    const message = __wx_feedback_text(options, "未知错误");
-    var _alert = options.alert != null ? options.alert : 1;
-    const logger = Logger.Error();
-    console.log("__wx_error - source", options.source);
-    if (options.source) {
-      logger.Str("file", options.source);
-    }
-    logger.Msg(message);
-    if (_alert) {
-      return __wx_top_tip(message);
-    }
   }
   const script_loaded_map = {};
   function load_script(src) {
@@ -728,14 +373,6 @@ var WXU = (() => {
     }
   }
 
-  // ── page unload: best-effort drain pending logs via sendBeacon ──
-  window.addEventListener("pagehide", function () {
-    logTransport.flushNow();
-  });
-  window.addEventListener("beforeunload", function () {
-    logTransport.flushNow();
-  });
-
   return {
     ...WXE,
     downloader: {
@@ -786,14 +423,7 @@ var WXU = (() => {
     uid: __wx_uid__,
     bytes_to_size,
     remove_zero,
-    parseJSON(v) {
-      try {
-        var r = JSON.parse(v);
-        return [null, r];
-      } catch (err) {
-        return [err, null];
-      }
-    },
+    parseJSON: dl_utils.parseJSON,
     load_script,
     download_with_progress,
     /**
@@ -824,14 +454,13 @@ var WXU = (() => {
      * Notifications / tips
      */
     copy: __wx_copy,
-    log: Logger,
-    error: __wx_error,
+    log: dl_utils.log,
+    error: dl_utils.error,
+    warning: dl_utils.warning,
     loading(options) {
       return __wx_loading(options);
     },
-    toast(text) {
-      return __wx_toast(text);
-    },
+    toast: dl_utils.toast,
     // menu_item: __wx_menu_item,
     // create_dropdown_menu: __wx_create_dropdown_menu,
     // create_popover: __wx_create_popover,
@@ -1032,3 +661,5 @@ var WXU = (() => {
     },
   };
 })();
+
+window.WXU = WXU;

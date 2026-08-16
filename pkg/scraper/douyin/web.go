@@ -13,9 +13,12 @@ import (
 
 // DouyinWebClient is the Douyin web scraper (fetches via API, requires cookie).
 type DouyinWebClient struct {
-	cookie string
-	logger zerolog.Logger
+	cookie      string
+	http_client *http.Client
+	logger      zerolog.Logger
 }
+
+const douyin_web_mobile_user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
 
 // NewDouyinWebClient creates a new Douyin web scraper.
 func NewDouyinWebClient(cookie string) *DouyinWebClient {
@@ -25,9 +28,26 @@ func NewDouyinWebClient(cookie string) *DouyinWebClient {
 // NewDouyinWebClientWithLogger creates a web scraper with diagnostics.
 func NewDouyinWebClientWithLogger(cookie string, parent_logger *zerolog.Logger) *DouyinWebClient {
 	return &DouyinWebClient{
-		cookie: cookie,
-		logger: new_component_logger(parent_logger, "douyin_web"),
+		cookie:      cookie,
+		http_client: new_douyin_web_http_client(),
+		logger:      new_component_logger(parent_logger, "douyin_web"),
 	}
+}
+
+// new_douyin_web_http_client creates a direct client, matching
+// fetch_detail.py --no-env-proxy. Scraping must not silently inherit a broken
+// HTTP_PROXY or HTTPS_PROXY from the host process.
+func new_douyin_web_http_client() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{Transport: transport}
+}
+
+func (c *DouyinWebClient) request_client() *http.Client {
+	if c != nil && c.http_client != nil {
+		return c.http_client
+	}
+	return new_douyin_web_http_client()
 }
 
 // FetchVideoProfile retrieves video details by aweme_id.
@@ -59,7 +79,7 @@ func (c *DouyinWebClient) FetchVideoProfile(aweme_id string) (*DouyinWebVideoPro
 	api_url := "https://www.douyin.com/aweme/v1/web/aweme/detail/?" + search
 
 	client := NewHttpClient("GET", api_url, map[string]string{}, headers)
-	resp, err := client.Request()
+	resp, err := client.RequestWithClient(c.request_client())
 	if err != nil {
 		c.logger.Error().
 			Err(err).
@@ -138,7 +158,7 @@ func (c *DouyinWebClient) ExtraVideoId(content string) (string, error) {
 		return c.ShortLinkToFullURL(douyin_url)
 	}
 
-	video_path_pattern := regexp.MustCompile(`/(?:video|share/video)/(\d+)`)
+	video_path_pattern := regexp.MustCompile(`/(?:video|slides|share/(?:video|slides))/(\d+)`)
 	matched := video_path_pattern.FindStringSubmatch(parsed_url.Path)
 	if len(matched) > 1 {
 		c.logger.Info().
@@ -157,15 +177,23 @@ func (c *DouyinWebClient) ExtraVideoId(content string) (string, error) {
 	return "", extract_err
 }
 
-// ShortLinkToFullURL converts a short link to a video ID.
+// ShortLinkToFullURL converts a short link to an aweme ID. The redirect may
+// target either a video page or a slides (image album) page.
 func (c *DouyinWebClient) ShortLinkToFullURL(short_link string) (string, error) {
 	started_at := time.Now()
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	client := *c.request_client()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
-	resp, err := client.Head(short_link)
+	req, err := http.NewRequest(http.MethodGet, short_link, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", douyin_web_mobile_user_agent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		c.logger.Error().
 			Err(err).

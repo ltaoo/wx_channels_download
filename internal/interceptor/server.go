@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"wx_channel/internal/events"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
+	"wx_channel/pkg/system"
 )
 
 type InterceptorServer struct {
@@ -95,7 +97,58 @@ func (s *InterceptorServer) ProxyTun() bool {
 }
 
 func (s *InterceptorServer) ProxySetSystem() bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	return s.Interceptor.Settings.ProxySetSystem
+}
+
+// SystemProxyEnabled reports whether the active system proxy points at this
+// interceptor. A different user-configured proxy is deliberately not treated
+// as enabled so the tray can offer to switch to this application.
+func (s *InterceptorServer) SystemProxyEnabled() (bool, error) {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	expected := s.systemProxySettings()
+	current, err := system.FetchCurProxy(expected)
+	if err != nil || current == nil {
+		return false, err
+	}
+	return strings.EqualFold(strings.TrimSpace(current.Hostname), strings.TrimSpace(expected.Hostname)) &&
+		strings.TrimSpace(current.Port) == strings.TrimSpace(expected.Port), nil
+}
+
+// SetSystemProxy enables or disables the system proxy without restarting the
+// interceptor. Disabling only clears a proxy that still points at this
+// interceptor, preserving a proxy the user may have selected in the meantime.
+func (s *InterceptorServer) SetSystemProxy(enabled bool) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	if !s.running {
+		return fmt.Errorf("proxy service is not running")
+	}
+	settings := s.systemProxySettings()
+	if enabled {
+		if err := system.EnableProxy(settings); err != nil {
+			return err
+		}
+	} else {
+		if _, err := system.DisableProxyIfMatches(settings); err != nil {
+			return err
+		}
+	}
+	s.Interceptor.Settings.ProxySetSystem = enabled
+	return nil
+}
+
+func (s *InterceptorServer) systemProxySettings() system.ProxySettings {
+	settings := s.Interceptor.Settings
+	return system.ProxySettings{
+		Device:   settings.ProxyDevice,
+		Hostname: settings.ProxyServerHostname,
+		Port:     strconv.Itoa(settings.ProxyServerPort),
+	}
 }
 
 // ProxyDevice returns the network service name the system proxy is written to, or an empty

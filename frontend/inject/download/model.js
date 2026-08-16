@@ -47,6 +47,61 @@ const request = Timeless.kit.request_factory({
   },
 });
 
+function platform_preview_from_download_info(
+  download_info,
+  fallback_platform,
+  fallback_download_dir,
+) {
+  if (!download_info || typeof download_info !== "object") {
+    return null;
+  }
+
+  const task =
+    download_info.Task && typeof download_info.Task === "object"
+      ? download_info.Task
+      : {};
+  const raw_resources = Array.isArray(download_info.Resources)
+    ? download_info.Resources
+    : [];
+  const resources = raw_resources.map((item, index) => {
+    const resource = item && item.Resource ? item.Resource : {};
+    const endpoints = item && Array.isArray(item.Endpoints) ? item.Endpoints : [];
+    return {
+      index,
+      name: resource.name || "",
+      kind: resource.kind || "",
+      type: resource.type || "",
+      endpoints,
+    };
+  });
+
+  let download_dir = fallback_download_dir || "";
+  if (task.config_json) {
+    try {
+      const config = JSON.parse(task.config_json);
+      download_dir = config.download_dir || download_dir;
+    } catch (e) {}
+  }
+
+  return {
+    platform: task.platform_id || fallback_platform || "",
+    task_name: task.name || "",
+    download_dir,
+    resource_type: resources[0]
+      ? resources[0].kind || resources[0].type || ""
+      : "",
+    resources,
+    resource_count: resources.length,
+    endpoint_count: resources.reduce(
+      (count, resource) => count + resource.endpoints.length,
+      0,
+    ),
+    content: download_info.Content || null,
+    account: download_info.Account || null,
+    download_info,
+  };
+}
+
 function format_download_speed(bps) {
   const value = Math.max(0, Number(bps) || 0);
   const kb = 1024,
@@ -2253,10 +2308,15 @@ function DownloaderPanelViewModel(props = {}) {
           WXU.error({ msg: r.error.message, source: "model.js:1866" });
           return;
         }
-        const platformPreview =
+        const downloadInfo =
           r.data && r.data.previews && r.data.previews[0]
             ? r.data.previews[0].data
             : null;
+        const platformPreview = platform_preview_from_download_info(
+          downloadInfo,
+          platform,
+          create_platform_download_dir_.value,
+        );
         create_platform_preview_.as(platformPreview);
         ui.createPlatformTaskDialog$.hide();
         ui.createPlatformTaskPreviewDialog$.show();

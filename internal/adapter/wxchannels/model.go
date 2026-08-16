@@ -130,6 +130,54 @@ func to_content_video_variants(obj *wxchannels.ChannelsObject, video_id string) 
 	return variants
 }
 
+func select_content_video_variant(detail any, spec string) {
+	video, ok := detail.(*model.ContentVideo)
+	if !ok || video == nil {
+		return
+	}
+
+	selected_key := strings.TrimSpace(spec)
+	if selected_key == "" || selected_key == "original" || selected_key == "default" {
+		selected_key = "default"
+	}
+	for index := range video.Variants {
+		variant := &video.Variants[index]
+		variant.IsDefault = 0
+		if variant.VariantKey == selected_key || (selected_key != "default" && variant.Spec == selected_key) {
+			variant.IsDefault = 1
+		}
+	}
+}
+
+func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[string]any, default_highest bool) string {
+	configured_variant_key := config_string(config, "video_variant_key")
+	configured_spec := config_string(config, "video_variant_spec")
+	if configured_spec == "" {
+		configured_spec = config_string(config, "spec")
+	}
+	if configured_variant_key == "default" {
+		configured_spec = "original"
+	} else if configured_spec == "" && configured_variant_key != "" {
+		configured_spec = configured_variant_key
+	}
+
+	if configured_spec == "" {
+		if default_highest {
+			return ""
+		}
+		return PickSpec(obj)
+	}
+	if configured_spec == "original" {
+		return ""
+	}
+	return configured_spec
+}
+
+func (a *ChannelsAdapter) video_download_spec(obj *wxchannels.ChannelsObject, config map[string]any) string {
+	default_highest := a.config_bool("channels.download.defaultHighest") || a.config_bool("download.defaultHighest")
+	return resolve_video_download_spec(obj, config, default_highest)
+}
+
 // ToAccount converts a ChannelsObject into a model.Account.
 func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 	if obj == nil {
@@ -466,15 +514,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	if title == "" {
 		title = ObjectTitle(&obj)
 	}
-	configured_spec := config_string(config, "spec")
-	var spec string
-	if configured_spec == "" {
-		if !a.config_bool("channels.download.defaultHighest") && !a.config_bool("download.defaultHighest") {
-			spec = PickSpec(&obj)
-		}
-	} else if configured_spec != "original" {
-		spec = configured_spec
-	}
+	spec := a.video_download_spec(&obj, config)
+	select_content_video_variant(ext, spec)
 	cover_url := strings.TrimSpace(content.CoverURL)
 	if len(obj.ObjectDesc.Media) > 0 {
 		if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].CoverUrl); candidate != "" {
@@ -621,7 +662,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	if spec != "" {
 		resource_unique_id = content.ExternalId + "_" + spec
 	}
-	if config_string(config, "suffix") == ".mp3" {
+	if config_suffix_is_mp3(config) {
 		resource_unique_id += "_mp3"
 		resource_kind = mime_audio_mpeg
 	}
@@ -699,6 +740,12 @@ func build_cover_resource_info(content_id, external_id, title, cover_url, extra_
 			Protocol: "https",
 			URL:      cover_url,
 			Enabled:  1,
+		}},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindImage,
+			Role:     model.ContentAssetRoleCover,
+			AssetKey: "cover",
+			Relation: model.DownloadResourceAssetRelationSource,
 		}},
 	}
 }
@@ -1126,7 +1173,7 @@ func BuildDownloadTaskUniqueID(external_id string, config map[string]any) string
 	if spec := config_string(config, "spec"); spec != "" {
 		suffix = "_" + spec
 	}
-	if suffix_config == ".mp3" {
+	if config_suffix_is_mp3(config) {
 		suffix += "_mp3"
 	}
 	return external_id + suffix
@@ -1176,7 +1223,7 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 		return
 	}
 	hooks, logger := a.filename_hook_context()
-	template := filename_template_from_config(config)
+	template := a.filename_template()
 	if len(info.Resources) == 1 && info.Resources[0] != nil && !config_suffix_is_archive(config) {
 		a.apply_single_resource_task_name(info, config, hooks, logger)
 	} else if template != "" || (hooks != nil && hooks.HasFilenameHook()) {
@@ -1195,8 +1242,8 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 			Hooks:            hooks,
 		})
 		log_filename_resolution(logger, resolved)
-		if resolved.Name != "" {
-			info.Task.Name = resolved.Name
+		if resolved.BaseName != "" {
+			info.Task.Name = resolved.BaseName
 		}
 	}
 
@@ -1208,7 +1255,7 @@ func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.Download
 	resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 		TaskID:           info.Task.Id,
 		TaskConfig:       config,
-		FilenameTemplate: filename_template_from_config(config),
+		FilenameTemplate: a.filename_template(),
 		ResourceID:       resource.Id,
 		ResourceName:     resource.Name,
 		ResourceKind:     resource.Kind,
@@ -1217,8 +1264,8 @@ func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.Download
 		Hooks:            hooks,
 	})
 	log_filename_resolution(logger, resolved)
-	if resolved.Name != "" {
-		info.Task.Name = resolved.Name
+	if resolved.BaseName != "" {
+		info.Task.Name = resolved.BaseName
 	}
 }
 
@@ -1243,8 +1290,11 @@ func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[
 			Hooks:            hooks,
 		})
 		log_filename_resolution(logger, resolved)
-		if resolved.Name != "" {
-			resource.Name = resolved.Name
+		// DownloadResource.Name is the extensionless logical name. Hermes adds
+		// the canonical suffix derived from Resource.Kind only when resolving the
+		// final output path.
+		if resolved.BaseName != "" {
+			resource.Name = resolved.BaseName
 		}
 	}
 }
@@ -1261,15 +1311,8 @@ func log_filename_resolution(logger *zerolog.Logger, resolved hermes.FinalResour
 	}
 }
 
-func filename_template_from_config(config map[string]any) string {
-	for _, key := range []string{
-		"filenameTemplate",
-	} {
-		if value := strings.TrimSpace(config_string(config, key)); value != "" {
-			return value
-		}
-	}
-	return ""
+func (a *ChannelsAdapter) filename_template() string {
+	return strings.TrimSpace(a.config_string("download.filenameTemplate"))
 }
 
 func (a *ChannelsAdapter) filename_hook_context() (*hermes.HookManager, *zerolog.Logger) {
@@ -1315,6 +1358,11 @@ func resource_extra_map(raw string) map[string]string {
 func config_suffix_is_archive(config map[string]any) bool {
 	suffix := strings.TrimSpace(config_string(config, "suffix"))
 	return strings.EqualFold(suffix, ".zip") || strings.EqualFold(suffix, "zip")
+}
+
+func config_suffix_is_mp3(config map[string]any) bool {
+	suffix := strings.TrimSpace(config_string(config, "suffix"))
+	return strings.EqualFold(suffix, ".mp3") || strings.EqualFold(suffix, "mp3")
 }
 
 // build_config_json returns a map containing the config fields whose value is set / true,

@@ -27,6 +27,17 @@ func bilibili_bangumi_info_from_fetch(data any) (*bilibili.BangumiInfo, bool, er
 		return value, true, nil
 	case bilibili.BangumiInfo:
 		return &value, true, nil
+	case json.RawMessage:
+		var info bilibili.BangumiInfo
+		if err := json.Unmarshal(value, &info); err == nil &&
+			(info.EpisodeID > 0 ||
+				info.SeasonID > 0 ||
+				len(info.PlayURLSSRData.Data.Result.VideoInfo.Dash.Video) > 0) {
+			return &info, true, nil
+		}
+		return nil, false, nil
+	case []byte:
+		return bilibili_bangumi_info_from_fetch(json.RawMessage(value))
 	default:
 		return nil, false, nil
 	}
@@ -51,6 +62,21 @@ func bilibili_video_info_from_fetch(data any) (*bilibili.VideoInfo, error) {
 		return value, nil
 	case bilibili.VideoInfo:
 		return &value, nil
+	case json.RawMessage:
+		var infos []bilibili.VideoInfo
+		if err := json.Unmarshal(value, &infos); err == nil && len(infos) > 0 {
+			return &infos[0], nil
+		}
+		var info bilibili.VideoInfo
+		if err := json.Unmarshal(value, &info); err != nil {
+			return nil, fmt.Errorf("decode bilibili video info: %w", err)
+		}
+		if strings.TrimSpace(info.VideoID) == "" {
+			return nil, fmt.Errorf("bilibili video id is empty")
+		}
+		return &info, nil
+	case []byte:
+		return bilibili_video_info_from_fetch(json.RawMessage(value))
 	default:
 		return nil, fmt.Errorf("unsupported bilibili fetch data type %T", data)
 	}

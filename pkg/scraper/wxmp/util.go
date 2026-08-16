@@ -87,25 +87,11 @@ func normalize_media_url(raw string) string {
 	return u
 }
 
-func format_publish_time(create_time string, unix_time int) string {
-	create_time = strings.TrimSpace(create_time)
-	if create_time != "" {
-		if t, err := time.Parse("2006-01-02 15:04", create_time); err == nil {
-			return t.Format("2006年01月02日 15:04")
-		}
-		return create_time
-	}
-	if unix_time > 0 {
-		return time.Unix(int64(unix_time), 0).Format("2006年01月02日 15:04")
-	}
-	return ""
-}
-
 func is_verification_page(body string) bool {
 	return strings.Contains(body, "环境异常") && strings.Contains(body, "完成验证后即可继续访问")
 }
 
-func parse_cgi_datanew(html_content string) (*CgiDataNew, error) {
+func parse_cgi_datanew(html_content string) (*ArticleCgiDataNew, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html_content))
 	if err != nil {
 		return nil, err
@@ -190,7 +176,7 @@ func parse_cgi_datanew(html_content string) (*CgiDataNew, error) {
 		return nil, fmt.Errorf("failed to stringify cgiDataNew: %v", err)
 	}
 
-	data := &CgiDataNew{}
+	data := &ArticleCgiDataNew{}
 	if err := json.Unmarshal([]byte(json_text.String()), data); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cgiDataNew: %v", err)
 	}
@@ -234,13 +220,13 @@ func read_picture_page_info_list(vm *goja.Runtime, expr string) []PicturePageInf
 	return list
 }
 
-func parse_article_from_dom(html_content string) (*WechatOfficialArticle, error) {
+func parse_article_from_dom(html_content string) (*ArticleCgiDataNew, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html_content))
 	if err != nil {
 		return nil, err
 	}
 
-	article := &WechatOfficialArticle{}
+	article := &ArticleCgiDataNew{}
 
 	// Extract title
 	title := doc.Find("meta[property=\"og:title\"]").AttrOr("content", "")
@@ -259,7 +245,7 @@ func parse_article_from_dom(html_content string) (*WechatOfficialArticle, error)
 			content_html, _ = s.Html()
 		}
 	})
-	article.Content = content_html
+	article.ContentNoencode = content_html
 
 	// Extract author nickname
 	nickname := doc.Find("meta[name=\"author\"]").AttrOr("content", "")
@@ -269,16 +255,15 @@ func parse_article_from_dom(html_content string) (*WechatOfficialArticle, error)
 	if nickname == "" {
 		nickname = doc.Find(".profile_nickname").First().Text()
 	}
-	article.AuthorNickname = strings.TrimSpace(nickname)
+	article.NickName = strings.TrimSpace(nickname)
 
 	// Extract author avatar
 	avatar := doc.Find(".rich_media_meta_avatar, .js_wx_tap_highlight img").First().AttrOr("src", "")
-	article.AuthorAvatar = normalize_media_url(avatar)
+	article.RoundHeadImg = normalize_media_url(avatar)
 
-	// Extract publish time from script or meta
-	publish_time_text := ""
+	// Extract publish time from script or meta.
 	doc.Find("script").Each(func(i int, s *goquery.Selection) {
-		if publish_time_text != "" {
+		if article.CreateTime != "" {
 			return
 		}
 		text := s.Text()
@@ -286,11 +271,10 @@ func parse_article_from_dom(html_content string) (*WechatOfficialArticle, error)
 			re := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
 			matches := re.FindStringSubmatch(text)
 			if len(matches) > 1 {
-				publish_time_text = format_publish_time(matches[1], 0)
+				article.CreateTime = strings.TrimSpace(matches[1])
 			}
 		}
 	})
-	article.PublishTimeStr = publish_time_text
 
 	// Extract image URLs
 	doc.Find("#js_content img, .rich_media_content img").Each(func(i int, s *goquery.Selection) {
@@ -300,7 +284,9 @@ func parse_article_from_dom(html_content string) (*WechatOfficialArticle, error)
 		}
 		image_url = normalize_media_url(image_url)
 		if image_url != "" {
-			article.Images = append(article.Images, image_url)
+			article.PicturePageInfoList = append(article.PicturePageInfoList, PicturePageInfo{
+				CdnUrl: image_url,
+			})
 		}
 	})
 

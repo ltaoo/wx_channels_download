@@ -2,9 +2,11 @@ package zhihuadapter
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,18 +15,22 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
 const (
-	postprocess_type_answer   = "answer"
-	postprocess_type_question = "question"
-	postprocess_type_article  = "article"
-	postprocess_marker_key    = "zhihu_postprocess"
-	postprocess_marker_value  = "page_to_html"
+	postprocess_type_answer        = "answer"
+	postprocess_type_question      = "question"
+	postprocess_type_article       = "article"
+	postprocess_marker_key         = "zhihu_postprocess"
+	postprocess_marker_value       = "page_to_html"
+	postprocess_image_marker_key   = "zhihu_postprocess_image"
+	postprocess_image_marker_value = "inline"
 )
 
 var _ adapter.Postprocessor = (*handler)(nil)
@@ -106,6 +112,7 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps ad
 	if info == nil {
 		return fmt.Errorf("zhihu postprocess: task is nil")
 	}
+	embedded_resources := make(map[string]bool)
 	for resource_index := range info.Resources {
 		if err := context.Cause(ctx); err != nil {
 			return err
@@ -130,9 +137,13 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps ad
 		if err != nil {
 			return fmt.Errorf("zhihu postprocess: build resource %q: %w", resource.Name, err)
 		}
-		html_content, err = h.scraper_client().InlineRemoteImages(html_content, source_url)
+		var resource_keys map[string]bool
+		html_content, resource_keys, err = inline_downloaded_images(html_content, source_url, info.Resources)
 		if err != nil {
 			return fmt.Errorf("zhihu postprocess: inline images for resource %q: %w", resource.Name, err)
+		}
+		for resource_key := range resource_keys {
+			embedded_resources[resource_key] = true
 		}
 		processed_data := []byte(html_content)
 		if err := replace_postprocess_file(file_path, processed_data); err != nil {
@@ -154,7 +165,149 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps ad
 			Int64("resource_size", resource.Size).
 			Msg("Postprocessor.zhihu: page data converted to HTML")
 	}
+	cleanup_embedded_image_resources(info, deps, embedded_resources)
 	return nil
+}
+
+func inline_downloaded_images(content, source_url string, resources []hermes.ResourceJob) (string, map[string]bool, error) {
+	embedded_resources := make(map[string]bool)
+	resources_by_url := zhihu_image_resources_by_url(resources, source_url)
+	if len(resources_by_url) == 0 {
+		return content, embedded_resources, nil
+	}
+
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(content))
+	if err != nil {
+		return "", nil, err
+	}
+	document.Find("img").Each(func(_ int, selection *goquery.Selection) {
+		image_url := normalize_zhihu_image_url(selection.AttrOr("src", ""), source_url)
+		if image_url == "" {
+			return
+		}
+		resource := resources_by_url[image_url]
+		if resource == nil {
+			return
+		}
+		data_uri := zhihu_image_resource_to_data_uri(resource)
+		if data_uri == "" {
+			return
+		}
+		selection.SetAttr("src", data_uri)
+		selection.RemoveAttr("data-original")
+		selection.RemoveAttr("data-actualsrc")
+		embedded_resources[zhihu_resource_key(resource)] = true
+	})
+
+	output, err := document.Html()
+	if err != nil {
+		return "", nil, err
+	}
+	return "<!doctype html>" + output, embedded_resources, nil
+}
+
+func zhihu_image_resources_by_url(resources []hermes.ResourceJob, source_url string) map[string]*hermes.ResourceJob {
+	resources_by_url := make(map[string]*hermes.ResourceJob)
+	for resource_index := range resources {
+		resource := &resources[resource_index]
+		if resource.Extra[postprocess_image_marker_key] != postprocess_image_marker_value {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(resource.Kind))
+		if kind != "image" && !strings.HasPrefix(kind, "image/") {
+			continue
+		}
+		for _, endpoint := range resource.Endpoints {
+			image_url := normalize_zhihu_image_url(endpoint.URL, source_url)
+			if image_url != "" {
+				resources_by_url[image_url] = resource
+			}
+		}
+	}
+	return resources_by_url
+}
+
+func zhihu_image_resource_to_data_uri(resource *hermes.ResourceJob) string {
+	if resource == nil || strings.TrimSpace(resource.FilePath) == "" {
+		return ""
+	}
+	image_data, err := os.ReadFile(resource.FilePath)
+	if err != nil {
+		return ""
+	}
+	mime_type := strings.ToLower(strings.TrimSpace(resource.Kind))
+	if !strings.HasPrefix(mime_type, "image/") {
+		mime_type = strings.ToLower(http.DetectContentType(image_data))
+	}
+	if !strings.HasPrefix(mime_type, "image/") {
+		return ""
+	}
+	return "data:" + mime_type + ";base64," + base64.StdEncoding.EncodeToString(image_data)
+}
+
+func cleanup_embedded_image_resources(info *hermes.TaskJob, deps adapter.PostprocessDeps, embedded_resources map[string]bool) {
+	if info == nil || len(embedded_resources) == 0 {
+		return
+	}
+
+	kept_resources := make([]hermes.ResourceJob, 0, len(info.Resources))
+	for resource_index := range info.Resources {
+		resource := info.Resources[resource_index]
+		if !embedded_resources[zhihu_resource_key(&resource)] {
+			kept_resources = append(kept_resources, resource)
+			continue
+		}
+
+		if resource.ID > 0 && deps.DB != nil {
+			if err := delete_zhihu_resource_record(deps.DB, info.ID, resource.ID); err != nil {
+				deps.Logger.Warn().
+					Int("task_id", info.ID).
+					Int("resource_id", resource.ID).
+					Err(err).
+					Msg("Postprocessor.zhihu: failed to delete embedded image resource record")
+			}
+		}
+		if err := os.Remove(resource.FilePath); err != nil && !os.IsNotExist(err) {
+			deps.Logger.Warn().
+				Int("task_id", info.ID).
+				Int("resource_id", resource.ID).
+				Str("file_path", resource.FilePath).
+				Err(err).
+				Msg("Postprocessor.zhihu: failed to remove embedded image file")
+		}
+	}
+	info.Resources = kept_resources
+}
+
+func delete_zhihu_resource_record(db *gorm.DB, task_id, resource_id int) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if tx.Migrator().HasTable(&model.DownloadResourceAsset{}) {
+			if err := tx.Where("resource_id = ?", resource_id).Delete(&model.DownloadResourceAsset{}).Error; err != nil {
+				return err
+			}
+		}
+		query := tx.Where("id = ?", resource_id)
+		if task_id > 0 {
+			query = query.Where("task_id = ?", task_id)
+		}
+		return query.Delete(&model.DownloadResource{}).Error
+	})
+}
+
+func zhihu_resource_key(resource *hermes.ResourceJob) string {
+	if resource == nil {
+		return ""
+	}
+	if resource.ID > 0 {
+		return fmt.Sprintf("id:%d", resource.ID)
+	}
+	if resource.UniqueID != "" {
+		return "unique_id:" + resource.UniqueID
+	}
+	if resource.FilePath != "" {
+		return "file_path:" + resource.FilePath
+	}
+	return "name:" + resource.Name
 }
 
 func build_payload_html(payload postprocess_payload) (string, string, error) {

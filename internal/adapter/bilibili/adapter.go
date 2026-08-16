@@ -129,8 +129,9 @@ func (h *handler) BuildBrowseHistory(_ json.RawMessage) (*adapter.BrowseHistoryR
 }
 
 type bilibili_content_json struct {
-	URL     string `json:"url"`
-	PageNum int    `json:"page_num"`
+	URL       string `json:"url"`
+	SourceURL string `json:"source_url"`
+	PageNum   int    `json:"page_num"`
 }
 
 func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -139,10 +140,24 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
+	// The create API may receive the structured value previously returned by
+	// Fetch. In particular, bangumi results expose source_url rather than the
+	// small {url, page_num} request shape. Reuse the embedded streams instead of
+	// treating that result as an empty URL or fetching the page again.
+	if bangumi_info, is_bangumi, err := bilibili_bangumi_info_from_fetch(content_json); err != nil {
+		return nil, fmt.Errorf("解析B站番剧信息失败: %w", err)
+	} else if is_bangumi {
+		return build_task_from_bangumi_info(bangumi_info, config)
+	}
+
 	var input bilibili_content_json
 	if err := json.Unmarshal(content_json, &input); err != nil {
 		return nil, fmt.Errorf("解析B站URL失败: %w", err)
 	}
+	if strings.TrimSpace(input.URL) == "" {
+		input.URL = input.SourceURL
+	}
+	input.URL = strings.TrimSpace(input.URL)
 	if input.URL == "" {
 		return nil, fmt.Errorf("B站URL不能为空")
 	}
@@ -150,7 +165,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	cookie := h.config_string("bilibili.cookie")
 
 	client := bilibili.NewClientWithLogger(cookie, h.get_logger())
-	if bilibili.IsBangumiPlayURL(input.URL) {
+	if bilibili.IsBangumiURL(input.URL) {
 		data, err := client.Fetch(input.URL)
 		if err != nil {
 			return nil, fmt.Errorf("获取B站番剧信息失败: %w", err)

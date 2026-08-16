@@ -27,6 +27,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	var body struct {
 		AccountId   *string `form:"account_id"`
 		ContentType *string `form:"content_type"`
+		Scope       *string `form:"scope"`
 		Keyword     *string `form:"keyword"`
 		StartAt     *int64  `form:"start_at"`
 		EndAt       *int64  `form:"end_at"`
@@ -71,9 +72,16 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	if content_type == "" && body.ContentType != nil {
 		content_type = strings.TrimSpace(*body.ContentType)
 	}
-	var account_id, keyword string
+	var account_id, scope, keyword string
 	if body.AccountId != nil {
 		account_id = *body.AccountId
+	}
+	if body.Scope != nil {
+		scope = strings.ToLower(strings.TrimSpace(*body.Scope))
+		if scope != "" && scope != services.ContentListScopeAll && scope != services.ContentListScopeTask {
+			result.Err(ctx, 400, "scope must be all or task")
+			return
+		}
 	}
 	if body.Keyword != nil {
 		keyword = *body.Keyword
@@ -82,6 +90,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	page_result, err := c.content_service.ListContents(services.ContentListOptions{
 		AccountID: account_id,
 		Type:      content_type,
+		Scope:     scope,
 		Keyword:   keyword,
 		StartAt:   body.StartAt,
 		EndAt:     body.EndAt,
@@ -159,7 +168,71 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		"resources":      resources,
 		"detail_type":    item.DetailType,
 		"detail":         item.Detail,
+		"relations":      item.Relations,
 	})
+}
+
+func (c *APIClient) handle_content_relations(ctx *gin.Context) {
+	if c.content_service == nil {
+		result.Err(ctx, 500, "数据库未初始化")
+		return
+	}
+
+	content_id := strings.TrimSpace(ctx.Query("content_id"))
+	if content_id == "" {
+		content_id = strings.TrimSpace(ctx.Query("id"))
+	}
+	if content_id == "" {
+		result.Err(ctx, 400, "content_id is required")
+		return
+	}
+	var body struct {
+		Direction    string `form:"direction"`
+		RelationType string `form:"relation_type"`
+		Page         *int   `form:"page"`
+		PageSize     *int   `form:"page_size"`
+		Limit        *int   `form:"limit"`
+		Offset       *int   `form:"offset"`
+	}
+	if err := ctx.ShouldBindQuery(&body); err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	page := 1
+	page_size := 20
+	if body.Page != nil && *body.Page > 0 {
+		page = *body.Page
+	}
+	if body.PageSize != nil && *body.PageSize > 0 {
+		page_size = *body.PageSize
+	}
+	if body.Limit != nil && *body.Limit > 0 {
+		page_size = *body.Limit
+	}
+	direction := strings.ToLower(strings.TrimSpace(body.Direction))
+	if direction == "" {
+		direction = services.ContentRelationDirectionBoth
+	}
+	if direction != services.ContentRelationDirectionBoth &&
+		direction != services.ContentRelationDirectionIncoming &&
+		direction != services.ContentRelationDirectionOutgoing {
+		result.Err(ctx, 400, "direction must be one of: both, incoming, outgoing")
+		return
+	}
+
+	relations, err := c.content_service.ListContentRelations(services.ContentRelationListOptions{
+		ContentID: content_id,
+		Direction: direction,
+		Type:      body.RelationType,
+		Page:      page,
+		PageSize:  page_size,
+		Offset:    body.Offset,
+	})
+	if err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	result.Ok(ctx, relations)
 }
 
 func file_type_by_ext(name string) string {

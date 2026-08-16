@@ -627,7 +627,7 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 		92,
 		"正在生成下载任务预览...",
 	)
-	download_info, err := build_scraper_download_info(handler, job.Platform, data)
+	download_info, err := build_scraper_download_info(handler, data)
 	if err != nil {
 		emit_raw_artifact()
 		s.emit_scraper_fetch_progress(
@@ -671,16 +671,12 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 
 // build_scraper_download_info builds a task preview only for adapters that can
 // consume their in-memory Fetch payload without another platform request.
-func build_scraper_download_info(handler adapter.AdapterHandler, platform_id string, data any) (*adapter.DownloadTaskResult, error) {
+func build_scraper_download_info(handler adapter.AdapterHandler, data any) (*adapter.DownloadTaskResult, error) {
 	fetch_builder, ok := handler.(adapter.FetchDownloadTaskBuilder)
 	if !ok {
 		return nil, nil
 	}
-	config_json, err := json.Marshal(map[string]any{"platform": platform_id})
-	if err != nil {
-		return nil, fmt.Errorf("序列化下载配置失败: %w", err)
-	}
-	download_info, err := fetch_builder.BuildDownloadTaskFromFetch(data, config_json)
+	download_info, err := fetch_builder.BuildDownloadTaskFromFetch(data, json.RawMessage("{}"))
 	if err != nil {
 		return nil, err
 	}

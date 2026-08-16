@@ -948,3 +948,185 @@ CREATE INDEX IF NOT EXISTS `idx_content_influencer_influencer`
 ON `content_influencer` (`influencer_id`);
 CREATE INDEX IF NOT EXISTS `idx_content_influencer_content_role`
 ON `content_influencer` (`content_id`, `role`, `sort_order`);
+
+-- Squashed content text-track migration.
+-- Generalize video-only subtitle rows into content-level text tracks so the
+-- same model can represent subtitles, captions, transcripts, and lyrics.
+CREATE INDEX IF NOT EXISTS `idx_content_relation_source_type_sort`
+ON `content_relation` (`source_content_id`, `type`, `sort_order`, `target_content_id`);
+CREATE INDEX IF NOT EXISTS `idx_content_relation_target_type_sort`
+ON `content_relation` (`target_content_id`, `type`, `sort_order`, `source_content_id`);
+
+CREATE TABLE `content_text_track` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `content_id` TEXT NOT NULL,
+  `track_key` TEXT NOT NULL,
+  `type` TEXT NOT NULL DEFAULT 'subtitle',
+  `language_code` TEXT NOT NULL DEFAULT 'und',
+  `language_name` TEXT,
+  `label` TEXT,
+  `is_default` INTEGER NOT NULL DEFAULT 0,
+  `is_forced` INTEGER NOT NULL DEFAULT 0,
+  `is_auto_generated` INTEGER NOT NULL DEFAULT 0,
+  `is_hearing_impaired` INTEGER NOT NULL DEFAULT 0,
+  `metadata` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER,
+  UNIQUE (`content_id`, `track_key`),
+  FOREIGN KEY (`content_id`) REFERENCES `content` (`id`)
+);
+
+CREATE INDEX `idx_content_text_track_content`
+ON `content_text_track` (`content_id`);
+CREATE INDEX `idx_content_text_track_type`
+ON `content_text_track` (`type`);
+CREATE INDEX `idx_content_text_track_language`
+ON `content_text_track` (`language_code`);
+CREATE INDEX `idx_content_text_track_deleted_at`
+ON `content_text_track` (`deleted_at`);
+
+CREATE TABLE `content_text_track_source` (
+  `asset_id` INTEGER PRIMARY KEY,
+  `track_id` INTEGER NOT NULL,
+  `source_key` TEXT NOT NULL,
+  `format` TEXT,
+  `mime_type` TEXT,
+  `url` TEXT,
+  `url_expires_at` INTEGER,
+  `encoding` TEXT,
+  `metadata` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER,
+  UNIQUE (`track_id`, `source_key`),
+  FOREIGN KEY (`asset_id`) REFERENCES `content_asset` (`id`),
+  FOREIGN KEY (`track_id`) REFERENCES `content_text_track` (`id`)
+);
+
+CREATE INDEX `idx_content_text_track_source_track`
+ON `content_text_track_source` (`track_id`);
+CREATE INDEX `idx_content_text_track_source_deleted_at`
+ON `content_text_track_source` (`deleted_at`);
+
+-- Preserve IDs so every existing source keeps pointing at the same logical
+-- track after the table replacement.
+INSERT INTO `content_text_track` (
+  `id`, `content_id`, `track_key`, `type`, `language_code`, `language_name`,
+  `label`, `is_default`, `is_forced`, `is_auto_generated`,
+  `is_hearing_impaired`, `metadata`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `id`, `video_id`, `track_key`,
+  CASE
+    WHEN LOWER(TRIM(COALESCE(`kind`, ''))) IN (
+      'caption', 'captions', 'asr', 'auto', 'auto_generated'
+    ) THEN 'caption'
+    WHEN LOWER(TRIM(COALESCE(`kind`, ''))) = 'transcript' THEN 'transcript'
+    ELSE 'subtitle'
+  END,
+  COALESCE(NULLIF(TRIM(`language_code`), ''), 'und'),
+  `language_name`, `label`, `is_default`, `is_forced`, `is_auto_generated`,
+  `is_hearing_impaired`, '', `created_at`, `updated_at`, `deleted_at`
+FROM `content_video_subtitle_track`;
+
+INSERT INTO `content_text_track_source` (
+  `asset_id`, `track_id`, `source_key`, `format`, `mime_type`, `url`,
+  `url_expires_at`, `encoding`, `metadata`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `content_video_subtitle_source`.`asset_id`,
+  `content_video_subtitle_source`.`track_id`,
+  `content_video_subtitle_source`.`source_key`,
+  `content_video_subtitle_source`.`format`,
+  COALESCE(
+    NULLIF(`content_asset`.`mime_type`, ''),
+    CASE LOWER(TRIM(COALESCE(`content_video_subtitle_source`.`format`, '')))
+      WHEN 'vtt' THEN 'text/vtt'
+      WHEN 'srt' THEN 'application/x-subrip'
+      WHEN 'ass' THEN 'text/x-ssa'
+      WHEN 'ssa' THEN 'text/x-ssa'
+      WHEN 'ttml' THEN 'application/ttml+xml'
+      WHEN 'json' THEN 'application/json'
+      WHEN 'json3' THEN 'application/json'
+      ELSE ''
+    END
+  ),
+  `content_video_subtitle_source`.`url`,
+  `content_video_subtitle_source`.`url_expires_at`,
+  `content_video_subtitle_source`.`encoding`,
+  `content_video_subtitle_source`.`metadata`,
+  `content_video_subtitle_source`.`created_at`,
+  `content_video_subtitle_source`.`updated_at`,
+  `content_video_subtitle_source`.`deleted_at`
+FROM `content_video_subtitle_source`
+LEFT JOIN `content_asset`
+  ON `content_asset`.`id` = `content_video_subtitle_source`.`asset_id`;
+
+DROP TABLE `content_video_subtitle_source`;
+DROP TABLE `content_video_subtitle_track`;
+
+-- Preserve the v1 single-URL lyrics field before removing it.
+INSERT OR IGNORE INTO `content_text_track` (
+  `content_id`, `track_key`, `type`, `language_code`, `language_name`, `label`,
+  `is_default`, `is_forced`, `is_auto_generated`, `is_hearing_impaired`,
+  `metadata`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `content_audio`.`id`, 'legacy:lyrics:und', 'lyrics', 'und', '', '',
+  1, 0, 0, 0, '',
+  COALESCE(`content`.`created_at`, 0),
+  COALESCE(`content`.`updated_at`, 0),
+  `content`.`deleted_at`
+FROM `content_audio`
+LEFT JOIN `content` ON `content`.`id` = `content_audio`.`id`
+WHERE TRIM(COALESCE(`content_audio`.`lyrics_url`, '')) <> '';
+
+INSERT OR IGNORE INTO `content_asset` (
+  `content_id`, `kind`, `role`, `asset_key`, `label`, `language_code`,
+  `mime_type`, `size`, `metadata`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `content_audio`.`id`, 'text', 'lyrics', 'legacy:lyrics:und:default', '', 'und',
+  CASE
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.lrc%' THEN 'text/plain'
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.vtt%' THEN 'text/vtt'
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.srt%' THEN 'application/x-subrip'
+    ELSE ''
+  END,
+  0, '',
+  COALESCE(`content`.`created_at`, 0),
+  COALESCE(`content`.`updated_at`, 0),
+  `content`.`deleted_at`
+FROM `content_audio`
+LEFT JOIN `content` ON `content`.`id` = `content_audio`.`id`
+WHERE TRIM(COALESCE(`content_audio`.`lyrics_url`, '')) <> '';
+
+INSERT OR IGNORE INTO `content_text_track_source` (
+  `asset_id`, `track_id`, `source_key`, `format`, `mime_type`, `url`,
+  `encoding`, `metadata`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `content_asset`.`id`, `content_text_track`.`id`, 'default',
+  CASE
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.lrc%' THEN 'lrc'
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.vtt%' THEN 'vtt'
+    WHEN LOWER(`content_audio`.`lyrics_url`) LIKE '%.srt%' THEN 'srt'
+    ELSE ''
+  END,
+  `content_asset`.`mime_type`, `content_audio`.`lyrics_url`, 'utf-8', '',
+  `content_asset`.`created_at`, `content_asset`.`updated_at`, `content_asset`.`deleted_at`
+FROM `content_audio`
+JOIN `content_text_track`
+  ON `content_text_track`.`content_id` = `content_audio`.`id`
+ AND `content_text_track`.`track_key` = 'legacy:lyrics:und'
+JOIN `content_asset`
+  ON `content_asset`.`content_id` = `content_audio`.`id`
+ AND `content_asset`.`role` = 'lyrics'
+ AND `content_asset`.`asset_key` = 'legacy:lyrics:und:default'
+WHERE TRIM(COALESCE(`content_audio`.`lyrics_url`, '')) <> '';
+
+-- The normalized rows above now own the historical values.
+ALTER TABLE `content_video` DROP COLUMN `has_subtitle`;
+ALTER TABLE `content_video` DROP COLUMN `subtitle_url`;
+ALTER TABLE `content_audio` DROP COLUMN `lyrics_url`;

@@ -82,6 +82,8 @@ type douyin_mobile_image struct {
 	DownloadURLList []string `json:"download_url_list"`
 	Width           int      `json:"width"`
 	Height          int      `json:"height"`
+	LivePhotoType   int      `json:"live_photo_type"`
+	Video           *douyin_mobile_video `json:"video"`
 }
 
 type douyin_mobile_music struct {
@@ -104,11 +106,12 @@ type douyin_mobile_text struct {
 }
 
 type douyin_model_image struct {
-	uri    string
-	url    string
-	width  int
-	height int
-	ext    string
+	uri        string
+	url        string
+	width      int
+	height     int
+	ext        string
+	live_photo *model.ContentImageLivePhoto
 }
 
 type douyin_model_data struct {
@@ -466,7 +469,11 @@ func douyin_album_from_data(data *douyin_model_data) *model.ContentAlbum {
 			Height:    image.height,
 			Ext:       image.ext,
 			ImageType: model.ContentImageTypeStill,
+			LivePhoto: image.live_photo,
 		})
+		if image.live_photo != nil {
+			images[len(images)-1].ImageType = model.ContentImageTypeLivePhoto
+		}
 	}
 	album := &model.ContentAlbum{
 		Id:          content_id,
@@ -561,14 +568,36 @@ func douyin_model_images(images []douyin_mobile_image) ([]douyin_model_image, er
 			return nil, fmt.Errorf("image %d has no non-watermarked URL", image_index+1)
 		}
 		model_images = append(model_images, douyin_model_image{
-			uri:    strings.TrimSpace(image.URI),
-			url:    image_url,
-			width:  image.Width,
-			height: image.Height,
-			ext:    douyin_image_extension(image_url),
+			uri:        strings.TrimSpace(image.URI),
+			url:        image_url,
+			width:      image.Width,
+			height:     image.Height,
+			ext:        douyin_image_extension(image_url),
+			live_photo: douyin_model_live_photo(image),
 		})
 	}
 	return model_images, nil
+}
+
+func douyin_model_live_photo(image douyin_mobile_image) *model.ContentImageLivePhoto {
+	if image.Video == nil {
+		return nil
+	}
+	video_url := first_douyin_url(image.Video.PlayAddr.URLList)
+	if video_url == "" {
+		video_url = strings.TrimSpace(image.Video.PlayAddr.URI)
+	}
+	if video_url == "" {
+		return nil
+	}
+	return &model.ContentImageLivePhoto{
+		Vid:        strings.TrimSpace(image.Video.PlayAddr.URI),
+		Type:       image.LivePhotoType,
+		URL:        douyin_no_watermark_url(video_url),
+		Width:      image.Video.Width,
+		Height:     image.Video.Height,
+		DurationMs: image.Video.Duration,
+	}
 }
 
 func douyin_album_bgm_url(play_uri string) string {

@@ -294,8 +294,8 @@ height    = NULL
 字幕分为逻辑轨道和具体文件：
 
 ```text
-ContentVideo
-└── ContentVideoSubtitleTrack
+Content
+└── ContentTextTrack
     ├── en / official
     │   ├── VTT source
     │   └── SRT source
@@ -303,7 +303,7 @@ ContentVideo
     └── ja / auto-generated
 ```
 
-`ContentVideoSubtitleTrack` 保存：
+`ContentTextTrack` 保存：
 
 - 语言代码和显示名称。
 - 字幕、说明字幕或强制字幕类型。
@@ -311,7 +311,7 @@ ContentVideo
 - 是否自动生成。
 - 是否为听障字幕。
 
-`ContentVideoSubtitleSource` 保存具体格式、URL、编码和过期时间。每个 Source 对应一个 `ContentAsset`，未知语言使用 `und`。
+`ContentTextTrackSource` 保存具体格式、URL、编码和过期时间。每个 Source 对应一个 `ContentAsset`，未知语言使用 `und`。
 
 ## 6. 小说章节和图集图片
 
@@ -921,7 +921,7 @@ variant.Asset.DownloadResources
 ### 11.3 根据字幕源查询下载记录
 
 ```go
-var source model.ContentVideoSubtitleSource
+var source model.ContentTextTrackSource
 
 err := db.
 	Preload("Asset.DownloadResources").

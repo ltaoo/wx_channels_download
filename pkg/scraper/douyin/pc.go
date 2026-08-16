@@ -27,6 +27,7 @@ import (
 
 const (
 	douyin_pc_iteminfo_url      = "https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/"
+	douyin_pc_slidesinfo_url    = "https://www.iesdouyin.com/web/api/v2/aweme/slidesinfo/"
 	douyin_pc_request_timeout   = 30 * time.Second
 	douyin_pc_request_attempts  = 5
 	douyin_pc_default_aid       = "1128"
@@ -170,7 +171,11 @@ func (c *DouyinPCClient) fetch_detail_attempt(page_request_url string) (map[stri
 
 	router_data, err := decode_douyin_pc_router_data(page_body)
 	if err != nil {
-		return nil, final_url, err
+		var fallback_err error
+		router_data, fallback_err = build_douyin_pc_share_router_data(final_url)
+		if fallback_err != nil {
+			return nil, final_url, err
+		}
 	}
 	video_page_data, err := find_douyin_pc_video_page(router_data)
 	if err != nil {
@@ -191,6 +196,58 @@ func (c *DouyinPCClient) fetch_detail_attempt(page_request_url string) (map[stri
 		return nil, final_url, err
 	}
 	return detail, final_url, nil
+}
+
+// build_douyin_pc_share_router_data reconstructs the small portion of
+// _ROUTER_DATA needed by the iteminfo request. Douyin slides pages can fall
+// back to client-side rendering and omit _ROUTER_DATA while still including
+// the webId and xsstoken elements used by the reflow API.
+func build_douyin_pc_share_router_data(page_url string) (map[string]any, error) {
+	parsed_url, err := url.Parse(page_url)
+	if err != nil {
+		return nil, fmt.Errorf("douyin PC: parse share page URL: %w", err)
+	}
+
+	path_parts := strings.Split(strings.Trim(parsed_url.Path, "/"), "/")
+	share_type := ""
+	item_id := ""
+	for index := 0; index+1 < len(path_parts); index++ {
+		if path_parts[index] != "video" && path_parts[index] != "slides" {
+			continue
+		}
+		candidate_id := path_parts[index+1]
+		if !douyin_pc_digits(candidate_id) {
+			continue
+		}
+		share_type = path_parts[index]
+		item_id = candidate_id
+		break
+	}
+	if item_id == "" {
+		return nil, fmt.Errorf("douyin PC: share page URL did not contain an aweme ID")
+	}
+
+	query := make(map[string]any, len(parsed_url.Query()))
+	for key, values := range parsed_url.Query() {
+		if len(values) > 0 {
+			query[key] = values[len(values)-1]
+		}
+	}
+	page_data := map[string]any{
+		"itemId":   item_id,
+		"lastPath": item_id,
+		"query":    query,
+		"abParams": map[string]any{
+			"select_pool_data": map[string]any{
+				"use_new_select_scope": 0,
+			},
+		},
+	}
+	return map[string]any{
+		"loaderData": map[string]any{
+			share_type + "_(id)/page": page_data,
+		},
+	}, nil
 }
 
 func (c *DouyinPCClient) get(request_url string, headers map[string]string) ([]byte, string, error) {
@@ -281,7 +338,8 @@ func find_douyin_pc_video_page(router_data map[string]any) (map[string]any, erro
 	}
 	sort.Strings(page_keys)
 	for _, key := range page_keys {
-		if !strings.HasSuffix(key, "/page") || !strings.Contains(key, "video") {
+		if !strings.HasSuffix(key, "/page") ||
+			(!strings.Contains(key, "video") && !strings.Contains(key, "slides")) {
 			continue
 		}
 		if page_data, page_ok := douyin_pc_object(loader_data[key]); page_ok {
@@ -367,10 +425,118 @@ func (c *DouyinPCClient) fetch_douyin_pc_iteminfo(
 			attempt_errors = append(attempt_errors, fmt.Sprintf("%s: %v", web_id, normalize_err))
 			continue
 		}
+		if strings.Contains(page_url, "/share/slides/") {
+			if enrich_err := c.enrich_douyin_pc_live_photo_images(
+				page_url,
+				detail,
+				video_page_data,
+			); enrich_err != nil {
+				c.logger.Warn().
+					Err(enrich_err).
+					Str("page_url", page_url).
+					Msg("douyin PC: live photo image videos unavailable")
+			}
+		}
 		return detail, nil
 	}
 
 	return nil, fmt.Errorf("douyin PC: mobile iteminfo failed after retries: %s", strings.Join(attempt_errors, " | "))
+}
+
+// enrich_douyin_pc_live_photo_images fetches the slides-specific response.
+// The regular iteminfo endpoint returns the still images but omits the
+// per-image motion video nested under images[].video.
+func (c *DouyinPCClient) enrich_douyin_pc_live_photo_images(
+	page_url string,
+	detail map[string]any,
+	video_page_data map[string]any,
+) error {
+	item_id := douyin_pc_scalar_string(douyin_pc_item_id(video_page_data))
+	if item_id == "" {
+		return fmt.Errorf("slides page has no aweme ID")
+	}
+	query, _ := douyin_pc_object(video_page_data["query"])
+	params := url.Values{}
+	params.Set("aweme_ids", "["+item_id+"]")
+	params.Set("aweme_type", douyin_pc_value_or_default(query["aweme_type"], "2"))
+	params.Set("aid", douyin_pc_value_or_default(query["from_aid"], "6383"))
+	params.Set("request_source", "200")
+
+	headers := map[string]string{
+		"User-Agent":      douyin_pc_mobile_user_agent,
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Referer":         page_url,
+	}
+	body, _, err := c.get(douyin_pc_slidesinfo_url+"?"+params.Encode(), headers)
+	if err != nil {
+		return fmt.Errorf("fetch slidesinfo: %w", err)
+	}
+	response, err := decode_douyin_pc_json_object(body)
+	if err != nil {
+		return fmt.Errorf("decode slidesinfo: %w", err)
+	}
+	details, ok := douyin_pc_array(response["aweme_details"])
+	if !ok || len(details) == 0 {
+		return fmt.Errorf("slidesinfo did not contain aweme_details")
+	}
+	slides_detail, ok := douyin_pc_object(details[0])
+	if !ok {
+		return fmt.Errorf("slidesinfo aweme_details[0] was not an object")
+	}
+	slides_images, ok := douyin_pc_array(slides_detail["images"])
+	if !ok || len(slides_images) == 0 {
+		return fmt.Errorf("slidesinfo did not contain images")
+	}
+	return merge_douyin_pc_live_photo_images(detail, slides_images)
+}
+
+func merge_douyin_pc_live_photo_images(detail map[string]any, slides_images []any) error {
+	if len(slides_images) == 0 {
+		return fmt.Errorf("slidesinfo did not contain images")
+	}
+	aweme_detail, ok := douyin_pc_object(detail["aweme_detail"])
+	if !ok {
+		return fmt.Errorf("normalized detail did not contain aweme_detail")
+	}
+	item_images, ok := douyin_pc_array(aweme_detail["images"])
+	if !ok || len(item_images) == 0 {
+		return fmt.Errorf("normalized detail did not contain images")
+	}
+	item_images_by_uri := make(map[string]map[string]any, len(item_images))
+	for _, raw_item_image := range item_images {
+		item_image, ok := douyin_pc_object(raw_item_image)
+		if !ok {
+			continue
+		}
+		if uri := douyin_pc_scalar_string(item_image["uri"]); uri != "" {
+			item_images_by_uri[uri] = item_image
+		}
+	}
+	for index, raw_slide_image := range slides_images {
+		slide_image, ok := douyin_pc_object(raw_slide_image)
+		if !ok {
+			continue
+		}
+		motion_video, ok := douyin_pc_object(slide_image["video"])
+		if !ok || len(motion_video) == 0 {
+			continue
+		}
+		var item_image map[string]any
+		if uri := douyin_pc_scalar_string(slide_image["uri"]); uri != "" {
+			item_image = item_images_by_uri[uri]
+		}
+		if item_image == nil && index < len(item_images) {
+			item_image, _ = douyin_pc_object(item_images[index])
+		}
+		if item_image == nil {
+			continue
+		}
+		item_image["video"] = motion_video
+		item_image["live_photo_type"] = slide_image["live_photo_type"]
+	}
+	aweme_detail["images"] = item_images
+	return nil
 }
 
 func build_douyin_pc_iteminfo_params(page_html []byte, video_page_data map[string]any, web_id string) (url.Values, error) {
@@ -478,6 +644,13 @@ func douyin_pc_web_id_candidates(page_html []byte, video_page_data map[string]an
 
 func valid_douyin_pc_web_id(value string) bool {
 	if len(value) < 16 {
+		return false
+	}
+	return douyin_pc_digits(value)
+}
+
+func douyin_pc_digits(value string) bool {
+	if value == "" {
 		return false
 	}
 	for _, character := range []byte(value) {

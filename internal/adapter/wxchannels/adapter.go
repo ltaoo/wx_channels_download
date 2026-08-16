@@ -283,3 +283,16 @@ func (a *ChannelsAdapter) config_bool(key string) bool {
 	}
 	return runtime_config.GetBool(key)
 }
+
+func (a *ChannelsAdapter) config_string(key string) string {
+	if a == nil {
+		return ""
+	}
+	a.runtime_mu.Lock()
+	runtime_config := a.config
+	a.runtime_mu.Unlock()
+	if runtime_config == nil {
+		return ""
+	}
+	return runtime_config.GetString(key)
+}

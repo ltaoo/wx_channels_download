@@ -1,0 +1,1156 @@
+const runtime_config = window.__d_config || {};
+
+const MaxRunning = Math.max(1, Number(runtime_config.maxRunning) || 3);
+const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
+
+const DOWNLOAD_STATUS_COUNT_ITEMS = [
+  { key: "total", label: "全部" },
+  { key: "running", label: "下载中" },
+  { key: "pause", label: "暂停" },
+  { key: "wait", label: "等待中" },
+  { key: "done", label: "已完成" },
+  { key: "error", label: "失败" },
+];
+
+function runtime_flag(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value !== "string") return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function is_download_open_external() {
+  return (
+    runtime_flag(runtime_config.remoteServerEnabled) ||
+    runtime_flag(runtime_config.inDocker)
+  );
+}
+
+function normalize_download_status(status) {
+  const value = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (["0", "waiting", "creating", "preparing", "pending", "queued", "ready"].includes(value)) {
+    return "wait";
+  }
+  if (["1", "2", "4", "running", "downloading", "merging"].includes(value)) {
+    return "running";
+  }
+  if (["3", "pause", "paused"].includes(value)) return "pause";
+  if (["5", "done", "finished", "completed", "success"].includes(value)) {
+    return "done";
+  }
+  if (
+    [
+      "6",
+      "7",
+      "error",
+      "fail",
+      "failed",
+      "failure",
+      "errored",
+      "cancelled",
+      "canceled",
+    ].includes(value)
+  ) {
+    return "error";
+  }
+  return value || "wait";
+}
+
+function is_download_waiting_status(status) {
+  return normalize_download_status(status) === "wait";
+}
+
+function format_download_speed(bytes_per_second) {
+  const value = Math.max(0, Number(bytes_per_second) || 0);
+  const kilobyte = 1024;
+  const megabyte = kilobyte * 1024;
+  if (value >= megabyte) return `${(value / megabyte).toFixed(1)} MB/s`;
+  if (value >= kilobyte) return `${(value / kilobyte).toFixed(1)} KB/s`;
+  return `${value.toFixed(1)} B/s`;
+}
+
+function format_download_size(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value === 0) return "0.0KB";
+  const units = ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  const exponent = Math.min(
+    Math.floor(Math.log(value) / Math.log(1024)),
+    units.length - 1,
+  );
+  if (exponent < 1) return `${value.toFixed(1)} ${units[0]}`;
+  return `${(value / Math.pow(1024, exponent)).toFixed(1)}${units[exponent]}`;
+}
+
+function format_download_percent(task) {
+  const progress = task && task.progress;
+  const direct = Number(progress);
+  if (Number.isFinite(direct)) {
+    return Math.min(100, Math.max(0, Math.round(direct * 100) / 100));
+  }
+  const detail = progress && typeof progress === "object" ? progress : {};
+  const detail_percent = Number(detail.percent ?? detail.progress);
+  if (Number.isFinite(detail_percent)) {
+    return Math.min(100, Math.max(0, Math.round(detail_percent * 100) / 100));
+  }
+  const total = Number((task && task.size) || detail.total || detail.size || 0);
+  const downloaded = Number((task && task.downloaded) || detail.downloaded || 0);
+  if (total <= 0) return 0;
+  return Math.min(
+    100,
+    Math.max(0, Math.round(((downloaded * 100) / total) * 100) / 100),
+  );
+}
+
+function get_download_status_count(counts, item) {
+  if (!counts || !item) return 0;
+  return Number(counts[item.key]) || 0;
+}
+
+function empty_status_counts() {
+  return {
+    total: 0,
+    running: 0,
+    pause: 0,
+    wait: 0,
+    done: 0,
+    error: 0,
+  };
+}
+
+function task_identifier(value) {
+  if (!value || typeof value !== "object") return value;
+  if (value.__domain && value.__domain.id) return value.__domain.id.value;
+  if (value.id && typeof value.id === "object" && "value" in value.id) {
+    return value.id.value;
+  }
+  return value.id ?? value.task_id;
+}
+
+function DownloadV2Model(props = {}) {
+  const {
+    downloader = window.dl$,
+    fixedListHeight: fixed_list_height = false,
+    itemHeight: item_height = 82,
+    listBuffer: list_buffer = 10,
+    listHeight: list_height = 380,
+  } = props;
+  if (!downloader || typeof downloader.refresh !== "function") {
+    throw new TypeError("DownloadV2Model requires the global dl$ instance");
+  }
+
+  const tasks_ = refarr([]);
+  const task_count_ = ref(0);
+  const filtered_task_count_ = ref(0);
+  const page_ = ref(1);
+  const page_size_ = ref(DOWNLOAD_PAGE_SIZE_DEFAULT);
+  const running_count_ = ref(0);
+  const status_counts_ = refobj(empty_status_counts());
+  const active_status_ = ref("total");
+  const list_render_enabled_ = ref(true);
+  const selected_task_ids_ = refarr([]);
+  const delete_task_ = ref(null);
+  const delete_task_ids_ = refarr([]);
+  const delete_delete_files_ = ref(false);
+  const deleting_task_ = ref(false);
+  const clearing_tasks_ = ref(false);
+  const create_task_text_ = ref("");
+  const create_task_filename_ = ref("");
+  const create_platform_text_ = ref("");
+  const create_platform_json_ = ref("");
+  const create_platform_download_dir_ = ref("");
+  const create_platform_filename_ = ref("");
+  const create_platform_download_cover_ = ref(false);
+  const creating_task_ = ref(false);
+  const create_task_preview_ = ref(null);
+  const create_platform_preview_ = ref(null);
+  const overwrite_ = refobj({ value: "overwrite" });
+  const overwrite_apply_all_ = ref(false);
+  const overwrite_processing_ = ref(false);
+  const overwrite_conflict_ = refobj({ index: 0, total: 0, name: "" });
+  const task_entries = new Map();
+  const disposables = [];
+  let list_view_element = null;
+  let selection_anchor_task_id = null;
+  let pending_create_object = null;
+  let started = false;
+  let disposed = false;
+  let scroll_top = 0;
+
+  const selected_task_count_ = computed(
+    selected_task_ids_,
+    (ids) => (ids || []).length,
+  );
+  const pending_delete_task_count_ = combine(
+    { ids: delete_task_ids_, task: delete_task_ },
+    (state) => {
+      if (state.ids && state.ids.length) return state.ids.length;
+      return state.task ? 1 : 0;
+    },
+  );
+  const page_count_ = combine(
+    { total: filtered_task_count_, pageSize: page_size_ },
+    (state) =>
+      Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
+  );
+  const range_text_ = combine(
+    {
+      total: filtered_task_count_,
+      page: page_,
+      pageSize: page_size_,
+      count: computed(tasks_, (tasks) => tasks.length),
+    },
+    (state) => {
+      if (!state.total || !state.count) {
+        return `共 ${state.total || 0} 条`;
+      }
+      const start = (state.page - 1) * state.pageSize + 1;
+      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
+    },
+  );
+
+  const methods = {};
+  const ui = {
+    input_create_task_url$: new Timeless.vm.InputCore({
+      defaultValue: create_task_text_.value,
+      placeholder: "请输入下载地址，例如 https://example.com/file.mp4",
+      type: "url",
+      allowClear: true,
+      autoFocus: true,
+      onChange(value) {
+        methods.setCreateTaskText(value);
+      },
+    }),
+    input_create_task_filename$: new Timeless.vm.InputCore({
+      defaultValue: create_task_filename_.value,
+      placeholder: "自动识别，可手动修改",
+      allowClear: true,
+      onChange(value) {
+        create_task_filename_.as(value || "");
+      },
+    }),
+    input_create_platform$: new Timeless.vm.InputCore({
+      defaultValue: create_platform_text_.value,
+      placeholder: "如 wx_channels、bilibili",
+      allowClear: true,
+      autoFocus: true,
+      onChange(value) {
+        create_platform_text_.as(value || "");
+      },
+    }),
+    input_create_platform_json$: new Timeless.vm.InputCore({
+      defaultValue: create_platform_json_.value,
+      placeholder: '平台内容原始 JSON，如 {"feed_id":"xxx"}',
+      allowClear: false,
+      onChange(value) {
+        create_platform_json_.as(value || "");
+      },
+    }),
+    input_create_platform_download_dir$: new Timeless.vm.InputCore({
+      defaultValue: create_platform_download_dir_.value,
+      placeholder: "留空则使用默认下载目录",
+      allowClear: true,
+      onChange(value) {
+        create_platform_download_dir_.as(value || "");
+      },
+    }),
+    input_create_platform_filename$: new Timeless.vm.InputCore({
+      defaultValue: create_platform_filename_.value,
+      placeholder: "留空则自动命名",
+      allowClear: true,
+      onChange(value) {
+        create_platform_filename_.as(value || "");
+      },
+    }),
+    createTaskDialog$: new Timeless.vm.DialogCore({
+      closeable: true,
+      onOk() {
+        return methods.confirmCreateTask();
+      },
+    }),
+    createPlatformTaskDialog$: new Timeless.vm.DialogCore({
+      closeable: true,
+      onOk() {
+        return methods.confirmCreatePlatformTask();
+      },
+    }),
+    createTaskPreviewDialog$: new Timeless.vm.DialogCore({
+      closeable: true,
+      onOk() {
+        return methods.confirmCreateTaskFromPreview();
+      },
+    }),
+    createPlatformTaskPreviewDialog$: new Timeless.vm.DialogCore({
+      closeable: true,
+      onOk() {
+        return methods.confirmCreatePlatformTaskFromPreview();
+      },
+    }),
+    deleteConfirmDialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmDeleteTask();
+      },
+    }),
+    clearConfirmDialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmClearTasks();
+      },
+    }),
+    overwriteConfirmDialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmOverwriteDownloadConflict();
+      },
+    }),
+    singleOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmOverwriteDownloadConflict();
+      },
+    }),
+    batchOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmOverwriteDownloadConflict();
+      },
+    }),
+  };
+
+  function bind_ui_input(input, source) {
+    const unlisten = source.subscribe({
+      onChange(value) {
+        if (input.value !== value) {
+          input.setValue(value, { silence: true });
+        }
+      },
+    });
+    if (typeof unlisten === "function") {
+      disposables.push(unlisten);
+    }
+  }
+
+  bind_ui_input(ui.input_create_task_url$, create_task_text_);
+  bind_ui_input(ui.input_create_task_filename$, create_task_filename_);
+  bind_ui_input(ui.input_create_platform$, create_platform_text_);
+  bind_ui_input(ui.input_create_platform_json$, create_platform_json_);
+  bind_ui_input(
+    ui.input_create_platform_download_dir$,
+    create_platform_download_dir_,
+  );
+  bind_ui_input(
+    ui.input_create_platform_filename$,
+    create_platform_filename_,
+  );
+
+  function domain_task_record(task$) {
+    const raw = (task$ && task$.raw && task$.raw.value) || {};
+    const progress = (task$ && task$.progress && task$.progress.value) || {};
+    const error = task$ && task$.error ? task$.error.value : null;
+    const resources = raw.files || raw.resources || [];
+    return {
+      ...raw,
+      id: task$ && task$.id ? task$.id.value : raw.id,
+      name:
+        (task$ && task$.name && task$.name.value) ||
+        raw.name ||
+        raw.title ||
+        "未命名任务",
+      title:
+        (task$ && task$.title && task$.title.value) ||
+        raw.title ||
+        raw.name ||
+        "未命名任务",
+      status: (task$ && task$.status && task$.status.value) || raw.status,
+      filepath:
+        (task$ && task$.filepath && task$.filepath.value) || raw.filepath || "",
+      path: raw.path || raw.download_dir || "",
+      filename: raw.filename || raw.name || "",
+      progress: Number(progress.percent) || 0,
+      downloaded: Number(progress.downloaded) || 0,
+      size: Number(progress.total) || 0,
+      speed: Number(progress.speed) || 0,
+      files: Array.isArray(resources) ? resources : [],
+      error: error ? error.message || String(error) : raw.error || raw.error_message,
+      __domain: task$,
+    };
+  }
+
+  function status_matches(record, status) {
+    if (status === "total") return true;
+    return normalize_download_status(record && record.status) === status;
+  }
+
+  function rebuild_derived_state() {
+    if (disposed) return;
+    const records = [];
+    task_entries.forEach((entry) => {
+      const record = entry.record;
+      const id = task_identifier(record);
+      if (id !== undefined && id !== null && id !== "") records.push(record);
+    });
+    const order = new Map();
+    (downloader.task_list.value || []).forEach((task$, index) => order.set(task$, index));
+    records.sort((left, right) => {
+      return (order.get(left.__domain) || 0) - (order.get(right.__domain) || 0);
+    });
+
+    const counts = empty_status_counts();
+    records.forEach((record) => {
+      const status = normalize_download_status(record.status);
+      counts.total += 1;
+      if (Object.prototype.hasOwnProperty.call(counts, status)) counts[status] += 1;
+    });
+    const valid_ids = records.map(task_identifier);
+    const selected_ids = (selected_task_ids_.value || []).filter((id) => {
+      return valid_ids.some((valid_id) => valid_id === id);
+    });
+    if (selected_ids.length !== selected_task_ids_.value.length) {
+      selected_task_ids_.as(selected_ids);
+    }
+    const filtered_records = records.filter((record) =>
+      status_matches(record, active_status_.value),
+    );
+    const page_count = Math.max(
+      1,
+      Math.ceil(filtered_records.length / Math.max(1, page_size_.value)),
+    );
+    const page = Math.min(Math.max(1, page_.value), page_count);
+    if (page !== page_.value) {
+      page_.as(page);
+      reset_list_scroll();
+    }
+    const page_start = (page - 1) * page_size_.value;
+
+    task_count_.as(records.length);
+    filtered_task_count_.as(filtered_records.length);
+    running_count_.as(counts.running);
+    status_counts_.as(counts);
+    tasks_.as(filtered_records.slice(page_start, page_start + page_size_.value));
+  }
+
+  function sync_domain_task(task$) {
+    const entry = task_entries.get(task$);
+    if (!entry) return;
+    entry.record = domain_task_record(task$);
+    rebuild_derived_state();
+  }
+
+  function release_domain_task(task$) {
+    const entry = task_entries.get(task$);
+    if (!entry) return;
+    entry.unlistens.forEach((unlisten) => {
+      if (typeof unlisten === "function") unlisten();
+    });
+    task_entries.delete(task$);
+  }
+
+  function sync_domain_tasks() {
+    if (disposed) return;
+    const domain_tasks = downloader.task_list.value || [];
+    const current = new Set(domain_tasks);
+    task_entries.forEach((_entry, task$) => {
+      if (!current.has(task$)) release_domain_task(task$);
+    });
+    domain_tasks.forEach((task$) => {
+      if (task_entries.has(task$)) {
+        task_entries.get(task$).record = domain_task_record(task$);
+        return;
+      }
+      const entry = {
+        record: domain_task_record(task$),
+        unlistens: [],
+      };
+      if (typeof task$.onChange === "function") {
+        entry.unlistens.push(task$.onChange(() => sync_domain_task(task$)));
+      }
+      task_entries.set(task$, entry);
+    });
+    rebuild_derived_state();
+  }
+
+  function domain_task(value) {
+    if (value && value.__domain) return value.__domain;
+    return downloader.get(task_identifier(value));
+  }
+
+  function report_error(error, fallback) {
+    const message = (error && error.message) || String(error || fallback);
+    DLUtils.error({ msg: message || fallback });
+    return error;
+  }
+
+  async function run_task_action(value, action, fallback) {
+    const task$ = domain_task(value);
+    if (!task$ || typeof task$[action] !== "function") {
+      report_error(null, "下载任务不存在");
+      return null;
+    }
+    try {
+      return await task$[action]();
+    } catch (error) {
+      report_error(error, fallback);
+      return null;
+    }
+  }
+
+  function set_status_filter(status) {
+    const value = DOWNLOAD_STATUS_COUNT_ITEMS.some((item) => item.key === status)
+      ? status
+      : "total";
+    active_status_.as(value);
+    page_.as(1);
+    reset_list_scroll();
+    rebuild_derived_state();
+  }
+
+  function reset_list_scroll() {
+    scroll_top = 0;
+    if (list_view_element) list_view_element.scrollTop = 0;
+  }
+
+  function previous_page() {
+    if (page_.value <= 1) return null;
+    page_.as(page_.value - 1);
+    reset_list_scroll();
+    rebuild_derived_state();
+    return page_.value;
+  }
+
+  function next_page() {
+    if (page_.value >= page_count_.value) return null;
+    page_.as(page_.value + 1);
+    reset_list_scroll();
+    rebuild_derived_state();
+    return page_.value;
+  }
+
+  async function refresh_tasks() {
+    try {
+      await downloader.refresh();
+      sync_domain_tasks();
+      return tasks_;
+    } catch (error) {
+      report_error(error, "获取下载任务失败");
+      return null;
+    }
+  }
+
+  function start_task(task) {
+    return run_task_action(task, "start", "开始下载任务失败");
+  }
+
+  function pause_task(task) {
+    return run_task_action(task, "pause", "暂停下载任务失败");
+  }
+
+  function resume_task(task) {
+    return run_task_action(task, "resume", "继续下载任务失败");
+  }
+
+  function retry_task(task) {
+    return run_task_action(task, "retry", "重试下载任务失败");
+  }
+
+  function open_task(task) {
+    return run_task_action(task, "open", "打开下载文件失败");
+  }
+
+  async function start_all_tasks() {
+    if (running_count_.value >= MaxRunning) {
+      DLUtils.warning({ msg: `已达到最大同时下载任务数（${MaxRunning}）` });
+      return null;
+    }
+    try {
+      return await downloader.startAll({ status: active_status_.value });
+    } catch (error) {
+      report_error(error, "开始全部下载任务失败");
+      return null;
+    }
+  }
+
+  async function pause_all_tasks() {
+    try {
+      return await downloader.pauseAll({ status: active_status_.value });
+    } catch (error) {
+      report_error(error, "暂停全部下载任务失败");
+      return null;
+    }
+  }
+
+  function visible_records() {
+    return tasks_.value || [];
+  }
+
+  function visible_task_ids() {
+    return visible_records().map(task_identifier).filter((id) => id !== undefined);
+  }
+
+  function request_delete_task(task) {
+    if (!domain_task(task)) {
+      report_error(null, "下载任务不存在");
+      return;
+    }
+    delete_task_.as(task);
+    delete_task_ids_.as([]);
+    delete_delete_files_.as(false);
+    ui.deleteConfirmDialog$.show();
+  }
+
+  function request_delete_selected_tasks() {
+    const ids = selected_task_ids_.value || [];
+    if (!ids.length) {
+      DLUtils.warning({ msg: "请选择要删除的下载任务" });
+      return;
+    }
+    delete_task_.as(null);
+    delete_task_ids_.as([...ids]);
+    delete_delete_files_.as(false);
+    ui.deleteConfirmDialog$.show();
+  }
+
+  async function confirm_delete_task() {
+    if (deleting_task_.value) return;
+    const direct_task = delete_task_.value;
+    const ids = delete_task_ids_.value || [];
+    const targets = direct_task
+      ? [domain_task(direct_task)]
+      : ids.map((id) => downloader.get(id));
+    const tasks = targets.filter(Boolean);
+    if (!tasks.length) {
+      ui.deleteConfirmDialog$.hide();
+      return;
+    }
+    deleting_task_.as(true);
+    const errors = [];
+    try {
+      for (const task$ of tasks) {
+        try {
+          await task$.delete({ deleteFiles: delete_delete_files_.value });
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (!errors.length) {
+        delete_task_.as(null);
+        delete_task_ids_.as([]);
+        selected_task_ids_.as([]);
+        ui.deleteConfirmDialog$.hide();
+      } else {
+        report_error(errors[0], "删除下载任务失败");
+      }
+    } finally {
+      deleting_task_.as(false);
+      sync_domain_tasks();
+    }
+  }
+
+  function request_clear_tasks(delete_files = false) {
+    delete_delete_files_.as(Boolean(delete_files));
+    ui.clearConfirmDialog$.show();
+  }
+
+  async function confirm_clear_tasks() {
+    if (clearing_tasks_.value) return;
+    clearing_tasks_.as(true);
+    try {
+      await downloader.clear({ deleteFiles: delete_delete_files_.value });
+      selected_task_ids_.as([]);
+      ui.clearConfirmDialog$.hide();
+      sync_domain_tasks();
+    } catch (error) {
+      report_error(error, "清空下载任务失败");
+    } finally {
+      clearing_tasks_.as(false);
+    }
+  }
+
+  function set_loaded_tasks_selected(selected) {
+    const ids = visible_task_ids();
+    if (selected) {
+      const selected_ids = [...(selected_task_ids_.value || [])];
+      ids.forEach((id) => {
+        if (!selected_ids.some((selected_id) => selected_id === id)) {
+          selected_ids.push(id);
+        }
+      });
+      selected_task_ids_.as(selected_ids);
+      selection_anchor_task_id = ids.length ? ids[ids.length - 1] : null;
+      return;
+    }
+    const visible_ids = new Set(ids);
+    selected_task_ids_.as(
+      (selected_task_ids_.value || []).filter((id) => !visible_ids.has(id)),
+    );
+    selection_anchor_task_id = null;
+  }
+
+  function toggle_task_selected(task, options = {}) {
+    const id = task_identifier(task);
+    if (id === undefined || id === null || id === "") return;
+    let ids = [...(selected_task_ids_.value || [])];
+    if (options.shiftKey && selection_anchor_task_id !== null) {
+      const visible_ids = visible_task_ids();
+      const from = visible_ids.findIndex((value) => value === selection_anchor_task_id);
+      const to = visible_ids.findIndex((value) => value === id);
+      if (from >= 0 && to >= 0) {
+        const start = Math.min(from, to);
+        const end = Math.max(from, to);
+        visible_ids.slice(start, end + 1).forEach((range_id) => {
+          if (!ids.some((selected_id) => selected_id === range_id)) ids.push(range_id);
+        });
+        selected_task_ids_.as(ids);
+        selection_anchor_task_id = id;
+        return;
+      }
+    }
+    if (ids.some((selected_id) => selected_id === id)) {
+      ids = ids.filter((selected_id) => selected_id !== id);
+    } else {
+      ids.push(id);
+    }
+    selected_task_ids_.as(ids);
+    selection_anchor_task_id = id;
+  }
+
+  function request_create_task() {
+    create_task_text_.as("");
+    create_task_filename_.as("");
+    create_task_preview_.as(null);
+    ui.createTaskDialog$.show();
+  }
+
+  function request_create_platform_task() {
+    create_platform_text_.as("");
+    create_platform_json_.as("");
+    create_platform_download_dir_.as("");
+    create_platform_filename_.as("");
+    create_platform_download_cover_.as(false);
+    create_platform_preview_.as(null);
+    ui.createPlatformTaskDialog$.show();
+  }
+
+  function extract_filename(value) {
+    try {
+      const url = new URL(String(value || ""));
+      const filename = url.pathname.split("/").filter(Boolean).pop() || "";
+      return decodeURIComponent(filename);
+    } catch {
+      return "";
+    }
+  }
+
+  function set_create_task_text(value) {
+    create_task_text_.as(value || "");
+    const filename = extract_filename(value);
+    if (filename) create_task_filename_.as(filename);
+  }
+
+  async function confirm_create_task() {
+    if (creating_task_.value) return;
+    const url = String(create_task_text_.value || "").trim();
+    if (!url) {
+      DLUtils.warning({ msg: "请输入下载地址" });
+      return;
+    }
+    creating_task_.as(true);
+    try {
+      const preview = await downloader.prepare({
+        url,
+        filename: create_task_filename_.value || "",
+      });
+      create_task_preview_.as(preview);
+      ui.createTaskDialog$.hide();
+      ui.createTaskPreviewDialog$.show();
+    } catch (error) {
+      report_error(error, "准备下载任务失败");
+    } finally {
+      creating_task_.as(false);
+    }
+  }
+
+  function normalize_platform_preview(preview, fallback) {
+    if (!preview || typeof preview !== "object") return preview;
+    if (Array.isArray(preview.resources)) return preview;
+    const task = preview.Task && typeof preview.Task === "object" ? preview.Task : {};
+    const source_resources = Array.isArray(preview.Resources) ? preview.Resources : [];
+    const resources = source_resources.map((item, index) => {
+      const resource = item && item.Resource ? item.Resource : item || {};
+      return {
+        index,
+        name: resource.name || resource.Name || `资源 ${index + 1}`,
+        kind: resource.kind || resource.Kind || "",
+        type: resource.type || resource.Type || "",
+        endpoints:
+          (item && (item.Endpoints || item.endpoints)) ||
+          resource.endpoints ||
+          [],
+      };
+    });
+    return {
+      platform:
+        task.platform_id || task.PlatformID || fallback.platform || "",
+      task_name: task.name || task.Name || fallback.filename || "",
+      download_dir: fallback.download_dir || "",
+      resource_type: resources[0]
+        ? resources[0].kind || resources[0].type || ""
+        : "",
+      resources,
+      resource_count: resources.length,
+      endpoint_count: resources.reduce((count, resource) => {
+        return count + (Array.isArray(resource.endpoints) ? resource.endpoints.length : 0);
+      }, 0),
+      content: preview.Content || preview.content || null,
+      account: preview.Account || preview.account || null,
+      download_info: preview,
+    };
+  }
+
+  async function confirm_create_platform_task() {
+    if (creating_task_.value) return;
+    const platform = String(create_platform_text_.value || "").trim();
+    if (!platform) {
+      DLUtils.warning({ msg: "请输入平台名称" });
+      return;
+    }
+    let content = {};
+    try {
+      content = JSON.parse(String(create_platform_json_.value || "{}").trim() || "{}");
+    } catch (error) {
+      DLUtils.warning({ msg: `内容 JSON 格式错误：${error.message}` });
+      return;
+    }
+    creating_task_.as(true);
+    try {
+      const prepare_object = {
+        platform,
+        content,
+        download_dir: create_platform_download_dir_.value || "",
+        filename: create_platform_filename_.value || "",
+        config: {
+          download_cover: create_platform_download_cover_.value,
+        },
+      };
+      const preview = await downloader.prepare(prepare_object);
+      create_platform_preview_.as(
+        normalize_platform_preview(preview, prepare_object),
+      );
+      ui.createPlatformTaskDialog$.hide();
+      ui.createPlatformTaskPreviewDialog$.show();
+    } catch (error) {
+      report_error(error, "准备平台下载任务失败");
+    } finally {
+      creating_task_.as(false);
+    }
+  }
+
+  function duplicate_error(error) {
+    const code = Number(
+      error &&
+        (error.code ||
+          error.status ||
+          (error.item && error.item.code) ||
+          (error.data && error.data.code)),
+    );
+    if (code === 409) return true;
+    return /already exists|duplicate|已存在|重复/i.test(
+      (error && error.message) || "",
+    );
+  }
+
+  function create_object_name(object, error) {
+    const data = (error && error.data) || {};
+    const content = object && object.content;
+    return (
+      data.name ||
+      (object && (object.filename || object.name || object.title)) ||
+      (content && (content.title || content.name || content.id)) ||
+      "相同下载内容"
+    );
+  }
+
+  function close_overwrite_dialogs() {
+    ui.overwriteConfirmDialog$.hide();
+    ui.singleOverwriteConfirmDialog$.hide();
+    ui.batchOverwriteConfirmDialog$.hide();
+  }
+
+  function show_overwrite_dialog(object, error) {
+    pending_create_object = object;
+    overwrite_.as({ value: "overwrite" });
+    overwrite_apply_all_.as(false);
+    overwrite_conflict_.as({
+      index: 1,
+      total: 1,
+      name: create_object_name(object, error),
+    });
+    ui.createTaskPreviewDialog$.hide();
+    ui.createPlatformTaskPreviewDialog$.hide();
+    ui.overwriteConfirmDialog$.show();
+  }
+
+  async function create_domain_task(object, success_message, options = {}) {
+    const task$ = downloader.create(object);
+    try {
+      await task$.ready;
+      if (options.hideDialog) options.hideDialog.hide();
+      DLUtils.toast(success_message);
+      return task$;
+    } catch (error) {
+      if (!options.overwriteRetry && duplicate_error(error)) {
+        show_overwrite_dialog(object, error);
+        return null;
+      }
+      report_error(error, "创建下载任务失败");
+      return null;
+    }
+  }
+
+  async function confirm_create_task_from_preview() {
+    if (creating_task_.value || !create_task_preview_.value) return;
+    creating_task_.as(true);
+    try {
+      return await create_domain_task(
+        {
+          url: create_task_text_.value || create_task_preview_.value.url || "",
+          filename:
+            create_task_filename_.value ||
+            create_task_preview_.value.task_name ||
+            "",
+        },
+        "下载任务创建成功",
+        { hideDialog: ui.createTaskPreviewDialog$ },
+      );
+    } finally {
+      creating_task_.as(false);
+    }
+  }
+
+  async function confirm_create_platform_task_from_preview() {
+    if (creating_task_.value || !create_platform_preview_.value) return;
+    let content = {};
+    try {
+      content = JSON.parse(create_platform_json_.value || "{}");
+    } catch {
+      content = {};
+    }
+    const object = {
+      platform:
+        create_platform_text_.value || create_platform_preview_.value.platform || "",
+      content,
+      download_dir: create_platform_download_dir_.value || "",
+      filename: create_platform_filename_.value || "",
+      config: {
+        download_cover: create_platform_download_cover_.value,
+      },
+    };
+    creating_task_.as(true);
+    try {
+      return await create_domain_task(object, "平台下载任务创建成功", {
+        hideDialog: ui.createPlatformTaskPreviewDialog$,
+      });
+    } finally {
+      creating_task_.as(false);
+    }
+  }
+
+  function set_overwrite_action(action) {
+    if (["overwrite", "skip", "duplicate"].includes(action)) {
+      overwrite_.as({ value: action });
+    }
+  }
+
+  function toggle_overwrite_apply_all() {
+    overwrite_apply_all_.as(!overwrite_apply_all_.value);
+  }
+
+  async function confirm_overwrite_download_conflict() {
+    if (overwrite_processing_.value || !pending_create_object) return;
+    const action = overwrite_.value && overwrite_.value.value;
+    if (!["overwrite", "skip", "duplicate"].includes(action)) return;
+    if (action === "skip") {
+      pending_create_object = null;
+      close_overwrite_dialogs();
+      return;
+    }
+    overwrite_processing_.as(true);
+    try {
+      const object = {
+        ...pending_create_object,
+        config: {
+          ...(pending_create_object.config || {}),
+          overwrite: action === "overwrite",
+          duplicate: action === "duplicate",
+        },
+      };
+      const task$ = await create_domain_task(object, "下载任务创建成功", {
+        overwriteRetry: true,
+      });
+      if (task$) {
+        pending_create_object = null;
+        close_overwrite_dialogs();
+      }
+    } finally {
+      overwrite_processing_.as(false);
+    }
+  }
+
+  function handle_click_delete_files() {
+    delete_delete_files_.as(!delete_delete_files_.value);
+  }
+
+  function set_list_view_element(element) {
+    list_view_element = element || null;
+  }
+
+  function handle_list_view_scroll(position) {
+    scroll_top = Number(position && (position.scrollTop ?? position.top ?? position)) || 0;
+  }
+
+  function is_placeholder_task() {
+    return false;
+  }
+
+  function ensure_task_page_for_index() {}
+
+  Object.assign(methods, {
+    setStatusFilter: set_status_filter,
+    previousPage: previous_page,
+    nextPage: next_page,
+    refreshTasks: refresh_tasks,
+    startTask: start_task,
+    pauseTask: pause_task,
+    resumeTask: resume_task,
+    retryTask: retry_task,
+    openTask: open_task,
+    startAllTasks: start_all_tasks,
+    pauseAllTasks: pause_all_tasks,
+    requestDeleteTask: request_delete_task,
+    requestDeleteSelectedTasks: request_delete_selected_tasks,
+    confirmDeleteTask: confirm_delete_task,
+    requestClearTasks: request_clear_tasks,
+    confirmClearTasks: confirm_clear_tasks,
+    setLoadedTasksSelected: set_loaded_tasks_selected,
+    toggleTaskSelected: toggle_task_selected,
+    requestCreateTask: request_create_task,
+    requestCreatePlatformTask: request_create_platform_task,
+    setCreateTaskText: set_create_task_text,
+    confirmCreateTask: confirm_create_task,
+    confirmCreatePlatformTask: confirm_create_platform_task,
+    confirmCreateTaskFromPreview: confirm_create_task_from_preview,
+    confirmCreatePlatformTaskFromPreview:
+      confirm_create_platform_task_from_preview,
+    setOverwriteAction: set_overwrite_action,
+    toggleOverwriteApplyAll: toggle_overwrite_apply_all,
+    confirmOverwriteDownloadConflict: confirm_overwrite_download_conflict,
+    handleClickCheckboxConfirmDeleteFiles: handle_click_delete_files,
+    setListViewElement: set_list_view_element,
+    handleListViewScroll: handle_list_view_scroll,
+    isPlaceholderTask: is_placeholder_task,
+    ensureTaskPageForIndex: ensure_task_page_for_index,
+  });
+
+  const state = {
+    tasks: tasks_,
+    task_count: task_count_,
+    total: filtered_task_count_,
+    page: page_,
+    page_size: page_size_,
+    page_count: page_count_,
+    range_text: range_text_,
+    list_render_enabled: list_render_enabled_,
+    running_count: running_count_,
+    delete_task: delete_task_,
+    delete_task_ids: delete_task_ids_,
+    pending_delete_task_count: pending_delete_task_count_,
+    delete_delete_files: delete_delete_files_,
+    deleting_task: deleting_task_,
+    selected_task_ids: selected_task_ids_,
+    selected_task_count: selected_task_count_,
+    clearing_tasks: clearing_tasks_,
+    create_task_text: create_task_text_,
+    create_task_filename: create_task_filename_,
+    create_platform_text: create_platform_text_,
+    create_platform_json: create_platform_json_,
+    create_platform_download_dir: create_platform_download_dir_,
+    create_platform_filename: create_platform_filename_,
+    create_platform_download_cover: create_platform_download_cover_,
+    creating_task: creating_task_,
+    create_task_preview: create_task_preview_,
+    create_platform_preview: create_platform_preview_,
+    websocket_connected: downloader.websocket_connected,
+    websocket_connecting: downloader.websocket_connecting,
+    status_counts: status_counts_,
+    active_status: active_status_,
+    overwrite: overwrite_,
+    overwrite_apply_all: overwrite_apply_all_,
+    overwrite_processing: overwrite_processing_,
+    overwrite_conflict: overwrite_conflict_,
+    fixed_list_height: Boolean(fixed_list_height),
+    list_item_height: Math.max(1, Number(item_height) || 82),
+    list_gutter: 0,
+    list_height: Math.max(1, Number(list_height) || 380),
+    list_size: 50,
+    list_buffer: Math.max(0, Number(list_buffer) || 10),
+    get scrollTop() {
+      return scroll_top;
+    },
+  };
+  const handler = {
+    domainTaskRecord: domain_task_record,
+    rebuildDerivedState: rebuild_derived_state,
+    syncDomainTask: sync_domain_task,
+    syncDomainTasks: sync_domain_tasks,
+    releaseDomainTask: release_domain_task,
+  };
+
+  async function ready() {
+    if (started) return downloader.ready();
+    started = true;
+    const unlisten = downloader.task_list.subscribe({
+      onChange() {
+        sync_domain_tasks();
+      },
+    });
+    if (typeof unlisten === "function") disposables.push(unlisten);
+    sync_domain_tasks();
+    try {
+      const result = await downloader.ready();
+      sync_domain_tasks();
+      return result;
+    } catch (error) {
+      report_error(error, "下载服务初始化失败");
+      return null;
+    }
+  }
+
+  function clean() {
+    if (disposed) return;
+    disposed = true;
+    disposables.splice(0).forEach((unlisten) => {
+      if (typeof unlisten === "function") unlisten();
+    });
+    [...task_entries.keys()].forEach(release_domain_task);
+  }
+
+  Object.assign(methods, {
+    ready,
+    clean,
+    domainTaskRecord: handler.domainTaskRecord,
+    rebuildDerivedState: handler.rebuildDerivedState,
+    syncDomainTask: handler.syncDomainTask,
+    syncDomainTasks: handler.syncDomainTasks,
+    releaseDomainTask: handler.releaseDomainTask,
+  });
+
+  return { state, ui, methods };
+}
+
+export {
+  DOWNLOAD_STATUS_COUNT_ITEMS,
+  DownloadV2Model,
+  MaxRunning,
+  format_download_percent,
+  format_download_size,
+  format_download_speed,
+  get_download_status_count,
+  is_download_open_external,
+  is_download_waiting_status,
+  normalize_download_status,
+};

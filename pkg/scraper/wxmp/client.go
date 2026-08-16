@@ -43,35 +43,22 @@ func (c *Client) Fetch(target_url string, referer string) (*http.Response, error
 	return http_response_from_clawreq(response), nil
 }
 
-func (c *Client) FetchArticle(raw_url string) (*WechatOfficialArticle, error) {
+func (c *Client) FetchArticle(raw_url string) (*ArticleCgiDataNew, error) {
 	content, err := c.Scrape(raw_url)
 	if err != nil {
 		return nil, err
 	}
 	content_text := string(content)
-	var publish_time_text string
-	create_time_pattern := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
-	matches := create_time_pattern.FindStringSubmatch(content_text)
-	if len(matches) > 1 {
-		publish_time_text = format_publish_time(matches[1], 0)
-	}
 	data, err := parse_cgi_datanew(content_text)
 	if err != nil {
-		article, fallback_err := parse_article_from_dom(content_text)
+		var fallback_err error
+		data, fallback_err = parse_article_from_dom(content_text)
 		if fallback_err != nil {
 			return nil, err
 		}
-		apply_article_url_identifiers(article, raw_url)
-		return article, nil
 	}
-	apply_cgi_data_url_identifiers(data, raw_url)
-	if publish_time_text == "" {
-		publish_time_text = format_publish_time(data.CreateTime, int(data.OriCreateTime))
-	}
-	article := new_wechat_official_article(data, publish_time_text)
-	article.PageJSON = data
-	article.PageHTML = content_text
-	return article, nil
+	apply_article_url_identifiers(data, raw_url)
+	return data, nil
 }
 
 func (c *Client) Scrape(raw_url string) ([]byte, error) {
@@ -152,37 +139,7 @@ func debug_body_snippet(body []byte) []byte {
 	return body[:2048]
 }
 
-func new_wechat_official_article(data *CgiDataNew, publish_time_text string) *WechatOfficialArticle {
-	if data == nil {
-		return &WechatOfficialArticle{}
-	}
-	article := &WechatOfficialArticle{
-		BizUin:              data.BizUin,
-		Mid:                 data.Mid,
-		Idx:                 data.Idx,
-		Sn:                  data.Sn,
-		Type:                data.PageType,
-		Title:               data.Title,
-		Content:             data.ContentNoEncode,
-		PublishTimeStr:      publish_time_text,
-		ContentLength:       len(data.ContentNoEncode),
-		Creator:             data.Author,
-		AuthorNickname:      data.NickName,
-		AuthorAvatar:        first_non_empty(data.RoundHeadImg, data.OriHeadImgUrl, data.HdHeadImg),
-		AuthorID:            data.UserName,
-		Images:              make([]string, 0),
-		Videos:              data.VideoPageInfos,
-		PicturePageInfoList: data.PicturePageInfoList,
-	}
-	for _, item := range data.PicturePageInfoList {
-		if item.CdnUrl != "" {
-			article.Images = append(article.Images, item.CdnUrl)
-		}
-	}
-	return article
-}
-
-func apply_cgi_data_url_identifiers(data *CgiDataNew, raw_url string) {
+func apply_article_url_identifiers(data *ArticleCgiDataNew, raw_url string) {
 	if data == nil {
 		return
 	}
@@ -191,43 +148,29 @@ func apply_cgi_data_url_identifiers(data *CgiDataNew, raw_url string) {
 		return
 	}
 	query := parsed_url.Query()
-	if data.BizUin == "" {
-		data.BizUin = query.Get("__biz")
+	if data.Bizuin == "" {
+		data.Bizuin = query.Get("__biz")
 	}
 	if data.Mid == 0 {
-		data.Mid = parse_flexible_int(query.Get("mid"))
+		data.Mid = parse_int(query.Get("mid"))
 	}
 	if data.Idx == 0 {
-		data.Idx = parse_flexible_int(query.Get("idx"))
+		data.Idx = parse_int(query.Get("idx"))
 	}
 	if data.Sn == "" {
 		data.Sn = query.Get("sn")
 	}
+	if strings.TrimSpace(data.Link) == "" {
+		data.Link = raw_url
+	}
 }
 
-func apply_article_url_identifiers(article *WechatOfficialArticle, raw_url string) {
-	if article == nil {
-		return
-	}
-	data := &CgiDataNew{
-		BizUin: article.BizUin,
-		Mid:    article.Mid,
-		Idx:    article.Idx,
-		Sn:     article.Sn,
-	}
-	apply_cgi_data_url_identifiers(data, raw_url)
-	article.BizUin = data.BizUin
-	article.Mid = data.Mid
-	article.Idx = data.Idx
-	article.Sn = data.Sn
-}
-
-func parse_flexible_int(value string) FlexibleInt {
-	parsed_value, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+func parse_int(value string) int {
+	parsed_value, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
 		return 0
 	}
-	return FlexibleInt(parsed_value)
+	return parsed_value
 }
 
 func ExtractArticleID(raw_url string) string {

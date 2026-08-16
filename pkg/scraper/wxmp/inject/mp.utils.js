@@ -142,35 +142,49 @@
     const publish_time =
       Number(content.publish_time || entry.publish_time) || 0;
     return {
-      bizuin: ids.biz,
-      mid: ids.mid,
-      idx: ids.idx,
-      sn: ids.sn,
+      bizuin: parsed_article.bizuin || ids.biz,
+      mid: Number(parsed_article.mid) || ids.mid,
+      idx: Number(parsed_article.idx) || ids.idx,
+      sn: parsed_article.sn || ids.sn,
       title: parsed_article.title || content.title || summary.title || "",
-      desc: content.description || summary.digest || "",
-      content_noencode: parsed_article.content || summary.content || "",
-      cdn_url: content.cover_url || summary.cover || "",
-      link: content.url || entry.url,
-      source_url: content.source_url || summary.source_url || entry.url,
-      user_name: parsed_article.author_id || account.external_id || "",
+      desc:
+        parsed_article.desc || content.description || summary.digest || "",
+      content_noencode:
+        parsed_article.content_noencode || summary.content || "",
+      cdn_url:
+        parsed_article.cdn_url || content.cover_url || summary.cover || "",
+      link: parsed_article.link || content.url || entry.url,
+      source_url:
+        parsed_article.source_url ||
+        content.source_url ||
+        summary.source_url ||
+        entry.url,
+      user_name:
+        parsed_article.user_name || account.external_id || "",
       nick_name:
-        parsed_article.author_nickname ||
+        parsed_article.nick_name ||
         account.nickname ||
         summary.author ||
         "",
-      round_head_img: parsed_article.author_avatar || account.avatar_url || "",
-      author: parsed_article.creator || summary.author || "",
+      round_head_img:
+        parsed_article.round_head_img || account.avatar_url || "",
+      author: parsed_article.author || summary.author || "",
       ori_create_time:
-        publish_time > 1000000000000
+        Number(parsed_article.ori_create_time) ||
+        (publish_time > 1000000000000
           ? Math.floor(publish_time / 1000)
-          : publish_time,
-      page_type: Number(parsed_article.type) || 0,
-      item_show_type: Number(summary.item_show_type) || 0,
+          : publish_time),
+      page_type: Number(parsed_article.page_type) || 0,
+      item_show_type:
+        Number(parsed_article.item_show_type) ||
+        Number(summary.item_show_type) ||
+        0,
       picture_page_info_list: parsed_article.picture_page_info_list || [],
-      video_page_infos: parsed_article.videos || [],
-      copyright_info: {
-        copyright_stat: Number(summary.copyright_stat) || 0,
-      },
+      video_page_infos: parsed_article.video_page_infos || [],
+      copyright_info:
+        parsed_article.copyright_info || {
+          copyright_stat: Number(summary.copyright_stat) || 0,
+        },
     };
   }
 

@@ -194,7 +194,7 @@ func (c *APIClient) startCreatedDownloadTask(taskID int) error {
 }
 
 // prepareDownloadTaskSingle previews a single platform download task (no DB write, no download start).
-func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBody) (gin.H, error) {
+func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBody) (*adapter.DownloadTaskResult, error) {
 	if body.Platform == "" {
 		return nil, fmt.Errorf("platform 不能为空")
 	}
@@ -222,7 +222,16 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("构建下载配置失败: %w", err)
 	}
 
-	info, err := h.BuildDownloadTask(body.Content, json.RawMessage(configJSON))
+	var info *adapter.DownloadTaskResult
+	if body.BuildFromFetch {
+		fetch_builder, ok := h.(adapter.FetchDownloadTaskBuilder)
+		if !ok {
+			return nil, fmt.Errorf("平台 %s 不支持从抓取结果构建下载任务", body.Platform)
+		}
+		info, err = fetch_builder.BuildDownloadTaskFromFetch(body.Content, json.RawMessage(configJSON))
+	} else {
+		info, err = h.BuildDownloadTask(body.Content, json.RawMessage(configJSON))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("构建下载任务失败: %w", err)
 	}
@@ -230,47 +239,14 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("构建下载任务失败: 平台未返回下载任务")
 	}
 
-	download_dir := download_task_download_dir(saveDir)
-
 	for _, ri := range info.Resources {
 		if len(ri.Endpoints) == 0 {
 			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Resource.Name)
 		}
 	}
 
-	// Build preview data (no DB write)
-	resources := make([]gin.H, 0, len(info.Resources))
-	totalEndpoints := 0
-	for i, ri := range info.Resources {
-		eps := make([]gin.H, 0, len(ri.Endpoints))
-		for _, ep := range ri.Endpoints {
-			eps = append(eps, gin.H{
-				"protocol": ep.Protocol,
-				"url":      ep.URL,
-				"priority": ep.Priority,
-			})
-		}
-		resources = append(resources, gin.H{
-			"index":     i,
-			"name":      ri.Resource.Name,
-			"kind":      ri.Resource.Kind,
-			"endpoints": eps,
-		})
-		totalEndpoints += len(ri.Endpoints)
-	}
-	tree := buildResourceTree(resources)
-
-	return gin.H{
-		"platform":       body.Platform,
-		"task_name":      info.Task.Name,
-		"download_dir":   download_dir,
-		"resources":      resources,
-		"tree":           tree,
-		"resource_count": len(info.Resources),
-		"endpoint_count": totalEndpoints,
-		"content":        info.Content,
-		"account":        info.Account,
-	}, nil
+	// Keep preview.data identical to scraper job's download_info payload.
+	return info, nil
 }
 
 // handle_prepare_download_task batch-previews platform download tasks.

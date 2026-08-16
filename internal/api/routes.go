@@ -4,19 +4,18 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	// "wx_channel/pkg/scraper/douban"
-	// "wx_channel/pkg/scraper/instagram"
-	// "wx_channel/pkg/scraper/qidian"
-	// "wx_channel/pkg/scraper/weibo"
-	// "wx_channel/pkg/scraper/xiaohongshu"
+
+	"wx_channel/frontend"
 )
 
 func (c *APIClient) SetupRoutes() {
 	// favicon
 	c.engine.GET("/favicon.ico", c.handle_favicon)
+	c.engine.HEAD("/favicon.ico", c.handle_favicon)
 	c.setup_static_asset_routes()
 	// c.engine.GET("/", c.handle_index)
 	c.engine.GET("/", func(ctx *gin.Context) {
@@ -88,6 +87,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/api/account/synchronize", c.handle_account_synchronize)
 	c.engine.GET("/api/content/list", c.handle_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
+	c.engine.GET("/api/content/relations", c.handle_content_relations)
 	// Other endpoints
 	c.engine.GET("/api/logs", c.handle_logs)
 	c.engine.POST("/report", c.handle_frontend_report)
@@ -120,9 +120,19 @@ func (c *APIClient) SetupRoutes() {
 }
 
 func (c *APIClient) handle_favicon(ctx *gin.Context) {
-	ctx.Header("Content-Type", "image/png")
+	data, err := frontend.FS.ReadFile("public/favicon.ico")
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "favicon is unavailable")
+		return
+	}
+	ctx.Header("Content-Type", "image/x-icon")
 	ctx.Header("Cache-Control", "public, max-age=86400")
-	ctx.File("build/winres/icon.png")
+	ctx.Header("Content-Length", strconv.Itoa(len(data)))
+	if ctx.Request.Method == http.MethodHead {
+		ctx.Status(http.StatusOK)
+		return
+	}
+	ctx.Data(http.StatusOK, "image/x-icon", data)
 }
 
 func (c *APIClient) handle_status(ctx *gin.Context) {

@@ -140,7 +140,13 @@ func build_task_from_bangumi_info(info *bilibili.BangumiInfo, config map[string]
 		return nil, fmt.Errorf("B站番剧缺少 ep_id、bvid 和 aid")
 	}
 
-	video_stream := best_bangumi_video_stream(info.PlayURLSSRData.Data.Result.VideoInfo.Dash.Video)
+	video_stream, err := select_bangumi_video_stream(
+		info.PlayURLSSRData.Data.Result.VideoInfo.Dash.Video,
+		config,
+	)
+	if err != nil {
+		return nil, err
+	}
 	if video_stream == nil {
 		return nil, fmt.Errorf("B站番剧没有可下载的视频流")
 	}
@@ -703,6 +709,25 @@ func best_bangumi_video_stream(streams []bilibili.BangumiDashStream) *bilibili.B
 		return nil
 	}
 	return &streams[best_index]
+}
+
+func select_bangumi_video_stream(streams []bilibili.BangumiDashStream, config map[string]any) (*bilibili.BangumiDashStream, error) {
+	configured_variant_key := config_string(config, "video_variant_key")
+	configured_variant_spec := config_string(config, "video_variant_spec")
+	if configured_variant_key == "" && configured_variant_spec == "" {
+		return best_bangumi_video_stream(streams), nil
+	}
+	for stream_index := range streams {
+		stream := &streams[stream_index]
+		if strings.TrimSpace(stream.BaseURL) == "" {
+			continue
+		}
+		if (configured_variant_key != "" && bangumi_stream_key("video", stream) == configured_variant_key) ||
+			(configured_variant_spec != "" && bangumi_stream_spec(stream) == configured_variant_spec) {
+			return stream, nil
+		}
+	}
+	return nil, fmt.Errorf("B站番剧不包含所选视频规格 %s", first_non_empty_bilibili_value(configured_variant_key, configured_variant_spec))
 }
 
 func best_bangumi_audio_stream(streams []bilibili.BangumiDashStream) *bilibili.BangumiDashStream {

@@ -90,7 +90,7 @@ func article_publish_time(data *wxmp.ArticleCgiDataNew) *int64 {
 	return nil
 }
 
-// ToContent converts an ArticleCgiData into a slim model.Content and its type-specific extension.
+// ToContent converts ArticleCgiDataNew into a slim model.Content and its type-specific extension.
 func ToContent(data *wxmp.ArticleCgiDataNew) (*model.Content, any, error) {
 	if data == nil {
 		return nil, nil, errors.New("article data is nil")
@@ -131,14 +131,14 @@ func ToContent(data *wxmp.ArticleCgiDataNew) (*model.Content, any, error) {
 	return c, build_content_article(data, c.Id), nil
 }
 
-// ToAccount converts an ArticleCgiData publisher into a model.Account.
+// ToAccount converts an ArticleCgiDataNew publisher into a model.Account.
 func ToAccount(data *wxmp.ArticleCgiDataNew) (*model.Account, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
 	external_id := data.UserName
 	if external_id == "" {
-		return nil, errors.New("missing bizuin in article data")
+		return nil, errors.New("missing user_name in article data")
 	}
 
 	now := util.NowMillis()
@@ -157,7 +157,7 @@ func ToAccount(data *wxmp.ArticleCgiDataNew) (*model.Account, error) {
 	}, nil
 }
 
-// ArticleToHistory converts an ArticleCgiData into a model.BrowseHistory.
+// ArticleToHistory converts an ArticleCgiDataNew into a model.BrowseHistory.
 func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
@@ -219,7 +219,7 @@ func (a *OfficialAccountAdapter) BuildBrowseHistory(content_json json.RawMessage
 	}, nil
 }
 
-// ArticleToContentArticle converts an ArticleCgiData into a model.ContentArticle with the HTML body.
+// ArticleToContentArticle converts ArticleCgiDataNew into a model.ContentArticle with the HTML body.
 func ArticleToContentArticle(data *wxmp.ArticleCgiDataNew) (*model.ContentArticle, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
@@ -374,10 +374,14 @@ func ArticleToContentAccount(data *wxmp.ArticleCgiDataNew) (*model.ContentAccoun
 	if external_id == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
+	account_external_id := strings.TrimSpace(data.UserName)
+	if account_external_id == "" {
+		return nil, errors.New("missing user_name in article data")
+	}
 
 	return &model.ContentAccount{
 		ContentId: BuildContentID(external_id),
-		AccountId: BuildAccountID(strings.TrimSpace(data.Bizuin)),
+		AccountId: BuildAccountID(account_external_id),
 		Role:      "publisher",
 		CreatedAt: util.NowMillis(),
 	}, nil

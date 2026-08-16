@@ -61,6 +61,12 @@ func NewHttpClient(method string, u string, body any, headers any) *HttpClient {
 
 // Request sends the HTTP request.
 func (c *HttpClient) Request() (*HttpResponse, error) {
+	return c.RequestWithClient(nil)
+}
+
+// RequestWithClient sends the HTTP request with client. A nil client keeps the
+// legacy behavior and uses a default net/http client.
+func (c *HttpClient) RequestWithClient(client *http.Client) (*HttpResponse, error) {
 	if c == nil {
 		return nil, fmt.Errorf("HTTP client is nil")
 	}
@@ -71,7 +77,9 @@ func (c *HttpClient) Request() (*HttpResponse, error) {
 		return nil, fmt.Errorf("HTTP request is nil")
 	}
 
-	client := &http.Client{}
+	if client == nil {
+		client = &http.Client{}
+	}
 	resp, err := client.Do(c.req)
 	if err != nil {
 		return nil, err

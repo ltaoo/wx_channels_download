@@ -13,6 +13,8 @@ import (
 	"github.com/dop251/goja"
 )
 
+const youtube_goja_challenge_timeout = 30 * time.Second
+
 //go:embed jsc/solver/yt.solver.lib.min.js
 var goja_solver_lib string
 
@@ -277,32 +279,27 @@ const youtube_goja_url_polyfill = `
 })();
 `
 
-func solve_player_challenges_with_goja(ctx context.Context, player_js string, challenge_type string, challenges []string) (map[string]string, error) {
-	if len(challenges) == 0 {
-		return map[string]string{}, nil
+func preprocess_player_with_goja(ctx context.Context, player_js string) (string, error) {
+	if strings.TrimSpace(player_js) == "" {
+		return "", errors.New("youtube player JavaScript is empty")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, youtube_goja_challenge_timeout)
 	defer cancel()
 
 	payload := map[string]any{
-		"type":   "player",
-		"player": player_js,
-		"requests": []map[string]any{
-			{
-				"type":       challenge_type,
-				"challenges": challenges,
-			},
-		},
-		"output_preprocessed": false,
+		"type":                "player",
+		"player":              player_js,
+		"requests":            []map[string]any{},
+		"output_preprocessed": true,
 	}
 	payload_json, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	vm := goja.New()
 	if err := install_youtube_challenge_vm(vm); err != nil {
-		return nil, fmt.Errorf("initialize goja solver VM: %w", err)
+		return "", fmt.Errorf("initialize goja solver VM: %w", err)
 	}
 	interrupt_done := make(chan struct{})
 	defer close(interrupt_done)
@@ -324,39 +321,99 @@ func solve_player_challenges_with_goja(ctx context.Context, player_js string, ch
 
 	value, err := vm.RunString(script.String())
 	if err != nil {
-		return nil, format_youtube_goja_error("run goja solver", err)
+		return "", format_youtube_goja_error("run goja solver", err)
 	}
 
 	var output struct {
-		Type      string `json:"type"`
-		Error     string `json:"error"`
-		Responses []struct {
-			Type  string            `json:"type"`
-			Error string            `json:"error"`
-			Data  map[string]string `json:"data"`
-		} `json:"responses"`
+		Type               string `json:"type"`
+		Error              string `json:"error"`
+		PreprocessedPlayer string `json:"preprocessed_player"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(value.String())), &output); err != nil {
-		return nil, err
+		return "", err
 	}
 	if output.Type == "error" {
-		return nil, errors.New(output.Error)
+		return "", errors.New(output.Error)
 	}
-	if len(output.Responses) == 0 {
-		return nil, fmt.Errorf("goja solver returned no responses")
+	if strings.TrimSpace(output.PreprocessedPlayer) == "" {
+		return "", errors.New("goja solver returned no preprocessed player")
 	}
-	response := output.Responses[0]
-	if response.Type == "error" {
-		return nil, errors.New(response.Error)
+	return output.PreprocessedPlayer, nil
+}
+
+func solve_preprocessed_player_with_goja(ctx context.Context, program *goja.Program, challenge_type string, challenges []string) (map[string]string, error) {
+	if len(challenges) == 0 {
+		return map[string]string{}, nil
 	}
-	if len(response.Data) == 0 {
-		return nil, fmt.Errorf("goja solver returned no data")
+	if program == nil {
+		return nil, errors.New("compiled youtube player solver is nil")
 	}
-	return response.Data, nil
+	ctx, cancel := context.WithTimeout(ctx, youtube_goja_challenge_timeout)
+	defer cancel()
+
+	vm := goja.New()
+	if err := install_youtube_challenge_vm(vm); err != nil {
+		return nil, fmt.Errorf("initialize cached goja solver VM: %w", err)
+	}
+	result_object := vm.NewObject()
+	if err := vm.Set("_result", result_object); err != nil {
+		return nil, fmt.Errorf("initialize cached goja solver result: %w", err)
+	}
+	interrupt_done := make(chan struct{})
+	defer close(interrupt_done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			vm.Interrupt(ctx.Err().Error())
+		case <-interrupt_done:
+		}
+	}()
+
+	if _, err := vm.RunProgram(program); err != nil {
+		return nil, format_youtube_goja_error("run cached goja player solver", err)
+	}
+	solver, ok := goja.AssertFunction(result_object.Get(challenge_type))
+	if !ok {
+		return nil, fmt.Errorf("cached goja player solver does not provide %s", challenge_type)
+	}
+	results := make(map[string]string, len(challenges))
+	for _, challenge := range challenges {
+		value, err := solver(goja.Undefined(), vm.ToValue(challenge))
+		if err != nil {
+			return nil, format_youtube_goja_error("call cached goja player solver", err)
+		}
+		if value == nil || goja.IsNull(value) || goja.IsUndefined(value) {
+			return nil, fmt.Errorf("cached goja player solver returned no %s result", challenge_type)
+		}
+		result := strings.TrimSpace(value.String())
+		if result == "" {
+			return nil, fmt.Errorf("cached goja player solver returned an empty %s result", challenge_type)
+		}
+		results[challenge] = result
+	}
+	return results, nil
 }
 
 func goja_compatible_solver_lib() string {
-	return strings.ReplaceAll(goja_solver_lib, "this.refs[e]??=[]", "null==this.refs[e]&&(this.refs[e]=[])")
+	compatible := strings.ReplaceAll(goja_solver_lib, "this.refs[e]??=[]", "null==this.refs[e]&&(this.refs[e]=[])")
+
+	// astring's minified writer builds generated JavaScript with repeated
+	// string concatenation. That is inexpensive in V8, but quadratic in goja
+	// for a modern, megabyte-sized YouTube player and can make n challenge
+	// preprocessing hit the deadline. Buffer fragments and join once instead.
+	compatible = strings.ReplaceAll(
+		compatible,
+		`this.output="",null!=t.output?(this.output=t.output,this.write=this.writeToStream):this.output=""`,
+		`this.output=[],null!=t.output?(this.output=t.output,this.write=this.writeToStream):this.output=[]`,
+	)
+	compatible = strings.ReplaceAll(compatible, `write(e){this.output+=e}`, `write(e){this.output.push(e)}`)
+	compatible = strings.ReplaceAll(compatible, `writeAndMap(e,t){this.output+=e,this.map(e,t)}`, `writeAndMap(e,t){this.output.push(e),this.map(e,t)}`)
+	compatible = strings.ReplaceAll(
+		compatible,
+		`return r.generator[e.type](e,r),r.output`,
+		`return r.generator[e.type](e,r),Array.isArray(r.output)?r.output.join(""):r.output`,
+	)
+	return compatible
 }
 
 func install_youtube_challenge_vm(vm *goja.Runtime) error {

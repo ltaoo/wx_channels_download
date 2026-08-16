@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -179,9 +180,52 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 		return
 	}
 
+	page := 1
+	page_size := 24
+	if value, err := strconv.Atoi(ctx.Query("page")); err == nil && value > 0 {
+		page = value
+	}
+	if value, err := strconv.Atoi(ctx.Query("page_size")); err == nil && value > 0 {
+		page_size = value
+	}
+	if page_size > 200 {
+		page_size = 200
+	}
+	keyword := strings.TrimSpace(ctx.Query("keyword"))
+	account_id := strings.TrimSpace(ctx.Query("account_id"))
+	account_query := c.db.Model(&model.Account{})
+	if account_id != "" {
+		account_query = account_query.Where("id = ?", account_id)
+	}
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		account_query = account_query.Where(
+			"id LIKE ? OR external_id LIKE ? OR alias LIKE ? OR nickname LIKE ?",
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+		)
+	}
+
+	var total int64
+	if err := account_query.Count(&total).Error; err != nil {
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	page_count := 1
+	if total > 0 {
+		page_count = int((total + int64(page_size) - 1) / int64(page_size))
+	}
+	if page > page_count {
+		page = page_count
+	}
+
 	var accounts []model.Account
-	if err := c.db.Model(&model.Account{}).
+	if err := account_query.
 		Order("created_at DESC, id DESC").
+		Limit(page_size).
+		Offset((page - 1) * page_size).
 		Find(&accounts).Error; err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -243,7 +287,12 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 			}(),
 		})
 	}
-	result.Ok(ctx, gin.H{"list": list})
+	result.Ok(ctx, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": page_size,
+	})
 }
 
 func accountContentPayload(content model.Content) gin.H {

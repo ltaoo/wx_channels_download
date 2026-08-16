@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	default_log_limit     = 300
-	max_log_limit         = 2000
+	default_log_page_size = 300
+	max_log_page_size     = 2000
 	default_log_max_bytes = 2 * 1024 * 1024
 	max_log_max_bytes     = 10 * 1024 * 1024
 )
@@ -51,7 +51,12 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	}
 
 	query := ctx.Request.URL.Query()
-	limit := bounded_log_int(query.Get("limit"), default_log_limit, 1, max_log_limit)
+	page := bounded_log_int(query.Get("page"), 1, 1, 1000000)
+	page_size_raw := query.Get("page_size")
+	if strings.TrimSpace(page_size_raw) == "" {
+		page_size_raw = query.Get("limit")
+	}
+	page_size := bounded_log_int(page_size_raw, default_log_page_size, 1, max_log_page_size)
 	max_bytes := bounded_log_int(query.Get("max_bytes"), default_log_max_bytes, 64*1024, max_log_max_bytes)
 	keyword := strings.ToLower(strings.TrimSpace(query.Get("keyword")))
 	source_filter := strings.ToLower(strings.TrimSpace(query.Get("source")))
@@ -59,7 +64,7 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	format_json := parse_log_bool(query.Get("format_json"))
 
 	files := c.discover_log_files()
-	entries := make([]api_log_entry, 0, limit)
+	entries := make([]api_log_entry, 0, page_size)
 	total := 0
 	seq := 0
 	for _, file := range files {
@@ -87,18 +92,33 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 		}
 		return entries[i].Index > entries[j].Index
 	})
-	if len(entries) > limit {
-		entries = entries[:limit]
+	page_count := 1
+	if total > 0 {
+		page_count = (total + page_size - 1) / page_size
 	}
+	if page > page_count {
+		page = page_count
+	}
+	offset := (page - 1) * page_size
+	end := offset + page_size
+	if offset > len(entries) {
+		offset = len(entries)
+	}
+	if end > len(entries) {
+		end = len(entries)
+	}
+	entries = entries[offset:end]
 	for i := range entries {
-		entries[i].Index = i + 1
+		entries[i].Index = offset + i + 1
 	}
 
 	result.Ok(ctx, gin.H{
-		"entries": entries,
-		"files":   files,
-		"total":   total,
-		"limit":   limit,
+		"entries":   entries,
+		"files":     files,
+		"total":     total,
+		"page":      page,
+		"page_size": page_size,
+		"limit":     page_size,
 	})
 }
 

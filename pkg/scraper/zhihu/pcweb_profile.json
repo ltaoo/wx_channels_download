@@ -1,0 +1,29 @@
+{
+  "profileVersion": 1,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "language": "zh-CN",
+  "languages": ["zh-CN", "zh"],
+  "platform": "MacIntel",
+  "hardwareConcurrency": 12,
+  "deviceMemory": 8,
+  "webdriver": false,
+  "screen": {
+    "width": 1512,
+    "height": 982,
+    "availWidth": 1512,
+    "availHeight": 944,
+    "colorDepth": 30,
+    "pixelDepth": 30
+  },
+  "devicePixelRatio": 2,
+  "location": {
+    "protocol": "https:",
+    "host": "www.zhihu.com",
+    "hostname": "www.zhihu.com"
+  },
+  "errorStack": "Error: {message}\n    at https://www.zhihu.com/:1:1",
+  "nativeFunctions": {
+    "blur": "function blur() { [native code] }",
+    "toString": "function toString() { [native code] }"
+  }
+}

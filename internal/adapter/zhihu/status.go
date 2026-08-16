@@ -2,18 +2,18 @@ package zhihuadapter
 
 import (
 	"context"
-	"errors"
+	// "errors"
 	"strings"
 	"time"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/events"
-	"wx_channel/pkg/cookies"
+	// "wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
 const (
-	zhihu_status_check_url     = "https://www.zhihu.com/question/19550256"
+	zhihu_status_check_url     = "https://www.zhihu.com/question/360033751/answer/3562559606"
 	zhihu_status_check_timeout = 15 * time.Second
 	zhihu_cookie_status_domain = "www.zhihu.com"
 )
@@ -77,15 +77,15 @@ func (h *handler) check_status() events.PlatformStatusChanged {
 	logger := h.logger
 	h.runtime_mu.RUnlock()
 
-	if cookie_reader == nil {
-		return zhihu_unavailable("缺少知乎 Cookie 读取器")
-	}
-	if _, err := cookie_reader.HeaderForDomain(zhihu_cookie_status_domain); err != nil {
-		if errors.Is(err, cookies.ErrCookieNotFound) {
-			return zhihu_unavailable("缺少知乎 Cookie，请先导入 www.zhihu.com Cookie")
-		}
-		return zhihu_unavailable(compact_zhihu_status_reason("读取知乎 Cookie 失败：", err))
-	}
+	// if cookie_reader == nil {
+	// 	return zhihu_unavailable("缺少知乎 Cookie 读取器")
+	// }
+	// if _, err := cookie_reader.HeaderForDomain(zhihu_cookie_status_domain); err != nil {
+	// 	if errors.Is(err, cookies.ErrCookieNotFound) {
+	// 		return zhihu_unavailable("缺少知乎 Cookie，请先导入 www.zhihu.com Cookie")
+	// 	}
+	// 	return zhihu_unavailable(compact_zhihu_status_reason("读取知乎 Cookie 失败：", err))
+	// }
 	client := zhihu.NewClient(cookie_reader, logger)
 	client.SetHTTPTimeout(zhihu_status_check_timeout)
 	if _, err := client.Fetch(zhihu_status_check_url); err != nil {

@@ -40,7 +40,7 @@ func (c *article_postprocessor) report_progress(n int64) {
 	}
 }
 
-func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.WechatOfficialArticle, dir_path string) error {
+func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.ArticleCgiDataNew, dir_path string) error {
 	// Update the receiver with the fetched article data
 	// Sanitize filename for the markdown file
 	filename := strings.ReplaceAll(article.Title, "/", "_")
@@ -54,7 +54,7 @@ func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.WechatOff
 	}
 
 	// Process HTML content to download images and replace links
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.ContentNoencode))
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.WechatOff
 			vid = s.AttrOr("data-mpvid", "")
 		}
 		if vid != "" {
-			for _, video := range article.Videos {
+			for _, video := range article.VideoPageInfos {
 				if video.VideoID == vid {
 					if len(video.MpVideoTransInfo) > 0 {
 						video_url := video.MpVideoTransInfo[0].Url
@@ -171,11 +171,15 @@ func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.WechatOff
 	// Restore line breaks
 	markdown = strings.ReplaceAll(markdown, br_placeholder, "  \n")
 
-	// Process additional images from article.Images
-	if len(article.Images) > 0 {
+	// Process additional images from the article picture metadata.
+	if len(article.PicturePageInfoList) > 0 {
 		markdown += "\n\n"
-		for _, image_url := range article.Images {
+		for _, picture := range article.PicturePageInfoList {
+			image_url := picture.CdnUrl
 			image_url = normalize_media_url(image_url)
+			if image_url == "" {
+				continue
+			}
 			local_file_name, err := c.download_image(image_url, images_dir_path)
 			if err != nil {
 				fmt.Printf("Failed to download attached image %s: %v\n", image_url, err)
@@ -199,8 +203,8 @@ func (c *article_postprocessor) convert_html_to_markdown(article *wxmp.WechatOff
 	return nil
 }
 
-func (c *article_postprocessor) build_html_from_article(article *wxmp.WechatOfficialArticle, need_compress_img bool) (string, error) {
-	is_image_article := article.Type == 2 && len(article.Images) > 0
+func (c *article_postprocessor) build_html_from_article(article *wxmp.ArticleCgiDataNew, need_compress_img bool) (string, error) {
+	is_image_article := article.PageType == 2 && len(article.PicturePageInfoList) > 0
 	body_max_width := "677px"
 	if is_image_article {
 		body_max_width = "1024px"
@@ -388,22 +392,23 @@ func (c *article_postprocessor) build_html_from_article(article *wxmp.WechatOffi
 
 	html_content.WriteString(`<h1 class="rich_media_title"><span>` + article.Title + "</span></h1>")
 	creator_html := ""
-	if article.Creator != "" {
-		creator_html = `<span class="rich_media_meta rich_media_meta_text">` + article.Creator + `</span>`
+	if article.Author != "" {
+		creator_html = `<span class="rich_media_meta rich_media_meta_text">` + article.Author + `</span>`
 	}
 	avatar_html := ""
-	if article.AuthorAvatar != "" {
-		if image_data, mime_type, err := download_image_bytes(article.AuthorAvatar); err == nil {
+	avatar_url := article_avatar_url(article)
+	if avatar_url != "" {
+		if image_data, mime_type, err := download_image_bytes(avatar_url); err == nil {
 			c.report_progress(int64(len(image_data)))
-			avatar_html = `<img class="rich_media_meta_avatar" src="data:` + mime_type + `;base64,` + base64.StdEncoding.EncodeToString(image_data) + `" alt="` + escape_html(article.AuthorNickname) + `">`
+			avatar_html = `<img class="rich_media_meta_avatar" src="data:` + mime_type + `;base64,` + base64.StdEncoding.EncodeToString(image_data) + `" alt="` + escape_html(article.NickName) + `">`
 		}
 	}
-	html_content.WriteString(`<div class="rich_media_meta_list">` + avatar_html + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.AuthorNickname + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article.PublishTimeStr + "</em></span></div>")
+	html_content.WriteString(`<div class="rich_media_meta_list">` + avatar_html + creator_html + `<span class="rich_media_meta rich_media_meta_nickname">` + article.NickName + `</span><span><em class="rich_media_meta rich_media_meta_text">` + article_publish_time_text(article) + "</em></span></div>")
 	html_content.WriteString(`<div class="rich_media_content js_underline_content autoTypeSetting24psection fix_apple_default_style">`)
 	// Process HTML content to handle newlines
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.ContentNoencode))
 	if err != nil {
-		html_content.WriteString(article.Content)
+		html_content.WriteString(article.ContentNoencode)
 	} else {
 		newline_placeholder := "WECHATNEWLINEHOLDER"
 		var replace_newlines func(*html.Node)
@@ -464,7 +469,7 @@ func (c *article_postprocessor) build_html_from_article(article *wxmp.WechatOffi
 				vid = s.AttrOr("data-mpvid", "")
 			}
 			if vid != "" {
-				for _, video := range article.Videos {
+				for _, video := range article.VideoPageInfos {
 					if video.VideoID == vid {
 						if len(video.MpVideoTransInfo) > 0 {
 							video_url := video.MpVideoTransInfo[0].Url
@@ -518,7 +523,7 @@ func (c *article_postprocessor) build_html_from_article(article *wxmp.WechatOffi
 		// Get the content inside <body>
 		new_html, err := doc.Find("body").Html()
 		if err != nil {
-			html_content.WriteString(article.Content)
+			html_content.WriteString(article.ContentNoencode)
 		} else {
 			new_html = strings.ReplaceAll(new_html, newline_placeholder, "<br>")
 			html_content.WriteString(new_html)
@@ -535,7 +540,7 @@ func (c *article_postprocessor) build_html_from_article(article *wxmp.WechatOffi
 	return html_content.String(), nil
 }
 
-func (c *article_postprocessor) write_picture_article_media(html_content *strings.Builder, article *wxmp.WechatOfficialArticle, need_compress_img bool) {
+func (c *article_postprocessor) write_picture_article_media(html_content *strings.Builder, article *wxmp.ArticleCgiDataNew, need_compress_img bool) {
 	if html_content == nil || article == nil {
 		return
 	}
@@ -553,9 +558,26 @@ func (c *article_postprocessor) write_picture_article_media(html_content *string
 		}
 		return
 	}
-	for _, image_url := range article.Images {
-		c.write_inline_image(html_content, image_url, need_compress_img)
+}
+
+func article_publish_time_text(article *wxmp.ArticleCgiDataNew) string {
+	if article == nil {
+		return ""
 	}
+	if create_time := strings.TrimSpace(article.CreateTime); create_time != "" {
+		return create_time
+	}
+	timestamp := int64(article.OriCreateTime)
+	if timestamp <= 0 {
+		timestamp = int64(article.CreateTimestamp)
+		if timestamp > 1_000_000_000_000 {
+			timestamp /= 1000
+		}
+	}
+	if timestamp <= 0 {
+		return ""
+	}
+	return time.Unix(timestamp, 0).Format("2006年01月02日 15:04")
 }
 
 func (c *article_postprocessor) write_inline_image(html_content *strings.Builder, image_url string, need_compress_img bool) {

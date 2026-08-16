@@ -73,7 +73,7 @@ func (a *OfficialAccountAdapter) check_status() events.PlatformStatusChanged {
 	if err != nil {
 		return wxmp_unavailable(compact_wxmp_status_reason("公众号文章检测失败：", err))
 	}
-	if article == nil || (strings.TrimSpace(article.Title) == "" && strings.TrimSpace(article.Content) == "") {
+	if article == nil || (strings.TrimSpace(article.Title) == "" && strings.TrimSpace(article.ContentNoencode) == "") {
 		return wxmp_unavailable("公众号文章检测失败：响应缺少文章内容")
 	}
 	return events.PlatformStatusChanged{

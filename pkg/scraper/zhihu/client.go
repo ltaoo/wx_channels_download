@@ -242,6 +242,21 @@ func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {
 		}
 		_ = c.remove_cached_html(raw_url)
 	}
+	if _, is_answer := ParseAnswerURL(ResolveRealURL(raw_url)); is_answer {
+		html_data, fetch_err := c.fetch_pcweb_answer_document(raw_url)
+		if fetch_err != nil {
+			return nil, fetch_err
+		}
+		if c.OnProgress != nil {
+			c.OnProgress(int64(len(html_data)))
+		}
+		if _, parse_err := ParseInitialData(html_data); parse_err == nil {
+			if err := c.write_cached_html(raw_url, html_data); err != nil {
+				return nil, fmt.Errorf("cache zhihu HTML response for %q: %w", raw_url, err)
+			}
+		}
+		return html_data, nil
+	}
 	req, err := http.NewRequest(method, raw_url, nil)
 	if err != nil {
 		return nil, err

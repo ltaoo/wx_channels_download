@@ -3,6 +3,9 @@ package zhihuadapter
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"sort"
+	"strings"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
@@ -72,11 +75,9 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 	case zhihu.AnswerPage:
 		return answer_content_details(content, &page)
 	case *zhihu.QuestionPage:
-		if page != nil {
-			root_detail.Data = &model.ContentArticle{Id: content.Id, Type: model.ContentArticleTypeHTML, HTML: page.Question.Detail}
-		}
+		return question_content_details(content, page)
 	case zhihu.QuestionPage:
-		root_detail.Data = &model.ContentArticle{Id: content.Id, Type: model.ContentArticleTypeHTML, HTML: page.Question.Detail}
+		return question_content_details(content, &page)
 	case *zhihu.ArticlePage:
 		if page != nil {
 			root_detail.Data = &model.ContentArticle{Id: content.Id, Type: model.ContentArticleTypeHTML, HTML: page.Article.Content}
@@ -128,13 +129,118 @@ func answer_content_details(content *model.Content, page *zhihu.AnswerPage) ([]a
 	return []adapter.ContentDetail{answer_detail, question_detail}, nil
 }
 
+func question_content_details(content *model.Content, page *zhihu.QuestionPage) ([]adapter.ContentDetail, error) {
+	if page == nil {
+		return nil, fmt.Errorf("zhihu question page is nil")
+	}
+	root_detail := adapter.ContentDetail{
+		Type:    "question",
+		Key:     content.Id,
+		Content: content,
+		Data: &model.ContentArticle{
+			Id:   content.Id,
+			Type: model.ContentArticleTypeHTML,
+			HTML: page.Question.Detail,
+		},
+	}
+	details := []adapter.ContentDetail{root_detail}
+	if page.InitialData == nil {
+		return details, nil
+	}
+
+	answers := page.InitialData.InitialState.Entities.Answers
+	answer_ids := make([]string, 0, len(answers))
+	for answer_id, answer := range answers {
+		if strings.TrimSpace(answer.ID) == "" {
+			continue
+		}
+		answer_ids = append(answer_ids, answer_id)
+	}
+	sort.Strings(answer_ids)
+	for answer_order, answer_id := range answer_ids {
+		answer := answers[answer_id]
+		answer_url := build_answer_url(page.Question.ID, answer.ID)
+		answer_page := &zhihu.AnswerPage{
+			URL: zhihu.AnswerURL{
+				QuestionID: page.Question.ID,
+				AnswerID:   answer.ID,
+				Canonical:  answer_url,
+			},
+			Source:   answer_url,
+			Question: page.Question,
+			Answer:   answer,
+		}
+		answer_content, err := ToContent(answer_page)
+		if err != nil {
+			return nil, err
+		}
+		details = append(details, adapter.ContentDetail{
+			Type:    "answer",
+			Key:     answer_content.Id,
+			Content: answer_content,
+			Data: &model.ContentArticle{
+				Id:   answer_content.Id,
+				Type: model.ContentArticleTypeHTML,
+				HTML: answer.Content,
+			},
+			Relation: &model.ContentRelation{
+				SourceContentId: answer_content.Id,
+				TargetContentId: content.Id,
+				Type:            model.ContentRelationAnswerOf,
+				SortOrder:       answer_order,
+				CreatedAt:       content.CreatedAt,
+			},
+		})
+	}
+	return details, nil
+}
+
+func build_answer_url(question_id, answer_id string) string {
+	return "https://www.zhihu.com/question/" + url.PathEscape(strings.TrimSpace(question_id)) +
+		"/answer/" + url.PathEscape(strings.TrimSpace(answer_id))
+}
+
+func zhihu_page_from_fetch(data any) (any, error) {
+	var raw_json json.RawMessage
+	switch value := data.(type) {
+	case json.RawMessage:
+		raw_json = value
+	case *json.RawMessage:
+		if value == nil {
+			return nil, fmt.Errorf("zhihu fetch JSON is nil")
+		}
+		raw_json = *value
+	case []byte:
+		raw_json = json.RawMessage(value)
+	default:
+		return data, nil
+	}
+
+	if len(strings.TrimSpace(string(raw_json))) == 0 {
+		return nil, fmt.Errorf("zhihu fetch JSON is empty")
+	}
+	if page, ok := parse_zhihu_page_content(raw_json); ok {
+		return page, nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal(raw_json, &decoded); err != nil {
+		return nil, fmt.Errorf("decode zhihu fetch data: %w", err)
+	}
+	return nil, fmt.Errorf("unsupported zhihu fetch JSON")
+}
+
 // BuildDownloadTaskFromFetch serializes a supported structured page and lets
 // BuildDownloadTask produce the same task shape used by normal task creation.
 func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
-	if _, err := h.ToContent(data); err != nil {
+	page_data, err := zhihu_page_from_fetch(data)
+	if err != nil {
 		return nil, err
 	}
-	content_json, err := json.Marshal(data)
+	if _, err := h.ToContent(page_data); err != nil {
+		return nil, err
+	}
+	content_json, err := json.Marshal(page_data)
 	if err != nil {
 		return nil, fmt.Errorf("encode zhihu download task content: %w", err)
 	}

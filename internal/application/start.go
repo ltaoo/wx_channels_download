@@ -308,6 +308,10 @@ func Start(cfg *config.Config) error {
 						case <-ctx.Done():
 							return
 						case <-ticker.C:
+							if !interceptor_srv.ProxySetSystem() {
+								has_changed = false
+								continue
+							}
 							// Poll the same network service the proxy was written to; with an empty
 							// Device this would inspect the fallback service instead and never notice
 							// a change.

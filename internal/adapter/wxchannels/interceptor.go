@@ -299,10 +299,12 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					&injected,
 					crossorigin_attr,
 					url_build("/inject/eventbus.js", version_query),
+					url_build("/public/dl.utils.js", version_query),
+					url_build("/public/dl.sdk.js", version_query),
 					url_build("/inject/env.js", version_query),
 					url_build("/inject/utils.js", version_query),
 					url_build("/inject/components.js", version_query),
-					url_build("/inject/virtual-list-view.js", version_query),
+					url_build("/public/virtual-list-view.js", version_query),
 				)
 				frontend.AppendScripts(
 					&injected,

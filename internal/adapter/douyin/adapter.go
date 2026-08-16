@@ -393,6 +393,36 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 			}},
 		})
+		if image.live_photo == nil || strings.TrimSpace(image.live_photo.URL) == "" {
+			continue
+		}
+		live_resource := model.DownloadResource{
+			ContentId: &content_id,
+			Name:      image_name + "_live",
+			Kind:      "video/mp4",
+			UniqueID:  fmt.Sprintf("%s_image_%d_live", model_data.video_id, image_index+1),
+			Size:      image.live_photo.Size,
+			Duration:  duration_milliseconds_to_seconds(image.live_photo.DurationMs),
+			Extra:     extra_json,
+		}
+		live_endpoint := model.DownloadEndpoint{
+			Protocol: douyin_endpoint_protocol(image.live_photo.URL),
+			URL:      image.live_photo.URL,
+			Enabled:  1,
+		}
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource:  live_resource,
+			Endpoints: []model.DownloadEndpoint{live_endpoint},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindVideo,
+				Role:            model.ContentAssetRoleLivePhoto,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "live_photo"),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+			}},
+		})
 	}
 	if model_data.bgm_url != "" {
 		bgm_resource := model.DownloadResource{
@@ -414,4 +444,15 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 		})
 	}
 	return resources
+}
+
+func duration_milliseconds_to_seconds(duration_ms int64) int64 {
+	if duration_ms <= 0 {
+		return 0
+	}
+	seconds := duration_ms / 1000
+	if seconds == 0 {
+		return 1
+	}
+	return seconds
 }

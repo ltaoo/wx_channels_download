@@ -100,12 +100,12 @@ func NewAPIClient(
 
 	api_client.broadcaster = new_task_broadcaster()
 	api_client.downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
-		task_id, progress, ok := download_task_event_data(event, data)
+		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
 		if !ok {
 			return
 		}
 		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
-		api_client.broadcaster.notify(api_client, task_id, event, progress)
+		api_client.broadcaster.notify(api_client, task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished && api_client.bus != nil {
 			go func() {
 				api_client.bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
@@ -123,39 +123,39 @@ func NewAPIClient(
 	return api_client
 }
 
-func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, bool) {
+func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, []hermes.TaskFinishedResource, bool) {
 	switch event {
 	// Task creation.
 	case hermes.EventCreated:
 		event_data, ok := data.(hermes.TaskCreatedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 
 	// Task completion, including unsuccessful terminal states.
 	case hermes.EventFinished:
 		event_data, ok := data.(hermes.TaskFinishedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, event_data.Resources, ok
 	case hermes.EventFailed:
 		event_data, ok := data.(hermes.TaskFailedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventDeleted:
 		event_data, ok := data.(hermes.TaskDeletedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 
 	// Task progress includes start/resume, pause, and byte progress updates.
 	case hermes.EventStarted:
 		event_data, ok := data.(hermes.TaskStartedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventPreparing:
 		event_data, ok := data.(hermes.TaskPreparingEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventPaused:
 		event_data, ok := data.(hermes.TaskPausedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventProgress:
 		event_data, ok := data.(hermes.TaskProgressEventData)
-		return event_data.TaskID, event_data.Progress, ok && event_data.Progress != nil
+		return event_data.TaskID, event_data.Progress, nil, ok && event_data.Progress != nil
 	default:
-		return 0, nil, false
+		return 0, nil, nil, false
 	}
 }
 

@@ -18,7 +18,6 @@ import (
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/youtube"
-	"wx_channel/pkg/util"
 )
 
 const PlatformID = youtube.PlatformID
@@ -73,48 +72,7 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := util.NowMillis()
-	content_type := model.ContentTypeVideo
-	subtype := model.ContentSubtypeLongVideo
-	switch info.MediaType {
-	case "short":
-		subtype = model.ContentSubtypeShortVideo
-	case "livestream":
-		content_type = model.ContentTypeLive
-		subtype = model.ContentSubtypeLivestream
-	}
-	metadata, _ := json.Marshal(map[string]any{
-		"channel_id":          info.ChannelID,
-		"channel_url":         info.ChannelURL,
-		"channel_avatar_url":  info.ChannelAvatarURL,
-		"uploader":            info.Uploader,
-		"uploader_url":        info.UploaderURL,
-		"uploader_avatar_url": info.UploaderAvatarURL,
-		"live_status":         info.LiveStatus,
-		"age_limit":           info.AgeLimit,
-		"format_count":        len(info.Formats),
-		"warnings":            info.Warnings,
-	})
-	return &model.Content{
-		Id:          BuildContentID(info.ID),
-		PlatformId:  PlatformID,
-		Type:        content_type,
-		Subtype:     subtype,
-		ExternalId:  info.ID,
-		Title:       first_non_empty(info.Title, "youtube_"+info.ID),
-		Description: info.Description,
-		URL:         best_content_url(info),
-		SourceURL:   first_non_empty(info.WebpageURL, canonical_watch_url(info.ID)),
-		CoverURL:    info.Thumbnail,
-		ViewCount:   info.ViewCount,
-		Tags:        json_string_array(info.Tags),
-		Category:    strings.Join(info.Categories, ","),
-		Metadata:    string(metadata),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, nil
+	return ToContent(info)
 }
 
 func (h *handler) ToAccount(data any) (*model.Account, error) {
@@ -122,21 +80,7 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 	if err != nil {
 		return nil, err
 	}
-	external_id := strings.TrimSpace(first_non_empty(info.ChannelID, info.UploaderID, info.ID))
-	nickname := strings.TrimSpace(first_non_empty(info.Channel, info.Uploader, "YouTube"))
-	now := util.NowMillis()
-	return &model.Account{
-		Id:         BuildAccountID(external_id),
-		PlatformId: PlatformID,
-		ExternalId: external_id,
-		Nickname:   nickname,
-		AvatarURL:  first_non_empty(info.ChannelAvatarURL, info.UploaderAvatarURL),
-		ProfileURL: first_non_empty(info.ChannelURL, info.UploaderURL),
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, nil
+	return ToAccount(info)
 }
 
 func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
@@ -144,12 +88,7 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	content_id := BuildContentID(info.ID)
-	return []adapter.ContentDetail{{
-		Type: "video",
-		Key:  content_id,
-		Data: youtube_content_video(info),
-	}}, nil
+	return ToContentDetails(info)
 }
 
 func (h *handler) BuildBrowseHistory(_ json.RawMessage) (*adapter.BrowseHistoryResult, error) {
@@ -306,6 +245,7 @@ func (h *handler) scraper_client(forceRefresh bool) *youtube.Client {
 		CookieReader: h.runtime_cookie_reader(),
 		Cache:        h.runtime_file_cache(),
 		ForceRefresh: forceRefresh,
+		Logger:       h.get_logger(),
 	})
 }
 
@@ -330,7 +270,7 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 	if info == nil || strings.TrimSpace(info.ID) == "" {
 		return nil, fmt.Errorf("YouTube 视频信息为空")
 	}
-	download_formats, err := select_download_formats(info)
+	download_formats, err := select_download_formats(info, config)
 	if err != nil {
 		return nil, err
 	}
@@ -389,9 +329,10 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		})
 	}
 
-	headers := h.scraper_client(false).DownloadHeaders(content.SourceURL)
-	headers_json := headers_json_string(headers)
+	download_client := h.scraper_client(false)
 	for index, format := range download_formats {
+		download_headers := download_client.DownloadHeadersForFormat(format, content.SourceURL)
+		log_selected_download_format(h.get_logger(), info.ID, index, format, download_headers)
 		resource_kind := youtube_resource_kind(format)
 		resource_name := task_name
 		asset_kind := model.ContentAssetKindVideo
@@ -416,7 +357,7 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: endpoint_protocol(format.URL),
 				URL:      format.URL,
-				Headers:  headers_json,
+				Headers:  headers_json_string(download_headers),
 				Enabled:  1,
 			}},
 			ContentAssets: []adapter.ContentAssetReference{{
@@ -473,26 +414,7 @@ func youtube_info_from_fetch(data any) (*youtube.VideoInfo, error) {
 }
 
 func youtube_content_video(info *youtube.VideoInfo) *model.ContentVideo {
-	if info == nil {
-		return nil
-	}
-	selected := best_video_detail_format(info)
-	video := &model.ContentVideo{
-		Id:        BuildContentID(info.ID),
-		Duration:  info.Duration,
-		PlayTimes: info.ViewCount,
-	}
-	if selected != nil {
-		video.Width = selected.Width
-		video.Height = selected.Height
-		video.FPS = selected.FPS
-		video.Bitrate = first_non_zero_int(selected.AverageBitrate, selected.Bitrate)
-		video.Size = selected.ContentLength
-		video.Codec = first_non_empty(selected.VideoCodec, selected.AudioCodec)
-		video.Format = selected.Ext
-		video.URL = selected.URL
-	}
-	video.Variants = youtube_video_variants(info, selected)
+	video, _ := ToContentVideo(info)
 	return video
 }
 
@@ -526,19 +448,20 @@ func youtube_video_variants(info *youtube.VideoInfo, selected *youtube.VideoForm
 			stream_type = model.ContentVideoVariantStreamTypeVideoOnly
 		}
 		variant := model.ContentVideoVariant{
-			VideoId:    BuildContentID(info.ID),
-			VariantKey: variant_key,
-			Spec:       format.ID,
-			Quality:    first_non_empty(format.QualityLabel, format.Quality),
-			Size:       format.ContentLength,
-			Codec:      first_non_empty(format.VideoCodec, format.AudioCodec),
-			Format:     format.Ext,
-			StreamType: stream_type,
-			HasVideo:   bool_int(format.HasVideo),
-			HasAudio:   bool_int(format.HasAudio),
-			IsDefault:  bool_int(default_key == variant_key),
-			URL:        format.URL,
-			Metadata:   string(metadata),
+			VideoId:      BuildContentID(info.ID),
+			VariantKey:   variant_key,
+			Spec:         format.ID,
+			Quality:      first_non_empty(format.QualityLabel, format.Quality),
+			Size:         format.ContentLength,
+			Codec:        first_non_empty(format.VideoCodec, format.AudioCodec),
+			Format:       format.Ext,
+			StreamType:   stream_type,
+			HasVideo:     bool_int(format.HasVideo),
+			HasAudio:     bool_int(format.HasAudio),
+			IsDefault:    bool_int(default_key == variant_key),
+			URL:          format.URL,
+			URLExpiresAt: youtube_url_expires_at(format.URL),
+			Metadata:     string(metadata),
 		}
 		variant.Width = positive_int_pointer(format.Width)
 		variant.Height = positive_int_pointer(format.Height)
@@ -550,7 +473,7 @@ func youtube_video_variants(info *youtube.VideoInfo, selected *youtube.VideoForm
 	return variants
 }
 
-func select_download_formats(info *youtube.VideoInfo) ([]youtube.VideoFormat, error) {
+func select_download_formats(info *youtube.VideoInfo, config map[string]any) ([]youtube.VideoFormat, error) {
 	if info == nil {
 		return nil, fmt.Errorf("YouTube 视频信息为空")
 	}
@@ -570,6 +493,24 @@ func select_download_formats(info *youtube.VideoInfo) ([]youtube.VideoFormat, er
 			audio_only = append(audio_only, format)
 		}
 	}
+	configured_variant_key := config_string(config, "video_variant_key")
+	configured_variant_spec := config_string(config, "video_variant_spec")
+	if configured_variant_key != "" || configured_variant_spec != "" {
+		for _, format := range append(progressive, video_only...) {
+			variant_key := youtube_video_variant_key(format)
+			if (configured_variant_key != "" && variant_key == configured_variant_key) ||
+				(configured_variant_spec != "" && format.ID == configured_variant_spec) {
+				if format.HasAudio {
+					return []youtube.VideoFormat{format}, nil
+				}
+				if len(audio_only) > 0 {
+					return []youtube.VideoFormat{format, best_audio_format(audio_only)}, nil
+				}
+				return []youtube.VideoFormat{format}, nil
+			}
+		}
+		return nil, fmt.Errorf("YouTube 视频 %s 不包含所选规格 %s", info.ID, first_non_empty(configured_variant_key, configured_variant_spec))
+	}
 	if len(progressive) > 0 {
 		return []youtube.VideoFormat{best_progressive_format(progressive)}, nil
 	}
@@ -580,7 +521,7 @@ func select_download_formats(info *youtube.VideoInfo) ([]youtube.VideoFormat, er
 }
 
 func best_video_detail_format(info *youtube.VideoInfo) *youtube.VideoFormat {
-	formats, err := select_download_formats(info)
+	formats, err := select_download_formats(info, nil)
 	if err != nil || len(formats) == 0 {
 		return nil
 	}

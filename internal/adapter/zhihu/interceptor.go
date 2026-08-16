@@ -102,6 +102,8 @@ func create_zhihu_interceptor_plugin(version, global_script_path string) *proxy.
 				&injected,
 				"",
 				url_build("/inject/eventbus.js", version_query),
+				url_build("/public/dl.utils.js", version_query),
+				url_build("/public/dl.sdk.js", version_query),
 				url_build("/inject/env.js", version_query),
 				url_build("/inject/utils.js", version_query),
 			)

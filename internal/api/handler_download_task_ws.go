@@ -35,8 +35,9 @@ type progress_cache_entry struct {
 }
 
 type task_broadcast_request struct {
-	event    hermes.EventType
-	progress *hermes.TaskProgress
+	event              hermes.EventType
+	progress           *hermes.TaskProgress
+	finished_resources []hermes.TaskFinishedResource
 }
 
 var (
@@ -127,8 +128,12 @@ func should_broadcast_download_task_stats(event hermes.EventType) bool {
 // progress carries in-memory download state from the HermesEngine; when non-nil for
 // EventProgress, the lightweight broadcast_download_task_progress path is used
 // instead of the full DB query path.
-func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventType, progress *hermes.TaskProgress) {
-	req := task_broadcast_request{event: event, progress: progress}
+func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventType, progress *hermes.TaskProgress, finished_resources []hermes.TaskFinishedResource) {
+	req := task_broadcast_request{
+		event:              event,
+		progress:           progress,
+		finished_resources: append([]hermes.TaskFinishedResource(nil), finished_resources...),
+	}
 	var dl, spd int64
 	if progress != nil {
 		dl, spd = progress.Downloaded, progress.Speed
@@ -198,6 +203,9 @@ func (b *task_broadcaster) run_task_broadcast(c *APIClient, task_id int, req tas
 		case req.event == hermes.EventPreparing || req.event == hermes.EventStarted || req.event == hermes.EventPaused:
 			c.broadcast_download_task_state(task_id)
 			c.cache_task_progress_meta(task_id)
+		case req.event == hermes.EventFinished:
+			c.broadcast_download_task_finished(task_id, req.finished_resources)
+			remove_cached_task_progress_meta(task_id)
 		default:
 			c.broadcast_download_task_upsert([]int{task_id})
 			if is_terminal {
@@ -402,6 +410,42 @@ func (c *APIClient) broadcast_download_task_upsert(task_ids []int) {
 		Type:  download_task_ws_upsert,
 		Tasks: records,
 	})
+}
+
+// broadcast_download_task_finished sends a complete record with the final
+// resource metadata supplied by Hermes. Overlaying the event snapshot makes
+// the name chosen by the final filesystem rename authoritative for this push.
+func (c *APIClient) broadcast_download_task_finished(task_id int, resources []hermes.TaskFinishedResource) {
+	record, err := c.download_task_service.BuildTaskRecord(task_id)
+	if err != nil || record == nil {
+		return
+	}
+	apply_finished_resource_snapshot(record, resources)
+	v1_task_hub.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
+		Type:  download_task_ws_upsert,
+		Tasks: []services.DownloadTaskRecord{*record},
+	})
+}
+
+func apply_finished_resource_snapshot(record *services.DownloadTaskRecord, resources []hermes.TaskFinishedResource) {
+	if record == nil || len(resources) == 0 {
+		return
+	}
+	by_id := make(map[int]hermes.TaskFinishedResource, len(resources))
+	for _, resource := range resources {
+		by_id[resource.ID] = resource
+	}
+	for index := range record.Files {
+		resource, ok := by_id[record.Files[index].ID]
+		if !ok {
+			continue
+		}
+		record.Files[index].DownloadDir = resource.DownloadDir
+		record.Files[index].Name = resource.Name
+		record.Files[index].Kind = resource.Kind
+		record.Files[index].Type = resource.Type
+		record.Files[index].Size = resource.Size
+	}
 }
 
 // broadcast_download_task_create sends a complete REST-isomorphic record so

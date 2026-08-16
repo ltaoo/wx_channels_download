@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"github.com/rs/zerolog"
 
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
@@ -53,6 +54,7 @@ type Client struct {
 	CookieReader *cookies.Reader
 	Cache        *cache.CacheProvider
 	ForceRefresh bool
+	Logger       *zerolog.Logger
 }
 
 type ClientOptions struct {
@@ -64,21 +66,85 @@ type ClientOptions struct {
 	CookieReader *cookies.Reader
 	Cache        *cache.CacheProvider
 	ForceRefresh bool
+	Logger       *zerolog.Logger
 }
 
 type innertube_client struct {
-	Name       string
-	HeaderID   string
-	Host       string
-	UserAgent  string
-	Context    map[string]any
-	RequireJS  bool
-	UseCookies bool
-	OmitAPIKey bool
+	Name                 string
+	HeaderID             string
+	Host                 string
+	UserAgent            string
+	Context              map[string]any
+	RequireJS            bool
+	UseCookies           bool
+	OmitAPIKey           bool
+	UsePageClientVersion bool
+	GVSRequiresPOT       bool
 }
 
 func default_innertube_clients() []innertube_client {
 	return []innertube_client{
+		{
+			Name:      "web_embedded",
+			HeaderID:  "56",
+			Host:      "www.youtube.com",
+			UserAgent: default_user_agent,
+			Context: map[string]any{
+				"client": map[string]any{
+					"clientName":       "WEB_EMBEDDED_PLAYER",
+					"clientVersion":    "2.20260708.00.00",
+					"userAgent":        default_user_agent,
+					"hl":               "en",
+					"timeZone":         "UTC",
+					"utcOffsetMinutes": 0,
+				},
+				"thirdParty": map[string]any{
+					"embedUrl": "https://www.reddit.com/",
+				},
+			},
+			RequireJS:            true,
+			UseCookies:           true,
+			UsePageClientVersion: true,
+		},
+		{
+			Name:      "visionos",
+			HeaderID:  "101",
+			Host:      "www.youtube.com",
+			UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+			Context: map[string]any{
+				"client": map[string]any{
+					"clientName":       "VISIONOS",
+					"clientVersion":    "1.02",
+					"deviceMake":       "Apple",
+					"deviceModel":      "RealityDevice17,1",
+					"userAgent":        "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+					"osName":           "visionOS",
+					"osVersion":        "26.5.23O471",
+					"hl":               "en",
+					"timeZone":         "UTC",
+					"utcOffsetMinutes": 0,
+				},
+			},
+			RequireJS: false,
+		},
+		{
+			Name:      "tv",
+			HeaderID:  "7",
+			Host:      "www.youtube.com",
+			UserAgent: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
+			Context: map[string]any{
+				"client": map[string]any{
+					"clientName":       "TVHTML5",
+					"clientVersion":    "7.20260707.07.00",
+					"userAgent":        "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
+					"hl":               "en",
+					"timeZone":         "UTC",
+					"utcOffsetMinutes": 0,
+				},
+			},
+			RequireJS:  true,
+			UseCookies: true,
+		},
 		{
 			Name:      "android_vr",
 			HeaderID:  "28",
@@ -99,8 +165,9 @@ func default_innertube_clients() []innertube_client {
 					"utcOffsetMinutes":  0,
 				},
 			},
-			RequireJS:  false,
-			OmitAPIKey: true,
+			RequireJS:      false,
+			OmitAPIKey:     true,
+			GVSRequiresPOT: true,
 		},
 		{
 			Name:      "web_safari",
@@ -117,41 +184,48 @@ func default_innertube_clients() []innertube_client {
 					"utcOffsetMinutes": 0,
 				},
 			},
-			RequireJS:  true,
-			UseCookies: true,
+			RequireJS:            true,
+			UseCookies:           true,
+			UsePageClientVersion: true,
+			GVSRequiresPOT:       true,
 		},
 	}
 }
 
 type VideoInfo struct {
-	ID                        string            `json:"id"`
-	Title                     string            `json:"title,omitempty"`
-	Description               string            `json:"description,omitempty"`
-	WebpageURL                string            `json:"webpage_url,omitempty"`
-	Thumbnail                 string            `json:"thumbnail,omitempty"`
-	Thumbnails                []Thumbnail       `json:"thumbnails,omitempty"`
-	Duration                  int64             `json:"duration,omitempty"`
-	ViewCount                 int64             `json:"view_count,omitempty"`
-	AgeLimit                  int               `json:"age_limit,omitempty"`
-	Channel                   string            `json:"channel,omitempty"`
-	ChannelID                 string            `json:"channel_id,omitempty"`
-	ChannelURL                string            `json:"channel_url,omitempty"`
-	ChannelAvatarURL          string            `json:"channel_avatar_url,omitempty"`
-	Uploader                  string            `json:"uploader,omitempty"`
-	UploaderID                string            `json:"uploader_id,omitempty"`
-	UploaderURL               string            `json:"uploader_url,omitempty"`
-	UploaderAvatarURL         string            `json:"uploader_avatar_url,omitempty"`
-	Categories                []string          `json:"categories,omitempty"`
-	Tags                      []string          `json:"tags,omitempty"`
-	LiveStatus                string            `json:"live_status,omitempty"`
-	MediaType                 string            `json:"media_type,omitempty"`
-	PlayableInEmbed           bool              `json:"playable_in_embed,omitempty"`
-	Formats                   []VideoFormat     `json:"formats,omitempty"`
-	PlayabilityStatus         PlayabilityStatus `json:"playability_status,omitempty"`
-	Warnings                  []string          `json:"warnings,omitempty"`
-	InitialPlayerResponseJSON json.RawMessage   `json:"-"`
-	YTCfgJSON                 json.RawMessage   `json:"-"`
-	PageHTML                  string            `json:"-"`
+	ID                          string                       `json:"id"`
+	Title                       string                       `json:"title,omitempty"`
+	Description                 string                       `json:"description,omitempty"`
+	WebpageURL                  string                       `json:"webpage_url,omitempty"`
+	Thumbnail                   string                       `json:"thumbnail,omitempty"`
+	Thumbnails                  []Thumbnail                  `json:"thumbnails,omitempty"`
+	Duration                    int64                        `json:"duration,omitempty"`
+	ViewCount                   int64                        `json:"view_count,omitempty"`
+	AgeLimit                    int                          `json:"age_limit,omitempty"`
+	Channel                     string                       `json:"channel,omitempty"`
+	ChannelID                   string                       `json:"channel_id,omitempty"`
+	ChannelURL                  string                       `json:"channel_url,omitempty"`
+	ChannelAvatarURL            string                       `json:"channel_avatar_url,omitempty"`
+	Uploader                    string                       `json:"uploader,omitempty"`
+	UploaderID                  string                       `json:"uploader_id,omitempty"`
+	UploaderURL                 string                       `json:"uploader_url,omitempty"`
+	UploaderAvatarURL           string                       `json:"uploader_avatar_url,omitempty"`
+	Categories                  []string                     `json:"categories,omitempty"`
+	Tags                        []string                     `json:"tags,omitempty"`
+	PublishDate                 string                       `json:"publish_date,omitempty"`
+	UploadDate                  string                       `json:"upload_date,omitempty"`
+	LiveStatus                  string                       `json:"live_status,omitempty"`
+	MediaType                   string                       `json:"media_type,omitempty"`
+	PlayableInEmbed             bool                         `json:"playable_in_embed,omitempty"`
+	Formats                     []VideoFormat                `json:"formats,omitempty"`
+	CaptionTracks               []CaptionTrack               `json:"caption_tracks,omitempty"`
+	CaptionAudioTracks          []CaptionAudioTrack          `json:"caption_audio_tracks,omitempty"`
+	CaptionTranslationLanguages []CaptionTranslationLanguage `json:"caption_translation_languages,omitempty"`
+	PlayabilityStatus           PlayabilityStatus            `json:"playability_status,omitempty"`
+	Warnings                    []string                     `json:"warnings,omitempty"`
+	InitialPlayerResponseJSON   json.RawMessage              `json:"-"`
+	YTCfgJSON                   json.RawMessage              `json:"-"`
+	PageHTML                    string                       `json:"-"`
 }
 
 type Thumbnail struct {
@@ -165,31 +239,67 @@ type PlayabilityStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// CaptionTrack describes one subtitle/caption track advertised by YouTube's
+// player response. BaseURL is a signed timedtext endpoint.
+type CaptionTrack struct {
+	BaseURL        string `json:"base_url"`
+	Name           string `json:"name,omitempty"`
+	VssID          string `json:"vss_id,omitempty"`
+	LanguageCode   string `json:"language_code,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	IsDefault      bool   `json:"is_default,omitempty"`
+	IsTranslatable bool   `json:"is_translatable,omitempty"`
+}
+
+// CaptionAudioTrack connects an audio track to its compatible caption tracks.
+type CaptionAudioTrack struct {
+	ID                       string `json:"id,omitempty"`
+	DisplayName              string `json:"display_name,omitempty"`
+	CaptionTrackIndices      []int  `json:"caption_track_indices,omitempty"`
+	DefaultCaptionTrackIndex int    `json:"default_caption_track_index,omitempty"`
+	IsDefault                bool   `json:"is_default,omitempty"`
+}
+
+// CaptionTranslationLanguage is one language supported by YouTube's timedtext
+// translation endpoint for the source caption tracks.
+type CaptionTranslationLanguage struct {
+	LanguageCode string `json:"language_code"`
+	Name         string `json:"name,omitempty"`
+}
+
 type VideoFormat struct {
-	ID              string `json:"id"`
-	Itag            int    `json:"itag,omitempty"`
-	URL             string `json:"url,omitempty"`
-	MimeType        string `json:"mime_type,omitempty"`
-	Ext             string `json:"ext,omitempty"`
-	Quality         string `json:"quality,omitempty"`
-	QualityLabel    string `json:"quality_label,omitempty"`
-	Width           int    `json:"width,omitempty"`
-	Height          int    `json:"height,omitempty"`
-	FPS             int    `json:"fps,omitempty"`
-	Bitrate         int    `json:"bitrate,omitempty"`
-	AverageBitrate  int    `json:"average_bitrate,omitempty"`
-	ContentLength   int64  `json:"content_length,omitempty"`
-	AudioQuality    string `json:"audio_quality,omitempty"`
-	AudioSampleRate int    `json:"audio_sample_rate,omitempty"`
-	AudioChannels   int    `json:"audio_channels,omitempty"`
-	AudioCodec      string `json:"audio_codec,omitempty"`
-	VideoCodec      string `json:"video_codec,omitempty"`
-	HasAudio        bool   `json:"has_audio,omitempty"`
-	HasVideo        bool   `json:"has_video,omitempty"`
-	Adaptive        bool   `json:"adaptive,omitempty"`
-	Protocol        string `json:"protocol,omitempty"`
-	NeedsSignature  bool   `json:"needs_signature,omitempty"`
-	HasDRM          bool   `json:"has_drm,omitempty"`
+	ID               string `json:"id"`
+	Itag             int    `json:"itag,omitempty"`
+	URL              string `json:"url,omitempty"`
+	MimeType         string `json:"mime_type,omitempty"`
+	Ext              string `json:"ext,omitempty"`
+	Quality          string `json:"quality,omitempty"`
+	QualityLabel     string `json:"quality_label,omitempty"`
+	Width            int    `json:"width,omitempty"`
+	Height           int    `json:"height,omitempty"`
+	FPS              int    `json:"fps,omitempty"`
+	Bitrate          int    `json:"bitrate,omitempty"`
+	AverageBitrate   int    `json:"average_bitrate,omitempty"`
+	ContentLength    int64  `json:"content_length,omitempty"`
+	AudioQuality     string `json:"audio_quality,omitempty"`
+	AudioSampleRate  int    `json:"audio_sample_rate,omitempty"`
+	AudioChannels    int    `json:"audio_channels,omitempty"`
+	AudioCodec       string `json:"audio_codec,omitempty"`
+	VideoCodec       string `json:"video_codec,omitempty"`
+	HasAudio         bool   `json:"has_audio,omitempty"`
+	HasVideo         bool   `json:"has_video,omitempty"`
+	Adaptive         bool   `json:"adaptive,omitempty"`
+	Protocol         string `json:"protocol,omitempty"`
+	NeedsSignature   bool   `json:"needs_signature,omitempty"`
+	HasDRM           bool   `json:"has_drm,omitempty"`
+	SourceClient     string `json:"source_client,omitempty"`
+	SourceClientID   string `json:"source_client_id,omitempty"`
+	SourceVersion    string `json:"source_client_version,omitempty"`
+	SourceUserAgent  string `json:"source_user_agent,omitempty"`
+	SourceCookies    bool   `json:"source_supports_cookies,omitempty"`
+	RequiresPOT      bool   `json:"requires_pot,omitempty"`
+	HadNChallenge    bool   `json:"had_n_challenge,omitempty"`
+	SolvedNChallenge bool   `json:"solved_n_challenge,omitempty"`
 }
 
 func NewClient(cookie string) *Client {
@@ -209,6 +319,11 @@ func NewClientWithOptions(options ClientOptions) *Client {
 	if user_agent == "" {
 		user_agent = default_user_agent
 	}
+	var logger *zerolog.Logger
+	if options.Logger != nil {
+		component_logger := options.Logger.With().Str("component", "youtube_scraper").Logger()
+		logger = &component_logger
+	}
 	return &Client{
 		HTTPClient:   http_client,
 		BaseURL:      base_url,
@@ -218,6 +333,7 @@ func NewClientWithOptions(options ClientOptions) *Client {
 		CookieReader: options.CookieReader,
 		Cache:        options.Cache,
 		ForceRefresh: options.ForceRefresh,
+		Logger:       logger,
 	}
 }
 
@@ -230,9 +346,19 @@ func (c *Client) FetchContext(ctx context.Context, raw_url string) (*VideoInfo, 
 }
 
 func (c *Client) Extract(ctx context.Context, raw_url string) (*VideoInfo, error) {
+	started := time.Now()
 	video_id, ok := ExtractVideoID(raw_url)
 	if !ok {
 		return nil, fmt.Errorf("unsupported youtube URL: %s", raw_url)
+	}
+	if c != nil && c.Logger != nil {
+		c.Logger.Info().
+			Str("video_id", video_id).
+			Bool("force_refresh", c.ForceRefresh).
+			Bool("configured_cookie", strings.TrimSpace(c.Cookie) != "").
+			Bool("cookie_reader_available", c.CookieReader != nil).
+			Bool("configured_po_token", strings.TrimSpace(c.PoToken) != "").
+			Msg("youtube extraction started")
 	}
 	watch_url := canonical_video_url(video_id)
 	webpage, err := c.fetch_watch_webpage(ctx, video_id)
@@ -248,6 +374,16 @@ func (c *Client) Extract(ctx context.Context, raw_url string) (*VideoInfo, error
 	initial_data_owner, _, _ := parse_initial_data_owner(webpage)
 	ytcfg_json, _, _ := ExtractYTCfgJSON(webpage)
 	ytcfg, _ := parse_yt_cfg(webpage)
+	if has_player_response {
+		page_client := innertube_client{
+			Name:           "web",
+			HeaderID:       "1",
+			UserAgent:      c.user_agent(),
+			UseCookies:     true,
+			GVSRequiresPOT: true,
+		}
+		set_player_response_format_source(&player_response, page_client, page_client_version(ytcfg))
+	}
 	player := c.new_player_resolver(ctx, webpage, ytcfg)
 	player_responses := make([]raw_player_response, 0, 4)
 	if has_player_response {
@@ -318,6 +454,7 @@ func (c *Client) Extract(ctx context.Context, raw_url string) (*VideoInfo, error
 	if len(info.Formats) == 0 {
 		info.Warnings = append(info.Warnings, "未提取到可直接下载的 YouTube 格式")
 	}
+	c.log_extraction_result(info, time.Since(started))
 	return info, nil
 }
 
@@ -413,6 +550,13 @@ func (c *Client) fetch_player_api(ctx context.Context, video_id string, ytcfg ma
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return raw_player_response{}, err
 	}
+	set_player_response_format_source(&out, innertube_client{
+		Name:           "web",
+		HeaderID:       "1",
+		UserAgent:      c.user_agent(),
+		UseCookies:     true,
+		GVSRequiresPOT: true,
+	}, context_client_version(context_value))
 	return out, nil
 }
 
@@ -427,6 +571,13 @@ func (c *Client) fetch_player_api_for_client(ctx context.Context, video_id strin
 	context_value := clone_map(client.Context)
 	if context_value == nil {
 		context_value = default_innertube_context()
+	}
+	if client.UsePageClientVersion {
+		if version := page_client_version(ytcfg); version != "" {
+			if client_map, ok := context_value["client"].(map[string]any); ok {
+				client_map["clientVersion"] = version
+			}
+		}
 	}
 	query := map[string]any{
 		"context":        context_value,
@@ -485,6 +636,7 @@ func (c *Client) fetch_player_api_for_client(ctx context.Context, video_id strin
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return raw_player_response{}, err
 	}
+	set_player_response_format_source(&out, client, context_client_version(context_value))
 	return out, nil
 }
 
@@ -498,15 +650,14 @@ func (c *Client) download_headers(referer string) map[string]string {
 		cookie_url = c.base_url()
 	}
 	headers := map[string]string{
-		"User-Agent":       c.user_agent(),
-		"Accept":           "*/*",
-		"Accept-Encoding":  "identity",
-		"Accept-Language":  "en-US,en;q=0.9",
-		"Referer":          referer,
-		"Sec-Fetch-Dest":   "video",
-		"Sec-Fetch-Mode":   "no-cors",
-		"Sec-Fetch-Site":   "cross-site",
-		"X-YouTube-Client": "web",
+		"User-Agent":      c.user_agent(),
+		"Accept":          "*/*",
+		"Accept-Encoding": "identity",
+		"Accept-Language": "en-US,en;q=0.9",
+		"Referer":         referer,
+		"Sec-Fetch-Dest":  "video",
+		"Sec-Fetch-Mode":  "no-cors",
+		"Sec-Fetch-Site":  "cross-site",
 	}
 	if cookie := c.cookie(cookie_url); cookie != "" {
 		headers["Cookie"] = cookie
@@ -516,6 +667,32 @@ func (c *Client) download_headers(referer string) map[string]string {
 
 func (c *Client) DownloadHeaders(referer string) map[string]string {
 	return c.download_headers(referer)
+}
+
+// DownloadHeadersForFormat returns the headers for the Innertube client that
+// produced a format URL. YouTube may reject a GVS request when an Android URL
+// is replayed with web cookies/headers (or vice versa).
+func (c *Client) DownloadHeadersForFormat(format VideoFormat, referer string) map[string]string {
+	headers := c.download_headers(referer)
+	if user_agent := strings.TrimSpace(format.SourceUserAgent); user_agent != "" {
+		headers["User-Agent"] = user_agent
+	}
+	if client_id := strings.TrimSpace(format.SourceClientID); client_id != "" {
+		headers["X-YouTube-Client-Name"] = client_id
+	}
+	if version := strings.TrimSpace(format.SourceVersion); version != "" {
+		headers["X-YouTube-Client-Version"] = version
+	}
+	if format.SourceClient != "" && !format.SourceCookies {
+		delete(headers, "Cookie")
+	}
+	if strings.HasPrefix(strings.ToLower(format.SourceClient), "android") {
+		delete(headers, "Referer")
+		delete(headers, "Sec-Fetch-Dest")
+		delete(headers, "Sec-Fetch-Mode")
+		delete(headers, "Sec-Fetch-Site")
+	}
+	return headers
 }
 
 func (c *Client) set_default_headers(req *http.Request, referer string) {
@@ -563,21 +740,67 @@ func (c *Client) cookie(raw_url string) string {
 	return ""
 }
 
-func (c *Client) po_token() string {
+type po_token_spec struct {
+	client  string
+	context string
+	token   string
+}
+
+func (c *Client) po_token_for(client_name string, token_context string) string {
 	if c == nil {
 		return ""
 	}
-	token := strings.TrimSpace(c.PoToken)
-	if token == "" {
-		return ""
-	}
-	if before, after, ok := strings.Cut(token, "+"); ok {
-		meta := strings.ToLower(strings.TrimSpace(before))
-		if strings.Contains(meta, ".") && !strings.HasSuffix(meta, ".gvs") {
-			return ""
+	client_name = strings.ToLower(strings.TrimSpace(client_name))
+	token_context = strings.ToLower(strings.TrimSpace(token_context))
+	var fallback string
+	for _, spec := range parse_po_token_specs(c.PoToken) {
+		if spec.context != token_context {
+			continue
 		}
-		token = after
+		if spec.client == client_name && client_name != "" {
+			return spec.token
+		}
+		if spec.client == "" && fallback == "" {
+			fallback = spec.token
+		}
 	}
+	return fallback
+}
+
+func parse_po_token_specs(raw_value string) []po_token_spec {
+	parts := strings.Split(strings.TrimSpace(raw_value), ",")
+	specs := make([]po_token_spec, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		spec := po_token_spec{context: "gvs"}
+		token := part
+		if meta, value, ok := strings.Cut(part, "+"); ok {
+			meta = strings.ToLower(strings.TrimSpace(meta))
+			token = value
+			if client, context_name, has_context := strings.Cut(meta, "."); has_context {
+				spec.client = strings.TrimSpace(client)
+				spec.context = strings.TrimSpace(context_name)
+			} else if meta == "gvs" || meta == "player" || meta == "subs" {
+				spec.context = meta
+			} else {
+				// A PO Token is base64url in normal use and therefore does not
+				// contain '+'. Preserve unusual legacy bare values rather than
+				// interpreting an unknown prefix as client metadata.
+				token = part
+			}
+		}
+		spec.token = sanitize_po_token(token)
+		if spec.token != "" && (spec.context == "gvs" || spec.context == "player" || spec.context == "subs") {
+			specs = append(specs, spec)
+		}
+	}
+	return specs
+}
+
+func sanitize_po_token(token string) string {
 	token, _ = url.QueryUnescape(token)
 	for _, sep := range []string{"?", "&", "#"} {
 		if i := strings.Index(token, sep); i >= 0 {
@@ -813,9 +1036,41 @@ type raw_player_response struct {
 	VideoDetails      raw_video_details      `json:"videoDetails"`
 	StreamingData     raw_streaming_data     `json:"streamingData"`
 	ResponseContext   raw_response_context   `json:"responseContext"`
+	Captions          raw_captions           `json:"captions"`
 	Microformat       struct {
 		Player raw_microformat `json:"playerMicroformatRenderer"`
 	} `json:"microformat"`
+}
+
+type raw_captions struct {
+	Player struct {
+		CaptionTracks          []raw_caption_track        `json:"captionTracks"`
+		AudioTracks            []raw_caption_audio_track  `json:"audioTracks"`
+		TranslationLanguages   []raw_translation_language `json:"translationLanguages"`
+		DefaultAudioTrackIndex int                        `json:"defaultAudioTrackIndex"`
+	} `json:"playerCaptionsTracklistRenderer"`
+}
+
+type raw_caption_track struct {
+	BaseURL        string        `json:"baseUrl"`
+	Name           text_renderer `json:"name"`
+	VssID          string        `json:"vssId"`
+	LanguageCode   string        `json:"languageCode"`
+	Kind           string        `json:"kind"`
+	IsTranslatable bool          `json:"isTranslatable"`
+}
+
+type raw_caption_audio_track struct {
+	CaptionTrackIndices      []int  `json:"captionTrackIndices"`
+	DefaultCaptionTrackIndex int    `json:"defaultCaptionTrackIndex"`
+	AudioTrackID             string `json:"audioTrackId"`
+	DisplayName              string `json:"displayName"`
+	HasDefaultTrack          bool   `json:"hasDefaultTrack"`
+}
+
+type raw_translation_language struct {
+	LanguageCode string        `json:"languageCode"`
+	LanguageName text_renderer `json:"languageName"`
 }
 
 type raw_playability_status struct {
@@ -853,6 +1108,8 @@ type raw_microformat struct {
 	ExternalChannelID string        `json:"externalChannelId"`
 	ViewCount         string        `json:"viewCount"`
 	Category          string        `json:"category"`
+	PublishDate       string        `json:"publishDate"`
+	UploadDate        string        `json:"uploadDate"`
 	IsFamilySafe      *bool         `json:"isFamilySafe"`
 	IsShortsEligible  bool          `json:"isShortsEligible"`
 	Thumbnail         raw_thumbnail `json:"thumbnail"`
@@ -924,25 +1181,64 @@ type raw_streaming_data struct {
 }
 
 type raw_format struct {
-	Itag             int      `json:"itag"`
-	URL              string   `json:"url"`
-	SignatureCipher  string   `json:"signatureCipher"`
-	Cipher           string   `json:"cipher"`
-	MimeType         string   `json:"mimeType"`
-	Bitrate          int      `json:"bitrate"`
-	AverageBitrate   int      `json:"averageBitrate"`
-	Width            int      `json:"width"`
-	Height           int      `json:"height"`
-	FPS              int      `json:"fps"`
-	Quality          string   `json:"quality"`
-	QualityLabel     string   `json:"qualityLabel"`
-	AudioQuality     string   `json:"audioQuality"`
-	AudioSampleRate  string   `json:"audioSampleRate"`
-	AudioChannels    int      `json:"audioChannels"`
-	ContentLength    string   `json:"contentLength"`
-	ApproxDurationMS string   `json:"approxDurationMs"`
-	DRMFamilies      []string `json:"drmFamilies"`
-	Type             string   `json:"type"`
+	Itag              int      `json:"itag"`
+	URL               string   `json:"url"`
+	SignatureCipher   string   `json:"signatureCipher"`
+	Cipher            string   `json:"cipher"`
+	MimeType          string   `json:"mimeType"`
+	Bitrate           int      `json:"bitrate"`
+	AverageBitrate    int      `json:"averageBitrate"`
+	Width             int      `json:"width"`
+	Height            int      `json:"height"`
+	FPS               int      `json:"fps"`
+	Quality           string   `json:"quality"`
+	QualityLabel      string   `json:"qualityLabel"`
+	AudioQuality      string   `json:"audioQuality"`
+	AudioSampleRate   string   `json:"audioSampleRate"`
+	AudioChannels     int      `json:"audioChannels"`
+	ContentLength     string   `json:"contentLength"`
+	ApproxDurationMS  string   `json:"approxDurationMs"`
+	DRMFamilies       []string `json:"drmFamilies"`
+	Type              string   `json:"type"`
+	SourceClient      string   `json:"-"`
+	SourceClientID    string   `json:"-"`
+	SourceVersion     string   `json:"-"`
+	SourceUserAgent   string   `json:"-"`
+	SourceCookies     bool     `json:"-"`
+	SourceRequiresPOT bool     `json:"-"`
+}
+
+func page_client_version(ytcfg map[string]any) string {
+	if version := string_from_map(ytcfg, "INNERTUBE_CLIENT_VERSION"); version != "" {
+		return version
+	}
+	context_value, _ := ytcfg["INNERTUBE_CONTEXT"].(map[string]any)
+	return context_client_version(context_value)
+}
+
+func context_client_version(context_value map[string]any) string {
+	if client_map, ok := context_value["client"].(map[string]any); ok {
+		return string_from_map(client_map, "clientVersion")
+	}
+	return ""
+}
+
+func set_player_response_format_source(response *raw_player_response, client innertube_client, version string) {
+	if response == nil {
+		return
+	}
+	set_source := func(formats []raw_format) {
+		for index := range formats {
+			formats[index].SourceClient = client.Name
+			formats[index].SourceClientID = client.HeaderID
+			formats[index].SourceVersion = version
+			formats[index].SourceUserAgent = client.UserAgent
+			formats[index].SourceCookies = client.UseCookies
+			formats[index].SourceRequiresPOT = client.GVSRequiresPOT
+		}
+	}
+	set_source(response.StreamingData.Formats)
+	set_source(response.StreamingData.AdaptiveFormats)
 }
 
 func (r raw_player_response) has_streaming_data() bool {
@@ -959,12 +1255,15 @@ func player_response_without_streaming_data(response raw_player_response) raw_pl
 
 func merge_player_responses(base, next raw_player_response) raw_player_response {
 	if next.VideoDetails.VideoID != "" || next.PlayabilityStatus.Status != "" {
+		captions := merge_raw_captions(base.Captions, next.Captions)
 		base = next
+		base.Captions = captions
 		return base
 	}
 	if len(next.StreamingData.Formats) > 0 || len(next.StreamingData.AdaptiveFormats) > 0 {
 		base.StreamingData = next.StreamingData
 	}
+	base.Captions = merge_raw_captions(base.Captions, next.Captions)
 	return base
 }
 
@@ -983,6 +1282,7 @@ func merge_player_response_list(responses []raw_player_response) raw_player_resp
 		if out.Microformat.Player.Title.SimpleText == "" && len(out.Microformat.Player.Title.Runs) == 0 {
 			out.Microformat = response.Microformat
 		}
+		out.Captions = merge_raw_captions(out.Captions, response.Captions)
 		out.StreamingData.Formats = append_unique_raw_formats(out.StreamingData.Formats, response.StreamingData.Formats...)
 		out.StreamingData.AdaptiveFormats = append_unique_raw_formats(out.StreamingData.AdaptiveFormats, response.StreamingData.AdaptiveFormats...)
 		if out.StreamingData.HLSManifestURL == "" {
@@ -996,6 +1296,44 @@ func merge_player_response_list(responses []raw_player_response) raw_player_resp
 		}
 	}
 	return out
+}
+
+func merge_raw_captions(base, next raw_captions) raw_captions {
+	seen_tracks := make(map[string]bool, len(base.Player.CaptionTracks)+len(next.Player.CaptionTracks))
+	for _, track := range base.Player.CaptionTracks {
+		seen_tracks[raw_caption_track_key(track)] = true
+	}
+	for _, track := range next.Player.CaptionTracks {
+		key := raw_caption_track_key(track)
+		if seen_tracks[key] {
+			continue
+		}
+		seen_tracks[key] = true
+		base.Player.CaptionTracks = append(base.Player.CaptionTracks, track)
+	}
+	if len(base.Player.AudioTracks) == 0 && len(next.Player.AudioTracks) > 0 {
+		base.Player.AudioTracks = next.Player.AudioTracks
+		base.Player.DefaultAudioTrackIndex = next.Player.DefaultAudioTrackIndex
+	}
+	seen_languages := make(map[string]bool, len(base.Player.TranslationLanguages)+len(next.Player.TranslationLanguages))
+	for _, language := range base.Player.TranslationLanguages {
+		seen_languages[language.LanguageCode] = true
+	}
+	for _, language := range next.Player.TranslationLanguages {
+		if seen_languages[language.LanguageCode] {
+			continue
+		}
+		seen_languages[language.LanguageCode] = true
+		base.Player.TranslationLanguages = append(base.Player.TranslationLanguages, language)
+	}
+	return base
+}
+
+func raw_caption_track_key(track raw_caption_track) string {
+	if vss_id := strings.TrimSpace(track.VssID); vss_id != "" {
+		return strings.Join([]string{"vss", vss_id, track.LanguageCode, track.Kind}, "\x00")
+	}
+	return strings.Join([]string{"url", track.BaseURL, track.LanguageCode, track.Kind}, "\x00")
 }
 
 func append_unique_raw_formats(base []raw_format, values ...raw_format) []raw_format {
@@ -1052,6 +1390,7 @@ func build_video_info(video_id string, webpage_url string, raw raw_player_respon
 	channel_avatar_url := owner.ChannelAvatarURL
 
 	formats, warnings := extract_formats(raw.StreamingData, player)
+	caption_tracks, caption_audio_tracks, caption_translation_languages := extract_captions(raw.Captions, player)
 	thumbnails := collect_thumbnails(video_id, vd.Thumbnail.Thumbnails, mf.Thumbnail.Thumbnails)
 	thumbnail := best_thumbnail(thumbnails)
 	age_limit := 0
@@ -1073,31 +1412,100 @@ func build_video_info(video_id string, webpage_url string, raw raw_player_respon
 		categories = []string{mf.Category}
 	}
 	return &VideoInfo{
-		ID:                video_id,
-		Title:             title,
-		Description:       first_non_empty(vd.ShortDescription, mf.Description.text()),
-		WebpageURL:        canonical_video_url(video_id),
-		Thumbnail:         thumbnail,
-		Thumbnails:        thumbnails,
-		Duration:          duration,
-		ViewCount:         view_count,
-		AgeLimit:          age_limit,
-		Channel:           channel,
-		ChannelID:         channel_id,
-		ChannelURL:        channel_url,
-		ChannelAvatarURL:  channel_avatar_url,
-		Uploader:          channel,
-		UploaderURL:       channel_url,
-		UploaderAvatarURL: channel_avatar_url,
-		Categories:        categories,
-		Tags:              vd.Keywords,
-		LiveStatus:        live_status,
-		MediaType:         media_type,
-		PlayableInEmbed:   raw.PlayabilityStatus.PlayableInEmbed,
-		Formats:           formats,
-		PlayabilityStatus: PlayabilityStatus{Status: raw.PlayabilityStatus.Status, Reason: raw.PlayabilityStatus.Reason},
-		Warnings:          warnings,
+		ID:                          video_id,
+		Title:                       title,
+		Description:                 first_non_empty(vd.ShortDescription, mf.Description.text()),
+		WebpageURL:                  canonical_video_url(video_id),
+		Thumbnail:                   thumbnail,
+		Thumbnails:                  thumbnails,
+		Duration:                    duration,
+		ViewCount:                   view_count,
+		AgeLimit:                    age_limit,
+		Channel:                     channel,
+		ChannelID:                   channel_id,
+		ChannelURL:                  channel_url,
+		ChannelAvatarURL:            channel_avatar_url,
+		Uploader:                    channel,
+		UploaderURL:                 channel_url,
+		UploaderAvatarURL:           channel_avatar_url,
+		Categories:                  categories,
+		Tags:                        vd.Keywords,
+		PublishDate:                 mf.PublishDate,
+		UploadDate:                  mf.UploadDate,
+		LiveStatus:                  live_status,
+		MediaType:                   media_type,
+		PlayableInEmbed:             raw.PlayabilityStatus.PlayableInEmbed,
+		Formats:                     formats,
+		CaptionTracks:               caption_tracks,
+		CaptionAudioTracks:          caption_audio_tracks,
+		CaptionTranslationLanguages: caption_translation_languages,
+		PlayabilityStatus:           PlayabilityStatus{Status: raw.PlayabilityStatus.Status, Reason: raw.PlayabilityStatus.Reason},
+		Warnings:                    warnings,
 	}
+}
+
+func extract_captions(raw raw_captions, player *player_resolver) ([]CaptionTrack, []CaptionAudioTrack, []CaptionTranslationLanguage) {
+	default_caption_index := -1
+	default_audio_index := raw.Player.DefaultAudioTrackIndex
+	if default_audio_index < 0 || default_audio_index >= len(raw.Player.AudioTracks) {
+		default_audio_index = 0
+	}
+	if len(raw.Player.AudioTracks) > 0 {
+		default_caption_index = raw.Player.AudioTracks[default_audio_index].DefaultCaptionTrackIndex
+		if default_caption_index < 0 || default_caption_index >= len(raw.Player.CaptionTracks) {
+			indices := raw.Player.AudioTracks[default_audio_index].CaptionTrackIndices
+			if len(indices) > 0 {
+				default_caption_index = indices[0]
+			}
+		}
+	} else if len(raw.Player.CaptionTracks) > 0 {
+		default_caption_index = 0
+	}
+
+	tracks := make([]CaptionTrack, 0, len(raw.Player.CaptionTracks))
+	for index, track := range raw.Player.CaptionTracks {
+		base_url := strings.TrimSpace(track.BaseURL)
+		if base_url == "" {
+			continue
+		}
+		if player != nil && player.client != nil {
+			if po_token := player.client.po_token_for("web", "subs"); po_token != "" {
+				base_url = update_url_query(base_url, map[string]string{"pot": po_token})
+			}
+		}
+		tracks = append(tracks, CaptionTrack{
+			BaseURL:        base_url,
+			Name:           track.Name.text(),
+			VssID:          track.VssID,
+			LanguageCode:   track.LanguageCode,
+			Kind:           track.Kind,
+			IsDefault:      index == default_caption_index,
+			IsTranslatable: track.IsTranslatable,
+		})
+	}
+
+	audio_tracks := make([]CaptionAudioTrack, 0, len(raw.Player.AudioTracks))
+	for index, track := range raw.Player.AudioTracks {
+		audio_tracks = append(audio_tracks, CaptionAudioTrack{
+			ID:                       track.AudioTrackID,
+			DisplayName:              track.DisplayName,
+			CaptionTrackIndices:      append([]int(nil), track.CaptionTrackIndices...),
+			DefaultCaptionTrackIndex: track.DefaultCaptionTrackIndex,
+			IsDefault:                track.HasDefaultTrack || index == default_audio_index,
+		})
+	}
+
+	languages := make([]CaptionTranslationLanguage, 0, len(raw.Player.TranslationLanguages))
+	for _, language := range raw.Player.TranslationLanguages {
+		if strings.TrimSpace(language.LanguageCode) == "" {
+			continue
+		}
+		languages = append(languages, CaptionTranslationLanguage{
+			LanguageCode: language.LanguageCode,
+			Name:         language.LanguageName.text(),
+		})
+	}
+	return tracks, audio_tracks, languages
 }
 
 func extract_formats(streaming raw_streaming_data, player *player_resolver) ([]VideoFormat, []string) {
@@ -1107,7 +1515,9 @@ func extract_formats(streaming raw_streaming_data, player *player_resolver) ([]V
 	solved_signature := 0
 	skipped_drm := 0
 	skipped_otf := 0
-	n_challenge := 0
+	skipped_missing_pot := 0
+	skipped_unsolved_n := 0
+	missing_pot_clients := make(map[string]bool)
 	solved_n_challenge := 0
 
 	add := func(raw raw_format, adaptive bool) {
@@ -1123,6 +1533,8 @@ func extract_formats(streaming raw_streaming_data, player *player_resolver) ([]V
 		result := direct_format_url(raw, player)
 		format.URL = result.URL
 		format.NeedsSignature = result.NeedsSignature
+		format.HadNChallenge = result.HadNChallenge
+		format.SolvedNChallenge = result.SolvedNChallenge
 		if result.NeedsSignature {
 			skipped_signature++
 			return
@@ -1130,11 +1542,17 @@ func extract_formats(streaming raw_streaming_data, player *player_resolver) ([]V
 		if format.URL == "" {
 			return
 		}
+		if result.HadNChallenge && !result.SolvedNChallenge {
+			skipped_unsolved_n++
+			return
+		}
+		if raw.SourceRequiresPOT && query_value(format.URL, "pot") == "" {
+			skipped_missing_pot++
+			missing_pot_clients[first_non_empty(raw.SourceClient, "unknown")] = true
+			return
+		}
 		if result.SolvedSignature {
 			solved_signature++
-		}
-		if result.HadNChallenge {
-			n_challenge++
 		}
 		if result.SolvedNChallenge {
 			solved_n_challenge++
@@ -1162,9 +1580,18 @@ func extract_formats(streaming raw_streaming_data, player *player_resolver) ([]V
 	if skipped_otf > 0 {
 		warnings = append(warnings, "部分 YouTube OTF 分片格式当前不支持，已跳过")
 	}
-	if n_challenge > solved_n_challenge {
-		warnings = append(warnings, "部分 URL 包含 YouTube n challenge，当前未解算，下载可能被限速")
-	} else if solved_n_challenge > 0 {
+	if skipped_missing_pot > 0 {
+		clients := make([]string, 0, len(missing_pot_clients))
+		for client_name := range missing_pot_clients {
+			clients = append(clients, client_name)
+		}
+		sort.Strings(clients)
+		warnings = append(warnings, fmt.Sprintf("已跳过 %d 个缺少匹配 GVS PO Token 的 YouTube HTTPS 格式（client: %s）", skipped_missing_pot, strings.Join(clients, ", ")))
+	}
+	if skipped_unsolved_n > 0 {
+		warnings = append(warnings, fmt.Sprintf("已跳过 %d 个未能解算 n challenge 的 YouTube HTTPS 格式，以避免下载时 HTTP 403", skipped_unsolved_n))
+	}
+	if solved_n_challenge > 0 {
 		warnings = append(warnings, "已解算 YouTube n challenge")
 	}
 	if streaming.HLSManifestURL != "" || streaming.DASHManifestURL != "" {
@@ -1202,6 +1629,12 @@ func format_from_raw(raw raw_format, adaptive bool) VideoFormat {
 		Adaptive:        adaptive,
 		Protocol:        "https",
 		HasDRM:          len(raw.DRMFamilies) > 0,
+		SourceClient:    raw.SourceClient,
+		SourceClientID:  raw.SourceClientID,
+		SourceVersion:   raw.SourceVersion,
+		SourceUserAgent: raw.SourceUserAgent,
+		SourceCookies:   raw.SourceCookies,
+		RequiresPOT:     raw.SourceRequiresPOT,
 	}
 }
 
@@ -1215,7 +1648,7 @@ type format_url_result struct {
 
 func direct_format_url(raw raw_format, player *player_resolver) format_url_result {
 	if raw.URL != "" {
-		return finalize_format_url(resolve_n_challenge(raw.URL, player), player)
+		return finalize_format_url(resolve_n_challenge(raw.URL, player), player, raw.SourceClient, raw.SourceRequiresPOT)
 	}
 	cipher := first_non_empty(raw.SignatureCipher, raw.Cipher)
 	if cipher == "" {
@@ -1245,9 +1678,9 @@ func direct_format_url(raw raw_format, player *player_resolver) format_url_resul
 		format_url = update_url_query(format_url, map[string]string{sp: sig})
 		result := resolve_n_challenge(format_url, player)
 		result.SolvedSignature = true
-		return finalize_format_url(result, player)
+		return finalize_format_url(result, player, raw.SourceClient, raw.SourceRequiresPOT)
 	}
-	return finalize_format_url(resolve_n_challenge(format_url, player), player)
+	return finalize_format_url(resolve_n_challenge(format_url, player), player, raw.SourceClient, raw.SourceRequiresPOT)
 }
 
 func resolve_n_challenge(format_url string, player *player_resolver) format_url_result {
@@ -1270,11 +1703,14 @@ func resolve_n_challenge(format_url string, player *player_resolver) format_url_
 	return result
 }
 
-func finalize_format_url(result format_url_result, player *player_resolver) format_url_result {
+func finalize_format_url(result format_url_result, player *player_resolver, source_client string, requires_pot bool) format_url_result {
 	if result.URL == "" || result.NeedsSignature || player == nil || player.client == nil {
 		return result
 	}
-	if po_token := player.client.po_token(); po_token != "" {
+	if !requires_pot || query_value(result.URL, "pot") != "" {
+		return result
+	}
+	if po_token := player.client.po_token_for(source_client, "gvs"); po_token != "" {
 		result.URL = update_url_query(result.URL, map[string]string{"pot": po_token})
 	}
 	return result
@@ -1386,7 +1822,7 @@ func (r *player_resolver) solve_signature(challenge string) (string, error) {
 			return solved, nil
 		}
 	}
-	solved, err := solve_player_challenges_with_goja(r.ctx, code, "sig", []string{challenge})
+	solved, err := r.solve_cached_player_challenges(code, "sig", []string{challenge})
 	if err != nil {
 		if name == "" {
 			return "", fmt.Errorf("signature function not found: %w", err)
@@ -1414,7 +1850,7 @@ func (r *player_resolver) solve_n(challenge string) (string, error) {
 			return solved, nil
 		}
 	}
-	solved, err := solve_player_challenges_with_goja(r.ctx, code, "n", []string{challenge})
+	solved, err := r.solve_cached_player_challenges(code, "n", []string{challenge})
 	if err != nil {
 		if name == "" {
 			return "", fmt.Errorf("n function not found: %w", err)
@@ -1438,6 +1874,7 @@ func (r *player_resolver) player_code() (string, error) {
 		r.fetch_err = fmt.Errorf("player JS URL not found")
 		return "", r.fetch_err
 	}
+	fetch_started := time.Now()
 	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.player_url, nil)
 	if err != nil {
 		r.fetch_err = err
@@ -1460,6 +1897,13 @@ func (r *player_resolver) player_code() (string, error) {
 		return "", err
 	}
 	r.player_js = string(body)
+	if r.client != nil && r.client.Logger != nil {
+		r.client.Logger.Info().
+			Str("player_id", youtube_player_id(r.player_url)).
+			Int("player_js_bytes", len(body)).
+			Dur("elapsed", time.Since(fetch_started)).
+			Msg("youtube player JavaScript fetched")
+	}
 	return r.player_js, nil
 }
 

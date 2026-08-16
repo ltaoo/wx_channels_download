@@ -86,6 +86,7 @@ func (a *ChannelsAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, e
 	if detail == nil {
 		return nil, nil
 	}
+	select_content_video_variant(detail, a.video_download_spec(object, nil))
 	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
 }
 

@@ -1,5 +1,5 @@
 /// <reference path="./mp.utils.js" />
-/// <reference path="../../../../frontend/inject/virtual-list-view.js" />
+/// <reference path="../../../../frontend/public/virtual-list-view.js" />
 
 (() => {
   if (!window.WXMPUtils) {

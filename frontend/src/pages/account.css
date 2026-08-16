@@ -4,9 +4,21 @@
   overflow: hidden;
 }
 
-.wx-account-page > .wx-content-header,
-.wx-account-page > .wx-content-pagination {
+.wx-account-page > .dm-pagination {
   flex: 0 0 auto;
+}
+
+.wx-account-toolbar-wrap {
+  flex: 0 0 auto;
+}
+
+.wx-account-toolbar {
+  justify-content: flex-start;
+}
+
+.wx-account-search {
+  min-height: var(--dm-control-height-md);
+  flex: 1 1 480px;
 }
 
 .wx-account-page > .wx-content-main {
@@ -20,15 +32,11 @@
   min-height: 72px;
 }
 
-.wx-content-row-head.wx-account-row {
-  min-height: auto;
-}
-
 .wx-account-identity {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--dm-space-3);
 }
 
 .wx-account-avatar-wrap {
@@ -38,7 +46,7 @@
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 50%;
-  background: var(--wx-content-panel-soft);
+  background: var(--dm-content-panel-soft);
 }
 
 .wx-account-avatar-fallback,
@@ -53,7 +61,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--wx-content-muted);
+  color: var(--dm-content-muted);
 }
 
 .wx-account-avatar {
@@ -65,14 +73,14 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dm-space-2-5);
 }
 
 .wx-account-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--wx-content-text);
-  font-size: 14px;
+  color: var(--dm-content-text);
+  font-size: var(--dm-font-size-base);
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -82,9 +90,9 @@
 .wx-account-added {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--wx-content-muted);
-  font-size: 12px;
+  gap: var(--dm-space-1);
+  color: var(--dm-content-muted);
+  font-size: var(--dm-font-size-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -94,15 +102,23 @@
 }
 
 @media (max-width: 520px) {
+  .wx-account-toolbar .wx-content-filter-actions {
+    width: 100%;
+  }
+
+  .wx-account-toolbar .wx-account-page-button {
+    flex: 1 1 0;
+  }
+
   .wx-account-row {
     grid-template-columns: minmax(0, 1fr) 58px 96px;
-    gap: 8px;
-    padding-right: 12px;
-    padding-left: 12px;
+    gap: var(--dm-space-2);
+    padding-right: var(--dm-space-3);
+    padding-left: var(--dm-space-3);
   }
 
   .wx-account-identity {
-    gap: 8px;
+    gap: var(--dm-space-2);
   }
 
   .wx-account-avatar-wrap {
@@ -113,7 +129,7 @@
   .wx-account-details {
     align-items: flex-start;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--dm-space-1);
   }
 
   .wx-account-name {
@@ -122,7 +138,7 @@
 
   .wx-account-content-count,
   .wx-account-added {
-    font-size: 11px;
+    font-size: var(--dm-font-size-xs);
     white-space: normal;
   }
 }

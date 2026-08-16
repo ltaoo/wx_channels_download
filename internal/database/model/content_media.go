@@ -187,9 +187,9 @@ type ContentRelation struct {
 
 func (ContentRelation) TableName() string { return "content_relation" }
 
-// BuildContentVideoSubtitleAssetKey returns the catalog key shared by a
-// subtitle source and its DownloadResource content asset reference.
-func BuildContentVideoSubtitleAssetKey(track_key string, source_key string) string {
+// BuildContentTextTrackAssetKey returns the catalog key shared by a text track
+// source and its DownloadResource content asset reference.
+func BuildContentTextTrackAssetKey(track_key string, source_key string) string {
 	return strings.TrimSpace(track_key) + ":" + strings.TrimSpace(source_key)
 }
 

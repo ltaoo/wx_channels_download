@@ -79,7 +79,22 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 		}
 		return prepared, nil
 	}
-	return hermes.PreparedResource{}, fmt.Errorf("resource probe returned status code %d", resp.StatusCode)
+	return hermes.PreparedResource{}, probe_response_status_error(resp.StatusCode, resp.Header, len(resp.Body))
+}
+
+func probe_response_status_error(status_code int, headers http.Header, body_bytes int) error {
+	detail := fmt.Sprintf(
+		"response content-type=%q content-length=%q content-range=%q server=%q body-bytes=%d",
+		headers.Get("Content-Type"),
+		headers.Get("Content-Length"),
+		headers.Get("Content-Range"),
+		headers.Get("Server"),
+		body_bytes,
+	)
+	if status_code == http.StatusUnauthorized || status_code == http.StatusForbidden {
+		return fmt.Errorf("resource probe rejected with HTTP status %d: endpoint authorization, signed URL, access token, or request challenge may be missing, invalid, or expired (%s)", status_code, detail)
+	}
+	return fmt.Errorf("resource probe returned HTTP status %d (%s)", status_code, detail)
 }
 
 // Open downloads a resource according to ReadRequest and returns a readable data stream.
@@ -131,7 +146,7 @@ func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, r
 	}
 	if resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
+		return nil, range_response_status_error(resp.StatusCode)
 	}
 	start, end, _, ok := parse_content_range(resp.Header.Get("Content-Range"))
 	if !ok || start != request.OffsetStart || end > request.OffsetEnd {
@@ -140,6 +155,19 @@ func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, r
 	}
 
 	return resp.Body, nil
+}
+
+func range_response_status_error(status_code int) error {
+	switch status_code {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("range request rejected with HTTP status %d: endpoint authorization, signed URL, or access token may be missing, invalid, or expired", status_code)
+	case http.StatusRequestedRangeNotSatisfiable:
+		return fmt.Errorf("range request rejected with HTTP status %d: requested byte range is not satisfiable", status_code)
+	case http.StatusOK:
+		return errors.New("server ignored the requested byte range and returned HTTP status 200")
+	default:
+		return fmt.Errorf("range request returned unexpected HTTP status %d", status_code)
+	}
 }
 
 func full_range_response_matches_request(resp *http.Response, request hermes.ReadRequest) bool {

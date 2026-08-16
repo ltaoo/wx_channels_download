@@ -57,15 +57,15 @@ func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
 }
 
 // Fetch retrieves the structured result for a supported Bilibili URL.
-// Bangumi play pages return a BangumiInfo combining PlayURLSSRData with the
-// episode page API response; other URL types retain the existing VideoInfo
-// list result.
+// Bangumi play and media pages return a BangumiInfo combining
+// PlayURLSSRData with the episode page API response; other URL types retain
+// the existing VideoInfo list result.
 func (c *Client) Fetch(raw_url string) (any, error) {
 	raw_url = strings.TrimSpace(raw_url)
 	if raw_url == "" {
 		return nil, fmt.Errorf("B站URL不能为空")
 	}
-	if IsBangumiPlayURL(raw_url) {
+	if IsBangumiURL(raw_url) {
 		bangumi_info, err := c.GetBangumiInfo(raw_url)
 		if err != nil {
 			return nil, err

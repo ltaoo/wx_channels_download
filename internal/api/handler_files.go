@@ -28,18 +28,7 @@ func (c *APIClient) handle_show_file(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	full_file_path := ""
-	if strings.TrimSpace(body.Path) != "" {
-		relative_path := strings.TrimSpace(body.Path)
-		if filepath.IsAbs(relative_path) {
-			full_file_path = relative_path
-		} else {
-			full_file_path = filepath.Join(c.cfg.DownloadDir, relative_path)
-		}
-	}
-	if full_file_path == "" && strings.TrimSpace(body.Name) != "" {
-		full_file_path = filepath.Join(c.cfg.DownloadDir, body.Name)
-	}
+	full_file_path := resolve_show_file_path(c.cfg.DownloadDir, body)
 	if full_file_path == "" {
 		result.Err(ctx, 400, "Missing the resource path")
 		return
@@ -53,6 +42,38 @@ func (c *APIClient) handle_show_file(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, nil)
+}
+
+func resolve_show_file_path(download_dir string, body ShowFileBody) string {
+	path := strings.TrimSpace(body.Path)
+	name := strings.TrimSpace(body.Name)
+	if path == "" {
+		if name == "" {
+			return ""
+		}
+		return filepath.Join(download_dir, name)
+	}
+
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(download_dir, path)
+	}
+	path = filepath.Clean(path)
+	if name == "" {
+		return path
+	}
+
+	// Download task responses store the directory and file name separately.
+	// Keep accepting a complete file path for compatibility with older tasks.
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return filepath.Join(path, name)
+		}
+		return path
+	}
+	if filepath.Base(path) == name {
+		return path
+	}
+	return filepath.Join(path, name)
 }
 
 func (c *APIClient) handle_fetch_file(ctx *gin.Context) {

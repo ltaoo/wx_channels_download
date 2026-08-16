@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title description">
+  <title id="title">wx_channels_download smile tunnel tray icon</title>
+  <desc id="description">An optically enlarged golden capsule with white D, M, and smile tunnel details.</desc>
+  <g transform="matrix(1.069767 0 0 1.352941 -3.488372 -17.647056)">
+    <rect x="7" y="16" width="86" height="68" rx="28" fill="#f3b41b"/>
+    <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 31v29M22 31h6c10 0 16 5 16 14.5S38 60 28 60h-6" stroke-width="8"/>
+      <path d="M53 60V37c0-5 2-8 6-8s6 4 7 13c.5 4 2.5 4 3 0 1-9 3-13 7-13s6 3 6 8v23" stroke-width="8"/>
+      <path d="M29 68q21 12 43 0" stroke-width="6"/>
+    </g>
+  </g>
+</svg>

@@ -102,6 +102,7 @@ type ContentDetail struct {
 	Data        any                          `json:"data"`
 	Content     *model.Content               `json:"content,omitempty"`
 	Relation    *model.ContentRelation       `json:"relation,omitempty"`
+	Relations   []model.ContentRelation      `json:"relations,omitempty"`
 	Influencers []ContentInfluencerReference `json:"influencers,omitempty"`
 }
 
