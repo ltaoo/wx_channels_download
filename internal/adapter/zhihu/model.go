@@ -218,9 +218,9 @@ func ToAccount(user *zhihu.User) (*model.Account, error) {
 		return nil, fmt.Errorf("zhihu user is empty")
 	}
 
-	external_id := zhihu.UserDisplayName(*user)
+	external_id := first_non_empty_str(user.URLToken, user.URLTokenSnake)
 	if external_id == "" {
-		return nil, fmt.Errorf("zhihu user has no identifiable name")
+		return nil, fmt.Errorf("zhihu user has no URL token")
 	}
 
 	now := util.NowMillis()
@@ -229,7 +229,7 @@ func ToAccount(user *zhihu.User) (*model.Account, error) {
 	return &model.Account{
 		Id:         BuildAccountID(external_id),
 		PlatformId: PlatformID,
-		ExternalId: user.ID,
+		ExternalId: external_id,
 		Nickname:   zhihu.UserDisplayName(*user),
 		Signature:  user.Headline,
 		AvatarURL:  zhihu.UserAvatarURL(*user),
@@ -411,7 +411,7 @@ func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	}
 
 	author := &feed.Target.Author
-	external_id := first_non_empty_str(author.ID, author.URLToken)
+	external_id := strings.TrimSpace(author.URLToken)
 	if external_id == "" {
 		return nil
 	}
