@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>内容工作台</title>
+  <title>Download & Manage</title>
   <base href="/" />
-  <link rel="icon" href="/favicon.ico?v=smile-tunnel-v7-white" type="image/x-icon" />
-  <link href="src/style.css" rel="stylesheet" />
+  <link rel="icon" href="/favicon.ico?v=__WX_DOWNLOAD_VERSION__" type="image/x-icon" />
+  <link href="src/style.css?v=__WX_DOWNLOAD_VERSION__" rel="stylesheet" />
   <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
    <script>
     window.__d_config = Object.assign({}, __WX_DOWNLOAD_CONFIG_JSON__, {
@@ -21,14 +21,14 @@
   <script>
     Object.assign(window, Timeless);
   </script>
-  <script src="public/dl.utils.js"></script>
-  <script src="public/dl.sdk.js"></script>
-  <script src="public/virtual-list-view.js"></script>
+  <script src="public/dl.utils.js?v=__WX_DOWNLOAD_VERSION__"></script>
+  <script src="public/dl.sdk.js?v=__WX_DOWNLOAD_VERSION__"></script>
+  <script src="public/virtual-list-view.js?v=__WX_DOWNLOAD_VERSION__"></script>
 </head>
 
 <body>
   <div id="root"></div>
-  <script type="module" src="src/index.js"></script>
+  <script type="module" src="src/index.js?v=__WX_DOWNLOAD_VERSION__"></script>
 </body>
 
 </html>

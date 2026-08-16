@@ -30,7 +30,7 @@ func NewServer(mode string) http.Handler {
 		Root:                root,
 		Embedded:            embedded,
 		EntryPage:           "index.html",
-		StaticAssetPrefixes: []string{"/public", "/src"},
-		NoFallbackPrefixes:  []string{"/api", "/ws", "/rss"},
+		StaticAssetPrefixes: []string{"/public"},
+		NoFallbackPrefixes:  []string{"/api", "/ws", "/rss", "/src"},
 	})
 }

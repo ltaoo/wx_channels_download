@@ -168,7 +168,16 @@ function AccountRow(props) {
         AccountAvatar({ account }),
         View({ class: "wx-account-details" }, [
           View({ class: "wx-account-name" }, [account.nickname]),
-          AccountPlatform({ store: vm$, account }),
+          View({ class: "wx-account-meta" }, [
+            AccountPlatform({ store: vm$, account }),
+            View(
+              {
+                class: "wx-account-id",
+                attributes: { title: account.id || "" },
+              },
+              [`ID: ${account.id || "-"}`],
+            ),
+          ]),
         ]),
       ],
     ),

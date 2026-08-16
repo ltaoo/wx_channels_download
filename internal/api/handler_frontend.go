@@ -53,6 +53,7 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	}
 	html := c.renderFrontendHTML(data)
 
+	setFrontendHTMLCacheHeaders(ctx.Writer.Header())
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", html)
 }
 
@@ -77,7 +78,7 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 	cfgByte, _ := json.Marshal(frontendVariables)
 	html := string(data)
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
-	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", c.cfg.Version)
 	return []byte(html)
 }
 
@@ -143,9 +144,16 @@ func (w *frontendHTMLResponseWriter) flush(render func([]byte) []byte) {
 		return
 	}
 	body := render(w.body.Bytes())
+	setFrontendHTMLCacheHeaders(w.Header())
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.ResponseWriter.WriteHeader(w.statusCode)
 	_, _ = w.ResponseWriter.Write(body)
+}
+
+func setFrontendHTMLCacheHeaders(header http.Header) {
+	header.Set("Cache-Control", "no-store")
+	header.Set("Pragma", "no-cache")
+	header.Set("Expires", "0")
 }
 
 // handleFrontendTip handles frontend log/tip messages posted from injected pages.
