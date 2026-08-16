@@ -525,6 +525,30 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 	})
 	Register(ConfigField{
+		Key:         "cookie.uuid",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "允许向 Cookie 更新接口提交数据的 CookieCloud UUID；留空时接受请求中的 UUID",
+		Title:       "CookieCloud UUID",
+		Group:       "Cookie",
+	})
+	Register(ConfigField{
+		Key:         "cookie.password",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "CookieCloud 密码，用于派生 Cookie 更新接口的解密密钥",
+		Title:       "CookieCloud 密码",
+		Group:       "Cookie",
+	})
+	Register(ConfigField{
+		Key:         "cookie.key",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "可选的 16 位 CookieCloud 解密密钥；配置后优先于 password",
+		Title:       "CookieCloud 密钥",
+		Group:       "Cookie",
+	})
+	Register(ConfigField{
 		Key:         "cloudflare.accountId",
 		Type:        ConfigTypeString,
 		Default:     "",
@@ -797,6 +821,14 @@ func (c *Config) GetBool(path string) bool {
 		return viper.GetBool(path)
 	}
 	return config_value_bool(c.process_value(path, viper.Get(path)))
+}
+
+func (c *Config) GetStringSlice(path string) []string {
+	return viper.GetStringSlice(path)
+}
+
+func (c *Config) IsSet(path string) bool {
+	return viper.IsSet(path)
 }
 
 func (c *Config) GetFloat64(path string) float64 {

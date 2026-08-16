@@ -1,14 +1,9 @@
 package wxmp
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
-	"image"
-	"image/color"
-	"image/jpeg"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,12 +14,11 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
 	"github.com/gorilla/websocket"
-	"golang.org/x/image/draw"
 )
 
-const wechatUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN"
+const wechat_user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN"
 
-type Client struct {
+type WebsocketClient struct {
 	conn      *websocket.Conn
 	send      chan []byte
 	title     string
@@ -32,7 +26,7 @@ type Client struct {
 	last_ping int64
 }
 
-func (c *Client) write_pump() {
+func (c *WebsocketClient) write_pump() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer func() {
 		ticker.Stop()
@@ -64,19 +58,19 @@ func (c *Client) write_pump() {
 	}
 }
 
-func setWechatHeaders(req *http.Request, referer string) {
+func set_wechat_headers(req *http.Request, referer string) {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
-	req.Header.Set("User-Agent", wechatUserAgent)
+	req.Header.Set("User-Agent", wechat_user_agent)
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
 }
 
-func normalizeMediaURL(raw string) string {
+func normalize_media_url(raw string) string {
 	u := strings.TrimSpace(raw)
 	if u == "" {
 		return ""
@@ -93,26 +87,12 @@ func normalizeMediaURL(raw string) string {
 	return u
 }
 
-func formatPublishTime(createTime string, unixTime int) string {
-	createTime = strings.TrimSpace(createTime)
-	if createTime != "" {
-		if t, err := time.Parse("2006-01-02 15:04", createTime); err == nil {
-			return t.Format("2006年01月02日 15:04")
-		}
-		return createTime
-	}
-	if unixTime > 0 {
-		return time.Unix(int64(unixTime), 0).Format("2006年01月02日 15:04")
-	}
-	return ""
-}
-
-func isVerificationPage(body string) bool {
+func is_verification_page(body string) bool {
 	return strings.Contains(body, "环境异常") && strings.Contains(body, "完成验证后即可继续访问")
 }
 
-func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+func parse_cgi_datanew(html_content string) (*ArticleCgiDataNew, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html_content))
 	if err != nil {
 		return nil, err
 	}
@@ -171,19 +151,19 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	})
 
 	// Run the scripts
-	var scriptErrs []error
+	var script_errs []error
 	for _, script := range scripts {
 		_, err = vm.RunString(script)
 		if err != nil {
-			scriptErrs = append(scriptErrs, err)
+			script_errs = append(script_errs, err)
 		}
 	}
 
 	// Extract cgiDataNew
 	val := vm.Get("window").ToObject(vm).Get("cgiDataNew")
 	if val == nil {
-		if len(scriptErrs) > 0 {
-			for _, err := range scriptErrs {
+		if len(script_errs) > 0 {
+			for _, err := range script_errs {
 				fmt.Printf("failed to run script: %v\n", err)
 			}
 		}
@@ -191,32 +171,32 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	}
 
 	// Convert to JSON string
-	jsonStr, err := vm.RunString("JSON.stringify(window.cgiDataNew)")
+	json_text, err := vm.RunString("JSON.stringify(window.cgiDataNew)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to stringify cgiDataNew: %v", err)
 	}
 
-	data := &CgiDataNew{}
-	if err := json.Unmarshal([]byte(jsonStr.String()), data); err != nil {
+	data := &ArticleCgiDataNew{}
+	if err := json.Unmarshal([]byte(json_text.String()), data); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cgiDataNew: %v", err)
 	}
 
 	// Check if PicturePageInfoList is empty, if so check global picture_page_info_list.
 	if len(data.PicturePageInfoList) == 0 {
-		data.PicturePageInfoList = readPicturePageInfoList(vm, "window.picture_page_info_list")
+		data.PicturePageInfoList = read_picture_page_info_list(vm, "window.picture_page_info_list")
 	}
 	if len(data.PicturePageInfoList) == 0 {
-		data.PicturePageInfoList = readPicturePageInfoList(vm, "picture_page_info_list")
+		data.PicturePageInfoList = read_picture_page_info_list(vm, "picture_page_info_list")
 	}
 
 	// Check for videoPageInfos
-	valVideo := vm.Get("videoPageInfos")
-	if valVideo != nil && !goja.IsNull(valVideo) && !goja.IsUndefined(valVideo) {
-		jsonVideo, err := vm.RunString("JSON.stringify(videoPageInfos)")
+	video_value := vm.Get("videoPageInfos")
+	if video_value != nil && !goja.IsNull(video_value) && !goja.IsUndefined(video_value) {
+		video_json, err := vm.RunString("JSON.stringify(videoPageInfos)")
 		if err == nil {
-			var videoInfos []VideoPageInfoItem
-			if err := json.Unmarshal([]byte(jsonVideo.String()), &videoInfos); err == nil {
-				data.VideoPageInfos = videoInfos
+			var video_infos []VideoPageInfoItem
+			if err := json.Unmarshal([]byte(video_json.String()), &video_infos); err == nil {
+				data.VideoPageInfos = video_infos
 			}
 		}
 	}
@@ -224,102 +204,29 @@ func parse_cgi_datanew(htmlContent string) (*CgiDataNew, error) {
 	return data, nil
 }
 
-func readPicturePageInfoList(vm *goja.Runtime, expr string) []PicturePageInfo {
+func read_picture_page_info_list(vm *goja.Runtime, expr string) []PicturePageInfo {
 	val, err := vm.RunString(expr)
 	if err != nil || val == nil || goja.IsNull(val) || goja.IsUndefined(val) {
 		return nil
 	}
-	jsonList, err := vm.RunString("JSON.stringify(" + expr + ")")
+	json_list, err := vm.RunString("JSON.stringify(" + expr + ")")
 	if err != nil {
 		return nil
 	}
 	var list []PicturePageInfo
-	if err := json.Unmarshal([]byte(jsonList.String()), &list); err != nil {
+	if err := json.Unmarshal([]byte(json_list.String()), &list); err != nil {
 		return nil
 	}
 	return list
 }
 
-func escapeHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
-}
-
-func compressImage(data []byte) ([]byte, string, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, "", err
-	}
-
-	// Resize if needed
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-	maxWidth := 640
-
-	var newImg image.Image = img
-	if width > maxWidth {
-		newHeight := height * maxWidth / width
-		dst := image.NewRGBA(image.Rect(0, 0, maxWidth, newHeight))
-		draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
-		newImg = dst
-	}
-
-	// Always encode to JPEG with a white background to handle alpha
-	bg := image.NewRGBA(newImg.Bounds())
-	draw.Draw(bg, bg.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
-	draw.Draw(bg, bg.Bounds(), newImg, newImg.Bounds().Min, draw.Over)
-
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, bg, &jpeg.Options{Quality: 60}); err != nil {
-		return nil, "", err
-	}
-	return buf.Bytes(), "image/jpeg", nil
-}
-
-func downloadImageBytes(imgURL string) ([]byte, string, error) {
-	imgURL = normalizeMediaURL(imgURL)
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", imgURL, nil)
-	if err != nil {
-		return nil, "", err
-	}
-
-	setWechatHeaders(req, "https://mp.weixin.qq.com/")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
-	if err != nil {
-		return nil, "", err
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = http.DetectContentType(data)
-	}
-	return data, contentType, nil
-}
-
-func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+func parse_article_from_dom(html_content string) (*ArticleCgiDataNew, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html_content))
 	if err != nil {
 		return nil, err
 	}
 
-	article := &WechatOfficialArticle{}
+	article := &ArticleCgiDataNew{}
 
 	// Extract title
 	title := doc.Find("meta[property=\"og:title\"]").AttrOr("content", "")
@@ -332,13 +239,13 @@ func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
 	article.Title = strings.TrimSpace(title)
 
 	// Extract content from rich_media_content or js_content
-	contentHTML := ""
+	content_html := ""
 	doc.Find("#js_content, .rich_media_content").Each(func(i int, s *goquery.Selection) {
-		if contentHTML == "" {
-			contentHTML, _ = s.Html()
+		if content_html == "" {
+			content_html, _ = s.Html()
 		}
 	})
-	article.Content = contentHTML
+	article.ContentNoencode = content_html
 
 	// Extract author nickname
 	nickname := doc.Find("meta[name=\"author\"]").AttrOr("content", "")
@@ -348,16 +255,15 @@ func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
 	if nickname == "" {
 		nickname = doc.Find(".profile_nickname").First().Text()
 	}
-	article.AuthorNickname = strings.TrimSpace(nickname)
+	article.NickName = strings.TrimSpace(nickname)
 
 	// Extract author avatar
 	avatar := doc.Find(".rich_media_meta_avatar, .js_wx_tap_highlight img").First().AttrOr("src", "")
-	article.AuthorAvatar = normalizeMediaURL(avatar)
+	article.RoundHeadImg = normalize_media_url(avatar)
 
-	// Extract publish time from script or meta
-	publishTimeStr := ""
+	// Extract publish time from script or meta.
 	doc.Find("script").Each(func(i int, s *goquery.Selection) {
-		if publishTimeStr != "" {
+		if article.CreateTime != "" {
 			return
 		}
 		text := s.Text()
@@ -365,21 +271,22 @@ func parseArticleFromDOM(htmlContent string) (*WechatOfficialArticle, error) {
 			re := regexp.MustCompile(`var\s+createTime\s*=\s*'([^']+)'`)
 			matches := re.FindStringSubmatch(text)
 			if len(matches) > 1 {
-				publishTimeStr = formatPublishTime(matches[1], 0)
+				article.CreateTime = strings.TrimSpace(matches[1])
 			}
 		}
 	})
-	article.PublishTimeStr = publishTimeStr
 
 	// Extract image URLs
 	doc.Find("#js_content img, .rich_media_content img").Each(func(i int, s *goquery.Selection) {
-		imgURL := s.AttrOr("data-src", "")
-		if imgURL == "" {
-			imgURL = s.AttrOr("src", "")
+		image_url := s.AttrOr("data-src", "")
+		if image_url == "" {
+			image_url = s.AttrOr("src", "")
 		}
-		imgURL = normalizeMediaURL(imgURL)
-		if imgURL != "" {
-			article.Images = append(article.Images, imgURL)
+		image_url = normalize_media_url(image_url)
+		if image_url != "" {
+			article.PicturePageInfoList = append(article.PicturePageInfoList, PicturePageInfo{
+				CdnUrl: image_url,
+			})
 		}
 	})
 

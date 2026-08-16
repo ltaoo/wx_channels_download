@@ -2,6 +2,7 @@
 /**
  * @file Download manager data model, formatting helpers, and ViewModel
  */
+
 var APIOrigin = WXEnv.get("apiOrigin");
 var DownloaderOrigin = WXEnv.get("downloaderOrigin");
 var DownloaderWSURL = WXEnv.get("downloaderWSURL");
@@ -27,12 +28,12 @@ function is_download_open_external() {
   );
 }
 
-const http_client = new Timeless.HttpClientCore({
+const http_client = new Timeless.kit.HttpClientCore({
   headers: { "Content-Type": "application/json" },
   hostname: APIOrigin,
 });
 Timeless.web.provide_http_client(http_client);
-const request = Timeless.request_factory({
+const request = Timeless.kit.request_factory({
   headers: { "Content-Type": "application/json" },
   process(r) {
     if (r.error) {
@@ -45,6 +46,61 @@ const request = Timeless.request_factory({
     return Timeless.Result.Ok(data);
   },
 });
+
+function platform_preview_from_download_info(
+  download_info,
+  fallback_platform,
+  fallback_download_dir,
+) {
+  if (!download_info || typeof download_info !== "object") {
+    return null;
+  }
+
+  const task =
+    download_info.Task && typeof download_info.Task === "object"
+      ? download_info.Task
+      : {};
+  const raw_resources = Array.isArray(download_info.Resources)
+    ? download_info.Resources
+    : [];
+  const resources = raw_resources.map((item, index) => {
+    const resource = item && item.Resource ? item.Resource : {};
+    const endpoints = item && Array.isArray(item.Endpoints) ? item.Endpoints : [];
+    return {
+      index,
+      name: resource.name || "",
+      kind: resource.kind || "",
+      type: resource.type || "",
+      endpoints,
+    };
+  });
+
+  let download_dir = fallback_download_dir || "";
+  if (task.config_json) {
+    try {
+      const config = JSON.parse(task.config_json);
+      download_dir = config.download_dir || download_dir;
+    } catch (e) {}
+  }
+
+  return {
+    platform: task.platform_id || fallback_platform || "",
+    task_name: task.name || "",
+    download_dir,
+    resource_type: resources[0]
+      ? resources[0].kind || resources[0].type || ""
+      : "",
+    resources,
+    resource_count: resources.length,
+    endpoint_count: resources.reduce(
+      (count, resource) => count + resource.endpoints.length,
+      0,
+    ),
+    content: download_info.Content || null,
+    account: download_info.Account || null,
+    download_info,
+  };
+}
 
 function format_download_speed(bps) {
   const value = Math.max(0, Number(bps) || 0);
@@ -179,6 +235,30 @@ function download_resource_metrics(file) {
     Math.max(0, Number((file && file.progress) || 0)),
   );
   return `${downloaded} / ${size} · ${speed} · ${progress.toFixed(2)}%`;
+}
+function download_task_file_path(file) {
+  if (!file || typeof file !== "object") {
+    return "";
+  }
+  const explicitPath = String(file.file_path || file.filepath || "").trim();
+  if (explicitPath) {
+    return explicitPath;
+  }
+  const downloadDir = String(
+    file.download_dir || file.downloadDir || "",
+  ).trim();
+  const name = String(file.name || "").trim();
+  if (!downloadDir) {
+    return name;
+  }
+  if (!name) {
+    return downloadDir;
+  }
+  const separator =
+    downloadDir.includes("\\") && !downloadDir.includes("/") ? "\\" : "/";
+  return (
+    downloadDir.replace(/[\\/]+$/, "") + separator + name.replace(/^[\\/]+/, "")
+  );
 }
 function is_download_waiting_status(status) {
   const normalized = normalize_download_status(status);
@@ -405,7 +485,10 @@ function merge_download_task_file_updates(files, updates) {
 function merge_download_task_update(task, update) {
   const merged = Object.assign({}, task, update);
   if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
-    merged.files = merge_download_task_file_updates(task && task.files, update.files);
+    merged.files = merge_download_task_file_updates(
+      task && task.files,
+      update.files,
+    );
   }
   return merged;
 }
@@ -416,6 +499,7 @@ function number_or_fallback(value, fallback) {
 }
 
 function DownloaderPanelViewModel(props = {}) {
+  const WEBSOCKET_RETRY_INTERVAL = 5000;
   const ITEM_HEIGHT = Number(props.itemHeight) || 82;
   const ITEM_TITLE_LINE_HEIGHT = 20;
   const ITEM_STATUS_LINE_HEIGHT = 18;
@@ -441,7 +525,7 @@ function DownloaderPanelViewModel(props = {}) {
 
   const reqs = {
     task: {
-      list: new Timeless.RequestCore(
+      list: new Timeless.kit.RequestCore(
         (params) => {
           return request.get("/api/v1/download_task/list", params);
         },
@@ -463,7 +547,7 @@ function DownloaderPanelViewModel(props = {}) {
           },
         },
       ),
-      delete: new Timeless.RequestCore(
+      delete: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/delete", {
             task_ids: params.ids,
@@ -472,7 +556,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      start: new Timeless.RequestCore(
+      start: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/start", {
             task_ids: [id],
@@ -480,7 +564,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      startAll: new Timeless.RequestCore(
+      startAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           const body = {};
           if (params.status && params.status !== "all") {
@@ -490,7 +574,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      pause: new Timeless.RequestCore(
+      pause: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/pause", {
             task_ids: [id],
@@ -498,7 +582,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      pauseAll: new Timeless.RequestCore(
+      pauseAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           const body = {};
           if (params.status && params.status !== "all") {
@@ -508,7 +592,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      resume: new Timeless.RequestCore(
+      resume: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/resume", {
             task_ids: [id],
@@ -516,7 +600,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      retry: new Timeless.RequestCore(
+      retry: new Timeless.kit.RequestCore(
         (id) => {
           return request.post("/api/v1/download_task/retry", {
             task_ids: [id],
@@ -524,7 +608,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      clearAll: new Timeless.RequestCore(
+      clearAll: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/clear_all", {
             delete_files: !!params.deleteFiles,
@@ -532,7 +616,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      createWithURL: new Timeless.RequestCore(
+      createWithURL: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/create_by_url", {
             objects: [
@@ -545,13 +629,13 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      createFromPlatform: new Timeless.RequestCore(
+      createFromPlatform: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/create", params);
         },
         { client: http_client },
       ),
-      prepare: new Timeless.RequestCore(
+      prepare: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/prepare_by_url", [
             {
@@ -562,7 +646,7 @@ function DownloaderPanelViewModel(props = {}) {
         },
         { client: http_client },
       ),
-      prepareFromPlatform: new Timeless.RequestCore(
+      prepareFromPlatform: new Timeless.kit.RequestCore(
         (params = {}) => {
           return request.post("/api/v1/download_task/prepare", [
             {
@@ -578,7 +662,7 @@ function DownloaderPanelViewModel(props = {}) {
       ),
     },
     file: {
-      show: new Timeless.RequestCore(
+      show: new Timeless.kit.RequestCore(
         ({ path, name }) => {
           return request.post("/api/show_file", {
             path,
@@ -589,7 +673,7 @@ function DownloaderPanelViewModel(props = {}) {
       ),
     },
     browsehistory: {
-      create: new Timeless.RequestCore(
+      create: new Timeless.kit.RequestCore(
         (body) => {
           return request.post("/api/browse_history/create", body);
         },
@@ -617,6 +701,8 @@ function DownloaderPanelViewModel(props = {}) {
   const creating_task_ = ref(false);
   const create_task_preview_ = ref(null);
   const create_platform_preview_ = ref(null);
+  const websocket_connected_ = ref(false);
+  const websocket_connecting_ = ref(false);
   const selected_task_ids_ = refarr([]);
   const running_count_ = computed(tasks_, (t) => {
     return t.filter(
@@ -638,6 +724,47 @@ function DownloaderPanelViewModel(props = {}) {
   });
 
   let duplicated_feed_prepare_download = null;
+  let websocket_ = null;
+  let websocket_connect_promise_ = null;
+  let websocket_reconnect_promise_ = null;
+  let websocket_retry_timer_ = null;
+
+  function cancel_websocket_retry() {
+    if (websocket_retry_timer_ === null) {
+      return;
+    }
+    clearTimeout(websocket_retry_timer_);
+    websocket_retry_timer_ = null;
+  }
+
+  function schedule_websocket_retry() {
+    if (websocket_connected_.value || websocket_retry_timer_ !== null) {
+      return;
+    }
+    websocket_retry_timer_ = setTimeout(() => {
+      websocket_retry_timer_ = null;
+      methods.retryWebsocketConnection().then(
+        (connected) => {
+          if (!connected && !websocket_connected_.value) {
+            schedule_websocket_retry();
+          }
+        },
+        () => {
+          schedule_websocket_retry();
+        },
+      );
+    }, WEBSOCKET_RETRY_INTERVAL);
+  }
+
+  function set_websocket_connected(connected) {
+    websocket_connected_.as(!!connected);
+    if (connected) {
+      cancel_websocket_retry();
+    }
+    if (WXU.downloader) {
+      WXU.downloader.status = connected ? "connected" : "disconnected";
+    }
+  }
 
   function first_non_empty_download_value() {
     for (let i = 0; i < arguments.length; i += 1) {
@@ -1513,7 +1640,7 @@ function DownloaderPanelViewModel(props = {}) {
     try {
       // Each page owns its request instance so adjacent prefetches can verify
       // concurrently without sharing RequestCore loading state.
-      const checkLocal = new Timeless.RequestCore(
+      const checkLocal = new Timeless.kit.RequestCore(
         (items) =>
           request.post("/api/v1/download_task/check_files", { files: items }),
         { client: http_client },
@@ -1599,7 +1726,7 @@ function DownloaderPanelViewModel(props = {}) {
       applyTaskPage(r.data, options);
       // Render the requested page first; local-file checks and their state
       // updates deliberately run in the background and never block pagination.
-      verifyTaskPageFiles(r.data && r.data.list, file_verification_generation);
+      // verifyTaskPageFiles(r.data && r.data.list, file_verification_generation);
       setTimeout(maybeLoadMoreTasks, 0);
       return r;
     } finally {
@@ -1818,17 +1945,18 @@ function DownloaderPanelViewModel(props = {}) {
           if (!file) {
             return {};
           }
+          const path = download_task_file_path(file);
           if (task.files.length > 1) {
             return {
-              name: `${task.name} +${task.files.length}个文件`,
+              name: `${task.name} 等${task.files.length}个文件`,
               filename: file.name,
-              path: file.file_path,
+              path,
             };
           }
           return {
             name: file.name,
             filename: file.name,
-            path: file.file_path,
+            path,
           };
         })(),
       };
@@ -2180,10 +2308,15 @@ function DownloaderPanelViewModel(props = {}) {
           WXU.error({ msg: r.error.message, source: "model.js:1866" });
           return;
         }
-        const platformPreview =
+        const downloadInfo =
           r.data && r.data.previews && r.data.previews[0]
             ? r.data.previews[0].data
             : null;
+        const platformPreview = platform_preview_from_download_info(
+          downloadInfo,
+          platform,
+          create_platform_download_dir_.value,
+        );
         create_platform_preview_.as(platformPreview);
         ui.createPlatformTaskDialog$.hide();
         ui.createPlatformTaskPreviewDialog$.show();
@@ -2366,26 +2499,75 @@ function DownloaderPanelViewModel(props = {}) {
       reqs.file.show.run({ path, name: filename, id });
     },
     connect() {
-      return new Promise((resolve, reject) => {
-        const ws = new WebSocket(DownloaderWSURL);
+      if (
+        websocket_connected_.value &&
+        websocket_ &&
+        websocket_.readyState === WebSocket.OPEN
+      ) {
+        return Promise.resolve(true);
+      }
+      if (websocket_connect_promise_) {
+        return websocket_connect_promise_;
+      }
+      websocket_connecting_.as(true);
+      const connection_promise = new Promise((resolve, reject) => {
+        let ws;
+        try {
+          ws = new WebSocket(DownloaderWSURL);
+        } catch (error) {
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          reject(error);
+          return;
+        }
+        websocket_ = ws;
+        let opened = false;
         ws.onopen = () => {
-          if (WXU.downloader) {
-            WXU.downloader.status = "connected";
+          if (websocket_ !== ws) {
+            ws.close();
+            return;
           }
+          opened = true;
+          websocket_connecting_.as(false);
+          set_websocket_connected(true);
           resolve(true);
         };
         ws.onclose = () => {
-          WXU.error({
-            msg: `download ws连接已关闭，请刷新页面. ${DownloaderWSURL}`,
-            source: "model.js:2033",
-          });
-          if (WXU.downloader) {
-            WXU.downloader.status = "disconnected";
+          if (websocket_ !== ws) {
+            return;
           }
+          websocket_ = null;
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          if (opened) {
+            WXU.error({
+              msg: `download websocket connection closed.`,
+              source: "model.js:2033",
+            });
+            WXU.log.flushNow();
+            return;
+          }
+          reject(new Error("download websocket connection closed"));
         };
         ws.onerror = (e) => {
-          if (WXU.downloader && WXU.downloader.status !== "connected") {
-            reject(e);
+          if (websocket_ !== ws) {
+            return;
+          }
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          if (!opened) {
+            websocket_ = null;
+            reject(
+              e instanceof Error
+                ? e
+                : new Error("download websocket connection failed"),
+            );
+            try {
+              ws.close();
+            } catch (error) {}
           }
         };
         ws.onmessage = (ev) => {
@@ -2513,6 +2695,57 @@ function DownloaderPanelViewModel(props = {}) {
           }
         };
       });
+      websocket_connect_promise_ = connection_promise;
+      connection_promise.then(
+        () => {
+          if (websocket_connect_promise_ === connection_promise) {
+            websocket_connect_promise_ = null;
+          }
+        },
+        () => {
+          if (websocket_connect_promise_ === connection_promise) {
+            websocket_connect_promise_ = null;
+          }
+        },
+      );
+      return connection_promise;
+    },
+    retryWebsocketConnection() {
+      if (websocket_reconnect_promise_) {
+        return websocket_reconnect_promise_;
+      }
+      cancel_websocket_retry();
+      const reconnect_promise = (async () => {
+        try {
+          await methods.connect();
+          const result = await reloadTasks();
+          if (result && result.error) {
+            WXU.error({
+              msg: result.error.message,
+              source: "model.js:retryWebsocketConnection",
+            });
+            return false;
+          }
+          ready = true;
+          return true;
+        } catch (error) {
+          return false;
+        }
+      })();
+      websocket_reconnect_promise_ = reconnect_promise;
+      reconnect_promise.then(
+        () => {
+          if (websocket_reconnect_promise_ === reconnect_promise) {
+            websocket_reconnect_promise_ = null;
+          }
+        },
+        () => {
+          if (websocket_reconnect_promise_ === reconnect_promise) {
+            websocket_reconnect_promise_ = null;
+          }
+        },
+      );
+      return reconnect_promise;
     },
     batchInsert(tasks) {
       if (!tasks || !tasks.length) return;
@@ -2787,9 +3020,7 @@ function DownloaderPanelViewModel(props = {}) {
       WXU.log
         .Info()
         .Str("feed_count", feeds.length)
-        .Str("spec", opt.spec)
-        .Bool("overwrite", !!opt.overwrite)
-        .Bool("duplicate", !!opt.duplicate)
+        .Str("opt", JSON.stringify(opt))
         .Msg("[downloader.create]create");
       var body = {
         objects: feeds.map((feed) => {
@@ -2841,32 +3072,32 @@ function DownloaderPanelViewModel(props = {}) {
     },
   };
 
-  const dropdown$ = new Timeless.ui.DropdownMenuCore({
+  const dropdown$ = new Timeless.vm.DropdownMenuCore({
     trigger: "hover",
     align: "end",
     items: [
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "刷新",
         async onClick() {
           ui.dropdown$.hide();
           await methods.refreshTasks();
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "管理下载任务",
         onClick() {
           ui.dropdown$.hide();
           window.open(DownloaderOrigin + "/", "_blank");
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "清空下载记录",
         async onClick() {
           ui.dropdown$.hide();
           methods.requestClearTasks(false);
         },
       }),
-      new Timeless.ui.MenuItemCore({
+      new Timeless.vm.MenuItemCore({
         label: "关闭",
         onClick() {
           dropdown$.hide();
@@ -2877,47 +3108,47 @@ function DownloaderPanelViewModel(props = {}) {
   });
   const ui = {
     dropdown$,
-    importFileDialog$: new Timeless.ui.DialogCore({
+    importFileDialog$: new Timeless.vm.DialogCore({
       closeable: true,
     }),
-    createTaskDialog$: new Timeless.ui.DialogCore({
+    createTaskDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreateTask();
       },
     }),
-    createPlatformTaskDialog$: new Timeless.ui.DialogCore({
+    createPlatformTaskDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreatePlatformTask();
       },
     }),
-    createTaskPreviewDialog$: new Timeless.ui.DialogCore({
+    createTaskPreviewDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreateTaskFromPreview();
       },
     }),
-    createPlatformTaskPreviewDialog$: new Timeless.ui.DialogCore({
+    createPlatformTaskPreviewDialog$: new Timeless.vm.DialogCore({
       closeable: true,
       onOk() {
         methods.confirmCreatePlatformTaskFromPreview();
       },
     }),
-    input_create_download_task$: new Timeless.ui.InputCore({
+    input_create_download_task$: new Timeless.vm.InputCore({
       defaultValue: "",
     }),
-    deleteConfirmDialog$: new Timeless.ui.DialogCore({
+    deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
         methods.confirmDeleteTask();
       },
     }),
-    clearConfirmDialog$: new Timeless.ui.DialogCore({
+    clearConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
         methods.confirmClearTasks();
       },
     }),
-    overwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    overwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         const action = overwrite_.value.value;
         WXU.log
@@ -2944,19 +3175,18 @@ function DownloaderPanelViewModel(props = {}) {
         const duplicate = action === "duplicate";
         WXU.log
           .Info()
-          .Str("feed_id", obj.content.id || "")
+          .Str("file", "/download/model.js")
+          .Str("id", obj.content.id || "")
+          .Str("object", obj)
           .Str("action", action)
           .Bool("overwrite", overwrite)
           .Bool("duplicate", duplicate)
-          .Str("stored_config", JSON.stringify(obj.config))
           .Msg(
             "overwriteConfirmDialog: preparing to retry creating download task",
           );
-
         const [err, data] = await methods.createDownloadTask([obj.content], {
-          platform: "wxchannels",
-          spec: obj.config.spec,
-          suffix: obj.config.suffix,
+          ...obj.config,
+          platform: obj.platform,
           overwrite,
           duplicate,
         });
@@ -2990,12 +3220,12 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       },
     }),
-    singleOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    singleOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         return methods.confirmOverwriteDownloadConflict();
       },
     }),
-    batchOverwriteConfirmDialog$: new Timeless.ui.DialogCore({
+    batchOverwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         return methods.confirmOverwriteDownloadConflict();
       },
@@ -3043,6 +3273,10 @@ function DownloaderPanelViewModel(props = {}) {
       create_task_preview: create_task_preview_,
       /** Platform task preview data */
       create_platform_preview: create_platform_preview_,
+      /** Whether the downloader WebSocket connection is open */
+      websocket_connected: websocket_connected_,
+      /** Whether a downloader WebSocket connection attempt is in progress */
+      websocket_connecting: websocket_connecting_,
       /** Download task count for each status */
       status_counts: status_counts_,
       /** Currently selected status filter */
@@ -3066,30 +3300,18 @@ function DownloaderPanelViewModel(props = {}) {
       if (ready) {
         return;
       }
-      WXU.downloader.status = "disconnected";
-      WXU.downloader.reconnect = async function () {
-        if (WXU.downloader.status === "connected") return true;
-        for (let i = 0; i < 3; i++) {
-          try {
-            await reloadTasks();
-            return true;
-          } catch (e) {
-            console.warn("Reconnect attempt " + (i + 1) + " failed");
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-        }
-        return false;
+      WXU.downloader.reconnect = function () {
+        return methods.retryWebsocketConnection();
       };
-      const r = await reloadTasks();
-      if (r.error) {
-        WXU.error({ source: "model.js:2587", msg: r.error.message });
+      const connected = await methods.retryWebsocketConnection();
+      if (!connected) {
         return;
       }
       ready = true;
-      methods.connect();
       setTimeout(maybeLoadMoreTasks, 0);
     },
     clean() {
+      cancel_websocket_retry();
       resetVirtualTasks();
       status_counts_.as(empty_download_status_counts());
     },

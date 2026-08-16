@@ -67,6 +67,117 @@ func first_media_cover_url(file wxchannels.ChannelsMediaItem) string {
 	return ""
 }
 
+func positive_dimension_pointer(value float32) *int {
+	dimension := int(value)
+	if dimension <= 0 {
+		return nil
+	}
+	return &dimension
+}
+
+func to_content_video_variants(obj *wxchannels.ChannelsObject, video_id string) []model.ContentVideoVariant {
+	if obj == nil || len(obj.ObjectDesc.Media) == 0 {
+		return nil
+	}
+
+	media := obj.ObjectDesc.Media[0]
+	specs := obj.Spec
+	if len(media.Spec) > 0 {
+		specs = media.Spec
+	}
+
+	variants := make([]model.ContentVideoVariant, 0, len(specs)+1)
+	variants = append(variants, model.ContentVideoVariant{
+		VideoId:    video_id,
+		VariantKey: "default",
+		Spec:       "original",
+		Width:      positive_dimension_pointer(media.Width),
+		Height:     positive_dimension_pointer(media.Height),
+		Size:       int64(media.FileSize),
+		StreamType: model.ContentVideoVariantStreamTypeProgressive,
+		HasVideo:   1,
+		HasAudio:   1,
+		IsDefault:  1,
+		URL:        BuildDownloadURLWithSpec(obj, ""),
+	})
+
+	seen_variant_keys := make(map[string]struct{}, len(specs)+1)
+	seen_variant_keys["default"] = struct{}{}
+	for _, spec := range specs {
+		variant_key := strings.TrimSpace(spec.FileFormat)
+		if variant_key == "" {
+			continue
+		}
+		if _, ok := seen_variant_keys[variant_key]; ok {
+			continue
+		}
+		seen_variant_keys[variant_key] = struct{}{}
+
+		variant := model.ContentVideoVariant{
+			VideoId:    video_id,
+			VariantKey: variant_key,
+			Spec:       variant_key,
+			Width:      positive_dimension_pointer(spec.Width),
+			Height:     positive_dimension_pointer(spec.Height),
+			StreamType: model.ContentVideoVariantStreamTypeProgressive,
+			HasVideo:   1,
+			HasAudio:   1,
+			URL:        BuildDownloadURLWithSpec(obj, variant_key),
+		}
+		variants = append(variants, variant)
+	}
+
+	return variants
+}
+
+func select_content_video_variant(detail any, spec string) {
+	video, ok := detail.(*model.ContentVideo)
+	if !ok || video == nil {
+		return
+	}
+
+	selected_key := strings.TrimSpace(spec)
+	if selected_key == "" || selected_key == "original" || selected_key == "default" {
+		selected_key = "default"
+	}
+	for index := range video.Variants {
+		variant := &video.Variants[index]
+		variant.IsDefault = 0
+		if variant.VariantKey == selected_key || (selected_key != "default" && variant.Spec == selected_key) {
+			variant.IsDefault = 1
+		}
+	}
+}
+
+func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[string]any, default_highest bool) string {
+	configured_variant_key := config_string(config, "video_variant_key")
+	configured_spec := config_string(config, "video_variant_spec")
+	if configured_spec == "" {
+		configured_spec = config_string(config, "spec")
+	}
+	if configured_variant_key == "default" {
+		configured_spec = "original"
+	} else if configured_spec == "" && configured_variant_key != "" {
+		configured_spec = configured_variant_key
+	}
+
+	if configured_spec == "" {
+		if default_highest {
+			return ""
+		}
+		return PickSpec(obj)
+	}
+	if configured_spec == "original" {
+		return ""
+	}
+	return configured_spec
+}
+
+func (a *ChannelsAdapter) video_download_spec(obj *wxchannels.ChannelsObject, config map[string]any) string {
+	default_highest := a.config_bool("channels.download.defaultHighest") || a.config_bool("download.defaultHighest")
+	return resolve_video_download_spec(obj, config, default_highest)
+}
+
 // ToAccount converts a ChannelsObject into a model.Account.
 func ToAccount(obj *wxchannels.ChannelsObject) (*model.Account, error) {
 	if obj == nil {
@@ -168,6 +279,7 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 		for i, file := range files {
 			images = append(images, model.ContentImage{
 				AlbumId:   c.Id,
+				ImageKey:  model.BuildContentAlbumImageKey(file.DecodeKey, file.URL+file.URLToken, i),
 				SortOrder: i,
 				URL:       file.URL + file.URLToken,
 				Width:     int(file.Width),
@@ -225,6 +337,7 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 		Height:   int(media.Height),
 		Size:     int64(media.FileSize),
 		URL:      c.URL,
+		Variants: to_content_video_variants(obj, c.Id),
 	}
 
 	return c, ext, nil
@@ -401,15 +514,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	if title == "" {
 		title = ObjectTitle(&obj)
 	}
-	configured_spec := config_string(config, "spec")
-	var spec string
-	if configured_spec == "" {
-		if !a.cfg.DownloadDefaultHighest {
-			spec = PickSpec(&obj)
-		}
-	} else if configured_spec != "original" {
-		spec = configured_spec
-	}
+	spec := a.video_download_spec(&obj, config)
+	select_content_video_variant(ext, spec)
 	cover_url := strings.TrimSpace(content.CoverURL)
 	if len(obj.ObjectDesc.Media) > 0 {
 		if candidate := strings.TrimSpace(obj.ObjectDesc.Media[0].CoverUrl); candidate != "" {
@@ -470,6 +576,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				image_name = fmt.Sprintf("%s_%d", title, i+1)
 			}
 			image_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, i+1, obj.ObjectDesc.MediaType)
+			image_key := model.BuildContentAlbumImageKey(file.DecodeKey, media_url, i)
 			resources = append(resources, &adapter.ResourceInfo{
 				Resource: model.DownloadResource{
 					ContentId: &content_id,
@@ -483,6 +590,15 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 					Protocol: "https",
 					URL:      media_url,
 					Enabled:  1,
+				}},
+				ContentAssets: []adapter.ContentAssetReference{{
+					Kind:            model.ContentAssetKindImage,
+					Role:            model.ContentAssetRolePrimary,
+					AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "jpeg"),
+					Relation:        model.DownloadResourceAssetRelationSource,
+					SubjectType:     model.ContentAssetSubjectAlbumImage,
+					SubjectKey:      image_key,
+					SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 				}},
 			})
 		}
@@ -505,7 +621,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				}},
 			})
 		}
-		if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+		if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
 			resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
 		}
 
@@ -546,7 +662,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	if spec != "" {
 		resource_unique_id = content.ExternalId + "_" + spec
 	}
-	if config_string(config, "suffix") == ".mp3" {
+	if config_suffix_is_mp3(config) {
 		resource_unique_id += "_mp3"
 		resource_kind = mime_audio_mpeg
 	}
@@ -565,11 +681,28 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		URL:      download_url,
 		Enabled:  1,
 	}
+	content_asset_kind := model.ContentAssetKindVideo
+	content_asset_role := model.ContentAssetRoleVideoVariant
+	content_asset_key := spec
+	if content_asset_key == "" {
+		content_asset_key = "default"
+	}
+	if resource_kind == mime_audio_mpeg {
+		content_asset_kind = model.ContentAssetKindAudio
+		content_asset_role = model.ContentAssetRoleAudioVariant
+		content_asset_key = resource_unique_id
+	}
 	resources := []*adapter.ResourceInfo{{
 		Resource:  video_resource,
 		Endpoints: []model.DownloadEndpoint{video_endpoint},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     content_asset_kind,
+			Role:     content_asset_role,
+			AssetKey: content_asset_key,
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
 	}}
-	if a.cfg.DownloadCover && !is_download_feed_cover && cover_url != "" {
+	if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
 		resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
 	}
 
@@ -607,6 +740,12 @@ func build_cover_resource_info(content_id, external_id, title, cover_url, extra_
 			Protocol: "https",
 			URL:      cover_url,
 			Enabled:  1,
+		}},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindImage,
+			Role:     model.ContentAssetRoleCover,
+			AssetKey: "cover",
+			Relation: model.DownloadResourceAssetRelationSource,
 		}},
 	}
 }
@@ -771,9 +910,64 @@ func shared_feed_profile_to_channels_object(content_json json.RawMessage) (*wxch
 		return nil, ok, err
 	}
 	feed_info := resp.Data.Feedinfo
-	if feed_info.MediaType != wxchannels.MediaTypePicture && len(feed_info.Picinfo) == 0 {
-		return nil, false, nil
+	switch feed_info.MediaType {
+	case wxchannels.MediaTypeVideo:
+		return shared_video_profile_to_channels_object(resp, content_json)
+	case wxchannels.MediaTypePicture:
+		return shared_picture_profile_to_channels_object(resp, content_json)
 	}
+	if len(feed_info.Picinfo) > 0 {
+		return shared_picture_profile_to_channels_object(resp, content_json)
+	}
+	return nil, false, nil
+}
+
+func shared_video_profile_to_channels_object(resp wxchannels.ChannelsSharedFeedProfileResp, content_json json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	feed_info := resp.Data.Feedinfo
+	video_url := shared_feed_video_url(feed_info)
+	if video_url == "" {
+		return nil, true, errors.New("分享详情视频类型缺少 videoUrl")
+	}
+
+	bgm_url := shared_feed_bgm_url(feed_info.Bgminfo)
+	contact_username := shared_feed_author_id(resp.Data.Authorinfo)
+	object_id := shared_feed_object_id(resp, content_json)
+	media := []wxchannels.ChannelsMediaItem{{
+		URL:       video_url,
+		ThumbUrl:  strings.TrimSpace(feed_info.Coverurl),
+		CoverUrl:  strings.TrimSpace(feed_info.Coverurl),
+		MediaType: wxchannels.MediaTypeVideo,
+	}}
+	obj := &wxchannels.ChannelsObject{
+		ID:            object_id,
+		ObjectNonceId: object_id,
+		CreateTime:    feed_info.Createtime,
+		Type:          "video",
+		Contact: wxchannels.ChannelsContact{
+			Username: contact_username,
+			Nickname: strings.TrimSpace(resp.Data.Authorinfo.Nickname),
+			HeadUrl:  strings.TrimSpace(resp.Data.Authorinfo.Headimgurl),
+		},
+		ObjectDesc: wxchannels.ChannelsObjectDesc{
+			Description: strings.TrimSpace(feed_info.Description),
+			MediaType:   wxchannels.MediaTypeVideo,
+			Media:       media,
+			FollowPostInfo: wxchannels.ChannelsFollowPostInfo{
+				MusicInfo: wxchannels.ChannelsMusicInfo{
+					DocId:             feed_info.Bgminfo.DocID,
+					DocType:           feed_info.Bgminfo.DocType,
+					Name:              feed_info.Bgminfo.Name,
+					Artist:            feed_info.Bgminfo.Artist,
+					MediaStreamingUrl: bgm_url,
+				},
+			},
+		},
+	}
+	return obj, true, nil
+}
+
+func shared_picture_profile_to_channels_object(resp wxchannels.ChannelsSharedFeedProfileResp, content_json json.RawMessage) (*wxchannels.ChannelsObject, bool, error) {
+	feed_info := resp.Data.Feedinfo
 	if len(feed_info.Picinfo) == 0 {
 		return nil, true, errors.New("分享详情图片类型缺少 picInfo")
 	}
@@ -826,6 +1020,16 @@ func shared_feed_profile_to_channels_object(content_json json.RawMessage) (*wxch
 		Files: media,
 	}
 	return obj, true, nil
+}
+
+func shared_feed_video_url(feed_info wxchannels.SharedFeedinfo) string {
+	if video_url := strings.TrimSpace(feed_info.H264VideoInfo.VideoURL); video_url != "" {
+		return video_url
+	}
+	if video_url := strings.TrimSpace(feed_info.VideoURL); video_url != "" {
+		return video_url
+	}
+	return strings.TrimSpace(feed_info.H265VideoInfo.VideoURL)
 }
 
 func parse_shared_feed_profile(content_json json.RawMessage, allow_envelope bool) (wxchannels.ChannelsSharedFeedProfileResp, bool, error) {
@@ -969,7 +1173,7 @@ func BuildDownloadTaskUniqueID(external_id string, config map[string]any) string
 	if spec := config_string(config, "spec"); spec != "" {
 		suffix = "_" + spec
 	}
-	if suffix_config == ".mp3" {
+	if config_suffix_is_mp3(config) {
 		suffix += "_mp3"
 	}
 	return external_id + suffix
@@ -1019,7 +1223,7 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 		return
 	}
 	hooks, logger := a.filename_hook_context()
-	template := filename_template_from_config(config)
+	template := a.filename_template()
 	if len(info.Resources) == 1 && info.Resources[0] != nil && !config_suffix_is_archive(config) {
 		a.apply_single_resource_task_name(info, config, hooks, logger)
 	} else if template != "" || (hooks != nil && hooks.HasFilenameHook()) {
@@ -1038,8 +1242,8 @@ func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskRes
 			Hooks:            hooks,
 		})
 		log_filename_resolution(logger, resolved)
-		if resolved.Name != "" {
-			info.Task.Name = resolved.Name
+		if resolved.BaseName != "" {
+			info.Task.Name = resolved.BaseName
 		}
 	}
 
@@ -1051,7 +1255,7 @@ func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.Download
 	resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 		TaskID:           info.Task.Id,
 		TaskConfig:       config,
-		FilenameTemplate: filename_template_from_config(config),
+		FilenameTemplate: a.filename_template(),
 		ResourceID:       resource.Id,
 		ResourceName:     resource.Name,
 		ResourceKind:     resource.Kind,
@@ -1060,8 +1264,8 @@ func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.Download
 		Hooks:            hooks,
 	})
 	log_filename_resolution(logger, resolved)
-	if resolved.Name != "" {
-		info.Task.Name = resolved.Name
+	if resolved.BaseName != "" {
+		info.Task.Name = resolved.BaseName
 	}
 }
 
@@ -1086,8 +1290,11 @@ func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[
 			Hooks:            hooks,
 		})
 		log_filename_resolution(logger, resolved)
-		if resolved.Name != "" {
-			resource.Name = resolved.Name
+		// DownloadResource.Name is the extensionless logical name. Hermes adds
+		// the canonical suffix derived from Resource.Kind only when resolving the
+		// final output path.
+		if resolved.BaseName != "" {
+			resource.Name = resolved.BaseName
 		}
 	}
 }
@@ -1104,15 +1311,8 @@ func log_filename_resolution(logger *zerolog.Logger, resolved hermes.FinalResour
 	}
 }
 
-func filename_template_from_config(config map[string]any) string {
-	for _, key := range []string{
-		"filenameTemplate",
-	} {
-		if value := strings.TrimSpace(config_string(config, key)); value != "" {
-			return value
-		}
-	}
-	return ""
+func (a *ChannelsAdapter) filename_template() string {
+	return strings.TrimSpace(a.config_string("download.filenameTemplate"))
 }
 
 func (a *ChannelsAdapter) filename_hook_context() (*hermes.HookManager, *zerolog.Logger) {
@@ -1158,6 +1358,11 @@ func resource_extra_map(raw string) map[string]string {
 func config_suffix_is_archive(config map[string]any) bool {
 	suffix := strings.TrimSpace(config_string(config, "suffix"))
 	return strings.EqualFold(suffix, ".zip") || strings.EqualFold(suffix, "zip")
+}
+
+func config_suffix_is_mp3(config map[string]any) bool {
+	suffix := strings.TrimSpace(config_string(config, "suffix"))
+	return strings.EqualFold(suffix, ".mp3") || strings.EqualFold(suffix, "mp3")
 }
 
 // build_config_json returns a map containing the config fields whose value is set / true,

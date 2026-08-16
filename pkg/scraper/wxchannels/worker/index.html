@@ -81,6 +81,16 @@
     .input-row button:disabled { background: var(--brand-disabled); cursor: not-allowed; }
     .status { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
     .status.error { color: var(--error); }
+    .error-card {
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--error) 8%, var(--surface));
+      color: var(--error);
+    }
+    .error-card .error-title { font-size: 15px; font-weight: 600; }
+    .error-card .error-content { margin-top: 6px; font-size: 13px; line-height: 1.6; }
     .result {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -226,9 +236,13 @@
         placeholder="粘贴视频号分享链接，如 https://weixin.qq.com/sph/xxx"
         autofocus
       >
-      <button id="fetchBtn" onclick="doFetch()">查询</button>
+      <button id="fetchBtn">查询</button>
     </div>
     <div id="status" class="status" hidden></div>
+    <div id="errorDetail" class="error-card" role="alert" hidden>
+      <div id="errorTitle" class="error-title"></div>
+      <div id="errorContent" class="error-content" hidden></div>
+    </div>
     <div id="result" hidden></div>
     <div class="footer">
       <a href="https://github.com/ltaoo/wx_channels_download" target="_blank">https://github.com/ltaoo/wx_channels_download</a>
@@ -236,200 +250,382 @@
   </div>
 
   <script>
-    // Replace with your Worker domain after deployment
     const API_BASE = "/api";
 
-    const urlInput = document.getElementById("urlInput");
-    const fetchBtn = document.getElementById("fetchBtn");
-    const statusEl = document.getElementById("status");
-    const resultEl = document.getElementById("result");
+    class FeedProfileModel {
+      constructor(apiBase) {
+        this.apiBase = apiBase;
+        this.listeners = new Set();
+        this.state = {
+          busy: false,
+          status: { message: "", type: "" },
+          error: null,
+          feed: null,
+          presentation: null,
+        };
+      }
 
-    urlInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doFetch();
-    });
+      subscribe(listener) {
+        this.listeners.add(listener);
+        listener(this.state);
+        return () => this.listeners.delete(listener);
+      }
 
-    async function doFetch() {
-      const shareUrl = urlInput.value.trim();
-      if (!shareUrl) return;
+      update(patch) {
+        this.state = { ...this.state, ...patch };
+        this.listeners.forEach((listener) => listener(this.state));
+      }
 
-      fetchBtn.disabled = true;
-      resultEl.hidden = true;
-      showStatus("查询中...", "");
+      async fetchProfile(shareUrl) {
+        if (this.state.busy) return;
+        const normalizedUrl = String(shareUrl || "").trim();
+        if (!normalizedUrl) {
+          this.update({
+            status: { message: "", type: "" },
+            error: { title: "请输入分享链接", content: "请粘贴视频号分享链接后再查询。" },
+            feed: null,
+            presentation: null,
+          });
+          return;
+        }
 
-      try {
-        const resp = await fetch(`${API_BASE}/fetch_video_profile`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: shareUrl }),
+        this.update({
+          busy: true,
+          status: { message: "查询中...", type: "" },
+          error: null,
+          feed: null,
+          presentation: null,
         });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || resp.statusText);
-        showStatus("", "");
-        renderResult(data);
-      } catch (err) {
-        showStatus(err.message, "error");
-      } finally {
-        fetchBtn.disabled = false;
+        try {
+          const response = await fetch(`${this.apiBase}/fetch_video_profile`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: normalizedUrl }),
+          });
+          const data = await this.readJson(response);
+          if (!response.ok) {
+            throw this.apiError(response, data);
+          }
+          this.update({
+            feed: data,
+            presentation: this.createPresentation(data),
+            status: { message: "", type: "" },
+          });
+        } catch (error) {
+          this.update({
+            error: this.displayError(error, "查询失败"),
+            status: { message: "", type: "" },
+          });
+        } finally {
+          this.update({ busy: false });
+        }
+      }
+
+      async downloadVideo(options) {
+        if (this.state.busy) return null;
+        const url = options.raw ? this.rawVideoUrl(options.url) : options.url;
+        return this.createDownload(
+          "下载中...",
+          async () => {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return {
+              blob: await response.blob(),
+              filename: this.sanitizeFilename(options.description, options.createtime, "mp4") || "video.mp4",
+            };
+          }
+        );
+      }
+
+      async downloadFeedZip() {
+        if (this.state.busy) return null;
+        const feed = this.state.feed;
+        return this.createDownload(
+          "压缩下载中...",
+          async () => {
+            const response = await fetch(`${this.apiBase}/download_feed_zip`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ feed }),
+            });
+            if (!response.ok) {
+              const data = await this.readJson(response).catch(() => ({}));
+              throw new Error(data.error || `HTTP ${response.status}`);
+            }
+            const feedInfo = feed && feed.data && feed.data.feedInfo ? feed.data.feedInfo : {};
+            return {
+              blob: await response.blob(),
+              filename: this.sanitizeFilename(feedInfo.description, feedInfo.createtime, "zip") || "channels_feed.zip",
+            };
+          }
+        );
+      }
+
+      async createDownload(statusMessage, operation) {
+        this.update({
+          busy: true,
+          status: { message: statusMessage, type: "" },
+          error: null,
+        });
+        try {
+          const download = await operation();
+          this.update({ status: { message: "", type: "" } });
+          return download;
+        } catch (error) {
+          this.update({
+            error: this.displayError(error, "下载失败"),
+            status: { message: "", type: "" },
+          });
+          return null;
+        } finally {
+          this.update({ busy: false });
+        }
+      }
+
+      async readJson(response) {
+        try {
+          return await response.json();
+        } catch (_) {
+          throw new Error(response.ok ? "服务返回了无法解析的数据" : response.statusText || `HTTP ${response.status}`);
+        }
+      }
+
+      apiError(response, data) {
+        const error = new Error((data && data.error) || response.statusText || `HTTP ${response.status}`);
+        error.code = data && data.code;
+        error.details = data && data.details;
+        return error;
+      }
+
+      displayError(error, fallbackTitle) {
+        const details = error && error.details;
+        if (details && details.title) {
+          return {
+            code: error.code || "",
+            title: String(details.title),
+            content: String(details.content || ""),
+          };
+        }
+        return {
+          code: (error && error.code) || "",
+          title: fallbackTitle,
+          content: (error && error.message) || "未知错误",
+        };
+      }
+
+      createPresentation(feed) {
+        const feedInfo = feed && feed.data && feed.data.feedInfo;
+        const authorInfo = feed && feed.data && feed.data.authorInfo;
+        if (!feedInfo) {
+          return { feedInfo: null, authorInfo: null, bestVideoUrl: "", picInfo: [], coverUrl: "", bgmUrl: "" };
+        }
+        const bestVideoUrl =
+          (feedInfo.h264VideoInfo && feedInfo.h264VideoInfo.videoUrl) ||
+          (feedInfo.h265VideoInfo && feedInfo.h265VideoInfo.videoUrl) ||
+          feedInfo.videoUrl ||
+          "";
+        const picInfo = Array.isArray(feedInfo.picInfo) ? feedInfo.picInfo : [];
+        const firstPicture = picInfo.find((item) => item && item.url);
+        const coverUrl = feedInfo.coverUrl || (firstPicture && firstPicture.url) || "";
+        const bgmInfo = feedInfo.bgmInfo || {};
+        return {
+          feedInfo,
+          authorInfo,
+          bestVideoUrl,
+          picInfo,
+          coverUrl,
+          bgmUrl: bgmInfo.bgmUrl || bgmInfo.mediaStreamingUrl || "",
+        };
+      }
+
+      rawVideoUrl(url) {
+        try {
+          const parsedUrl = new URL(decodeURIComponent(url));
+          const filekey = parsedUrl.searchParams.get("encfilekey");
+          const token = parsedUrl.searchParams.get("token");
+          if (filekey && token) {
+            const cleanUrl = new URL(parsedUrl.origin + parsedUrl.pathname);
+            cleanUrl.searchParams.set("encfilekey", filekey);
+            cleanUrl.searchParams.set("token", token);
+            return cleanUrl.toString();
+          }
+        } catch (_) {}
+        return url;
+      }
+
+      sanitizeFilename(description, createtime, extension) {
+        const suffix = "." + (extension || "mp4");
+        if (description) {
+          return String(description)
+            .replace(/[\\/:*?"<>|]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 200) + suffix;
+        }
+        if (createtime) {
+          const date = new Date(Number(createtime) * 1000);
+          const pad = (value) => String(value).padStart(2, "0");
+          return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}${suffix}`;
+        }
+        return "";
       }
     }
 
-    function showStatus(msg, cls) {
-      statusEl.textContent = msg;
-      statusEl.className = "status" + (cls ? " " + cls : "");
-      statusEl.hidden = !msg;
-    }
+    class FeedProfileView {
+      constructor(model) {
+        this.model = model;
+        this.urlInput = document.getElementById("urlInput");
+        this.fetchButton = document.getElementById("fetchBtn");
+        this.statusElement = document.getElementById("status");
+        this.errorElement = document.getElementById("errorDetail");
+        this.errorTitleElement = document.getElementById("errorTitle");
+        this.errorContentElement = document.getElementById("errorContent");
+        this.resultElement = document.getElementById("result");
+        this.renderedFeed = undefined;
+      }
 
-    function renderResult(feed) {
-      window.__lastFeedProfile = feed;
-      const fi = feed.data && feed.data.feedInfo;
-      const ai = feed.data && feed.data.authorInfo;
+      mount() {
+        this.fetchButton.addEventListener("click", () => this.model.fetchProfile(this.urlInput.value));
+        this.urlInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            this.model.fetchProfile(this.urlInput.value);
+          }
+        });
+        this.resultElement.addEventListener("click", (event) => this.handleResultClick(event));
+        this.model.subscribe((state) => this.render(state));
+      }
 
-      let html = '<div class="result"><div class="result-header">查询结果</div><div class="result-body">';
-
-      if (fi) {
-        const bestVideoUrl = fi.h264VideoInfo?.videoUrl || fi.h265VideoInfo?.videoUrl || fi.videoUrl || "";
-        const picInfo = Array.isArray(fi.picInfo) ? fi.picInfo : [];
-        const coverUrl = fi.coverUrl || picInfo.find((item) => item && item.url)?.url || "";
-        const bgmUrl = fi.bgmInfo && (fi.bgmInfo.bgmUrl || fi.bgmInfo.mediaStreamingUrl || "");
-        html += '<div class="video-card">';
-        if (bestVideoUrl) {
-          html += `<video src="${esc(bestVideoUrl)}" poster="${esc(coverUrl)}" controls preload="metadata"></video>`;
-        } else if (picInfo.length > 0) {
-          html += `<img class="cover" src="${esc(coverUrl)}" alt="cover" loading="lazy" onerror="this.style.display='none'">`;
-        } else {
-          html += `<img class="cover" src="${esc(coverUrl)}" alt="cover" onerror="this.style.display='none'">`;
+      render(state) {
+        this.fetchButton.disabled = state.busy;
+        this.renderStatus(state.status);
+        this.renderError(state.error);
+        if (state.feed !== this.renderedFeed) {
+          this.renderResult(state.feed, state.presentation);
+          this.renderedFeed = state.feed;
         }
-        html += '<div class="meta">';
-        if (ai) {
-          html += '<div class="author">';
-          html += `<img src="${esc(ai.headImgUrl)}" alt="" onerror="this.style.display='none'">`;
-          html += `<span class="name">${esc(ai.nickname)}</span>`;
-          if (ai.authIconUrl) html += `<img src="${esc(ai.authIconUrl)}" style="width:16px;height:16px" onerror="this.style.display='none'">`;
+      }
+
+      renderStatus(status) {
+        this.statusElement.textContent = status.message;
+        this.statusElement.className = "status" + (status.type ? " " + status.type : "");
+        this.statusElement.hidden = !status.message;
+      }
+
+      renderError(error) {
+        this.errorElement.hidden = !error;
+        this.errorTitleElement.textContent = error ? error.title : "";
+        this.errorContentElement.textContent = error ? error.content : "";
+        this.errorContentElement.hidden = !error || !error.content;
+      }
+
+      renderResult(feed, presentation) {
+        if (!feed || !presentation) {
+          this.resultElement.hidden = true;
+          this.resultElement.innerHTML = "";
+          return;
+        }
+
+        const feedInfo = presentation.feedInfo;
+        const authorInfo = presentation.authorInfo;
+        const bestVideoUrl = presentation.bestVideoUrl;
+        const picInfo = presentation.picInfo;
+        const coverUrl = presentation.coverUrl;
+        let html = '<div class="result"><div class="result-header">查询结果</div><div class="result-body">';
+
+        if (feedInfo) {
+          html += '<div class="video-card">';
+          if (bestVideoUrl) {
+            html += `<video src="${this.escape(bestVideoUrl)}" poster="${this.escape(coverUrl)}" controls preload="metadata"></video>`;
+          } else {
+            const loading = picInfo.length > 0 ? ' loading="lazy"' : "";
+            html += `<img class="cover" src="${this.escape(coverUrl)}" alt="cover"${loading} onerror="this.style.display='none'">`;
+          }
+          html += '<div class="meta">';
+          if (authorInfo) {
+            html += '<div class="author">';
+            html += `<img src="${this.escape(authorInfo.headImgUrl)}" alt="" onerror="this.style.display='none'">`;
+            html += `<span class="name">${this.escape(authorInfo.nickname)}</span>`;
+            if (authorInfo.authIconUrl) {
+              html += `<img src="${this.escape(authorInfo.authIconUrl)}" style="width:16px;height:16px" onerror="this.style.display='none'">`;
+            }
+            html += '</div>';
+          }
+          if (feedInfo.description) {
+            html += `<div class="desc">${this.escape(feedInfo.description)}</div>`;
+          }
+          html += '<div class="stats">';
+          if (feedInfo.likeCountFmt) html += `<span>赞 ${this.escape(feedInfo.likeCountFmt)}</span>`;
+          if (feedInfo.favCountFmt) html += `<span>爱心 ${this.escape(feedInfo.favCountFmt)}</span>`;
+          if (feedInfo.forwardCountFmt) html += `<span>转发 ${this.escape(feedInfo.forwardCountFmt)}</span>`;
+          if (feedInfo.commentCountFmt) html += `<span>评论 ${this.escape(feedInfo.commentCountFmt)}</span>`;
           html += '</div>';
+          if (bestVideoUrl) {
+            const attributes = `data-video-url="${this.escape(bestVideoUrl)}" data-desc="${this.escape(feedInfo.description || "")}" data-createtime="${this.escape(feedInfo.createtime || "")}"`;
+            html += `<div><button class="download-btn" data-action="download-video" ${attributes}>下载视频</button> <button class="download-btn" data-action="download-raw-video" ${attributes}>下载原始视频</button></div>`;
+          } else if (picInfo.length > 0) {
+            html += '<div><button class="download-btn" data-action="download-feed-zip">下载图集 ZIP</button></div>';
+          }
+          if (picInfo.length > 0) {
+            html += `<div class="stats"><span>图片 ${picInfo.length}</span>${presentation.bgmUrl ? '<span>BGM 1</span>' : ''}</div>`;
+          }
+          if (bestVideoUrl) {
+            html += `<div class="video-link"><a href="${this.escape(bestVideoUrl)}" target="_blank">${this.escape(bestVideoUrl)}</a></div>`;
+          }
+          html += '</div></div>';
         }
-        if (fi.description) html += `<div class="desc">${esc(fi.description)}</div>`;
-        html += '<div class="stats">';
-        if (fi.likeCountFmt) html += `<span>赞 ${esc(fi.likeCountFmt)}</span>`;
-        if (fi.favCountFmt) html += `<span>爱心 ${esc(fi.favCountFmt)}</span>`;
-        if (fi.forwardCountFmt) html += `<span>转发 ${esc(fi.forwardCountFmt)}</span>`;
-        if (fi.commentCountFmt) html += `<span>评论 ${esc(fi.commentCountFmt)}</span>`;
+
         html += '</div>';
-        if (bestVideoUrl) html += `<div><button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadVideoFromBtn(this)">下载视频</button> <button class="download-btn" data-video-url="${esc(bestVideoUrl)}" data-desc="${esc(fi.description || '')}" data-createtime="${esc(fi.createtime || '')}" onclick="downloadRawVideoFromBtn(this)">下载原始视频</button></div>`;
-        if (!bestVideoUrl && picInfo.length > 0) html += `<div><button class="download-btn" onclick="downloadFeedZip()">下载图集 ZIP</button></div>`;
-        if (picInfo.length > 0) html += `<div class="stats"><span>图片 ${picInfo.length}</span>${bgmUrl ? '<span>BGM 1</span>' : ''}</div>`;
-        if (bestVideoUrl) html += `<div class="video-link"><a href="${esc(bestVideoUrl)}" target="_blank">${esc(bestVideoUrl)}</a></div>`;
-        html += '</div></div>';
+        html += '<details class="json-section"><summary>原始响应 JSON</summary>';
+        html += `<pre>${this.escape(JSON.stringify(feed, null, 2))}</pre>`;
+        html += '</details></div>';
+        this.resultElement.innerHTML = html;
+        this.resultElement.hidden = false;
       }
 
-      html += '</div>';
-
-      // JSON details
-      html += '<details class="json-section"><summary>原始响应 JSON</summary>';
-      html += `<pre>${esc(JSON.stringify(feed, null, 2))}</pre>`;
-      html += '</details>';
-
-      html += '</div>';
-      resultEl.innerHTML = html;
-      resultEl.hidden = false;
-    }
-
-    function getRawVideoUrl(url) {
-      try {
-        var u = new URL(decodeURIComponent(url));
-        var filekey = u.searchParams.get("encfilekey");
-        var token = u.searchParams.get("token");
-        if (filekey && token) {
-          var newUrl = new URL(u.origin + u.pathname);
-          newUrl.searchParams.set("encfilekey", filekey);
-          newUrl.searchParams.set("token", token);
-          return newUrl.toString();
+      async handleResultClick(event) {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const action = button.dataset.action;
+        let download = null;
+        if (action === "download-feed-zip") {
+          download = await this.model.downloadFeedZip();
+        } else if (action === "download-video" || action === "download-raw-video") {
+          download = await this.model.downloadVideo({
+            url: button.dataset.videoUrl,
+            description: button.dataset.desc,
+            createtime: button.dataset.createtime,
+            raw: action === "download-raw-video",
+          });
         }
-      } catch (e) {}
-      return url;
-    }
-
-    function downloadVideoFromBtn(btn) {
-      downloadVideo(
-        btn.getAttribute("data-video-url"),
-        btn.getAttribute("data-desc"),
-        btn.getAttribute("data-createtime")
-      );
-    }
-
-    function downloadRawVideoFromBtn(btn) {
-      downloadVideo(
-        getRawVideoUrl(btn.getAttribute("data-video-url")),
-        btn.getAttribute("data-desc"),
-        btn.getAttribute("data-createtime")
-      );
-    }
-
-    async function downloadVideo(url, description, createtime) {
-      try {
-        showStatus("下载中...", "");
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("下载失败");
-        const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = sanitizeFilename(description, createtime, "mp4") || "video.mp4";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-        showStatus("", "");
-      } catch (err) {
-        showStatus("下载失败: " + err.message, "error");
-      }
-    }
-
-    async function downloadFeedZip() {
-      try {
-        showStatus("压缩下载中...", "");
-        const feed = window.__lastFeedProfile;
-        const resp = await fetch(`${API_BASE}/download_feed_zip`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ feed }),
-        });
-        if (!resp.ok) {
-          const data = await resp.json().catch(() => ({}));
-          throw new Error(data.error || "下载失败");
+        if (download) {
+          this.saveDownload(download);
         }
-        const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        const fi = feed && feed.data && feed.data.feedInfo ? feed.data.feedInfo : {};
-        a.href = blobUrl;
-        a.download = sanitizeFilename(fi.description, fi.createtime, "zip") || "channels_feed.zip";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+      }
+
+      saveDownload(download) {
+        const blobUrl = URL.createObjectURL(download.blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = download.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
         URL.revokeObjectURL(blobUrl);
-        showStatus("", "");
-      } catch (err) {
-        showStatus("下载失败: " + err.message, "error");
+      }
+
+      escape(value) {
+        if (!value) return "";
+        const element = document.createElement("div");
+        element.textContent = value;
+        return element.innerHTML;
       }
     }
 
-    function sanitizeFilename(desc, createtime, ext) {
-      const suffix = "." + (ext || "mp4");
-      if (desc) return desc.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 200) + suffix;
-      if (createtime) {
-        const d = new Date(Number(createtime) * 1000);
-        const pad = (n) => String(n).padStart(2, "0");
-        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${suffix}`;
-      }
-      return "";
-    }
-
-    function esc(s) {
-      if (!s) return "";
-      const div = document.createElement("div");
-      div.textContent = s;
-      return div.innerHTML;
-    }
+    const feedProfileModel = new FeedProfileModel(API_BASE);
+    const feedProfileView = new FeedProfileView(feedProfileModel);
+    feedProfileView.mount();
   </script>
 </body>
 </html>

@@ -28,6 +28,7 @@ require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
+	github.com/tetratelabs/wazero v1.7.3
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/expr-lang/expr v1.16.9
 	github.com/fatih/color v1.16.0
@@ -47,6 +48,7 @@ require (
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
+	golang.org/x/sys v0.39.0
 	golang.org/x/text v0.32.0
 	gorm.io/gorm v1.31.1
 )
@@ -58,10 +60,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/metric v1.38.0 // indirect
-	go.opentelemetry.io/otel/trace v1.38.0 // indirect
-	gorm.io/driver/sqlite v1.6.0 // indirect
+	gorm.io/driver/sqlite v1.6.0
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
@@ -124,6 +123,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -195,7 +195,6 @@ require (
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect

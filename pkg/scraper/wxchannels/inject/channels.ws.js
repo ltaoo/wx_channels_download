@@ -18,9 +18,7 @@ async function fetchExportIdWithShareId(data) {
     return [new Error("can't get the uri from url, " + data.url), null];
   }
   await WXU.load_script(WXEnv.assetUrl("/public/axios.min.js"));
-  await WXU.load_script(
-    WXEnv.assetUrl("/platform/wxchannels/getFeedInfo.js"),
-  );
+  await WXU.load_script(WXEnv.assetUrl("/platform/wxchannels/getFeedInfo.js"));
   // await WXU.load_script(WXEnv.assetUrl("/public/merlin.js"));
   if (typeof getFeedInfo !== "function") {
     return [new Error("the getFeedInfo is not a function"), null];
@@ -69,11 +67,22 @@ async function fetchFeedProfileWith(data) {
     } else {
       try {
         var u = new URL(decodeURIComponent(data.url), window.location.origin);
-        console.log('WXU.API.decodeBase64ToUint64String', WXU.Base64, WXU.API.decodeBase64ToUint64String);
-        data.oid = WXU.Base64.decodeBase64ToUint64String(u.searchParams.get("oid"));
-        data.nid = WXU.Base64.decodeBase64ToUint64String(u.searchParams.get("nid"));
+        console.log(
+          "WXU.API.decodeBase64ToUint64String",
+          WXU.Base64,
+          WXU.API.decodeBase64ToUint64String,
+        );
+        data.oid = WXU.Base64.decodeBase64ToUint64String(
+          u.searchParams.get("oid"),
+        );
+        data.nid = WXU.Base64.decodeBase64ToUint64String(
+          u.searchParams.get("nid"),
+        );
       } catch (parseErr) {
-        return [new Error("failed to parse feed URL: " + parseErr.message), null];
+        return [
+          new Error("failed to parse feed URL: " + parseErr.message),
+          null,
+        ];
       }
     }
   }
@@ -108,26 +117,135 @@ async function fetchFeedProfileWith(data) {
 }
 
 function ChannelsWebsocketClient() {
+  const WEBSOCKET_RETRY_INTERVAL = 5000;
+  const state = {
+    connection_status: "disconnected",
+  };
+  let websocket_ = null;
+  let connection_promise_ = null;
+  let retry_timer_ = null;
+
+  function set_connection_status(status) {
+    state.connection_status = status;
+  }
+
+  function cancel_retry() {
+    if (retry_timer_ === null) {
+      return;
+    }
+    clearTimeout(retry_timer_);
+    retry_timer_ = null;
+  }
+
+  function schedule_retry() {
+    if (state.connection_status === "connected" || retry_timer_ !== null) {
+      return;
+    }
+    retry_timer_ = setTimeout(() => {
+      retry_timer_ = null;
+      methods.connect_local_ws().catch(() => {});
+    }, WEBSOCKET_RETRY_INTERVAL);
+  }
+
   const methods = {
     connect_local_ws() {
-      const ws = new WebSocket(ChannelsWSURL);
-      ws.onclose = (e) => {
-        WXU.error({ source: "channels.ws.js:115",
-          msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}. ${ChannelsWSURL}`,
-        });
-      };
-      ws.onerror = (e) => {
-        WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e), source: "channels.ws.js:120" });
-      };
-      ws.onmessage = (ev) => {
-        const [err, msg] = WXU.parseJSON(ev.data);
-        if (err) {
+      if (
+        state.connection_status === "connected" &&
+        websocket_ &&
+        websocket_.readyState === WebSocket.OPEN
+      ) {
+        return Promise.resolve(true);
+      }
+      if (connection_promise_) {
+        return connection_promise_;
+      }
+      cancel_retry();
+      set_connection_status("connecting");
+      const connection_promise = new Promise((resolve, reject) => {
+        let ws;
+        try {
+          ws = new WebSocket(ChannelsWSURL);
+        } catch (error) {
+          set_connection_status("disconnected");
+          schedule_retry();
+          reject(error);
           return;
         }
-        if (msg.type === "api_call") {
-          this.__wx_handle_api_call(msg.data, ws);
-        }
-      };
+        websocket_ = ws;
+        let opened = false;
+        ws.onopen = () => {
+          if (websocket_ !== ws) {
+            ws.close();
+            return;
+          }
+          opened = true;
+          set_connection_status("connected");
+          cancel_retry();
+          resolve(true);
+        };
+        ws.onclose = (e) => {
+          if (websocket_ !== ws) {
+            return;
+          }
+          websocket_ = null;
+          set_connection_status("disconnected");
+          schedule_retry();
+          if (opened) {
+            WXU.error({
+              source: "channels.ws.js:onclose",
+              msg: `channels ws连接已关闭，reason: "${e.reason}"，code: "${e.code}"`,
+            });
+            WXU.log.flushNow();
+            return;
+          }
+          reject(new Error("channels websocket connection closed"));
+        };
+        ws.onerror = (e) => {
+          if (websocket_ !== ws) {
+            return;
+          }
+          set_connection_status("disconnected");
+          schedule_retry();
+          if (!opened) {
+            websocket_ = null;
+            reject(
+              e instanceof Error
+                ? e
+                : new Error("channels websocket connection failed"),
+            );
+            try {
+              ws.close();
+            } catch (error) {}
+          }
+        };
+        ws.onmessage = (ev) => {
+          const [err, msg] = WXU.parseJSON(ev.data);
+          if (err) {
+            return;
+          }
+          if (msg.type === "api_call") {
+            methods.__wx_handle_api_call(msg.data, ws);
+          }
+        };
+      });
+      connection_promise_ = connection_promise;
+      connection_promise.then(
+        () => {
+          if (connection_promise_ === connection_promise) {
+            connection_promise_ = null;
+          }
+        },
+        () => {
+          if (connection_promise_ === connection_promise) {
+            connection_promise_ = null;
+          }
+        },
+      );
+      return connection_promise;
+    },
+    reconnect_local_ws() {
+      cancel_retry();
+      return methods.connect_local_ws();
     },
     async __wx_handle_api_call(msg, socket) {
       var { id, key, data } = msg;
@@ -382,9 +500,10 @@ function ChannelsWebsocketClient() {
     },
   };
   return {
+    state,
     methods,
   };
 }
 
 var ws_client$ = ChannelsWebsocketClient();
-ws_client$.methods.connect_local_ws();
+ws_client$.methods.connect_local_ws().catch(() => {});

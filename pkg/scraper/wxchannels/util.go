@@ -7,12 +7,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Client struct {
+type WebsocketClient struct {
 	Conn *websocket.Conn
 	Send chan []byte
 }
 
-func (c *Client) write_pump() {
+func (c *WebsocketClient) write_pump() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer func() {
 		ticker.Stop()
@@ -23,7 +23,10 @@ func (c *Client) write_pump() {
 		case message, ok := <-c.Send:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.Conn.WriteMessage(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "server closing"),
+				)
 				return
 			}
 			w, err := c.Conn.NextWriter(websocket.TextMessage)

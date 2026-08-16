@@ -40,14 +40,6 @@ func (c *BilibiliPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	return nil
 }
 
-// GetBilibiliConfig returns the registered bilibili plugin config if available.
-func GetBilibiliConfig() *BilibiliPluginConfig {
-	return bilibiliPluginConfig
-}
-
-var bilibiliPluginConfig *BilibiliPluginConfig
-
 func init() {
-	bilibiliPluginConfig = &BilibiliPluginConfig{}
-	config.RegisterPlugin(bilibiliPluginConfig)
+	config.RegisterPlugin(&BilibiliPluginConfig{})
 }

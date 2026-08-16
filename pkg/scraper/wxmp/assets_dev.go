@@ -9,8 +9,6 @@ import (
 	"runtime"
 )
 
-var manager_html []byte
-
 // Non-embedded builds are used by `go run` during development. Serve the
 // package-local files directly instead of leaving the platform asset registry
 // with a nil filesystem.

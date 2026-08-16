@@ -10,7 +10,7 @@ title: 手动安装根证书
 
 ### 下载安装
 
-<a href="/SunnyRoot.cer" download>点击下载 SunnyRoot.cer</a>  
+<a href="/wx_channels_download/SunnyNet.cer" download>点击下载 SunnyNet.cer</a>
 
 
 ## Windows
@@ -33,9 +33,9 @@ title: 手动安装根证书
 ![Windows 安装根证书-10](../assets/install_rootcert_win10.png)
 
 ## macOS
-- 双击下载的 `SunnyRoot.cer` 打开“钥匙串访问”
+- 双击下载的 `SunnyNet.cer` 打开“钥匙串访问”
 - 选择添加到“系统”钥匙串，并设置“始终信任”
-双击 `SunnyRoot.cer` 打开“钥匙串访问”
+双击 `SunnyNet.cer` 打开“钥匙串访问”
 
 在左上角选择“系统”钥匙串，将证书添加到系统钥匙串
 
@@ -46,13 +46,13 @@ title: 手动安装根证书
 
 ## Linux
 
-下载 `SunnyRoot.cer` 后，根据发行版选择对应命令安装到系统根证书库。
+下载 `SunnyNet.cer` 后，根据发行版选择对应命令安装到系统根证书库。
 
 ### Debian / Ubuntu
 
 ```bash
 sudo mkdir -p /usr/local/share/ca-certificates
-sudo install -m 0644 ~/Downloads/SunnyRoot.cer /usr/local/share/ca-certificates/WeChatAppEx_CA.crt
+sudo install -m 0644 ~/Downloads/SunnyNet.cer /usr/local/share/ca-certificates/WeChatAppEx_CA.crt
 sudo update-ca-certificates --fresh
 ```
 
@@ -60,7 +60,7 @@ sudo update-ca-certificates --fresh
 
 ```bash
 sudo mkdir -p /etc/pki/ca-trust/source/anchors
-sudo install -m 0644 ~/Downloads/SunnyRoot.cer /etc/pki/ca-trust/source/anchors/WeChatAppEx_CA.crt
+sudo install -m 0644 ~/Downloads/SunnyNet.cer /etc/pki/ca-trust/source/anchors/WeChatAppEx_CA.crt
 sudo update-ca-trust extract
 ```
 
@@ -68,7 +68,7 @@ sudo update-ca-trust extract
 
 ```bash
 sudo mkdir -p /etc/ca-certificates/trust-source/anchors
-sudo install -m 0644 ~/Downloads/SunnyRoot.cer /etc/ca-certificates/trust-source/anchors/WeChatAppEx_CA.crt
+sudo install -m 0644 ~/Downloads/SunnyNet.cer /etc/ca-certificates/trust-source/anchors/WeChatAppEx_CA.crt
 sudo trust extract-compat
 ```
 
@@ -78,7 +78,7 @@ sudo trust extract-compat
 mkdir -p ~/.pki/nssdb
 [ -f ~/.pki/nssdb/cert9.db ] || certutil -d sql:$HOME/.pki/nssdb -N --empty-password
 certutil -d sql:$HOME/.pki/nssdb -D -n WeChatAppEx_CA 2>/dev/null || true
-certutil -d sql:$HOME/.pki/nssdb -A -n WeChatAppEx_CA -t "CT,C,C" -i ~/Downloads/SunnyRoot.cer
+certutil -d sql:$HOME/.pki/nssdb -A -n WeChatAppEx_CA -t "CT,C,C" -i ~/Downloads/SunnyNet.cer
 ```
 
 `certutil` 命令由 `libnss3-tools`（Debian / Ubuntu）或 `nss-tools`（Fedora / RHEL / CentOS）提供，Arch / Manjaro 可安装 `nss`。

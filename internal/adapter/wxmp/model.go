@@ -90,7 +90,7 @@ func article_publish_time(data *wxmp.ArticleCgiDataNew) *int64 {
 	return nil
 }
 
-// ToContent converts an ArticleCgiData into a slim model.Content and its type-specific extension.
+// ToContent converts ArticleCgiDataNew into a slim model.Content and its type-specific extension.
 func ToContent(data *wxmp.ArticleCgiDataNew) (*model.Content, any, error) {
 	if data == nil {
 		return nil, nil, errors.New("article data is nil")
@@ -131,14 +131,14 @@ func ToContent(data *wxmp.ArticleCgiDataNew) (*model.Content, any, error) {
 	return c, build_content_article(data, c.Id), nil
 }
 
-// ToAccount converts an ArticleCgiData publisher into a model.Account.
+// ToAccount converts an ArticleCgiDataNew publisher into a model.Account.
 func ToAccount(data *wxmp.ArticleCgiDataNew) (*model.Account, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
 	}
 	external_id := data.UserName
 	if external_id == "" {
-		return nil, errors.New("missing bizuin in article data")
+		return nil, errors.New("missing user_name in article data")
 	}
 
 	now := util.NowMillis()
@@ -157,7 +157,7 @@ func ToAccount(data *wxmp.ArticleCgiDataNew) (*model.Account, error) {
 	}, nil
 }
 
-// ArticleToHistory converts an ArticleCgiData into a model.BrowseHistory.
+// ArticleToHistory converts an ArticleCgiDataNew into a model.BrowseHistory.
 func ArticleToHistory(data *wxmp.ArticleCgiDataNew) (*model.BrowseHistory, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
@@ -219,7 +219,7 @@ func (a *OfficialAccountAdapter) BuildBrowseHistory(content_json json.RawMessage
 	}, nil
 }
 
-// ArticleToContentArticle converts an ArticleCgiData into a model.ContentArticle with the HTML body.
+// ArticleToContentArticle converts ArticleCgiDataNew into a model.ContentArticle with the HTML body.
 func ArticleToContentArticle(data *wxmp.ArticleCgiDataNew) (*model.ContentArticle, error) {
 	if data == nil {
 		return nil, errors.New("article data is nil")
@@ -266,6 +266,7 @@ func build_content_album(data *wxmp.ArticleCgiDataNew, content_id string) (*mode
 		}
 		album_images = append(album_images, &model.ContentImage{
 			AlbumId:   content_id,
+			ImageKey:  model.BuildContentAlbumImageKey("", "", i),
 			SortOrder: i,
 			URL:       image_url,
 			Width:     picture.Width,
@@ -373,10 +374,14 @@ func ArticleToContentAccount(data *wxmp.ArticleCgiDataNew) (*model.ContentAccoun
 	if external_id == "" {
 		return nil, errors.New("missing bizuin/mid/idx in article data")
 	}
+	account_external_id := strings.TrimSpace(data.UserName)
+	if account_external_id == "" {
+		return nil, errors.New("missing user_name in article data")
+	}
 
 	return &model.ContentAccount{
 		ContentId: BuildContentID(external_id),
-		AccountId: BuildAccountID(strings.TrimSpace(data.Bizuin)),
+		AccountId: BuildAccountID(account_external_id),
 		Role:      "publisher",
 		CreatedAt: util.NowMillis(),
 	}, nil
@@ -471,6 +476,12 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource:  html_resource,
 		Endpoints: []model.DownloadEndpoint{html_endpoint},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindText,
+			Role:     model.ContentAssetRoleArticleBody,
+			AssetKey: "body:html",
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
 	})
 	for _, r := range image_resources {
 		resources = append(resources, r)
@@ -556,6 +567,12 @@ func parse_content_images(content_html, content_id, external_id, extra_json stri
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  res,
 			Endpoints: []model.DownloadEndpoint{ep},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindImage,
+				Role:     model.ContentAssetRoleAttachment,
+				AssetKey: "inline_image:" + filename,
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
 		})
 	})
 
@@ -599,6 +616,10 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 			continue
 		}
 		img_url := normalize_image_url(image.URL)
+		image_key := strings.TrimSpace(image.ImageKey)
+		if image_key == "" {
+			image_key = model.BuildContentAlbumImageKey("", "", i)
+		}
 		filename := ""
 		if img_url != "" {
 			hash := md5.Sum([]byte(img_url))
@@ -620,6 +641,15 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 			resources = append(resources, &adapter.ResourceInfo{
 				Resource:  res,
 				Endpoints: []model.DownloadEndpoint{ep},
+				ContentAssets: []adapter.ContentAssetReference{{
+					Kind:            model.ContentAssetKindImage,
+					Role:            model.ContentAssetRolePrimary,
+					AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "original"),
+					Relation:        model.DownloadResourceAssetRelationSource,
+					SubjectType:     model.ContentAssetSubjectAlbumImage,
+					SubjectKey:      image_key,
+					SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+				}},
 			})
 			merge_order++
 		}
@@ -652,6 +682,15 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 				URL:      video_url,
 				Enabled:  1,
 				Headers:  wechat_headers,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindVideo,
+				Role:            model.ContentAssetRoleLivePhoto,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "live_photo"),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 			}},
 		})
 		merge_order++

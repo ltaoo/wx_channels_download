@@ -628,7 +628,7 @@ var WXBase64 = (() => {
   }
 
   function __wxmp_create_download_menu_item(options, trigger, close) {
-    return new Timeless.ui.MenuItemCore({
+    return new Timeless.vm.MenuItemCore({
       label: __wx_download_menu_label(options.label),
       tooltip: options.tooltip || options.title,
       disabled: !!options.disabled,
@@ -660,7 +660,7 @@ var WXBase64 = (() => {
       return trigger.__attacheddropdown;
     }
 
-    const submenu$ = new Timeless.ui.MenuCore({
+    const submenu$ = new Timeless.vm.MenuCore({
       items: [],
       trigger: "hover",
     });
@@ -683,7 +683,7 @@ var WXBase64 = (() => {
         ),
         ...(feed && feed.objectDesc && feed.objectDesc.mediaType === 4
           ? [
-              new Timeless.ui.MenuItemCore({
+              new Timeless.vm.MenuItemCore({
                 label: "更多下载",
                 menu: submenu$,
               }),
@@ -691,7 +691,7 @@ var WXBase64 = (() => {
           : []),
         ...(feed && feed.objectDesc && feed.objectDesc.mediaType === 4
           ? [
-              new Timeless.ui.MenuItemCore({
+              new Timeless.vm.MenuItemCore({
                 label: "下载为MP3",
                 onClick() {
                   const [err, profile] = WXU.check_feed_existing({
@@ -706,7 +706,7 @@ var WXBase64 = (() => {
           : []),
         ...(feed && feed.objectDesc && feed.objectDesc.mediaType === 4
           ? [
-              new Timeless.ui.MenuItemCore({
+              new Timeless.vm.MenuItemCore({
                 label: "下载封面",
                 onClick() {
                   __wx_channels_handle_download_cover();
@@ -715,7 +715,7 @@ var WXBase64 = (() => {
               }),
             ]
           : []),
-        new Timeless.ui.MenuItemCore({
+        new Timeless.vm.MenuItemCore({
           label: "复制页面链接",
           onClick() {
             WXU.copy(location.href);
@@ -733,10 +733,10 @@ var WXBase64 = (() => {
 
     function build_download_menu_items() {
       return [
-        new Timeless.ui.MenuItemCore({
+        new Timeless.vm.MenuItemCore({
           label: "原始视频",
           onClick() {
-            __wx_channels_handle_click_download__({ spec: "" });
+            __wx_channels_handle_click_download__({ spec: "original" });
             close_dropdown();
           },
         }),
@@ -749,7 +749,7 @@ var WXBase64 = (() => {
           }
           const profile = WXU.format_feed(feed);
           return (profile.spec || []).map((spec) => {
-            return new Timeless.ui.MenuItemCore({
+            return new Timeless.vm.MenuItemCore({
               label: format_media_spec_short_label(spec),
               tooltip: format_media_spec_label(spec) || spec.fileFormat,
               onClick() {
@@ -764,7 +764,7 @@ var WXBase64 = (() => {
       ];
     }
 
-    dropdown$ = new Timeless.ui.DropdownMenuCore({
+    dropdown$ = new Timeless.vm.DropdownMenuCore({
       trigger: "hover",
       align: "end",
       items: build_root_menu_items(),

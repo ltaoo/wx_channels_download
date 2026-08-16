@@ -11,7 +11,6 @@ This implementation provides the following API endpoints from the original Go ve
 - `POST /api/mp/refresh` - Refresh official account credentials
 - `GET /rss/mp` - Generate RSS feed for official account messages
 - `GET /mp/proxy` - Proxy requests to external URLs
-- `GET /mp/home` - Management dashboard
 
 ## Deployment
 
@@ -97,11 +96,6 @@ GET /rss/mp?biz=ACCOUNT_BIZ
 #### Proxy Request
 ```
 GET /mp/proxy?token=YOUR_TOKEN&url=TARGET_URL
-```
-
-#### Management Dashboard
-```
-GET /mp/home
 ```
 
 ## Data Storage

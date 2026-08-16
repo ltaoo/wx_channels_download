@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/rs/zerolog"
 )
 
 var userAgents = []string{
@@ -19,18 +22,22 @@ func canParse(url string) bool {
 }
 
 // resolveRedirects follows redirects from v.douyin.com short links until reaching the video page.
-func resolveRedirects(url, ua string) (string, error) {
-	current := url
+func resolveRedirects(raw_url, user_agent string, logger *zerolog.Logger) (string, error) {
+	current_url := raw_url
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
-	for i := 0; i < 5; i++ {
-		req, _ := http.NewRequest("GET", current, nil)
-		req.Header.Set("User-Agent", ua)
+	for redirect_index := 0; redirect_index < 5; redirect_index++ {
+		req, err := http.NewRequest("GET", current_url, nil)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("User-Agent", user_agent)
 
+		request_started_at := time.Now()
 		resp, err := client.Do(req)
 		if err != nil {
 			return "", err
@@ -38,9 +45,18 @@ func resolveRedirects(url, ua string) (string, error) {
 
 		location := resp.Header.Get("Location")
 		resp.Body.Close()
+		if logger != nil {
+			logger.Info().
+				Int("redirect_step", redirect_index+1).
+				Int("http_status", resp.StatusCode).
+				Str("request_url", current_url).
+				Str("location", location).
+				Dur("request_elapsed", time.Since(request_started_at)).
+				Msg("douyin mobile: redirect response received")
+		}
 
 		if location == "" {
-			return current, nil
+			return current_url, nil
 		}
 
 		if strings.HasPrefix(location, "/") {
@@ -51,9 +67,15 @@ func resolveRedirects(url, ua string) (string, error) {
 			return location, nil
 		}
 
-		current = location
+		current_url = location
 	}
-	return current, nil
+	if logger != nil {
+		logger.Warn().
+			Str("final_url", current_url).
+			Int("redirect_limit", 5).
+			Msg("douyin mobile: redirect limit reached")
+	}
+	return current_url, nil
 }
 
 // parseVideoID extracts the video ID from a URL.

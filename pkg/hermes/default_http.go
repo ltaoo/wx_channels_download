@@ -71,7 +71,7 @@ func (d *default_http_driver) Prepare(ctx context.Context, endpoint Endpoint) (P
 		}
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return PreparedResource{}, fmt.Errorf("resource probe returned status code %d", resp.StatusCode)
+		return PreparedResource{}, default_http_probe_status_error(resp, len(probe))
 	}
 	if value := resp.Header.Get("Content-Length"); value != "" {
 		if size, parse_err := strconv.ParseInt(value, 10, 64); parse_err == nil && size >= 0 {
@@ -79,6 +79,24 @@ func (d *default_http_driver) Prepare(ctx context.Context, endpoint Endpoint) (P
 		}
 	}
 	return prepared, nil
+}
+
+func default_http_probe_status_error(resp *http.Response, body_bytes int) error {
+	if resp == nil {
+		return errors.New("resource probe returned no HTTP response")
+	}
+	detail := fmt.Sprintf(
+		"response content-type=%q content-length=%q content-range=%q server=%q body-bytes=%d",
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("Content-Length"),
+		resp.Header.Get("Content-Range"),
+		resp.Header.Get("Server"),
+		body_bytes,
+	)
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("resource probe rejected with HTTP status %d: endpoint authorization, signed URL, access token, or request challenge may be missing, invalid, or expired (%s)", resp.StatusCode, detail)
+	}
+	return fmt.Errorf("resource probe returned HTTP status %d (%s)", resp.StatusCode, detail)
 }
 
 func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, request ReadRequest) (io.ReadCloser, error) {
@@ -100,7 +118,7 @@ func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, reque
 		}
 		if resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()
-			return nil, fmt.Errorf("server does not support the requested range, status code %d", resp.StatusCode)
+			return nil, default_http_range_response_status_error(resp.StatusCode)
 		}
 		start, end, _, ok := parse_default_http_content_range(resp.Header.Get("Content-Range"))
 		if !ok || start != request.OffsetStart || end > request.OffsetEnd {
@@ -114,6 +132,19 @@ func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, reque
 		return nil, fmt.Errorf("server returned error status code: %d", resp.StatusCode)
 	}
 	return resp.Body, nil
+}
+
+func default_http_range_response_status_error(status_code int) error {
+	switch status_code {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("range request rejected with HTTP status %d: endpoint authorization, signed URL, or access token may be missing, invalid, or expired", status_code)
+	case http.StatusRequestedRangeNotSatisfiable:
+		return fmt.Errorf("range request rejected with HTTP status %d: requested byte range is not satisfiable", status_code)
+	case http.StatusOK:
+		return errors.New("server ignored the requested byte range and returned HTTP status 200")
+	default:
+		return fmt.Errorf("range request returned unexpected HTTP status %d", status_code)
+	}
 }
 
 func full_range_response_matches_request(resp *http.Response, request ReadRequest) bool {

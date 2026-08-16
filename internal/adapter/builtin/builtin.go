@@ -5,9 +5,9 @@
 package builtinadapter
 
 import (
-	_ "wx_channel/internal/adapter/69shuba"
 	_ "wx_channel/internal/adapter/bilibili"
 	_ "wx_channel/internal/adapter/douyin"
+	_ "wx_channel/internal/adapter/ttk"
 	_ "wx_channel/internal/adapter/weibo"
 	_ "wx_channel/internal/adapter/wxchannels"
 	_ "wx_channel/internal/adapter/wxmp"

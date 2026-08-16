@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 )
 
 func (c *APIClient) CreateBrowseHistory(browse_history *model.BrowseHistory, account *model.Account) error {

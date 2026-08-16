@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 
 	"github.com/ltaoo/echo"
@@ -70,12 +71,14 @@ func (c *Interceptor) Start() error {
 	if !c.Settings.ProxySkipInstallRootCert {
 		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
 		if err != nil {
-			return fmt.Errorf("检查证书失败: %v", err)
+			return fmt.Errorf("failed to check certificate: %v", err)
 		}
 		if !existing {
-			if !platform.IsAdmin() {
+			// macOS and Linux elevate only the certificate installation command.
+			// Windows still uses the application-level elevation flow.
+			if runtime.GOOS == "windows" && !platform.IsAdmin() {
 				if !platform.RequestAdminPermission() {
-					return fmt.Errorf("运行失败，请右键选择「以管理员身份运行」")
+					return fmt.Errorf("failed to elevate privileges for certificate installation; please run as administrator")
 				}
 				// The elevated process inherits the current arguments and will
 				// restart the proxy setup, including certificate installation.
@@ -83,7 +86,14 @@ func (c *Interceptor) Start() error {
 			}
 			fmt.Printf("Installing certificate...\n")
 			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
-				return fmt.Errorf("安装证书失败: %v", err)
+				return fmt.Errorf("failed to install certificate: %v", err)
+			}
+			installed, verify_err := certificate.CheckHasCertificate(c.Cert.Name)
+			if verify_err != nil {
+				return fmt.Errorf("failed to verify certificate installation: %v", verify_err)
+			}
+			if !installed {
+				return fmt.Errorf("certificate not found in the system keychain after installation: %v", c.Cert.Name)
 			}
 		}
 	}
@@ -93,7 +103,7 @@ func (c *Interceptor) Start() error {
 			Hostname: c.Settings.ProxyServerHostname,
 			Port:     strconv.Itoa(c.Settings.ProxyServerPort),
 		}); err != nil {
-			return fmt.Errorf("设置代理失败: %v", err)
+			return fmt.Errorf("failed to configure proxy: %v", err)
 		}
 	}
 	if err := client.Start(c.Settings.ProxyServerPort); err != nil {
@@ -109,14 +119,14 @@ func (c *Interceptor) Stop() error {
 			Hostname: c.Settings.ProxyServerHostname,
 			Port:     strconv.Itoa(c.Settings.ProxyServerPort),
 		}
-		err := system.DisableProxy(arg)
+		_, err := system.DisableProxyIfMatches(arg)
 		if err != nil {
-			return fmt.Errorf("关闭系统代理失败: %v", err)
+			return fmt.Errorf("failed to disable system proxy: %v", err)
 		}
 	}
 	if c.proxy != nil {
 		if err := c.proxy.Close(); err != nil {
-			return fmt.Errorf("关闭代理服务失败: %v", err)
+			return fmt.Errorf("failed to stop proxy service: %v", err)
 		}
 	}
 	return nil
@@ -154,7 +164,7 @@ func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if isLocal && (r.URL.Path == "/" || r.URL.Path == "") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<html><head><meta charset="utf-8"><title>wx_channels_download</title><style>@media(prefers-color-scheme:dark){body{background:#3c3c3c;color:#e0e0e0}a{color:#7cb8ff}}</style></head><body><h1>代理服务运行中</h1><p><a href="/cert">点击下载证书</a></p></body></html>`)
+		fmt.Fprintf(w, `<html><head><meta charset="utf-8"><title>wx_channels_download</title><style>@media(prefers-color-scheme:dark){body{background:#3c3c3c;color:#e0e0e0}a{color:#7cb8ff}}</style></head><body><h1>Proxy service is running</h1><p><a href="/cert">Click to download the certificate</a></p></body></html>`)
 		return
 	}
 	c.proxy.ServeHTTP(w, r)

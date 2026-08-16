@@ -35,6 +35,8 @@ type APIClient struct {
 	cached_proxy_addr   string
 	svc_status_mu       sync.RWMutex
 	svc_statuses        map[string]events.ServiceStatusChanged
+	platform_status_mu  sync.RWMutex
+	platform_statuses   map[string]events.PlatformStatusChanged
 
 	claw_client *clawreq.Client
 
@@ -44,6 +46,7 @@ type APIClient struct {
 	browse_history_service *services.BrowseService
 	download_task_service  *services.DownloadTaskService
 	fs_service             *services.FSService
+	scraper_job_service    *services.ScraperJobService
 }
 
 func NewAPIClient(
@@ -55,6 +58,13 @@ func NewAPIClient(
 	hook_manager *hermes.HookManager,
 ) *APIClient {
 	logger := parent_logger.With().Logger()
+	engine := gin.New()
+	engine.Use(
+		gin.LoggerWithConfig(gin.LoggerConfig{
+			SkipPaths: []string{"/report"},
+		}),
+		gin.Recovery(),
+	)
 
 	// Initialize services
 	account_service := services.NewAccountService(db)
@@ -67,7 +77,7 @@ func NewAPIClient(
 
 	api_client := &APIClient{
 		cfg:                    cfg,
-		engine:                 gin.Default(),
+		engine:                 engine,
 		db:                     db,
 		logger:                 &logger,
 		static_assets:          static_assets,
@@ -77,6 +87,11 @@ func NewAPIClient(
 		fs_service:             fs_service,
 		downloader:             downloader,
 	}
+	api_client.scraper_job_service = services.NewScraperJobService(
+		nil,
+		scraper_ws_hub.broadcast_job_event,
+		&logger,
+	)
 
 	api_client.download_task_service = services.NewDownloadTaskService(
 		db, &logger, downloader, hook_manager,
@@ -85,12 +100,12 @@ func NewAPIClient(
 
 	api_client.broadcaster = new_task_broadcaster()
 	api_client.downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
-		task_id, progress, ok := download_task_event_data(event, data)
+		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
 		if !ok {
 			return
 		}
 		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
-		api_client.broadcaster.notify(api_client, task_id, event, progress)
+		api_client.broadcaster.notify(api_client, task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished && api_client.bus != nil {
 			go func() {
 				api_client.bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
@@ -108,39 +123,39 @@ func NewAPIClient(
 	return api_client
 }
 
-func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, bool) {
+func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, []hermes.TaskFinishedResource, bool) {
 	switch event {
 	// Task creation.
 	case hermes.EventCreated:
 		event_data, ok := data.(hermes.TaskCreatedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 
 	// Task completion, including unsuccessful terminal states.
 	case hermes.EventFinished:
 		event_data, ok := data.(hermes.TaskFinishedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, event_data.Resources, ok
 	case hermes.EventFailed:
 		event_data, ok := data.(hermes.TaskFailedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventDeleted:
 		event_data, ok := data.(hermes.TaskDeletedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 
 	// Task progress includes start/resume, pause, and byte progress updates.
 	case hermes.EventStarted:
 		event_data, ok := data.(hermes.TaskStartedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventPreparing:
 		event_data, ok := data.(hermes.TaskPreparingEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventPaused:
 		event_data, ok := data.(hermes.TaskPausedEventData)
-		return event_data.TaskID, nil, ok
+		return event_data.TaskID, nil, nil, ok
 	case hermes.EventProgress:
 		event_data, ok := data.(hermes.TaskProgressEventData)
-		return event_data.TaskID, event_data.Progress, ok && event_data.Progress != nil
+		return event_data.TaskID, event_data.Progress, nil, ok && event_data.Progress != nil
 	default:
-		return 0, nil, false
+		return 0, nil, nil, false
 	}
 }
 
@@ -168,6 +183,69 @@ func (c *APIClient) SubscribeEvents(bus *events.Bus) {
 		c.svc_statuses[ev.Name] = ev
 		c.svc_status_mu.Unlock()
 	})
+	bus.Subscribe(events.TypeScraperFetchProgress, func(e events.Event) {
+		progress, ok := e.(events.ScraperFetchProgress)
+		if !ok {
+			return
+		}
+		c.scraper_job_service.UpdateProgress(progress)
+	})
+	bus.Subscribe(events.TypePlatformStatusChanged, func(e events.Event) {
+		status, ok := e.(events.PlatformStatusChanged)
+		if !ok {
+			return
+		}
+		var valid bool
+		status, valid = normalize_platform_status(status)
+		if !valid {
+			return
+		}
+
+		c.platform_status_mu.Lock()
+		if c.platform_statuses == nil {
+			c.platform_statuses = make(map[string]events.PlatformStatusChanged)
+		}
+		previous_status, exists := c.platform_statuses[status.Key]
+		if exists &&
+			previous_status.Available == status.Available &&
+			previous_status.Status == status.Status &&
+			previous_status.Name == status.Name &&
+			previous_status.Reason == status.Reason {
+			c.platform_status_mu.Unlock()
+			return
+		}
+		c.platform_statuses[status.Key] = status
+		c.platform_status_mu.Unlock()
+		scraper_ws_hub.broadcast_platform_status(&status)
+	})
+}
+
+func normalize_platform_status(status events.PlatformStatusChanged) (events.PlatformStatusChanged, bool) {
+	status.Platform = strings.TrimSpace(status.Platform)
+	status.Key = strings.TrimSpace(status.Key)
+	status.Name = strings.TrimSpace(status.Name)
+	status.Status = strings.TrimSpace(status.Status)
+	status.Reason = strings.TrimSpace(status.Reason)
+	if status.Platform == "" {
+		return status, false
+	}
+	if status.Key == "" {
+		status.Key = status.Platform
+	}
+	if status.Status == "" {
+		if status.Available {
+			status.Status = "available"
+		} else {
+			status.Status = "unavailable"
+		}
+	}
+	switch status.Status {
+	case "available":
+		status.Available = true
+	case "checking", "unavailable":
+		status.Available = false
+	}
+	return status, true
 }
 
 type APIClientWSMessage struct {
@@ -206,6 +284,10 @@ func (c *APIClient) Start() error {
 }
 
 func (c *APIClient) Stop() error {
+	if c.scraper_job_service != nil {
+		c.scraper_job_service.InterruptAll()
+	}
+	v1_task_hub.close_all()
 	// Match the previous shutdown behavior: request all tasks to pause, but do
 	// not hold up the service shutdown while task goroutines finish.
 	if c.downloader != nil {

@@ -67,7 +67,7 @@ func (task *DownloadTask) BeforeCreate(_ *gorm.DB) error {
 type DownloadResource struct {
 	Id          int     `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskId      *int    `gorm:"index:idx_resource_task" json:"task_id,omitempty"`
-	ContentId   *string `gorm:"column:content_id" json:"content_id,omitempty"`
+	ContentId   *string `gorm:"column:content_id;index:idx_download_resource_content" json:"content_id,omitempty"`
 	DownloadDir string  `gorm:"column:download_dir;not null;default:''" json:"download_dir"` // Directory only; Name is stored separately.
 	Name        string  `json:"name"`
 	Kind        string  `gorm:"not null;default:file" json:"kind"`
@@ -93,6 +93,23 @@ type DownloadResource struct {
 }
 
 func (DownloadResource) TableName() string { return "download_resource" }
+
+const (
+	DownloadResourceAssetRelationSource      = "source"
+	DownloadResourceAssetRelationContains    = "contains"
+	DownloadResourceAssetRelationDerivedFrom = "derived_from"
+)
+
+// DownloadResourceAsset explicitly connects an execution-time resource to the
+// stable content assets it downloads, contains, or was derived from.
+type DownloadResourceAsset struct {
+	ResourceId int    `gorm:"primaryKey;autoIncrement:false;index:idx_download_resource_asset_resource" json:"resource_id"`
+	AssetId    uint   `gorm:"primaryKey;autoIncrement:false;index:idx_download_resource_asset_asset" json:"asset_id"`
+	Relation   string `gorm:"primaryKey;not null" json:"relation"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+func (DownloadResourceAsset) TableName() string { return "download_resource_asset" }
 
 // DownloadEndpoint represents a download source for a resource
 type DownloadEndpoint struct {

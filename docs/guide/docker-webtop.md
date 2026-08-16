@@ -1,6 +1,6 @@
 # Docker image
 
-Docker 镜像包含 WeChat、SunnyRoot 系统根证书、Linux `wx_video_download` 二进制和
+Docker 镜像包含 WeChat、SunnyNet 系统根证书、Linux `wx_video_download` 二进制和
 自动启动脚本。
 
 默认发布镜像：

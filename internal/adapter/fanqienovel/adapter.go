@@ -1,0 +1,307 @@
+package fanqienoveladapter
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
+
+	"wx_channel/internal/adapter"
+	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/scraper/fanqienovel"
+)
+
+const platform_id_fanqienovel = "fanqienovel"
+
+// PlatformID is the platform identifier for Fanqie Novel.
+const PlatformID = platform_id_fanqienovel
+
+// FanqieNovelAdapter converts Fanqie scraper results into shared models.
+type FanqieNovelAdapter struct {
+	runtime_mu sync.RWMutex
+	bus        *events.Bus
+	file_cache *cache.CacheProvider
+}
+
+var _ adapter.PlatformAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.ProgressFetchAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.ContextProgressFetchAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.FetchCacheAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.RuntimeAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.RuntimeHandle = (*FanqieNovelAdapter)(nil)
+var _ adapter.Postprocessor = (*FanqieNovelAdapter)(nil)
+
+func init() {
+	adapter.Register(NewFanqieNovelAdapter())
+}
+
+func NewFanqieNovelAdapter() *FanqieNovelAdapter {
+	return &FanqieNovelAdapter{}
+}
+
+func (a *FanqieNovelAdapter) PlatformID() string { return PlatformID }
+
+func (a *FanqieNovelAdapter) Fetch(raw_url string) (any, error) {
+	return a.FetchWithProgress(raw_url, "")
+}
+
+// FetchWithProgress fetches a book and associates emitted progress events with
+// request_id so WebSocket clients can select their own request.
+func (a *FanqieNovelAdapter) FetchWithProgress(raw_url string, request_id string) (any, error) {
+	return a.FetchWithProgressContext(context.Background(), raw_url, adapter.FetchOptions{
+		RequestID: request_id,
+	})
+}
+
+// FetchWithProgressContext fetches a book with cancellation and cache control.
+func (a *FanqieNovelAdapter) FetchWithProgressContext(fetch_context context.Context, raw_url string, options adapter.FetchOptions) (any, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
+		return nil, fmt.Errorf("番茄小说 URL 不能为空")
+	}
+	client := fanqienovel.NewFanqieClient()
+	client.SetProgressHandler(func(progress fanqienovel.FetchProgress) {
+		a.publish_progress(progress)
+		a.emit_fetch_artifacts(progress, options.ArtifactHandler)
+	})
+	client.SetPersistentCache(a.runtime_file_cache())
+	return client.Fetch(fanqienovel.FetchParams{
+		URL:          raw_url,
+		RequestID:    strings.TrimSpace(options.RequestID),
+		ForceRefresh: options.ForceRefresh,
+		Context:      fetch_context,
+	})
+}
+
+// ClearFetchCache removes cached profile and chapter HTML for raw_url.
+func (a *FanqieNovelAdapter) ClearFetchCache(raw_url string) (bool, error) {
+	return fanqienovel.ClearHTMLCache(a.runtime_file_cache(), strings.TrimSpace(raw_url))
+}
+
+// FetchCacheEntries returns the profile and chapter HTML persisted by Fetch.
+func (a *FanqieNovelAdapter) FetchCacheEntries(raw_url string, data any) ([]adapter.FetchCacheEntry, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	file_cache := a.runtime_file_cache()
+	source_url := strings.TrimSpace(raw_url)
+	entries := make([]adapter.FetchCacheEntry, 0, len(result.Chapters)+1)
+	seen_paths := make(map[string]struct{}, len(result.Chapters)+1)
+	append_entry := func(key string, name string, request_url string, cache_file *fanqienovel.HTMLCacheFile) {
+		if cache_file == nil || strings.TrimSpace(cache_file.Path) == "" {
+			return
+		}
+		if _, exists := seen_paths[cache_file.Path]; exists {
+			return
+		}
+		seen_paths[cache_file.Path] = struct{}{}
+		entries = append(entries, adapter.FetchCacheEntry{
+			Key:  key,
+			Name: name,
+			URL:  request_url,
+			Path: cache_file.Path,
+			Size: cache_file.Size,
+		})
+	}
+
+	profile_url := strings.TrimSpace(result.Profile.URL)
+	profile_cache, err := fanqienovel.LookupProfileHTMLCache(file_cache, source_url)
+	if err != nil {
+		return nil, err
+	}
+	append_entry("profile", "作品页面", profile_url, profile_cache)
+	for chapter_index, chapter := range result.Chapters {
+		chapter_url := strings.TrimSpace(chapter.URL)
+		chapter_cache, cache_err := fanqienovel.LookupChapterHTMLCache(file_cache, source_url, chapter_url)
+		if cache_err != nil {
+			return nil, cache_err
+		}
+		chapter_name := strings.TrimSpace(chapter.Title)
+		if chapter_name == "" {
+			chapter_name = fmt.Sprintf("第 %d 章", chapter_index+1)
+		}
+		append_entry(fmt.Sprintf("chapter-%d", chapter_index+1), chapter_name, chapter_url, chapter_cache)
+	}
+	return entries, nil
+}
+
+func (a *FanqieNovelAdapter) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
+	if adapter_options == nil {
+		return nil, fmt.Errorf("fanqienovel runtime dependencies are nil")
+	}
+	file_cache := adapter_options.Cache
+	a.runtime_mu.Lock()
+	a.bus = adapter_options.Bus
+	a.file_cache = file_cache
+	a.runtime_mu.Unlock()
+	return a, nil
+}
+
+func (a *FanqieNovelAdapter) Stop() {
+	a.runtime_mu.Lock()
+	a.bus = nil
+	a.file_cache = nil
+	a.runtime_mu.Unlock()
+}
+
+func (a *FanqieNovelAdapter) runtime_file_cache() *cache.CacheProvider {
+	a.runtime_mu.RLock()
+	file_cache := a.file_cache
+	a.runtime_mu.RUnlock()
+	return file_cache
+}
+
+func (a *FanqieNovelAdapter) publish_progress(progress fanqienovel.FetchProgress) {
+	a.runtime_mu.RLock()
+	bus := a.bus
+	a.runtime_mu.RUnlock()
+	if bus == nil {
+		return
+	}
+	bus.Publish(events.ScraperFetchProgress{
+		RequestID:    progress.RequestID,
+		Platform:     progress.Platform,
+		URL:          progress.URL,
+		BookID:       progress.BookID,
+		BookTitle:    progress.BookTitle,
+		Stage:        progress.Stage,
+		Status:       progress.Status,
+		Current:      progress.Current,
+		Total:        progress.Total,
+		Percent:      progress.Percent,
+		VolumeTitle:  progress.VolumeTitle,
+		ChapterID:    progress.ChapterID,
+		ChapterTitle: progress.ChapterTitle,
+		Message:      progress.Message,
+		Error:        progress.Error,
+		Cached:       progress.Cached,
+		CacheHits:    progress.CacheHits,
+	})
+}
+
+func (a *FanqieNovelAdapter) ToContent(data any) (*model.Content, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return ToContent(result)
+}
+
+func (a *FanqieNovelAdapter) ToAccount(data any) (*model.Account, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return ToAccount(result)
+}
+
+func (a *FanqieNovelAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return ToContentDetails(result)
+}
+
+func (a *FanqieNovelAdapter) emit_fetch_artifacts(progress fanqienovel.FetchProgress, artifact_handler adapter.FetchArtifactHandler) {
+	if artifact_handler == nil {
+		return
+	}
+	if progress.Stage == fanqienovel.FetchStageDirectory && progress.Status == fanqienovel.FetchStatusCompleted && progress.Profile != nil {
+		partial_result := &fanqienovel.FanqieFetchResult{Profile: progress.Profile}
+		content, content_err := ToContent(partial_result)
+		if content_err != nil {
+			return
+		}
+		artifact_handler(adapter.FetchArtifact{Stage: adapter.FetchArtifactStageContent, Content: content})
+		if account, account_err := ToAccount(partial_result); account_err == nil && account != nil {
+			artifact_handler(adapter.FetchArtifact{Stage: adapter.FetchArtifactStageAccount, Account: account})
+		}
+		novel, novel_err := ToContentNovel(partial_result, content.Id)
+		if novel_err == nil {
+			detail := adapter.ContentDetail{Type: "novel", Key: content.Id, Data: novel}
+			artifact_handler(adapter.FetchArtifact{Stage: adapter.FetchArtifactStageContentDetail, ContentDetail: &detail})
+		}
+		volumes, volumes_err := ToContentNovelVolumes(partial_result, content.Id)
+		if volumes_err == nil {
+			for volume_index := range volumes {
+				volume := volumes[volume_index]
+				detail := adapter.ContentDetail{
+					Type: "novel_volume",
+					Key:  fmt.Sprintf("%s:volume:%d", content.Id, volume.Idx),
+					Data: &volume,
+				}
+				artifact_handler(adapter.FetchArtifact{Stage: adapter.FetchArtifactStageContentDetail, ContentDetail: &detail})
+			}
+		}
+		return
+	}
+	if progress.Stage == fanqienovel.FetchStageChapter && progress.Status == fanqienovel.FetchStatusCompleted && progress.Chapter != nil {
+		content_id := BuildContentID(progress.BookID)
+		detail := fetched_chapter_content_detail(*progress.Chapter, content_id)
+		artifact_handler(adapter.FetchArtifact{
+			Stage:         adapter.FetchArtifactStageContentDetail,
+			ContentDetail: &detail,
+			Current:       progress.Current,
+			Total:         progress.Total,
+		})
+	}
+}
+
+func (a *FanqieNovelAdapter) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
+	result, err := fanqie_result_from_json(content_json)
+	if err != nil {
+		return nil, err
+	}
+	content, err := ToContent(result)
+	if err != nil {
+		return nil, err
+	}
+	account, err := ToAccount(result)
+	if err != nil {
+		return nil, err
+	}
+	extra_data, _ := json.Marshal(map[string]any{
+		"chapter_count": result.Profile.ChapterCount,
+		"volume_count":  len(result.Profile.Volumes),
+	})
+	return &adapter.BrowseHistoryResult{
+		BrowseHistory: &model.BrowseHistory{
+			Id:           content.Id,
+			PlatformId:   PlatformID,
+			VisitedTimes: 1,
+			Type:         content.Type,
+			ExternalId:   content.ExternalId,
+			Title:        content.Title,
+			URL:          content.URL,
+			SourceURL:    content.SourceURL,
+			CoverURL:     content.CoverURL,
+			ExtraData:    string(extra_data),
+			Timestamps:   content.Timestamps,
+		},
+		Account: account,
+	}, nil
+}
+
+func (a *FanqieNovelAdapter) BuildDownloadTask(content_json json.RawMessage, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	result, err := fanqie_result_from_json(content_json)
+	if err != nil {
+		var params fanqienovel.FetchParams
+		if decode_err := json.Unmarshal(content_json, &params); decode_err != nil || strings.TrimSpace(params.URL) == "" {
+			return nil, err
+		}
+		fetched, fetch_err := a.Fetch(params.URL)
+		if fetch_err != nil {
+			return nil, fetch_err
+		}
+		result, err = fanqie_result_from_fetch(fetched)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return build_download_task(result, config_json, a.runtime_file_cache())
+}

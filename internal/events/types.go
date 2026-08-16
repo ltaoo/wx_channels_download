@@ -10,6 +10,8 @@ const (
 	TypeServiceCommand        = "service.command"
 	TypeServiceStatusChanged  = "service.status_changed"
 	TypeDownloadTaskFinished  = "downloadtask.finished"
+	TypeScraperFetchProgress  = "scraper.fetch_progress"
+	TypePlatformStatusChanged = "platform.status_changed"
 )
 
 // ProxyAction represents a command to the proxy service.
@@ -68,3 +70,41 @@ type DownloadTaskFinished struct {
 }
 
 func (e DownloadTaskFinished) Type() string { return TypeDownloadTaskFinished }
+
+// ScraperFetchProgress reports the current stage of a potentially long-running
+// scraper fetch. RequestID lets the application-level scraper WebSocket
+// clients ignore unrelated jobs on their shared connection.
+type ScraperFetchProgress struct {
+	RequestID    string  `json:"request_id"`
+	Platform     string  `json:"platform"`
+	URL          string  `json:"url"`
+	BookID       string  `json:"book_id,omitempty"`
+	BookTitle    string  `json:"book_title,omitempty"`
+	Stage        string  `json:"stage"`
+	Status       string  `json:"status"`
+	Current      int     `json:"current"`
+	Total        int     `json:"total"`
+	Percent      float64 `json:"percent"`
+	VolumeTitle  string  `json:"volume_title,omitempty"`
+	ChapterID    string  `json:"chapter_id,omitempty"`
+	ChapterTitle string  `json:"chapter_title,omitempty"`
+	Message      string  `json:"message"`
+	Error        string  `json:"error,omitempty"`
+	Cached       bool    `json:"cached,omitempty"`
+	CacheHits    int     `json:"cache_hits,omitempty"`
+}
+
+func (e ScraperFetchProgress) Type() string { return TypeScraperFetchProgress }
+
+// PlatformStatusChanged reports whether a platform scraper is currently
+// fetchable and, when it is not, why users cannot use it.
+type PlatformStatusChanged struct {
+	Platform  string `json:"platform"`
+	Key       string `json:"key,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+func (e PlatformStatusChanged) Type() string { return TypePlatformStatusChanged }

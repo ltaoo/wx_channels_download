@@ -19,89 +19,7 @@ function components_style_href() {
   return "/__assets/inject/components.css";
 }
 
-const wx_icon_registry = {
-  clock3: {
-    tag: "svg",
-    attrs: {
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-clock3-icon lucide-clock-3",
-    },
-    children: [
-      {
-        tag: "circle",
-        attrs: {
-          cx: "12",
-          cy: "12",
-          r: "10",
-        },
-      },
-      {
-        tag: "path",
-        attrs: {
-          d: "M12 6v6h4",
-        },
-      },
-    ],
-  },
-  square: {
-    tag: "svg",
-    attrs: {
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-square-icon lucide-square",
-    },
-    children: [
-      {
-        tag: "rect",
-        attrs: {
-          width: "18",
-          height: "18",
-          x: "3",
-          y: "3",
-          rx: "2",
-        },
-      },
-    ],
-  },
-  "corner-down-right": {
-    tag: "svg",
-    attrs: {
-      xmlns: "http://www.w3.org/2000/svg",
-      width: "24",
-      height: "24",
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-corner-down-right-icon lucide-corner-down-right",
-    },
-    children: [
-      {
-        tag: "path",
-        attrs: {
-          d: "m15 10 5 5-5 5",
-        },
-      },
-      {
-        tag: "path",
-        attrs: {
-          d: "M4 4v7a4 4 0 0 0 4 4h12",
-        },
-      },
-    ],
-  },
-};
+const wx_icon_registry = {};
 
 function register_wx_icons(icons) {
   if (!icons || typeof icons !== "object") {
@@ -227,7 +145,7 @@ function Popover(props, children) {
     }),
   ];
 
-  return Timeless.weui.PopoverPrimitive.Root(
+  return Timeless.ui.PopoverPrimitive.Root(
     {
       onUnmounted() {
         unlistens.forEach((fn) => {
@@ -238,9 +156,9 @@ function Popover(props, children) {
       },
     },
     [
-      Timeless.weui.PopoverPrimitive.Trigger({ store: props.store }, children),
-      Timeless.weui.PopoverPrimitive.Portal({ store: props.store }, [
-        Timeless.weui.PopoverPrimitive.Content(
+      Timeless.ui.PopoverPrimitive.Trigger({ store: props.store }, children),
+      Timeless.ui.PopoverPrimitive.Portal({ store: props.store }, [
+        Timeless.ui.PopoverPrimitive.Content(
           {
             ...props,
             zIndex: 9999,
@@ -271,8 +189,8 @@ function Dialog(props, children) {
     state_.as(v);
   });
 
-  return Timeless.weui.DialogPrimitive.Root({ store }, [
-    Timeless.weui.DialogPrimitive.Overlay({
+  return Timeless.ui.DialogPrimitive.Root({ store }, [
+    Timeless.ui.DialogPrimitive.Overlay({
       store,
       class: "fixed inset-0 bg-black/80",
       style: { "z-index": "10000" },
@@ -291,8 +209,8 @@ function Dialog(props, children) {
         },
       },
       [
-        Timeless.weui.DialogPrimitive.Content({ ...rest, store }, [
-          Timeless.weui.DialogPrimitive.Body({ store }, children || []),
+        Timeless.ui.DialogPrimitive.Content({ ...rest, store }, [
+          Timeless.ui.DialogPrimitive.Body({ store }, children || []),
         ]),
       ],
     ),
@@ -306,7 +224,7 @@ function DropdownMenu(props, children) {
 function Waterfall(props) {
   const { store, class: cls, render, ...rest } = props;
 
-  return Timeless.weui.WaterfallPrimitive.Root(
+  return Timeless.ui.WaterfallPrimitive.Root(
     {
       ...rest,
       store,
@@ -317,7 +235,7 @@ function Waterfall(props) {
         each: store.$columns,
         render(column) {
           const visible_cells = refarr([...column.$cells]);
-          return Timeless.weui.WaterfallPrimitive.Column({ store: column }, [
+          return Timeless.ui.WaterfallPrimitive.Column({ store: column }, [
             For({
               key: "id",
               each: visible_cells,
@@ -327,7 +245,7 @@ function Waterfall(props) {
                   ? render(payload, slot)
                   : null;
 
-                const cell$ = Timeless.weui.WaterfallPrimitive.Cell(
+                const cell$ = Timeless.ui.WaterfallPrimitive.Cell(
                   { store: slot },
                   user_content ? [user_content] : [],
                 );
@@ -376,7 +294,7 @@ function Waterfall(props) {
 function ScrollView(props, children) {
   const { store, class: cls, ...rest } = props;
 
-  return Timeless.weui.ScrollViewPrimitive.Root(
+  return Timeless.ui.ScrollViewPrimitive.Root(
     {
       ...rest,
       store,
@@ -384,7 +302,7 @@ function ScrollView(props, children) {
       style: "height: 100%; overflow-y: auto; padding: 0 12px;",
     },
     [
-      Timeless.weui.ScrollViewPrimitive.Indicator(
+      Timeless.ui.ScrollViewPrimitive.Indicator(
         {
           store,
           class: "scroll-view-indicator",
@@ -392,7 +310,7 @@ function ScrollView(props, children) {
             "position: relative; width: 100%; height: 0, overflow: hidden; text-align: center;",
         },
         [
-          Timeless.weui.ScrollViewPrimitive.Progress({
+          Timeless.ui.ScrollViewPrimitive.Progress({
             store,
             class: "absolute left-0 bottom-0 w-full min-h-[30px] py-[10px]",
             style:

@@ -11,9 +11,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/pterm/pterm"
-
 	"github.com/ltaoo/velo"
+	"github.com/pterm/pterm"
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
@@ -27,6 +26,8 @@ import (
 	"wx_channel/internal/interceptor/proxy"
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
 	"wx_channel/pkg/system"
@@ -41,6 +42,11 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
 	logger := cfg.Logger()
+	cache_registry, err := cache.NewProviderRegistry(cfg.WorkDir)
+	if err != nil {
+		return fmt.Errorf("persistent cache initialization failed: %w", err)
+	}
+	cookie_reader := cookies.NewPersistentReader(cfg.WorkDir)
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
@@ -155,12 +161,14 @@ func Start(cfg *config.Config) error {
 	downloader.RegisterProtocol(protocol.NewHTTPDriver())
 	downloader.RegisterProtocol(protocol.NewStreamDriver())
 	downloader.RegisterProtocol(protocol.NewInlineDriver())
+	downloader.RegisterProtocol(protocol.NewFileDriver())
 	downloader.SetHooks(hook_manager)
 	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
 
 	// --- API service ---
 	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager)
 	api_srv.SubscribeEvents(bus)
+	publish_registered_adapter_statuses(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
@@ -178,7 +186,11 @@ func Start(cfg *config.Config) error {
 		if !ok {
 			continue
 		}
-		handle, err := runtime_adapter.RegisterRuntime(adapter.RuntimeDeps{
+		cache_provider, err := cache_registry.Namespace(platform_id)
+		if err != nil {
+			return fmt.Errorf("failed to create cache namespace for platform %s: %w", platform_id, err)
+		}
+		adapter_options := &adapter.AdapterOptions{
 			StaticAssets: static_assets,
 			Routes:       api_srv.APIClient,
 			Interceptor:  interceptor_srv.Interceptor,
@@ -186,8 +198,11 @@ func Start(cfg *config.Config) error {
 			Logger:       logger,
 			Bus:          bus,
 			Config:       cfg,
+			Cache:        cache_provider,
+			Cookies:      cookie_reader,
 			Hooks:        hook_manager,
-		})
+		}
+		handle, err := runtime_adapter.RegisterRuntime(adapter_options)
 		if err != nil {
 			return fmt.Errorf("failed to register platform %s: %w", platform_id, err)
 		}
@@ -271,8 +286,8 @@ func Start(cfg *config.Config) error {
 				color.Green("TUN mode enabled, traffic will be auto-forwarded through virtual NIC")
 				color.Green("Please open the page you want to download")
 			} else if !interceptor_srv.ProxySetSystem() {
-				color.Red(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
-				color.Red("Open the page to download after setting the proxy")
+				color.Yellow(fmt.Sprintf("System proxy is not set, please forward traffic to %v via software", interceptor_srv.Addr()))
+				color.Yellow("Open the page to download after setting the proxy")
 			} else {
 				if proxy_warning != "" {
 					color.Yellow("Warning: " + proxy_warning)
@@ -293,6 +308,10 @@ func Start(cfg *config.Config) error {
 						case <-ctx.Done():
 							return
 						case <-ticker.C:
+							if !interceptor_srv.ProxySetSystem() {
+								has_changed = false
+								continue
+							}
 							// Poll the same network service the proxy was written to; with an empty
 							// Device this would inspect the fallback service instead and never notice
 							// a change.
@@ -317,4 +336,20 @@ func Start(cfg *config.Config) error {
 	<-ctx.Done()
 	cleanup()
 	return nil
+}
+
+func publish_registered_adapter_statuses(bus *events.Bus) {
+	if bus == nil {
+		return
+	}
+	for _, descriptor := range adapter.StatusDescriptors() {
+		bus.Publish(events.PlatformStatusChanged{
+			Platform:  descriptor.Platform,
+			Key:       descriptor.Key,
+			Name:      descriptor.Name,
+			Status:    "unavailable",
+			Available: false,
+			Reason:    "等待 adapter 状态上报",
+		})
+	}
 }

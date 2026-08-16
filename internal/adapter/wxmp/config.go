@@ -1,7 +1,11 @@
 package wxmpadapter
 
 import (
+	"strconv"
+
+	"wx_channel/frontend"
 	"wx_channel/internal/config"
+	"wx_channel/pkg/scraper/wxmp"
 )
 
 // MPPluginConfig implements config.Configurable for wxmp (official account) plugin config.
@@ -104,14 +108,41 @@ func (c *MPPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	return nil
 }
 
-// GetMPConfig returns the registered mp plugin config if available.
-func GetMPConfig() *MPPluginConfig {
-	return mpPluginConfig
+func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig {
+	protocol := cfg.GetString("api.protocol")
+	hostname := cfg.GetString("api.hostname")
+	port := cfg.GetInt("api.port")
+	enabled := !cfg.GetBool("mp.disabled")
+	if cfg.IsSet("mp.enabled") {
+		enabled = cfg.GetBool("mp.enabled")
+	}
+	settings := &wxmp.OfficialAccountConfig{
+		RootDir:                   cfg.RootDir,
+		Enabled:                   enabled,
+		WorkDir:                   cfg.WorkDir,
+		DebugShowError:            cfg.GetBool("debug.error"),
+		Protocol:                  protocol,
+		Hostname:                  hostname,
+		Port:                      port,
+		Addr:                      hostname + ":" + strconv.Itoa(port),
+		RemoteServerEnabled:       cfg.GetBool("download.remoteServer.enabled"),
+		RemoteServerProtocol:      cfg.GetString("download.remoteServer.protocol"),
+		RemoteServerHostname:      cfg.GetString("download.remoteServer.hostname"),
+		RemoteServerPort:          cfg.GetInt("download.remoteServer.port"),
+		RefreshToken:              cfg.GetString("mp.refreshToken"),
+		TokenFilepath:             cfg.GetString("mp.tokenFilepath"),
+		RefreshSkipMinutes:        cfg.GetInt("mp.refreshSkipMinutes"),
+		MaxWebsocketClients:       cfg.GetInt("mp.maxWebsocketClients"),
+		AccountIdsRefreshInterval: cfg.GetStringSlice("mp.accountIdsRefreshInterval"),
+		GlobalScriptPath:          cfg.GlobalScriptPath,
+		InjectContentScript:       cfg.ContentScriptContent,
+	}
+	if cfg.GlobalScriptPath != "" {
+		settings.GlobalScriptURL = frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
+	}
+	return settings
 }
 
-var mpPluginConfig *MPPluginConfig
-
 func init() {
-	mpPluginConfig = &MPPluginConfig{}
-	config.RegisterPlugin(mpPluginConfig)
+	config.RegisterPlugin(&MPPluginConfig{})
 }

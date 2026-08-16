@@ -50,6 +50,9 @@
     }
   ],
   "paths": {
+    "/api/channels/status": {
+      "$ref": "./openapi/channels/status.json"
+    },
     "/api/channels/contact/search": {
       "$ref": "./openapi/channels/contact_search.json"
     },
@@ -145,9 +148,6 @@
     },
     "/api/mp/download_all": {
       "$ref": "./openapi/mp/download_all.json"
-    },
-    "/mp/home": {
-      "$ref": "./openapi/mp/home.json"
     }
   }
 }

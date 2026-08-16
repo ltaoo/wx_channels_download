@@ -10,20 +10,37 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/rs/zerolog"
 )
+
+const bilibili_log_preview_limit = 2048
 
 // Client is the Bilibili video scraper client.
 type Client struct {
-	cookie     string
-	httpClient *http.Client
-	headers    map[string]string
+	cookie      string
+	http_client *http.Client
+	headers     map[string]string
+	logger      zerolog.Logger
+	request_seq atomic.Uint64
 }
 
 // NewClient creates a new Bilibili client.
 func NewClient(cookie string) *Client {
+	return NewClientWithLogger(cookie, nil)
+}
+
+// NewClientWithLogger creates a Bilibili client with structured API diagnostics.
+func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
+	logger := zerolog.Nop()
+	if parent_logger != nil {
+		logger = parent_logger.With().Str("component", "bilibili_scraper").Logger()
+	}
 	return &Client{
 		cookie: cookie,
-		httpClient: &http.Client{
+		http_client: &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return http.ErrUseLastResponse
@@ -35,52 +52,72 @@ func NewClient(cookie string) *Client {
 			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 			"Referer":    "https://www.bilibili.com/",
 		},
+		logger: logger,
 	}
+}
+
+// Fetch retrieves the structured result for a supported Bilibili URL.
+// Bangumi play and media pages return a BangumiInfo combining
+// PlayURLSSRData with the episode page API response; other URL types retain
+// the existing VideoInfo list result.
+func (c *Client) Fetch(raw_url string) (any, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" {
+		return nil, fmt.Errorf("B站URL不能为空")
+	}
+	if IsBangumiURL(raw_url) {
+		bangumi_info, err := c.GetBangumiInfo(raw_url)
+		if err != nil {
+			return nil, err
+		}
+		return bangumi_info, nil
+	}
+	return c.GetVideoInfo(raw_url, 0)
 }
 
 // GetVideoInfo retrieves Bilibili video information.
 // Supported URL types: regular videos (BV/AV), bangumi episodes (ep), bangumi seasons (ss), courses (cheese).
-// pageNum specifies the part/page number; 0 means get all.
-func (c *Client) GetVideoInfo(rawURL string, pageNum int) ([]*VideoInfo, error) {
+// page_num specifies the part/page number; 0 means get all.
+func (c *Client) GetVideoInfo(raw_url string, page_num int) ([]*VideoInfo, error) {
 	// Follow redirects first (handle b23.tv short links)
-	finalURL, err := c.resolveURL(rawURL)
+	final_url, err := c.resolve_url(raw_url)
 	if err != nil {
-		finalURL = rawURL
+		final_url = raw_url
 	}
 
 	// Regular video BV/AV
-	if c.isCommonVideo(finalURL) {
-		return c.parseCommonVideo(finalURL, pageNum)
+	if c.is_common_video(final_url) {
+		return c.parse_common_video(final_url, page_num)
 	}
 
 	// Bangumi episode ep
-	if c.isBangumiEpisode(finalURL) {
-		return c.parseBangumiEpisode(finalURL)
+	if c.is_bangumi_episode(final_url) {
+		return c.parse_bangumi_episode(final_url)
 	}
 
 	// Bangumi season ss
-	if c.isBangumiSeason(finalURL) {
-		return c.parseBangumiSeason(finalURL)
+	if c.is_bangumi_season(final_url) {
+		return c.parse_bangumi_season(final_url)
 	}
 
 	// Course cheese
-	if c.isCheeseEpisode(finalURL) {
-		return c.parseCheeseEpisode(finalURL)
+	if c.is_cheese_episode(final_url) {
+		return c.parse_cheese_episode(final_url)
 	}
 
-	return nil, fmt.Errorf("不支持的B站URL: %s", rawURL)
+	return nil, fmt.Errorf("不支持的B站URL: %s", raw_url)
 }
 
-// isBilibiliURL checks whether the URL is a Bilibili domain.
-func (c *Client) isBilibiliURL(u string) bool {
+// is_bilibili_url checks whether the URL is a Bilibili domain.
+func (c *Client) is_bilibili_url(u string) bool {
 	return strings.Contains(u, "bilibili.com") ||
 		strings.Contains(u, "b23.tv") ||
 		strings.Contains(u, "bili2233.cn")
 }
 
-// resolveURL follows short link redirects.
-func (c *Client) resolveURL(u string) (string, error) {
-	resp, err := c.httpClient.Get(u)
+// resolve_url follows short link redirects.
+func (c *Client) resolve_url(u string) (string, error) {
+	resp, err := c.http_client.Get(u)
 	if err != nil {
 		return u, err
 	}
@@ -88,25 +125,34 @@ func (c *Client) resolveURL(u string) (string, error) {
 	return resp.Request.URL.String(), nil
 }
 
-func (c *Client) isCommonVideo(u string) bool {
+func (c *Client) is_common_video(u string) bool {
 	return regexp.MustCompile(`bilibili\.com/(?:video/|festival/[^/?#]+\?(?:[^#]*&)?bvid=)`).MatchString(u)
 }
 
-func (c *Client) isBangumiEpisode(u string) bool {
+func (c *Client) is_bangumi_episode(u string) bool {
 	return regexp.MustCompile(`bilibili\.com/bangumi/play/ep\d+`).MatchString(u)
 }
 
-func (c *Client) isBangumiSeason(u string) bool {
+func (c *Client) is_bangumi_season(u string) bool {
 	return regexp.MustCompile(`bilibili\.com/bangumi/play/ss\d+`).MatchString(u)
 }
 
-func (c *Client) isCheeseEpisode(u string) bool {
+func (c *Client) is_cheese_episode(u string) bool {
 	return regexp.MustCompile(`bilibili\.com/cheese/play/ep\d+`).MatchString(u)
 }
 
-// doGet sends a GET request and parses the JSON response.
-func (c *Client) doGet(apiURL string, result interface{}) error {
-	req, _ := http.NewRequest("GET", apiURL, nil)
+// do_get sends a GET request and parses the JSON response.
+func (c *Client) do_get(api_url string, result interface{}) error {
+	request_id := c.request_seq.Add(1)
+	req, err := http.NewRequest("GET", api_url, nil)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("api_request_id", request_id).
+			Str("request_url", api_url).
+			Msg("bilibili API: request construction failed")
+		return fmt.Errorf("construct bilibili API request: %w", err)
+	}
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
 	}
@@ -114,22 +160,123 @@ func (c *Client) doGet(apiURL string, result interface{}) error {
 		req.Header.Set("Cookie", c.cookie)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	request_started_at := time.Now()
+	c.logger.Info().
+		Uint64("api_request_id", request_id).
+		Str("method", req.Method).
+		Str("api_host", req.URL.Hostname()).
+		Str("api_path", req.URL.EscapedPath()).
+		Str("request_url", req.URL.String()).
+		Msg("bilibili API: request started")
+
+	resp, err := c.http_client.Do(req)
 	if err != nil {
-		return err
+		c.logger.Error().
+			Err(err).
+			Uint64("api_request_id", request_id).
+			Str("method", req.Method).
+			Str("api_host", req.URL.Hostname()).
+			Str("api_path", req.URL.EscapedPath()).
+			Str("request_url", req.URL.String()).
+			Dur("request_elapsed", time.Since(request_started_at)).
+			Msg("bilibili API: request failed")
+		return fmt.Errorf("request bilibili API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		c.logger.Error().
+			Err(err).
+			Uint64("api_request_id", request_id).
+			Str("method", req.Method).
+			Str("api_host", req.URL.Hostname()).
+			Str("api_path", req.URL.EscapedPath()).
+			Str("request_url", req.URL.String()).
+			Int("http_status", resp.StatusCode).
+			Str("content_type", resp.Header.Get("Content-Type")).
+			Str("content_encoding", resp.Header.Get("Content-Encoding")).
+			Int64("content_length", resp.ContentLength).
+			Dur("request_elapsed", time.Since(request_started_at)).
+			Msg("bilibili API: response body read failed")
+		return fmt.Errorf("read bilibili API response: %w", err)
 	}
 
-	return json.Unmarshal(body, result)
+	c.log_api_response(req, resp, body, request_id, time.Since(request_started_at))
+	if err := json.Unmarshal(body, result); err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("api_request_id", request_id).
+			Str("api_host", req.URL.Hostname()).
+			Str("api_path", req.URL.EscapedPath()).
+			Int("http_status", resp.StatusCode).
+			Int("body_bytes", len(body)).
+			Str("response_preview", bilibili_log_preview(body)).
+			Msg("bilibili API: JSON decode failed")
+		return fmt.Errorf("decode bilibili API response: status=%d body_bytes=%d: %w", resp.StatusCode, len(body), err)
+	}
+	return nil
 }
 
-// parseCommonVideo parses a regular video URL.
-func (c *Client) parseCommonVideo(u string, pageNum int) ([]*VideoInfo, error) {
+type bilibili_api_envelope struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Msg     string `json:"msg"`
+}
+
+func (c *Client) log_api_response(req *http.Request, resp *http.Response, body []byte, request_id uint64, request_elapsed time.Duration) {
+	var envelope bilibili_api_envelope
+	envelope_err := json.Unmarshal(body, &envelope)
+	api_message := strings.TrimSpace(envelope.Message)
+	if api_message == "" {
+		api_message = strings.TrimSpace(envelope.Msg)
+	}
+
+	log_event := c.logger.Info()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || (envelope_err == nil && envelope.Code != 0) {
+		log_event = c.logger.Warn()
+	}
+	log_event.
+		Uint64("api_request_id", request_id).
+		Str("method", req.Method).
+		Str("api_host", req.URL.Hostname()).
+		Str("api_path", req.URL.EscapedPath()).
+		Str("request_url", req.URL.String()).
+		Str("response_url", resp.Request.URL.String()).
+		Int("http_status", resp.StatusCode).
+		Str("http_status_text", http.StatusText(resp.StatusCode)).
+		Str("content_type", resp.Header.Get("Content-Type")).
+		Str("content_encoding", resp.Header.Get("Content-Encoding")).
+		Int64("content_length", resp.ContentLength).
+		Int("body_bytes", len(body)).
+		Str("bili_trace_id", bilibili_trace_id(resp.Header)).
+		Dur("request_elapsed", request_elapsed).
+		Str("response_preview", bilibili_log_preview(body))
+	if envelope_err == nil {
+		log_event.Int("api_code", envelope.Code).Str("api_message", bilibili_log_preview([]byte(api_message)))
+	}
+	log_event.Msg("bilibili API: response received")
+}
+
+func bilibili_trace_id(headers http.Header) string {
+	trace_id := strings.TrimSpace(headers.Get("X-Bili-Trace-Id"))
+	if trace_id == "" {
+		trace_id = strings.TrimSpace(headers.Get("Bili-Trace-Id"))
+	}
+	return trace_id
+}
+
+func bilibili_log_preview(body []byte) string {
+	preview := strings.TrimSpace(strings.ToValidUTF8(string(body), "�"))
+	preview_runes := []rune(preview)
+	if len(preview_runes) <= bilibili_log_preview_limit {
+		return preview
+	}
+	return string(preview_runes[:bilibili_log_preview_limit]) + "…"
+}
+
+// parse_common_video parses a regular video URL.
+func (c *Client) parse_common_video(u string, page_num int) ([]*VideoInfo, error) {
 	// Extract video_id (BV number)
 	re := regexp.MustCompile(`(?:video/|bvid=)([aAbB][vV])([^/?#&]+)`)
 	match := re.FindStringSubmatch(u)
@@ -137,75 +284,76 @@ func (c *Client) parseCommonVideo(u string, pageNum int) ([]*VideoInfo, error) {
 		return nil, fmt.Errorf("无法从URL提取BV号: %s", u)
 	}
 	prefix := match[1]
-	videoID := match[2]
+	video_id := match[2]
 
-	bvid := prefix + videoID
+	bvid := prefix + video_id
 
 	// AV number needs to be converted to BV first
 	if strings.EqualFold(prefix, "AV") {
-		aidStr := videoID
-		redirectBVID, err := c.avToBV(aidStr)
+		aid_str := video_id
+		redirect_bvid, err := c.av_to_bv(aid_str)
 		if err != nil {
 			return nil, err
 		}
-		bvid = redirectBVID
+		bvid = redirect_bvid
 	}
 
+	// https://api.bilibili.com/x/web-interface/wbi/view/detail?aid=116968988417376
 	// Retrieve video info
-	viewURL := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid)
-	var viewResp ViewResponse
-	if err := c.doGet(viewURL, &viewResp); err != nil {
+	view_url := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid)
+	var view_resp ViewResponse
+	if err := c.do_get(view_url, &view_resp); err != nil {
 		return nil, fmt.Errorf("获取视频信息失败: %w", err)
 	}
-	if viewResp.Code != 0 {
-		return nil, fmt.Errorf("B站API返回错误: code=%d, msg=%s", viewResp.Code, viewResp.Message)
+	if view_resp.Code != 0 {
+		return nil, fmt.Errorf("B站API返回错误: code=%d, msg=%s", view_resp.Code, view_resp.Message)
 	}
 
 	// Extract page number
-	pNum := pageNum
-	if pNum == 0 {
-		if parsed := parsePageNum(u); parsed > 0 {
-			pNum = parsed
+	p_num := page_num
+	if p_num == 0 {
+		if parsed := parse_page_num(u); parsed > 0 {
+			p_num = parsed
 		}
 	}
 
-	pages := viewResp.Data.Pages
+	pages := view_resp.Data.Pages
 	var results []*VideoInfo
 
 	for idx, page := range pages {
-		if pNum > 0 && idx+1 != pNum {
+		if p_num > 0 && idx+1 != p_num {
 			continue
 		}
 
 		// Get playback URL
-		playURL := fmt.Sprintf("https://api.bilibili.com/x/player/playurl?otype=json&fnver=0&fnval=0&qn=80&bvid=%s&cid=%d&platform=html5", bvid, page.Cid)
-		var playResp PlayURLResponse
-		if err := c.doGet(playURL, &playResp); err != nil {
+		play_url := fmt.Sprintf("https://api.bilibili.com/x/player/playurl?otype=json&fnver=0&fnval=0&qn=80&bvid=%s&cid=%d&platform=html5", bvid, page.Cid)
+		var play_resp PlayURLResponse
+		if err := c.do_get(play_url, &play_resp); err != nil {
 			continue
 		}
-		if playResp.Code != 0 || len(playResp.Data.Durl) == 0 {
+		if play_resp.Code != 0 || len(play_resp.Data.Durl) == 0 {
 			continue
 		}
 
 		// Pick the largest video stream
-		bestDurl := playResp.Data.Durl[0]
-		for _, d := range playResp.Data.Durl {
-			if d.Size > bestDurl.Size {
-				bestDurl = d
+		best_durl := play_resp.Data.Durl[0]
+		for _, d := range play_resp.Data.Durl {
+			if d.Size > best_durl.Size {
+				best_durl = d
 			}
 		}
 
-		title := formatTitle(viewResp.Data.Title, page.Part, len(pages))
-		coverURL := page.FirstFrame()
-		if coverURL == "" {
-			coverURL = viewResp.Data.Pic
+		title := format_title(view_resp.Data.Title, page.Part, len(pages))
+		cover_url := page.FirstFrame()
+		if cover_url == "" {
+			cover_url = view_resp.Data.Pic
 		}
 
 		results = append(results, &VideoInfo{
-			URL:      bestDurl.URL,
+			URL:      best_durl.URL,
 			Title:    title,
 			VideoID:  fmt.Sprintf("%s-%d", bvid, page.Cid),
-			CoverURL: coverURL,
+			CoverURL: cover_url,
 			Page:     page.Page,
 			Source:   "bilibili",
 		})
@@ -217,112 +365,112 @@ func (c *Client) parseCommonVideo(u string, pageNum int) ([]*VideoInfo, error) {
 	return results, nil
 }
 
-// avToBV converts an AV number to a BV number.
-func (c *Client) avToBV(aid string) (string, error) {
-	aidNum, err := strconv.ParseInt(aid, 10, 64)
+// av_to_bv converts an AV number to a BV number.
+func (c *Client) av_to_bv(aid string) (string, error) {
+	aid_num, err := strconv.ParseInt(aid, 10, 64)
 	if err != nil {
 		return "", fmt.Errorf("无效的AV号: %s", aid)
 	}
-	viewURL := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?aid=%d", aidNum)
-	var viewResp ViewResponse
-	if err := c.doGet(viewURL, &viewResp); err != nil {
+	view_url := fmt.Sprintf("https://api.bilibili.com/x/web-interface/view?aid=%d", aid_num)
+	var view_resp ViewResponse
+	if err := c.do_get(view_url, &view_resp); err != nil {
 		return "", fmt.Errorf("AV转BV失败: %w", err)
 	}
-	if viewResp.Code != 0 {
-		return "", fmt.Errorf("AV转BV失败: code=%d", viewResp.Code)
+	if view_resp.Code != 0 {
+		return "", fmt.Errorf("AV转BV失败: code=%d", view_resp.Code)
 	}
-	return viewResp.Data.Bvid, nil
+	return view_resp.Data.Bvid, nil
 }
 
-// parseBangumiEpisode parses a bangumi episode URL.
-func (c *Client) parseBangumiEpisode(u string) ([]*VideoInfo, error) {
+// parse_bangumi_episode parses a bangumi episode URL.
+func (c *Client) parse_bangumi_episode(u string) ([]*VideoInfo, error) {
 	re := regexp.MustCompile(`bangumi/play/ep(\d+)`)
 	match := re.FindStringSubmatch(u)
 	if len(match) < 2 {
 		return nil, fmt.Errorf("无法从URL提取ep号: %s", u)
 	}
-	epID := match[1]
+	ep_id := match[1]
 
 	// Get bangumi info
-	seasonURL := fmt.Sprintf("https://api.bilibili.com/pgc/view/web/season?ep_id=%s", epID)
-	var seasonResp PGCSeasonResponse
-	if err := c.doGet(seasonURL, &seasonResp); err != nil {
+	season_url := fmt.Sprintf("https://api.bilibili.com/pgc/view/web/season?ep_id=%s", ep_id)
+	var season_resp PGCSeasonResponse
+	if err := c.do_get(season_url, &season_resp); err != nil {
 		return nil, fmt.Errorf("获取番剧信息失败: %w", err)
 	}
-	if seasonResp.Code != 0 {
-		return nil, fmt.Errorf("番剧API错误: code=%d", seasonResp.Code)
+	if season_resp.Code != 0 {
+		return nil, fmt.Errorf("番剧API错误: code=%d", season_resp.Code)
 	}
 
 	// Collect all episodes
-	allEpisodes := seasonResp.Result.Episodes
-	for _, section := range seasonResp.Result.Section {
-		allEpisodes = append(allEpisodes, section.Episodes...)
+	all_episodes := season_resp.Result.Episodes
+	for _, section := range season_resp.Result.Section {
+		all_episodes = append(all_episodes, section.Episodes...)
 	}
 
 	// Find the target episode
-	epIDNum, _ := strconv.ParseInt(epID, 10, 64)
-	var targetEpisode *PGCEpisode
-	for i := range allEpisodes {
-		if allEpisodes[i].EpID == epIDNum {
-			targetEpisode = &allEpisodes[i]
+	ep_id_num, _ := strconv.ParseInt(ep_id, 10, 64)
+	var target_episode *PGCEpisode
+	for i := range all_episodes {
+		if all_episodes[i].EpID == ep_id_num {
+			target_episode = &all_episodes[i]
 			break
 		}
 	}
-	if targetEpisode == nil {
-		return nil, fmt.Errorf("未找到剧集 ep=%s", epID)
+	if target_episode == nil {
+		return nil, fmt.Errorf("未找到剧集 ep=%s", ep_id)
 	}
 
 	// Get playback URL (DASH format)
-	playURL := fmt.Sprintf("https://api.bilibili.com/pgc/player/web/v2/playurl?fnval=12240&ep_id=%s", epID)
-	var playResp PGCPlayURLResponse
-	if err := c.doGet(playURL, &playResp); err != nil {
+	play_url := fmt.Sprintf("https://api.bilibili.com/pgc/player/web/v2/playurl?fnval=12240&ep_id=%s", ep_id)
+	var play_resp PGCPlayURLResponse
+	if err := c.do_get(play_url, &play_resp); err != nil {
 		return nil, fmt.Errorf("获取番剧播放地址失败: %w", err)
 	}
-	if playResp.Code != 0 {
-		return nil, fmt.Errorf("番剧播放API错误: code=%d", playResp.Code)
+	if play_resp.Code != 0 {
+		return nil, fmt.Errorf("番剧播放API错误: code=%d", play_resp.Code)
 	}
 
-	return c.buildDASHResults(&playResp.Result.VideoInfo.Dash, targetEpisode.title(), targetEpisode.Cover, epID, 1)
+	return c.build_dash_results(&play_resp.Result.VideoInfo.Dash, target_episode.title(), target_episode.Cover, ep_id, 1)
 }
 
-// parseBangumiSeason parses a bangumi season URL.
-func (c *Client) parseBangumiSeason(u string) ([]*VideoInfo, error) {
+// parse_bangumi_season parses a bangumi season URL.
+func (c *Client) parse_bangumi_season(u string) ([]*VideoInfo, error) {
 	re := regexp.MustCompile(`bangumi/play/ss(\d+)`)
 	match := re.FindStringSubmatch(u)
 	if len(match) < 2 {
 		return nil, fmt.Errorf("无法从URL提取ss号: %s", u)
 	}
-	ssID := match[1]
+	ss_id := match[1]
 
 	// Get all episodes for the season
-	sectionURL := fmt.Sprintf("https://api.bilibili.com/pgc/web/season/section?season_id=%s", ssID)
-	var sectionResp PGCSeasonSectionResponse
-	if err := c.doGet(sectionURL, &sectionResp); err != nil {
+	section_url := fmt.Sprintf("https://api.bilibili.com/pgc/web/season/section?season_id=%s", ss_id)
+	var section_resp PGCSeasonSectionResponse
+	if err := c.do_get(section_url, &section_resp); err != nil {
 		return nil, fmt.Errorf("获取番剧季信息失败: %w", err)
 	}
-	if sectionResp.Code != 0 {
-		return nil, fmt.Errorf("番剧季API错误: code=%d", sectionResp.Code)
+	if section_resp.Code != 0 {
+		return nil, fmt.Errorf("番剧季API错误: code=%d", section_resp.Code)
 	}
 
-	allEpisodes := sectionResp.Result.MainSection.Episodes
-	for _, section := range sectionResp.Result.Section {
-		allEpisodes = append(allEpisodes, section.Episodes...)
+	all_episodes := section_resp.Result.MainSection.Episodes
+	for _, section := range section_resp.Result.Section {
+		all_episodes = append(all_episodes, section.Episodes...)
 	}
 
 	var results []*VideoInfo
-	for idx, ep := range allEpisodes {
-		playURL := fmt.Sprintf("https://api.bilibili.com/pgc/player/web/v2/playurl?fnval=12240&ep_id=%d", ep.EpID)
-		var playResp PGCPlayURLResponse
-		if err := c.doGet(playURL, &playResp); err != nil {
+	for idx, ep := range all_episodes {
+		play_url := fmt.Sprintf("https://api.bilibili.com/pgc/player/web/v2/playurl?fnval=12240&ep_id=%d", ep.EpID)
+		var play_resp PGCPlayURLResponse
+		if err := c.do_get(play_url, &play_resp); err != nil {
 			continue
 		}
-		if playResp.Code != 0 || len(playResp.Result.VideoInfo.Dash.Video) == 0 {
+		if play_resp.Code != 0 || len(play_resp.Result.VideoInfo.Dash.Video) == 0 {
 			continue
 		}
 
-		videoInfos, err := c.buildDASHResults(&playResp.Result.VideoInfo.Dash, ep.title(), ep.Cover, strconv.FormatInt(ep.EpID, 10), idx+1)
-		if err == nil && len(videoInfos) > 0 {
-			results = append(results, videoInfos[0])
+		video_infos, err := c.build_dash_results(&play_resp.Result.VideoInfo.Dash, ep.title(), ep.Cover, strconv.FormatInt(ep.EpID, 10), idx+1)
+		if err == nil && len(video_infos) > 0 {
+			results = append(results, video_infos[0])
 		}
 	}
 
@@ -332,63 +480,63 @@ func (c *Client) parseBangumiSeason(u string) ([]*VideoInfo, error) {
 	return results, nil
 }
 
-// parseCheeseEpisode parses a course episode URL.
-func (c *Client) parseCheeseEpisode(u string) ([]*VideoInfo, error) {
+// parse_cheese_episode parses a course episode URL.
+func (c *Client) parse_cheese_episode(u string) ([]*VideoInfo, error) {
 	re := regexp.MustCompile(`cheese/play/ep(\d+)`)
 	match := re.FindStringSubmatch(u)
 	if len(match) < 2 {
 		return nil, fmt.Errorf("无法从URL提取课程ep号: %s", u)
 	}
-	epID := match[1]
+	ep_id := match[1]
 
-	seasonURL := fmt.Sprintf("https://api.bilibili.com/pugv/view/web/season?ep_id=%s", epID)
-	var seasonResp PUGVSeasonResponse
-	if err := c.doGet(seasonURL, &seasonResp); err != nil {
+	season_url := fmt.Sprintf("https://api.bilibili.com/pugv/view/web/season?ep_id=%s", ep_id)
+	var season_resp PUGVSeasonResponse
+	if err := c.do_get(season_url, &season_resp); err != nil {
 		return nil, fmt.Errorf("获取课程信息失败: %w", err)
 	}
-	if seasonResp.Code != 0 {
-		return nil, fmt.Errorf("课程API错误: code=%d", seasonResp.Code)
+	if season_resp.Code != 0 {
+		return nil, fmt.Errorf("课程API错误: code=%d", season_resp.Code)
 	}
 
-	epIDNum, _ := strconv.ParseInt(epID, 10, 64)
-	for _, ep := range seasonResp.Data.Episodes {
-		if ep.ID != epIDNum {
+	ep_id_num, _ := strconv.ParseInt(ep_id, 10, 64)
+	for _, ep := range season_resp.Data.Episodes {
+		if ep.ID != ep_id_num {
 			continue
 		}
 
-		playURL := fmt.Sprintf("https://api.bilibili.com/pugv/player/web/playurl?avid=%d&cid=%d&ep_id=%d&fnval=16&fourk=1",
-			ep.Aid, ep.Cid, epIDNum)
-		var playResp PUGVPlayURLResponse
-		if err := c.doGet(playURL, &playResp); err != nil {
+		play_url := fmt.Sprintf("https://api.bilibili.com/pugv/player/web/playurl?avid=%d&cid=%d&ep_id=%d&fnval=16&fourk=1",
+			ep.Aid, ep.Cid, ep_id_num)
+		var play_resp PUGVPlayURLResponse
+		if err := c.do_get(play_url, &play_resp); err != nil {
 			return nil, fmt.Errorf("获取课程播放地址失败: %w", err)
 		}
-		if playResp.Code != 0 {
-			return nil, fmt.Errorf("课程播放API错误: code=%d", playResp.Code)
+		if play_resp.Code != 0 {
+			return nil, fmt.Errorf("课程播放API错误: code=%d", play_resp.Code)
 		}
 
-		return c.buildDASHResults(&playResp.Data.Dash, ep.Title, ep.Cover, epID, 1)
+		return c.build_dash_results(&play_resp.Data.Dash, ep.Title, ep.Cover, ep_id, 1)
 	}
 
-	return nil, fmt.Errorf("未找到课程剧集 ep=%s", epID)
+	return nil, fmt.Errorf("未找到课程剧集 ep=%s", ep_id)
 }
 
-// buildDASHResults builds VideoInfo from DASH data, selecting the best video + audio streams.
-func (c *Client) buildDASHResults(dash *DashInfo, title, coverURL, id string, page int) ([]*VideoInfo, error) {
+// build_dash_results builds VideoInfo from DASH data, selecting the best video + audio streams.
+func (c *Client) build_dash_results(dash *DashInfo, title, cover_url, id string, page int) ([]*VideoInfo, error) {
 	if dash == nil || len(dash.Video) == 0 {
 		return nil, fmt.Errorf("DASH数据为空")
 	}
 
 	// Sort video streams by resolution * file size descending
-	type formatItem struct {
+	type format_item struct {
 		url    string
 		size   int64
 		width  int
 		height int
 	}
-	var videoFormats []formatItem
+	var video_formats []format_item
 	for _, v := range dash.Video {
 		if v.BaseURL != "" {
-			videoFormats = append(videoFormats, formatItem{
+			video_formats = append(video_formats, format_item{
 				url:    v.BaseURL,
 				size:   v.Size,
 				width:  v.Width,
@@ -396,55 +544,55 @@ func (c *Client) buildDASHResults(dash *DashInfo, title, coverURL, id string, pa
 			})
 		}
 	}
-	if len(videoFormats) == 0 {
+	if len(video_formats) == 0 {
 		return nil, fmt.Errorf("无可用的视频流")
 	}
-	sort.Slice(videoFormats, func(i, j int) bool {
-		resI := videoFormats[i].width * videoFormats[i].height
-		resJ := videoFormats[j].width * videoFormats[j].height
-		if resI != resJ {
-			return resI > resJ
+	sort.Slice(video_formats, func(i, j int) bool {
+		res_i := video_formats[i].width * video_formats[i].height
+		res_j := video_formats[j].width * video_formats[j].height
+		if res_i != res_j {
+			return res_i > res_j
 		}
-		return videoFormats[i].size > videoFormats[j].size
+		return video_formats[i].size > video_formats[j].size
 	})
 
 	// Sort audio streams by size descending
-	var audioFormats []formatItem
+	var audio_formats []format_item
 	for _, a := range dash.Audio {
 		if a.BaseURL != "" {
-			audioFormats = append(audioFormats, formatItem{url: a.BaseURL, size: a.Size})
+			audio_formats = append(audio_formats, format_item{url: a.BaseURL, size: a.Size})
 		}
 	}
-	sort.Slice(audioFormats, func(i, j int) bool {
-		return audioFormats[i].size > audioFormats[j].size
+	sort.Slice(audio_formats, func(i, j int) bool {
+		return audio_formats[i].size > audio_formats[j].size
 	})
 
 	info := &VideoInfo{
-		URL:      videoFormats[0].url,
-		Title:    sanitizeTitle(title),
+		URL:      video_formats[0].url,
+		Title:    sanitize_title(title),
 		VideoID:  id,
-		CoverURL: coverURL,
+		CoverURL: cover_url,
 		Page:     page,
 		Source:   "bilibili",
 	}
 
-	if len(audioFormats) > 0 {
-		info.AudioURL = audioFormats[0].url
+	if len(audio_formats) > 0 {
+		info.AudioURL = audio_formats[0].url
 	}
 
 	return []*VideoInfo{info}, nil
 }
 
-// formatTitle formats the video title.
-func formatTitle(mainTitle, partTitle string, totalPages int) string {
-	if totalPages > 1 {
-		return sanitizeTitle(partTitle)
+// format_title formats the video title.
+func format_title(main_title, part_title string, total_pages int) string {
+	if total_pages > 1 {
+		return sanitize_title(part_title)
 	}
-	return sanitizeTitle(mainTitle)
+	return sanitize_title(main_title)
 }
 
-// sanitizeTitle sanitizes the title string.
-func sanitizeTitle(title string) string {
+// sanitize_title sanitizes the title string.
+func sanitize_title(title string) string {
 	re := regexp.MustCompile(`[\\/:*?"<>|#\n\r]`)
 	title = re.ReplaceAllString(title, "_")
 	title = strings.Trim(title, " .")
@@ -454,8 +602,8 @@ func sanitizeTitle(title string) string {
 	return title
 }
 
-// parsePageNum extracts the p parameter from a URL.
-func parsePageNum(u string) int {
+// parse_page_num extracts the p parameter from a URL.
+func parse_page_num(u string) int {
 	parsed, err := url.Parse(u)
 	if err != nil {
 		return 0

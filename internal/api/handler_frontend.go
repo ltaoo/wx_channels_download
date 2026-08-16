@@ -1,11 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -13,47 +14,36 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
-	result "wx_channel/internal/util"
-	scraper_wxchannels "wx_channel/pkg/scraper/wxchannels"
+	result "wx_channel/internal/apiresult"
 )
 
+type FrontendTip struct {
+	End          int     `json:"end"`
+	Replace      int     `json:"replace"`
+	IgnorePrefix int     `json:"ignore_prefix"`
+	Prefix       *string `json:"prefix"`
+	Msg          string  `json:"msg"`
+}
+
+type FrontendErrorTip struct {
+	Alert int    `json:"alert"`
+	Msg   string `json:"msg"`
+}
+
+// FrontendReport is a unified frontend report, level is "info" or "error"
+type FrontendReport struct {
+	Level        string  `json:"level"`
+	Message      string  `json:"message"`
+	Msg          string  `json:"msg"`
+	End          int     `json:"end,omitempty"`
+	Replace      int     `json:"replace,omitempty"`
+	IgnorePrefix int     `json:"ignore_prefix,omitempty"`
+	Prefix       *string `json:"prefix,omitempty"`
+}
+
 func (c *APIClient) handle_index(ctx *gin.Context) {
-	c.handle_download_page(ctx)
+	c.renderFrontendFile(ctx, "index.html")
 }
-
-func (c *APIClient) handle_download_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/index.html")
-}
-
-func (c *APIClient) handle_home_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/home.html")
-}
-
-func (c *APIClient) handle_content_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/content.html")
-}
-
-func (c *APIClient) handle_browse_history_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/browsehistory.html")
-}
-
-func (c *APIClient) handle_account_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/account.html")
-}
-
-func (c *APIClient) handle_logs_page(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "inject/logs.html")
-}
-
-func (c *APIClient) handle_channels_page(ctx *gin.Context) {
-	log.Println("[ROUTE] handle_channels_page called, rendering channels.html")
-	c.renderFrontendFile(ctx, "inject/channels.html")
-}
-
-// TODO: requires velo/fileserver
-// func (c *APIClient) handle_migration_page(ctx *gin.Context) {
-// 	c.renderFrontendFile(ctx, "migration.html")
-// }
 
 func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	data, err := frontend.Assets().ReadRoot(name)
@@ -61,6 +51,12 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+	html := c.renderFrontendHTML(data)
+
+	ctx.Data(http.StatusOK, "text/html; charset=utf-8", html)
+}
+
+func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 	max_running := c.cfg.Original.GetInt("download.maxRunning")
 	if max_running == 0 {
 		max_running = 3
@@ -82,13 +78,14 @@ func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
 	html := string(data)
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", "local")
-
-	ctx.Header("Content-Type", "text/html; charset=utf-8")
-	ctx.String(http.StatusOK, html)
+	return []byte(html)
 }
 
 func (c *APIClient) build_http_handler() http.Handler {
-	frontendHandler := frontend.NewServer(c.cfg.Mode)
+	frontendHandler := renderFrontendHTMLResponses(
+		frontend.NewServer(c.cfg.Mode),
+		c.renderFrontendHTML,
+	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldServeByAPI(r.URL.Path) {
 			c.engine.ServeHTTP(w, r)
@@ -98,6 +95,59 @@ func (c *APIClient) build_http_handler() http.Handler {
 	})
 }
 
+// renderFrontendHTMLResponses applies the same runtime-variable rendering used
+// by the root route to index.html responses produced by the SPA fallback.
+func renderFrontendHTMLResponses(next http.Handler, render func([]byte) []byte) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writer := &frontendHTMLResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(writer, r)
+		writer.flush(render)
+	})
+}
+
+type frontendHTMLResponseWriter struct {
+	http.ResponseWriter
+	statusCode  int
+	wroteHeader bool
+	bufferHTML  bool
+	body        bytes.Buffer
+}
+
+func (w *frontendHTMLResponseWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.statusCode = statusCode
+	w.bufferHTML = statusCode >= http.StatusOK &&
+		statusCode != http.StatusNoContent &&
+		statusCode != http.StatusNotModified &&
+		strings.HasPrefix(strings.ToLower(w.Header().Get("Content-Type")), "text/html")
+	if !w.bufferHTML {
+		w.ResponseWriter.WriteHeader(statusCode)
+	}
+}
+
+func (w *frontendHTMLResponseWriter) Write(data []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.bufferHTML {
+		return w.body.Write(data)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *frontendHTMLResponseWriter) flush(render func([]byte) []byte) {
+	if !w.bufferHTML {
+		return
+	}
+	body := render(w.body.Bytes())
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.ResponseWriter.WriteHeader(w.statusCode)
+	_, _ = w.ResponseWriter.Write(body)
+}
+
 // handleFrontendTip handles frontend log/tip messages posted from injected pages.
 func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
@@ -105,7 +155,7 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendTip
+	var data FrontendTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -134,7 +184,7 @@ func (c *APIClient) handleFrontendError(ctx *gin.Context) {
 		result.Err(ctx, 400, "read body failed")
 		return
 	}
-	var data scraper_wxchannels.FrontendErrorTip
+	var data FrontendErrorTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -151,7 +201,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		return
 	}
 
-	var data scraper_wxchannels.FrontendReport
+	var data FrontendReport
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -246,21 +296,7 @@ func zerologLevel(level string) zerolog.Level {
 }
 
 func shouldServeByAPI(path string) bool {
-	if path == "/" ||
-		path == "/favicon.ico" ||
-		path == "/home" ||
-		path == "/filehelper" ||
-		path == "/play" ||
-		path == "/preview" ||
-		path == "/content" ||
-		path == "/browsehistory" ||
-		path == "/account" ||
-		path == "/logs" ||
-		path == "/channels" ||
-		path == "/migration" ||
-		path == "/admin" ||
-		path == "/influencers" ||
-		path == "/report" {
+	if path == "/favicon.ico" || path == "/" || path == "/play" || path == "/report" {
 		return true
 	}
 
@@ -269,16 +305,6 @@ func shouldServeByAPI(path string) bool {
 		"/ws/",
 		"/rss/",
 		"/mp/",
-		"/browse_history/",
-		"/influencers/",
-		"/account/",
-		"/video/",
-		"/channels/",
-		"/xiaohongshu/",
-		"/bilibili/",
-		"/douban/",
-		"/instagram/",
-		"/weibo/",
 		"/__assets/",
 	}
 	for _, prefix := range apiPrefixes {

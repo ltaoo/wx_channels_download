@@ -1,10 +1,6 @@
 package wxchannelsadapter
 
-import (
-	"github.com/spf13/viper"
-
-	"wx_channel/internal/config"
-)
+import "wx_channel/internal/config"
 
 // ChannelsPluginConfig implements config.Configurable for wxchannels plugin config.
 type ChannelsPluginConfig struct {
@@ -43,8 +39,8 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 			Key:         "download.defaultHighest",
 			Type:        config.ConfigTypeBool,
 			Default:     false,
-			Description: "点击下载图标时是否下载原始视频（该配置不再生效）",
-			Title:       "原始视频",
+			Description: "未指定视频规格时是否默认选择原始视频",
+			Title:       "默认原始视频",
 			Group:       "Channels",
 			HotReload:   true,
 		},
@@ -90,7 +86,7 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	c.DisableLocationToHome = sub.GetBool("disableLocationToHome")
 	c.RefreshInterval = sub.GetInt("refreshInterval")
-	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest") || viper.GetBool("download.defaultHighest")
+	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest")
 	c.DownloadCover = sub.GetBool("download.cover")
 	c.DownloadFrontend = sub.GetBool("download.frontend")
 	c.DownloadForceCheckAllFeeds = sub.GetBool("download.forceCheckAllFeeds")
@@ -98,11 +94,8 @@ func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 	return nil
 }
 
-// channels_plugin_config is the singleton instance populated during config loading.
-var channels_plugin_config = &ChannelsPluginConfig{}
-
 func init() {
-	config.RegisterPlugin(channels_plugin_config)
+	config.RegisterPlugin(&ChannelsPluginConfig{})
 
 	// Legacy alias for backward compatibility; registered with its flat key directly
 	// to avoid the namespace auto-prefix applied by LoadPluginConfigs.

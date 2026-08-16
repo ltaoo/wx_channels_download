@@ -368,6 +368,9 @@ type Errmsg struct {
 }
 type SharedFeedinfo struct {
 	Picinfo         []SharedFeedPicInfo `json:"picInfo"`
+	VideoURL        string              `json:"videoUrl"`
+	H264VideoInfo   SharedFeedVideoInfo `json:"h264VideoInfo"`
+	H265VideoInfo   SharedFeedVideoInfo `json:"h265VideoInfo"`
 	Description     string              `json:"description"`
 	MediaType       int                 `json:"mediaType"`
 	Favcountfmt     string              `json:"favCountFmt"`
@@ -378,6 +381,10 @@ type SharedFeedinfo struct {
 	Createtime      int                 `json:"createtime"`
 	Ishardad        bool                `json:"isHardAd"`
 	Coverurl        string              `json:"coverUrl"`
+}
+
+type SharedFeedVideoInfo struct {
+	VideoURL string `json:"videoUrl"`
 }
 
 type SharedFeedPicInfo struct {
@@ -789,30 +796,6 @@ type MediaProfile struct {
 	Spec     json.RawMessage    `json:"spec"`
 	Files    json.RawMessage    `json:"files"`
 	Pageurl  string             `json:"pageurl"`
-}
-
-type FrontendTip struct {
-	End          int     `json:"end"`
-	Replace      int     `json:"replace"`
-	IgnorePrefix int     `json:"ignore_prefix"`
-	Prefix       *string `json:"prefix"`
-	Msg          string  `json:"msg"`
-}
-
-type FrontendErrorTip struct {
-	Alert int    `json:"alert"`
-	Msg   string `json:"msg"`
-}
-
-// FrontendReport is a unified frontend report, level is "info" or "error"
-type FrontendReport struct {
-	Level        string  `json:"level"`
-	Message      string  `json:"message"`
-	Msg          string  `json:"msg"`
-	End          int     `json:"end,omitempty"`
-	Replace      int     `json:"replace,omitempty"`
-	IgnorePrefix int     `json:"ignore_prefix,omitempty"`
-	Prefix       *string `json:"prefix,omitempty"`
 }
 
 // aliases

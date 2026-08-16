@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/wxchannels"
 )
@@ -71,4 +72,34 @@ func (a *ChannelsAdapter) ToAccount(data any) (*model.Account, error) {
 		return nil, err
 	}
 	return ToAccount(object)
+}
+
+func (a *ChannelsAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
+	object, err := channels_object_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content, detail, err := ToContent(object)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, nil
+	}
+	select_content_video_variant(detail, a.video_download_spec(object, nil))
+	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
+}
+
+// BuildDownloadTaskFromFetch normalizes all Fetch response shapes to the
+// ChannelsObject consumed by BuildDownloadTask without fetching the URL again.
+func (a *ChannelsAdapter) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	object, err := channels_object_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	content_json, err := json.Marshal(object)
+	if err != nil {
+		return nil, fmt.Errorf("encode wxchannels download task content: %w", err)
+	}
+	return a.BuildDownloadTask(content_json, config_json)
 }

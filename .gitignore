@@ -15,13 +15,21 @@ scraper_examples/*
 .asset-sync.local.yaml
 workdir
 cache
+fixtures
+cookies.json
+design
 
 cache
+tmp
 workdir
 
 scraper_examples
 cache
 workdir
+
+!pkg/cache/
+!pkg/cache/provider.go
+!pkg/cache/provider_test.go
 
 config.yaml
 global.js

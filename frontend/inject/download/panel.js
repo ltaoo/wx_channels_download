@@ -4,6 +4,32 @@
 /**
  * @file Download manager popup panel entry
  */
+function DownloaderConnectionStatusDot(props) {
+  return View(
+    {
+      style: computed(props.connected, (connected) => ({
+        position: "absolute",
+        top: "-2px",
+        right: "-2px",
+        width: "6px",
+        height: "6px",
+        "border-radius": "9999px",
+        "background-color": connected ? "#22c55e" : "#ef4444",
+        "box-sizing": "border-box",
+      })),
+      attributes: {
+        title: computed(props.connected, (connected) =>
+          connected ? "WebSocket 已连接" : "WebSocket 已断开",
+        ),
+        "aria-label": computed(props.connected, (connected) =>
+          connected ? "WebSocket 已连接" : "WebSocket 已断开",
+        ),
+      },
+    },
+    [],
+  );
+}
+
 function DownloaderEntry(props) {
   const vm$ =
     typeof __d_vm$ !== undefined ? __d_vm$ : DownloaderPanelViewModel({});
@@ -14,8 +40,6 @@ function DownloaderEntry(props) {
         content: [
           DownloaderPanelView({
             store: vm$,
-            showStatusCounts: false,
-            showViewAll: true,
           }),
         ],
       },
@@ -24,8 +48,19 @@ function DownloaderEntry(props) {
           {
             class:
               "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
+            onMounted() {
+              vm$.methods.connect().catch(() => {});
+              if (typeof props.onMounted === "function") {
+                props.onMounted(vm$);
+              }
+            },
           },
-          [Timeless.Icon({ name: "download", size: 20 })],
+          [
+            Timeless.Icon({ name: "download", size: 20 }),
+            DownloaderConnectionStatusDot({
+              connected: vm$.state.websocket_connected,
+            }),
+          ],
         ),
       ],
     ),
@@ -48,7 +83,7 @@ function DownloaderEntry(props) {
 }
 
 (() => {
-  const popover$ = new Timeless.ui.PopoverCore({
+  const popover$ = new Timeless.vm.PopoverCore({
     offsetY: 4,
     destroyOnClose: false,
   });

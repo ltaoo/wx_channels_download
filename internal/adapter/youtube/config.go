@@ -36,7 +36,7 @@ func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigField {
 			Key:         "poToken",
 			Type:        config.ConfigTypeText,
 			Default:     "",
-			Description: "YouTube GVS PO Token，兼容 yt-dlp 的 client.gvs+TOKEN 格式；用于避免部分 videoplayback 403",
+			Description: "YouTube PO Token，使用 client.gvs+TOKEN 格式；多个 Token 用逗号分隔，Token 只会用于匹配的 client",
 			Title:       "YouTube PO Token",
 			Group:       "YouTube",
 			HotReload:   true,

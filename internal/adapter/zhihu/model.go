@@ -1,12 +1,22 @@
 package zhihuadapter
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/zhihu"
 	"wx_channel/pkg/util"
 )
@@ -17,7 +27,21 @@ func init() {
 	adapter.Register(&handler{})
 }
 
-type handler struct{}
+type handler struct {
+	runtime_mu          sync.RWMutex
+	cookie_reader       *cookies.Reader
+	logger              *zerolog.Logger
+	file_cache          *cache.CacheProvider
+	status_mu           sync.Mutex
+	status_bus          *events.Bus
+	cancel_status_check func()
+}
+
+var (
+	_ adapter.PlatformAdapter          = (*handler)(nil)
+	_ adapter.FetchCacheAdapter        = (*handler)(nil)
+	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+)
 
 func (h *handler) PlatformID() string { return PlatformID }
 
@@ -30,12 +54,51 @@ func (h *handler) Fetch(raw_url string) (any, error) {
 		return nil, fmt.Errorf("知乎URL不能为空")
 	}
 
-	return zhihu.NewClient("").Fetch(raw_url)
+	return h.scraper_client().Fetch(raw_url)
+}
+
+func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Logger, bus *events.Bus) {
+	h.runtime_mu.Lock()
+	h.cookie_reader = cookie_reader
+	h.logger = logger
+	h.runtime_mu.Unlock()
+
+	h.status_mu.Lock()
+	h.status_bus = bus
+	h.status_mu.Unlock()
+}
+
+func (h *handler) set_persistent_cache(file_cache *cache.CacheProvider) {
+	h.runtime_mu.Lock()
+	h.file_cache = file_cache
+	h.runtime_mu.Unlock()
+}
+
+func (h *handler) scraper_client() *zhihu.Client {
+	h.runtime_mu.RLock()
+	cookie_reader := h.cookie_reader
+	logger := h.logger
+	file_cache := h.file_cache
+	h.runtime_mu.RUnlock()
+	client := zhihu.NewClient(cookie_reader, logger)
+	client.SetPersistentCache(file_cache)
+	return client
 }
 
 // BuildContentID builds a content identifier from an external ID.
 func BuildContentID(external_id string) string {
 	return PlatformID + ":" + external_id
+}
+
+// BuildTypedContentID keeps identifiers from Zhihu's independent entity ID
+// namespaces from colliding in the shared content table.
+func BuildTypedContentID(content_type, external_id string) string {
+	content_type = strings.ToLower(strings.TrimSpace(content_type))
+	external_id = strings.TrimSpace(external_id)
+	if content_type == "" {
+		return BuildContentID(external_id)
+	}
+	return PlatformID + ":" + content_type + ":" + external_id
 }
 
 // BuildAccountID builds an account identifier from an external ID.
@@ -64,7 +127,7 @@ func ToContent(page *zhihu.AnswerPage) (*model.Content, error) {
 	cover_url := zhihu.FirstImageURL(page.Answer.Content, content_url)
 
 	return &model.Content{
-		Id:           BuildContentID(external_id),
+		Id:           BuildTypedContentID("answer", external_id),
 		PlatformId:   PlatformID,
 		Type:         "answer",
 		ExternalId:   external_id,
@@ -98,7 +161,7 @@ func QuestionToContent(page *zhihu.QuestionPage) (*model.Content, error) {
 	cover_url := zhihu.FirstImageURL(page.Question.Excerpt, content_url)
 
 	return &model.Content{
-		Id:           BuildContentID(external_id),
+		Id:           BuildTypedContentID("question", external_id),
 		PlatformId:   PlatformID,
 		Type:         "question",
 		ExternalId:   external_id,
@@ -131,7 +194,7 @@ func ArticleToContent(page *zhihu.ArticlePage) (*model.Content, error) {
 	cover_url := first_non_empty_str(page.Article.ImageURL, page.Article.ImageURLAlt)
 
 	return &model.Content{
-		Id:          BuildContentID(external_id),
+		Id:          BuildTypedContentID("article", external_id),
 		PlatformId:  PlatformID,
 		Type:        "article",
 		ExternalId:  external_id,
@@ -370,17 +433,138 @@ func RecommendFeedToAccount(feed *zhihu.RecommendFeed) *model.Account {
 	}
 }
 
-// parse_answer_page_content attempts to unmarshal the content JSON as a zhihu.AnswerPage.
-// Returns the parsed page and true if the content appears to be a valid AnswerPage.
-func parse_answer_page_content(content_json json.RawMessage) (*zhihu.AnswerPage, bool) {
-	var page zhihu.AnswerPage
-	if err := json.Unmarshal(content_json, &page); err != nil {
-		return nil, false
+// parse_zhihu_page_content recognizes every structured result returned by
+// Fetch so task previews can reuse it without another platform request.
+func parse_zhihu_page_content(content_json json.RawMessage) (any, bool) {
+	var answer_page zhihu.AnswerPage
+	if err := json.Unmarshal(content_json, &answer_page); err == nil && answer_page.Source != "" && answer_page.Answer.ID != "" {
+		return &answer_page, true
 	}
-	if page.Source == "" || page.Answer.ID == "" {
-		return nil, false
+
+	var question_page zhihu.QuestionPage
+	if err := json.Unmarshal(content_json, &question_page); err == nil && question_page.Source != "" && question_page.Question.ID != "" {
+		return &question_page, true
 	}
-	return &page, true
+
+	var article_page zhihu.ArticlePage
+	if err := json.Unmarshal(content_json, &article_page); err == nil && article_page.Source != "" && article_page.Article.ID != "" {
+		return &article_page, true
+	}
+
+	return nil, false
+}
+
+// parse_content_images turns the real image URLs exposed by Zhihu's
+// data-original attributes into independently downloadable task resources.
+func parse_content_images(page_data any, content_id, content_key, source_url string) []*adapter.ResourceInfo {
+	content_html := zhihu_primary_content_html(page_data)
+	if strings.TrimSpace(content_html) == "" {
+		return nil
+	}
+
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(content_html))
+	if err != nil {
+		return nil
+	}
+
+	image_extra, _ := json.Marshal(map[string]string{
+		postprocess_image_marker_key: postprocess_image_marker_value,
+	})
+	seen_urls := make(map[string]bool)
+	resources := make([]*adapter.ResourceInfo, 0)
+	document.Find("img[data-original]").Each(func(_ int, selection *goquery.Selection) {
+		image_url := normalize_zhihu_image_url(selection.AttrOr("data-original", ""), source_url)
+		if image_url == "" || seen_urls[image_url] {
+			return
+		}
+		seen_urls[image_url] = true
+
+		parsed_url, err := url.Parse(image_url)
+		if err != nil {
+			return
+		}
+		protocol := strings.ToLower(parsed_url.Scheme)
+		if protocol != "http" && protocol != "https" {
+			return
+		}
+
+		hash := md5.Sum([]byte(image_url))
+		filename := hex.EncodeToString(hash[:])
+		image_index := len(resources)
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource: model.DownloadResource{
+				ContentId:  &content_id,
+				Name:       filename,
+				Kind:       "image",
+				UniqueID:   fmt.Sprintf("%s_img_%d", content_key, image_index),
+				MergeOrder: 100 + image_index,
+				Extra:      string(image_extra),
+			},
+			Endpoints: []model.DownloadEndpoint{{
+				Protocol: protocol,
+				URL:      image_url,
+				Enabled:  1,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindImage,
+				Role:     model.ContentAssetRoleAttachment,
+				AssetKey: "inline_image:" + filename,
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
+		})
+	})
+
+	return resources
+}
+
+func zhihu_primary_content_html(page_data any) string {
+	switch page := page_data.(type) {
+	case *zhihu.AnswerPage:
+		if page != nil {
+			return page.Answer.Content
+		}
+	case zhihu.AnswerPage:
+		return page.Answer.Content
+	case *zhihu.ArticlePage:
+		if page != nil {
+			return page.Article.Content
+		}
+	case zhihu.ArticlePage:
+		return page.Article.Content
+	case *zhihu.QuestionPage:
+		if page != nil {
+			return page.Question.Detail
+		}
+	case zhihu.QuestionPage:
+		return page.Question.Detail
+	}
+	return ""
+}
+
+func normalize_zhihu_image_url(raw_url, source_url string) string {
+	raw_url = strings.TrimSpace(raw_url)
+	if raw_url == "" || strings.HasPrefix(strings.ToLower(raw_url), "data:") {
+		return ""
+	}
+
+	parsed_url, err := url.Parse(raw_url)
+	if err != nil {
+		return ""
+	}
+	if parsed_url.Scheme == "" {
+		base_url, base_err := url.Parse(strings.TrimSpace(source_url))
+		if base_err != nil || base_url.Scheme == "" || base_url.Host == "" {
+			return ""
+		}
+		parsed_url = base_url.ResolveReference(parsed_url)
+	}
+	protocol := strings.ToLower(parsed_url.Scheme)
+	if (protocol != "http" && protocol != "https") || parsed_url.Host == "" {
+		return ""
+	}
+	parsed_url.Scheme = protocol
+	parsed_url.Fragment = ""
+	return parsed_url.String()
 }
 
 func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -389,11 +573,10 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
-	// Try AnswerPage format first (from browser injection).
-	// When the content is a pre-built AnswerPage, skip the HTTP fetch.
-	var page *zhihu.AnswerPage
-	if p, ok := parse_answer_page_content(content_json); ok {
-		page = p
+	// Structured Fetch results skip the HTTP fetch.
+	var page_data any
+	if parsed_page, ok := parse_zhihu_page_content(content_json); ok {
+		page_data = parsed_page
 	}
 
 	var input struct {
@@ -402,91 +585,42 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	}
 	_ = json.Unmarshal(content_json, &input)
 
-	client := zhihu.NewClient("")
-
-	var html_content string
-	if page != nil {
-		// Use the AnswerPage data directly; build HTML from Source.
-		html_content, _ = client.BuildHTMLFromURL(page.Source)
-		if html_content == "" {
-			html_content = "<html><body></body></html>"
-		}
-	} else {
+	if page_data == nil {
 		if input.URL == "" {
 			return nil, fmt.Errorf("知乎URL不能为空")
 		}
-		html, err := client.BuildHTMLFromURL(input.URL)
+		fetched_page, err := h.scraper_client().Fetch(input.URL)
 		if err != nil {
 			return nil, fmt.Errorf("获取知乎页面失败: %w", err)
 		}
-		html_content = html
-		page, _ = client.FetchAnswerPage(input.URL)
+		page_data = fetched_page
 	}
 
-	now := util.NowMillis()
-	title := input.Title
-	content_type := "answer"
-	var external_id string
-	var cover_url string
-	var content *model.Content
-	var account *model.Account
-	var source_url string
-
-	if page != nil && page.Answer.ID != "" {
-		external_id = page.Answer.ID
-		if title == "" {
-			title = page.Question.Title
-		}
-		content_type = "answer"
-		cover_url = zhihu.FirstImageURL(page.Answer.Content, page.Source)
-		source_url = page.Source
-
-		c, err := ToContent(page)
-		if err == nil {
-			content = c
-		}
-		a, err := ToAccount(&page.Answer.Author)
-		if err == nil {
-			account = a
-		}
-	} else {
-		// Fall back to parsing the URL
-		if article_url, ok := zhihu.ParseArticleURL(input.URL); ok {
-			external_id = article_url.ArticleID
-			content_type = "article"
-			source_url = article_url.Canonical
-		} else if question_url, ok := zhihu.ParseQuestionURL(input.URL); ok {
-			external_id = question_url.QuestionID
-			content_type = "question"
-			source_url = question_url.Canonical
-		} else {
-			external_id = input.URL
-			source_url = input.URL
-		}
+	content, err := h.ToContent(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("转换知乎内容失败: %w", err)
 	}
-
+	if strings.TrimSpace(input.Title) != "" {
+		content.Title = strings.TrimSpace(input.Title)
+	}
+	title := strings.TrimSpace(content.Title)
 	if title == "" {
 		title = "知乎内容"
+		content.Title = title
 	}
+	external_id := content.ExternalId
+	content_type := content.Type
+	content_key := strings.TrimPrefix(content.Id, PlatformID+":")
+	// DownloadResource.UniqueID is also used as the temporary on-disk filename.
+	// Keep the typed task key (for example, "answer:123") for database identity,
+	// but use a Windows-safe separator for resource files.
+	resource_key := strings.ReplaceAll(content_key, ":", "_")
+	cover_url := content.CoverURL
+	source_url := first_non_empty_str(content.SourceURL, content.URL, input.URL)
 
-	if content == nil {
-		content = &model.Content{
-			Id:         BuildContentID(external_id),
-			PlatformId: PlatformID,
-			Type:       content_type,
-			ExternalId: external_id,
-			Title:      title,
-			URL:        source_url,
-			SourceURL:  source_url,
-			CoverURL:   cover_url,
-			Timestamps: model.Timestamps{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		}
-	}
-
-	if account == nil {
+	account, account_err := h.ToAccount(page_data)
+	if account_err != nil {
+		now := util.NowMillis()
 		account = &model.Account{
 			Id:         BuildAccountID("unknown"),
 			PlatformId: PlatformID,
@@ -499,6 +633,20 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		}
 	}
 
+	postprocess_data, err := marshal_postprocess_payload(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("序列化知乎页面失败: %w", err)
+	}
+
+	content_details, err := h.ToContentDetails(page_data)
+	if err != nil {
+		return nil, fmt.Errorf("转换知乎内容详情失败: %w", err)
+	}
+	var content_detail any
+	if len(content_details) > 0 {
+		content_detail = content_details[0].Data
+	}
+
 	config_json, _ := json.Marshal(build_config_json(config))
 	metadata_json, _ := json.Marshal(map[string]any{
 		"platform":    PlatformID,
@@ -508,17 +656,21 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	})
 
 	content_id := content.Id
+	postprocess_extra, _ := json.Marshal(map[string]string{
+		postprocess_marker_key: postprocess_marker_value,
+	})
 
 	// HTML resource
 	html_resource := model.DownloadResource{
 		ContentId: &content_id,
-		Name:      title + ".html",
+		Name:      title,
 		Kind:      "html",
-		UniqueID:  external_id + "_html",
+		UniqueID:  resource_key + "_html",
+		Extra:     string(postprocess_extra),
 	}
 	html_endpoint := model.DownloadEndpoint{
 		Protocol: "inline",
-		URL:      html_content,
+		URL:      string(postprocess_data),
 		Enabled:  1,
 	}
 
@@ -528,6 +680,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 			Endpoints: []model.DownloadEndpoint{html_endpoint},
 		},
 	}
+	resources = append(resources, parse_content_images(page_data, content_id, resource_key, source_url)...)
 
 	// Cover image resource
 	if cover_url != "" {
@@ -535,7 +688,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 			ContentId:  &content_id,
 			Name:       title,
 			Kind:       "image",
-			UniqueID:   external_id + "_cover",
+			UniqueID:   resource_key + "_cover",
 			MergeOrder: 999,
 		}
 		cover_endpoint := model.DownloadEndpoint{
@@ -553,7 +706,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
 			Name:         title,
-			UniqueID:     external_id,
+			UniqueID:     content_key,
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
 			SourceURL:    source_url,
@@ -561,14 +714,11 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},
-		Resources: resources,
-		ContentDetail: &model.ContentArticle{
-			Id:   content.Id,
-			Type: model.ContentArticleTypeHTML,
-			HTML: html_content,
-		},
-		Account: account,
-		Content: content,
+		Resources:      resources,
+		ContentDetail:  content_detail,
+		ContentDetails: content_details,
+		Account:        account,
+		Content:        content,
 	}, nil
 }
 

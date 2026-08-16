@@ -3,18 +3,19 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "node",
-    "checkJs": true,
+    "checkJs": false,
     "allowJs": true,
-    "types": ["@timeless/types"],
+    "noEmit": true,
     "skipLibCheck": true,
+    "types": ["@timeless/inner-types/global"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
+      "@/*": ["./src/*"]
     }
   },
   "include": [
     "src/**/*.js",
-    "types/**/*.d.ts",
+    "types/**/*.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

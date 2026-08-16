@@ -48,7 +48,7 @@ body:
     id: log_file
     attributes:
       label: 日志文件（可选）
-      description: 打开 http://127.0.0.1:2022/logs，点击「导出」按钮，然后将导出的 log 文件拖拽到此区域上传
+      description: 打开 [http://127.0.0.1:2022/logs](http://127.0.0.1:2022/logs)，点击「导出」按钮，然后将导出的 log 文件拖拽到此区域上传
       placeholder: 请将导出的 log 文件拖拽到此处
     validations:
       required: false

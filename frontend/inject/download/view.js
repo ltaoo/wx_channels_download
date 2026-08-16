@@ -2498,18 +2498,81 @@ function DownloadTaskListView(props) {
   );
 }
 
+function DownloaderConnectionUnavailableView(props) {
+  const vm$ = props.store;
+  const connecting_ = vm$.state.websocket_connecting;
+  return View(
+    {
+      style: {
+        display: "flex",
+        "min-height": "160px",
+        "box-sizing": "border-box",
+        "flex-direction": "column",
+        "align-items": "center",
+        "justify-content": "center",
+        gap: "12px",
+        padding: "24px",
+      },
+    },
+    [
+      View(
+        {
+          style: {
+            color: "var(--weui-FG-1)",
+            "font-size": "14px",
+            "line-height": "20px",
+          },
+        },
+        ["无法连接下载服务"],
+      ),
+      Button(
+        {
+          disabled: connecting_,
+          style: computed(connecting_, (connecting) => ({
+            height: "30px",
+            padding: "0 14px",
+            border: "0",
+            "border-radius": "6px",
+            background: "#07c160",
+            color: "#fff",
+            cursor: connecting ? "default" : "pointer",
+            opacity: connecting ? "0.6" : "1",
+            "font-size": "13px",
+          })),
+          attributes: {
+            type: "button",
+            "aria-busy": computed(connecting_, (connecting) =>
+              connecting ? "true" : "false",
+            ),
+          },
+          onClick() {
+            vm$.methods.retryWebsocketConnection();
+          },
+        },
+        [
+          computed(connecting_, (connecting) =>
+            connecting ? "连接中..." : "点击重试",
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 function DownloaderPanelView(props) {
   const vm$ = props.store;
   const task_count_ = vm$.state.task_count;
   const status_counts_ = vm$.state.status_counts;
   const active_status_ = vm$.state.active_status;
   const selected_task_count_ = vm$.state.selected_task_count;
-  const showStatusCounts = props.showStatusCounts === true;
+  const connected_content_style_ = computed(
+    vm$.state.websocket_connected,
+    (connected) => ({ display: connected ? "" : "none" }),
+  );
 
   return View(
     {
       class: "wx-dl-panel-container",
-      style: props.showViewAll ? { "padding-bottom": "0" } : {},
       onMounted() {
         vm$.ready();
       },
@@ -2518,7 +2581,7 @@ function DownloaderPanelView(props) {
       },
     },
     [
-      View({ class: "wx-dl-header" }, [
+      View({ class: "wx-dl-header", style: connected_content_style_ }, [
         View({ class: "wx-dl-heading" }, [
           View({ class: "wx-dl-title" }, [
             "Downloads",
@@ -2526,73 +2589,6 @@ function DownloaderPanelView(props) {
               return d > 0 ? `（${d}）` : "";
             }),
           ]),
-          Show({
-            when: computed(status_counts_, (counts) => {
-              return (
-                showStatusCounts &&
-                normalize_download_status_counts(counts).total > 0
-              );
-            }),
-            ok() {
-              return [
-                View({ class: "wx-dl-status-counts" }, [
-                  For({
-                    each: DOWNLOAD_STATUS_COUNT_ITEMS,
-                    render(item) {
-                      return View(
-                        {
-                          role: "button",
-                          tabIndex: "0",
-                          attributes: {
-                            "aria-pressed": computed(
-                              active_status_,
-                              (status) =>
-                                status === item.key ? "true" : "false",
-                            ),
-                          },
-                          class: computed(active_status_, (status) =>
-                            [
-                              "wx-dl-status-count",
-                              "wx-dl-status-count-filter",
-                              status === item.key
-                                ? "wx-dl-status-count-active"
-                                : "",
-                              item.key === "error"
-                                ? "wx-dl-status-count-error"
-                                : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" "),
-                          ),
-                          onClick() {
-                            vm$.methods.setStatusFilter(item.key);
-                          },
-                          onKeyDown(e) {
-                            if (e.key === " " || e.key === "Enter") {
-                              e.preventDefault();
-                              vm$.methods.setStatusFilter(item.key);
-                            }
-                          },
-                        },
-                        [
-                          View({ class: "wx-dl-status-count-label" }, [
-                            item.label,
-                          ]),
-                          View({ class: "wx-dl-status-count-value" }, [
-                            computed(status_counts_, (counts) => {
-                              return String(
-                                get_download_status_count(counts, item),
-                              );
-                            }),
-                          ]),
-                        ],
-                      );
-                    },
-                  }),
-                ]),
-              ];
-            },
-          }),
         ]),
         Show({
           when: computed(selected_task_count_, (count) => count > 0),
@@ -2654,6 +2650,16 @@ function DownloaderPanelView(props) {
       DownloadTaskListView({
         store: vm$,
         paddingBottom: 12,
+        style: connected_content_style_,
+      }),
+      Show({
+        when: computed(
+          vm$.state.websocket_connected,
+          (connected) => !connected,
+        ),
+        ok() {
+          return DownloaderConnectionUnavailableView({ store: vm$ });
+        },
       }),
     ],
   );

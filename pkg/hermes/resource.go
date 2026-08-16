@@ -51,6 +51,14 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 			if errors.Is(prepare_err, context.Canceled) {
 				return "", prepare_err
 			}
+			add_endpoint_diagnostic(d.logger.Warn().
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Int("endpoint_id", candidate.endpoint.ID).
+				Str("protocol", candidate.protocol).
+				Int("prepare_attempts", max_read_attempts).
+				Err(prepare_err), candidate.endpoint).
+				Msg("run - endpoint preparation failed")
 			endpoint_errors = append(endpoint_errors, fmt.Sprintf("%s: %v", candidate.protocol, prepare_err))
 			continue
 		}
@@ -107,10 +115,9 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 			return "", fmt.Errorf("failed to create download directory: %w", err)
 		}
 
-		d.logger.Info().
+		add_endpoint_diagnostic(d.logger.Info().
 			Int("task_id", task.ID).
-			Int("resource_id", resource.ID).
-			Str("endpoint", candidate.endpoint.URL).
+			Int("resource_id", resource.ID), candidate.endpoint).
 			Str("file_path", d.rel_log_path(file_path)).
 			Msg("run - starting resource download")
 
@@ -167,12 +174,11 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 			return "", context.Cause(ctx)
 		}
 		endpoint_errors = append(endpoint_errors, fmt.Sprintf("%s: %v", candidate.protocol, err))
-		d.logger.Warn().
+		add_endpoint_diagnostic(d.logger.Warn().
 			Int("endpoint_id", candidate.endpoint.ID).
-			Str("endpoint", candidate.endpoint.URL).
 			Int("task_id", task.ID).
 			Int("resource_id", resource.ID).
-			Err(err).
+			Err(err), candidate.endpoint).
 			Msg("run - download resource from endpoint failed, trying next mirror")
 	}
 	return "", fmt.Errorf("all download endpoints are unavailable: %s", strings.Join(endpoint_errors, "; "))
@@ -825,6 +831,13 @@ func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res 
 		}
 		prepared, err := c.driver.Prepare(ctx, c.endpoint)
 		if err != nil {
+			add_endpoint_diagnostic(d.logger.Info().
+				Int("task_id", task_id).
+				Int("resource_id", res.ID).
+				Int("endpoint_id", c.endpoint.ID).
+				Str("protocol", c.protocol).
+				Err(err), c.endpoint).
+				Msg("run - initial resource size probe failed; download phase will retry")
 			continue
 		}
 		if prepared.Size > 0 {

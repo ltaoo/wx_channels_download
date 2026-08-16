@@ -4,7 +4,7 @@ import (
 	_ "embed"
 )
 
-//go:embed certs/SunnyRoot.cer
+//go:embed certs/SunnyNet.cer
 var cert_file []byte
 
 //go:embed certs/private.key

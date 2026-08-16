@@ -16,10 +16,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/config"
 	"wx_channel/internal/events"
 	"wx_channel/internal/services"
-	result "wx_channel/internal/util"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/system"
 )

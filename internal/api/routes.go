@@ -4,32 +4,31 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	// "wx_channel/pkg/scraper/douban"
-	// "wx_channel/pkg/scraper/instagram"
-	// "wx_channel/pkg/scraper/qidian"
-	// "wx_channel/pkg/scraper/weibo"
-	// "wx_channel/pkg/scraper/xiaohongshu"
+
+	"wx_channel/frontend"
 )
 
 func (c *APIClient) SetupRoutes() {
 	// favicon
 	c.engine.GET("/favicon.ico", c.handle_favicon)
+	c.engine.HEAD("/favicon.ico", c.handle_favicon)
 	c.setup_static_asset_routes()
-	c.engine.GET("/", c.handle_index)
-	c.engine.GET("/download", c.handle_download_page)
-	c.engine.GET("/home", c.handle_home_page)
-	c.engine.GET("/browsehistory", c.handle_browse_history_page)
-	c.engine.GET("/account", c.handle_account_page)
-	c.engine.GET("/content", c.handle_content_page)
-	c.engine.GET("/logs", c.handle_logs_page)
-	c.engine.GET("/preview", c.handle_preview_page)
-	c.engine.GET("/channels", c.handle_channels_page)
-	c.engine.GET("/filehelper", c.file_helper.HandlePage)
+	// c.engine.GET("/", c.handle_index)
+	c.engine.GET("/", func(ctx *gin.Context) {
+		c.renderFrontendFile(ctx, "index.html")
+	})
 	// !!
+	c.engine.POST("/api/scraper/fetch", c.handle_scraper_fetch)
+	// GET remains available for callers migrating from the former synchronous API.
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
+	c.engine.GET("/api/scraper/job", c.handle_scraper_job)
+	c.engine.POST("/api/scraper/fetch/interrupt", c.handle_scraper_fetch_interrupt)
+	c.engine.GET("/api/scraper/cache/content", c.handle_scraper_cache_content)
+	c.engine.POST("/api/scraper/cache/clear", c.handle_scraper_cache_clear)
 	// File transfer helper endpoints
 	c.engine.GET("/api/filehelper/qrcode", c.file_helper.HandleGetQRCode)
 	c.engine.GET("/api/filehelper/login/wait", c.file_helper.HandleWaitLogin)
@@ -57,6 +56,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.GET("/api/task/pipeline/workflow", c.handle_fetch_platform_download_workflow)
 	// c.engine.POST("/api/task/pipeline/resume", c.handle_resume_platform_download_pipeline)
 	c.engine.GET("/ws/v1/download_task", c.handle_download_task_ws)
+	c.engine.GET("/ws/scraper", c.handle_scraper_ws)
 	c.engine.POST("/api/browse_history/create", c.handle_create_browse_history)
 	c.engine.POST("/api/browse_history/list", c.handle_fetch_browse_history_list)
 	c.engine.POST("/api/v1/download_task/prepare", c.handle_prepare_download_task)
@@ -87,6 +87,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/api/account/synchronize", c.handle_account_synchronize)
 	c.engine.GET("/api/content/list", c.handle_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
+	c.engine.GET("/api/content/relations", c.handle_content_relations)
 	// Other endpoints
 	c.engine.GET("/api/logs", c.handle_logs)
 	c.engine.POST("/report", c.handle_frontend_report)
@@ -106,7 +107,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/replace", c.handle_proxy_certificate_replace)
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
-	c.engine.GET("/api/cookie/extract", c.handle_cookie_extract)
+	c.engine.GET("/api/cookies/extract", c.handle_cookie_extract)
+	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
 	c.engine.GET("/api/certificate/root/status", c.handle_root_certificate_status)
 	c.engine.POST("/api/certificate/root/install", c.handle_root_certificate_install)
 	c.engine.POST("/api/certificate/root/uninstall", c.handle_root_certificate_uninstall)
@@ -118,9 +120,19 @@ func (c *APIClient) SetupRoutes() {
 }
 
 func (c *APIClient) handle_favicon(ctx *gin.Context) {
-	ctx.Header("Content-Type", "image/png")
+	data, err := frontend.FS.ReadFile("public/favicon.ico")
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "favicon is unavailable")
+		return
+	}
+	ctx.Header("Content-Type", "image/x-icon")
 	ctx.Header("Cache-Control", "public, max-age=86400")
-	ctx.File("build/winres/icon.png")
+	ctx.Header("Content-Length", strconv.Itoa(len(data)))
+	if ctx.Request.Method == http.MethodHead {
+		ctx.Status(http.StatusOK)
+		return
+	}
+	ctx.Data(http.StatusOK, "image/x-icon", data)
 }
 
 func (c *APIClient) handle_status(ctx *gin.Context) {

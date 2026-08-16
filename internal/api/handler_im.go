@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
-	"wx_channel/frontend"
 	"wx_channel/pkg/filehelper"
 )
 
@@ -76,18 +75,6 @@ func (h *FileHelperHandler) GetClient() *filehelper.Client {
 func (h *FileHelperHandler) getLogger() *zerolog.Logger {
 	nopLogger := zerolog.Nop()
 	return &nopLogger
-}
-
-// HandlePage serves the frontend page.
-// GET /filehelper
-func (h *FileHelperHandler) HandlePage(c *gin.Context) {
-	data, err := frontend.Assets().ReadRoot("filehelper.html")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "filehelper page not found")
-		return
-	}
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, string(data))
 }
 
 // HandleGetQRCode returns a login QR code.

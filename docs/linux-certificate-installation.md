@@ -223,7 +223,7 @@ For programmatic installation:
 - Use the externally supplied certificate name as the single source of truth.
 - Derive only the filesystem-safe certificate file name from that external name.
 - Use the original external name as the NSS nickname.
-- Do not hardcode certificate names such as `SunnyRoot` or `WeChatAppEx_CA`.
+- Do not hardcode certificate names such as `SunnyNet` or `WeChatAppEx_CA`.
 - In `sudo` flows, use `SUDO_USER` or `PKEXEC_UID` to find the invoking desktop user's home directory.
 - If writing a user NSS database while running as root, restore ownership to the original user.
 - Treat system trust store refresh failure as a hard error.

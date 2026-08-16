@@ -104,9 +104,29 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 
 	// 9. Emit final progress and EventFinished
 	d.emit_progress(task_id)
-	d.emit(EventFinished, TaskFinishedEventData{TaskID: task_id, FilePaths: append([]string(nil), final_paths...)})
+	d.emit(EventFinished, TaskFinishedEventData{
+		TaskID:    task_id,
+		FilePaths: append([]string(nil), final_paths...),
+		Resources: finished_resource_snapshot(job.Resources),
+	})
 	d.delete_tracker(task_id)
 	return nil
+}
+
+func finished_resource_snapshot(resources []ResourceJob) []TaskFinishedResource {
+	result := make([]TaskFinishedResource, 0, len(resources))
+	for _, resource := range resources {
+		result = append(result, TaskFinishedResource{
+			ID:          resource.ID,
+			DownloadDir: resource.DownloadDir,
+			Name:        resource.Name,
+			Kind:        resource.Kind,
+			Type:        resource.Type,
+			Size:        resource.Size,
+			FilePath:    resource.FilePath,
+		})
+	}
+	return result
 }
 
 // renameTempFiles renames .tmp files to their correct extensions.
