@@ -45,6 +45,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
   douyin: "https://p-pc-weboff.byteimg.com/tos-cn-i-9r5gewecjs/favicon.png",
   youtube: "https://www.youtube.com/s/desktop/0084d708/img/favicon.ico",
   bilibili: "https://static.hdslb.com/images/favicon.ico",
+  cctv: "https://v.cctv.com/favicon.ico",
 });
 
 (function (global) {

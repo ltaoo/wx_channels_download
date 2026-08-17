@@ -672,7 +672,7 @@ function DownloadV2TaskRow(props) {
           Show({
             when: computed(state_, (state) => state.is_live_stream),
             ok() {
-              return View({ class: "wx-dl-page-task-live" }, ["直播"]);
+              return View({ class: "wx-dl-page-task-live" }, ["流媒体"]);
             },
           }),
         ]),

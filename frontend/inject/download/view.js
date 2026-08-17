@@ -2096,7 +2096,7 @@ function DownloadTaskCard(props) {
                         "border-radius": "4px",
                       },
                     },
-                    ["直播"],
+                    ["流媒体"],
                   );
                 },
               }),
