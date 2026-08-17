@@ -9,8 +9,6 @@ import (
 
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/events"
-	"wx_channel/internal/services"
-	"wx_channel/pkg/certificate"
 )
 
 type service_action_body struct {
@@ -140,41 +138,4 @@ func service_config_port(value interface{}) (int, error) {
 	default:
 		return 0, fmt.Errorf("端口必须是大于 0 的整数")
 	}
-}
-
-func (c *APIClient) handle_root_certificate_status(ctx *gin.Context) {
-	cert := services.LoadCertFiles()
-	installed, err := certificate.CheckHasCertificate(cert.Name)
-	if err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, gin.H{
-		"name":      cert.Name,
-		"installed": installed,
-	})
-}
-
-func (c *APIClient) handle_root_certificate_install(ctx *gin.Context) {
-	cert := services.LoadCertFiles()
-	if err := certificate.InstallCertificate(cert.Cert); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, gin.H{
-		"name":      cert.Name,
-		"installed": true,
-	})
-}
-
-func (c *APIClient) handle_root_certificate_uninstall(ctx *gin.Context) {
-	cert := services.LoadCertFiles()
-	if err := certificate.UninstallCertificate(cert.Name); err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	result.Ok(ctx, gin.H{
-		"name":      cert.Name,
-		"installed": false,
-	})
 }

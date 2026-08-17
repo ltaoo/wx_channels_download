@@ -86,7 +86,7 @@ func installCertificate(cert_data []byte) error {
 	return nil
 }
 
-func checkCertificateTrusted(cert_name string) (bool, error) {
+func check_certificate_trusted(cert_name string) (bool, error) {
 	// Windows: Certificates in LocalMachine\Root are inherently trusted.
 	// If the cert is installed, it's trusted.
 	installed, err := CheckHasCertificate(cert_name)
@@ -94,6 +94,10 @@ func checkCertificateTrusted(cert_name string) (bool, error) {
 		return false, err
 	}
 	return installed, nil
+}
+
+func check_certificate_data_trusted(_ []byte, cert_name string) (bool, error) {
+	return check_certificate_trusted(cert_name)
 }
 
 func uninstallCertificate(name string) error {

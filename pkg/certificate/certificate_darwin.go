@@ -101,56 +101,69 @@ func new_install_certificate_command(cert_path string) *exec.Cmd {
 	)
 }
 
-func checkCertificateTrusted(cert_name string) (bool, error) {
-	// Get SHA1 fingerprint using security find-certificate -c <name> -Z
-	fpCmd := exec.Command("security", "find-certificate", "-c", cert_name, "-Z")
-	fpOutput, err := fpCmd.CombinedOutput()
-	if err != nil {
+func check_certificate_trusted(cert_name string) (bool, error) {
+	find_command := exec.Command("/usr/bin/security", "find-certificate", "-c", cert_name, "-p")
+	cert_data, find_err := find_command.CombinedOutput()
+	if find_err != nil {
 		return false, nil
 	}
-	// Parse SHA1 hash from output: lines with "SHA-1 hash:" prefix
-	fingerprint := findSHA1Hash(string(fpOutput), cert_name)
-	if fingerprint == "" {
-		return false, nil
-	}
-
-	// Check trust settings for admin and user domains
-	for _, args := range [][]string{{"dump-trust-settings"}, {"dump-trust-settings", "-d"}} {
-		cmd := exec.Command("security", args...)
-		output, err := cmd.CombinedOutput()
-		text := strings.ToUpper(string(output))
-		if err != nil {
-			if strings.Contains(text, "NO TRUST SETTINGS") || strings.Contains(text, "NO KEYCHAIN IS AVAILABLE") {
-				continue
-			}
-			continue
-		}
-		normalized := strings.NewReplacer(":", "", " ", "", "\n", "", "\t", "").Replace(text)
-		fpUpper := strings.ToUpper(strings.NewReplacer(":", "", " ", "").Replace(fingerprint))
-		if strings.Contains(normalized, fpUpper) &&
-			(strings.Contains(text, "TRUST ROOT") || strings.Contains(text, "TRUSTROOT")) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return check_certificate_data_trusted(cert_data, cert_name)
 }
 
-func findSHA1Hash(output string, certName string) string {
-	lines := strings.Split(output, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, "SHA-1 hash:") {
-			// The hash is on the next line or after the colon
-			hash := strings.TrimSpace(strings.TrimPrefix(line, "SHA-1 hash:"))
-			if hash != "" {
-				return hash
-			}
-			// Try next line
-			if i+1 < len(lines) {
-				return strings.TrimSpace(lines[i+1])
-			}
-		}
+type certificate_verify_runner func(cert_path string) ([]byte, error)
+
+func check_certificate_data_trusted(cert_data []byte, _ string) (bool, error) {
+	return check_certificate_data_trusted_with_runner(cert_data, func(cert_path string) ([]byte, error) {
+		verify_command := exec.Command(
+			"/usr/bin/security",
+			"verify-cert",
+			"-c",
+			cert_path,
+			"-p",
+			"basic",
+			"-l",
+			"-L",
+			"-q",
+		)
+		return verify_command.CombinedOutput()
+	})
+}
+
+func check_certificate_data_trusted_with_runner(cert_data []byte, run_verify certificate_verify_runner) (bool, error) {
+	if len(cert_data) == 0 {
+		return false, errors.New("certificate data is empty")
 	}
-	return ""
+
+	cert_file, create_err := os.CreateTemp("", "wx_channels_download-root-ca-*.cer")
+	if create_err != nil {
+		return false, fmt.Errorf("failed to create temporary certificate file: %w", create_err)
+	}
+	cert_path := cert_file.Name()
+	defer func() {
+		_ = os.Remove(cert_path)
+	}()
+
+	if _, write_err := cert_file.Write(cert_data); write_err != nil {
+		_ = cert_file.Close()
+		return false, fmt.Errorf("failed to write temporary certificate file: %w", write_err)
+	}
+	if close_err := cert_file.Close(); close_err != nil {
+		return false, fmt.Errorf("failed to close temporary certificate file: %w", close_err)
+	}
+
+	output, verify_err := run_verify(cert_path)
+	if verify_err == nil {
+		return true, nil
+	}
+	var exit_err *exec.ExitError
+	if errors.As(verify_err, &exit_err) {
+		return false, nil
+	}
+	output_text := strings.TrimSpace(string(output))
+	if output_text == "" {
+		return false, fmt.Errorf("failed to verify certificate trust: %w", verify_err)
+	}
+	return false, fmt.Errorf("failed to verify certificate trust: %w; output: %s", verify_err, output_text)
 }
 
 func uninstallCertificate(certificate_name string) error {

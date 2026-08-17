@@ -116,9 +116,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
 	c.engine.GET("/api/cookies/extract", c.handle_cookie_extract)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
-	c.engine.GET("/api/certificate/root/status", c.handle_root_certificate_status)
-	c.engine.POST("/api/certificate/root/install", c.handle_root_certificate_install)
-	c.engine.POST("/api/certificate/root/uninstall", c.handle_root_certificate_uninstall)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "text/html; charset=utf-8")

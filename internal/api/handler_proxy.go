@@ -400,7 +400,7 @@ func (c *APIClient) certificateStatusData() gin.H {
 		"pem":           string(cert.Cert),
 	}
 	if installed {
-		trusted, trustErr := certificate.CheckCertificateTrusted(cert.Name)
+		trusted, trustErr := certificate.CheckCertificateDataTrusted(cert.Cert, cert.Name)
 		if trustErr == nil {
 			data["trusted"] = trusted
 		}
@@ -448,7 +448,7 @@ func (c *APIClient) buildCertEntry(ac services.AvailableCert) gin.H {
 		"risk_warnings": ac.RiskWarnings,
 	}
 	if installed {
-		trusted, trustErr := certificate.CheckCertificateTrusted(ac.Cert.Name)
+		trusted, trustErr := certificate.CheckCertificateDataTrusted(ac.Cert.Cert, ac.Cert.Name)
 		if trustErr == nil {
 			entry["trusted"] = trusted
 		}

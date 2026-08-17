@@ -320,13 +320,17 @@ func installCertificate(cert []byte) error {
 	return nil
 }
 
-func checkCertificateTrusted(cert_name string) (bool, error) {
+func check_certificate_trusted(cert_name string) (bool, error) {
 	// On Linux, a cert installed via update-ca-certificates is considered trusted.
 	installed, err := CheckHasCertificate(cert_name)
 	if err != nil {
 		return false, err
 	}
 	return installed, nil
+}
+
+func check_certificate_data_trusted(_ []byte, cert_name string) (bool, error) {
+	return check_certificate_trusted(cert_name)
 }
 
 func uninstallCertificate(name string) error {
