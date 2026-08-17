@@ -490,6 +490,25 @@ func normalize_download_existing_action(action string) string {
 	}
 }
 
+func requested_download_existing_action(config map[string]any) (string, bool) {
+	if config == nil {
+		return "", false
+	}
+	raw_action, exists := config["existing_action"]
+	if !exists {
+		return "", false
+	}
+	action, ok := raw_action.(string)
+	if !ok {
+		return "", true
+	}
+	action = strings.TrimSpace(action)
+	if action == "error" {
+		return "", true
+	}
+	return normalize_download_existing_action(action), true
+}
+
 func (c *APIClient) default_action_when_existing() string {
 	raw := ""
 	if c != nil && c.cfg != nil {
@@ -509,15 +528,15 @@ func clone_download_task_config(config map[string]any) map[string]any {
 	return cloned
 }
 
-func (c *APIClient) handle_duplicate_download_task_with_default_action(body services.CreateDownloadTaskBody, duplicate_err *services.DuplicateTaskError, action string) (DownloadTaskCreateItem, int, bool) {
+func (c *APIClient) handle_duplicate_download_task_action(body services.CreateDownloadTaskBody, duplicate_err *services.DuplicateTaskError, action string) (DownloadTaskCreateItem, int, bool) {
 	switch action {
 	case download_existing_action_skip:
 		c.logger.Info().
 			Str("api", "POST /api/v1/download_task/create").
 			Int("existing_task_id", duplicate_err.ExistingTaskID).
 			Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
-			Str("default_action", action).
-			Msg("Task conflict handled by default action")
+			Str("existing_action", action).
+			Msg("Task conflict handled by existing-task action")
 		return download_task_create_skipped_item(duplicate_err), 0, true
 	case download_existing_action_duplicate, download_existing_action_overwrite:
 		retry_body := body
@@ -529,8 +548,8 @@ func (c *APIClient) handle_duplicate_download_task_with_default_action(body serv
 			Str("api", "POST /api/v1/download_task/create").
 			Int("existing_task_id", duplicate_err.ExistingTaskID).
 			Str("incoming_task_unique_id", duplicate_err.IncomingUniqueID).
-			Str("default_action", action).
-			Msg("Retrying conflicted task creation with default action")
+			Str("existing_action", action).
+			Msg("Retrying conflicted task creation with existing-task action")
 
 		data, err := c.create_download_task_single(retry_body)
 		if err != nil {
@@ -540,17 +559,17 @@ func (c *APIClient) handle_duplicate_download_task_with_default_action(body serv
 					Str("api", "POST /api/v1/download_task/create").
 					Int("existing_task_id", retry_duplicate_err.ExistingTaskID).
 					Str("incoming_task_unique_id", retry_duplicate_err.IncomingUniqueID).
-					Str("default_action", action).
+					Str("existing_action", action).
 					Err(err).
-					Msg("Default existing-task action still resulted in a conflict")
+					Msg("Existing-task action still resulted in a conflict")
 				return download_task_create_failed_item(api_code_invalid_params, err.Error(), duplicate_download_task_data(retry_duplicate_err)), 0, true
 			}
 			c.logger.Warn().
 				Str("api", "POST /api/v1/download_task/create").
 				Str("platform", body.Platform).
-				Str("default_action", action).
+				Str("existing_action", action).
 				Err(err).
-				Msg("Default existing-task action failed to create download task")
+				Msg("Existing-task action failed to create download task")
 			return download_task_create_failed_item(api_code_invalid_params, err.Error(), gin.H{}), 0, true
 		}
 		return download_task_create_success_item(data), data.ID, true
@@ -587,7 +606,11 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 		data, err := c.create_download_task_single(body)
 		if err != nil {
 			if errors.As(err, &duplicate_err) {
-				if item, id, handled := c.handle_duplicate_download_task_with_default_action(body, duplicate_err, default_existing_action); handled {
+				existing_action := default_existing_action
+				if requested_action, specified := requested_download_existing_action(body.Config); specified {
+					existing_action = requested_action
+				}
+				if item, id, handled := c.handle_duplicate_download_task_action(body, duplicate_err, existing_action); handled {
 					tasks = append(tasks, item)
 					if id > 0 {
 						ids = append(ids, id)
@@ -598,7 +621,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					}
 					if item.Code == api_code_success {
 						success_count++
-						if default_existing_action == download_existing_action_skip {
+						if existing_action == download_existing_action_skip {
 							skip_count++
 						}
 					} else {

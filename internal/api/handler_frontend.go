@@ -304,7 +304,7 @@ func zerologLevel(level string) zerolog.Level {
 }
 
 func shouldServeByAPI(path string) bool {
-	if path == "/favicon.ico" || path == "/" || path == "/play" || path == "/report" {
+	if path == "/favicon.ico" || path == "/" || path == "/play" || path == "/report" || path == "/mcp" {
 		return true
 	}
 
