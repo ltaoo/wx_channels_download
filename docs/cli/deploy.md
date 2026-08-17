@@ -108,6 +108,7 @@ cloudflare:
   apiToken: "your-cloudflare-api-token"
   sphWorkerName: "worker-name"
   sphCookie: "元宝 web 端 cookie"
+  sphCredential: "页面及 API 的访问凭证"
 ```
 
 | 配置项 | 说明 |
@@ -116,6 +117,7 @@ cloudflare:
 | `cloudflare.apiToken` | Cloudflare API Token，需 Workers 读写权限 |
 | `cloudflare.sphWorkerName` | 视频号查询 Worker 名称，部署后标识该 Worker |
 | `cloudflare.sphCookie` | 视频号接口所需的元宝 Web 端 Cookie |
+| `cloudflare.sphCredential` | 访问页面和 API 所需的凭证，部署时注入 `ACCESS_CREDENTIAL` 环境变量 |
 
 元宝 Web 端指 https://yuanbao.tencent.com/ 网站，登录后获取 `cookie` 作为配置即可。
 元宝 Web 端 Cookie 有效期约 1 个月，失效后重新登录获取新的 Cookie，并到 Cloudflare Worker 更新 `COOKIE` 环境变量即可。
@@ -127,6 +129,22 @@ cloudflare:
 - 部署 `pkg/scraper/wxchannels/worker/worker.js`。
 - 同时上传 `pkg/scraper/wxchannels/worker/index.html` 和 `build/icon.png`。
 - Cookie 以 `COOKIE` 环境变量注入 Worker，用于调用视频号接口时的身份认证。
+- 访问凭证以 `ACCESS_CREDENTIAL` 环境变量注入 Worker；未配置时部署命令会拒绝部署。
+
+### 访问认证
+
+浏览器访问 Worker 时会显示 HTTP Basic Auth 登录框。用户名固定为 `wxchannels`，密码填写 `cloudflare.sphCredential`。登录后，页面对同源 API 的请求会自动携带认证信息。
+
+直接调用 API 时可使用 Bearer Token：
+
+```sh
+curl -H 'Authorization: Bearer <sphCredential>' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://weixin.qq.com/sph/example"}' \
+  'https://<worker-name>.<subdomain>.workers.dev/api/fetch_video_profile'
+```
+
+也可使用 Basic Auth：`curl -u 'wxchannels:<sphCredential>' ...`。
 
 ### 可用 API
 
@@ -136,3 +154,6 @@ cloudflare:
 | GET | `/favicon.ico` | 页面图标 |
 | GET | `/icon.png` | 页面图标 |
 | POST | `/api/fetch_video_profile` | 通过分享链接获取视频号视频信息 |
+| POST | `/api/download_feed_zip` | 将图集及 BGM 打包为 ZIP |
+
+除 CORS 预检请求外，以上页面、静态资源和 API 均需认证。认证失败返回 `401`；Worker 未配置 `ACCESS_CREDENTIAL` 时返回 `503`。

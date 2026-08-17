@@ -62,7 +62,13 @@ func CheckHasCertificate(cert_name string) (bool, error) {
 
 // Check if a certificate with the given name is trusted by the system
 func CheckCertificateTrusted(cert_name string) (bool, error) {
-	return checkCertificateTrusted(cert_name)
+	return check_certificate_trusted(cert_name)
+}
+
+// CheckCertificateDataTrusted checks whether the exact certificate is trusted by the system.
+// cert_name is used as a fallback on platforms whose root stores are name-based.
+func CheckCertificateDataTrusted(cert_data []byte, cert_name string) (bool, error) {
+	return check_certificate_data_trusted(cert_data, cert_name)
 }
 
 // Install a certificate

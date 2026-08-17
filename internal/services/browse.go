@@ -269,33 +269,56 @@ func (s *BrowseService) createBrowseHistoryRecord(browse *model.BrowseHistory, a
 	return nil
 }
 
-func (s *BrowseService) List(platformId string, accountUsername *string, page int, pageSize int) (*BrowseHistoryListResult, error) {
-	return s.ListPlatforms([]string{platformId}, accountUsername, page, pageSize)
+func (s *BrowseService) List(platform_id string, account_username *string, page int, page_size int) (*BrowseHistoryListResult, error) {
+	return s.ListPlatforms([]string{platform_id}, account_username, page, page_size)
 }
 
-func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *string, page int, pageSize int) (*BrowseHistoryListResult, error) {
+func (s *BrowseService) ListPlatforms(platform_ids []string, account_username *string, page int, page_size int, keywords ...string) (*BrowseHistoryListResult, error) {
 	if s.db == nil {
 		return nil, ErrDBNotInitialized
 	}
 	page = normalizePage(page)
-	pageSize = normalizePageSize(pageSize)
-	offset := (page - 1) * pageSize
-	var normalizedPlatformIds []string
-	for _, platformId := range platformIds {
-		platformId = strings.TrimSpace(platformId)
-		if platformId != "" {
-			normalizedPlatformIds = append(normalizedPlatformIds, platformId)
+	page_size = normalizePageSize(page_size)
+	offset := (page - 1) * page_size
+	var normalized_platform_ids []string
+	for _, platform_id := range platform_ids {
+		platform_id = strings.TrimSpace(platform_id)
+		if platform_id != "" {
+			normalized_platform_ids = append(normalized_platform_ids, platform_id)
 		}
 	}
-	if len(normalizedPlatformIds) == 0 {
+	if len(normalized_platform_ids) == 0 {
 		return nil, ErrInvalidInput
 	}
 
-	query := s.db.Where("platform_id IN ?", normalizedPlatformIds)
-	if accountUsername != nil {
+	query := s.db.Where("platform_id IN ?", normalized_platform_ids)
+	if account_username != nil {
 		query = query.Where(
 			"id IN (SELECT browse_history_id FROM browse_history_account WHERE account_id = ?)",
-			*accountUsername,
+			*account_username,
+		)
+	}
+	keyword := ""
+	if len(keywords) > 0 {
+		keyword = strings.TrimSpace(keywords[0])
+	}
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		query = query.Where(
+			`title LIKE ? OR external_id LIKE ? OR url LIKE ? OR source_url LIKE ? OR browse_history.id IN (
+				SELECT browse_history_account.browse_history_id
+				FROM browse_history_account
+				JOIN account ON account.id = browse_history_account.account_id
+				WHERE account.id LIKE ? OR account.external_id LIKE ? OR account.alias LIKE ? OR account.nickname LIKE ?
+			)`,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+			pattern,
 		)
 	}
 
@@ -304,18 +327,18 @@ func (s *BrowseService) ListPlatforms(platformIds []string, accountUsername *str
 		return nil, err
 	}
 
-	var browseHistories []model.BrowseHistory
-	query = query.Order("updated_at DESC, id DESC").Limit(pageSize).Offset(offset)
-	if err := query.Find(&browseHistories).Error; err != nil {
+	var browse_histories []model.BrowseHistory
+	query = query.Order("updated_at DESC, id DESC").Limit(page_size).Offset(offset)
+	if err := query.Find(&browse_histories).Error; err != nil {
 		return nil, err
 	}
 
-	items := s.attachAccounts(browseHistories)
+	items := s.attachAccounts(browse_histories)
 	return &BrowseHistoryListResult{
 		List:     items,
 		Total:    total,
 		Page:     page,
-		PageSize: pageSize,
+		PageSize: page_size,
 	}, nil
 }
 

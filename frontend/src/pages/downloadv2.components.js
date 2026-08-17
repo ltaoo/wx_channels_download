@@ -159,7 +159,9 @@ function DownloadV2Number(props = {}) {
       (character, index) => ({ key: `${index}:${character}`, character }),
     );
   const characters =
-    value && value.__is_ref ? computed(value, to_characters) : to_characters(value);
+    value && value.__is_ref
+      ? computed(value, to_characters)
+      : to_characters(value);
 
   return View(
     {
@@ -258,13 +260,10 @@ function DownloadV2SelectionCheckbox(props) {
     provided_indeterminate && provided_indeterminate.__is_ref
       ? provided_indeterminate
       : ref(Boolean(provided_indeterminate));
-  const select_state_ = combine(
-    { checked, indeterminate },
-    (state) => ({
-      checked: Boolean(state.checked),
-      indeterminate: Boolean(state.indeterminate),
-    }),
-  );
+  const select_state_ = combine({ checked, indeterminate }, (state) => ({
+    checked: Boolean(state.checked),
+    indeterminate: Boolean(state.indeterminate),
+  }));
 
   function toggle(event) {
     if (event && typeof event.stopPropagation === "function") {
@@ -315,7 +314,9 @@ function DownloadV2SelectionCheckbox(props) {
               "box-sizing": "border-box",
               "border-radius": "4px",
               border: `1px solid ${active ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-              background: active ? "var(--dm-color-primary-fill)" : "transparent",
+              background: active
+                ? "var(--dm-color-primary-fill)"
+                : "transparent",
               color: "var(--dm-color-on-primary)",
               display: "inline-flex",
               "align-items": "center",
@@ -340,7 +341,10 @@ function DownloadV2SelectionCheckbox(props) {
               return Show({
                 when: computed(select_state_, (state) => state.checked),
                 ok() {
-                  return Timeless.Icon({ name: "check", size: Math.max(12, size - 4) });
+                  return Timeless.Icon({
+                    name: "check",
+                    size: Math.max(12, size - 4),
+                  });
                 },
               });
             },
@@ -363,13 +367,18 @@ function DownloadV2TaskState(task_) {
     const is_pending = is_download_waiting_status(status);
     const is_completed =
       status === "done" ||
-      (percent === 100 && !is_running && !is_failed && !is_paused && !is_pending);
+      (percent === 100 &&
+        !is_running &&
+        !is_failed &&
+        !is_paused &&
+        !is_pending);
     const files = Array.isArray(task.files) ? task.files : [];
     const deleted_file_count = files.filter((file) => {
       return String((file && file.status) || "").toLowerCase() === "deleted";
     }).length;
     const has_deleted_files = deleted_file_count > 0;
-    const all_files_deleted = files.length > 0 && deleted_file_count === files.length;
+    const all_files_deleted =
+      files.length > 0 && deleted_file_count === files.length;
     const files_downloaded_size = files.reduce(
       (sum, file) => sum + (Number(file && file.downloaded) || 0),
       0,
@@ -378,7 +387,10 @@ function DownloadV2TaskState(task_) {
       (sum, file) => sum + (Number(file && file.size) || 0),
       0,
     );
-    const downloaded_size = Math.max(files_downloaded_size, Number(task.downloaded) || 0);
+    const downloaded_size = Math.max(
+      files_downloaded_size,
+      Number(task.downloaded) || 0,
+    );
     const total_size = Math.max(files_total_size, Number(task.size) || 0);
     let status_text = task.status || "";
     let status_color = "var(--dm-dl-page-muted)";
@@ -389,7 +401,9 @@ function DownloadV2TaskState(task_) {
     if (is_running) {
       speed_text = format_download_speed(
         task.speed ||
-          (task.progress && typeof task.progress === "object" ? task.progress.speed : 0),
+          (task.progress && typeof task.progress === "object"
+            ? task.progress.speed
+            : 0),
       );
       status_text = "下载中";
       progress_text = is_live_stream ? "" : format_progress_text(percent);
@@ -448,7 +462,9 @@ function DownloadV2TaskCover(props) {
     ),
     ok() {
       return View({ class: "wx-dl-page-task-cover-progress" }, [
-        DownloadV2Number({ value: computed(state_, (state) => state.progress_text) }),
+        DownloadV2Number({
+          value: computed(state_, (state) => state.progress_text),
+        }),
       ]);
     },
   });
@@ -476,19 +492,16 @@ function DownloadV2TaskCover(props) {
       ]);
     },
     else() {
-      return View({ class: "wx-dl-page-task-cover-wrap" }, [fallback(), progress]);
+      return View({ class: "wx-dl-page-task-cover-wrap" }, [
+        fallback(),
+        progress,
+      ]);
     },
   });
 }
 
 function DownloadV2TaskActionButton(props) {
-  const {
-    danger,
-    icon,
-    iconSize: icon_size,
-    onClick: on_click,
-    title,
-  } = props;
+  const { danger, icon, iconSize: icon_size, onClick: on_click, title } = props;
   return View(
     {
       type: "button",
@@ -667,7 +680,9 @@ function DownloadV2TaskRow(props) {
           View(
             {
               class: "wx-dl-page-task-status",
-              style: computed(state_, (state) => ({ color: state.status_color })),
+              style: computed(state_, (state) => ({
+                color: state.status_color,
+              })),
             },
             [computed(state_, (state) => state.status_text)],
           ),
@@ -702,7 +717,10 @@ function DownloadV2TaskRow(props) {
             },
           }),
           Show({
-            when: computed(state_, (state) => state.is_running && Boolean(state.speed_text)),
+            when: computed(
+              state_,
+              (state) => state.is_running && Boolean(state.speed_text),
+            ),
             ok() {
               return [
                 "·",
@@ -714,12 +732,17 @@ function DownloadV2TaskRow(props) {
           }),
         ]),
         Show({
-          when: computed(state_, (state) => state.is_failed && Boolean(state.error_text)),
+          when: computed(
+            state_,
+            (state) => state.is_failed && Boolean(state.error_text),
+          ),
           ok() {
             return View(
               {
                 class: "wx-dl-page-task-error",
-                attributes: { title: computed(state_, (state) => state.error_text) },
+                attributes: {
+                  title: computed(state_, (state) => state.error_text),
+                },
               },
               [computed(state_, (state) => state.error_text)],
             );
@@ -876,11 +899,16 @@ export function DownloadV2TaskTable(props) {
         [
           DownloadV2SelectionCheckbox({
             checked: computed(selection_state_, (state) => state.checked),
-            indeterminate: computed(selection_state_, (state) => state.indeterminate),
+            indeterminate: computed(
+              selection_state_,
+              (state) => state.indeterminate,
+            ),
             ariaLabel: "全选下载任务",
             style: { "margin-right": "10px" },
             onToggle() {
-              vm$.methods.setLoadedTasksSelected(!selection_state_.value.checked);
+              vm$.methods.setLoadedTasksSelected(
+                !selection_state_.value.checked,
+              );
             },
           }),
           View(
@@ -1033,10 +1061,7 @@ export function DownloadV2SelectionBar(props) {
         },
         [
           View({ class: "wx-dl-page-selection-summary" }, [
-            computed(
-              selected_task_count_,
-              (count) => `已选中 ${count} 个任务`,
-            ),
+            computed(selected_task_count_, (count) => `已选中 ${count} 个任务`),
           ]),
           DownloadV2ActionButton({
             icon: "trash2",
@@ -1057,30 +1082,41 @@ export function DownloadV2SelectionBar(props) {
 
 function DownloadV2Field(props) {
   const { control, hint, label } = props;
-  return View({ style: FIELD_GROUP_STYLE }, [
-    View({ type: "label", style: FIELD_LABEL_STYLE }, [label]),
-    control,
-    hint
-      ? View(
-          {
-            style: {
-              "font-size": "12px",
-              "line-height": "18px",
-              color: "var(--dm-color-text-secondary)",
+  return View(
+    { style: FIELD_GROUP_STYLE },
+    [
+      View({ type: "label", style: FIELD_LABEL_STYLE }, [label]),
+      control,
+      hint
+        ? View(
+            {
+              style: {
+                "font-size": "12px",
+                "line-height": "18px",
+                color: "var(--dm-color-text-secondary)",
+              },
             },
-          },
-          [hint],
-        )
-      : null,
-  ].filter(Boolean));
+            [hint],
+          )
+        : null,
+    ].filter(Boolean),
+  );
 }
 
 function DownloadV2DialogHeading(props) {
   const { description, title } = props;
-  return DialogHeader({}, [
-    DialogTitle({}, [title]),
-    description ? DialogDescription({}, [description]) : null,
-  ].filter(Boolean));
+  return DialogHeader(
+    {},
+    [
+      DialogTitle({}, [title]),
+      Show({
+        when: description,
+        ok() {
+          return DialogDescription({}, [description]);
+        },
+      }),
+    ].filter(Boolean),
+  );
 }
 
 function boolean_toggle(props) {
@@ -1090,7 +1126,9 @@ function boolean_toggle(props) {
       role: "checkbox",
       tabIndex: "0",
       attributes: {
-        "aria-checked": computed(checked_, (checked) => (checked ? "true" : "false")),
+        "aria-checked": computed(checked_, (checked) =>
+          checked ? "true" : "false",
+        ),
       },
       style: {
         display: "flex",
@@ -1119,7 +1157,9 @@ function boolean_toggle(props) {
             "box-sizing": "border-box",
             "border-radius": "4px",
             border: `1px solid ${checked ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-            background: checked ? "var(--dm-color-primary-fill)" : "transparent",
+            background: checked
+              ? "var(--dm-color-primary-fill)"
+              : "transparent",
             color: "var(--dm-color-on-primary)",
             display: "inline-flex",
             "align-items": "center",
@@ -1294,13 +1334,17 @@ function build_preview_tree(preview) {
   if (preview && preview.tree && typeof preview.tree === "object") {
     return preview.tree;
   }
-  const resources = preview && Array.isArray(preview.resources) ? preview.resources : [];
+  const resources =
+    preview && Array.isArray(preview.resources) ? preview.resources : [];
   const root = { type: "directory", name: "", children: [] };
 
   resources.forEach((resource, index) => {
     const name = preview_value(
       resource &&
-        (resource.name || resource.filename || resource.file_name || resource.title),
+        (resource.name ||
+          resource.filename ||
+          resource.file_name ||
+          resource.title),
       `资源 ${index + 1}`,
     );
     const parts = name.split("/").filter(Boolean);
@@ -1340,51 +1384,7 @@ function PreviewResourceNode(props) {
   const is_directory = node && node.type === "directory";
 
   if (is_directory) {
-    return View(
-      { style: { "margin-left": indent, "margin-bottom": "2px" } },
-      [
-        View(
-          {
-            style: {
-              display: "flex",
-              "align-items": "center",
-              gap: "6px",
-              padding: "3px 6px",
-              "border-radius": "4px",
-              "font-size": "13px",
-              "font-weight": "600",
-              color: "var(--dm-color-text-secondary)",
-            },
-          },
-          [
-            View({ style: { width: "18px", "flex-shrink": "0" } }, ["📁"]),
-            View(
-              {
-                style: {
-                  overflow: "hidden",
-                  "text-overflow": "ellipsis",
-                  "white-space": "nowrap",
-                },
-              },
-              [node.name || "根目录"],
-            ),
-          ],
-        ),
-        View({ style: { "margin-left": "6px" } }, [
-          For({
-            each: node.children || [],
-            render(child) {
-              return PreviewResourceNode({ node: child, level: level + 1 });
-            },
-          }),
-        ]),
-      ],
-    );
-  }
-
-  return View(
-    { style: { "margin-left": indent, "margin-bottom": "2px" } },
-    [
+    return View({ style: { "margin-left": indent, "margin-bottom": "2px" } }, [
       View(
         {
           style: {
@@ -1394,13 +1394,12 @@ function PreviewResourceNode(props) {
             padding: "3px 6px",
             "border-radius": "4px",
             "font-size": "13px",
-            color: "var(--dm-color-text-primary)",
+            "font-weight": "600",
+            color: "var(--dm-color-text-secondary)",
           },
         },
         [
-          View({ style: { width: "18px", "flex-shrink": "0" } }, [
-            resource_file_emoji(node && node.name),
-          ]),
+          View({ style: { width: "18px", "flex-shrink": "0" } }, ["📁"]),
           View(
             {
               style: {
@@ -1408,14 +1407,53 @@ function PreviewResourceNode(props) {
                 "text-overflow": "ellipsis",
                 "white-space": "nowrap",
               },
-              attributes: { title: (node && node.name) || "文件" },
             },
-            [(node && node.name) || "文件"],
+            [node.name || "根目录"],
           ),
         ],
       ),
-    ],
-  );
+      View({ style: { "margin-left": "6px" } }, [
+        For({
+          each: node.children || [],
+          render(child) {
+            return PreviewResourceNode({ node: child, level: level + 1 });
+          },
+        }),
+      ]),
+    ]);
+  }
+
+  return View({ style: { "margin-left": indent, "margin-bottom": "2px" } }, [
+    View(
+      {
+        style: {
+          display: "flex",
+          "align-items": "center",
+          gap: "6px",
+          padding: "3px 6px",
+          "border-radius": "4px",
+          "font-size": "13px",
+          color: "var(--dm-color-text-primary)",
+        },
+      },
+      [
+        View({ style: { width: "18px", "flex-shrink": "0" } }, [
+          resource_file_emoji(node && node.name),
+        ]),
+        View(
+          {
+            style: {
+              overflow: "hidden",
+              "text-overflow": "ellipsis",
+              "white-space": "nowrap",
+            },
+            attributes: { title: (node && node.name) || "文件" },
+          },
+          [(node && node.name) || "文件"],
+        ),
+      ],
+    ),
+  ]);
 }
 
 function PreviewDetailRow(props) {
@@ -1884,7 +1922,10 @@ function OverwriteDialogBody(props) {
               },
             },
             [
-              View({ class: "dm-ui-spinner", attributes: { "aria-hidden": "true" } }),
+              View({
+                class: "dm-ui-spinner",
+                attributes: { "aria-hidden": "true" },
+              }),
               "正在处理冲突...",
             ],
           );

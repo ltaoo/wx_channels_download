@@ -51,6 +51,7 @@ function AccountPageActionButton(props) {
         type: props.type || "button",
         title: props.title || "",
       },
+      onClick: props.onClick,
       prefix: Timeless.Icon({ name: props.icon, size: 16 }),
     },
     [View({ class: "wx-content-action-label" }, [props.label])],
@@ -77,7 +78,7 @@ function AccountPageToolbar(props) {
           class: "wx-content-search-input",
           attributes: {
             name: "keyword",
-            type: "search",
+            type: "text",
             autocomplete: "off",
             "aria-label": "搜索账号昵称或 ID",
           },
@@ -90,11 +91,15 @@ function AccountPageToolbar(props) {
           label: "搜索",
           variant: "primary",
           type: "submit",
+          onClick(event) {
+            event.preventDefault();
+            vm$.methods.search();
+          },
         }),
         AccountPageActionButton({
           store: vm$.ui.btn_refresh$,
-          icon: "refresh-cw",
-          label: "刷新",
+          icon: "rotate-ccw",
+          label: "重置",
         }),
       ]),
     ],

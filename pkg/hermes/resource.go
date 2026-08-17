@@ -65,9 +65,10 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 		if prepared.Size < 0 {
 			prepared.Size = 0
 		}
-		// Kind is normalized to the canonical MIME value persisted after
-		// filename finalization. Extension is derived from Kind at finalize time.
-		resource.Kind = prepared_target_kind(prepared)
+		// An adapter-provided canonical MIME type carries media semantics that a
+		// CDN Content-Type can lose (for example, an audio-only MP4 advertised as
+		// video/mp4). Keep that explicit declaration; otherwise detect the MIME.
+		resource.Kind = prepared_target_kind(prepared, resource.Kind)
 		if expected_size > 0 && prepared.Size > 0 && prepared.Size != expected_size {
 			endpoint_errors = append(endpoint_errors, fmt.Sprintf("%s: mirror resource size mismatch", candidate.protocol))
 			continue
@@ -202,7 +203,7 @@ func (d *HermesEngine) finish_download_resource(task_id, resource_id int) error 
 
 // processOutputFilename handles download resource output filenames uniformly.
 // Called after filenameTemplate and onFilename hook processing; completes:
-//  1. Determine file extension (Content-Type -> magic bytes -> user-specified fallback)
+//  1. Determine file extension (normalized resource Kind -> Content-Type -> magic bytes)
 //  2. User input is always treated as a plain filename (ignoring any embedded extension); the system appends the extension
 //  3. Clean and truncate the base filename (preserving directory portion)
 //  4. Reconstruct the full path and update task/resource info in the database
@@ -228,16 +229,27 @@ func (d *HermesEngine) process_output_filename(task *TaskJob, resource *Resource
 		Str("base_name", base_name).
 		Msg("run - output filename processing started")
 
-	// Step 2: Determine extension
-	// Priority: Content-Type -> magic bytes -> user-specified fallback suffix
-	ext := extension_for_content_type(prepared.ContentType)
+	// Step 2: Determine extension. resource.Kind was normalized immediately
+	// after Prepare and is authoritative when an adapter supplied an exact MIME.
+	ext := CanonicalExtensionForMIMEType(resource.Kind)
 	if ext != "" {
 		d.logger.Info().
 			Int("task_id", task.ID).
 			Int("resource_id", resource.ID).
 			Str("extension", ext).
-			Str("content_type", prepared.ContentType).
-			Msg("run - extension from content type")
+			Str("kind", resource.Kind).
+			Msg("run - extension from normalized resource kind")
+	}
+	if ext == "" {
+		ext = extension_for_content_type(prepared.ContentType)
+		if ext != "" {
+			d.logger.Info().
+				Int("task_id", task.ID).
+				Int("resource_id", resource.ID).
+				Str("extension", ext).
+				Str("content_type", prepared.ContentType).
+				Msg("run - extension from content type")
+		}
 	}
 	if ext == "" {
 		if detected_type := detect_content_type_from_bytes(prepared.ProbeData); detected_type != "" {
@@ -250,17 +262,6 @@ func (d *HermesEngine) process_output_filename(task *TaskJob, resource *Resource
 					Str("detected_type", detected_type).
 					Msg("run - extension from magic bytes")
 			}
-		}
-	}
-	if ext == "" {
-		ext = CanonicalExtensionForMIMEType(resource.Kind)
-		if ext != "" {
-			d.logger.Info().
-				Int("task_id", task.ID).
-				Int("resource_id", resource.ID).
-				Str("extension", ext).
-				Str("kind", resource.Kind).
-				Msg("run - extension derived from resource kind")
 		}
 	}
 
@@ -488,7 +489,10 @@ func canonical_mime_type(content_type string) string {
 	return media_type
 }
 
-func prepared_target_kind(prepared PreparedResource) string {
+func prepared_target_kind(prepared PreparedResource, declared_kind string) string {
+	if media_type := canonical_mime_type(declared_kind); media_type != "" {
+		return media_type
+	}
 	if media_type := canonical_mime_type(prepared.ContentType); media_type != "" {
 		return media_type
 	}
@@ -497,7 +501,7 @@ func prepared_target_kind(prepared PreparedResource) string {
 			return media_type
 		}
 	}
-	return ""
+	return strings.ToLower(strings.TrimSpace(declared_kind))
 }
 
 func extension_for_content_type(content_type string) string {
@@ -647,27 +651,6 @@ func prepare_with_retry(ctx context.Context, driver ProtocolDriver, endpoint End
 		}
 	}
 	return PreparedResource{}, last_err
-}
-
-func (d *HermesEngine) apply_filename_template(task *TaskJob, resource *ResourceJob, endpoint_url string, meta map[string]string) string {
-	return d.apply_job_filename_template(task, resource, task.FilenameTemplate, resource.Name, endpoint_url, meta)
-}
-
-func (d *HermesEngine) apply_job_filename_template(task *TaskJob, resource *ResourceJob, template, name, endpoint_url string, meta map[string]string) string {
-	task_id := 0
-	resource_id := 0
-	if task != nil {
-		task_id = task.ID
-	}
-	if resource != nil {
-		resource_id = resource.ID
-	}
-	result, err := apply_filename_template_value(template, name, endpoint_url, meta, task_id, resource_id)
-	if err != nil {
-		d.logger.Warn().Err(err).Msg("filename template error")
-		return ""
-	}
-	return result
 }
 
 func apply_filename_template_value(template, name, endpoint_url string, meta map[string]string, task_id, resource_id int) (string, error) {

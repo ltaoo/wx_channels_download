@@ -2,13 +2,16 @@ package bilibili
 
 // VideoInfo holds Bilibili video information.
 type VideoInfo struct {
-	URL      string // video playback URL
-	AudioURL string // audio URL (separate in DASH format)
-	Title    string // video title
-	VideoID  string // video ID (BV number or episode number)
-	CoverURL string // cover image URL
-	Page     int    // part/page number
-	Source   string // source identifier
+	URL            string          // video playback URL
+	AudioURL       string          // audio URL (separate in DASH format)
+	Title          string          // video title
+	VideoID        string          // video ID (BV number or episode number)
+	CoverURL       string          // cover image URL
+	Page           int             // part/page number
+	Source         string          // source identifier
+	InitialData    *BVInitialData  `json:"initial_data,omitempty"`
+	SupportFormats []SupportFormat `json:"support_formats,omitempty"`
+	Dash           DashInfo        `json:"dash,omitempty"`
 }
 
 // ViewResponse is the video info API response (x/web-interface/view).
@@ -55,11 +58,24 @@ type PlayURLResponse struct {
 
 // PlayURLData holds playback URL data.
 type PlayURLData struct {
-	From    string     `json:"from"`
-	Quality int        `json:"quality"`
-	Format  string     `json:"format"`
-	Durl    []DurlItem `json:"durl"`
-	Dash    DashInfo   `json:"dash"`
+	From           string          `json:"from"`
+	Quality        int             `json:"quality"`
+	Format         string          `json:"format"`
+	Durl           []DurlItem      `json:"durl"`
+	SupportFormats []SupportFormat `json:"support_formats"`
+	Dash           DashInfo        `json:"dash"`
+}
+
+// SupportFormat describes one user-facing quality advertised by the Bilibili
+// playurl response. One quality can correspond to multiple DASH streams with
+// different codecs.
+type SupportFormat struct {
+	Quality        int      `json:"quality"`
+	Format         string   `json:"format"`
+	NewDescription string   `json:"new_description"`
+	DisplayDesc    string   `json:"display_desc"`
+	Superscript    string   `json:"superscript"`
+	Codecs         []string `json:"codecs"`
 }
 
 // DurlItem is a regular video stream segment.
@@ -76,12 +92,16 @@ type DashInfo struct {
 
 // DashItem is a DASH streaming media item.
 type DashItem struct {
-	ID      int    `json:"id"`
-	BaseURL string `json:"base_url"`
-	Codecs  string `json:"codecs"`
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
-	Size    int64  `json:"size"`
+	ID        int    `json:"id"`
+	BaseURL   string `json:"base_url"`
+	Codecs    string `json:"codecs"`
+	CodecID   int    `json:"codecid"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Size      int64  `json:"size"`
+	Bandwidth int64  `json:"bandwidth"`
+	FrameRate string `json:"frame_rate"`
+	MIMEType  string `json:"mime_type"`
 }
 
 // PGCSeasonResponse is the bangumi season API response (pgc/view/web/season).

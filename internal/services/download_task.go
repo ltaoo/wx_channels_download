@@ -2100,11 +2100,29 @@ func save_content_video_variant(db *gorm.DB, variant *model.ContentVideoVariant,
 		return err
 	}
 	variant.AssetId = asset.Id
-	if variant.CreatedAt == 0 {
-		variant.CreatedAt = now
+	var existing_variant model.ContentVideoVariant
+	find_err := db.
+		Select("asset_id", "created_at").
+		Where("asset_id = ?", variant.AssetId).
+		First(&existing_variant).Error
+	if find_err == nil {
+		variant.CreatedAt = existing_variant.CreatedAt
+		variant.UpdatedAt = now
+		return db.
+			Model(&model.ContentVideoVariant{}).
+			Where("asset_id = ?", variant.AssetId).
+			Select("*").
+			Omit("Asset", "CreatedAt").
+			UpdateColumns(variant).Error
+	} else if errors.Is(find_err, gorm.ErrRecordNotFound) {
+		if variant.CreatedAt == 0 {
+			variant.CreatedAt = now
+		}
+	} else {
+		return find_err
 	}
 	variant.UpdatedAt = now
-	return db.Omit("Asset").Save(variant).Error
+	return db.Omit("Asset").Create(variant).Error
 }
 
 func save_content_text_track(db *gorm.DB, track *model.ContentTextTrack, now int64) error {

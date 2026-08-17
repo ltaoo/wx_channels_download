@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -28,6 +29,8 @@ type APIClient struct {
 	logger        *zerolog.Logger
 	http_handler  http.Handler
 	static_assets *webassets.Registry
+	mcp_handler   http.Handler
+	mcp_enabled   atomic.Bool
 
 	bus                 *events.Bus
 	proxy_status_mu     sync.RWMutex
@@ -87,6 +90,7 @@ func NewAPIClient(
 		fs_service:             fs_service,
 		downloader:             downloader,
 	}
+	api_client.mcp_handler = api_client.new_mcp_handler()
 	api_client.scraper_job_service = services.NewScraperJobService(
 		nil,
 		scraper_ws_hub.broadcast_job_event,

@@ -311,11 +311,8 @@ func (c *Client) fetch_bangumi_html(raw_url string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("创建B站番剧页面请求失败: %w", err)
 	}
-	for header_name, header_value := range c.headers {
-		req.Header.Set(header_name, header_value)
-	}
-	if c.cookie != "" {
-		req.Header.Set("Cookie", c.cookie)
+	if err := c.apply_request_headers(req); err != nil {
+		return nil, "", fmt.Errorf("创建B站番剧页面请求头失败: %w", err)
 	}
 
 	resp, err := c.http_client.Do(req)

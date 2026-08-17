@@ -245,7 +245,7 @@ function AccountViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
-        return load(page_.value);
+        return load(1);
       },
     }),
     btn_retry$: new Timeless.vm.ButtonCore({
@@ -354,7 +354,7 @@ function AccountViewModel(props) {
       return load(1);
     },
     refresh() {
-      return load(page_.value);
+      return load(1);
     },
     search() {
       sync_search_location();

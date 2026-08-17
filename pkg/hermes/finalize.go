@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -172,6 +173,7 @@ func (d *HermesEngine) rename_temp_files(download_dir string, resources []Resour
 // name that Hermes will use after download finalization.
 type FinalResourceNameInput struct {
 	TaskID           int
+	TaskName         string
 	TaskConfig       map[string]any
 	FilenameTemplate string
 	ResourceID       int
@@ -206,6 +208,10 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 	if base_name == "" {
 		return FinalResourceNameResult{}
 	}
+	name := strings.TrimSpace(input.TaskName)
+	if name == "" {
+		name = strconv.Itoa(input.TaskID)
+	}
 	ext := CanonicalExtensionForMIMEType(input.ResourceKind)
 
 	// Older STREAM rows stored the display name with an .mkv suffix even though
@@ -221,8 +227,8 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 	}
 
 	if input.FilenameTemplate != "" {
-		meta := build_template_meta(input.ResourceExtra, base_name)
-		if new_name, err := apply_filename_template_value(input.FilenameTemplate, base_name, input.EndpointURL, meta, input.TaskID, input.ResourceID); err != nil {
+		meta := build_template_meta(input.ResourceExtra, name)
+		if new_name, err := apply_filename_template_value(input.FilenameTemplate, name, input.EndpointURL, meta, input.TaskID, input.ResourceID); err != nil {
 			result.TemplateError = err
 		} else if new_name != "" {
 			base_name = new_name
@@ -237,7 +243,7 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 		params := &FilenameParams{
 			Meta: hook_meta,
 			Task: TaskInfo{
-				Name:   base_name,
+				Name:   name,
 				Config: input.TaskConfig,
 			},
 			Config: input.TaskConfig,
@@ -271,6 +277,7 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 		}
 		resolved := BuildFinalResourceName(FinalResourceNameInput{
 			TaskID:           job.ID,
+			TaskName:         job.Name,
 			TaskConfig:       job.Config,
 			FilenameTemplate: d.cfg.FilenameTemplate,
 			ResourceID:       r.ID,

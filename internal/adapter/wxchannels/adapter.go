@@ -136,10 +136,12 @@ func (a *ChannelsAdapter) register(d *adapter.AdapterOptions) error {
 	}
 
 	refresh_interval := 0
+	sph_cookie := ""
 	if d.Config != nil {
 		refresh_interval = d.Config.GetInt("channels.refreshInterval")
+		sph_cookie = d.Config.GetString("cloudflare.sphCookie")
 	}
-	r := NewWebsocketRoutes(refresh_interval, d.Cookies)
+	r := NewWebsocketRoutes(refresh_interval, d.Cookies, sph_cookie)
 	bind_platform_status_events(r, d.Bus)
 	if d.Routes != nil {
 		r.RegisterRoutes(d.Routes)

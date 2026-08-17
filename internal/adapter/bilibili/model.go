@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/rs/zerolog"
+
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/pkg/scraper/bilibili"
@@ -31,7 +33,7 @@ func BuildAccountID(external_id string) string {
 	return platform_id_bilibili + ":" + external_id
 }
 
-func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, config map[string]any) (*adapter.DownloadTaskResult, error) {
+func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, config map[string]any, logger *zerolog.Logger) (*adapter.DownloadTaskResult, error) {
 	if info == nil || strings.TrimSpace(info.VideoID) == "" {
 		return nil, fmt.Errorf("B站视频信息为空")
 	}
@@ -39,17 +41,18 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 	external_id := strings.TrimSpace(info.VideoID)
 	content_id := BuildContentID(external_id)
 	content := &model.Content{
-		Id:         content_id,
-		PlatformId: platform_id_bilibili,
-		ExternalId: external_id,
-		Type:       model.ContentTypeVideo,
-		Title:      info.Title,
-		URL:        info.URL,
-		CoverURL:   info.CoverURL,
-		SourceURL:  source_url,
-		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		Id:          content_id,
+		PlatformId:  platform_id_bilibili,
+		ExternalId:  external_id,
+		Type:        model.ContentTypeVideo,
+		Title:       info.Title,
+		URL:         info.URL,
+		CoverURL:    info.CoverURL,
+		SourceURL:   source_url,
+		Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		PublishTime: bilibili_publish_time(info),
 	}
-	account := build_bilibili_account(external_id, now)
+	account := build_bilibili_account(info, external_id, now)
 	task_name := bilibili_task_name(config, info.Title, external_id)
 	config_data, _ := json.Marshal(copy_config(config))
 	metadata_data, _ := json.Marshal(map[string]any{
@@ -60,6 +63,8 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 	})
 	extra_json := build_extra_json(external_id, info.Title, source_url, nil)
 	resources := make([]*adapter.ResourceInfo, 0, 3)
+	video_variants := bilibili_video_variants(info, logger)
+	video_asset_key := bilibili_selected_video_variant_key(video_variants, info.URL)
 
 	if config_bool(config, "download_cover") && strings.TrimSpace(info.CoverURL) != "" {
 		resources = append(resources, build_cover_resource(content_id, external_id, task_name, info.CoverURL, extra_json))
@@ -68,7 +73,7 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 		Resource: model.DownloadResource{
 			ContentId: &content_id,
 			Name:      task_name,
-			Kind:      "video",
+			Kind:      bilibili_selected_stream_kind(info.Dash.Video, info.URL, "video"),
 			UniqueID:  external_id,
 			Extra:     extra_json,
 		},
@@ -80,7 +85,7 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 		ContentAssets: []adapter.ContentAssetReference{{
 			Kind:     model.ContentAssetKindVideo,
 			Role:     model.ContentAssetRoleVideoVariant,
-			AssetKey: "default",
+			AssetKey: video_asset_key,
 			Relation: model.DownloadResourceAssetRelationSource,
 		}},
 	})
@@ -89,7 +94,7 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 			Resource: model.DownloadResource{
 				ContentId:  &content_id,
 				Name:       task_name + "_audio",
-				Kind:       "audio",
+				Kind:       bilibili_selected_stream_kind(info.Dash.Audio, info.AudioURL, "audio"),
 				UniqueID:   external_id + "_audio",
 				MergeOrder: 1,
 				Extra:      extra_json,
@@ -122,13 +127,237 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 		},
 		Resources: resources,
 		ContentDetail: &model.ContentVideo{
-			Id:     content_id,
-			URL:    info.URL,
-			Format: "mp4",
+			Id:       content_id,
+			URL:      info.URL,
+			Format:   "mp4",
+			Variants: video_variants,
 		},
 		Account: account,
 		Content: content,
 	}, nil
+}
+
+func bilibili_selected_video_variant_key(variants []model.ContentVideoVariant, selected_url string) string {
+	selected_url = strings.TrimSpace(selected_url)
+	for variant_index := range variants {
+		variant := variants[variant_index]
+		if selected_url != "" && strings.TrimSpace(variant.URL) == selected_url {
+			return variant.VariantKey
+		}
+	}
+	for variant_index := range variants {
+		if variants[variant_index].IsDefault == 1 {
+			return variants[variant_index].VariantKey
+		}
+	}
+	return "default"
+}
+
+func bilibili_selected_stream_kind(streams []bilibili.DashItem, selected_url string, media_kind string) string {
+	selected_url = strings.TrimSpace(selected_url)
+	media_kind = strings.ToLower(strings.TrimSpace(media_kind))
+	for stream_index := range streams {
+		stream := streams[stream_index]
+		if selected_url == "" || strings.TrimSpace(stream.BaseURL) != selected_url {
+			continue
+		}
+		mime_type := strings.ToLower(strings.TrimSpace(strings.SplitN(stream.MIMEType, ";", 2)[0]))
+		if strings.HasPrefix(mime_type, media_kind+"/") {
+			return mime_type
+		}
+	}
+	return media_kind
+}
+
+func bilibili_video_variants(info *bilibili.VideoInfo, logger *zerolog.Logger) []model.ContentVideoVariant {
+	if info == nil {
+		if logger != nil {
+			logger.Warn().
+				Str("component", "bilibili_video_variants").
+				Msg("bilibili video variants: video info is nil; variants will be null")
+		}
+		return nil
+	}
+	stream_count := len(info.Dash.Video)
+	if logger != nil {
+		logger.Debug().
+			Str("component", "bilibili_video_variants").
+			Str("video_id", info.VideoID).
+			Int("dash_video_count", stream_count).
+			Int("support_format_count", len(info.SupportFormats)).
+			Bool("default_url_present", strings.TrimSpace(info.URL) != "").
+			Msg("bilibili video variants: building variants from video info")
+	}
+	if stream_count == 0 {
+		if logger != nil {
+			logger.Warn().
+				Str("component", "bilibili_video_variants").
+				Str("video_id", info.VideoID).
+				Int("dash_video_count", stream_count).
+				Int("support_format_count", len(info.SupportFormats)).
+				Msg("bilibili video variants: no DASH video streams in video info; variants will be null")
+		}
+		return nil
+	}
+	variants := make([]model.ContentVideoVariant, 0, stream_count)
+	support_format_by_quality := make(map[int]*bilibili.SupportFormat, len(info.SupportFormats))
+	for support_format_index := range info.SupportFormats {
+		support_format := &info.SupportFormats[support_format_index]
+		if _, exists := support_format_by_quality[support_format.Quality]; !exists {
+			support_format_by_quality[support_format.Quality] = support_format
+		}
+	}
+	now := util.NowMillis()
+	default_url := strings.TrimSpace(info.URL)
+	skipped_stream_count := 0
+	for stream_index, stream := range info.Dash.Video {
+		stream_url := strings.TrimSpace(stream.BaseURL)
+		if stream_url == "" {
+			skipped_stream_count++
+			if logger != nil {
+				logger.Warn().
+					Str("component", "bilibili_video_variants").
+					Str("video_id", info.VideoID).
+					Int("stream_index", stream_index).
+					Int("quality_id", stream.ID).
+					Int("codec_id", stream.CodecID).
+					Str("codecs", stream.Codecs).
+					Msg("bilibili video variants: skipping DASH video stream with empty base URL")
+			}
+			continue
+		}
+		support_format := support_format_by_quality[stream.ID]
+		key := bilibili_video_stream_key(&stream)
+		is_default := 0
+		if stream_url == default_url {
+			is_default = 1
+		}
+		metadata, _ := json.Marshal(map[string]any{
+			"id":             stream.ID,
+			"codec_id":       stream.CodecID,
+			"bandwidth":      stream.Bandwidth,
+			"frame_rate":     stream.FrameRate,
+			"mime_type":      stream.MIMEType,
+			"support_format": support_format,
+		})
+		variant := model.ContentVideoVariant{
+			VideoId:    BuildContentID(info.VideoID),
+			VariantKey: key,
+			Spec:       bilibili_video_stream_spec(&stream),
+			Quality:    bilibili_video_quality(stream.ID, support_format),
+			Size:       stream.Size,
+			Codec:      stream.Codecs,
+			Format:     bilibili_dash_format(stream.MIMEType),
+			StreamType: model.ContentVideoVariantStreamTypeVideoOnly,
+			HasVideo:   1,
+			IsDefault:  is_default,
+			URL:        stream_url,
+			Metadata:   string(metadata),
+			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+		variant.Width = positive_int_pointer(stream.Width)
+		variant.Height = positive_int_pointer(stream.Height)
+		variant.Bitrate = positive_int_pointer(int(stream.Bandwidth / 1000))
+		variants = append(variants, variant)
+		if logger != nil {
+			stream_host := ""
+			if parsed_stream_url, err := url.Parse(stream_url); err == nil {
+				stream_host = parsed_stream_url.Hostname()
+			}
+			logger.Debug().
+				Str("component", "bilibili_video_variants").
+				Str("video_id", info.VideoID).
+				Int("stream_index", stream_index).
+				Int("quality_id", stream.ID).
+				Int("codec_id", stream.CodecID).
+				Str("codecs", stream.Codecs).
+				Int("width", stream.Width).
+				Int("height", stream.Height).
+				Str("stream_host", stream_host).
+				Str("variant_key", key).
+				Bool("is_default", is_default == 1).
+				Msg("bilibili video variants: added DASH video variant")
+		}
+	}
+	if logger != nil {
+		log_event := logger.Debug()
+		if len(variants) == 0 {
+			log_event = logger.Warn()
+		}
+		log_event.
+			Str("component", "bilibili_video_variants").
+			Str("video_id", info.VideoID).
+			Int("dash_video_count", stream_count).
+			Int("variant_count", len(variants)).
+			Int("skipped_stream_count", skipped_stream_count).
+			Msg("bilibili video variants: finished building variants")
+	}
+	return variants
+}
+
+func bilibili_video_stream_key(stream *bilibili.DashItem) string {
+	if stream == nil {
+		return ""
+	}
+	codec_key := strings.TrimSpace(stream.Codecs)
+	if codec_key == "" && stream.CodecID > 0 {
+		codec_key = strconv.Itoa(stream.CodecID)
+	}
+	codec_key = strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToLower(character)
+		}
+		return '_'
+	}, codec_key)
+	codec_key = strings.Trim(codec_key, "_")
+	if codec_key == "" {
+		codec_key = "unknown"
+	}
+	return fmt.Sprintf("video_%d_%s", stream.ID, codec_key)
+}
+
+func bilibili_video_stream_spec(stream *bilibili.DashItem) string {
+	if stream == nil {
+		return ""
+	}
+	resolution := ""
+	if stream.Width > 0 && stream.Height > 0 {
+		resolution = fmt.Sprintf("%dx%d", stream.Width, stream.Height)
+	}
+	frame_rate := strings.TrimSpace(stream.FrameRate)
+	if frame_rate == "" {
+		return resolution
+	}
+	if resolution == "" {
+		return frame_rate + "fps"
+	}
+	return resolution + "@" + frame_rate
+}
+
+func bilibili_video_quality(quality_id int, support_format *bilibili.SupportFormat) string {
+	if support_format != nil {
+		if description := strings.TrimSpace(support_format.NewDescription); description != "" {
+			return description
+		}
+		description := strings.TrimSpace(strings.Join([]string{
+			strings.TrimSpace(support_format.DisplayDesc),
+			strings.TrimSpace(support_format.Superscript),
+		}, " "))
+		if description != "" {
+			return description
+		}
+	}
+	return strconv.Itoa(quality_id)
+}
+
+func bilibili_dash_format(mime_type string) string {
+	mime_type = strings.TrimSpace(mime_type)
+	if _, format, found := strings.Cut(mime_type, "/"); found {
+		if format = strings.TrimSpace(strings.SplitN(format, ";", 2)[0]); format != "" {
+			return format
+		}
+	}
+	return "mp4"
 }
 
 func build_task_from_bangumi_info(info *bilibili.BangumiInfo, config map[string]any) (*adapter.DownloadTaskResult, error) {
@@ -790,13 +1019,61 @@ func bangumi_stream_endpoints(stream *bilibili.BangumiDashStream, source_url str
 	return endpoints
 }
 
-func build_bilibili_account(external_id string, now int64) *model.Account {
+func bilibili_publish_time(info *bilibili.VideoInfo) *int64 {
+	if info == nil || info.InitialData == nil || info.InitialData.VideoData.Pubdate <= 0 {
+		return nil
+	}
+	publish_time := info.InitialData.VideoData.Pubdate * 1000
+	return &publish_time
+}
+
+func bilibili_account_external_id(info *bilibili.VideoInfo, fallback string) string {
+	if info != nil && info.InitialData != nil {
+		owner := info.InitialData.VideoData.Owner
+		if owner.Mid > 0 {
+			return strconv.FormatInt(owner.Mid, 10)
+		}
+		if info.InitialData.UpData.Mid != nil {
+			mid_text := strings.Trim(strings.TrimSpace(string(info.InitialData.UpData.Mid)), `"`)
+			if mid, err := strconv.ParseInt(mid_text, 10, 64); err == nil && mid > 0 {
+				return strconv.FormatInt(mid, 10)
+			}
+		}
+	}
+	return fallback
+}
+
+func build_bilibili_account(info *bilibili.VideoInfo, fallback_external_id string, now int64) *model.Account {
+	external_id := bilibili_account_external_id(info, fallback_external_id)
+	nickname := "B站用户"
+	avatar_url := ""
+	signature := ""
+	follower_count := int64(0)
+	if info != nil && info.InitialData != nil {
+		owner := info.InitialData.VideoData.Owner
+		up_data := info.InitialData.UpData
+		if owner.Name != "" {
+			nickname = owner.Name
+		} else if up_data.Name != "" {
+			nickname = up_data.Name
+		}
+		avatar_url = owner.Face
+		if avatar_url == "" {
+			avatar_url = up_data.Face
+		}
+		signature = up_data.Sign
+		follower_count = up_data.Fans
+	}
 	return &model.Account{
-		Id:         BuildAccountID(external_id),
-		PlatformId: platform_id_bilibili,
-		ExternalId: external_id,
-		Nickname:   "B站用户",
-		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		Id:            BuildAccountID(external_id),
+		PlatformId:    platform_id_bilibili,
+		ExternalId:    external_id,
+		Nickname:      nickname,
+		Signature:     signature,
+		AvatarURL:     avatar_url,
+		ProfileURL:    "https://space.bilibili.com/" + external_id,
+		FollowerCount: follower_count,
+		Timestamps:    model.Timestamps{CreatedAt: now, UpdatedAt: now},
 	}
 }
 

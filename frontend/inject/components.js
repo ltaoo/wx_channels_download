@@ -193,7 +193,7 @@ function Dialog(props, children) {
     Timeless.ui.DialogPrimitive.Overlay({
       store,
       class: "fixed inset-0 bg-black/80",
-      style: { "z-index": "10000" },
+      style: { "z-index": "200" },
     }),
     View(
       {
@@ -201,7 +201,7 @@ function Dialog(props, children) {
           t: "injected-ui-components-dialog-centered-overlay-content-wrapper",
         },
         class: "fixed inset-0 z-50 flex items-center justify-center p-4",
-        style: { "z-index": "10000" },
+        style: { "z-index": "200" },
         onClick(e) {
           if (e.target === e.currentTarget && store.closeable) {
             store.hide();

@@ -285,13 +285,13 @@
       (state) => !state.loading && !state.error && state.items.length === 0,
     );
 
-    function load_more_on_reach_bottom() {
-      Promise.resolve(model.methods.loadMore()).catch((error) => {
+    function request_more() {
+      return Promise.resolve(model.methods.loadMore()).catch((error) => {
         WXU.error({
           msg:
             "获取推送列表失败: " +
             (error && error.message ? error.message : String(error)),
-          source: "mp.components.js:MsgListPanel.onReachBottom",
+          source: "mp.components.js:MsgListPanel.requestMore",
         });
       });
     }
@@ -434,7 +434,7 @@
                   itemHeight: 100,
                   paddingBottom: 0,
                   each: model.state.items,
-                  onReachBottom: load_more_on_reach_bottom,
+                  onReachBottom: request_more,
                   render(item_) {
                     const item =
                       item_ && item_.value !== undefined ? item_.value : item_;
@@ -470,8 +470,10 @@
         ),
         Button(
           {
-            disabled: load_more_disabled_,
-            attributes: { type: "button" },
+            attributes: {
+              disabled: load_more_disabled_,
+              type: "button",
+            },
             style: {
               margin: "12px 12px 0",
               padding: "8px 16px",
@@ -485,8 +487,10 @@
               "font-size": "13px",
               "flex-shrink": "0",
             },
-            onClick() {
-              model.methods.loadMore();
+            onClick(event) {
+              event.preventDefault();
+              event.stopPropagation();
+              request_more();
             },
           },
           [load_more_text_],

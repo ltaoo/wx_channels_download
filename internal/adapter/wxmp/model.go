@@ -451,6 +451,8 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		image_resources = parse_content_images(data.ContentNoencode, content_id, external_id, extra_json)
 	}
 
+	// Keep the cover URL as task metadata only. The wxmp adapter must not add a
+	// separate cover DownloadResource by default.
 	cover_url := strings.TrimSpace(data.CdnURL)
 	source_url := strings.TrimSpace(data.SourceURL)
 	if source_url == "" {
@@ -615,6 +617,7 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 		if image == nil {
 			continue
 		}
+		indexed_extra_json := build_indexed_extra_json(extra_json, i+1)
 		img_url := normalize_image_url(image.URL)
 		image_key := strings.TrimSpace(image.ImageKey)
 		if image_key == "" {
@@ -630,7 +633,7 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 				Kind:       "image",
 				UniqueID:   fmt.Sprintf("%s_album_%d", external_id, i),
 				MergeOrder: merge_order,
-				Extra:      extra_json,
+				Extra:      indexed_extra_json,
 			}
 			ep := model.DownloadEndpoint{
 				Protocol: "https",
@@ -673,7 +676,7 @@ func parse_album_images(images []*model.ContentImage, content_id, external_id, e
 			Size:       image.LivePhoto.Size,
 			Duration:   duration_milliseconds_to_seconds(image.LivePhoto.DurationMs),
 			MergeOrder: merge_order,
-			Extra:      extra_json,
+			Extra:      indexed_extra_json,
 		}
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: video_resource,
@@ -749,6 +752,25 @@ func build_extra_json(id, title, author string, created_at int64) string {
 		"author":     author,
 		"created_at": strconv.FormatInt(created_at, 10),
 	})
+	return string(data)
+}
+
+// build_indexed_extra_json returns a copy of resource Extra with the
+// one-based position of an image in an album. A Live Photo and its paired
+// still image intentionally share the same index.
+func build_indexed_extra_json(extra_json string, idx int) string {
+	if idx <= 0 {
+		return extra_json
+	}
+	extra := make(map[string]any)
+	if err := json.Unmarshal([]byte(extra_json), &extra); err != nil {
+		return extra_json
+	}
+	extra["idx"] = idx
+	data, err := json.Marshal(extra)
+	if err != nil {
+		return extra_json
+	}
 	return string(data)
 }
 

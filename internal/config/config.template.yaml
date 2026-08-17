@@ -83,3 +83,4 @@ cloudflare:
   d1Name: "mp-rss-db"
   sphWorkerName: "sph"
   sphCookie: ""
+  sphCredential: ""

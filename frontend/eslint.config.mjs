@@ -17,6 +17,7 @@ export default [
         Button: "readonly",
         Input: "readonly",
         Img: "readonly",
+        Link: "readonly",
         Dialog: "readonly",
         DropdownMenu: "readonly",
         DL: "readonly",

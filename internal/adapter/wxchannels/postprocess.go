@@ -676,7 +676,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -715,7 +714,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -858,7 +856,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -917,7 +914,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -961,7 +957,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1006,7 +1001,6 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1057,7 +1051,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 			{Key: "Name", Type: "string", Required: false},
 			{Key: "UniqueID", Type: "string", Required: false},
 			{Key: "DownloadDir", Type: "string", Required: false},
-			{Key: "FilenameTemplate", Type: "string", Required: false},
 			{Key: "Platform", Type: "string", Required: false},
 			{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 				{Key: "type", Type: "any", Required: false},
@@ -1093,7 +1086,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -1131,7 +1123,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 					{Key: "Name", Type: "string", Required: false},
 					{Key: "UniqueID", Type: "string", Required: false},
 					{Key: "DownloadDir", Type: "string", Required: false},
-					{Key: "FilenameTemplate", Type: "string", Required: false},
 					{Key: "Platform", Type: "string", Required: false},
 					{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 						{Key: "type", Type: "any", Required: false},
@@ -1147,7 +1138,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1233,7 +1223,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1300,7 +1289,6 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1357,7 +1345,6 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -1396,7 +1383,6 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1432,7 +1418,6 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 						{Key: "Name", Type: "string", Required: false},
 						{Key: "UniqueID", Type: "string", Required: false},
 						{Key: "DownloadDir", Type: "string", Required: false},
-						{Key: "FilenameTemplate", Type: "string", Required: false},
 						{Key: "Platform", Type: "string", Required: false},
 						{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 							{Key: "type", Type: "any", Required: false},
@@ -1628,7 +1613,6 @@ var FinalizeMP3Node = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -1693,7 +1677,6 @@ var FinalizeStreamNode = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -1736,7 +1719,6 @@ var ZipResourcesNode = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -1782,7 +1764,6 @@ var TaskJobUpdateNode = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},

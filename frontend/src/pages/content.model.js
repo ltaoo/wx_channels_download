@@ -303,7 +303,7 @@ function ContentViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
-        return load(page_.value);
+        return load(1);
       },
     }),
     btn_retry$: new Timeless.vm.ButtonCore({
@@ -421,7 +421,7 @@ function ContentViewModel(props) {
       return load(1);
     },
     refresh() {
-      return load(page_.value);
+      return load(1);
     },
     search() {
       return load(1);

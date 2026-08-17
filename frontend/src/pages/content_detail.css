@@ -608,7 +608,7 @@
 }
 
 .wx-content-detail-task {
-  grid-template-columns: 72px minmax(0, 1fr) auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
 }
 
 .wx-content-detail-resource + .wx-content-detail-resource,

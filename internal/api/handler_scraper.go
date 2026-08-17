@@ -21,6 +21,21 @@ type scraper_cache_clear_body struct {
 
 const scraper_cache_content_max_size int64 = 8 * 1024 * 1024
 
+func (c *APIClient) handle_scraper_platform_status(ctx *gin.Context) {
+	statuses := c.scraper_platform_status_snapshots()
+	available_count := 0
+	for _, status := range statuses {
+		if status.Available {
+			available_count++
+		}
+	}
+	result.Ok(ctx, gin.H{
+		"statuses":        statuses,
+		"available_count": available_count,
+		"total_count":     len(statuses),
+	})
+}
+
 func (c *APIClient) handle_scraper_cache_content(ctx *gin.Context) {
 	job_id := strings.TrimSpace(ctx.Query("id"))
 	cache_key := strings.TrimSpace(ctx.Query("key"))

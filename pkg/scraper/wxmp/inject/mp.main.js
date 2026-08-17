@@ -36,6 +36,12 @@
       .interaction_bar .sns_opr_btn .sns_opr_gap {
         width: 32px !important;
       }
+      .mm_appmsg .interaction_bar .sns_opr_btn:after {
+        min-width: unset !important;
+      }
+      .mm_appmsg .interaction_bar .sns_opr_btn .sns_opr_gap {
+        width: unset !important;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -506,6 +512,13 @@
       download_notice_.as({ type, message });
     }
 
+    function error_message(error) {
+      if (error && error.message) {
+        return error.message;
+      }
+      return error ? String(error) : "未知错误";
+    }
+
     function set_item_downloading(item, downloading) {
       const downloading_items = downloading_items_.value;
       const next_items = downloading
@@ -568,68 +581,80 @@
 
     async function load_more() {
       if (loading_.value || !can_load_more_.value) {
-        return;
+        return false;
       }
       if (!credentials.biz) {
         error_.as("缺少 biz 参数");
-        return;
+        return false;
       }
       error_.as("");
       loading_.as(true);
       const request_offset = current_offset;
-      const r = await reqs.msg.list.run({
-        biz: credentials.biz,
-        count: page_size,
-        key: credentials.key,
-        offset: request_offset,
-        pass_ticket: credentials.pass_ticket,
-        token: credentials.token,
-        uin: credentials.uin,
-      });
-      loading_.as(false);
-      if (r.error) {
-        error_.as(r.error.message);
-        return;
-      }
-      const data = r.data || {};
-      const items = parse_official_account_msg_list(data);
-      const has_next_offset = !!data.next_offset;
-      const next_offset = has_next_offset
-        ? Number(data.next_offset)
-        : Number.NaN;
-      const has_server_more =
-        data.can_msg_continue === undefined
-          ? items.length >= page_size
-          : Number(data.can_msg_continue) !== 0;
-      const can_load_more = items.length > 0 && has_server_more;
-
-      if (has_server_more && items.length === 0) {
-        error_.as(
-          `分页响应异常：offset=${request_offset} 返回空列表但仍标记有更多数据`,
-        );
-        return;
-      }
-      if (has_server_more && has_next_offset) {
-        if (
-          !Number.isSafeInteger(next_offset) ||
-          next_offset <= request_offset
-        ) {
-          error_.as(
-            `分页游标未前进：offset=${request_offset}, next_offset=${String(data.next_offset)}`,
-          );
+      try {
+        const r = await reqs.msg.list.run({
+          biz: credentials.biz,
+          count: page_size,
+          key: credentials.key,
+          offset: request_offset,
+          pass_ticket: credentials.pass_ticket,
+          token: credentials.token,
+          uin: credentials.uin,
+        });
+        if (r.error) {
+          error_.as(error_message(r.error));
+          return false;
         }
-        current_offset = next_offset;
-      } else if (has_server_more) {
-        current_offset = request_offset + items.length;
+        const data = r.data || {};
+        const items = parse_official_account_msg_list(data);
+        const has_next_offset =
+          Object.prototype.hasOwnProperty.call(data, "next_offset") &&
+          data.next_offset !== null &&
+          String(data.next_offset).trim() !== "";
+        const next_offset = has_next_offset
+          ? Number(data.next_offset)
+          : Number.NaN;
+        const has_server_more =
+          data.can_msg_continue === undefined
+            ? items.length >= page_size
+            : Number(data.can_msg_continue) !== 0;
+
+        if (has_server_more && items.length === 0) {
+          error_.as(
+            `分页响应异常：offset=${request_offset} 返回空列表但仍标记有更多数据`,
+          );
+          return false;
+        }
+
+        if (has_server_more && has_next_offset) {
+          if (
+            !Number.isSafeInteger(next_offset) ||
+            next_offset <= request_offset
+          ) {
+            error_.as(
+              `分页游标未前进：offset=${request_offset}, next_offset=${String(data.next_offset)}`,
+            );
+            return false;
+          }
+          current_offset = next_offset;
+        } else if (has_server_more) {
+          current_offset = request_offset + items.length;
+        }
+        items_.as(items_.value.concat(items), { reset: true });
+        can_load_more_.as(items.length > 0 && has_server_more);
+        return true;
+      } catch (error) {
+        error_.as(error_message(error));
+        return false;
+      } finally {
+        loading_.as(false);
       }
-      items_.as(items_.value.concat(items), { reset: true });
-      can_load_more_.as(can_load_more);
     }
 
     function ensure_loaded() {
       if (items_.value.length === 0) {
-        load_more();
+        return load_more();
       }
+      return Promise.resolve(false);
     }
 
     return {
@@ -790,16 +815,12 @@
         OverwriteDownloadConfirmDialog({
           store: vm$,
         }),
-        Dialog(
-          {
-            store: props.msg_list_dialog$,
-          },
-          [
-            MsgListPanel({
-              store: props.msglist$,
-            }),
-          ],
-        ),
+        Dialog({ store: props.msg_list_dialog$ }, [
+          MsgListPanel({
+            dialog$: props.msg_list_dialog$,
+            store: props.msglist$,
+          }),
+        ]),
       ],
     );
   }
