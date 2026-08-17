@@ -50,6 +50,9 @@
     }
   ],
   "paths": {
+    "/api/channels/status": {
+      "$ref": "./channels/status.json"
+    },
     "/api/channels/contact/search": {
       "$ref": "./channels/contact_search.json"
     },
@@ -148,9 +151,6 @@
     },
     "/api/mp/download_all": {
       "$ref": "./mp/download_all.json"
-    },
-    "/mp/home": {
-      "$ref": "./mp/home.json"
     }
   }
 }
