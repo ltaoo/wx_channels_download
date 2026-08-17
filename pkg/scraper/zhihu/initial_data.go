@@ -36,8 +36,22 @@ type InitialState struct {
 	Answers     json.RawMessage `json:"answers,omitempty"`
 	Topic       json.RawMessage `json:"topic,omitempty"`
 	Articles    json.RawMessage `json:"articles,omitempty"`
+	Post        json.RawMessage `json:"post,omitempty"`
+	User        json.RawMessage `json:"user,omitempty"`
 	Topstory    json.RawMessage `json:"topstory,omitempty"`
 	Search      json.RawMessage `json:"search,omitempty"`
+}
+
+type initial_appview_article struct {
+	ID          string          `json:"id"`
+	Title       string          `json:"title"`
+	Content     string          `json:"content"`
+	Excerpt     string          `json:"excerpt"`
+	ImageURL    string          `json:"imageUrl"`
+	ImageURLAlt string          `json:"image_url"`
+	Author      json.RawMessage `json:"author"`
+	CreatedTime int64           `json:"created"`
+	UpdatedTime int64           `json:"updated"`
 }
 
 type InitialCommon struct {
@@ -281,4 +295,60 @@ func ParseInitialData(body []byte) (*InitialData, error) {
 	}
 	data.Raw = raw
 	return &data, nil
+}
+
+func article_from_initial_data(initial_data *InitialData, article_id string) (Article, bool) {
+	if initial_data == nil || strings.TrimSpace(article_id) == "" {
+		return Article{}, false
+	}
+	if article := initial_data.InitialState.Entities.Articles[article_id]; article.ID != "" {
+		return article, true
+	}
+	if article := initial_data.InitialState.Entities.Posts[article_id]; article.ID != "" {
+		return article, true
+	}
+
+	var posts map[string]initial_appview_article
+	if len(initial_data.InitialState.Post) == 0 || json.Unmarshal(initial_data.InitialState.Post, &posts) != nil {
+		return Article{}, false
+	}
+	post, ok := posts[article_id]
+	if !ok || post.ID == "" {
+		return Article{}, false
+	}
+
+	article := Article{
+		ID:          post.ID,
+		Title:       post.Title,
+		Content:     post.Content,
+		Excerpt:     post.Excerpt,
+		ImageURL:    post.ImageURL,
+		ImageURLAlt: post.ImageURLAlt,
+		CreatedTime: post.CreatedTime,
+		UpdatedTime: post.UpdatedTime,
+	}
+	article.Author = appview_article_author(initial_data, post.Author)
+	return article, true
+}
+
+func appview_article_author(initial_data *InitialData, raw_author json.RawMessage) User {
+	var author User
+	if json.Unmarshal(raw_author, &author) == nil && (author.ID != "" || author.Name != "") {
+		return author
+	}
+
+	var author_key string
+	if json.Unmarshal(raw_author, &author_key) != nil || author_key == "" {
+		return User{}
+	}
+	var users map[string]User
+	if json.Unmarshal(initial_data.InitialState.User, &users) == nil {
+		if author, ok := users[author_key]; ok {
+			return author
+		}
+	}
+	if author, ok := initial_data.InitialState.Entities.Users[author_key]; ok {
+		return author
+	}
+	return User{URLToken: author_key}
 }

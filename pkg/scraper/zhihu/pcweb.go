@@ -3,8 +3,10 @@ package zhihu
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -47,6 +49,20 @@ type pcweb_vm_result struct {
 	CK     string `json:"ck"`
 }
 
+type pcweb_document_validator func(body []byte, content_id string) bool
+
+type pcweb_article_api_payload struct {
+	ID          any    `json:"id"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	Excerpt     string `json:"excerpt"`
+	ImageURL    string `json:"image_url"`
+	ImageURLAlt string `json:"imageUrl"`
+	Author      User   `json:"author"`
+	CreatedTime int64  `json:"created"`
+	UpdatedTime int64  `json:"updated"`
+}
+
 // fetch_pcweb_answer_document first requests the original Answer URL through
 // Zhihu's anonymous Hybrid SSR entry. It returns the untouched SSR document.
 // The retained desktop zse-ck flow is only used if that stable entry stops
@@ -76,6 +92,64 @@ func (c *Client) fetch_pcweb_answer_document(raw_url string) ([]byte, error) {
 	return nil, fmt.Errorf("zhihu pcweb hybrid status %d did not contain Answer %s; desktop challenge failed: %w", direct_status, answer_url.AnswerID, desktop_err)
 }
 
+// fetch_pcweb_article_document follows Zhihu's anonymous Article recovery
+// chain: AppView SSR first, desktop zse-ck challenge second, then the official
+// Article API rendered into the same initial-data shape consumed by this
+// package.
+func (c *Client) fetch_pcweb_article_document(raw_url string) ([]byte, error) {
+	article_url, ok := ParseArticleURL(raw_url)
+	if !ok {
+		return nil, fmt.Errorf("unsupported zhihu article url")
+	}
+
+	appview_url := pcweb_article_appview_url(article_url.ArticleID)
+	direct, direct_err := c.pcweb_hybrid_request(appview_url)
+	if direct_err == nil && direct != nil && direct.status >= 200 && direct.status < 300 && pcweb_has_article(direct.body, article_url.ArticleID) {
+		return direct.body, nil
+	}
+
+	desktop_body, desktop_err := c.pcweb_desktop_document(
+		article_url.Canonical,
+		article_url.ArticleID,
+		"Article",
+		pcweb_has_article,
+	)
+	if desktop_err == nil {
+		return desktop_body, nil
+	}
+
+	appview_retry, appview_retry_err := c.pcweb_hybrid_request(appview_url)
+	if appview_retry_err == nil && appview_retry != nil && appview_retry.status >= 200 && appview_retry.status < 300 && pcweb_has_article(appview_retry.body, article_url.ArticleID) {
+		return appview_retry.body, nil
+	}
+	if appview_retry_err == nil {
+		appview_retry_status := 0
+		if appview_retry != nil {
+			appview_retry_status = appview_retry.status
+		}
+		appview_retry_err = fmt.Errorf("HTTP %d did not contain Article %s", appview_retry_status, article_url.ArticleID)
+	}
+
+	api_body, api_err := c.fetch_pcweb_article_api_document(article_url)
+	if api_err == nil {
+		return api_body, nil
+	}
+
+	direct_status := 0
+	if direct != nil {
+		direct_status = direct.status
+	}
+	return nil, fmt.Errorf(
+		"zhihu pcweb AppView status %d did not contain Article %s (request error: %v); desktop challenge failed: %v; AppView retry failed: %v; Article API fallback failed: %w",
+		direct_status,
+		article_url.ArticleID,
+		direct_err,
+		desktop_err,
+		appview_retry_err,
+		api_err,
+	)
+}
+
 func (c *Client) pcweb_hybrid_request(raw_url string) (*pcweb_response, error) {
 	req, err := http.NewRequest(http.MethodGet, raw_url, nil)
 	if err != nil {
@@ -94,6 +168,10 @@ func (c *Client) pcweb_hybrid_request(raw_url string) (*pcweb_response, error) {
 }
 
 func (c *Client) pcweb_desktop_challenge(raw_url, answer_id string) ([]byte, error) {
+	return c.pcweb_desktop_document(raw_url, answer_id, "Answer", pcweb_has_answer)
+}
+
+func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string, document_validator pcweb_document_validator) ([]byte, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, fmt.Errorf("create zhihu pcweb cookie jar: %w", err)
@@ -131,7 +209,7 @@ func (c *Client) pcweb_desktop_challenge(raw_url, answer_id string) ([]byte, err
 	if first_read_err != nil {
 		return nil, first_read_err
 	}
-	if first.status >= 200 && first.status < 300 && pcweb_has_answer(first.body, answer_id) {
+	if first.status >= 200 && first.status < 300 && document_validator(first.body, content_id) {
 		return first.body, nil
 	}
 
@@ -163,14 +241,14 @@ func (c *Client) pcweb_desktop_challenge(raw_url, answer_id string) ([]byte, err
 	set_pcweb_desktop_document_headers(retry_req, "same-origin", raw_url)
 	retry_resp, err := no_redirect_client.Do(retry_req)
 	if err != nil {
-		return nil, fmt.Errorf("retry zhihu pcweb Answer: %w", err)
+		return nil, fmt.Errorf("retry zhihu pcweb %s: %w", content_kind, err)
 	}
 	retry, retry_read_err := read_pcweb_response(retry_resp, 32<<20)
 	retry_resp.Body.Close()
 	if retry_read_err != nil {
 		return nil, retry_read_err
 	}
-	if retry.status >= 200 && retry.status < 300 && pcweb_has_answer(retry.body, answer_id) {
+	if retry.status >= 200 && retry.status < 300 && document_validator(retry.body, content_id) {
 		return retry.body, nil
 	}
 	if retry.location != "" {
@@ -249,10 +327,14 @@ func set_pcweb_desktop_document_headers(req *http.Request, fetch_site, referer s
 }
 
 func set_pcweb_script_headers(req *http.Request, referer string) {
+	origin := "https://www.zhihu.com"
+	if parsed, err := url.Parse(referer); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		origin = parsed.Scheme + "://" + parsed.Host
+	}
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Origin", "https://www.zhihu.com")
+	req.Header.Set("Origin", origin)
 	req.Header.Set("Pragma", "no-cache")
 	req.Header.Set("Priority", "u=1")
 	req.Header.Set("Referer", referer)
@@ -272,6 +354,158 @@ func pcweb_has_answer(body []byte, answer_id string) bool {
 	}
 	answer, ok := initial_data.InitialState.Entities.Answers[answer_id]
 	return ok && answer.ID != ""
+}
+
+func pcweb_has_article(body []byte, article_id string) bool {
+	initial_data, err := ParseInitialData(body)
+	if err != nil {
+		return false
+	}
+	article, ok := article_from_initial_data(initial_data, article_id)
+	return ok && article.ID != "" && strings.TrimSpace(article.Content) != ""
+}
+
+func pcweb_article_appview_url(article_id string) string {
+	return "https://www.zhihu.com/appview/p/" + url.PathEscape(strings.TrimSpace(article_id))
+}
+
+func pcweb_article_api_urls(article_id string) []string {
+	base_url := "https://www.zhihu.com/api/v4/articles/" + url.PathEscape(strings.TrimSpace(article_id))
+	return []string{
+		base_url,
+		base_url + "?include=content",
+		base_url + "?include=content,author",
+	}
+}
+
+func set_pcweb_article_api_headers(req *http.Request, referer string) {
+	set_pcweb_desktop_document_headers(req, "same-origin", referer)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("X-API-Version", "3.0.91")
+	req.Header.Set("X-App-Za", "OS=Web")
+	req.Header.Set("X-Requested-With", "fetch")
+	req.Header.Del("Sec-Fetch-User")
+	req.Header.Del("Upgrade-Insecure-Requests")
+}
+
+func (c *Client) fetch_pcweb_article_api_document(article_url ArticleURL) ([]byte, error) {
+	failures := make([]string, 0, 3)
+	for attempt, api_url := range pcweb_article_api_urls(article_url.ArticleID) {
+		req, err := http.NewRequest(http.MethodGet, api_url, nil)
+		if err != nil {
+			return nil, err
+		}
+		set_pcweb_article_api_headers(req, article_url.Canonical)
+		cookie_header := c.cookie(api_url)
+		if cookie_header != "" {
+			req.Header.Set("Cookie", cookie_header)
+		}
+		c.log_request(http.MethodGet, api_url, cookie_header)
+		resp, request_err := c.pcweb_http_client(nil, false).Do(req)
+		if request_err != nil {
+			failures = append(failures, fmt.Sprintf("attempt %d: %v", attempt+1, request_err))
+			continue
+		}
+		if resp == nil {
+			failures = append(failures, fmt.Sprintf("attempt %d: empty HTTP response", attempt+1))
+			continue
+		}
+		status_code := resp.StatusCode
+		response, read_err := read_pcweb_response(resp, 16<<20)
+		resp.Body.Close()
+		c.log_response(http.MethodGet, api_url, status_code)
+		if read_err != nil {
+			failures = append(failures, fmt.Sprintf("attempt %d: %v", attempt+1, read_err))
+			continue
+		}
+		if response.status != http.StatusOK {
+			failures = append(failures, fmt.Sprintf("attempt %d: HTTP %d body=%s", attempt+1, response.status, debug_snippet(response.body)))
+			continue
+		}
+		article, decode_err := decode_pcweb_article_api(response.body, article_url.ArticleID)
+		if decode_err != nil {
+			failures = append(failures, fmt.Sprintf("attempt %d: %v", attempt+1, decode_err))
+			continue
+		}
+		document, render_err := render_pcweb_article_document(article_url, article)
+		if render_err == nil {
+			return document, nil
+		}
+		failures = append(failures, fmt.Sprintf("attempt %d: %v", attempt+1, render_err))
+	}
+	return nil, fmt.Errorf("Zhihu Article API failed after %d attempts: %s", len(failures), strings.Join(failures, "; "))
+}
+
+func decode_pcweb_article_api(body []byte, article_id string) (Article, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var payload pcweb_article_api_payload
+	if err := decoder.Decode(&payload); err != nil {
+		return Article{}, fmt.Errorf("decode Zhihu Article API: %w", err)
+	}
+	payload_id := pcweb_json_id(payload.ID)
+	if payload_id != article_id {
+		return Article{}, fmt.Errorf("Zhihu Article API returned unexpected article %q", payload_id)
+	}
+	if strings.TrimSpace(payload.Content) == "" {
+		return Article{}, errors.New("Zhihu Article API returned no HTML content")
+	}
+	return Article{
+		ID:          payload_id,
+		Title:       payload.Title,
+		Content:     payload.Content,
+		Excerpt:     payload.Excerpt,
+		ImageURL:    payload.ImageURLAlt,
+		ImageURLAlt: payload.ImageURL,
+		Author:      payload.Author,
+		CreatedTime: payload.CreatedTime,
+		UpdatedTime: payload.UpdatedTime,
+	}, nil
+}
+
+func pcweb_json_id(value any) string {
+	switch typed_value := value.(type) {
+	case json.Number:
+		return typed_value.String()
+	case string:
+		return typed_value
+	default:
+		return ""
+	}
+}
+
+func render_pcweb_article_document(article_url ArticleURL, article Article) ([]byte, error) {
+	initial_data := map[string]any{
+		"initialState": map[string]any{
+			"entities": map[string]any{
+				"articles": map[string]Article{article_url.ArticleID: article},
+			},
+		},
+		"subAppName": "zhuanlan",
+		"spanName":   "PostIndex",
+	}
+	initial_data_json, err := json.Marshal(initial_data)
+	if err != nil {
+		return nil, fmt.Errorf("encode Zhihu Article initial data: %w", err)
+	}
+	title := strings.TrimSpace(article.Title)
+	if title == "" {
+		title = "知乎文章 " + article_url.ArticleID
+	}
+	document := fmt.Sprintf(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>%s - 知乎专栏</title><link rel="canonical" href="%s"></head>
+<body><main class="PostIndex"><article data-article-id="%s"><h1>%s</h1><div class="RichText ztext PostIndex-richText">%s</div></article></main>
+<script id="js-initialData" type="text/json">%s</script></body></html>`,
+		html.EscapeString(title),
+		html.EscapeString(article_url.Canonical),
+		html.EscapeString(article_url.ArticleID),
+		html.EscapeString(title),
+		article.Content,
+		initial_data_json,
+	)
+	return []byte(document), nil
 }
 
 func parse_pcweb_challenge(body []byte, base_url string) (string, string, error) {

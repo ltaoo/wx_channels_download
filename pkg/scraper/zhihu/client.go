@@ -33,6 +33,7 @@ const (
 var answer_url_re = regexp.MustCompile(`^/question/([0-9]+|undefined)/answer/([0-9]+)$`)
 var question_url_re = regexp.MustCompile(`^/question/([0-9]+)$`)
 var article_url_re = regexp.MustCompile(`^/p/([0-9]+)$`)
+var article_appview_url_re = regexp.MustCompile(`^/appview/p/([0-9]+)$`)
 
 type Client struct {
 	http_client   *http.Client
@@ -104,10 +105,18 @@ func ParseArticleURL(raw_url string) (ArticleURL, bool) {
 		return ArticleURL{}, false
 	}
 	host := strings.ToLower(parsed.Hostname())
-	if host != "zhuanlan.zhihu.com" && host != "www.zhihu.com" {
+	var matches []string
+	switch host {
+	case "zhuanlan.zhihu.com":
+		matches = article_url_re.FindStringSubmatch(parsed.EscapedPath())
+	case "zhihu.com", "www.zhihu.com":
+		matches = article_url_re.FindStringSubmatch(parsed.EscapedPath())
+		if len(matches) != 2 {
+			matches = article_appview_url_re.FindStringSubmatch(parsed.EscapedPath())
+		}
+	default:
 		return ArticleURL{}, false
 	}
-	matches := article_url_re.FindStringSubmatch(parsed.EscapedPath())
 	if len(matches) != 2 {
 		return ArticleURL{}, false
 	}
@@ -242,8 +251,15 @@ func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {
 		}
 		_ = c.remove_cached_html(raw_url)
 	}
-	if _, is_answer := ParseAnswerURL(ResolveRealURL(raw_url)); is_answer {
-		html_data, fetch_err := c.fetch_pcweb_answer_document(raw_url)
+	resolved_url := ResolveRealURL(raw_url)
+	var fetch_pcweb_document func(string) ([]byte, error)
+	if _, is_answer := ParseAnswerURL(resolved_url); is_answer {
+		fetch_pcweb_document = c.fetch_pcweb_answer_document
+	} else if _, is_article := ParseArticleURL(resolved_url); is_article {
+		fetch_pcweb_document = c.fetch_pcweb_article_document
+	}
+	if fetch_pcweb_document != nil {
+		html_data, fetch_err := fetch_pcweb_document(raw_url)
 		if fetch_err != nil {
 			return nil, fetch_err
 		}
@@ -654,11 +670,8 @@ func parse_article_page(body []byte, article_url ArticleURL) (*ArticlePage, erro
 	if err != nil {
 		return nil, err
 	}
-	article := initial_data.InitialState.Entities.Articles[article_url.ArticleID]
-	if article.ID == "" {
-		article = initial_data.InitialState.Entities.Posts[article_url.ArticleID]
-	}
-	if article.ID == "" {
+	article, ok := article_from_initial_data(initial_data, article_url.ArticleID)
+	if !ok {
 		return nil, fmt.Errorf("missing zhihu article entity")
 	}
 	return &ArticlePage{
