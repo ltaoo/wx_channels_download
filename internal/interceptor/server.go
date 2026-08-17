@@ -104,7 +104,7 @@ func (s *InterceptorServer) ProxySetSystem() bool {
 
 // SystemProxyEnabled reports whether the active system proxy points at this
 // interceptor. A different user-configured proxy is deliberately not treated
-// as enabled so the tray can offer to switch to this application.
+// as enabled so callers can switch to this application safely.
 func (s *InterceptorServer) SystemProxyEnabled() (bool, error) {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
