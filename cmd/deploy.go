@@ -206,6 +206,7 @@ func deploy_sph() {
 	api_token := viper.GetString("cloudflare.apiToken")
 	worker_name := viper.GetString("cloudflare.sphWorkerName")
 	sph_cookie := viper.GetString("cloudflare.sphCookie")
+	sph_credential := viper.GetString("cloudflare.sphCredential")
 
 	if api_token == "" || account_id == "" {
 		pterm.Error.Println("错误: 未配置 Cloudflare Auth Token 或 Account ID")
@@ -214,6 +215,11 @@ func deploy_sph() {
 
 	if worker_name == "" {
 		pterm.Error.Println("错误: 未配置 cloudflare.sphWorkerName")
+		return
+	}
+
+	if strings.TrimSpace(sph_credential) == "" {
+		pterm.Error.Println("错误: 未配置 cloudflare.sphCredential")
 		return
 	}
 
@@ -254,6 +260,7 @@ func deploy_sph() {
 		MainModule:        "worker.js",
 		Bindings: []worker.Binding{
 			{Type: "plain_text", Name: "COOKIE", Text: sph_cookie},
+			{Type: "plain_text", Name: "ACCESS_CREDENTIAL", Text: sph_credential},
 		},
 		AdditionalFiles: map[string][]byte{
 			"index.html": html_content,

@@ -4,6 +4,8 @@
 import indexHtml from "./index.html";
 import iconBase64 from "./icon.js";
 
+const AUTH_USERNAME = "wxchannels";
+
 function base64ToBytes(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -22,6 +24,11 @@ export default {
       return new Response(null, {
         headers: corsHeaders(),
       });
+    }
+
+    const auth_response = await authenticateRequest(request, env, url);
+    if (auth_response) {
+      return auth_response;
     }
 
     // GET /favicon.ico or /icon.png → serve icon
@@ -57,9 +64,81 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Expose-Headers": "Content-Disposition",
   };
+}
+
+async function authenticateRequest(request, env, url) {
+  const expected_credential = String(env.ACCESS_CREDENTIAL || "");
+  if (!expected_credential) {
+    return authErrorResponse(url, 503, "access credential is not configured", false);
+  }
+
+  const authorization = request.headers.get("Authorization") || "";
+  const supplied_credential =
+    bearerCredential(authorization) || basicCredential(authorization);
+  if (await credentialsMatch(supplied_credential, expected_credential)) {
+    return null;
+  }
+
+  return authErrorResponse(url, 401, "unauthorized", true);
+}
+
+function bearerCredential(authorization) {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
+}
+
+function basicCredential(authorization) {
+  const match = authorization.match(/^Basic\s+([^\s]+)$/i);
+  if (!match) return "";
+
+  try {
+    const binary = atob(match[1]);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const decoded = new TextDecoder().decode(bytes);
+    const separator_index = decoded.indexOf(":");
+    if (separator_index < 0 || decoded.slice(0, separator_index) !== AUTH_USERNAME) {
+      return "";
+    }
+    return decoded.slice(separator_index + 1);
+  } catch (_) {
+    return "";
+  }
+}
+
+async function credentialsMatch(supplied_credential, expected_credential) {
+  if (!supplied_credential || !expected_credential) return false;
+
+  const encoder = new TextEncoder();
+  const [supplied_digest, expected_digest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(supplied_credential)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected_credential)),
+  ]);
+  const supplied_bytes = new Uint8Array(supplied_digest);
+  const expected_bytes = new Uint8Array(expected_digest);
+  let difference = 0;
+  for (let index = 0; index < supplied_bytes.length; index += 1) {
+    difference |= supplied_bytes[index] ^ expected_bytes[index];
+  }
+  return difference === 0;
+}
+
+function authErrorResponse(url, status, message, challenge) {
+  const is_api = url.pathname.startsWith("/api/");
+  const headers = {
+    "Cache-Control": "no-store",
+    ...(is_api ? corsHeaders() : {}),
+    "Content-Type": is_api
+      ? "application/json; charset=utf-8"
+      : "text/plain; charset=utf-8",
+  };
+  if (challenge) {
+    headers["WWW-Authenticate"] = `Basic realm="wxchannels", charset="UTF-8"`;
+  }
+  const body = is_api ? JSON.stringify({ error: message }) : message;
+  return new Response(body, { status, headers });
 }
 
 function log(...args) {

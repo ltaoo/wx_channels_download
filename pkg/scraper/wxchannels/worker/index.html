@@ -299,6 +299,7 @@
         try {
           const response = await fetch(`${this.apiBase}/fetch_video_profile`, {
             method: "POST",
+            credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: normalizedUrl }),
           });
@@ -347,6 +348,7 @@
           async () => {
             const response = await fetch(`${this.apiBase}/download_feed_zip`, {
               method: "POST",
+              credentials: "same-origin",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ feed }),
             });
