@@ -1,0 +1,55 @@
+name: Refresh Sponsor Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sponsor-data
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sponsor-data branch
+        uses: actions/checkout@v4
+        with:
+          ref: sponsor-data
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+          cache: false
+
+      - name: Generate sponsor data
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET:
+          ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_BASE_TOKEN:
+          ${{ secrets.FEISHU_BASE_TOKEN }}
+          FEISHU_TABLE_ID: ${{ secrets.FEISHU_TABLE_ID }}
+          FEISHU_VIEW_ID: ${{ secrets.FEISHU_VIEW_ID }}
+          FEISHU_SORT: ${{ secrets.FEISHU_SORT }}
+        run: go run ./main.go -output sponsors.json
+
+      - name: Commit sponsor data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-
+          actions[bot]@users.noreply.github.com"
+          git add sponsors.json
+
+          if git diff --cached --quiet; then
+            echo "Sponsor data is unchanged."
+            exit 0
+          fi
+
+          git commit -m "data: refresh sponsors"
+          git push origin HEAD:sponsor-data

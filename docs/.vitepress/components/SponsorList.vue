@@ -229,6 +229,10 @@
 
 <script setup>
 import { ref, onMounted, computed } from "vue";
+import { withBase } from "vitepress";
+
+const sponsorDataUrl =
+  "https://raw.githubusercontent.com/ltaoo/wx_channels_download/sponsor-data/sponsors.json";
 
 const sponsors = ref([]);
 const loading = ref(true);
@@ -286,15 +290,13 @@ const topSponsors = computed(() => {
 });
 
 const formatAvatar = (url) => {
-  if (typeof window === "undefined") {
+  if (!url) {
+    return withBase("/sponsors/wechat.svg");
+  }
+  if (/^(?:https?:|data:|blob:)/i.test(url)) {
     return url;
   }
-  const prefix = window.location.href.replace(/\/$/, '');
-  if (!url) {
-    
-    return `${prefix}/sponsors/wechat.svg`;
-  }
-  return `${prefix}${url}`;
+  return withBase(url.startsWith("/") ? url : `/${url}`);
 };
 
 // Chart Computed Properties
@@ -393,9 +395,7 @@ const formatDate = (dateStr) => {
 
 const fetchData = async () => {
   try {
-    const res = await fetch(
-      "https://sponsorkit.funzm.com/api/sponsor/list?pageSize=999",
-    );
+    const res = await fetch(sponsorDataUrl, { cache: "no-store" });
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
