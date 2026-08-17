@@ -16,7 +16,6 @@ import (
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
-	_ "wx_channel/internal/adapter/builtin"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
