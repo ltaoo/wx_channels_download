@@ -268,7 +268,7 @@ func (s *Server) server_info() map[string]any {
 }
 
 func server_instructions() string {
-	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content 前应先获得用户对下载操作的确认。"
+	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content 前应先获得用户对下载操作的确认。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
 }
 
 func (s *Server) is_modern_request(request rpc_request) bool {

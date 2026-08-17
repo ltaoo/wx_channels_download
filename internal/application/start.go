@@ -244,12 +244,14 @@ func Start(cfg *config.Config) error {
 	// 	return
 	// }
 	// color.Green(fmt.Sprintf("GUI/Admin service started successfully, address: %v", admin_srv.Addr()))
+	api_srv.APIClient.StartMCPServer()
 	if err := api_srv.Start(); err != nil {
 		cleanup()
 		return fmt.Errorf("failed to start API service: %w", err)
 	}
 	api_started = true
 	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_srv.Addr()))
+	color.Green(fmt.Sprintf("MCP server started successfully, address: http://%v/mcp", api_srv.Addr()))
 
 	if proxy_enabled {
 		interceptor_start_attempted = true

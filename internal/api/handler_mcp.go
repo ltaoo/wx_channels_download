@@ -48,16 +48,23 @@ func (c *APIClient) handle_mcp_status(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_mcp_enable(ctx *gin.Context) {
-	c.update_mcp_enabled(ctx, true)
+	c.StartMCPServer()
+	result.Ok(ctx, c.mcp_status_data(ctx.Request))
 }
 
 func (c *APIClient) handle_mcp_disable(ctx *gin.Context) {
-	c.update_mcp_enabled(ctx, false)
+	c.StopMCPServer()
+	result.Ok(ctx, c.mcp_status_data(ctx.Request))
 }
 
-func (c *APIClient) update_mcp_enabled(ctx *gin.Context, enabled bool) {
-	c.mcp_enabled.Store(enabled)
-	result.Ok(ctx, c.mcp_status_data(ctx.Request))
+// StartMCPServer enables the API server's Streamable HTTP MCP endpoint.
+func (c *APIClient) StartMCPServer() {
+	c.mcp_enabled.Store(true)
+}
+
+// StopMCPServer disables the API server's Streamable HTTP MCP endpoint.
+func (c *APIClient) StopMCPServer() {
+	c.mcp_enabled.Store(false)
 }
 
 func (c *APIClient) mcp_status_data(request *http.Request) gin.H {
@@ -71,7 +78,7 @@ func (c *APIClient) mcp_status_data(request *http.Request) gin.H {
 		"status":    status,
 		"transport": "streamable_http",
 		"endpoint":  mcp_request_endpoint(request),
-		"tools":     []string{"get_platform_status", "fetch_content", "download_content"},
+		"tools":     []string{"get_platform_status", "fetch_content", "download_content", "decrypt_wxchannels_video"},
 	}
 }
 

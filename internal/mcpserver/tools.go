@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +42,29 @@ type download_content_arguments struct {
 	VideoVariantSpec  string `json:"video_variant_spec"`
 	WaitForCompletion bool   `json:"wait_for_completion"`
 	TimeoutSeconds    int    `json:"timeout_seconds"`
+}
+
+type decrypt_wxchannels_video_arguments struct {
+	FilePath string `json:"file_path"`
+	Key      string `json:"key"`
+}
+
+type wxchannels_download_preview struct {
+	Resources []wxchannels_download_resource_info `json:"Resources"`
+}
+
+type wxchannels_download_resource_info struct {
+	Resource  map[string]any                 `json:"Resource"`
+	Endpoints []wxchannels_download_endpoint `json:"Endpoints"`
+}
+
+type wxchannels_download_endpoint struct {
+	Protocol string `json:"protocol"`
+	URL      string `json:"url"`
+	Priority int    `json:"priority"`
+	Enabled  int    `json:"enabled"`
+	Headers  string `json:"headers,omitempty"`
+	Cookies  string `json:"cookies,omitempty"`
 }
 
 func new_tool_execution_error(message string, data any) error {
@@ -80,7 +105,7 @@ func tool_definitions() []any {
 		map[string]any{
 			"name":        "fetch_content",
 			"title":       "获取链接内容",
-			"description": "解析受支持的平台链接并返回规范化内容、账号、内容详情、缓存条目和下载预览。返回的 job_id 可传给 download_content，避免再次解析链接。",
+			"description": "解析受支持的平台链接并返回规范化内容、账号、内容详情、缓存条目和下载预览。微信视频号结果会额外提供 download_resources，其中包含可交给 aria2 等下载器的 download_url 和可选 decode_key。返回的 job_id 可传给 download_content，避免再次解析链接。",
 			"inputSchema": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -187,6 +212,33 @@ func tool_definitions() []any {
 				"openWorldHint":   true,
 			},
 		},
+		map[string]any{
+			"name":        "decrypt_wxchannels_video",
+			"title":       "解密微信视频号视频",
+			"description": "原地解密已经下载到本机的微信视频号视频。file_path 必须是运行下载器服务的同一台机器上的绝对路径；仅当 fetch_content 返回的 download_resources 项中 requires_decryption 为 true 时调用，并原样传入 decode_key。",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"file_path": map[string]any{
+						"type":        "string",
+						"description": "第三方下载器已下载完成的视频绝对路径。文件会被原地覆盖为解密后内容。",
+					},
+					"key": map[string]any{
+						"type":        "string",
+						"pattern":     "^[1-9][0-9]*$",
+						"description": "fetch_content 返回的 decode_key，使用字符串传递以避免整数精度丢失。",
+					},
+				},
+				"required": []string{"file_path", "key"},
+			},
+			"annotations": map[string]any{
+				"readOnlyHint":    false,
+				"destructiveHint": true,
+				"idempotentHint":  false,
+				"openWorldHint":   false,
+			},
+		},
 	}
 }
 
@@ -198,6 +250,8 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.fetch_content(ctx, params.Arguments)
 	case "download_content":
 		return s.download_content(ctx, params.Arguments)
+	case "decrypt_wxchannels_video":
+		return s.decrypt_wxchannels_video(ctx, params.Arguments)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}
@@ -234,7 +288,116 @@ func (s *Server) fetch_content(ctx context.Context, raw_arguments json.RawMessag
 	if err != nil {
 		return nil, err
 	}
-	return successful_tool_result(raw_json_value(job.Output))
+	output, err := fetch_content_output(job.Output)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(output)
+}
+
+func fetch_content_output(raw_output json.RawMessage) (any, error) {
+	var output map[string]any
+	if err := json.Unmarshal(raw_output, &output); err != nil {
+		return nil, fmt.Errorf("解析抓取结果失败: %w", err)
+	}
+	platform, _ := output["platform"].(string)
+	if strings.TrimSpace(strings.ToLower(platform)) != "wxchannels" {
+		return output, nil
+	}
+	download_info, exists := output["download_info"]
+	if !exists || download_info == nil {
+		return output, nil
+	}
+	raw_download_info, err := json.Marshal(download_info)
+	if err != nil {
+		return nil, fmt.Errorf("编码微信视频号下载资源失败: %w", err)
+	}
+	resources, err := normalize_wxchannels_download_resources(raw_download_info)
+	if err != nil {
+		return nil, err
+	}
+	output["download_resources"] = resources
+	return output, nil
+}
+
+func normalize_wxchannels_download_resources(raw_download_info json.RawMessage) ([]map[string]any, error) {
+	var preview wxchannels_download_preview
+	if err := json.Unmarshal(raw_download_info, &preview); err != nil {
+		return nil, fmt.Errorf("解析微信视频号下载资源失败: %w", err)
+	}
+	resources := make([]map[string]any, 0, len(preview.Resources))
+	for _, info := range preview.Resources {
+		download_url := preferred_download_url(info.Endpoints)
+		decode_key := resource_decode_key(info.Resource)
+		resources = append(resources, map[string]any{
+			"resource":            info.Resource,
+			"endpoints":           info.Endpoints,
+			"download_url":        download_url,
+			"decode_key":          decode_key,
+			"requires_decryption": decode_key != "",
+		})
+	}
+	return resources, nil
+}
+
+func preferred_download_url(endpoints []wxchannels_download_endpoint) string {
+	for _, endpoint := range endpoints {
+		if endpoint.Enabled != 0 && strings.TrimSpace(endpoint.URL) != "" {
+			return endpoint.URL
+		}
+	}
+	for _, endpoint := range endpoints {
+		if strings.TrimSpace(endpoint.URL) != "" {
+			return endpoint.URL
+		}
+	}
+	return ""
+}
+
+func resource_decode_key(resource map[string]any) string {
+	raw_extra, ok := resource["extra"]
+	if !ok {
+		raw_extra = resource["Extra"]
+	}
+	var extra map[string]any
+	switch value := raw_extra.(type) {
+	case string:
+		if json.Unmarshal([]byte(value), &extra) != nil {
+			return ""
+		}
+	case map[string]any:
+		extra = value
+	default:
+		return ""
+	}
+	decode_key, _ := extra["decode_key"].(string)
+	return strings.TrimSpace(decode_key)
+}
+
+func (s *Server) decrypt_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments decrypt_wxchannels_video_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	file_path := strings.TrimSpace(arguments.FilePath)
+	if file_path == "" {
+		return nil, fmt.Errorf("file_path 不能为空")
+	}
+	if !filepath.IsAbs(file_path) {
+		return nil, fmt.Errorf("file_path 必须是运行下载器服务所在机器上的绝对路径")
+	}
+	decode_key := strings.TrimSpace(arguments.Key)
+	key, err := strconv.ParseUint(decode_key, 10, 64)
+	if err != nil || key == 0 {
+		return nil, fmt.Errorf("key 必须是非零十进制整数")
+	}
+	if _, err := s.api_client.decrypt_wxchannels_video(ctx, file_path, decode_key); err != nil {
+		return nil, err
+	}
+	return successful_tool_result(map[string]any{
+		"decrypted": true,
+		"file_path": file_path,
+	})
 }
 
 func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {

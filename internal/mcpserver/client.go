@@ -98,6 +98,14 @@ func (c *api_client) get_platform_status(ctx context.Context) (json.RawMessage, 
 	return c.do_json(ctx, http.MethodGet, "/api/scraper/platform/status", nil)
 }
 
+func (c *api_client) decrypt_wxchannels_video(ctx context.Context, file_path string, key string) (json.RawMessage, error) {
+	query := url.Values{
+		"filepath": []string{file_path},
+		"key":      []string{key},
+	}
+	return c.do_json(ctx, http.MethodPost, "/api/channels/decrypt?"+query.Encode(), nil)
+}
+
 func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*scraper_job, error) {
 	body := map[string]any{"url": raw_url, "force_refresh": force_refresh}
 	raw_data, err := c.do_json(ctx, http.MethodPost, "/api/scraper/fetch", body)
