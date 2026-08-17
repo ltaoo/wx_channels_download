@@ -530,28 +530,29 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	decrypt_extra_json := build_resource_extra_json(obj.ID, title, spec, int64(obj.CreateTime), contact.Nickname, decrypt_key, 0, obj.ObjectDesc.MediaType)
 	content_id := content.Id
 
-	is_download_feed_cover := config_string(config, "suffix") == ".jpg"
+	is_download_feed_cover := config_suffix_is_cover(config)
 	// Cover download: create cover resource only
 	if is_download_feed_cover && cover_url != "" {
 		cover_config := build_config_json(config, spec, obj.ObjectDesc.MediaType)
+		task_unique_id := BuildDownloadTaskUniqueID(content.ExternalId, cover_config)
 		config_json, _ := json.Marshal(cover_config)
 		info := &adapter.DownloadTaskResult{
 			Task: &model.DownloadTask{
 				ContentId:  &content_id,
 				Name:       title,
-				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				UniqueID:   task_unique_id,
 				PlatformId: PlatformID,
 				Status:     model.TaskStatusWaiting,
 				SourceURL:  content.SourceURL,
 				CoverURL:   content.CoverURL,
 				ConfigJSON: string(config_json),
 			},
-			Resources:     []*adapter.ResourceInfo{build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json)},
+			Resources:     []*adapter.ResourceInfo{build_cover_resource_info(content_id, task_unique_id, title, cover_url, base_extra_json)},
 			Account:       account,
 			Content:       content,
 			ContentDetail: ext,
 		}
-		a.apply_download_task_name(info, cover_config, base_extra_json)
+		a.preview_download_resource_names(info, cover_config)
 		return info, nil
 	}
 
@@ -565,6 +566,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			return nil, fmt.Errorf("图片类型缺少文件数据")
 		}
 
+		picture_config := build_config_json(config, spec, wxchannels.MediaTypePicture)
+		task_unique_id := BuildDownloadTaskUniqueID(content.ExternalId, picture_config)
 		resources := make([]*adapter.ResourceInfo, 0, len(files)+2)
 		for i, file := range files {
 			media_url := get_media_url(file)
@@ -622,17 +625,16 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			})
 		}
 		if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
-			resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
+			resources = append(resources, build_cover_resource_info(content_id, build_sidecar_cover_unique_id(task_unique_id), title, cover_url, base_extra_json))
 		}
 
-		picture_config := build_config_json(config, spec, wxchannels.MediaTypePicture)
 		config_json, _ := json.Marshal(picture_config)
 
 		info := &adapter.DownloadTaskResult{
 			Task: &model.DownloadTask{
 				ContentId:  &content_id,
 				Name:       title,
-				UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+				UniqueID:   task_unique_id,
 				PlatformId: PlatformID,
 				Status:     model.TaskStatusWaiting,
 				SourceURL:  content.SourceURL,
@@ -644,7 +646,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			Account:       account,
 			Content:       content,
 		}
-		a.apply_download_task_name(info, picture_config, base_extra_json)
+		a.preview_download_resource_names(info, picture_config)
 		return info, nil
 	}
 
@@ -655,15 +657,12 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 	}
 
 	video_config := build_config_json(config, spec, obj.ObjectDesc.MediaType)
+	task_unique_id := BuildDownloadTaskUniqueID(content.ExternalId, video_config)
 	config_json, _ := json.Marshal(video_config)
 
-	resource_unique_id := content.ExternalId
+	resource_unique_id := task_unique_id
 	resource_kind := mime_video_mp4
-	if spec != "" {
-		resource_unique_id = content.ExternalId + "_" + spec
-	}
 	if config_suffix_is_mp3(config) {
-		resource_unique_id += "_mp3"
 		resource_kind = mime_audio_mpeg
 	}
 	video_resource := model.DownloadResource{
@@ -703,14 +702,14 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		}},
 	}}
 	if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
-		resources = append(resources, build_cover_resource_info(content_id, content.ExternalId, title, cover_url, base_extra_json))
+		resources = append(resources, build_cover_resource_info(content_id, build_sidecar_cover_unique_id(task_unique_id), title, cover_url, base_extra_json))
 	}
 
 	info := &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:  &content_id,
 			Name:       title,
-			UniqueID:   BuildDownloadTaskUniqueID(content.ExternalId, map[string]any{"suffix": config_string(config, "suffix"), "spec": spec}),
+			UniqueID:   task_unique_id,
 			PlatformId: PlatformID,
 			Status:     model.TaskStatusWaiting,
 			SourceURL:  content.SourceURL,
@@ -722,17 +721,17 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		Account:       account,
 		Content:       content,
 	}
-	a.apply_download_task_name(info, video_config, decrypt_extra_json)
+	a.preview_download_resource_names(info, video_config)
 	return info, nil
 }
 
-func build_cover_resource_info(content_id, external_id, title, cover_url, extra_json string) *adapter.ResourceInfo {
+func build_cover_resource_info(content_id, resource_unique_id, title, cover_url, extra_json string) *adapter.ResourceInfo {
 	return &adapter.ResourceInfo{
 		Resource: model.DownloadResource{
 			ContentId:  &content_id,
 			Name:       title,
 			Kind:       mime_image_jpeg,
-			UniqueID:   external_id + "_cover",
+			UniqueID:   resource_unique_id,
 			MergeOrder: 0,
 			Extra:      extra_json,
 		},
@@ -748,6 +747,10 @@ func build_cover_resource_info(content_id, external_id, title, cover_url, extra_
 			Relation: model.DownloadResourceAssetRelationSource,
 		}},
 	}
+}
+
+func build_sidecar_cover_unique_id(task_unique_id string) string {
+	return task_unique_id + "_sidecar_cover"
 }
 
 // build_live_download_task builds a live-stream download task from a joinLive response.
@@ -867,7 +870,7 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		Account:       account,
 		Content:       content,
 	}
-	a.apply_download_task_name(info, live_config, stream_resource.Extra)
+	a.preview_download_resource_names(info, live_config)
 	return info, nil
 }
 
@@ -1165,18 +1168,20 @@ func sanitize_bgm_name(name string) string {
 
 // BuildDownloadTaskUniqueID computes a unique task ID from the content ID and download configuration.
 func BuildDownloadTaskUniqueID(external_id string, config map[string]any) string {
-	suffix_config := config_string(config, "suffix")
-	if suffix_config == ".jpg" {
+	suffix_config := normalized_config_suffix(config)
+	if suffix_config == "jpg" || suffix_config == "jpeg" {
 		return external_id + "_cover"
 	}
-	var suffix string
+	unique_id := external_id
 	if spec := config_string(config, "spec"); spec != "" {
-		suffix = "_" + spec
+		unique_id += "_" + spec
 	}
-	if config_suffix_is_mp3(config) {
-		suffix += "_mp3"
+	if suffix_config != "" {
+		if suffix := safe_identifier(suffix_config); suffix != "" {
+			unique_id += "_" + suffix
+		}
 	}
-	return external_id + suffix
+	return unique_id
 }
 
 // build_resource_extra_json builds the resource.Extra JSON string.
@@ -1218,55 +1223,13 @@ func build_resource_extra_json(id, title, spec string, created_at int64, author 
 	return string(data)
 }
 
-func (a *ChannelsAdapter) apply_download_task_name(info *adapter.DownloadTaskResult, config map[string]any, task_extra_json string) {
+func (a *ChannelsAdapter) preview_download_resource_names(info *adapter.DownloadTaskResult, config map[string]any) {
 	if info == nil || info.Task == nil {
 		return
 	}
 	hooks, logger := a.filename_hook_context()
 	template := a.filename_template()
-	if len(info.Resources) == 1 && info.Resources[0] != nil && !config_suffix_is_archive(config) {
-		a.apply_single_resource_task_name(info, config, hooks, logger)
-	} else if template != "" || (hooks != nil && hooks.HasFilenameHook()) {
-		extra := resource_extra_map(task_extra_json)
-		if extra == nil && len(info.Resources) > 0 && info.Resources[0] != nil {
-			extra = resource_extra_map(info.Resources[0].Resource.Extra)
-		}
-		task_kind := ""
-		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
-			TaskID:           info.Task.Id,
-			TaskConfig:       config,
-			FilenameTemplate: template,
-			ResourceName:     info.Task.Name,
-			ResourceKind:     task_kind,
-			ResourceExtra:    extra,
-			Hooks:            hooks,
-		})
-		log_filename_resolution(logger, resolved)
-		if resolved.BaseName != "" {
-			info.Task.Name = resolved.BaseName
-		}
-	}
-
 	apply_download_resource_names(info, config, template, hooks, logger)
-}
-
-func (a *ChannelsAdapter) apply_single_resource_task_name(info *adapter.DownloadTaskResult, config map[string]any, hooks *hermes.HookManager, logger *zerolog.Logger) {
-	resource := info.Resources[0].Resource
-	resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
-		TaskID:           info.Task.Id,
-		TaskConfig:       config,
-		FilenameTemplate: a.filename_template(),
-		ResourceID:       resource.Id,
-		ResourceName:     resource.Name,
-		ResourceKind:     resource.Kind,
-		ResourceType:     resource.Type,
-		ResourceExtra:    resource_extra_map(resource.Extra),
-		Hooks:            hooks,
-	})
-	log_filename_resolution(logger, resolved)
-	if resolved.BaseName != "" {
-		info.Task.Name = resolved.BaseName
-	}
 }
 
 func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[string]any, template string, hooks *hermes.HookManager, logger *zerolog.Logger) {
@@ -1280,6 +1243,7 @@ func apply_download_resource_names(info *adapter.DownloadTaskResult, config map[
 		resource := &resource_info.Resource
 		resolved := hermes.BuildFinalResourceName(hermes.FinalResourceNameInput{
 			TaskID:           info.Task.Id,
+			TaskName:         info.Task.Name,
 			TaskConfig:       config,
 			FilenameTemplate: template,
 			ResourceID:       resource.Id,
@@ -1355,14 +1319,18 @@ func resource_extra_map(raw string) map[string]string {
 	return extra
 }
 
-func config_suffix_is_archive(config map[string]any) bool {
-	suffix := strings.TrimSpace(config_string(config, "suffix"))
-	return strings.EqualFold(suffix, ".zip") || strings.EqualFold(suffix, "zip")
+func normalized_config_suffix(config map[string]any) string {
+	suffix := strings.ToLower(strings.TrimSpace(config_string(config, "suffix")))
+	return strings.TrimLeft(suffix, ".")
+}
+
+func config_suffix_is_cover(config map[string]any) bool {
+	suffix := normalized_config_suffix(config)
+	return suffix == "jpg" || suffix == "jpeg"
 }
 
 func config_suffix_is_mp3(config map[string]any) bool {
-	suffix := strings.TrimSpace(config_string(config, "suffix"))
-	return strings.EqualFold(suffix, ".mp3") || strings.EqualFold(suffix, "mp3")
+	return normalized_config_suffix(config) == "mp3"
 }
 
 // build_config_json returns a map containing the config fields whose value is set / true,

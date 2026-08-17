@@ -307,16 +307,15 @@ func clone_task_job(job *TaskJob) *TaskJob {
 		resources[i].Extra = clone_string_map(resource.Extra)
 	}
 	return &TaskJob{
-		ID:               job.ID,
-		Name:             job.Name,
-		UniqueID:         job.UniqueID,
-		DownloadDir:      job.DownloadDir,
-		FilenameTemplate: job.FilenameTemplate,
-		Platform:         job.Platform,
-		ProxyServer:      job.ProxyServer,
-		Resources:        resources,
-		Config:           clone_any_map(job.Config),
-		Metadata:         clone_any_map(job.Metadata),
+		ID:          job.ID,
+		Name:        job.Name,
+		UniqueID:    job.UniqueID,
+		DownloadDir: job.DownloadDir,
+		Platform:    job.Platform,
+		ProxyServer: job.ProxyServer,
+		Resources:   resources,
+		Config:      clone_any_map(job.Config),
+		Metadata:    clone_any_map(job.Metadata),
 	}
 }
 

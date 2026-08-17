@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -344,6 +345,17 @@ type ContentListResult struct {
 	PageSize int               `json:"page_size"`
 }
 
+func sort_content_resources_by_created_at_desc(resources []ContentResourceRecord) {
+	sort.SliceStable(resources, func(left_index, right_index int) bool {
+		left := resources[left_index]
+		right := resources[right_index]
+		if left.CreatedAt != right.CreatedAt {
+			return left.CreatedAt > right.CreatedAt
+		}
+		return left.ID > right.ID
+	})
+}
+
 // load_content_relations loads accounts, influencers, download tasks, and
 // resources for the given content IDs. It is shared by ListContents and
 // GetContentDetail.
@@ -627,7 +639,7 @@ func (s *ContentService) load_content_extension(content model.Content) (string, 
 		var detail model.ContentVideo
 		if err := s.db.
 			Preload("Variants", func(db *gorm.DB) *gorm.DB {
-				return db.Where("deleted_at IS NULL").Order("is_default DESC, height DESC, bitrate DESC, asset_id ASC")
+				return db.Where("deleted_at IS NULL").Order("created_at DESC, asset_id DESC")
 			}).
 			Preload("Variants.Asset", "deleted_at IS NULL").
 			Preload("Variants.Asset.DownloadResources", func(db *gorm.DB) *gorm.DB {
@@ -1216,6 +1228,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 	if resources == nil {
 		resources = make([]ContentResourceRecord, 0)
 	}
+	sort_content_resources_by_created_at_desc(resources)
 	detail_type, detail, err := s.load_content_extension(content)
 	if err != nil {
 		return nil, err

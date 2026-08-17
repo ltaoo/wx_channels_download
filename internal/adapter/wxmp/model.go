@@ -451,6 +451,8 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		image_resources = parse_content_images(data.ContentNoencode, content_id, external_id, extra_json)
 	}
 
+	// Keep the cover URL as task metadata only. The wxmp adapter must not add a
+	// separate cover DownloadResource by default.
 	cover_url := strings.TrimSpace(data.CdnURL)
 	source_url := strings.TrimSpace(data.SourceURL)
 	if source_url == "" {

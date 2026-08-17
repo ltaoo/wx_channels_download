@@ -525,34 +525,47 @@ func (d *HermesEngine) download_segment(
 	speed_sampler := new_progress_speed_sampler(time.Now(), downloaded)
 	last_seg_log := time.Now()
 	last_seg_log_downloaded := downloaded
+	connection_attempt := 0
+	stalled_attempts := 0
+	var last_err error
 
-	for attempt := 0; attempt < max_read_attempts; attempt++ {
+	// A CDN may intentionally return less than the requested range, or close a
+	// long response early. Such a connection is still useful when it delivered
+	// bytes: resume at the new offset and only exhaust the retry budget after
+	// consecutive attempts that make no progress.
+	for stalled_attempts < max_read_attempts {
 		if err := context.Cause(ctx); err != nil {
 			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: err}
 			return
 		}
+		connection_attempt++
+		attempt_start := downloaded
 		request := ReadRequest{OffsetStart: segment.OffsetStart + downloaded, OffsetEnd: segment.OffsetEnd, UseRange: true}
 		open_start := time.Now()
 		d.logger.Info().
 			Int("slot", slot).
-			Int("attempt", attempt+1).
+			Int("attempt", connection_attempt).
+			Int("consecutive_stalls", stalled_attempts).
 			Int64("offset", segment.OffsetStart+downloaded).
 			Int64("remaining", segment.Size-downloaded).
 			Msg("seg: Open() starting")
 		reader, err := driver.Open(ctx, endpoint, request)
 		open_elapsed := time.Since(open_start)
 		if err != nil {
+			last_err = err
+			stalled_attempts++
 			d.logger.Info().
 				Int("slot", slot).
-				Int("attempt", attempt+1).
+				Int("attempt", connection_attempt).
+				Int("consecutive_stalls", stalled_attempts).
 				Dur("elapsed", open_elapsed).
 				Err(err).
 				Msg("seg: Open() failed")
-			if attempt == max_read_attempts-1 {
+			if stalled_attempts >= max_read_attempts {
 				progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: err}
 				return
 			}
-			if !wait_for_retry(ctx, attempt) {
+			if !wait_for_retry(ctx, stalled_attempts-1) {
 				progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 				return
 			}
@@ -560,7 +573,7 @@ func (d *HermesEngine) download_segment(
 		}
 		d.logger.Info().
 			Int("slot", slot).
-			Int("attempt", attempt+1).
+			Int("attempt", connection_attempt).
 			Dur("open_elapsed", open_elapsed).
 			Msg("seg: Open() done, reading")
 
@@ -621,6 +634,11 @@ func (d *HermesEngine) download_segment(
 			}
 			if read_err != nil {
 				reader.Close()
+				if errors.Is(read_err, io.EOF) {
+					last_err = io.ErrUnexpectedEOF
+				} else {
+					last_err = read_err
+				}
 				if errors.Is(read_err, err_read_timeout) {
 					d.logger.Info().
 						Int("slot", slot).
@@ -651,12 +669,27 @@ func (d *HermesEngine) download_segment(
 			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true}
 			return
 		}
-		if attempt < max_read_attempts-1 && !wait_for_retry(ctx, attempt) {
+		if downloaded > attempt_start {
+			stalled_attempts = 0
+		} else {
+			stalled_attempts++
+		}
+		if stalled_attempts >= max_read_attempts {
+			break
+		}
+		retry_attempt := stalled_attempts - 1
+		if retry_attempt < 0 {
+			retry_attempt = 0
+		}
+		if !wait_for_retry(ctx, retry_attempt) {
 			progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 			return
 		}
 	}
-	progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: io.ErrUnexpectedEOF}
+	if last_err == nil {
+		last_err = io.ErrUnexpectedEOF
+	}
+	progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: last_err}
 }
 
 func file_has_size(path string, size int64) bool {

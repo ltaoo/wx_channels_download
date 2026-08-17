@@ -339,7 +339,7 @@ func (r *WebsocketRoutes) HandleDecryptVideo(ctx *gin.Context) {
 		result.Err(ctx, 400, "filepath parameter is required")
 		return
 	}
-	key, err := strconv.Atoi(ctx.Query("key"))
+	key, err := strconv.ParseUint(ctx.Query("key"), 10, 64)
 	if err != nil || key == 0 {
 		result.Err(ctx, 400, "key parameter is required and must be a non-zero integer")
 		return
@@ -351,7 +351,7 @@ func (r *WebsocketRoutes) HandleDecryptVideo(ctx *gin.Context) {
 		return
 	}
 
-	wxchannels.DecryptData(data, 131072, uint64(key))
+	wxchannels.DecryptData(data, 131072, key)
 
 	if err := os.WriteFile(filepath, data, 0644); err != nil {
 		result.Err(ctx, 400, "failed to write file: "+err.Error())

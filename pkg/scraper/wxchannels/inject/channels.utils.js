@@ -1187,6 +1187,9 @@ ${payload.key || ""}`,
         WXU.error({ msg: err.message, source: "channels.utils.js:1219" });
         return;
       }
+      if (data.skipped) {
+        return;
+      }
       WXU.toast("创建下载任务成功");
       return;
     }

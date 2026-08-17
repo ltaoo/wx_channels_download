@@ -62,12 +62,11 @@ type Endpoint struct {
 // post-processing finishes. Task-level input and runtime state belong here;
 // resource-level state belongs to ResourceJob.
 type TaskJob struct {
-	ID               int
-	Name             string
-	UniqueID         string // Task-level platform unique identifier
-	DownloadDir      string
-	FilenameTemplate string
-	Platform         string // PlatformId from DB, used by postprocessor for platform routing
+	ID          int
+	Name        string
+	UniqueID    string // Task-level platform unique identifier
+	DownloadDir string
+	Platform    string // PlatformId from DB, used by postprocessor for platform routing
 	// ProxyServer applies to every network endpoint in this task. When its
 	// address is empty, Config["proxy_server"] is used.
 	ProxyServer ProxyServer
@@ -730,7 +729,6 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	info.Name = loaded.Name
 	info.UniqueID = loaded.UniqueID
 	info.DownloadDir = loaded.DownloadDir
-	info.FilenameTemplate = loaded.FilenameTemplate
 	info.Platform = loaded.Platform
 	info.ProxyServer = loaded.ProxyServer
 	info.Resources = loaded.Resources
