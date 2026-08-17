@@ -1,16 +1,24 @@
-import { Pagination } from "../components.js";
+import {
+  Button,
+  Input,
+  Pagination,
+} from "../components.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
   return View(
     {
-      class: "wx-content-page wx-browse-history-page dm-page",
+      class:
+        "wx-content-page wx-content-library-page wx-browse-history-page dm-page",
       onMounted() {
         vm$.methods.ready();
       },
     },
     [
+      View({ class: "wx-content-toolbar-wrap" }, [
+        BrowseHistoryPageToolbar({ store: vm$ }),
+      ]),
       BrowseHistoryPageBody({ store: vm$ }),
       Show({
         when: computed(
@@ -37,31 +45,78 @@ function BrowseHistoryPageView(props) {
 }
 
 function BrowseHistoryPageActionButton(props) {
-  return View(
+  return Button(
     {
-      type: "button",
+      store: props.store,
       class: [
-        "wx-content-action dm-button dm-focus-ring",
+        "wx-content-page-button",
         props.compact ? "wx-content-action-compact" : "",
         props.class,
       ]
         .filter(Boolean)
         .join(" "),
       attributes: {
-        type: "button",
+        type: props.type || "button",
         title: props.title || "",
         ...(props.attributes || {}),
       },
       onClick: props.onClick,
-    },
-    [
-      props.icon
+      prefix: props.icon
         ? Timeless.Icon({ name: props.icon, size: props.iconSize || 16 })
         : null,
-      props.label
-        ? View({ class: "wx-content-action-label" }, [props.label])
-        : null,
-    ].filter(Boolean),
+    },
+    props.label
+      ? [View({ class: "wx-content-action-label" }, [props.label])]
+      : [],
+  );
+}
+
+function BrowseHistoryPageToolbar(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      type: "form",
+      class: "wx-content-toolbar wx-content-filter-form",
+      attributes: { role: "search" },
+      onSubmit(event) {
+        event.preventDefault();
+        vm$.methods.search();
+      },
+    },
+    [
+      View({ class: "wx-content-filter-fields" }, [
+        View({ class: "wx-content-search wx-content-filter-search" }, [
+          Timeless.Icon({ name: "search", size: 16 }),
+          Input({
+            store: vm$.ui.input_keyword$,
+            class: "wx-content-search-input",
+            attributes: {
+              name: "keyword",
+              type: "text",
+              autocomplete: "off",
+              "aria-label": "搜索浏览记录标题、账号或链接",
+            },
+          }),
+        ]),
+      ]),
+      View({ class: "wx-content-filter-actions" }, [
+        BrowseHistoryPageActionButton({
+          store: vm$.ui.btn_search$,
+          icon: "search",
+          label: "搜索",
+          type: "submit",
+          onClick(event) {
+            event.preventDefault();
+            vm$.methods.search();
+          },
+        }),
+        BrowseHistoryPageActionButton({
+          store: vm$.ui.btn_refresh$,
+          icon: "rotate-ccw",
+          label: "重置",
+        }),
+      ]),
+    ],
   );
 }
 
@@ -97,7 +152,10 @@ function BrowseHistoryRow(props) {
   const history = props.history;
   return View(
     {
-      class: ["wx-content-row", history.url ? "wx-content-row-clickable" : ""]
+      class: [
+        "wx-content-row",
+        history.source_url ? "wx-content-row-clickable" : "",
+      ]
         .filter(Boolean)
         .join(" "),
       onClick() {
@@ -294,11 +352,9 @@ function BrowseHistoryPageBody(props) {
               View({ class: "wx-content-state-title" }, ["浏览记录加载失败"]),
               View({ class: "wx-content-state-text" }, [vm$.state.error]),
               BrowseHistoryPageActionButton({
+                store: vm$.ui.btn_retry$,
                 icon: "refresh-cw",
                 label: "重试",
-                onClick() {
-                  vm$.methods.refresh();
-                },
               }),
             ]);
           },
@@ -323,9 +379,19 @@ function BrowseHistoryPageBody(props) {
               else() {
                 return View({ class: "wx-content-state" }, [
                   Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "wx-content-state-title" }, ["暂无浏览记录"]),
+                  View({ class: "wx-content-state-title" }, [
+                    computed(vm$.state.keyword, (keyword) =>
+                      String(keyword || "").trim()
+                        ? "没有匹配的浏览记录"
+                        : "暂无浏览记录",
+                    ),
+                  ]),
                   View({ class: "wx-content-state-text" }, [
-                    "当前条件下未找到浏览记录",
+                    computed(vm$.state.keyword, (keyword) =>
+                      String(keyword || "").trim()
+                        ? "请尝试其他标题、账号或链接"
+                        : "当前条件下未找到浏览记录",
+                    ),
                   ]),
                 ]);
               },

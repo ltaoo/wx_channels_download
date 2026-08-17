@@ -109,6 +109,8 @@ function normalize_browse_history_item(raw) {
       source.URL,
       source.content_url,
       source.ContentURL,
+    ),
+    source_url: first_non_empty(
       source.source_url,
       source.SourceURL,
     ),
@@ -248,12 +250,22 @@ function BrowseHistoryViewModel(props) {
   const total_ = ref(0);
   const page_ = ref(1);
   const page_size_ = ref(PAGE_SIZE_DEFAULT);
+  const keyword_ = ref("");
   const platform_id_ = ref("");
   const loading_ = ref(false);
   const error_ = ref("");
   let request_sequence = 0;
 
   const ui = {
+    input_keyword$: new Timeless.vm.InputCore({
+      defaultValue: keyword_.value,
+      placeholder: "搜索标题、账号或链接",
+      type: "search",
+      allowClear: true,
+      onChange(value) {
+        set_keyword(value);
+      },
+    }),
     select_platform$: new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部平台",
@@ -286,7 +298,45 @@ function BrowseHistoryViewModel(props) {
         load(1);
       },
     }),
+    btn_search$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "primary",
+    }),
+    btn_refresh$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "outline",
+      onClick() {
+        keyword_.as("");
+        return load(1);
+      },
+    }),
+    btn_retry$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "outline",
+      onClick() {
+        return load(page_.value);
+      },
+    }),
   };
+
+  keyword_.subscribe({
+    onChange(value) {
+      if (ui.input_keyword$.value !== value) {
+        ui.input_keyword$.setValue(value, { silence: true });
+      }
+    },
+  });
+  loading_.subscribe({
+    onChange(loading) {
+      [ui.btn_search$, ui.btn_refresh$, ui.btn_retry$].forEach((button) => {
+        if (loading) {
+          button.disable();
+        } else {
+          button.enable();
+        }
+      });
+    },
+  });
 
   const list_request = new Timeless.kit.RequestCore(
     (params) =>
@@ -346,6 +396,10 @@ function BrowseHistoryViewModel(props) {
     if (platformId) {
       params.platform_id = platformId;
     }
+    const keyword = String(keyword_.value || "").trim();
+    if (keyword) {
+      params.keyword = keyword;
+    }
 
     const result = await list_request.run(params);
     if (sequence !== request_sequence) {
@@ -365,13 +419,21 @@ function BrowseHistoryViewModel(props) {
     return result;
   }
 
+  function set_keyword(value) {
+    keyword_.as(String(value || ""));
+  }
+
   const methods = {
     ready() {
       return load(1);
     },
     refresh() {
-      return load(page_.value);
+      return load(1);
     },
+    search() {
+      return load(1);
+    },
+    setKeyword: set_keyword,
     previousPage() {
       if (page_.value <= 1 || loading_.value) {
         return null;
@@ -385,10 +447,10 @@ function BrowseHistoryViewModel(props) {
       return load(page_.value + 1);
     },
     openSource(history) {
-      if (!history || !history.url) {
+      if (!history || !history.source_url) {
         return;
       }
-      window.open(history.url, "_blank", "noopener,noreferrer");
+      window.open(history.source_url, "_blank", "noopener,noreferrer");
     },
     platformFavicon: browse_history_platform_favicon,
     platformName: browse_history_platform_name,
@@ -402,6 +464,7 @@ function BrowseHistoryViewModel(props) {
     total: total_,
     page: page_,
     page_size: page_size_,
+    keyword: keyword_,
     page_count: page_count_,
     range_text: range_text_,
     initial_loading: initial_loading_,

@@ -520,15 +520,16 @@ function content_asset_previews(content, vm$) {
     });
   };
 
-  for (const asset of content_detail_assets(content)) {
+  const content_assets = vm$.methods.contentMediaAssets(
+    content_detail_assets(content),
+  );
+  for (const asset of content_assets) {
     const linked_resources = content_asset_resources(
       asset,
       content.resources,
     );
     if (linked_resources.length) {
       linked_resources.forEach((resource) => append_resource(resource, asset));
-    } else {
-      append_resource({}, asset);
     }
   }
 
@@ -947,7 +948,10 @@ function ContentDetailResource(props) {
             ["已删除"],
           )
         : null,
-      !deleted && resource.exists && vm$.methods.resourceFileURL(resource)
+      !deleted &&
+      !resource.download_task_in_progress &&
+      resource.exists &&
+      vm$.methods.resourceFileURL(resource)
         ? ContentDetailAction({
             icon: "folder-open",
             title: "打开文件",
@@ -1153,13 +1157,17 @@ function ContentDetailMain(props) {
       title: "内容",
       children: [ContentDetailExtension({ store: vm$, content })],
     }),
-    ContentDetailSection({
-      title: "关联内容",
-      count: content.relations ? content.relations.total : 0,
-      children: [
-        ContentDetailRelations({ content, history: props.history }),
-      ],
-    }),
+    ...(content.relations && content.relations.has_content
+      ? [
+          ContentDetailSection({
+            title: "关联内容",
+            count: content.relations.total,
+            children: [
+              ContentDetailRelations({ content, history: props.history }),
+            ],
+          }),
+        ]
+      : []),
     ContentDetailSection({
       title: "文件",
       count: content.resources.length,

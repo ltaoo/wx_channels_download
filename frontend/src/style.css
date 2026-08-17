@@ -4957,6 +4957,7 @@ body[data-weui-theme="dark"]
   min-height: 0;
 }
 .wx-dl-page-root {
+  position: relative;
   height: 100vh;
   min-height: 0;
   display: flex;
@@ -5256,7 +5257,7 @@ body[data-weui-theme="dark"]
   flex: 0 0 auto;
 }
 .wx-dl-page-selection-bar {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: max(var(--dm-space-4), env(safe-area-inset-bottom));
   z-index: var(--dm-z-sticky);
