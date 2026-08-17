@@ -328,11 +328,34 @@ window.PLATFORM_FAVICONS = Object.freeze({
    * @returns
    */
   function ErrorFallbackView(error, view_name) {
-    return View({ class: "route-error dm-page dm-grid dm-place-center dm-p-8" }, [
-      View({ as: "strong" }, ["页面加载失败"]),
-      View({ as: "span" }, [view_name || "未知页面"]),
-      View({ as: "pre" }, [error.message]),
-    ]);
+    return View(
+      {
+        class: "route-error dm-page dm-grid dm-place-center dm-p-8",
+        attributes: { role: "alert" },
+      },
+      [
+        View({ class: "route-error-card" }, [
+          View(
+            {
+              class: "route-error-card__icon",
+              attributes: { "aria-hidden": "true" },
+            },
+            [Timeless.Icon({ name: "circle-alert", size: 24 })],
+          ),
+          View({ class: "route-error-card__content" }, [
+            View({ as: "strong", class: "route-error-card__title" }, [
+              "页面加载失败",
+            ]),
+            View({ as: "span", class: "route-error-card__context" }, [
+              view_name || "未知页面",
+            ]),
+          ]),
+          View({ as: "pre", class: "route-error-card__detail" }, [
+            error.message,
+          ]),
+        ]),
+      ],
+    );
   }
 
   var settings_request = Timeless.kit.request_factory({
@@ -894,11 +917,27 @@ window.PLATFORM_FAVICONS = Object.freeze({
             ]),
           ]),
         ]),
+        View({ as: "li", class: "settings-mcp__step" }, [
+          View({ class: "settings-mcp__step-number" }, ["4"]),
+          View({ class: "settings-mcp__step-body" }, [
+            View({ class: "settings-mcp__step-title" }, [
+              "视频号外部下载与解密",
+            ]),
+            View({ class: "settings-mcp__step-description" }, [
+              "fetch_content 的 download_resources 提供下载地址和可选 key。可交给 aria2 等工具下载到运行本服务的机器；仅 requires_decryption 为 true 时，使用绝对路径原地解密。",
+            ]),
+            View({ as: "pre", class: "settings-mcp__example" }, [
+              View({ as: "code" }, [
+                'decrypt_wxchannels_video({\n  "file_path": "<已下载文件的绝对路径>",\n  "key": "<decode_key>"\n})',
+              ]),
+            ]),
+          ]),
+        ]),
       ]),
       View({ class: "settings-mcp__prompt" }, [
         View({ class: "settings-mcp__prompt-label" }, ["可以直接对 Agent 说"]),
         View({ as: "blockquote", class: "settings-mcp__prompt-content" }, [
-          "使用 dm MCP 处理这个链接：<内容链接>。先检查平台状态并解析内容，向我展示标题和下载项；得到我的确认后创建下载任务，等待完成并返回任务 ID 与文件路径。",
+          "使用 dm MCP 处理这个链接：<内容链接>。先检查平台状态并解析内容，向我展示标题和下载项；得到我的确认后创建下载任务。若微信视频号改用 aria2 等外部下载器，请使用 download_resources 的地址下载到服务所在机器，并仅在存在 decode_key 时调用解密工具。",
         ]),
       ]),
     ]);

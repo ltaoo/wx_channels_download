@@ -2129,16 +2129,87 @@ textarea {
 }
 
 .route-error {
-  flex-direction: column;
-  gap: var(--dm-space-3);
-  color: var(--dm-color-danger);
-  background: var(--dm-color-danger-soft);
+  background:
+    radial-gradient(
+      circle at 50% 38%,
+      var(--dm-color-danger-soft),
+      transparent min(360px, 46vw)
+    ),
+    var(--dm-color-bg-canvas);
 }
 
-.route-error pre {
+.route-error-card {
+  position: relative;
+  width: min(100%, 520px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--dm-space-4);
+  padding: var(--dm-space-6);
+  overflow: hidden;
+  color: var(--dm-color-text-primary);
+  background: var(--dm-color-bg-surface);
+  border: var(--dm-border-width) solid var(--dm-color-danger-border);
+  border-radius: var(--dm-radius-xl);
+  box-shadow: var(--dm-shadow-lg);
+}
+
+.route-error-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--dm-space-1);
+  background: var(--dm-color-danger);
+}
+
+.route-error-card__icon {
+  width: var(--dm-control-height-lg);
+  height: var(--dm-control-height-lg);
+  display: grid;
+  place-items: center;
+  color: var(--dm-color-danger);
+  background: var(--dm-color-danger-soft);
+  border: var(--dm-border-width) solid var(--dm-color-danger-border);
+  border-radius: var(--dm-radius-lg);
+}
+
+.route-error-card__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--dm-space-1);
+}
+
+.route-error-card__title {
+  font-family: var(--dm-font-family-display);
+  font-size: var(--dm-font-size-xl);
+  line-height: var(--dm-line-height-tight);
+}
+
+.route-error-card__context {
+  overflow: hidden;
+  color: var(--dm-color-text-secondary);
+  font-size: var(--dm-font-size-sm);
+  line-height: var(--dm-line-height-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-error-card__detail {
+  grid-column: 1 / -1;
   max-width: 100%;
+  margin: var(--dm-space-1) 0 0;
+  padding: var(--dm-space-3) var(--dm-space-4);
   overflow: auto;
+  color: var(--dm-color-danger);
+  font-family: var(--dm-font-family-mono);
+  font-size: var(--dm-font-size-sm);
+  line-height: var(--dm-line-height-relaxed);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--dm-color-danger-soft);
+  border: var(--dm-border-width) solid var(--dm-color-danger-border);
+  border-radius: var(--dm-radius-md);
 }
 
 /* Application workspace: compact shadcn-like hierarchy with a folder motif. */
