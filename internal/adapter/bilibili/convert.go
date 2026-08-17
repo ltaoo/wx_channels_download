@@ -106,13 +106,14 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 
 	now := util.NowMillis()
 	return &model.Content{
-		Id:         BuildContentID(video_info.VideoID),
-		PlatformId: PlatformID,
-		ExternalId: video_info.VideoID,
-		Type:       "video",
-		Title:      video_info.Title,
-		URL:        video_info.URL,
-		CoverURL:   video_info.CoverURL,
+		Id:          BuildContentID(video_info.VideoID),
+		PlatformId:  PlatformID,
+		ExternalId:  video_info.VideoID,
+		Type:        "video",
+		Title:       video_info.Title,
+		URL:         video_info.URL,
+		CoverURL:    video_info.CoverURL,
+		PublishTime: bilibili_publish_time(video_info),
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -142,16 +143,7 @@ func (h *handler) ToAccount(data any) (*model.Account, error) {
 	}
 
 	now := util.NowMillis()
-	return &model.Account{
-		Id:         BuildAccountID(video_info.VideoID),
-		PlatformId: PlatformID,
-		ExternalId: video_info.VideoID,
-		Nickname:   "B站用户",
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}, nil
+	return build_bilibili_account(video_info, video_info.VideoID, now), nil
 }
 
 func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
@@ -173,9 +165,10 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 		Type: "video",
 		Key:  content_id,
 		Data: &model.ContentVideo{
-			Id:     content_id,
-			URL:    video_info.URL,
-			Format: "mp4",
+			Id:       content_id,
+			URL:      video_info.URL,
+			Format:   "mp4",
+			Variants: bilibili_video_variants(video_info, h.get_logger()),
 		},
 	}}, nil
 }
@@ -201,5 +194,5 @@ func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessa
 	if err != nil {
 		return nil, err
 	}
-	return build_task_from_video_info(video_info, "", config)
+	return build_task_from_video_info(video_info, "", config, h.get_logger())
 }

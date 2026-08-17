@@ -2,6 +2,7 @@ package bilibili
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,17 +15,25 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 )
 
-const bilibili_log_preview_limit = 2048
+const (
+	bilibili_cookie_domain     = ".bilibili.com"
+	bilibili_log_preview_limit = 2048
+)
 
 // Client is the Bilibili video scraper client.
 type Client struct {
-	cookie      string
-	http_client *http.Client
-	headers     map[string]string
-	logger      zerolog.Logger
-	request_seq atomic.Uint64
+	cookie          string
+	cookie_provider *cookies.Reader
+	http_client     *http.Client
+	headers         map[string]string
+	logger          zerolog.Logger
+	file_cache      *cache.CacheProvider
+	request_seq     atomic.Uint64
 }
 
 // NewClient creates a new Bilibili client.
@@ -34,12 +43,20 @@ func NewClient(cookie string) *Client {
 
 // NewClientWithLogger creates a Bilibili client with structured API diagnostics.
 func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
+	return NewClientWithLoggerAndCookieProvider(cookie, nil, parent_logger)
+}
+
+// NewClientWithLoggerAndCookieProvider creates a Bilibili client with
+// structured diagnostics and persistent cookies. An explicit Cookie header
+// takes precedence over cookies read from cookie_provider.
+func NewClientWithLoggerAndCookieProvider(cookie string, cookie_provider *cookies.Reader, parent_logger *zerolog.Logger) *Client {
 	logger := zerolog.Nop()
 	if parent_logger != nil {
 		logger = parent_logger.With().Str("component", "bilibili_scraper").Logger()
 	}
 	return &Client{
-		cookie: cookie,
+		cookie:          strings.TrimSpace(cookie),
+		cookie_provider: cookie_provider,
 		http_client: &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
@@ -54,6 +71,15 @@ func NewClientWithLogger(cookie string, parent_logger *zerolog.Logger) *Client {
 		},
 		logger: logger,
 	}
+}
+
+// SetPersistentCache configures the namespace-scoped persistent HTML cache
+// used by BV page requests.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c == nil {
+		return
+	}
+	c.file_cache = file_cache
 }
 
 // Fetch retrieves the structured result for a supported Bilibili URL.
@@ -87,6 +113,9 @@ func (c *Client) GetVideoInfo(raw_url string, page_num int) ([]*VideoInfo, error
 
 	// Regular video BV/AV
 	if c.is_common_video(final_url) {
+		if _, ok := ParseBVURL(final_url); ok {
+			return c.parse_bv_video(final_url, page_num)
+		}
 		return c.parse_common_video(final_url, page_num)
 	}
 
@@ -117,7 +146,14 @@ func (c *Client) is_bilibili_url(u string) bool {
 
 // resolve_url follows short link redirects.
 func (c *Client) resolve_url(u string) (string, error) {
-	resp, err := c.http_client.Get(u)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return u, err
+	}
+	if err := c.apply_request_headers(req); err != nil {
+		return u, err
+	}
+	resp, err := c.http_client.Do(req)
 	if err != nil {
 		return u, err
 	}
@@ -153,11 +189,13 @@ func (c *Client) do_get(api_url string, result interface{}) error {
 			Msg("bilibili API: request construction failed")
 		return fmt.Errorf("construct bilibili API request: %w", err)
 	}
-	for k, v := range c.headers {
-		req.Header.Set(k, v)
-	}
-	if c.cookie != "" {
-		req.Header.Set("Cookie", c.cookie)
+	if err := c.apply_request_headers(req); err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("api_request_id", request_id).
+			Str("request_url", api_url).
+			Msg("bilibili API: request headers failed")
+		return fmt.Errorf("construct bilibili API request headers: %w", err)
 	}
 
 	request_started_at := time.Now()
@@ -216,6 +254,54 @@ func (c *Client) do_get(api_url string, result interface{}) error {
 		return fmt.Errorf("decode bilibili API response: status=%d body_bytes=%d: %w", resp.StatusCode, len(body), err)
 	}
 	return nil
+}
+
+func (c *Client) apply_request_headers(req *http.Request) error {
+	if c == nil || req == nil {
+		return nil
+	}
+	for header_name, header_value := range c.headers {
+		req.Header.Set(header_name, header_value)
+	}
+	if !is_bilibili_request(req.URL) {
+		return nil
+	}
+	cookie_header, err := c.resolve_cookie()
+	if err != nil {
+		return err
+	}
+	if cookie_header != "" {
+		req.Header.Set("Cookie", cookie_header)
+	}
+	return nil
+}
+
+func (c *Client) resolve_cookie() (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	if cookie_header := strings.TrimSpace(c.cookie); cookie_header != "" {
+		return cookie_header, nil
+	}
+	if c.cookie_provider == nil {
+		return "", nil
+	}
+	cookie_header, err := c.cookie_provider.HeaderForDomain(bilibili_cookie_domain)
+	if errors.Is(err, cookies.ErrCookieNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s cookies: %w", bilibili_cookie_domain, err)
+	}
+	return strings.TrimSpace(cookie_header), nil
+}
+
+func is_bilibili_request(request_url *url.URL) bool {
+	if request_url == nil {
+		return false
+	}
+	host := strings.ToLower(request_url.Hostname())
+	return host == "bilibili.com" || strings.HasSuffix(host, ".bilibili.com")
 }
 
 type bilibili_api_envelope struct {
@@ -596,9 +682,6 @@ func sanitize_title(title string) string {
 	re := regexp.MustCompile(`[\\/:*?"<>|#\n\r]`)
 	title = re.ReplaceAllString(title, "_")
 	title = strings.Trim(title, " .")
-	if len(title) > 80 {
-		title = title[:80]
-	}
 	return title
 }
 

@@ -11,6 +11,8 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/bilibili"
 )
 
@@ -24,14 +26,17 @@ func init() {
 }
 
 type handler struct {
-	runtime_mu sync.RWMutex
-	logger     *zerolog.Logger
-	config     *config.Config
+	runtime_mu      sync.RWMutex
+	logger          *zerolog.Logger
+	config          *config.Config
+	file_cache      *cache.CacheProvider
+	cookie_provider *cookies.Reader
 }
 
 var (
 	_ adapter.PlatformAdapter          = (*handler)(nil)
 	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
+	_ adapter.FetchCacheAdapter        = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
 	_ adapter.RuntimeAdapter           = (*handler)(nil)
 	_ adapter.RuntimeHandle            = (*handler)(nil)
@@ -50,6 +55,8 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 	h.runtime_mu.Lock()
 	h.logger = adapter_options.Logger
 	h.config = adapter_options.Config
+	h.file_cache = adapter_options.Cache
+	h.cookie_provider = adapter_options.Cookies
 	h.runtime_mu.Unlock()
 	if adapter_options.Logger != nil {
 		adapter_options.Logger.Info().
@@ -74,6 +81,8 @@ func (h *handler) Stop() {
 	h.runtime_mu.Lock()
 	h.logger = nil
 	h.config = nil
+	h.file_cache = nil
+	h.cookie_provider = nil
 	h.runtime_mu.Unlock()
 }
 
@@ -84,6 +93,24 @@ func (h *handler) get_logger() *zerolog.Logger {
 	h.runtime_mu.RLock()
 	defer h.runtime_mu.RUnlock()
 	return h.logger
+}
+
+func (h *handler) get_cookie_provider() *cookies.Reader {
+	if h == nil {
+		return nil
+	}
+	h.runtime_mu.RLock()
+	defer h.runtime_mu.RUnlock()
+	return h.cookie_provider
+}
+
+func (h *handler) get_file_cache() *cache.CacheProvider {
+	if h == nil {
+		return nil
+	}
+	h.runtime_mu.RLock()
+	defer h.runtime_mu.RUnlock()
+	return h.file_cache
 }
 
 func (h *handler) config_string(key string) string {
@@ -120,8 +147,60 @@ func (h *handler) fetch(raw_url string, request_id string) (any, error) {
 		request_logger := logger.With().Str("job_id", request_id).Logger()
 		logger = &request_logger
 	}
-	client := bilibili.NewClientWithLogger(cookie, logger)
+	client := bilibili.NewClientWithLoggerAndCookieProvider(cookie, h.get_cookie_provider(), logger)
+	client.SetPersistentCache(h.get_file_cache())
 	return client.Fetch(raw_url)
+}
+
+// FetchCacheEntries returns the complete BV page HTML persisted by Fetch.
+func (h *handler) FetchCacheEntries(raw_url string, data any) ([]adapter.FetchCacheEntry, error) {
+	cache_url, is_bv, err := bilibili_bv_cache_url(raw_url, data)
+	if err != nil || !is_bv {
+		return nil, err
+	}
+	cache_file, err := bilibili.LookupHTMLCache(h.get_file_cache(), cache_url)
+	if err != nil || cache_file == nil {
+		return nil, err
+	}
+	return []adapter.FetchCacheEntry{{
+		Key:  "page-html",
+		Name: "视频页面 HTML",
+		URL:  cache_url,
+		Path: cache_file.Path,
+		Size: cache_file.Size,
+	}}, nil
+}
+
+// ClearFetchCache removes the complete BV page HTML persisted by Fetch.
+func (h *handler) ClearFetchCache(raw_url string) (bool, error) {
+	return bilibili.ClearHTMLCache(h.get_file_cache(), strings.TrimSpace(raw_url))
+}
+
+func bilibili_bv_cache_url(raw_url string, data any) (string, bool, error) {
+	if bvid, ok := bilibili.ParseBVURL(strings.TrimSpace(raw_url)); ok {
+		return "https://www.bilibili.com/video/" + bvid, true, nil
+	}
+	if _, is_bangumi, err := bilibili_bangumi_info_from_fetch(data); err != nil {
+		return "", false, err
+	} else if is_bangumi {
+		return "", false, nil
+	}
+	video_info, err := bilibili_video_info_from_fetch(data)
+	if err != nil {
+		return "", false, err
+	}
+	bvid_candidates := make([]string, 0, 3)
+	if video_info.InitialData != nil {
+		bvid_candidates = append(bvid_candidates, video_info.InitialData.BVID, video_info.InitialData.VideoData.BVID)
+	}
+	bvid_candidates = append(bvid_candidates, strings.SplitN(strings.TrimSpace(video_info.VideoID), "-", 2)[0])
+	for _, bvid := range bvid_candidates {
+		candidate_url := "https://www.bilibili.com/video/" + strings.TrimSpace(bvid)
+		if parsed_bvid, ok := bilibili.ParseBVURL(candidate_url); ok {
+			return "https://www.bilibili.com/video/" + parsed_bvid, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 func (h *handler) BuildBrowseHistory(_ json.RawMessage) (*adapter.BrowseHistoryResult, error) {
@@ -164,7 +243,8 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 
 	cookie := h.config_string("bilibili.cookie")
 
-	client := bilibili.NewClientWithLogger(cookie, h.get_logger())
+	client := bilibili.NewClientWithLoggerAndCookieProvider(cookie, h.get_cookie_provider(), h.get_logger())
+	client.SetPersistentCache(h.get_file_cache())
 	if bilibili.IsBangumiURL(input.URL) {
 		data, err := client.Fetch(input.URL)
 		if err != nil {
@@ -189,5 +269,5 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		return nil, fmt.Errorf("未获取到B站视频")
 	}
 
-	return build_task_from_video_info(video_infos[0], input.URL, config)
+	return build_task_from_video_info(video_infos[0], input.URL, config, h.get_logger())
 }
