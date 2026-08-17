@@ -16,6 +16,7 @@ window.h = Timeless.h;
 window.View = Timeless.View;
 window.Fragment = Timeless.Fragment;
 window.Img = Timeless.Img;
+window.Link = Timeless.Link;
 // Control flow
 window.Show = Timeless.Show;
 window.For = Timeless.For;
@@ -491,7 +492,9 @@ window.PLATFORM_FAVICONS = Object.freeze({
   }
 
   function certificate_list_label(value) {
-    return Array.isArray(value) && value.length > 0 ? value.join("、") : "未提供";
+    return Array.isArray(value) && value.length > 0
+      ? value.join("、")
+      : "未提供";
   }
 
   function certificate_status(data) {
@@ -503,7 +506,11 @@ window.PLATFORM_FAVICONS = Object.freeze({
       return { label: "已安装并受信任", tone: "success", icon: "check" };
     }
     if (data && data.installed) {
-      return { label: "已安装，尚未受信任", tone: "warning", icon: "circle-alert" };
+      return {
+        label: "已安装，尚未受信任",
+        tone: "warning",
+        icon: "circle-alert",
+      };
     }
     return { label: "尚未安装", tone: "danger", icon: "circle-x" };
   }
@@ -595,17 +602,26 @@ window.PLATFORM_FAVICONS = Object.freeze({
           return Boolean(data && data.install_status_error);
         }),
         ok() {
-          return View({ class: "settings-certificate-notice settings-certificate-notice--danger" }, [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return data.install_status_error;
-            }),
-          ]);
+          return View(
+            {
+              class:
+                "settings-certificate-notice settings-certificate-notice--danger",
+            },
+            [
+              Timeless.Icon({ name: "circle-alert", size: 16 }),
+              Timeless.computed(certificate_, function (data) {
+                return data.install_status_error;
+              }),
+            ],
+          );
         },
       }),
       Show({
         when: Timeless.computed(certificate_, function (data) {
-          return Array.isArray(data && data.risk_warnings) && data.risk_warnings.length > 0;
+          return (
+            Array.isArray(data && data.risk_warnings) &&
+            data.risk_warnings.length > 0
+          );
         }),
         ok() {
           return View({ class: "settings-certificate-notices" }, [
@@ -614,10 +630,13 @@ window.PLATFORM_FAVICONS = Object.freeze({
                 return data.risk_warnings;
               }),
               render(warning) {
-                return View({ class: "settings-certificate-notice settings-certificate-notice--warning" }, [
-                  Timeless.Icon({ name: "circle-alert", size: 16 }),
-                  warning,
-                ]);
+                return View(
+                  {
+                    class:
+                      "settings-certificate-notice settings-certificate-notice--warning",
+                  },
+                  [Timeless.Icon({ name: "circle-alert", size: 16 }), warning],
+                );
               },
             }),
           ]);
@@ -666,7 +685,9 @@ window.PLATFORM_FAVICONS = Object.freeze({
         ]),
       ]),
       View({ class: "settings-certificate-section" }, [
-        View({ class: "settings-certificate-section__title" }, ["有效期与信任"]),
+        View({ class: "settings-certificate-section__title" }, [
+          "有效期与信任",
+        ]),
         View({ class: "settings-certificate-grid" }, [
           CertificateDetailItem({
             label: "生效时间",
@@ -746,12 +767,18 @@ window.PLATFORM_FAVICONS = Object.freeze({
           return Boolean(data && data.parse_error);
         }),
         ok() {
-          return View({ class: "settings-certificate-notice settings-certificate-notice--danger" }, [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return "证书内容解析失败：" + data.parse_error;
-            }),
-          ]);
+          return View(
+            {
+              class:
+                "settings-certificate-notice settings-certificate-notice--danger",
+            },
+            [
+              Timeless.Icon({ name: "circle-alert", size: 16 }),
+              Timeless.computed(certificate_, function (data) {
+                return "证书内容解析失败：" + data.parse_error;
+              }),
+            ],
+          );
         },
       }),
       Show({
@@ -760,9 +787,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
         }),
         ok() {
           return View({ as: "details", class: "settings-certificate-pem" }, [
-            View({ as: "summary", class: "settings-certificate-pem__summary" }, [
-              "查看 PEM 原文",
-            ]),
+            View(
+              { as: "summary", class: "settings-certificate-pem__summary" },
+              ["查看 PEM 原文"],
+            ),
             View({ as: "pre", class: "settings-certificate-pem__content" }, [
               Timeless.computed(certificate_, function (data) {
                 return data.pem;
@@ -802,13 +830,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
         ]),
       ]),
       View({ class: "settings-about__resources" }, [
-        View(
+        Link(
           {
-            as: "a",
             class: "settings-about__resource dm-focus-ring",
+            href: "https://github.com/ltaoo/wx_channels_download",
+            target: "_blank",
             attributes: {
-              href: "https://github.com/ltaoo/wx_channels_download",
-              target: "_blank",
               rel: "noopener noreferrer",
               "aria-label": "打开 GitHub 仓库（新窗口）",
             },
@@ -828,13 +855,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
             Timeless.Icon({ name: "external-link", size: 16 }),
           ],
         ),
-        View(
+        Link(
           {
-            as: "a",
             class: "settings-about__resource dm-focus-ring",
+            href: "https://ltaoo.github.io/wx_channels_download/guide/start.html",
+            target: "_blank",
             attributes: {
-              href: "https://ltaoo.github.io/wx_channels_download/guide/start.html",
-              target: "_blank",
               rel: "noopener noreferrer",
               "aria-label": "打开使用文档（新窗口）",
             },
@@ -897,9 +923,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
             View({ class: "settings-mcp__tool-flow" }, [
               View({ as: "code" }, ["get_platform_status"]),
               Timeless.Icon({ name: "arrow-right", size: 14 }),
-              View({ as: "code" }, [
-                'fetch_content({ "url": "<内容链接>" })',
-              ]),
+              View({ as: "code" }, ['fetch_content({ "url": "<内容链接>" })']),
             ]),
           ]),
         ]),
@@ -1070,9 +1094,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
                   {
                     store: toggle_button$,
                     attributes: {
-                      "aria-label": Timeless.computed(enabled_, function (enabled) {
-                        return enabled ? "关闭 MCP 服务" : "开启 MCP 服务";
-                      }),
+                      "aria-label": Timeless.computed(
+                        enabled_,
+                        function (enabled) {
+                          return enabled ? "关闭 MCP 服务" : "开启 MCP 服务";
+                        },
+                      ),
                     },
                   },
                   [
@@ -1084,7 +1111,9 @@ window.PLATFORM_FAVICONS = Object.freeze({
               ]),
               View({ class: "settings-mcp__section" }, [
                 View({ class: "settings-mcp__section-label" }, ["连接地址"]),
-                View({ as: "code", class: "settings-mcp__endpoint" }, [endpoint_]),
+                View({ as: "code", class: "settings-mcp__endpoint" }, [
+                  endpoint_,
+                ]),
                 View({ class: "settings-mcp__hint" }, [
                   "将此 URL 填入支持 Streamable HTTP 的 MCP 客户端。服务默认只监听 API 配置的地址。",
                 ]),
@@ -1104,7 +1133,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
               ]),
               MCPUsageGuide({ endpoint: endpoint_ }),
               View(
-                { class: "settings-certificate-notice settings-certificate-notice--warning" },
+                {
+                  class:
+                    "settings-certificate-notice settings-certificate-notice--warning",
+                },
                 [
                   Timeless.Icon({ name: "circle-alert", size: 16 }),
                   "下载工具可以向本机目录写入文件。仅向可信 Agent 开放；若 API 监听局域网地址，请同时确认网络访问边界。",
@@ -1133,9 +1165,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
             View({ as: "span", class: "settings-dialog__heading-title" }, [
               "设置",
             ]),
-            View({ as: "span", class: "settings-dialog__heading-description" }, [
-              "查看当前运行环境和安全配置",
-            ]),
+            View(
+              { as: "span", class: "settings-dialog__heading-description" },
+              ["查看当前运行环境和安全配置"],
+            ),
           ]),
         ]),
         DialogBody({ class: "settings-dialog__body" }, [
@@ -1158,9 +1191,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     }),
                   ]),
                   attributes: {
-                    "aria-current": Timeless.computed(props.section, function (section) {
-                      return section === "certificate" ? "page" : undefined;
-                    }),
+                    "aria-current": Timeless.computed(
+                      props.section,
+                      function (section) {
+                        return section === "certificate" ? "page" : undefined;
+                      },
+                    ),
                   },
                 },
                 [
@@ -1180,9 +1216,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     }),
                   ]),
                   attributes: {
-                    "aria-current": Timeless.computed(props.section, function (section) {
-                      return section === "mcp" ? "page" : undefined;
-                    }),
+                    "aria-current": Timeless.computed(
+                      props.section,
+                      function (section) {
+                        return section === "mcp" ? "page" : undefined;
+                      },
+                    ),
                   },
                 },
                 [
@@ -1202,9 +1241,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     }),
                   ]),
                   attributes: {
-                    "aria-current": Timeless.computed(props.section, function (section) {
-                      return section === "about" ? "page" : undefined;
-                    }),
+                    "aria-current": Timeless.computed(
+                      props.section,
+                      function (section) {
+                        return section === "about" ? "page" : undefined;
+                      },
+                    ),
                   },
                 },
                 [
@@ -1259,26 +1301,40 @@ window.PLATFORM_FAVICONS = Object.freeze({
                           return Boolean(error);
                         }),
                         ok() {
-                          return View({ class: "settings-dialog__state settings-dialog__state--error" }, [
-                            Timeless.Icon({ name: "circle-alert", size: 28 }),
-                            View({ class: "settings-dialog__state-title" }, [
-                              "证书信息读取失败",
-                            ]),
-                            View({ class: "settings-dialog__state-text" }, [props.error]),
-                            Button(
-                              {
-                                store: props.retry_button,
-                                prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
-                              },
-                              ["重新读取"],
-                            ),
-                          ]);
+                          return View(
+                            {
+                              class:
+                                "settings-dialog__state settings-dialog__state--error",
+                            },
+                            [
+                              Timeless.Icon({ name: "circle-alert", size: 28 }),
+                              View({ class: "settings-dialog__state-title" }, [
+                                "证书信息读取失败",
+                              ]),
+                              View({ class: "settings-dialog__state-text" }, [
+                                props.error,
+                              ]),
+                              Button(
+                                {
+                                  store: props.retry_button,
+                                  prefix: Timeless.Icon({
+                                    name: "refresh-cw",
+                                    size: 14,
+                                  }),
+                                },
+                                ["重新读取"],
+                              ),
+                            ],
+                          );
                         },
                         else() {
                           return Show({
-                            when: Timeless.computed(props.certificate, function (data) {
-                              return Boolean(data);
-                            }),
+                            when: Timeless.computed(
+                              props.certificate,
+                              function (data) {
+                                return Boolean(data);
+                              },
+                            ),
                             ok() {
                               return CertificateSettingsDetails({
                                 certificate: props.certificate,
@@ -1351,12 +1407,19 @@ window.PLATFORM_FAVICONS = Object.freeze({
         { title: "下载", name: "root.shell.download", icon: "download" },
         { title: "Get", name: "root.shell.scraper", icon: "search" },
         { title: "内容管理", name: "root.shell.content", icon: "library" },
-        { title: "浏览记录", name: "root.shell.browsehistory", icon: "history" },
+        {
+          title: "浏览记录",
+          name: "root.shell.browsehistory",
+          icon: "history",
+        },
         { title: "帐号管理", name: "root.shell.account", icon: "user" },
         // { title: "日志", name: "root.shell.logs", icon: "scroll-text" },
       ],
     });
-    var settings_dialog$ = new Timeless.vm.DialogCore({ closeable: true, footer: false });
+    var settings_dialog$ = new Timeless.vm.DialogCore({
+      closeable: true,
+      footer: false,
+    });
     var settings_section_ = Timeless.ref("certificate");
     var mcp_settings$ = create_mcp_settings_model(http_client$);
     var certificate_ = Timeless.ref(null);

@@ -29,8 +29,12 @@ type WebsocketRoutes struct {
 	client *wxchannels.Client
 }
 
-func NewWebsocketRoutes(refresh_interval int, cookie_reader *cookies.Reader) *WebsocketRoutes {
-	options := wxchannels.ClientOptions{RefreshInterval: refresh_interval, CookieReader: cookie_reader}
+func NewWebsocketRoutes(refresh_interval int, cookie_reader *cookies.Reader, sph_cookie string) *WebsocketRoutes {
+	options := wxchannels.ClientOptions{
+		RefreshInterval: refresh_interval,
+		CookieReader:    cookie_reader,
+		SphCookie:       sph_cookie,
+	}
 	client := wxchannels.NewClient(options)
 	return &WebsocketRoutes{client: client}
 }
