@@ -4,6 +4,7 @@ package application
 // side effects. Concrete adapters register themselves with adapter.Register.
 import (
 	// _ "wx_channel/internal/adapter/bilibili"
+	// _ "wx_channel/internal/adapter/cctv"
 	_ "wx_channel/internal/adapter/douyin"
 	_ "wx_channel/internal/adapter/wxchannels"
 	_ "wx_channel/internal/adapter/wxmp"

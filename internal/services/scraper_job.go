@@ -24,6 +24,7 @@ const (
 	scraper_platform_wxmp       = "wxmp"
 	scraper_platform_douyin     = "douyin"
 	scraper_platform_bilibili   = "bilibili"
+	scraper_platform_cctv       = "cctv"
 	scraper_platform_zhihu      = "zhihu"
 	scraper_platform_ttk        = "ttk"
 	scraper_platform_youtube    = "youtube"
@@ -213,6 +214,8 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 		return scraper_platform_resolution(scraper_platform_douyin, ""), nil
 	case scraper_host_matches(host, "bilibili.com") || host == "b23.tv" || host == "bili2233.cn":
 		return scraper_platform_resolution(scraper_platform_bilibili, ""), nil
+	case host == "v.cctv.com":
+		return scraper_platform_resolution(scraper_platform_cctv, ""), nil
 	case host == "www.zhihu.com" || host == "zhuanlan.zhihu.com":
 		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
 	case host == "ttks.tw" || host == "www.ttks.tw":
