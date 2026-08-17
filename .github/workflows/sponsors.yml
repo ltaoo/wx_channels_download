@@ -30,10 +30,8 @@ jobs:
       - name: Generate sponsor data
         env:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET:
-          ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_BASE_TOKEN:
-          ${{ secrets.FEISHU_BASE_TOKEN }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_BASE_TOKEN: ${{ secrets.FEISHU_BASE_TOKEN }}
           FEISHU_TABLE_ID: ${{ secrets.FEISHU_TABLE_ID }}
           FEISHU_VIEW_ID: ${{ secrets.FEISHU_VIEW_ID }}
           FEISHU_SORT: ${{ secrets.FEISHU_SORT }}
