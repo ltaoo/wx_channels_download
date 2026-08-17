@@ -281,7 +281,6 @@ var AssembleHTMLNode = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -324,7 +323,7 @@ func cleanup_embedded_image_resources_node(values map[string]interface{}) (inter
 				if err := os.Remove(r.FilePath); err != nil && !os.IsNotExist(err) {
 					warnf("Postprocessor.wxmp: task_id=%d remove image %s: %v", run.task.ID, r.FilePath, err)
 				}
-				if err := run.db.Where("id = ? AND task_id = ?", r.ID, run.task.ID).Delete(&model.DownloadResource{}).Error; err != nil {
+				if err := delete_wxmp_embedded_image_resource_record(run.db, run.task.ID, r.ID); err != nil {
 					warnf("Postprocessor.wxmp: task_id=%d remove image record id=%d: %v", run.task.ID, r.ID, err)
 				}
 				continue
@@ -334,6 +333,89 @@ func cleanup_embedded_image_resources_node(values map[string]interface{}) (inter
 
 		run.task.Resources = kept_resources
 		return nil, nil
+	})
+}
+
+// delete_wxmp_embedded_image_resource_record removes stable image assets only
+// when no other live download resource still references them.
+func delete_wxmp_embedded_image_resource_record(db *gorm.DB, task_id, resource_id int) error {
+	if db == nil {
+		return fmt.Errorf("wxmp postprocess: database is nil")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var resource_count int64
+		if err := tx.Model(&model.DownloadResource{}).
+			Where("id = ? AND task_id = ? AND deleted_at IS NULL", resource_id, task_id).
+			Count(&resource_count).Error; err != nil {
+			return err
+		}
+		if resource_count == 0 {
+			return nil
+		}
+
+		if !tx.Migrator().HasTable(&model.DownloadResourceAsset{}) {
+			return tx.Where("id = ? AND task_id = ?", resource_id, task_id).
+				Delete(&model.DownloadResource{}).Error
+		}
+
+		var asset_ids []uint
+		if err := tx.Model(&model.DownloadResourceAsset{}).
+			Where("resource_id = ?", resource_id).
+			Distinct("asset_id").
+			Pluck("asset_id", &asset_ids).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", resource_id).
+			Delete(&model.DownloadResourceAsset{}).Error; err != nil {
+			return err
+		}
+
+		if len(asset_ids) > 0 && tx.Migrator().HasTable(&model.ContentAsset{}) {
+			var retained_asset_ids []uint
+			if err := tx.Table("download_resource_asset AS resource_asset").
+				Distinct("resource_asset.asset_id").
+				Joins("JOIN download_resource AS resource ON resource.id = resource_asset.resource_id").
+				Where("resource_asset.asset_id IN ? AND resource.deleted_at IS NULL", asset_ids).
+				Pluck("resource_asset.asset_id", &retained_asset_ids).Error; err != nil {
+				return err
+			}
+
+			retained_asset_id_set := make(map[uint]bool, len(retained_asset_ids))
+			for _, asset_id := range retained_asset_ids {
+				retained_asset_id_set[asset_id] = true
+			}
+			orphan_asset_ids := make([]uint, 0, len(asset_ids))
+			for _, asset_id := range asset_ids {
+				if !retained_asset_id_set[asset_id] {
+					orphan_asset_ids = append(orphan_asset_ids, asset_id)
+				}
+			}
+
+			if len(orphan_asset_ids) > 0 {
+				var image_asset_ids []uint
+				if err := tx.Model(&model.ContentAsset{}).
+					Where("id IN ? AND kind = ?", orphan_asset_ids, model.ContentAssetKindImage).
+					Pluck("id", &image_asset_ids).Error; err != nil {
+					return err
+				}
+				if len(image_asset_ids) > 0 {
+					if tx.Migrator().HasTable(&model.ContentAssetLink{}) {
+						if err := tx.Where("asset_id IN ?", image_asset_ids).
+							Delete(&model.ContentAssetLink{}).Error; err != nil {
+							return err
+						}
+					}
+					if err := tx.Where("id IN ?", image_asset_ids).
+						Delete(&model.ContentAsset{}).Error; err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		return tx.Where("id = ? AND task_id = ?", resource_id, task_id).
+			Delete(&model.DownloadResource{}).Error
 	})
 }
 
@@ -348,7 +430,6 @@ var CleanupEmbeddedImageResourcesNode = flowengine.NodeDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},
@@ -382,7 +463,6 @@ var wxmp_postprocess_flow = flowengine.FlowDefinition{
 				{Key: "Name", Type: "string", Required: false},
 				{Key: "UniqueID", Type: "string", Required: false},
 				{Key: "DownloadDir", Type: "string", Required: false},
-				{Key: "FilenameTemplate", Type: "string", Required: false},
 				{Key: "Platform", Type: "string", Required: false},
 				{Key: "Config", Type: "object", Required: false, Fields: []flowengine.FieldSchema{
 					{Key: "type", Type: "any", Required: false},

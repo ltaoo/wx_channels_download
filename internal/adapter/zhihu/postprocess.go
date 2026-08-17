@@ -280,18 +280,93 @@ func cleanup_embedded_image_resources(info *hermes.TaskJob, deps adapter.Postpro
 }
 
 func delete_zhihu_resource_record(db *gorm.DB, task_id, resource_id int) error {
+	if db == nil {
+		return fmt.Errorf("zhihu postprocess: database is nil")
+	}
+
 	return db.Transaction(func(tx *gorm.DB) error {
-		if tx.Migrator().HasTable(&model.DownloadResourceAsset{}) {
-			if err := tx.Where("resource_id = ?", resource_id).Delete(&model.DownloadResourceAsset{}).Error; err != nil {
+		resource_query := tx.Model(&model.DownloadResource{}).
+			Where("id = ? AND deleted_at IS NULL", resource_id)
+		if task_id > 0 {
+			resource_query = resource_query.Where("task_id = ?", task_id)
+		}
+		var resource_count int64
+		if err := resource_query.Count(&resource_count).Error; err != nil {
+			return err
+		}
+		if resource_count == 0 {
+			return nil
+		}
+
+		if !tx.Migrator().HasTable(&model.DownloadResourceAsset{}) {
+			return delete_zhihu_download_resource(tx, task_id, resource_id)
+		}
+
+		var asset_ids []uint
+		if err := tx.Model(&model.DownloadResourceAsset{}).
+			Where("resource_id = ?", resource_id).
+			Distinct("asset_id").
+			Pluck("asset_id", &asset_ids).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", resource_id).
+			Delete(&model.DownloadResourceAsset{}).Error; err != nil {
+			return err
+		}
+
+		if len(asset_ids) > 0 && tx.Migrator().HasTable(&model.ContentAsset{}) {
+			var retained_asset_ids []uint
+			if err := tx.Table("download_resource_asset AS resource_asset").
+				Distinct("resource_asset.asset_id").
+				Joins("JOIN download_resource AS resource ON resource.id = resource_asset.resource_id").
+				Where("resource_asset.asset_id IN ? AND resource.deleted_at IS NULL", asset_ids).
+				Pluck("resource_asset.asset_id", &retained_asset_ids).Error; err != nil {
 				return err
 			}
+
+			retained_asset_id_set := make(map[uint]bool, len(retained_asset_ids))
+			for _, asset_id := range retained_asset_ids {
+				retained_asset_id_set[asset_id] = true
+			}
+			orphan_asset_ids := make([]uint, 0, len(asset_ids))
+			for _, asset_id := range asset_ids {
+				if !retained_asset_id_set[asset_id] {
+					orphan_asset_ids = append(orphan_asset_ids, asset_id)
+				}
+			}
+
+			if len(orphan_asset_ids) > 0 {
+				var image_asset_ids []uint
+				if err := tx.Model(&model.ContentAsset{}).
+					Where("id IN ? AND kind = ?", orphan_asset_ids, model.ContentAssetKindImage).
+					Pluck("id", &image_asset_ids).Error; err != nil {
+					return err
+				}
+				if len(image_asset_ids) > 0 {
+					if tx.Migrator().HasTable(&model.ContentAssetLink{}) {
+						if err := tx.Where("asset_id IN ?", image_asset_ids).
+							Delete(&model.ContentAssetLink{}).Error; err != nil {
+							return err
+						}
+					}
+					if err := tx.Where("id IN ?", image_asset_ids).
+						Delete(&model.ContentAsset{}).Error; err != nil {
+						return err
+					}
+				}
+			}
 		}
-		query := tx.Where("id = ?", resource_id)
-		if task_id > 0 {
-			query = query.Where("task_id = ?", task_id)
-		}
-		return query.Delete(&model.DownloadResource{}).Error
+
+		return delete_zhihu_download_resource(tx, task_id, resource_id)
 	})
+}
+
+func delete_zhihu_download_resource(db *gorm.DB, task_id, resource_id int) error {
+	query := db.Where("id = ?", resource_id)
+	if task_id > 0 {
+		query = query.Where("task_id = ?", task_id)
+	}
+	return query.Delete(&model.DownloadResource{}).Error
 }
 
 func zhihu_resource_key(resource *hermes.ResourceJob) string {

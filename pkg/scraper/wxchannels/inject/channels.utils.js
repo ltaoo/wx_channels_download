@@ -1187,6 +1187,7 @@ ${payload.key || ""}`,
         WXU.error({ msg: err.message, source: "channels.utils.js:1219" });
         return;
       }
+      WXU.toast("创建下载任务成功");
       return;
     }
     var profile = WXU.format_feed(feed);
