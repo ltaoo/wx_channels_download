@@ -61,6 +61,7 @@ type UpdateServiceOptions struct {
 	DownloadUpdate  func(string, string, string, func(*hermes.TaskProgress)) error
 	Executable      func() (string, error)
 	RequestRestart  func() error
+	RestartService  *ApplicationRestartService
 }
 
 // UpdateService coordinates update checks, downloads, progress, and restarts.
@@ -78,6 +79,7 @@ type UpdateService struct {
 	download_update_fn func(string, string, string, func(*hermes.TaskProgress)) error
 	executable_fn      func() (string, error)
 	request_restart_fn func() error
+	restart_service    *ApplicationRestartService
 	restart_delay      time.Duration
 }
 
@@ -110,6 +112,7 @@ func NewUpdateService(options UpdateServiceOptions) *UpdateService {
 		download_update_fn: options.DownloadUpdate,
 		executable_fn:      executable_fn,
 		request_restart_fn: options.RequestRestart,
+		restart_service:    options.RestartService,
 		restart_delay:      restart_delay,
 	}
 }
@@ -230,7 +233,7 @@ func (s *UpdateService) Restart() (UpdateStatus, error) {
 		s.mu.Unlock()
 		return status, fmt.Errorf("更新尚未下载完成")
 	}
-	if s.request_restart_fn == nil {
+	if s.restart_service == nil && s.request_restart_fn == nil {
 		status := s.status
 		s.mu.Unlock()
 		return status, fmt.Errorf("应用重启服务未初始化")
@@ -240,6 +243,16 @@ func (s *UpdateService) Restart() (UpdateStatus, error) {
 	s.restart_scheduled = true
 	status := s.status
 	s.mu.Unlock()
+
+	if s.restart_service != nil {
+		err := s.restart_service.Schedule(func(err error) {
+			_, _ = s.set_error(fmt.Errorf("重启应用失败: %w", err))
+		})
+		if err != nil {
+			return s.set_error(fmt.Errorf("重启应用失败: %w", err))
+		}
+		return status, nil
+	}
 
 	time.AfterFunc(s.restart_delay, func() {
 		if err := s.request_restart_fn(); err != nil {

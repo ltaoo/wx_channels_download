@@ -34,8 +34,9 @@ func NewAPIServer(
 	downloader *hermes.HermesEngine,
 	hook_manager *hermes.HookManager,
 	update_service *services.UpdateService,
+	restart_service *services.ApplicationRestartService,
 ) *APIServer {
-	client := NewAPIClient(cfg, logger, db, static_assets, downloader, hook_manager, update_service)
+	client := NewAPIClient(cfg, logger, db, static_assets, downloader, hook_manager, update_service, restart_service)
 	logger.Info().
 		Str("listen_addr", cfg.Hostname+":"+strconv.Itoa(cfg.Port)).
 		Msg("api server configured")

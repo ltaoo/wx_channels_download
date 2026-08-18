@@ -4,7 +4,7 @@ title: MCP
 
 # MCP
 
-MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以工具调用的方式访问下载器。当前实现提供内容解析与下载、微信视频号查询，以及下载任务、账号、浏览记录、日志和证书状态等本地数据查询能力。
+MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以工具调用的方式访问下载器。当前实现提供应用配置管理、内容解析与下载、微信视频号查询，以及下载任务、账号、浏览记录、日志和证书状态等本地数据查询能力。
 
 下载器支持两种接入方式：
 
@@ -38,7 +38,7 @@ curl -X POST http://127.0.0.1:2022/api/mcp/enable
 curl -X POST http://127.0.0.1:2022/api/mcp/disable
 ```
 
-MCP 与下载器 API 共用监听地址。如果将 `api.hostname` 配置为局域网地址，请只向可信网络开放，因为 MCP 可以读取本地任务、账号、浏览记录和日志，也可以创建下载任务、写入或覆盖文件。
+MCP 与下载器 API 共用监听地址。如果将 `api.hostname` 配置为局域网地址，请只向可信网络开放，因为 MCP 可以读取和修改应用配置、读取本地任务、账号、浏览记录和日志，也可以创建下载任务、写入或覆盖文件。
 
 ### stdio
 
@@ -79,6 +79,20 @@ stdio 进程仍依赖已启动的下载器主服务。设置页中的 MCP 开关
 ## 命令
 
 MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客户端传入 JSON 参数。
+
+### 应用配置
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `get_config` | 无 | 获取可配置字段的 schema、当前值和解析后的生效值；密码、Cookie、Token 等敏感字段不返回明文。 |
+| `update_config` | `values` | 批量校验并保存非只读配置；实际值发生变化后自动安排应用优雅重启。 |
+| `get_restart_status` | `restart_token` | 在连接恢复后确认是否已切换到新进程，以及新进程加载的配置是否与保存结果一致。 |
+
+`get_config` 将 `internal/config/config.go` 注册的应用配置放在 `application_fields`，将 adapter 提供的配置放在 `plugin_fields`，并在兼容字段 `fields` 中返回两者合集。每个字段还带有 `source`；插件字段额外带有 `namespace`。
+
+`update_config` 的键必须来自 `get_config`。值必须符合字段类型和 `options` 枚举约束。配置文件使用原子替换方式保存；成功响应中的 `restart_scheduled: true` 只表示重启已经安排，不能据此宣称重启完成。调用方必须保存 `restart_token`，在连接恢复后调用 `get_restart_status`。只有响应同时满足 `status: "completed"`、`restart_completed: true` 和 `config_applied: true`，才能确认新进程已经运行且保存后的配置已经加载。`pending` 需要继续重试，`failed` 表示重启请求失败，`config_mismatch` 表示进程已更换但配置摘要不一致。
+
+重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端也需要更新 API 地址或重新启动。提交的值与当前值完全相同时不会写盘或重启。
 
 ### 内容解析与下载
 
@@ -126,6 +140,23 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `get_certificate_status` | 无 | 获取代理根证书的来源、安装、信任状态和风险提示。 |
 
 ## 常用场景
+
+### 修改下载目录
+
+先调用 `get_config` 确认 `download.dir` 的类型和当前值，再调用：
+
+```json
+{
+  "name": "update_config",
+  "arguments": {
+    "values": {
+      "download.dir": "/data/downloads"
+    }
+  }
+}
+```
+
+工具返回成功后只代表重启已安排。连接恢复后，将返回的 `restart_token` 传给 `get_restart_status`；确认其返回 `completed` 且 `config_applied: true` 后，才能告知用户下载器已重启、新目录已经生效。新建下载任务将使用新的默认目录。
 
 ### 解析链接并下载
 

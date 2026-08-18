@@ -6,6 +6,9 @@ title: MCP Server
 
 项目提供 Streamable HTTP 与 stdio 两种 MCP 接入方式，能力与首页链接解析流程一致：
 
+- `get_config`：获取应用配置 schema、当前值和解析后的生效值；敏感值不会返回明文。
+- `update_config`：批量修改非只读配置，保存成功后安排应用优雅重启。
+- `get_restart_status`：通过 `update_config` 返回的确认令牌验证新进程和新配置是否已经生效。
 - `get_platform_status`：获取各平台当前可用状态。
 - `fetch_content`：传入平台内容链接，等待解析完成并返回规范化内容。
 - `download_content`：复用 `fetch_content` 的 `job_id`，或直接传入链接，创建并启动下载任务。
@@ -84,6 +87,23 @@ wx_video_download server
   }
 }
 ```
+
+## 配置管理
+
+修改配置前先调用 `get_config` 获取合法字段、字段类型和枚举选项。响应中的 `application_fields` 对应 `internal/config/config.go` 注册的应用配置，`plugin_fields` 对应 adapter 插件配置，`fields` 是兼容用的完整合集。`update_config` 接收 `values` 对象，例如：
+
+```json
+{
+  "values": {
+    "download.dir": "/data/downloads",
+    "download.playDoneAudio": false
+  }
+}
+```
+
+未知字段、只读字段、类型不匹配或不在 `options` 中的值会被拒绝。值发生变化时，配置将以原子方式写入 `config.yaml`，然后应用会优雅重启；MCP 客户端需要允许连接短暂中断并重新连接。修改 `api.hostname` 或 `api.port` 后，应使用新地址连接；stdio 客户端需要同步更新 API 地址或重新启动。相同值不会触发重启。密码、Cookie、Token 等敏感配置只能修改，`get_config` 只返回是否已经配置。
+
+`update_config` 返回 `restart_scheduled: true` 时只表示已安排重启。调用方必须保留 `restart_token`，连接恢复后调用 `get_restart_status`。只有返回 `status: "completed"`、`restart_completed: true`、`config_applied: true` 时，才表示新进程已经启动并加载了保存后的配置；在此之前不应向用户声称重启完成。
 
 ## 下载行为
 
