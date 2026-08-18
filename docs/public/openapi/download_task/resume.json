@@ -3,8 +3,8 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "批量启动下载任务",
-    "description": "启动等待中（0）、已暂停（3）或失败（6）的任务。每个任务独立返回结果；单项失败不改变外层 code=0。所有业务响应的 HTTP 状态码均为 200。",
+    "summary": "批量恢复下载任务",
+    "description": "恢复已暂停（3）的任务。并发下载槽位不足或单个任务无法启动时，在对应结果中返回 success=false。",
     "requestBody": {
       "required": true,
       "content": {
@@ -20,15 +20,13 @@
                 "minItems": 1,
                 "items": {
                   "type": "integer"
-                },
-                "description": "download_task 表主键 ID"
+                }
               }
             }
           },
           "example": {
             "task_ids": [
-              42,
-              43
+              42
             ]
           }
         }
@@ -36,12 +34,12 @@
     },
     "responses": {
       "200": {
-        "description": "统一业务响应",
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
         "content": {
           "application/json": {
             "examples": {
               "success": {
-                "summary": "任务已提交启动",
+                "summary": "恢复成功",
                 "value": {
                   "code": 0,
                   "msg": "成功",
@@ -65,7 +63,7 @@
                           "metadata_json": "",
                           "error_message": "",
                           "created_at": 1787019341973,
-                          "updated_at": 1787019341,
+                          "updated_at": 1787019355644,
                           "deleted_at": null
                         },
                         "task_id": 44
@@ -74,17 +72,17 @@
                   }
                 }
               },
-              "partial_failure": {
-                "summary": "单项失败",
+              "wrong_status": {
+                "summary": "当前状态不可恢复",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
                     "results": [
                       {
-                        "task_id": 999,
+                        "task_id": 42,
                         "success": false,
-                        "error": "下载任务不存在"
+                        "error": "当前状态不允许恢复"
                       }
                     ]
                   }

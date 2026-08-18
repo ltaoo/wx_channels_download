@@ -1,0 +1,116 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "批量检查下载文件是否存在",
+    "description": "根据持久化的 task_id 与资源 id 关系，在任务允许的下载目录中安全解析并检查本地文件。请求中的 name 和 output_path 仅为列表记录兼容字段，服务端不会使用客户端路径直接访问文件系统。单次最多检查 5000 个文件。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": [
+              "files"
+            ],
+            "properties": {
+              "files": {
+                "type": "array",
+                "maxItems": 5000,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "task_id",
+                    "id"
+                  ],
+                  "properties": {
+                    "task_id": {
+                      "type": "integer",
+                      "description": "下载任务 ID"
+                    },
+                    "id": {
+                      "type": "integer",
+                      "description": "下载资源 ID"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "兼容字段；路径解析时忽略"
+                    },
+                    "output_path": {
+                      "type": "string",
+                      "description": "兼容字段；路径解析时忽略"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "example": {
+            "files": [
+              {
+                "task_id": 44,
+                "id": 160,
+                "name": "example.json",
+                "output_path": "example.json"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "等待态任务文件尚不存在",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "files": [
+                      {
+                        "task_id": 44,
+                        "id": 160,
+                        "checked": true,
+                        "exists": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "record_missing": {
+                "summary": "任务或资源关系不存在",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "files": [
+                      {
+                        "task_id": 42,
+                        "id": 999,
+                        "checked": false,
+                        "exists": false,
+                        "error": "下载文件记录不存在"
+                      }
+                    ]
+                  }
+                }
+              },
+              "too_many": {
+                "summary": "超过单次上限",
+                "value": {
+                  "code": 400,
+                  "msg": "单次最多校验 5000 个文件"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

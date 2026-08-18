@@ -21,28 +21,8 @@
       "description": "部分接口需要保持任意文章页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开任意公众号文章页面即可，如果已经打开，刷新一下。"
     },
     {
-      "name": "下载器",
-      "description": "管理下载任务，也可以通过接口直接创建视频号下载任务"
-    },
-    {
       "name": "下载任务",
-      "description": "兼容 wx_channels_api 的下载任务接口（/api/download_task/*），底层复用本项目的下载器与 download_task 表"
-    },
-    {
-      "name": "平台",
-      "description": "兼容 wx_channels_api 的平台/账号/视频号相关接口（/account/*、/channels/*）"
-    },
-    {
-      "name": "达人",
-      "description": "兼容 wx_channels_api 的达人接口（/influencers*）"
-    },
-    {
-      "name": "内容",
-      "description": "兼容 wx_channels_api 的内容相关接口（/video/*、/browse_history/*）"
-    },
-    {
-      "name": "文件传输助手",
-      "description": "文件传输助手相关接口（仅本地模式可用）"
+      "description": "下载任务 v1 接口：预览、创建、启停、重试、删除、清理、文件检查、查询和 WebSocket 状态推送"
     },
     {
       "name": "媒体",
@@ -50,9 +30,6 @@
     }
   ],
   "paths": {
-    "/api/channels/status": {
-      "$ref": "./channels/status.json"
-    },
     "/api/channels/contact/search": {
       "$ref": "./channels/contact_search.json"
     },
@@ -64,9 +41,6 @@
     },
     "/api/channels/feed/share_url": {
       "$ref": "./channels/feed_share_url.json"
-    },
-    "/api/channels/parse_sph": {
-      "$ref": "./channels/parse_sph.json"
     },
     "/api/channels/feed/comment/list": {
       "$ref": "./channels/feed_comment_list.json"
@@ -110,38 +84,56 @@
     "/mp/proxy": {
       "$ref": "./mp/proxy.json"
     },
-    "/api/download_task/list": {
-      "$ref": "./download_task/list.json"
+    "/api/v1/download_task/prepare": {
+      "$ref": "./download_task/prepare.json"
     },
-    "/api/download_task/start": {
-      "$ref": "./download_task/start.json"
+    "/api/v1/download_task/prepare_by_url": {
+      "$ref": "./download_task/prepare_by_url.json"
     },
-    "/api/download_task/profile": {
-      "$ref": "./download_task/profile.json"
-    },
-    "/api/download_task/create": {
+    "/api/v1/download_task/create": {
       "$ref": "./download_task/create.json"
     },
-    "/api/download_task/batch_create": {
-      "$ref": "./download_task/batch_create.json"
+    "/api/v1/download_task/create_by_url": {
+      "$ref": "./download_task/create_by_url.json"
     },
-    "/api/download_task/delete": {
-      "$ref": "./download_task/delete.json"
+    "/api/v1/download_task/start": {
+      "$ref": "./download_task/start.json"
     },
-    "/api/download_task/retry": {
+    "/api/v1/download_task/pause": {
+      "$ref": "./download_task/pause.json"
+    },
+    "/api/v1/download_task/resume": {
+      "$ref": "./download_task/resume.json"
+    },
+    "/api/v1/download_task/retry": {
       "$ref": "./download_task/retry.json"
     },
-    "/api/download_task/pause_all": {
-      "$ref": "./download_task/pause_all.json"
+    "/api/v1/download_task/delete": {
+      "$ref": "./download_task/delete.json"
     },
-    "/api/download_task/start_all": {
+    "/api/v1/download_task/start_all": {
       "$ref": "./download_task/start_all.json"
     },
-    "/api/download_task/highlight_file": {
-      "$ref": "./download_task/highlight_file.json"
+    "/api/v1/download_task/pause_all": {
+      "$ref": "./download_task/pause_all.json"
     },
-    "/api/download_task/play": {
-      "$ref": "./download_task/play.json"
+    "/api/v1/download_task/clear": {
+      "$ref": "./download_task/clear.json"
+    },
+    "/api/v1/download_task/clear_all": {
+      "$ref": "./download_task/clear_all.json"
+    },
+    "/api/v1/download_task/check_files": {
+      "$ref": "./download_task/check_files.json"
+    },
+    "/api/v1/download_task/list": {
+      "$ref": "./download_task/list.json"
+    },
+    "/api/v1/download_task/detail": {
+      "$ref": "./download_task/detail.json"
+    },
+    "/ws/v1/download_task": {
+      "$ref": "./download_task/ws.json"
     },
     "/api/mp/ws_pool": {
       "$ref": "./mp/ws_pool.json"

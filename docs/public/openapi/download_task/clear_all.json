@@ -3,8 +3,8 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "启动全部可启动任务",
-    "description": "查询符合状态的未删除任务，并在可用并发槽位内逐个启动。下载器启动失败的任务会被跳过；started 是成功提交数，total 是符合筛选条件的任务总数。请求体可省略。",
+    "summary": "清理全部下载任务",
+    "description": "查询全部未删除任务并逐个执行停止、可选本地文件清理和数据库软删除。请求体可省略。",
     "requestBody": {
       "required": false,
       "content": {
@@ -12,19 +12,15 @@
           "schema": {
             "type": "object",
             "properties": {
-              "status": {
-                "type": "string",
-                "enum": [
-                  "waiting",
-                  "paused",
-                  "failed"
-                ],
-                "description": "按状态启动；省略或传入其他值时启动全部等待中、已暂停和失败任务"
+              "delete_files": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否同时删除所有任务关联的本地文件"
               }
             }
           },
           "example": {
-            "status": "waiting"
+            "delete_files": false
           }
         }
       }
@@ -36,13 +32,25 @@
           "application/json": {
             "examples": {
               "success": {
-                "summary": "没有等待中的任务",
+                "summary": "清理完成",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
-                    "started": 0,
-                    "total": 0
+                    "cleared": 2,
+                    "total": 2,
+                    "results": [
+                      {
+                        "task_id": 42,
+                        "success": true,
+                        "status_text": "cancelled"
+                      },
+                      {
+                        "task_id": 43,
+                        "success": true,
+                        "status_text": "cancelled"
+                      }
+                    ]
                   }
                 }
               },

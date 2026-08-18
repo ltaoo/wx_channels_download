@@ -1,0 +1,207 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "批量预览平台下载任务",
+    "description": "调用对应平台适配器构建下载信息，但不写入数据库，也不启动下载。单个对象构建失败不会使整个请求失败，而是在 previews 中返回 success=false。所有业务响应的 HTTP 状态码均为 200，应以响应体 code 判断请求是否成功。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": [
+              "objects"
+            ],
+            "properties": {
+              "objects": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "platform",
+                    "content"
+                  ],
+                  "properties": {
+                    "platform": {
+                      "type": "string",
+                      "description": "已注册的平台适配器 ID，例如 wxchannels、youtube、bilibili"
+                    },
+                    "content": {
+                      "description": "平台适配器可识别的原始内容 JSON，具体结构由 platform 决定"
+                    },
+                    "build_from_fetch": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "是否将 content 作为适配器 Fetch 的内存结果构建；仅支持实现了该能力的平台"
+                    },
+                    "download_dir": {
+                      "type": "string",
+                      "description": "下载目录；为空时使用应用默认下载目录"
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "可选文件名"
+                    },
+                    "config": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "传给平台适配器的下载配置"
+                    },
+                    "auto_start": {
+                      "type": "boolean",
+                      "description": "预览接口不启动任务，此字段不会产生启动行为"
+                    },
+                    "parent_task_id": {
+                      "type": "integer",
+                      "description": "预览接口不写入任务关系"
+                    },
+                    "relation_type": {
+                      "type": "string",
+                      "description": "预览接口不写入任务关系"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "example": {
+            "objects": [
+              {
+                "platform": "wxchannels",
+                "content": {
+                  "id": "14545102784038246591"
+                },
+                "config": {
+                  "download_cover": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应；code=0 表示批量请求已处理",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "code",
+                "msg"
+              ],
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "enum": [
+                    0,
+                    400
+                  ]
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "previews": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "success"
+                        ],
+                        "properties": {
+                          "success": {
+                            "type": "boolean"
+                          },
+                          "data": {
+                            "type": "object",
+                            "description": "adapter.DownloadTaskResult。顶层字段为 Task、Resources、Account、Content、ContentDetail、ContentDetails，内容随平台变化"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "examples": {
+              "success": {
+                "summary": "预览成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "previews": [
+                      {
+                        "success": true,
+                        "data": {
+                          "Task": {
+                            "name": "示例视频",
+                            "platform_id": "wxchannels",
+                            "status": 0
+                          },
+                          "Resources": [
+                            {
+                              "Resource": {
+                                "name": "示例视频",
+                                "kind": "video",
+                                "type": "FILE"
+                              },
+                              "Endpoints": [
+                                {
+                                  "protocol": "HTTP",
+                                  "url": "https://example.com/video.mp4",
+                                  "priority": 0
+                                }
+                              ],
+                              "ContentAssets": []
+                            }
+                          ],
+                          "Account": null,
+                          "Content": null,
+                          "ContentDetail": null,
+                          "ContentDetails": null
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "请求体不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "请求体不能为空数组"
+                }
+              },
+              "unsupported_platform": {
+                "summary": "单项平台不受支持",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "previews": [
+                      {
+                        "error": "不支持的平台: unknown",
+                        "success": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

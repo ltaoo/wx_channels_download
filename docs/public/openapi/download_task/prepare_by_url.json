@@ -1,0 +1,145 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "批量预览 URL 下载任务",
+    "description": "根据绝对资源 URL 推导协议、文件名和下载目录，不写入数据库，也不启动下载。单个对象失败时在 previews 中返回 success=false。所有业务响应的 HTTP 状态码均为 200。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": [
+              "objects"
+            ],
+            "properties": {
+              "objects": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "包含 scheme 和 host 的资源 URL"
+                    },
+                    "download_dir": {
+                      "type": "string",
+                      "description": "下载目录；为空时依次读取 config.download_dir 和应用默认目录"
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "文件名；为空时依次读取 config.filename 和 URL 路径末段"
+                    },
+                    "config": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "auto_start": {
+                      "type": "boolean",
+                      "description": "预览接口不启动任务"
+                    },
+                    "parent_task_id": {
+                      "type": "integer",
+                      "description": "预览接口不写入任务关系"
+                    },
+                    "relation_type": {
+                      "type": "string",
+                      "description": "预览接口不写入任务关系"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "example": {
+            "objects": [
+              {
+                "url": "https://example.com/files/example.json",
+                "download_dir": "/data/downloads",
+                "filename": "example.json",
+                "config": {},
+                "auto_start": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "预览成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "previews": [
+                      {
+                        "success": true,
+                        "data": {
+                          "download_dir": "/data/downloads",
+                          "endpoint_count": 1,
+                          "protocol": "HTTPS",
+                          "resource_count": 1,
+                          "resources": [
+                            {
+                              "endpoints": [
+                                {
+                                  "priority": 0,
+                                  "protocol": "HTTPS",
+                                  "url": "https://example.com/files/example.json"
+                                }
+                              ],
+                              "index": 0,
+                              "kind": "file",
+                              "name": "example.json"
+                            }
+                          ],
+                          "task_name": "example.json",
+                          "url": "https://example.com/files/example.json"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "item_failed": {
+                "summary": "单项预览失败",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "previews": [
+                      {
+                        "success": false,
+                        "error": "无效的下载地址"
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "请求体不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "请求体不能为空数组"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

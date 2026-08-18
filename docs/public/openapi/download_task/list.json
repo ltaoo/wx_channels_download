@@ -1,92 +1,245 @@
 {
-  "post": {
+  "get": {
     "tags": [
       "下载任务"
     ],
-    "summary": "获取下载任务列表（兼容 wx_channels_api）",
-    "requestBody": {
-      "required": false,
-      "content": {
-        "application/json": {
-          "schema": {
-            "type": "object",
-            "properties": {
-              "page": {
-                "type": "integer",
-                "default": 1,
-                "description": "页码（从 1 开始）"
-              },
-              "pageSize": {
-                "type": "integer",
-                "default": 20,
-                "description": "每页条数"
-              },
-              "status": {
-                "type": "integer",
-                "description": "按 download_task.status 过滤"
-              }
-            }
-          }
-        }
+    "summary": "查询下载任务",
+    "description": "不传 task_id 时返回分页列表；传入正整数 task_id 时直接返回单个完整任务记录，并忽略分页参数。当前实现按 task_id 查询时也可能返回已软删除的任务本体，但其 files 通常为空。status 支持逗号分隔的多个数字状态。所有业务响应的 HTTP 状态码均为 200。任务状态：0=等待中，1=准备中，2=下载中，3=已暂停，4=合并中，5=已完成，6=失败，7=已取消。",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "按 download_task 主键查询单个任务"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "description": "分页页码"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        "description": "每页条数；超出 1-100 时回退为 20"
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "example": "0,3,6"
+        },
+        "description": "任务状态数字，多个值用逗号分隔"
+      },
+      {
+        "name": "parent_task_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "只返回指定父任务的直接子任务"
+      },
+      {
+        "name": "root_task_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "只返回指定根任务所属的任务树"
       }
-    },
+    ],
     "responses": {
       "200": {
-        "description": "任务列表",
+        "description": "单个任务或分页任务列表",
         "content": {
           "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "code",
+                "msg"
+              ],
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "传 task_id 时为单个下载任务记录"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "list",
+                        "total",
+                        "page",
+                        "page_size",
+                        "stats"
+                      ],
+                      "properties": {
+                        "list": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "stats": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          },
+                          "description": "按数字状态分组的数量；沿用 parent_task_id/root_task_id，但不受 status 参数限制"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "examples": {
-              "success": {
-                "summary": "成功",
+              "page": {
+                "summary": "分页列表中的等待态 URL 任务",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
                     "list": [
                       {
-                        "id": 1,
-                        "task_id": "fqG2OhiJFRYpnELqZmPRW",
-                        "type": 1,
-                        "status": 4,
-                        "external_id": "14545102784038246591",
-                        "protocol": "http",
-                        "url": "https://finder.video.qq.com/251/20302/stodownload?encfilekey=xxx&token=xxx",
-                        "title": "示例标题.mp4",
-                        "cover_url": "https://wx.qlogo.cn/finder/xxx/0",
-                        "size": 1462345,
-                        "progress": "{\"downloaded\":1462345}",
-                        "filepath": "苏苏是猪猪/示例标题.mp4",
+                        "id": 44,
+                        "root_task_id": 44,
+                        "child_count": 0,
+                        "name": "example.json",
+                        "platform_id": "",
+                        "status": 0,
+                        "source_url": "",
+                        "cover_url": "",
+                        "cover_width": "",
+                        "cover_height": "",
+                        "config_json": "{\"download_dir\":\"/data/downloads\",\"filename\":\"example.json\",\"url\":\"https://example.com/files/example.json\"}",
+                        "metadata_json": "",
+                        "url": "https://example.com/files/example.json",
+                        "size": 0,
+                        "downloaded": 0,
+                        "speed": 0,
+                        "progress": 0,
                         "error": "",
-                        "reason": "",
-                        "metadata1": "{}",
-                        "metadata2": "{\"platform\":\"wx_channels\"}",
-                        "idx": 0,
-                        "created_at": "1760000000000",
-                        "updated_at": "1760000001000",
-                        "events": [
+                        "files": [
                           {
-                            "id": 1,
-                            "task_id": 1,
-                            "type": "started",
-                            "message": "",
-                            "data": "",
-                            "created_at": "1760000000000"
+                            "id": 160,
+                            "download_dir": "/data/downloads",
+                            "name": "example.json",
+                            "kind": "file",
+                            "type": "file",
+                            "status": "waiting",
+                            "size": 0,
+                            "downloaded": 0,
+                            "speed": 0,
+                            "progress": 0,
+                            "url": "https://example.com/files/example.json",
+                            "error": ""
                           }
-                        ]
+                        ],
+                        "file_count": 1,
+                        "created_at": 1787019341973,
+                        "updated_at": 1787019341
                       }
                     ],
+                    "total": 1,
                     "page": 1,
                     "page_size": 20,
-                    "total": 1
+                    "stats": {
+                      "0": 1
+                    }
                   }
                 }
               },
-              "no_db": {
-                "summary": "数据库未初始化",
+              "single": {
+                "summary": "按 task_id 查询同一任务",
                 "value": {
-                  "code": 500,
-                  "msg": "数据库未初始化",
-                  "data": {}
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "id": 44,
+                    "root_task_id": 44,
+                    "child_count": 0,
+                    "name": "example.json",
+                    "platform_id": "",
+                    "status": 0,
+                    "source_url": "",
+                    "cover_url": "",
+                    "cover_width": "",
+                    "cover_height": "",
+                    "config_json": "{\"download_dir\":\"/data/downloads\",\"filename\":\"example.json\",\"url\":\"https://example.com/files/example.json\"}",
+                    "metadata_json": "",
+                    "url": "https://example.com/files/example.json",
+                    "size": 0,
+                    "downloaded": 0,
+                    "speed": 0,
+                    "progress": 0,
+                    "error": "",
+                    "files": [
+                      {
+                        "id": 160,
+                        "download_dir": "/data/downloads",
+                        "name": "example.json",
+                        "kind": "file",
+                        "type": "file",
+                        "status": "waiting",
+                        "size": 0,
+                        "downloaded": 0,
+                        "speed": 0,
+                        "progress": 0,
+                        "url": "https://example.com/files/example.json",
+                        "error": ""
+                      }
+                    ],
+                    "file_count": 1,
+                    "created_at": 1787019341973,
+                    "updated_at": 1787019341
+                  }
+                }
+              },
+              "not_found": {
+                "summary": "task_id 对应任务不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "下载任务不存在"
                 }
               }
             }
