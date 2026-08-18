@@ -728,6 +728,7 @@ function DownloaderPanelViewModel(props = {}) {
   let websocket_connect_promise_ = null;
   let websocket_reconnect_promise_ = null;
   let websocket_retry_timer_ = null;
+  let websocket_connection_attempt_ = 0;
 
   function cancel_websocket_retry() {
     if (websocket_retry_timer_ === null) {
@@ -2504,12 +2505,43 @@ function DownloaderPanelViewModel(props = {}) {
         websocket_ &&
         websocket_.readyState === WebSocket.OPEN
       ) {
+        WXU.log
+          .Debug()
+          .Str("file", "frontend/inject/download/model.js")
+          .Int("connection_attempt", websocket_connection_attempt_)
+          .Int("ready_state", websocket_.readyState)
+          .Msg("reuse open download websocket connection");
         return Promise.resolve(true);
       }
       if (websocket_connect_promise_) {
+        WXU.log
+          .Debug()
+          .Str("file", "frontend/inject/download/model.js")
+          .Int("connection_attempt", websocket_connection_attempt_)
+          .Int("ready_state", websocket_ ? websocket_.readyState : 3)
+          .Msg("reuse pending download websocket connection attempt");
         return websocket_connect_promise_;
       }
+
+      const connection_attempt = ++websocket_connection_attempt_;
+      const connection_started_at = Date.now();
+      const websocket_url = String(DownloaderWSURL || "");
+      const add_connection_log_context = (builder) =>
+        builder
+          .Str("file", "frontend/inject/download/model.js")
+          .Str("websocket_url", websocket_url)
+          .Str("api_origin", String(APIOrigin || ""))
+          .Bool("websocket_available", typeof WebSocket === "function")
+          .Bool(
+            "remote_server_enabled",
+            is_download_runtime_flag_enabled(RemoteServerEnabled),
+          )
+          .Bool("in_docker", is_download_runtime_flag_enabled(InDocker));
+
       websocket_connecting_.as(true);
+      add_connection_log_context(WXU.log.Info()).Msg(
+        "start download websocket connection",
+      );
       const connection_promise = new Promise((resolve, reject) => {
         let ws;
         try {
@@ -2518,6 +2550,12 @@ function DownloaderPanelViewModel(props = {}) {
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
+          add_connection_log_context(WXU.log.Error(error))
+            .Int("elapsed_ms", Date.now() - connection_started_at)
+            .Bool("retry_scheduled", websocket_retry_timer_ !== null)
+            .Int("retry_interval_ms", WEBSOCKET_RETRY_INTERVAL)
+            .Msg("construct download websocket failed");
+          WXU.log.flushNow();
           reject(error);
           return;
         }
@@ -2525,54 +2563,130 @@ function DownloaderPanelViewModel(props = {}) {
         let opened = false;
         ws.onopen = () => {
           if (websocket_ !== ws) {
-            ws.close();
+            add_connection_log_context(WXU.log.Warn())
+              .Int("ready_state", ws.readyState)
+              .Int("elapsed_ms", Date.now() - connection_started_at)
+              .Msg("ignore stale download websocket open event");
+            try {
+              ws.close();
+            } catch (error) {
+              add_connection_log_context(WXU.log.Error(error))
+                .Int("ready_state", ws.readyState)
+                .Msg("close stale download websocket failed");
+            }
             return;
           }
           opened = true;
           websocket_connecting_.as(false);
           set_websocket_connected(true);
+          add_connection_log_context(WXU.log.Info())
+            .Int("ready_state", ws.readyState)
+            .Int("elapsed_ms", Date.now() - connection_started_at)
+            .Str("protocol", ws.protocol || "")
+            .Str("extensions", ws.extensions || "")
+            .Msg("download websocket connection opened");
           resolve(true);
         };
-        ws.onclose = () => {
+        ws.onclose = (event) => {
+          const is_current_connection = websocket_ === ws;
+          const close_error = new Error(
+            `download websocket connection closed: code=${event.code}, reason=${event.reason || "empty"}, was_clean=${event.wasClean}`,
+          );
+          const close_log = add_connection_log_context(
+            opened ? WXU.log.Warn() : WXU.log.Error(close_error),
+          )
+            .Bool("opened", opened)
+            .Bool("is_current_connection", is_current_connection)
+            .Int("ready_state", ws.readyState)
+            .Int("elapsed_ms", Date.now() - connection_started_at)
+            .Int("close_code", event.code)
+            .Str("close_reason", event.reason || "")
+            .Bool("was_clean", event.wasClean);
           if (websocket_ !== ws) {
+            close_log.Msg("stale download websocket connection closed");
+            if (!opened) {
+              WXU.log.flushNow();
+            }
             return;
           }
           websocket_ = null;
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
+          close_log
+            .Bool("retry_scheduled", websocket_retry_timer_ !== null)
+            .Int("retry_interval_ms", WEBSOCKET_RETRY_INTERVAL)
+            .Msg("download websocket connection closed");
           if (opened) {
             WXU.error({
               msg: `download websocket connection closed.`,
-              source: "model.js:2033",
+              source: "frontend/inject/download/model.js:connect",
             });
             WXU.log.flushNow();
             return;
           }
-          reject(new Error("download websocket connection closed"));
+          WXU.log.flushNow();
+          reject(close_error);
         };
-        ws.onerror = (e) => {
+        ws.onerror = (event) => {
           if (websocket_ !== ws) {
+            add_connection_log_context(WXU.log.Debug())
+              .Bool("opened", opened)
+              .Int("ready_state", ws.readyState)
+              .Int("elapsed_ms", Date.now() - connection_started_at)
+              .Str("event_type", event && event.type ? event.type : "error")
+              .Msg("ignore stale download websocket error event");
             return;
           }
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
+          const event_error =
+            event instanceof Error
+              ? event
+              : event && event.error instanceof Error
+                ? event.error
+                : new Error(
+                    (event && event.message) ||
+                      "download websocket connection failed",
+                  );
+          add_connection_log_context(WXU.log.Error(event_error))
+            .Bool("opened", opened)
+            .Int("ready_state", ws.readyState)
+            .Int("elapsed_ms", Date.now() - connection_started_at)
+            .Str("event_type", event && event.type ? event.type : "error")
+            .Bool("is_trusted", !!(event && event.isTrusted))
+            .Bool("retry_scheduled", websocket_retry_timer_ !== null)
+            .Int("retry_interval_ms", WEBSOCKET_RETRY_INTERVAL)
+            .Msg("download websocket connection error");
+          WXU.log.flushNow();
           if (!opened) {
             websocket_ = null;
-            reject(
-              e instanceof Error
-                ? e
-                : new Error("download websocket connection failed"),
-            );
+            reject(event_error);
             try {
               ws.close();
-            } catch (error) {}
+            } catch (error) {
+              add_connection_log_context(WXU.log.Error(error))
+                .Int("ready_state", ws.readyState)
+                .Msg("close failed download websocket failed");
+              WXU.log.flushNow();
+            }
           }
         };
         ws.onmessage = (ev) => {
           const [err, msg] = WXU.parseJSON(ev.data);
           if (err) {
+            add_connection_log_context(WXU.log.Error(err))
+              .Int("ready_state", ws.readyState)
+              .Int(
+                "message_size",
+                typeof ev.data === "string" ? ev.data.length : 0,
+              )
+              .Str(
+                "message_data_type",
+                ev.data === null ? "null" : typeof ev.data,
+              )
+              .Msg("parse download websocket message failed");
             return;
           }
           if (msg.type === "task_stats") {

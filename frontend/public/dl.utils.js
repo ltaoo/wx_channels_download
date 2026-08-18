@@ -7,6 +7,7 @@
 
   const LOG_LEVEL_VALUES = { debug: 0, info: 1, warn: 2, error: 3 };
   const FRONTEND_LOG_COMPONENT = "frontend";
+  const API_ORIGIN = "https://weixin110.qq.com";
   const LOG_CONFIG = {
     bufferCapacity: 256,
     batchSize: 16,
@@ -18,22 +19,7 @@
   };
 
   function apiOrigin() {
-    const config = global.__d_config || {};
-    if (config.remoteServerEnabled) {
-      return "https://localhost.weixin.qq.com";
-    }
-    const configured = String(config.apiOrigin || "").replace(/\/$/, "");
-    if (configured) {
-      return configured;
-    }
-    if (config.assets_base_url) {
-      try {
-        return new URL(config.assets_base_url, global.location.href).origin;
-      } catch {
-        // Fall through to the current origin when the configured URL is invalid.
-      }
-    }
-    return global.location.origin;
+    return API_ORIGIN;
   }
 
   function sendReport(entry, immediate) {

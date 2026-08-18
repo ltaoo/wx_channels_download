@@ -82,7 +82,7 @@ function task_preview_url(task) {
   if (id === undefined || id === null || id === "") return "";
   const config = window.__d_config || {};
   const origin = config.remoteServerEnabled
-    ? "https://localhost.weixin.qq.com"
+    ? "https://weixin110.qq.com"
     : config.apiOrigin || window.location.origin;
   const url = new URL("/preview", origin);
   url.searchParams.set("id", String(id));

@@ -6,25 +6,25 @@ if (typeof window.__d_config === "undefined") {
 }
 
 var WXEnv = (() => {
+  const proxy_origin = "https://weixin110.qq.com";
   const defaults = {
-    apiHost: "127.0.0.1:2022",
-    apiOrigin: "http://127.0.0.1:2022",
-    apiProtocol: "http",
+    apiHost: "weixin110.qq.com",
+    apiOrigin: proxy_origin,
+    apiProtocol: "https",
     remoteServerEnabled: false,
-    remoteServerOrigin: "http://127.0.0.1:2022",
+    remoteServerOrigin: proxy_origin,
     maxRunning: 3,
     downloadFilenameTemplate: undefined,
     defaultHighest: false,
     downloadPauseWhenDownload: false,
     downloadInFrontend: false,
     downloadForceCheckAllFeeds: false,
-    assetsFallbackBase: "http://127.0.0.1:2022/__assets",
+    assetsFallbackBase: `${proxy_origin}/__assets`,
   };
   const runtime_env = { ...window.__d_config };
-  const api_url = new URL(runtime_env.apiOrigin || defaults.apiOrigin);
-  const api_protocol =
-    runtime_env.apiProtocol || api_url.protocol.replace(":", "");
-  const api_host = runtime_env.apiHost || api_url.host;
+  const api_url = new URL(proxy_origin);
+  const api_protocol = api_url.protocol.replace(":", "");
+  const api_host = api_url.host;
   const derived = {
     apiOrigin: api_url.origin,
     apiProtocol: api_protocol,
@@ -33,16 +33,6 @@ var WXEnv = (() => {
     downloaderProtocol: api_protocol,
     downloaderWSURL: `${ws_protocol(api_protocol)}://${api_host}/ws/v1/download_task`,
   };
-  if (runtime_env.remoteServerEnabled) {
-    const remote_proxy_url = new URL("https://localhost.weixin.qq.com");
-    const remote_proxy_protocol = remote_proxy_url.protocol.replace(":", "");
-    derived.apiOrigin = remote_proxy_url.origin;
-    derived.apiProtocol = remote_proxy_protocol;
-    derived.apiHost = remote_proxy_url.host;
-    derived.downloaderOrigin = remote_proxy_url.origin;
-    derived.downloaderProtocol = remote_proxy_protocol;
-    derived.downloaderWSURL = `${ws_protocol(remote_proxy_protocol)}://${remote_proxy_url.host}/ws/v1/download_task`;
-  }
   const ua = navigator.userAgent || navigator.platform || "";
 
   function config() {
@@ -135,14 +125,9 @@ var WXEnv = (() => {
     if (explicitBase) {
       return String(explicitBase).replace(/\/$/, "");
     }
-    if (cfg.apiOrigin) {
-      return String(cfg.apiOrigin).replace(/\/$/, "") + "/__assets";
-    }
-    if (cfg.apiServerProtocol && cfg.apiServerAddr) {
-      return origin(cfg.apiServerProtocol, cfg.apiServerAddr) + "/__assets";
-    }
-    if (cfg.Protocol && cfg.Addr) {
-      return origin(cfg.Protocol, cfg.Addr) + "/__assets";
+    const api_origin = get("apiOrigin");
+    if (api_origin) {
+      return String(api_origin).replace(/\/$/, "") + "/__assets";
     }
     return get("assetsFallbackBase");
   }
