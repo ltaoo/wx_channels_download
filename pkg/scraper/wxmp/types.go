@@ -34,6 +34,26 @@ func (v *FlexibleInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type FlexibleString string
+
+func (value *FlexibleString) UnmarshalJSON(data []byte) error {
+	raw_value := strings.TrimSpace(string(data))
+	if raw_value == "" || raw_value == "null" {
+		*value = ""
+		return nil
+	}
+	if raw_value[0] == '"' {
+		var string_value string
+		if err := json.Unmarshal(data, &string_value); err != nil {
+			return err
+		}
+		*value = FlexibleString(string_value)
+		return nil
+	}
+	*value = FlexibleString(raw_value)
+	return nil
+}
+
 type VideoPageInfoItem struct {
 	VideoID              string             `json:"video_id"`
 	OriStatus            int                `json:"ori_status"`

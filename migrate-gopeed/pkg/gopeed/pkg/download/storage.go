@@ -154,14 +154,17 @@ func NewBoltStorage(dir string) *BoltStorage {
 }
 
 func NewReadOnlyBoltStorage(dir string) *BoltStorage {
-	path := filepath.Join(dir, dbFile)
-	db, err := bbolt.Open(path, 0600, &bbolt.Options{ReadOnly: true})
+	return NewReadOnlyBoltStorageFromPath(filepath.Join(dir, dbFile))
+}
+
+func NewReadOnlyBoltStorageFromPath(db_path string) *BoltStorage {
+	db, err := bbolt.Open(db_path, 0600, &bbolt.Options{ReadOnly: true})
 	if err != nil {
 		panic(err)
 	}
 	return &BoltStorage{
 		db:       db,
-		path:     path,
+		path:     db_path,
 		readOnly: true,
 	}
 }

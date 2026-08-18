@@ -4,21 +4,31 @@
 
 ## Run
 
+从仓库根目录运行：
+
+```bash
+go run ./migrate-gopeed --data-dir ./gopeed.db --port 8026 --target-url http://127.0.0.1:2022 --target-db ./data.db
+```
+
+也可以进入迁移工具模块运行：
+
 ```bash
 cd migrate-gopeed
-go run . --data-dir .. --port 8026 --target-url http://127.0.0.1:2022 --target-db ../data.db
+go run . --data-dir ../gopeed.db --port 8026 --target-url http://127.0.0.1:2022 --target-db ../data.db
 ```
+
+请按目录运行整个包，不要使用 `go run migrate-gopeed/main.go`；单文件模式不会包含同包的其他 Go 文件。
 
 打开 `http://127.0.0.1:8026/migration`。
 
-普通构建默认 `--mode debug`，等同于 `dev`，前端资源由 `github.com/ltaoo/velo/frontendserver` 直接从本地 `web` 目录读取，修改 `web/migration.html` 或 `web/assets` 后刷新浏览器即可看到效果。
+普通构建默认 `--mode debug`，等同于 `dev`，前端资源由 `github.com/ltaoo/velo/frontendserver` 直接从本地 `web` 目录读取，修改 `web/index.html`、`web/src` 或 `web/assets` 后刷新浏览器即可看到效果。
 如果从其他目录启动，可以通过 `--frontend-root /path/to/migrate-gopeed/web` 指定前端目录。使用 `embed_frontend_inject`、`embed_inject`、`release` 或 `prod` build tag 打包时会默认进入 `release`，直接使用编译进二进制的 embedded frontend；也可通过 `-ldflags "-X main.Mode=release"` 固定。
 
 ```bash
 go build -tags embed_frontend_inject -o migrate-gopeed .
 ```
 
-`--data-dir` 指向包含 `gopeed.db` 的目录。页面和接口也支持直接传入 `gopeed.db` 文件路径。
+`--data-dir` 指向要读取的 Gopeed `.db` 数据库文件。页面和迁移接口只接受显式的 `.db` 文件路径，不再从目录中隐式查找 `gopeed.db`。
 `--target-url` 指向当前 wx_channels_download 服务地址，用于读取视频号详情。
 `--target-db` 指向 wx_channels_download 的 SQLite 数据库；未指定时会优先尝试当前目录或父目录下的 `data.db`。
 

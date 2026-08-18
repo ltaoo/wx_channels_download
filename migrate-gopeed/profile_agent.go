@@ -252,7 +252,7 @@ func (h *channelsProfileAgentHub) FetchProfile(ctx context.Context, profileURL s
 		if err := json.Unmarshal(resp.Data, &profile); err != nil {
 			return nil, fmt.Errorf("parse profile agent data: %w", err)
 		}
-		if err := validateChannelsFeedProfile(&profile); err != nil {
+		if err := validate_channels_feed_profile(&profile); err != nil {
 			return nil, err
 		}
 		return &profile, nil
@@ -498,21 +498,31 @@ func fetchTargetProfileData(client *http.Client, rawURL string) (json.RawMessage
 	if err := json.Unmarshal(envelope.Data, &profile); err != nil {
 		return nil, fmt.Errorf("parse profile data: %w", err)
 	}
-	if err := validateChannelsFeedProfile(&profile); err != nil {
+	if err := validate_channels_feed_profile(&profile); err != nil {
 		return nil, err
 	}
 	return append(json.RawMessage(nil), envelope.Data...), nil
 }
 
-func validateChannelsFeedProfile(profile *channelsFeedProfile) error {
+func validate_channels_feed_profile(profile *channelsFeedProfile) error {
 	if profile == nil {
 		return errors.New("profile is nil")
 	}
 	if profile.ErrCode != 0 {
 		return fmt.Errorf("profile business error code=%d: %s", profile.ErrCode, profile.ErrMsg)
 	}
-	if len(profile.Data.Object) == 0 || string(profile.Data.Object) == "null" {
+	object_data := normalizeRawJSONObject(profile.Data.Object)
+	if len(object_data) == 0 || strings.TrimSpace(string(object_data)) == "null" {
 		return errors.New("profile object is empty")
+	}
+	var object_value struct {
+		ID flexibleString `json:"id"`
+	}
+	if err := json.Unmarshal(object_data, &object_value); err != nil {
+		return fmt.Errorf("parse profile object: %w", err)
+	}
+	if strings.TrimSpace(string(object_value.ID)) == "" {
+		return errors.New("profile object id is empty")
 	}
 	return nil
 }
