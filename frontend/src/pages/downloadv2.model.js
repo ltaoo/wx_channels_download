@@ -211,6 +211,36 @@ function DownloadV2Model(props = {}) {
 
   const methods = {};
   const ui = {
+    btn_refresh_tasks$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      onClick() {
+        return methods.refreshTasks();
+      },
+    }),
+    btn_start_all_tasks$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      onClick() {
+        return methods.startAllTasks();
+      },
+    }),
+    btn_pause_all_tasks$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      onClick() {
+        return methods.pauseAllTasks();
+      },
+    }),
+    btn_clear_tasks$: new Timeless.vm.ButtonCore({
+      variant: "danger",
+      onClick() {
+        return methods.requestClearTasks(false);
+      },
+    }),
+    btn_delete_selected_tasks$: new Timeless.vm.ButtonCore({
+      variant: "danger",
+      onClick() {
+        return methods.requestDeleteSelectedTasks(false);
+      },
+    }),
     input_create_task_url$: new Timeless.vm.InputCore({
       defaultValue: create_task_text_.value,
       placeholder: "请输入下载地址，例如 https://example.com/file.mp4",
@@ -1127,6 +1157,7 @@ function DownloadV2Model(props = {}) {
       if (typeof unlisten === "function") unlisten();
     });
     [...task_entries.keys()].forEach(release_domain_task);
+    Object.values(ui).forEach((store) => store.destroy?.());
   }
 
   Object.assign(methods, {

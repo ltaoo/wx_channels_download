@@ -1,9 +1,3 @@
-import {
-  Button,
-  Input,
-  Pagination,
-  // Select,
-} from "../components.js";
 import { ContentViewModel } from "./content.model.js";
 
 function ContentPageView(props) {
@@ -140,16 +134,12 @@ function ContentRowCover(props) {
   }
   return View({ class: "wx-content-row-cover-wrap" }, [
     fallback,
-    Img({
+    LazyImg({
       class: "wx-content-row-cover",
       src: content.cover_url,
       alt: content.title,
       attributes: {
-        loading: "lazy",
         referrerpolicy: "no-referrer",
-      },
-      onError(event) {
-        event.target.style.display = "none";
       },
     }),
   ]);

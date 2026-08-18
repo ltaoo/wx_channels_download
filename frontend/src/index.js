@@ -1,16 +1,13 @@
-import {
-  Button,
-  Dialog,
-  DialogBody,
-  DialogTitle,
-  createButtonStore,
-} from "./components.js";
+import * as components from "./components.js";
+import { createUpdateModel } from "./update.model.js";
 
 const Timeless = window.Timeless;
 
 if (!Timeless) {
   throw new Error("应用无法启动：Timeless 运行时未加载");
 }
+
+Object.assign(window, components);
 
 window.h = Timeless.h;
 window.View = Timeless.View;
@@ -383,6 +380,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
     var loading_ = Timeless.ref(false);
     var saving_ = Timeless.ref(false);
     var error_ = Timeless.ref("");
+    var enabled_ = Timeless.computed(data_, function (data) {
+      return Boolean(data && data.enabled);
+    });
+    var endpoint_ = Timeless.computed(data_, function (data) {
+      return (data && data.endpoint) || "/mcp";
+    });
     var request_sequence = 0;
     var status_request = new Timeless.kit.RequestCore(
       function () {
@@ -445,21 +448,70 @@ window.PLATFORM_FAVICONS = Object.freeze({
       return set_enabled(!data.enabled);
     }
 
+    var ui = {
+      refresh_button$: new Timeless.vm.ButtonCore({
+        variant: "outline",
+        size: "sm",
+        onClick: load,
+      }),
+      retry_button$: new Timeless.vm.ButtonCore({
+        variant: "primary",
+        onClick: load,
+      }),
+      toggle_button$: new Timeless.vm.ButtonCore({
+        variant: "outline",
+        onClick: toggle,
+      }),
+    };
+    var state_unlistens = [
+      loading_.subscribe({
+        onChange(value) {
+          ui.refresh_button$.setLoading(Boolean(value));
+          ui.retry_button$.setLoading(Boolean(value));
+        },
+      }),
+      saving_.subscribe({
+        onChange(value) {
+          ui.toggle_button$.setLoading(Boolean(value));
+          if (value) {
+            ui.refresh_button$.disable();
+          } else {
+            ui.refresh_button$.enable();
+          }
+        },
+      }),
+    ];
+
     function destroy() {
       request_sequence += 1;
       status_request.destroy?.();
       update_request.destroy?.();
+      state_unlistens.forEach(function (unlisten) {
+        if (typeof unlisten === "function") {
+          unlisten();
+        }
+      });
+      Object.values(ui).forEach(function (store) {
+        store.destroy?.();
+      });
     }
 
     return {
-      data: data_,
-      loading: loading_,
-      saving: saving_,
-      error: error_,
-      load: load,
-      set_enabled: set_enabled,
-      toggle: toggle,
-      destroy: destroy,
+      state: {
+        data: data_,
+        enabled: enabled_,
+        endpoint: endpoint_,
+        error: error_,
+        loading: loading_,
+        saving: saving_,
+      },
+      ui: ui,
+      methods: {
+        destroy: destroy,
+        load: load,
+        set_enabled: set_enabled,
+        toggle: toggle,
+      },
     };
   }
 
@@ -970,26 +1022,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
 
   function MCPSettingsDetails(props) {
     var model = props.model;
-    var enabled_ = Timeless.computed(model.data, function (data) {
-      return Boolean(data && data.enabled);
-    });
-    var endpoint_ = Timeless.computed(model.data, function (data) {
-      return (data && data.endpoint) || "/mcp";
-    });
-    var toggle_button$ = createButtonStore({
-      variant: "outline",
-      loading: model.saving,
-      onClick: model.toggle,
-    });
-    var retry_button$ = createButtonStore({
-      variant: "primary",
-      loading: model.loading,
-      onClick: model.load,
-    });
 
     return Show({
       when: Timeless.combine(
-        { loading: model.loading, data: model.data },
+        { loading: model.state.loading, data: model.state.data },
         function (state) {
           return state.loading && !state.data;
         },
@@ -1010,7 +1046,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
       else() {
         return Show({
           when: Timeless.combine(
-            { error: model.error, data: model.data },
+            { error: model.state.error, data: model.state.data },
             function (state) {
               return Boolean(state.error) && !state.data;
             },
@@ -1023,10 +1059,12 @@ window.PLATFORM_FAVICONS = Object.freeze({
                 View({ class: "settings-dialog__state-title" }, [
                   "MCP 状态读取失败",
                 ]),
-                View({ class: "settings-dialog__state-text" }, [model.error]),
+                View({ class: "settings-dialog__state-text" }, [
+                  model.state.error,
+                ]),
                 Button(
                   {
-                    store: retry_button$,
+                    store: model.ui.retry_button$,
                     prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
                   },
                   ["重新读取"],
@@ -1052,7 +1090,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                   {
                     class: Timeless.classNames([
                       "settings-mcp__status",
-                      Timeless.computed(enabled_, function (enabled) {
+                      Timeless.computed(model.state.enabled, function (enabled) {
                         return enabled
                           ? "settings-mcp__status--running"
                           : "settings-mcp__status--stopped";
@@ -1061,14 +1099,14 @@ window.PLATFORM_FAVICONS = Object.freeze({
                   },
                   [
                     View({ class: "settings-mcp__status-dot" }),
-                    Timeless.computed(enabled_, function (enabled) {
+                    Timeless.computed(model.state.enabled, function (enabled) {
                       return enabled ? "运行中" : "已停用";
                     }),
                   ],
                 ),
               ]),
               Show({
-                when: Timeless.computed(model.error, Boolean),
+                when: Timeless.computed(model.state.error, Boolean),
                 ok() {
                   return View(
                     {
@@ -1077,7 +1115,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     },
                     [
                       Timeless.Icon({ name: "circle-alert", size: 16 }),
-                      model.error,
+                      model.state.error,
                     ],
                   );
                 },
@@ -1093,10 +1131,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
                 ]),
                 Button(
                   {
-                    store: toggle_button$,
+                    store: model.ui.toggle_button$,
                     attributes: {
                       "aria-label": Timeless.computed(
-                        enabled_,
+                        model.state.enabled,
                         function (enabled) {
                           return enabled ? "关闭 MCP 服务" : "开启 MCP 服务";
                         },
@@ -1104,7 +1142,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     },
                   },
                   [
-                    Timeless.computed(enabled_, function (enabled) {
+                    Timeless.computed(model.state.enabled, function (enabled) {
                       return enabled ? "关闭服务" : "开启服务";
                     }),
                   ],
@@ -1113,7 +1151,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
               View({ class: "settings-mcp__section" }, [
                 View({ class: "settings-mcp__section-label" }, ["连接地址"]),
                 View({ as: "code", class: "settings-mcp__endpoint" }, [
-                  endpoint_,
+                  model.state.endpoint,
                 ]),
                 View({ class: "settings-mcp__hint" }, [
                   "将此 URL 填入支持 Streamable HTTP 的 MCP 客户端。服务默认只监听 API 配置的地址。",
@@ -1123,7 +1161,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                 View({ class: "settings-mcp__section-label" }, ["可用工具"]),
                 View({ class: "settings-mcp__tools" }, [
                   For({
-                    each: Timeless.computed(model.data, function (data) {
+                    each: Timeless.computed(model.state.data, function (data) {
                       return (data && data.tools) || [];
                     }),
                     render(tool) {
@@ -1132,7 +1170,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                   }),
                 ]),
               ]),
-              MCPUsageGuide({ endpoint: endpoint_ }),
+              MCPUsageGuide({ endpoint: model.state.endpoint }),
               View(
                 {
                   class:
@@ -1400,28 +1438,254 @@ window.PLATFORM_FAVICONS = Object.freeze({
     );
   }
 
-  function SiderLayoutView(props) {
+  function UpdateDialog(props) {
+    var model = props.store;
+    var snapshot_ = model.state.snapshot;
+
+    return Dialog(
+      {
+        store: model.ui.dialog$,
+        class: "update-dialog",
+        zIndex: 12000,
+        showClose: false,
+        attributes: { "aria-labelledby": "update-dialog-title" },
+      },
+      [
+        DialogHeader({ class: "update-dialog__header" }, [
+          View({ class: "update-dialog__mark" }, [
+            Timeless.Icon({ name: "cloud-download", size: 23 }),
+          ]),
+          View({ class: "update-dialog__heading" }, [
+            DialogTitle(
+              { attributes: { id: "update-dialog-title" } },
+              [model.state.phase_title],
+            ),
+            DialogDescription({}, [model.state.phase_message]),
+          ]),
+        ]),
+        DialogBody({ class: "update-dialog__body" }, [
+          View({ class: "update-dialog__versions" }, [
+            View({ class: "update-dialog__version" }, [
+              View({ class: "update-dialog__version-label" }, ["当前版本"]),
+              View({ as: "code", class: "update-dialog__version-value" }, [
+                Timeless.computed(snapshot_, function (snapshot) {
+                  return snapshot.current_version || "未知";
+                }),
+              ]),
+            ]),
+            View(
+              {
+                class: "update-dialog__version-arrow",
+                attributes: { "aria-hidden": "true" },
+              },
+              ["→"],
+            ),
+            View({ class: "update-dialog__version" }, [
+              View({ class: "update-dialog__version-label" }, ["最新版本"]),
+              View({ as: "code", class: "update-dialog__version-value" }, [
+                Show({
+                  when: model.state.has_latest_version,
+                  ok() {
+                    return model.state.latest_version.value;
+                  },
+                  else() {
+                    return "未知";
+                  },
+                }),
+              ]),
+            ]),
+          ]),
+          Show({
+            when: Timeless.computed(snapshot_, function (snapshot) {
+              return Boolean(snapshot.published_at || snapshot.asset_name);
+            }),
+            ok() {
+              return View({ class: "update-dialog__meta" }, [
+                Show({
+                  when: Timeless.computed(
+                    model.state.published_text,
+                    Boolean,
+                  ),
+                  ok() {
+                    return View({ as: "span" }, [
+                      Timeless.Icon({ name: "calendar", size: 14 }),
+                      model.state.published_text,
+                    ]);
+                  },
+                }),
+                Show({
+                  when: Timeless.computed(snapshot_, function (snapshot) {
+                    return Boolean(snapshot.asset_name);
+                  }),
+                  ok() {
+                    return View({ as: "span" }, [
+                      Timeless.Icon({ name: "file-box", size: 14 }),
+                      Timeless.computed(snapshot_, function (snapshot) {
+                        return snapshot.asset_name;
+                      }),
+                    ]);
+                  },
+                }),
+              ]);
+            },
+          }),
+          Show({
+            when: Timeless.computed(model.state.status, function (status) {
+              return ["downloading", "ready", "restarting"].includes(status);
+            }),
+            ok() {
+              return View(
+                {
+                  class: "update-dialog__progress",
+                  attributes: {
+                    role: "progressbar",
+                    "aria-valuemin": "0",
+                    "aria-valuemax": "100",
+                    "aria-valuenow": model.state.percent,
+                  },
+                },
+                [
+                  View({ class: "update-dialog__progress-head" }, [
+                    View({ as: "span" }, [model.state.phase_title]),
+                    View({ as: "span" }, [
+                      Show({
+                        when: model.state.has_total,
+                        ok() {
+                          return Timeless.computed(
+                            model.state.percent,
+                            function (percent) {
+                              return `${Math.round(percent)}%`;
+                            },
+                          );
+                        },
+                        else() {
+                          return "处理中";
+                        },
+                      }),
+                    ]),
+                  ]),
+                  View({ class: "update-dialog__progress-track" }, [
+                    View({
+                      class: Timeless.classNames([
+                        "update-dialog__progress-value",
+                        Timeless.computed(
+                          model.state.has_total,
+                          function (has_total) {
+                            return has_total ? null : "is-indeterminate";
+                          },
+                        ),
+                      ]),
+                      style: Timeless.combine(
+                        {
+                          percent: model.state.percent,
+                          has_total: model.state.has_total,
+                        },
+                        function (state) {
+                          return {
+                            width: state.has_total
+                              ? `${state.percent}%`
+                              : "36%",
+                          };
+                        },
+                      ),
+                    }),
+                  ]),
+                  View({ class: "update-dialog__progress-detail" }, [
+                    model.state.progress_text,
+                  ]),
+                ],
+              );
+            },
+          }),
+          Show({
+            when: Timeless.computed(model.state.status, function (status) {
+              return status === "error";
+            }),
+            ok() {
+              return View(
+                {
+                  class: "update-dialog__error",
+                  attributes: { role: "alert" },
+                },
+                [
+                  Timeless.Icon({ name: "circle-alert", size: 17 }),
+                  model.state.phase_message,
+                ],
+              );
+            },
+          }),
+          Show({
+            when: Timeless.computed(snapshot_, function (snapshot) {
+              return Boolean(snapshot.body);
+            }),
+            ok() {
+              return View({ class: "update-dialog__notes" }, [
+                View({ class: "update-dialog__notes-title" }, ["版本说明"]),
+                View({ as: "pre", class: "update-dialog__notes-content" }, [
+                  Timeless.computed(snapshot_, function (snapshot) {
+                    return snapshot.body;
+                  }),
+                ]),
+              ]);
+            },
+          }),
+        ]),
+        Show({
+          when: Timeless.computed(model.state.busy, function (busy) {
+            return !busy;
+          }),
+          ok() {
+            return DialogFooter({ class: "update-dialog__footer" }, [
+              Button({ store: model.ui.cancel_button$ }, ["稍后"]),
+              Show({
+                when: model.state.can_download,
+                ok() {
+                  return Button(
+                    {
+                      store: model.ui.download_button$,
+                      prefix: Timeless.Icon({ name: "download", size: 15 }),
+                    },
+                    [
+                      Timeless.computed(
+                        model.state.status,
+                        function (status) {
+                          return status === "error" ? "重新下载" : "下载并更新";
+                        },
+                      ),
+                    ],
+                  );
+                },
+              }),
+            ]);
+          },
+        }),
+      ],
+    );
+  }
+
+  function create_sider_layout_model(props) {
+    var menu_configs = [
+      { title: "下载", name: "root.shell.download", icon: "download" },
+      { title: "Get", name: "root.shell.scraper", icon: "search" },
+      { title: "内容管理", name: "root.shell.content", icon: "library" },
+      {
+        title: "浏览记录",
+        name: "root.shell.browsehistory",
+        icon: "history",
+      },
+      { title: "帐号管理", name: "root.shell.account", icon: "user" },
+    ];
     var menu$ = Timeless.kit.RouteMenusModel({
       view: props.view,
       history: history$,
-      menus: [
-        { title: "下载", name: "root.shell.download", icon: "download" },
-        { title: "Get", name: "root.shell.scraper", icon: "search" },
-        { title: "内容管理", name: "root.shell.content", icon: "library" },
-        {
-          title: "浏览记录",
-          name: "root.shell.browsehistory",
-          icon: "history",
-        },
-        { title: "帐号管理", name: "root.shell.account", icon: "user" },
-        // { title: "日志", name: "root.shell.logs", icon: "scroll-text" },
-      ],
-    });
-    var settings_dialog$ = new Timeless.vm.DialogCore({
-      closeable: true,
-      footer: false,
+      menus: menu_configs,
     });
     var settings_section_ = Timeless.ref("certificate");
+    var update$ = createUpdateModel({
+      currentVersion: String(
+        (window.__d_config && window.__d_config.version) || "",
+      ).trim(),
+    });
     var mcp_settings$ = create_mcp_settings_model(http_client$);
     var certificate_ = Timeless.ref(null);
     var certificate_loading_ = Timeless.ref(false);
@@ -1433,6 +1697,10 @@ window.PLATFORM_FAVICONS = Object.freeze({
       { client: http_client$ },
     );
     var certificate_request_sequence = 0;
+    var version =
+      String(
+        (window.__d_config && window.__d_config.version) || "",
+      ).trim() || "开发版";
 
     async function load_certificate() {
       var sequence = ++certificate_request_sequence;
@@ -1451,66 +1719,132 @@ window.PLATFORM_FAVICONS = Object.freeze({
       return result;
     }
 
-    var settings_button$ = createButtonStore({
-      variant: "ghost",
-      onClick() {
-        settings_dialog$.show();
-        settings_section_.as("certificate");
-        load_certificate();
+    var ui = {
+      settings_dialog$: new Timeless.vm.DialogCore({
+        closeable: true,
+        footer: false,
+      }),
+      settings_button$: new Timeless.vm.ButtonCore({
+        variant: "ghost",
+        onClick() {
+          ui.settings_dialog$.show();
+          settings_section_.as("certificate");
+          return load_certificate();
+        },
+      }),
+      certificate_menu_button$: new Timeless.vm.ButtonCore({
+        variant: "ghost",
+        onClick() {
+          settings_section_.as("certificate");
+          if (!certificate_.value && !certificate_loading_.value) {
+            return load_certificate();
+          }
+          return null;
+        },
+      }),
+      about_menu_button$: new Timeless.vm.ButtonCore({
+        variant: "ghost",
+        onClick() {
+          settings_section_.as("about");
+        },
+      }),
+      mcp_menu_button$: new Timeless.vm.ButtonCore({
+        variant: "ghost",
+        onClick() {
+          if (
+            !mcp_settings$.state.data.value &&
+            !mcp_settings$.state.loading.value
+          ) {
+            mcp_settings$.methods.load();
+          }
+          settings_section_.as("mcp");
+        },
+      }),
+      refresh_certificate_button$: new Timeless.vm.ButtonCore({
+        variant: "outline",
+        size: "sm",
+        loading: certificate_loading_.value,
+        onClick: load_certificate,
+      }),
+      retry_certificate_button$: new Timeless.vm.ButtonCore({
+        variant: "primary",
+        loading: certificate_loading_.value,
+        onClick: load_certificate,
+      }),
+    };
+    var menu_items = menu_configs.map(function (menu) {
+      return {
+        menu: menu,
+        button$: new Timeless.vm.ButtonCore({
+          variant: "ghost",
+          onClick() {
+            menu$.handleClick(menu);
+          },
+        }),
+      };
+    });
+    var certificate_loading_unlisten = certificate_loading_.subscribe({
+      onChange(value) {
+        ui.refresh_certificate_button$.setLoading(Boolean(value));
+        ui.retry_certificate_button$.setLoading(Boolean(value));
       },
     });
-    var certificate_menu_button$ = createButtonStore({
-      variant: "ghost",
-      onClick() {
-        settings_section_.as("certificate");
-        if (!certificate_.value && !certificate_loading_.value) {
-          load_certificate();
-        }
+
+    function ready() {
+      return update$.methods.check();
+    }
+
+    function destroy() {
+      certificate_request_sequence += 1;
+      certificate_request.destroy?.();
+      if (typeof certificate_loading_unlisten === "function") {
+        certificate_loading_unlisten();
+      }
+      menu_items.forEach(function (item) {
+        item.button$.destroy?.();
+      });
+      Object.values(ui).forEach(function (store) {
+        store.destroy?.();
+      });
+      mcp_settings$.methods.destroy();
+      update$.methods.destroy();
+      menu$.destroy();
+    }
+
+    return {
+      state: {
+        certificate: certificate_,
+        certificate_error: certificate_error_,
+        certificate_loading: certificate_loading_,
+        menu_items: menu_items,
+        settings_section: settings_section_,
+        version: version,
       },
-    });
-    var about_menu_button$ = createButtonStore({
-      variant: "ghost",
-      onClick() {
-        settings_section_.as("about");
+      ui: ui,
+      models: {
+        mcp: mcp_settings$,
+        menu: menu$,
+        update: update$,
       },
-    });
-    var mcp_menu_button$ = createButtonStore({
-      variant: "ghost",
-      onClick() {
-        if (!mcp_settings$.data.value && !mcp_settings$.loading.value) {
-          mcp_settings$.load();
-        }
-        settings_section_.as("mcp");
+      methods: {
+        destroy: destroy,
+        loadCertificate: load_certificate,
+        ready: ready,
       },
-    });
-    var refresh_mcp_button$ = createButtonStore({
-      variant: "outline",
-      size: "sm",
-      loading: mcp_settings$.loading,
-      disabled: mcp_settings$.saving,
-      onClick: mcp_settings$.load,
-    });
-    var refresh_certificate_button$ = createButtonStore({
-      variant: "outline",
-      size: "sm",
-      loading: certificate_loading_,
-      onClick: load_certificate,
-    });
-    var retry_certificate_button$ = createButtonStore({
-      variant: "primary",
-      loading: certificate_loading_,
-      onClick: load_certificate,
-    });
+    };
+  }
+
+  function SiderLayoutView(props) {
+    var model = create_sider_layout_model(props);
 
     return View(
       {
         class: "app-shell dm-page",
+        onMounted: function () {
+          model.methods.ready();
+        },
         onUnmounted: function () {
-          certificate_request_sequence += 1;
-          certificate_request.destroy?.();
-          mcp_settings$.destroy();
-          settings_dialog$.destroy();
-          menu$.destroy();
+          model.methods.destroy();
         },
       },
       [
@@ -1524,6 +1858,40 @@ window.PLATFORM_FAVICONS = Object.freeze({
                 draggable: "false",
               },
             }),
+            View({ class: "app-brand__version" }, [
+              Show({
+                when: model.models.update.state.notice_visible,
+                ok() {
+                  var current_version =
+                    model.models.update.state.current_version.value;
+                  var latest_version =
+                    model.models.update.state.latest_version.value;
+                  return [
+                    Button(
+                      {
+                        store: model.models.update.ui.notice_button$,
+                        class: "app-brand__version-button dm-focus-ring",
+                        attributes: {
+                          type: "button",
+                          title: `当前版本 ${current_version}，发现新版本 ${latest_version}`,
+                          "aria-label": `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
+                        },
+                      },
+                      [current_version],
+                    ),
+                    View({
+                      class: "app-brand__version-dot",
+                      attributes: { "aria-hidden": "true" },
+                    }),
+                  ];
+                },
+                else() {
+                  return View({ class: "app-brand__version-text" }, [
+                    model.models.update.state.current_version.value,
+                  ]);
+                },
+              }),
+            ]),
           ]),
           View(
             {
@@ -1533,25 +1901,24 @@ window.PLATFORM_FAVICONS = Object.freeze({
             },
             [
               For({
-                each: menu$.menus,
-                render: function (menu) {
+                each: model.state.menu_items,
+                render: function (item) {
+                  var menu = item.menu;
                   return Button(
                     {
-                      store: createButtonStore({
-                        variant: "ghost",
-                        onClick() {
-                          menu$.handleClick(menu);
-                        },
-                      }),
+                      store: item.button$,
                       class: Timeless.classNames([
                         "app-menu__item",
                         "dm-focus-ring",
                         "dm-justify-start",
-                        Timeless.computed(menu$.cur, function (current) {
-                          return menu$.isSelected(current, menu)
-                            ? "app-menu__item--active"
-                            : null;
-                        }),
+                        Timeless.computed(
+                          model.models.menu.cur,
+                          function (current) {
+                            return model.models.menu.isSelected(current, menu)
+                              ? "app-menu__item--active"
+                              : null;
+                          },
+                        ),
                       ]),
                     },
                     [
@@ -1567,7 +1934,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
               }),
               Button(
                 {
-                  store: settings_button$,
+                  store: model.ui.settings_button$,
                   class:
                     "app-menu__item app-menu__settings dm-focus-ring dm-justify-start",
                   attributes: {
@@ -1615,23 +1982,21 @@ window.PLATFORM_FAVICONS = Object.freeze({
           ],
         ),
         SettingsDialog({
-          dialog: settings_dialog$,
-          section: settings_section_,
-          version:
-            String(
-              (window.__d_config && window.__d_config.version) || "",
-            ).trim() || "开发版",
-          certificate: certificate_,
-          loading: certificate_loading_,
-          error: certificate_error_,
-          certificate_menu_button: certificate_menu_button$,
-          mcp_menu_button: mcp_menu_button$,
-          about_menu_button: about_menu_button$,
-          mcp_model: mcp_settings$,
-          mcp_refresh_button: refresh_mcp_button$,
-          refresh_button: refresh_certificate_button$,
-          retry_button: retry_certificate_button$,
+          dialog: model.ui.settings_dialog$,
+          section: model.state.settings_section,
+          version: model.state.version,
+          certificate: model.state.certificate,
+          loading: model.state.certificate_loading,
+          error: model.state.certificate_error,
+          certificate_menu_button: model.ui.certificate_menu_button$,
+          mcp_menu_button: model.ui.mcp_menu_button$,
+          about_menu_button: model.ui.about_menu_button$,
+          mcp_model: model.models.mcp,
+          mcp_refresh_button: model.models.mcp.ui.refresh_button$,
+          refresh_button: model.ui.refresh_certificate_button$,
+          retry_button: model.ui.retry_certificate_button$,
         }),
+        UpdateDialog({ store: model.models.update }),
       ],
     );
   }

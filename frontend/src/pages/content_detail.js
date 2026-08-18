@@ -31,25 +31,23 @@ function ContentDetailAction(props) {
 
 function ContentDetailCover(props) {
   const content = props.content;
+  const cover_url = props.store.methods.coverURL(content);
   const fallback = View({ class: "wx-content-cover-fallback" }, [
     Timeless.Icon({ name: "file", size: 32 }),
     View({ class: "wx-content-cover-type" }, [
       props.store.methods.typeLabel(content.content_type),
     ]),
   ]);
-  if (!content.cover_url) {
+  if (!cover_url) {
     return fallback;
   }
   return View({ class: "wx-content-cover-wrap" }, [
-    fallback,
-    Img({
+    LazyImg({
       class: "wx-content-cover",
-      src: content.cover_url,
+      src: cover_url,
       alt: content.title,
-      attributes: { loading: "lazy", referrerpolicy: "no-referrer" },
-      onError(event) {
-        event.target.style.display = "none";
-      },
+      loading: "eager",
+      attributes: { referrerpolicy: "no-referrer" },
     }),
   ]);
 }
@@ -672,6 +670,7 @@ function ContentDetailHTMLDocument(props) {
 function ContentDetailMediaStage(props) {
   const vm$ = props.store;
   const media = props.media;
+  const cover_url = vm$.methods.coverURL(props.content);
   let player = null;
   if (!media.available) {
     player = View({ class: "wx-content-detail-media-file-stage" }, [
@@ -687,7 +686,7 @@ function ContentDetailMediaStage(props) {
     player = Timeless.Video({
       class: "wx-content-detail-media-video",
       src: media.url,
-      poster: props.content.cover_url,
+      poster: cover_url,
       controls: true,
       playsInline: true,
       preload: "metadata",
