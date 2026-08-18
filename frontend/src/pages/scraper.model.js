@@ -37,6 +37,7 @@ const platform_names = {
   fanqienovel: "番茄小说",
   "69shuba": "69书吧",
   ttk: "TT看书",
+  webpage: "网页",
 };
 
 const scraper_fetch_stage_names = {
@@ -69,6 +70,7 @@ const content_type_names = {
   question: "问题",
   post: "帖子",
   blog: "文章",
+  webpage: "网页",
   novel: "小说",
   audio: "音频",
   podcast: "播客",
@@ -3563,7 +3565,14 @@ function normalize_typed_content_detail(
     detail,
     subject,
   );
-  const article_types = ["article", "answer", "question", "post", "blog"];
+  const article_types = [
+    "article",
+    "answer",
+    "question",
+    "post",
+    "blog",
+    "webpage",
+  ];
   const image_types = ["album", "image_set", "image"];
   let kind = "generic";
   let icon = "file-text";
@@ -3634,6 +3643,8 @@ function normalize_typed_content_detail(
       title = "问题描述";
     } else if (type === "article" || type === "blog") {
       title = "文章正文";
+    } else if (type === "webpage") {
+      title = "网页正文";
     }
     article_body = normalize_article_body(data, create_article_html_content);
   } else if (image_types.includes(type)) {

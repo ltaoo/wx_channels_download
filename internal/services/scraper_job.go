@@ -28,6 +28,7 @@ const (
 	scraper_platform_zhihu      = "zhihu"
 	scraper_platform_ttk        = "ttk"
 	scraper_platform_youtube    = "youtube"
+	scraper_platform_webpage    = "webpage"
 )
 
 const (
@@ -201,6 +202,10 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 	if err != nil || parsed_url.Hostname() == "" {
 		return ScraperPlatformResolution{}, fmt.Errorf("无法解析 URL: %s", raw_url)
 	}
+	parsed_url.Scheme = strings.ToLower(strings.TrimSpace(parsed_url.Scheme))
+	if parsed_url.Scheme != "http" && parsed_url.Scheme != "https" {
+		return ScraperPlatformResolution{}, fmt.Errorf("仅支持 HTTP/HTTPS URL: %s", raw_url)
+	}
 
 	host := strings.ToLower(parsed_url.Hostname())
 	switch {
@@ -221,7 +226,7 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 	case host == "ttks.tw" || host == "www.ttks.tw":
 		return scraper_platform_resolution(scraper_platform_ttk, ""), nil
 	default:
-		return ScraperPlatformResolution{}, fmt.Errorf("暂不支持该 URL: %s", raw_url)
+		return scraper_platform_resolution(scraper_platform_webpage, ""), nil
 	}
 }
 

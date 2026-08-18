@@ -69,6 +69,7 @@ require (
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.4.1
 	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/image v0.23.0
@@ -112,6 +113,7 @@ require (
 	github.com/Danny-Dasilva/fhttp v0.0.0-20231127034941-9494939f30fa // indirect
 	github.com/Trisia/gosysproxy v1.1.0 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect
@@ -136,6 +138,7 @@ require (
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/gookit/color v1.5.4 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
