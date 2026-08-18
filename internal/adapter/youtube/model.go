@@ -251,11 +251,14 @@ func ToContentDetails(info *youtube.VideoInfo) ([]adapter.ContentDetail, error) 
 	if err != nil {
 		return nil, err
 	}
-	return []adapter.ContentDetail{{
-		Type: content.Type,
-		Key:  content.Id,
-		Data: video,
-	}}, nil
+	return youtube_content_details(content, video), nil
+}
+
+func youtube_content_details(content *model.Content, video *model.ContentVideo) []adapter.ContentDetail {
+	if content == nil || video == nil {
+		return nil
+	}
+	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: video}}
 }
 
 func youtube_caption_track_key(caption youtube.CaptionTrack) string {

@@ -148,12 +148,19 @@ func (a *WebpageAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, er
 		return nil, err
 	}
 	article := webpage_to_article(page, content.Id)
+	return webpage_content_details(content, article), nil
+}
+
+func webpage_content_details(content *model.Content, article *model.ContentArticle) []adapter.ContentDetail {
+	if content == nil || article == nil {
+		return nil
+	}
 	return []adapter.ContentDetail{{
 		Type:    model.ContentTypeWebpage,
 		Key:     content.Id,
 		Content: content,
 		Data:    article,
-	}}, nil
+	}}
 }
 
 // BuildDownloadTask builds a Markdown archive task from an extracted page. A
@@ -435,10 +442,11 @@ func build_download_task(page *webpage.Page, config_json json.RawMessage, cookie
 			ConfigJSON:   string(config_data),
 			MetadataJSON: string(metadata_data),
 		},
-		Resources:     resources,
-		Content:       content,
-		ContentDetail: article,
-		Account:       account,
+		Resources:      resources,
+		Content:        content,
+		ContentDetail:  article,
+		ContentDetails: webpage_content_details(content, article),
+		Account:        account,
 	}, nil
 }
 

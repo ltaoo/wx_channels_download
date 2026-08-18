@@ -547,10 +547,11 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				CoverURL:   content.CoverURL,
 				ConfigJSON: string(config_json),
 			},
-			Resources:     []*adapter.ResourceInfo{build_cover_resource_info(content_id, task_unique_id, title, cover_url, base_extra_json)},
-			Account:       account,
-			Content:       content,
-			ContentDetail: ext,
+			Resources:      []*adapter.ResourceInfo{build_cover_resource_info(content_id, task_unique_id, title, cover_url, base_extra_json)},
+			Account:        account,
+			Content:        content,
+			ContentDetail:  ext,
+			ContentDetails: channels_content_details(content, ext),
 		}
 		a.preview_download_resource_names(info, cover_config)
 		return info, nil
@@ -641,10 +642,11 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				CoverURL:   content.CoverURL,
 				ConfigJSON: string(config_json),
 			},
-			Resources:     resources,
-			ContentDetail: ext,
-			Account:       account,
-			Content:       content,
+			Resources:      resources,
+			ContentDetail:  ext,
+			ContentDetails: channels_content_details(content, ext),
+			Account:        account,
+			Content:        content,
 		}
 		a.preview_download_resource_names(info, picture_config)
 		return info, nil
@@ -716,13 +718,25 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			CoverURL:   content.CoverURL,
 			ConfigJSON: string(config_json),
 		},
-		Resources:     resources,
-		ContentDetail: ext,
-		Account:       account,
-		Content:       content,
+		Resources:      resources,
+		ContentDetail:  ext,
+		ContentDetails: channels_content_details(content, ext),
+		Account:        account,
+		Content:        content,
 	}
 	a.preview_download_resource_names(info, video_config)
 	return info, nil
+}
+
+func channels_content_details(content *model.Content, detail any) []adapter.ContentDetail {
+	if content == nil || detail == nil {
+		return nil
+	}
+	return []adapter.ContentDetail{{
+		Type: content.Type,
+		Key:  content.Id,
+		Data: detail,
+	}}
 }
 
 func build_cover_resource_info(content_id, resource_unique_id, title, cover_url, extra_json string) *adapter.ResourceInfo {

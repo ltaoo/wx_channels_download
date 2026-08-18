@@ -64,7 +64,14 @@ func (a *OfficialAccountAdapter) ToContentDetails(data any) ([]adapter.ContentDe
 	if detail == nil {
 		return nil, nil
 	}
-	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
+	return wxmp_content_details(content, detail), nil
+}
+
+func wxmp_content_details(content *model.Content, detail any) []adapter.ContentDetail {
+	if content == nil || detail == nil {
+		return nil
+	}
+	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}
 }
 
 // BuildDownloadTaskFromFetch normalizes the wrapper returned by FetchArticle

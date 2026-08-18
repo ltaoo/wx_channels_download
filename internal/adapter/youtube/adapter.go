@@ -381,10 +381,11 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 			ConfigJSON:   string(config_data),
 			MetadataJSON: string(metadata_data),
 		},
-		Resources:     resources,
-		ContentDetail: content_detail,
-		Account:       account,
-		Content:       content,
+		Resources:      resources,
+		ContentDetail:  content_detail,
+		ContentDetails: youtube_content_details(content, content_detail),
+		Account:        account,
+		Content:        content,
 	}, nil
 }
 
