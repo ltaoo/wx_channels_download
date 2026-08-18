@@ -1071,6 +1071,194 @@ export function DialogFooter(props = {}, children = []) {
   );
 }
 
+export function Drawer(props, children = []) {
+  const {
+    store: provided_store,
+    class: extra_class,
+    style,
+    placement = "right",
+    zIndex: manual_z_index,
+    showClose = true,
+    closeLabel = "关闭",
+    cancelText = "取消",
+    okText = "确认",
+    onUnmounted,
+    attributes,
+    ...rest
+  } = props || {};
+  const store = require_store("Drawer", provided_store, vm.DialogCore);
+  const state_ = refobj(store.state);
+  const presence_state_ = refobj(store.presence.state);
+  const was_exiting_ = ref(false);
+  const resolved_placement = placement === "left" ? "left" : "right";
+  const layer_manager =
+    typeof vm.getGlobalLayerManager === "function"
+      ? vm.getGlobalLayerManager()
+      : null;
+  const z_index =
+    manual_z_index ?? 200 + (layer_manager ? layer_manager.size * 50 : 0);
+  const unlistens = [
+    store.onStateChange((state) => state_.as(state)),
+    store.presence.onStateChange((state) => {
+      presence_state_.as(state);
+      if (state.exit) was_exiting_.as(true);
+      if (state.mounted) was_exiting_.as(false);
+    }),
+  ];
+
+  return ui.DialogPrimitive.Root(
+    {
+      store,
+      onUnmounted() {
+        unlistens.forEach((unlisten) => {
+          if (typeof unlisten === "function") unlisten();
+        });
+        if (typeof onUnmounted === "function") onUnmounted();
+      },
+    },
+    () => [
+      ui.DialogPrimitive.Overlay({
+        store,
+        zIndex: z_index,
+        onClick(event) {
+          if (event.target === event.currentTarget && state_.value.closeable) {
+            store.hide();
+          }
+        },
+        class: computed(presence_state_, (state) =>
+          static_classes([
+            "dm-ui-drawer-overlay",
+            state.enter ? "is-entering" : "",
+            state.exit || (!state.mounted && was_exiting_.value)
+              ? "is-exiting"
+              : "",
+          ]),
+        ),
+      }),
+      View(
+        {
+          class: static_classes([
+            "dm-ui-drawer-positioner",
+            `is-${resolved_placement}`,
+          ]),
+          style: { "z-index": z_index + 1 },
+        },
+        [
+          ui.DialogPrimitive.Content(
+            {
+              ...rest,
+              store,
+              zIndex: z_index + 1,
+              style,
+              attributes: {
+                role: "dialog",
+                "aria-modal": "true",
+                ...attributes,
+              },
+              class: computed(presence_state_, (state) =>
+                static_classes([
+                  "dm-ui-drawer-content",
+                  `is-${resolved_placement}`,
+                  state.enter ? "is-entering" : "",
+                  state.exit || (!state.mounted && was_exiting_.value)
+                    ? "is-exiting"
+                    : "",
+                  extra_class,
+                ]),
+              ),
+            },
+            [
+              Show({
+                when: computed(state_, (state) => Boolean(state.title)),
+                ok() {
+                  return ui.DialogPrimitive.Header(
+                    { store, class: "dm-ui-drawer-header" },
+                    [
+                      ui.DialogPrimitive.Title(
+                        { store, class: "dm-ui-drawer-title" },
+                        [computed(state_, (state) => state.title || "")],
+                      ),
+                    ],
+                  );
+                },
+              }),
+              Fragment(
+                {},
+                typeof children === "function" ? children() : children,
+              ),
+              showClose
+                ? ui.DialogPrimitive.Close(
+                    {
+                      store,
+                      class: "dm-ui-drawer-close dm-focus-ring",
+                      attributes: { "aria-label": closeLabel },
+                    },
+                    [Runtime.Icon({ name: "x", size: 18 })],
+                  )
+                : null,
+              Show({
+                when: computed(state_, (state) => Boolean(state.footer)),
+                ok() {
+                  return ui.DialogPrimitive.Footer(
+                    { store, class: "dm-ui-drawer-footer" },
+                    [
+                      Button({ store: store.cancelBtn }, [cancelText]),
+                      Button({ store: store.okBtn }, [okText]),
+                    ],
+                  );
+                },
+              }),
+            ].filter(Boolean),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+export function DrawerHeader(props = {}, children = []) {
+  return View(
+    { ...props, class: class_names(["dm-ui-drawer-header", props.class]) },
+    children,
+  );
+}
+
+export function DrawerTitle(props = {}, children = []) {
+  return View(
+    {
+      ...props,
+      type: props.type || "h2",
+      class: class_names(["dm-ui-drawer-title", props.class]),
+    },
+    children,
+  );
+}
+
+export function DrawerDescription(props = {}, children = []) {
+  return View(
+    {
+      ...props,
+      type: props.type || "p",
+      class: class_names(["dm-ui-drawer-description", props.class]),
+    },
+    children,
+  );
+}
+
+export function DrawerBody(props = {}, children = []) {
+  return View(
+    { ...props, class: class_names(["dm-ui-drawer-body", props.class]) },
+    children,
+  );
+}
+
+export function DrawerFooter(props = {}, children = []) {
+  return View(
+    { ...props, class: class_names(["dm-ui-drawer-footer", props.class]) },
+    children,
+  );
+}
+
 export function Popover(props, children = []) {
   const {
     store: provided_store,

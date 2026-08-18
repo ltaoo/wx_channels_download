@@ -2,6 +2,12 @@
   min-height: 100%;
 }
 
+.wx-content-detail-drawer .wx-content-detail-page {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
 .wx-content-detail-page .wx-content-header-inner {
   max-width: var(--dm-layout-content-max);
 }

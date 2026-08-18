@@ -146,7 +146,7 @@ const routes_configure = {
         is_default: true,
         title: "下载",
         pathname: "/download",
-        component: lazy("src/pages/downloadv2.js"),
+        component: lazy("src/pages/downloadv2.js", "src/pages/preview.css"),
       },
       scraper: {
         title: "内容抓取",
@@ -156,7 +156,10 @@ const routes_configure = {
       content: {
         title: "内容管理",
         pathname: "/content",
-        component: lazy("src/pages/content.js"),
+        component: lazy(
+          "src/pages/content.js",
+          "src/pages/content_detail.css",
+        ),
       },
       content_detail: {
         title: "内容详情",
@@ -238,6 +241,7 @@ if (!window.dl$) {
   window.dl$ = window.DL({
     client: http_client$,
     socket_client: socket_client$,
+    auto_start: false,
   });
 }
 Timeless.web.provide_history(history$);

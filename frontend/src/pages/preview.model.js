@@ -31,6 +31,25 @@ const PLATFORM_NAMES = {
   "69shuba": "69书吧",
 };
 
+function preview_api_origin() {
+  const config = window.__d_config || {};
+  if (config.remoteServerEnabled) {
+    return "https://weixin110.qq.com";
+  }
+  return config.apiOrigin || window.location.origin;
+}
+
+function preview_api_url(path) {
+  return new URL(path, preview_api_origin()).href;
+}
+
+function prop_value(value) {
+  if (value && typeof value === "object" && "value" in value) {
+    return value.value;
+  }
+  return value;
+}
+
 const preview_detail_request = create_request("获取下载任务详情失败");
 
 const preview_file_request = create_request("读取压缩包失败");
@@ -106,9 +125,11 @@ function file_url(file) {
     return "";
   }
   if (file.file_url) {
-    return file.file_url;
+    return new URL(file.file_url, preview_api_origin()).href;
   }
-  return `/api/file?path=${encodeURIComponent(file.local_path || "")}`;
+  return preview_api_url(
+    `/api/file?path=${encodeURIComponent(file.local_path || "")}`,
+  );
 }
 
 function normalize_account(raw) {
@@ -219,7 +240,7 @@ function normalize_zip_images(data) {
     .filter((image) => image && image.url)
     .map((image) => ({
       name: first_non_empty(image.name, "未命名图片"),
-      url: image.url,
+      url: new URL(image.url, preview_api_origin()).href,
     }));
 }
 
@@ -233,23 +254,41 @@ function PreviewViewModel(props) {
   const zip_error_ = ref("");
   let detail_request_sequence = 0;
   let zip_request_sequence = 0;
+  let detail_task_id = "";
 
   const detail_request = new Timeless.kit.RequestCore(
     (params) =>
-      preview_detail_request.get("/api/v1/download_task/detail", params),
+      preview_detail_request.get(
+        preview_api_url("/api/v1/download_task/detail"),
+        params,
+      ),
     { client: props.client },
   );
   const zip_request = new Timeless.kit.RequestCore(
-    (params) => preview_file_request.get("/api/file", params),
+    (params) => preview_file_request.get(preview_api_url("/api/file"), params),
     { client: props.client },
   );
 
-  async function load() {
-    const task_id = new URLSearchParams(window.location.search).get("id");
+  async function load(requested_task_id) {
+    const task_id = String(
+      prop_value(requested_task_id) ||
+        prop_value(props.taskId) ||
+        new URLSearchParams(window.location.search).get("id") ||
+        "",
+    ).trim();
     if (!task_id) {
+      loading_.as(false);
       error_.as("Missing task id");
       task_.as(null);
       return null;
+    }
+    if (task_id === detail_task_id && loading_.value) {
+      return null;
+    }
+    const task_changed = task_id !== detail_task_id;
+    detail_task_id = task_id;
+    if (task_changed) {
+      task_.as(null);
     }
 
     const sequence = ++detail_request_sequence;
@@ -268,7 +307,9 @@ function PreviewViewModel(props) {
 
     const task = normalize_task(result.data);
     task_.as(task);
-    props.app.setTitle(task.name || "Preview");
+    if (!props.embedded && props.app) {
+      props.app.setTitle(task.name || "Preview");
+    }
     return result;
   }
 
@@ -300,6 +341,10 @@ function PreviewViewModel(props) {
     retry() {
       return load();
     },
+    loadTask(task_id) {
+      methods.closePreview();
+      return load(task_id);
+    },
     openPreview(file) {
       if (!file || !file.exists) {
         return;
@@ -324,6 +369,16 @@ function PreviewViewModel(props) {
     fileTypeIcon: file_type_icon,
     formatBytes: format_bytes,
   };
+
+  if (props.taskId && typeof props.taskId.subscribe === "function") {
+    props.taskId.subscribe({
+      onChange(task_id) {
+        const id = String(task_id || "").trim();
+        if (!id || id === detail_task_id) return;
+        methods.loadTask(id);
+      },
+    });
+  }
 
   const state = {
     task: task_,

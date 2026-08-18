@@ -26,6 +26,15 @@
   background-size: var(--dm-space-6) var(--dm-space-6);
 }
 
+.wx-dl-preview-drawer .wx-preview-page {
+  height: auto;
+  flex: 1;
+}
+
+.wx-dl-preview-drawer .wx-preview-overlay {
+  position: absolute;
+}
+
 .wx-preview-header {
   flex: 0 0 auto;
   padding: var(--dm-space-3) var(--dm-space-6);

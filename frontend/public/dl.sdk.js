@@ -766,10 +766,17 @@
     };
 
     const task_list_ = timeless.refarr([]);
+    const list_meta_ = timeless.refobj({
+      total: 0,
+      page: 1,
+      page_size: 100,
+      stats: {},
+    });
     const websocket_connected_ = timeless.ref(false);
     const websocket_connecting_ = timeless.ref(false);
     const last_error_ = timeless.ref(null);
     const tasks_by_id = new Map();
+    const socket_status_by_id = new Map();
     const websocket_url = "/ws/v1/download_task";
     const reconnect_interval = Math.max(
       250,
@@ -777,10 +784,14 @@
     );
     let destroyed = false;
     let ready_promise = null;
+    let refresh_sequence = 0;
+    let current_refresh_options = null;
+    let paged_refresh_timer = null;
 
     const state = {
       task_list: task_list_,
       tasks: task_list_,
+      list_meta: list_meta_,
       websocket_connected: websocket_connected_,
       websocket_connecting: websocket_connecting_,
       last_error: last_error_,
@@ -791,6 +802,7 @@
       create,
       list: refresh,
       refresh,
+      loadPage: load_task_page,
       get,
       delete: delete_task,
       start,
@@ -821,6 +833,8 @@
       initial_create_record,
       fetch_task_page,
       replace_server_tasks,
+      load_task_page,
+      refresh_current,
       action_result,
       run_action,
       handle_snapshot,
@@ -875,7 +889,7 @@
 
     function handle_reconnected() {
       if (!destroyed) {
-        methods.refresh().catch((error) => last_error_.as(error));
+        refresh_current().catch((error) => last_error_.as(error));
       }
     }
 
@@ -1055,27 +1069,70 @@
     }
 
     async function refresh(options) {
-      const params = Object.assign({}, options || {});
-      const load_all = params.all !== false;
+      if (paged_refresh_timer !== null) {
+        global.clearTimeout(paged_refresh_timer);
+        paged_refresh_timer = null;
+      }
+      const normalized_options = Object.assign({}, options || {});
+      normalized_options.all = normalized_options.all !== false;
+      normalized_options.page = Math.max(
+        1,
+        number_value(normalized_options.page, 1),
+      );
+      normalized_options.page_size = Math.min(
+        100,
+        Math.max(1, number_value(normalized_options.page_size, 100)),
+      );
+      current_refresh_options = normalized_options;
+
+      const sequence = ++refresh_sequence;
+      const params = Object.assign({}, normalized_options);
+      const load_all = params.all;
       delete params.all;
-      const page_size = Math.min(100, Math.max(1, number_value(params.page_size, 100)));
+      const page_size = params.page_size;
       const records = [];
-      let page = Math.max(1, number_value(params.page, 1));
+      const requested_page = params.page;
+      let page = requested_page;
       let total = 0;
+      let response_meta = {
+        total: 0,
+        page: requested_page,
+        page_size,
+        stats: {},
+      };
       do {
         const data = await fetch_task_page(
           Object.assign({}, params, { page, page_size: page_size }),
         );
         records.push(...data.records);
         total = data.total;
+        response_meta = data;
         page += 1;
         if (!load_all || data.records.length === 0) {
           break;
         }
       } while (records.length < total);
+      if (sequence !== refresh_sequence || destroyed) {
+        return task_list_;
+      }
       replace_server_tasks(records);
+      list_meta_.as({
+        total: response_meta.total,
+        page: load_all ? requested_page : response_meta.page,
+        page_size: response_meta.page_size,
+        stats: response_meta.stats || {},
+      });
       last_error_.as(null);
       return task_list_;
+    }
+
+    function refresh_current() {
+      return refresh(Object.assign({}, current_refresh_options || {}));
+    }
+
+    async function load_task_page(options) {
+      await refresh(Object.assign({}, options || {}, { all: false }));
+      return Object.assign({}, list_meta_.value || {});
     }
 
     function action_result(result, fallback) {
@@ -1153,7 +1210,7 @@
       if (!result || result.error) {
         throw (result && result.error) || new Error(fallback);
       }
-      await refresh();
+      await refresh_current();
       return task_list_;
     }
 
@@ -1178,7 +1235,7 @@
       if (!result || result.error) {
         throw (result && result.error) || new Error("Clear download tasks failed");
       }
-      await refresh();
+      await refresh_current();
       return task_list_;
     }
 
@@ -1245,40 +1302,149 @@
       }
     }
 
+    function paged_mode_enabled() {
+      return !!current_refresh_options && current_refresh_options.all === false;
+    }
+
+    function update_list_stats(stats) {
+      if (!stats || typeof stats !== "object") {
+        return;
+      }
+      list_meta_.as(
+        Object.assign({}, list_meta_.value || {}, {
+          stats,
+        }),
+      );
+    }
+
+    function schedule_paged_refresh() {
+      if (!paged_mode_enabled() || destroyed) {
+        return;
+      }
+      if (paged_refresh_timer !== null) {
+        global.clearTimeout(paged_refresh_timer);
+      }
+      paged_refresh_timer = global.setTimeout(() => {
+        paged_refresh_timer = null;
+        refresh_current().catch((error) => last_error_.as(error));
+      }, 80);
+    }
+
+    function socket_status_matches_current_filter(status) {
+      const filter = String(
+        (current_refresh_options && current_refresh_options.status) || "",
+      );
+      if (!filter || !status) {
+        return false;
+      }
+      const status_code = {
+        waiting: "0",
+        preparing: "1",
+        downloading: "2",
+        paused: "3",
+        merging: "4",
+        finished: "5",
+        failed: "6",
+        cancelled: "7",
+      }[status];
+      return !!status_code && filter.split(",").includes(status_code);
+    }
+
+    function upsert_socket_task(record, options) {
+      if (!paged_mode_enabled()) {
+        return upsert(record, options);
+      }
+      const id = record && (record.id ?? record.task_id);
+      const key = id === undefined || id === null ? "" : String(id);
+      const previous_socket_status = socket_status_by_id.get(key);
+      const socket_status = Object.prototype.hasOwnProperty.call(
+        record || {},
+        "status",
+      )
+        ? normalize_status(record.status)
+        : previous_socket_status;
+      if (key && socket_status) {
+        socket_status_by_id.set(key, socket_status);
+      }
+      const task = id === undefined || id === null ? null : get(id);
+      if (!task) {
+        const should_refresh_missing =
+          !options ||
+          options.refresh_missing === true ||
+          typeof options.refresh_missing === "undefined" ||
+          (options.refresh_missing === "status" &&
+            previous_socket_status !== socket_status &&
+            (socket_status_matches_current_filter(previous_socket_status) ||
+              socket_status_matches_current_filter(socket_status)));
+        if (should_refresh_missing) {
+          schedule_paged_refresh();
+        }
+        return null;
+      }
+      const previous_status = task.status.value;
+      task._update(record, options);
+      if (
+        (!options || options.refresh_status !== false) &&
+        previous_status !== task.status.value
+      ) {
+        schedule_paged_refresh();
+      }
+      return task;
+    }
+
     function handle_snapshot(message) {
       const resources = Array.isArray(message.resources) ? message.resources : [];
       const aggregate = aggregate_resources(resources);
-      upsert({
-        id: message.task_id,
-        status: message.status,
-        name: message.name || "",
-        resources,
-        downloaded: aggregate.downloaded,
-        size: aggregate.total,
-        speed: aggregate.speed,
-      });
+      upsert_socket_task(
+        {
+          id: message.task_id,
+          status: message.status,
+          name: message.name || "",
+          resources,
+          downloaded: aggregate.downloaded,
+          size: aggregate.total,
+          speed: aggregate.speed,
+        },
+        { refresh_missing: false },
+      );
     }
 
     function handle_web_socket_message(message) {
       if (!message || typeof message !== "object") {
         return;
       }
+      if (message.type === "task_stats") {
+        update_list_stats(message.stats);
+        return;
+      }
       if (message.type === "task_create" || message.type === "task_upsert") {
-        (Array.isArray(message.tasks) ? message.tasks : []).forEach((task) => upsert(task));
+        (Array.isArray(message.tasks) ? message.tasks : []).forEach((task) => {
+          upsert_socket_task(task, {
+            refresh_missing:
+              message.type === "task_create" ? false : "status",
+          });
+        });
+        if (message.type === "task_create") {
+          schedule_paged_refresh();
+        }
         return;
       }
       if (message.type === "task_update") {
-        (Array.isArray(message.updates) ? message.updates : []).forEach((task) => upsert(task));
+        (Array.isArray(message.updates) ? message.updates : []).forEach((task) => {
+          upsert_socket_task(task, { refresh_missing: "status" });
+        });
         return;
       }
       if (message.type === "task_delete") {
         (Array.isArray(message.task_ids) ? message.task_ids : []).forEach((id) => {
+          socket_status_by_id.delete(String(id));
           const task = get(id);
           if (task) {
             task._update({ id, status: "deleted" });
             remove_task(id, false);
           }
         });
+        schedule_paged_refresh();
         return;
       }
       if (message.type === "task_snapshot") {
@@ -1288,7 +1454,12 @@
         return;
       }
       if (message.type === "batch_tasks") {
-        (Array.isArray(message.data) ? message.data : []).forEach((task) => upsert(task, { prepend: false }));
+        (Array.isArray(message.data) ? message.data : []).forEach((task) => {
+          upsert_socket_task(task, {
+            prepend: false,
+            refresh_missing: false,
+          });
+        });
         return;
       }
       if (message.type === "event") {
@@ -1297,14 +1468,18 @@
         const task = data.Task || data.task;
         if (key === "delete") {
           const id = (task && (task.id ?? task.task_id)) || data.task_id;
+          if (id !== undefined && id !== null) {
+            socket_status_by_id.delete(String(id));
+          }
           if (id !== undefined && id !== null && get(id)) {
             remove_task(id, false);
           }
+          schedule_paged_refresh();
           return;
         }
         if (task) {
           const error = data.Err || data.err;
-          upsert(error ? Object.assign({}, task, { error }) : task);
+          upsert_socket_task(error ? Object.assign({}, task, { error }) : task);
         }
       }
     }
@@ -1348,15 +1523,24 @@
       return true;
     }
 
-    function ready() {
+    function ready(options) {
       if (ready_promise) {
-        return ready_promise;
+        if (!options) {
+          return ready_promise;
+        }
+        return ready_promise.then(() => refresh(options)).then(() => ({
+          tasks: task_list_,
+          connected: websocket_connected_.value,
+          results: [],
+        }));
       }
-      ready_promise = Promise.allSettled([refresh(), connect()]).then((results) => ({
-        tasks: task_list_,
-        connected: websocket_connected_.value,
-        results,
-      }));
+      ready_promise = Promise.allSettled([refresh(options), connect()]).then(
+        (results) => ({
+          tasks: task_list_,
+          connected: websocket_connected_.value,
+          results,
+        }),
+      );
       return ready_promise;
     }
 
@@ -1365,9 +1549,14 @@
         return;
       }
       destroyed = true;
+      if (paged_refresh_timer !== null) {
+        global.clearTimeout(paged_refresh_timer);
+        paged_refresh_timer = null;
+      }
       channel.destroy();
       (task_list_.value || []).forEach((task) => task._dispose());
       tasks_by_id.clear();
+      socket_status_by_id.clear();
       task_list_.as([]);
     }
 

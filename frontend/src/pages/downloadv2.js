@@ -13,6 +13,26 @@ import {
   TaskDeleteConfirmDialog,
 } from "./downloadv2.components.js";
 import { DownloadV2Model } from "./downloadv2.model.js";
+import PreviewPageView from "./preview.js";
+
+function DownloadV2TaskPreviewDrawer(props) {
+  const vm$ = props.store;
+  return Drawer(
+    {
+      store: vm$.ui.taskPreviewDrawer$,
+      class: "wx-dl-preview-drawer",
+      style: { width: "min(max(560px, 60vw), 100vw)" },
+    },
+    [
+      PreviewPageView({
+        app: props.app,
+        client: props.client,
+        embedded: true,
+        taskId: vm$.state.preview_task_id,
+      }),
+    ],
+  );
+}
 
 function DownloadV2Page(props) {
   const page_props = props || {};
@@ -45,6 +65,7 @@ function DownloadV2Page(props) {
             summary: vm$.state.range_text,
             page: vm$.state.page,
             pageCount: vm$.state.page_count,
+            loading: vm$.state.loading,
             onPrevious() {
               vm$.methods.previousPage();
             },
@@ -55,6 +76,11 @@ function DownloadV2Page(props) {
         },
       }),
       DownloadV2SelectionBar({ store: vm$ }),
+      DownloadV2TaskPreviewDrawer({
+        store: vm$,
+        app: page_props.app,
+        client: page_props.client,
+      }),
       CreateTaskDialog({ store: vm$ }),
       CreatePlatformTaskDialog({ store: vm$ }),
       CreateTaskPreviewDialog({ store: vm$ }),

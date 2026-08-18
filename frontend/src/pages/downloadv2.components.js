@@ -66,25 +66,11 @@ function is_live_stream_task(task) {
   });
 }
 
-function task_preview_url(task) {
-  const id = task && task.id;
-  if (id === undefined || id === null || id === "") return "";
-  const config = window.__d_config || {};
-  const origin = config.remoteServerEnabled
-    ? "https://weixin110.qq.com"
-    : config.apiOrigin || window.location.origin;
-  const url = new URL("/preview", origin);
-  url.searchParams.set("id", String(id));
-  return url.href;
-}
-
-function open_task_preview(task) {
-  const url = task_preview_url(task);
-  if (!url) {
-    DLUtils.error({ msg: "无法打开预览：下载任务 ID 为空" });
-    return;
-  }
-  window.open(url, "_blank", "noopener");
+function task_has_content(task) {
+  if (!task || typeof task !== "object") return false;
+  const content_id = task.content_id ?? task.contentId ?? task.ContentID;
+  if (content_id === undefined || content_id === null) return false;
+  return String(content_id).trim() !== "";
 }
 
 function DownloadV2ActionButton(props) {
@@ -634,20 +620,14 @@ function DownloadV2TaskRow(props) {
         View({ class: "wx-dl-page-task-title-line" }, [
           View(
             {
-              type: "a",
+              as: "button",
               class: "wx-dl-page-task-title",
               attributes: {
-                href: computed(task_, task_preview_url),
+                type: "button",
                 title: computed(task_, (task) => (task && task.name) || ""),
-                target: "_blank",
-                rel: "noopener noreferrer",
               },
-              style: { cursor: "pointer", "text-decoration": "none" },
-              onClick(event) {
-                if (event && typeof event.preventDefault === "function") {
-                  event.preventDefault();
-                }
-                open_task_preview(task_value(task_));
+              onClick() {
+                vm$.methods.requestTaskPreview(task_value(task_));
               },
             },
             [computed(task_, (task) => (task && task.name) || "未命名任务")],
@@ -656,6 +636,19 @@ function DownloadV2TaskRow(props) {
             when: computed(state_, (state) => state.is_live_stream),
             ok() {
               return View({ class: "wx-dl-page-task-live" }, ["流媒体"]);
+            },
+          }),
+          Show({
+            when: computed(task_, (task) => !task_has_content(task)),
+            ok() {
+              return View(
+                {
+                  class:
+                    "wx-dl-page-task-missing-detail dm-badge dm-badge--warning",
+                  attributes: { title: "该下载任务没有关联内容详情" },
+                },
+                ["缺少详情"],
+              );
             },
           }),
         ]),
