@@ -514,7 +514,7 @@ var WXBase64 = (() => {
       : default_name;
     WXU.log
       .Info()
-      .Str("file", "channels.utils.js")
+      .Str("file", "/channels.utils.js")
       .Str("default_name", default_name)
       .Str("template", template)
       .Str("before_filename", window.beforeFilename)

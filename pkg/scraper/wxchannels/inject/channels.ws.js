@@ -18,7 +18,7 @@ async function fetchExportIdWithShareId(data) {
     return [new Error("can't get the uri from url, " + data.url), null];
   }
   await WXU.load_script(WXEnv.assetUrl("/public/axios.min.js"));
-  await WXU.load_script(WXEnv.assetUrl("/platform/wxchannels/getFeedInfo.js"));
+  await WXU.load_script(WXEnv.assetUrl("/wxchannels/inject/getFeedInfo.js"));
   // await WXU.load_script(WXEnv.assetUrl("/public/merlin.js"));
   if (typeof getFeedInfo !== "function") {
     return [new Error("the getFeedInfo is not a function"), null];
@@ -249,7 +249,13 @@ function ChannelsWebsocketClient() {
     },
     async __wx_handle_api_call(msg, socket) {
       var { id, key, data } = msg;
-      console.log("[DOWNLOADER]__wx_handle_api_call", id, key, data);
+      WXU.log
+        .Info()
+        .Str("file", "/channels.ws.js")
+        .Str("id", String(id))
+        .Str("key", key)
+        .JSON("data", data)
+        .Msg("__wx_handle_api_call");
       function resp(body) {
         socket.send(
           JSON.stringify({
