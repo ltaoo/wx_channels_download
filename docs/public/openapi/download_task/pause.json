@@ -3,8 +3,8 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "批量启动下载任务",
-    "description": "启动等待中（0）、已暂停（3）或失败（6）的任务。每个任务独立返回结果；单项失败不改变外层 code=0。所有业务响应的 HTTP 状态码均为 200。",
+    "summary": "批量暂停下载任务",
+    "description": "暂停准备中（1）或下载中（2）的任务。普通文件任务变为已暂停（3）；包含 STREAM 资源的直播任务会执行停止和收尾，成功后变为已完成（5）。每个任务独立返回结果。",
     "requestBody": {
       "required": true,
       "content": {
@@ -20,15 +20,13 @@
                 "minItems": 1,
                 "items": {
                   "type": "integer"
-                },
-                "description": "download_task 表主键 ID"
+                }
               }
             }
           },
           "example": {
             "task_ids": [
-              42,
-              43
+              42
             ]
           }
         }
@@ -36,19 +34,19 @@
     },
     "responses": {
       "200": {
-        "description": "统一业务响应",
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
         "content": {
           "application/json": {
             "examples": {
               "success": {
-                "summary": "任务已提交启动",
+                "summary": "普通任务已暂停",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
                     "results": [
                       {
-                        "status_text": "preparing",
+                        "status_text": "paused",
                         "success": true,
                         "task": {
                           "id": 44,
@@ -56,7 +54,7 @@
                           "name": "example.json",
                           "platform_id": "",
                           "unique_id": "",
-                          "status": 1,
+                          "status": 3,
                           "source_url": "",
                           "cover_url": "",
                           "cover_width": "",
@@ -65,7 +63,7 @@
                           "metadata_json": "",
                           "error_message": "",
                           "created_at": 1787019341973,
-                          "updated_at": 1787019341,
+                          "updated_at": 1787019355642,
                           "deleted_at": null
                         },
                         "task_id": 44
@@ -74,17 +72,17 @@
                   }
                 }
               },
-              "partial_failure": {
-                "summary": "单项失败",
+              "wrong_status": {
+                "summary": "当前状态不可暂停",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
                     "results": [
                       {
-                        "task_id": 999,
+                        "task_id": 42,
                         "success": false,
-                        "error": "下载任务不存在"
+                        "error": "当前状态不允许暂停"
                       }
                     ]
                   }

@@ -280,10 +280,11 @@ func (h *handler) build_download_task_from_model_data(model_data *douyin_model_d
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},
-		Resources:     resources,
-		ContentDetail: content_detail,
-		Account:       account,
-		Content:       content,
+		Resources:      resources,
+		ContentDetail:  content_detail,
+		ContentDetails: douyin_content_details(model_data.content_type, content.Id, content_detail),
+		Account:        account,
+		Content:        content,
 	}, nil
 }
 

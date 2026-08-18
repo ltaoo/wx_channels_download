@@ -499,140 +499,11 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 
 	s.emit_scraper_fetch_progress(
 		job,
-		"content",
-		ScraperJobStatusRunning,
-		0,
-		0,
-		62,
-		"正在转换内容信息...",
-	)
-	content, err := handler.ToContent(data)
-	if err != nil {
-		emit_raw_artifact()
-		s.emit_scraper_fetch_progress(
-			job,
-			"failed",
-			ScraperJobStatusFailed,
-			0,
-			0,
-			0,
-			fmt.Sprintf("转换内容信息失败: %s", err.Error()),
-		)
-		s.logger.Error().
-			Err(err).
-			Str("job_id", job.ID).
-			Str("platform", job.Platform).
-			Msg("scraper fetch: content conversion failed")
-		return nil, fmt.Errorf("转换 content 失败: %w", err)
-	}
-	if content != nil && strings.TrimSpace(content.SourceURL) == "" {
-		content.SourceURL = job.URL
-	}
-	if content != nil {
-		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
-			Stage:   adapter.FetchArtifactStageContent,
-			Content: content,
-		})
-	}
-	s.emit_scraper_fetch_progress(
-		job,
-		"account",
-		ScraperJobStatusRunning,
-		0,
-		0,
-		70,
-		"正在转换账号信息...",
-	)
-	account, err := handler.ToAccount(data)
-	if err != nil {
-		emit_raw_artifact()
-		s.emit_scraper_fetch_progress(
-			job,
-			"failed",
-			ScraperJobStatusFailed,
-			0,
-			0,
-			0,
-			fmt.Sprintf("转换账号信息失败: %s", err.Error()),
-		)
-		s.logger.Error().
-			Err(err).
-			Str("job_id", job.ID).
-			Str("platform", job.Platform).
-			Msg("scraper fetch: account conversion failed")
-		return nil, fmt.Errorf("转换 account 失败: %w", err)
-	}
-	if account != nil {
-		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
-			Stage:   adapter.FetchArtifactStageAccount,
-			Account: account,
-		})
-	}
-	s.emit_scraper_fetch_progress(
-		job,
-		"content_detail",
-		ScraperJobStatusRunning,
-		0,
-		0,
-		76,
-		"正在转换内容详情...",
-	)
-	content_details, err := handler.ToContentDetails(data)
-	if err != nil {
-		emit_raw_artifact()
-		s.emit_scraper_fetch_progress(
-			job,
-			"failed",
-			ScraperJobStatusFailed,
-			0,
-			0,
-			0,
-			fmt.Sprintf("转换内容详情失败: %s", err.Error()),
-		)
-		s.logger.Error().
-			Err(err).
-			Str("job_id", job.ID).
-			Str("platform", job.Platform).
-			Msg("scraper fetch: content detail conversion failed")
-		return nil, fmt.Errorf("转换 content detail 失败: %w", err)
-	}
-	for detail_index := range content_details {
-		detail := content_details[detail_index]
-		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
-			Stage:         adapter.FetchArtifactStageContentDetail,
-			ContentDetail: &detail,
-			Current:       detail_index + 1,
-			Total:         len(content_details),
-		})
-	}
-	s.emit_scraper_fetch_progress(
-		job,
-		"cache",
-		ScraperJobStatusRunning,
-		0,
-		0,
-		84,
-		"正在整理抓取缓存...",
-	)
-	var cache_entries []adapter.FetchCacheEntry
-	if cache_handler, supports_cache := handler.(adapter.FetchCacheAdapter); supports_cache {
-		cache_entries, err = cache_handler.FetchCacheEntries(job.URL, data)
-		if err != nil {
-			s.logger.Warn().
-				Err(err).
-				Str("job_id", job.ID).
-				Str("platform", job.Platform).
-				Msg("scraper fetch: cache inspection failed")
-			cache_entries = nil
-		}
-	}
-	s.emit_scraper_fetch_progress(
-		job,
 		"download_preview",
 		ScraperJobStatusRunning,
 		0,
 		0,
-		92,
+		62,
 		"正在生成下载任务预览...",
 	)
 	download_info, err := build_scraper_download_info(handler, data)
@@ -653,6 +524,81 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 			Str("platform", job.Platform).
 			Msg("scraper fetch: download info build failed")
 		return nil, fmt.Errorf("构建下载任务预览失败: %w", err)
+	}
+	content := download_info.Content
+	account := download_info.Account
+	content_details := download_info.ContentDetails
+	if content != nil && strings.TrimSpace(content.SourceURL) == "" {
+		content.SourceURL = job.URL
+	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"content",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		70,
+		"内容信息已转换完成",
+	)
+	if content != nil {
+		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
+			Stage:   adapter.FetchArtifactStageContent,
+			Content: content,
+		})
+	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"account",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		76,
+		"账号信息已转换完成",
+	)
+	if account != nil {
+		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
+			Stage:   adapter.FetchArtifactStageAccount,
+			Account: account,
+		})
+	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"content_detail",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		84,
+		"内容详情已转换完成",
+	)
+	for detail_index := range content_details {
+		detail := content_details[detail_index]
+		s.emit_scraper_fetch_artifact(job.ID, adapter.FetchArtifact{
+			Stage:         adapter.FetchArtifactStageContentDetail,
+			ContentDetail: &detail,
+			Current:       detail_index + 1,
+			Total:         len(content_details),
+		})
+	}
+	s.emit_scraper_fetch_progress(
+		job,
+		"cache",
+		ScraperJobStatusRunning,
+		0,
+		0,
+		92,
+		"正在整理抓取缓存...",
+	)
+	var cache_entries []adapter.FetchCacheEntry
+	if cache_handler, supports_cache := handler.(adapter.FetchCacheAdapter); supports_cache {
+		cache_entries, err = cache_handler.FetchCacheEntries(job.URL, data)
+		if err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("job_id", job.ID).
+				Str("platform", job.Platform).
+				Msg("scraper fetch: cache inspection failed")
+			cache_entries = nil
+		}
 	}
 	s.logger.Info().
 		Str("job_id", job.ID).
@@ -677,12 +623,12 @@ func (s *ScraperJobService) execute_scraper_fetch(fetch_context context.Context,
 	}, nil
 }
 
-// build_scraper_download_info builds a task preview only for adapters that can
-// consume their in-memory Fetch payload without another platform request.
+// build_scraper_download_info builds the task preview and normalized models
+// from one in-memory Fetch payload without another platform request.
 func build_scraper_download_info(handler adapter.AdapterHandler, data any) (*adapter.DownloadTaskResult, error) {
 	fetch_builder, ok := handler.(adapter.FetchDownloadTaskBuilder)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("平台不支持从抓取结果构建下载任务")
 	}
 	download_info, err := fetch_builder.BuildDownloadTaskFromFetch(data, json.RawMessage("{}"))
 	if err != nil {
@@ -690,6 +636,15 @@ func build_scraper_download_info(handler adapter.AdapterHandler, data any) (*ada
 	}
 	if download_info == nil {
 		return nil, fmt.Errorf("平台未返回下载任务")
+	}
+	if download_info.Content == nil {
+		return nil, fmt.Errorf("平台下载任务缺少 content")
+	}
+	if download_info.Account == nil {
+		return nil, fmt.Errorf("平台下载任务缺少 account")
+	}
+	if download_info.ContentDetail != nil && len(download_info.ContentDetails) == 0 {
+		return nil, fmt.Errorf("平台下载任务缺少 content_details")
 	}
 	return download_info, nil
 }

@@ -1314,23 +1314,51 @@ textarea {
 }
 
 .dm-ui-checkbox {
-  display: inline-grid;
-  width: var(--dm-space-4);
-  height: var(--dm-space-4);
-  place-items: center;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
   color: transparent;
-  background: var(--dm-color-bg-surface);
-  border: var(--dm-border-width) solid var(--dm-color-border-strong);
-  border-radius: var(--dm-radius-xs);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
   cursor: pointer;
+  line-height: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.dm-ui-checkbox-box {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: transparent;
+  border: var(--dm-border-width) solid var(--dm-color-border);
+  border-radius: 4px;
   transition:
-    color var(--dm-duration-fast) var(--dm-ease-standard),
     background var(--dm-duration-fast) var(--dm-ease-standard),
     border-color var(--dm-duration-fast) var(--dm-ease-standard);
 }
 
+.dm-ui-checkbox-box > svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .dm-ui-checkbox.is-checked {
   color: var(--dm-color-on-primary);
+}
+
+.dm-ui-checkbox.is-checked .dm-ui-checkbox-box {
   background: var(--dm-color-primary-fill);
   border-color: var(--dm-color-primary-fill);
 }
@@ -3757,12 +3785,6 @@ textarea {
   white-space: nowrap;
 }
 
-.wx-logs-toggle input {
-  width: var(--dm-space-4);
-  height: var(--dm-space-4);
-  accent-color: var(--dm-color-primary-fill);
-}
-
 .wx-logs-toolbar-row {
   min-width: 0;
   flex: 1 1 auto;
@@ -3850,11 +3872,16 @@ textarea {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .wx-logs-table {
   min-width: 1120px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   color: var(--dm-content-text);
   font-family: var(--dm-font-family-mono);
   font-size: var(--dm-font-size-xs);
@@ -3872,6 +3899,7 @@ textarea {
   top: 0;
   z-index: var(--dm-z-raised);
   min-height: var(--dm-control-height-base);
+  flex: 0 0 auto;
   color: var(--dm-content-muted);
   background: var(--dm-content-panel-soft);
   border-bottom: var(--dm-border-width) solid var(--dm-content-border);
@@ -4041,8 +4069,10 @@ textarea {
 }
 
 .wx-logs-virtual-list {
-  min-height: 360px;
-  height: calc(100vh - 330px);
+  min-height: 0;
+  height: auto;
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 
 .wx-logs-json-dialog {
@@ -4052,40 +4082,41 @@ textarea {
 .wx-logs-json-dialog-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--dm-space-4);
-  padding: var(--dm-space-4) var(--dm-space-5);
+  gap: var(--dm-space-3);
+  flex: 0 0 auto;
+  padding: var(--dm-space-4) var(--dm-space-12) var(--dm-space-4)
+    var(--dm-space-5);
   border-bottom: var(--dm-border-width) solid var(--dm-content-border);
+}
+
+.wx-logs-json-dialog-heading-icon {
+  display: grid;
+  width: var(--dm-control-height-base);
+  height: var(--dm-control-height-base);
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--dm-color-primary);
+  background: var(--dm-color-primary-soft);
+  border: var(--dm-border-width) solid var(--dm-color-primary-border);
+  border-radius: var(--dm-radius-md);
 }
 
 .wx-logs-json-dialog-title {
   font-size: var(--dm-font-size-lg);
-  font-weight: var(--dm-font-weight-semibold);
+  font-weight: var(--dm-font-weight-bold);
 }
 
 .wx-logs-json-dialog-heading {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dm-space-0-5);
 }
 
 .wx-logs-json-dialog-subtitle {
-  margin-top: var(--dm-space-1);
   color: var(--dm-content-muted);
-  font-size: var(--dm-font-size-xs);
-}
-
-.wx-logs-json-dialog-close {
-  width: var(--dm-control-height-sm);
-  height: var(--dm-control-height-sm);
-  color: var(--dm-content-muted);
-  background: transparent;
-  border: 0;
-  border-radius: var(--dm-radius-md);
-  cursor: pointer;
-}
-
-.wx-logs-json-dialog-close:hover {
-  color: var(--dm-content-text);
-  background: var(--dm-content-panel-soft);
+  font-size: var(--dm-font-size-sm);
+  font-weight: var(--dm-font-weight-regular);
 }
 
 .wx-logs-json-dialog-body {

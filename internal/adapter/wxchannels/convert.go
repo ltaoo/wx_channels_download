@@ -87,7 +87,7 @@ func (a *ChannelsAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, e
 		return nil, nil
 	}
 	select_content_video_variant(detail, a.video_download_spec(object, nil))
-	return []adapter.ContentDetail{{Type: content.Type, Key: content.Id, Data: detail}}, nil
+	return channels_content_details(content, detail), nil
 }
 
 // BuildDownloadTaskFromFetch normalizes all Fetch response shapes to the

@@ -90,9 +90,14 @@ type InterceptorPluginConfig struct {
 }
 
 func NewConfig(cfg *config.Config, logger *zerolog.Logger) *InterceptorPluginConfig {
+	component_logger := logger
+	if logger != nil {
+		derived_logger := logger.With().Str("component", "wxchanenls_adapter").Logger()
+		component_logger = &derived_logger
+	}
 	return &InterceptorPluginConfig{
-		settings: new_interceptor_settings(cfg, logger),
-		logger:   logger,
+		settings: new_interceptor_settings(cfg, component_logger),
+		logger:   component_logger,
 	}
 }
 

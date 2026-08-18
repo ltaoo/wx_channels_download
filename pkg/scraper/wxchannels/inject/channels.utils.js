@@ -514,7 +514,7 @@ var WXBase64 = (() => {
       : default_name;
     WXU.log
       .Info()
-      .Str("file", "channels.utils.js")
+      .Str("file", "/channels.utils.js")
       .Str("default_name", default_name)
       .Str("template", template)
       .Str("before_filename", window.beforeFilename)
@@ -944,7 +944,7 @@ var WXBase64 = (() => {
       __wx_channels_store__.feed = feed;
       WXU.log
         .Info()
-        .Str("file", "channels.utils.js")
+        .Str("file", "/channels.utils.js")
         .JSON("feed", feed)
         .Msg("set_feed");
       WXU.downloader.browse([feed], { platform: "wxchannels" });
@@ -957,7 +957,7 @@ var WXBase64 = (() => {
       __wx_channels_live_store__.feed = feed;
       WXU.log
         .Info()
-        .Str("file", "channels.utils.js")
+        .Str("file", "/channels.utils.js")
         .JSON("feed", feed)
         .Msg("set_live_feed");
       WXU.downloader.browse([feed], { platform: "wxchannels" });

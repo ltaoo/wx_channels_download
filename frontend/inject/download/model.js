@@ -3058,8 +3058,8 @@ function DownloaderPanelViewModel(props = {}) {
     createBrowseHistories(feeds, opt) {
       WXU.log
         .Info()
-        .Str("file", "download/model.js")
-        .Msg("createBrowseHistories");
+        .Str("file", "/download/model.js")
+        .Msg("create browse history");
       var body = {
         objects: feeds.map((feed) => {
           return {

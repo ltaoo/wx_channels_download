@@ -178,8 +178,18 @@ func ToContentDetails(result *ttk.TtkFetchResult) ([]adapter.ContentDetail, erro
 	if err != nil {
 		return nil, err
 	}
+	return ttk_content_details(content, novel, chapters), nil
+}
+
+func ttk_content_details(
+	content *model.Content,
+	novel *model.ContentNovel,
+	chapters []model.ContentNovelChapter,
+) []adapter.ContentDetail {
+	novel_detail := *novel
+	novel_detail.Chapters = nil
 	details := make([]adapter.ContentDetail, 0, len(chapters)+1)
-	details = append(details, adapter.ContentDetail{Type: "novel", Key: content.Id, Data: novel})
+	details = append(details, adapter.ContentDetail{Type: "novel", Key: content.Id, Data: &novel_detail})
 	for chapter_index := range chapters {
 		chapter := chapters[chapter_index]
 		details = append(details, adapter.ContentDetail{
@@ -188,7 +198,7 @@ func ToContentDetails(result *ttk.TtkFetchResult) ([]adapter.ContentDetail, erro
 			Data: &chapter,
 		})
 	}
-	return details, nil
+	return details
 }
 
 func fetched_chapter_content_detail(chapter ttk.TtkFetchedChapter, content_id string) adapter.ContentDetail {
@@ -350,10 +360,11 @@ func build_download_task(result *ttk.TtkFetchResult, config_json json.RawMessage
 			ConfigJSON:   string(config_data),
 			MetadataJSON: string(metadata_data),
 		},
-		Resources:     resources,
-		Account:       model_set.Account,
-		Content:       model_set.Content,
-		ContentDetail: model_set.Novel,
+		Resources:      resources,
+		Account:        model_set.Account,
+		Content:        model_set.Content,
+		ContentDetail:  model_set.Novel,
+		ContentDetails: ttk_content_details(model_set.Content, model_set.Novel, model_set.Chapters),
 	}, nil
 }
 

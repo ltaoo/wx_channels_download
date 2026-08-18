@@ -161,16 +161,13 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 		return nil, err
 	}
 	content_id := BuildContentID(video_info.VideoID)
-	return []adapter.ContentDetail{{
-		Type: "video",
-		Key:  content_id,
-		Data: &model.ContentVideo{
-			Id:       content_id,
-			URL:      video_info.URL,
-			Format:   "mp4",
-			Variants: bilibili_video_variants(video_info, h.get_logger()),
-		},
-	}}, nil
+	content_video := &model.ContentVideo{
+		Id:       content_id,
+		URL:      video_info.URL,
+		Format:   "mp4",
+		Variants: bilibili_video_variants(video_info, h.get_logger()),
+	}
+	return bilibili_video_content_details(content_id, content_video), nil
 }
 
 // BuildDownloadTaskFromFetch converts the structured result returned by Fetch

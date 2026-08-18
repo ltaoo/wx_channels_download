@@ -72,7 +72,9 @@ type ProgressFetchAdapter interface {
 }
 
 // FetchDownloadTaskBuilder builds a download task preview from the adapter's
-// in-memory Fetch result without issuing another platform request.
+// in-memory Fetch result without issuing another platform request. The result
+// must carry the same Content, Account, and ContentDetails models exposed by
+// the adapter's conversion methods.
 type FetchDownloadTaskBuilder interface {
 	BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*DownloadTaskResult, error)
 }

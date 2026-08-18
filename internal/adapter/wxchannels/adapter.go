@@ -200,16 +200,23 @@ func publish_wxchannels_sph_status(routes *WebsocketRoutes, bus *events.Bus) {
 	if routes == nil || routes.client == nil || bus == nil {
 		return
 	}
-	err := routes.client.CheckSphCookie()
-	available := err == nil
+	cookie_error := routes.client.CheckSphCookie()
+	available, reason := resolve_wxchannels_sph_status(routes.client.Available(), cookie_error)
 	bus.Publish(events.PlatformStatusChanged{
 		Platform:  PlatformID,
 		Key:       wxchannels_status_key_sph,
 		Name:      "视频号分享链接",
 		Status:    platform_status_name(available),
 		Available: available,
-		Reason:    wxchannels_sph_status_reason(err),
+		Reason:    reason,
 	})
+}
+
+func resolve_wxchannels_sph_status(page_available bool, cookie_error error) (bool, string) {
+	if page_available || cookie_error == nil {
+		return true, ""
+	}
+	return false, wxchannels_sph_status_reason(cookie_error)
 }
 
 func wxchannels_sph_status_reason(err error) string {

@@ -501,10 +501,11 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},
-		Resources:     resources,
-		ContentDetail: ext,
-		Account:       account,
-		Content:       content,
+		Resources:      resources,
+		ContentDetail:  ext,
+		ContentDetails: wxmp_content_details(content, ext),
+		Account:        account,
+		Content:        content,
 	}, nil
 }
 

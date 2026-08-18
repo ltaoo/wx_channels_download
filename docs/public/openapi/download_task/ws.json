@@ -1,0 +1,164 @@
+{
+  "get": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "订阅下载任务状态",
+    "description": "将连接升级为 WebSocket。未指定 task_id 时接收全部任务事件；指定后只接收该任务的 task_create、task_upsert、task_update、task_delete 事件，并在连接建立时立即推送一次 task_upsert（任务存在时）。task_stats 始终广播给所有连接。客户端可发送 {\"type\":\"subscribe\",\"task_id\":42} 动态切换为单任务订阅。服务端每 10 秒发送 Ping，30 秒未收到 Pong 会断开。服务端消息类型：task_create/tasks 与 task_upsert/tasks 携带列表接口同构的完整记录；task_update/updates 携带可变状态和进度；task_delete/task_ids 携带删除的 ID；task_stats/stats 携带聚合计数。",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "可选的单任务订阅过滤器"
+      }
+    ],
+    "responses": {
+      "101": {
+        "description": "Switching Protocols，连接升级为 WebSocket"
+      }
+    },
+    "x-websocket-client-messages": [
+      {
+        "type": "subscribe",
+        "task_id": 42
+      }
+    ],
+    "x-websocket-server-messages": [
+      {
+        "type": "task_create",
+        "tasks": [
+          {
+            "id": 42,
+            "root_task_id": 42,
+            "child_count": 0,
+            "name": "example.json",
+            "platform_id": "",
+            "status": 0,
+            "source_url": "",
+            "cover_url": "",
+            "cover_width": "",
+            "cover_height": "",
+            "config_json": "{\"download_dir\":\"/data/downloads\",\"filename\":\"example.json\",\"url\":\"https://example.com/files/example.json\"}",
+            "metadata_json": "",
+            "url": "https://example.com/files/example.json",
+            "size": 0,
+            "downloaded": 0,
+            "speed": 0,
+            "progress": 0,
+            "error": "",
+            "files": [
+              {
+                "id": 73,
+                "download_dir": "/data/downloads",
+                "name": "example.json",
+                "kind": "file",
+                "type": "file",
+                "status": "waiting",
+                "size": 0,
+                "downloaded": 0,
+                "speed": 0,
+                "progress": 0,
+                "url": "https://example.com/files/example.json",
+                "error": ""
+              }
+            ],
+            "file_count": 1,
+            "created_at": 1787000000000,
+            "updated_at": 1787000000000
+          }
+        ]
+      },
+      {
+        "type": "task_upsert",
+        "tasks": [
+          {
+            "id": 42,
+            "root_task_id": 42,
+            "child_count": 0,
+            "name": "example.json",
+            "platform_id": "",
+            "status": 5,
+            "source_url": "",
+            "cover_url": "",
+            "cover_width": "",
+            "cover_height": "",
+            "config_json": "{\"download_dir\":\"/data/downloads\",\"filename\":\"example.json\",\"url\":\"https://example.com/files/example.json\"}",
+            "metadata_json": "",
+            "url": "https://example.com/files/example.json",
+            "size": 247,
+            "downloaded": 247,
+            "speed": 0,
+            "progress": 100,
+            "error": "",
+            "files": [
+              {
+                "id": 73,
+                "download_dir": "/data/downloads",
+                "name": "example.json",
+                "kind": "application/json",
+                "type": "file",
+                "status": "finished",
+                "size": 247,
+                "downloaded": 247,
+                "speed": 0,
+                "progress": 100,
+                "url": "https://example.com/files/example.json",
+                "error": ""
+              }
+            ],
+            "file_count": 1,
+            "created_at": 1787000000000,
+            "updated_at": 1787000001000
+          }
+        ]
+      },
+      {
+        "type": "task_update",
+        "updates": [
+          {
+            "id": 42,
+            "status": 2,
+            "size": 10485760,
+            "downloaded": 5242880,
+            "speed": 1048576,
+            "progress": 50,
+            "error": "",
+            "files": [
+              {
+                "id": 73,
+                "status": "downloading",
+                "size": 10485760,
+                "downloaded": 5242880,
+                "speed": 1048576,
+                "progress": 50,
+                "error": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "task_delete",
+        "task_ids": [
+          42
+        ]
+      },
+      {
+        "type": "task_stats",
+        "stats": {
+          "total": 5,
+          "downloading": 1,
+          "paused": 1,
+          "waiting": 1,
+          "finished": 2,
+          "error": 0
+        }
+      }
+    ]
+  }
+}

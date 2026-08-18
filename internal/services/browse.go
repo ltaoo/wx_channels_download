@@ -197,6 +197,7 @@ func (s *BrowseService) createBrowseHistoryRecord(browse *model.BrowseHistory, a
 		browse.VisitedTimes = persisted.VisitedTimes
 	}
 	s.logger.Info().
+		Str("file", "/services/browse.go").
 		Str("method", "BrowseService.createBrowseHistoryRecord").
 		Str("browse_id", browse.Id).
 		Str("platform_id", browse.PlatformId).
@@ -254,12 +255,14 @@ func (s *BrowseService) createBrowseHistoryRecord(browse *model.BrowseHistory, a
 			return err
 		}
 		s.logger.Info().
+			Str("file", "/service/browse.go").
 			Str("method", "BrowseService.createBrowseHistoryRecord").
 			Str("browse_history_id", browse.Id).
 			Str("account_id", account_id).
 			Msg("browse_history_account join record created")
 	} else {
 		s.logger.Info().
+			Str("file", "/service/browse.go").
 			Str("method", "BrowseService.createBrowseHistoryRecord").
 			Str("browse_id", browse.Id).
 			Str("platform_id", browse.PlatformId).

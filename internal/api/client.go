@@ -60,7 +60,7 @@ func NewAPIClient(
 	downloader *hermes.HermesEngine,
 	hook_manager *hermes.HookManager,
 ) *APIClient {
-	logger := parent_logger.With().Logger()
+	logger := parent_logger.With().Str("component", "APIClient").Logger()
 	engine := gin.New()
 	engine.Use(
 		gin.LoggerWithConfig(gin.LoggerConfig{

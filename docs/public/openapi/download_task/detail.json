@@ -1,0 +1,119 @@
+{
+  "get": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "获取下载任务详情",
+    "description": "返回一个任务、关联内容与账号，以及增加了本地路径、文件类型、访问 URL 和存在性标记的文件列表。所有业务响应的 HTTP 状态码均为 200。",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "download_task 表主键 ID"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "统一业务响应",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "查询成功",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "id": 42,
+                    "content": {
+                      "id": "wxchannels:14545102784038246591",
+                      "platform_id": "wxchannels",
+                      "type": "video",
+                      "title": "示例视频",
+                      "description": "示例描述",
+                      "cover_url": "https://example.com/cover.jpg",
+                      "url": "https://example.com/video.mp4",
+                      "source_url": "https://channels.weixin.qq.com/...",
+                      "publish_time": 1786990000000,
+                      "accounts": [
+                        {
+                          "id": "wxchannels:account:example",
+                          "nickname": "示例作者",
+                          "avatar_url": "https://example.com/avatar.jpg",
+                          "external_id": "example"
+                        }
+                      ]
+                    },
+                    "content_id": "wxchannels:14545102784038246591",
+                    "content_type": "video",
+                    "parent_task_id": null,
+                    "root_task_id": 42,
+                    "relation_type": "",
+                    "child_count": 0,
+                    "name": "示例视频",
+                    "platform_id": "wxchannels",
+                    "status": 5,
+                    "source_url": "https://channels.weixin.qq.com/...",
+                    "cover_url": "https://example.com/cover.jpg",
+                    "cover_width": "1080",
+                    "cover_height": "1440",
+                    "config_json": "{}",
+                    "metadata_json": "{}",
+                    "url": "https://example.com/video.mp4",
+                    "size": 10485760,
+                    "downloaded": 10485760,
+                    "speed": 0,
+                    "progress": 100,
+                    "error": "",
+                    "files": [
+                      {
+                        "id": 73,
+                        "download_dir": "/absolute/path/downloads",
+                        "name": "示例视频.mp4",
+                        "kind": "video/mp4",
+                        "type": "FILE",
+                        "status": "finished",
+                        "size": 10485760,
+                        "downloaded": 10485760,
+                        "speed": 0,
+                        "progress": 100,
+                        "url": "https://example.com/video.mp4",
+                        "error": "",
+                        "local_path": "/absolute/path/downloads/示例视频.mp4",
+                        "file_type": "video",
+                        "file_url": "/api/file?path=%2Fabsolute%2Fpath%2Fdownloads%2F%E7%A4%BA%E4%BE%8B%E8%A7%86%E9%A2%91.mp4",
+                        "exists": true
+                      }
+                    ],
+                    "file_count": 1,
+                    "created_at": 1787000000000,
+                    "updated_at": 1787000010000
+                  }
+                }
+              },
+              "invalid_id": {
+                "summary": "id 不合法",
+                "value": {
+                  "code": 400,
+                  "msg": "id is required and must be a positive integer"
+                }
+              },
+              "not_found": {
+                "summary": "任务不存在",
+                "value": {
+                  "code": 404,
+                  "msg": "下载任务不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

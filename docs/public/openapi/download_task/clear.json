@@ -3,8 +3,8 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "批量删除下载任务",
-    "description": "停止任务并软删除任务及其关联资源、端点、分片和连接记录。delete_files=true 时先安全删除下载目录内的最终文件、临时文件和直播录制目录；文件清理失败时该任务不会执行数据库软删除。每个任务独立返回结果。",
+    "summary": "清理指定下载任务",
+    "description": "按 task_ids 清理任务。当前实现与批量删除使用相同的停止、可选本地文件清理和数据库软删除流程，并额外返回成功清理数量。",
     "requestBody": {
       "required": true,
       "content": {
@@ -46,30 +46,21 @@
           "application/json": {
             "examples": {
               "success": {
-                "summary": "删除成功",
+                "summary": "清理完成",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
+                    "cleared": 1,
+                    "total": 2,
                     "results": [
                       {
-                        "task_id": 44,
+                        "task_id": 42,
                         "success": true,
                         "status_text": "cancelled"
-                      }
-                    ]
-                  }
-                }
-              },
-              "partial_failure": {
-                "summary": "单项失败",
-                "value": {
-                  "code": 0,
-                  "msg": "成功",
-                  "data": {
-                    "results": [
+                      },
                       {
-                        "task_id": 999,
+                        "task_id": 43,
                         "success": false,
                         "error": "下载任务不存在"
                       }

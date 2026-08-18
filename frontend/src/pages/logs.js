@@ -1,4 +1,12 @@
-import { Dialog, Pagination, Select } from "../components.js";
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  DialogBody,
+  DialogTitle,
+  Input,
+  Pagination,
+} from "../components.js";
 
 import { LogsPageViewModel } from "./logs.model.js";
 
@@ -46,31 +54,29 @@ function LogsPageView(props) {
 }
 
 function LogsPageActionButton(props) {
-  return View(
+  return Button(
     {
-      type: "button",
+      store: props.store,
       class: [
-        "wx-content-action dm-button dm-focus-ring",
+        "wx-logs-page-button",
         props.compact ? "wx-content-action-compact" : "",
         props.class,
       ]
         .filter(Boolean)
         .join(" "),
       attributes: {
-        type: "button",
+        type: props.type || "button",
         title: props.title || "",
         ...(props.attributes || {}),
       },
       onClick: props.onClick,
-    },
-    [
-      props.icon
+      prefix: props.icon
         ? Timeless.Icon({ name: props.icon, size: props.iconSize || 16 })
         : null,
-      typeof props.label !== "undefined"
-        ? View({ class: "wx-content-action-label" }, [props.label])
-        : null,
-    ].filter(Boolean),
+    },
+    typeof props.label !== "undefined"
+      ? [View({ class: "wx-content-action-label" }, [props.label])]
+      : [],
   );
 }
 
@@ -104,108 +110,94 @@ function LogsPageLevelClass(level) {
 
 function LogsPageToolbar(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-toolbar wx-logs-toolbar" }, [
-    View({ class: "wx-logs-toolbar-row" }, [
-      Select({
-        store: vm$.ui.select_source$,
-        class: "wx-content-type-select wx-logs-select wx-logs-source-select",
-      }),
-      Select({
-        store: vm$.ui.select_level$,
-        class: "wx-content-type-select wx-logs-select",
-      }),
-      View({ class: "wx-content-search wx-logs-search" }, [
-        Timeless.Icon({ name: "search", size: 16 }),
-        View({
-          type: "input",
-          class: "wx-content-search-input",
-          attributes: {
-            id: "wxLogKeywordInput",
-            type: "search",
-            placeholder: "搜索消息、字段、原始日志",
-            autocomplete: "off",
-          },
-          onInput(event) {
-            vm$.methods.setKeyword(event.target.value);
-          },
-          onKeyDown(event) {
-            if (event.key === "Enter") {
+  return View(
+    {
+      type: "form",
+      class: "wx-content-toolbar wx-logs-toolbar",
+      attributes: { role: "search" },
+      onSubmit(event) {
+        event.preventDefault();
+        vm$.methods.search();
+      },
+    },
+    [
+      View({ class: "wx-logs-toolbar-row" }, [
+        // Select({
+        //   store: vm$.ui.select_source$,
+        //   class:
+        //     "wx-content-type-select wx-logs-select wx-logs-source-select",
+        // }),
+        // Select({
+        //   store: vm$.ui.select_level$,
+        //   class: "wx-content-type-select wx-logs-select",
+        // }),
+        View({ class: "wx-content-search wx-logs-search" }, [
+          Timeless.Icon({ name: "search", size: 16 }),
+          Input({
+            store: vm$.ui.input_keyword$,
+            class: "wx-content-search-input",
+            attributes: {
+              name: "keyword",
+              type: "text",
+              autocomplete: "off",
+              "aria-label": "搜索消息、字段或原始日志",
+            },
+          }),
+        ]),
+        View({ class: "wx-content-filter-actions" }, [
+          LogsPageActionButton({
+            store: vm$.ui.btn_search$,
+            icon: "search",
+            label: "搜索",
+            type: "submit",
+            onClick(event) {
+              event.preventDefault();
               vm$.methods.search();
-            }
+            },
+          }),
+          LogsPageActionButton({
+            store: vm$.ui.btn_reset$,
+            icon: "rotate-ccw",
+            label: "重置",
+          }),
+          LogsPageActionButton({
+            store: vm$.ui.btn_export$,
+            icon: "download",
+            label: "导出",
+            onClick() {
+              vm$.methods.exportLogs();
+            },
+          }),
+        ]),
+      ]),
+      View({ class: "wx-logs-toolbar-extra" }, [
+        View({ class: "wx-logs-toggle" }, [
+          Checkbox({
+            store: vm$.ui.checkbox_auto_refresh$,
+            id: "wxLogsAutoRefresh",
+          }),
+          View(
+            {
+              type: "label",
+              attributes: { for: "wxLogsAutoRefresh" },
+            },
+            ["自动刷新"],
+          ),
+        ]),
+        LogsPageActionButton({
+          store: vm$.ui.btn_refresh$,
+          icon: "refresh-cw",
+          label: computed(vm$.state.loading, (loading) =>
+            loading ? "刷新中" : "刷新",
+          ),
+          compact: true,
+          onClick() {
+            vm$.methods.refresh();
           },
         }),
       ]),
-      LogsPageActionButton({
-        icon: "search",
-        label: "搜索",
-        onClick() {
-          vm$.methods.search();
-        },
-      }),
-      LogsPageActionButton({
-        icon: "rotate-ccw",
-        label: "重置",
-        onClick() {
-          vm$.methods.resetFilters();
-          const input = document.getElementById("wxLogKeywordInput");
-          if (input) {
-            input.value = "";
-          }
-        },
-      }),
-      LogsPageActionButton({
-        icon: "download",
-        label: "导出",
-        onClick() {
-          vm$.methods.exportLogs();
-        },
-      }),
-    ]),
-    View({ class: "wx-logs-toolbar-extra" }, [
-      View({ class: "wx-logs-toggle" }, [
-        View({
-          type: "input",
-          attributes: {
-            type: "checkbox",
-            "aria-label": "自动刷新",
-            checked: computed(vm$.state.auto_refresh, (value) =>
-              value ? true : undefined,
-            ),
-          },
-          onChange(event) {
-            vm$.methods.setAutoRefresh(event.target.checked);
-          },
-        }),
-        View({}, ["自动刷新"]),
-      ]),
-      LogsPageActionButton({
-        icon: "refresh-cw",
-        label: computed(vm$.state.loading, (loading) =>
-          loading ? "刷新中" : "刷新",
-        ),
-        compact: true,
-        onClick() {
-          vm$.methods.refresh();
-        },
-      }),
-      View({ class: "wx-logs-toggle" }, [
-        View({
-          type: "input",
-          attributes: {
-            type: "checkbox",
-            "aria-label": "格式化 JSON",
-            checked: computed(vm$.state.format_json, (value) =>
-              value ? true : undefined,
-            ),
-          },
-          onChange(event) {
-            vm$.methods.setFormatJson(event.target.checked);
-          },
-        }),
-        View({}, ["格式化 JSON"]),
-      ]),
-    ]),
-  ]);
+    ],
+  );
 }
 
 function LogsPageError(props) {
@@ -228,9 +220,7 @@ function LogsPageRow(props) {
   const component = entry.component || entry.Component || "";
   return View({ class: "wx-logs-table-row", attributes: { role: "row" } }, [
     View({ class: "wx-logs-level-cell", attributes: { role: "cell" } }, [
-      View({ class: LogsPageLevelClass(entry.level) }, [
-        entry.level || "info",
-      ]),
+      View({ class: LogsPageLevelClass(entry.level) }, [entry.level || "info"]),
     ]),
     View({ class: "wx-logs-time-cell", attributes: { role: "cell" } }, [
       LogsPageFormatTime(entry.time),
@@ -322,35 +312,23 @@ function LogsPageJsonPreviewDialog(props) {
     {
       store: vm$.ui.json_preview_dialog$,
       class: "wx-logs-json-dialog",
-      showClose: false,
+      closeLabel: "关闭 JSON 预览",
     },
     [
-      View({ class: "wx-logs-json-dialog-header" }, [
+      DialogTitle({ class: "wx-logs-json-dialog-header" }, [
+        View({ class: "wx-logs-json-dialog-heading-icon" }, [
+          Timeless.Icon({ name: "braces", size: 18 }),
+        ]),
         View({ class: "wx-logs-json-dialog-heading" }, [
-          View({ class: "wx-logs-json-dialog-title" }, [
+          View({ as: "span", class: "wx-logs-json-dialog-title" }, [
             vm$.state.json_preview_title,
           ]),
-          View({ class: "wx-logs-json-dialog-subtitle" }, [
+          View({ as: "span", class: "wx-logs-json-dialog-subtitle" }, [
             "格式化 JSON 内容",
           ]),
         ]),
-        View(
-          {
-            type: "button",
-            class: "wx-logs-json-dialog-close",
-            attributes: {
-              type: "button",
-              title: "关闭",
-              "aria-label": "关闭 JSON 预览",
-            },
-            onClick() {
-              vm$.methods.closeJsonFieldValue();
-            },
-          },
-          ["×"],
-        ),
       ]),
-      View({ class: "wx-logs-json-dialog-body" }, [
+      DialogBody({ class: "wx-logs-json-dialog-body" }, [
         View({ type: "pre", class: "wx-logs-json-dialog-content" }, [
           vm$.state.json_preview_text,
         ]),
@@ -489,45 +467,38 @@ function LogsPageEmptyState() {
 
 function LogsPageList(props) {
   const vm$ = props.store;
-  return View({ class: "wx-logs-list dm-panel" }, [
-    View({ class: "wx-logs-list-head" }, [
-      View({ class: "wx-logs-list-title" }, ["日志流"]),
-      Show({
-        when: vm$.state.loading,
-        ok() {
-          return View({ class: "wx-logs-loading-badge" }, [
-            View({ class: "weui-loading" }),
-            View({}, ["加载中"]),
-          ]);
-        },
-      }),
-    ]),
-    View({ class: "wx-logs-scroll" }, [
-      Show({
-        when: computed(
-          vm$.state.loading,
-          (loading) => loading && vm$.state.entries.value.length === 0,
-        ),
-        ok() {
-          return LogsPageLoadingState();
-        },
-        else() {
-          return Show({
-            when: computed(
-              vm$.state.entries,
-              (entries) => entries.length > 0,
-            ),
-            ok() {
-              return LogsPageTable({ store: vm$ });
-            },
-            else() {
-              return LogsPageEmptyState();
-            },
-          });
-        },
-      }),
-    ]),
-  ]);
+  return View(
+    {
+      class: "wx-content-rows wx-content-history-rows wx-logs-list dm-panel",
+    },
+    [
+      View({ class: "wx-logs-scroll" }, [
+        Show({
+          when: computed(
+            vm$.state.loading,
+            (loading) => loading && vm$.state.entries.value.length === 0,
+          ),
+          ok() {
+            return LogsPageLoadingState();
+          },
+          else() {
+            return Show({
+              when: computed(
+                vm$.state.entries,
+                (entries) => entries.length > 0,
+              ),
+              ok() {
+                return LogsPageTable({ store: vm$ });
+              },
+              else() {
+                return LogsPageEmptyState();
+              },
+            });
+          },
+        }),
+      ]),
+    ],
+  );
 }
 
 export default LogsPageView;

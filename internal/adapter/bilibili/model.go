@@ -65,6 +65,12 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 	resources := make([]*adapter.ResourceInfo, 0, 3)
 	video_variants := bilibili_video_variants(info, logger)
 	video_asset_key := bilibili_selected_video_variant_key(video_variants, info.URL)
+	content_video := &model.ContentVideo{
+		Id:       content_id,
+		URL:      info.URL,
+		Format:   "mp4",
+		Variants: video_variants,
+	}
 
 	if config_bool(config, "download_cover") && strings.TrimSpace(info.CoverURL) != "" {
 		resources = append(resources, build_cover_resource(content_id, external_id, task_name, info.CoverURL, extra_json))
@@ -125,16 +131,19 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 			ConfigJSON:   string(config_data),
 			MetadataJSON: string(metadata_data),
 		},
-		Resources: resources,
-		ContentDetail: &model.ContentVideo{
-			Id:       content_id,
-			URL:      info.URL,
-			Format:   "mp4",
-			Variants: video_variants,
-		},
-		Account: account,
-		Content: content,
+		Resources:      resources,
+		ContentDetail:  content_video,
+		ContentDetails: bilibili_video_content_details(content_id, content_video),
+		Account:        account,
+		Content:        content,
 	}, nil
+}
+
+func bilibili_video_content_details(content_id string, video *model.ContentVideo) []adapter.ContentDetail {
+	if video == nil {
+		return nil
+	}
+	return []adapter.ContentDetail{{Type: "video", Key: content_id, Data: video}}
 }
 
 func bilibili_selected_video_variant_key(variants []model.ContentVideoVariant, selected_url string) string {

@@ -92,7 +92,14 @@ func is_channels_feed_url(raw_url string) bool {
 func (c *Client) fetch_profile_with_share_url(raw_url string) (any, error) {
 	cookie, err := c.resolve_sph_cookie()
 	if err != nil {
-		return nil, err
+		resp, fetch_err := c.FetchChannelsFeedProfile("", "", raw_url, "")
+		if fetch_err != nil {
+			return nil, fetch_err
+		}
+		if resp.ErrCode != 0 {
+			return nil, fmt.Errorf("fetch channels shared feed profile: %s", resp.ErrMsg)
+		}
+		return &resp.Data.Object, nil
 	}
 	return FetchVideoProfileWithShareUrl(raw_url, cookie)
 }
