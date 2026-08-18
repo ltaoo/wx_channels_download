@@ -583,7 +583,11 @@ export function Checkbox(props) {
           if (typeof unlisten === "function") unlisten();
         },
       },
-      [Runtime.Icon({ name: "check", size: 12 })],
+      [
+        View({ class: "dm-ui-checkbox-box" }, [
+          Runtime.Icon({ name: "check", size: 14 }),
+        ]),
+      ],
     ),
   ]);
 }

@@ -231,11 +231,11 @@ window.PLATFORM_FAVICONS = Object.freeze({
           pathname: "/account",
           component: lazy("src/pages/account.js", "src/pages/account.css"),
         },
-        // logs: {
-        //   title: "日志",
-        //   pathname: "/logs",
-        //   component: lazy("src/pages/logs.js"),
-        // },
+        logs: {
+          title: "日志",
+          pathname: "/logs",
+          component: lazy("src/pages/logs.js"),
+        },
       },
     },
   };

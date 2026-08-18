@@ -228,6 +228,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 	delete(extraFields, "replace")
 	delete(extraFields, "ignore_prefix")
 	delete(extraFields, "prefix")
+	delete(extraFields, "component")
 
 	reportMessage := data.Message
 	if reportMessage == "" {
@@ -237,7 +238,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		reportMessage = "frontend report"
 	}
 	evt := c.logger.WithLevel(zerologLevel(data.Level)).
-		Str("source", "frontend")
+		Str("component", "frontend")
 	for k, v := range extraFields {
 		evt = evt.Interface(k, normalizeFrontendReportValue(v))
 	}

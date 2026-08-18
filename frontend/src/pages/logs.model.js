@@ -319,6 +319,40 @@ function LogsPageViewModel(props) {
   const json_preview_title_ = ref("JSON 预览");
   const json_preview_text_ = ref("");
   const ui = {
+    input_keyword$: new Timeless.vm.InputCore({
+      defaultValue: keyword_.value,
+      placeholder: "搜索消息、字段、原始日志",
+      type: "search",
+      allowClear: true,
+      onChange(value) {
+        set_keyword(value);
+      },
+    }),
+    btn_search$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "primary",
+    }),
+    btn_reset$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "outline",
+      onClick() {
+        return reset_filters();
+      },
+    }),
+    btn_export$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "outline",
+    }),
+    btn_refresh$: new Timeless.vm.ButtonCore({
+      disabled: loading_.value,
+      variant: "outline",
+    }),
+    checkbox_auto_refresh$: new Timeless.vm.CheckboxCore({
+      checked: auto_refresh_.value,
+      onChange(value) {
+        set_auto_refresh(value);
+      },
+    }),
     json_preview_dialog$: new Timeless.vm.DialogCore({
       closeable: true,
       footer: false,
@@ -344,10 +378,37 @@ function LogsPageViewModel(props) {
       },
     }),
   };
-  const hide_json_preview_dialog =
-    ui.json_preview_dialog$.hide.bind(ui.json_preview_dialog$);
-  ui.json_preview_dialog$.hide = (options = {}) =>
-    hide_json_preview_dialog({ destroy: false, ...options });
+  keyword_.subscribe({
+    onChange(value) {
+      if (ui.input_keyword$.value !== value) {
+        ui.input_keyword$.setValue(value, { silence: true });
+      }
+    },
+  });
+  auto_refresh_.subscribe({
+    onChange(value) {
+      const checked = Boolean(value);
+      if (ui.checkbox_auto_refresh$.checked !== checked) {
+        ui.checkbox_auto_refresh$.setValue(checked, { silence: true });
+      }
+    },
+  });
+  loading_.subscribe({
+    onChange(loading) {
+      [
+        ui.btn_search$,
+        ui.btn_reset$,
+        ui.btn_export$,
+        ui.btn_refresh$,
+      ].forEach((button) => {
+        if (loading) {
+          button.disable();
+        } else {
+          button.enable();
+        }
+      });
+    },
+  });
   let timer = null;
   let request_sequence = 0;
 
@@ -458,6 +519,25 @@ function LogsPageViewModel(props) {
     return result;
   }
 
+  function set_keyword(value) {
+    keyword_.as(String(value || ""));
+  }
+
+  function set_auto_refresh(value) {
+    auto_refresh_.as(Boolean(value));
+    restart_timer();
+  }
+
+  function reset_filters() {
+    keyword_.as("");
+    source_.as("all");
+    ui.select_source$.setValue("all");
+    level_.as("all");
+    ui.select_level$.setValue("all");
+    format_json_.as(true);
+    return load(1);
+  }
+
   const methods = {
     ready() {
       return load(1);
@@ -468,26 +548,13 @@ function LogsPageViewModel(props) {
     search() {
       return load(1);
     },
-    setKeyword(value) {
-      keyword_.as(String(value || ""));
-    },
+    setKeyword: set_keyword,
     setFormatJson(value) {
       format_json_.as(Boolean(value));
       return load(page_.value);
     },
-    setAutoRefresh(value) {
-      auto_refresh_.as(Boolean(value));
-      restart_timer();
-    },
-    resetFilters() {
-      keyword_.as("");
-      source_.as("all");
-      ui.select_source$.setValue("all");
-      level_.as("all");
-      ui.select_level$.setValue("all");
-      format_json_.as(true);
-      return load(1);
-    },
+    setAutoRefresh: set_auto_refresh,
+    resetFilters: reset_filters,
     previousPage() {
       if (page_.value <= 1 || loading_.value) {
         return null;
@@ -532,9 +599,6 @@ function LogsPageViewModel(props) {
       json_preview_text_.as(json_field.formatted_text);
       return true;
     },
-    closeJsonFieldValue() {
-      ui.json_preview_dialog$.hide();
-    },
     async copyJsonFieldValue(value) {
       const text = json_object_field_text(value);
       if (!text) {
@@ -558,6 +622,7 @@ function LogsPageViewModel(props) {
         clearInterval(timer);
       }
       timer = null;
+      ui.json_preview_dialog$.destroy();
     },
   };
 

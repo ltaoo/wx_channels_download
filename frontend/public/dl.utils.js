@@ -6,6 +6,7 @@
   }
 
   const LOG_LEVEL_VALUES = { debug: 0, info: 1, warn: 2, error: 3 };
+  const FRONTEND_LOG_COMPONENT = "frontend";
   const LOG_CONFIG = {
     bufferCapacity: 256,
     batchSize: 16,
@@ -37,7 +38,10 @@
 
   function sendReport(entry, immediate) {
     const url = apiOrigin() + "/report";
-    const body = JSON.stringify(entry);
+    const body = JSON.stringify({
+      ...entry,
+      component: FRONTEND_LOG_COMPONENT,
+    });
     if (
       immediate &&
       global.navigator &&
