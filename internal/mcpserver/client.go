@@ -106,6 +106,13 @@ func (c *api_client) decrypt_wxchannels_video(ctx context.Context, file_path str
 	return c.do_json(ctx, http.MethodPost, "/api/channels/decrypt?"+query.Encode(), nil)
 }
 
+func (c *api_client) get_wxchannels_api(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	return c.do_json(ctx, http.MethodGet, path, nil)
+}
+
 func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*scraper_job, error) {
 	body := map[string]any{"url": raw_url, "force_refresh": force_refresh}
 	raw_data, err := c.do_json(ctx, http.MethodPost, "/api/scraper/fetch", body)

@@ -10,6 +10,22 @@ title: MCP Server
 - `fetch_content`：传入平台内容链接，等待解析完成并返回规范化内容。
 - `download_content`：复用 `fetch_content` 的 `job_id`，或直接传入链接，创建并启动下载任务。
 - `decrypt_wxchannels_video`：原地解密由 aria2 等第三方下载器保存的微信视频号视频。
+- `get_wxchannels_status`：检查视频号页面是否已连接。
+- `search_wxchannels_accounts`：搜索视频号账号。
+- `get_wxchannels_account_videos`：获取账号发布的视频列表。
+- `get_wxchannels_live_replays`：获取账号的直播回放。
+- `get_wxchannels_interacted_videos`：获取当前用户赞过或收藏的视频。
+- `get_wxchannels_followed_accounts`：获取当前用户关注的视频号账号。
+- `get_wxchannels_play_history`：获取当前用户的视频号播放记录。
+- `get_wxchannels_video_profile`：通过链接、`oid`/`nid` 或 `eid` 获取视频详情。
+- `get_wxchannels_video_comments`：获取视频评论或根评论的回复。
+- `get_wxchannels_video_share_url`：通过 `oid` 获取视频分享链接。
+- `get_download_tasks`：分页获取下载任务和状态统计。
+- `get_download_task_detail`：获取下载任务、文件和关联内容详情。
+- `get_accounts`：分页获取数据库中的平台账号。
+- `get_browse_history`：分页获取浏览记录。
+- `get_logs`：分页读取并筛选应用日志。
+- `get_certificate_status`：获取代理根证书的安装及信任状态。
 
 ## Streamable HTTP（推荐）
 
@@ -22,6 +38,18 @@ http://127.0.0.1:2022/mcp
 设置页修改会立即生效，但不会写入配置文件。应用每次启动时 MCP 均会默认开启；手动关闭后 `/mcp` 会立即停止接受 Agent 请求，下次启动应用时会再次开启。MCP 与下载器 API 使用相同的监听地址；如果把 `api.hostname` 配置为局域网地址，应只向可信网络开放。
 
 该开关只控制主服务内置的 `/mcp` HTTP 入口；下面的 stdio 命令由 MCP 客户端独立启动，不受此开关影响。
+
+## 微信视频号 API
+
+视频号 API 工具通过已打开的视频号页面访问微信接口。使用前先确认下载器代理工作正常，并已有页面连接到 `/ws/channels`；可调用 `get_wxchannels_status` 检查，返回的 `available` 应为 `true`。
+
+列表工具返回微信原始分页字段。继续翻页时，把上一页的 `data.lastBuffer`（账号搜索使用 `data.lastBuff`）原样传给下一次调用的 `next_marker`，不要自行解码或改写。
+
+## 本地数据查询
+
+内置 Streamable HTTP MCP 直接使用下载器当前进程中的数据库和运行时 service，查询下载任务、账号、浏览记录、日志和证书状态。独立 stdio MCP 不会再次打开数据库，而是通过已经启动的下载器 API 返回同样的数据。
+
+所有数据查询工具均为只读。`get_download_tasks` 支持按状态、父任务和根任务筛选；`get_accounts` 支持账号 ID 和关键词；`get_browse_history` 支持平台、关联账号和关键词；`get_logs` 支持日志级别、来源和关键词。列表工具默认分页，并限制单页最大返回量。
 
 ## stdio
 

@@ -86,7 +86,7 @@ func tool_error_result(err error) map[string]any {
 }
 
 func tool_definitions() []any {
-	return []any{
+	definitions := []any{
 		map[string]any{
 			"name":        "get_platform_status",
 			"title":       "获取平台状态",
@@ -240,6 +240,25 @@ func tool_definitions() []any {
 			},
 		},
 	}
+	definitions = append(definitions, wxchannels_tool_definitions()...)
+	return append(definitions, data_tool_definitions()...)
+}
+
+// ToolNames returns the MCP tool names exposed by this server.
+func ToolNames() []string {
+	definitions := tool_definitions()
+	names := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		tool, ok := definition.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
@@ -252,6 +271,38 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.download_content(ctx, params.Arguments)
 	case "decrypt_wxchannels_video":
 		return s.decrypt_wxchannels_video(ctx, params.Arguments)
+	case "get_wxchannels_status":
+		return s.get_wxchannels_status(ctx)
+	case "search_wxchannels_accounts":
+		return s.search_wxchannels_accounts(ctx, params.Arguments)
+	case "get_wxchannels_account_videos":
+		return s.get_wxchannels_account_videos(ctx, params.Arguments)
+	case "get_wxchannels_live_replays":
+		return s.get_wxchannels_live_replays(ctx, params.Arguments)
+	case "get_wxchannels_interacted_videos":
+		return s.get_wxchannels_interacted_videos(ctx, params.Arguments)
+	case "get_wxchannels_followed_accounts":
+		return s.get_wxchannels_followed_accounts(ctx, params.Arguments)
+	case "get_wxchannels_play_history":
+		return s.get_wxchannels_play_history(ctx, params.Arguments)
+	case "get_wxchannels_video_profile":
+		return s.get_wxchannels_video_profile(ctx, params.Arguments)
+	case "get_wxchannels_video_comments":
+		return s.get_wxchannels_video_comments(ctx, params.Arguments)
+	case "get_wxchannels_video_share_url":
+		return s.get_wxchannels_video_share_url(ctx, params.Arguments)
+	case "get_download_tasks":
+		return s.get_download_tasks(ctx, params.Arguments)
+	case "get_download_task_detail":
+		return s.get_download_task_detail(ctx, params.Arguments)
+	case "get_accounts":
+		return s.get_accounts(ctx, params.Arguments)
+	case "get_browse_history":
+		return s.get_browse_history(ctx, params.Arguments)
+	case "get_logs":
+		return s.get_logs(ctx, params.Arguments)
+	case "get_certificate_status":
+		return s.get_certificate_status(ctx)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}
