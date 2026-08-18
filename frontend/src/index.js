@@ -1088,7 +1088,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
                     "允许 Agent 连接",
                   ]),
                   View({ class: "settings-mcp__control-description" }, [
-                    "更改仅在当前运行期间生效；应用重启后默认关闭。",
+                    "更改仅在当前运行期间生效；应用重启后默认开启。",
                   ]),
                 ]),
                 Button(

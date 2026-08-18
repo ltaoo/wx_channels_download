@@ -83,6 +83,7 @@ func (c *APIClient) handle_create_browse_history(ctx *gin.Context) {
 
 	if c.logger != nil {
 		c.logger.Info().
+			Str("file", "/api/handler_browse_history.go").
 			Str("api", "POST /api/browse_history/create").
 			Int("object_count", len(req.Objects)).
 			Msg("received browse history create request")
@@ -128,6 +129,7 @@ func (c *APIClient) handle_create_browse_history(ctx *gin.Context) {
 
 	if c.logger != nil {
 		c.logger.Info().
+			Str("file", "/api/handler_browse_history.go").
 			Str("api", "POST /api/browse_history/create").
 			Int("created_count", created_count).
 			Int("failed_count", failed_count).

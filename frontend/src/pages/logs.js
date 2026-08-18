@@ -467,42 +467,38 @@ function LogsPageEmptyState() {
 
 function LogsPageList(props) {
   const vm$ = props.store;
-  return View({ class: "wx-logs-list dm-panel" }, [
-    View({ class: "wx-logs-list-head" }, [
-      View({ class: "wx-logs-list-title" }, ["日志流"]),
-      Show({
-        when: vm$.state.loading,
-        ok() {
-          return View({ class: "wx-logs-loading-badge" }, [
-            View({ class: "weui-loading" }),
-            View({}, ["加载中"]),
-          ]);
-        },
-      }),
-    ]),
-    View({ class: "wx-logs-scroll" }, [
-      Show({
-        when: computed(
-          vm$.state.loading,
-          (loading) => loading && vm$.state.entries.value.length === 0,
-        ),
-        ok() {
-          return LogsPageLoadingState();
-        },
-        else() {
-          return Show({
-            when: computed(vm$.state.entries, (entries) => entries.length > 0),
-            ok() {
-              return LogsPageTable({ store: vm$ });
-            },
-            else() {
-              return LogsPageEmptyState();
-            },
-          });
-        },
-      }),
-    ]),
-  ]);
+  return View(
+    {
+      class: "wx-content-rows wx-content-history-rows wx-logs-list dm-panel",
+    },
+    [
+      View({ class: "wx-logs-scroll" }, [
+        Show({
+          when: computed(
+            vm$.state.loading,
+            (loading) => loading && vm$.state.entries.value.length === 0,
+          ),
+          ok() {
+            return LogsPageLoadingState();
+          },
+          else() {
+            return Show({
+              when: computed(
+                vm$.state.entries,
+                (entries) => entries.length > 0,
+              ),
+              ok() {
+                return LogsPageTable({ store: vm$ });
+              },
+              else() {
+                return LogsPageEmptyState();
+              },
+            });
+          },
+        }),
+      ]),
+    ],
+  );
 }
 
 export default LogsPageView;
