@@ -164,6 +164,22 @@ type fileListRequest struct {
 	Dir string `json:"dir"`
 }
 
+type profileCacheCleanupRequest struct {
+	DataDir string `json:"data_dir"`
+	DBPath  string `json:"db_path"`
+}
+
+type profileCacheCleanupResult struct {
+	DataDir        string   `json:"data_dir"`
+	CachePath      string   `json:"cache_path"`
+	Total          int      `json:"total"`
+	Checked        int      `json:"checked"`
+	SkippedArticle int      `json:"skipped_article"`
+	Removed        int      `json:"removed"`
+	Remaining      int      `json:"remaining"`
+	RemovedKeys    []string `json:"removed_keys"`
+}
+
 type fileItem struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
@@ -223,7 +239,7 @@ func main() {
 	var profileAgentLocalURL string
 	flag.StringVar(&host, "host", "127.0.0.1", "HTTP listen host")
 	flag.IntVar(&port, "port", 8026, "HTTP listen port")
-	flag.StringVar(&dataDir, "data-dir", ".", "default directory containing gopeed.db")
+	flag.StringVar(&dataDir, "data-dir", gopeedDBFile, "default Gopeed .db database file path")
 	flag.StringVar(&targetURL, "target-url", defaultTargetBaseURL, "wx_channels_download target API base URL")
 	flag.StringVar(&targetDB, "target-db", "", "wx_channels_download target SQLite database path")
 	flag.StringVar(&mode, "mode", Mode, "frontend mode: dev, debug, release, or prod")
@@ -267,6 +283,7 @@ func main() {
 	mux.HandleFunc("/api/v1/migration/file/list", server.handleMigrationFileList)
 	mux.HandleFunc("/api/v1/fs/list", server.handleMigrationFileList)
 	mux.HandleFunc("/api/v1/migration/common_dirs", server.handleMigrationCommonDirs)
+	mux.HandleFunc("/api/v1/migration/profile-cache/cleanup", server.handle_migration_profile_cache_cleanup)
 	mux.HandleFunc("/api/channels/feed/profile", server.handleChannelsFeedProfile)
 	mux.HandleFunc(channelsProfileAgentPath, server.profileAgent.HandleWebsocket)
 	mux.HandleFunc("/api/channels/profile-agent/status", server.handleChannelsProfileAgentStatus)
@@ -301,7 +318,7 @@ func newMigrationFrontend(mode string, frontendRoot string) http.Handler {
 		Mode:                serverMode,
 		Root:                root,
 		Embedded:            embedded,
-		EntryPage:           "migration.html",
+		EntryPage:           "index.html",
 		StaticAssetPrefixes: staticAssetPrefixes,
 		NoFallbackPrefixes:  []string{"/api", "/assets"},
 	})
@@ -314,7 +331,7 @@ func resolveFrontendRoot(frontendRoot string) string {
 			log.Fatalf("resolve frontend root: %v", err)
 		}
 		if !isFrontendRoot(root) {
-			log.Fatalf("frontend root %q does not contain migration.html", root)
+			log.Fatalf("frontend root %q does not contain index.html", root)
 		}
 		return root
 	}
@@ -338,7 +355,7 @@ func resolveFrontendRoot(frontendRoot string) string {
 }
 
 func isFrontendRoot(root string) bool {
-	info, err := os.Stat(filepath.Join(root, "migration.html"))
+	info, err := os.Stat(filepath.Join(root, "index.html"))
 	return err == nil && !info.IsDir()
 }
 
@@ -503,12 +520,39 @@ func (s *migrationServer) handleMigrationCommonDirs(w http.ResponseWriter, r *ht
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
+	default_db_path := ""
+	if _, db_path, err := s.resolveDataDir(""); err == nil {
+		default_db_path = db_path
+	}
 	writeAPIOK(w, map[string]any{
 		"default_data_dir": s.defaultDataDir,
+		"default_db_path":  default_db_path,
 		"target_url":       s.targetBaseURL,
 		"target_db":        s.targetDBPath,
 		"dirs":             commonDirs(s.defaultDataDir),
 	})
+}
+
+func (s *migrationServer) handle_migration_profile_cache_cleanup(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	var req profileCacheCleanupRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeAPIError(w, 400, "invalid request body: "+err.Error())
+		return
+	}
+	data_dir, err := s.resolveProfileCacheDir(firstNonEmpty(req.DataDir, req.DBPath))
+	if err != nil {
+		writeAPIError(w, 400, err.Error())
+		return
+	}
+	result, err := s.cleanup_invalid_profile_cache(data_dir)
+	if err != nil {
+		writeAPIError(w, 500, err.Error())
+		return
+	}
+	writeAPIOK(w, result)
 }
 
 func (s *migrationServer) handleChannelsFeedProfile(w http.ResponseWriter, r *http.Request) {
@@ -759,7 +803,7 @@ func (s *migrationServer) queryTasks(rawPath string, status string, page int, pa
 		rows = append(rows, row)
 	}
 	return &taskQueryResult{
-		Database:   gopeedDBFile,
+		Database:   filepath.Base(dbPath),
 		DataDir:    dataDir,
 		DBPath:     dbPath,
 		Tables:     []tableInfo{{Name: "task", Rows: len(snapshot.Tasks)}},
@@ -965,52 +1009,41 @@ func (s *migrationServer) migrateOneTask(db *gorm.DB, targetBaseURL string, data
 		item.Error = "task meta/req is empty"
 		return item
 	}
-	if oid == "" {
-		item.Action = "skipped"
-		item.Error = "missing oid label"
-		return item
-	}
-	profileURLString := buildTargetProfileURL(targetBaseURL, oid, uid).String()
-	if cacheStatus.ProfileURL != "" {
-		profileURLString = cacheStatus.ProfileURL
-	}
-	item.ProfileURL = profileURLString
-
-	profile, cachedURL, hit, err := s.readProfileCache(dataDir, cacheKey)
-	if cachedURL != "" {
-		item.ProfileURL = cachedURL
-	}
-	if err != nil {
-		item.Action = "skipped"
-		item.Error = "profile cache is not usable: " + err.Error()
-		return item
-	}
-	if !hit {
-		item.Action = "skipped"
-		if cacheStatus.Error != "" {
-			item.Error = "profile cache missing: " + cacheStatus.Error
-		} else {
-			item.Error = "profile cache missing"
+	var profile_object json.RawMessage
+	if oid != "" {
+		profile_url := buildTargetProfileURL(targetBaseURL, oid, uid).String()
+		if cacheStatus.ProfileURL != "" {
+			profile_url = cacheStatus.ProfileURL
 		}
-		return item
-	}
-	item.ProfileCacheHit = true
+		item.ProfileURL = profile_url
 
-	if savePath == "" {
-		item.Action = "skipped"
-		item.Error = "missing downloaded file path"
-		return item
+		profile, cached_url, hit, cache_err := s.readProfileCache(dataDir, cacheKey)
+		if cached_url != "" {
+			item.ProfileURL = cached_url
+		}
+		if cache_err == nil && hit {
+			item.ProfileCacheHit = true
+			profile_object = profile.Data.Object
+		}
 	}
-	fileInfo, statErr := os.Stat(savePath)
-	if statErr != nil && !allowMissing {
-		item.Action = "failed"
-		item.Error = "downloaded file is not accessible: " + statErr.Error()
-		return item
-	}
-	if statErr == nil && fileInfo.IsDir() && !allowMissing {
-		item.Action = "failed"
-		item.Error = "downloaded file path is a directory"
-		return item
+
+	if len(profile_object) > 0 {
+		if savePath == "" {
+			item.Action = "skipped"
+			item.Error = "missing downloaded file path"
+			return item
+		}
+		file_info, stat_err := os.Stat(savePath)
+		if stat_err != nil && !allowMissing {
+			item.Action = "failed"
+			item.Error = "downloaded file is not accessible: " + stat_err.Error()
+			return item
+		}
+		if stat_err == nil && file_info.IsDir() && !allowMissing {
+			item.Action = "failed"
+			item.Error = "downloaded file path is a directory"
+			return item
+		}
 	}
 
 	if dryRun {
@@ -1032,7 +1065,21 @@ func (s *migrationServer) migrateOneTask(db *gorm.DB, targetBaseURL string, data
 		item.Error = err.Error()
 		return item
 	}
-	targetID, err := importTargetDownloadRecord(db, task, labels, oid, uid, savePath, profile.Data.Object)
+	var target_id int
+	var err error
+	if len(profile_object) > 0 {
+		target_id, err = importTargetDownloadRecord(db, task, labels, oid, uid, savePath, profile_object)
+	} else {
+		target_id, err = import_target_download_task_without_content(
+			db,
+			task,
+			labels,
+			platformWXChannels,
+			oid,
+			item.ProfileURL,
+			savePath,
+		)
+	}
 	if err != nil {
 		var duplicate duplicateImportError
 		if errors.As(err, &duplicate) {
@@ -1045,7 +1092,7 @@ func (s *migrationServer) migrateOneTask(db *gorm.DB, targetBaseURL string, data
 		item.Error = err.Error()
 		return item
 	}
-	item.TargetID = targetID
+	item.TargetID = target_id
 	item.Action = "migrated"
 	return item
 }
@@ -1073,37 +1120,33 @@ func (s *migrationServer) migrateWXMPArticleTask(db *gorm.DB, dataDir string, ta
 		item.Error = "missing article_id label"
 		return item
 	}
-	contentRaw, cachedURL, hit, err := s.readWXMPArticleCache(dataDir, cacheKey)
-	if cachedURL != "" {
-		item.ProfileURL = cachedURL
+	content_raw, cached_url, hit, cache_err := s.readWXMPArticleCache(dataDir, cacheKey)
+	if cached_url != "" {
+		item.ProfileURL = cached_url
 	}
-	if err != nil {
-		item.Action = "skipped"
-		item.Error = "article cache is not usable: " + err.Error()
-		return item
+	if cache_err != nil || !hit {
+		content_raw = nil
+	} else {
+		item.ProfileCacheHit = true
 	}
-	if !hit {
-		item.Action = "skipped"
-		item.Error = "article cache missing"
-		return item
-	}
-	item.ProfileCacheHit = true
 
-	if savePath == "" {
-		item.Action = "skipped"
-		item.Error = "missing downloaded file path"
-		return item
-	}
-	fileInfo, statErr := os.Stat(savePath)
-	if statErr != nil && !allowMissing {
-		item.Action = "failed"
-		item.Error = "downloaded file is not accessible: " + statErr.Error()
-		return item
-	}
-	if statErr == nil && fileInfo.IsDir() && !allowMissing {
-		item.Action = "failed"
-		item.Error = "downloaded file path is a directory"
-		return item
+	if len(content_raw) > 0 {
+		if savePath == "" {
+			item.Action = "skipped"
+			item.Error = "missing downloaded file path"
+			return item
+		}
+		file_info, stat_err := os.Stat(savePath)
+		if stat_err != nil && !allowMissing {
+			item.Action = "failed"
+			item.Error = "downloaded file is not accessible: " + stat_err.Error()
+			return item
+		}
+		if stat_err == nil && file_info.IsDir() && !allowMissing {
+			item.Action = "failed"
+			item.Error = "downloaded file path is a directory"
+			return item
+		}
 	}
 	if dryRun {
 		item.Action = "dry_run"
@@ -1124,7 +1167,21 @@ func (s *migrationServer) migrateWXMPArticleTask(db *gorm.DB, dataDir string, ta
 		item.Error = err.Error()
 		return item
 	}
-	targetID, err := importTargetWXMPDownloadRecord(db, task, labels, articleID, articleURL, savePath, contentRaw)
+	var target_id int
+	var err error
+	if len(content_raw) > 0 {
+		target_id, err = importTargetWXMPDownloadRecord(db, task, labels, articleID, articleURL, savePath, content_raw)
+	} else {
+		target_id, err = import_target_download_task_without_content(
+			db,
+			task,
+			labels,
+			platformWXMP,
+			articleID,
+			articleURL,
+			savePath,
+		)
+	}
 	if err != nil {
 		var duplicate duplicateImportError
 		if errors.As(err, &duplicate) {
@@ -1137,7 +1194,7 @@ func (s *migrationServer) migrateWXMPArticleTask(db *gorm.DB, dataDir string, ta
 		item.Error = err.Error()
 		return item
 	}
-	item.TargetID = targetID
+	item.TargetID = target_id
 	item.Action = "migrated"
 	return item
 }
@@ -1198,16 +1255,13 @@ func wxmpFetchDataToContentJSON(data any) (json.RawMessage, error) {
 		return normalizeRawJSONObject(value), nil
 	case []byte:
 		return normalizeRawJSONObject(json.RawMessage(value)), nil
-	case *wxmp.WechatOfficialArticle:
-		if value == nil || value.PageJSON == nil {
-			return nil, fmt.Errorf("wxmp article page json is empty")
+	case *wxmp.ArticleCgiDataNew:
+		if value == nil {
+			return nil, fmt.Errorf("wxmp article data is nil")
 		}
-		return mustRawJSON(value.PageJSON), nil
-	case wxmp.WechatOfficialArticle:
-		if value.PageJSON == nil {
-			return nil, fmt.Errorf("wxmp article page json is empty")
-		}
-		return mustRawJSON(value.PageJSON), nil
+		return mustRawJSON(value), nil
+	case wxmp.ArticleCgiDataNew:
+		return mustRawJSON(value), nil
 	default:
 		return mustRawJSON(value), nil
 	}
@@ -1237,11 +1291,8 @@ func fetchTargetProfile(client *http.Client, rawURL string) (*channelsFeedProfil
 	if err := json.Unmarshal(envelope.Data, &profile); err != nil {
 		return nil, fmt.Errorf("parse profile data: %w", err)
 	}
-	if profile.ErrCode != 0 {
-		return nil, fmt.Errorf("profile business error code=%d: %s", profile.ErrCode, profile.ErrMsg)
-	}
-	if len(profile.Data.Object) == 0 || string(profile.Data.Object) == "null" {
-		return nil, fmt.Errorf("profile object is empty")
+	if err := validate_channels_feed_profile(&profile); err != nil {
+		return nil, err
 	}
 	return &profile, nil
 }
@@ -1289,6 +1340,9 @@ func (s *migrationServer) fetchProfileWithCache(client *http.Client, dataDir str
 	if err != nil {
 		return nil, profileURL, false, "", err
 	}
+	if err := validate_channels_feed_profile(profile); err != nil {
+		return nil, profileURL, false, "", err
+	}
 	if cacheKey != "" {
 		if err := s.writeProfileCache(dataDir, cacheKey, profileCacheEntry{
 			OID:        strings.TrimSpace(oid),
@@ -1307,20 +1361,32 @@ func (s *migrationServer) readProfileCache(dataDir string, key string) (*channel
 	s.profileCacheMu.Lock()
 	defer s.profileCacheMu.Unlock()
 
-	cache, err := loadProfileCache(profileCachePath(dataDir))
+	path := profileCachePath(dataDir)
+	cache, err := loadProfileCache(path)
 	if err != nil {
 		return nil, "", false, err
 	}
-	entry, ok := cache.Items[profileCacheKey(key, "")]
+	cache_key := profileCacheKey(key, "")
+	entry, ok := cache.Items[cache_key]
 	if !ok || len(entry.Profile) == 0 {
 		return nil, "", false, nil
 	}
 	var profile channelsFeedProfile
 	if err := json.Unmarshal(entry.Profile, &profile); err != nil {
-		return nil, "", false, fmt.Errorf("parse profile cache: %w", err)
+		delete(cache.Items, cache_key)
+		if save_err := saveProfileCache(path, cache); save_err != nil {
+			return nil, "", false, fmt.Errorf("discard invalid profile cache: %w", save_err)
+		}
+		log.Printf("discard invalid profile cache %q: %v", cache_key, err)
+		return nil, "", false, nil
 	}
-	if len(profile.Data.Object) == 0 || strings.TrimSpace(string(profile.Data.Object)) == "null" {
-		return nil, "", false, fmt.Errorf("profile cache object is empty for %s", key)
+	if err := validate_channels_feed_profile(&profile); err != nil {
+		delete(cache.Items, cache_key)
+		if save_err := saveProfileCache(path, cache); save_err != nil {
+			return nil, "", false, fmt.Errorf("discard invalid profile cache: %w", save_err)
+		}
+		log.Printf("discard invalid profile cache %q: %v", cache_key, err)
+		return nil, "", false, nil
 	}
 	return &profile, entry.ProfileURL, true, nil
 }
@@ -1359,6 +1425,49 @@ func (s *migrationServer) writeProfileCache(dataDir string, key string, entry pr
 	cache.Version = 1
 	cache.Items[profileCacheKey(key, "")] = entry
 	return saveProfileCache(path, cache)
+}
+
+func (s *migrationServer) cleanup_invalid_profile_cache(data_dir string) (*profileCacheCleanupResult, error) {
+	s.profileCacheMu.Lock()
+	defer s.profileCacheMu.Unlock()
+
+	cache_path := profileCachePath(data_dir)
+	cache, err := loadProfileCache(cache_path)
+	if err != nil {
+		return nil, err
+	}
+	result := &profileCacheCleanupResult{
+		DataDir:     data_dir,
+		CachePath:   cache_path,
+		Total:       len(cache.Items),
+		RemovedKeys: []string{},
+	}
+	for cache_key, entry := range cache.Items {
+		if strings.HasPrefix(cache_key, "wxmp_article:") {
+			result.SkippedArticle += 1
+			continue
+		}
+		result.Checked += 1
+		var profile channelsFeedProfile
+		validation_err := json.Unmarshal(entry.Profile, &profile)
+		if validation_err == nil {
+			validation_err = validate_channels_feed_profile(&profile)
+		}
+		if validation_err == nil {
+			continue
+		}
+		delete(cache.Items, cache_key)
+		result.RemovedKeys = append(result.RemovedKeys, cache_key)
+	}
+	sort.Strings(result.RemovedKeys)
+	result.Removed = len(result.RemovedKeys)
+	result.Remaining = len(cache.Items)
+	if result.Removed > 0 {
+		if err := saveProfileCache(cache_path, cache); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func loadProfileCache(path string) (*profileCacheDocument, error) {
@@ -1404,6 +1513,183 @@ func saveProfileCache(path string, cache *profileCacheDocument) error {
 		return fmt.Errorf("replace profile cache: %w", err)
 	}
 	return nil
+}
+
+func import_target_download_task_without_content(
+	db *gorm.DB,
+	task *downloadpkg.Task,
+	labels map[string]string,
+	platform_id string,
+	external_id string,
+	source_url string,
+	save_path string,
+) (int, error) {
+	if db == nil {
+		return 0, fmt.Errorf("target database is not opened")
+	}
+	if task == nil {
+		return 0, fmt.Errorf("gopeed task is empty")
+	}
+
+	platform_id = strings.TrimSpace(platform_id)
+	if platform_id == "" {
+		platform_id = platformWXChannels
+	}
+	external_id = strings.TrimSpace(external_id)
+	if platform_id == platformWXMP {
+		source_url = firstNonEmpty(source_url, taskURL(task))
+	} else {
+		source_url = firstNonEmpty(taskURL(task), source_url)
+	}
+	save_path = strings.TrimSpace(save_path)
+	download_dir := ""
+	filename := ""
+	if save_path != "" {
+		download_dir = filepath.Dir(save_path)
+		filename = filepath.Base(save_path)
+	}
+	if filename == "." || filename == string(filepath.Separator) {
+		filename = ""
+	}
+
+	unique_id := ""
+	config_json := ""
+	identity_id := external_id
+	if identity_id == "" && save_path == "" {
+		identity_id = safeTaskID(task)
+	}
+	metadata := map[string]any{
+		"gopeedid":       safeTaskID(task),
+		"detail_missing": true,
+		"migrated":       true,
+	}
+	if platform_id == platformWXMP {
+		unique_id = migratedWXMPTaskUniqueID(identity_id, save_path)
+		config_json = buildWXMPMigrationTaskConfigJSON(download_dir, filename, labels)
+		metadata["article_id"] = external_id
+		metadata["article_url"] = source_url
+	} else {
+		unique_id = migratedTaskUniqueID(identity_id, labels, save_path)
+		config_json = buildMigrationTaskConfigJSON(download_dir, filename, labels)
+	}
+	if unique_id == "" || unique_id == "." {
+		unique_id = safeTaskID(task)
+	}
+
+	now := time.Now().UnixMilli()
+	created_at := timeToMillisOrDefault(taskCreatedAt(task), now)
+	updated_at := timeToMillisOrDefault(taskUpdatedAt(task), now)
+	if updated_at < created_at {
+		updated_at = created_at
+	}
+	target_status := mapGopeedStatusToTargetStatus(taskStatus(task))
+	task_record := model.DownloadTask{
+		ContentId:    nil,
+		Name:         firstNonEmpty(taskName(task), labels["title"], migrationCreateFilename(filename), external_id, safeTaskID(task)),
+		PlatformId:   platform_id,
+		UniqueID:     unique_id,
+		Status:       target_status,
+		SourceURL:    source_url,
+		ConfigJSON:   config_json,
+		MetadataJSON: mustJSON(metadata),
+		ErrorMessage: taskError(task),
+		Timestamps: model.Timestamps{
+			CreatedAt: created_at,
+			UpdatedAt: updated_at,
+		},
+	}
+
+	resource_status := 0
+	var finish_time *int64
+	if target_status == model.TaskStatusFinished {
+		resource_status = resourceStatusFinished
+		finished_at := updated_at
+		finish_time = &finished_at
+	}
+	resource_size := migratedSize(task, save_path, channelsMediaItem{})
+	resource_record := model.DownloadResource{
+		ContentId:   nil,
+		DownloadDir: download_dir,
+		Name:        firstNonEmpty(filename, taskName(task), external_id, safeTaskID(task)),
+		Kind:        resourceKindForPath(save_path),
+		UniqueID:    unique_id,
+		Type:        "file",
+		Size:        resource_size,
+		Downloaded:  migratedDownloaded(task, resource_size),
+		Status:      resource_status,
+		MergeOrder:  0,
+		Extra: mustJSON(map[string]any{
+			"platform":       platform_id,
+			"external_id":    external_id,
+			"gopeedid":       safeTaskID(task),
+			"file_path":      save_path,
+			"detail_missing": true,
+			"migrated":       true,
+		}),
+		FinishTime: finish_time,
+		Timestamps: model.Timestamps{
+			CreatedAt: created_at,
+			UpdatedAt: updated_at,
+		},
+	}
+	if target_status == model.TaskStatusFinished {
+		started_at := created_at
+		resource_record.StartTime = &started_at
+	}
+	endpoint_url := firstNonEmpty(source_url, taskURL(task), save_path)
+	endpoint_record := model.DownloadEndpoint{
+		Protocol: endpointProtocol(endpoint_url, taskProtocol(task)),
+		URL:      endpoint_url,
+		Priority: 0,
+		Enabled:  1,
+		Status:   resource_status,
+		Timestamps: model.Timestamps{
+			CreatedAt: created_at,
+			UpdatedAt: updated_at,
+		},
+	}
+
+	var target_id int
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if existing, find_err := findMigratedDownloadTaskByPlatform(tx, platform_id, safeTaskID(task)); find_err == nil {
+			target_id = existing.Id
+			return duplicateImportError{TaskID: existing.Id}
+		} else if !errors.Is(find_err, gorm.ErrRecordNotFound) {
+			return find_err
+		}
+		if platform_err := ensureTargetPlatform(tx, now, platform_id); platform_err != nil {
+			return platform_err
+		}
+		if lineage_err := database.ApplyTaskLineage(tx, &task_record, nil, ""); lineage_err != nil {
+			return lineage_err
+		}
+		if create_err := tx.Create(&task_record).Error; create_err != nil {
+			return fmt.Errorf("create standalone download task: %w", create_err)
+		}
+		if finalize_err := database.FinalizeTaskRoot(tx, &task_record); finalize_err != nil {
+			return finalize_err
+		}
+		if restore_err := tx.Model(&model.DownloadTask{}).
+			Where("id = ?", task_record.Id).
+			UpdateColumns(map[string]any{
+				"created_at": created_at,
+				"updated_at": updated_at,
+			}).Error; restore_err != nil {
+			return fmt.Errorf("restore standalone download task timestamps: %w", restore_err)
+		}
+		task_id := task_record.Id
+		resource_record.TaskId = &task_id
+		if create_err := tx.Create(&resource_record).Error; create_err != nil {
+			return fmt.Errorf("create download resource without content: %w", create_err)
+		}
+		endpoint_record.ResourceId = resource_record.Id
+		if create_err := tx.Create(&endpoint_record).Error; create_err != nil {
+			return fmt.Errorf("create download endpoint without content: %w", create_err)
+		}
+		target_id = task_record.Id
+		return nil
+	})
+	return target_id, err
 }
 
 func importTargetDownloadRecord(db *gorm.DB, task *downloadpkg.Task, labels map[string]string, oid string, uid string, savePath string, objectRaw json.RawMessage) (int, error) {
@@ -1457,7 +1743,7 @@ func importTargetDownloadRecord(db *gorm.DB, task *downloadpkg.Task, labels map[
 		"gopeedid": safeTaskID(task),
 	})
 
-	content := buildTargetContent(contentID, oid, uid, title, contentType, sourceURL, contentURL, coverURL, media, obj, objectRaw, createdAt, updatedAt)
+	content := buildTargetContent(contentID, oid, uid, title, contentType, sourceURL, contentURL, coverURL, media, obj, createdAt, updatedAt)
 	account := buildTargetAccount(obj, uid, createdAt, updatedAt)
 	taskRecord := model.DownloadTask{
 		ContentId:    &contentID,
@@ -1772,12 +2058,11 @@ func normalizeRawJSONObject(raw json.RawMessage) json.RawMessage {
 	return json.RawMessage(text)
 }
 
-func buildTargetContent(contentID string, oid string, uid string, title string, contentType string, sourceURL string, contentURL string, coverURL string, media channelsMediaItem, obj channelsObjectLite, objectRaw json.RawMessage, createdAt int64, updatedAt int64) *model.Content {
+func buildTargetContent(contentID string, oid string, uid string, title string, contentType string, sourceURL string, contentURL string, coverURL string, media channelsMediaItem, obj channelsObjectLite, createdAt int64, updatedAt int64) *model.Content {
 	metadata := mustJSON(map[string]any{
-		"key":            string(media.DecodeKey),
-		"profile_object": objectRaw,
-		"migrated":       true,
-		"uid":            uid,
+		"key":      string(media.DecodeKey),
+		"migrated": true,
+		"uid":      uid,
 	})
 	content := &model.Content{
 		Id:          contentID,
@@ -2040,22 +2325,13 @@ func (s *migrationServer) resolveDataDir(raw string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("path is not accessible: %w", err)
 	}
-	dataDir := abs
-	if !info.IsDir() {
-		if filepath.Base(abs) != gopeedDBFile {
-			return "", "", fmt.Errorf("select %s or the directory containing it", gopeedDBFile)
-		}
-		dataDir = filepath.Dir(abs)
+	if info.IsDir() {
+		return "", "", fmt.Errorf("select a .db database file, not a directory: %s", abs)
 	}
-	dbPath := filepath.Join(dataDir, gopeedDBFile)
-	dbInfo, err := os.Stat(dbPath)
-	if err != nil {
-		return "", "", fmt.Errorf("%s not found in %s", gopeedDBFile, dataDir)
+	if !strings.EqualFold(filepath.Ext(abs), ".db") {
+		return "", "", fmt.Errorf("select a .db database file: %s", abs)
 	}
-	if dbInfo.IsDir() {
-		return "", "", fmt.Errorf("%s is a directory", dbPath)
-	}
-	return dataDir, dbPath, nil
+	return filepath.Dir(abs), abs, nil
 }
 
 func (s *migrationServer) resolveProfileCacheDir(raw string) (string, error) {
@@ -2084,7 +2360,7 @@ func (s *migrationServer) resolveProfileCacheDir(raw string) (string, error) {
 func (s *migrationServer) loadGopeedTaskSnapshot(dataDir string, dbPath string, forceReload bool) (*taskCacheEntry, bool, error) {
 	dbInfo, err := os.Stat(dbPath)
 	if err != nil {
-		return nil, false, fmt.Errorf("stat %s: %w", gopeedDBFile, err)
+		return nil, false, fmt.Errorf("stat %s: %w", dbPath, err)
 	}
 
 	s.taskCacheMu.Lock()
@@ -2098,7 +2374,7 @@ func (s *migrationServer) loadGopeedTaskSnapshot(dataDir string, dbPath string, 
 		}
 	}
 
-	tasks, err := loadAllGopeedTasks(dataDir)
+	tasks, err := load_all_gopeed_tasks(dbPath)
 	if err != nil {
 		return nil, false, err
 	}
@@ -2115,15 +2391,16 @@ func (s *migrationServer) loadGopeedTaskSnapshot(dataDir string, dbPath string, 
 	return entry, false, nil
 }
 
-func loadGopeedTasks(dataDir string, status string) (filtered []*downloadpkg.Task, all []*downloadpkg.Task, err error) {
-	all, err = loadAllGopeedTasks(dataDir)
+func load_gopeed_tasks(db_path string, status string) (filtered []*downloadpkg.Task, all []*downloadpkg.Task, err error) {
+	all, err = load_all_gopeed_tasks(db_path)
 	if err != nil {
 		return nil, nil, err
 	}
 	return filterGopeedTasks(all, status), all, nil
 }
 
-func loadAllGopeedTasks(dataDir string) (all []*downloadpkg.Task, err error) {
+func load_all_gopeed_tasks(db_path string) (all []*downloadpkg.Task, err error) {
+	data_dir := filepath.Dir(db_path)
 	var storage *downloadpkg.BoltStorage
 	var downloader *downloadpkg.Downloader
 	defer func() {
@@ -2135,11 +2412,11 @@ func loadAllGopeedTasks(dataDir string) (all []*downloadpkg.Task, err error) {
 		}
 	}()
 
-	storage = downloadpkg.NewReadOnlyBoltStorage(dataDir)
+	storage = downloadpkg.NewReadOnlyBoltStorageFromPath(db_path)
 	downloader = downloadpkg.NewDownloader(&downloadpkg.DownloaderConfig{
 		RefreshInterval: 360,
 		Storage:         storage,
-		StorageDir:      dataDir,
+		StorageDir:      data_dir,
 	})
 	if err = downloader.Setup(); err != nil {
 		_ = storage.Close()
@@ -2235,8 +2512,11 @@ func taskProfileCached(cache *profileCacheDocument, task *downloadpkg.Task) (boo
 	if !ok {
 		return false, cacheKey
 	}
-	profile := strings.TrimSpace(string(entry.Profile))
-	return profile != "" && profile != "null", cacheKey
+	var profile channelsFeedProfile
+	if err := json.Unmarshal(entry.Profile, &profile); err != nil {
+		return false, cacheKey
+	}
+	return validate_channels_feed_profile(&profile) == nil, cacheKey
 }
 
 func safeTaskID(task *downloadpkg.Task) string {
