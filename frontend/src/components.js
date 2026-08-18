@@ -71,6 +71,52 @@ function dispose_owned_store(store) {
   }
 }
 
+export function LoadingView() {
+  return View(
+    {
+      class:
+        "route-loading dm-page dm-grid dm-place-center dm-text-muted dm-p-8",
+      role: "status",
+    },
+    ["页面加载中…"],
+  );
+}
+
+/**
+ * @param {Error} error
+ * @param {string} view_name
+ */
+export function ErrorFallbackView(error, view_name) {
+  return View(
+    {
+      class: "route-error dm-page dm-grid dm-place-center dm-p-8",
+      attributes: { role: "alert" },
+    },
+    [
+      View({ class: "route-error-card" }, [
+        View(
+          {
+            class: "route-error-card__icon",
+            attributes: { "aria-hidden": "true" },
+          },
+          [Runtime.Icon({ name: "circle-alert", size: 24 })],
+        ),
+        View({ class: "route-error-card__content" }, [
+          View({ as: "strong", class: "route-error-card__title" }, [
+            "页面加载失败",
+          ]),
+          View({ as: "span", class: "route-error-card__context" }, [
+            view_name || "未知页面",
+          ]),
+        ]),
+        View({ as: "pre", class: "route-error-card__detail" }, [
+          error.message,
+        ]),
+      ]),
+    ],
+  );
+}
+
 function lazy_img_dom_element(event) {
   let target = event && event.target ? event.target : event;
   for (let depth = 0; depth < 4; depth += 1) {

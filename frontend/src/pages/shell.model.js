@@ -1,3 +1,9 @@
+const Timeless = window.Timeless;
+
+if (!Timeless) {
+  throw new Error("应用无法启动：Timeless 运行时未加载");
+}
+
 const UPDATE_POLL_INTERVAL = 250;
 const RESTART_POLL_INTERVAL = 600;
 const RESTART_TIMEOUT = 60000;
@@ -53,7 +59,7 @@ function update_error_message(error, fallback) {
   return error ? String(error) : fallback;
 }
 
-export function createUpdateModel(options = {}) {
+function createUpdateModel(options = {}) {
   const fetch_client = options.fetch || window.fetch.bind(window);
   const reload = options.reload || (() => window.location.reload());
   const snapshot_ = refobj({
@@ -406,6 +412,335 @@ export function createUpdateModel(options = {}) {
       dismiss,
       download,
       show,
+    },
+  };
+}
+
+const settings_request = Timeless.kit.request_factory({
+  headers: { "Content-Type": "application/json" },
+  process(response) {
+    if (response.error) {
+      return Timeless.Result.Err(response.error);
+    }
+    const payload = response.data || {};
+    if (payload.code !== 0) {
+      return Timeless.Result.Err(
+        payload.msg || "请求失败",
+        payload.code,
+        payload.data,
+      );
+    }
+    return Timeless.Result.Ok(payload.data || {});
+  },
+});
+
+function create_mcp_settings_model(client) {
+  const data_ = Timeless.ref(null);
+  const loading_ = Timeless.ref(false);
+  const saving_ = Timeless.ref(false);
+  const error_ = Timeless.ref("");
+  const enabled_ = Timeless.computed(data_, function (data) {
+    return Boolean(data && data.enabled);
+  });
+  const endpoint_ = Timeless.computed(data_, function (data) {
+    return (data && data.endpoint) || "/mcp";
+  });
+  let request_sequence = 0;
+  const status_request = new Timeless.kit.RequestCore(
+    function () {
+      return settings_request.get("/api/mcp/status");
+    },
+    { client },
+  );
+  const update_request = new Timeless.kit.RequestCore(
+    function (enabled) {
+      return settings_request.post(
+        enabled ? "/api/mcp/enable" : "/api/mcp/disable",
+      );
+    },
+    { client },
+  );
+
+  async function load() {
+    if (saving_.value) {
+      return null;
+    }
+    const sequence = ++request_sequence;
+    loading_.as(true);
+    error_.as("");
+    const result = await status_request.run();
+    if (sequence !== request_sequence) {
+      return result;
+    }
+    loading_.as(false);
+    if (result.error) {
+      error_.as(result.error.message || String(result.error));
+      return result;
+    }
+    data_.as(result.data || {});
+    return result;
+  }
+
+  async function set_enabled(enabled) {
+    if (saving_.value) {
+      return null;
+    }
+    const sequence = ++request_sequence;
+    saving_.as(true);
+    error_.as("");
+    const result = await update_request.run(Boolean(enabled));
+    if (sequence !== request_sequence) {
+      return result;
+    }
+    saving_.as(false);
+    loading_.as(false);
+    if (result.error) {
+      error_.as(result.error.message || String(result.error));
+      return result;
+    }
+    data_.as(result.data || {});
+    return result;
+  }
+
+  function toggle() {
+    const data = data_.value || {};
+    return set_enabled(!data.enabled);
+  }
+
+  const ui = {
+    refresh_button$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      size: "sm",
+      onClick: load,
+    }),
+    retry_button$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      onClick: load,
+    }),
+    toggle_button$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      onClick: toggle,
+    }),
+  };
+  const state_unlistens = [
+    loading_.subscribe({
+      onChange(value) {
+        ui.refresh_button$.setLoading(Boolean(value));
+        ui.retry_button$.setLoading(Boolean(value));
+      },
+    }),
+    saving_.subscribe({
+      onChange(value) {
+        ui.toggle_button$.setLoading(Boolean(value));
+        if (value) {
+          ui.refresh_button$.disable();
+        } else {
+          ui.refresh_button$.enable();
+        }
+      },
+    }),
+  ];
+
+  function destroy() {
+    request_sequence += 1;
+    status_request.destroy?.();
+    update_request.destroy?.();
+    state_unlistens.forEach(function (unlisten) {
+      if (typeof unlisten === "function") {
+        unlisten();
+      }
+    });
+    Object.values(ui).forEach(function (store) {
+      store.destroy?.();
+    });
+  }
+
+  return {
+    state: {
+      data: data_,
+      enabled: enabled_,
+      endpoint: endpoint_,
+      error: error_,
+      loading: loading_,
+      saving: saving_,
+    },
+    ui,
+    methods: {
+      destroy,
+      load,
+      set_enabled,
+      toggle,
+    },
+  };
+}
+
+export function ShellViewModel(props) {
+  const menu_configs = [
+    { title: "下载", name: "root.shell.download", icon: "download" },
+    { title: "Get", name: "root.shell.scraper", icon: "search" },
+    { title: "内容管理", name: "root.shell.content", icon: "library" },
+    {
+      title: "浏览记录",
+      name: "root.shell.browsehistory",
+      icon: "history",
+    },
+    { title: "帐号管理", name: "root.shell.account", icon: "user" },
+  ];
+  const menu$ = Timeless.kit.RouteMenusModel({
+    view: props.view,
+    history: props.history,
+    menus: menu_configs,
+  });
+  const settings_section_ = Timeless.ref("certificate");
+  const update$ = createUpdateModel({
+    currentVersion: String(
+      (window.__d_config && window.__d_config.version) || "",
+    ).trim(),
+  });
+  const mcp_settings$ = create_mcp_settings_model(props.client);
+  const certificate_ = Timeless.ref(null);
+  const certificate_loading_ = Timeless.ref(false);
+  const certificate_error_ = Timeless.ref("");
+  const certificate_request = new Timeless.kit.RequestCore(
+    function () {
+      return settings_request.get("/api/proxy/certificate/status");
+    },
+    { client: props.client },
+  );
+  let certificate_request_sequence = 0;
+  const version =
+    String(
+      (window.__d_config && window.__d_config.version) || "",
+    ).trim() || "开发版";
+
+  async function load_certificate() {
+    const sequence = ++certificate_request_sequence;
+    certificate_loading_.as(true);
+    certificate_error_.as("");
+    const result = await certificate_request.run();
+    if (sequence !== certificate_request_sequence) {
+      return result;
+    }
+    certificate_loading_.as(false);
+    if (result.error) {
+      certificate_error_.as(result.error.message || String(result.error));
+      return result;
+    }
+    certificate_.as(result.data || {});
+    return result;
+  }
+
+  const ui = {
+    settings_dialog$: new Timeless.vm.DialogCore({
+      closeable: true,
+      footer: false,
+    }),
+    settings_button$: new Timeless.vm.ButtonCore({
+      variant: "ghost",
+      onClick() {
+        ui.settings_dialog$.show();
+        settings_section_.as("certificate");
+        return load_certificate();
+      },
+    }),
+    certificate_menu_button$: new Timeless.vm.ButtonCore({
+      variant: "ghost",
+      onClick() {
+        settings_section_.as("certificate");
+        if (!certificate_.value && !certificate_loading_.value) {
+          return load_certificate();
+        }
+        return null;
+      },
+    }),
+    about_menu_button$: new Timeless.vm.ButtonCore({
+      variant: "ghost",
+      onClick() {
+        settings_section_.as("about");
+      },
+    }),
+    mcp_menu_button$: new Timeless.vm.ButtonCore({
+      variant: "ghost",
+      onClick() {
+        if (
+          !mcp_settings$.state.data.value &&
+          !mcp_settings$.state.loading.value
+        ) {
+          mcp_settings$.methods.load();
+        }
+        settings_section_.as("mcp");
+      },
+    }),
+    refresh_certificate_button$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      size: "sm",
+      loading: certificate_loading_.value,
+      onClick: load_certificate,
+    }),
+    retry_certificate_button$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      loading: certificate_loading_.value,
+      onClick: load_certificate,
+    }),
+  };
+  const menu_items = menu_configs.map(function (menu) {
+    return {
+      menu,
+      button$: new Timeless.vm.ButtonCore({
+        variant: "ghost",
+        onClick() {
+          menu$.handleClick(menu);
+        },
+      }),
+    };
+  });
+  const certificate_loading_unlisten = certificate_loading_.subscribe({
+    onChange(value) {
+      ui.refresh_certificate_button$.setLoading(Boolean(value));
+      ui.retry_certificate_button$.setLoading(Boolean(value));
+    },
+  });
+
+  function ready() {
+    return update$.methods.check();
+  }
+
+  function destroy() {
+    certificate_request_sequence += 1;
+    certificate_request.destroy?.();
+    if (typeof certificate_loading_unlisten === "function") {
+      certificate_loading_unlisten();
+    }
+    menu_items.forEach(function (item) {
+      item.button$.destroy?.();
+    });
+    Object.values(ui).forEach(function (store) {
+      store.destroy?.();
+    });
+    mcp_settings$.methods.destroy();
+    update$.methods.destroy();
+    menu$.destroy();
+  }
+
+  return {
+    state: {
+      certificate: certificate_,
+      certificate_error: certificate_error_,
+      certificate_loading: certificate_loading_,
+      menu_items,
+      settings_section: settings_section_,
+      version,
+    },
+    ui,
+    models: {
+      mcp: mcp_settings$,
+      menu: menu$,
+      update: update$,
+    },
+    methods: {
+      destroy,
+      loadCertificate: load_certificate,
+      ready,
     },
   };
 }

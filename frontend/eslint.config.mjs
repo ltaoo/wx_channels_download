@@ -53,6 +53,8 @@ export default [
         Alert: "readonly",
         AlertTitle: "readonly",
         AlertDescription: "readonly",
+        ErrorFallbackView: "readonly",
+        LoadingView: "readonly",
         createInputStore: "readonly",
         DL: "readonly",
         dl$: "readonly",

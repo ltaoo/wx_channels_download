@@ -259,8 +259,9 @@ func Start(cfg *config.Config) error {
 		return fmt.Errorf("failed to start API service: %w", err)
 	}
 	api_started = true
-	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_srv.Addr()))
-	color.Green(fmt.Sprintf("MCP server started successfully, address: http://%v/mcp", api_srv.Addr()))
+	api_url := http_service_url(api_srv.Addr())
+	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_url))
+	color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
 
 	if proxy_enabled {
 		interceptor_start_attempted = true
@@ -289,7 +290,7 @@ func Start(cfg *config.Config) error {
 			cleanup()
 			return fmt.Errorf("failed to start proxy service: %w", err)
 		}
-		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", interceptor_srv.Addr()))
+		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", http_service_url(interceptor_srv.Addr())))
 
 		if !buildtags.UsingSunnyNet {
 			if interceptor_srv.ProxyTun() {
@@ -346,6 +347,10 @@ func Start(cfg *config.Config) error {
 	<-ctx.Done()
 	cleanup()
 	return nil
+}
+
+func http_service_url(addr string) string {
+	return "http://" + addr
 }
 
 func publish_registered_adapter_statuses(bus *events.Bus) {
