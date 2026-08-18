@@ -399,6 +399,7 @@ function PreviewOverlayView(props) {
 
 function PreviewPageView(props) {
   const vm$ = PreviewViewModel(props);
+  let unsubscribe_task_id = null;
 
   function handle_keydown(event) {
     if (event.key === "Escape") {
@@ -411,10 +412,21 @@ function PreviewPageView(props) {
       class: "wx-preview-page dm-page",
       onMounted() {
         window.document.addEventListener("keydown", handle_keydown);
+        if (props.taskId && typeof props.taskId.subscribe === "function") {
+          unsubscribe_task_id = props.taskId.subscribe({
+            onChange(task_id) {
+              vm$.methods.loadTask(task_id);
+            },
+          });
+        }
         vm$.methods.ready();
       },
       onUnmounted() {
         window.document.removeEventListener("keydown", handle_keydown);
+        if (typeof unsubscribe_task_id === "function") {
+          unsubscribe_task_id();
+          unsubscribe_task_id = null;
+        }
         vm$.methods.closePreview();
       },
     },

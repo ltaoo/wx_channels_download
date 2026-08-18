@@ -1,4 +1,28 @@
 import { ContentViewModel } from "./content.model.js";
+import ContentDetailPageView from "./content_detail.js";
+
+function ContentDetailDrawer(props) {
+  const vm$ = props.store;
+  return Drawer(
+    {
+      store: vm$.ui.contentDetailDrawer$,
+      class: "wx-content-detail-drawer",
+      style: { width: "min(1120px, 100vw)" },
+    },
+    [
+      ContentDetailPageView({
+        app: props.app,
+        client: props.client,
+        history: props.history,
+        embedded: true,
+        contentId: vm$.state.detail_id,
+        onBack() {
+          vm$.ui.contentDetailDrawer$.hide();
+        },
+      }),
+    ],
+  );
+}
 
 function ContentPageView(props) {
   const vm$ = ContentViewModel(props);
@@ -31,6 +55,12 @@ function ContentPageView(props) {
             },
           });
         },
+      }),
+      ContentDetailDrawer({
+        store: vm$,
+        app: props.app,
+        client: props.client,
+        history: props.history,
       }),
     ],
   );

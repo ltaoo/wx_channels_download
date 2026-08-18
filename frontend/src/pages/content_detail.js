@@ -1066,7 +1066,9 @@ function ContentDetailRelation(props) {
   const title = related.title || related.description || id || "未命名内容";
   const subtype = related.subtype || related.type || "内容";
   const clickable = Boolean(
-    id && props.history && typeof props.history.push === "function",
+    id &&
+      (typeof props.onOpenDetail === "function" ||
+        (props.history && typeof props.history.push === "function")),
   );
   return View(
     {
@@ -1080,6 +1082,10 @@ function ContentDetailRelation(props) {
       attributes: clickable ? { type: "button", title: `查看 ${title}` } : {},
       onClick() {
         if (!clickable) return;
+        if (typeof props.onOpenDetail === "function") {
+          props.onOpenDetail(id);
+          return;
+        }
         props.history.push("root.shell.content_detail", { id });
       },
     },
@@ -1113,7 +1119,11 @@ function ContentDetailRelations(props) {
     For({
       each: items,
       render(item) {
-        return ContentDetailRelation({ item, history: props.history });
+        return ContentDetailRelation({
+          item,
+          history: props.history,
+          onOpenDetail: props.onOpenDetail,
+        });
       },
     }),
   ]);
@@ -1162,7 +1172,11 @@ function ContentDetailMain(props) {
             title: "关联内容",
             count: content.relations.total,
             children: [
-              ContentDetailRelations({ content, history: props.history }),
+              ContentDetailRelations({
+                content,
+                history: props.history,
+                onOpenDetail: props.onOpenDetail,
+              }),
             ],
           }),
         ]
@@ -1231,6 +1245,7 @@ function ContentDetailBody(props) {
                   store: vm$,
                   content: vm$.state.detail.value,
                   history: props.history,
+                  onOpenDetail: props.onOpenDetail,
                 });
               },
               else() {
@@ -1258,7 +1273,13 @@ function ContentDetailPageView(props) {
     },
     [
       ContentDetailHeader({ store: vm$ }),
-      ContentDetailBody({ store: vm$, history: props.history }),
+      ContentDetailBody({
+        store: vm$,
+        history: props.history,
+        onOpenDetail: props.embedded
+          ? (content_id) => vm$.methods.openDetail(content_id)
+          : null,
+      }),
     ],
   );
 }
