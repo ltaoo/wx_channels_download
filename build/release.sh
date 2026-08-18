@@ -49,17 +49,17 @@ build_binary() {
       -v "$PWD:/workspace" \
       -w /workspace \
       "$BUILD_IMAGE" \
-      bash -lc "CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -tags '$tags' -ldflags '$ldflags' -o 'dist/$BINARY_NAME' main.go"
+      bash -lc "CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags '$tags' -ldflags '$ldflags' -o 'dist/$BINARY_NAME' main.go"
   }
 
   go_build() {
     local cc="${1:-}"
     if [ -n "$cc" ]; then
       echo "   Using CGO_ENABLED=1 with CC=$cc"
-      CC="$cc" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
+      CC="$cc" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
     else
       echo "   Using CGO_ENABLED=1"
-      CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
+      CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
     fi
   }
 

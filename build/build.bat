@@ -21,7 +21,7 @@ set GOARCH=amd64
 set "BUILD_OUTPUT=%OUTPUT_DIR%\wx_video_download_windows_x86_64.exe"
 set "FINAL_OUTPUT=%OUTPUT_DIR%\wx_channel.exe"
 pushd "%PROJECT_DIR%"
-call go build -trimpath -tags "with_gvisor,embed_inject,sqlite_only" -ldflags="-s -w" -o "%BUILD_OUTPUT%" .
+call "%PROJECT_DIR%\build\build-go.bat" -trimpath -tags "with_gvisor,embed_inject,sqlite_only" -ldflags="-s -w" -o "%BUILD_OUTPUT%" .
 if errorlevel 1 (
     popd
     echo ERROR: Windows build failed.
